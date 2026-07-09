@@ -213,7 +213,20 @@ func (h *Hub) BroadcastDelta(d inventory.Delta) {
 		h.log.Error("topology: marshaling topology.delta event", "error", err)
 		return
 	}
+	h.Broadcast(topicTopology, data)
+}
 
+// Broadcast fans out a pre-encoded JSON event to every connection
+// subscribed to topic. It is BroadcastDelta's generic counterpart, added
+// so other packages that need to push events over the same shared
+// /api/ws connection (docs/api.md's WebSocket section documents one
+// connection multiplexing "topology", "changesets", "metrics:<ref>", and
+// "tasks" topics alike) can reuse this hub's connection management instead
+// of standing up a second WS endpoint — see internal/change.Service's
+// Broadcaster seam and this package's Service.Broadcast passthrough. Like
+// BroadcastDelta, it never blocks: enqueue always drops rather than
+// waiting on a slow client.
+func (h *Hub) Broadcast(topic string, payload []byte) {
 	h.mu.Lock()
 	targets := make([]*wsConn, 0, len(h.conns))
 	for c := range h.conns {
@@ -222,8 +235,8 @@ func (h *Hub) BroadcastDelta(d inventory.Delta) {
 	h.mu.Unlock()
 
 	for _, c := range targets {
-		if c.subscribed(topicTopology) {
-			c.enqueue(data, h.log)
+		if c.subscribed(topic) {
+			c.enqueue(payload, h.log)
 		}
 	}
 }
