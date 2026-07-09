@@ -25,7 +25,7 @@ import (
 // production PVE-token provisioning (vnprox@pve!daemon) is a tracked but
 // not yet implemented installer step (T-606; see packaging/bin/vnprox-setup),
 // so a fresh production install's token file genuinely may not exist yet.
-func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger) (*collect.Collector, error) {
+func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta)) (*collect.Collector, error) {
 	pveClient, err := buildCollectorPVEClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("building collectors' PVE client: %w", err)
@@ -39,6 +39,7 @@ func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logge
 		HostInterval: cfg.Collect.HostInterval,
 		LLDPInterval: cfg.Collect.LLDPInterval,
 		Logger:       logger,
+		OnDelta:      onDelta,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("constructing collector: %w", err)
