@@ -1,0 +1,29 @@
+# Dev config for running vnproxd outside a real Proxmox node, per
+# planning/tasks/phase-0.md#T-002 acceptance criterion 1:
+#
+#   vnproxd --config testdata/dev.toml
+#
+# testdata/certs/dev-{cert,key}.pem is a throwaway self-signed keypair
+# checked into the repo for this purpose (see testdata/certs — regenerate
+# with openssl if needed, it is not used for anything but local dev/testing).
+# Paths below are relative to the repository root, matching how `make dev`
+# and this file's own acceptance test invoke vnproxd (cwd = repo root).
+
+[server]
+listen = "127.0.0.1:8007"
+tls_cert = "testdata/certs/dev-cert.pem"
+tls_key = "testdata/certs/dev-key.pem"
+read_only = false
+confirm_timeout_default = 120
+
+[pve]
+api_url = "https://127.0.0.1:8006"
+token_file = "/etc/vnprox/keys/pve-token"
+
+[safety]
+allow_dangerous_ops = false
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"

@@ -6,7 +6,13 @@ coverage.out
 
 # Frontend
 node_modules/
-web/dist/
+# web/dist is otherwise a build artifact (populated by `npm run build`), but
+# a placeholder index.html is checked in (T-002) so `//go:embed all:dist` in
+# web/assets.go has something to embed before T-005's frontend exists. Real
+# builds overwrite it in place; T-005 may want to revisit this exception
+# once that's the steady state.
+web/dist/*
+!web/dist/index.html
 *.tsbuildinfo
 
 # Local dev

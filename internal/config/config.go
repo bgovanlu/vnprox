@@ -1,0 +1,289 @@
+// Package config implements daemon config file parsing and validation for
+// vnproxd. The on-disk shape is the TOML file documented in
+// docs/deployment.md ("Configuration file — /etc/vnprox/vnprox.toml"):
+// [server], [pve], [safety], and [collect] sections. Unrecognized keys are
+// logged as warnings, not treated as fatal, per that doc ("unknown keys are
+// warnings, not fatals").
+package config
+
+import (
+	"fmt"
+	"log/slog"
+	"net"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/BurntSushi/toml"
+)
+
+// Defaults mirror the example config in docs/deployment.md.
+const (
+	DefaultListen                = "0.0.0.0:8007"
+	DefaultConfirmTimeoutDefault = 120
+
+	DefaultPVEAPIURL    = "https://127.0.0.1:8006"
+	DefaultPVETokenFile = "/etc/vnprox/keys/pve-token"
+
+	DefaultPVEInterval  = 10 * time.Second
+	DefaultHostInterval = 5 * time.Second
+	DefaultLLDPInterval = 30 * time.Second
+
+	// DefaultPVECertPath and DefaultPVEKeyPath are the node's PVE-managed
+	// certificate, reused by default per architecture.md §9 so the browser
+	// trust story matches PVE's own UI.
+	DefaultPVECertPath = "/etc/pve/local/pve-ssl.pem"
+	DefaultPVEKeyPath  = "/etc/pve/local/pve-ssl.key"
+)
+
+// Config is the fully parsed, defaulted, and validated daemon configuration.
+type Config struct {
+	PVE     PVEConfig
+	Server  ServerConfig
+	Collect CollectConfig
+	Safety  SafetyConfig
+}
+
+// ServerConfig is the [server] section.
+type ServerConfig struct {
+	Listen                string
+	TLSCert               string
+	TLSKey                string
+	TLSCertPath           string
+	TLSKeyPath            string
+	ConfirmTimeoutDefault int
+	ReadOnly              bool
+}
+
+// PVEConfig is the [pve] section.
+type PVEConfig struct {
+	APIURL    string
+	TokenFile string
+}
+
+// SafetyConfig is the [safety] section.
+type SafetyConfig struct {
+	AllowDangerousOps bool
+}
+
+// CollectConfig is the [collect] section, parsed into durations.
+type CollectConfig struct {
+	PVEInterval  time.Duration
+	HostInterval time.Duration
+	LLDPInterval time.Duration
+}
+
+// rawConfig mirrors the TOML shape exactly (string durations, string paths)
+// before defaulting/validation/type conversion.
+type rawConfig struct {
+	Collect rawCollect `toml:"collect"`
+	PVE     rawPVE     `toml:"pve"`
+	Server  rawServer  `toml:"server"`
+	Safety  rawSafety  `toml:"safety"`
+}
+
+type rawServer struct {
+	Listen                string `toml:"listen"`
+	TLSCert               string `toml:"tls_cert"`
+	TLSKey                string `toml:"tls_key"`
+	ReadOnly              bool   `toml:"read_only"`
+	ConfirmTimeoutDefault int    `toml:"confirm_timeout_default"`
+}
+
+type rawPVE struct {
+	APIURL    string `toml:"api_url"`
+	TokenFile string `toml:"token_file"`
+}
+
+type rawSafety struct {
+	AllowDangerousOps bool `toml:"allow_dangerous_ops"`
+}
+
+type rawCollect struct {
+	PVEInterval  string `toml:"pve_interval"`
+	HostInterval string `toml:"host_interval"`
+	LLDPInterval string `toml:"lldp_interval"`
+}
+
+// Load reads, parses, defaults, and validates the config file at path.
+// Invalid values (bad listen address, missing explicitly-configured TLS
+// files, malformed durations, ...) fail fast with a wrapped, descriptive
+// error and no partial daemon startup. Unrecognized keys are logged via
+// logger (slog.Default() if nil) and otherwise ignored, matching the
+// documented "unknown keys are warnings, not fatals" upgrade behavior.
+func Load(path string, logger *slog.Logger) (*Config, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading config file %s: %w", path, err)
+	}
+
+	var raw rawConfig
+	meta, err := toml.Decode(string(data), &raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: parsing config file %s: %v", ErrInvalidConfig, path, err)
+	}
+
+	for _, key := range meta.Undecoded() {
+		logger.Warn("config: unrecognized key, ignoring", "key", key.String(), "file", path)
+	}
+
+	collect, err := resolveCollectConfig(raw.Collect)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &Config{
+		Server: ServerConfig{
+			Listen:                firstNonEmpty(raw.Server.Listen, DefaultListen),
+			ReadOnly:              raw.Server.ReadOnly,
+			ConfirmTimeoutDefault: firstNonZeroInt(raw.Server.ConfirmTimeoutDefault, DefaultConfirmTimeoutDefault),
+			TLSCert:               raw.Server.TLSCert,
+			TLSKey:                raw.Server.TLSKey,
+		},
+		PVE: PVEConfig{
+			APIURL:    firstNonEmpty(raw.PVE.APIURL, DefaultPVEAPIURL),
+			TokenFile: firstNonEmpty(raw.PVE.TokenFile, DefaultPVETokenFile),
+		},
+		Safety: SafetyConfig{
+			AllowDangerousOps: raw.Safety.AllowDangerousOps,
+		},
+		Collect: collect,
+	}
+
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+// validate checks semantic constraints beyond what TOML decoding enforces
+// and resolves the effective TLS certificate/key paths. It is the single
+// place acceptance-criterion-4 failures (bad listen address, missing cert
+// paths) are produced.
+func (c *Config) validate() error {
+	if err := validateListen(c.Server.Listen); err != nil {
+		return fmt.Errorf("server.listen: %w", err)
+	}
+
+	if c.Server.ConfirmTimeoutDefault <= 0 {
+		return fmt.Errorf("%w: server.confirm_timeout_default must be positive, got %d", ErrInvalidConfig, c.Server.ConfirmTimeoutDefault)
+	}
+
+	certPath, keyPath, err := resolveTLSPaths(c.Server.TLSCert, c.Server.TLSKey)
+	if err != nil {
+		return err
+	}
+	c.Server.TLSCertPath = certPath
+	c.Server.TLSKeyPath = keyPath
+
+	if _, err := url.ParseRequestURI(c.PVE.APIURL); err != nil {
+		return fmt.Errorf("%w: pve.api_url %q: %v", ErrInvalidConfig, c.PVE.APIURL, err)
+	}
+
+	return nil
+}
+
+// validateListen checks addr is a syntactically valid "host:port" (or
+// ":port") with a port in the valid TCP range. It intentionally accepts
+// hostnames as well as IPs (net.SplitHostPort/Listen resolve those later);
+// it exists to reject typos and malformed strings early with a clear error
+// rather than an opaque bind failure at Listen time.
+func validateListen(addr string) error {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("%w: %q must be a host:port address: %v", ErrInvalidConfig, addr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("%w: %q has an invalid port", ErrInvalidConfig, addr)
+	}
+	if host != "" && net.ParseIP(host) == nil && strings.ContainsAny(host, " \t/\\") {
+		return fmt.Errorf("%w: %q has an invalid host", ErrInvalidConfig, addr)
+	}
+	return nil
+}
+
+// resolveTLSPaths implements the TLS cert-selection rule from
+// architecture.md §9 / security.md "Transport": reuse the node's PVE
+// certificate by default, or use an explicit tls_cert/tls_key override.
+// Whichever is selected must exist on disk at startup — there is no
+// insecure fallback.
+func resolveTLSPaths(certOverride, keyOverride string) (certPath, keyPath string, err error) {
+	switch {
+	case certOverride == "" && keyOverride == "":
+		if _, statErr := os.Stat(DefaultPVECertPath); statErr != nil {
+			return "", "", fmt.Errorf("%w: PVE certificate not found at %s (this daemon expects to run on a Proxmox VE node; set server.tls_cert/tls_key in a dev environment to override)", ErrTLSCertMissing, DefaultPVECertPath)
+		}
+		if _, statErr := os.Stat(DefaultPVEKeyPath); statErr != nil {
+			return "", "", fmt.Errorf("%w: PVE certificate key not found at %s", ErrTLSCertMissing, DefaultPVEKeyPath)
+		}
+		return DefaultPVECertPath, DefaultPVEKeyPath, nil
+
+	case certOverride == "" || keyOverride == "":
+		return "", "", fmt.Errorf("%w: server.tls_cert and server.tls_key must both be set to override the default PVE certificate, or both left empty", ErrInvalidConfig)
+
+	default:
+		if _, statErr := os.Stat(certOverride); statErr != nil {
+			return "", "", fmt.Errorf("%w: server.tls_cert %s: %v", ErrTLSCertMissing, certOverride, statErr)
+		}
+		if _, statErr := os.Stat(keyOverride); statErr != nil {
+			return "", "", fmt.Errorf("%w: server.tls_key %s: %v", ErrTLSCertMissing, keyOverride, statErr)
+		}
+		return certOverride, keyOverride, nil
+	}
+}
+
+func resolveCollectConfig(raw rawCollect) (CollectConfig, error) {
+	pveInterval, err := parseDurationOrDefault(raw.PVEInterval, DefaultPVEInterval, "collect.pve_interval")
+	if err != nil {
+		return CollectConfig{}, err
+	}
+	hostInterval, err := parseDurationOrDefault(raw.HostInterval, DefaultHostInterval, "collect.host_interval")
+	if err != nil {
+		return CollectConfig{}, err
+	}
+	lldpInterval, err := parseDurationOrDefault(raw.LLDPInterval, DefaultLLDPInterval, "collect.lldp_interval")
+	if err != nil {
+		return CollectConfig{}, err
+	}
+	return CollectConfig{
+		PVEInterval:  pveInterval,
+		HostInterval: hostInterval,
+		LLDPInterval: lldpInterval,
+	}, nil
+}
+
+func parseDurationOrDefault(raw string, def time.Duration, field string) (time.Duration, error) {
+	if raw == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s %q: %v", ErrInvalidConfig, field, raw, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("%w: %s must be positive, got %s", ErrInvalidConfig, field, d)
+	}
+	return d, nil
+}
+
+func firstNonEmpty(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
+}
+
+func firstNonZeroInt(v, def int) int {
+	if v == 0 {
+		return def
+	}
+	return v
+}
