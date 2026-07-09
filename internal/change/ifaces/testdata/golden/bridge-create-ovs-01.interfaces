@@ -1,0 +1,25 @@
+# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+
+source /etc/network/interfaces.d/*
+
+auto lo
+iface lo inet loopback
+
+auto eno1
+iface eno1 inet manual
+
+auto vmbr0
+iface vmbr0 inet static
+	address 192.168.1.10/24
+	gateway 192.168.1.1
+	bridge-ports eno1
+	bridge-stp off
+	bridge-fd 0
+
+allow-ovs vmbr2
+iface vmbr2 inet manual
+	# managed by vnprox (changeset TESTCS01)
+	ovs_type OVSBridge
+	ovs_ports eno3
+

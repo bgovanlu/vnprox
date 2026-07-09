@@ -1,0 +1,28 @@
+auto lo
+iface lo inet loopback
+
+allow-ovs vmbr0
+iface vmbr0 inet manual
+	ovs_type OVSBridge
+	ovs_ports eno1 vlan20
+
+allow-vmbr0 eno1
+iface eno1 inet manual
+	ovs_bridge vmbr0
+	ovs_type OVSPort
+
+allow-vmbr0 vlan20
+iface vlan20 inet static
+	address 192.168.20.5/24
+	ovs_type OVSIntPort
+	ovs_bridge vmbr0
+	ovs_options tag=20
+
+allow-vmbr0 bond0
+iface bond0 inet manual
+	# managed by vnprox (changeset TESTCS01)
+	ovs_bonds eno2 eno3
+	ovs_type OVSBond
+	ovs_bridge vmbr0
+	ovs_options bond_mode=balance-slb lacp=active other_config:lacp-time=fast
+
