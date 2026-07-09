@@ -61,10 +61,17 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return err
 	}
 
+	authSvc, db, err := setupAuth(ctx, cfg, logger)
+	if err != nil {
+		return fmt.Errorf("initializing auth: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+
 	handler := api.NewRouter(api.Options{
 		Version: version,
 		DistFS:  distFS,
 		Logger:  logger,
+		Auth:    authSvc,
 	})
 
 	srv := &http.Server{
@@ -88,6 +95,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	g.add(func(ctx context.Context) error {
 		return serveHTTPS(ctx, srv, nil, logger)
 	})
+	g.add(authSvc.RunRenewalLoop)
 
 	logger.Info("vnproxd starting",
 		"version", version,
