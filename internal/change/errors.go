@@ -32,3 +32,16 @@ type ErrIllegalTransition struct {
 func (e *ErrIllegalTransition) Error() string {
 	return fmt.Sprintf("change: illegal changeset status transition %s -> %s", e.From, e.To)
 }
+
+// ErrInvalidProtectedRef is returned by Service.SetProtected when the
+// submitted ProtectedConfig names one or more ref strings that don't parse
+// as an inventory.Ref (docs/api.md's validation_failed error envelope
+// shape — the API layer maps this to a 400, mirroring OpDecodeError's
+// treatment of a malformed op target).
+type ErrInvalidProtectedRef struct {
+	Refs []string
+}
+
+func (e *ErrInvalidProtectedRef) Error() string {
+	return fmt.Sprintf("change: invalid protected-interface ref(s): %v", e.Refs)
+}
