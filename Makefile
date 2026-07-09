@@ -70,7 +70,7 @@ test: ## go test ./... && vitest run
 
 lint: ## golangci-lint + eslint + tsc --noEmit
 	@echo ">> go: gofmt check"
-	@fmtout="$$(gofmt -l $$(find . -name '*.go' -not -path './web/*'))"; \
+	@fmtout="$$(gofmt -l $$(find . -name '*.go' -not -path './web/*' -not -path './.claude/*'))"; \
 	if [ -n "$$fmtout" ]; then \
 		echo "the following files are not gofmt-formatted:"; \
 		echo "$$fmtout"; \

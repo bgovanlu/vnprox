@@ -29,6 +29,11 @@ linters:
       # happens to ship (e.g. vitest's "flatted" dependency bundles a
       # reference Go implementation under node_modules/flatted/golang/).
       - node_modules
+      # .claude/worktrees (isolated git worktrees for parallel sub-agent
+      # tasks) each carry their own go.mod, so Go's own ./... tooling
+      # already treats them as separate modules and skips them — but
+      # golangci-lint's file walk isn't module-aware, so exclude explicitly.
+      - \.claude
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
@@ -49,3 +54,4 @@ formatters:
       # happens to ship (e.g. vitest's "flatted" dependency bundles a
       # reference Go implementation under node_modules/flatted/golang/).
       - node_modules
+      - \.claude
