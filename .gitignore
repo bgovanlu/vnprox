@@ -30,3 +30,6 @@ web/dist/*
 .idea/
 .vscode/
 *.swp
+
+# Agent tooling (isolated worktrees for parallel sub-agent tasks)
+/.claude/worktrees/
