@@ -1,0 +1,299 @@
+# messy-brownfield.yaml — a 3-node cluster that has been running,
+# unmanaged, for a long time: staged-but-never-applied edits, double
+# enslavement, cross-node MTU drift, a stale comment, an SDN zone that
+# never fully realized, an abandoned SDN VNet, a dangling firewall object
+# reference, and the classic "datacenter firewall is off" footgun. This is
+# the fixture internal/pvemock/README.md's `mess:` list below documents in
+# full — T-305's drift detector is meant to be tested against exactly this
+# fixture, so every item here is deliberate, specific, and enumerated (not
+# generic filler).
+cluster:
+  name: pve-brownfield
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 172.16.0.11
+      online: true
+    - name: pve2
+      ip: 172.16.0.12
+      online: true
+    - name: pve3
+      ip: 172.16.0.13
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+  - userid: netops@pve
+    password: netops
+    privileges: ["Sys.Audit", "Sys.Modify", "SDN.Audit", "SDN.Allocate", "VM.Audit"]
+  - userid: auditor@pve
+    password: readonly
+    privileges: ["Sys.Audit", "VM.Audit", "SDN.Audit"]
+
+nodes:
+  pve1:
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 1500}
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 172.16.0.11/24
+        gateway: 172.16.0.1
+        autostart: true
+        mtu: 1500 # MESS 4: pve2's vmbr0 is mtu 9000 — same "cluster bridge", drifted MTU
+        bridge_ports: eno1
+        bridge_vlan_aware: true
+      - iface: vmbr1
+        type: bridge
+        method: static
+        address: 172.16.99.1/24
+        autostart: true
+        mtu: 1500
+        # MESS 5: comment says one thing, config says another — vmbr1 is
+        # actually an isolated test bridge (no physical port, 172.16.99.0/24
+        # scratch subnet) but still carries a stale "DO NOT TOUCH management
+        # network" comment from whatever it used to be.
+        comments: "management network - DO NOT TOUCH"
+      # MESS 3 (part 1/2): vmbr99 was created here and on pve2 to realize
+      # SDN zone "zone-legacy", but the rollout to pve3 was never finished.
+      - iface: vmbr99
+        type: bridge
+        method: manual
+        autostart: true
+        mtu: 1500
+        comments: "SDN zone-legacy bridge (pve3 rollout incomplete)"
+    links:
+      eno1: {mac: "bc:24:11:07:00:01", driver: e1000e, speed_mbps: 1000, duplex: full, link_up: true}
+      vmbr0: {mac: "bc:24:11:07:00:01", link_up: true}
+      vmbr1: {mac: "bc:24:11:07:00:02", link_up: true}
+      vmbr99: {mac: "bc:24:11:07:00:03", link_up: true}
+    lldp:
+      eno1: {chassis_name: sw-old-01, chassis_id: "00:11:22:00:00:01", port_id: "1/1", ttl: 120}
+    stats:
+      eno1: {rx_bytes: 500000000, tx_bytes: 200000000, rx_packets: 400000, tx_packets: 180000}
+      vmbr0: {rx_bytes: 500000000, tx_bytes: 200000000, rx_packets: 400000, tx_packets: 180000}
+      vmbr1: {rx_bytes: 100, tx_bytes: 100, rx_packets: 1, tx_packets: 1}
+    qemu:
+      "400":
+        name: legacy-app
+        status: running
+        config:
+          name: legacy-app
+          cores: "2"
+          memory: "2048"
+          # MESS 9: net1 points at vmbr5, which does not exist anywhere in
+          # this fixture — a bridge that was removed after the VM's NIC was
+          # configured against it. Not a fixture-load error (real PVE would
+          # allow exactly this; the guest just can't start net1) — a
+          # legitimate drift-detection target.
+          net0: "virtio=BC:24:11:AA:04:90,bridge=vmbr0,firewall=1"
+          net1: "virtio=BC:24:11:AA:04:91,bridge=vmbr5,firewall=1"
+    lxc: {}
+    firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
+
+  pve2:
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 1500}
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 172.16.0.12/24
+        gateway: 172.16.0.1
+        autostart: true
+        mtu: 9000 # MESS 4: drifted from pve1's 1500 and pve3's 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: true
+      # MESS 3 (part 2/2): vmbr99 realizes SDN zone-legacy here (and on
+      # pve1) but was never rolled out to pve3.
+      - iface: vmbr99
+        type: bridge
+        method: manual
+        autostart: true
+        mtu: 1500
+        comments: "SDN zone-legacy bridge (pve3 rollout incomplete)"
+    # MESS 1: someone ran `pvesh set /nodes/pve2/network/eno1 --mtu 9000`
+    # (to jumbo-frame the NIC ahead of a storage migration) months ago and
+    # never hit Reload — interfaces.new has been silently diverging from
+    # the live config ever since. GET /nodes/pve2/network must show eno1 as
+    # "pending": "changed" on server start, with no task ever run. (vmbr0's
+    # live mtu is already 9000 here — that is the separate, already-applied
+    # MESS 4 cross-node drift below, not part of this pending edit; it is
+    # carried through to interfaces.new unchanged.)
+    network_pending:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 9000}
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 172.16.0.12/24
+        gateway: 172.16.0.1
+        autostart: true
+        mtu: 9000
+        bridge_ports: eno1
+        bridge_vlan_aware: true
+      - iface: vmbr99
+        type: bridge
+        method: manual
+        autostart: true
+        mtu: 1500
+        comments: "SDN zone-legacy bridge (pve3 rollout incomplete)"
+    links:
+      eno1: {mac: "bc:24:11:08:00:01", driver: e1000e, speed_mbps: 1000, duplex: full, link_up: true}
+      vmbr0: {mac: "bc:24:11:08:00:01", link_up: true}
+      vmbr99: {mac: "bc:24:11:08:00:02", link_up: true}
+    lldp:
+      eno1: {chassis_name: sw-old-01, chassis_id: "00:11:22:00:00:01", port_id: "1/2", ttl: 120}
+    stats:
+      eno1: {rx_bytes: 480000000, tx_bytes: 190000000, rx_packets: 390000, tx_packets: 175000}
+      vmbr0: {rx_bytes: 480000000, tx_bytes: 190000000, rx_packets: 390000, tx_packets: 175000}
+    qemu: {}
+    lxc:
+      "401":
+        name: forgotten-lxc
+        status: stopped
+        config:
+          hostname: forgotten-lxc
+          cores: "1"
+          memory: "256"
+          net0: "name=eth0,bridge=vmbr0,firewall=1"
+    firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
+
+  pve3:
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno2, type: eth, method: manual, autostart: true, mtu: 1500}
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno2"
+        bond_mode: active-backup
+        comments: "legacy single-slave bond, never finished migrating"
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 172.16.0.13/24
+        gateway: 172.16.0.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        bridge_vlan_aware: true
+      # MESS 2: eno2 is enslaved by bond0 *and* directly bridged by vmbr2 —
+      # a double-enslavement that a real ifupdown2 apply would fail on, but
+      # which is exactly the kind of already-broken state a brownfield host
+      # can be found in (e.g. a half-completed bond migration). Both
+      # references are individually valid (eno2 exists), so fixture
+      # validation allows it; it's a drift-detector target, not a load
+      # error.
+      - iface: vmbr2
+        type: bridge
+        method: manual
+        autostart: false
+        mtu: 1500
+        bridge_ports: eno2
+        comments: "half-migrated: eno2 also still in bond0"
+    links:
+      eno1: {mac: "bc:24:11:09:00:01", driver: e1000e, speed_mbps: 1000, duplex: full, link_up: true}
+      eno2: {mac: "bc:24:11:09:00:02", driver: e1000e, speed_mbps: 1000, duplex: full, link_up: true}
+      bond0: {mac: "bc:24:11:09:00:02", link_up: true}
+      vmbr0: {mac: "bc:24:11:09:00:02", link_up: true}
+      vmbr2: {mac: "bc:24:11:09:00:02", link_up: false}
+    lldp:
+      eno2: {chassis_name: sw-old-02, chassis_id: "00:11:22:00:00:02", port_id: "1/3", ttl: 120}
+    stats:
+      eno1: {rx_bytes: 10, tx_bytes: 10, rx_packets: 1, tx_packets: 1}
+      eno2: {rx_bytes: 460000000, tx_bytes: 180000000, rx_packets: 380000, tx_packets: 170000}
+      bond0: {rx_bytes: 460000000, tx_bytes: 180000000, rx_packets: 380000, tx_packets: 170000}
+      vmbr0: {rx_bytes: 460000000, tx_bytes: 180000000, rx_packets: 380000, tx_packets: 170000}
+      vmbr2: {rx_bytes: 0, tx_bytes: 0, rx_packets: 0, tx_packets: 0}
+    qemu: {}
+    lxc:
+      "105":
+        name: quarantine-box
+        status: running
+        config:
+          hostname: quarantine-box
+          cores: "1"
+          memory: "512"
+          net0: "name=eth0,bridge=vmbr0,firewall=1"
+        # MESS 6: guest-scope firewall is enabled with real rules, but the
+        # cluster (datacenter) firewall is globally disabled below — per
+        # docs/features/firewall.md's "classic PVE footgun", none of these
+        # rules are actually enforced because the datacenter switch gates
+        # everything underneath it.
+        firewall:
+          enabled: true
+          policy_in: DROP
+          policy_out: ACCEPT
+          rules:
+            - pos: 0
+              enabled: true
+              type: in
+              action: DROP
+              source: 0.0.0.0/0
+              comment: "quarantine: block all inbound (INACTIVE — datacenter fw is off)"
+    firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
+
+sdn:
+  zones:
+    - id: zone-legacy
+      type: vlan
+      bridge: vmbr99 # MESS 3: this bridge only exists on pve1/pve2, not pve3
+      nodes: [pve1, pve2, pve3]
+      mtu: 1500
+  vnets:
+    - id: vnet-legacy
+      zone: zone-legacy
+      tag: 50
+      alias: "legacy-vlan50"
+    # MESS 8: created but `PUT /cluster/sdn` was never run — someone started
+    # SDN work and abandoned it mid-flight.
+    - id: vnet-newapp
+      zone: zone-legacy
+      tag: 60
+      alias: "newapp (never applied)"
+      pending: new
+  subnets:
+    - id: "10.50.0.0-24"
+      vnet: vnet-legacy
+      cidr: 10.50.0.0/24
+      gateway: 10.50.0.1
+
+firewall:
+  cluster:
+    # MESS 6 (continued): datacenter firewall is OFF, so every rule at
+    # every scope below it — including pve3's guest 105 above — is inert.
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules:
+      - pos: 0
+        enabled: true
+        type: in
+        action: "+legacy-blocklist" # MESS 7: references an ipset that does not exist below
+        comment: "block known-bad ranges (ipset was deleted, rule never cleaned up)"
+    aliases:
+      - name: old_dmz
+        cidr: 172.16.250.0/24
+        comment: "DMZ that was decommissioned; alias left behind, unreferenced"
+    ipsets: []
+    groups: []
+
+# T-305's drift detector is exercised against exactly this list — keep it
+# in lockstep with the mess encoded above if this fixture changes.
+mess:
+  - "pve2: /etc/network/interfaces.new has a staged eno1 MTU change (1500 -> 9000, ahead of a storage migration) that was never applied via reload; live eno1 is still MTU 1500. GET /nodes/pve2/network reports eno1 as pending=changed."
+  - "pve3: eno2 is simultaneously a bond0 slave (active-backup) and vmbr2's sole bridge port — a double-enslavement left over from a half-completed bond migration."
+  - "sdn zone-legacy (type vlan) lists pve3 as a member node, but pve3 has no vmbr99 bridge configured — GET /cluster/sdn/zones/zone-legacy/status reports pve3 as status=error."
+  - "pve1/pve2/pve3: vmbr0 MTU has drifted across the 'same' cluster bridge — 1500 on pve1 and pve3, 9000 on pve2."
+  - "pve1: vmbr1 carries the comment 'management network - DO NOT TOUCH' but is actually an isolated scratch bridge (172.16.99.0/24, no physical port) — the comment is stale documentation drift."
+  - "pve3 guest 105 (quarantine-box) has an enabled, populated guest-scope firewall ruleset, but the cluster (datacenter) firewall is globally disabled, so none of its rules are actually enforced (docs/features/firewall.md's classic footgun)."
+  - "cluster firewall rule at pos 0 references ipset '+legacy-blocklist', which does not exist in cluster.firewall.ipsets — a dangling object reference left over from a deleted ipset."
+  - "sdn vnet-newapp (zone zone-legacy, tag 60) was created with pending=new and never applied via PUT /cluster/sdn — abandoned SDN work."
+  - "pve1 guest 400 (legacy-app) net1 references bridge vmbr5, which does not exist on pve1 (or anywhere in the cluster) — the bridge was removed after the NIC was configured against it."

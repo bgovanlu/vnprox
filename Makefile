@@ -121,10 +121,13 @@ deb: ## build the .deb into dist/
 
 # --- mockpve ---------------------------------------------------------------
 
+MOCKPVE_ADDR    ?= :8006
+MOCKPVE_FIXTURE ?= testdata/clusters/single-node.yaml
+
 mockpve: ## run the mock PVE server standalone on :8006
 	@if [ -n "$(MOCKPVE_READY)" ]; then \
-		echo ">> internal/pvemock: implementation present but this target is a T-001"; \
-		echo "   placeholder — T-004 owns wiring the real entry point here."; \
+		echo ">> internal/pvemock: starting mock PVE server on $(MOCKPVE_ADDR) (fixture: $(MOCKPVE_FIXTURE))"; \
+		$(GO) run ./cmd/pvemock --addr $(MOCKPVE_ADDR) --fixture $(MOCKPVE_FIXTURE); \
 	else \
 		echo ">> internal/pvemock: not yet implemented (T-004), skipping"; \
 	fi

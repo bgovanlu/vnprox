@@ -1,0 +1,165 @@
+# evpn-lab.yaml — 3-node cluster with a VXLAN/EVPN SDN zone: an EVPN
+# controller, VRF-VXLAN, an exit node, and VNets with DHCP-managed subnets.
+# Models the SDN cockpit's EVPN wizard + observability surface
+# (docs/features/sdn.md §2, §3).
+cluster:
+  name: pve-evpn-lab
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.20.0.11
+      online: true
+    - name: pve2
+      ip: 10.20.0.12
+      online: true
+    - name: pve3
+      ip: 10.20.0.13
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+  - userid: netops@pve
+    password: netops
+    privileges: ["Sys.Audit", "Sys.Modify", "SDN.Audit", "SDN.Allocate", "VM.Audit"]
+  - userid: auditor@pve
+    password: readonly
+    privileges: ["Sys.Audit", "VM.Audit", "SDN.Audit"]
+
+nodes:
+  pve1:
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 9216}
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.20.0.11/24
+        gateway: 10.20.0.1
+        autostart: true
+        mtu: 9216
+        bridge_ports: eno1
+        comments: "underlay + mgmt"
+    links:
+      eno1: {mac: "bc:24:11:04:00:01", driver: mlx5_core, speed_mbps: 25000, duplex: full, link_up: true, pci_addr: "0000:02:00.0"}
+      vmbr0: {mac: "bc:24:11:04:00:01", link_up: true}
+    lldp:
+      eno1: {chassis_name: sw-leaf-01, chassis_id: "ac:1f:6b:03:00:01", port_id: "Eth1/1", mgmt_ip: 10.20.0.254, vlan: 1, ttl: 120}
+    stats:
+      eno1: {rx_bytes: 20000000000, tx_bytes: 9000000000, rx_packets: 15000000, tx_packets: 7000000}
+      vmbr0: {rx_bytes: 20000000000, tx_bytes: 9000000000, rx_packets: 15000000, tx_packets: 7000000}
+    qemu:
+      "300":
+        name: evpn-tester-a
+        status: running
+        config:
+          name: evpn-tester-a
+          cores: "2"
+          memory: "2048"
+          net0: "virtio=BC:24:11:AA:03:2C,bridge=vnet-tenant-a,firewall=1"
+    lxc: {}
+    firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
+
+  pve2:
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 9216}
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.20.0.12/24
+        gateway: 10.20.0.1
+        autostart: true
+        mtu: 9216
+        bridge_ports: eno1
+    links:
+      eno1: {mac: "bc:24:11:05:00:01", driver: mlx5_core, speed_mbps: 25000, duplex: full, link_up: true, pci_addr: "0000:02:00.0"}
+      vmbr0: {mac: "bc:24:11:05:00:01", link_up: true}
+    lldp:
+      eno1: {chassis_name: sw-leaf-02, chassis_id: "ac:1f:6b:04:00:01", port_id: "Eth1/1", mgmt_ip: 10.20.0.253, vlan: 1, ttl: 120}
+    stats:
+      eno1: {rx_bytes: 19000000000, tx_bytes: 8800000000, rx_packets: 14500000, tx_packets: 6800000}
+      vmbr0: {rx_bytes: 19000000000, tx_bytes: 8800000000, rx_packets: 14500000, tx_packets: 6800000}
+    qemu: {}
+    lxc:
+      "301":
+        name: evpn-tester-b
+        status: running
+        config:
+          hostname: evpn-tester-b
+          cores: "1"
+          memory: "512"
+          net0: "name=eth0,bridge=vnet-tenant-a,firewall=1"
+    firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
+
+  # pve3 is this zone's designated exit node: it carries the default route
+  # out of the VXLAN fabric to the physical network, per PVE EVPN's
+  # exit-node model (docs/features/sdn.md §2).
+  pve3:
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 9216}
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.20.0.13/24
+        gateway: 10.20.0.1
+        autostart: true
+        mtu: 9216
+        bridge_ports: eno1
+        comments: "underlay + EVPN exit-node uplink"
+    links:
+      eno1: {mac: "bc:24:11:06:00:01", driver: mlx5_core, speed_mbps: 25000, duplex: full, link_up: true, pci_addr: "0000:02:00.0"}
+      vmbr0: {mac: "bc:24:11:06:00:01", link_up: true}
+    lldp:
+      eno1: {chassis_name: sw-leaf-03, chassis_id: "ac:1f:6b:05:00:01", port_id: "Eth1/1", mgmt_ip: 10.20.0.252, vlan: 1, ttl: 120}
+    stats:
+      eno1: {rx_bytes: 21000000000, tx_bytes: 9500000000, rx_packets: 16000000, tx_packets: 7300000}
+      vmbr0: {rx_bytes: 21000000000, tx_bytes: 9500000000, rx_packets: 16000000, tx_packets: 7300000}
+    qemu: {}
+    lxc: {}
+    firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
+
+sdn:
+  zones:
+    - id: evpnz
+      type: evpn
+      nodes: [pve1, pve2, pve3]
+      mtu: 9166 # underlay MTU (9216) - 50 for VXLAN encapsulation overhead
+      controller: evpn-ctl0
+      vrf_vxlan: 10000
+      exit_nodes: [pve3]
+      peers: ["10.20.0.11", "10.20.0.12", "10.20.0.13"]
+  vnets:
+    - id: vnet-tenant-a
+      zone: evpnz
+      alias: "tenant-a"
+      vlan_aware: false
+  subnets:
+    - id: "192.168.50.0-24"
+      vnet: vnet-tenant-a
+      cidr: 192.168.50.0/24
+      gateway: 192.168.50.1
+      snat: true
+      dhcp_range_start: 192.168.50.100
+      dhcp_range_end: 192.168.50.200
+
+firewall:
+  cluster:
+    enabled: true
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules:
+      - pos: 0
+        enabled: true
+        type: in
+        action: ACCEPT
+        proto: udp
+        dport: "4789"
+        comment: "VXLAN underlay traffic between nodes"
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []

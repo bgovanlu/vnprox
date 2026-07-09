@@ -1,0 +1,138 @@
+# single-node.yaml — baseline fixture: one standalone PVE node, no cluster
+# peers, no SDN. The simplest possible topology every feature must work
+# against before it is considered done (docs/development.md).
+cluster:
+  name: pve-single
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 192.168.1.10
+      online: true
+
+users:
+  # Full admin — every write in the walkthrough succeeds.
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+  # Read-only auditor — used to prove fixture-declared permissions produce
+  # real 403s (acceptance criterion 2): can read everything, cannot PUT
+  # network, guest config, SDN, or firewall.
+  - userid: auditor@pve
+    password: readonly
+    privileges: ["Sys.Audit", "VM.Audit", "SDN.Audit"]
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 192.168.1.10/24
+        gateway: 192.168.1.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: false
+        comments: "management bridge"
+    links:
+      eno1:
+        mac: "bc:24:11:00:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:11:00:00:01"
+        link_up: true
+        mtu: 1500
+    lldp:
+      eno1:
+        chassis_name: sw-access-01
+        chassis_id: "ac:1f:6b:00:11:22"
+        port_id: "Gi1/0/1"
+        port_descr: "pve1 eno1"
+        mgmt_ip: 192.168.1.254
+        vlan: 1
+        ttl: 120
+    stats:
+      eno1:
+        rx_bytes: 1048576000
+        tx_bytes: 524288000
+        rx_packets: 900000
+        tx_packets: 450000
+      vmbr0:
+        rx_bytes: 1048576000
+        tx_bytes: 524288000
+        rx_packets: 900000
+        tx_packets: 450000
+    qemu:
+      "100":
+        name: web01
+        status: running
+        config:
+          name: web01
+          cores: "2"
+          memory: "2048"
+          net0: "virtio=BC:24:11:AA:00:64,bridge=vmbr0,firewall=1"
+          ostype: l26
+        firewall:
+          enabled: true
+          policy_in: DROP
+          policy_out: ACCEPT
+          rules:
+            - pos: 0
+              enabled: true
+              type: in
+              action: ACCEPT
+              proto: tcp
+              dport: "80,443"
+              comment: "web traffic"
+    lxc:
+      "101":
+        name: dns01
+        status: running
+        config:
+          hostname: dns01
+          cores: "1"
+          memory: "512"
+          net0: "name=eth0,bridge=vmbr0,firewall=1"
+    firewall:
+      enabled: false
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules:
+        - pos: 0
+          enabled: true
+          type: in
+          action: ACCEPT
+          proto: tcp
+          dport: "22"
+          comment: "SSH management"
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases:
+      - name: management_net
+        cidr: 192.168.1.0/24
+        comment: "office/management subnet"
+    ipsets: []
+    groups: []
+
+mess: []
