@@ -1,0 +1,23 @@
+# Go
+/bin/
+/dist/
+*.test
+coverage.out
+
+# Frontend
+node_modules/
+web/dist/
+*.tsbuildinfo
+
+# Local dev
+/.env
+/.env.local
+*.db
+*.sqlite
+/var/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

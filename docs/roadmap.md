@@ -1,0 +1,46 @@
+# Roadmap
+
+Phases map 1:1 to the implementation plan (`planning/implementation-plan.md`). Each phase ends with a working, demoable increment; releases cut where marked.
+
+```mermaid
+gantt
+    dateFormat X
+    axisFormat %s
+    section Build
+    Phase 0 Foundations           :p0, 0, 2
+    Phase 1 Read-only visibility  :p1, after p0, 4
+    Phase 2 Change engine + editing :p2, after p1, 5
+    Phase 3 Discovery & cluster   :p3, after p2, 3
+    Phase 4 SDN & IPAM            :p4, after p3, 4
+    Phase 5 Firewall & simulator  :p5, after p4, 4
+    Phase 6 Monitoring & polish   :p6, after p5, 3
+```
+
+(Axis units are relative effort, not calendar time — agent-executed phases parallelize heavily; see the implementation plan's dependency graph.)
+
+## Phase 0 — Foundations
+Repo scaffolding, Go daemon skeleton, config, TLS, systemd/deb packaging skeleton, React app shell, CI, **mock PVE server** (the development linchpin — everything downstream tests against it).
+
+## Phase 1 — Read-only visibility → **v0.1 (private preview)**
+PVE client, host collectors (interfaces parser, netlink), inventory graph, auth (PVE ticket bridge + caps), topology API + map UI (all four layers, inspector, search), single-node complete / multi-node via PVE API only.
+
+## Phase 2 — Change engine + core editing → **v0.5 (beta)**
+Changesets end-to-end (validate/diff/plan/apply/commit-confirm/rollback), snapshots + time machine, audit, bridge/bond/VLAN/interface editors, guest NIC ops incl. bulk, raw editor escape hatch, safety interlocks, onboarding confirmation of protected interfaces.
+
+## Phase 3 — Discovery & true cluster
+Peer API (secret, HMAC, fan-out), LLDP collection + switch merging + VLAN cross-check, ports table, drift detection, cross-node validation live, per-node local rollback timers, MAC/FDB browser (P1).
+
+## Phase 4 — SDN & IPAM → **v0.8**
+SDN cockpit (tree, map overlay, pending-state diff), zone wizards (all five types), SDN apply orchestration, EVPN/BGP status, visual IPAM (grids, conflicts, next-free), DHCP ranges/leases/reservations (P1 items as capacity allows), OVS editing.
+
+## Phase 5 — Firewall & simulator → **v0.9**
+Firewall editors (all scopes, objects, resolved view), rule effects preview, path simulator, firewall log viewer (P1).
+
+## Phase 6 — Operations & 1.0 polish → **v1.0**
+Live traffic on map + history + health checks, blueprints + starters + capture, onboarding walkthrough final, config doc export, docs freeze, packaging polish (apt repo, signed), upgrade path testing, security pass (T-604 hardening), performance pass against scale targets.
+
+## Post-1.0 (P2 backlog)
+Prometheus exporter · live path verification via guest agent · multi-cluster federation · NetFlow/sFlow integrations · external subnet records in IPAM · DNS management · switch config push (read-write physical) · PBS network awareness.
+
+## Compatibility policy
+Target PVE 8.2+ and 9.x at v1.0. New PVE releases get a compatibility validation task within one phase of their release. vnprox version scheme: semver; DB schema migrations forward-only.

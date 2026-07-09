@@ -1,0 +1,140 @@
+# Data model
+
+Two distinct models exist and must not be conflated:
+
+1. The **inventory model** — an in-memory, typed graph of live network state, rebuilt from collectors. Never persisted as truth.
+2. The **app store** — SQLite tables for vnprox-owned data (changesets, snapshots, sessions, audit, layouts, metrics).
+
+## 1. Inventory model
+
+### Entity kinds
+
+```mermaid
+erDiagram
+    ClusterNode ||--o{ PhysNic : has
+    ClusterNode ||--o{ Bond : has
+    ClusterNode ||--o{ Bridge : has
+    ClusterNode ||--o{ VlanIface : has
+    Bond }o--o{ PhysNic : enslaves
+    Bridge }o--o{ Port : "has ports"
+    Port }o--|| PhysNic : "may be"
+    Port }o--|| Bond : "may be"
+    Port }o--|| VlanIface : "may be"
+    SdnZone ||--o{ SdnVnet : contains
+    SdnVnet ||--o{ SdnSubnet : contains
+    SdnVnet }o--o{ Bridge : "realized on"
+    Guest ||--o{ GuestNic : has
+    GuestNic }o--|| Bridge : "attached to"
+    GuestNic }o--|| SdnVnet : "or attached to"
+    PhysNic }o--o| LldpNeighbor : "sees"
+    SdnSubnet ||--o{ IpAllocation : allocates
+```
+
+### Core types (Go, `internal/inventory`)
+
+Every entity embeds `Ref`:
+
+```go
+type Ref struct {
+    Kind Kind   // "physnic","bond","bridge","vlan","ovs-bridge","ovs-bond",
+                // "sdn-zone","sdn-vnet","sdn-subnet","guest","guest-nic",
+                // "lldp-neighbor","fw-ruleset","node"
+    Node string // "" for cluster-scoped entities (SDN, cluster firewall)
+    ID   string // stable within (Kind,Node), e.g. "vmbr0", "eno1", "zone1/vnet1"
+}
+```
+
+Selected entities (full field lists are the implementing task's responsibility; these fields are the contract other packages rely on):
+
+| Type | Key fields |
+|---|---|
+| `PhysNic` | name, mac, driver, speedMbps, duplex, linkUp, mtu, pciAddr, sriovVFs |
+| `Bond` | name, mode (802.3ad, active-backup, ...), slaves []string, lacpRate, xmitHashPolicy, miiStatus, activeSlave, mtu |
+| `Bridge` | name, kind (linux|ovs), ports []Ref, vlanAware bool, vids []VidRange, stp, mtu, addresses []CIDR, gateway, comments |
+| `VlanIface` | name, parent Ref, vid, addresses, mtu |
+| `SdnZone` | id, type (simple|vlan|qinq|vxlan|evpn), bridge, mtu, nodes []string, controller, vrfVxlan, ipam |
+| `SdnVnet` | id, zone, tag, alias, vlanAware |
+| `SdnSubnet` | id (cidr), vnet, gateway, snat bool, dhcpRanges, dnsZonePrefix |
+| `Guest` | vmid, name, type (qemu|lxc), node, status |
+| `GuestNic` | guest Ref, key ("net0"), bridgeOrVnet Ref, vid, model, mac, firewall bool, rateMbps, linkDown bool |
+| `LldpNeighbor` | localNic Ref, chassisName, chassisId, portId, portDescr, mgmtIP, vlan info, ttl |
+| `FwRuleset` | scope (cluster|node|guest), ref, enabled, defaultIn/Out policy, rules []FwRule |
+| `FwRule` | pos, enabled, direction, action, proto, source, dest, sport, dport, iface, macro, log, comment |
+
+### Graph and deltas
+
+`inventory.Graph` holds all entities plus typed edges (`enslaved-by`, `port-of`, `tagged-on`, `realizes`, `attached-to`, `lldp-adjacent`). It exposes:
+
+- `Snapshot() Graph` — immutable copy for readers,
+- `ApplyPoll(source, entities)` — collector ingestion, returns `Delta{Added, Updated, Removed []Ref}`,
+- Deltas fan out to the WS hub as `topology.delta`.
+
+## 2. App store (SQLite)
+
+Schema managed by embedded migrations (`internal/store/migrations/NNNN_*.sql`). WAL mode, foreign keys on.
+
+```sql
+-- 0001_init.sql (shape contract; implementing task owns exact DDL)
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY, username TEXT NOT NULL, realm TEXT NOT NULL,
+  pve_ticket_enc BLOB NOT NULL, csrf_token_enc BLOB NOT NULL,
+  caps_json TEXT NOT NULL, created_at INTEGER, expires_at INTEGER
+);
+
+CREATE TABLE changesets (
+  id TEXT PRIMARY KEY,               -- ULID
+  title TEXT, author TEXT NOT NULL,
+  status TEXT NOT NULL,              -- draft|validated|applying|awaiting_confirm|
+                                     -- committed|rolled_back|failed|discarded
+  ops_json TEXT NOT NULL,            -- ordered []Op
+  findings_json TEXT,                -- validation results
+  plan_json TEXT,                    -- ordered apply steps (rendered pre-apply)
+  apply_log_json TEXT,               -- per-step outcomes
+  confirm_deadline INTEGER,          -- unix; NULL unless awaiting_confirm
+  created_at INTEGER, updated_at INTEGER
+);
+
+CREATE TABLE snapshots (
+  id TEXT PRIMARY KEY, changeset_id TEXT REFERENCES changesets(id),
+  taken_at INTEGER NOT NULL, kind TEXT NOT NULL,      -- pre|post|manual|scheduled
+  files_json TEXT NOT NULL           -- [{node,path,sha256,content_zstd}]
+);
+
+CREATE TABLE audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
+  username TEXT NOT NULL, action TEXT NOT NULL, target TEXT,
+  changeset_id TEXT, result TEXT NOT NULL, detail_json TEXT
+);
+
+CREATE TABLE layouts (
+  username TEXT NOT NULL, name TEXT NOT NULL,
+  layout_json TEXT NOT NULL, updated_at INTEGER,
+  PRIMARY KEY (username, name)
+);
+
+CREATE TABLE metric_samples (
+  ref TEXT NOT NULL, at INTEGER NOT NULL,
+  rx_bytes INTEGER, tx_bytes INTEGER, rx_pkts INTEGER, tx_pkts INTEGER,
+  rx_errs INTEGER, tx_errs INTEGER, rx_drop INTEGER, tx_drop INTEGER,
+  PRIMARY KEY (ref, at)
+);  -- pruned to 24h; longer horizons are out of scope for v1
+
+CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+```
+
+## 3. Changeset operations
+
+`Op` is a tagged union serialized as `{"op": "<type>", "target": Ref, "params": {...}}`. The v1 op vocabulary:
+
+| Group | Ops |
+|---|---|
+| iface | `iface.update` (mtu, comments, addresses, gateway, autostart) |
+| bond | `bond.create`, `bond.update`, `bond.delete` |
+| bridge | `bridge.create`, `bridge.update`, `bridge.delete`, `bridge.port.add`, `bridge.port.remove` |
+| vlan | `vlan.create`, `vlan.update`, `vlan.delete` |
+| sdn | `sdn.zone.create/update/delete`, `sdn.vnet.create/update/delete`, `sdn.subnet.create/update/delete`, `sdn.apply` |
+| guest | `guest.nic.update` (reattach bridge/vnet, vid, rate, firewall flag) |
+| fw | `fw.rule.create/update/delete/move`, `fw.options.update`, `fw.alias.*`, `fw.ipset.*`, `fw.group.*` |
+| ipam | `ipam.alloc.create/delete` |
+
+Each op maps to one or more **apply steps**; the planner orders steps: (1) cluster-scope PVE API calls, (2) per-node interface file staging, (3) per-node `ifreload` via PVE network reload endpoint, (4) `sdn.apply` last when present. Rollback executes the inverse from the pre-snapshot in reverse order.
