@@ -86,9 +86,9 @@ lint: ## golangci-lint + eslint + tsc --noEmit
 	fi
 	@if [ -n "$(WEB_READY)" ]; then \
 		echo ">> web: eslint"; \
-		cd $(WEB_DIR) && npx eslint .; \
+		(cd $(WEB_DIR) && npx eslint .); \
 		echo ">> web: tsc --noEmit"; \
-		cd $(WEB_DIR) && npx tsc --noEmit; \
+		(cd $(WEB_DIR) && npx tsc --noEmit); \
 	else \
 		echo ">> web: not yet implemented (T-005), skipping eslint/tsc --noEmit"; \
 	fi
