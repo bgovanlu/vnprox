@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { GOTO_CHORD_KEYS, SHORTCUTS } from "./shortcuts";
+import { useTopologyShortcutTargetStore } from "./topologyShortcutTarget";
 
 const CHORD_TIMEOUT_MS = 1200;
 
@@ -15,10 +16,12 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * Wires up the global keyboard bindings from docs/user-guide.md §6.
  * Mount once, near the app root (see src/layout/AppShell.tsx).
  *
- * Only navigation (`g` + t/s/f/i) and `?` (help) do something real today;
- * every other binding shows a "not yet implemented" toast, since the
- * features they'd control (search, layer visibility, VLAN filter) don't
- * exist yet — see this hook's task card, T-005, for why.
+ * Navigation (`g` + t/s/f/i) and `?` (help) always do something real.
+ * The topology-specific bindings (`/`, `1`-`4`, `f`) are dispatched to
+ * whichever handlers the Topology page has registered via
+ * src/keyboard/topologyShortcutTarget.ts; when nothing is registered
+ * (any other route), they show a toast explaining the shortcut only works
+ * on the Topology view, rather than silently doing nothing.
  */
 export function useKeyboardShortcuts(options: { onOpenHelp: () => void }): void {
   const navigate = useNavigate();
@@ -87,6 +90,35 @@ export function useKeyboardShortcuts(options: { onOpenHelp: () => void }): void 
           title: `${shortcut.action.feature} — not yet implemented`,
           description: `The "${shortcut.keys}" shortcut is wired up, but this feature is scaffolding only so far.`,
         });
+        return;
+      }
+
+      if (
+        shortcut.action.type === "topology-toggle-layer" ||
+        shortcut.action.type === "topology-vlan-filter" ||
+        shortcut.action.type === "topology-search"
+      ) {
+        const target = useTopologyShortcutTargetStore.getState().target;
+        if (!target) {
+          event.preventDefault();
+          toastRef.current({
+            title: `"${shortcut.keys}" only works on the Topology view`,
+            description: "Go to Topology (press \"g\" then \"t\") and try again.",
+          });
+          return;
+        }
+        event.preventDefault();
+        switch (shortcut.action.type) {
+          case "topology-toggle-layer":
+            target.toggleLayer(shortcut.action.layer);
+            break;
+          case "topology-vlan-filter":
+            target.openVlanFilter();
+            break;
+          case "topology-search":
+            target.openSearch();
+            break;
+        }
       }
     }
 

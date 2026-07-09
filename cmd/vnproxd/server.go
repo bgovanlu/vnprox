@@ -17,6 +17,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/api"
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/store"
 	"github.com/bgovanlu/vnprox/internal/topology"
 	webui "github.com/bgovanlu/vnprox/web"
 )
@@ -83,6 +84,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Auth:       authServiceAdapter{authSvc},
 		Collectors: collectorHealthAdapter{collector},
 		Topology:   topoSvc,
+		Layouts:    store.NewLayoutRepo(db),
 	})
 
 	srv := &http.Server{

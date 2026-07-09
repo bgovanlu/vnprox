@@ -1,0 +1,348 @@
+{
+  "nodes": [
+    {
+      "id": "bond:pve3:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "unknown",
+      "badges": [
+        "mode=active-backup"
+      ]
+    },
+    {
+      "id": "bridge:pve1:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve1:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve1:vmbr99",
+      "kind": "bridge",
+      "label": "vmbr99",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve2:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve2:vmbr99",
+      "kind": "bridge",
+      "label": "vmbr99",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve3:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve3:vmbr2",
+      "kind": "bridge",
+      "label": "vmbr2",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "guest-nic:pve1:400/net0",
+      "kind": "guest-nic",
+      "label": "legacy-app/net0",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "guest-nic:pve1:400/net1",
+      "kind": "guest-nic",
+      "label": "legacy-app/net1",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "guest-nic:pve2:401/net0",
+      "kind": "guest-nic",
+      "label": "forgotten-lxc/net0",
+      "layer": "guest",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "guest-nic:pve3:105/net0",
+      "kind": "guest-nic",
+      "label": "quarantine-box/net0",
+      "layer": "guest",
+      "nodeGroup": "pve3",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "guest:pve1:400",
+      "kind": "guest",
+      "label": "legacy-app",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "vmid=400"
+      ]
+    },
+    {
+      "id": "guest:pve2:401",
+      "kind": "guest",
+      "label": "forgotten-lxc",
+      "layer": "guest",
+      "nodeGroup": "pve2",
+      "status": "unknown",
+      "badges": [
+        "vmid=401"
+      ]
+    },
+    {
+      "id": "guest:pve3:105",
+      "kind": "guest",
+      "label": "quarantine-box",
+      "layer": "guest",
+      "nodeGroup": "pve3",
+      "status": "ok",
+      "badges": [
+        "vmid=105"
+      ]
+    },
+    {
+      "id": "lldp-neighbor:pve1:eno1/00:11:22:00:00:01/1/1",
+      "kind": "lldp-neighbor",
+      "label": "sw-old-01",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "port=1/1"
+      ]
+    },
+    {
+      "id": "physnic:pve1:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve2:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve3:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve3:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "sdn-subnet::10.50.0.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.50.0.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-vnet::zone-legacy/vnet-legacy",
+      "kind": "sdn-vnet",
+      "label": "vnet-legacy (legacy-vlan50)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "tag=50"
+      ]
+    },
+    {
+      "id": "sdn-vnet::zone-legacy/vnet-newapp",
+      "kind": "sdn-vnet",
+      "label": "vnet-newapp (newapp (never applied))",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "tag=60"
+      ]
+    },
+    {
+      "id": "sdn-zone::zone-legacy",
+      "kind": "sdn-zone",
+      "label": "zone-legacy",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "degraded",
+      "badges": [
+        "type=vlan"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "bond:pve3:bond0",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "port-of",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "guest-nic:pve1:400/net0",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "attached-to",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "guest-nic:pve2:401/net0",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "attached-to",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "guest-nic:pve3:105/net0",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "attached-to",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve1:eno1",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "port-of",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve1:eno1",
+      "to": "lldp-neighbor:pve1:eno1/00:11:22:00:00:01/1/1",
+      "kind": "lldp-adjacent",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve2:eno1",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "port-of",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve3:eno2",
+      "to": "bond:pve3:bond0",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve3:eno2",
+      "to": "bridge:pve3:vmbr2",
+      "kind": "port-of",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "sdn-vnet::zone-legacy/vnet-legacy",
+      "to": "bridge:pve1:vmbr99",
+      "kind": "realizes",
+      "status": "unknown",
+      "badges": [
+        "node=pve1",
+        "tag=50"
+      ]
+    },
+    {
+      "from": "sdn-vnet::zone-legacy/vnet-legacy",
+      "to": "bridge:pve2:vmbr99",
+      "kind": "realizes",
+      "status": "unknown",
+      "badges": [
+        "node=pve2",
+        "tag=50"
+      ]
+    },
+    {
+      "from": "sdn-vnet::zone-legacy/vnet-newapp",
+      "to": "bridge:pve1:vmbr99",
+      "kind": "realizes",
+      "status": "unknown",
+      "badges": [
+        "node=pve1",
+        "tag=60"
+      ]
+    },
+    {
+      "from": "sdn-vnet::zone-legacy/vnet-newapp",
+      "to": "bridge:pve2:vmbr99",
+      "kind": "realizes",
+      "status": "unknown",
+      "badges": [
+        "node=pve2",
+        "tag=60"
+      ]
+    }
+  ],
+  "layers": [
+    "phys",
+    "l2",
+    "sdn",
+    "guest"
+  ],
+  "generatedAt": 1783622244
+}
