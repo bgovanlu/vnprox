@@ -14,8 +14,8 @@ DIST_DIR    := dist
 WEB_DIR     := web
 PACKAGING_DIR := packaging
 
-GOLANGCI_LINT_VERSION := v1.61.0
-GOVULNCHECK_VERSION   := v1.1.3
+GOLANGCI_LINT_VERSION := v2.12.2
+GOVULNCHECK_VERSION   := v1.5.0
 
 .PHONY: build dev test lint check deb mockpve
 
