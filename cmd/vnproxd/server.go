@@ -17,6 +17,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/api"
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/topology"
 	webui "github.com/bgovanlu/vnprox/web"
 )
 
@@ -69,7 +70,8 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	defer func() { _ = db.Close() }()
 
 	graph := inventory.NewGraph()
-	collector, collectErr := setupCollect(cfg, graph, logger)
+	topoSvc := topology.NewService(graph, logger)
+	collector, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta)
 	if collectErr != nil {
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling", "error", collectErr)
 	}
@@ -78,8 +80,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Version:    version,
 		DistFS:     distFS,
 		Logger:     logger,
-		Auth:       authSvc,
+		Auth:       authServiceAdapter{authSvc},
 		Collectors: collectorHealthAdapter{collector},
+		Topology:   topoSvc,
 	})
 
 	srv := &http.Server{

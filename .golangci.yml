@@ -34,6 +34,25 @@ linters:
       # already treats them as separate modules and skips them — but
       # golangci-lint's file walk isn't module-aware, so exclude explicitly.
       - \.claude
+    rules:
+      # docs/development.md locks the WS dependency to nhooyr.io/websocket;
+      # its upstream module itself (not any one deprecated symbol vnprox
+      # could swap for a non-deprecated alternative) is what's marked
+      # deprecated in favor of the coder/websocket fork — every exported
+      # symbol in the package carries the same SA1019 notice. T-106
+      # (internal/topology's WS hub) uses this package because that's the
+      # locked decision, not an oversight; re-litigating the dependency
+      # choice is out of scope for that task, so this silences the
+      # unavoidable deprecation notice rather than every call site needing
+      # its own //nolint.
+      - path: internal/topology/hub(_test)?\.go
+        linters:
+          - staticcheck
+        text: "SA1019"
+      - path: internal/topology/integration_test\.go
+        linters:
+          - staticcheck
+        text: "SA1019"
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
