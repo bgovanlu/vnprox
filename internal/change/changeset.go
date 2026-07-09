@@ -71,6 +71,12 @@ var allowedTransitions = map[Status]map[Status]bool{
 	StatusAwaitingConfirm: {
 		StatusCommitted:  true,
 		StatusRolledBack: true,
+		// StatusFailed is reachable when an auto/manual rollback of the applied
+		// change could not fully restore every node (the "couldn't even fully
+		// roll back" case this type's StatusFailed/StatusRolledBack doc
+		// comments reserve for T-205). Added by T-205; see planning/reports/
+		// T-205.md's deviation note.
+		StatusFailed: true,
 	},
 	StatusCommitted:  {},
 	StatusRolledBack: {},

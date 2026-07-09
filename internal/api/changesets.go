@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/change/ifaces"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
@@ -40,6 +42,21 @@ type ChangesetService interface {
 	UpdateDraft(ctx context.Context, id, author string, title *string, ops []change.Op) (change.Changeset, error)
 	Discard(ctx context.Context, id, author string) error
 	Validate(ctx context.Context, id, author string) (change.Changeset, error)
+
+	// T-205 apply engine.
+	Diff(ctx context.Context, id string) (*ifaces.ChangesetDiff, error)
+	Apply(ctx context.Context, id, author string, pveGW change.PVEGateway, confirmTimeout time.Duration) (change.Changeset, error)
+	Confirm(ctx context.Context, id, author string) (change.Changeset, error)
+	Rollback(ctx context.Context, id, author string) (change.Changeset, error)
+}
+
+// PVEGatewayProvider supplies a change.PVEGateway bound to the requesting
+// session's own PVE ticket (docs/architecture.md §6: writes use the user's
+// ticket). cmd/vnproxd wires it from auth.Service.PVEClientFor; a nil provider
+// (or one returning ok=false) means cluster-scope PVE steps (sdn.apply) can't
+// run for this request — apply of a changeset needing them then fails clearly.
+type PVEGatewayProvider interface {
+	GatewayFor(ctx context.Context) (change.PVEGateway, bool)
 }
 
 // CSRFEnforcer is implemented by AuthService backends that can check the
@@ -108,7 +125,7 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 // mounted — same reasoning as mountLayoutsRoutes: there would be no safe
 // way to attribute a created/discarded changeset to a user for the
 // audit trail docs/security.md requires.
-func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService) {
+func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService, gateways PVEGatewayProvider) {
 	if svc == nil || auth == nil {
 		return
 	}
@@ -122,7 +139,7 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService)
 		r.Use(auth.RequireCap(capNetRead))
 		r.Get("/changesets", handleListChangesets(svc))
 		r.Get("/changesets/{id}", handleGetChangeset(svc))
-		r.Get("/changesets/{id}/diff", handleChangesetNotImplemented())
+		r.Get("/changesets/{id}/diff", handleDiffChangeset(svc))
 	})
 
 	r.Group(func(r chi.Router) {
@@ -135,20 +152,140 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService)
 		r.Put("/changesets/{id}", handleUpdateChangeset(svc, lookup))
 		r.Delete("/changesets/{id}", handleDiscardChangeset(svc, lookup))
 		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup))
-		r.Post("/changesets/{id}/apply", handleChangesetNotImplemented())
-		r.Post("/changesets/{id}/confirm", handleChangesetNotImplemented())
-		r.Post("/changesets/{id}/rollback", handleChangesetNotImplemented())
+		r.Post("/changesets/{id}/apply", handleApplyChangeset(svc, lookup, gateways))
+		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup))
+		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup))
 	})
 }
 
-// handleChangesetNotImplemented backs the diff/apply/confirm/rollback
-// routes: they exist (matching docs/api.md's route shape) so dependent
-// frontend/task work can wire against the real paths today, but return 501
-// until T-205 implements the actual logic.
-func handleChangesetNotImplemented() http.HandlerFunc {
+// applyRequest is docs/api.md's POST /changesets/{id}/apply body:
+// `{confirmTimeoutSec: 120}`.
+type applyRequest struct {
+	ConfirmTimeoutSec int `json:"confirmTimeoutSec"`
+}
+
+func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSONError(w, http.StatusNotImplemented, "not_implemented", "not implemented yet")
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+
+		var req applyRequest
+		if r.ContentLength != 0 {
+			dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&req); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "validation_failed", "malformed request body")
+				return
+			}
+		}
+
+		var gw change.PVEGateway
+		if gateways != nil {
+			gw, _ = gateways.GatewayFor(r.Context())
+		}
+
+		c, err := svc.Apply(r.Context(), id, username, gw, time.Duration(req.ConfirmTimeoutSec)*time.Second)
+		if err != nil {
+			writeApplyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, toChangesetResponse(c))
 	}
+}
+
+func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		c, err := svc.Confirm(r.Context(), chi.URLParam(r, "id"), username)
+		if err != nil {
+			writeApplyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, toChangesetResponse(c))
+	}
+}
+
+func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		c, err := svc.Rollback(r.Context(), chi.URLParam(r, "id"), username)
+		if err != nil {
+			writeApplyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, toChangesetResponse(c))
+	}
+}
+
+func handleDiffChangeset(svc ChangesetService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		diff, err := svc.Diff(r.Context(), chi.URLParam(r, "id"))
+		if err != nil {
+			writeApplyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, diff)
+	}
+}
+
+// writeApplyError maps T-205 apply-engine errors to docs/api.md's error
+// envelope + stable codes.
+func writeApplyError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeJSONError(w, http.StatusNotFound, "not_found", "no such changeset")
+		return
+	}
+
+	var locked *change.ErrChangesetLocked
+	if errors.As(err, &locked) {
+		writeJSONError(w, http.StatusConflict, "changeset_locked", err.Error())
+		return
+	}
+	var blocked *change.ErrValidationBlocked
+	if errors.As(err, &blocked) {
+		writeJSONErrorDetails(w, http.StatusUnprocessableEntity, "validation_failed",
+			"changeset has blocking validation errors", map[string]any{"findings": blocked.Findings})
+		return
+	}
+	var unsupported *change.ErrUnsupportedOp
+	if errors.As(err, &unsupported) {
+		writeJSONError(w, http.StatusUnprocessableEntity, "unsupported_op", err.Error())
+		return
+	}
+	var inverse *change.ErrInverseUnsupported
+	if errors.As(err, &inverse) {
+		writeJSONError(w, http.StatusUnprocessableEntity, "unsupported_op", err.Error())
+		return
+	}
+	var notConfirmable *change.ErrNotConfirmable
+	if errors.As(err, &notConfirmable) {
+		writeJSONError(w, http.StatusConflict, "invalid_transition", err.Error())
+		return
+	}
+	var illegal *change.ErrIllegalTransition
+	if errors.As(err, &illegal) {
+		writeJSONError(w, http.StatusConflict, "invalid_transition", err.Error())
+		return
+	}
+	var notConfigured *change.ErrApplyNotConfigured
+	if errors.As(err, &notConfigured) {
+		writeJSONError(w, http.StatusServiceUnavailable, "apply_unavailable", "the apply engine is not available on this node")
+		return
+	}
+	writeJSONError(w, http.StatusInternalServerError, "internal_error", "apply operation failed")
 }
 
 func handleListChangesets(svc ChangesetService) http.HandlerFunc {
