@@ -55,3 +55,15 @@ func (s *Service) OnDelta(d inventory.Delta) {
 func (s *Service) ConnCount() int {
 	return s.hub.ConnCount()
 }
+
+// Broadcast fans out a pre-encoded JSON event to every /api/ws client
+// subscribed to topic, over this Service's shared Hub. It satisfies
+// internal/change.Broadcaster (and any future package that needs to push
+// its own event type over the same connection): docs/api.md's WebSocket
+// section documents one shared /api/ws connection multiplexing multiple
+// topics ("topology", "changesets", "metrics:<ref>", "tasks"), so
+// non-topology packages reuse this Service/Hub rather than each standing
+// up their own WS endpoint.
+func (s *Service) Broadcast(topic string, payload []byte) {
+	s.hub.Broadcast(topic, payload)
+}

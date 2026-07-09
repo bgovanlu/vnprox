@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/api"
+	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/store"
@@ -77,6 +78,20 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling", "error", collectErr)
 	}
 
+	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
+	// (docs/api.md's WebSocket section documents one shared /api/ws
+	// connection multiplexing "topology"/"changesets"/... topics alike —
+	// see topology.Service.Broadcast and internal/change.Broadcaster).
+	changeSvc, err := change.NewService(change.Config{
+		Changesets: store.NewChangesetRepo(db),
+		Audit:      store.NewAuditRepo(db),
+		WS:         topoSvc,
+		Logger:     logger,
+	})
+	if err != nil {
+		return fmt.Errorf("initializing change engine: %w", err)
+	}
+
 	handler := api.NewRouter(api.Options{
 		Version:    version,
 		DistFS:     distFS,
@@ -85,6 +100,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Collectors: collectorHealthAdapter{collector},
 		Topology:   topoSvc,
 		Layouts:    store.NewLayoutRepo(db),
+		Changesets: changeSvc,
 	})
 
 	srv := &http.Server{
