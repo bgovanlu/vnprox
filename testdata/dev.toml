@@ -17,7 +17,10 @@ read_only = false
 confirm_timeout_default = 120
 
 [pve]
-api_url = "https://127.0.0.1:8006"
+# internal/pvemock (used by `make dev`/`make mockpve`) serves plain HTTP,
+# unlike real pveproxy which is always HTTPS — this must stay http:// for
+# local dev against the mock; production config always uses https://.
+api_url = "http://127.0.0.1:8006"
 token_file = "/etc/vnprox/keys/pve-token"
 
 [safety]
