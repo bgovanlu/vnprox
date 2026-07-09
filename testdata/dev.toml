@@ -22,6 +22,15 @@ confirm_timeout_default = 120
 # local dev against the mock; production config always uses https://.
 api_url = "http://127.0.0.1:8006"
 token_file = "/etc/vnprox/keys/pve-token"
+# T-104: internal/pvemock does not implement PVE API-token authentication
+# (every token-mode request gets a 401 — a documented T-101 gap), so the
+# collectors' PVE client can't use token_file above against it. These
+# dev-only fields switch the collectors to ticket auth with the mock
+# fixture's built-in root@pam/vnprox-mock user instead; production configs
+# never set these, and the daemon then uses token_file exactly as
+# documented.
+dev_ticket_username = "root@pam"
+dev_ticket_password = "vnprox-mock"
 
 [safety]
 allow_dangerous_ops = false

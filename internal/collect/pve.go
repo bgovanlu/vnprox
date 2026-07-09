@@ -1,0 +1,253 @@
+package collect
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/pve"
+)
+
+// pvePollAll runs one full PVE poll cycle: cluster status (which also
+// discovers every member node and this daemon's own "local" node),
+// per-node network, guests, SDN, and firewall (cluster + every node +
+// every guest). It is the pollFunc RunPVELoop drives.
+//
+// Only cluster status and cluster resources are treated as fatal to the
+// whole cycle (returned as an error, which drives RunPVELoop's
+// backoff/staleness): they are the two calls every other step in this
+// cycle depends on. Failure of any other individual step (one node's
+// network, one guest's config, one zone's status, one ruleset) is logged
+// and skipped, leaving that entity's previously-known state untouched
+// rather than clobbering it — so a transient single-node/single-guest
+// hiccup does not blank out data the graph already has correct.
+func (c *Collector) pvePollAll(ctx context.Context) error {
+	nodes, err := c.pollClusterStatus(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, n := range nodes {
+		if netErr := c.pollNodeNetwork(ctx, n); netErr != nil {
+			c.log.Warn("collect: polling node network failed, skipping", "node", n, "error", netErr)
+		}
+	}
+
+	resources, err := c.pve.ClusterResources(ctx)
+	if err != nil {
+		return fmt.Errorf("collect: cluster resources: %w", err)
+	}
+
+	c.pollGuests(ctx, nodes, resources)
+	if err := c.pollSDN(ctx); err != nil {
+		c.log.Warn("collect: polling SDN failed", "error", err)
+	}
+	c.pollFirewall(ctx, nodes, resources, true)
+	return nil
+}
+
+// pollClusterStatus polls GET /cluster/status, reconciles one Node entity
+// per member (each in its own node-scoped ApplyPoll call, so a node
+// leaving the cluster is correctly retired rather than never removable —
+// Scope only supports a single Node value or the empty/cluster-scoped one,
+// not "all these nodes at once"), records the "local" node for the
+// host/LLDP pollers, and returns the member node name list every other PVE
+// poll step in this cycle needs.
+func (c *Collector) pollClusterStatus(ctx context.Context) ([]string, error) {
+	entries, err := c.pve.ClusterStatus(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("collect: cluster status: %w", err)
+	}
+
+	entities := inventory.FromClusterStatus(entries)
+	byNode := make(map[string]inventory.Entity, len(entities))
+	for _, e := range entities {
+		byNode[e.GetRef().Node] = e
+	}
+
+	var nodes []string
+	for _, e := range entries {
+		if e.Type != "node" {
+			continue
+		}
+		nodes = append(nodes, e.Name)
+		if e.Local {
+			c.setLocalNode(e.Name)
+		}
+		var ents []inventory.Entity
+		if ent, ok := byNode[e.Name]; ok {
+			ents = []inventory.Entity{ent}
+		}
+		c.graph.ApplyPoll(inventory.SourcePVECluster, inventory.Scope{Node: e.Name}, ents)
+	}
+	return nodes, nil
+}
+
+// pollNodeNetwork polls one node's declared network config (GET
+// /nodes/{node}/network) into SourcePVENetwork partials.
+func (c *Collector) pollNodeNetwork(ctx context.Context, node string) error {
+	ifaces, err := c.pve.ListNodeNetwork(ctx, node)
+	if err != nil {
+		return fmt.Errorf("node network (%s): %w", node, err)
+	}
+	entities := inventory.FromPVENetwork(node, ifaces)
+	c.graph.ApplyPoll(inventory.SourcePVENetwork, inventory.Scope{Node: node}, entities)
+	return nil
+}
+
+// pollGuests fetches every qemu/lxc guest config on targetNodes (resources
+// is the already-fetched GET /cluster/resources listing, filtered here to
+// targetNodes) and reconciles Guest/GuestNic partials one node-scoped
+// ApplyPoll call at a time — including nodes with zero guests, so a
+// deleted guest is retired rather than left stale.
+func (c *Collector) pollGuests(ctx context.Context, targetNodes []string, resources []pve.ClusterResource) {
+	nodeSet := make(map[string]bool, len(targetNodes))
+	for _, n := range targetNodes {
+		nodeSet[n] = true
+	}
+
+	var filtered []pve.ClusterResource
+	configs := map[int]map[string]string{}
+	for _, r := range resources {
+		kind, ok := guestKind(r.Type)
+		if !ok || !nodeSet[r.Node] {
+			continue
+		}
+		filtered = append(filtered, r)
+		cfg, err := c.pve.GetGuestConfig(ctx, r.Node, kind, r.VMID)
+		if err != nil {
+			c.log.Warn("collect: fetching guest config failed, skipping", "node", r.Node, "vmid", r.VMID, "error", err)
+			continue
+		}
+		configs[r.VMID] = cfg
+	}
+
+	entities := inventory.FromPVEGuests(filtered, configs)
+	byNode := make(map[string][]inventory.Entity, len(nodeSet))
+	for _, e := range entities {
+		byNode[e.GetRef().Node] = append(byNode[e.GetRef().Node], e)
+	}
+	for n := range nodeSet {
+		c.graph.ApplyPoll(inventory.SourcePVEGuest, inventory.Scope{Node: n}, byNode[n])
+	}
+}
+
+// guestKind maps a GET /cluster/resources row's Type to a pve.GuestKind,
+// reporting ok=false for non-guest rows (nodes, storage, ...).
+func guestKind(resourceType string) (pve.GuestKind, bool) {
+	switch resourceType {
+	case string(pve.GuestQemu):
+		return pve.GuestQemu, true
+	case string(pve.GuestLXC):
+		return pve.GuestLXC, true
+	default:
+		return "", false
+	}
+}
+
+// pollSDN polls the cluster-wide SDN tree (zones, vnets, subnets, per-zone
+// status) into cluster-scoped (empty Node) SdnZone/SdnVnet/SdnSubnet
+// partials. Zone list and vnet list are treated as fatal to this step (the
+// two calls everything else here depends on); a single zone's status or a
+// single vnet's subnets failing is logged and skipped.
+func (c *Collector) pollSDN(ctx context.Context) error {
+	zones, err := c.pve.ListSDNZones(ctx)
+	if err != nil {
+		return fmt.Errorf("sdn zones: %w", err)
+	}
+	vnets, err := c.pve.ListSDNVnets(ctx)
+	if err != nil {
+		return fmt.Errorf("sdn vnets: %w", err)
+	}
+
+	subnets := make(map[string][]pve.SDNSubnet, len(vnets))
+	for _, v := range vnets {
+		subs, err := c.pve.ListSDNSubnets(ctx, v.ID)
+		if err != nil {
+			c.log.Warn("collect: listing SDN subnets failed, skipping", "vnet", v.ID, "error", err)
+			continue
+		}
+		subnets[v.ID] = subs
+	}
+
+	zoneStatus := make(map[string][]pve.SDNZoneStatus, len(zones))
+	for _, z := range zones {
+		st, err := c.pve.GetSDNZoneStatus(ctx, z.ID)
+		if err != nil {
+			c.log.Warn("collect: getting SDN zone status failed, skipping", "zone", z.ID, "error", err)
+			continue
+		}
+		zoneStatus[z.ID] = st
+	}
+
+	entities := inventory.FromPVESDN(zones, vnets, subnets, zoneStatus)
+	c.graph.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{}, entities)
+	return nil
+}
+
+// pollFirewall polls firewall rulesets at cluster scope (if
+// includeCluster), and at node + per-guest scope for every node in
+// targetNodes (resources is the already-fetched cluster resources listing,
+// used to enumerate each node's guests). All of one node's entities (its
+// own ruleset plus every guest's) are reconciled in a single
+// Scope{Node: n, Kinds: [fw-ruleset]}-scoped ApplyPoll call — the Kinds
+// restriction mirrors ingest.go's own documented guidance ("a firewall
+// poll that only enumerates fw-rulesets should not retire guests").
+// Individual scope fetch failures are logged and skipped.
+func (c *Collector) pollFirewall(ctx context.Context, targetNodes []string, resources []pve.ClusterResource, includeCluster bool) {
+	fwKinds := []inventory.Kind{inventory.KindFwRuleset}
+
+	if includeCluster {
+		var clusterEnts []inventory.Entity
+		if opts, rules, err := c.fetchFirewall(ctx, pve.ClusterFirewallScope()); err != nil {
+			c.log.Warn("collect: fetching cluster firewall failed, skipping", "error", err)
+		} else {
+			ref := inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}
+			clusterEnts = inventory.FromPVEFirewall(ref, inventory.FwScopeCluster, opts, rules)
+		}
+		c.graph.ApplyPoll(inventory.SourcePVEFirewall, inventory.Scope{Kinds: fwKinds}, clusterEnts)
+	}
+
+	for _, n := range targetNodes {
+		var ents []inventory.Entity
+		if opts, rules, err := c.fetchFirewall(ctx, pve.NodeFirewallScope(n)); err != nil {
+			c.log.Warn("collect: fetching node firewall failed, skipping", "node", n, "error", err)
+		} else {
+			ref := inventory.Ref{Kind: inventory.KindFwRuleset, Node: n, ID: "node"}
+			ents = append(ents, inventory.FromPVEFirewall(ref, inventory.FwScopeNode, opts, rules)...)
+		}
+
+		for _, r := range resources {
+			if r.Node != n {
+				continue
+			}
+			kind, ok := guestKind(r.Type)
+			if !ok {
+				continue
+			}
+			opts, rules, err := c.fetchFirewall(ctx, pve.GuestFirewallScope(n, kind, r.VMID))
+			if err != nil {
+				c.log.Warn("collect: fetching guest firewall failed, skipping", "node", n, "vmid", r.VMID, "error", err)
+				continue
+			}
+			ref := inventory.Ref{Kind: inventory.KindFwRuleset, Node: n, ID: fmt.Sprintf("guest/%s/%d", kind, r.VMID)}
+			ents = append(ents, inventory.FromPVEFirewall(ref, inventory.FwScopeGuest, opts, rules)...)
+		}
+
+		c.graph.ApplyPoll(inventory.SourcePVEFirewall, inventory.Scope{Node: n, Kinds: fwKinds}, ents)
+	}
+}
+
+// fetchFirewall fetches one scope's ruleset-level options and ordered rule
+// list.
+func (c *Collector) fetchFirewall(ctx context.Context, scope pve.FirewallScope) (pve.FirewallOptions, []pve.FirewallRule, error) {
+	opts, err := c.pve.GetFirewallOptions(ctx, scope)
+	if err != nil {
+		return pve.FirewallOptions{}, nil, fmt.Errorf("firewall options: %w", err)
+	}
+	rules, err := c.pve.ListFirewallRules(ctx, scope)
+	if err != nil {
+		return pve.FirewallOptions{}, nil, fmt.Errorf("firewall rules: %w", err)
+	}
+	return *opts, rules, nil
+}

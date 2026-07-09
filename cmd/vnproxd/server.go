@@ -16,6 +16,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/api"
 	"github.com/bgovanlu/vnprox/internal/config"
+	"github.com/bgovanlu/vnprox/internal/inventory"
 	webui "github.com/bgovanlu/vnprox/web"
 )
 
@@ -67,11 +68,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	defer func() { _ = db.Close() }()
 
+	graph := inventory.NewGraph()
+	collector, collectErr := setupCollect(cfg, graph, logger)
+	if collectErr != nil {
+		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling", "error", collectErr)
+	}
+
 	handler := api.NewRouter(api.Options{
-		Version: version,
-		DistFS:  distFS,
-		Logger:  logger,
-		Auth:    authSvc,
+		Version:    version,
+		DistFS:     distFS,
+		Logger:     logger,
+		Auth:       authSvc,
+		Collectors: collectorHealthAdapter{collector},
 	})
 
 	srv := &http.Server{
@@ -96,6 +104,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return serveHTTPS(ctx, srv, nil, logger)
 	})
 	g.add(authSvc.RunRenewalLoop)
+	if collector != nil {
+		g.add(collector.RunPVELoop)
+		g.add(collector.RunHostLoop)
+		g.add(collector.RunLLDPLoop)
+	}
 
 	logger.Info("vnproxd starting",
 		"version", version,

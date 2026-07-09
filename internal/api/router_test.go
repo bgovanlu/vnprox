@@ -48,6 +48,37 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+type stubCollectorHealth struct{ sources []CollectorSourceStatus }
+
+func (s stubCollectorHealth) CollectorStatus() []CollectorSourceStatus { return s.sources }
+
+func TestHealthEndpoint_WithCollectors(t *testing.T) {
+	want := []CollectorSourceStatus{
+		{Name: "pve", ConsecutiveFailures: 2, LastError: "boom"},
+		{Name: "host"},
+	}
+	r := NewRouter(Options{
+		Version:    "1.2.3-test",
+		DistFS:     testDistFS(),
+		Logger:     testLogger(),
+		Collectors: stubCollectorHealth{sources: want},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	var body struct {
+		Collectors []CollectorSourceStatus `json:"collectors"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding body: %v", err)
+	}
+	if len(body.Collectors) != 2 || body.Collectors[0].Name != "pve" || body.Collectors[0].ConsecutiveFailures != 2 {
+		t.Errorf("collectors = %+v, want %+v", body.Collectors, want)
+	}
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	r := NewRouter(Options{Version: "test", DistFS: testDistFS(), Logger: testLogger()})
 

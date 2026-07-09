@@ -72,6 +72,26 @@ type ServerConfig struct {
 type PVEConfig struct {
 	APIURL    string
 	TokenFile string
+
+	// TicketUsername, TicketPassword, TicketRealm are an optional,
+	// dev/testing-only override for the collectors' own PVE client
+	// (internal/collect, T-104): when TicketUsername is set, collectors
+	// authenticate with PVE ticket auth (these credentials) instead of
+	// the documented production API-token identity vnprox@pve!daemon
+	// (docs/security.md). This exists because internal/pvemock — the
+	// only PVE server this project's dev/test setups talk to — does not
+	// implement PVE API-token authentication at all (a documented T-101
+	// gap: every token-mode request is rejected with 401; see
+	// internal/pve/integration_test.go's TestAPIToken commentary), so a
+	// dev config pointed at pvemock has no other way to exercise the
+	// collectors. Mirrors the precedent set by this same section's
+	// api_url (dev.toml uses http:// against pvemock; production always
+	// uses https://): a documented, deliberate dev-only deviation, never
+	// touched by a production config file. Left unset, PVE.APIURL +
+	// PVE.TokenFile + AuthAPIToken is used exactly as documented.
+	TicketUsername string
+	TicketPassword string
+	TicketRealm    string
 }
 
 // SafetyConfig is the [safety] section.
@@ -114,8 +134,11 @@ type rawServer struct {
 }
 
 type rawPVE struct {
-	APIURL    string `toml:"api_url"`
-	TokenFile string `toml:"token_file"`
+	APIURL         string `toml:"api_url"`
+	TokenFile      string `toml:"token_file"`
+	TicketUsername string `toml:"dev_ticket_username"`
+	TicketPassword string `toml:"dev_ticket_password"`
+	TicketRealm    string `toml:"dev_ticket_realm"`
 }
 
 type rawSafety struct {
@@ -173,8 +196,11 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			TLSKey:                raw.Server.TLSKey,
 		},
 		PVE: PVEConfig{
-			APIURL:    firstNonEmpty(raw.PVE.APIURL, DefaultPVEAPIURL),
-			TokenFile: firstNonEmpty(raw.PVE.TokenFile, DefaultPVETokenFile),
+			APIURL:         firstNonEmpty(raw.PVE.APIURL, DefaultPVEAPIURL),
+			TokenFile:      firstNonEmpty(raw.PVE.TokenFile, DefaultPVETokenFile),
+			TicketUsername: raw.PVE.TicketUsername,
+			TicketPassword: raw.PVE.TicketPassword,
+			TicketRealm:    raw.PVE.TicketRealm,
 		},
 		Safety: SafetyConfig{
 			AllowDangerousOps: raw.Safety.AllowDangerousOps,
