@@ -82,7 +82,7 @@ lint: ## golangci-lint + eslint + tsc --noEmit
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run ./...; \
 	else \
-		$(GO) run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...; \
+		$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...; \
 	fi
 	@if [ -n "$(WEB_READY)" ]; then \
 		echo ">> web: eslint"; \

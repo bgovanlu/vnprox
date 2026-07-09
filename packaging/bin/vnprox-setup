@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+# vnprox-setup — per-node interactive setup, run after `apt install
+# ./vnprox_<version>_<arch>.deb`. Implements steps 2 and 5-7 of
+# docs/deployment.md's documented install flow:
+#
+#   2. Check port 8007 (PBS conflict); ask for the listen port if needed.
+#   5. Create the read-only PVE API token vnprox@pve!daemon.
+#   6. Generate the cluster secret in /etc/pve/vnprox/ (first node only;
+#      pmxcfs replicates it).
+#   7. Write /etc/vnprox/vnprox.toml, generate the session key, enable +
+#      start vnprox.service.
+#
+# install.sh drives this same script per node (locally, or — once T-606
+# lands — over SSH) rather than re-implementing this logic; this is also
+# exactly what docs/deployment.md's "Manual install (per node)" section
+# tells an operator to run by hand.
+#
+# Parts genuinely requiring a live Proxmox VE cluster are marked
+# TODO(T-606) and do not pretend to work here — see planning/tasks/
+# phase-6.md#T-606 ("cluster rollout and PVE token creation are completed
+# in T-606").
+
+set -euo pipefail
+
+PROG=$(basename "$0")
+CONFIG_PATH="/etc/vnprox/vnprox.toml"
+KEYS_DIR="/etc/vnprox/keys"
+SESSION_KEY_FILE="$KEYS_DIR/session.key"
+PVE_CLUSTER_DIR="/etc/pve/vnprox"
+CLUSTER_SECRET_FILE="$PVE_CLUSTER_DIR/cluster.secret"
+DEFAULT_PORT=8007
+FALLBACK_PORT=8008
+
+PORT=""
+WITH_LLDP=""
+ASSUME_YES=0
+ANSWERS_FILE=""
+
+usage() {
+	cat <<EOF
+Usage: $PROG [options]
+
+Options:
+  --port <n>          Use this listen port without probing for a conflict.
+  --with-lldp         Install and enable lldpd (default: prompt, yes).
+  --no-lldp           Skip lldpd install.
+  --answers <file>    Non-interactive: read PORT= and WITH_LLDP=yes|no from
+                       this file instead of prompting (shell-sourceable).
+  -y, --yes           Non-interactive: accept documented defaults.
+  -h, --help          Show this help.
+EOF
+}
+
+log() { printf '>> %s\n' "$*" >&2; } # stderr: keeps stdout clean for callers that capture a function's result via $(...) (see resolve_port)
+warn() { printf 'vnprox-setup: warning: %s\n' "$*" >&2; }
+die() {
+	printf 'vnprox-setup: error: %s\n' "$*" >&2
+	exit 1
+}
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--port)
+		PORT="$2"
+		shift 2
+		;;
+	--with-lldp)
+		WITH_LLDP=yes
+		shift
+		;;
+	--no-lldp)
+		WITH_LLDP=no
+		shift
+		;;
+	--answers)
+		ANSWERS_FILE="$2"
+		shift 2
+		;;
+	-y | --yes)
+		ASSUME_YES=1
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		die "unknown option: $1 (see --help)"
+		;;
+	esac
+done
+
+if [ -n "$ANSWERS_FILE" ]; then
+	[ -r "$ANSWERS_FILE" ] || die "--answers file not readable: $ANSWERS_FILE"
+	# shellcheck disable=SC1090
+	. "$ANSWERS_FILE"
+	PORT="${PORT:-${ANSWER_PORT:-}}"
+	WITH_LLDP="${WITH_LLDP:-${ANSWER_WITH_LLDP:-}}"
+	ASSUME_YES=1
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+	die "must run as root (vnprox needs to write /etc/vnprox, /etc/pve/vnprox, and manage vnprox.service)"
+fi
+
+# --- step 2: port conflict detection --------------------------------------
+#
+# docs/deployment.md: "PBS's web UI also uses 8007. The installer checks
+# for a listener on 8007 and an installed proxmox-backup-server package; if
+# found it prompts for an alternative (suggested 8008) and writes it to
+# config."
+
+port_listening() {
+	port="$1"
+	if command -v ss >/dev/null 2>&1; then
+		if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[.:]${port}\$"; then
+			return 0
+		fi
+	fi
+	if command -v netstat >/dev/null 2>&1; then
+		if netstat -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[.:]${port}\$"; then
+			return 0
+		fi
+	fi
+	# Portable fallback usable in minimal containers without ss/netstat:
+	# bash's /dev/tcp pseudo-device attempts a real TCP connect. A
+	# successful connect means *something* is accepting on that port.
+	if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
+		exec 3<&- 2>/dev/null || true
+		exec 3>&- 2>/dev/null || true
+		return 0
+	fi
+	return 1
+}
+
+pbs_installed() {
+	if command -v dpkg-query >/dev/null 2>&1; then
+		dpkg-query -W -f='${Status}' proxmox-backup-server 2>/dev/null | grep -q "install ok installed"
+		return $?
+	fi
+	return 1
+}
+
+resolve_port() {
+	if [ -n "$PORT" ]; then
+		log "using explicitly requested port $PORT"
+		echo "$PORT"
+		return
+	fi
+
+	conflict=0
+	if port_listening "$DEFAULT_PORT"; then
+		warn "something is already listening on port $DEFAULT_PORT"
+		conflict=1
+	fi
+	if pbs_installed; then
+		warn "proxmox-backup-server is installed (its web UI also uses port $DEFAULT_PORT)"
+		conflict=1
+	fi
+
+	if [ "$conflict" -eq 0 ]; then
+		echo "$DEFAULT_PORT"
+		return
+	fi
+
+	if [ "$ASSUME_YES" -eq 1 ]; then
+		log "port $DEFAULT_PORT is in use; using fallback port $FALLBACK_PORT (non-interactive)"
+		echo "$FALLBACK_PORT"
+		return
+	fi
+
+	read -r -p "Port $DEFAULT_PORT looks unavailable. Use alternative port [$FALLBACK_PORT]: " chosen || true
+	echo "${chosen:-$FALLBACK_PORT}"
+}
+
+RESOLVED_PORT="$(resolve_port)"
+log "vnprox will listen on port $RESOLVED_PORT"
+
+# --- lldpd (docs/deployment.md step 4, --with-lldp default yes) ----------
+
+if [ -z "$WITH_LLDP" ]; then
+	if [ "$ASSUME_YES" -eq 1 ]; then
+		WITH_LLDP=yes
+	else
+		read -r -p "Install and enable lldpd for physical topology discovery? [Y/n] " ans || true
+		case "$ans" in
+		[nN]*) WITH_LLDP=no ;;
+		*) WITH_LLDP=yes ;;
+		esac
+	fi
+fi
+
+if [ "$WITH_LLDP" = yes ]; then
+	if command -v lldpd >/dev/null 2>&1; then
+		log "lldpd already installed"
+	elif command -v apt-get >/dev/null 2>&1; then
+		log "installing lldpd"
+		if apt-get install -y lldpd; then
+			if [ -d /run/systemd/system ]; then
+				systemctl enable --now lldpd >/dev/null 2>&1 || warn "installed lldpd but could not enable/start it"
+			fi
+		else
+			warn "lldpd install failed; continuing without it (docs/features/lldp-discovery.md §1 covers the guided in-app install path once T-302 lands)"
+		fi
+	else
+		warn "apt-get not available; skipping lldpd install"
+	fi
+else
+	log "skipping lldpd (per --no-lldp / answer)"
+fi
+
+# --- step 5: PVE API token ------------------------------------------------
+#
+# TODO(T-606): create the read-only PVE API token `vnprox@pve!daemon`
+# (auditor-level privilege on `/`, creating the role if absent) via `pveum`,
+# and store it root-only at the path internal/config expects
+# ([pve].token_file, default /etc/vnprox/keys/pve-token). This requires a
+# live PVE API (pveum acting against pmxcfs/corosync) that this sandbox
+# does not have — see planning/tasks/phase-6.md#T-606
+# ("cluster rollout and PVE token creation are completed in T-606").
+log "TODO(T-606): PVE API token creation (vnprox@pve!daemon) is not implemented in this installer skeleton"
+log "  -> create it manually for now: pveum role add VnproxAuditor -privs \"Sys.Audit\"  (adjust privileges per docs/security.md)"
+log "     pveum user token add vnprox@pve daemon --privsep 0"
+log "     then place the resulting token secret at /etc/vnprox/keys/pve-token (root:root 0600)"
+
+# --- step 6: cluster secret ------------------------------------------------
+#
+# The cluster secret only needs to be *generated once*; pmxcfs replicates
+# anything under /etc/pve to every node automatically, so subsequent nodes
+# in a real cluster will already see this file. That "automatic replication
+# across an actual cluster" is the part this sandbox cannot verify — it
+# requires a live pmxcfs mount and real corosync-joined nodes, so it is
+# still tracked as TODO(T-606) for verification, even though local
+# generation below is real, not faked.
+if [ -d /etc/pve ]; then
+	install -d -m 0700 -o root -g root "$PVE_CLUSTER_DIR" 2>/dev/null || warn "could not create $PVE_CLUSTER_DIR (is /etc/pve writable / is pmxcfs running?)"
+	if [ -s "$CLUSTER_SECRET_FILE" ]; then
+		log "cluster secret already present at $CLUSTER_SECRET_FILE, leaving it untouched"
+	else
+		umask 077
+		if command -v openssl >/dev/null 2>&1; then
+			openssl rand -out "$CLUSTER_SECRET_FILE" 32 2>/dev/null && chmod 0600 "$CLUSTER_SECRET_FILE"
+		else
+			head -c 32 /dev/urandom >"$CLUSTER_SECRET_FILE" && chmod 0600 "$CLUSTER_SECRET_FILE"
+		fi
+		if [ -s "$CLUSTER_SECRET_FILE" ]; then
+			log "generated new cluster secret at $CLUSTER_SECRET_FILE"
+		else
+			warn "failed to generate $CLUSTER_SECRET_FILE"
+		fi
+	fi
+	log "TODO(T-606): verify pmxcfs replication of $CLUSTER_SECRET_FILE across all cluster nodes on real hardware"
+else
+	log "TODO(T-606): /etc/pve not present (no pmxcfs) — cluster secret bootstrap skipped; this step requires a real Proxmox VE node/cluster"
+fi
+
+# --- step 7: config, session key, enable+start ----------------------------
+
+log "writing $CONFIG_PATH (listen port $RESOLVED_PORT)"
+if [ -f "$CONFIG_PATH" ]; then
+	if command -v sed >/dev/null 2>&1; then
+		sed -i.bak -E "s/^listen = \".*\"/listen = \"0.0.0.0:${RESOLVED_PORT}\"/" "$CONFIG_PATH"
+		rm -f "${CONFIG_PATH}.bak"
+	fi
+else
+	warn "$CONFIG_PATH not found (expected the package's conffile to be here) — writing a minimal one"
+	install -d -m 0755 -o root -g root "$(dirname "$CONFIG_PATH")"
+	cat >"$CONFIG_PATH" <<EOF
+[server]
+listen = "0.0.0.0:${RESOLVED_PORT}"
+read_only = false
+confirm_timeout_default = 120
+
+[pve]
+api_url = "https://127.0.0.1:8006"
+token_file = "/etc/vnprox/keys/pve-token"
+
+[safety]
+allow_dangerous_ops = false
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"
+EOF
+	chmod 0644 "$CONFIG_PATH"
+fi
+
+# Idempotent session key generation, mirroring postinst exactly — belt and
+# braces in case vnprox-setup is ever invoked without the package's
+# postinst having run (e.g. a future re-setup command).
+install -d -m 0700 -o root -g root "$KEYS_DIR"
+if [ -s "$SESSION_KEY_FILE" ]; then
+	log "session key already present at $SESSION_KEY_FILE"
+else
+	umask 077
+	if command -v openssl >/dev/null 2>&1; then
+		openssl rand -out "$SESSION_KEY_FILE" 32
+	else
+		head -c 32 /dev/urandom >"$SESSION_KEY_FILE"
+	fi
+	chown root:root "$SESSION_KEY_FILE"
+	chmod 0600 "$SESSION_KEY_FILE"
+	log "generated session key at $SESSION_KEY_FILE"
+fi
+
+if [ -d /run/systemd/system ]; then
+	systemctl daemon-reload || true
+	systemctl enable --now vnprox.service
+	log "vnprox.service enabled and started"
+else
+	warn "systemd is not the running init system in this environment; run manually: systemctl enable --now vnprox"
+fi
+
+# --- checklist -------------------------------------------------------------
+
+cat <<EOF
+
+vnprox setup complete for this node.
+
+  URL:              https://$(hostname -f 2>/dev/null || hostname):${RESOLVED_PORT}
+  Config:           $CONFIG_PATH
+  Session key:      $SESSION_KEY_FILE
+  Logs:             journalctl -u vnprox
+
+First-login checklist:
+  - Log in with your existing Proxmox VE credentials (no separate vnprox account).
+  - Restrict port ${RESOLVED_PORT} to management networks, same as you should for 8006
+    (see docs/security.md "Firewalling vnprox itself").
+  - Repeat this setup on every other cluster node (install.sh offers to do
+    this over SSH; see its output for the current state of that feature).
+EOF

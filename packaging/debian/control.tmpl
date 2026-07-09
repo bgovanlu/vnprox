@@ -1,0 +1,17 @@
+Package: vnprox
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: @ARCH@
+Maintainer: vnprox maintainers <packaging@vnprox.io>
+Recommends: lldpd, ifupdown2
+Homepage: https://github.com/bgovanlu/vnprox
+Description: Visual networking add-on for Proxmox VE
+ vnprox is a single-binary add-on installed on every Proxmox VE node that
+ provides a visual topology map, safe guided network changes with
+ commit-confirm rollback, SDN and firewall editors, IPAM, and LLDP-based
+ physical discovery. Proxmox VE remains the source of truth for network
+ configuration; vnprox never applies changes outside its change engine.
+ .
+ See docs/deployment.md in the source repository for install, upgrade, and
+ uninstall semantics; docs/security.md for the security model.

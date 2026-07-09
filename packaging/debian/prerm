@@ -1,0 +1,24 @@
+#!/bin/sh
+# prerm for the vnprox .deb: stop the running service before its files are
+# removed (both plain `apt remove` and `apt purge` invoke prerm the same
+# way — the remove/keep-data-vs-purge-data distinction is entirely in
+# postrm). See planning/tasks/phase-0.md#T-006.
+
+set -e
+
+case "$1" in
+  remove|deconfigure)
+    if [ -d /run/systemd/system ]; then
+      systemctl stop vnprox.service >/dev/null 2>&1 || true
+    fi
+    ;;
+  upgrade|failed-upgrade)
+    if [ -d /run/systemd/system ]; then
+      systemctl stop vnprox.service >/dev/null 2>&1 || true
+    fi
+    ;;
+  *)
+    ;;
+esac
+
+exit 0

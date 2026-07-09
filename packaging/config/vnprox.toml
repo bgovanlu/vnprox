@@ -1,0 +1,30 @@
+# vnprox daemon configuration — see docs/deployment.md
+# ("Configuration file — /etc/vnprox/vnprox.toml") for the full reference.
+#
+# This file is a conffile: `apt upgrade`/`apt install --reinstall` will
+# never silently overwrite local edits (dpkg will prompt on conflicting
+# changes). Unknown keys are logged as warnings by vnproxd, not treated as
+# fatal, so it is safe to have a slightly newer or older vnproxd read an
+# older or newer version of this file across an upgrade.
+
+[server]
+listen = "0.0.0.0:8007"
+# tls_cert / tls_key: left unset by default, which means "reuse the node's
+# PVE certificate" (/etc/pve/local/pve-ssl.{pem,key}), matching pveproxy's
+# own cert story (docs/architecture.md §9). Uncomment both to override:
+# tls_cert = "/etc/vnprox/tls/vnprox.pem"
+# tls_key  = "/etc/vnprox/tls/vnprox.key"
+read_only = false
+confirm_timeout_default = 120
+
+[pve]
+api_url = "https://127.0.0.1:8006"
+token_file = "/etc/vnprox/keys/pve-token"
+
+[safety]
+allow_dangerous_ops = false
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"
