@@ -49,6 +49,18 @@ const (
 	codeAddressOutOfSubnet   = "referential.address_out_of_subnet"
 	codeFwPosOutOfRange      = "referential.fw_pos_out_of_range"
 
+	// --- safety (class 3: protected interfaces, guest-bearing bridges) --
+	// T-203, docs/security.md "Safety interlocks" / docs/features/
+	// change-management.md §2 class 3. These are SeverityError findings by
+	// default; safetyValidate downgrades them to SeverityWarning when
+	// SafetyOptions.AllowDangerousOps is set (docs/security.md: "override
+	// only via config flag allow_dangerous_ops") — the code stays the same
+	// either way, only Severity changes, so a client can still recognize
+	// the check that fired.
+
+	codeProtectedInterface = "safety.protected_interface"
+	codeGuestBearingBridge = "safety.guest_bearing_bridge"
+
 	// --- advisory (class 5: style/health warnings) ----------------------
 
 	codeAdvisoryBondHashPolicy = "advisory.bond_missing_layer34_hash"

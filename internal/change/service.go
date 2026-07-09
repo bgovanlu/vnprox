@@ -51,6 +51,24 @@ type Config struct {
 	Inventory  InventorySource
 	Now        func() time.Time
 	Logger     *slog.Logger
+
+	// ProtectedPath is the on-disk location of the onboarding-confirmed
+	// protected-interface set (T-203, docs/features/blueprints.md §3).
+	// Empty defaults to DefaultProtectedPath. It is read fresh on every
+	// validation (Create/UpdateDraft/Validate) and by GetProtected, and
+	// written by SetProtected — never cached, so an onboarding correction
+	// takes effect on the very next validation without a daemon restart.
+	ProtectedPath string
+
+	// AllowDangerousOps mirrors config.Config.Safety.AllowDangerousOps
+	// (docs/security.md "Safety interlocks": "override only via config
+	// flag allow_dangerous_ops"). It is captured once at Service
+	// construction — matching every other Config field's static-at-
+	// startup convention (there is no daemon config hot-reload) — and
+	// applied at validation time to downgrade T-203's safety-interlock
+	// findings to warnings, with the override itself audited (see
+	// auditSafetyOverride).
+	AllowDangerousOps bool
 }
 
 // Service implements T-201's changeset draft CRUD (store-backed
@@ -64,12 +82,14 @@ type Config struct {
 // draft<->validated status transition. Diff/Apply/Confirm/Rollback are
 // T-205's responsibility — see doc.go.
 type Service struct {
-	repo  *store.ChangesetRepo
-	audit *store.AuditRepo
-	ws    Broadcaster
-	inv   InventorySource
-	now   func() time.Time
-	log   *slog.Logger
+	repo              *store.ChangesetRepo
+	audit             *store.AuditRepo
+	ws                Broadcaster
+	inv               InventorySource
+	now               func() time.Time
+	log               *slog.Logger
+	protectedPath     string
+	allowDangerousOps bool
 }
 
 // NewService constructs a Service. Config.Changesets and Config.Audit are
@@ -89,7 +109,14 @@ func NewService(cfg Config) (*Service, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, now: now, log: logger}, nil
+	protectedPath := cfg.ProtectedPath
+	if protectedPath == "" {
+		protectedPath = DefaultProtectedPath
+	}
+	return &Service{
+		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, now: now, log: logger,
+		protectedPath: protectedPath, allowDangerousOps: cfg.AllowDangerousOps,
+	}, nil
 }
 
 // inventorySnapshot returns the current inventory snapshot to validate
@@ -100,6 +127,51 @@ func (s *Service) inventorySnapshot() inventory.Snapshot {
 		return inventory.NewGraph().Snapshot()
 	}
 	return s.inv.Snapshot()
+}
+
+// safetyOptions builds T-203's SafetyOptions for one validation call: the
+// protected-interface set is loaded fresh from s.protectedPath every time
+// (docs/features/blueprints.md §3's onboarding-correction flow needs the
+// very next validation to see a just-saved correction, not a cached
+// snapshot from daemon startup), and allow_dangerous_ops is the value
+// captured at Service construction from config.Config.Safety.
+// AllowDangerousOps. A load failure degrades to "nothing protected" rather
+// than failing validation outright, logged at error level so an operator
+// notices a broken protected.json without every validate call 500ing.
+func (s *Service) safetyOptions() SafetyOptions {
+	cfg, err := LoadProtectedConfig(s.protectedPath)
+	if err != nil {
+		s.log.Error("change: loading protected-interface config for validation", "path", s.protectedPath, "error", err)
+		return SafetyOptions{AllowDangerousOps: s.allowDangerousOps}
+	}
+	protected, bad := cfg.Resolve()
+	for _, ref := range bad {
+		s.log.Warn("change: protected-interface config has an unparsable ref, ignoring", "ref", ref)
+	}
+	return SafetyOptions{Protected: protected, AllowDangerousOps: s.allowDangerousOps}
+}
+
+// auditSafetyOverride records an audit entry when allow_dangerous_ops
+// caused one or more of T-203's safety-interlock findings to be downgraded
+// from error to warning (docs/security.md: "override only via config flag
+// allow_dangerous_ops"; T-203's card: "its use audited"). It is a no-op
+// unless the override actually mattered for this validation (i.e. a
+// safety-class finding is present at all — it would have been an error,
+// and short-circuited the changeset, had the override not been active).
+func (s *Service) auditSafetyOverride(ctx context.Context, author, changesetID string, findings []Finding) {
+	if !s.allowDangerousOps {
+		return
+	}
+	var refs []string
+	for _, f := range findings {
+		if f.Code == codeProtectedInterface || f.Code == codeGuestBearingBridge {
+			refs = append(refs, f.Ref)
+		}
+	}
+	if len(refs) == 0 {
+		return
+	}
+	s.appendAudit(ctx, author, "changeset.safety_override", "warning", changesetID, map[string]any{"refs": refs})
 }
 
 // List returns changesets ordered newest-first, optionally filtered to a
@@ -144,9 +216,10 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 		ops = []Op{}
 	}
 	nowUnix := s.now().Unix()
+	findings := ValidateWithSafety(ops, s.inventorySnapshot(), s.safetyOptions())
 	c := Changeset{
 		ID: store.NewULID(), Title: title, Author: author, Status: StatusDraft,
-		Ops: ops, Findings: Validate(ops, s.inventorySnapshot()), CreatedAt: nowUnix, UpdatedAt: nowUnix,
+		Ops: ops, Findings: findings, CreatedAt: nowUnix, UpdatedAt: nowUnix,
 	}
 	row, err := toStoreRow(c)
 	if err != nil {
@@ -156,6 +229,7 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 		return Changeset{}, fmt.Errorf("change: creating changeset %s: %w", c.ID, err)
 	}
 	s.appendAudit(ctx, author, "changeset.create", "success", c.ID, map[string]any{"title": title, "opCount": len(ops)})
+	s.auditSafetyOverride(ctx, author, c.ID, findings)
 	s.broadcastStatus(c)
 	return c, nil
 }
@@ -189,7 +263,8 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 		ops = []Op{}
 	}
 	c.Ops = ops
-	c.Findings = Validate(ops, s.inventorySnapshot())
+	findings := ValidateWithSafety(ops, s.inventorySnapshot(), s.safetyOptions())
+	c.Findings = findings
 	if title != nil {
 		c.Title = *title
 	}
@@ -202,6 +277,7 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 	if err := s.repo.Update(ctx, row); err != nil {
 		return Changeset{}, fmt.Errorf("change: updating changeset %s: %w", id, err)
 	}
+	s.auditSafetyOverride(ctx, author, id, findings)
 	if prevStatus != c.Status {
 		s.broadcastStatus(c)
 	}
@@ -254,7 +330,7 @@ func (s *Service) Validate(ctx context.Context, id, author string) (Changeset, e
 		return Changeset{}, &ErrIllegalTransition{From: c.Status, To: StatusValidated}
 	}
 
-	findings := Validate(c.Ops, s.inventorySnapshot())
+	findings := ValidateWithSafety(c.Ops, s.inventorySnapshot(), s.safetyOptions())
 	c.Findings = findings
 	clean := !hasError(findings)
 	prevStatus := c.Status
@@ -285,10 +361,52 @@ func (s *Service) Validate(ctx context.Context, id, author string) (Changeset, e
 		result = "errors"
 	}
 	s.appendAudit(ctx, author, "changeset.validate", result, id, map[string]any{"findingCount": len(findings)})
+	s.auditSafetyOverride(ctx, author, id, findings)
 	if prevStatus != c.Status {
 		s.broadcastStatus(c)
 	}
 	return c, nil
+}
+
+// GetProtected returns the current onboarding-confirmed protected-interface
+// config (docs/api.md-to-be: "minimal API to read/update" protected.json,
+// per T-203's card). A missing file (onboarding hasn't run yet) is not an
+// error — LoadProtectedConfig returns an empty config for that case.
+func (s *Service) GetProtected(_ context.Context) (ProtectedConfig, error) {
+	cfg, err := LoadProtectedConfig(s.protectedPath)
+	if err != nil {
+		return ProtectedConfig{}, fmt.Errorf("change: getting protected-interface config: %w", err)
+	}
+	return cfg, nil
+}
+
+// SetProtected validates and persists a new protected-interface config
+// (the onboarding confirmation/correction flow, docs/features/blueprints.md
+// §3), stamping Version/UpdatedAt/UpdatedBy, and audits the change. It
+// returns *ErrInvalidProtectedRef if any ref string in cfg.Nodes fails to
+// parse — the API layer maps that to a 400, mirroring how a malformed op
+// target is handled elsewhere in this package.
+func (s *Service) SetProtected(ctx context.Context, author string, cfg ProtectedConfig) (ProtectedConfig, error) {
+	if _, bad := cfg.Resolve(); len(bad) > 0 {
+		return ProtectedConfig{}, &ErrInvalidProtectedRef{Refs: bad}
+	}
+	if cfg.Nodes == nil {
+		cfg.Nodes = map[string][]string{}
+	}
+	cfg.Version = protectedConfigVersion
+	cfg.UpdatedAt = s.now().Unix()
+	cfg.UpdatedBy = author
+
+	if err := SaveProtectedConfig(s.protectedPath, cfg); err != nil {
+		return ProtectedConfig{}, fmt.Errorf("change: setting protected-interface config: %w", err)
+	}
+
+	nodeCount, refCount := len(cfg.Nodes), 0
+	for _, refs := range cfg.Nodes {
+		refCount += len(refs)
+	}
+	s.appendAudit(ctx, author, "protected.update", "success", "", map[string]any{"nodeCount": nodeCount, "refCount": refCount})
+	return cfg, nil
 }
 
 func (s *Service) appendAudit(ctx context.Context, username, action, result, changesetID string, detail map[string]any) {

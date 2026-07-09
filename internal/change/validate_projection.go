@@ -27,10 +27,16 @@ type vlanKey struct {
 }
 
 // addrEntry is one declared address CIDR on some node, tagged with the Ref
-// that owns it, for the address-overlap referential check.
+// that owns it, for the address-overlap referential check. hostIP is the
+// address's actual host bits (net.ParseCIDR's first return value), kept
+// alongside ipnet (the masked network, used for the overlap check) so
+// T-203's safety-interlock class can ask "is this exact IP still assigned
+// to something on this node" — ipnet.IP alone (the network address) loses
+// that information for anything but a /32.
 type addrEntry struct {
-	ipnet *net.IPNet
-	ref   inventory.Ref
+	ipnet  *net.IPNet
+	ref    inventory.Ref
+	hostIP net.IP
 }
 
 // projection is the evolving "as of this point in the ops list" view every
@@ -155,10 +161,51 @@ func firstNonEmpty(a, b []string) []string {
 
 func (p *projection) addAddrs(ref inventory.Ref, addrs []string) {
 	for _, a := range addrs {
-		if _, ipnet, err := net.ParseCIDR(a); err == nil {
-			p.addrs[ref.Node] = append(p.addrs[ref.Node], addrEntry{ref: ref, ipnet: ipnet})
+		if ip, ipnet, err := net.ParseCIDR(a); err == nil {
+			p.addrs[ref.Node] = append(p.addrs[ref.Node], addrEntry{ref: ref, ipnet: ipnet, hostIP: ip})
 		}
 	}
+}
+
+// hasHostIP reports whether ip is currently assigned (as of this point in
+// the walk) to any entity on node — used by the safety-interlock class to
+// check whether a protected address is still reachable via *some*
+// interface, regardless of whether the specific entity that originally
+// carried it still exists (docs/features/change-management.md §2 class 3's
+// "chain analysis": moving an address to a new bridge and deleting the old
+// one in the same changeset must validate clean).
+func (p *projection) hasHostIP(node string, ip net.IP) bool {
+	for _, e := range p.addrs[node] {
+		if e.hostIP.Equal(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasHostIPOnRef is hasHostIP narrowed to entries still owned by ref
+// specifically (used by the bridge-path-detachment check, which only cares
+// whether the *original* protected bridge itself still carries the
+// address, not whether it moved elsewhere).
+func (p *projection) hasHostIPOnRef(ref inventory.Ref, ip net.IP) bool {
+	for _, e := range p.addrs[ref.Node] {
+		if e.ref == ref && e.hostIP.Equal(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// portCount returns how many entries in p.enslaved are currently owned by
+// owner — the number of ports/slaves owner has "as of now".
+func (p *projection) portCount(owner inventory.Ref) int {
+	n := 0
+	for _, o := range p.enslaved {
+		if o == owner {
+			n++
+		}
+	}
+	return n
 }
 
 // removeAddrsOf drops every addrEntry owned by ref (used before folding in

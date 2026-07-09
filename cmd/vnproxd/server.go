@@ -86,11 +86,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// (T-202: Service.Validate/Create/UpdateDraft snapshot it read-only —
 	// this package never polls or mutates inventory itself).
 	changeSvc, err := change.NewService(change.Config{
-		Changesets: store.NewChangesetRepo(db),
-		Audit:      store.NewAuditRepo(db),
-		WS:         topoSvc,
-		Inventory:  graph,
-		Logger:     logger,
+		Changesets:        store.NewChangesetRepo(db),
+		Audit:             store.NewAuditRepo(db),
+		WS:                topoSvc,
+		Inventory:         graph,
+		Logger:            logger,
+		ProtectedPath:     change.DefaultProtectedPath,
+		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
 	})
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)
@@ -105,6 +107,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Topology:   topoSvc,
 		Layouts:    store.NewLayoutRepo(db),
 		Changesets: changeSvc,
+		Protected:  changeSvc,
 	})
 
 	srv := &http.Server{
