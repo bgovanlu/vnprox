@@ -28,9 +28,35 @@
 //     task made), and audit entries on create/discard (T-003's
 //     *store.AuditRepo, same pattern as internal/auth).
 //
-// Validate/Diff/Apply/Confirm/Rollback are NOT implemented here — T-202
-// and T-205 own that logic. internal/api registers their routes (per
-// docs/api.md's changesets section) but returns 501 rather than calling
-// into this package for them, per T-201's task card ("reserving the route
-// shape so the API surface matches the doc now").
+// Diff/Apply/Confirm/Rollback are NOT implemented here — T-205 owns that
+// logic; internal/api's routes for them remain 501 stubs.
+//
+// # T-202 scope
+//
+// This task built the layered validator pipeline (validate.go and its
+// validate_*.go siblings) and wired it in two places: Service.Validate
+// (backing `POST /changesets/{id}/validate`, promoting/demoting the
+// draft<->validated status transition) and auto-validation on every draft
+// mutation (Service.Create/UpdateDraft now populate Findings immediately,
+// though — unlike Validate — those two never change Status themselves).
+//
+//   - validate.go: Validate(ops, snap) is the pure entry point (no service/
+//     store dependency, so it's directly table-testable): runs classes in
+//     docs/features/change-management.md §2's documented order — schema,
+//     referential, [safety — T-203's insertion point], [cross-node — not
+//     assigned], advisory — short-circuiting after any class that produces
+//     an error-severity finding.
+//   - validate_schema.go: class 1, per-op types/ranges/enums/syntax,
+//     independent of the snapshot.
+//   - validate_projection.go + validate_referential.go: class 2, evaluated
+//     against an inventory.Snapshot *plus* every earlier op in the same
+//     changeset (the "projection" folded forward op-by-op) — this is what
+//     lets `bond.create bond0` followed by `bridge.port.add vmbr0 bond0` in
+//     one changeset validate clean, while the reverse order correctly
+//     errors (T-202 acceptance criterion 2).
+//   - validate_advisory.go: class 5, style/health warnings.
+//   - validate_fix.go: machine-applicable `fix` patches (MTU/VID clamps)
+//     attached to the schema findings that have an obvious correction.
+//   - validate_codes.go: the stable Finding.Code identifiers the golden
+//     test suite and any future frontend/documentation reference.
 package change

@@ -422,3 +422,184 @@ func TestService_Discard_NotFound(t *testing.T) {
 		t.Errorf("Discard(missing) error = %v, want store.ErrNotFound", err)
 	}
 }
+
+// --- T-202: Validate --------------------------------------------------
+
+// fakeInventorySource is a trivial InventorySource test double so
+// TestService_Create_ValidatesAgainstInjectedInventory can prove the
+// Config.Inventory seam is actually wired into Create/UpdateDraft/Validate,
+// rather than always falling back to the empty-graph default.
+type fakeInventorySource struct{ snap inventory.Snapshot }
+
+func (f fakeInventorySource) Snapshot() inventory.Snapshot { return f.snap }
+
+func TestService_Create_ValidatesAgainstInjectedInventory(t *testing.T) {
+	db := openTestDB(t)
+	snap := buildSnapshot(&inventory.PhysNic{Ref: inventory.Ref{Kind: inventory.KindPhysNic, Node: "pve1", ID: "eno1"}, Name: "eno1"})
+	svc, err := NewService(Config{
+		Changesets: store.NewChangesetRepo(db), Audit: store.NewAuditRepo(db),
+		Inventory: fakeInventorySource{snap: snap},
+		Now:       func() time.Time { return time.Unix(1, 0) },
+	})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	ctx := context.Background()
+
+	// bond.create's slave "eno1" only exists because it was injected via
+	// Config.Inventory above — against the default empty snapshot this
+	// would be a referential.slave_not_found error.
+	ops := []Op{{
+		Type:   OpBondCreate,
+		Target: inventory.Ref{Kind: inventory.KindBond, Node: "pve1", ID: "bond0"},
+		Params: &BondCreateParams{Mode: "active-backup", Slaves: []string{"eno1"}},
+	}}
+	c, err := svc.Create(ctx, "alice@pam", "draft", ops)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if hasError(c.Findings) {
+		t.Errorf("Findings = %+v, want no errors (eno1 exists in the injected inventory)", c.Findings)
+	}
+}
+
+func TestService_Validate_PromotesCleanDraftToValidated(t *testing.T) {
+	ws := &fakeBroadcaster{}
+	svc := newTestService(t, ws)
+	ctx := context.Background()
+
+	c, err := svc.Create(ctx, "alice@pam", "draft", sampleOps())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	before := ws.count()
+
+	validated, err := svc.Validate(ctx, c.ID, "alice@pam")
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if validated.Status != StatusValidated {
+		t.Errorf("Status = %s, want validated", validated.Status)
+	}
+	if ws.count() != before+1 {
+		t.Errorf("broadcast count = %d, want %d (draft -> validated transition)", ws.count(), before+1)
+	}
+
+	got, err := svc.Get(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != StatusValidated {
+		t.Errorf("Get().Status = %s, want validated", got.Status)
+	}
+}
+
+// TestService_Validate_DemotesValidatedBackToDraftOnNewError seeds a
+// changeset directly in StatusValidated (simulating a prior clean
+// validate) whose ops no longer validate clean, then asserts Validate
+// demotes it back to StatusDraft (changeset.go's StatusValidated doc
+// comment: "Any further edit invalidates this back to StatusDraft" — the
+// same principle applies when the *snapshot*, not the ops, has moved).
+func TestService_Validate_DemotesValidatedBackToDraftOnNewError(t *testing.T) {
+	ws := &fakeBroadcaster{}
+	svc := newTestService(t, ws)
+	ctx := context.Background()
+
+	badOps := []Op{{
+		Type:   OpBondDelete,
+		Target: inventory.Ref{Kind: inventory.KindBond, Node: "pve1", ID: "bond0"},
+		Params: &BondDeleteParams{},
+	}}
+	c := Changeset{ID: store.NewULID(), Title: "x", Author: "alice@pam", Status: StatusValidated, Ops: badOps, CreatedAt: 1, UpdatedAt: 1}
+	row, err := toStoreRow(c)
+	if err != nil {
+		t.Fatalf("toStoreRow: %v", err)
+	}
+	if insertErr := svc.repo.Insert(ctx, row); insertErr != nil {
+		t.Fatalf("seeding validated changeset: %v", insertErr)
+	}
+	before := ws.count()
+
+	got, err := svc.Validate(ctx, c.ID, "alice@pam")
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if got.Status != StatusDraft {
+		t.Errorf("Status = %s, want draft (demoted)", got.Status)
+	}
+	if !hasError(got.Findings) {
+		t.Errorf("Findings = %+v, want at least one error (bond0 does not exist)", got.Findings)
+	}
+	if ws.count() != before+1 {
+		t.Errorf("broadcast count = %d, want %d (validated -> draft transition)", ws.count(), before+1)
+	}
+}
+
+func TestService_Validate_NotEditable_ErrIllegalTransition(t *testing.T) {
+	svc := newTestService(t, nil)
+	ctx := context.Background()
+
+	c, err := svc.Create(ctx, "alice@pam", "draft", sampleOps())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if transErr := c.Transition(StatusApplying, 1_700_000_000); transErr != nil {
+		t.Fatalf("Transition to applying: %v", transErr)
+	}
+	row, err := toStoreRow(c)
+	if err != nil {
+		t.Fatalf("toStoreRow: %v", err)
+	}
+	if updateErr := svc.repo.Update(ctx, row); updateErr != nil {
+		t.Fatalf("seeding applying status: %v", updateErr)
+	}
+
+	_, err = svc.Validate(ctx, c.ID, "alice@pam")
+	var illegal *ErrIllegalTransition
+	if !errors.As(err, &illegal) {
+		t.Fatalf("Validate on an applying changeset: error = %v, want *ErrIllegalTransition", err)
+	}
+}
+
+func TestService_Validate_NotFound(t *testing.T) {
+	svc := newTestService(t, nil)
+	_, err := svc.Validate(context.Background(), "nope", "alice@pam")
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Validate(missing) error = %v, want store.ErrNotFound", err)
+	}
+}
+
+func TestService_Validate_Audits(t *testing.T) {
+	db := openTestDB(t)
+	audit := store.NewAuditRepo(db)
+	svc, err := NewService(Config{Changesets: store.NewChangesetRepo(db), Audit: audit, Now: func() time.Time { return time.Unix(99, 0) }})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	ctx := context.Background()
+
+	c, err := svc.Create(ctx, "alice@pam", "draft", sampleOps())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, validateErr := svc.Validate(ctx, c.ID, "alice@pam"); validateErr != nil {
+		t.Fatalf("Validate: %v", validateErr)
+	}
+
+	entries, err := audit.List(ctx, c.ID, 0)
+	if err != nil {
+		t.Fatalf("audit List: %v", err)
+	}
+	var validateEntries int
+	for _, e := range entries {
+		if e.Action == "changeset.validate" {
+			validateEntries++
+			if e.Username != "alice@pam" {
+				t.Errorf("validate audit entry = %+v, want username=alice@pam", e)
+			}
+		}
+	}
+	if validateEntries != 1 {
+		t.Errorf("changeset.validate audit entries = %d, want 1", validateEntries)
+	}
+}

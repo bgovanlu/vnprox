@@ -421,9 +421,10 @@ func TestChangesetsRoutes_TwoUsersDraftsCoexist(t *testing.T) {
 	}
 }
 
-// TestChangesetsStubRoutes_501 proves validate/diff/apply/confirm/rollback
-// are registered (matching docs/api.md's route shape) but return 501 until
-// T-202/T-205 land.
+// TestChangesetsStubRoutes_501 proves diff/apply/confirm/rollback are
+// registered (matching docs/api.md's route shape) but return 501 until
+// T-205 lands. validate is covered separately (T-202 implements it for
+// real — see TestChangesetsValidate_Route below).
 func TestChangesetsStubRoutes_501(t *testing.T) {
 	svc := newChangesetTestService(t)
 	r := newChangesetTestRouter(svc, fullCapsAuth("alice"))
@@ -437,7 +438,6 @@ func TestChangesetsStubRoutes_501(t *testing.T) {
 	}
 
 	for _, path := range []string{
-		"/api/v1/changesets/" + created.ID + "/validate",
 		"/api/v1/changesets/" + created.ID + "/apply",
 		"/api/v1/changesets/" + created.ID + "/confirm",
 		"/api/v1/changesets/" + created.ID + "/rollback",
@@ -455,5 +455,58 @@ func TestChangesetsStubRoutes_501(t *testing.T) {
 	r.ServeHTTP(diffRec, diffReq)
 	if diffRec.Code != http.StatusNotImplemented {
 		t.Errorf("GET diff: status = %d, want 501", diffRec.Code)
+	}
+}
+
+// TestChangesetsValidate_Route is T-202's API-layer coverage for
+// `POST /changesets/{id}/validate`: it runs the real pipeline (rather than
+// the 501 stub) and returns the changeset with findings populated, and a
+// clean changeset is promoted from draft to validated.
+func TestChangesetsValidate_Route(t *testing.T) {
+	svc := newChangesetTestService(t)
+	r := newChangesetTestRouter(svc, fullCapsAuth("alice"))
+
+	// A clean op (schema/referential valid against the empty test-service
+	// inventory: a bridge.create never needs its target to already exist;
+	// "comments" is set so the advisory class's missing-description check
+	// doesn't add a warning finding here).
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/changesets",
+		bytes.NewBufferString(`{"title":"draft","ops":[{"op":"bridge.create","target":"bridge:pve1:vmbr5","params":{"mtu":1500,"comments":"guest bridge"}}]}`))
+	createRec := httptest.NewRecorder()
+	r.ServeHTTP(createRec, createReq)
+	var created changesetResponse
+	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
+		t.Fatalf("decoding create response: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/changesets/"+created.ID+"/validate", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("validate status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var validated changesetResponse
+	if err := json.NewDecoder(rec.Body).Decode(&validated); err != nil {
+		t.Fatalf("decoding validate response: %v", err)
+	}
+	if validated.Status != "validated" {
+		t.Errorf("Status = %q, want validated", validated.Status)
+	}
+	if len(validated.Findings) != 0 {
+		t.Errorf("Findings = %+v, want none for a clean changeset", validated.Findings)
+	}
+}
+
+// TestChangesetsValidate_NotFound proves the 404 mapping applies to
+// validate the same way it does to the other mutation-shaped routes.
+func TestChangesetsValidate_NotFound(t *testing.T) {
+	svc := newChangesetTestService(t)
+	r := newChangesetTestRouter(svc, fullCapsAuth("alice"))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/changesets/nope/validate", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404, body: %s", rec.Code, rec.Body.String())
 	}
 }

@@ -25,20 +25,21 @@ const capNetWrite = "netWrite"
 // headroom against an abusive/buggy client, not a realistic limit.
 const maxChangesetBodyBytes = 4 << 20 // 4 MiB
 
-// ChangesetService is the subset of T-201's *change.Service the router
-// needs: draft CRUD. Declared as an interface (the same seam pattern as
-// AuthService/TopologyService/LayoutStore above) so this package's
-// dependency on the concrete change.Service stays small and testable
-// without a real SQLite file. Validate/Diff/Apply/Confirm/Rollback are
-// deliberately not part of this seam — those routes are registered but
-// stubbed 501 (see mountChangesetsRoutes), since T-202/T-205 own the
-// logic behind them.
+// ChangesetService is the subset of *change.Service the router needs: T-201's
+// draft CRUD plus T-202's Validate. Declared as an interface (the same seam
+// pattern as AuthService/TopologyService/LayoutStore above) so this
+// package's dependency on the concrete change.Service stays small and
+// testable without a real SQLite file. Diff/Apply/Confirm/Rollback are
+// deliberately not part of this seam — those routes remain registered but
+// stubbed 501 (see mountChangesetsRoutes), since T-205 owns the logic
+// behind them.
 type ChangesetService interface {
 	List(ctx context.Context, status string) ([]change.Changeset, error)
 	Get(ctx context.Context, id string) (change.Changeset, error)
 	Create(ctx context.Context, author, title string, ops []change.Op) (change.Changeset, error)
 	UpdateDraft(ctx context.Context, id, author string, title *string, ops []change.Op) (change.Changeset, error)
 	Discard(ctx context.Context, id, author string) error
+	Validate(ctx context.Context, id, author string) (change.Changeset, error)
 }
 
 // CSRFEnforcer is implemented by AuthService backends that can check the
@@ -94,12 +95,12 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 }
 
 // mountChangesetsRoutes registers docs/api.md's changesets routes: the
-// T-201 draft CRUD (list/create/get/update-draft/delete-draft) for real,
-// and validate/diff/apply/confirm/rollback as registered-but-501 stubs so
-// the API surface matches the doc now, ahead of T-202/T-205 filling them
-// in. Read routes require netRead; every mutating route requires netWrite
-// plus (when the auth backend supports it — see CSRFEnforcer) a valid
-// CSRF header.
+// T-201 draft CRUD (list/create/get/update-draft/delete-draft) and T-202's
+// validate for real, and diff/apply/confirm/rollback as registered-but-501
+// stubs so the API surface matches the doc now, ahead of T-205 filling
+// them in. Read routes require netRead; every mutating route requires
+// netWrite plus (when the auth backend supports it — see CSRFEnforcer) a
+// valid CSRF header.
 //
 // svc and auth are nil-safe to call with (routes simply aren't mounted),
 // matching mountTopologyRoutes/mountLayoutsRoutes' pattern. If auth
@@ -133,18 +134,17 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService)
 		r.Post("/changesets", handleCreateChangeset(svc, lookup))
 		r.Put("/changesets/{id}", handleUpdateChangeset(svc, lookup))
 		r.Delete("/changesets/{id}", handleDiscardChangeset(svc, lookup))
-		r.Post("/changesets/{id}/validate", handleChangesetNotImplemented())
+		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup))
 		r.Post("/changesets/{id}/apply", handleChangesetNotImplemented())
 		r.Post("/changesets/{id}/confirm", handleChangesetNotImplemented())
 		r.Post("/changesets/{id}/rollback", handleChangesetNotImplemented())
 	})
 }
 
-// handleChangesetNotImplemented backs the validate/diff/apply/confirm/
-// rollback routes: they exist (matching docs/api.md's route shape) so
-// dependent frontend/task work can wire against the real paths today, but
-// return 501 until T-202 (validate/diff) and T-205 (apply/confirm/
-// rollback) implement the actual logic.
+// handleChangesetNotImplemented backs the diff/apply/confirm/rollback
+// routes: they exist (matching docs/api.md's route shape) so dependent
+// frontend/task work can wire against the real paths today, but return 501
+// until T-205 implements the actual logic.
 func handleChangesetNotImplemented() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotImplemented, "not_implemented", "not implemented yet")
@@ -269,6 +269,27 @@ func handleDiscardChangeset(svc ChangesetService, lookup UsernameLookup) http.Ha
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// handleValidateChangeset backs `POST /changesets/{id}/validate`
+// (docs/api.md: "re-run validation, returns findings") with T-202's real
+// pipeline.
+func handleValidateChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+
+		c, err := svc.Validate(r.Context(), id, username)
+		if err != nil {
+			writeChangesetMutationError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, toChangesetResponse(c))
 	}
 }
 
