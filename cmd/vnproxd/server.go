@@ -85,6 +85,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// validates against the same live *inventory.Graph collect populates
 	// (T-202: Service.Validate/Create/UpdateDraft snapshot it read-only —
 	// this package never polls or mutates inventory itself).
+	// The apply engine (T-205): the host writer for interfaces(5) files, the
+	// pre/post snapshot store, and the collector as the post-terminal
+	// inventory refresher. Refresher is nil-safe (collector may be nil).
+	var refresher change.InventoryRefresher
+	if collector != nil {
+		refresher = collector
+	}
 	changeSvc, err := change.NewService(change.Config{
 		Changesets:        store.NewChangesetRepo(db),
 		Audit:             store.NewAuditRepo(db),
@@ -93,21 +100,33 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Logger:            logger,
 		ProtectedPath:     change.DefaultProtectedPath,
 		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
+		Nodes:             newHostNodeAgent(logger),
+		Snapshots:         store.NewSnapshotRepo(db),
+		Refresher:         refresher,
+		ConfirmTimeout:    time.Duration(cfg.Server.ConfirmTimeoutDefault) * time.Second,
 	})
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)
 	}
+	// Re-arm commit-confirm rollback timers persisted across a restart, and
+	// recover any apply interrupted by a crash (docs/development.md: "Rollback
+	// timers must survive daemon restart ... re-armed on startup").
+	if armErr := changeSvc.ArmPendingRollbacks(ctx); armErr != nil {
+		logger.Error("change: re-arming pending rollbacks on startup", "error", armErr)
+	}
+	defer changeSvc.StopTimers()
 
 	handler := api.NewRouter(api.Options{
-		Version:    version,
-		DistFS:     distFS,
-		Logger:     logger,
-		Auth:       authServiceAdapter{authSvc},
-		Collectors: collectorHealthAdapter{collector},
-		Topology:   topoSvc,
-		Layouts:    store.NewLayoutRepo(db),
-		Changesets: changeSvc,
-		Protected:  changeSvc,
+		Version:     version,
+		DistFS:      distFS,
+		Logger:      logger,
+		Auth:        authServiceAdapter{authSvc},
+		Collectors:  collectorHealthAdapter{collector},
+		Topology:    topoSvc,
+		Layouts:     store.NewLayoutRepo(db),
+		Changesets:  changeSvc,
+		PVEGateways: pveGatewayProvider{authSvc},
+		Protected:   changeSvc,
 	})
 
 	srv := &http.Server{

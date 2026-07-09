@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
@@ -45,30 +46,28 @@ type InventorySource interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Changesets *store.ChangesetRepo
-	Audit      *store.AuditRepo
-	WS         Broadcaster
-	Inventory  InventorySource
-	Now        func() time.Time
-	Logger     *slog.Logger
-
-	// ProtectedPath is the on-disk location of the onboarding-confirmed
-	// protected-interface set (T-203, docs/features/blueprints.md §3).
-	// Empty defaults to DefaultProtectedPath. It is read fresh on every
-	// validation (Create/UpdateDraft/Validate) and by GetProtected, and
-	// written by SetProtected — never cached, so an onboarding correction
-	// takes effect on the very next validation without a daemon restart.
-	ProtectedPath string
-
-	// AllowDangerousOps mirrors config.Config.Safety.AllowDangerousOps
-	// (docs/security.md "Safety interlocks": "override only via config
-	// flag allow_dangerous_ops"). It is captured once at Service
-	// construction — matching every other Config field's static-at-
-	// startup convention (there is no daemon config hot-reload) — and
-	// applied at validation time to downgrade T-203's safety-interlock
-	// findings to warnings, with the override itself audited (see
-	// auditSafetyOverride).
+	Nodes             NodeAgent
+	Refresher         InventoryRefresher
+	WS                Broadcaster
+	Inventory         InventorySource
+	Snapshots         *store.SnapshotRepo
+	Logger            *slog.Logger
+	Now               func() time.Time
+	Changesets        *store.ChangesetRepo
+	Audit             *store.AuditRepo
+	TimerFunc         TimerFunc
+	ProtectedPath     string
+	ConfirmTimeout    time.Duration
 	AllowDangerousOps bool
+}
+
+// TimerFunc arms a one-shot timer that runs f after d and can be stopped.
+// *time.Timer satisfies Stopper, so time.AfterFunc is the production default.
+type TimerFunc func(d time.Duration, f func()) Stopper
+
+// Stopper is the subset of *time.Timer the rollback timer needs (Stop).
+type Stopper interface {
+	Stop() bool
 }
 
 // Service implements T-201's changeset draft CRUD (store-backed
@@ -82,15 +81,30 @@ type Config struct {
 // draft<->validated status transition. Diff/Apply/Confirm/Rollback are
 // T-205's responsibility — see doc.go.
 type Service struct {
-	repo              *store.ChangesetRepo
-	audit             *store.AuditRepo
+	nodes             NodeAgent
+	refresher         InventoryRefresher
 	ws                Broadcaster
 	inv               InventorySource
 	now               func() time.Time
 	log               *slog.Logger
+	repo              *store.ChangesetRepo
+	snapshots         *store.SnapshotRepo
+	audit             *store.AuditRepo
+	timers            map[string]Stopper
+	newTimer          TimerFunc
 	protectedPath     string
+	lockHeldBy        string
+	confirmTimeout    time.Duration
+	applyMu           sync.Mutex
 	allowDangerousOps bool
 }
+
+// Commit-confirm window bounds (docs/features/change-management.md §4).
+const (
+	DefaultConfirmTimeout = 120 * time.Second
+	MinConfirmTimeout     = 30 * time.Second
+	MaxConfirmTimeout     = 600 * time.Second
+)
 
 // NewService constructs a Service. Config.Changesets and Config.Audit are
 // required.
@@ -113,10 +127,43 @@ func NewService(cfg Config) (*Service, error) {
 	if protectedPath == "" {
 		protectedPath = DefaultProtectedPath
 	}
+	confirmTimeout := cfg.ConfirmTimeout
+	if confirmTimeout == 0 {
+		confirmTimeout = DefaultConfirmTimeout
+	}
+	timerFunc := cfg.TimerFunc
+	if timerFunc == nil {
+		timerFunc = func(d time.Duration, f func()) Stopper { return time.AfterFunc(d, f) }
+	}
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, now: now, log: logger,
 		protectedPath: protectedPath, allowDangerousOps: cfg.AllowDangerousOps,
+		nodes: cfg.Nodes, snapshots: cfg.Snapshots, refresher: cfg.Refresher,
+		confirmTimeout: clampConfirmTimeout(confirmTimeout),
+		timers:         map[string]Stopper{},
+		newTimer:       timerFunc,
 	}, nil
+}
+
+// clampConfirmTimeout bounds d to [MinConfirmTimeout, MaxConfirmTimeout].
+func clampConfirmTimeout(d time.Duration) time.Duration {
+	if d < MinConfirmTimeout {
+		return MinConfirmTimeout
+	}
+	if d > MaxConfirmTimeout {
+		return MaxConfirmTimeout
+	}
+	return d
+}
+
+// applyConfigured reports whether the apply-engine dependencies are wired.
+func (s *Service) applyConfigured() bool {
+	return s.nodes != nil && s.snapshots != nil
+}
+
+// nullString is a small helper for the apply engine's store writes.
+func nullString(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
 }
 
 // inventorySnapshot returns the current inventory snapshot to validate

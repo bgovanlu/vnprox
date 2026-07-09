@@ -41,15 +41,16 @@ type AuthService interface {
 
 // Options configures the router built by NewRouter.
 type Options struct {
-	DistFS     fs.FS
-	Auth       AuthService
-	Collectors CollectorHealth
-	Topology   TopologyService
-	Layouts    LayoutStore
-	Changesets ChangesetService
-	Protected  ProtectedService
-	Logger     *slog.Logger
-	Version    string
+	DistFS      fs.FS
+	Auth        AuthService
+	Collectors  CollectorHealth
+	Topology    TopologyService
+	Layouts     LayoutStore
+	Changesets  ChangesetService
+	PVEGateways PVEGatewayProvider
+	Protected   ProtectedService
+	Logger      *slog.Logger
+	Version     string
 }
 
 // NewRouter builds the vnproxd HTTP handler: the full middleware stack,
@@ -74,7 +75,7 @@ func NewRouter(opts Options) http.Handler {
 		}
 		mountTopologyRoutes(r, opts.Topology, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
-		mountChangesetsRoutes(r, opts.Changesets, opts.Auth)
+		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 	})
 

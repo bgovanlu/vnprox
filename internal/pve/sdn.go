@@ -83,3 +83,16 @@ func (c *Client) GetSDNStatus(ctx context.Context) ([]SDNStatusEntry, error) {
 	}
 	return out, nil
 }
+
+// ApplySDN calls PUT /cluster/sdn: apply all pending SDN changes cluster-wide
+// via an async task (docs/features/sdn.md §4), returning the task's UPID.
+// Poll it with GetTask or WaitTask. This is the "(4) sdn.apply last" step the
+// change engine's planner appends when a changeset carries SDN ops
+// (docs/data-model.md §3, docs/architecture.md §4).
+func (c *Client) ApplySDN(ctx context.Context) (string, error) {
+	var upid string
+	if err := c.do(ctx, "PUT", "/cluster/sdn", requestParams{}, &upid); err != nil {
+		return "", err
+	}
+	return upid, nil
+}

@@ -421,11 +421,11 @@ func TestChangesetsRoutes_TwoUsersDraftsCoexist(t *testing.T) {
 	}
 }
 
-// TestChangesetsStubRoutes_501 proves diff/apply/confirm/rollback are
-// registered (matching docs/api.md's route shape) but return 501 until
-// T-205 lands. validate is covered separately (T-202 implements it for
-// real — see TestChangesetsValidate_Route below).
-func TestChangesetsStubRoutes_501(t *testing.T) {
+// TestChangesetsApplyRoutes_Unconfigured proves diff/apply/confirm/rollback
+// are registered and implemented (T-205), returning 503 apply_unavailable
+// when the Service was built without the apply engine (this test's Service
+// has no NodeAgent/SnapshotRepo). validate is covered separately (T-202).
+func TestChangesetsApplyRoutes_Unconfigured(t *testing.T) {
 	svc := newChangesetTestService(t)
 	r := newChangesetTestRouter(svc, fullCapsAuth("alice"))
 
@@ -445,16 +445,16 @@ func TestChangesetsStubRoutes_501(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, path, nil)
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
-		if rec.Code != http.StatusNotImplemented {
-			t.Errorf("POST %s: status = %d, want 501", path, rec.Code)
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("POST %s: status = %d, want 503", path, rec.Code)
 		}
 	}
 
 	diffReq := httptest.NewRequest(http.MethodGet, "/api/v1/changesets/"+created.ID+"/diff", nil)
 	diffRec := httptest.NewRecorder()
 	r.ServeHTTP(diffRec, diffReq)
-	if diffRec.Code != http.StatusNotImplemented {
-		t.Errorf("GET diff: status = %d, want 501", diffRec.Code)
+	if diffRec.Code != http.StatusServiceUnavailable {
+		t.Errorf("GET diff: status = %d, want 503", diffRec.Code)
 	}
 }
 

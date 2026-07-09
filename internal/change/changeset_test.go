@@ -28,9 +28,11 @@ func wantTransitions() map[[2]Status]bool {
 	set(StatusApplying, StatusAwaitingConfirm)
 	set(StatusApplying, StatusFailed)
 	// awaiting_confirm: user confirms (committed) or the deadline elapses /
-	// manual rollback (rolled_back).
+	// manual rollback (rolled_back); failed when that rollback could not
+	// fully restore every node (T-205).
 	set(StatusAwaitingConfirm, StatusCommitted)
 	set(StatusAwaitingConfirm, StatusRolledBack)
+	set(StatusAwaitingConfirm, StatusFailed)
 	// committed/rolled_back/failed/discarded: terminal, no outgoing edges.
 
 	return want
