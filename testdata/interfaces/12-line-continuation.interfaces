@@ -1,0 +1,12 @@
+auto lo
+iface lo inet loopback
+
+auto vmbr0
+iface vmbr0 inet static
+	address 192.168.1.10/24
+	gateway 192.168.1.1
+	bridge-ports eno1 \
+	             eno2 \
+	             eno3
+	post-up echo 1 > /proc/sys/net/ipv4/conf/vmbr0/proxy_arp \
+	        && logger "vmbr0 proxy_arp enabled"

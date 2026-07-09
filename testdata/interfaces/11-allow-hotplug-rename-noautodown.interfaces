@@ -1,0 +1,14 @@
+rename eno1=wan0
+rename eno2=lan0
+
+auto lo
+iface lo inet loopback
+
+allow-hotplug wan0
+iface wan0 inet manual
+
+no-auto-down wan0
+no-scripts lan0
+
+allow-hotplug lan0
+iface lan0 inet manual
