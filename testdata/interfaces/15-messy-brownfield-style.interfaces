@@ -1,0 +1,13 @@
+auto lo
+iface lo inet loopback
+
+# messy brownfield: mixed tabs/spaces indentation, trailing whitespace on
+# some lines, and a stray blank line inside a stanza.   
+auto vmbr0
+iface vmbr0 inet static 
+	address 10.20.30.5/24   
+        gateway 10.20.30.1
+
+	bridge-ports eno1
+	bridge-stp off
+

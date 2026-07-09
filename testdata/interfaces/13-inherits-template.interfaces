@@ -1,0 +1,10 @@
+auto lo
+iface lo inet loopback
+
+iface ethernet-defaults inet static
+	mtu 1500
+	hwaddress ether 00:11:22:33:44:55
+
+auto eno1
+iface eno1 inet static inherits ethernet-defaults
+	address 192.168.1.10/24

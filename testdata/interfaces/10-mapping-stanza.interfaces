@@ -1,0 +1,13 @@
+mapping eth0 eth1
+	script /usr/local/sbin/get-mac-mapping
+	map eth0=uplink0
+	map eth1=uplink1
+
+auto lo
+iface lo inet loopback
+
+auto uplink0
+iface uplink0 inet manual
+
+auto uplink1
+iface uplink1 inet manual

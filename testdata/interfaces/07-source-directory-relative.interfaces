@@ -1,0 +1,9 @@
+
+# Relative source paths are resolved against the directory containing this
+# file (/etc/network); vnprox's parser only needs to preserve the literal
+# path text, not resolve it.
+source interfaces.d/*
+source-directory interfaces.d
+
+auto lo
+iface lo inet loopback

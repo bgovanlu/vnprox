@@ -1,0 +1,14 @@
+# Split configuration: node-specific stanzas live under
+# /etc/network/interfaces.d, generated snippets under interfaces.d/generated.
+source /etc/network/interfaces.d/*
+source /etc/network/interfaces.d/generated/*.cfg
+source-directory /etc/network/interfaces.d
+
+auto lo
+iface lo inet loopback
+
+auto vmbr0
+iface vmbr0 inet manual
+	bridge-ports eno1
+	bridge-stp off
+	bridge-fd 0
