@@ -1,0 +1,399 @@
+package change
+
+import (
+	"net"
+
+	"github.com/bgovanlu/vnprox/internal/inventory"
+)
+
+// referentialValidate is validator class 2 (docs/features/
+// change-management.md §2: "targets exist; no duplicate enslavement; name
+// collisions; VID overlaps on a trunk; address overlaps with existing
+// subnets"), evaluated against snap plus every earlier op in ops (the
+// projection this function builds and folds forward one op at a time — see
+// validate_projection.go's doc comment for why that ordering matters).
+func referentialValidate(ops []Op, snap inventory.Snapshot) []Finding {
+	proj := newProjection(snap)
+	var out []Finding
+	for _, op := range ops {
+		out = append(out, referentialValidateOp(proj, op)...)
+		proj.fold(op)
+	}
+	return out
+}
+
+func referentialValidateOp(p *projection, op Op) []Finding {
+	ref := refOf(op)
+	var out []Finding
+
+	switch params := op.Params.(type) {
+	case *IfaceUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "target %s does not exist", op.Target))
+		}
+		if params.Addresses != nil {
+			checkAddressOverlap(p, op.Target, ref, *params.Addresses, &out)
+		}
+
+	case *BondCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "a bond named %q already exists", op.Target.ID))
+		}
+		checkSlaves(p, op.Target, ref, params.Slaves, &out)
+
+	case *BondUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "bond %s does not exist", op.Target))
+		}
+		if params.Slaves != nil {
+			checkSlaves(p, op.Target, ref, *params.Slaves, &out)
+		}
+
+	case *BondDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "bond %s does not exist", op.Target))
+		}
+
+	case *BridgeCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "a bridge named %q already exists", op.Target.ID))
+		}
+		checkPorts(p, op.Target, ref, params.Ports, &out)
+		checkVIDOverlap(params.Vids, ref, &out)
+		checkAddressOverlap(p, op.Target, ref, params.Addresses, &out)
+
+	case *BridgeUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "bridge %s does not exist", op.Target))
+		}
+		if params.Vids != nil {
+			checkVIDOverlap(*params.Vids, ref, &out)
+		}
+		if params.Addresses != nil {
+			checkAddressOverlap(p, op.Target, ref, *params.Addresses, &out)
+		}
+
+	case *BridgeDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "bridge %s does not exist", op.Target))
+		}
+
+	case *BridgePortAddParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "bridge %s does not exist", op.Target))
+			break
+		}
+		portRef, ok := p.ifaceRef(op.Target.Node, params.Port)
+		if !ok {
+			out = append(out, errorf(codePortNotFound, ref, "port %q does not exist on node %s", params.Port, op.Target.Node))
+			break
+		}
+		if owner, enslaved := p.enslaved[portRef]; enslaved {
+			out = append(out, errorf(codeDuplicateEnslavement, ref, "%s is already enslaved by %s", portRef, owner))
+		}
+
+	case *BridgePortRemoveParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "bridge %s does not exist", op.Target))
+			break
+		}
+		portRef, ok := p.ifaceRef(op.Target.Node, params.Port)
+		if !ok {
+			out = append(out, errorf(codePortNotFound, ref, "port %q does not exist on node %s", params.Port, op.Target.Node))
+			break
+		}
+		if owner, enslaved := p.enslaved[portRef]; !enslaved || owner != op.Target {
+			out = append(out, errorf(codePortNotAttached, ref, "%s is not currently a port of %s", portRef, op.Target))
+		}
+
+	case *VlanCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "a vlan interface named %q already exists", op.Target.ID))
+		}
+		if _, ok := p.ifaceRef(op.Target.Node, params.Parent); !ok {
+			out = append(out, errorf(codeParentNotFound, ref, "parent %q does not exist on node %s", params.Parent, op.Target.Node))
+		}
+		if _, dup := p.vlanIfaces[vlanKey{op.Target.Node, params.Parent, params.Vid}]; dup {
+			out = append(out, errorf(codeVIDOverlap, ref, "vid %d is already in use on parent %q", params.Vid, params.Parent))
+		}
+		checkAddressOverlap(p, op.Target, ref, params.Addresses, &out)
+
+	case *VlanUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "vlan interface %s does not exist", op.Target))
+		}
+		if params.Addresses != nil {
+			checkAddressOverlap(p, op.Target, ref, *params.Addresses, &out)
+		}
+
+	case *VlanDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "vlan interface %s does not exist", op.Target))
+		}
+
+	case *SdnZoneCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "an sdn zone named %q already exists", op.Target.ID))
+		}
+		for _, n := range params.Nodes {
+			if !p.nodeNames[n] {
+				out = append(out, errorf(codeNodeNotFound, ref, "node %q is not a known cluster node", n))
+			}
+		}
+
+	case *SdnZoneUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn zone %s does not exist", op.Target))
+		}
+		if params.Nodes != nil {
+			for _, n := range *params.Nodes {
+				if !p.nodeNames[n] {
+					out = append(out, errorf(codeNodeNotFound, ref, "node %q is not a known cluster node", n))
+				}
+			}
+		}
+
+	case *SdnZoneDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn zone %s does not exist", op.Target))
+		}
+
+	case *SdnVnetCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "an sdn vnet named %q already exists", op.Target.ID))
+		}
+		if _, ok := p.zoneNames[params.Zone]; !ok {
+			out = append(out, errorf(codeZoneNotFound, ref, "zone %q does not exist", params.Zone))
+		}
+
+	case *SdnVnetUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn vnet %s does not exist", op.Target))
+		}
+
+	case *SdnVnetDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn vnet %s does not exist", op.Target))
+		}
+
+	case *SdnSubnetCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "an sdn subnet %q already exists", op.Target.ID))
+		}
+		if _, ok := p.vnetNames[params.Vnet]; !ok {
+			out = append(out, errorf(codeVnetNotFound, ref, "vnet %q does not exist", params.Vnet))
+		}
+		if _, ipnet, err := net.ParseCIDR(params.CIDR); err == nil {
+			checkSiblingSubnetOverlap(p, op.Target, params.Vnet, ipnet, ref, &out)
+		}
+
+	case *SdnSubnetUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn subnet %s does not exist", op.Target))
+		}
+
+	case *SdnSubnetDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn subnet %s does not exist", op.Target))
+		}
+
+	case *SdnApplyParams:
+		// no referential checks: cluster-wide, no single target.
+
+	case *GuestNicUpdateParams:
+		if _, ok := p.snap.Get(op.Target); !ok {
+			out = append(out, errorf(codeTargetNotFound, ref, "guest nic %s does not exist", op.Target))
+			break
+		}
+		if params.BridgeOrVnet != nil && !p.guestTargetExists(op.Target.Node, *params.BridgeOrVnet) {
+			out = append(out, errorf(codeBridgeOrVnetNotFound, ref, "bridge or vnet %q does not exist", *params.BridgeOrVnet))
+		}
+
+	case *FwRuleCreateParams:
+		checkFwPos(p, op.Target, params.Pos, true, false, ref, &out)
+
+	case *FwRuleUpdateParams:
+		checkFwPos(p, op.Target, params.Pos, false, true, ref, &out)
+
+	case *FwRuleDeleteParams:
+		checkFwPos(p, op.Target, params.Pos, false, true, ref, &out)
+
+	case *FwRuleMoveParams:
+		checkFwPos(p, op.Target, params.FromPos, false, true, ref, &out)
+		checkFwPos(p, op.Target, params.ToPos, true, true, ref, &out)
+
+	case *FwOptionsUpdateParams:
+		// no existence requirement: cluster/node rulesets always exist in
+		// real PVE and guest rulesets are created implicitly, so a missing
+		// FwRuleset entity in the snapshot isn't evidence of a broken
+		// reference the way it would be for a rule position (checkFwPos).
+
+	case *FwAliasCreateParams:
+		checkFwNameCollision(p, "alias", params.Name, ref, &out)
+
+	case *FwIpsetCreateParams:
+		checkFwNameCollision(p, "ipset", params.Name, ref, &out)
+
+	case *FwGroupCreateParams:
+		checkFwNameCollision(p, "group", params.Name, ref, &out)
+
+	case *FwAliasUpdateParams, *FwAliasDeleteParams, *FwIpsetUpdateParams,
+		*FwIpsetDeleteParams, *FwGroupUpdateParams, *FwGroupDeleteParams:
+		// no snapshot-backed existence check possible for these — see
+		// projection.fwNames's doc comment (known scope gap, in the T-202
+		// report).
+
+	case *IpamAllocCreateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "subnet %s does not exist", op.Target))
+			break
+		}
+		if _, subnetNet, err := net.ParseCIDR(op.Target.ID); err == nil {
+			if _, allocNet, err2 := net.ParseCIDR(params.CIDR); err2 == nil && !subnetNet.Contains(allocNet.IP) {
+				out = append(out, errorf(codeAddressOutOfSubnet, ref, "%s is not within subnet %s", params.CIDR, op.Target.ID))
+			}
+		}
+		if dup := p.overlappingAlloc(op.Target, params.CIDR); dup != "" {
+			out = append(out, errorf(codeAddressOverlap, ref, "%s overlaps allocation %s already created in this changeset", params.CIDR, dup))
+		}
+
+	case *IpamAllocDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "subnet %s does not exist", op.Target))
+		}
+	}
+
+	return out
+}
+
+// checkSlaves validates a bond's slave list: every named iface must exist
+// on the bond's node and must not already be enslaved by a different
+// owner.
+func checkSlaves(p *projection, target inventory.Ref, ref string, slaves []string, out *[]Finding) {
+	for _, s := range slaves {
+		sref, ok := p.ifaceRef(target.Node, s)
+		if !ok {
+			*out = append(*out, errorf(codeSlaveNotFound, ref, "slave %q does not exist on node %s", s, target.Node))
+			continue
+		}
+		if owner, enslaved := p.enslaved[sref]; enslaved && owner != target {
+			*out = append(*out, errorf(codeDuplicateEnslavement, ref, "%s is already enslaved by %s", sref, owner))
+		}
+	}
+}
+
+// checkPorts is checkSlaves' bridge-port counterpart.
+func checkPorts(p *projection, target inventory.Ref, ref string, ports []string, out *[]Finding) {
+	for _, port := range ports {
+		pref, ok := p.ifaceRef(target.Node, port)
+		if !ok {
+			*out = append(*out, errorf(codePortNotFound, ref, "port %q does not exist on node %s", port, target.Node))
+			continue
+		}
+		if owner, enslaved := p.enslaved[pref]; enslaved && owner != target {
+			*out = append(*out, errorf(codeDuplicateEnslavement, ref, "%s is already enslaved by %s", pref, owner))
+		}
+	}
+}
+
+// checkVIDOverlap flags any pairwise-overlapping ranges within a single
+// bridge's declared VLAN trunk list ("VID overlaps on a trunk").
+func checkVIDOverlap(vids []VidRange, ref string, out *[]Finding) {
+	for i := 0; i < len(vids); i++ {
+		for j := i + 1; j < len(vids); j++ {
+			a, b := vids[i], vids[j]
+			if a.Low <= b.High && b.Low <= a.High {
+				*out = append(*out, errorf(codeVIDOverlap, ref, "vid range %d-%d overlaps %d-%d", a.Low, a.High, b.Low, b.High))
+			}
+		}
+	}
+}
+
+// checkAddressOverlap flags any address in addrs that overlaps another
+// entity's already-declared address on the same node, or overlaps another
+// address in addrs itself. Callers only reach this after the schema class
+// has already validated CIDR syntax (the pipeline short-circuits on schema
+// errors before referential runs), so parse errors here are defensive and
+// silently skipped rather than re-reported.
+func checkAddressOverlap(p *projection, target inventory.Ref, ref string, addrs []string, out *[]Finding) {
+	parsed := make([]*net.IPNet, 0, len(addrs))
+	for _, a := range addrs {
+		_, ipnet, err := net.ParseCIDR(a)
+		if err != nil {
+			parsed = append(parsed, nil)
+			continue
+		}
+		parsed = append(parsed, ipnet)
+		if other := p.overlappingAddr(target.Node, ipnet, target); other != nil {
+			*out = append(*out, errorf(codeAddressOverlap, ref, "%s overlaps an address already declared on %s", a, other.ref))
+		}
+	}
+	for i := 0; i < len(parsed); i++ {
+		if parsed[i] == nil {
+			continue
+		}
+		for j := i + 1; j < len(parsed); j++ {
+			if parsed[j] == nil {
+				continue
+			}
+			if parsed[i].Contains(parsed[j].IP) || parsed[j].Contains(parsed[i].IP) {
+				*out = append(*out, errorf(codeAddressOverlap, ref, "addresses %s and %s overlap each other", addrs[i], addrs[j]))
+			}
+		}
+	}
+}
+
+// checkSiblingSubnetOverlap flags a new sdn.subnet.create whose CIDR
+// overlaps another subnet already declared (in the snapshot or earlier in
+// this changeset) under the same vnet.
+func checkSiblingSubnetOverlap(p *projection, target inventory.Ref, vnet string, ipnet *net.IPNet, ref string, out *[]Finding) {
+	for _, sibling := range p.subnetsByVnet[vnet] {
+		if sibling == target {
+			continue
+		}
+		_, sibNet, err := net.ParseCIDR(sibling.ID)
+		if err != nil {
+			continue
+		}
+		if sibNet.Contains(ipnet.IP) || ipnet.Contains(sibNet.IP) {
+			*out = append(*out, errorf(codeAddressOverlap, ref, "subnet %s overlaps existing subnet %s", target.ID, sibling.ID))
+		}
+	}
+}
+
+// checkFwPos validates a rule position against ruleset target's current
+// rule count. allowEnd permits pos == len(rules) (an append/insert-at-end
+// position, valid for fw.rule.create's Pos and fw.rule.move's ToPos);
+// requireRuleset controls whether a missing FwRuleset entity is itself an
+// error — true for update/delete/move, which reference an existing rule by
+// position, false for create, whose ruleset may not be independently
+// modeled yet (see the FwOptionsUpdateParams case's doc comment above for
+// why cluster/node rulesets are assumed to always exist).
+func checkFwPos(p *projection, target inventory.Ref, pos int, allowEnd, requireRuleset bool, ref string, out *[]Finding) {
+	e, ok := p.snap.Get(target)
+	if !ok {
+		if requireRuleset {
+			*out = append(*out, errorf(codeTargetNotFound, ref, "firewall ruleset %s does not exist", target))
+		}
+		return
+	}
+	rs, ok := e.(*inventory.FwRuleset)
+	if !ok {
+		return
+	}
+	maxPos := len(rs.Rules)
+	if !allowEnd {
+		maxPos--
+	}
+	if pos < 0 || pos > maxPos {
+		*out = append(*out, errorf(codeFwPosOutOfRange, ref, "pos %d out of range for ruleset with %d rule(s)", pos, len(rs.Rules)))
+	}
+}
+
+// checkFwNameCollision flags a fw.alias/ipset/group create whose (kind,
+// name) was already created earlier in this same changeset.
+func checkFwNameCollision(p *projection, kind, name, ref string, out *[]Finding) {
+	if p.fwNames[kind+"/"+name] {
+		*out = append(*out, errorf(codeAlreadyExists, ref, "a %s named %q was already created earlier in this changeset", kind, name))
+	}
+}

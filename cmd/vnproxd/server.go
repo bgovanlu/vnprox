@@ -81,11 +81,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
 	// (docs/api.md's WebSocket section documents one shared /api/ws
 	// connection multiplexing "topology"/"changesets"/... topics alike —
-	// see topology.Service.Broadcast and internal/change.Broadcaster).
+	// see topology.Service.Broadcast and internal/change.Broadcaster), and
+	// validates against the same live *inventory.Graph collect populates
+	// (T-202: Service.Validate/Create/UpdateDraft snapshot it read-only —
+	// this package never polls or mutates inventory itself).
 	changeSvc, err := change.NewService(change.Config{
 		Changesets: store.NewChangesetRepo(db),
 		Audit:      store.NewAuditRepo(db),
 		WS:         topoSvc,
+		Inventory:  graph,
 		Logger:     logger,
 	})
 	if err != nil {

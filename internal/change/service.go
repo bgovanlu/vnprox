@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
@@ -29,28 +30,44 @@ type Broadcaster interface {
 	Broadcast(topic string, payload []byte)
 }
 
-// Config configures a Service. Changesets and Audit are required; WS is
-// optional (nil disables WS broadcasting, e.g. in tests that don't need
-// it) and Now/Logger default sensibly when zero, mirroring
-// internal/auth.Config's same conventions.
+// InventorySource is the seam Service uses to obtain a read snapshot of
+// live network state for validation (T-202): *inventory.Graph satisfies
+// this via its existing Snapshot method, so wiring in cmd/vnproxd just
+// passes the same *inventory.Graph instance topology/collect already share
+// — this package never polls or mutates inventory itself.
+type InventorySource interface {
+	Snapshot() inventory.Snapshot
+}
+
+// Config configures a Service. Changesets and Audit are required; WS and
+// Inventory are optional (nil disables WS broadcasting / validates against
+// an empty snapshot, respectively — e.g. in tests that don't need them) and
+// Now/Logger default sensibly when zero, mirroring internal/auth.Config's
+// same conventions.
 type Config struct {
 	Changesets *store.ChangesetRepo
 	Audit      *store.AuditRepo
 	WS         Broadcaster
+	Inventory  InventorySource
 	Now        func() time.Time
 	Logger     *slog.Logger
 }
 
-// Service implements T-201's changeset draft CRUD: store-backed
+// Service implements T-201's changeset draft CRUD (store-backed
 // persistence on top of T-003's *store.ChangesetRepo, the status state
-// machine (changeset.go), WS `changeset.status` broadcasts on every status
-// transition, and audit entries on create/discard. Validate/Diff/Apply/
-// Confirm/Rollback are later tasks' (T-202/T-205) responsibility — see
-// doc.go.
+// machine in changeset.go, WS `changeset.status` broadcasts on every
+// status transition, and audit entries on create/discard) plus T-202's
+// validation: Findings are (re)computed on every draft mutation
+// (docs/features/change-management.md §2: "Runs on every draft change")
+// via Validate.go's pipeline, and the exported Validate method backs
+// `POST /changesets/{id}/validate` and additionally promotes/demotes the
+// draft<->validated status transition. Diff/Apply/Confirm/Rollback are
+// T-205's responsibility — see doc.go.
 type Service struct {
 	repo  *store.ChangesetRepo
 	audit *store.AuditRepo
 	ws    Broadcaster
+	inv   InventorySource
 	now   func() time.Time
 	log   *slog.Logger
 }
@@ -72,7 +89,17 @@ func NewService(cfg Config) (*Service, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, now: now, log: logger}, nil
+	return &Service{repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, now: now, log: logger}, nil
+}
+
+// inventorySnapshot returns the current inventory snapshot to validate
+// against, or an empty one if no InventorySource was configured (tests and
+// any caller that doesn't need real referential checks).
+func (s *Service) inventorySnapshot() inventory.Snapshot {
+	if s.inv == nil {
+		return inventory.NewGraph().Snapshot()
+	}
+	return s.inv.Snapshot()
 }
 
 // List returns changesets ordered newest-first, optionally filtered to a
@@ -106,7 +133,12 @@ func (s *Service) Get(ctx context.Context, id string) (Changeset, error) {
 
 // Create persists a new draft changeset authored by author, audits the
 // creation, and broadcasts its initial `changeset.status` (draft) event.
-// A nil ops is stored as an empty list, never a JSON null.
+// A nil ops is stored as an empty list, never a JSON null. Findings are
+// computed immediately against the current inventory snapshot
+// (docs/features/change-management.md §2: validation "runs on every draft
+// change"), though the changeset's Status stays StatusDraft regardless of
+// what they contain — only the explicit Validate call promotes a clean
+// draft to StatusValidated.
 func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (Changeset, error) {
 	if ops == nil {
 		ops = []Op{}
@@ -114,7 +146,7 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 	nowUnix := s.now().Unix()
 	c := Changeset{
 		ID: store.NewULID(), Title: title, Author: author, Status: StatusDraft,
-		Ops: ops, CreatedAt: nowUnix, UpdatedAt: nowUnix,
+		Ops: ops, Findings: Validate(ops, s.inventorySnapshot()), CreatedAt: nowUnix, UpdatedAt: nowUnix,
 	}
 	row, err := toStoreRow(c)
 	if err != nil {
@@ -131,9 +163,12 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 // UpdateDraft replaces a draft or validated changeset's ops (docs/api.md:
 // "PUT /changesets/{id} — replace ops on a draft (revalidates)"). Editing a
 // validated changeset invalidates it back to draft (its findings, computed
-// against the old ops, no longer apply — T-202 repopulates them on the
-// next validate). It returns *ErrIllegalTransition if the changeset is not
-// currently editable (Changeset.Editable).
+// against the old ops, no longer apply); the new ops are immediately
+// revalidated against the current inventory snapshot regardless (same
+// auto-validation-on-mutation behavior as Create), but — as with Create —
+// only the explicit Validate call promotes StatusDraft to StatusValidated.
+// It returns *ErrIllegalTransition if the changeset is not currently
+// editable (Changeset.Editable).
 func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *string, ops []Op) (Changeset, error) {
 	c, err := s.Get(ctx, id)
 	if err != nil {
@@ -154,7 +189,7 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 		ops = []Op{}
 	}
 	c.Ops = ops
-	c.Findings = nil // stale as of this edit; T-202 repopulates on next validate
+	c.Findings = Validate(ops, s.inventorySnapshot())
 	if title != nil {
 		c.Title = *title
 	}
@@ -196,6 +231,64 @@ func (s *Service) Discard(ctx context.Context, id, author string) error {
 	s.appendAudit(ctx, author, "changeset.discard", "success", id, nil)
 	s.broadcastStatus(c)
 	return nil
+}
+
+// Validate re-runs the T-202 validation pipeline against id's current ops
+// and the current inventory snapshot (docs/api.md: "POST /changesets/{id}/
+// validate — re-run validation, returns findings"), persists the resulting
+// Findings, and updates Status: a StatusDraft changeset with no
+// error-severity findings is promoted to StatusValidated (matching
+// changeset.go's StatusValidated doc comment: "the last validation run
+// found no blocking errors against the ops as they stood at that time");
+// conversely a StatusValidated changeset that now has an error (the
+// snapshot moved since it was last validated) is demoted back to
+// StatusDraft. It returns *ErrIllegalTransition if the changeset is not
+// currently editable (Changeset.Editable) — validating an in-flight or
+// terminal changeset doesn't mean anything.
+func (s *Service) Validate(ctx context.Context, id, author string) (Changeset, error) {
+	c, err := s.Get(ctx, id)
+	if err != nil {
+		return Changeset{}, err
+	}
+	if !c.Editable() {
+		return Changeset{}, &ErrIllegalTransition{From: c.Status, To: StatusValidated}
+	}
+
+	findings := Validate(c.Ops, s.inventorySnapshot())
+	c.Findings = findings
+	clean := !hasError(findings)
+	prevStatus := c.Status
+
+	switch {
+	case clean && c.Status == StatusDraft:
+		if transErr := c.Transition(StatusValidated, s.now().Unix()); transErr != nil {
+			return Changeset{}, transErr
+		}
+	case !clean && c.Status == StatusValidated:
+		if transErr := c.Transition(StatusDraft, s.now().Unix()); transErr != nil {
+			return Changeset{}, transErr
+		}
+	default:
+		c.UpdatedAt = s.now().Unix()
+	}
+
+	row, err := toStoreRow(c)
+	if err != nil {
+		return Changeset{}, err
+	}
+	if err := s.repo.Update(ctx, row); err != nil {
+		return Changeset{}, fmt.Errorf("change: validating changeset %s: %w", id, err)
+	}
+
+	result := "clean"
+	if !clean {
+		result = "errors"
+	}
+	s.appendAudit(ctx, author, "changeset.validate", result, id, map[string]any{"findingCount": len(findings)})
+	if prevStatus != c.Status {
+		s.broadcastStatus(c)
+	}
+	return c, nil
 }
 
 func (s *Service) appendAudit(ctx context.Context, username, action, result, changesetID string, detail map[string]any) {
