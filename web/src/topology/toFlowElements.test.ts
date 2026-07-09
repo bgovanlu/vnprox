@@ -1,0 +1,111 @@
+import { describe, expect, it } from "vitest";
+import type { TopologyEdge, TopologyNode } from "../api/types";
+import { toFlowElements } from "./toFlowElements";
+
+function node(partial: Partial<TopologyNode> & Pick<TopologyNode, "id" | "kind" | "layer" | "nodeGroup">): TopologyNode {
+  return { label: partial.id, status: "ok", badges: [], ...partial };
+}
+
+describe("toFlowElements", () => {
+  const baseNodes: TopologyNode[] = [
+    node({ id: "bridge:pve1:vmbr0", kind: "bridge", layer: "l2", nodeGroup: "pve1" }),
+    node({
+      id: "guest-group:pve1:bridge:pve1:vmbr0",
+      kind: "guest-group",
+      layer: "guest",
+      nodeGroup: "pve1",
+      collapsedCount: 12,
+      badges: ["count=12"],
+    }),
+  ];
+  const baseEdges: TopologyEdge[] = [
+    { from: "guest-group:pve1:bridge:pve1:vmbr0", to: "bridge:pve1:vmbr0", kind: "attached-to", status: "ok", badges: [] },
+  ];
+
+  const allLayers = new Set(["phys", "l2", "sdn", "guest"] as const);
+
+  it("renders the collapsed pill by default", () => {
+    const { nodes } = toFlowElements({
+      nodes: baseNodes,
+      edges: baseEdges,
+      expandedGroups: new Set(),
+      activeLayers: allLayers,
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+    expect(nodes.map((n) => n.id)).toContain("guest-group:pve1:bridge:pve1:vmbr0");
+  });
+
+  it("replaces the pill + its edge with the expanded members once the group is expanded", () => {
+    const extraNodes: TopologyNode[] = [
+      node({ id: "guest-nic:pve1:100/net0", kind: "guest-nic", layer: "guest", nodeGroup: "pve1" }),
+    ];
+    const extraEdges: TopologyEdge[] = [
+      { from: "guest-nic:pve1:100/net0", to: "bridge:pve1:vmbr0", kind: "attached-to", status: "ok", badges: [] },
+    ];
+    const { nodes, edges } = toFlowElements({
+      nodes: baseNodes,
+      edges: baseEdges,
+      extraNodes,
+      extraEdges,
+      expandedGroups: new Set(["guest-group:pve1:bridge:pve1:vmbr0"]),
+      activeLayers: allLayers,
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+    expect(nodes.map((n) => n.id)).not.toContain("guest-group:pve1:bridge:pve1:vmbr0");
+    expect(nodes.map((n) => n.id)).toContain("guest-nic:pve1:100/net0");
+    expect(edges.some((e) => e.source === "guest-group:pve1:bridge:pve1:vmbr0")).toBe(false);
+    expect(edges.some((e) => e.source === "guest-nic:pve1:100/net0")).toBe(true);
+  });
+
+  it("dims nodes/edges that don't carry the active VLAN filter", () => {
+    const nodes: TopologyNode[] = [
+      node({ id: "vlan:pve1:vmbr0.20", kind: "vlan", layer: "l2", nodeGroup: "pve1", badges: ["vid=20"] }),
+      node({ id: "vlan:pve1:vmbr0.30", kind: "vlan", layer: "l2", nodeGroup: "pve1", badges: ["vid=30"] }),
+    ];
+    const { nodes: flowNodes } = toFlowElements({
+      nodes,
+      edges: [],
+      expandedGroups: new Set(),
+      activeLayers: allLayers,
+      vlanFilter: 20,
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+    const byId = new Map(flowNodes.map((n) => [n.id, n]));
+    expect(byId.get("vlan:pve1:vmbr0.20")?.data.dimmed).toBe(false);
+    expect(byId.get("vlan:pve1:vmbr0.30")?.data.dimmed).toBe(true);
+  });
+
+  it("uses a manual (dragged) position over the computed layout position", () => {
+    const { nodes } = toFlowElements({
+      nodes: [node({ id: "bridge:pve1:vmbr0", kind: "bridge", layer: "l2", nodeGroup: "pve1" })],
+      edges: [],
+      expandedGroups: new Set(),
+      activeLayers: allLayers,
+      layoutPositions: new Map([["bridge:pve1:vmbr0", { x: 10, y: 10 }]]),
+      manualPositions: { "bridge:pve1:vmbr0": { x: 999, y: 888 } },
+    });
+    expect(nodes[0]?.position).toEqual({ x: 999, y: 888 });
+  });
+
+  it("drops edges whose endpoint was filtered out by the active layer set", () => {
+    const nodes: TopologyNode[] = [
+      node({ id: "physnic:pve1:eno1", kind: "physnic", layer: "phys", nodeGroup: "pve1" }),
+      node({ id: "bond:pve1:bond0", kind: "bond", layer: "l2", nodeGroup: "pve1" }),
+    ];
+    const edges: TopologyEdge[] = [
+      { from: "physnic:pve1:eno1", to: "bond:pve1:bond0", kind: "enslaved-by", status: "ok", badges: [] },
+    ];
+    const { edges: flowEdges } = toFlowElements({
+      nodes,
+      edges,
+      expandedGroups: new Set(),
+      activeLayers: new Set(["l2"]),
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+    expect(flowEdges).toHaveLength(0);
+  });
+});

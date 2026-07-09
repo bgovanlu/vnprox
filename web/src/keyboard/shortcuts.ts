@@ -5,13 +5,22 @@
 // ShortcutHelpDialog (the `?` overlay) read from this list, so the two
 // can never drift out of sync.
 //
-// The features these shortcuts control (map search, layer visibility,
-// VLAN filtering) don't exist yet — per T-005's task card everything
-// except navigation and help is wired to a visible "not yet implemented"
-// toast rather than a real action.
+// T-005 wired everything except navigation and help to a "not yet
+// implemented" toast, since the features they'd control (search, layer
+// visibility, VLAN filtering) didn't exist yet. T-107 (the topology map)
+// makes them real: the "topology-*" action types below are dispatched to
+// whichever handlers the topology page currently has registered via
+// src/keyboard/topologyShortcutTarget.ts — useKeyboardShortcuts falls back
+// to a toast when nothing is registered (i.e. the user isn't on the
+// Topology view), since these shortcuts are meaningless anywhere else.
+import type { Layer } from "../api/types";
+
 export type ShortcutAction =
   | { readonly type: "navigate"; readonly path: string }
   | { readonly type: "placeholder"; readonly feature: string }
+  | { readonly type: "topology-toggle-layer"; readonly layer: Layer }
+  | { readonly type: "topology-vlan-filter" }
+  | { readonly type: "topology-search" }
   | { readonly type: "help" };
 
 export interface ShortcutDef {
@@ -23,36 +32,36 @@ export interface ShortcutDef {
 }
 
 export const SHORTCUTS: readonly ShortcutDef[] = [
-  { id: "search", keys: "/", description: "Search", action: { type: "placeholder", feature: "Search" } },
+  { id: "search", keys: "/", description: "Search", action: { type: "topology-search" } },
   {
     id: "layer-physical",
     keys: "1",
     description: "Toggle physical layer",
-    action: { type: "placeholder", feature: "Layer toggle (Physical)" },
+    action: { type: "topology-toggle-layer", layer: "phys" },
   },
   {
     id: "layer-l2",
     keys: "2",
     description: "Toggle L2 layer",
-    action: { type: "placeholder", feature: "Layer toggle (L2)" },
+    action: { type: "topology-toggle-layer", layer: "l2" },
   },
   {
     id: "layer-sdn",
     keys: "3",
     description: "Toggle SDN layer",
-    action: { type: "placeholder", feature: "Layer toggle (SDN)" },
+    action: { type: "topology-toggle-layer", layer: "sdn" },
   },
   {
     id: "layer-guests",
     keys: "4",
     description: "Toggle guests layer",
-    action: { type: "placeholder", feature: "Layer toggle (Guests)" },
+    action: { type: "topology-toggle-layer", layer: "guest" },
   },
   {
     id: "vlan-filter",
     keys: "f",
     description: "Filter by VLAN",
-    action: { type: "placeholder", feature: "VLAN filter" },
+    action: { type: "topology-vlan-filter" },
   },
   {
     id: "goto-topology",

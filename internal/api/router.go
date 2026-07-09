@@ -45,6 +45,7 @@ type Options struct {
 	Auth       AuthService
 	Collectors CollectorHealth
 	Topology   TopologyService
+	Layouts    LayoutStore
 	Logger     *slog.Logger
 	Version    string
 }
@@ -70,6 +71,7 @@ func NewRouter(opts Options) http.Handler {
 			opts.Auth.MountRoutes(r)
 		}
 		mountTopologyRoutes(r, opts.Topology, opts.Auth)
+		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

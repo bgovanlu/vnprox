@@ -1,0 +1,100 @@
+{
+  "nodes": [
+    {
+      "id": "bridge:pve1:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve2:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve3:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "vlan:pve1:vmbr0.20",
+      "kind": "vlan",
+      "label": "vmbr0.20",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    },
+    {
+      "id": "vlan:pve2:vmbr0.20",
+      "kind": "vlan",
+      "label": "vmbr0.20",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    },
+    {
+      "id": "vlan:pve3:vmbr0.20",
+      "kind": "vlan",
+      "label": "vmbr0.20",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "vlan:pve1:vmbr0.20",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "tagged-on",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    },
+    {
+      "from": "vlan:pve2:vmbr0.20",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "tagged-on",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    },
+    {
+      "from": "vlan:pve3:vmbr0.20",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "tagged-on",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    }
+  ],
+  "layers": [
+    "phys",
+    "l2",
+    "sdn",
+    "guest"
+  ],
+  "generatedAt": 1783622764
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/bgovanlu/vnprox/internal/auth"
@@ -23,4 +24,16 @@ type authServiceAdapter struct {
 // adapter type, which is exactly the point.
 func (a authServiceAdapter) RequireCap(cap string) func(http.Handler) http.Handler {
 	return a.Service.RequireCap(auth.Cap(cap))
+}
+
+// Username resolves the authenticated username from ctx (populated by
+// SessionMiddleware), satisfying internal/api's UsernameLookup interface so
+// the layouts routes can key a saved layout to a user without internal/api
+// importing internal/auth directly.
+func (a authServiceAdapter) Username(ctx context.Context) (string, bool) {
+	id, ok := auth.IdentityFromContext(ctx)
+	if !ok {
+		return "", false
+	}
+	return id.Username, true
 }
