@@ -62,6 +62,38 @@ lldp_interval = "30s"
 	if cfg.Server.ConfirmTimeoutDefault != DefaultConfirmTimeoutDefault {
 		t.Errorf("ConfirmTimeoutDefault = %d, want default %d", cfg.Server.ConfirmTimeoutDefault, DefaultConfirmTimeoutDefault)
 	}
+	if cfg.PVE.TicketUsername != "" || cfg.PVE.TicketPassword != "" || cfg.PVE.TicketRealm != "" {
+		t.Errorf("PVE ticket override fields = %+v, want all empty when unset", cfg.PVE)
+	}
+}
+
+func TestLoad_DevTicketOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[pve]
+api_url = "http://127.0.0.1:8006"
+dev_ticket_username = "root@pam"
+dev_ticket_password = "vnprox-mock"
+dev_ticket_realm = "pam"
+`
+	path := writeTemp(t, "dev-ticket.toml", toml)
+
+	cfg, err := Load(path, discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.PVE.TicketUsername != "root@pam" || cfg.PVE.TicketPassword != "vnprox-mock" || cfg.PVE.TicketRealm != "pam" {
+		t.Errorf("PVE ticket override fields = %+v, want root@pam/vnprox-mock/pam", cfg.PVE)
+	}
+	// The documented production fields must still resolve to their
+	// defaults: setting the dev override does not disturb them.
+	if cfg.PVE.TokenFile != DefaultPVETokenFile {
+		t.Errorf("TokenFile = %q, want default %q even with the dev ticket override set", cfg.PVE.TokenFile, DefaultPVETokenFile)
+	}
 }
 
 func TestLoad_DefaultsAppliedWhenSectionsOmitted(t *testing.T) {

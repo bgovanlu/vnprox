@@ -31,10 +31,11 @@ type AuthService interface {
 
 // Options configures the router built by NewRouter.
 type Options struct {
-	DistFS  fs.FS
-	Auth    AuthService
-	Logger  *slog.Logger
-	Version string
+	DistFS     fs.FS
+	Auth       AuthService
+	Collectors CollectorHealth
+	Logger     *slog.Logger
+	Version    string
 }
 
 // NewRouter builds the vnproxd HTTP handler: the full middleware stack,
@@ -53,7 +54,7 @@ func NewRouter(opts Options) http.Handler {
 	r.Use(securityHeadersMiddleware)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/health", healthHandler(opts.Version))
+		r.Get("/health", healthHandler(opts.Version, opts.Collectors))
 		if opts.Auth != nil {
 			opts.Auth.MountRoutes(r)
 		}
