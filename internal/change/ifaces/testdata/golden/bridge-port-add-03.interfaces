@@ -1,0 +1,30 @@
+auto lo
+iface lo inet loopback
+
+allow-hotplug eno1 eno2
+iface eno1 inet manual
+iface eno2 inet manual
+
+auto bond0
+iface bond0 inet manual
+	bond-slaves eno1 eno2
+	bond-mode 802.3ad
+	bond-miimon 100
+	bond-lacp-rate 1
+	bond-xmit-hash-policy layer3+4
+
+auto bond0.10
+iface bond0.10 inet static
+	address 172.16.10.5/24
+	vlan-raw-device bond0
+
+auto bond0.20
+iface bond0.20 inet static
+	address 172.16.20.5/24
+	vlan-raw-device bond0
+
+auto vmbr1
+iface vmbr1 inet manual
+	bridge-ports bond0.10 bond0.20
+	bridge-stp off
+	bridge-fd 0
