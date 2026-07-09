@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node", "vitest/globals"],
+    "useDefineForClassFields": true,
+    "allowJs": false
+  },
+  "include": ["src", "vite.config.ts"]
+}
