@@ -1,0 +1,277 @@
+package pvemock
+
+// Fixture is the top-level shape of a YAML cluster fixture under
+// testdata/clusters/. It is the single source of truth the mock server is
+// built from: the PVE API surface, the host.Reader fixture backing, and the
+// permission model are all derived from one Fixture value.
+type Fixture struct {
+	Nodes    map[string]*NodeSpec `yaml:"nodes"`
+	SDN      SDNSpec              `yaml:"sdn"`
+	Users    []UserSpec           `yaml:"users"`
+	Mess     []string             `yaml:"mess"`
+	Firewall FirewallSpec         `yaml:"firewall"`
+	Cluster  ClusterSpec          `yaml:"cluster"`
+	Mock     MockOptions          `yaml:"mock"`
+}
+
+// ClusterSpec describes cluster membership as reported by GET /cluster/status.
+type ClusterSpec struct {
+	Name    string            `yaml:"name"`
+	Nodes   []ClusterNodeSpec `yaml:"nodes"`
+	Quorate bool              `yaml:"quorate"`
+}
+
+// ClusterNodeSpec is one member node.
+type ClusterNodeSpec struct {
+	Name   string `yaml:"name" json:"name"`
+	IP     string `yaml:"ip" json:"ip"`
+	Online bool   `yaml:"online" json:"online"`
+}
+
+// UserSpec is a fixture-defined PVE user with a plaintext password (fixture
+// only — never a real auth model) and a PVE privilege set. "*" grants every
+// privilege the mock understands.
+type UserSpec struct {
+	UserID     string   `yaml:"userid"` // e.g. "root@pam"
+	Password   string   `yaml:"password"`
+	Privileges []string `yaml:"privileges"`
+}
+
+// HasPrivilege reports whether the user holds priv, honoring the "*"
+// wildcard.
+func (u UserSpec) HasPrivilege(priv string) bool {
+	for _, p := range u.Privileges {
+		if p == "*" || p == priv {
+			return true
+		}
+	}
+	return false
+}
+
+// NodeSpec is per-node state: network topology, host-level metadata, guests,
+// and node-scope firewall.
+type NodeSpec struct {
+	Links          map[string]LinkInfo     `yaml:"links"`
+	LLDP           map[string]LLDPNeighbor `yaml:"lldp"`
+	Stats          map[string]IfaceStats   `yaml:"stats"`
+	Qemu           map[string]*GuestSpec   `yaml:"qemu"`
+	Lxc            map[string]*GuestSpec   `yaml:"lxc"`
+	Firewall       *FirewallScope          `yaml:"firewall"`
+	Mock           *MockOptions            `yaml:"mock"`
+	Network        []NetIface              `yaml:"network"`
+	NetworkPending []NetIface              `yaml:"network_pending"`
+}
+
+// NetIface is one stanza of /etc/network/interfaces, matching the field
+// names PVE's own `GET/PUT /nodes/{node}/network` API uses. It is
+// marshaled directly as the JSON body of network API responses.
+type NetIface struct {
+	BondMode        string       `yaml:"bond_mode,omitempty" json:"bond_mode,omitempty"`
+	Type            string       `yaml:"type" json:"type"`
+	Method          string       `yaml:"method,omitempty" json:"method,omitempty"`
+	Address         string       `yaml:"address,omitempty" json:"address,omitempty"`
+	Gateway         string       `yaml:"gateway,omitempty" json:"gateway,omitempty"`
+	Pending         PendingState `yaml:"-" json:"pending,omitempty"`
+	Iface           string       `yaml:"iface" json:"iface"`
+	Comments        string       `yaml:"comments,omitempty" json:"comments,omitempty"`
+	BridgePorts     string       `yaml:"bridge_ports,omitempty" json:"bridge_ports,omitempty"`
+	VlanRawDevice   string       `yaml:"vlan_raw_device,omitempty" json:"vlan_raw_device,omitempty"`
+	Slaves          string       `yaml:"slaves,omitempty" json:"slaves,omitempty"`
+	MTU             int          `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	VlanID          int          `yaml:"vlan_id,omitempty" json:"vlan_id,omitempty"`
+	BridgeVlanAware bool         `yaml:"bridge_vlan_aware,omitempty" json:"bridge_vlan_aware,omitempty"`
+	Autostart       bool         `yaml:"autostart" json:"autostart"`
+}
+
+// LinkInfo is netlink-equivalent physical/virtual link state for one iface.
+type LinkInfo struct {
+	Mac       string `yaml:"mac" json:"mac"`
+	Driver    string `yaml:"driver,omitempty" json:"driver,omitempty"`
+	Duplex    string `yaml:"duplex,omitempty" json:"duplex,omitempty"`
+	PCIAddr   string `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
+	SpeedMbps int    `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
+	MTU       int    `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	LinkUp    bool   `yaml:"link_up" json:"link_up"`
+}
+
+// LLDPNeighbor is one LLDP-discovered neighbor on a local iface.
+type LLDPNeighbor struct {
+	ChassisName string `yaml:"chassis_name" json:"chassis_name"`
+	ChassisID   string `yaml:"chassis_id" json:"chassis_id"`
+	PortID      string `yaml:"port_id" json:"port_id"`
+	PortDescr   string `yaml:"port_descr,omitempty" json:"port_descr,omitempty"`
+	MgmtIP      string `yaml:"mgmt_ip,omitempty" json:"mgmt_ip,omitempty"`
+	VLAN        int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
+	TTL         int    `yaml:"ttl,omitempty" json:"ttl,omitempty"`
+}
+
+// IfaceStats is a counters snapshot for one iface.
+type IfaceStats struct {
+	RxBytes   uint64 `yaml:"rx_bytes" json:"rx_bytes"`
+	TxBytes   uint64 `yaml:"tx_bytes" json:"tx_bytes"`
+	RxPackets uint64 `yaml:"rx_packets" json:"rx_packets"`
+	TxPackets uint64 `yaml:"tx_packets" json:"tx_packets"`
+	RxErrors  uint64 `yaml:"rx_errors" json:"rx_errors"`
+	TxErrors  uint64 `yaml:"tx_errors" json:"tx_errors"`
+	RxDropped uint64 `yaml:"rx_dropped" json:"rx_dropped"`
+	TxDropped uint64 `yaml:"tx_dropped" json:"tx_dropped"`
+}
+
+// GuestSpec is a qemu or lxc guest. Config mirrors PVE's flat key/value
+// guest config object (e.g. "net0": "virtio=AA:BB:...,bridge=vmbr0,tag=100").
+type GuestSpec struct {
+	Config   map[string]string `yaml:"config"`
+	Firewall *FirewallScope    `yaml:"firewall"`
+	Name     string            `yaml:"name"`
+	Status   string            `yaml:"status"`
+}
+
+// SDNSpec is the cluster-wide SDN configuration tree.
+type SDNSpec struct {
+	Zones   []SDNZoneSpec   `yaml:"zones"`
+	Vnets   []SDNVnetSpec   `yaml:"vnets"`
+	Subnets []SDNSubnetSpec `yaml:"subnets"`
+}
+
+// PendingState mirrors the "state" PVE reports for SDN/network objects
+// awaiting an apply/reload.
+type PendingState string
+
+const (
+	// PendingNone means the object is applied; running config matches.
+	PendingNone PendingState = ""
+	// PendingNew means the object was created but never applied.
+	PendingNew PendingState = "new"
+	// PendingChanged means the object was edited but never applied.
+	PendingChanged PendingState = "changed"
+	// PendingDeleted means the object was deleted but the delete was
+	// never applied.
+	PendingDeleted PendingState = "deleted"
+)
+
+// SDNZoneSpec is one SDN zone.
+type SDNZoneSpec struct {
+	ID         string       `yaml:"id" json:"zone"`
+	Type       string       `yaml:"type" json:"type"`
+	Bridge     string       `yaml:"bridge,omitempty" json:"bridge,omitempty"`
+	Controller string       `yaml:"controller,omitempty" json:"controller,omitempty"`
+	Pending    PendingState `yaml:"pending,omitempty" json:"pending,omitempty"`
+	Nodes      []string     `yaml:"nodes,omitempty" json:"nodes,omitempty"`
+	ExitNodes  []string     `yaml:"exit_nodes,omitempty" json:"exit_nodes,omitempty"`
+	Peers      []string     `yaml:"peers,omitempty" json:"peers,omitempty"`
+	MTU        int          `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	VrfVxlan   int          `yaml:"vrf_vxlan,omitempty" json:"vrf_vxlan,omitempty"`
+}
+
+// SDNVnetSpec is one VNet inside a zone.
+type SDNVnetSpec struct {
+	ID        string       `yaml:"id" json:"vnet"`
+	Zone      string       `yaml:"zone" json:"zone"`
+	Alias     string       `yaml:"alias,omitempty" json:"alias,omitempty"`
+	Pending   PendingState `yaml:"pending,omitempty" json:"pending,omitempty"`
+	Tag       int          `yaml:"tag,omitempty" json:"tag,omitempty"`
+	VlanAware bool         `yaml:"vlan_aware,omitempty" json:"vlan_aware,omitempty"`
+}
+
+// SDNSubnetSpec is one subnet inside a VNet.
+type SDNSubnetSpec struct {
+	ID             string       `yaml:"id" json:"subnet"`
+	Vnet           string       `yaml:"vnet" json:"vnet"`
+	CIDR           string       `yaml:"cidr" json:"cidr"`
+	Gateway        string       `yaml:"gateway,omitempty" json:"gateway,omitempty"`
+	DHCPRangeStart string       `yaml:"dhcp_range_start,omitempty" json:"dhcp_range_start,omitempty"`
+	DHCPRangeEnd   string       `yaml:"dhcp_range_end,omitempty" json:"dhcp_range_end,omitempty"`
+	Pending        PendingState `yaml:"pending,omitempty" json:"pending,omitempty"`
+	SNAT           bool         `yaml:"snat,omitempty" json:"snat,omitempty"`
+}
+
+// FirewallSpec is the cluster-scope firewall tree. Node-scope and
+// guest-scope rulesets live on NodeSpec.Firewall / GuestSpec.Firewall.
+type FirewallSpec struct {
+	Cluster FirewallScope `yaml:"cluster"`
+}
+
+// FirewallScope is one ruleset at any of the three PVE firewall scopes
+// (cluster/node/guest).
+type FirewallScope struct {
+	PolicyIn  string        `yaml:"policy_in,omitempty" json:"policy_in,omitempty"`
+	PolicyOut string        `yaml:"policy_out,omitempty" json:"policy_out,omitempty"`
+	Rules     []FwRuleSpec  `yaml:"rules" json:"-"`
+	Aliases   []FwAliasSpec `yaml:"aliases" json:"-"`
+	IPSets    []FwIPSetSpec `yaml:"ipsets" json:"-"`
+	Groups    []FwGroupSpec `yaml:"groups" json:"-"`
+	Enabled   bool          `yaml:"enabled" json:"enable"`
+}
+
+// FwRuleSpec is one firewall rule.
+type FwRuleSpec struct {
+	Dest    string `yaml:"dest,omitempty" json:"dest,omitempty"`
+	Type    string `yaml:"type" json:"type"`
+	Action  string `yaml:"action" json:"action"`
+	Proto   string `yaml:"proto,omitempty" json:"proto,omitempty"`
+	Source  string `yaml:"source,omitempty" json:"source,omitempty"`
+	Sport   string `yaml:"sport,omitempty" json:"sport,omitempty"`
+	Dport   string `yaml:"dport,omitempty" json:"dport,omitempty"`
+	Iface   string `yaml:"iface,omitempty" json:"iface,omitempty"`
+	Macro   string `yaml:"macro,omitempty" json:"macro,omitempty"`
+	Log     string `yaml:"log,omitempty" json:"log,omitempty"`
+	Comment string `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Pos     int    `yaml:"pos" json:"pos"`
+	Enabled bool   `yaml:"enabled" json:"enable"`
+}
+
+// FwAliasSpec is a named IP/CIDR alias.
+type FwAliasSpec struct {
+	Name    string `yaml:"name" json:"name"`
+	CIDR    string `yaml:"cidr" json:"cidr"`
+	Comment string `yaml:"comment,omitempty" json:"comment,omitempty"`
+}
+
+// FwIPSetSpec is a named set of CIDR entries.
+type FwIPSetSpec struct {
+	Name    string         `yaml:"name" json:"name"`
+	Comment string         `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Entries []FwIPSetEntry `yaml:"entries" json:"-"`
+}
+
+// FwIPSetEntry is one member of an IPSet.
+type FwIPSetEntry struct {
+	CIDR    string `yaml:"cidr" json:"cidr"`
+	Comment string `yaml:"comment,omitempty" json:"comment,omitempty"`
+	NoMatch bool   `yaml:"nomatch,omitempty" json:"nomatch,omitempty"`
+}
+
+// FwGroupSpec is a named, reusable security group of rules.
+type FwGroupSpec struct {
+	Name    string       `yaml:"name" json:"group"`
+	Comment string       `yaml:"comment,omitempty" json:"comment,omitempty"`
+	Rules   []FwRuleSpec `yaml:"rules" json:"-"`
+}
+
+// MockOptions configures task latency/failure injection. It can be set at
+// fixture (global default), node, and per-request (query param) level; the
+// most specific value wins.
+type MockOptions struct {
+	// TaskLatencyMS delays task completion (simulates slow ifreload/SDN
+	// apply/etc.). Zero means "complete immediately".
+	TaskLatencyMS int `yaml:"task_latency_ms,omitempty"`
+
+	// NetworkReloadFail, when true, makes the next (and every subsequent,
+	// until cleared) `PUT /nodes/{node}/network` reload task fail.
+	NetworkReloadFail bool `yaml:"network_reload_fail,omitempty"`
+}
+
+// merge returns o overridden by any non-zero fields in override.
+func (o MockOptions) merge(override *MockOptions) MockOptions {
+	if override == nil {
+		return o
+	}
+	out := o
+	if override.TaskLatencyMS != 0 {
+		out.TaskLatencyMS = override.TaskLatencyMS
+	}
+	if override.NetworkReloadFail {
+		out.NetworkReloadFail = true
+	}
+	return out
+}

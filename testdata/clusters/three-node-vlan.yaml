@@ -1,0 +1,291 @@
+# three-node-vlan.yaml — a clean 3-node cluster with bonded, VLAN-aware
+# bridges and a PVE SDN "vlan" zone spanning all three nodes. Models the
+# second baseline every feature must work against (docs/development.md).
+cluster:
+  name: pve-cluster-a
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.10.0.11
+      online: true
+    - name: pve2
+      ip: 10.10.0.12
+      online: true
+    - name: pve3
+      ip: 10.10.0.13
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+  - userid: netops@pve
+    password: netops
+    privileges: ["Sys.Audit", "Sys.Modify", "SDN.Audit", "SDN.Allocate", "VM.Audit"]
+  - userid: auditor@pve
+    password: readonly
+    privileges: ["Sys.Audit", "VM.Audit", "SDN.Audit"]
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+        comments: "LACP to access switch"
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.10.0.11/24
+        gateway: 10.10.0.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        bridge_vlan_aware: true
+        comments: "cluster/mgmt trunk, VLAN-aware"
+      - iface: vmbr0.20
+        type: vlan
+        method: static
+        address: 10.10.20.11/24
+        autostart: true
+        mtu: 1500
+        vlan_raw_device: vmbr0
+        vlan_id: 20
+        comments: "storage VLAN"
+    links:
+      eno1: {mac: "bc:24:11:01:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
+      eno2: {mac: "bc:24:11:01:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
+      bond0: {mac: "bc:24:11:01:00:01", link_up: true}
+      vmbr0: {mac: "bc:24:11:01:00:01", link_up: true}
+    lldp:
+      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.254, vlan: 10, ttl: 120}
+      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.253, vlan: 10, ttl: 120}
+    stats:
+      eno1: {rx_bytes: 5000000000, tx_bytes: 2000000000, rx_packets: 4000000, tx_packets: 1800000}
+      eno2: {rx_bytes: 4800000000, tx_bytes: 1900000000, rx_packets: 3900000, tx_packets: 1750000}
+      bond0: {rx_bytes: 9800000000, tx_bytes: 3900000000, rx_packets: 7900000, tx_packets: 3550000}
+      vmbr0: {rx_bytes: 9800000000, tx_bytes: 3900000000, rx_packets: 7900000, tx_packets: 3550000}
+    qemu:
+      "200":
+        name: app01
+        status: running
+        config:
+          name: app01
+          cores: "4"
+          memory: "4096"
+          net0: "virtio=BC:24:11:AA:02:C8,bridge=vmbr0,tag=100,firewall=1"
+          ostype: l26
+    lxc: {}
+    firewall:
+      enabled: true
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+  pve2:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.10.0.12/24
+        gateway: 10.10.0.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        bridge_vlan_aware: true
+      - iface: vmbr0.20
+        type: vlan
+        method: static
+        address: 10.10.20.12/24
+        autostart: true
+        mtu: 1500
+        vlan_raw_device: vmbr0
+        vlan_id: 20
+    links:
+      eno1: {mac: "bc:24:11:02:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
+      eno2: {mac: "bc:24:11:02:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
+      bond0: {mac: "bc:24:11:02:00:01", link_up: true}
+      vmbr0: {mac: "bc:24:11:02:00:01", link_up: true}
+    lldp:
+      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.254, vlan: 10, ttl: 120}
+      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.253, vlan: 10, ttl: 120}
+    stats:
+      eno1: {rx_bytes: 4700000000, tx_bytes: 1950000000, rx_packets: 3800000, tx_packets: 1700000}
+      eno2: {rx_bytes: 4600000000, tx_bytes: 1900000000, rx_packets: 3750000, tx_packets: 1680000}
+      bond0: {rx_bytes: 9300000000, tx_bytes: 3850000000, rx_packets: 7550000, tx_packets: 3380000}
+      vmbr0: {rx_bytes: 9300000000, tx_bytes: 3850000000, rx_packets: 7550000, tx_packets: 3380000}
+    qemu: {}
+    lxc:
+      "201":
+        name: cache01
+        status: running
+        config:
+          hostname: cache01
+          cores: "2"
+          memory: "1024"
+          net0: "name=eth0,bridge=vmbr0,tag=100,firewall=1"
+    firewall:
+      enabled: true
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+  pve3:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.10.0.13/24
+        gateway: 10.10.0.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        bridge_vlan_aware: true
+      - iface: vmbr0.20
+        type: vlan
+        method: static
+        address: 10.10.20.13/24
+        autostart: true
+        mtu: 1500
+        vlan_raw_device: vmbr0
+        vlan_id: 20
+    links:
+      eno1: {mac: "bc:24:11:03:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
+      eno2: {mac: "bc:24:11:03:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
+      bond0: {mac: "bc:24:11:03:00:01", link_up: true}
+      vmbr0: {mac: "bc:24:11:03:00:01", link_up: true}
+    lldp:
+      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.254, vlan: 10, ttl: 120}
+      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.253, vlan: 10, ttl: 120}
+    stats:
+      eno1: {rx_bytes: 4500000000, tx_bytes: 1850000000, rx_packets: 3700000, tx_packets: 1650000}
+      eno2: {rx_bytes: 4400000000, tx_bytes: 1800000000, rx_packets: 3650000, tx_packets: 1620000}
+      bond0: {rx_bytes: 8900000000, tx_bytes: 3650000000, rx_packets: 7350000, tx_packets: 3270000}
+      vmbr0: {rx_bytes: 8900000000, tx_bytes: 3650000000, rx_packets: 7350000, tx_packets: 3270000}
+    qemu: {}
+    lxc: {}
+    firewall:
+      enabled: true
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+sdn:
+  zones:
+    - id: vlanz
+      type: vlan
+      bridge: vmbr0
+      nodes: [pve1, pve2, pve3]
+      mtu: 1500
+  vnets:
+    - id: vnet100
+      zone: vlanz
+      tag: 100
+      alias: "app-tier"
+    - id: vnet200
+      zone: vlanz
+      tag: 200
+      alias: "db-tier"
+  subnets:
+    - id: "10.100.0.0-24"
+      vnet: vnet100
+      cidr: 10.100.0.0/24
+      gateway: 10.100.0.1
+    - id: "10.200.0.0-24"
+      vnet: vnet200
+      cidr: 10.200.0.0/24
+      gateway: 10.200.0.1
+
+firewall:
+  cluster:
+    enabled: true
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules:
+      - pos: 0
+        enabled: true
+        type: in
+        action: ACCEPT
+        proto: tcp
+        dport: "22"
+        comment: "cluster-wide SSH"
+    aliases:
+      - name: mgmt_net
+        cidr: 10.10.0.0/24
+    ipsets:
+      - name: trusted_admins
+        entries:
+          - cidr: 10.10.0.100/32
+            comment: "jump host"
+    groups:
+      - name: web-servers
+        comment: "reusable web ingress rules"
+        rules:
+          - pos: 0
+            enabled: true
+            type: in
+            action: ACCEPT
+            proto: tcp
+            dport: "80,443"
+
+mess: []
