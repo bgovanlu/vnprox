@@ -1,0 +1,62 @@
+#!/bin/sh
+# postinst for the vnprox .deb — see docs/deployment.md ("Install") and
+# planning/tasks/phase-0.md#T-006.
+#
+# Responsibilities (deliberately narrow — see prerm/postrm for the rest of
+# the lifecycle, and install.sh/vnprox-setup for the interactive parts that
+# need a real PVE environment):
+#   1. Create /var/lib/vnprox (the daemon's DB/snapshots directory).
+#   2. Idempotently generate the session encryption key
+#      (/etc/vnprox/keys/session.key, root:root 0600, per docs/security.md
+#      "Authentication" and AES-256-GCM key-file convention) — generated
+#      once at install, never overwritten on upgrade.
+#   3. Reload systemd's unit cache so `vnprox.service` is recognized.
+#
+# This script deliberately does NOT enable or start vnprox.service: the
+# shipped default config assumes a real Proxmox VE node (PVE certificate
+# reuse, PVE API on :8006) and has no PVE token yet, so an unconditional
+# auto-start would crash-loop on a fresh install. Enabling/starting is the
+# explicit, documented final step of `vnprox-setup` / the manual install
+# flow ("systemctl enable --now vnprox" in docs/deployment.md), and of
+# install.sh's per-node rollout.
+
+set -e
+
+VAR_LIB_DIR=/var/lib/vnprox
+KEYS_DIR=/etc/vnprox/keys
+SESSION_KEY_FILE="$KEYS_DIR/session.key"
+
+case "$1" in
+  configure)
+    install -d -m 0700 -o root -g root "$VAR_LIB_DIR"
+    install -d -m 0700 -o root -g root "$KEYS_DIR"
+
+    if [ -s "$SESSION_KEY_FILE" ]; then
+      echo "vnprox: session encryption key already present at $SESSION_KEY_FILE, leaving it untouched"
+    else
+      umask 077
+      if command -v openssl >/dev/null 2>&1; then
+        openssl rand -out "$SESSION_KEY_FILE" 32
+      else
+        head -c 32 /dev/urandom > "$SESSION_KEY_FILE"
+      fi
+      chown root:root "$SESSION_KEY_FILE"
+      chmod 0600 "$SESSION_KEY_FILE"
+      echo "vnprox: generated new session encryption key at $SESSION_KEY_FILE"
+    fi
+
+    # /run/systemd/system only exists when systemd is the running init
+    # system (not the case in most build/test containers) — guard every
+    # systemctl call on it so this script is a no-op there instead of
+    # failing the package install.
+    if [ -d /run/systemd/system ]; then
+      systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    ;;
+  abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+  *)
+    ;;
+esac
+
+exit 0

@@ -4,6 +4,9 @@
 *.test
 coverage.out
 
+# Packaging (make deb scratch space; see packaging/Makefile)
+/packaging/build/
+
 # Frontend
 node_modules/
 # web/dist is otherwise a build artifact (populated by `npm run build`), but

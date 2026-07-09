@@ -1,0 +1,43 @@
+#!/bin/sh
+# postrm for the vnprox .deb — implements the documented remove-vs-purge
+# distinction exactly (docs/deployment.md "Uninstall"):
+#
+#   apt remove vnprox   keeps /var/lib/vnprox (snapshots, audit) and
+#                       /etc/vnprox (config, keys)
+#   apt purge  vnprox   removes both
+#
+# Uninstalling never touches network configuration (/etc/network,
+# /etc/pve) — decision D5, docs/deployment.md — this script does not go
+# near either path.
+#
+# Note: the cluster secret under /etc/pve/vnprox/ and the PVE API token are
+# explicitly out of scope here (pmxcfs-distributed / PVE-side state, not
+# owned by this package on any one node) — their "remove on purge of the
+# last node" behavior is a cluster-rollout concern handled by install.sh /
+# vnprox-setup, tracked at T-606 (planning/tasks/phase-6.md#T-606).
+
+set -e
+
+case "$1" in
+  purge)
+    echo "vnprox: purge — removing /etc/vnprox and /var/lib/vnprox"
+    rm -rf /etc/vnprox
+    rm -rf /var/lib/vnprox
+
+    if [ -d /run/systemd/system ]; then
+      systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    ;;
+  remove)
+    # Deliberately keep /etc/vnprox and /var/lib/vnprox — see header.
+    if [ -d /run/systemd/system ]; then
+      systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    ;;
+  upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    ;;
+  *)
+    ;;
+esac
+
+exit 0

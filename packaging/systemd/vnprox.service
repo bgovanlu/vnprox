@@ -1,0 +1,72 @@
+[Unit]
+Description=vnprox - visual networking add-on for Proxmox VE
+Documentation=https://github.com/bgovanlu/vnprox
+# pve-cluster.service (pmxcfs) provides /etc/pve; vnprox reads the node's PVE
+# certificate and (once T-301 lands) the cluster secret from under it.
+# vnprox degrades gracefully if pmxcfs is briefly unavailable, so this is a
+# soft ordering dependency (After=), not a hard requirement (Requires=).
+After=network-online.target pve-cluster.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/vnproxd --config /etc/vnprox/vnprox.toml
+Restart=on-failure
+RestartSec=2s
+
+# Graceful shutdown: vnproxd drains in-flight requests and exits within 3s
+# of SIGTERM (cmd/vnproxd acceptance criterion, planning/tasks/phase-0.md
+# #T-002). TimeoutStopSec leaves headroom above that budget before systemd
+# escalates to SIGKILL.
+TimeoutStopSec=15s
+
+# --- Host footprint hardening -------------------------------------------
+# Directives below are exactly what docs/security.md's "Host footprint"
+# section documents as v1 requirements. v1 runs as root (no User=/Group=
+# drop) — capability *reduction* to a non-root identity is tracked
+# separately as T-604 (planning/tasks/phase-6.md); do not add a User=
+# directive here until that task lands and the daemon itself supports it
+# (netlink admin, ifreload, and reading root:root 0600 key/DB files
+# currently all assume root).
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vnprox /etc/network /run
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+# "capability bounding to what netlink/ifreload require" (docs/security.md).
+# vnproxd still runs as root (UID 0), but the kernel's capability bounding
+# set constrains which capabilities that root process can ever hold, even
+# if compromised — CAP_NET_ADMIN/CAP_NET_RAW for netlink + bridge/bond/vlan
+# management and ethtool, CAP_NET_BIND_SERVICE in case a future release
+# binds a low port, CAP_DAC_OVERRIDE/CAP_DAC_READ_SEARCH for reading
+# root:root 0600 key/DB files and traversing /etc/network and /etc/pve,
+# CAP_CHOWN/CAP_FOWNER for writing snapshot/audit files under
+# /var/lib/vnprox. Broad, unrelated capabilities (CAP_SYS_ADMIN,
+# CAP_SYS_MODULE, CAP_SYS_PTRACE, CAP_SYS_BOOT, ...) are deliberately
+# excluded. Revisit alongside T-604.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER
+
+# --- Additional defense-in-depth (not explicitly enumerated in the ------
+# --- security doc, but standard-safe for a pure-Go, no-cgo, root ------
+# --- network daemon; kept here since systemd-analyze security flags -----
+# --- them and none are known to conflict with vnproxd's documented ------
+# --- behavior). Remove any of these first if a real-host install hits ---
+# --- a regression traced back to one. ------------------------------------
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectProc=invisible
+SystemCallArchitectures=native
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vnproxd
+
+[Install]
+WantedBy=multi-user.target
