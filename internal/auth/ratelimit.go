@@ -1,0 +1,118 @@
+package auth
+
+import (
+	"sync"
+	"time"
+)
+
+// RateLimitConfig configures one keyed token bucket family (per-IP or
+// per-username). Capacity is the burst size; RefillEvery is how often one
+// token is added back (so steady-state throughput is 1/RefillEvery
+// requests/sec). Zero values fall back to DefaultRateLimitConfig.
+type RateLimitConfig struct {
+	Capacity    int
+	RefillEvery time.Duration
+}
+
+// DefaultRateLimitConfig is the production default: 10 attempts before
+// throttling kicks in (matching T-105's acceptance criterion 4 wording,
+// "10 rapid bad logins"), refilling one token every 30s thereafter.
+var DefaultRateLimitConfig = RateLimitConfig{Capacity: 10, RefillEvery: 30 * time.Second}
+
+func (c RateLimitConfig) orDefault() RateLimitConfig {
+	if c.Capacity <= 0 {
+		c.Capacity = DefaultRateLimitConfig.Capacity
+	}
+	if c.RefillEvery <= 0 {
+		c.RefillEvery = DefaultRateLimitConfig.RefillEvery
+	}
+	return c
+}
+
+// tokenBucket is a simple keyed rate limiter: each key (an IP or a
+// username) gets its own bucket, created lazily on first use. It is safe
+// for concurrent use.
+type tokenBucket struct {
+	buckets map[string]*bucketState
+	now     func() time.Time
+	cfg     RateLimitConfig
+	mu      sync.Mutex
+}
+
+type bucketState struct {
+	last   time.Time
+	tokens float64
+}
+
+func newTokenBucket(cfg RateLimitConfig, now func() time.Time) *tokenBucket {
+	if now == nil {
+		now = time.Now
+	}
+	return &tokenBucket{
+		cfg:     cfg.orDefault(),
+		buckets: make(map[string]*bucketState),
+		now:     now,
+	}
+}
+
+// allow consumes one token for key, returning false if none was available
+// (the caller should respond 429). A fresh key starts with a full bucket
+// (capacity - 1 tokens remaining after this call succeeds), so the very
+// first attempt from any IP/username is never itself rate-limited.
+func (b *tokenBucket) allow(key string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	now := b.now()
+	st, ok := b.buckets[key]
+	if !ok {
+		st = &bucketState{tokens: float64(b.cfg.Capacity), last: now}
+		b.buckets[key] = st
+	} else {
+		elapsed := now.Sub(st.last)
+		if elapsed > 0 {
+			refill := elapsed.Seconds() / b.cfg.RefillEvery.Seconds()
+			st.tokens += refill
+			if st.tokens > float64(b.cfg.Capacity) {
+				st.tokens = float64(b.cfg.Capacity)
+			}
+			st.last = now
+		}
+	}
+
+	if st.tokens < 1 {
+		return false
+	}
+	st.tokens--
+	return true
+}
+
+// loginLimiter pairs a per-IP and a per-username tokenBucket: a login
+// attempt is allowed only if both have capacity, per docs/security.md
+// ("Login rate limiting: per-IP and per-username token bucket").
+type loginLimiter struct {
+	byIP       *tokenBucket
+	byUsername *tokenBucket
+}
+
+func newLoginLimiter(cfg RateLimitConfig, now func() time.Time) *loginLimiter {
+	return &loginLimiter{
+		byIP:       newTokenBucket(cfg, now),
+		byUsername: newTokenBucket(cfg, now),
+	}
+}
+
+// allow reports whether a login attempt from ip for username may proceed.
+// Both the per-IP and per-username buckets must have capacity; checking
+// byIP first means a username whose bucket is still full never gets
+// charged for an attempt that was going to be rejected anyway because its
+// IP is already throttled.
+func (l *loginLimiter) allow(ip, username string) bool {
+	if !l.byIP.allow(ip) {
+		return false
+	}
+	if !l.byUsername.allow(username) {
+		return false
+	}
+	return true
+}

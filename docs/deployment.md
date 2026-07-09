@@ -60,6 +60,10 @@ token_file = "/etc/vnprox/keys/pve-token"
 [safety]
 allow_dangerous_ops = false   # see docs/security.md interlocks
 
+[storage]
+db_path = "/var/lib/vnprox/vnprox.db"
+session_key_file = "/etc/vnprox/keys/session.key"
+
 [collect]
 pve_interval = "10s"
 host_interval = "5s"

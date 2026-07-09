@@ -19,9 +19,20 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// AuthService is the subset of *auth.Service the router needs: route
+// registration for docs/api.md's Auth endpoints. Declared as an interface
+// here (rather than importing internal/auth's concrete type) so this
+// package's dependency on T-105's auth package stays a one-method seam —
+// internal/api does not otherwise know or care how login/session/CSRF
+// works.
+type AuthService interface {
+	MountRoutes(r chi.Router)
+}
+
 // Options configures the router built by NewRouter.
 type Options struct {
 	DistFS  fs.FS
+	Auth    AuthService
 	Logger  *slog.Logger
 	Version string
 }
@@ -43,6 +54,9 @@ func NewRouter(opts Options) http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(opts.Version))
+		if opts.Auth != nil {
+			opts.Auth.MountRoutes(r)
+		}
 	})
 
 	// Unmatched /api/* routes get a JSON 404 (per docs/api.md's error

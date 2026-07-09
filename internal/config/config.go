@@ -36,11 +36,22 @@ const (
 	// trust story matches PVE's own UI.
 	DefaultPVECertPath = "/etc/pve/local/pve-ssl.pem"
 	DefaultPVEKeyPath  = "/etc/pve/local/pve-ssl.key"
+
+	// DefaultDBPath and DefaultSessionKeyFile are vnprox's own app-owned
+	// storage paths (docs/deployment.md "Backup": "/var/lib/vnprox/vnprox.db";
+	// docs/security.md "Authentication": the session cipher key). Added by
+	// T-105 (internal/auth) — no [storage] section existed before it needed
+	// somewhere to load the SQLite store and the AES-256-GCM session key
+	// from, and both are genuinely daemon-wide paths, not auth-specific
+	// ones, hence their own section rather than living under [server].
+	DefaultDBPath         = "/var/lib/vnprox/vnprox.db"
+	DefaultSessionKeyFile = "/etc/vnprox/keys/session.key"
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
 type Config struct {
 	PVE     PVEConfig
+	Storage StorageConfig
 	Server  ServerConfig
 	Collect CollectConfig
 	Safety  SafetyConfig
@@ -68,6 +79,15 @@ type SafetyConfig struct {
 	AllowDangerousOps bool
 }
 
+// StorageConfig is the [storage] section: paths for vnprox's own app-owned
+// SQLite database and the session-secret encryption key (docs/security.md
+// "Authentication", docs/deployment.md "Backup"). Added by T-105 —
+// internal/config previously had no field for either path.
+type StorageConfig struct {
+	DBPath         string
+	SessionKeyFile string
+}
+
 // CollectConfig is the [collect] section, parsed into durations.
 type CollectConfig struct {
 	PVEInterval  time.Duration
@@ -80,6 +100,7 @@ type CollectConfig struct {
 type rawConfig struct {
 	Collect rawCollect `toml:"collect"`
 	PVE     rawPVE     `toml:"pve"`
+	Storage rawStorage `toml:"storage"`
 	Server  rawServer  `toml:"server"`
 	Safety  rawSafety  `toml:"safety"`
 }
@@ -99,6 +120,11 @@ type rawPVE struct {
 
 type rawSafety struct {
 	AllowDangerousOps bool `toml:"allow_dangerous_ops"`
+}
+
+type rawStorage struct {
+	DBPath         string `toml:"db_path"`
+	SessionKeyFile string `toml:"session_key_file"`
 }
 
 type rawCollect struct {
@@ -152,6 +178,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		},
 		Safety: SafetyConfig{
 			AllowDangerousOps: raw.Safety.AllowDangerousOps,
+		},
+		Storage: StorageConfig{
+			DBPath:         firstNonEmpty(raw.Storage.DBPath, DefaultDBPath),
+			SessionKeyFile: firstNonEmpty(raw.Storage.SessionKeyFile, DefaultSessionKeyFile),
 		},
 		Collect: collect,
 	}

@@ -23,6 +23,14 @@ token_file = "/etc/vnprox/keys/pve-token"
 [safety]
 allow_dangerous_ops = false
 
+# T-105: vnprox's own SQLite store + session-secret key. Relative paths
+# here resolve under var/ (gitignored) so `make dev` works without root or
+# pre-existing /var/lib/vnprox, /etc/vnprox — production installs always
+# get absolute paths under those from the real installer.
+[storage]
+db_path = "var/dev-vnprox.db"
+session_key_file = "var/dev-session.key"
+
 [collect]
 pve_interval = "10s"
 host_interval = "5s"
