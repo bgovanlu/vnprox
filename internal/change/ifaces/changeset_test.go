@@ -2,10 +2,6 @@ package ifaces
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -126,60 +122,3 @@ func TestDiffChangeset_NoOpsNoFiles(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
-
-// --- handler.go ------------------------------------------------------------
-
-type fakeLookup struct {
-	err error
-	ops []Op
-}
-
-func (f fakeLookup) Ops(id string) ([]Op, error) { return f.ops, f.err }
-
-func TestNewDiffHandler_OK(t *testing.T) {
-	reader := loadThreeNodeVlanReader(t)
-	mtu := 9000 // fixture's vmbr0 starts at 1500 (see three-node-vlan.yaml), so this is a real change
-	lookup := fakeLookup{ops: []Op{IfaceUpdate{Target: ref(inventory.KindBridge, "pve1", "vmbr0"), MTU: &mtu}}}
-	h := NewDiffHandler(lookup, reader, func(r *http.Request) string { return "cs1" })
-
-	req := httptest.NewRequest(http.MethodGet, "/changesets/cs1/diff", nil)
-	rec := httptest.NewRecorder()
-	h(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
-	}
-	var got ChangesetDiff
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decoding response: %v", err)
-	}
-	if len(got.Files) != 1 || !got.Files[0].Changed {
-		t.Errorf("unexpected response: %+v", got)
-	}
-}
-
-func TestNewDiffHandler_NotFound(t *testing.T) {
-	reader := loadThreeNodeVlanReader(t)
-	lookup := fakeLookup{err: errors.New("wrapped: " + ErrChangesetNotFound.Error())}
-	// Wrap properly so errors.Is matches, matching how a real store would
-	// return it.
-	lookup.err = fmtErrorfNotFound()
-	h := NewDiffHandler(lookup, reader, func(r *http.Request) string { return "missing" })
-
-	req := httptest.NewRequest(http.MethodGet, "/changesets/missing/diff", nil)
-	rec := httptest.NewRecorder()
-	h(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404; body=%s", rec.Code, rec.Body.String())
-	}
-}
-
-func fmtErrorfNotFound() error {
-	return errNotFoundWrap{ErrChangesetNotFound}
-}
-
-type errNotFoundWrap struct{ err error }
-
-func (e errNotFoundWrap) Error() string { return "changeset: " + e.err.Error() }
-func (e errNotFoundWrap) Unwrap() error { return e.err }

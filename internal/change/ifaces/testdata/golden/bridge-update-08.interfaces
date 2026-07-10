@@ -1,0 +1,28 @@
+#!/this/is/not/a/shebang/but/looks/like/one -- just a comment
+##################################################
+# NETWORK CONFIG — DO NOT EDIT BY HAND
+# managed by vnprox; last touched 2026-01-05T12:00:00Z
+##################################################
+
+auto lo
+iface lo inet loopback
+
+# eno1 is the onboard NIC; eno2 is the add-in card (unused for now)
+auto eno1
+iface eno1 inet manual
+	# comments can appear between options too
+	mtu 1500
+	#no leading space either
+
+auto vmbr0
+iface vmbr0 inet static
+	address 192.168.1.10/24
+	gateway 192.168.1.1
+	bridge-ports eno1 eno2
+	bridge-stp off
+	bridge-fd 0
+	#management bridge
+	#do not remove eno1 from this bridge
+
+# trailing top-level comment at end of file, no blank line after it
+	mtu 1500

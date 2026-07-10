@@ -1,0 +1,7 @@
+auto lo
+iface lo inet loopback
+
+auto eno1
+iface eno1 inet manual
+	mtu 1500
+	#uplink to core switch

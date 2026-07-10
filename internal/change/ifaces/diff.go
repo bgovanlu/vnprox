@@ -197,18 +197,18 @@ func buildHunks(ops []editOp, context int) []hunk {
 	return hunks
 }
 
-func ensureNL(s string) string {
-	if strings.HasSuffix(s, "\n") {
-		return s
-	}
-	return s + "\n"
-}
+// noNewlineMarker is the unified-diff annotation GNU diff emits after a
+// rendered line whose source content did not end in a newline, so patch(1)
+// can reproduce the missing terminator exactly.
+const noNewlineMarker = "\n\\ No newline at end of file\n"
 
 // UnifiedDiff renders a standard unified diff (as `diff -u oldPath newPath`
 // would, with diffContext lines of context) between oldContent and
-// newContent. Returns "" when the two are byte-identical, so callers can
-// use that to decide whether a file belongs in a diff response at all
-// (docs/api.md's diff endpoint only lists files the changeset touches).
+// newContent, including the "\ No newline at end of file" marker when either
+// side's final line lacks a terminator. Returns "" when the two are
+// byte-identical, so callers can use that to decide whether a file belongs
+// in a diff response at all (docs/api.md's diff endpoint only lists files
+// the changeset touches).
 func UnifiedDiff(oldPath, newPath, oldContent, newContent string) string {
 	if oldContent == newContent {
 		return ""
@@ -235,7 +235,13 @@ func UnifiedDiff(oldPath, newPath, oldContent, newContent string) string {
 				prefix = '+'
 			}
 			sb.WriteByte(prefix)
-			sb.WriteString(ensureNL(op.line))
+			sb.WriteString(op.line)
+			if !strings.HasSuffix(op.line, "\n") {
+				// splitLines only ever yields a terminator-less line as a
+				// side's final line, so this is exactly where the
+				// unified-diff format requires the no-newline marker.
+				sb.WriteString(noNewlineMarker)
+			}
 		}
 	}
 	return sb.String()

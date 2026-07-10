@@ -208,6 +208,256 @@ func checkVlanIntent(t *testing.T, i int, f *host.File, name, parent string, mtu
 	checkMTUAndAutostart(t, i, f, e, name, mtu, autostart)
 }
 
+// --- randomized update/delete/port ops (audit finding F-08) ----------------
+
+// mutTarget is one existing entity in a parsed fixture that a randomized
+// update/delete/port op can target, classified from the stanza's own
+// options (the on-disk declaration is ground truth for its kind).
+type mutTarget struct {
+	name  string
+	kind  inventory.Kind
+	ports []string // current port list, bridges only
+}
+
+// collectMutTargets classifies every distinct iface stanza in f into the
+// bond/bridge/vlan entity kinds this package's update/delete/port ops
+// understand, skipping plain interfaces (loopback, NICs, templates).
+func collectMutTargets(f *host.File) []mutTarget {
+	var out []mutTarget
+	seen := map[string]bool{}
+	for _, e := range f.Ifaces() {
+		if seen[e.Name] {
+			continue
+		}
+		seen[e.Name] = true
+		ovsType, _ := e.Get("ovs_type")
+		switch ovsType {
+		case "OVSBond":
+			out = append(out, mutTarget{name: e.Name, kind: inventory.KindOVSBond})
+		case "OVSBridge":
+			v, _ := e.Get("ovs_ports")
+			out = append(out, mutTarget{name: e.Name, kind: inventory.KindOVSBridge, ports: strings.Fields(v)})
+		default:
+			if _, ok := e.Get("bond-slaves"); ok {
+				out = append(out, mutTarget{name: e.Name, kind: inventory.KindBond})
+			} else if v, ok := e.Get("bridge-ports"); ok {
+				out = append(out, mutTarget{name: e.Name, kind: inventory.KindBridge, ports: strings.Fields(v)})
+			} else if _, ok := e.Get("vlan-raw-device"); ok {
+				out = append(out, mutTarget{name: e.Name, kind: inventory.KindVlan})
+			}
+		}
+	}
+	return out
+}
+
+var propMTUs = []int{1500, 9000}
+
+// TestProperty_RandomizedMutationOpsMatchIntent extends the create-only
+// property test to the update/delete/port op families (bond.update,
+// bond.delete, bridge.update, bridge.delete, bridge.port.add,
+// bridge.port.remove, vlan.update, vlan.delete): for randomized existing
+// targets picked out of each parsed corpus fixture with randomized
+// parameters, it applies the op, re-parses the rendered bytes from scratch,
+// and checks the entity-level effect matches the op's intent. Seeded and
+// deterministic, matching the create-op property test's pattern.
+func TestProperty_RandomizedMutationOpsMatchIntent(t *testing.T) {
+	r := rand.New(rand.NewSource(43))
+	const iterations = 400
+
+	for i := 0; i < iterations; i++ {
+		base := corpusFiles[r.Intn(len(corpusFiles))]
+		f, _ := parseCorpus(t, base)
+		targets := collectMutTargets(f)
+		if len(targets) == 0 {
+			continue // fixture has no bond/bridge/vlan entity to mutate
+		}
+		target := targets[r.Intn(len(targets))]
+		tref := ref(target.kind, "pve1", target.name)
+
+		switch target.kind {
+		case inventory.KindBond, inventory.KindOVSBond:
+			ovs := target.kind == inventory.KindOVSBond
+			if r.Intn(3) == 0 { // delete
+				mutateAndCheckDeleted(t, i, base, f, BondDelete{Target: tref}, target.name)
+				continue
+			}
+			op := BondUpdate{Target: tref, MTU: propMTUs[r.Intn(2)]}
+			if r.Intn(2) == 0 {
+				op.Slaves = randNames(r, fmt.Sprintf("ms%d_", i), 2+r.Intn(2))
+			}
+			if !ovs {
+				if r.Intn(2) == 0 {
+					op.Mode = bondModes[r.Intn(len(bondModes))]
+				}
+				op.RemoveLacpRate = r.Intn(2) == 0
+				op.RemoveXmitHashPolicy = r.Intn(2) == 0
+			}
+			reparsed := mutateAndReparse(t, i, base, f, op)
+			e, ok := reparsed.Iface(target.name)
+			if !ok {
+				t.Fatalf("[%d %s] bond %s vanished after update", i, base, target.name)
+			}
+			slavesKey := "bond-slaves"
+			if ovs {
+				slavesKey = "ovs_bonds"
+			}
+			if len(op.Slaves) > 0 {
+				if v, _ := e.Get(slavesKey); v != strings.Join(op.Slaves, " ") {
+					t.Errorf("[%d %s] bond %s %s = %q, want %q", i, base, target.name, slavesKey, v, strings.Join(op.Slaves, " "))
+				}
+			}
+			if op.Mode != "" {
+				if v, _ := e.Get("bond-mode"); v != op.Mode {
+					t.Errorf("[%d %s] bond %s bond-mode = %q, want %q", i, base, target.name, v, op.Mode)
+				}
+			}
+			if op.RemoveLacpRate {
+				if v, ok := e.Get("bond-lacp-rate"); ok {
+					t.Errorf("[%d %s] bond %s bond-lacp-rate should be removed, got %q", i, base, target.name, v)
+				}
+			}
+			if op.RemoveXmitHashPolicy {
+				if v, ok := e.Get("bond-xmit-hash-policy"); ok {
+					t.Errorf("[%d %s] bond %s bond-xmit-hash-policy should be removed, got %q", i, base, target.name, v)
+				}
+			}
+			checkUpdatedMTU(t, i, base, e, target.name, op.MTU)
+
+		case inventory.KindBridge, inventory.KindOVSBridge:
+			ovs := target.kind == inventory.KindOVSBridge
+			portsKey := "bridge-ports"
+			if ovs {
+				portsKey = "ovs_ports"
+			}
+			switch r.Intn(4) {
+			case 0: // delete
+				mutateAndCheckDeleted(t, i, base, f, BridgeDelete{Target: tref}, target.name)
+			case 1: // port add
+				port := fmt.Sprintf("mp%d", i)
+				reparsed := mutateAndReparse(t, i, base, f, BridgePortAdd{Target: tref, Port: port})
+				e, ok := reparsed.Iface(target.name)
+				if !ok {
+					t.Fatalf("[%d %s] bridge %s vanished after port.add", i, base, target.name)
+				}
+				v, _ := e.Get(portsKey)
+				want := strings.Join(append(append([]string{}, target.ports...), port), " ")
+				if v != want {
+					t.Errorf("[%d %s] bridge %s %s = %q, want %q (existing ports preserved, new port appended)", i, base, target.name, portsKey, v, want)
+				}
+			case 2: // port remove (skipped when the bridge has no ports)
+				if len(target.ports) == 0 {
+					continue
+				}
+				victim := target.ports[r.Intn(len(target.ports))]
+				reparsed := mutateAndReparse(t, i, base, f, BridgePortRemove{Target: tref, Port: victim})
+				e, ok := reparsed.Iface(target.name)
+				if !ok {
+					t.Fatalf("[%d %s] bridge %s vanished after port.remove", i, base, target.name)
+				}
+				v, _ := e.Get(portsKey)
+				var want []string
+				for _, p := range target.ports {
+					if p != victim {
+						want = append(want, p)
+					}
+				}
+				if v != strings.Join(want, " ") {
+					t.Errorf("[%d %s] bridge %s %s = %q after removing %q, want %q", i, base, target.name, portsKey, v, victim, strings.Join(want, " "))
+				}
+			default: // update
+				op := BridgeUpdate{Target: tref, MTU: propMTUs[r.Intn(2)]}
+				if r.Intn(2) == 0 {
+					op.Ports = randNames(r, fmt.Sprintf("mbp%d_", i), 1+r.Intn(3))
+				}
+				if !ovs && r.Intn(2) == 0 {
+					vlanAware := r.Intn(2) == 0
+					op.VlanAware = &vlanAware
+				}
+				reparsed := mutateAndReparse(t, i, base, f, op)
+				e, ok := reparsed.Iface(target.name)
+				if !ok {
+					t.Fatalf("[%d %s] bridge %s vanished after update", i, base, target.name)
+				}
+				if len(op.Ports) > 0 {
+					if v, _ := e.Get(portsKey); v != strings.Join(op.Ports, " ") {
+						t.Errorf("[%d %s] bridge %s %s = %q, want %q", i, base, target.name, portsKey, v, strings.Join(op.Ports, " "))
+					}
+				}
+				if op.VlanAware != nil {
+					v, has := e.Get("bridge-vlan-aware")
+					if *op.VlanAware && (!has || v != "yes") {
+						t.Errorf("[%d %s] bridge %s expected bridge-vlan-aware yes, got %q (present=%v)", i, base, target.name, v, has)
+					}
+					if !*op.VlanAware && has {
+						t.Errorf("[%d %s] bridge %s expected no bridge-vlan-aware, found %q", i, base, target.name, v)
+					}
+				}
+				checkUpdatedMTU(t, i, base, e, target.name, op.MTU)
+			}
+
+		case inventory.KindVlan:
+			if r.Intn(3) == 0 { // delete
+				mutateAndCheckDeleted(t, i, base, f, VlanDelete{Target: tref}, target.name)
+				continue
+			}
+			op := VlanUpdate{Target: tref, MTU: propMTUs[r.Intn(2)]}
+			if r.Intn(2) == 0 {
+				op.Addresses = []string{fmt.Sprintf("10.%d.%d.5/24", r.Intn(255), r.Intn(255))}
+			}
+			reparsed := mutateAndReparse(t, i, base, f, op)
+			e, ok := reparsed.Iface(target.name)
+			if !ok {
+				t.Fatalf("[%d %s] vlan %s vanished after update", i, base, target.name)
+			}
+			if len(op.Addresses) > 0 {
+				if v, _ := e.Get("address"); v != op.Addresses[0] {
+					t.Errorf("[%d %s] vlan %s address = %q, want %q", i, base, target.name, v, op.Addresses[0])
+				}
+			}
+			checkUpdatedMTU(t, i, base, e, target.name, op.MTU)
+		}
+	}
+}
+
+// mutateAndReparse applies op to f and re-parses the rendered bytes from
+// scratch (the same round-trip-through-bytes oracle the create property
+// test uses).
+func mutateAndReparse(t *testing.T, i int, base string, f *host.File, op Op) *host.File {
+	t.Helper()
+	if err := Mutate(f, op, "PROPCS"); err != nil {
+		t.Fatalf("[%d %s] Mutate %s: %v", i, base, op.Kind(), err)
+	}
+	reparsed, err := host.ParseInterfaces([]byte(f.Render()))
+	if err != nil {
+		t.Fatalf("[%d %s] mutated output does not reparse after %s: %v\n%s", i, base, op.Kind(), err, f.Render())
+	}
+	return reparsed
+}
+
+// mutateAndCheckDeleted applies a delete op and asserts the entity's iface
+// stanza(s) and auto/allow wiring are gone from the re-parsed output.
+func mutateAndCheckDeleted(t *testing.T, i int, base string, f *host.File, op Op, name string) {
+	t.Helper()
+	reparsed := mutateAndReparse(t, i, base, f, op)
+	if _, ok := reparsed.Iface(name); ok {
+		t.Errorf("[%d %s] %s: iface stanza for %s still present after delete", i, base, op.Kind(), name)
+	}
+	for _, n := range reparsed.AutoIfaces() {
+		if n == name {
+			t.Errorf("[%d %s] %s: %s still autostart-wired after delete", i, base, op.Kind(), name)
+		}
+	}
+}
+
+// checkUpdatedMTU asserts the mtu option matches what an update op set
+// (update ops in this test always set a nonzero MTU).
+func checkUpdatedMTU(t *testing.T, i int, base string, e *host.Entry, name string, mtu int) {
+	t.Helper()
+	if v, ok := e.Get("mtu"); !ok || v != strconv.Itoa(mtu) {
+		t.Errorf("[%d %s] %s mtu = %q (present=%v), want %d", i, base, name, v, ok, mtu)
+	}
+}
+
 func checkMTUAndAutostart(t *testing.T, i int, f *host.File, e *host.Entry, name string, mtu int, autostart bool) {
 	t.Helper()
 	v, hasMTU := e.Get("mtu")

@@ -25,10 +25,9 @@ type FileDiff struct {
 // node-file-affecting ops: every touched node's file diff, plus a
 // structured summary per op in the caller's original order. It is exactly
 // what `GET /changesets/{id}/diff` (docs/api.md) needs to return for the
-// ops this package understands; a real handler composes this with any
-// sdn/fw/guest-op contributions from other packages before responding (see
-// handler.go's doc comment on why the HTTP wiring is left to the
-// integrator).
+// ops this package understands; the route is wired by internal/change's
+// Service.Diff (T-205), which composes this with any sdn/fw/guest-op
+// contributions other packages may add later.
 type ChangesetDiff struct {
 	Files []FileDiff  `json:"files"`
 	Ops   []OpSummary `json:"ops"`
@@ -44,9 +43,11 @@ type ChangesetDiff struct {
 // function has no other source of ordering (no map iteration) so its
 // output is deterministic for a given ops slice.
 //
-// This is the diff-generation logic the task card asks to be "testable and
-// callable independently of the HTTP route": it takes a host.Reader and a
-// concrete op slice, no changeset store or HTTP request involved.
+// DiffChangeset is deliberately a pure function over a host.Reader and a
+// concrete op slice — no changeset store or HTTP types — so the diff logic
+// can be exercised directly in tests and reused by internal/change's
+// Service.Diff, which wires it to the `GET /changesets/{id}/diff` route the
+// task card requires.
 func DiffChangeset(ctx context.Context, reader host.Reader, ops []Op, changesetID string) (*ChangesetDiff, error) {
 	nodeOrder := make([]string, 0, 4)
 	byNode := make(map[string][]Op, 4)

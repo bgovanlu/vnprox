@@ -77,18 +77,32 @@ func TestUnifiedDiff_NoTrailingNewline(t *testing.T) {
 	if d == "" {
 		t.Fatal("expected a non-empty diff")
 	}
-	// Both changed lines should be present, each still ending in a newline
-	// in the rendered diff even though the source lacked one.
-	if !containsAll(d, "-b\n", "+c\n") {
-		t.Errorf("diff missing expected lines:\n%s", d)
+	// Each side's final, terminator-less line must be followed by the
+	// unified-diff no-newline marker (GNU diff behavior; without it GNU
+	// patch rejects the hunk — audit finding F-06).
+	want := "--- f\n+++ f\n@@ -1,2 +1,2 @@\n a\n-b\n\\ No newline at end of file\n+c\n\\ No newline at end of file\n"
+	if d != want {
+		t.Errorf("diff mismatch:\ngot:\n%q\nwant:\n%q", d, want)
 	}
 }
 
-func containsAll(s string, subs ...string) bool {
-	for _, sub := range subs {
-		if countOccurrences(s, sub) == 0 {
-			return false
-		}
+// TestUnifiedDiff_NewlineAddedAtEOF: old lacks the trailing newline, new
+// has it — the marker must appear only on the old side.
+func TestUnifiedDiff_NewlineAddedAtEOF(t *testing.T) {
+	d := UnifiedDiff("f", "f", "a\nb", "a\nb\n")
+	want := "--- f\n+++ f\n@@ -1,2 +1,2 @@\n a\n-b\n\\ No newline at end of file\n+b\n"
+	if d != want {
+		t.Errorf("diff mismatch:\ngot:\n%q\nwant:\n%q", d, want)
 	}
-	return true
+}
+
+// TestUnifiedDiff_NoNewlineOnContextLine: both sides end with the same
+// terminator-less line rendered as context — one marker, after the
+// context line, per GNU diff.
+func TestUnifiedDiff_NoNewlineOnContextLine(t *testing.T) {
+	d := UnifiedDiff("f", "f", "a\nz", "b\nz")
+	want := "--- f\n+++ f\n@@ -1,2 +1,2 @@\n-a\n+b\n z\n\\ No newline at end of file\n"
+	if d != want {
+		t.Errorf("diff mismatch:\ngot:\n%q\nwant:\n%q", d, want)
+	}
 }

@@ -13,31 +13,34 @@ import (
 // managed-by comment of any stanza the op newly creates; it is ignored by
 // ops that only edit or remove existing stanzas.
 func Mutate(f *host.File, op Op, changesetID string) error {
+	// Every line a mutator generates uses the file's dominant line
+	// terminator, so a CRLF file stays consistently CRLF (see dominantEOL).
+	nl := dominantEOL(f)
 	switch o := op.(type) {
 	case IfaceUpdate:
-		return mutateIfaceUpdate(f, o)
+		return mutateIfaceUpdate(f, o, nl)
 	case BondCreate:
-		return mutateBondCreate(f, o, changesetID)
+		return mutateBondCreate(f, o, changesetID, nl)
 	case BondUpdate:
-		return mutateBondUpdate(f, o)
+		return mutateBondUpdate(f, o, nl)
 	case BondDelete:
-		return mutateBondDelete(f, o)
+		return mutateBondDelete(f, o, nl)
 	case BridgeCreate:
-		return mutateBridgeCreate(f, o, changesetID)
+		return mutateBridgeCreate(f, o, changesetID, nl)
 	case BridgeUpdate:
-		return mutateBridgeUpdate(f, o)
+		return mutateBridgeUpdate(f, o, nl)
 	case BridgeDelete:
-		return mutateBridgeDelete(f, o)
+		return mutateBridgeDelete(f, o, nl)
 	case BridgePortAdd:
-		return mutateBridgePortAdd(f, o)
+		return mutateBridgePortAdd(f, o, nl)
 	case BridgePortRemove:
-		return mutateBridgePortRemove(f, o)
+		return mutateBridgePortRemove(f, o, nl)
 	case VlanCreate:
-		return mutateVlanCreate(f, o, changesetID)
+		return mutateVlanCreate(f, o, changesetID, nl)
 	case VlanUpdate:
-		return mutateVlanUpdate(f, o)
+		return mutateVlanUpdate(f, o, nl)
 	case VlanDelete:
-		return mutateVlanDelete(f, o)
+		return mutateVlanDelete(f, o, nl)
 	default:
 		return fmt.Errorf("ifaces: mutate: unsupported op %T", op)
 	}

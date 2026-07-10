@@ -7,22 +7,38 @@ import (
 	"github.com/bgovanlu/vnprox/internal/host"
 )
 
+// dominantEOL returns the line terminator ("\n" or "\r\n") the majority of
+// f's existing lines use, so every newly generated line matches the file's
+// style — a CRLF file must stay consistently CRLF, since a mixed-ending
+// /etc/network/interfaces is what apply would write to disk. An empty file
+// (or one with no terminators at all) defaults to "\n".
+func dominantEOL(f *host.File) string {
+	content := f.Render()
+	total := strings.Count(content, "\n")
+	crlf := strings.Count(content, "\r\n")
+	if crlf*2 > total {
+		return "\r\n"
+	}
+	return "\n"
+}
+
 // managedByComment renders the vnprox-provenance marker every newly
 // created stanza carries as the first line of its body (task card T-204).
-func managedByComment(changesetID string) host.BodyItem {
+func managedByComment(changesetID, nl string) host.BodyItem {
 	return host.BodyItem{
 		Kind: host.BodyComment,
-		Raw:  fmt.Sprintf("\t# managed by vnprox (changeset %s)\n", changesetID),
+		Raw:  fmt.Sprintf("\t# managed by vnprox (changeset %s)%s", changesetID, nl),
 	}
 }
 
-// optionItem renders a single "\tkey value\n" option line.
-func optionItem(key, value string) host.BodyItem {
+// optionItem renders a single "\tkey value" option line terminated with nl
+// (the file's dominant line ending, see dominantEOL).
+func optionItem(key, value, nl string) host.BodyItem {
 	return host.BodyItem{
 		Kind:  host.BodyOption,
 		Key:   key,
 		Value: value,
-		Raw:   fmt.Sprintf("\t%s %s\n", key, value),
+		Raw:   fmt.Sprintf("\t%s %s%s", key, value, nl),
 	}
 }
 
@@ -39,14 +55,14 @@ func optionItem(key, value string) host.BodyItem {
 // interfaces_parse.go), and appending past that would open a blank line in
 // the middle of the rendered stanza. Passing an empty values slice removes
 // the key entirely (equivalent to removeOptionKey).
-func setOptionList(body []host.BodyItem, key string, values []string) []host.BodyItem {
+func setOptionList(body []host.BodyItem, key string, values []string, nl string) []host.BodyItem {
 	out := make([]host.BodyItem, 0, len(body)+len(values))
 	inserted := false
 	for _, item := range body {
 		if item.Kind == host.BodyOption && item.Key == key {
 			if !inserted {
 				for _, v := range values {
-					out = append(out, optionItem(key, v))
+					out = append(out, optionItem(key, v, nl))
 				}
 				inserted = true
 			}
@@ -57,22 +73,28 @@ func setOptionList(body []host.BodyItem, key string, values []string) []host.Bod
 	if !inserted {
 		items := make([]host.BodyItem, len(values))
 		for i, v := range values {
-			items[i] = optionItem(key, v)
+			items[i] = optionItem(key, v, nl)
 		}
-		out = insertBeforeTrailingBlanks(out, items)
+		out = insertBeforeTrailingBlanks(out, items, nl)
 	}
 	return out
 }
 
 // insertBeforeTrailingBlanks inserts items into body just before any
-// trailing run of BodyBlank items, or at the end if there is none.
-func insertBeforeTrailingBlanks(body []host.BodyItem, items []host.BodyItem) []host.BodyItem {
+// trailing run of BodyBlank items, or at the end if there is none. If the
+// item being inserted after is the file's terminator-less final line (a
+// no-final-newline file), it is first terminated with nl so the inserted
+// line starts on its own line instead of concatenating onto it.
+func insertBeforeTrailingBlanks(body []host.BodyItem, items []host.BodyItem, nl string) []host.BodyItem {
 	end := len(body)
 	for end > 0 && body[end-1].Kind == host.BodyBlank {
 		end--
 	}
 	out := make([]host.BodyItem, 0, len(body)+len(items))
 	out = append(out, body[:end]...)
+	if len(items) > 0 && end > 0 && !strings.HasSuffix(out[end-1].Raw, "\n") {
+		out[end-1].Raw += nl
+	}
 	out = append(out, items...)
 	out = append(out, body[end:]...)
 	return out
@@ -80,11 +102,11 @@ func insertBeforeTrailingBlanks(body []host.BodyItem, items []host.BodyItem) []h
 
 // setOption is setOptionList for a single scalar option; an empty value
 // removes the key (see removeOptionKey).
-func setOption(body []host.BodyItem, key, value string) []host.BodyItem {
+func setOption(body []host.BodyItem, key, value, nl string) []host.BodyItem {
 	if value == "" {
 		return removeOptionKey(body, key)
 	}
-	return setOptionList(body, key, []string{value})
+	return setOptionList(body, key, []string{value}, nl)
 }
 
 // removeOptionKey drops every BodyOption item named key, leaving everything
@@ -148,13 +170,13 @@ func isOVSKind(k string) bool {
 
 // newIfaceEntry builds a bare (no body) "iface <name> <family> <method>"
 // Entry ready to have body items appended.
-func newIfaceEntry(name, family, method string) host.Entry {
+func newIfaceEntry(name, family, method, nl string) host.Entry {
 	return host.Entry{
 		Kind:   host.KindIface,
 		Name:   name,
 		Family: family,
 		Method: method,
-		Raw:    fmt.Sprintf("iface %s %s %s\n", name, family, method),
+		Raw:    fmt.Sprintf("iface %s %s %s%s", name, family, method, nl),
 	}
 }
 
@@ -178,24 +200,24 @@ func endsWithBlankLine(s string) bool {
 // previously appended stanza in the same Mutate pass (appendStanza always
 // leaves the file ending in one blank line, so a second call here is a
 // no-op). A brand-new/empty file is left alone (nothing to separate from).
-func prepareAppend(f *host.File) {
+func prepareAppend(f *host.File, nl string) {
 	content := f.Render()
 	if content == "" {
 		return
 	}
 	if !strings.HasSuffix(content, "\n") {
-		f.Entries = append(f.Entries, host.Entry{Kind: host.KindBlank, Raw: "\n"})
-		content += "\n"
+		f.Entries = append(f.Entries, host.Entry{Kind: host.KindBlank, Raw: nl})
+		content += nl
 	}
 	if !endsWithBlankLine(content) {
-		f.Entries = append(f.Entries, host.Entry{Kind: host.KindBlank, Raw: "\n"})
+		f.Entries = append(f.Entries, host.Entry{Kind: host.KindBlank, Raw: nl})
 	}
 }
 
 // autoPrefixEntry builds the "auto <name>" entry that precedes a
 // newly-created Linux stanza when it should start at boot.
-func autoPrefixEntry(name string) host.Entry {
-	return host.Entry{Kind: host.KindAuto, Ifaces: []string{name}, Raw: fmt.Sprintf("auto %s\n", name)}
+func autoPrefixEntry(name, nl string) host.Entry {
+	return host.Entry{Kind: host.KindAuto, Ifaces: []string{name}, Raw: fmt.Sprintf("auto %s%s", name, nl)}
 }
 
 // allowPrefixEntry builds the "allow-<class> <name>" entry ifupdown2's OVS
@@ -203,10 +225,10 @@ func autoPrefixEntry(name string) host.Entry {
 // 04-ovs-bridge.interfaces and 05-ovs-bond.interfaces: "allow-ovs <bridge>"
 // for an OVS bridge itself, "allow-<bridge> <port>" for each of its ports,
 // including an OVS bond).
-func allowPrefixEntry(class, name string) host.Entry {
+func allowPrefixEntry(class, name, nl string) host.Entry {
 	return host.Entry{
 		Kind: host.KindAllow, Class: class, Ifaces: []string{name},
-		Raw: fmt.Sprintf("allow-%s %s\n", class, name),
+		Raw: fmt.Sprintf("allow-%s %s%s", class, name, nl),
 	}
 }
 
@@ -216,33 +238,33 @@ func allowPrefixEntry(class, name string) host.Entry {
 // precedes it by prepareAppend, and leaves exactly one trailing blank line
 // after it so the next append call (or end of file) stays visually
 // separated.
-func appendStanzaRaw(f *host.File, prefix *host.Entry, iface host.Entry) {
-	prepareAppend(f)
+func appendStanzaRaw(f *host.File, prefix *host.Entry, iface host.Entry, nl string) {
+	prepareAppend(f, nl)
 	if prefix != nil {
 		f.Entries = append(f.Entries, *prefix)
 	}
 	f.Entries = append(f.Entries, iface)
-	f.Entries = append(f.Entries, host.Entry{Kind: host.KindBlank, Raw: "\n"})
+	f.Entries = append(f.Entries, host.Entry{Kind: host.KindBlank, Raw: nl})
 }
 
 // appendStanza is appendStanzaRaw with a plain "auto <name>" prefix (or
 // none, if autostart is false) — the common case for Linux bond/bridge/vlan
 // creates.
-func appendStanza(f *host.File, autostart bool, name string, iface host.Entry) {
+func appendStanza(f *host.File, autostart bool, name string, iface host.Entry, nl string) {
 	var prefix *host.Entry
 	if autostart {
-		p := autoPrefixEntry(name)
+		p := autoPrefixEntry(name, nl)
 		prefix = &p
 	}
-	appendStanzaRaw(f, prefix, iface)
+	appendStanzaRaw(f, prefix, iface, nl)
 }
 
 // removeIfaceAndAuto removes every KindIface entry named name (all address
 // families/inherits stanzas for that name) plus name's reference from any
 // auto/allow-* line: dropped entirely from a single-name line, or stripped
 // out (regenerating that line's Raw) from a multi-name line.
-func removeIfaceAndAuto(f *host.File, name string) {
-	removeAutoReference(f, name)
+func removeIfaceAndAuto(f *host.File, name, nl string) {
+	removeAutoReference(f, name, nl)
 	out := make([]host.Entry, 0, len(f.Entries))
 	for _, e := range f.Entries {
 		if e.Kind == host.KindIface && e.Name == name {
@@ -253,7 +275,7 @@ func removeIfaceAndAuto(f *host.File, name string) {
 	f.Entries = out
 }
 
-func regenerateIfaceListRaw(e host.Entry) string {
+func regenerateIfaceListRaw(e host.Entry, nl string) string {
 	var kw string
 	switch e.Kind {
 	case host.KindAuto:
@@ -265,7 +287,7 @@ func regenerateIfaceListRaw(e host.Entry) string {
 	case host.KindNoScripts:
 		kw = "no-scripts"
 	}
-	return fmt.Sprintf("%s %s\n", kw, strings.Join(e.Ifaces, " "))
+	return fmt.Sprintf("%s %s%s", kw, strings.Join(e.Ifaces, " "), nl)
 }
 
 func containsString(ss []string, s string) bool {

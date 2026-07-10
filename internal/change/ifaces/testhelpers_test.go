@@ -1,6 +1,7 @@
 package ifaces
 
 import (
+	"flag"
 	"os"
 	"testing"
 
@@ -28,25 +29,34 @@ func ref(kind inventory.Kind, node, id string) inventory.Ref {
 	return inventory.Ref{Kind: kind, Node: node, ID: id}
 }
 
-// checkGolden compares got against the golden file at
-// testdata/golden/<name>, writing it (bootstrapping) if it does not yet
-// exist so the first run of a new golden test materializes its expected
-// fixture; subsequent runs (and CI, where the file already exists in the
-// repo) do a strict byte comparison. Set VNPROX_UPDATE_GOLDEN=1 to
-// re-bootstrap an existing golden after an intentional behavior change.
-func checkGolden(t *testing.T, name string, got string) {
+// updateGolden opts in to (re)generating golden files: `go test -update`
+// or VNPROX_UPDATE_GOLDEN=1 (the repo's established env-var mechanism).
+var updateGolden = flag.Bool("update", false, "rewrite testdata/golden files from current output instead of comparing")
+
+// goldenUpdateRequested reports whether golden regeneration was explicitly
+// requested via the -update flag or VNPROX_UPDATE_GOLDEN=1.
+func goldenUpdateRequested() bool {
+	return *updateGolden || os.Getenv("VNPROX_UPDATE_GOLDEN") == "1"
+}
+
+// checkGolden compares got against the golden file at testdata/golden/<name>
+// byte-for-byte. A missing golden is a hard failure — a deleted or renamed
+// golden must never silently regenerate-and-pass (audit finding F-21).
+// Creating a missing golden or updating an existing one happens only when
+// explicitly requested with `-update` or VNPROX_UPDATE_GOLDEN=1.
+func checkGolden(t testing.TB, name string, got string) {
 	t.Helper()
 	path := "testdata/golden/" + name
-	if _, err := os.Stat(path); os.IsNotExist(err) || os.Getenv("VNPROX_UPDATE_GOLDEN") == "1" {
+	if goldenUpdateRequested() {
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
 			t.Fatalf("writing golden %s: %v", path, err)
 		}
-		t.Logf("bootstrapped golden file %s", path)
+		t.Logf("wrote golden file %s", path)
 		return
 	}
 	want, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("reading golden %s: %v", path, err)
+		t.Fatalf("reading golden %s: %v (if this golden is intentionally new or changed, regenerate with `go test -update` or VNPROX_UPDATE_GOLDEN=1)", path, err)
 	}
 	if got != string(want) {
 		t.Errorf("output for %s does not match golden:\n--- got ---\n%s\n--- want ---\n%s", name, got, string(want))

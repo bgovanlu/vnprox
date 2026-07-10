@@ -1,0 +1,20 @@
+auto lo
+iface lo inet loopback
+iface lo inet6 loopback
+
+auto eno1
+iface eno1 inet dhcp
+
+iface eno1 inet6 auto
+	dhcp 1
+	autoconf 1
+
+auto vmbr0
+iface vmbr0 inet static
+	address 192.168.1.10/24
+	gateway 192.168.1.1
+	bridge-ports eno1 eno2
+
+iface vmbr0 inet6 static
+	address fd00:1::10/64
+	gateway fd00:1::1

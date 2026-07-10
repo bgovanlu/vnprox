@@ -1,0 +1,14 @@
+auto lo
+iface lo inet loopback
+
+auto eno1
+iface eno1 inet manual
+	mtu 1500
+
+auto bond0
+iface bond0 inet manual
+	# managed by vnprox (changeset TESTCS01)
+	bond-slaves eno1 eno2
+	bond-mode 802.3ad
+	bond-miimon 100
+

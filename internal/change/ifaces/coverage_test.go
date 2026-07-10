@@ -1,10 +1,9 @@
 package ifaces
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -191,30 +190,15 @@ func TestDecodeOps_MalformedArray(t *testing.T) {
 	}
 }
 
-// TestNewDiffHandler_LookupError checks the plain-error (non-ErrChangesetNotFound)
-// branch maps to a 500, and TestNewDiffHandler_DiffError checks a
-// DiffChangeset failure (unknown node) also maps to a 500.
-func TestNewDiffHandler_LookupError(t *testing.T) {
+// TestDiffChangeset_UnknownNodeError checks a DiffChangeset failure (unknown
+// node) surfaces as a wrapped error rather than a partial result. (The former
+// NewDiffHandler HTTP handler this used to drive was dead code — the wired
+// path is internal/change's Service.Diff — and was removed per audit F-09.)
+func TestDiffChangeset_UnknownNodeError(t *testing.T) {
 	reader := loadThreeNodeVlanReader(t)
-	lookup := fakeLookup{err: errors.New("boom")}
-	h := NewDiffHandler(lookup, reader, func(r *http.Request) string { return "x" })
-	req := httptest.NewRequest(http.MethodGet, "/changesets/x/diff", nil)
-	rec := httptest.NewRecorder()
-	h(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", rec.Code)
-	}
-}
-
-func TestNewDiffHandler_DiffError(t *testing.T) {
-	reader := loadThreeNodeVlanReader(t)
-	lookup := fakeLookup{ops: []Op{IfaceUpdate{Target: ref(inventory.KindPhysNic, "no-such-node", "eno1")}}}
-	h := NewDiffHandler(lookup, reader, func(r *http.Request) string { return "x" })
-	req := httptest.NewRequest(http.MethodGet, "/changesets/x/diff", nil)
-	rec := httptest.NewRecorder()
-	h(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500; body=%s", rec.Code, rec.Body.String())
+	ops := []Op{IfaceUpdate{Target: ref(inventory.KindPhysNic, "no-such-node", "eno1")}}
+	if _, err := DiffChangeset(context.Background(), reader, ops, "x"); err == nil {
+		t.Fatal("expected an error for an unknown node")
 	}
 }
 
