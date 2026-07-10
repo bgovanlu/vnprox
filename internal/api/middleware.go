@@ -56,14 +56,19 @@ func recovererMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 }
 
 // securityHeadersMiddleware sets the headers mandated by docs/security.md
-// "Transport": HSTS, a strict self-only/no-inline-script CSP (with `wss:`
-// allowed for the same-origin WebSocket per architecture.md §9), and the
+// "Transport": HSTS, a strict self-only/no-inline-script CSP, and the
 // standard clickjacking/MIME-sniffing hardening headers.
+//
+// connect-src is 'self' only: modern browsers match same-origin wss:// under
+// 'self' (the scheme-upgrade rule in CSP3), so the same-origin WebSocket
+// (/api/ws, architecture.md §9) needs no scheme sources — and a bare wss:/ws:
+// would allow connections to arbitrary hosts, contradicting docs/security.md's
+// "WS to self".
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' wss: ws:; frame-ancestors 'none'; base-uri 'self'")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "same-origin")

@@ -119,6 +119,24 @@ func TestSecurityHeaders(t *testing.T) {
 	if !strings.Contains(csp, "script-src 'self'") {
 		t.Errorf("CSP must restrict script-src to 'self': %q", csp)
 	}
+
+	// docs/security.md "Transport": "WS to self". connect-src must include
+	// 'self' and no bare ws:/wss: scheme sources — those would allow
+	// WebSocket connections to arbitrary hosts (ws: additionally plaintext).
+	if !strings.Contains(csp, "connect-src 'self'") {
+		t.Errorf("CSP connect-src must include 'self': %q", csp)
+	}
+	for _, dir := range strings.Split(csp, ";") {
+		dir = strings.TrimSpace(dir)
+		if !strings.HasPrefix(dir, "connect-src") {
+			continue
+		}
+		for _, src := range strings.Fields(dir)[1:] {
+			if src == "ws:" || src == "wss:" {
+				t.Errorf("CSP connect-src must not contain bare scheme source %q: %q", src, csp)
+			}
+		}
+	}
 }
 
 func TestRequestIDHeader(t *testing.T) {

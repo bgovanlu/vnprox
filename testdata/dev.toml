@@ -7,7 +7,10 @@
 # checked into the repo for this purpose (see testdata/certs — regenerate
 # with openssl if needed, it is not used for anything but local dev/testing).
 # Paths below are relative to the repository root, matching how `make dev`
-# and this file's own acceptance test invoke vnproxd (cwd = repo root).
+# invokes vnproxd (cwd = repo root). This file's acceptance test is
+# TestRunDaemon_DevConfigServesHealth (cmd/vnproxd/devconfig_test.go), which
+# runs runDaemon against this config with only the listen port, TLS paths,
+# and [storage] paths rewritten for the test environment.
 
 [server]
 listen = "127.0.0.1:8007"

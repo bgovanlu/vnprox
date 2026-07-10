@@ -28,6 +28,11 @@ import (
 // polling instead of fsnotify).
 const certPollInterval = 30 * time.Second
 
+// metricPruneInterval is how often the metric_samples prune loop enforces
+// store.MetricRetention (24h, docs/data-model.md §2). Hourly keeps the
+// table within ~4% of the retention window at negligible cost.
+const metricPruneInterval = time.Hour
+
 // shutdownGrace bounds how long the HTTP server's graceful Shutdown may
 // take; it is a safety net, not the expected duration — acceptance
 // criterion 3 requires the whole process to exit within 3s of SIGTERM even
@@ -151,6 +156,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return serveHTTPS(ctx, srv, nil, logger)
 	})
 	g.add(authSvc.RunRenewalLoop)
+	// metric_samples retention (store.MetricRetention): RunPruneLoop's doc
+	// comment assigns the wiring to the daemon, and without it the table
+	// grows unboundedly once metrics flow (audit phase-0 F-01).
+	metricSamples := store.NewMetricSampleRepo(db)
+	g.add(func(ctx context.Context) error {
+		return metricSamples.RunPruneLoop(ctx, metricPruneInterval, func(err error) {
+			logger.Error("store: metric_samples prune failed", "error", err)
+		})
+	})
 	if collector != nil {
 		g.add(collector.RunPVELoop)
 		g.add(collector.RunHostLoop)
