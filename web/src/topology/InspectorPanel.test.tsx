@@ -16,6 +16,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { EntityDetail } from "../api/types";
+import { ToastProvider } from "../components/Toast";
 import { fieldRows } from "./fields";
 import { InspectorPanel } from "./InspectorPanel";
 
@@ -41,7 +42,11 @@ function renderPanel(): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <InspectorPanel selectedRef={detail.ref} onClose={() => undefined} onSelectRelated={() => undefined} />
+      {/* ToastProvider: the panel's T-207 Edit/Delete affordances use
+       * useToast, which requires the provider (mounted app-wide in main.tsx). */}
+      <ToastProvider>
+        <InspectorPanel selectedRef={detail.ref} onClose={() => undefined} onSelectRelated={() => undefined} />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

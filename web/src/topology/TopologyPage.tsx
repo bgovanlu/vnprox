@@ -2,9 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
+import { useToast } from "../components/Toast";
+import { useSession } from "../api/useSession";
 import { useTopologyShortcutTargetStore } from "../keyboard/topologyShortcutTarget";
 import type { Layer, TopologyEdge, TopologyNode } from "../api/types";
+import { capsForNode } from "../changesets/capabilities";
+import { computeDragOp } from "../changesets/dragDropOps";
+import { EditorLauncher } from "../changesets/EditorLauncher";
+import { refNode, summarizeOp } from "../changesets/opSummary";
+import { useDrawerActions } from "../changesets/useDrawerActions";
 import { InspectorPanel } from "./InspectorPanel";
+import { NewEntityMenu } from "./NewEntityMenu";
 import { LayerToggleBar } from "./LayerToggleBar";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { StalenessBanner } from "./StalenessBanner";
@@ -62,6 +70,9 @@ function TopologyPageContent() {
   const { data: topology, isLoading, isError, dataUpdatedAt } = useTopologyQuery();
   useTopologyWsBridge();
   const reactFlow = useReactFlow();
+  const { data: session } = useSession();
+  const { toast } = useToast();
+  const { addOps, replaceOps } = useDrawerActions();
 
   const activeLayers = useTopologyStore((s) => s.activeLayers);
   const vlanFilter = useTopologyStore((s) => s.vlanFilter);
@@ -196,6 +207,86 @@ function TopologyPageContent() {
     }
   }
 
+  /**
+   * Map drag-drop edits (docs/features/topology.md §2 / T-207 acceptance
+   * criterion 1): drop a NIC on a bond/bridge, or a guest NIC on a
+   * bridge/VNet, to draft the corresponding op. The node's *visual*
+   * position is never persisted for a drag that produced an op — nothing
+   * has actually moved in the real topology yet, only a change was
+   * drafted — so this always falls through to a plain `setPosition` only
+   * when no recognized drag-drop op applies (ordinary manual repositioning).
+   * "snap-back on validation failure": if the freshly-drafted op turns out
+   * to carry an error-severity finding for its own target, it's removed
+   * from the draft again and the user is told why.
+   */
+  function handleNodeDragStop(id: string, pos: XYPosition): void {
+    if (!topology) {
+      setPosition(id, pos);
+      return;
+    }
+    const dragged = topology.nodes.find((n) => n.id === id);
+    if (!dragged) {
+      setPosition(id, pos);
+      return;
+    }
+    // Intersection is computed from the drop *rectangle* built from `pos`
+    // (the drag-stop position React Flow reports), NOT `getIntersectingNodes
+    // ({id})`: the canvas runs React Flow with fully controlled nodes and a
+    // no-op onNodesChange (see TopologyCanvas), so the store's copy of the
+    // dragged node never moves during a drag — querying by id would test the
+    // node's *original* column, never the drop target. Querying by an
+    // explicit rect at `pos` uses where the user actually dropped it.
+    // partially=true: same-size chips rarely fully contain each other, so
+    // full-containment mode would miss most drops. When several nodes
+    // overlap the drop, pick the one whose position is nearest `pos` — the
+    // node the user most plausibly aimed at.
+    const droppedFlowNode = reactFlow.getNode(id);
+    const width = droppedFlowNode?.measured?.width ?? droppedFlowNode?.width ?? 150;
+    const height = droppedFlowNode?.measured?.height ?? droppedFlowNode?.height ?? 40;
+    const dropRect = { x: pos.x, y: pos.y, width, height };
+    const targetFlow = reactFlow
+      .getIntersectingNodes(dropRect, true)
+      .filter((n) => n.id !== id)
+      .sort((a, b) => {
+        const dist = (p: { x: number; y: number }) => (p.x - pos.x) ** 2 + (p.y - pos.y) ** 2;
+        return dist(a.position) - dist(b.position);
+      })[0];
+    const target = targetFlow ? topology.nodes.find((n) => n.id === targetFlow.id) : undefined;
+    const op = target ? computeDragOp(dragged, target, topology) : undefined;
+
+    if (!op) {
+      setPosition(id, pos);
+      return;
+    }
+    const opNode = op.target ? refNode(op.target) : "";
+    if (!op.target || !capsForNode(session, opNode === "" ? dragged.nodeGroup : opNode).netWrite) {
+      toast({ title: "Read-only", description: "You don't have network-write on this node.", variant: "error" });
+      setPosition(id, pos);
+      return;
+    }
+    void addOps([op], `Map edit: ${summarizeOp(op)}`)
+      .then((updated) => {
+        const errored = updated.findings.some((f) => f.severity === "error" && f.ref === op.target);
+        if (errored) {
+          // addOps appends — the just-drafted (invalid) op is always the
+          // last entry, so reverting it is a simple pop rather than a
+          // reference-equality filter (the op the server echoes back is a
+          // distinct, re-serialized object, not the same reference).
+          void replaceOps(updated.ops.slice(0, -1)).then(() => {
+            toast({ title: "Drag reverted", description: "That change would be invalid — see the drawer for details.", variant: "error" });
+          });
+          return;
+        }
+        toast({ title: "Added to changeset", description: summarizeOp(op) });
+      })
+      .catch(() => {
+        toast({ title: "Could not draft that change", variant: "error" });
+      });
+    // Deliberately do not call setPosition: the entity hasn't actually
+    // moved yet (nothing applies until Apply), so the node stays at its
+    // real, computed layout position rather than wherever it was dropped.
+  }
+
   const noLldpData = topology ? !topology.nodes.some((n) => n.kind === "lldp-neighbor") : false;
 
   return (
@@ -214,6 +305,7 @@ function TopologyPageContent() {
           >
             Search ( / )
           </Button>
+          <NewEntityMenu nodes={Array.from(new Set(topology?.nodes.map((n) => n.nodeGroup).filter(Boolean) ?? []))} />
         </div>
       </div>
 
@@ -263,9 +355,7 @@ function TopologyPageContent() {
             elements={elements}
             onNodeClick={handleNodeClick}
             onNodeHover={hover}
-            onNodeDragStop={(id, pos) => {
-              setPosition(id, pos);
-            }}
+            onNodeDragStop={handleNodeDragStop}
             onPaneClick={() => {
               select(undefined);
             }}
@@ -278,6 +368,7 @@ function TopologyPageContent() {
       ))}
 
       <SpotlightSearch open={spotlightOpen} onOpenChange={setSpotlightOpen} onSelect={handleSearchSelect} />
+      <EditorLauncher />
       <InspectorPanel
         selectedRef={selectedId && !isGuestGroupId(selectedId) ? selectedId : undefined}
         onClose={() => {

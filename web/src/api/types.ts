@@ -215,8 +215,321 @@ export interface LayoutResponse {
   updatedAt: number;
 }
 
+// --- Changesets (docs/api.md §Changesets; internal/change's Go types) -----
+// Mirrors internal/change/{op,changeset}.go's wire shapes exactly (see
+// planning/reports/T-201.md/T-202.md/T-205.md for the contract this was
+// built against). `Op` is a tagged union `{op, target, params}` — `target`
+// is a Ref **string** ("kind:node:id", null only for "sdn.apply"), not a
+// nested object (T-201's report flags this as the documented convention:
+// every other Ref-typed field in this codebase's JSON is a string). Params
+// shapes are typed per op family below; a plain `Record<string, unknown>`
+// would defeat the "no `any`, no unchecked casts" rule for every editor
+// that needs to read/write specific fields.
+
+/** The v1 op vocabulary (docs/data-model.md §3 / internal/change/op.go's
+ * OpType constants). Kept as a plain string union (not every family has a
+ * frontend consumer yet — SDN/firewall/IPAM ops are not editable in T-207,
+ * see this task's report) rather than an enum so unknown-to-this-file
+ * values (still valid on the wire) don't need a cast. */
+export type OpType =
+  | "iface.update"
+  | "bond.create"
+  | "bond.update"
+  | "bond.delete"
+  | "bridge.create"
+  | "bridge.update"
+  | "bridge.delete"
+  | "bridge.port.add"
+  | "bridge.port.remove"
+  | "vlan.create"
+  | "vlan.update"
+  | "vlan.delete"
+  | "sdn.zone.create"
+  | "sdn.zone.update"
+  | "sdn.zone.delete"
+  | "sdn.vnet.create"
+  | "sdn.vnet.update"
+  | "sdn.vnet.delete"
+  | "sdn.subnet.create"
+  | "sdn.subnet.update"
+  | "sdn.subnet.delete"
+  | "sdn.apply"
+  | "guest.nic.update"
+  | "fw.rule.create"
+  | "fw.rule.update"
+  | "fw.rule.delete"
+  | "fw.rule.move"
+  | "fw.options.update"
+  | "fw.alias.create"
+  | "fw.alias.update"
+  | "fw.alias.delete"
+  | "fw.ipset.create"
+  | "fw.ipset.update"
+  | "fw.ipset.delete"
+  | "fw.group.create"
+  | "fw.group.update"
+  | "fw.group.delete"
+  | "ipam.alloc.create"
+  | "ipam.alloc.delete";
+
+/** internal/change's VidRange: an inclusive VLAN ID range (Low === High for
+ * a single VID). */
+export interface VidRange {
+  low: number;
+  high: number;
+}
+
+// --- Params for the op families T-207's editors emit (internal/change/
+// params_{iface,bond,bridge,vlan,guest}.go). The frontend never needs to
+// send an explicit `null` today (every editor either omits a field or sends
+// a concrete value) so fields are plain optionals here, not the Go
+// pointer-field "present-null-means-clear" tri-state — see each Params
+// struct's own Go doc comment for that wire nuance if a future editor needs
+// an explicit-clear affordance.
+
+export interface IfaceUpdateParams {
+  mtu?: number;
+  comments?: string;
+  addresses?: string[];
+  gateway?: string;
+  autostart?: boolean;
+}
+
+export interface BondCreateParams {
+  mode: string;
+  lacpRate?: string;
+  xmitHashPolicy?: string;
+  comments?: string;
+  slaves: string[];
+  miimon?: number;
+  mtu?: number;
+}
+
+export interface BondUpdateParams {
+  mode?: string;
+  slaves?: string[];
+  lacpRate?: string;
+  xmitHashPolicy?: string;
+  miimon?: number;
+  mtu?: number;
+  comments?: string;
+}
+
+export type BondDeleteParams = Record<string, never>;
+
+export interface BridgeCreateParams {
+  gateway?: string;
+  comments?: string;
+  ports?: string[];
+  vids?: VidRange[];
+  addresses?: string[];
+  mtu?: number;
+  vlanAware?: boolean;
+  stp?: boolean;
+}
+
+export interface BridgeUpdateParams {
+  vlanAware?: boolean;
+  vids?: VidRange[];
+  addresses?: string[];
+  gateway?: string;
+  mtu?: number;
+  stp?: boolean;
+  comments?: string;
+}
+
+export type BridgeDeleteParams = Record<string, never>;
+
+export interface BridgePortAddParams {
+  port: string;
+}
+
+export interface BridgePortRemoveParams {
+  port: string;
+}
+
+export interface VlanCreateParams {
+  parent: string;
+  addresses?: string[];
+  vid: number;
+  mtu?: number;
+}
+
+export interface VlanUpdateParams {
+  addresses?: string[];
+  mtu?: number;
+}
+
+export type VlanDeleteParams = Record<string, never>;
+
+export interface GuestNicUpdateParams {
+  bridgeOrVnet?: string;
+  vid?: number;
+  rateMbps?: number;
+  firewall?: boolean;
+  linkDown?: boolean;
+}
+
+/** Every Params shape T-207's editors can produce. Ops this task doesn't
+ * edit (SDN/firewall/IPAM) still round-trip through the drawer/review
+ * screen — they just carry `Record<string, unknown>` params, since nothing
+ * in this task ever needs to read a typed field off one. */
+export type OpParams =
+  | IfaceUpdateParams
+  | BondCreateParams
+  | BondUpdateParams
+  | BondDeleteParams
+  | BridgeCreateParams
+  | BridgeUpdateParams
+  | BridgeDeleteParams
+  | BridgePortAddParams
+  | BridgePortRemoveParams
+  | VlanCreateParams
+  | VlanUpdateParams
+  | VlanDeleteParams
+  | GuestNicUpdateParams
+  | Record<string, unknown>;
+
+/** One changeset operation, the wire shape internal/change/op.go's Op
+ * (de)serializes. `target` is `undefined` only for "sdn.apply" (the one op
+ * with no natural target entity — internal/change's `noTargetOps`). */
+export interface Op {
+  op: OpType;
+  target?: string;
+  params: OpParams;
+}
+
+export type Severity = "error" | "warning" | "info";
+
+/** A validation result (docs/api.md: `{severity, code, message, ref?,
+ * fix?}`). `fix` is a machine-applicable one-op patch sharing the
+ * offending op's own target (internal/change/validate_fix.go). */
+export interface Finding {
+  severity: Severity;
+  code: string;
+  message: string;
+  ref?: string;
+  fix?: Op[];
+}
+
+export type ChangesetStatus =
+  | "draft"
+  | "validated"
+  | "applying"
+  | "awaiting_confirm"
+  | "committed"
+  | "rolled_back"
+  | "failed"
+  | "discarded";
+
+/** One apply-plan step (internal/change/apply_plan.go's Step) — the Plan
+ * tab's row shape. `opIdx` indexes into the changeset's own `ops` array. */
+export interface PlanStep {
+  kind: "stage_file" | "reload" | "sdn_apply";
+  node?: string;
+  summary: string;
+  opIdx?: number[];
+}
+
+export interface Plan {
+  steps: PlanStep[];
+}
+
+export type StepStatus = "pending" | "ok" | "failed" | "skipped" | "rolled_back";
+
+export interface StepLog {
+  kind: PlanStep["kind"];
+  node?: string;
+  summary: string;
+  status: StepStatus;
+  error?: string;
+  index: number;
+  startedAt?: number;
+  endedAt?: number;
+}
+
+export interface RollbackLog {
+  node?: string;
+  summary: string;
+  status: StepStatus;
+  error?: string;
+  at?: number;
+}
+
+export interface ApplyLog {
+  failedStep?: number;
+  rolledBackBy?: string;
+  steps: StepLog[];
+  rollback?: RollbackLog[];
+}
+
+/** GET/POST/PUT `/changesets*`'s response shape (internal/api/changesets.go's
+ * changesetResponse — `ops`/`findings` are always arrays, never null). */
+export interface Changeset {
+  id: string;
+  title: string;
+  author: string;
+  status: ChangesetStatus;
+  ops: Op[];
+  findings: Finding[];
+  plan?: Plan;
+  applyLog?: ApplyLog;
+  confirmDeadline?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** POST /changesets body. */
+export interface CreateChangesetRequest {
+  title: string;
+  ops: Op[];
+}
+
+/** PUT /changesets/{id} body — `title` is an accepted-but-undocumented
+ * extension (T-201's report) for renaming a parked draft in place. */
+export interface UpdateChangesetRequest {
+  title?: string;
+  ops: Op[];
+}
+
+/** POST /changesets/{id}/apply body. */
+export interface ApplyChangesetRequest {
+  confirmTimeoutSec: number;
+}
+
+/** One file's rendered diff for one node (internal/change/ifaces.FileDiff). */
+export interface FileDiff {
+  node: string;
+  path: string;
+  unified: string;
+  changed: boolean;
+}
+
+/** One op's Summary-tab card (internal/change/ifaces.OpSummary). */
+export interface OpSummary {
+  op: string;
+  target: string;
+  node: string;
+  summary: string;
+}
+
+/** GET /changesets/{id}/diff response (internal/change/ifaces.ChangesetDiff). */
+export interface ChangesetDiff {
+  files: FileDiff[];
+  ops: OpSummary[];
+}
+
+/** The `changeset.status` WS event (docs/api.md's WebSocket section):
+ * `{id, status, confirmDeadline?}`. */
+export interface ChangesetStatusEvent {
+  event: "changeset.status";
+  id: string;
+  status: ChangesetStatus;
+  confirmDeadline?: number;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
-// Changesets, snapshots, firewall/SDN/IPAM read views, the path simulator,
-// metrics, and blueprints all have routes defined in docs/api.md but no
-// frontend consumer yet — their request/response types land with the task
-// that first calls them (T-2xx). Add them here, not in a parallel file.
+// Snapshots, firewall/SDN/IPAM read views, the path simulator, metrics, and
+// blueprints all have routes defined in docs/api.md but no frontend
+// consumer yet — their request/response types land with the task that
+// first calls them (T-2xx). Add them here, not in a parallel file.
