@@ -13,6 +13,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/auth"
 	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/pve"
 )
 
@@ -41,6 +42,17 @@ type hostNodeAgent struct {
 	pendingPath    string
 	mu             sync.Mutex
 }
+
+// hostNodeAgent also satisfies peer.HostWriter (StageInterfaces/
+// ReloadInterfaces already match; RestoreInterfaces below adds the third
+// method), so the same production agent backs both the local change engine
+// (change.NodeAgent) and this node's peer API host-write routes (T-301) —
+// one implementation of "how vnproxd mutates this node's network files",
+// not two.
+var (
+	_ change.NodeAgent = (*hostNodeAgent)(nil)
+	_ peer.HostWriter  = (*hostNodeAgent)(nil)
+)
 
 func newHostNodeAgent(logger *slog.Logger) *hostNodeAgent {
 	a := &hostNodeAgent{
@@ -167,6 +179,24 @@ func (a *hostNodeAgent) DiscardStaged(_ context.Context, _ string) error {
 	defer a.mu.Unlock()
 	if err := os.Remove(a.pendingPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("discarding staged %s: %w", a.pendingPath, err)
+	}
+	return nil
+}
+
+// RestoreInterfaces implements peer.HostWriter for T-301's
+// POST /api/peer/host/restore: write content directly as the committed
+// interfaces file and reload, bypassing the normal stage/review flow. This
+// is the rollback path (T-304's distributed commit-confirm timers restore
+// a known-good pre-apply snapshot under time pressure, not a
+// user-reviewed draft), so it reuses StageInterfaces/ReloadInterfaces'
+// existing backup-and-restore-on-failure guarantee rather than duplicating
+// it.
+func (a *hostNodeAgent) RestoreInterfaces(ctx context.Context, node, content string) error {
+	if err := a.StageInterfaces(ctx, node, content); err != nil {
+		return fmt.Errorf("staging restore content for %s: %w", node, err)
+	}
+	if err := a.ReloadInterfaces(ctx, node); err != nil {
+		return fmt.Errorf("reloading restored interfaces for %s: %w", node, err)
 	}
 	return nil
 }

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func testLogger() *slog.Logger {
@@ -45,6 +47,47 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 	if body.Version != "1.2.3-test" {
 		t.Errorf("version field = %q, want 1.2.3-test", body.Version)
+	}
+}
+
+// stubPeerServer is a minimal PeerServer that mounts one canary route, so
+// TestPeerRoutesMounted can assert internal/api's wiring calls MountRoutes
+// (rather than, say, guarding it behind Auth being configured) and that the
+// mounted route is reachable with no session/CSRF machinery involved.
+type stubPeerServer struct{ called bool }
+
+func (s *stubPeerServer) MountRoutes(r chi.Router) {
+	s.called = true
+	r.Get("/api/peer/canary", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+}
+
+func TestPeerRoutesMounted(t *testing.T) {
+	peer := &stubPeerServer{}
+	r := NewRouter(Options{Version: "1.2.3-test", DistFS: testDistFS(), Logger: testLogger(), Peer: peer})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/peer/canary", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if !peer.called {
+		t.Fatal("NewRouter did not call PeerServer.MountRoutes")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (no session/CSRF gate should apply to peer routes)", rec.Code)
+	}
+}
+
+func TestPeerRoutesOmittedWhenNil(t *testing.T) {
+	r := NewRouter(Options{Version: "1.2.3-test", DistFS: testDistFS(), Logger: testLogger()})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/peer/canary", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (JSON API 404, not the SPA fallback) when no PeerServer is configured", rec.Code)
 	}
 }
 

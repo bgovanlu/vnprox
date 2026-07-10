@@ -17,7 +17,9 @@ import (
 	"github.com/bgovanlu/vnprox/internal/api"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
+	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/store"
 	"github.com/bgovanlu/vnprox/internal/topology"
 	webui "github.com/bgovanlu/vnprox/web"
@@ -27,6 +29,11 @@ import (
 // cert/key hot-reload (see config.CertProvider.Watch's doc comment for why
 // polling instead of fsnotify).
 const certPollInterval = 30 * time.Second
+
+// peerSecretPollInterval is the mtime-polling interval for the cluster
+// secret (peer.SecretStore.Watch's doc comment: same "changes on the order
+// of a cluster's lifetime" rationale as certPollInterval).
+const peerSecretPollInterval = 30 * time.Second
 
 // metricPruneInterval is how often the metric_samples prune loop enforces
 // store.MetricRetention (24h, docs/data-model.md §2). Hourly keeps the
@@ -73,6 +80,17 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return fmt.Errorf("initializing TLS: %w", err)
 	}
 
+	// T-301: the cluster secret every /api/peer/* request is HMAC-verified
+	// against (docs/architecture.md §5). Generated on first use if absent
+	// (docs/deployment.md: "first node only; pmxcfs replicates it") —
+	// fatal on any other load failure, the same treatment certProvider
+	// above gets, since a daemon that can neither sign nor verify peer
+	// requests cannot safely participate in cluster coordination.
+	peerSecrets, err := peer.LoadOrGenerateSecret(cfg.Peer.SecretPath, logger)
+	if err != nil {
+		return fmt.Errorf("initializing peer cluster secret: %w", err)
+	}
+
 	distFS, err := distRootFS()
 	if err != nil {
 		return err
@@ -111,7 +129,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// that directory and never execs a real ifreload (audit-phase-2 F-22:
 	// `make dev` used to wire the production agent, leaving the developer's
 	// machine one authenticated POST away from a real ifreload).
-	var nodeAgent change.NodeAgent = newHostNodeAgent(logger)
+	//
+	// nodeAgent's static type is the concrete *hostNodeAgent (not the
+	// change.NodeAgent interface) so the same instance also backs T-301's
+	// peer.HostWriter seam below: they mutate the very same
+	// /etc/network/interfaces(.new) files, so they must share its
+	// instance-level mutex, not each hold their own — two separate
+	// instances would let a peer-API-triggered write and a local changeset
+	// apply race on disk with no mutual exclusion at all.
+	nodeAgent := newHostNodeAgent(logger)
 	if dir := cfg.Safety.DevInterfacesDir; dir != "" {
 		devAgent, devErr := newDevNodeAgent(dir, logger)
 		if devErr != nil {
@@ -152,6 +178,17 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	defer changeSvc.StopTimers()
 
+	// T-301: the peer server backs the documented /api/peer/host/* routes
+	// with the real netlink/interfaces(5)/lldpd reader (host.NewReal) for
+	// reads and the same nodeAgent constructed above for writes.
+	peerSrv := peer.NewServer(peer.ServerOptions{
+		Secrets: peerSecrets,
+		Reader:  host.NewReal(),
+		Writer:  nodeAgent,
+		Version: version,
+		Logger:  logger,
+	})
+
 	handler := api.NewRouter(api.Options{
 		Version:     version,
 		DistFS:      distFS,
@@ -165,6 +202,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Audit:       auditRepo,
 		PVEGateways: pveGatewayProvider{authSvc},
 		Protected:   changeSvc,
+		Peer:        peerSrv,
 	})
 
 	srv := &http.Server{
@@ -184,6 +222,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	var g runGroup
 	g.add(func(ctx context.Context) error {
 		return certProvider.Watch(ctx, sighup, certPollInterval)
+	})
+	// Picks up a cluster secret rotated on disk — most notably the very
+	// first node's generated secret propagating to every other node via
+	// pmxcfs (docs/deployment.md: "first node only; pmxcfs replicates
+	// it") — without requiring a daemon restart.
+	g.add(func(ctx context.Context) error {
+		return peerSecrets.Watch(ctx, peerSecretPollInterval)
 	})
 	g.add(func(ctx context.Context) error {
 		return serveHTTPS(ctx, srv, nil, logger)

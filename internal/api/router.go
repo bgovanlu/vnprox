@@ -39,6 +39,21 @@ type AuthService interface {
 	RequireCap(cap string) func(http.Handler) http.Handler
 }
 
+// PeerServer is the subset of T-301's *peer.Server the router needs: a
+// single call that registers the entire documented /api/peer/* subtree
+// (docs/api.md's "Peer API" section), including that package's own HMAC
+// auth middleware — unlike every other MountRoutes-shaped seam in this
+// file, PeerServer's routes are deliberately *not* wrapped in
+// AuthService.SessionMiddleware/RequireCap: docs/security.md's peer auth
+// section is explicit that SPA session cookies grant nothing on peer
+// routes, so the only gate is internal/peer's own cluster-secret HMAC
+// check. Declared as an interface (the same pattern as AuthService/
+// TopologyService above) purely to keep this package's dependency on
+// internal/peer's concrete type to a one-method seam.
+type PeerServer interface {
+	MountRoutes(r chi.Router)
+}
+
 // Options configures the router built by NewRouter.
 type Options struct {
 	DistFS      fs.FS
@@ -51,6 +66,7 @@ type Options struct {
 	Audit       AuditService
 	PVEGateways PVEGatewayProvider
 	Protected   ProtectedService
+	Peer        PeerServer
 	Logger      *slog.Logger
 	Version     string
 }
@@ -86,6 +102,15 @@ func NewRouter(opts Options) http.Handler {
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket
 	// section documents it at the bare /api/ws path).
 	mountWSRoute(r, opts.Topology, opts.Auth)
+
+	// /api/peer/* is likewise outside /api/v1 (docs/api.md's Peer API
+	// section: "internal only", its own auth scheme) — mounted at the top
+	// level, same as /api/ws, so it shares the request-id/logging/
+	// recovery/security-headers middleware every route gets but none of
+	// /api/v1's session-cookie machinery.
+	if opts.Peer != nil {
+		opts.Peer.MountRoutes(r)
+	}
 
 	// Unmatched /api/* routes get a JSON 404 (per docs/api.md's error
 	// envelope), not the SPA fallback; everything else falls back to the

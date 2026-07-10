@@ -29,6 +29,23 @@ Check items off with the PVE version tested.
 - [ ] **Ticket expiry**: real tickets expire (~2h); confirm the renewal margin
       (`Config.TicketRenewAfter` default) beats it comfortably under clock skew.
 
+## Peer API (T-301)
+
+- [ ] **Peer TLS trust**: real peer daemons present the node's PVE
+      certificate (docs/architecture.md §9), typically chained to
+      `/etc/pve/pve-root-ca.pem`; `internal/peer.Client` does not yet pin
+      that CA (it inherits `net/http`'s default trust store unless a caller
+      supplies `ClientOptions.HTTPClient`). Confirm the right pinning
+      strategy against a real cluster before T-303/T-304 rely on it beyond
+      the plain-HTTP test harness this task used.
+- [ ] **`/etc/pve/vnprox/cluster.secret` under pmxcfs**: `SecretStore`'s
+      generate-if-absent + `os.Link`-based atomic publish + mtime-poll
+      `Watch` have only run against a real filesystem in temp dirs — pmxcfs
+      is a FUSE filesystem with its own semantics for permissions/hard
+      links/rename; confirm `os.Link` (used to avoid a torn-write race, see
+      `planning/reports/T-301.md` §3) actually works on pmxcfs rather than
+      silently failing or behaving like a copy.
+
 ## Host / OS behavior
 
 - [ ] **`systemctl start vnprox` from the .deb** on a real PVE node (the container test script

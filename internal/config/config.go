@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/bgovanlu/vnprox/internal/peer"
 )
 
 // Defaults mirror the example config in docs/deployment.md.
@@ -72,6 +74,7 @@ const (
 type Config struct {
 	PVE       PVEConfig
 	Storage   StorageConfig
+	Peer      PeerConfig
 	Safety    SafetyConfig
 	Server    ServerConfig
 	Collect   CollectConfig
@@ -135,6 +138,18 @@ type SafetyConfig struct {
 	AllowDangerousOps bool
 }
 
+// PeerConfig is the [peer] section: where T-301's cluster secret lives on
+// disk. Added by T-301 — no [peer] section existed before it needed a path
+// to load/generate the secret at (docs/architecture.md §5,
+// docs/deployment.md: "/etc/pve/vnprox/" under pmxcfs).
+type PeerConfig struct {
+	// SecretPath defaults to peer.DefaultSecretPath. Overridable so a dev
+	// daemon outside a real PVE node (no /etc/pve mount) can run with a
+	// writable path instead, mirroring the precedent [storage]'s db_path/
+	// session_key_file set for T-105's own app-owned files.
+	SecretPath string
+}
+
 // StorageConfig is the [storage] section: paths for vnprox's own app-owned
 // SQLite database and the session-secret encryption key (docs/security.md
 // "Authentication", docs/deployment.md "Backup"). Added by T-105 —
@@ -163,6 +178,7 @@ type CollectConfig struct {
 type rawConfig struct {
 	PVE       rawPVE       `toml:"pve"`
 	Storage   rawStorage   `toml:"storage"`
+	Peer      rawPeer      `toml:"peer"`
 	Safety    rawSafety    `toml:"safety"`
 	Collect   rawCollect   `toml:"collect"`
 	Server    rawServer    `toml:"server"`
@@ -199,6 +215,10 @@ type rawStorage struct {
 type rawRetention struct {
 	SnapshotKeepDays int `toml:"snapshot_keep_days"`
 	SnapshotPinDays  int `toml:"snapshot_pin_days"`
+}
+
+type rawPeer struct {
+	SecretPath string `toml:"secret_path"`
 }
 
 type rawCollect struct {
@@ -261,6 +281,9 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		Storage: StorageConfig{
 			DBPath:         firstNonEmpty(raw.Storage.DBPath, DefaultDBPath),
 			SessionKeyFile: firstNonEmpty(raw.Storage.SessionKeyFile, DefaultSessionKeyFile),
+		},
+		Peer: PeerConfig{
+			SecretPath: firstNonEmpty(raw.Peer.SecretPath, peer.DefaultSecretPath),
 		},
 		Retention: RetentionConfig{
 			SnapshotKeepDays: firstNonZeroInt(raw.Retention.SnapshotKeepDays, DefaultSnapshotKeepDays),

@@ -67,6 +67,9 @@ jobs:
       - name: Fuzz the interfaces(5) parser
         run: go test -run='^$' -fuzz=FuzzParse -fuzztime=60s ./internal/host/
 
+      - name: Fuzz the peer HMAC signature parser/verifier
+        run: go test -run='^$' -fuzz=FuzzPeerAuth -fuzztime=60s ./internal/peer/
+
   package:
     # Production build + .deb artifact per docs/development.md ("frontend
     # build, `make deb` artifact upload"). `make build` exercises the real
