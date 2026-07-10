@@ -105,6 +105,14 @@ func (a collectorHealthAdapter) CollectorStatus() []api.CollectorSourceStatus {
 			ConsecutiveFailures: s.ConsecutiveFailures,
 			LastError:           s.LastError,
 		}
+		// The host/lldp loops only ever poll the daemon's own node (see
+		// internal/collect's hostPollOnce/lldpPollOnce), so their staleness
+		// is scoped to that node's topology band; the pve loop covers the
+		// whole cluster and stays unscoped (empty Node). LocalNode is empty
+		// until the pve poller's first successful cycle discovers it.
+		if s.Name == "host" || s.Name == "lldp" {
+			out[i].Node = st.LocalNode
+		}
 	}
 	return out
 }

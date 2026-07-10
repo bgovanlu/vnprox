@@ -1,9 +1,14 @@
 package topology_test
 
 import (
+	"context"
+	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/pvemock"
 	"github.com/bgovanlu/vnprox/internal/topology"
 )
 
@@ -68,4 +73,82 @@ func TestDetail(t *testing.T) {
 			t.Errorf("GeneratedAt = %d, want > 0", d.GeneratedAt)
 		}
 	})
+}
+
+// TestDetail_RawSource_LocalBridge is audit finding F-08's local-node half:
+// GET /inventory/{ref} for a bridge on the collector's own node must return
+// the verbatim interfaces(5) stanza (byte-identical to the fixture's file)
+// under rawSource["host-interfaces"], plus the PVE network API object's
+// JSON under rawSource["pve-network"] — the "raw source (interfaces stanza
+// / PVE API object)" docs/api.md promises.
+func TestDetail_RawSource_LocalBridge(t *testing.T) {
+	graph, _, _, srv := buildGraphWithMock(t, fixtureSingleNode)
+	snap := graph.Snapshot()
+
+	d, ok := topology.Detail(snap, inventory.Ref{Kind: inventory.KindBridge, Node: "pve1", ID: "vmbr0"})
+	if !ok {
+		t.Fatal("expected ok=true for vmbr0")
+	}
+
+	stanza, ok := d.RawSource[string(inventory.SourceHostInterfaces)]
+	if !ok {
+		t.Fatalf("rawSource has no host-interfaces entry; got sources: %v", rawSourceKeys(d.RawSource))
+	}
+	if !strings.Contains(stanza, "iface vmbr0") {
+		t.Errorf("host-interfaces raw source does not look like vmbr0's stanza:\n%s", stanza)
+	}
+	// Verbatim means byte-identical to the file the fixture host reader
+	// serves: the stanza must be a literal substring of it.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	file, err := pvemock.NewFixtureHostReader(srv).InterfacesFile(ctx, "pve1", false)
+	if err != nil {
+		t.Fatalf("InterfacesFile: %v", err)
+	}
+	if !strings.Contains(file, stanza) {
+		t.Errorf("host-interfaces raw source is not a verbatim substring of the interfaces file.\nstanza:\n%s\nfile:\n%s", stanza, file)
+	}
+
+	pveObj, ok := d.RawSource[string(inventory.SourcePVENetwork)]
+	if !ok {
+		t.Fatalf("rawSource has no pve-network entry; got sources: %v", rawSourceKeys(d.RawSource))
+	}
+	if !json.Valid([]byte(pveObj)) {
+		t.Errorf("pve-network raw source is not valid JSON:\n%s", pveObj)
+	}
+	if !strings.Contains(pveObj, "vmbr0") {
+		t.Errorf("pve-network raw source does not mention vmbr0:\n%s", pveObj)
+	}
+}
+
+// TestDetail_RawSource_PeerEntity is F-08's peer-node half: an entity on a
+// node this daemon never host-polls (pve2 in the three-node fixture) still
+// carries the PVE API object JSON as raw source — and no host-interfaces
+// entry, since no host source ever contributed.
+func TestDetail_RawSource_PeerEntity(t *testing.T) {
+	graph, _, _ := buildGraph(t, fixtureThreeNodeVlan)
+	snap := graph.Snapshot()
+
+	d, ok := topology.Detail(snap, inventory.Ref{Kind: inventory.KindBridge, Node: "pve2", ID: "vmbr0"})
+	if !ok {
+		t.Fatal("expected ok=true for pve2's vmbr0")
+	}
+	pveObj, ok := d.RawSource[string(inventory.SourcePVENetwork)]
+	if !ok {
+		t.Fatalf("rawSource has no pve-network entry for a peer-node bridge; got sources: %v", rawSourceKeys(d.RawSource))
+	}
+	if !json.Valid([]byte(pveObj)) {
+		t.Errorf("pve-network raw source is not valid JSON:\n%s", pveObj)
+	}
+	if _, has := d.RawSource[string(inventory.SourceHostInterfaces)]; has {
+		t.Errorf("peer-node bridge unexpectedly has a host-interfaces raw source (only the local node is host-polled)")
+	}
+}
+
+func rawSourceKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

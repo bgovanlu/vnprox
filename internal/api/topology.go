@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -33,15 +34,17 @@ type TopologyService interface {
 //
 // auth is nil-safe to call with (routes are simply not mounted) so the
 // health-only test router configurations elsewhere in this package's tests
-// keep working unchanged.
-func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService) {
+// keep working unchanged. ch may be nil (no collector wired — tests, or the
+// collector failed to initialize): /topology then simply omits its
+// staleness section.
+func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Get("/topology", handleTopology(svc))
+		r.Get("/topology", handleTopology(svc, ch))
 		r.Get("/inventory/search", handleInventorySearch(svc))
 		// A trailing chi wildcard (not a "{ref}" single-segment param) is
 		// required here: docs/api.md's Ref triplet scheme allows literal
@@ -109,16 +112,64 @@ func parseTopologyFilter(r *http.Request) topology.Filter {
 	return f
 }
 
-func handleTopology(svc TopologyService) http.HandlerFunc {
+func handleTopology(svc TopologyService, ch CollectorHealth) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t := svc.Topology(parseTopologyFilter(r))
+		if ch != nil {
+			t.Staleness = stalenessFrom(ch.CollectorStatus())
+		}
 		writeJSON(w, http.StatusOK, t)
 	}
+}
+
+// staleConsecutiveFailures is how many consecutive poll failures a collector
+// source must accumulate before /topology flags its data stale (docs/
+// features/topology.md §5's greyed band + staleness banner). Three intervals
+// tolerates a transient blip (one failed poll must not grey the whole map)
+// while still flagging a genuinely unreachable source within a few poll
+// cycles — the "older than N poll intervals" rule, expressed via the failure
+// streak the collector already tracks (attempts are per-interval, so N
+// straight failures ≈ data N intervals old).
+const staleConsecutiveFailures = 3
+
+// stalenessFrom derives the /topology response's staleness section from the
+// collector's per-source status (the same data GET /api/v1/health exposes).
+// The projection itself stays pure — this handler-level decoration is the
+// only place topology data meets collector health. Returns nil (field
+// omitted) when there are no sources at all.
+func stalenessFrom(sources []CollectorSourceStatus) *topology.Staleness {
+	if len(sources) == 0 {
+		return nil
+	}
+	out := &topology.Staleness{Sources: make([]topology.SourceStaleness, 0, len(sources))}
+	for _, s := range sources {
+		ss := topology.SourceStaleness{
+			Name:      s.Name,
+			Node:      s.Node,
+			Stale:     s.ConsecutiveFailures >= staleConsecutiveFailures,
+			LastError: s.LastError,
+		}
+		if !s.LastSuccess.IsZero() {
+			ss.LastSuccess = s.LastSuccess.Unix()
+		}
+		if ss.Stale {
+			out.Stale = true
+		}
+		out.Sources = append(out.Sources, ss)
+	}
+	return out
 }
 
 func handleInventoryDetail(svc TopologyService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		raw := chi.URLParam(r, "*")
+		// chi's wildcard param preserves percent-encoding, so a client that
+		// conservatively escapes ":" (encodeURIComponent) sends bridge%3Apve1%3A…
+		// here. Unescape before parsing; on bad escapes fall back to the raw
+		// form so unescaped refs keep working unchanged.
+		if unescaped, uerr := url.PathUnescape(raw); uerr == nil {
+			raw = unescaped
+		}
 		ref, err := inventory.ParseRef(raw)
 		if err != nil {
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", "malformed inventory ref")

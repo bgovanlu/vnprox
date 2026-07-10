@@ -251,17 +251,20 @@ func labelOf(snap inventory.Snapshot, e inventory.Entity) string {
 //
 // PhysNic.LinkUp and Bond.Slaves are host-netlink-only fields (see
 // merge.go's ownershipRules): a node this daemon hasn't (yet, or ever, for
-// a peer node the collector doesn't poll directly — see doc.go and this
-// package's T-106 completion report) run a host poll against simply has no
-// contribution for them, and pick() leaves such a field out of Provenance
-// entirely rather than defaulting it to a zero value that would otherwise
-// misrender as a confirmed "down"/"degraded". This checks that provenance
-// before trusting the zero value.
+// a peer node the collector doesn't poll directly — see doc.go) run a host
+// poll against simply has no contribution for them, and the merge leaves
+// such a field unresolved rather than defaulting it to a zero value that
+// would otherwise misrender as a confirmed "down"/"degraded". For linkUp
+// the resolved entity carries that tri-state directly (PhysNic.LinkUpSet is
+// true iff some source actually reported the field — inventory's optional
+// booleans); slaves has no companion flag, so bondStatus checks the field's
+// provenance entry instead. Either way, "unreported" renders as unknown
+// (grey), never as down/degraded.
 func statusOf(snap inventory.Snapshot, e inventory.Entity) Status {
 	prov, _ := snap.Provenance(e.GetRef())
 	switch v := e.(type) {
 	case *inventory.PhysNic:
-		if _, known := prov.Fields["linkUp"]; !known {
+		if !v.LinkUpSet {
 			return StatusUnknown
 		}
 		if !v.LinkUp {

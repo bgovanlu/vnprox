@@ -73,7 +73,7 @@ func NewRouter(opts Options) http.Handler {
 		if opts.Auth != nil {
 			opts.Auth.MountRoutes(r)
 		}
-		mountTopologyRoutes(r, opts.Topology, opts.Auth)
+		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)

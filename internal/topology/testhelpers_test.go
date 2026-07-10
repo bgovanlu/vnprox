@@ -59,6 +59,16 @@ func newTicketClient(t *testing.T, apiURL string) *pve.Client {
 // WS tests), and the running *httptest.Server (closed on test cleanup).
 func buildGraph(t *testing.T, fixturePath string, opts ...func(*collect.Config)) (*inventory.Graph, *collect.Collector, *httptest.Server) {
 	t.Helper()
+	graph, c, ts, _ := buildGraphWithMock(t, fixturePath, opts...)
+	return graph, c, ts
+}
+
+// buildGraphWithMock is buildGraph, additionally returning the underlying
+// *pvemock.Server for tests that need direct fixture access (e.g. comparing
+// GET /inventory/{ref}'s raw source against the fixture's own interfaces
+// file).
+func buildGraphWithMock(t *testing.T, fixturePath string, opts ...func(*collect.Config)) (*inventory.Graph, *collect.Collector, *httptest.Server, *pvemock.Server) {
+	t.Helper()
 	srv := loadFixtureServer(t, fixturePath)
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
@@ -83,5 +93,5 @@ func buildGraph(t *testing.T, fixturePath string, opts ...func(*collect.Config))
 	if _, err := c.RefreshNow(ctx, inventory.Scope{}); err != nil {
 		t.Fatalf("RefreshNow: %v", err)
 	}
-	return graph, c, ts
+	return graph, c, ts, srv
 }

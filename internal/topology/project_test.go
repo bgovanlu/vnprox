@@ -291,6 +291,132 @@ func TestProject_VLANFilter(t *testing.T) {
 	}
 }
 
+// TestProject_LayersFilter covers the server-side ?layers= filter
+// (docs/api.md's `?layers=phys,l2,sdn,guest`): only nodes on the requested
+// layers survive, and edges whose other endpoint was filtered out are
+// dropped with them (audit finding F-17: only the vlan filter was tested).
+func TestProject_LayersFilter(t *testing.T) {
+	graph, _, _ := buildGraph(t, fixtureThreeNodeVlan)
+	snap := graph.Snapshot()
+
+	t.Run("phys only", func(t *testing.T) {
+		topo := topology.Project(snap, topology.Filter{Layers: []topology.Layer{topology.LayerPhysical}})
+		if len(topo.Nodes) == 0 {
+			t.Fatal("phys-only filter returned no nodes")
+		}
+		for _, n := range topo.Nodes {
+			if n.Layer != topology.LayerPhysical {
+				t.Errorf("layers=phys leaked node %s on layer %q", n.ID, n.Layer)
+			}
+		}
+		// All 6 physnics (2 per node) and pve1's 2 LLDP neighbors, nothing else.
+		if len(topo.Nodes) != 8 {
+			t.Errorf("layers=phys nodes = %d, want 8 (got %v)", len(topo.Nodes), nodeIDs(topo.Nodes))
+		}
+		// enslaved-by edges (phys->bond) must be gone with their bond
+		// endpoint; lldp-adjacent (phys->phys layer) must survive.
+		for _, e := range topo.Edges {
+			if e.Kind == "enslaved-by" || e.Kind == "port-of" {
+				t.Errorf("layers=phys leaked cross-layer edge %+v", e)
+			}
+		}
+		var sawLldpAdjacent bool
+		for _, e := range topo.Edges {
+			if e.Kind == "lldp-adjacent" {
+				sawLldpAdjacent = true
+			}
+		}
+		if !sawLldpAdjacent {
+			t.Errorf("layers=phys lost the intra-layer lldp-adjacent edges: %+v", topo.Edges)
+		}
+		// The layer-toggle rail contract: Layers stays the full vocabulary
+		// regardless of filtering.
+		if len(topo.Layers) != len(topology.AllLayers) {
+			t.Errorf("Layers = %v, want the canonical four regardless of filter", topo.Layers)
+		}
+	})
+
+	t.Run("l2 and sdn", func(t *testing.T) {
+		topo := topology.Project(snap, topology.Filter{Layers: []topology.Layer{topology.LayerL2, topology.LayerSDN}})
+		for _, n := range topo.Nodes {
+			if n.Layer != topology.LayerL2 && n.Layer != topology.LayerSDN {
+				t.Errorf("layers=l2,sdn leaked node %s on layer %q", n.ID, n.Layer)
+			}
+		}
+		// Representatives of both layers present.
+		nodeByID(t, topo.Nodes, "bond:pve1:bond0")
+		nodeByID(t, topo.Nodes, "sdn-zone::vlanz")
+		// Edges internal to the kept layers survive; edges to filtered
+		// layers (enslaved-by to phys, attached-to from guests) are gone.
+		if !hasEdge(topo.Edges, "bond:pve1:bond0", "bridge:pve1:vmbr0", "port-of") {
+			t.Errorf("layers=l2,sdn lost the bond0->vmbr0 port-of edge")
+		}
+		if !hasEdge(topo.Edges, "sdn-vnet::vlanz/vnet100", "bridge:pve2:vmbr0", "realizes") {
+			t.Errorf("layers=l2,sdn lost the vnet100->pve2 vmbr0 realizes edge")
+		}
+		for _, e := range topo.Edges {
+			if e.Kind == "enslaved-by" || e.Kind == "attached-to" || e.Kind == "lldp-adjacent" {
+				t.Errorf("layers=l2,sdn leaked cross-layer edge %+v", e)
+			}
+		}
+	})
+}
+
+// TestProject_NodeFilter covers the server-side ?node= filter: only the
+// named node's band survives, plus the cluster-scoped SDN band that spans
+// all nodes (nodeGroup "").
+func TestProject_NodeFilter(t *testing.T) {
+	graph, _, _ := buildGraph(t, fixtureThreeNodeVlan)
+	snap := graph.Snapshot()
+
+	topo := topology.Project(snap, topology.Filter{Node: "pve2"})
+	if len(topo.Nodes) == 0 {
+		t.Fatal("node=pve2 filter returned no nodes")
+	}
+	for _, n := range topo.Nodes {
+		if n.NodeGroup != "pve2" && n.NodeGroup != "" {
+			t.Errorf("node=pve2 leaked node %s in band %q", n.ID, n.NodeGroup)
+		}
+	}
+	// pve2's own band and the cluster-scoped SDN band are both present...
+	nodeByID(t, topo.Nodes, "bond:pve2:bond0")
+	nodeByID(t, topo.Nodes, "bridge:pve2:vmbr0")
+	nodeByID(t, topo.Nodes, "sdn-zone::vlanz")
+	// ...while other nodes' same-named entities are not.
+	for _, n := range topo.Nodes {
+		if n.ID == "bond:pve1:bond0" || n.ID == "bridge:pve3:vmbr0" {
+			t.Errorf("node=pve2 leaked another node's entity %s", n.ID)
+		}
+	}
+	// Edges: pve2-internal and SDN->pve2 survive; realizes edges to other
+	// nodes' bridges are gone with their endpoints.
+	if !hasEdge(topo.Edges, "bond:pve2:bond0", "bridge:pve2:vmbr0", "port-of") {
+		t.Errorf("node=pve2 lost the bond0->vmbr0 port-of edge")
+	}
+	if !hasEdge(topo.Edges, "sdn-vnet::vlanz/vnet100", "bridge:pve2:vmbr0", "realizes") {
+		t.Errorf("node=pve2 lost the vnet100->vmbr0 realizes edge")
+	}
+	if hasEdge(topo.Edges, "sdn-vnet::vlanz/vnet100", "bridge:pve1:vmbr0", "realizes") {
+		t.Errorf("node=pve2 leaked a realizes edge to pve1's bridge")
+	}
+
+	t.Run("combined with layers", func(t *testing.T) {
+		topo := topology.Project(snap, topology.Filter{Node: "pve2", Layers: []topology.Layer{topology.LayerL2}})
+		for _, n := range topo.Nodes {
+			if n.Layer != topology.LayerL2 {
+				t.Errorf("node=pve2&layers=l2 leaked node %s on layer %q", n.ID, n.Layer)
+			}
+			if n.NodeGroup != "pve2" {
+				t.Errorf("node=pve2&layers=l2 leaked node %s in band %q", n.ID, n.NodeGroup)
+			}
+		}
+		// bond + bridge + vlan sub-interface = pve2's whole L2 band.
+		if len(topo.Nodes) != 3 {
+			t.Errorf("node=pve2&layers=l2 nodes = %d, want 3 (got %v)", len(topo.Nodes), nodeIDs(topo.Nodes))
+		}
+	})
+}
+
 func nodeIDs(nodes []topology.Node) []string {
 	out := make([]string, len(nodes))
 	for i, n := range nodes {

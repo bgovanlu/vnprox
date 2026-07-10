@@ -90,11 +90,44 @@ type Edge struct {
 // Topology is the full GET /api/v1/topology response body (docs/api.md:
 // "full projected topology: {nodes, edges, layers, generatedAt}").
 // GeneratedAt is unix seconds UTC per docs/api.md's conventions section.
+//
+// Staleness is not produced by Project (which is a pure function of an
+// inventory snapshot) — internal/api's /topology handler decorates the
+// projection with it from live collector status, so the frontend can render
+// docs/features/topology.md §5's greyed band + staleness banner. It is
+// omitted when no collector status is available (tests, collector failed to
+// initialize).
 type Topology struct {
-	Nodes       []Node  `json:"nodes"`
-	Edges       []Edge  `json:"edges"`
-	Layers      []Layer `json:"layers"`
-	GeneratedAt int64   `json:"generatedAt"`
+	Staleness   *Staleness `json:"staleness,omitempty"`
+	Nodes       []Node     `json:"nodes"`
+	Edges       []Edge     `json:"edges"`
+	Layers      []Layer    `json:"layers"`
+	GeneratedAt int64      `json:"generatedAt"`
+}
+
+// Staleness summarizes how fresh the inventory data behind a Topology
+// response is, per collector source (docs/features/topology.md §5: "Peer
+// node unreachable → its band renders greyed from last-known data with a
+// staleness banner and timestamp"). Stale is true iff any source is stale,
+// so the frontend has a single flag to key the banner on.
+type Staleness struct {
+	Sources []SourceStaleness `json:"sources"`
+	Stale   bool              `json:"stale"`
+}
+
+// SourceStaleness is one collector poll loop's freshness. Name is the loop
+// name ("pve", "host", "lldp"). Node scopes the staleness: the host/lldp
+// loops only ever poll the daemon's local node, so their staleness greys
+// that node's band only; the pve loop covers the whole cluster (empty Node)
+// — when it is stale, every node's data is last-known. LastSuccess is unix
+// seconds UTC of the last successful poll (0 / omitted if none yet) — the
+// "timestamp" §5's banner shows.
+type SourceStaleness struct {
+	Name        string `json:"name"`
+	Node        string `json:"node,omitempty"`
+	LastError   string `json:"lastError,omitempty"`
+	LastSuccess int64  `json:"lastSuccess,omitempty"`
+	Stale       bool   `json:"stale"`
 }
 
 // Filter is the server-side ?layers=&node=&vlan= filter for GET /topology.
@@ -130,12 +163,20 @@ func (f Filter) hasLayer(l Layer) bool {
 const DefaultCollapseThreshold = 8
 
 // EntityDetail is the GET /inventory/{ref} response: the resolved entity's
-// canonical fields plus provenance (docs/api.md: "including raw source").
-// See this package's doc.go for what "raw source" means here — the graph
-// does not retain original interfaces(5)/PVE JSON text past ingestion (see
-// T-106's completion report), so "raw source" is the best available
-// substitute: which source contributed each resolved field, and what any
-// disagreeing sources reported.
+// canonical fields, per-field provenance, and the raw source text behind it
+// (docs/api.md: "including raw source (interfaces stanza / PVE API
+// object)").
+//
+// RawSource maps each contributing source name (inventory.Source strings:
+// "host-interfaces", "pve-network", "pve-sdn", "pve-guest", "host-netlink",
+// "host-lldp", ...) to the raw text that source's contribution was derived
+// from — the verbatim interfaces(5) stanza for host-interfaces,
+// pretty-printed JSON of the PVE API object for pve-* sources, compact JSON
+// of the observed state for host-netlink/host-lldp (see
+// inventory.Snapshot.RawSource). Values are always JSON strings, even when
+// the content is itself JSON. Omitted when no source retained raw text.
+// Provenance stays alongside it: RawSource shows what each source said
+// verbatim, Provenance shows which source won each resolved field.
 type EntityDetail struct {
 	Ref         string                 `json:"ref"`
 	Kind        string                 `json:"kind"`
@@ -143,6 +184,7 @@ type EntityDetail struct {
 	Label       string                 `json:"label"`
 	Fields      map[string]any         `json:"fields"`
 	Provenance  map[string]FieldSource `json:"provenance"`
+	RawSource   map[string]string      `json:"rawSource,omitempty"`
 	Related     []RelatedRef           `json:"related"`
 	GeneratedAt int64                  `json:"generatedAt"`
 }

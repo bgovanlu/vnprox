@@ -27,11 +27,17 @@ type CollectorHealth interface {
 // CollectorSourceStatus is one poll loop's ("pve", "host", or "lldp")
 // staleness snapshot, surfaced in GET /api/v1/health's optional
 // "collectors" field (deliverable 4: "staleness tracking per source
-// exposed on /api/v1/health").
+// exposed on /api/v1/health") and consumed by /topology's staleness
+// decoration (see stalenessFrom in topology.go).
+//
+// Node scopes the source: the host/lldp loops only poll the daemon's local
+// node, so the adapter sets Node to that node's name for them; the pve loop
+// covers the whole cluster and leaves it empty.
 type CollectorSourceStatus struct {
 	LastSuccess         time.Time `json:"last_success,omitempty"`
 	LastAttempt         time.Time `json:"last_attempt,omitempty"`
 	Name                string    `json:"name"`
+	Node                string    `json:"node,omitempty"`
 	LastError           string    `json:"last_error,omitempty"`
 	ConsecutiveFailures int       `json:"consecutive_failures,omitempty"`
 }

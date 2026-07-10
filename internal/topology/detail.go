@@ -9,8 +9,9 @@ import (
 )
 
 // Detail builds the GET /inventory/{ref} response for ref against snap: the
-// resolved entity's fields, provenance, and related (edge-linked) entities.
-// ok is false if ref does not resolve in this snapshot.
+// resolved entity's fields, provenance, per-source raw source text, and
+// related (edge-linked) entities. ok is false if ref does not resolve in
+// this snapshot.
 //
 // "Fields" and "Provenance" deliberately use two different key
 // vocabularies. Fields is the entity's own exported Go struct fields
@@ -46,6 +47,20 @@ func Detail(snap inventory.Snapshot, ref inventory.Ref) (EntityDetail, bool) {
 		fields = map[string]any{}
 	}
 
+	// Raw source text per contributing source (docs/api.md's "including raw
+	// source (interfaces stanza / PVE API object)"): the graph retains, per
+	// (Ref, Source), the exact text each contribution was derived from — the
+	// verbatim interfaces(5) stanza, the PVE object's pretty-printed JSON, or
+	// compact JSON of observed netlink/LLDP state. nil (field omitted) when
+	// no source attached any.
+	var rawOut map[string]string
+	if raw := snap.RawSource(ref); len(raw) > 0 {
+		rawOut = make(map[string]string, len(raw))
+		for src, txt := range raw {
+			rawOut[string(src)] = txt
+		}
+	}
+
 	related := []RelatedRef{}
 	for _, edge := range snap.EdgesOf(ref) {
 		switch {
@@ -69,6 +84,7 @@ func Detail(snap inventory.Snapshot, ref inventory.Ref) (EntityDetail, bool) {
 		Label:       labelOf(snap, e),
 		Fields:      fields,
 		Provenance:  provOut,
+		RawSource:   rawOut,
 		Related:     related,
 		GeneratedAt: snap.GeneratedAt().Unix(),
 	}, true
