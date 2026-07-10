@@ -32,7 +32,11 @@ func TestRollback_MissingPreSnapshot(t *testing.T) {
 	if _, err := h.svc.Apply(ctx, cs.ID, "root@pam", nil, 0); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	// Delete the snapshot rows out from under the rollback.
+	// Delete the snapshot rows out from under the rollback (snapshot_files
+	// first: it FK-references snapshots, and foreign_keys is on).
+	if _, err := h.db.Conn().ExecContext(ctx, "DELETE FROM snapshot_files WHERE snapshot_id IN (SELECT id FROM snapshots WHERE changeset_id = ?)", cs.ID); err != nil {
+		t.Fatalf("delete snapshot_files: %v", err)
+	}
 	if _, err := h.db.Conn().ExecContext(ctx, "DELETE FROM snapshots WHERE changeset_id = ?", cs.ID); err != nil {
 		t.Fatalf("delete snapshots: %v", err)
 	}

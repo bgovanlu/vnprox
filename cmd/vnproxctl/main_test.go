@@ -50,28 +50,6 @@ func TestRun_UnknownCommandFails(t *testing.T) {
 	}
 }
 
-func TestRun_SnapshotsListStub(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"snapshots", "list"}, &stdout, &stderr)
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-	if !strings.Contains(stdout.String(), "T-206") {
-		t.Errorf("stdout = %q, want it to point at T-206", stdout.String())
-	}
-}
-
-func TestRun_SnapshotsRestoreStub(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"snapshots", "restore", "snap-123"}, &stdout, &stderr)
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-	if !strings.Contains(stdout.String(), "T-206") {
-		t.Errorf("stdout = %q, want it to point at T-206", stdout.String())
-	}
-}
-
 func TestRun_SnapshotsNoSubcommandFails(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"snapshots"}, &stdout, &stderr)
@@ -85,16 +63,5 @@ func TestRun_SnapshotsUnknownSubcommandFails(t *testing.T) {
 	code := run([]string{"snapshots", "frobnicate"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
-	}
-}
-
-func TestRun_RollbackNowStub(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"rollback-now", "cs-42"}, &stdout, &stderr)
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
-	}
-	if !strings.Contains(stdout.String(), "T-206") {
-		t.Errorf("stdout = %q, want it to point at T-206", stdout.String())
 	}
 }

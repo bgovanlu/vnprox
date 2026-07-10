@@ -9,55 +9,81 @@ import (
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
-func bridgeRef(id string) inventory.Ref {
-	return inventory.Ref{Kind: inventory.KindBridge, Node: "pve1", ID: id}
-}
+const restoreTestLo = "auto lo\niface lo inet loopback\n\n"
 
-func TestInverseOp_AllInvertibleKinds(t *testing.T) {
-	ops := []Op{
-		{Type: OpBridgeCreate, Target: bridgeRef("vmbr1"), Params: &BridgeCreateParams{}},
-		{Type: OpBondCreate, Target: inventory.Ref{Kind: inventory.KindBond, Node: "pve1", ID: "bond0"}, Params: &BondCreateParams{}},
-		{Type: OpVlanCreate, Target: inventory.Ref{Kind: inventory.KindVlan, Node: "pve1", ID: "vmbr0.10"}, Params: &VlanCreateParams{}},
-		{Type: OpBridgePortAdd, Target: bridgeRef("vmbr0"), Params: &BridgePortAddParams{Port: "eno2"}},
-		{Type: OpBridgePortRemove, Target: bridgeRef("vmbr0"), Params: &BridgePortRemoveParams{Port: "eno3"}},
-		{Type: OpSdnApply, Params: &SdnApplyParams{}},
-	}
-	inv, err := buildRestoringOps(ops)
+func TestRestoreOpsForNode_NoDiff(t *testing.T) {
+	ops, err := restoreOpsForNode("pve1", restoreTestLo, restoreTestLo)
 	if err != nil {
-		t.Fatalf("buildRestoringOps: %v", err)
+		t.Fatalf("restoreOpsForNode: %v", err)
 	}
-	// sdn.apply is skipped; the other five invert in reverse order.
-	want := []OpType{
-		OpBridgePortAdd,    // inverse of the port.remove (last non-skip op)
-		OpBridgePortRemove, // inverse of the port.add
-		OpVlanDelete,
-		OpBondDelete,
-		OpBridgeDelete,
-	}
-	if len(inv) != len(want) {
-		t.Fatalf("inverse ops = %d, want %d: %+v", len(inv), len(want), inv)
-	}
-	for i, w := range want {
-		if inv[i].Type != w {
-			t.Fatalf("inverse[%d] = %s, want %s", i, inv[i].Type, w)
-		}
-	}
-	// port swaps carry the port through
-	if p, ok := inv[0].Params.(*BridgePortAddParams); !ok || p.Port != "eno3" {
-		t.Fatalf("port.remove inverse lost its port: %+v", inv[0].Params)
-	}
-	if p, ok := inv[1].Params.(*BridgePortRemoveParams); !ok || p.Port != "eno2" {
-		t.Fatalf("port.add inverse lost its port: %+v", inv[1].Params)
+	if len(ops) != 0 {
+		t.Fatalf("ops = %+v, want none for identical content", ops)
 	}
 }
 
-func TestInverseOp_Unsupported(t *testing.T) {
-	for _, ot := range []OpType{OpBridgeDelete, OpIfaceUpdate, OpBondUpdate, OpVlanDelete} {
-		_, err := buildRestoringOps([]Op{{Type: ot, Target: bridgeRef("x"), Params: &BridgeDeleteParams{}}})
-		var unsupp *ErrInverseUnsupported
-		if !errors.As(err, &unsupp) {
-			t.Fatalf("op %s: err = %v, want *ErrInverseUnsupported", ot, err)
+func TestRestoreOpsForNode_BridgeCreate(t *testing.T) {
+	target := restoreTestLo + "auto vmbr1\niface vmbr1 inet manual\n\tbridge-ports eno1\n"
+	ops, err := restoreOpsForNode("pve1", target, restoreTestLo)
+	if err != nil {
+		t.Fatalf("restoreOpsForNode: %v", err)
+	}
+	if len(ops) != 1 || ops[0].Type != OpBridgeCreate || ops[0].Target.ID != "vmbr1" {
+		t.Fatalf("ops = %+v, want a single bridge.create vmbr1", ops)
+	}
+	p, ok := ops[0].Params.(*BridgeCreateParams)
+	if !ok || len(p.Ports) != 1 || p.Ports[0] != "eno1" {
+		t.Fatalf("bridge.create params = %+v, want ports=[eno1]", ops[0].Params)
+	}
+}
+
+func TestRestoreOpsForNode_BridgeDelete(t *testing.T) {
+	live := restoreTestLo + "auto vmbr1\niface vmbr1 inet manual\n\tbridge-ports eno1\n"
+	ops, err := restoreOpsForNode("pve1", restoreTestLo, live)
+	if err != nil {
+		t.Fatalf("restoreOpsForNode: %v", err)
+	}
+	if len(ops) != 1 || ops[0].Type != OpBridgeDelete || ops[0].Target.ID != "vmbr1" {
+		t.Fatalf("ops = %+v, want a single bridge.delete vmbr1", ops)
+	}
+}
+
+func TestRestoreOpsForNode_BridgePortAndMTUUpdate(t *testing.T) {
+	live := restoreTestLo + "auto vmbr1\niface vmbr1 inet manual\n\tbridge-ports eno1\n"
+	target := restoreTestLo + "auto vmbr1\niface vmbr1 inet manual\n\tbridge-ports eno2\n\tmtu 9000\n"
+
+	ops, err := restoreOpsForNode("pve1", target, live)
+	if err != nil {
+		t.Fatalf("restoreOpsForNode: %v", err)
+	}
+	var sawRemove, sawAdd, sawUpdate bool
+	for _, op := range ops {
+		switch op.Type {
+		case OpBridgePortRemove:
+			if p := op.Params.(*BridgePortRemoveParams); p.Port == "eno1" {
+				sawRemove = true
+			}
+		case OpBridgePortAdd:
+			if p := op.Params.(*BridgePortAddParams); p.Port == "eno2" {
+				sawAdd = true
+			}
+		case OpBridgeUpdate:
+			p := op.Params.(*BridgeUpdateParams)
+			if p.MTU != nil && *p.MTU == 9000 {
+				sawUpdate = true
+			}
 		}
+	}
+	if !sawRemove || !sawAdd || !sawUpdate {
+		t.Fatalf("ops = %+v, want port.remove(eno1) + port.add(eno2) + update(mtu=9000)", ops)
+	}
+}
+
+func TestRestoreOpsForNode_OVSBondCreateUnsupported(t *testing.T) {
+	target := restoreTestLo + "auto bond0\niface bond0 inet manual\n\tovs_bonds eth0 eth1\n\tovs_type OVSBond\n\tovs_bridge vmbr0\n"
+	_, err := restoreOpsForNode("pve1", target, restoreTestLo)
+	var unsupp *ErrRestoreUnsupported
+	if !errors.As(err, &unsupp) {
+		t.Fatalf("restoreOpsForNode err = %v, want *ErrRestoreUnsupported", err)
 	}
 }
 
@@ -90,7 +116,8 @@ func TestApplyErrorStrings(t *testing.T) {
 		&ErrUnsupportedOp{OpType: OpSdnApply},
 		&ErrNotConfirmable{ID: "cs1", Status: StatusDraft},
 		&ErrValidationBlocked{},
-		&ErrInverseUnsupported{OpType: OpBridgeDelete},
+		&ErrRestoreUnsupported{Node: "pve1", Kind: inventory.KindOVSBond, ID: "bond0", Reason: "test"},
+		&ErrRollbackWindowExpired{ID: "cs1", CommittedAt: 100, WindowDays: 7},
 	}
 	for _, e := range errs {
 		if e.Error() == "" {

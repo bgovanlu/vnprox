@@ -64,7 +64,7 @@ Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contra
 | GET | `/changesets/{id}/diff` | rendered diff: per-file unified diffs + structured op summaries |
 | POST | `/changesets/{id}/apply` | `{confirmTimeoutSec: 120}` → `202`, status `applying` → `awaiting_confirm` |
 | POST | `/changesets/{id}/confirm` | commit within the window |
-| POST | `/changesets/{id}/rollback` | manual rollback (also valid on `committed` within retention) |
+| POST | `/changesets/{id}/rollback` | manual rollback (also valid on `committed` within the 7-day rollback window — beyond it: 409 `rollback_window_expired`; the window matches `[retention].snapshot_pin_days`) |
 | DELETE | `/changesets/{id}` | discard draft |
 
 Validation finding shape: `{severity: "error"|"warning"|"info", code, message, ref?, fix?}` where `fix` is an optional machine-applicable amendment (an `[]Op` patch the UI can offer one-click).
@@ -85,11 +85,25 @@ Added by T-203 (documented here retroactively per that task's report note; pinne
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/snapshots` | list (paginated, cluster-merged) |
+| GET | `/snapshots?limit=&cursor=` | list (paginated, cluster-merged) |
 | POST | `/snapshots` | manual snapshot `{note}` |
 | GET | `/snapshots/{id}` | metadata + file list |
 | GET | `/snapshots/diff?from=&to=` | unified diffs between two snapshots (or `to=live`) |
 | POST | `/snapshots/{id}/restore` | creates a **changeset draft** that would restore this state (goes through normal review/apply) |
+
+Paginated list response envelope (`/snapshots`, `/audit` below): `{items: [...], nextCursor?: "<opaque>"}` — `nextCursor` is present iff there is a further page; pass it back verbatim as `?cursor=` to fetch it. An empty `?cursor=` (or omitted) starts from the newest item.
+
+Snapshot shape (list item and, with an added `files` array, the `/snapshots/{id}` detail response): `{id, kind: "pre"|"post"|"manual"|"scheduled", changesetId?, note?, takenAt, nodes: [string], files?: [{node, path, sha256}]}` — file *content* is never inlined (it lives in the content-addressed, zstd-compressed blob store, deduplicated by sha256); fetch it via `/snapshots/diff`.
+
+`/snapshots/diff` response: `{files: [{node, path, unified, changed}]}` — only entries with `changed: true` carry a non-empty `unified` diff (mirrors the changeset diff's `FileDiff` shape, minus the op summaries, since a snapshot diff is raw file state, not changeset ops).
+
+## Audit
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/audit?user=&action=&target=&result=&changesetId=&from=&to=&limit=&cursor=` | filtered, paginated audit log (docs/features/change-management.md §8) |
+
+Requires the `audit` capability (viewing vnprox's own audit log), not `netRead`. Every filter param is optional and ANDed together; `from`/`to` are unix seconds, inclusive. Response: `{items: [{id, at, username, action, target?, changesetId?, result, detail?}], nextCursor?}` — `detail` is the action-specific structured detail object (e.g. `{"stepCount":3}`), opaque JSON. Every T-205 apply-engine lifecycle action (`changeset.apply`, `changeset.confirm`, `changeset.rollback`, `changeset.timer_rearm`, `changeset.recover`, `changeset.safety_override`) and this task's `snapshot.create` / `snapshot.restore` appear here; each row's `changesetId` (when present) links to that changeset and, transitively, its snapshots.
 
 ## Firewall, SDN, IPAM (read views; writes are changeset ops)
 

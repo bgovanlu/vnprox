@@ -33,6 +33,14 @@ const certPollInterval = 30 * time.Second
 // table within ~4% of the retention window at negligible cost.
 const metricPruneInterval = time.Hour
 
+// snapshotRetentionInterval is how often the snapshot retention job
+// (T-206) enforces cfg.Retention's keep/pin-days policy. Snapshots accrue
+// far more slowly than metric samples (one pre/post pair per apply, not a
+// per-poll-interval row), so a coarser cadence than metricPruneInterval is
+// plenty — this only needs to run at least once within any given day to
+// keep the "keep N days" window accurate to within a day.
+const snapshotRetentionInterval = 6 * time.Hour
+
 // shutdownGrace bounds how long the HTTP server's graceful Shutdown may
 // take; it is a safety net, not the expected duration — acceptance
 // criterion 3 requires the whole process to exit within 3s of SIGTERM even
@@ -112,18 +120,26 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		logger.Warn("change: DEV MODE host writer — interfaces file operations are sandboxed and ifreload is a no-op", "dir", dir)
 		nodeAgent = devAgent
 	}
+	snapshotRepo := store.NewSnapshotRepo(db)
+	blobRepo := store.NewBlobRepo(db)
+	auditRepo := store.NewAuditRepo(db)
 	changeSvc, err := change.NewService(change.Config{
 		Changesets:        store.NewChangesetRepo(db),
-		Audit:             store.NewAuditRepo(db),
+		Audit:             auditRepo,
 		WS:                topoSvc,
 		Inventory:         graph,
 		Logger:            logger,
 		ProtectedPath:     cfg.Safety.ProtectedPath,
 		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
 		Nodes:             nodeAgent,
-		Snapshots:         store.NewSnapshotRepo(db),
+		Snapshots:         snapshotRepo,
+		Blobs:             blobRepo,
 		Refresher:         refresher,
 		ConfirmTimeout:    time.Duration(cfg.Server.ConfirmTimeoutDefault) * time.Second,
+		// The manual-rollback window tracks the snapshot-retention pin so a
+		// still-offered rollback always has its pre-apply snapshot (audit
+		// phase-2 F-10).
+		RollbackWindowDays: cfg.Retention.SnapshotPinDays,
 	})
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)
@@ -145,6 +161,8 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Topology:    topoSvc,
 		Layouts:     store.NewLayoutRepo(db),
 		Changesets:  changeSvc,
+		Snapshots:   changeSvc,
+		Audit:       auditRepo,
 		PVEGateways: pveGatewayProvider{authSvc},
 		Protected:   changeSvc,
 	})
@@ -179,6 +197,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return metricSamples.RunPruneLoop(ctx, metricPruneInterval, func(err error) {
 			logger.Error("store: metric_samples prune failed", "error", err)
 		})
+	})
+	// Snapshot retention (T-206, docs/features/change-management.md §4):
+	// keep cfg.Retention.SnapshotKeepDays of history, floored at
+	// SnapshotPinDays for any snapshot linked to a committed changeset (the
+	// manual-rollback window), then reclaim orphaned blob storage.
+	g.add(func(ctx context.Context) error {
+		return store.RunSnapshotRetentionLoop(ctx, snapshotRepo, blobRepo, snapshotRetentionInterval,
+			cfg.Retention.SnapshotKeepDays, cfg.Retention.SnapshotPinDays, func(err error) {
+				logger.Error("store: snapshot retention failed", "error", err)
+			})
 	})
 	if collector != nil {
 		g.add(collector.RunPVELoop)

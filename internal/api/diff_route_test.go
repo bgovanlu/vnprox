@@ -62,6 +62,7 @@ func newDiffRouteTestService(t *testing.T) *change.Service {
 		Changesets:    store.NewChangesetRepo(db),
 		Audit:         store.NewAuditRepo(db),
 		Snapshots:     store.NewSnapshotRepo(db),
+		Blobs:         store.NewBlobRepo(db),
 		Nodes:         diffRouteNodeAgent{reader: pvemock.NewFixtureHostReader(srv)},
 		ProtectedPath: filepath.Join(t.TempDir(), "protected.json"),
 		Now:           func() time.Time { return time.Unix(1_700_000_000, 0) },

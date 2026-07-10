@@ -4,11 +4,15 @@
 // disaster recovery (snapshot restore, forced rollback) when the web UI is
 // unreachable.
 //
-// This is the T-006 skeleton (planning/tasks/phase-0.md#T-006): `status`
-// talks to the local daemon's health endpoint for real; `snapshots` and
-// `rollback-now` are documented stubs until T-206
-// (planning/tasks/phase-2.md#T-206) lands the store-backed implementation,
-// which T-606 (planning/tasks/phase-6.md#T-606) then wires into the final
+// `status` talks to the local daemon's health endpoint; `snapshots
+// list|restore` and `rollback-now` (T-206) are deliberately daemon-
+// independent — direct SQLite reads of the daemon's own store (WAL mode
+// permits this alongside a running daemon too), a local
+// /etc/network/interfaces write with a timestamped backup, and a direct
+// `ifreload -a` exec. No HTTP API is involved anywhere on that path: it
+// must work when the daemon is stopped, because it *is* the documented
+// recovery path for exactly that situation. T-606
+// (planning/tasks/phase-6.md#T-606) wires this binary into the final
 // packaging.
 package main
 
@@ -63,9 +67,12 @@ func printUsage(w io.Writer) {
 
 Usage:
   vnproxctl status                     Local daemon health/reachability check
-  vnproxctl snapshots list             List time-machine snapshots
-  vnproxctl snapshots restore <id>     Restore a snapshot (bypasses confirm)
-  vnproxctl rollback-now <changeset>   Force rollback of an applied changeset
+  vnproxctl snapshots list             List time-machine snapshots (direct DB read; works daemon-down)
+  vnproxctl snapshots restore <id>     Restore this node's interfaces file from a snapshot and ifreload
+                                       (root only; direct DB + file write, bypasses confirm — the
+                                       documented disaster-recovery path, works daemon-down)
+  vnproxctl rollback-now <changeset>   Force rollback of an in-flight (awaiting-confirm/applying)
+                                       changeset from its pre-apply snapshot (root only, daemon-down)
   vnproxctl --version                  Print the vnproxctl version
   vnproxctl --help                     Show this help
 
@@ -74,6 +81,11 @@ status flags:
   --url <url>       health endpoint URL, overriding --config lookup
   --insecure        skip TLS verification (default true; see docs/deployment.md)
   --timeout <dur>   request timeout (default 5s)
+
+snapshots/rollback-now flags:
+  --config <path>   vnprox.toml to read storage.db_path from (default /etc/vnprox/vnprox.toml)
+  --node <name>     which captured node's file to restore (default: this host's name)
+  --limit <n>       snapshots list: maximum rows (default 50)
 
 See docs/deployment.md "Troubleshooting quick refs" for full semantics.
 `)

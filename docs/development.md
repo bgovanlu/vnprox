@@ -12,6 +12,7 @@ Standards for all implementation work. `CLAUDE.md` summarizes the rules; this do
 | Netlink | `github.com/vishvananda/netlink` | — |
 | WS | `nhooyr.io/websocket` | — |
 | IDs | ULID (`oklog/ulid`) | — |
+| Compression | zstd via `github.com/klauspost/compress/zstd` (pure Go; snapshot blob storage — docs/data-model.md §2's `content_zstd` names the format, and stdlib has no zstd) | — |
 | Frontend | React + TypeScript strict + Vite | 18 / 5.x |
 | Canvas | `@xyflow/react` + `elkjs` | 12+ |
 | Data | TanStack Query v5, zustand | — |

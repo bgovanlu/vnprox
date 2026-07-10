@@ -69,6 +69,10 @@ session_key_file = "/etc/vnprox/keys/session.key"
 pve_interval = "10s"
 host_interval = "5s"
 lldp_interval = "30s"
+
+[retention]
+snapshot_keep_days = 90    # committed-changeset snapshots are pinned a minimum of snapshot_pin_days regardless
+snapshot_pin_days = 7
 ```
 
 ## Upgrade

@@ -52,3 +52,22 @@ type ErrNotConfirmable struct {
 func (e *ErrNotConfirmable) Error() string {
 	return fmt.Sprintf("change: changeset %s in status %s cannot be confirmed/rolled back", e.ID, e.Status)
 }
+
+// ErrRollbackWindowExpired is returned by Rollback when a committed
+// changeset is older than the manual-rollback window (docs/features/
+// change-management.md §4: "Manual rollback of a committed changeset is
+// offered for 7 days" — audit phase-2 finding F-10). The window matches the
+// snapshot-retention pin (config [retention].snapshot_pin_days), since
+// beyond it the pre-apply snapshot the restoring draft is built from is no
+// longer guaranteed to exist. The API layer maps it to a 409
+// invalid_transition-style conflict with the stable code
+// `rollback_window_expired`.
+type ErrRollbackWindowExpired struct {
+	ID          string
+	CommittedAt int64
+	WindowDays  int
+}
+
+func (e *ErrRollbackWindowExpired) Error() string {
+	return fmt.Sprintf("change: changeset %s was committed more than %d days ago; the manual-rollback window has expired (restore from a snapshot instead)", e.ID, e.WindowDays)
+}

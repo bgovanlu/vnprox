@@ -55,6 +55,7 @@ type Config struct {
 	WS            Broadcaster
 	Inventory     InventorySource
 	Snapshots     *store.SnapshotRepo
+	Blobs         *store.BlobRepo
 	Logger        *slog.Logger
 	Now           func() time.Time
 	Changesets    *store.ChangesetRepo
@@ -64,9 +65,17 @@ type Config struct {
 	// CorosyncPath is where SuggestProtected reads corosync.conf from;
 	// empty means host.DefaultCorosyncConfPath. Overridable so tests (and
 	// a dev daemon outside a PVE node) can point it at a fixture.
-	CorosyncPath      string
-	ConfirmTimeout    time.Duration
-	AllowDangerousOps bool
+	CorosyncPath string
+	// RollbackWindowDays bounds how long after commit a committed changeset
+	// may still be manually rolled back (docs/features/change-management.md
+	// §4's "offered for 7 days"; audit phase-2 F-10). 0 uses
+	// DefaultRollbackWindowDays. cmd/vnproxd wires it to the same value as
+	// the snapshot-retention pin ([retention].snapshot_pin_days) so the
+	// window never outlives the pre-apply snapshot the restoring draft is
+	// built from.
+	RollbackWindowDays int
+	ConfirmTimeout     time.Duration
+	AllowDangerousOps  bool
 }
 
 // TimerFunc arms a one-shot timer that runs f after d and can be stopped.
@@ -89,23 +98,25 @@ type Stopper interface {
 // draft<->validated status transition. Diff/Apply/Confirm/Rollback are
 // T-205's responsibility — see doc.go.
 type Service struct {
-	nodes             NodeAgent
-	refresher         InventoryRefresher
-	ws                Broadcaster
-	inv               InventorySource
-	now               func() time.Time
-	log               *slog.Logger
-	repo              *store.ChangesetRepo
-	snapshots         *store.SnapshotRepo
-	audit             *store.AuditRepo
-	timers            map[string]Stopper
-	newTimer          TimerFunc
-	protectedPath     string
-	corosyncPath      string
-	lockHeldBy        string
-	confirmTimeout    time.Duration
-	applyMu           sync.Mutex
-	allowDangerousOps bool
+	nodes              NodeAgent
+	refresher          InventoryRefresher
+	ws                 Broadcaster
+	inv                InventorySource
+	now                func() time.Time
+	log                *slog.Logger
+	repo               *store.ChangesetRepo
+	snapshots          *store.SnapshotRepo
+	blobs              *store.BlobRepo
+	audit              *store.AuditRepo
+	timers             map[string]Stopper
+	newTimer           TimerFunc
+	protectedPath      string
+	corosyncPath       string
+	lockHeldBy         string
+	confirmTimeout     time.Duration
+	rollbackWindowDays int
+	applyMu            sync.Mutex
+	allowDangerousOps  bool
 }
 
 // Commit-confirm window bounds (docs/features/change-management.md §4).
@@ -114,6 +125,12 @@ const (
 	MinConfirmTimeout     = 30 * time.Second
 	MaxConfirmTimeout     = 600 * time.Second
 )
+
+// DefaultRollbackWindowDays is the documented manual-rollback window for a
+// committed changeset (docs/features/change-management.md §4: "offered for
+// 7 days"), matching store.DefaultSnapshotPinDays so the window and the
+// snapshot-retention pin agree by default.
+const DefaultRollbackWindowDays = 7
 
 // NewService constructs a Service. Config.Changesets and Config.Audit are
 // required.
@@ -144,13 +161,18 @@ func NewService(cfg Config) (*Service, error) {
 	if timerFunc == nil {
 		timerFunc = func(d time.Duration, f func()) Stopper { return time.AfterFunc(d, f) }
 	}
+	rollbackWindowDays := cfg.RollbackWindowDays
+	if rollbackWindowDays <= 0 {
+		rollbackWindowDays = DefaultRollbackWindowDays
+	}
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
-		nodes: cfg.Nodes, snapshots: cfg.Snapshots, refresher: cfg.Refresher,
-		confirmTimeout: clampConfirmTimeout(confirmTimeout),
-		timers:         map[string]Stopper{},
-		newTimer:       timerFunc,
+		nodes: cfg.Nodes, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
+		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
+		rollbackWindowDays: rollbackWindowDays,
+		timers:             map[string]Stopper{},
+		newTimer:           timerFunc,
 	}, nil
 }
 
@@ -167,7 +189,7 @@ func clampConfirmTimeout(d time.Duration) time.Duration {
 
 // applyConfigured reports whether the apply-engine dependencies are wired.
 func (s *Service) applyConfigured() bool {
-	return s.nodes != nil && s.snapshots != nil
+	return s.nodes != nil && s.snapshots != nil && s.blobs != nil
 }
 
 // nullString is a small helper for the apply engine's store writes.

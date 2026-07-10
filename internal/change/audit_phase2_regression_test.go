@@ -531,6 +531,7 @@ func TestApply_AllowDangerousOps_AuditsOverrideAtApplyTime(t *testing.T) {
 		Inventory:         fakeInventorySource{snap: snap},
 		Nodes:             agent,
 		Snapshots:         store.NewSnapshotRepo(db),
+		Blobs:             store.NewBlobRepo(db),
 		ProtectedPath:     protectedPath,
 		AllowDangerousOps: true,
 		TimerFunc:         func(time.Duration, func()) Stopper { return stubStopper{} },
