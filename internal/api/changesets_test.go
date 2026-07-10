@@ -266,8 +266,8 @@ func TestChangesetsRoutes_CreateUnknownOpType_400(t *testing.T) {
 	if got.Error.Code != "validation_failed" {
 		t.Errorf("error.code = %q, want validation_failed", got.Error.Code)
 	}
-	if got.Error.Details["path"] != "op" {
-		t.Errorf("error.details.path = %v, want %q", got.Error.Details["path"], "op")
+	if got.Error.Details["path"] != "ops[0].op" {
+		t.Errorf("error.details.path = %v, want %q", got.Error.Details["path"], "ops[0].op")
 	}
 }
 
@@ -292,8 +292,38 @@ func TestChangesetsRoutes_CreateUnknownParamField_400(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decoding error response: %v", err)
 	}
-	if got.Error.Details["path"] != "params.mtuu" {
-		t.Errorf("error.details.path = %v, want %q", got.Error.Details["path"], "params.mtuu")
+	if got.Error.Details["path"] != "ops[0].params.mtuu" {
+		t.Errorf("error.details.path = %v, want %q", got.Error.Details["path"], "ops[0].params.mtuu")
+	}
+}
+
+// TestChangesetsRoutes_CreateBadOpInMultiOpBody_IndexedPath is the
+// audit-phase-2 F-19 regression check: with several ops in the body, the
+// decode error's details.path must identify *which* op failed —
+// "ops[1].params.mtuu", not a bare "params.mtuu".
+func TestChangesetsRoutes_CreateBadOpInMultiOpBody_IndexedPath(t *testing.T) {
+	svc := newChangesetTestService(t)
+	r := newChangesetTestRouter(svc, fullCapsAuth("alice"))
+
+	body := `{"title":"bad","ops":[` +
+		`{"op":"bridge.update","target":"bridge:pve1:vmbr0","params":{"mtu":9000}},` +
+		`{"op":"bridge.update","target":"bridge:pve1:vmbr1","params":{"mtuu":9000}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/changesets", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Error struct {
+			Details map[string]any `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding error response: %v", err)
+	}
+	if got.Error.Details["path"] != "ops[1].params.mtuu" {
+		t.Errorf("error.details.path = %v, want %q", got.Error.Details["path"], "ops[1].params.mtuu")
 	}
 }
 

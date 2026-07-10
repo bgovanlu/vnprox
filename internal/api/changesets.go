@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -28,13 +29,11 @@ const capNetWrite = "netWrite"
 const maxChangesetBodyBytes = 4 << 20 // 4 MiB
 
 // ChangesetService is the subset of *change.Service the router needs: T-201's
-// draft CRUD plus T-202's Validate. Declared as an interface (the same seam
-// pattern as AuthService/TopologyService/LayoutStore above) so this
-// package's dependency on the concrete change.Service stays small and
-// testable without a real SQLite file. Diff/Apply/Confirm/Rollback are
-// deliberately not part of this seam — those routes remain registered but
-// stubbed 501 (see mountChangesetsRoutes), since T-205 owns the logic
-// behind them.
+// draft CRUD, T-202's Validate, and T-205's diff/apply/confirm/rollback.
+// Declared as an interface (the same seam pattern as AuthService/
+// TopologyService/LayoutStore above) so this package's dependency on the
+// concrete change.Service stays small and testable without a real SQLite
+// file.
 type ChangesetService interface {
 	List(ctx context.Context, status string) ([]change.Changeset, error)
 	Get(ctx context.Context, id string) (change.Changeset, error)
@@ -112,10 +111,9 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 }
 
 // mountChangesetsRoutes registers docs/api.md's changesets routes: the
-// T-201 draft CRUD (list/create/get/update-draft/delete-draft) and T-202's
-// validate for real, and diff/apply/confirm/rollback as registered-but-501
-// stubs so the API surface matches the doc now, ahead of T-205 filling
-// them in. Read routes require netRead; every mutating route requires
+// T-201 draft CRUD (list/create/get/update-draft/delete-draft), T-202's
+// validate, and T-205's diff/apply/confirm/rollback — all backed by real
+// service logic. Read routes require netRead; every mutating route requires
 // netWrite plus (when the auth backend supports it — see CSRFEnforcer) a
 // valid CSRF header.
 //
@@ -320,11 +318,45 @@ func handleGetChangeset(svc ChangesetService) http.HandlerFunc {
 	}
 }
 
+// opsField decodes a JSON `ops` array one element at a time so any
+// *change.OpDecodeError can be prefixed with the failing op's index —
+// `ops[7].params.mtu` instead of a bare `params.mtu`, which is ambiguous
+// in a multi-op body (audit-phase-2 F-19). Each element is still decoded by
+// change.Op's own strict UnmarshalJSON; this wrapper only adds position.
+type opsField []change.Op
+
+func (o *opsField) UnmarshalJSON(data []byte) error {
+	var raws []json.RawMessage
+	if err := json.Unmarshal(data, &raws); err != nil {
+		return &change.OpDecodeError{Path: "ops", Message: "ops must be an array of op objects"}
+	}
+	if raws == nil { // JSON null: preserve []change.Op's nil semantics
+		*o = nil
+		return nil
+	}
+	ops := make([]change.Op, len(raws))
+	for i, raw := range raws {
+		if err := json.Unmarshal(raw, &ops[i]); err != nil {
+			path := fmt.Sprintf("ops[%d]", i)
+			var opErr *change.OpDecodeError
+			if errors.As(err, &opErr) {
+				if opErr.Path != "" {
+					path += "." + opErr.Path
+				}
+				return &change.OpDecodeError{Path: path, Message: opErr.Message}
+			}
+			return &change.OpDecodeError{Path: path, Message: err.Error()}
+		}
+	}
+	*o = ops
+	return nil
+}
+
 // createChangesetRequest is docs/api.md's POST /changesets body:
 // `{title, ops:[Op]}`.
 type createChangesetRequest struct {
-	Title string      `json:"title"`
-	Ops   []change.Op `json:"ops"`
+	Title string   `json:"title"`
+	Ops   opsField `json:"ops"`
 }
 
 func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
@@ -357,8 +389,8 @@ func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup) http.Han
 // parked and resumed") without a second route docs/api.md doesn't
 // document.
 type updateChangesetRequest struct {
-	Title *string     `json:"title,omitempty"`
-	Ops   []change.Op `json:"ops"`
+	Title *string  `json:"title,omitempty"`
+	Ops   opsField `json:"ops"`
 }
 
 func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {

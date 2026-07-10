@@ -69,6 +69,18 @@ Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contra
 
 Validation finding shape: `{severity: "error"|"warning"|"info", code, message, ref?, fix?}` where `fix` is an optional machine-applicable amendment (an `[]Op` patch the UI can offer one-click).
 
+Decode errors on POST/PUT bodies return `400 validation_failed` with `details.path` identifying the offending field, op-indexed for multi-op bodies (e.g. `ops[3].params.mtu`).
+
+### Protected interfaces (safety-interlock configuration)
+
+Added by T-203 (documented here retroactively per that task's report note; pinned by `internal/api` tests):
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/protected-interfaces` | current confirmed set: `{nodes: {"<node>": ["<ref>", ...]}, updatedBy?, updatedAt, version}` |
+| GET | `/protected-interfaces/suggest` | detection-suggested set (inventory + corosync.conf): `{nodes: {...}}`, same shape PUT accepts |
+| PUT | `/protected-interfaces` | replace the set `{nodes: {...}}` (netWrite + CSRF); refs must parse and each ref's node must match its map key → else `400 validation_failed` with `details.refs` |
+
 ## Snapshots / time machine
 
 | Method | Path | Purpose |
