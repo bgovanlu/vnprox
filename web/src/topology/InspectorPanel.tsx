@@ -2,8 +2,34 @@ import * as RadixTabs from "@radix-ui/react-tabs";
 import clsx from "clsx";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "../components/Drawer";
 import { EmptyState } from "../components/EmptyState";
+import { Button } from "../components/Button";
+import { Tooltip } from "../components/Tooltip";
+import { useSession } from "../api/useSession";
+import { useToast } from "../components/Toast";
+import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
+import { useEditorLauncherStore, type EditorKind } from "../changesets/editorLauncherStore";
+import { buildBondDeleteOp, buildVlanDeleteOp } from "../changesets/opBuilders";
+import { useDrawerActions } from "../changesets/useDrawerActions";
 import { fieldRows } from "./fields";
 import { useInventoryDetailQuery } from "./queries";
+
+/** Which editor kind (if any) opens for a given inventory kind — the
+ * inspector's "Edit" button (T-207 acceptance criterion: "editors open
+ * from the map or list views"). Kinds with no editor of their own
+ * (guests, SDN objects, LLDP neighbors, ...) simply show no Edit button. */
+const EDITOR_KIND_BY_INVENTORY_KIND: Partial<Record<string, EditorKind>> = {
+  bridge: "bridge",
+  "ovs-bridge": "bridge",
+  bond: "bond",
+  "ovs-bond": "bond",
+  vlan: "vlan",
+  physnic: "iface",
+};
+
+/** Only bridges/bonds/VLANs are deletable entities with their own delete
+ * op in this task's scope (physnic delete isn't a documented op — a NIC is
+ * removed by unplugging it, not a changeset op). */
+const DELETABLE_KINDS = new Set(["bridge", "ovs-bridge", "bond", "ovs-bond", "vlan"]);
 
 export interface InspectorPanelProps {
   /** A real inventory ref (never a guest-group id — see TopologyPage's
@@ -29,14 +55,77 @@ const tabTriggerClass =
 export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: InspectorPanelProps) {
   const { data, isLoading, isError } = useInventoryDetailQuery(selectedRef);
   const rawSourceEntries = Object.entries(data?.rawSource ?? {});
+  const { data: session } = useSession();
+  const openEditor = useEditorLauncherStore((s) => s.open);
+  const { addOps } = useDrawerActions();
+  const { toast } = useToast();
+
+  const editorKind = data ? EDITOR_KIND_BY_INVENTORY_KIND[data.kind] : undefined;
+  const deletable = data ? DELETABLE_KINDS.has(data.kind) : false;
+  const editDisabledReason = data ? missingCapTooltip(session, data.node, "netWrite") : undefined;
+  const canWrite = data ? capsForNode(session, data.node).netWrite : false;
+  const isBridgeKind = data ? data.kind === "bridge" || data.kind === "ovs-bridge" : false;
+
+  function handleDelete(): void {
+    if (!data) return;
+    if (isBridgeKind) {
+      openEditor({ kind: "bridge-delete", node: data.node, target: data.ref });
+      return;
+    }
+    // Bonds/VLANs have no reattach interlock — a plain confirm is enough
+    // before drafting the delete op directly.
+    if (!window.confirm(`Delete ${data.kind} ${data.label}? This only stages the change — nothing applies yet.`)) {
+      return;
+    }
+    const op = data.kind === "vlan" ? buildVlanDeleteOp(data.ref) : buildBondDeleteOp(data.ref);
+    void addOps([op], `Delete ${data.label}`)
+      .then(() => {
+        toast({ title: "Added to changeset" });
+        onClose();
+      })
+      .catch(() => {
+        toast({ title: "Could not add to changeset", variant: "error" });
+      });
+  }
 
   return (
     <Drawer open={selectedRef !== undefined} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DrawerContent side="right" aria-describedby="inspector-description">
-        <DrawerTitle>{data?.label ?? "Inspector"}</DrawerTitle>
-        <DrawerDescription id="inspector-description">
-          {data ? `${data.kind} on ${data.node || "cluster"}` : "Entity detail"}
-        </DrawerDescription>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <DrawerTitle>{data?.label ?? "Inspector"}</DrawerTitle>
+            <DrawerDescription id="inspector-description">
+              {data ? `${data.kind} on ${data.node || "cluster"}` : "Entity detail"}
+            </DrawerDescription>
+          </div>
+          {data && editorKind && (
+            <div className="flex shrink-0 gap-1.5">
+              <Tooltip content={editDisabledReason}>
+                <span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!canWrite}
+                    onClick={() => {
+                      openEditor({ kind: editorKind, node: data.node, target: data.ref });
+                    }}
+                  >
+                    Edit
+                  </Button>
+                </span>
+              </Tooltip>
+              {deletable && (
+                <Tooltip content={editDisabledReason}>
+                  <span>
+                    <Button size="sm" variant="destructive" disabled={!canWrite} onClick={handleDelete}>
+                      Delete
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+            </div>
+          )}
+        </div>
 
         {isLoading && <p className="mt-4 text-sm text-slate-400">Loading…</p>}
         {isError && (
