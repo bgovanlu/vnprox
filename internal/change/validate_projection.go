@@ -96,6 +96,29 @@ type projection struct {
 	// intra-changeset duplicate-create detection is possible — there is
 	// no snapshot-backed existence check for their update/delete ops.
 	fwNames map[string]bool
+
+	// pendingDelete maps every iface-namespace Ref that some delete op in
+	// this changeset targets to the index of its *last* delete op, and
+	// cursor is the index of the op currently being checked (maintained by
+	// referentialValidate's walk). Together they make the address-overlap
+	// and duplicate-enslavement checks net-effect-aware (audit-phase-2
+	// F-03): a conflict with an entity this same changeset deletes *later*
+	// is no conflict in the changeset's net effect, so e.g. the AC2
+	// mgmt-IP-migration chain validates clean in create-first order too.
+	// A doomed entity that is re-created after its delete re-enters the
+	// projection via fold, so conflicts with the re-created entity are
+	// still caught (the recreate op's index is past the delete's).
+	// Both fields are zero for projections built outside referentialValidate
+	// (e.g. safetyValidate's final-state fold), where no suppression applies.
+	pendingDelete map[inventory.Ref]int
+	cursor        int
+}
+
+// deletedLater reports whether ref is deleted by an op *after* the one
+// currently being checked (see pendingDelete's doc comment).
+func (p *projection) deletedLater(ref inventory.Ref) bool {
+	idx, ok := p.pendingDelete[ref]
+	return ok && idx > p.cursor
 }
 
 // newProjection seeds a projection from snap alone (before any op in the
@@ -114,8 +137,20 @@ func newProjection(snap inventory.Snapshot) *projection {
 		allocsBySubnet: map[inventory.Ref][]string{},
 		nodeNames:      map[string]bool{},
 		fwNames:        map[string]bool{},
+		pendingDelete:  map[inventory.Ref]int{},
 	}
 
+	// Bond slaves are plain *names* that must be resolved through p.names,
+	// but snap.All() sorts by Ref.String() — "bond:…" sorts before
+	// "physnic:…" — so slave resolution cannot happen in the same pass that
+	// builds the name index (audit-phase-2 F-04: a single pass left the
+	// enslavement index empty for every snapshot bond, and duplicate
+	// enslavement never fired against pre-existing bonds). Index every name
+	// first, then resolve bond slaves in a second pass. Bridge ports are
+	// already resolved Refs, so they need no second pass, but they are moved
+	// there anyway for uniformity.
+	var bonds []*inventory.Bond
+	var bridges []*inventory.Bridge
 	for _, e := range snap.All() {
 		ref := e.GetRef()
 		switch v := e.(type) {
@@ -125,16 +160,10 @@ func newProjection(snap inventory.Snapshot) *projection {
 			p.names[ifaceKey{ref.Node, ref.ID}] = ref
 		case *inventory.Bond:
 			p.names[ifaceKey{ref.Node, ref.ID}] = ref
-			for _, s := range firstNonEmpty(v.Slaves, v.DeclaredSlaves) {
-				if sref, ok := p.names[ifaceKey{ref.Node, s}]; ok {
-					p.enslaved[sref] = ref
-				}
-			}
+			bonds = append(bonds, v)
 		case *inventory.Bridge:
 			p.names[ifaceKey{ref.Node, ref.ID}] = ref
-			for _, pr := range v.Ports {
-				p.enslaved[pr] = ref
-			}
+			bridges = append(bridges, v)
 			p.addAddrs(ref, v.Addresses)
 		case *inventory.VlanIface:
 			p.names[ifaceKey{ref.Node, ref.ID}] = ref
@@ -147,6 +176,22 @@ func newProjection(snap inventory.Snapshot) *projection {
 		case *inventory.SdnSubnet:
 			p.subnetNames[v.ID] = ref
 			p.subnetsByVnet[v.Vnet] = append(p.subnetsByVnet[v.Vnet], ref)
+		}
+	}
+
+	// Second pass: every name is indexed now, so slave/port membership can
+	// resolve regardless of snap.All()'s iteration order.
+	for _, b := range bonds {
+		ref := b.GetRef()
+		for _, s := range firstNonEmpty(b.Slaves, b.DeclaredSlaves) {
+			if sref, ok := p.names[ifaceKey{ref.Node, s}]; ok {
+				p.enslaved[sref] = ref
+			}
+		}
+	}
+	for _, b := range bridges {
+		for _, pr := range b.Ports {
+			p.enslaved[pr] = b.GetRef()
 		}
 	}
 	return p
@@ -221,10 +266,13 @@ func (p *projection) removeAddrsOf(node string, ref inventory.Ref) {
 }
 
 // overlappingAddr returns the first existing addrEntry on node (other than
-// selfRef) whose CIDR overlaps ipnet, or nil if none.
+// selfRef) whose CIDR overlaps ipnet, or nil if none. Entries owned by an
+// entity this changeset deletes later than the op currently being checked
+// are skipped — no overlap survives in the changeset's net effect (see
+// pendingDelete's doc comment; audit-phase-2 F-03).
 func (p *projection) overlappingAddr(node string, ipnet *net.IPNet, selfRef inventory.Ref) *addrEntry {
 	for i, e := range p.addrs[node] {
-		if e.ref == selfRef {
+		if e.ref == selfRef || p.deletedLater(e.ref) {
 			continue
 		}
 		if e.ipnet.Contains(ipnet.IP) || ipnet.Contains(e.ipnet.IP) {
@@ -311,15 +359,23 @@ func (p *projection) enslaveAll(owner inventory.Ref, names []string) {
 }
 
 // deleteIface removes ref from the iface namespace (a bond/bridge/vlan
-// delete op), clearing any enslavement it held or granted and any
-// addresses it declared, so later ops in the same changeset see it as
-// gone.
+// delete op), clearing any enslavement it held or granted, any addresses
+// it declared, and any (node, parent, vid) VLAN index entry it occupied,
+// so later ops in the same changeset see it as gone. The vlanIfaces sweep
+// is what lets a delete-then-recreate draft for the same parent+vid pass
+// (audit-phase-2 F-05: the stale index caused a false, apply-blocking
+// vid_overlap on recreate).
 func (p *projection) deleteIface(ref inventory.Ref) {
 	delete(p.names, ifaceKey{ref.Node, ref.ID})
 	delete(p.enslaved, ref)
 	for k, owner := range p.enslaved {
 		if owner == ref {
 			delete(p.enslaved, k)
+		}
+	}
+	for k, v := range p.vlanIfaces {
+		if v == ref {
+			delete(p.vlanIfaces, k)
 		}
 	}
 	p.removeAddrsOf(ref.Node, ref)
@@ -408,6 +464,19 @@ func (p *projection) fold(op Op) {
 
 	case *SdnSubnetDeleteParams:
 		delete(p.subnetNames, op.Target.ID)
+		// Also drop the subnet from the per-vnet sibling index — a stale
+		// entry there caused false address_overlap findings on
+		// delete-then-recreate drafts (audit-phase-2 F-05). The delete op
+		// doesn't carry the owning vnet, so sweep every list.
+		for vnet, refs := range p.subnetsByVnet {
+			kept := refs[:0]
+			for _, r := range refs {
+				if r != op.Target {
+					kept = append(kept, r)
+				}
+			}
+			p.subnetsByVnet[vnet] = kept
+		}
 
 	case *IpamAllocCreateParams:
 		p.allocsBySubnet[op.Target] = append(p.allocsBySubnet[op.Target], params.CIDR)

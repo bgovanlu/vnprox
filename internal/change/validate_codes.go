@@ -5,7 +5,7 @@ package change
 // assert exact (code, ref) matches per docs/api.md's documented finding
 // shape (`{severity, code, message, ref?, fix?}`). Codes are grouped below
 // by the validator class that emits them (docs/features/change-management.md
-// §2), in the order those classes run (see validate.go's classPipeline).
+// §2), in the order those classes run (see validate.go's ValidateWithSafety).
 const (
 	// --- schema (class 1: types, ranges, enums, syntax) -----------------
 

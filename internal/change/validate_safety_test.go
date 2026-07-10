@@ -149,6 +149,11 @@ func guestBearingSnapshot() inventory.Snapshot {
 	vmbr2 := testRef(inventory.KindBridge, "pve1", "vmbr2")
 	return buildSnapshot(
 		&inventory.Bridge{Ref: vmbr2, Name: "vmbr2"},
+		// vmbr3 exists as a genuine reattachment target: since the F-01
+		// remediation the reattach check is net-effect-based, so a
+		// guest.nic.update only clears the error if its target actually
+		// survives the changeset.
+		&inventory.Bridge{Ref: testRef(inventory.KindBridge, "pve1", "vmbr3"), Name: "vmbr3"},
 		&inventory.Guest{Ref: testRef(inventory.KindGuest, "pve1", "100"), Name: "web01", VMID: 100, Status: "running"},
 		&inventory.GuestNic{
 			Ref:   testRef(inventory.KindGuestNic, "pve1", "100/net0"),

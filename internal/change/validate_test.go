@@ -287,6 +287,19 @@ func goldenCases() []goldenCase {
 			want: []wantFinding{{SeverityError, codeDuplicateEnslavement, "bridge:pve1:vmbr1"}},
 		},
 		{
+			// The bond flavor of duplicate enslavement (audit-phase-2 F-04:
+			// single-pass projection seeding never resolved snapshot bond
+			// slaves, so this check deterministically never fired).
+			name: "referential: bond.create slave enslaved by snapshot bond",
+			snap: buildSnapshot(
+				pve1eno1, pve1eno2,
+				&inventory.Bond{Ref: testRef(inventory.KindBond, "pve1", "bond0"), Name: "bond0", Mode: "active-backup", Slaves: []string{"eno1"}},
+			),
+			ops: []Op{mkOp(OpBondCreate, testRef(inventory.KindBond, "pve1", "bond1"),
+				&BondCreateParams{Mode: "active-backup", Slaves: []string{"eno1", "eno2"}})},
+			want: []wantFinding{{SeverityError, codeDuplicateEnslavement, "bond:pve1:bond1"}},
+		},
+		{
 			name: "referential: sdn.vnet.create zone not found",
 			ops: []Op{mkOp(OpSdnVnetCreate, testRef(inventory.KindSDNVnet, "", "zoneX/vnet1"),
 				&SdnVnetCreateParams{Zone: "zoneX"})},

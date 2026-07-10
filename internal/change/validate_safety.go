@@ -72,6 +72,27 @@ func protectedInterfaceFindings(ops []Op, snap inventory.Snapshot, protected Pro
 				out = append(out, errorf(codeProtectedInterface, pip.ref.String(),
 					"this changeset would remove or re-address %s, currently assigned to protected interface %s on node %s (management IP or corosync link) — no interface would carry it afterward",
 					pip.raw, pip.ref, node))
+				continue
+			}
+			// The address survives — but check what carries it now. If it
+			// ended up on a bridge other than its original protected
+			// carrier, that bridge must have a physical path (>= 1 port) in
+			// the final state: parking the management IP on a port-less
+			// bridge severs connectivity just as surely as removing the
+			// address (audit-phase-2 F-02: "delete vmbr0; create vmbr9 with
+			// the same IP and no ports" validated clean).
+			for _, e := range proj.addrs[node] {
+				if e.ref == pip.ref || !e.hostIP.Equal(pip.ip) {
+					continue
+				}
+				if e.ref.Kind != inventory.KindBridge && e.ref.Kind != inventory.KindOVSBridge {
+					continue
+				}
+				if proj.portCount(e.ref) == 0 {
+					out = append(out, errorf(codeProtectedInterface, pip.ref.String(),
+						"this changeset moves protected address %s from %s to bridge %s, which would have no ports — nothing physical would carry it",
+						pip.raw, pip.ref, e.ref))
+				}
 			}
 		}
 
@@ -170,60 +191,109 @@ func protectedBridgePathFindings(snap inventory.Snapshot, proj *projection, refs
 
 // --- guest-bearing bridge deletion -----------------------------------------
 
-// guestBearingBridgeFindings flags a bridge.delete op targeting a bridge
-// that still has running guests attached (docs/features/change-management.md
-// §5's delete-with-reattach flow), unless the same changeset also reattaches
-// every one of those guests' NICs elsewhere via a guest.nic.update op.
+// guestBearingBridgeFindings flags every bridge.delete op whose *net
+// effect* leaves a running guest's NIC attached to nothing that survives
+// the changeset (docs/features/change-management.md §5's
+// delete-with-reattach flow). The analysis is net-effect-based
+// (audit-phase-2 F-01): a guest.nic.update only clears the error if the
+// NIC's *final* attachment exists in the changeset's final projection —
+// "reattaching" to the doomed bridge itself, or to a bridge/vnet the same
+// changeset also deletes, does not.
 func guestBearingBridgeFindings(ops []Op, snap inventory.Snapshot) []Finding {
-	var out []Finding
+	// deleteOps: (node, name) of every bridge this changeset deletes →
+	// index of its (last) bridge.delete op, for attributing findings.
+	deleteOps := map[ifaceKey]int{}
+	for i, op := range ops {
+		if op.Type == OpBridgeDelete {
+			deleteOps[ifaceKey{op.Target.Node, op.Target.ID}] = i
+		}
+	}
+	if len(deleteOps) == 0 {
+		return nil
+	}
 
-	// reattached is every GuestNic ref this same changeset reassigns to a
-	// (possibly different) bridge/vnet — any guest.nic.update touching
-	// BridgeOrVnet counts, matching docs/features/change-management.md §5's
-	// "reattachment ops" wording.
-	reattached := map[inventory.Ref]bool{}
+	// Final projection: the base snapshot with every op folded in — what
+	// actually exists once the whole changeset has applied.
+	proj := newProjection(snap)
+	for _, op := range ops {
+		proj.fold(op)
+	}
+
+	// finalAttach: where each guest.nic.update leaves its NIC pointing (the
+	// last update naming a bridge/vnet wins).
+	finalAttach := map[inventory.Ref]string{}
 	for _, op := range ops {
 		if op.Type != OpGuestNicUpdate {
 			continue
 		}
 		if params, ok := op.Params.(*GuestNicUpdateParams); ok && params.BridgeOrVnet != nil {
-			reattached[op.Target] = true
+			finalAttach[op.Target] = *params.BridgeOrVnet
 		}
 	}
 
-	for _, op := range ops {
-		if op.Type != OpBridgeDelete {
+	// stranded: per bridge.delete op index, the running-guest NICs whose
+	// final attachment that delete dooms.
+	stranded := map[int][]string{}
+	for _, e := range snap.All() {
+		nic, ok := e.(*inventory.GuestNic)
+		if !ok {
 			continue
 		}
-		target := op.Target
+		nicRef := nic.GetRef()
+		node := nicRef.Node
 
-		var attached []string
-		for _, e := range snap.All() {
-			nic, ok := e.(*inventory.GuestNic)
-			if !ok || nic.BridgeOrVnet != target {
-				continue
-			}
-			if reattached[nic.GetRef()] {
-				continue
-			}
-			guestEntity, ok := snap.Get(nic.Guest)
-			if !ok {
-				continue
-			}
-			guest, ok := guestEntity.(*inventory.Guest)
-			if !ok || guest.Status != "running" {
-				continue
-			}
-			attached = append(attached, fmt.Sprintf("%s (vmid %d, %s)", guest.Name, guest.VMID, nic.Key))
+		var origKey ifaceKey
+		origDeleted := false
+		if nic.BridgeOrVnet.Kind == inventory.KindBridge || nic.BridgeOrVnet.Kind == inventory.KindOVSBridge {
+			origKey = ifaceKey{nic.BridgeOrVnet.Node, nic.BridgeOrVnet.ID}
+			_, origDeleted = deleteOps[origKey]
 		}
 
+		finalName, updated := finalAttach[nicRef]
+		if !updated {
+			if !origDeleted {
+				continue // attachment untouched and its bridge survives
+			}
+			finalName = nic.BridgeOrVnet.ID
+		}
+		if proj.guestTargetExists(node, finalName) {
+			continue // net effect: attached to a surviving bridge/vnet
+		}
+
+		// The NIC ends up attached to nothing that survives. Attribute the
+		// finding to the delete op that dooms the final target, else to the
+		// one that dooms the original bridge. (A dangling reattach target
+		// with no bridge.delete involved is the referential class's
+		// bridge_or_vnet_not_found, not a safety finding.)
+		opIdx, ok := deleteOps[ifaceKey{node, finalName}]
+		if !ok {
+			if !origDeleted {
+				continue
+			}
+			opIdx = deleteOps[origKey]
+		}
+
+		guestEntity, ok := snap.Get(nic.Guest)
+		if !ok {
+			continue
+		}
+		guest, ok := guestEntity.(*inventory.Guest)
+		if !ok || guest.Status != "running" {
+			continue
+		}
+		stranded[opIdx] = append(stranded[opIdx], fmt.Sprintf("%s (vmid %d, %s)", guest.Name, guest.VMID, nic.Key))
+	}
+
+	var out []Finding
+	for i, op := range ops {
+		attached := stranded[i]
 		if len(attached) == 0 {
 			continue
 		}
 		sort.Strings(attached)
 		out = append(out, errorf(codeGuestBearingBridge, refOf(op),
-			"bridge %s still has %d running guest(s) attached: %s — add guest.nic.update ops reattaching all of them before deleting it",
-			target.ID, len(attached), strings.Join(attached, "; ")))
+			"bridge %s still has %d running guest(s) attached in this changeset's final state: %s — add guest.nic.update ops reattaching all of them to a surviving bridge or vnet before deleting it",
+			op.Target.ID, len(attached), strings.Join(attached, "; ")))
 	}
 	return out
 }

@@ -14,8 +14,20 @@ import (
 // validate_projection.go's doc comment for why that ordering matters).
 func referentialValidate(ops []Op, snap inventory.Snapshot) []Finding {
 	proj := newProjection(snap)
+	// Record which iface-namespace entities this changeset deletes (and at
+	// which position), so the address-overlap and duplicate-enslavement
+	// checks can ignore conflicts with an entity that is gone in the
+	// changeset's net effect (audit-phase-2 F-03: without this, T-203 AC2's
+	// mgmt-IP migration was rejected in create-first order).
+	for i, op := range ops {
+		switch op.Type {
+		case OpBondDelete, OpBridgeDelete, OpVlanDelete:
+			proj.pendingDelete[op.Target] = i
+		}
+	}
 	var out []Finding
-	for _, op := range ops {
+	for i, op := range ops {
+		proj.cursor = i
 		out = append(out, referentialValidateOp(proj, op)...)
 		proj.fold(op)
 	}
@@ -88,7 +100,7 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 			out = append(out, errorf(codePortNotFound, ref, "port %q does not exist on node %s", params.Port, op.Target.Node))
 			break
 		}
-		if owner, enslaved := p.enslaved[portRef]; enslaved {
+		if owner, enslaved := p.enslaved[portRef]; enslaved && !p.deletedLater(owner) {
 			out = append(out, errorf(codeDuplicateEnslavement, ref, "%s is already enslaved by %s", portRef, owner))
 		}
 
@@ -268,7 +280,8 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 
 // checkSlaves validates a bond's slave list: every named iface must exist
 // on the bond's node and must not already be enslaved by a different
-// owner.
+// owner. An owner this same changeset deletes later is no owner in the
+// changeset's net effect, so it doesn't count (audit-phase-2 F-03).
 func checkSlaves(p *projection, target inventory.Ref, ref string, slaves []string, out *[]Finding) {
 	for _, s := range slaves {
 		sref, ok := p.ifaceRef(target.Node, s)
@@ -276,7 +289,7 @@ func checkSlaves(p *projection, target inventory.Ref, ref string, slaves []strin
 			*out = append(*out, errorf(codeSlaveNotFound, ref, "slave %q does not exist on node %s", s, target.Node))
 			continue
 		}
-		if owner, enslaved := p.enslaved[sref]; enslaved && owner != target {
+		if owner, enslaved := p.enslaved[sref]; enslaved && owner != target && !p.deletedLater(owner) {
 			*out = append(*out, errorf(codeDuplicateEnslavement, ref, "%s is already enslaved by %s", sref, owner))
 		}
 	}
@@ -290,7 +303,7 @@ func checkPorts(p *projection, target inventory.Ref, ref string, ports []string,
 			*out = append(*out, errorf(codePortNotFound, ref, "port %q does not exist on node %s", port, target.Node))
 			continue
 		}
-		if owner, enslaved := p.enslaved[pref]; enslaved && owner != target {
+		if owner, enslaved := p.enslaved[pref]; enslaved && owner != target && !p.deletedLater(owner) {
 			*out = append(*out, errorf(codeDuplicateEnslavement, ref, "%s is already enslaved by %s", pref, owner))
 		}
 	}
