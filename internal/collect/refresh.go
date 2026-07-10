@@ -28,6 +28,14 @@ import (
 // The whole cycle (however many underlying PVE/host calls it takes) is
 // reported as exactly one merged Delta batch — see diffSnapshots — and
 // forwarded to Config.OnDelta exactly once, if it is non-empty.
+//
+// Delta-attribution caveat (same as runLoop's attempt, see loop.go): the
+// before/after snapshots below bracket this call on a shared graph, so
+// changes a concurrently-ticking poll loop commits inside the window are
+// attributed to this batch too and may also be reported by that loop's own
+// batch. "Exactly one batch" is therefore per-RefreshNow-call, not a
+// global exactly-once delivery of each change; consumers treat batches as
+// idempotent re-read hints, which makes the overlap harmless.
 func (c *Collector) RefreshNow(ctx context.Context, scope inventory.Scope) (inventory.Delta, error) {
 	before := c.graph.Snapshot()
 	now := time.Now()

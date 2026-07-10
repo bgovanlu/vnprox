@@ -22,7 +22,23 @@ type Entity interface {
 	// clone returns a deep copy so a published (immutable) snapshot never
 	// shares mutable slice/map backing with the writer's working copy.
 	clone() Entity
+	// rawSource returns the raw source text this contribution was derived
+	// from (see rawSrc), or "" if none was attached.
+	rawSource() string
 }
+
+// rawSrc carries the raw source text an entity contribution was derived
+// from: the interfaces(5) stanza text for SourceHostInterfaces, the
+// pretty-printed JSON of the PVE API object for the SourcePVE* sources, or
+// a compact JSON rendering of the netlink link state for SourceHostNetlink
+// (see the From* adapters in ingest.go). It is embedded in every concrete
+// entity type. The text is metadata, not a merged field: it is excluded
+// from fieldMap (so it never triggers deltas or provenance) and is exposed
+// per Ref, per Source via Snapshot.RawSource, not on resolved entities.
+type rawSrc struct{ raw string }
+
+func (r rawSrc) rawSource() string      { return r.raw }
+func (r *rawSrc) setRawSource(s string) { r.raw = s }
 
 // VidRange is an inclusive VLAN ID range (a single VID has Low == High),
 // mirroring how the kernel bridge VLAN table compacts contiguous trunks.
@@ -74,6 +90,7 @@ func boolStr(b bool) string {
 // Node is one PVE cluster member.
 type Node struct {
 	Ref
+	rawSrc
 	Name    string
 	IP      string
 	Status  string // online|offline
@@ -101,6 +118,7 @@ func (n *Node) fieldMap() map[string]string {
 // interfaces file / PVE network API.
 type PhysNic struct {
 	Ref
+	rawSrc
 	Name        string
 	Mac         string
 	Driver      string
@@ -112,6 +130,11 @@ type PhysNic struct {
 	MTUDeclared int // intended (host-interfaces authoritative, pve-network cross-check)
 	SRIOVVFs    int
 	LinkUp      bool
+	// LinkUpSet reports whether the contributing source actually observed
+	// LinkUp (merge treats an unset flagged bool as "not reported", not as
+	// an implicit false). On a resolved entity it is true iff any source in
+	// the field's precedence list reported the field.
+	LinkUpSet bool
 }
 
 func (p *PhysNic) GetRef() Ref { return p.Ref }
@@ -144,6 +167,7 @@ type BondSlaveState struct {
 // interfaces file.
 type Bond struct {
 	Ref
+	rawSrc
 	Name           string
 	Mode           string
 	LACPRate       string
@@ -194,6 +218,7 @@ const (
 // are declared config. MTU is runtime, MTUDeclared intended.
 type Bridge struct {
 	Ref
+	rawSrc
 	Gateway           string
 	Name              string
 	Virt              BridgeVirt
@@ -207,6 +232,13 @@ type Bridge struct {
 	MTUDeclared       int
 	VlanAware         bool
 	STP               bool
+	// VlanAwareSet / STPSet report whether the contributing source actually
+	// declared/observed VlanAware / STP (merge treats an unset flagged bool
+	// as "not reported", not as an implicit false). On a resolved entity
+	// each is true iff any source in the field's precedence list reported
+	// the field.
+	VlanAwareSet bool
+	STPSet       bool
 }
 
 func (b *Bridge) GetRef() Ref { return b.Ref }
@@ -235,6 +267,7 @@ func (b *Bridge) fieldMap() map[string]string {
 // runtime.
 type VlanIface struct {
 	Ref
+	rawSrc
 	Name        string
 	Parent      Ref // resolved during linking from ParentName
 	ParentName  string
@@ -265,6 +298,7 @@ func (v *VlanIface) fieldMap() map[string]string {
 type SdnZone struct {
 	NodeStatus map[string]string
 	Ref
+	rawSrc
 	ID         string
 	Type       string
 	Bridge     string
@@ -306,6 +340,7 @@ func (z *SdnZone) fieldMap() map[string]string {
 // SdnVnet is a cluster-scoped VNet inside a zone.
 type SdnVnet struct {
 	Ref
+	rawSrc
 	ID        string
 	Zone      string
 	Alias     string
@@ -328,6 +363,7 @@ func (n *SdnVnet) fieldMap() map[string]string {
 // SdnSubnet is a cluster-scoped subnet inside a VNet. ID is the CIDR.
 type SdnSubnet struct {
 	Ref
+	rawSrc
 	ID            string
 	Vnet          string
 	Gateway       string
@@ -355,6 +391,7 @@ func (s *SdnSubnet) fieldMap() map[string]string {
 // Guest is a qemu VM or lxc container.
 type Guest struct {
 	Ref
+	rawSrc
 	Name   string
 	Type   string
 	Node   string
@@ -380,6 +417,7 @@ func (g *Guest) fieldMap() map[string]string {
 // actually rides after propagating any VNet tag (see attachment.go).
 type GuestNic struct {
 	Ref
+	rawSrc
 	Guest        Ref
 	Key          string // "net0"
 	TargetName   string
@@ -414,6 +452,7 @@ func (n *GuestNic) fieldMap() map[string]string {
 // LocalNic is resolved during linking from LocalIface + Node.
 type LldpNeighbor struct {
 	Ref
+	rawSrc
 	LocalNic    Ref
 	LocalIface  string
 	Node        string
@@ -479,6 +518,7 @@ const (
 // canonicalization.
 type FwRuleset struct {
 	Ref
+	rawSrc
 	Scope      FwScope
 	DefaultIn  string
 	DefaultOut string

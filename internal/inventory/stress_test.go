@@ -58,8 +58,8 @@ func TestConcurrentPollersAndReaders(t *testing.T) {
 	wg.Add(1)
 	go poller(SourceHostNetlink, Scope{Node: node0}, func(i int64) []Entity {
 		return []Entity{
-			&PhysNic{Ref: Ref{Kind: KindPhysNic, Node: node0, ID: "eno1"}, Name: "eno1", MTU: 1500 + int(i%2), LinkUp: i%2 == 0},
-			&Bridge{Ref: Ref{Kind: KindBridge, Node: node0, ID: "vmbr0"}, Name: "vmbr0", Virt: BridgeLinux, PortNames: []string{"bond0"}, MTU: 1500 + int(i%3), VlanAware: true},
+			&PhysNic{Ref: Ref{Kind: KindPhysNic, Node: node0, ID: "eno1"}, Name: "eno1", MTU: 1500 + int(i%2), LinkUp: i%2 == 0, LinkUpSet: true},
+			&Bridge{Ref: Ref{Kind: KindBridge, Node: node0, ID: "vmbr0"}, Name: "vmbr0", Virt: BridgeLinux, PortNames: []string{"bond0"}, MTU: 1500 + int(i%3), VlanAware: true, VlanAwareSet: true},
 			&Bond{Ref: Ref{Kind: KindBond, Node: node0, ID: "bond0"}, Name: "bond0", Mode: "802.3ad", Slaves: []string{"eno1", "eno2"}, ActiveSlave: pick2("eno1", "eno2", i)},
 		}
 	})
@@ -78,7 +78,7 @@ func TestConcurrentPollersAndReaders(t *testing.T) {
 	wg.Add(1)
 	go poller(SourceHostNetlink, Scope{Node: node1}, func(i int64) []Entity {
 		return []Entity{
-			&Bridge{Ref: Ref{Kind: KindBridge, Node: node1, ID: "vmbr0"}, Name: "vmbr0", Virt: BridgeLinux, MTU: 1500, VlanAware: i%2 == 0},
+			&Bridge{Ref: Ref{Kind: KindBridge, Node: node1, ID: "vmbr0"}, Name: "vmbr0", Virt: BridgeLinux, MTU: 1500, VlanAware: i%2 == 0, VlanAwareSet: true},
 		}
 	})
 

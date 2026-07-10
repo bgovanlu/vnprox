@@ -82,6 +82,18 @@ func (c *Collector) runLoop(ctx context.Context, name string, interval time.Dura
 
 // attempt runs one poll step, recording its staleness/backoff result and
 // emitting a merged Delta (via onDelta) if it changed the graph.
+//
+// Delta-attribution caveat: the before/after snapshots bracket this loop's
+// poll step, but the graph is shared. A concurrent loop (or RefreshNow)
+// that commits changes inside this window has those changes attributed to
+// this batch as well — and its own bracketing diff will typically report
+// them a second time. This is deliberate: consumers treat a Delta batch as
+// an idempotent "something changed, re-read the snapshot" hint, so
+// occasional double-attribution is harmless, whereas exactly-once
+// attribution would require serializing every poll cycle behind one global
+// lock. (RefreshNow's "exactly one batch per call" guarantee therefore
+// holds strictly only when no other loop mutates the graph during the
+// call; see refresh.go.)
 func (c *Collector) attempt(ctx context.Context, name string, fn pollFunc) {
 	before := c.graph.Snapshot()
 	start := time.Now()

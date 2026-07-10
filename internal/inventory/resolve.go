@@ -87,7 +87,8 @@ func resolvePhysNic(ref Ref, parts map[Source]*PhysNic) resolved {
 	out.SRIOVVFs, _ = pick(prov, "sriovVFs", ruleFor(ref.Kind, "sriovVFs"), parts, func(p *PhysNic) int { return p.SRIOVVFs }, nonZeroInt, keyInt)
 	out.MTU, _ = pick(prov, "mtu", ruleFor(ref.Kind, "mtu"), parts, func(p *PhysNic) int { return p.MTU }, nonZeroInt, keyInt)
 	out.MTUDeclared, _ = pick(prov, "mtuDeclared", ruleFor(ref.Kind, "mtuDeclared"), parts, func(p *PhysNic) int { return p.MTUDeclared }, nonZeroInt, keyInt)
-	out.LinkUp, _ = pick(prov, "linkUp", ruleFor(ref.Kind, "linkUp"), parts, func(p *PhysNic) bool { return p.LinkUp }, alwaysSet, keyBool)
+	linkUp, linkUpOK := pick(prov, "linkUp", ruleFor(ref.Kind, "linkUp"), parts, func(p *PhysNic) boolOpt { return boolOpt{p.LinkUp, p.LinkUpSet} }, boolOptSet, boolOptKey)
+	out.LinkUp, out.LinkUpSet = linkUp.v, linkUpOK
 	return resolved{entity: out, prov: *prov}
 }
 
@@ -124,8 +125,10 @@ func resolveBridge(ref Ref, parts map[Source]*Bridge) resolved {
 	out.Comments, _ = pick(prov, "comments", ruleFor(ref.Kind, "comments"), parts, func(b *Bridge) string { return b.Comments }, nonEmptyStr, keyStr)
 	out.MTU, _ = pick(prov, "mtu", ruleFor(ref.Kind, "mtu"), parts, func(b *Bridge) int { return b.MTU }, nonZeroInt, keyInt)
 	out.MTUDeclared, _ = pick(prov, "mtuDeclared", ruleFor(ref.Kind, "mtuDeclared"), parts, func(b *Bridge) int { return b.MTUDeclared }, nonZeroInt, keyInt)
-	out.VlanAware, _ = pick(prov, "vlanAware", ruleFor(ref.Kind, "vlanAware"), parts, func(b *Bridge) bool { return b.VlanAware }, alwaysSet, keyBool)
-	out.STP, _ = pick(prov, "stp", ruleFor(ref.Kind, "stp"), parts, func(b *Bridge) bool { return b.STP }, alwaysSet, keyBool)
+	vlanAware, vaOK := pick(prov, "vlanAware", ruleFor(ref.Kind, "vlanAware"), parts, func(b *Bridge) boolOpt { return boolOpt{b.VlanAware, b.VlanAwareSet} }, boolOptSet, boolOptKey)
+	out.VlanAware, out.VlanAwareSet = vlanAware.v, vaOK
+	stp, stpOK := pick(prov, "stp", ruleFor(ref.Kind, "stp"), parts, func(b *Bridge) boolOpt { return boolOpt{b.STP, b.STPSet} }, boolOptSet, boolOptKey)
+	out.STP, out.STPSet = stp.v, stpOK
 	return resolved{entity: out, prov: *prov}
 }
 

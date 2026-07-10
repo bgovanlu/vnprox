@@ -59,7 +59,9 @@ func setField(t *testing.T, e Entity, field string, idx int) {
 		case "mtuDeclared":
 			v.MTUDeclared = n
 		case "linkUp":
-			v.LinkUp = b
+			// Flagged optional bool: a contribution only counts as reported
+			// when the companion Set flag is raised (see merge.go).
+			v.LinkUp, v.LinkUpSet = b, true
 		default:
 			set(false)
 		}
@@ -117,9 +119,9 @@ func setField(t *testing.T, e Entity, field string, idx int) {
 		case "mtuDeclared":
 			v.MTUDeclared = n
 		case "vlanAware":
-			v.VlanAware = b
+			v.VlanAware, v.VlanAwareSet = b, true
 		case "stp":
-			v.STP = b
+			v.STP, v.STPSet = b, true
 		default:
 			set(false)
 		}
@@ -218,6 +220,59 @@ func TestOwnershipSubsetPresence(t *testing.T) {
 	}
 }
 
+// TestOptionalBoolNotReported checks the F-14 fix: a flagged boolean field
+// a source did not actually set (companion *Set flag false) is treated as
+// "not reported" — it neither wins the merge nor registers a spurious
+// provenance conflict — instead of implicitly reporting false.
+func TestOptionalBoolNotReported(t *testing.T) {
+	ref := refFor(KindBridge)
+
+	// Netlink observed the bridge but without bridge detail (VlanAwareSet
+	// unset); PVE genuinely declares vlan-aware true. PVE must win with no
+	// conflict, even though netlink outranks it in precedence.
+	res := resolveEntity(ref, map[Source]Entity{
+		SourceHostNetlink: &Bridge{Ref: ref, Name: "x", MTU: 1500},
+		SourcePVENetwork:  &Bridge{Ref: ref, Name: "x", VlanAware: true, VlanAwareSet: true},
+	})
+	b := res.entity.(*Bridge)
+	if !b.VlanAware || !b.VlanAwareSet {
+		t.Errorf("vlanAware = (%v, set=%v), want (true, set=true) from pve-network", b.VlanAware, b.VlanAwareSet)
+	}
+	fp := res.prov.Fields["vlanAware"]
+	if fp.Owner != SourcePVENetwork {
+		t.Errorf("vlanAware owner = %s, want pve-network", fp.Owner)
+	}
+	if len(fp.Conflicts) != 0 {
+		t.Errorf("unreported netlink bool must not conflict, got %+v", fp.Conflicts)
+	}
+
+	// stp: netlink genuinely reports false (set), interfaces genuinely
+	// declares true (set) -> netlink's false wins, interfaces conflicts.
+	res = resolveEntity(ref, map[Source]Entity{
+		SourceHostNetlink:    &Bridge{Ref: ref, Name: "x", STP: false, STPSet: true},
+		SourceHostInterfaces: &Bridge{Ref: ref, Name: "x", STP: true, STPSet: true},
+	})
+	b = res.entity.(*Bridge)
+	if b.STP || !b.STPSet {
+		t.Errorf("stp = (%v, set=%v), want (false, set=true): an explicit false report must win", b.STP, b.STPSet)
+	}
+	if got := res.prov.Fields["stp"].Conflicts; len(got) != 1 || got[0].Source != SourceHostInterfaces || got[0].Value != "1" {
+		t.Errorf("stp conflicts = %+v, want one host-interfaces=1 conflict", got)
+	}
+
+	// Nobody reported: no provenance entry at all, Set flag false.
+	res = resolveEntity(ref, map[Source]Entity{
+		SourcePVENetwork: &Bridge{Ref: ref, Name: "x", MTUDeclared: 1500},
+	})
+	b = res.entity.(*Bridge)
+	if b.STPSet {
+		t.Errorf("stp reported by nobody must resolve with STPSet=false")
+	}
+	if _, ok := res.prov.Fields["stp"]; ok {
+		t.Errorf("stp reported by nobody must carry no provenance entry")
+	}
+}
+
 // TestMTUDualExposure documents the flagship rule: runtime MTU (host-netlink)
 // and declared MTU (host-interfaces) are exposed as separate fields, not
 // merged into one number, and a runtime≠declared difference is NOT a
@@ -275,7 +330,7 @@ func TestPVEDoesNotClobberRuntime(t *testing.T) {
 	g := NewGraph()
 	ref := Ref{Kind: KindBridge, Node: "pve1", ID: "vmbr0"}
 	g.ApplyPoll(SourceHostNetlink, Scope{Node: "pve1"}, []Entity{
-		&Bridge{Ref: ref, Name: "vmbr0", MTU: 1500, VlanAware: true},
+		&Bridge{Ref: ref, Name: "vmbr0", MTU: 1500, VlanAware: true, VlanAwareSet: true},
 	})
 	g.ApplyPoll(SourcePVENetwork, Scope{Node: "pve1"}, []Entity{
 		&Bridge{Ref: ref, Name: "vmbr0", MTUDeclared: 9000, Comments: "uplink"},

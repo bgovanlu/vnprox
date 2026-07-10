@@ -67,6 +67,21 @@ type Ownership struct {
 //   - MTU is split into two fields on purpose: `mtu` (runtime, netlink) and
 //     `mtuDeclared` (intent, interfaces/pve). They are exposed separately
 //     rather than merged, exactly as the task requires.
+//   - BOOLEAN fields (vlanAware, stp, linkUp) are optional: a source's
+//     contribution only counts as "reported" when its companion *Set flag
+//     (Bridge.VlanAwareSet, Bridge.STPSet, PhysNic.LinkUpSet) is true.
+//     A partial that leaves the flag unset is treated exactly like a
+//     source that never mentioned the field — it neither wins the merge
+//     nor registers a provenance conflict — so e.g. pve-network (which
+//     carries no STP information at all) cannot spuriously "disagree"
+//     with the kernel's stp value by implicitly reporting false. On the
+//     resolved entity the *Set flag is true iff any precedence source
+//     reported the field; when none did, the field resolves to the zero
+//     value, carries no provenance entry, and its *Set flag is false.
+//
+// Fields whose zero value already means "not reported" (empty strings,
+// zero ints, empty slices) need no companion flag; the isSet predicates
+// below (nonEmptyStr, nonZeroInt, nonEmptySlc) encode that.
 var ownershipRules = map[Kind]map[string]Ownership{
 	KindPhysNic: {
 		"name":      {Precedence: []Source{SourceHostNetlink, SourceHostInterfaces, SourcePVENetwork}},
@@ -292,9 +307,15 @@ func ruleFor(kind Kind, field string) Ownership {
 
 func nonEmptyStr(s string) bool     { return s != "" }
 func nonZeroInt(i int) bool         { return i != 0 }
-func alwaysSet[V any](V) bool       { return true }
 func nonEmptySlc[T any](s []T) bool { return len(s) > 0 }
 
 func keyStr(s string) string { return s }
 func keyInt(i int) string    { return fmt.Sprint(i) }
-func keyBool(b bool) string  { return boolStr(b) }
+
+// boolOpt pairs an optional boolean field's value with its "was actually
+// reported" flag (the entity's companion *Set field), so pick can
+// distinguish a genuine false report from a field the source never set.
+type boolOpt struct{ v, set bool }
+
+func boolOptSet(o boolOpt) bool   { return o.set }
+func boolOptKey(o boolOpt) string { return boolStr(o.v) }

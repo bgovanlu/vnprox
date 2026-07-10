@@ -14,6 +14,7 @@ type state struct {
 	generatedAt time.Time
 	entities    map[Ref]Entity
 	prov        map[Ref]Provenance
+	raw         map[Ref]map[Source]string
 	edgesByRef  map[Ref][]Edge
 	edges       []Edge
 	seq         uint64
@@ -23,6 +24,7 @@ func emptyState() *state {
 	return &state{
 		entities:    map[Ref]Entity{},
 		prov:        map[Ref]Provenance{},
+		raw:         map[Ref]map[Source]string{},
 		edgesByRef:  map[Ref][]Edge{},
 		generatedAt: time.Now(),
 	}
@@ -135,6 +137,7 @@ func (g *Graph) ApplyPoll(source Source, scope Scope, entities []Entity) Delta {
 func buildState(contrib map[Ref]map[Source]Entity, seq uint64) *state {
 	ents := make(map[Ref]Entity, len(contrib))
 	prov := make(map[Ref]Provenance, len(contrib))
+	raw := make(map[Ref]map[Source]string, len(contrib))
 	for ref, parts := range contrib {
 		r := resolveEntity(ref, parts)
 		if r.entity == nil {
@@ -142,6 +145,20 @@ func buildState(contrib map[Ref]map[Source]Entity, seq uint64) *state {
 		}
 		ents[ref] = r.entity
 		prov[ref] = r.prov
+		// Retain each source's raw source text (interfaces stanza / PVE
+		// JSON / netlink rendering). Strings are immutable and shared with
+		// the contribution, so this costs one small map per multi-observed
+		// Ref, not a copy of the text.
+		for src, part := range parts {
+			if rs := part.rawSource(); rs != "" {
+				m := raw[ref]
+				if m == nil {
+					m = make(map[Source]string, len(parts))
+					raw[ref] = m
+				}
+				m[src] = rs
+			}
+		}
 	}
 	edges := linkAll(ents)
 	byRef := make(map[Ref][]Edge, len(edges))
@@ -152,6 +169,7 @@ func buildState(contrib map[Ref]map[Source]Entity, seq uint64) *state {
 	return &state{
 		entities:    ents,
 		prov:        prov,
+		raw:         raw,
 		edges:       edges,
 		edgesByRef:  byRef,
 		generatedAt: time.Now(),
@@ -251,6 +269,34 @@ func (s Snapshot) Get(ref Ref) (Entity, bool) {
 func (s Snapshot) Provenance(ref Ref) (Provenance, bool) {
 	p, ok := s.s.prov[ref]
 	return p, ok
+}
+
+// RawSource returns, per contributing Source, the raw source text the
+// entity at ref was derived from (docs/api.md: GET /inventory/{ref}
+// includes "raw source (interfaces stanza / PVE API object)"):
+//
+//   - SourceHostInterfaces: the entity's interfaces(5) stanza text,
+//     byte-identical to the file (concatenation of every "iface <name> ..."
+//     stanza for that interface, via the lossless AST).
+//   - SourcePVE* sources: pretty-printed JSON of the PVE API object the
+//     entity came from.
+//   - SourceHostNetlink / SourceHostLLDP: a compact JSON rendering of the
+//     observed link state / neighbor row.
+//
+// Sources that attached no raw text are absent from the map; nil is
+// returned when no source attached any. The returned map is a fresh copy
+// the caller may mutate; the strings themselves are shared with the
+// immutable snapshot.
+func (s Snapshot) RawSource(ref Ref) map[Source]string {
+	m := s.s.raw[ref]
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[Source]string, len(m))
+	for src, txt := range m {
+		out[src] = txt
+	}
+	return out
 }
 
 // All returns every resolved entity, sorted by Ref for determinism.

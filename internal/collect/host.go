@@ -4,29 +4,31 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
 // hostPollOnce polls the local host's netlink-equivalent link state
 // (physical NICs, bonds, bridges, VLAN sub-interfaces) into
-// SourceHostNetlink partials for whichever node the PVE poller has
-// discovered as "local" (host.Reader's Real implementation only ever
-// serves its own node — see that package's doc comment). Before that
-// discovery has happened (process just started, or the PVE poller hasn't
-// completed a cycle yet), this is a no-op, not an error, so the host loop
-// does not spuriously back off before it has anything to poll.
+// SourceHostNetlink partials, and its interfaces(5) file into
+// SourceHostInterfaces partials (inventory.FromInterfaces — the declared
+// config that outranks pve-network for every declared field in the merge
+// table), for whichever node the PVE poller has discovered as "local"
+// (host.Reader's Real implementation only ever serves its own node — see
+// that package's doc comment). Before that discovery has happened (process
+// just started, or the PVE poller hasn't completed a cycle yet), this is a
+// no-op, not an error, so the host loop does not spuriously back off
+// before it has anything to poll.
 //
-// It also reads the interfaces(5) file and interface counters, per
-// deliverable 2's "interfaces file, netlink links, stats" — these are not
-// yet fed into the inventory graph (there is no ingest.go adapter for
-// either: SourceHostInterfaces is reserved in internal/inventory's merge
-// ownership table for a future consumer, most likely T-204's change
-// engine, which needs the lossless AST rather than resolved entities; raw
-// interface counters have no inventory entity fields at all — that is
-// internal/metrics' future job). Failures reading them are logged at
-// Debug and do not affect this poll's success/failure state, which is
-// judged solely on the netlink Links() read that inventory actually
-// consumes.
+// The poll's success/failure state is judged solely on the netlink Links()
+// read: an interfaces-file read or parse failure is logged and skipped,
+// leaving the previous SourceHostInterfaces contributions untouched rather
+// than clobbering declared state the graph already has correct (the same
+// keep-last-known policy pvePollAll applies to individual step failures).
+//
+// Interface counters (host.Reader.Stats) are read per deliverable 2 but
+// still discarded: raw counters have no inventory entity fields at all —
+// modeling them is internal/metrics' future job.
 func (c *Collector) hostPollOnce(ctx context.Context) error {
 	node := c.getLocalNode()
 	if node == "" {
@@ -40,12 +42,21 @@ func (c *Collector) hostPollOnce(ctx context.Context) error {
 	entities := inventory.FromNetlinkLinks(node, links)
 	c.graph.ApplyPoll(inventory.SourceHostNetlink, inventory.Scope{Node: node}, entities)
 
-	if _, err := c.host.Stats(ctx, node); err != nil {
-		c.log.Debug("collect: host stats read failed", "node", node, "error", err)
+	if _, statsErr := c.host.Stats(ctx, node); statsErr != nil {
+		c.log.Debug("collect: host stats read failed", "node", node, "error", statsErr)
 	}
-	if _, err := c.host.InterfacesFile(ctx, node, false); err != nil {
-		c.log.Debug("collect: host interfaces file read failed", "node", node, "error", err)
+
+	raw, err := c.host.InterfacesFile(ctx, node, false)
+	if err != nil {
+		c.log.Debug("collect: host interfaces file read failed, keeping previous declared state", "node", node, "error", err)
+		return nil
 	}
+	parsed, err := host.ParseInterfaces([]byte(raw))
+	if err != nil {
+		c.log.Warn("collect: parsing host interfaces file failed, keeping previous declared state", "node", node, "error", err)
+		return nil
+	}
+	c.graph.ApplyPoll(inventory.SourceHostInterfaces, inventory.Scope{Node: node}, inventory.FromInterfaces(node, parsed))
 	return nil
 }
 

@@ -43,7 +43,7 @@ func buildScaleModel() *scaleModel {
 			nl = append(nl, &PhysNic{
 				Ref: Ref{Kind: KindPhysNic, Node: node, ID: name}, Name: name,
 				Mac: fmt.Sprintf("aa:bb:cc:%02d:%02d:01", i, j), Driver: "ixgbe",
-				SpeedMbps: 10000, Duplex: "full", MTU: 1500, LinkUp: true, OperState: "up",
+				SpeedMbps: 10000, Duplex: "full", MTU: 1500, LinkUp: true, LinkUpSet: true, OperState: "up",
 			})
 			pv = append(pv, &PhysNic{Ref: Ref{Kind: KindPhysNic, Node: node, ID: name}, Name: name, MTUDeclared: 1500})
 		}
@@ -64,12 +64,12 @@ func buildScaleModel() *scaleModel {
 			}
 			nl = append(nl, &Bridge{
 				Ref: Ref{Kind: KindBridge, Node: node, ID: name}, Name: name, Virt: BridgeLinux,
-				PortNames: ports, VlanAware: true, MTU: 1500,
+				PortNames: ports, VlanAware: true, VlanAwareSet: true, MTU: 1500,
 				Vids: []VidRange{{Low: 2, High: 4094}},
 			})
 			pv = append(pv, &Bridge{
 				Ref: Ref{Kind: KindBridge, Node: node, ID: name}, Name: name, Virt: BridgeLinux,
-				DeclaredPortNames: ports, VlanAware: true, MTUDeclared: 1500, Comments: "managed",
+				DeclaredPortNames: ports, VlanAware: true, VlanAwareSet: true, MTUDeclared: 1500, Comments: "managed",
 			})
 		}
 		nl = append(nl, &VlanIface{

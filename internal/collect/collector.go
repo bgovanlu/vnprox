@@ -55,12 +55,17 @@ type sourceState struct {
 // registering RunPVELoop, RunHostLoop, and RunLLDPLoop with cmd/vnproxd's
 // runGroup. A Collector is safe for concurrent use.
 type Collector struct {
-	host         host.Reader
-	pve          *pve.Client
-	graph        *inventory.Graph
-	log          *slog.Logger
-	onDelta      func(inventory.Delta)
-	status       map[string]*sourceState
+	host    host.Reader
+	pve     *pve.Client
+	graph   *inventory.Graph
+	log     *slog.Logger
+	onDelta func(inventory.Delta)
+	status  map[string]*sourceState
+	// seenNodes is the cluster membership observed by the previous
+	// successful cluster-status poll (guarded by mu). pvePollAll compares
+	// it against the current membership to retire departed nodes' entities
+	// (see retireDepartedNodes).
+	seenNodes    map[string]bool
 	localNode    string
 	pveInterval  time.Duration
 	hostInterval time.Duration

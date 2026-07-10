@@ -3,6 +3,7 @@ package collect
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/pve"
@@ -26,6 +27,7 @@ func (c *Collector) pvePollAll(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	c.retireDepartedNodes(nodes)
 
 	for _, n := range nodes {
 		if netErr := c.pollNodeNetwork(ctx, n); netErr != nil {
@@ -47,12 +49,17 @@ func (c *Collector) pvePollAll(ctx context.Context) error {
 }
 
 // pollClusterStatus polls GET /cluster/status, reconciles one Node entity
-// per member (each in its own node-scoped ApplyPoll call, so a node
-// leaving the cluster is correctly retired rather than never removable —
-// Scope only supports a single Node value or the empty/cluster-scoped one,
-// not "all these nodes at once"), records the "local" node for the
-// host/LLDP pollers, and returns the member node name list every other PVE
-// poll step in this cycle needs.
+// per member (each in its own node-scoped ApplyPoll call — Scope only
+// supports a single Node value or the empty/cluster-scoped one, not "all
+// these nodes at once"), records the "local" node for the host/LLDP
+// pollers, and returns the member node name list every other PVE poll step
+// in this cycle needs.
+//
+// Note this alone does NOT retire a node that left the cluster: a departed
+// node is simply absent from entries, so no scoped ApplyPoll covering it is
+// issued here (or by any other per-node poll step, which all iterate the
+// current membership). pvePollAll handles retirement explicitly via
+// retireDepartedNodes.
 func (c *Collector) pollClusterStatus(ctx context.Context) ([]string, error) {
 	entries, err := c.pve.ClusterStatus(ctx)
 	if err != nil {
@@ -81,6 +88,48 @@ func (c *Collector) pollClusterStatus(ctx context.Context) ([]string, error) {
 		c.graph.ApplyPoll(inventory.SourcePVECluster, inventory.Scope{Node: e.Name}, ents)
 	}
 	return nodes, nil
+}
+
+// retireDepartedNodes compares the current cluster membership against the
+// previous cluster-status poll's and, for every node that disappeared,
+// issues one empty node-scoped ApplyPoll per PVE source — retiring the
+// departed node's Node entity, pve-network interfaces, guests, and firewall
+// rulesets, which would otherwise linger as stale ghosts forever (no
+// per-node poll step covers a node the membership list no longer names).
+//
+// Host-side sources (netlink/interfaces/LLDP) are deliberately not retired:
+// they are only ever populated for this daemon's own local node, whose
+// hardware does not vanish just because the node left the cluster — and the
+// host loop keeps reconciling them regardless.
+//
+// The membership set is guarded by c.mu, and each retirement ApplyPoll is
+// serialized by the graph itself, so concurrent cycles (the PVE loop plus a
+// RefreshNow) are safe: at worst both observe the same departure and the
+// second set of empty ApplyPolls is a no-op.
+func (c *Collector) retireDepartedNodes(current []string) {
+	cur := make(map[string]bool, len(current))
+	for _, n := range current {
+		cur[n] = true
+	}
+
+	c.mu.Lock()
+	var departed []string
+	for n := range c.seenNodes {
+		if !cur[n] {
+			departed = append(departed, n)
+		}
+	}
+	c.seenNodes = cur
+	c.mu.Unlock()
+
+	sort.Strings(departed)
+	for _, n := range departed {
+		c.log.Info("collect: node left the cluster, retiring its entities", "node", n)
+		c.graph.ApplyPoll(inventory.SourcePVECluster, inventory.Scope{Node: n}, nil)
+		c.graph.ApplyPoll(inventory.SourcePVENetwork, inventory.Scope{Node: n}, nil)
+		c.graph.ApplyPoll(inventory.SourcePVEGuest, inventory.Scope{Node: n}, nil)
+		c.graph.ApplyPoll(inventory.SourcePVEFirewall, inventory.Scope{Node: n, Kinds: []inventory.Kind{inventory.KindFwRuleset}}, nil)
+	}
 }
 
 // pollNodeNetwork polls one node's declared network config (GET

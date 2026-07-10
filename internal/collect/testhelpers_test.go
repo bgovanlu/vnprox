@@ -66,7 +66,17 @@ func newFixtureHostReader(srv *pvemock.Server) host.Reader {
 // underlying HTTP server.
 func newTestCollector(t *testing.T, srv *pvemock.Server, opts ...func(*collect.Config)) (*collect.Collector, *inventory.Graph, *httptest.Server) {
 	t.Helper()
-	ts := httptest.NewServer(srv)
+	return newTestCollectorHandler(t, srv, srv, opts...)
+}
+
+// newTestCollectorHandler is newTestCollector with the HTTP side served by
+// handler instead of srv directly, letting a test interpose on the mock's
+// API responses (e.g. the cluster-membership filter in
+// TestDepartedNodeRetired) while host/LLDP reads still come from srv's
+// fixture state.
+func newTestCollectorHandler(t *testing.T, srv *pvemock.Server, handler http.Handler, opts ...func(*collect.Config)) (*collect.Collector, *inventory.Graph, *httptest.Server) {
+	t.Helper()
+	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 
 	graph := inventory.NewGraph()

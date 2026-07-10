@@ -2,11 +2,62 @@ package collect_test
 
 import (
 	"context"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
+
+// threeNodeVlanRefs is the complete expected ref set for the
+// three-node-vlan fixture, enumerated in TestGolden_ThreeNodeVLAN's doc
+// comment. Returned sorted by Ref string.
+func threeNodeVlanRefs() []string {
+	var refs []string
+	for _, n := range []string{"pve1", "pve2", "pve3"} {
+		refs = append(refs,
+			"node:"+n+":"+n,
+			"physnic:"+n+":eno1",
+			"physnic:"+n+":eno2",
+			"bond:"+n+":bond0",
+			"bridge:"+n+":vmbr0",
+			"vlan:"+n+":vmbr0.20",
+			"fw-ruleset:"+n+":node",
+		)
+	}
+	refs = append(refs,
+		// cluster-scoped SDN + firewall
+		"sdn-zone::vlanz",
+		"sdn-vnet::vlanz/vnet100",
+		"sdn-vnet::vlanz/vnet200",
+		"sdn-subnet::10.100.0.0/24",
+		"sdn-subnet::10.200.0.0/24",
+		"fw-ruleset::cluster",
+		// guests (+ their NICs and firewall rulesets)
+		"guest:pve1:200",
+		"guest-nic:pve1:200/net0",
+		"fw-ruleset:pve1:guest/qemu/200",
+		"guest:pve2:201",
+		"guest-nic:pve2:201/net0",
+		"fw-ruleset:pve2:guest/lxc/201",
+		// LLDP neighbors, local (pve1) node only
+		"lldp-neighbor:pve1:eno1/ac:1f:6b:01:00:01/Te1/0/1",
+		"lldp-neighbor:pve1:eno2/ac:1f:6b:02:00:01/Te1/0/1",
+	)
+	sort.Strings(refs)
+	return refs
+}
+
+// snapshotRefs returns every ref string in a snapshot, sorted.
+func snapshotRefs(snap inventory.Snapshot) []string {
+	var refs []string
+	for _, e := range snap.All() {
+		refs = append(refs, e.GetRef().String())
+	}
+	sort.Strings(refs)
+	return refs
+}
 
 // TestGolden_ThreeNodeVLAN is T-104's acceptance criterion 1: against
 // internal/pvemock's three-node-vlan fixture, the inventory graph converges
@@ -44,17 +95,19 @@ func TestGolden_ThreeNodeVLAN(t *testing.T) {
 	go func() { _ = c.RunHostLoop(ctx) }()
 	go func() { _ = c.RunLLDPLoop(ctx) }()
 
-	const wantTotal = 35
+	wantRefs := threeNodeVlanRefs()
 	// Two poll cycles at the configured (50ms) intervals is 100ms; allow a
 	// generous margin for CI scheduling jitter while still bounding the
 	// wait well below what would indicate the collectors are stuck.
 	waitFor(t, 3*time.Second, "graph to converge to the full three-node-vlan fixture", func() bool {
-		return graph.Snapshot().Len() == wantTotal
+		return graph.Snapshot().Len() == len(wantRefs)
 	})
 
+	// Full sorted ref-set equality, not just a count: an extra entity plus
+	// a missing one must not cancel out.
 	snap := graph.Snapshot()
-	if got := snap.Len(); got != wantTotal {
-		t.Fatalf("entity count = %d, want %d", got, wantTotal)
+	if got := snapshotRefs(snap); !reflect.DeepEqual(got, wantRefs) {
+		t.Fatalf("converged ref set mismatch:\n got %v\nwant %v", got, wantRefs)
 	}
 
 	// --- spot-check representative entities from each layer -----------
