@@ -4,6 +4,7 @@ import { AppShell } from "./layout/AppShell";
 import { RequireAuth } from "./routes/RequireAuth";
 import { LoginPage } from "./pages/LoginPage";
 import { TopologyPage } from "./pages/TopologyPage";
+import { GuestsPage } from "./pages/GuestsPage";
 import { SdnPage } from "./pages/SdnPage";
 import { FirewallPage } from "./pages/FirewallPage";
 import { IpamPage } from "./pages/IpamPage";
@@ -28,6 +29,7 @@ export function App() {
           <Route element={<AppShell />}>
             <Route index element={<Navigate to="/topology" replace />} />
             <Route path="/topology" element={<TopologyPage />} />
+            <Route path="/guests" element={<GuestsPage />} />
             <Route path="/sdn" element={<SdnPage />} />
             <Route path="/firewall" element={<FirewallPage />} />
             <Route path="/ipam" element={<IpamPage />} />
