@@ -6,7 +6,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/bgovanlu/vnprox/internal/config"
 )
 
 func newTestAgent(t *testing.T, reload func(context.Context) error) *hostNodeAgent {
@@ -96,5 +99,77 @@ func TestUPIDNode(t *testing.T) {
 	}
 	if got := upidNode("garbage"); got != "" {
 		t.Fatalf("upidNode(garbage) = %q, want empty", got)
+	}
+}
+
+// TestNewDevNodeAgent covers the [safety] dev_interfaces_dir sandbox
+// (audit-phase-2 F-22): the agent operates only under the sandbox dir,
+// seeds a fixture on first use, keeps an existing file on reuse, and its
+// reload never execs a real ifreload.
+func TestNewDevNodeAgent(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "dev-host")
+	a, err := newDevNodeAgent(dir, testLogger())
+	if err != nil {
+		t.Fatalf("newDevNodeAgent: %v", err)
+	}
+
+	if a.interfacesPath != filepath.Join(dir, "interfaces") || a.pendingPath != filepath.Join(dir, "interfaces.new") {
+		t.Fatalf("paths = %q/%q, want them under the sandbox dir %q", a.interfacesPath, a.pendingPath, dir)
+	}
+
+	ctx := context.Background()
+	got, err := a.ReadInterfaces(ctx, "pve1")
+	if err != nil {
+		t.Fatalf("ReadInterfaces: %v", err)
+	}
+	if !strings.Contains(got, "vmbr0") {
+		t.Errorf("seeded sandbox file does not contain the fixture bridge: %q", got)
+	}
+
+	// Full stage -> reload cycle must succeed with no real ifreload binary
+	// involved and commit the staged content to the sandboxed file.
+	want := got + "\n# staged by test\n"
+	if stageErr := a.StageInterfaces(ctx, "pve1", want); stageErr != nil {
+		t.Fatalf("StageInterfaces: %v", stageErr)
+	}
+	if reloadErr := a.ReloadInterfaces(ctx, "pve1"); reloadErr != nil {
+		t.Fatalf("ReloadInterfaces (no-op reload) returned error: %v", reloadErr)
+	}
+	after, err := a.ReadInterfaces(ctx, "pve1")
+	if err != nil {
+		t.Fatalf("ReadInterfaces after reload: %v", err)
+	}
+	if after != want {
+		t.Errorf("committed content = %q, want the staged content", after)
+	}
+
+	// Re-opening the sandbox must keep the existing (edited) file, not
+	// re-seed over it.
+	b, err := newDevNodeAgent(dir, testLogger())
+	if err != nil {
+		t.Fatalf("newDevNodeAgent (reuse): %v", err)
+	}
+	again, err := b.ReadInterfaces(ctx, "pve1")
+	if err != nil {
+		t.Fatalf("ReadInterfaces (reuse): %v", err)
+	}
+	if again != want {
+		t.Errorf("re-seeded over an existing sandbox file: got %q", again)
+	}
+}
+
+// TestDevConfig_SandboxesHostWriter pins the F-22 remediation at the config
+// level: the checked-in dev config must never wire the production host
+// agent against the real /etc/network/interfaces.
+func TestDevConfig_SandboxesHostWriter(t *testing.T) {
+	// config.Load validates relative TLS paths against the cwd, and
+	// dev.toml's paths are repo-root-relative (matching `make dev`).
+	t.Chdir(filepath.Join("..", ".."))
+	cfg, err := config.Load(filepath.Join("testdata", "dev.toml"), testLogger())
+	if err != nil {
+		t.Fatalf("loading testdata/dev.toml: %v", err)
+	}
+	if cfg.Safety.DevInterfacesDir == "" {
+		t.Fatal("testdata/dev.toml must set [safety] dev_interfaces_dir — a dev daemon must not operate on the real /etc/network/interfaces (audit-phase-2 F-22)")
 	}
 }

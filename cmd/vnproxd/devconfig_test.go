@@ -35,6 +35,11 @@ func rewriteDevConfig(t *testing.T, repoRoot, dir string, port int) string {
 		"tls_key":          filepath.Join(repoRoot, "testdata", "certs", "dev-key.pem"),
 		"db_path":          filepath.Join(dir, "vnprox.db"),
 		"session_key_file": filepath.Join(dir, "session.key"),
+		// The [safety] dev paths are repo-root-relative in dev.toml; left
+		// unrewritten they'd resolve against this test's cwd and leak a
+		// cmd/vnproxd/var/ directory into the tree.
+		"protected_path":     filepath.Join(dir, "protected.json"),
+		"dev_interfaces_dir": filepath.Join(dir, "dev-host"),
 	}
 	replaced := make(map[string]bool, len(replacements))
 

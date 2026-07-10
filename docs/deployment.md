@@ -59,6 +59,7 @@ token_file = "/etc/vnprox/keys/pve-token"
 
 [safety]
 allow_dangerous_ops = false   # see docs/security.md interlocks
+# protected_path = "/etc/pve/vnprox/protected.json"   # default (pmxcfs, cluster-wide)
 
 [storage]
 db_path = "/var/lib/vnprox/vnprox.db"

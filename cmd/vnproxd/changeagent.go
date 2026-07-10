@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +50,56 @@ func newHostNodeAgent(logger *slog.Logger) *hostNodeAgent {
 	}
 	a.reload = a.execIfreload
 	return a
+}
+
+// devInterfacesSeed is the fixture newDevNodeAgent seeds an empty sandbox
+// with, so ReadInterfaces/diff work out of the box on a fresh `make dev`.
+const devInterfacesSeed = `# vnprox dev sandbox — this file stands in for /etc/network/interfaces.
+# It is safe to edit or delete; it is re-seeded when missing.
+
+auto lo
+iface lo inet loopback
+
+auto eno1
+iface eno1 inet manual
+
+auto vmbr0
+iface vmbr0 inet static
+	address 192.0.2.10/24
+	gateway 192.0.2.1
+	bridge-ports eno1
+	bridge-stp off
+	bridge-fd 0
+`
+
+// newDevNodeAgent is the sandboxed dev variant of newHostNodeAgent
+// ([safety] dev_interfaces_dir; audit-phase-2 F-22): the same staging/
+// commit/backup logic, but operating on <dir>/interfaces(.new) instead of
+// the real /etc/network files, with the ifreload step replaced by a logged
+// no-op — so a `make dev` daemon can exercise the full diff/apply/rollback
+// flow without ever being able to reconfigure the developer's machine.
+func newDevNodeAgent(dir string, logger *slog.Logger) (*hostNodeAgent, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating dev interfaces sandbox %s: %w", dir, err)
+	}
+	path := filepath.Join(dir, "interfaces")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if writeErr := os.WriteFile(path, []byte(devInterfacesSeed), 0o644); writeErr != nil {
+			return nil, fmt.Errorf("seeding dev interfaces sandbox %s: %w", path, writeErr)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("checking dev interfaces sandbox %s: %w", path, err)
+	}
+	a := &hostNodeAgent{
+		interfacesPath: path,
+		pendingPath:    filepath.Join(dir, "interfaces.new"),
+		log:            logger,
+	}
+	a.reload = func(context.Context) error {
+		logger.Info("change: dev sandbox agent — skipping real ifreload", "interfaces", path)
+		return nil
+	}
+	return a, nil
 }
 
 func (a *hostNodeAgent) execIfreload(ctx context.Context) error {

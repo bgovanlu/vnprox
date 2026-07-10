@@ -291,3 +291,39 @@ func TestLoad_MissingFile(t *testing.T) {
 		t.Fatal("expected an error for a missing config file, got nil")
 	}
 }
+
+// TestLoad_ProtectedPath covers the [safety] protected_path seam added for
+// audit-phase-2 F-13: default is the pmxcfs path, and a dev config can
+// point it somewhere writable.
+func TestLoad_ProtectedPath(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	base := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+
+	t.Run("defaults to the pmxcfs path", func(t *testing.T) {
+		cfg, err := Load(writeTemp(t, "default.toml", base), discardLogger())
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+		if cfg.Safety.ProtectedPath != DefaultProtectedPath {
+			t.Errorf("ProtectedPath = %q, want default %q", cfg.Safety.ProtectedPath, DefaultProtectedPath)
+		}
+	})
+
+	t.Run("override is honored", func(t *testing.T) {
+		toml := base + `
+[safety]
+protected_path = "var/dev-protected.json"
+`
+		cfg, err := Load(writeTemp(t, "override.toml", toml), discardLogger())
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+		if cfg.Safety.ProtectedPath != "var/dev-protected.json" {
+			t.Errorf("ProtectedPath = %q, want the overridden dev path", cfg.Safety.ProtectedPath)
+		}
+	})
+}

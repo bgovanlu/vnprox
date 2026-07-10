@@ -46,15 +46,25 @@ const (
 	// ones, hence their own section rather than living under [server].
 	DefaultDBPath         = "/var/lib/vnprox/vnprox.db"
 	DefaultSessionKeyFile = "/etc/vnprox/keys/session.key"
+
+	// DefaultProtectedPath is where the onboarding-confirmed protected-
+	// interface set lives (docs/features/blueprints.md §3:
+	// "/etc/pve/vnprox/protected.json" — under pmxcfs, so cluster-wide).
+	// Must stay in sync with internal/change.DefaultProtectedPath (this
+	// package can't import internal/change; a config test pins the two
+	// strings equal). Overridable via [safety] protected_path so a dev
+	// daemon outside a real PVE node can persist the set somewhere
+	// writable (audit-phase-2 F-13).
+	DefaultProtectedPath = "/etc/pve/vnprox/protected.json"
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
 type Config struct {
 	PVE     PVEConfig
 	Storage StorageConfig
+	Safety  SafetyConfig
 	Server  ServerConfig
 	Collect CollectConfig
-	Safety  SafetyConfig
 }
 
 // ServerConfig is the [server] section.
@@ -96,6 +106,21 @@ type PVEConfig struct {
 
 // SafetyConfig is the [safety] section.
 type SafetyConfig struct {
+	// ProtectedPath is where the protected-interface set is persisted;
+	// defaults to DefaultProtectedPath (pmxcfs). Dev configs point it at a
+	// repo-relative var/ path so PUT /protected-interfaces works without
+	// root/pmxcfs (audit-phase-2 F-13).
+	ProtectedPath string
+
+	// DevInterfacesDir, when non-empty, sandboxes the daemon's host writer:
+	// instead of the real /etc/network/interfaces(.new) + ifreload, the
+	// change engine stages/commits files under this directory (seeded with
+	// a small fixture) and the reload step is a logged no-op. Dev-only, per
+	// the dev_ticket_* precedent in [pve] — production configs never set it
+	// (audit-phase-2 F-22: `make dev` + a root shell must not be one POST
+	// away from ifreloading the developer's machine).
+	DevInterfacesDir string
+
 	AllowDangerousOps bool
 }
 
@@ -118,11 +143,11 @@ type CollectConfig struct {
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
-	Collect rawCollect `toml:"collect"`
 	PVE     rawPVE     `toml:"pve"`
 	Storage rawStorage `toml:"storage"`
-	Server  rawServer  `toml:"server"`
 	Safety  rawSafety  `toml:"safety"`
+	Collect rawCollect `toml:"collect"`
+	Server  rawServer  `toml:"server"`
 }
 
 type rawServer struct {
@@ -142,7 +167,9 @@ type rawPVE struct {
 }
 
 type rawSafety struct {
-	AllowDangerousOps bool `toml:"allow_dangerous_ops"`
+	ProtectedPath     string `toml:"protected_path"`
+	DevInterfacesDir  string `toml:"dev_interfaces_dir"`
+	AllowDangerousOps bool   `toml:"allow_dangerous_ops"`
 }
 
 type rawStorage struct {
@@ -204,6 +231,8 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		},
 		Safety: SafetyConfig{
 			AllowDangerousOps: raw.Safety.AllowDangerousOps,
+			ProtectedPath:     firstNonEmpty(raw.Safety.ProtectedPath, DefaultProtectedPath),
+			DevInterfacesDir:  raw.Safety.DevInterfacesDir,
 		},
 		Storage: StorageConfig{
 			DBPath:         firstNonEmpty(raw.Storage.DBPath, DefaultDBPath),

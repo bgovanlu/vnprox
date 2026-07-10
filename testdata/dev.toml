@@ -37,6 +37,16 @@ dev_ticket_password = "vnprox-mock"
 
 [safety]
 allow_dangerous_ops = false
+# Dev override (audit-phase-2 F-13): the default protected_path lives under
+# /etc/pve (pmxcfs), which doesn't exist outside a real PVE node — PUT
+# /protected-interfaces would 500 on MkdirAll there. Relative path resolves
+# under the repo root like the [storage] paths below.
+protected_path = "var/dev-protected.json"
+# Dev sandbox for the host writer (audit-phase-2 F-22): without this, the
+# daemon's change engine would stage/reload the REAL /etc/network/interfaces
+# when run as root. With it, all interfaces-file operations happen under
+# var/dev-host/ (seeded with a fixture) and ifreload is a logged no-op.
+dev_interfaces_dir = "var/dev-host"
 
 # T-105: vnprox's own SQLite store + session-secret key. Relative paths
 # here resolve under var/ (gitignored) so `make dev` works without root or

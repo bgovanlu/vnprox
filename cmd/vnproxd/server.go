@@ -97,15 +97,30 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if collector != nil {
 		refresher = collector
 	}
+	// The host writer: the real /etc/network/interfaces agent by default, or
+	// — when [safety] dev_interfaces_dir is set (dev.toml does; production
+	// configs never do) — a sandboxed agent that can only touch files under
+	// that directory and never execs a real ifreload (audit-phase-2 F-22:
+	// `make dev` used to wire the production agent, leaving the developer's
+	// machine one authenticated POST away from a real ifreload).
+	var nodeAgent change.NodeAgent = newHostNodeAgent(logger)
+	if dir := cfg.Safety.DevInterfacesDir; dir != "" {
+		devAgent, devErr := newDevNodeAgent(dir, logger)
+		if devErr != nil {
+			return fmt.Errorf("initializing dev interfaces sandbox: %w", devErr)
+		}
+		logger.Warn("change: DEV MODE host writer — interfaces file operations are sandboxed and ifreload is a no-op", "dir", dir)
+		nodeAgent = devAgent
+	}
 	changeSvc, err := change.NewService(change.Config{
 		Changesets:        store.NewChangesetRepo(db),
 		Audit:             store.NewAuditRepo(db),
 		WS:                topoSvc,
 		Inventory:         graph,
 		Logger:            logger,
-		ProtectedPath:     change.DefaultProtectedPath,
+		ProtectedPath:     cfg.Safety.ProtectedPath,
 		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
-		Nodes:             newHostNodeAgent(logger),
+		Nodes:             nodeAgent,
 		Snapshots:         store.NewSnapshotRepo(db),
 		Refresher:         refresher,
 		ConfirmTimeout:    time.Duration(cfg.Server.ConfirmTimeoutDefault) * time.Second,
