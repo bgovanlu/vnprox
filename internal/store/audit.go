@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // AuditEntry is one row of the audit_log table (docs/data-model.md §2).
@@ -94,6 +96,117 @@ func (r *AuditRepo) List(ctx context.Context, changesetID string, limit int) ([]
 		return nil, fmt.Errorf("store: listing audit entries: %w", err)
 	}
 	return out, nil
+}
+
+// AuditFilter narrows AuditRepo.ListPage's result set (docs/features/
+// change-management.md §8: "Filterable table (user, date range, target,
+// result)"). Zero-value fields impose no constraint; From/To are unix
+// seconds, inclusive, with 0 meaning "unbounded" on that side.
+type AuditFilter struct {
+	User        string
+	Action      string
+	Target      string
+	Result      string
+	ChangesetID string
+	From        int64
+	To          int64
+}
+
+// ListPage returns one page of audit entries newest-first matching filter,
+// per docs/api.md's `?limit=&cursor=` pagination convention. cursor is
+// opaque (an "<at>:<id>" keyset token, see SnapshotRepo.ListPage's identical
+// scheme); an empty string starts from the newest entry, and the returned
+// nextCursor is empty once there is no further page.
+func (r *AuditRepo) ListPage(ctx context.Context, filter AuditFilter, cursor string, limit int) ([]AuditEntry, string, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json FROM audit_log WHERE 1=1`
+	var args []any
+	if filter.User != "" {
+		query += ` AND username = ?`
+		args = append(args, filter.User)
+	}
+	if filter.Action != "" {
+		query += ` AND action = ?`
+		args = append(args, filter.Action)
+	}
+	if filter.Target != "" {
+		query += ` AND target = ?`
+		args = append(args, filter.Target)
+	}
+	if filter.Result != "" {
+		query += ` AND result = ?`
+		args = append(args, filter.Result)
+	}
+	if filter.ChangesetID != "" {
+		query += ` AND changeset_id = ?`
+		args = append(args, filter.ChangesetID)
+	}
+	if filter.From > 0 {
+		query += ` AND at >= ?`
+		args = append(args, filter.From)
+	}
+	if filter.To > 0 {
+		query += ` AND at <= ?`
+		args = append(args, filter.To)
+	}
+	if cursor != "" {
+		at, id, err := decodeAuditCursor(cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		query += ` AND (at < ? OR (at = ? AND id < ?))`
+		args = append(args, at, at, id)
+	}
+	query += ` ORDER BY at DESC, id DESC LIMIT ?`
+	args = append(args, limit+1)
+
+	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("store: listing audit page: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []AuditEntry
+	for rows.Next() {
+		e, err := scanAuditEntry(rows)
+		if err != nil {
+			return nil, "", err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", fmt.Errorf("store: listing audit page: %w", err)
+	}
+
+	next := ""
+	if len(out) > limit {
+		last := out[limit-1]
+		next = encodeAuditCursor(last.At, last.ID)
+		out = out[:limit]
+	}
+	return out, next, nil
+}
+
+func encodeAuditCursor(at, id int64) string {
+	return strconv.FormatInt(at, 10) + ":" + strconv.FormatInt(id, 10)
+}
+
+func decodeAuditCursor(cursor string) (int64, int64, error) {
+	atStr, idStr, ok := strings.Cut(cursor, ":")
+	if !ok {
+		return 0, 0, fmt.Errorf("store: malformed audit cursor %q", cursor)
+	}
+	at, err := strconv.ParseInt(atStr, 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("store: malformed audit cursor %q: %w", cursor, err)
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("store: malformed audit cursor %q: %w", cursor, err)
+	}
+	return at, id, nil
 }
 
 func scanAuditEntry(row rowScanner) (AuditEntry, error) {

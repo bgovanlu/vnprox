@@ -283,6 +283,7 @@ type applyHarness struct {
 	csRepo    *store.ChangesetRepo
 	auditRepo *store.AuditRepo
 	snapRepo  *store.SnapshotRepo
+	blobRepo  *store.BlobRepo
 	server    *httptest.Server
 	client    *pve.Client
 	agent     *fakeNodeAgent
@@ -313,6 +314,7 @@ func newHarness(t *testing.T, fixturePath string) *applyHarness {
 	csRepo := store.NewChangesetRepo(db)
 	auditRepo := store.NewAuditRepo(db)
 	snapRepo := store.NewSnapshotRepo(db)
+	blobRepo := store.NewBlobRepo(db)
 
 	agent := newFakeNodeAgent(pvemock.NewFixtureHostReader(srv), client)
 	timers := &fakeTimers{}
@@ -322,12 +324,12 @@ func newHarness(t *testing.T, fixturePath string) *applyHarness {
 	protectedPath := filepath.Join(t.TempDir(), "protected.json")
 	svc := newService(t, change.Config{
 		Changesets: csRepo, Audit: auditRepo, WS: ws,
-		Nodes: agent, Snapshots: snapRepo, Refresher: refresher,
+		Nodes: agent, Snapshots: snapRepo, Blobs: blobRepo, Refresher: refresher,
 		TimerFunc: timers.New, ProtectedPath: protectedPath,
 	})
 
 	return &applyHarness{
-		svc: svc, db: db, csRepo: csRepo, auditRepo: auditRepo, snapRepo: snapRepo,
+		svc: svc, db: db, csRepo: csRepo, auditRepo: auditRepo, snapRepo: snapRepo, blobRepo: blobRepo,
 		server: ts, client: client, agent: agent, timers: timers, ws: ws, refresher: refresher,
 	}
 }

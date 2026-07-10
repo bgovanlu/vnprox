@@ -46,15 +46,26 @@ const (
 	// ones, hence their own section rather than living under [server].
 	DefaultDBPath         = "/var/lib/vnprox/vnprox.db"
 	DefaultSessionKeyFile = "/etc/vnprox/keys/session.key"
+
+	// DefaultSnapshotKeepDays and DefaultSnapshotPinDays are T-206's
+	// documented snapshot-retention policy (planning/tasks/phase-2.md
+	// T-206: "keep N days, default 90, committed-changeset snapshots
+	// pinned 7d minimum per spec"); mirrors internal/store's identical
+	// constants so config defaults and the store's own documented floor
+	// agree without cmd/vnproxd having to import internal/store just for
+	// the numbers.
+	DefaultSnapshotKeepDays = 90
+	DefaultSnapshotPinDays  = 7
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
 type Config struct {
-	PVE     PVEConfig
-	Storage StorageConfig
-	Server  ServerConfig
-	Collect CollectConfig
-	Safety  SafetyConfig
+	PVE       PVEConfig
+	Storage   StorageConfig
+	Server    ServerConfig
+	Collect   CollectConfig
+	Safety    SafetyConfig
+	Retention RetentionConfig
 }
 
 // ServerConfig is the [server] section.
@@ -108,6 +119,13 @@ type StorageConfig struct {
 	SessionKeyFile string
 }
 
+// RetentionConfig is the [retention] section: the snapshot pruning policy
+// T-206's retention job enforces (internal/store.SnapshotRetention).
+type RetentionConfig struct {
+	SnapshotKeepDays int
+	SnapshotPinDays  int
+}
+
 // CollectConfig is the [collect] section, parsed into durations.
 type CollectConfig struct {
 	PVEInterval  time.Duration
@@ -118,11 +136,12 @@ type CollectConfig struct {
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
-	Collect rawCollect `toml:"collect"`
-	PVE     rawPVE     `toml:"pve"`
-	Storage rawStorage `toml:"storage"`
-	Server  rawServer  `toml:"server"`
-	Safety  rawSafety  `toml:"safety"`
+	Collect   rawCollect   `toml:"collect"`
+	PVE       rawPVE       `toml:"pve"`
+	Storage   rawStorage   `toml:"storage"`
+	Server    rawServer    `toml:"server"`
+	Safety    rawSafety    `toml:"safety"`
+	Retention rawRetention `toml:"retention"`
 }
 
 type rawServer struct {
@@ -148,6 +167,11 @@ type rawSafety struct {
 type rawStorage struct {
 	DBPath         string `toml:"db_path"`
 	SessionKeyFile string `toml:"session_key_file"`
+}
+
+type rawRetention struct {
+	SnapshotKeepDays int `toml:"snapshot_keep_days"`
+	SnapshotPinDays  int `toml:"snapshot_pin_days"`
 }
 
 type rawCollect struct {
@@ -209,6 +233,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			DBPath:         firstNonEmpty(raw.Storage.DBPath, DefaultDBPath),
 			SessionKeyFile: firstNonEmpty(raw.Storage.SessionKeyFile, DefaultSessionKeyFile),
 		},
+		Retention: RetentionConfig{
+			SnapshotKeepDays: firstNonZeroInt(raw.Retention.SnapshotKeepDays, DefaultSnapshotKeepDays),
+			SnapshotPinDays:  firstNonZeroInt(raw.Retention.SnapshotPinDays, DefaultSnapshotPinDays),
+		},
 		Collect: collect,
 	}
 
@@ -230,6 +258,13 @@ func (c *Config) validate() error {
 
 	if c.Server.ConfirmTimeoutDefault <= 0 {
 		return fmt.Errorf("%w: server.confirm_timeout_default must be positive, got %d", ErrInvalidConfig, c.Server.ConfirmTimeoutDefault)
+	}
+
+	if c.Retention.SnapshotKeepDays <= 0 {
+		return fmt.Errorf("%w: retention.snapshot_keep_days must be positive, got %d", ErrInvalidConfig, c.Retention.SnapshotKeepDays)
+	}
+	if c.Retention.SnapshotPinDays <= 0 {
+		return fmt.Errorf("%w: retention.snapshot_pin_days must be positive, got %d", ErrInvalidConfig, c.Retention.SnapshotPinDays)
 	}
 
 	certPath, keyPath, err := resolveTLSPaths(c.Server.TLSCert, c.Server.TLSKey)

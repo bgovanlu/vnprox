@@ -35,3 +35,11 @@ session_key_file = "/etc/vnprox/keys/session.key"
 pve_interval = "10s"
 host_interval = "5s"
 lldp_interval = "30s"
+
+# Time-machine snapshot retention (T-206). committed-changeset snapshots
+# are always kept at least snapshot_pin_days, even if snapshot_keep_days
+# is configured shorter (docs/features/change-management.md §4's 7-day
+# manual-rollback window).
+[retention]
+snapshot_keep_days = 90
+snapshot_pin_days = 7

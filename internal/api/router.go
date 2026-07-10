@@ -47,6 +47,8 @@ type Options struct {
 	Topology    TopologyService
 	Layouts     LayoutStore
 	Changesets  ChangesetService
+	Snapshots   SnapshotService
+	Audit       AuditService
 	PVEGateways PVEGatewayProvider
 	Protected   ProtectedService
 	Logger      *slog.Logger
@@ -76,6 +78,8 @@ func NewRouter(opts Options) http.Handler {
 		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
+		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth)
+		mountAuditRoutes(r, opts.Audit, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 	})
 

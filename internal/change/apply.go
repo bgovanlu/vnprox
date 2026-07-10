@@ -227,8 +227,9 @@ func (s *Service) Confirm(ctx context.Context, id, author string) (Changeset, er
 //   - awaiting_confirm: an immediate manual rollback of the in-window change —
 //     restore the pre-apply files, reload, move to rolled_back (attributed to
 //     author), release the lock.
-//   - committed (within retention): create a NEW restoring draft whose diff is
-//     the inverse (docs/features/change-management.md §4), leaving the
+//   - committed (within the rollback window — *ErrRollbackWindowExpired
+//     beyond it, audit phase-2 F-10): create a NEW restoring draft whose diff
+//     is the inverse (docs/features/change-management.md §4), leaving the
 //     committed changeset untouched. The returned Changeset is that draft.
 //
 // Any other status returns *ErrNotConfirmable.
@@ -251,6 +252,16 @@ func (s *Service) Rollback(ctx context.Context, id, author string) (Changeset, e
 		return cs, rbErr
 	case StatusCommitted:
 		s.applyMu.Unlock()
+		// F-10 (audit phase-2): the manual-rollback offer expires after the
+		// rollback window (docs/features/change-management.md §4: "offered
+		// for 7 days") — beyond it, retention no longer pins the pre-apply
+		// snapshot, so a restoring draft may be unbuildable. The changeset's
+		// UpdatedAt is its commit time (Transition stamps it).
+		windowEnd := cs.UpdatedAt + int64(s.rollbackWindowDays)*24*60*60
+		if s.now().Unix() > windowEnd {
+			s.appendAudit(ctx, author, "changeset.rollback", "window_expired", cs.ID, map[string]any{"committedAt": cs.UpdatedAt, "windowDays": s.rollbackWindowDays})
+			return Changeset{}, &ErrRollbackWindowExpired{ID: cs.ID, CommittedAt: cs.UpdatedAt, WindowDays: s.rollbackWindowDays}
+		}
 		return s.createRestoringDraft(ctx, author, cs)
 	default:
 		s.applyMu.Unlock()
@@ -340,9 +351,12 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 // path (validated, audited, broadcast) and links back to the original in an
 // audit entry.
 func (s *Service) createRestoringDraft(ctx context.Context, author string, orig Changeset) (Changeset, error) {
-	ops, err := buildRestoringOps(orig.Ops)
+	ops, err := s.buildRestoringOpsFromSnapshot(ctx, orig)
 	if err != nil {
 		return Changeset{}, err
+	}
+	if len(ops) == 0 {
+		return Changeset{}, fmt.Errorf("change: changeset %s: live state already matches its pre-apply snapshot; nothing to restore", orig.ID)
 	}
 	draft, err := s.Create(ctx, author, restoringTitle(orig), ops)
 	if err != nil {

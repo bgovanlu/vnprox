@@ -1,75 +1,9 @@
 package change
 
-import "fmt"
-
-// ErrInverseUnsupported is returned when a committed changeset contains an op
-// whose structural inverse T-205 does not synthesize (delete/update ops,
-// whose faithful reconstruction needs the stored pre-snapshot *content* — the
-// snapshot→draft restore path T-206 owns). Rollback of a committed changeset
-// made only of exactly-invertible ops (create/port ops) still works; this
-// error keeps T-205 from emitting a wrong inverse rather than approximating
-// one.
-type ErrInverseUnsupported struct {
-	OpType OpType
-}
-
-func (e *ErrInverseUnsupported) Error() string {
-	return fmt.Sprintf("change: cannot synthesize inverse of op %q for a restoring draft (needs T-206 snapshot restore)", e.OpType)
-}
-
-// buildRestoringOps synthesizes the ops for a restoring draft that reverses a
-// committed changeset (docs/features/change-management.md §4: manual rollback
-// of a committed changeset "creates a new restoring changeset via the normal
-// flow"). Ops are inverted in reverse order so dependencies unwind correctly
-// (delete B before delete A when the forward order created A then B).
-//
-// T-205 synthesizes inverses for the exactly-invertible ops — create↔delete
-// and bridge.port.add↔remove — which need no pre-state lookup and whose diff
-// is a precise inverse. Delete/update ops return *ErrInverseUnsupported (see
-// its doc): their faithful inversion is the T-206 snapshot-restore path.
-func buildRestoringOps(ops []Op) ([]Op, error) {
-	out := make([]Op, 0, len(ops))
-	for i := len(ops) - 1; i >= 0; i-- {
-		inv, skip, err := inverseOp(ops[i])
-		if err != nil {
-			return nil, err
-		}
-		if skip {
-			continue
-		}
-		out = append(out, inv)
-	}
-	return out, nil
-}
-
-// inverseOp returns the inverse of a single op. skip is true for ops that
-// have no file/diff effect to reverse (sdn.apply).
-func inverseOp(op Op) (inv Op, skip bool, err error) {
-	switch op.Type {
-	case OpBridgeCreate:
-		return Op{Type: OpBridgeDelete, Target: op.Target, Params: &BridgeDeleteParams{}}, false, nil
-	case OpBondCreate:
-		return Op{Type: OpBondDelete, Target: op.Target, Params: &BondDeleteParams{}}, false, nil
-	case OpVlanCreate:
-		return Op{Type: OpVlanDelete, Target: op.Target, Params: &VlanDeleteParams{}}, false, nil
-	case OpBridgePortAdd:
-		p, ok := op.Params.(*BridgePortAddParams)
-		if !ok {
-			return Op{}, false, fmt.Errorf("change: op %q has unexpected params type %T", op.Type, op.Params)
-		}
-		return Op{Type: OpBridgePortRemove, Target: op.Target, Params: &BridgePortRemoveParams{Port: p.Port}}, false, nil
-	case OpBridgePortRemove:
-		p, ok := op.Params.(*BridgePortRemoveParams)
-		if !ok {
-			return Op{}, false, fmt.Errorf("change: op %q has unexpected params type %T", op.Type, op.Params)
-		}
-		return Op{Type: OpBridgePortAdd, Target: op.Target, Params: &BridgePortAddParams{Port: p.Port}}, false, nil
-	case OpSdnApply:
-		return Op{}, true, nil
-	default:
-		return Op{}, false, &ErrInverseUnsupported{OpType: op.Type}
-	}
-}
+import (
+	"context"
+	"fmt"
+)
 
 // restoringTitle names the restoring draft after the changeset it reverses.
 func restoringTitle(orig Changeset) string {
@@ -78,4 +12,39 @@ func restoringTitle(orig Changeset) string {
 		base = orig.ID
 	}
 	return fmt.Sprintf("Rollback of %s", base)
+}
+
+// buildRestoringOpsFromSnapshot synthesizes the ops for a restoring draft
+// that reverses a committed changeset (docs/features/change-management.md
+// §4: manual rollback of a committed changeset "creates a new restoring
+// changeset via the normal flow"), by diffing orig's own pre-apply snapshot
+// against each affected node's *current* live file (restoreOpsForNode,
+// T-206).
+//
+// This subsumes T-205's per-op inverse synthesis (create<->delete, port
+// add<->remove) and additionally handles delete/update ops, which T-205
+// deferred here with a typed *ErrInverseUnsupported: an op-level inverse
+// cannot recover a deleted/updated entity's prior field values from the op
+// alone, but the pre-snapshot already has them, so diffing full entity state
+// against live naturally reconstructs the right ops regardless of which
+// combination of create/update/delete ops produced the difference — the
+// same mechanism a plain POST /snapshots/{id}/restore uses.
+func (s *Service) buildRestoringOpsFromSnapshot(ctx context.Context, orig Changeset) ([]Op, error) {
+	pre, err := s.loadPreSnapshot(ctx, orig.ID)
+	if err != nil {
+		return nil, fmt.Errorf("change: loading pre-snapshot to build a restoring draft for changeset %s: %w", orig.ID, err)
+	}
+	var ops []Op
+	for _, f := range pre {
+		live, err := s.nodes.ReadInterfaces(ctx, f.Node)
+		if err != nil {
+			return nil, fmt.Errorf("change: reading live %s on node %s to build a restoring draft: %w", interfacesPath, f.Node, err)
+		}
+		nodeOps, err := restoreOpsForNode(f.Node, f.Content, live)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, nodeOps...)
+	}
+	return ops, nil
 }

@@ -265,14 +265,19 @@ func writeApplyError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusUnprocessableEntity, "unsupported_op", err.Error())
 		return
 	}
-	var inverse *change.ErrInverseUnsupported
-	if errors.As(err, &inverse) {
+	var restoreUnsupported *change.ErrRestoreUnsupported
+	if errors.As(err, &restoreUnsupported) {
 		writeJSONError(w, http.StatusUnprocessableEntity, "unsupported_op", err.Error())
 		return
 	}
 	var notConfirmable *change.ErrNotConfirmable
 	if errors.As(err, &notConfirmable) {
 		writeJSONError(w, http.StatusConflict, "invalid_transition", err.Error())
+		return
+	}
+	var windowExpired *change.ErrRollbackWindowExpired
+	if errors.As(err, &windowExpired) {
+		writeJSONError(w, http.StatusConflict, "rollback_window_expired", err.Error())
 		return
 	}
 	var illegal *change.ErrIllegalTransition

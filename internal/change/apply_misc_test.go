@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/inventory"
@@ -102,6 +103,44 @@ func removesLine(unified, substr string) bool {
 		}
 	}
 	return false
+}
+
+// Audit phase-2 F-10: manual rollback of a committed changeset is offered
+// for the rollback window only (docs/features/change-management.md §4:
+// "offered for 7 days"); beyond it, Rollback refuses with a typed
+// *ErrRollbackWindowExpired instead of building a restoring draft whose
+// pre-apply snapshot retention may already have pruned.
+func TestRollback_CommittedWindowExpired(t *testing.T) {
+	h := newHarness(t, fixtureSingleNode)
+	ctx := context.Background()
+
+	cs := h.mustCreate(t, "root@pam", "add vmbrW", []change.Op{bridgeCreateOp("pve1", "vmbrW", nil)})
+	if _, err := h.svc.Apply(ctx, cs.ID, "root@pam", nil, 0); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if _, err := h.svc.Confirm(ctx, cs.ID, "root@pam"); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+
+	// Time-travel: age the commit past the 7-day window (updated_at is the
+	// commit timestamp — Transition stamps it).
+	aged := time.Now().Add(-8 * 24 * time.Hour).Unix()
+	if _, err := h.db.Conn().ExecContext(ctx, "UPDATE changesets SET updated_at = ? WHERE id = ?", aged, cs.ID); err != nil {
+		t.Fatalf("aging changeset: %v", err)
+	}
+
+	var expired *change.ErrRollbackWindowExpired
+	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam"); !errors.As(err, &expired) {
+		t.Fatalf("rollback of aged committed changeset err = %v, want *ErrRollbackWindowExpired", err)
+	}
+	if expired.WindowDays != change.DefaultRollbackWindowDays {
+		t.Fatalf("windowDays = %d, want %d", expired.WindowDays, change.DefaultRollbackWindowDays)
+	}
+
+	// The committed changeset itself is untouched.
+	if got := h.get(t, cs.ID); got.Status != change.StatusCommitted {
+		t.Fatalf("status after refused rollback = %s, want committed", got.Status)
+	}
 }
 
 // Manual rollback of an in-window (awaiting_confirm) changeset restores state
@@ -210,12 +249,17 @@ func TestRollback_NotEligible(t *testing.T) {
 	}
 }
 
-func TestRollback_CommittedUnsupportedInverse(t *testing.T) {
+// T-206: rollback of a committed changeset containing a create *and* an
+// in-changeset update of the same bridge now succeeds (T-205 deferred this
+// case with a typed *ErrInverseUnsupported, since an op-level inverse can't
+// recover the update's prior field values). The T-206 mechanism diffs the
+// changeset's own pre-apply snapshot (which predates the bridge entirely)
+// against the live state (which has it, at the updated MTU), so the
+// restoring draft is a single bridge.delete — exactly reversing both ops at
+// once, not just the last one.
+func TestRollback_CommittedCreatePlusUpdate_RestoresViaSnapshotDiff(t *testing.T) {
 	h := newHarness(t, fixtureSingleNode)
 	ctx := context.Background()
-	// A create + in-changeset update of the same bridge: the update's inverse
-	// needs the T-206 snapshot-restore path, so rollback of the committed
-	// changeset reports ErrInverseUnsupported rather than approximating one.
 	mtu := 9000
 	ops := []change.Op{
 		bridgeCreateOp("pve1", "vmbrU", nil),
@@ -232,9 +276,12 @@ func TestRollback_CommittedUnsupportedInverse(t *testing.T) {
 	if _, err := h.svc.Confirm(ctx, cs.ID, "root@pam"); err != nil {
 		t.Fatalf("confirm: %v", err)
 	}
-	var unsupp *change.ErrInverseUnsupported
-	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam"); !errors.As(err, &unsupp) {
-		t.Fatalf("rollback committed create+update err = %v, want *ErrInverseUnsupported", err)
+	draft, err := h.svc.Rollback(ctx, cs.ID, "root@pam")
+	if err != nil {
+		t.Fatalf("rollback committed create+update: %v", err)
+	}
+	if len(draft.Ops) != 1 || draft.Ops[0].Type != change.OpBridgeDelete || draft.Ops[0].Target.ID != "vmbrU" {
+		t.Fatalf("restoring ops = %+v, want a single bridge.delete vmbrU", draft.Ops)
 	}
 }
 

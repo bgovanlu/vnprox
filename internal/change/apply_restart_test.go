@@ -18,7 +18,7 @@ func (h *applyHarness) newServiceOverSameState(t *testing.T, timers change.Timer
 	t.Helper()
 	return newService(t, change.Config{
 		Changesets: h.csRepo, Audit: h.auditRepo, WS: h.ws,
-		Nodes: h.agent, Snapshots: h.snapRepo, Refresher: h.refresher,
+		Nodes: h.agent, Snapshots: h.snapRepo, Blobs: h.blobRepo, Refresher: h.refresher,
 		TimerFunc: timers,
 	})
 }
