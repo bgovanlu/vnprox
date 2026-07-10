@@ -49,8 +49,11 @@ func NewState(f *Fixture) *State {
 		fixture:   f,
 		nodes:     make(map[string]*nodeState, len(f.Nodes)),
 		clusterFW: f.Firewall.Cluster,
-		sessions:  newSessionStore(),
 		clock:     time.Now,
+	}
+	s.sessions = newSessionStore(s.clock)
+	if f.Mock.TicketTTLMS > 0 {
+		s.sessions.setTTL(time.Duration(f.Mock.TicketTTLMS) * time.Millisecond)
 	}
 	s.sdn.zones = make(map[string]SDNZoneSpec, len(f.SDN.Zones))
 	s.sdn.vnets = make(map[string]SDNVnetSpec, len(f.SDN.Vnets))

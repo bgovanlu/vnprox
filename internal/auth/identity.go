@@ -12,9 +12,9 @@ import (
 // login/renewal, the effective permission set, and the cluster's node list
 // (for per-node capability derivation). *pve.Client (constructed in
 // AuthTicket mode with that user's submitted credentials) implements this
-// directly — see clientIdentity below. Tests substitute a decorator that
-// overrides only Permissions, the one call internal/pvemock does not
-// implement yet (see this package's doc.go).
+// directly — see clientIdentity below; integration tests use exactly that
+// against internal/pvemock, while handler-level unit tests substitute
+// in-memory stubs (see helpers_test.go).
 type PVEIdentity interface {
 	// Login performs the initial PVE ticket login, validating the
 	// submitted credentials (and OTP, where the realm requires one).
@@ -75,11 +75,13 @@ func (i clientIdentity) ClusterNodes(ctx context.Context) ([]string, error) {
 // NewClientIdentityFactory builds the production IdentityFactory: every
 // login attempt gets its own ticket-mode *pve.Client, constructed against
 // base (APIURL/TLS/TicketRenewAfter carried over; Auth/Username/Password/
-// Realm/OTP are set per attempt). The client — and the plaintext password
-// it must hold in memory to support ticket renewal (see
-// internal/pve/auth.go's ticketAuth doc comment) — is kept alive for the
-// process lifetime of the resulting session by this package's renewal loop
-// (renewal.go), never persisted.
+// Realm/OTP are set per attempt). The client is kept alive for the process
+// lifetime of the resulting session by this package's renewal loop
+// (renewal.go), never persisted. It renews via PVE's ticket-as-password
+// shortcut and drops the plaintext password from memory once that first
+// succeeds (see internal/pve/auth.go's ticketAuth doc comment); until
+// then the password is held in memory only, as the fallback for a PVE
+// that rejects the shortcut.
 func NewClientIdentityFactory(base pve.Config) IdentityFactory {
 	return func(username, password, realm, otp string) (PVEIdentity, error) {
 		cfg := base

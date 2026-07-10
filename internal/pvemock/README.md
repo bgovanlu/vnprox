@@ -10,7 +10,30 @@ It implements the subset of the real PVE API surface (`/api2/json/...`)
 that vnprox's client calls:
 
 - `POST /access/ticket` — ticket + CSRF issuance, fixture-defined users and
-  PVE privilege sets, bad-password → 401.
+  PVE privilege sets, bad-password → 401. Also supports:
+  - **Ticket-as-password renewal**: a still-valid, previously issued ticket
+    for the same user is accepted in the `password` field (how PVE clients
+    renew without retaining the plaintext password). Expired or
+    foreign-user tickets are rejected with 401.
+  - **TOTP**: a fixture user with a `totp: "<code>"` field requires
+    `otp=<code>` on login; missing/wrong code → 401. This is the simple
+    single-step variant — real PVE's two-step TFA ticket-challenge flow is
+    not modeled.
+  - **Ticket TTL**: `mock.ticket_ttl_ms` in the fixture (or the
+    `WithTicketTTL` server option, which wins) makes issued tickets expire
+    server-side; an expired ticket gets 401 exactly like an unknown one.
+    Default: no expiry.
+- **API-token auth**: any endpoint also accepts
+  `Authorization: PVEAPIToken=user@realm!tokenid=secret`, checked against
+  the owning fixture user's `tokens:` list. Token requests need no cookie
+  and no CSRF header (matching real PVE). Token privileges follow the
+  owning user — real PVE's token privilege separation ("privsep") is
+  intentionally not modeled.
+- `GET /access/permissions` — the calling identity's effective privilege
+  set in PVE's `{path: {privilege: 0|1}}` shape. Because fixture users
+  hold one flat privilege list, everything is reported at path `/`
+  (including a literal `"*"` where a fixture uses the wildcard); real PVE
+  returns a per-path ACL tree with concrete privilege names.
 - `GET /cluster/status`, `GET /cluster/resources`.
 - `GET/POST/PUT/DELETE /nodes/{node}/network[/{iface}]` — PVE's real staging
   semantics: writes go to a staged `interfaces.new` equivalent and do not
@@ -22,6 +45,13 @@ that vnprox's client calls:
   `/cluster/sdn/vnets/{vnet}/subnets` (full CRUD), per-zone
   `/cluster/sdn/zones/{zone}/status` (pending/applied/error per node), and
   `PUT /cluster/sdn` (cluster-wide apply, task-returning).
+- IPAM (read-only): `GET /cluster/sdn/ipams` (configured plugin
+  instances), `GET /cluster/sdn/ipams/{ipam}`, and
+  `GET /cluster/sdn/ipams/{ipam}/status` (the instance's current
+  allocation entries: zone/vnet/subnet/ip/mac/hostname/vmid, with the
+  gateway marker as a 0/1 int), all driven by the fixture's `sdn.ipams:`
+  section. IPAM writes (reserve/release) are phase-4 change-engine work
+  and are not implemented.
 - Firewall: cluster/node/guest-scope `rules`, `options`, `aliases`,
   `ipset[/{name}]`, plus cluster-scope `groups` (security groups) — full
   CRUD at every scope.
@@ -48,16 +78,28 @@ Not part of the real PVE API, but useful for tests and this walkthrough:
 
 | File | Models |
 |---|---|
-| `testdata/clusters/single-node.yaml` | One standalone node, no SDN. The baseline every feature must work against. |
-| `testdata/clusters/three-node-vlan.yaml` | 3-node cluster, bonded VLAN-aware bridges, one PVE SDN "vlan" zone with two VNets/subnets. |
-| `testdata/clusters/evpn-lab.yaml` | 3-node cluster with a VXLAN/EVPN zone: controller, VRF-VXLAN, an exit node, DHCP-managed subnet. |
+| `testdata/clusters/single-node.yaml` | One standalone node, no SDN. The baseline every feature must work against. Declares an API token (`root@pam!daemon`) and a TOTP-required user (`totp-user@pve`, static code `246810`). |
+| `testdata/clusters/three-node-vlan.yaml` | 3-node cluster, bonded VLAN-aware bridges, one PVE SDN "vlan" zone with two VNets/subnets and a built-in `pve` IPAM with gateway + guest allocations. Users cover all four capability-matrix personas (root, auditor, `sdn-only@pve`, `vm-user@pve`) plus netops, and `root@pam!daemon` is a declared API token. |
+| `testdata/clusters/evpn-lab.yaml` | 3-node cluster with a VXLAN/EVPN zone: controller, VRF-VXLAN, an exit node, DHCP-managed subnet, and a built-in `pve` IPAM holding the gateway record plus two DHCP allocations. |
 | `testdata/clusters/messy-brownfield.yaml` | A cluster that drifted: staged-but-never-applied network edits, double NIC enslavement, cross-node MTU drift, a stale comment, a partially-realized SDN zone, an abandoned SDN VNet, a dangling firewall object reference, and the "datacenter firewall is off" footgun. Every item is enumerated in the fixture's `mess:` list (also served at `GET /mock/mess`) for T-305's drift detector to target. |
+
+Fixture schema, beyond the obvious node/network/guest/firewall trees:
+
+- `users[].tokens: [{tokenid, secret}]` — API tokens for
+  `Authorization: PVEAPIToken=` auth; privileges follow the owning user.
+- `users[].totp: "<static code>"` — marks the user TOTP-required (see
+  above).
+- `sdn.ipams: [{id, type, url?, entries: [...]}]` — IPAM plugin instances
+  and their allocation entries (`{zone, vnet, subnet, ip, mac?, hostname?,
+  vmid?, gateway?}`).
+- `mock.ticket_ttl_ms` — server-side ticket expiry (default: none).
 
 All four fixtures self-validate on load (`LoadFixture`): dangling
 structural references (a bridge port or bond slave naming a NIC that
 doesn't exist, a VLAN parent that doesn't exist, an SDN VNet/subnet
-pointing at a zone/VNet that doesn't exist) fail loading with a specific
-error. Cross-entity *drift* (an SDN zone listing a node whose bridge is
+pointing at a zone/VNet that doesn't exist, an IPAM entry naming a
+zone/vnet/subnet-CIDR that doesn't exist, an empty token id/secret) fail
+loading with a specific error. Cross-entity *drift* (an SDN zone listing a node whose bridge is
 missing, a firewall rule citing a deleted ipset) is intentionally NOT a
 load error — that's exactly what `messy-brownfield.yaml` exists to model.
 

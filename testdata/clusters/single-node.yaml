@@ -10,15 +10,27 @@ cluster:
       online: true
 
 users:
-  # Full admin — every write in the walkthrough succeeds.
+  # Full admin — every write in the walkthrough succeeds. The API token
+  # models docs/security.md's vnprox@pve!daemon read-identity pattern:
+  # "Authorization: PVEAPIToken=root@pam!daemon=6b1c0a3e-...".
   - userid: root@pam
     password: vnprox-mock
     privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42
   # Read-only auditor — used to prove fixture-declared permissions produce
   # real 403s (acceptance criterion 2): can read everything, cannot PUT
   # network, guest config, SDN, or firewall.
   - userid: auditor@pve
     password: readonly
+    privileges: ["Sys.Audit", "VM.Audit", "SDN.Audit"]
+  # TOTP-required user: POST /access/ticket for this user is rejected with
+  # 401 unless otp=246810 is submitted alongside the password (T-105
+  # acceptance criterion 1's TOTP-required fixture user).
+  - userid: totp-user@pve
+    password: with-2fa
+    totp: "246810"
     privileges: ["Sys.Audit", "VM.Audit", "SDN.Audit"]
 
 nodes:

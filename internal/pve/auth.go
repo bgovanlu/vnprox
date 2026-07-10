@@ -3,6 +3,7 @@ package pve
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -29,17 +30,28 @@ type authenticator interface {
 // checks — ticket via the "PVEAuthCookie" cookie, CSRF via the
 // "CSRFPreventionToken" header on any mutating (non-GET/HEAD) request.
 //
-// Real PVE also accepts a previously-issued ticket as the "password" field
-// to renew without resending the user's actual password. The mock server
-// this client is developed and tested against (internal/pvemock) does not
-// implement that shortcut — it only ever checks the fixture user's static
-// password — so this client renews by replaying the stored
-// username/password/realm through the same login path. That is also
-// forward-compatible with real PVE (which accepts genuine credentials at
-// any time, not just first login); it just forgoes the minor optimization
-// of not needing to hold the plaintext password after first login. OTP is
-// intentionally not resent on renewal (docs/security.md: second factors
-// are a first-login concept).
+// Renewal uses PVE's ticket-as-password shortcut: a previously issued,
+// still-valid ticket is accepted as the "password" field of POST
+// /access/ticket, so the client does not need to retain the user's
+// plaintext password after the first successful ticket-as-password
+// renewal — it is dropped from memory at that point (docs/security.md's
+// posture: hold secrets no longer than necessary). If PVE rejects the
+// ticket as a password (e.g. it already expired), the client falls back
+// to the stored plaintext password — only possible before the first
+// successful ticket renewal has cleared it; after that, a rejected
+// renewal surfaces as *ErrPVEAuth and the caller (internal/auth's renewal
+// loop) invalidates the session.
+//
+// internal/pvemock implements ticket-as-password (its handleTicket accepts
+// a valid ticket for the same user), which is what this path is tested
+// against; the exact semantics on real PVE (notably: whether a ticket
+// close to its 2h expiry is still accepted as a password, and TFA
+// interaction) still need hardware validation. OTP is intentionally not
+// sent on ticket-as-password renewals (docs/security.md: second factors
+// are a first-login concept); it is resent on the plaintext-password
+// fallback, matching the pre-existing behavior for realms whose static
+// fixture code never rotates — a real TOTP code would be stale there,
+// which is another reason the fallback is a fallback.
 type ticketAuth struct {
 	issuedAt time.Time
 
@@ -70,8 +82,38 @@ func (a *ticketAuth) prepare(ctx context.Context, c *Client) error {
 	return a.login(ctx, c)
 }
 
-// login performs (or renews) POST /access/ticket. Caller must hold a.mu.
+// login performs (or renews) POST /access/ticket: ticket-as-password
+// first when a ticket is held, falling back to the stored plaintext
+// password (see the ticketAuth doc comment). Caller must hold a.mu.
 func (a *ticketAuth) login(ctx context.Context, c *Client) error {
+	if a.ticket != "" {
+		err := a.loginWith(ctx, c, a.ticket, "" /* no OTP on renewal */)
+		if err == nil {
+			// Ticket-as-password renewal works against this server: the
+			// plaintext password is no longer needed, stop retaining it.
+			a.password = ""
+			return nil
+		}
+		var authErr *ErrPVEAuth
+		if !errors.As(err, &authErr) || a.password == "" {
+			// Transport/server errors are not evidence the ticket was
+			// rejected; and with no password left there is no fallback.
+			return err
+		}
+		// The ticket was rejected as a password (expired, or a PVE that
+		// doesn't accept the shortcut) — fall through to the plaintext
+		// password we still hold.
+	}
+	if a.password == "" {
+		return &ErrPVEAuth{Message: "ticket renewal rejected and no password retained"}
+	}
+	return a.loginWith(ctx, c, a.password, a.otp)
+}
+
+// loginWith performs one POST /access/ticket with the given password
+// value (the user's plaintext password, or a previously issued ticket).
+// Caller must hold a.mu.
+func (a *ticketAuth) loginWith(ctx context.Context, c *Client, password, otp string) error {
 	username := a.username
 	if a.realm != "" && !strings.Contains(username, "@") {
 		username = username + "@" + a.realm
@@ -79,13 +121,13 @@ func (a *ticketAuth) login(ctx context.Context, c *Client) error {
 
 	form := url.Values{
 		"username": {username},
-		"password": {a.password},
+		"password": {password},
 	}
 	if a.realm != "" {
 		form.Set("realm", a.realm)
 	}
-	if a.otp != "" {
-		form.Set("otp", a.otp)
+	if otp != "" {
+		form.Set("otp", otp)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpointURL("/access/ticket").String(), strings.NewReader(form.Encode()))
@@ -136,15 +178,12 @@ func (a *ticketAuth) apply(req *http.Request) {
 // request, no cookie, no CSRF, no renewal (docs/security.md's
 // vnprox@pve!daemon read-only identity).
 //
-// Note: internal/pvemock (T-004) does not implement API-token
-// authentication at all — its authenticate() only ever looks for the
-// PVEAuthCookie cookie (see internal/pvemock/auth.go's doc comment on
-// authenticate). Requests sent in this mode against the mock therefore
-// always receive a 401 today; this is a documented gap (see this
-// package's test suite and the T-101 completion report), not a bug in
-// this client. The header is still built and sent exactly per PVE's
-// documented convention so it will work unmodified against real PVE or a
-// future mock update.
+// internal/pvemock implements this mode (fixture-declared tokens whose
+// privileges follow the owning user), so the success path is integration
+// tested against the mock (TestAPIToken_FullReadSurfaceAgainstMock); the
+// exact header/privilege semantics against real PVE (notably token
+// privilege separation, which the mock does not model) still need
+// hardware validation.
 type tokenAuth struct {
 	token string
 }

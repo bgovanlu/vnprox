@@ -74,10 +74,11 @@ type Service struct {
 }
 
 // liveSession is the in-memory-only counterpart to a persisted
-// store.Session: the PVEIdentity (holding the user's plaintext password,
-// needed for ticket renewal — see internal/pve/auth.go) that only exists
-// for the process lifetime of the login that created it. See doc.go for
-// what this means across a daemon restart.
+// store.Session: the PVEIdentity (holding the live PVE ticket, and — only
+// until the first ticket-as-password renewal succeeds — the user's
+// plaintext password as a renewal fallback; see internal/pve/auth.go)
+// that only exists for the process lifetime of the login that created it.
+// See doc.go for what this means across a daemon restart.
 type liveSession struct {
 	identity       PVEIdentity
 	lastCapRefresh time.Time
@@ -222,9 +223,9 @@ func IdentityFromContext(ctx context.Context) (Identity, bool) {
 // need to make PVE API calls under the logged-in user's own ticket
 // (docs/security.md: "all PVE API writes use the user's own ticket"). ok is
 // false if no such client is alive in this process — either the session id
-// is unknown/expired, or (see doc.go) the daemon restarted since that
-// session was created, since the plaintext password ticket renewal needs
-// is never persisted.
+// is unknown/expired, or the daemon restarted since that session was
+// created (live *pve.Client state — renewal credentials included — is
+// memory-only, never persisted).
 func (s *Service) PVEClientFor(sessionID string) (*pve.Client, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

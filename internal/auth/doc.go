@@ -20,42 +20,41 @@
 //   - Middleware other route registrations build on: SessionMiddleware ->
 //     CSRFMiddleware -> RequireCap(cap) (middleware.go).
 //
-// # pvemock fidelity gaps
+// # pvemock fidelity notes
 //
-// internal/pvemock (T-004) does not implement two things real PVE has that
-// this package's production code depends on, and this package was
-// instructed not to modify pvemock to add them:
+// internal/pvemock implements the PVE surface this package's production
+// code depends on, so the integration tests here run the genuine paths:
 //
-//   - GET /access/permissions (capability derivation's data source): the
-//     mock's fixture-defined UserSpec.Privileges is a single flat,
-//     non-path-scoped list checked via session.hasPrivilege — there is no
-//     "/access/permissions" route in internal/pvemock's router at all.
-//     pve.Client.Permissions (added by this task, internal/pve/permissions.go)
-//     is implemented against the documented real-PVE contract regardless,
-//     so it works unmodified once pointed at real PVE (or a future mock
-//     update). This package's integration tests substitute a PVEIdentity
-//     decorator whose Permissions method reads the SAME fixture data the
-//     live mock server loaded (via pvemock.LoadFixture, already exported)
-//     and reshapes it into a pve.Permissions value — not fabricated mock
-//     behavior, just working around an HTTP endpoint that doesn't exist yet.
-//     Login, ticket renewal, and node enumeration (GET /cluster/status) in
-//     those same tests still go out over real HTTP to the mock.
-//   - TOTP/second-factor: internal/pvemock's handleTicket never inspects an
-//     "otp" field, and no fixture user requires one. This package's OTP
-//     passthrough (the "otp" field on POST /auth/login is forwarded
-//     verbatim to pve.Config.OTP, which internal/pve's ticketAuth sends
-//     through to PVE's own POST /access/ticket on first login only) is
-//     exercised by a handler-level unit test using a stub PVEIdentity that
-//     requires a specific OTP value, standing in for a PVE realm with a
-//     second factor configured — the task card explicitly sanctions this
-//     ("a unit test on the login handler with a stub PVE client that
-//     requires OTP") for exactly this gap.
+//   - GET /access/permissions (capability derivation's data source):
+//     implemented by the mock, which reports the fixture user's flat
+//     UserSpec.Privileges list at ACL path "/" (real PVE returns a
+//     per-path tree and enumerates concrete privileges instead of a "*"
+//     wildcard — the exact real-PVE response shape still needs hardware
+//     validation). This package's integration tests use the unmodified
+//     production identity factory (NewClientIdentityFactory), so login,
+//     permission derivation, ticket renewal, and node enumeration all go
+//     out over real HTTP to the mock.
+//   - TOTP/second-factor: the mock's handleTicket checks a fixture user's
+//     static "totp" code against the request's "otp" field (missing/wrong
+//     code → 401), so the OTP passthrough (the "otp" field on POST
+//     /auth/login forwarded to pve.Config.OTP and on to PVE's POST
+//     /access/ticket at first login) is integration tested end-to-end
+//     (TestIntegration_TOTPLoginAgainstMock) against single-node.yaml's
+//     totp-user@pve. A handler-level unit test with a stub PVEIdentity
+//     (TestHandleLogin_OTPPassthrough) additionally covers the handler's
+//     own error mapping in isolation. Historical note: an earlier
+//     revision of this comment claimed the T-105 task card "explicitly
+//     sanctions" testing OTP via the stub alone; the card contains no
+//     such wording — it asks for a "full login/logout/me cycle against
+//     pvemock incl. a TOTP-required fixture user", which is what the
+//     integration test now provides. Real PVE's two-step TFA
+//     ticket-challenge flow is not modeled by the mock and needs hardware
+//     validation.
 //   - GET /access/domains (realm listing): not part of docs/api.md's
 //     documented routes at all (only /auth/login, /auth/logout, /auth/me
 //     are), so "realm list from PVE" in T-105's task card is read here as
 //     "forward whatever realm the caller supplies to PVE" (any PAM/PVE/
 //     LDAP/AD/OIDC realm, docs/security.md), not a new vnprox endpoint.
-//
-// See this task's completion report for the full reasoning and what T-106
-// (and later capability-gated route registrations) should assume.
+//     This remains a deviation to revisit if the UI ever needs a realm
+//     dropdown.
 package auth

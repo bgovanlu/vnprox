@@ -56,9 +56,10 @@ func loginBody(t *testing.T, username, password, realm, otp string) []byte {
 	return b
 }
 
-// --- OTP passthrough (T-105 acceptance criterion 1's "prove your OTP code
-// path is exercised" fallback, since internal/pvemock has no TOTP-requiring
-// fixture user — see doc.go) ---------------------------------------------
+// --- OTP passthrough: handler-level unit coverage of the login handler's
+// OTP forwarding and error mapping in isolation (stub identity, no
+// network). The end-to-end TOTP flow against pvemock's TOTP-required
+// fixture user is TestIntegration_TOTPLoginAgainstMock. -------------------
 
 func TestHandleLogin_OTPPassthrough(t *testing.T) {
 	factory := stubFactory(stubIdentity{

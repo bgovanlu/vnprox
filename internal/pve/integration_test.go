@@ -24,6 +24,7 @@ import (
 const (
 	fixtureSingleNode = "../../testdata/clusters/single-node.yaml"
 	fixtureThreeNode  = "../../testdata/clusters/three-node-vlan.yaml"
+	fixtureEvpn       = "../../testdata/clusters/evpn-lab.yaml"
 )
 
 func newMockServer(t *testing.T, fixturePath string) *httptest.Server {
@@ -396,6 +397,149 @@ func TestTicketAuth_FirewallReadsAllScopes(t *testing.T) {
 	_ = groups // fixture may or may not define groups; just confirm the call succeeds.
 }
 
+// --- IPAM reads --------------------------------------------------------------
+
+func TestIPAMReads_ThreeNodeVlan(t *testing.T) {
+	ts := newMockServer(t, fixtureThreeNode)
+	c := newTicketClient(t, ts.URL, "root@pam", "vnprox-mock")
+	ctx := context.Background()
+
+	ipams, err := c.ListIPAMs(ctx)
+	if err != nil {
+		t.Fatalf("ListIPAMs: %v", err)
+	}
+	if len(ipams) != 1 || ipams[0].ID != "pve" || ipams[0].Type != "pve" {
+		t.Fatalf("ListIPAMs = %+v, want exactly the built-in pve instance", ipams)
+	}
+
+	entries, err := c.GetIPAMStatus(ctx, "pve")
+	if err != nil {
+		t.Fatalf("GetIPAMStatus: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("GetIPAMStatus: %d entries, want 3 (fixture)", len(entries))
+	}
+	byIP := map[string]pve.IPAMEntry{}
+	for _, e := range entries {
+		byIP[e.IP] = e
+	}
+	gw, ok := byIP["10.100.0.1"]
+	if !ok || !gw.Gateway || gw.Vnet != "vnet100" || gw.Subnet != "10.100.0.0/24" || gw.Zone != "vlanz" {
+		t.Errorf("gateway entry = %+v, want gateway=true vnet100 10.100.0.0/24 vlanz", gw)
+	}
+	guest, ok := byIP["10.100.0.50"]
+	if !ok || guest.Gateway || guest.Hostname != "app01" || guest.VMID != 200 || guest.MAC != "BC:24:11:AA:02:C8" {
+		t.Errorf("guest entry = %+v, want app01/vmid 200 with its net0 MAC, not a gateway", guest)
+	}
+	if _, ok := byIP["10.200.0.1"]; !ok {
+		t.Errorf("missing the vnet200 gateway entry in %+v", entries)
+	}
+
+	// Unknown instance -> typed request error, not a decode failure.
+	if _, err := c.GetIPAMStatus(ctx, "netbox"); err == nil {
+		t.Fatalf("GetIPAMStatus(netbox): expected an error for an unconfigured instance")
+	}
+}
+
+func TestIPAMReads_EvpnLab(t *testing.T) {
+	ts := newMockServer(t, fixtureEvpn)
+	c := newTicketClient(t, ts.URL, "root@pam", "vnprox-mock")
+	ctx := context.Background()
+
+	ipams, err := c.ListIPAMs(ctx)
+	if err != nil {
+		t.Fatalf("ListIPAMs: %v", err)
+	}
+	if len(ipams) != 1 || ipams[0].ID != "pve" {
+		t.Fatalf("ListIPAMs = %+v, want the pve instance", ipams)
+	}
+
+	entries, err := c.GetIPAMStatus(ctx, "pve")
+	if err != nil {
+		t.Fatalf("GetIPAMStatus: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("GetIPAMStatus: %d entries, want 3 (gateway + two DHCP testers)", len(entries))
+	}
+	var gateways, allocations int
+	for _, e := range entries {
+		if e.Zone != "evpnz" || e.Vnet != "vnet-tenant-a" || e.Subnet != "192.168.50.0/24" {
+			t.Errorf("entry %+v not scoped to the evpn tenant subnet", e)
+		}
+		if e.Gateway {
+			gateways++
+		} else {
+			allocations++
+			if e.VMID == 0 {
+				t.Errorf("allocation %+v has no vmid", e)
+			}
+		}
+	}
+	if gateways != 1 || allocations != 2 {
+		t.Fatalf("gateways=%d allocations=%d, want 1 and 2", gateways, allocations)
+	}
+}
+
+// --- GET /access/permissions -------------------------------------------------
+
+func TestPermissions_AgainstMock(t *testing.T) {
+	ts := newMockServer(t, fixtureSingleNode)
+	c := newTicketClient(t, ts.URL, "auditor@pve", "readonly")
+
+	perms, err := c.Permissions(context.Background())
+	if err != nil {
+		t.Fatalf("Permissions: %v", err)
+	}
+	root, ok := perms["/"]
+	if !ok {
+		t.Fatalf("Permissions = %+v, want a \"/\" path entry", perms)
+	}
+	for _, priv := range []string{"Sys.Audit", "VM.Audit", "SDN.Audit"} {
+		if !root[priv] {
+			t.Errorf("Permissions[/][%s] = false, want true (fixture auditor grant)", priv)
+		}
+	}
+	if root["Sys.Modify"] {
+		t.Errorf("Permissions[/] grants Sys.Modify to the read-only auditor: %+v", root)
+	}
+}
+
+// --- GET /nodes/{node}/tasks/{upid}/log ---------------------------------------
+
+func TestGetTaskLog_AgainstMock(t *testing.T) {
+	ts := newMockServer(t, fixtureSingleNode)
+	c := newTicketClient(t, ts.URL, "root@pam", "vnprox-mock")
+	ctx := context.Background()
+
+	upid, err := c.ReloadNodeNetwork(ctx, "pve1")
+	if err != nil {
+		t.Fatalf("ReloadNodeNetwork: %v", err)
+	}
+	if _, waitErr := c.WaitTask(ctx, "pve1", upid, pve.WaitOptions{Interval: 5 * time.Millisecond, Timeout: 2 * time.Second}); waitErr != nil {
+		t.Fatalf("WaitTask: %v", waitErr)
+	}
+
+	lines, err := c.GetTaskLog(ctx, "pve1", upid)
+	if err != nil {
+		t.Fatalf("GetTaskLog: %v", err)
+	}
+	if len(lines) < 2 {
+		t.Fatalf("GetTaskLog: %d lines, want at least 2 (start + completion)", len(lines))
+	}
+	for i, l := range lines {
+		if l.N != i+1 {
+			t.Errorf("line %d has n=%d, want sequential numbering from 1", i, l.N)
+		}
+		if l.T == "" {
+			t.Errorf("line %d has empty text", i)
+		}
+	}
+
+	if _, err := c.GetTaskLog(ctx, "pve1", "UPID:bogus"); err == nil {
+		t.Fatalf("GetTaskLog(bogus): expected an error for an unknown task")
+	}
+}
+
 // --- IPSet entries: exercised against whichever fixture defines one --------
 
 func TestTicketAuth_IPSetEntries(t *testing.T) {
@@ -417,18 +561,16 @@ func TestTicketAuth_IPSetEntries(t *testing.T) {
 	_ = entries
 }
 
-// --- API-token auth: header shaping verified against a minimal stub -------
+// --- API-token auth ---------------------------------------------------------
 //
-// internal/pvemock (T-004) does not implement PVE API-token authentication
-// at all (its authenticate() only ever checks the PVEAuthCookie cookie —
-// see internal/pvemock/auth.go). There is therefore no way to integration
-// test a *successful* token-mode call against the mock as it stands. This
-// test proves two things instead: (1) against a minimal stub server, the
-// client sends exactly the PVE-documented "Authorization: PVEAPIToken=..."
-// header and correctly decodes a normal envelope response; (2) against the
-// real mock, token-mode requests are consistently rejected with 401,
-// mapped to *pve.ErrPVEAuth — documenting the gap in an executable way
-// rather than just a comment.
+// internal/pvemock implements PVE API-token authentication driven by
+// fixture-declared tokens (users[].tokens in testdata/clusters/*.yaml),
+// with token privileges following the owning user. The success path is
+// integration tested against the mock below; the header-shaping stub test
+// additionally pins the exact Authorization header bytes independent of
+// the mock's parser. Whether real PVE accepts exactly this shape (and how
+// token privilege separation, which the mock does not model, affects the
+// effective privileges) needs hardware validation.
 
 func TestAPIToken_SendsDocumentedAuthorizationHeader(t *testing.T) {
 	var gotAuth string
@@ -465,7 +607,72 @@ func TestAPIToken_SendsDocumentedAuthorizationHeader(t *testing.T) {
 	}
 }
 
-func TestAPIToken_AgainstMockIsRejected(t *testing.T) {
+// TestAPIToken_FullReadSurfaceAgainstMock is T-101 acceptance criterion
+// 1's token-mode half: the fixture-declared root@pam!daemon token performs
+// the daemon read-poll surface (cluster, node network, guests, SDN, IPAM,
+// firewall, permissions) against the mock, all over genuine
+// Authorization-header auth — no ticket, no cookie, no CSRF.
+func TestAPIToken_FullReadSurfaceAgainstMock(t *testing.T) {
+	ts := newMockServer(t, fixtureThreeNode)
+	c, err := pve.New(pve.Config{
+		APIURL:     ts.URL,
+		Auth:       pve.AuthAPIToken,
+		TokenValue: "root@pam!daemon=4f9d21c7-3a80-4b6e-b1d2-95c8e7a40f13",
+	})
+	if err != nil {
+		t.Fatalf("pve.New (token): %v", err)
+	}
+	ctx := context.Background()
+
+	status, err := c.ClusterStatus(ctx)
+	if err != nil {
+		t.Fatalf("ClusterStatus: %v", err)
+	}
+	if len(status) != 4 { // cluster row + 3 nodes
+		t.Fatalf("ClusterStatus rows = %d, want 4", len(status))
+	}
+	if _, resErr := c.ClusterResources(ctx); resErr != nil {
+		t.Fatalf("ClusterResources: %v", resErr)
+	}
+	ifaces, err := c.ListNodeNetwork(ctx, "pve1")
+	if err != nil {
+		t.Fatalf("ListNodeNetwork: %v", err)
+	}
+	if len(ifaces) == 0 {
+		t.Fatalf("ListNodeNetwork: expected interfaces")
+	}
+	if _, guestErr := c.GetGuestConfig(ctx, "pve1", pve.GuestQemu, 200); guestErr != nil {
+		t.Fatalf("GetGuestConfig: %v", guestErr)
+	}
+	zones, err := c.ListSDNZones(ctx)
+	if err != nil {
+		t.Fatalf("ListSDNZones: %v", err)
+	}
+	if len(zones) != 1 {
+		t.Fatalf("ListSDNZones = %+v, want one zone", zones)
+	}
+	ipams, err := c.ListIPAMs(ctx)
+	if err != nil {
+		t.Fatalf("ListIPAMs: %v", err)
+	}
+	if len(ipams) != 1 || ipams[0].ID != "pve" {
+		t.Fatalf("ListIPAMs = %+v, want the fixture's pve instance", ipams)
+	}
+	if _, fwErr := c.ListFirewallRules(ctx, pve.ClusterFirewallScope()); fwErr != nil {
+		t.Fatalf("ListFirewallRules (cluster): %v", fwErr)
+	}
+	perms, err := c.Permissions(ctx)
+	if err != nil {
+		t.Fatalf("Permissions: %v", err)
+	}
+	if !perms["/"]["*"] {
+		t.Fatalf("Permissions = %+v, want the root wildcard grant at \"/\"", perms)
+	}
+}
+
+// TestAPIToken_InvalidTokenRejected proves a token the fixture does not
+// declare is rejected with a 401 mapped to *pve.ErrPVEAuth.
+func TestAPIToken_InvalidTokenRejected(t *testing.T) {
 	ts := newMockServer(t, fixtureSingleNode)
 	c, err := pve.New(pve.Config{
 		APIURL:     ts.URL,
@@ -478,7 +685,7 @@ func TestAPIToken_AgainstMockIsRejected(t *testing.T) {
 
 	_, err = c.ClusterStatus(context.Background())
 	if err == nil {
-		t.Fatalf("expected internal/pvemock to reject API-token auth (documented gap), got no error")
+		t.Fatalf("expected an invalid API token to be rejected, got no error")
 	}
 	var authErr *pve.ErrPVEAuth
 	if !errors.As(err, &authErr) {

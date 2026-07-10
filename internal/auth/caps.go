@@ -121,9 +121,9 @@ func DeriveCapabilities(privs privilegeSet) Capabilities {
 // effective for one capability-derivation scope (cluster-wide, or one
 // node). It exists as its own type (rather than a bare map or []string) so
 // DeriveCapabilities has one obvious calling convention regardless of
-// whether the caller built it from a live pve.Permissions result or (as
-// this package's tests do for gaps pvemock can't fill, see doc.go) directly
-// from a fixture's flat UserSpec.Privileges list.
+// whether the caller built it from a live pve.Permissions result
+// (BuildCapabilities) or directly from a flat privilege-name list
+// (newPrivilegeSet, as this package's mapping-table unit test does).
 type privilegeSet map[string]bool
 
 func (p privilegeSet) has(priv string) bool { return p != nil && (p["*"] || p[priv]) }
@@ -177,28 +177,6 @@ func BuildCapabilities(perms pve.Permissions, nodes []string) map[string]Capabil
 			}
 		}
 		out[node] = DeriveCapabilities(scoped)
-	}
-	return out
-}
-
-// PrivilegesFromFixtureList builds the same per-node Capabilities map
-// BuildCapabilities would, directly from a flat privilege list (rather than
-// a path-scoped pve.Permissions result). It is exported for use by this
-// package's own pvemock-backed integration tests, which stand in for the
-// live GET /access/permissions call that internal/pvemock does not
-// implement (see doc.go): the mock's fixture-defined UserSpec.Privileges is
-// exactly such a flat list, so tests read it via pvemock.LoadFixture (an
-// already-exported helper) and pass it through here to get the
-// capabilities a real permissions-derivation pipeline would have produced
-// for that same flat grant.
-func PrivilegesFromFixtureList(privs []string, nodes []string) map[string]Capabilities {
-	set := newPrivilegeSet(privs)
-	if len(nodes) == 0 {
-		return map[string]Capabilities{"": DeriveCapabilities(set)}
-	}
-	out := make(map[string]Capabilities, len(nodes))
-	for _, node := range nodes {
-		out[node] = DeriveCapabilities(set)
 	}
 	return out
 }

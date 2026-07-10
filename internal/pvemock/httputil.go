@@ -23,6 +23,7 @@ func decodeRequest(r *http.Request, dst any) error {
 			v.Username = r.PostForm.Get("username")
 			v.Password = r.PostForm.Get("password")
 			v.Realm = r.PostForm.Get("realm")
+			v.OTP = r.PostForm.Get("otp")
 			return nil
 		default:
 			return jsonFromForm(r, dst)

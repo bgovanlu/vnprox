@@ -19,12 +19,25 @@ users:
   - userid: root@pam
     password: vnprox-mock
     privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 4f9d21c7-3a80-4b6e-b1d2-95c8e7a40f13
   - userid: netops@pve
     password: netops
     privileges: ["Sys.Audit", "Sys.Modify", "SDN.Audit", "SDN.Allocate", "VM.Audit"]
   - userid: auditor@pve
     password: readonly
     privileges: ["Sys.Audit", "VM.Audit", "SDN.Audit"]
+  # The two remaining capability-matrix personas (T-105 acceptance
+  # criterion 3, docs/security.md's mapping table in internal/auth/caps.go):
+  # sdn-only holds SDN privileges without Sys.Modify (or even Sys.Audit),
+  # vm-user holds only guest-NIC-editing privileges.
+  - userid: sdn-only@pve
+    password: sdn-only
+    privileges: ["SDN.Audit", "SDN.Allocate"]
+  - userid: vm-user@pve
+    password: vm-user
+    privileges: ["VM.Audit", "VM.Config.Network"]
 
 nodes:
   pve1:
@@ -255,6 +268,17 @@ sdn:
       vnet: vnet200
       cidr: 10.200.0.0/24
       gateway: 10.200.0.1
+  # PVE's built-in IPAM tracking the two SDN subnets: the gateway record
+  # each subnet gets automatically, plus one guest allocation per VNet
+  # (app01/cache01 attach with tag 100 = vnet100's VLAN; MACs match their
+  # net0 NICs above).
+  ipams:
+    - id: pve
+      type: pve
+      entries:
+        - {zone: vlanz, vnet: vnet100, subnet: 10.100.0.0/24, ip: 10.100.0.1, gateway: true}
+        - {zone: vlanz, vnet: vnet100, subnet: 10.100.0.0/24, ip: 10.100.0.50, mac: "BC:24:11:AA:02:C8", hostname: app01, vmid: 200}
+        - {zone: vlanz, vnet: vnet200, subnet: 10.200.0.0/24, ip: 10.200.0.1, gateway: true}
 
 firewall:
   cluster:

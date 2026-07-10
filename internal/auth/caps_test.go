@@ -10,16 +10,12 @@ import (
 // TestDeriveCapabilities_MappingTable is the documented source-of-truth
 // test for caps.go's mapping table (docs/security.md: "internal/auth/caps.go
 // is the single source of truth"). Each case's privilege list is copied
-// verbatim from testdata/clusters/*.yaml's fixture users (T-105 acceptance
-// criterion 3: "fixture users (root, auditor, sdn-only, vm-user) yield
-// exactly the documented caps") — internal/pvemock's UserSpec.Privileges
-// for root@pam, auditor@pve, and netops@pve (the fixtures' closest
-// approximation of an "sdn-only" user: SDN.Allocate plus the Sys.Modify a
-// real netops role would also need). There is no dedicated "vm-user"
-// fixture (VM.Config.Network in isolation) in any testdata/clusters/*.yaml
-// fixture today; the synthetic guestNet-only case below covers that
-// mapping rule directly instead of inventing a fixture that doesn't exist
-// (see this package's doc.go / the completion report for this gap).
+// verbatim from testdata/clusters/*.yaml's fixture users, covering all
+// four T-105 acceptance-criterion-3 personas (root, auditor, sdn-only,
+// vm-user) plus netops. The same four personas are also driven through a
+// real pvemock login end-to-end by
+// TestIntegration_CapabilityMatrixAgainstMock (integration_test.go); this
+// unit test pins the pure mapping in isolation.
 func TestDeriveCapabilities_MappingTable(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -57,8 +53,15 @@ func TestDeriveCapabilities_MappingTable(t *testing.T) {
 			},
 		},
 		{
-			name:  "guestNet-only synthetic VM.Config.Network grant (no fixture user has exactly this; see doc comment)",
-			privs: []string{"VM.Config.Network"},
+			name:  "sdn-only@pve (three-node-vlan.yaml)",
+			privs: []string{"SDN.Audit", "SDN.Allocate"},
+			want: Capabilities{
+				SDNRead: true, SDNWrite: true,
+			},
+		},
+		{
+			name:  "vm-user@pve (three-node-vlan.yaml)",
+			privs: []string{"VM.Audit", "VM.Config.Network"},
 			want: Capabilities{
 				GuestNet: true,
 			},

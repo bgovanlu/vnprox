@@ -53,74 +53,29 @@ func newMockServer(t *testing.T, fixturePath string) (*httptest.Server, *pvemock
 	return ts, f
 }
 
-// fixturePermissionsIdentity decorates a real PVEIdentity (its Login/Renew/
-// ClusterNodes talk to a live pvemock server over real HTTP) with a
-// Permissions method sourced directly from the fixture's flat
-// UserSpec.Privileges list, standing in for the GET /access/permissions
-// endpoint internal/pvemock does not implement — see internal/auth's
-// doc.go for why, and T-105's completion report for the full reasoning.
-type fixturePermissionsIdentity struct {
-	auth.PVEIdentity
-	privs []string
-}
-
-func (f fixturePermissionsIdentity) Permissions(context.Context) (pve.Permissions, error) {
-	m := make(map[string]bool, len(f.privs))
-	for _, p := range f.privs {
-		m[p] = true
-	}
-	return pve.Permissions{"/": m}, nil
-}
-
 // fixtureIdentityFactory builds the real production ticket-mode identity
-// factory (every Login/Renew/ClusterNodes call is real HTTP against ts)
-// and wraps it so Permissions comes from the fixture instead of a live
-// mock endpoint that doesn't exist.
-func fixtureIdentityFactory(ts *httptest.Server, f *pvemock.Fixture, renewAfter time.Duration) auth.IdentityFactory {
-	real := auth.NewClientIdentityFactory(pve.Config{
+// factory against a live pvemock server: every Login/Renew/Permissions/
+// ClusterNodes call is real HTTP against ts, including GET
+// /access/permissions (which internal/pvemock implements by reporting the
+// fixture user's flat privilege list at path "/"). This is the exact
+// production derivation path, mock server aside.
+func fixtureIdentityFactory(ts *httptest.Server, renewAfter time.Duration) auth.IdentityFactory {
+	return auth.NewClientIdentityFactory(pve.Config{
 		APIURL:           ts.URL,
 		HTTPClient:       ts.Client(),
 		TicketRenewAfter: renewAfter,
 	})
-	return func(username, password, realm, otp string) (auth.PVEIdentity, error) {
-		id, err := real(username, password, realm, otp)
-		if err != nil {
-			return nil, err
-		}
-		return fixturePermissionsIdentity{PVEIdentity: id, privs: privilegesForUser(f, username, realm)}, nil
-	}
-}
-
-func privilegesForUser(f *pvemock.Fixture, username, realm string) []string {
-	full := username
-	if realm != "" && !containsAt(username) {
-		full = username + "@" + realm
-	}
-	for _, u := range f.Users {
-		if u.UserID == full {
-			return u.Privileges
-		}
-	}
-	return nil
-}
-
-func containsAt(s string) bool {
-	for _, c := range s {
-		if c == '@' {
-			return true
-		}
-	}
-	return false
 }
 
 // stubIdentity is a PVEIdentity that never touches the network, for tests
 // that only need to exercise this package's own handler/middleware logic
 // (validation, cookies, CSRF, rate limiting) — not internal/pve or
-// internal/pvemock. Its Login checks an expected OTP exactly the way a
-// real PVE realm with a second factor configured would (rejecting at the
-// ticket-login call itself, not at client construction), which is what
-// lets TestHandleLogin_OTPPassthrough exercise the OTP code path honestly
-// per T-105's task card (see internal/auth's doc.go).
+// internal/pvemock. Its Login checks an expected OTP the way a real PVE
+// realm with a second factor configured would (rejecting at the
+// ticket-login call itself, not at client construction), which lets
+// TestHandleLogin_OTPPassthrough unit test the handler's OTP forwarding
+// in isolation; the end-to-end flow against a real mock TOTP user is
+// TestIntegration_TOTPLoginAgainstMock.
 type stubIdentity struct {
 	nodesErr    error
 	renewErr    error

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,11 +31,19 @@ func (s session) hasPrivilege(priv string) bool {
 
 type sessionStore struct {
 	byTicket map[string]*session
-	mu       sync.RWMutex
+	now      func() time.Time
+	// ttl bounds a ticket's server-side validity (real PVE: 2h). Zero
+	// means "never expires" — the default, preserving pre-TTL behavior
+	// for every existing test.
+	ttl time.Duration
+	mu  sync.RWMutex
 }
 
-func newSessionStore() *sessionStore {
-	return &sessionStore{byTicket: make(map[string]*session)}
+func newSessionStore(now func() time.Time) *sessionStore {
+	if now == nil {
+		now = time.Now
+	}
+	return &sessionStore{byTicket: make(map[string]*session), now: now}
 }
 
 func (s *sessionStore) create(userID string, privs []string) *session {
@@ -43,7 +52,7 @@ func (s *sessionStore) create(userID string, privs []string) *session {
 		CSRF:     randHex(16),
 		UserID:   userID,
 		Privs:    append([]string(nil), privs...),
-		IssuedAt: time.Now(),
+		IssuedAt: s.now(),
 	}
 	s.mu.Lock()
 	s.byTicket[sess.Ticket] = sess
@@ -51,11 +60,30 @@ func (s *sessionStore) create(userID string, privs []string) *session {
 	return sess
 }
 
+// lookup resolves a ticket to its session, treating an expired ticket
+// (per ttl) exactly like an unknown one — real PVE rejects both with 401
+// without distinguishing them.
 func (s *sessionStore) lookup(ticket string) (*session, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	sess, ok := s.byTicket[ticket]
-	return sess, ok
+	ttl := s.ttl
+	s.mu.RUnlock()
+	if !ok {
+		return nil, false
+	}
+	if ttl > 0 && s.now().Sub(sess.IssuedAt) > ttl {
+		s.mu.Lock()
+		delete(s.byTicket, ticket)
+		s.mu.Unlock()
+		return nil, false
+	}
+	return sess, true
+}
+
+func (s *sessionStore) setTTL(ttl time.Duration) {
+	s.mu.Lock()
+	s.ttl = ttl
+	s.mu.Unlock()
 }
 
 func randHex(n int) string {
@@ -75,6 +103,7 @@ type ticketRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Realm    string `json:"realm"`
+	OTP      string `json:"otp"`
 }
 
 func (srv *Server) handleTicket(w http.ResponseWriter, r *http.Request) {
@@ -89,11 +118,23 @@ func (srv *Server) handleTicket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, ok := srv.findUser(username)
-	if !ok || user.Password != req.Password {
+	if !ok || !srv.passwordAccepted(user, req.Password) {
 		// Real PVE returns 401 with an empty data payload on bad
 		// credentials (never distinguishing "no such user" from "wrong
 		// password").
 		writeError(w, http.StatusUnauthorized, "authentication failure")
+		return
+	}
+
+	// TOTP: a user with a fixture-declared static code requires the exact
+	// "otp" value on login. Real PVE's modern flow is a two-step
+	// ticket-challenge (login returns a NeedTFA half-ticket, the client
+	// answers with the code); the mock implements the simple single-step
+	// variant — missing/wrong otp is a plain 401 — which is what vnprox's
+	// single-shot OTP passthrough (docs/security.md) actually exercises.
+	// The full challenge flow needs validation against real PVE.
+	if user.TOTP != "" && req.OTP != user.TOTP {
+		writeError(w, http.StatusUnauthorized, "authentication failure: missing or invalid second factor")
 		return
 	}
 
@@ -104,6 +145,27 @@ func (srv *Server) handleTicket(w http.ResponseWriter, r *http.Request) {
 		"CSRFPreventionToken": sess.CSRF,
 		"username":            sess.UserID,
 	})
+}
+
+// passwordAccepted implements the two password forms real PVE accepts on
+// POST /access/ticket: the user's actual password, or a still-valid,
+// previously issued ticket belonging to that same user ("ticket as
+// password" — how PVE clients renew a ticket without retaining the
+// plaintext password). An expired or foreign ticket is rejected like any
+// wrong password.
+func (srv *Server) passwordAccepted(user UserSpec, password string) bool {
+	if password == "" {
+		return false
+	}
+	if password == user.Password {
+		return true
+	}
+	if strings.HasPrefix(password, "PVE:") {
+		if sess, ok := srv.state.sessions.lookup(password); ok && sess.UserID == user.UserID {
+			return true
+		}
+	}
+	return false
 }
 
 func containsAt(s string) bool {
@@ -125,18 +187,26 @@ func (srv *Server) findUser(userID string) (UserSpec, bool) {
 }
 
 // authenticate extracts the session from a request the way real pveproxy
-// does: a ticket via the PVEAuthCookie cookie (or Authorization: PVEAPIToken
-// is out of scope for the mock — session-ticket auth only, matching what
-// vnprox's client uses), and for mutating methods, a matching
-// CSRFPreventionToken header.
+// does, supporting both auth modes vnprox's client uses:
+//
+//   - API token: an "Authorization: PVEAPIToken=user@realm!tokenid=secret"
+//     header, checked against the fixture users' declared tokens. Token
+//     requests carry no cookie and need no CSRF header (matching real
+//     PVE, where CSRF protection only applies to cookie-based sessions).
+//   - Ticket: the PVEAuthCookie cookie, plus a matching
+//     CSRFPreventionToken header on mutating methods.
 func (srv *Server) authenticate(r *http.Request) (*session, error) {
+	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "PVEAPIToken=") {
+		return srv.authenticateToken(strings.TrimPrefix(auth, "PVEAPIToken="))
+	}
+
 	cookie, err := r.Cookie("PVEAuthCookie")
 	if err != nil || cookie.Value == "" {
 		return nil, fmt.Errorf("%w: missing PVEAuthCookie", ErrAuthFailed)
 	}
 	sess, ok := srv.state.sessions.lookup(cookie.Value)
 	if !ok {
-		return nil, fmt.Errorf("%w: unknown ticket", ErrAuthFailed)
+		return nil, fmt.Errorf("%w: unknown or expired ticket", ErrAuthFailed)
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		if r.Header.Get("CSRFPreventionToken") != sess.CSRF {
@@ -144,6 +214,35 @@ func (srv *Server) authenticate(r *http.Request) (*session, error) {
 		}
 	}
 	return sess, nil
+}
+
+// authenticateToken resolves a "user@realm!tokenid=secret" API-token value
+// to an ephemeral session carrying the owning user's privileges. Real
+// PVE's token privilege separation (a token restricted to a subset of its
+// owner's privileges) is out of scope for the mock — see TokenSpec.
+func (srv *Server) authenticateToken(value string) (*session, error) {
+	userID, rest, ok := strings.Cut(value, "!")
+	if !ok {
+		return nil, fmt.Errorf("%w: malformed PVEAPIToken value", ErrAuthFailed)
+	}
+	tokenID, secret, ok := strings.Cut(rest, "=")
+	if !ok {
+		return nil, fmt.Errorf("%w: malformed PVEAPIToken value", ErrAuthFailed)
+	}
+	user, found := srv.findUser(userID)
+	if !found {
+		return nil, fmt.Errorf("%w: invalid API token", ErrAuthFailed)
+	}
+	for _, tok := range user.Tokens {
+		if tok.TokenID == tokenID && tok.Secret == secret {
+			return &session{
+				UserID:   user.UserID + "!" + tokenID,
+				Privs:    append([]string(nil), user.Privileges...),
+				IssuedAt: srv.state.clock(),
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: invalid API token", ErrAuthFailed)
 }
 
 // requirePrivilege wraps a handler, authenticating the request and checking
@@ -162,4 +261,27 @@ func (srv *Server) requirePrivilege(priv string, next http.HandlerFunc) http.Han
 		}
 		next(w, r)
 	}
+}
+
+// handleAccessPermissions implements GET /access/permissions: the
+// effective, resolved ACL privilege tree for the calling identity, shaped
+// {path: {privilege: 0|1}}. The mock's fixture users hold a single flat,
+// non-path-scoped privilege list, so the whole grant is reported at the
+// root path "/" — which PVE ACL inheritance (and internal/auth's
+// BuildCapabilities) treats as applying everywhere. The fixture list is
+// echoed verbatim, including a literal "*" wildcard where a fixture uses
+// one; real PVE enumerates concrete privilege names instead, so the exact
+// response shape (wildcard vs. enumeration, path granularity) still needs
+// validation against real PVE.
+func (srv *Server) handleAccessPermissions(w http.ResponseWriter, r *http.Request) {
+	sess, err := srv.authenticate(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	privs := make(map[string]int, len(sess.Privs))
+	for _, p := range sess.Privs {
+		privs[p] = 1
+	}
+	writeData(w, http.StatusOK, map[string]map[string]int{"/": privs})
 }

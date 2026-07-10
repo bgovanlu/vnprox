@@ -144,6 +144,16 @@ sdn:
       snat: true
       dhcp_range_start: 192.168.50.100
       dhcp_range_end: 192.168.50.200
+  # PVE built-in IPAM for the DHCP-managed tenant subnet: the anycast
+  # gateway record plus the two tester guests' DHCP allocations (both
+  # attach to vnet-tenant-a above; evpn-tester-a's MAC matches its net0).
+  ipams:
+    - id: pve
+      type: pve
+      entries:
+        - {zone: evpnz, vnet: vnet-tenant-a, subnet: 192.168.50.0/24, ip: 192.168.50.1, gateway: true}
+        - {zone: evpnz, vnet: vnet-tenant-a, subnet: 192.168.50.0/24, ip: 192.168.50.100, mac: "BC:24:11:AA:03:2C", hostname: evpn-tester-a, vmid: 300}
+        - {zone: evpnz, vnet: vnet-tenant-a, subnet: 192.168.50.0/24, ip: 192.168.50.101, hostname: evpn-tester-b, vmid: 301}
 
 firewall:
   cluster:

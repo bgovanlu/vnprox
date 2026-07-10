@@ -8,16 +8,13 @@ import "context"
 // capability derivation (docs/security.md "vnprox-enforced" authorization
 // layer, internal/auth/caps.go).
 //
-// internal/pvemock (T-004) does not implement this endpoint: its
-// fixture-defined UserSpec.Privileges is a single flat, non-path-scoped
-// list (checked via session.hasPrivilege, no path awareness at all) rather
-// than real PVE's per-path ACL tree, and its router has no
-// "/access/permissions" route at all. Calling this method against the mock
-// therefore fails with a 404 (*ErrPVERequest). This method is still
-// implemented against the documented real-PVE contract — see
-// internal/auth's package doc and T-105's completion report for how its
-// tests work around the gap without inventing mock behavior or modifying
-// internal/pvemock.
+// internal/pvemock implements this endpoint by reporting the fixture
+// user's flat privilege list at the root path "/" (including a literal
+// "*" wildcard where a fixture uses one). Real PVE returns a per-path ACL
+// tree and enumerates concrete privilege names rather than a wildcard, so
+// while this method is written and tested against the documented
+// contract, the exact real-PVE response shape (path granularity, wildcard
+// handling) still needs hardware validation.
 type Permissions map[string]map[string]bool
 
 // Permissions calls GET /access/permissions: the effective, resolved ACL

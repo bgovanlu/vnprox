@@ -31,10 +31,32 @@ type ClusterNodeSpec struct {
 // UserSpec is a fixture-defined PVE user with a plaintext password (fixture
 // only — never a real auth model) and a PVE privilege set. "*" grants every
 // privilege the mock understands.
+//
+// TOTP, when non-empty, marks the user as requiring a second factor: the
+// mock's POST /access/ticket rejects a login for this user unless the
+// request's "otp" field equals this exact static code. Real PVE uses a
+// time-based code (and, on newer versions, a two-step ticket-challenge
+// flow); a static expected code is deliberately all the mock implements —
+// enough to integration-test the client-side OTP passthrough.
 type UserSpec struct {
-	UserID     string   `yaml:"userid"` // e.g. "root@pam"
-	Password   string   `yaml:"password"`
-	Privileges []string `yaml:"privileges"`
+	UserID     string      `yaml:"userid"` // e.g. "root@pam"
+	Password   string      `yaml:"password"`
+	TOTP       string      `yaml:"totp,omitempty"`
+	Privileges []string    `yaml:"privileges"`
+	Tokens     []TokenSpec `yaml:"tokens,omitempty"`
+}
+
+// TokenSpec is a fixture-defined PVE API token owned by a UserSpec,
+// authenticating via "Authorization: PVEAPIToken=user@realm!tokenid=secret".
+// The token carries the owning user's full privilege set: real PVE's
+// privilege separation ("privsep", where a token can hold a *subset* of its
+// owner's privileges) is intentionally out of scope for the mock — vnprox's
+// documented daemon token (vnprox@pve!daemon, docs/security.md) is created
+// with exactly the privileges it needs, so owner-equals-token is a faithful
+// enough model for testing.
+type TokenSpec struct {
+	TokenID string `yaml:"tokenid"` // e.g. "daemon"
+	Secret  string `yaml:"secret"`  // the UUID-ish value after "="
 }
 
 // HasPrivilege reports whether the user holds priv, honoring the "*"
@@ -131,6 +153,32 @@ type SDNSpec struct {
 	Zones   []SDNZoneSpec   `yaml:"zones"`
 	Vnets   []SDNVnetSpec   `yaml:"vnets"`
 	Subnets []SDNSubnetSpec `yaml:"subnets"`
+	Ipams   []SDNIpamSpec   `yaml:"ipams,omitempty"`
+}
+
+// SDNIpamSpec is one configured IPAM plugin instance, as listed by
+// GET /cluster/sdn/ipams (real PVE ships a built-in "pve" IPAM and can be
+// configured with external NetBox/phpIPAM plugins). Entries is the mock's
+// backing data for GET /cluster/sdn/ipams/{ipam}/status — the current
+// allocation set that endpoint reports.
+type SDNIpamSpec struct {
+	ID      string          `yaml:"id" json:"ipam"`
+	Type    string          `yaml:"type" json:"type"` // pve|netbox|phpipam
+	URL     string          `yaml:"url,omitempty" json:"url,omitempty"`
+	Entries []IPAMEntrySpec `yaml:"entries" json:"-"`
+}
+
+// IPAMEntrySpec is one IPAM allocation row, as reported by
+// GET /cluster/sdn/ipams/{ipam}/status.
+type IPAMEntrySpec struct {
+	Zone     string `yaml:"zone" json:"zone"`
+	Vnet     string `yaml:"vnet" json:"vnet"`
+	Subnet   string `yaml:"subnet" json:"subnet"` // CIDR, e.g. "10.100.0.0/24"
+	IP       string `yaml:"ip" json:"ip"`
+	MAC      string `yaml:"mac,omitempty" json:"mac,omitempty"`
+	Hostname string `yaml:"hostname,omitempty" json:"hostname,omitempty"`
+	VMID     int    `yaml:"vmid,omitempty" json:"vmid,omitempty"`
+	Gateway  bool   `yaml:"gateway,omitempty" json:"-"` // rendered as 0/1 on the wire, see ipam.go
 }
 
 // PendingState mirrors the "state" PVE reports for SDN/network objects
@@ -255,6 +303,16 @@ type MockOptions struct {
 	// TaskLatencyMS delays task completion (simulates slow ifreload/SDN
 	// apply/etc.). Zero means "complete immediately".
 	TaskLatencyMS int `yaml:"task_latency_ms,omitempty"`
+
+	// TicketTTLMS, when non-zero, makes tickets issued by POST
+	// /access/ticket expire that many milliseconds after issuance —
+	// mirroring real PVE's 2h ticket lifetime, on a test-friendly
+	// timescale. An expired ticket is rejected with 401 exactly like an
+	// unknown one. Zero (the default) means tickets never expire,
+	// preserving pre-TTL mock behavior. Fixture-level only (not per-node);
+	// tests can also set it via the WithTicketTTL server option, which
+	// takes precedence.
+	TicketTTLMS int `yaml:"ticket_ttl_ms,omitempty"`
 
 	// NetworkReloadFail, when true, makes the next (and every subsequent,
 	// until cleared) `PUT /nodes/{node}/network` reload task fail.

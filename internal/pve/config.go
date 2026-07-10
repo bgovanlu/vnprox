@@ -100,8 +100,11 @@ type Config struct {
 	Password string
 	Realm    string
 	// OTP is a one-time TOTP/U2F code passed through to PVE on the
-	// initial login only (docs/security.md "OTP/second factor
-	// passthrough"); it is never resent on ticket renewal.
+	// initial login (docs/security.md "OTP/second factor passthrough").
+	// It is not sent on ticket-as-password renewals (the normal renewal
+	// path); it is only ever replayed on the rare plaintext-password
+	// fallback, where a real time-based code would likely be stale anyway
+	// — see ticketAuth in auth.go.
 	OTP string
 
 	// --- AuthAPIToken fields ---

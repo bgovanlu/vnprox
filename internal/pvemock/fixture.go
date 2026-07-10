@@ -97,6 +97,20 @@ func (f *Fixture) Validate() error {
 		if len(u.Privileges) == 0 {
 			fail("users[%q]: privileges must not be empty (use [\"Sys.Audit\"] at minimum)", u.UserID)
 		}
+		seenTokens := map[string]bool{}
+		for _, tok := range u.Tokens {
+			if tok.TokenID == "" {
+				fail("users[%q].tokens: entry with empty tokenid", u.UserID)
+				continue
+			}
+			if seenTokens[tok.TokenID] {
+				fail("users[%q].tokens: duplicate tokenid %q", u.UserID, tok.TokenID)
+			}
+			seenTokens[tok.TokenID] = true
+			if tok.Secret == "" {
+				fail("users[%q].tokens[%q]: secret must not be empty", u.UserID, tok.TokenID)
+			}
+		}
 	}
 
 	for nodeName, ns := range f.Nodes {
@@ -160,6 +174,7 @@ func (f *Fixture) Validate() error {
 			fail("sdn.vnets[%q]: references unknown zone %q", v.ID, v.Zone)
 		}
 	}
+	subnetCIDRs := map[string]bool{}
 	for _, s := range f.SDN.Subnets {
 		if s.ID == "" {
 			fail("sdn.subnets: entry with empty id")
@@ -167,6 +182,39 @@ func (f *Fixture) Validate() error {
 		}
 		if s.Vnet == "" || !vnetIDs[s.Vnet] {
 			fail("sdn.subnets[%q]: references unknown vnet %q", s.ID, s.Vnet)
+		}
+		subnetCIDRs[s.CIDR] = true
+	}
+
+	ipamIDs := map[string]bool{}
+	for _, ip := range f.SDN.Ipams {
+		if ip.ID == "" {
+			fail("sdn.ipams: entry with empty id")
+			continue
+		}
+		if ipamIDs[ip.ID] {
+			fail("sdn.ipams: duplicate ipam id %q", ip.ID)
+		}
+		ipamIDs[ip.ID] = true
+		if ip.Type == "" {
+			fail("sdn.ipams[%q]: type is required (pve|netbox|phpipam)", ip.ID)
+		}
+		for i, e := range ip.Entries {
+			if e.IP == "" {
+				fail("sdn.ipams[%q].entries[%d]: ip is required", ip.ID, i)
+			}
+			// Entries pointing at zone/vnet/subnet names that were never
+			// defined are structural fixture bugs (dangling references),
+			// per this function's doc comment.
+			if e.Zone != "" && !zoneIDs[e.Zone] {
+				fail("sdn.ipams[%q].entries[%d]: references unknown zone %q", ip.ID, i, e.Zone)
+			}
+			if e.Vnet != "" && !vnetIDs[e.Vnet] {
+				fail("sdn.ipams[%q].entries[%d]: references unknown vnet %q", ip.ID, i, e.Vnet)
+			}
+			if e.Subnet != "" && !subnetCIDRs[e.Subnet] {
+				fail("sdn.ipams[%q].entries[%d]: references unknown subnet CIDR %q", ip.ID, i, e.Subnet)
+			}
 		}
 	}
 

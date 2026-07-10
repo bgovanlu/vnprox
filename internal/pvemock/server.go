@@ -9,6 +9,7 @@ package pvemock
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -53,6 +54,20 @@ func WithLogger(l *slog.Logger) Option {
 	return func(s *Server) { s.log = l }
 }
 
+// WithTicketTTL makes tickets issued by POST /access/ticket expire after
+// ttl, overriding the fixture's mock.ticket_ttl_ms (if any). Zero or
+// negative restores the default "never expires" behavior. Expired tickets
+// are rejected with 401 exactly like unknown ones, mirroring real PVE's 2h
+// ticket lifetime on a test-friendly timescale.
+func WithTicketTTL(ttl time.Duration) Option {
+	return func(s *Server) {
+		if ttl < 0 {
+			ttl = 0
+		}
+		s.state.sessions.setTTL(ttl)
+	}
+}
+
 // ServeHTTP implements http.Handler.
 func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	srv.router.ServeHTTP(w, r)
@@ -69,6 +84,9 @@ func (srv *Server) buildRouter() chi.Router {
 
 	r.Route("/api2/json", func(api chi.Router) {
 		api.Post("/access/ticket", srv.handleTicket)
+		// Any authenticated identity may read its own effective
+		// permission set (no specific privilege required), like real PVE.
+		api.Get("/access/permissions", srv.handleAccessPermissions)
 
 		api.Get("/cluster/status", srv.requirePrivilege(PrivSysAudit, srv.handleClusterStatus))
 		api.Get("/cluster/resources", srv.requirePrivilege(PrivSysAudit, srv.handleClusterResources))
@@ -90,6 +108,7 @@ func (srv *Server) buildRouter() chi.Router {
 		api.Get("/nodes/{node}/tasks/{upid}/log", srv.requirePrivilege(PrivSysAudit, srv.handleTaskLog))
 
 		srv.mountSDN(api)
+		srv.mountIPAM(api)
 		srv.mountFirewall(api)
 	})
 

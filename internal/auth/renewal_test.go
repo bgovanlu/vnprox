@@ -3,6 +3,7 @@ package auth_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -62,7 +63,7 @@ func TestRenewalLoop_RenewsTicketBeforeShortTTLExpiry(t *testing.T) {
 	svc, err := auth.NewService(auth.Config{
 		Sessions:                 sessions,
 		Audit:                    audit,
-		NewIdentity:              fixtureIdentityFactory(ts, f, 20*time.Millisecond),
+		NewIdentity:              fixtureIdentityFactory(ts, 20*time.Millisecond),
 		TicketRenewCheckInterval: 5 * time.Millisecond,
 	})
 	if err != nil {
@@ -186,16 +187,125 @@ func TestRenewalLoop_FailedRenewalInvalidatesSessionCleanly(t *testing.T) {
 	}
 }
 
-// controllableIdentity is a PVEIdentity whose Renew behavior can be
-// flipped to failing mid-test, to exercise the renewal loop's failure
-// path deterministically (no need to actually break a real mock server
-// mid-test, which would race with other tests sharing it).
+// TestRenewalLoop_RederivesCapabilitiesOnInterval is F-11 / the
+// "re-derived hourly" half of T-105's capability requirement
+// (docs/security.md), on a short CapRefreshInterval: while a session is
+// live, the renewal loop must re-derive its capabilities from a fresh
+// Permissions() result — a privilege granted after login shows up on
+// /auth/me without re-logging-in — and a derivation *failure* must keep
+// the previous capabilities (and the session itself) intact rather than
+// wiping them.
+func TestRenewalLoop_RederivesCapabilitiesOnInterval(t *testing.T) {
+	sessions, audit, _ := newTestStore(t)
+
+	id := &controllableIdentity{
+		ticket: "tkt-1", csrf: "csrf-1",
+		perms: pve.Permissions{"/": {"Sys.Audit": true}},
+	}
+	factory := func(_, _, _, _ string) (auth.PVEIdentity, error) { return id, nil }
+
+	svc, err := auth.NewService(auth.Config{
+		Sessions:                 sessions,
+		Audit:                    audit,
+		NewIdentity:              factory,
+		TicketRenewCheckInterval: 5 * time.Millisecond,
+		CapRefreshInterval:       10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("auth.NewService: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Route("/api/v1", func(r chi.Router) { svc.MountRoutes(r) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	loopDone := make(chan error, 1)
+	go func() { loopDone <- svc.RunRenewalLoop(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		<-loopDone
+	})
+
+	sessionID, _ := loginViaHandler(t, r, "someone", "pw", "pam")
+
+	auditOnly := auth.Capabilities{NetRead: true, FWRead: true, Audit: true}
+	if got := meCaps(t, r, sessionID)[""]; got != auditOnly {
+		t.Fatalf("caps at login = %+v, want %+v", got, auditOnly)
+	}
+
+	// Grant SDN.Audit after login: the loop must pick it up within a few
+	// refresh intervals.
+	id.setPerms(pve.Permissions{"/": {"Sys.Audit": true, "SDN.Audit": true}}, nil)
+	withSDN := auth.Capabilities{NetRead: true, SDNRead: true, FWRead: true, Audit: true}
+	deadline := time.Now().Add(2 * time.Second)
+	for meCaps(t, r, sessionID)[""] != withSDN && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := meCaps(t, r, sessionID)[""]; got != withSDN {
+		t.Fatalf("caps after re-derivation = %+v, want %+v", got, withSDN)
+	}
+
+	// Now make derivation fail: the previous capabilities must survive
+	// (fail-open to the last good set, never wiped) and the session must
+	// stay valid across several refresh intervals.
+	id.setPerms(nil, errors.New("simulated: GET /access/permissions failed"))
+	time.Sleep(50 * time.Millisecond) // several ticks past CapRefreshInterval
+	if got := meCaps(t, r, sessionID)[""]; got != withSDN {
+		t.Fatalf("caps after failed re-derivation = %+v, want previous %+v kept", got, withSDN)
+	}
+
+	// And once derivation recovers with a *reduced* grant, the loop must
+	// converge to it (proving the keep-old behavior wasn't "never update
+	// again").
+	id.setPerms(pve.Permissions{"/": {"Sys.Audit": true}}, nil)
+	deadline = time.Now().Add(2 * time.Second)
+	for meCaps(t, r, sessionID)[""] != auditOnly && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := meCaps(t, r, sessionID)[""]; got != auditOnly {
+		t.Fatalf("caps after recovery = %+v, want %+v", got, auditOnly)
+	}
+}
+
+// meCaps fetches GET /auth/me for sessionID and returns the capability
+// map, failing the test on any non-200.
+func meCaps(t *testing.T, r http.Handler, sessionID string) map[string]auth.Capabilities {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionID})
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /auth/me status = %d, want 200 (body: %s)", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Caps map[string]auth.Capabilities `json:"caps"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decoding /auth/me response: %v", err)
+	}
+	return body.Caps
+}
+
+// controllableIdentity is a PVEIdentity whose Renew/Permissions behavior
+// can be flipped mid-test (failing renewals, changed or failing
+// permission sets), to exercise the renewal loop's failure and
+// re-derivation paths deterministically (no need to actually break a real
+// mock server mid-test, which would race with other tests sharing it).
 type controllableIdentity struct {
 	renewErr error
+	permsErr error
 	perms    pve.Permissions
 	ticket   string
 	csrf     string
 	mu       sync.Mutex
+}
+
+func (c *controllableIdentity) setPerms(p pve.Permissions, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.perms = p
+	c.permsErr = err
 }
 
 func (c *controllableIdentity) Login(context.Context) (string, string, error) {
@@ -216,6 +326,9 @@ func (c *controllableIdentity) Renew(context.Context) (string, string, error) {
 func (c *controllableIdentity) Permissions(context.Context) (pve.Permissions, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.permsErr != nil {
+		return nil, c.permsErr
+	}
 	return c.perms, nil
 }
 
