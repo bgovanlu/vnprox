@@ -36,6 +36,10 @@ deb:
 	@echo ">> packaging: building vnproxd and vnproxctl ($(ARCH))"
 	cd $(ROOT_DIR) && GOARCH=$(ARCH) $(GO) build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(PKG_ROOT)/usr/bin/vnproxd ./cmd/vnproxd
 	cd $(ROOT_DIR) && GOARCH=$(ARCH) $(GO) build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(PKG_ROOT)/usr/bin/vnproxctl ./cmd/vnproxctl
+	# `go build -o` inherits the host umask (often 0775); Debian policy wants
+	# root-owned /usr/bin binaries to be 0755 (dpkg-deb --root-owner-group
+	# fixes ownership but not mode).
+	chmod 0755 $(PKG_ROOT)/usr/bin/vnproxd $(PKG_ROOT)/usr/bin/vnproxctl
 
 	install -m 0755 bin/vnprox-setup $(PKG_ROOT)/usr/bin/vnprox-setup
 	install -m 0644 systemd/vnprox.service $(PKG_ROOT)/lib/systemd/system/vnprox.service

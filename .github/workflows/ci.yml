@@ -23,6 +23,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       - name: make check
         run: make check
@@ -45,3 +47,58 @@ jobs:
 
       - name: Cross-compile for linux/arm64
         run: GOOS=linux GOARCH=arm64 go build ./...
+
+  fuzz:
+    # Runs the interfaces(5) parser fuzzer for the 60s T-102's acceptance
+    # criteria require (accept => byte-identical render; reject => typed
+    # *ParseError; never panic). A separate job so the minute of fuzzing
+    # runs in parallel with `check` instead of stretching its critical path.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Fuzz the interfaces(5) parser
+        run: go test -run='^$' -fuzz=FuzzParse -fuzztime=60s ./internal/host/
+
+  package:
+    # Production build + .deb artifact per docs/development.md ("frontend
+    # build, `make deb` artifact upload"). `make build` exercises the real
+    # `npm ci && npm run build` production path (make check only runs
+    # vitest/eslint/tsc) and `make deb` packages the result.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: make build
+        run: make build
+
+      - name: make deb
+        run: make deb
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnprox-deb
+          path: dist/*.deb
+          if-no-files-found: error

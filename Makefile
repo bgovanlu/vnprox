@@ -46,8 +46,9 @@ build: ## vnproxd binary with embedded SPA (runs web build first)
 
 dev: ## backend against pvemock + Vite dev server, hot reload
 	@if [ -n "$(WEB_READY)" ] && [ -n "$(DAEMON_READY)" ] && [ -n "$(MOCKPVE_READY)" ]; then \
-		echo ">> dev: starting mock PVE, vnproxd, and the Vite dev server"; \
+		echo ">> dev: starting mock PVE ($(MOCKPVE_FIXTURE)), vnproxd, and the Vite dev server"; \
 		trap 'kill 0' EXIT; \
+		( $(GO) run ./cmd/pvemock --addr $(MOCKPVE_ADDR) --fixture $(MOCKPVE_FIXTURE) & ) ; \
 		( $(GO) run ./cmd/vnproxd --config testdata/dev.toml & ) ; \
 		( cd $(WEB_DIR) && npm run dev ) ; \
 	else \

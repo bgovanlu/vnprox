@@ -24,6 +24,13 @@ token_file = "/etc/vnprox/keys/pve-token"
 [safety]
 allow_dangerous_ops = false
 
+# vnprox's own app-owned state (sessions, changesets, snapshots, audit,
+# layouts) and the session-secret encryption key. Values below are the
+# built-in defaults (docs/deployment.md).
+[storage]
+db_path = "/var/lib/vnprox/vnprox.db"
+session_key_file = "/etc/vnprox/keys/session.key"
+
 [collect]
 pve_interval = "10s"
 host_interval = "5s"
