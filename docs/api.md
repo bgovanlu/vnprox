@@ -22,11 +22,35 @@ Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contra
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/topology` | full projected topology: `{nodes:[...], edges:[...], layers, generatedAt}` with optional `?layers=phys,l2,sdn,guest&node=<name>&vlan=<vid>` filters |
-| GET | `/inventory/{ref}` | full detail for one entity, including raw source (interfaces stanza / PVE API object) |
+| GET | `/topology` | full projected topology: `{nodes:[...], edges:[...], layers, generatedAt, staleness?}` with optional `?layers=phys,l2,sdn,guest&node=<name>&vlan=<vid>` filters |
+| GET | `/inventory/{ref}` | full detail for one entity, including raw source (interfaces stanza / PVE API object) — see shape below |
 | GET | `/inventory/search?q=` | fuzzy search across names, MACs, IPs, VMIDs, comments |
 | GET | `/lldp` | all LLDP neighbors cluster-wide (fanned out to peers) |
 | GET | `/drift` | cross-node consistency report: `[{check, severity, nodes, detail}]` |
+
+**`GET /topology` staleness.** The response carries an optional top-level `staleness` object (omitted when the daemon has no collector status, e.g. collectors failed to initialize) describing how fresh the data behind the map is, per collector source — the feature spec's greyed-band + staleness-banner state (docs/features/topology.md §5):
+
+```json
+"staleness": {
+  "stale": false,
+  "sources": [
+    {"name": "pve", "stale": false, "lastSuccess": 1720512345},
+    {"name": "host", "node": "pve1", "stale": false, "lastSuccess": 1720512345},
+    {"name": "lldp", "node": "pve1", "stale": false, "lastSuccess": 1720512345}
+  ]
+}
+```
+
+- `name` is the collector loop: `pve` (all PVE-derived data, cluster-wide), `host` (netlink + interfaces-file data), `lldp`.
+- `node` scopes the source to one cluster node's band (`host`/`lldp` only poll the daemon's local node); absent = cluster-wide.
+- `stale` per source flips true after 3 consecutive poll failures (≈ data 3 poll intervals old); top-level `stale` is true iff any source is stale. `lastSuccess` (unix seconds, omitted if no poll has ever succeeded) is the "data as of" timestamp for the banner; `lastError` (string, present while a source is failing) is the most recent poll error.
+
+**`GET /inventory/{ref}` response shape.** `{ref, kind, node, label, fields, provenance, rawSource?, related, generatedAt}`:
+
+- `fields` — the resolved entity's canonical fields (JSON object).
+- `provenance` — per resolved field: `{"<field>": {"owner": "<source>", "conflicts": [{"source", "value"}]}}` (which source won the merge, and any dissenting values).
+- `rawSource` — the raw source text behind the entity, keyed by contributing source name; omitted when no source retained raw text. Every value is a **string**: for `host-interfaces` the verbatim interfaces(5) stanza (byte-identical to the file); for `pve-network`/`pve-sdn`/`pve-guest`/`pve-firewall`/`pve-cluster` the pretty-printed JSON of the PVE API object; for `host-netlink`/`host-lldp` compact JSON of the observed state. Example: `"rawSource": {"host-interfaces": "auto vmbr0\niface vmbr0 inet static\n...", "pve-network": "{\n  \"iface\": \"vmbr0\", ...\n}"}`.
+- `related` — edges incident to the entity: `[{ref, edgeKind, direction: "from"|"to"}]`.
 
 ## Changesets (the only write path)
 
@@ -88,12 +112,22 @@ Validation finding shape: `{severity: "error"|"warning"|"info", code, message, r
 
 ## WebSocket `/api/ws`
 
-Client subscribes: `{"subscribe": ["topology", "changesets", "metrics:<ref>", "tasks"]}`. Server events:
+One connection multiplexes all topics; every frame (both directions) is a JSON text message.
 
-| Event | Payload |
+**Client → server (subscribe).** The only client message is `{"subscribe": ["topology", "changesets", "metrics:<ref>", "tasks"]}`. Each subscribe message **replaces** the connection's entire topic set (it is not additive); an empty array unsubscribes from everything. Malformed messages are ignored.
+
+**Server → client (events).** Each event is a **flat** JSON object carrying the event name in an `"event"` field with the payload fields alongside it at the top level — there is no nested payload wrapper. Example `topology.delta` push:
+
+```json
+{"event": "topology.delta", "added": [], "updated": ["node/pve1/iface/vmbr0"], "removed": []}
+```
+
+(Producers: `internal/topology/hub.go` `deltaEvent`, `internal/change/service.go` `statusEvent`; consumer: `web/src/api/ws.ts`. All future event producers must keep this envelope.)
+
+| Event | Payload fields (alongside `event`) |
 |---|---|
-| `topology.delta` | `{added, updated, removed: [Ref]}` (client refetches affected) |
-| `changeset.status` | `{id, status, confirmDeadline?}` — drives the confirm countdown UI |
+| `topology.delta` | `{added, updated, removed: [Ref]}` — Refs as strings; client refetches affected |
+| `changeset.status` | `{id, status, confirmDeadline?}` — `confirmDeadline` is unix seconds, omitted unless `awaiting_confirm`; drives the confirm countdown UI |
 | `metrics.sample` | `{ref, at, rates}` |
 | `drift.changed` | `{count}` |
 

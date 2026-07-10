@@ -6,7 +6,7 @@ Standards for all implementation work. `CLAUDE.md` summarizes the rules; this do
 
 | Layer | Choice | Version |
 |---|---|---|
-| Backend | Go | 1.23+ |
+| Backend | Go | 1.25+ (go.mod: `go 1.25.0`; CI pins a newer patch release) |
 | Router | net/http + `chi` | v5 |
 | DB | SQLite via `modernc.org/sqlite` (pure Go, no cgo) | — |
 | Netlink | `github.com/vishvananda/netlink` | — |
@@ -20,6 +20,8 @@ Standards for all implementation work. `CLAUDE.md` summarizes the rules; this do
 | Editor | Monaco (raw interfaces editor, lazy-loaded) | — |
 
 Adding any other dependency requires a justification note in the task report. Prefer stdlib.
+
+Toolchain note: the module requires Go 1.25+ (`go 1.25.0` in go.mod). A host with an older `go` binary still builds, but only via `GOTOOLCHAIN` auto-download of a matching toolchain — which needs network access and therefore fails air-gapped. Install Go 1.25+ natively for offline builds.
 
 ## Repo layout
 
@@ -61,7 +63,7 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
 
 ## CI (GitHub Actions)
 
-`ci.yml`: on PR/push — `make check` matrix (amd64; arm64 build-only), frontend build, `make deb` artifact upload. `release.yml`: on tag — build, sign .deb, publish to the apt repo, GitHub release with changelog. Keep runtimes <10 min; cache Go/npm.
+`ci.yml`: on PR/push — `make check` matrix (amd64; arm64 build-only), a 60s `FuzzParse` run over the interfaces(5) parser (`./internal/host/`), and a package job (`make build` production frontend + `make deb` with the .deb uploaded as an artifact). `release.yml`: on tag — build, sign .deb, publish to the apt repo, GitHub release with changelog. Keep runtimes <10 min; cache Go/npm.
 
 ## Definition of done (every task)
 

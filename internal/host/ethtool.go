@@ -9,12 +9,13 @@ import (
 
 // speedDuplex resolves an interface's link speed (Mbps) and duplex mode.
 //
-// Chosen approach (per T-102's ethtool deliverable: "netlink ethtool ioctl
-// preferred; exec-based ethtool fallback acceptable — document which you
-// chose and why"): this package uses the classic SIOCETHTOOL ioctl
-// (ETHTOOL_GSET) via golang.org/x/sys/unix — see ethtool_linux.go — rather
-// than either the newer ethtool netlink (genl) protocol or shelling out to
-// the `ethtool` binary. Reasons:
+// DEVIATION from the T-102 task card. planning/tasks/phase-1.md asks for
+// "ethtool speed/duplex (netlink ethtool preferred, exec fallback)"; this
+// package instead uses the classic SIOCETHTOOL ioctl (ETHTOOL_GSET) via
+// golang.org/x/sys/unix — see ethtool_linux.go — with a sysfs fallback,
+// implementing neither the card's preferred mechanism (the ethtool netlink
+// genl protocol) nor its stated fallback (exec'ing the `ethtool` binary).
+// The card did not pre-authorize this choice; the reasons for it are:
 //   - It requires no new third-party dependency: golang.org/x/sys is
 //     already in the module graph (transitively, via modernc.org/sqlite),
 //     and github.com/vishvananda/netlink does not implement ethtool at all
