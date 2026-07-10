@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
@@ -77,6 +78,21 @@ func Project(snap inventory.Snapshot, f Filter) Topology {
 
 	edges := buildEdges(snap, byRef, nodeSet, statusByID)
 	edges = append(edges, groupEdges...)
+
+	// T-302: switch merging (spec §2) is purely additive over the existing
+	// per-neighbor lldp-neighbor nodes/lldp-adjacent edges built above —
+	// see switches.go's doc comment.
+	now := f.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	candidateEnts := make(map[inventory.Ref]inventory.Entity, len(candidate))
+	for ref := range candidate {
+		candidateEnts[ref] = byRef[ref]
+	}
+	switchNodes, switchEdges := buildSwitches(candidateEnts, nodeSet, now)
+	nodes = append(nodes, switchNodes...)
+	edges = append(edges, switchEdges...)
 
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
 	sort.Slice(edges, func(i, j int) bool {

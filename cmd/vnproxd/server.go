@@ -181,12 +181,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// T-301: the peer server backs the documented /api/peer/host/* routes
 	// with the real netlink/interfaces(5)/lldpd reader (host.NewReal) for
 	// reads and the same nodeAgent constructed above for writes.
+	//
+	// T-302: the same host.Real also backs the guided-install route
+	// (POST /api/peer/host/lldp/install, docs/features/lldp-discovery.md
+	// §1) via its InstallLLDPD method (host/lldp_install_linux.go).
+	realHost := host.NewReal()
 	peerSrv := peer.NewServer(peer.ServerOptions{
-		Secrets: peerSecrets,
-		Reader:  host.NewReal(),
-		Writer:  nodeAgent,
-		Version: version,
-		Logger:  logger,
+		Secrets:       peerSecrets,
+		Reader:        realHost,
+		Writer:        nodeAgent,
+		LLDPInstaller: realHost,
+		Version:       version,
+		Logger:        logger,
 	})
 
 	handler := api.NewRouter(api.Options{
@@ -196,6 +202,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Auth:        authServiceAdapter{authSvc},
 		Collectors:  collectorHealthAdapter{collector},
 		Topology:    topoSvc,
+		LLDP:        topoSvc,
 		Layouts:     store.NewLayoutRepo(db),
 		Changesets:  changeSvc,
 		Snapshots:   changeSvc,

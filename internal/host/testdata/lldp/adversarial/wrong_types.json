@@ -1,0 +1,1 @@
+{"lldp": [{"interface": [{"name": 12345, "via": ["not","a","string"], "chassis": "not-an-object", "port": {"id": {"type": true, "value": null}, "ttl": {}, "vlan": "garbage"}}]}]}

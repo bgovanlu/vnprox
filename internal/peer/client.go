@@ -285,6 +285,21 @@ func (c *Client) Restore(ctx context.Context, p Peer, node, content string) erro
 	return decodeInto(resp, nil)
 }
 
+// InstallLLDPD asks peer p to install and enable lldpd on its node
+// (docs/features/lldp-discovery.md §1's guided-install flow). confirm must
+// be true or the peer rejects the request with validation_failed.
+func (c *Client) InstallLLDPD(ctx context.Context, p Peer, confirm bool) error {
+	body, err := json.Marshal(installLLDPRequest{Confirm: confirm})
+	if err != nil {
+		return fmt.Errorf("peer: encoding lldp install request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/host/lldp/install", body)
+	if err != nil {
+		return err
+	}
+	return decodeInto(resp, nil)
+}
+
 // Health checks peer p's /api/peer/health.
 func (c *Client) Health(ctx context.Context, p Peer) error {
 	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/health", nil)

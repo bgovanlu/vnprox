@@ -3,6 +3,7 @@ package collect
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
@@ -63,6 +64,16 @@ func (c *Collector) hostPollOnce(ctx context.Context) error {
 // lldpPollOnce polls LLDP neighbor data for the local node into
 // SourceHostLLDP partials. Like hostPollOnce, it is a no-op until the PVE
 // poller has discovered the local node.
+//
+// T-302: a bare inventory.FromLLDP result cannot be handed to ApplyPoll
+// as-is — ApplyPoll's normal per-Source scope reconciliation removes any
+// previously-contributed Ref this poll's entity list omits, which would
+// make a neighbor vanish from the graph the instant a single poll misses it
+// (a transient lldpctl hiccup, or the neighbor's own LLDP TTL lapsing on the
+// wire) instead of greying per docs/features/lldp-discovery.md §3's
+// TTL/10-minute staleness lifecycle. inventory.RetainStaleLLDP folds
+// forward any not-yet-dropped previously-seen neighbors this poll didn't
+// refresh; see its doc comment.
 func (c *Collector) lldpPollOnce(ctx context.Context) error {
 	node := c.getLocalNode()
 	if node == "" {
@@ -73,10 +84,12 @@ func (c *Collector) lldpPollOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("lldp (%s): %w", node, err)
 	}
-	entities, err := inventory.FromLLDP(node, raw)
+	now := time.Now()
+	fresh, err := inventory.FromLLDP(node, raw, now)
 	if err != nil {
 		return fmt.Errorf("parsing lldp (%s): %w", node, err)
 	}
+	entities := inventory.RetainStaleLLDP(c.graph.Snapshot(), node, fresh, now)
 	c.graph.ApplyPoll(inventory.SourceHostLLDP, inventory.Scope{Node: node}, entities)
 	return nil
 }

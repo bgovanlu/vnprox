@@ -3,6 +3,7 @@ package topology
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
@@ -35,6 +36,35 @@ func (s *Service) InventoryDetail(ref inventory.Ref) (EntityDetail, bool) {
 // Search ranks q against the current snapshot.
 func (s *Service) Search(q string) []SearchResult {
 	return Search(s.graph.Snapshot(), q)
+}
+
+// LLDPNeighbors returns every LldpNeighbor entity in the current snapshot's
+// canonical field shape (docs/api.md's `GET /lldp`: "all LLDP neighbors
+// cluster-wide (fanned out to peers)"). Single-node/no-peer clusters are
+// covered today since the collector already polls the local node directly;
+// cluster fan-out to peer nodes' own LLDP data is T-303's job (this
+// package's contract does not change once that lands — T-303 extends what
+// feeds the graph, not how this method reads it).
+func (s *Service) LLDPNeighbors() []*inventory.LldpNeighbor {
+	var out []*inventory.LldpNeighbor
+	for _, e := range s.graph.Snapshot().All() {
+		if n, ok := e.(*inventory.LldpNeighbor); ok {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// VlanFindings runs the VLAN cross-check (spec §2) over the current
+// snapshot.
+func (s *Service) VlanFindings() []VlanFinding {
+	return VlanFindings(s.graph.Snapshot())
+}
+
+// Ports builds the flat ports table (spec §2) over the current snapshot,
+// evaluated at the real current time.
+func (s *Service) Ports() []PortRow {
+	return Ports(s.graph.Snapshot(), time.Now())
 }
 
 // ServeWS upgrades and serves one /api/ws client.

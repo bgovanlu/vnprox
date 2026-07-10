@@ -4,6 +4,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -91,6 +92,18 @@ func (r *Real) LLDP(ctx context.Context, _ string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, r.LLDPCommand[0], r.LLDPCommand[1:]...) //nolint:gosec // fixed, config-supplied argv, not user input
 	out, err := cmd.Output()
 	if err != nil {
+		// Distinguish "lldpd/lldpctl is not installed at all" (the
+		// documented graceful-degradation case,
+		// docs/features/lldp-discovery.md §1) from any other failure
+		// (permission, timeout, lldpd running but erroring) so callers can
+		// tell the two apart without string-matching. exec.LookPath (which
+		// CommandContext calls internally to resolve argv[0]) returns
+		// *exec.Error wrapping exec.ErrNotFound when the binary is missing
+		// from PATH.
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return nil, fmt.Errorf("host: %w: %v", ErrLLDPUnavailable, err)
+		}
 		return nil, fmt.Errorf("host: running %v: %w", r.LLDPCommand, err)
 	}
 	return out, nil
