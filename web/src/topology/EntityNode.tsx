@@ -16,6 +16,10 @@ export interface EntityNodeData extends Record<string, unknown> {
   status: EntityStatus;
   badges: string[];
   dimmed: boolean;
+  /** This node's band is rendering last-known data because a node-scoped
+   * collector source is stale (docs/features/topology.md §5: "its band
+   * renders greyed") — greyscale, distinct from `dimmed` (VLAN filter). */
+  stale?: boolean;
   highlighted: boolean;
   isGuestGroup: boolean;
   collapsedCount?: number;
@@ -62,7 +66,10 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
         isPill ? "rounded-full text-center" : "rounded-md",
         KIND_ACCENT[data.kind] ?? "bg-white dark:bg-slate-900",
         STATUS_CLASSES[data.status],
-        data.dimmed && !data.highlighted ? "opacity-25" : "opacity-100",
+        // One opacity class per node (never two competing ones, whose CSS
+        // order would decide): the VLAN filter's dim wins over staleness.
+        data.dimmed && !data.highlighted ? "opacity-25" : data.stale ? "opacity-60" : "opacity-100",
+        data.stale && "grayscale",
         data.highlighted && "ring-2 ring-blue-500",
         selected && "outline outline-2 outline-offset-1 outline-blue-600",
       )}

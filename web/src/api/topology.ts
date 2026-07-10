@@ -26,7 +26,8 @@ export function fetchTopology(filter: TopologyFilter = {}): Promise<TopologyResp
 }
 
 /** GET /inventory/{ref} — full detail for one entity: normalized fields,
- * provenance ("raw source"), and related entities. `ref` is a Ref triplet
+ * per-field provenance, per-source raw source text (docs/api.md's
+ * `rawSource`), and related entities. `ref` is a Ref triplet
  * string ("kind:node:id"); it may contain '/' and ':' verbatim (see
  * inventory.Ref.String's doc comment) so it's percent-encoded as a whole
  * path segment here — the server's wildcard route and net/http's path

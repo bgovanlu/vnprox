@@ -95,7 +95,31 @@ export interface TopologyEdge {
   badges: string[];
 }
 
+/** One collector poll loop's freshness (docs/api.md's GET /topology
+ * staleness section). `name` is the loop name ("pve", "host", "lldp");
+ * `node` scopes the source to one cluster node's band, absent =
+ * cluster-wide (the "pve" loop). `stale` flips true after 3 consecutive
+ * poll failures. `lastSuccess` (unix seconds) is absent if no poll has ever
+ * succeeded; `lastError` is present only while the source is failing. */
+export interface SourceStaleness {
+  name: string;
+  node?: string;
+  lastError?: string;
+  lastSuccess?: number;
+  stale: boolean;
+}
+
+/** GET /topology's optional freshness summary — the data behind
+ * docs/features/topology.md §5's greyed-band + staleness-banner state.
+ * `stale` is true iff any source is stale. The whole section is omitted
+ * when the daemon has no collector status at all. */
+export interface Staleness {
+  sources: SourceStaleness[];
+  stale: boolean;
+}
+
 export interface TopologyResponse {
+  staleness?: Staleness;
   nodes: TopologyNode[];
   edges: TopologyEdge[];
   layers: Layer[];
@@ -125,10 +149,19 @@ export interface RelatedRef {
   direction: "from" | "to";
 }
 
-/** GET /inventory/{ref}. "Raw source" here is resolved-field provenance
- * (which source won each field, and any dissenting values) — not the
- * original interfaces(5)/PVE JSON text, which the graph doesn't retain past
- * ingestion (a documented limitation, not something to work around). */
+/** GET /inventory/{ref}. `rawSource` maps each contributing source name to
+ * the raw text that source's contribution was derived from — the verbatim
+ * interfaces(5) stanza for "host-interfaces", pretty-printed JSON of the
+ * PVE API object for "pve-*" sources, compact JSON of observed state for
+ * "host-netlink"/"host-lldp" (docs/api.md's response-shape note; every
+ * value is a string). Omitted when no source retained raw text.
+ * `provenance` stays alongside it: rawSource shows what each source said
+ * verbatim, provenance shows which source won each resolved field.
+ *
+ * `fields` includes tri-state flags for booleans that a source may simply
+ * not have reported: when `LinkUpSet`/`VlanAwareSet`/`STPSet` is false, the
+ * matching `LinkUp`/`VlanAware`/`STP` value is *unknown*, not false — the
+ * UI must render it as such (see InspectorPanel's fieldRows). */
 export interface EntityDetail {
   ref: string;
   kind: string;
@@ -136,6 +169,7 @@ export interface EntityDetail {
   label: string;
   fields: Record<string, unknown>;
   provenance: Record<string, FieldSource>;
+  rawSource?: Record<string, string>;
   related: RelatedRef[];
   generatedAt: number;
 }

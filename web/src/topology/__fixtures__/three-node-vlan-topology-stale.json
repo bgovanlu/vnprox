@@ -1,0 +1,487 @@
+{
+  "staleness": {
+    "sources": [
+      {
+        "name": "pve",
+        "lastError": "collect: cluster status: pve: transport error: Get \"http://127.0.0.1:8006/api2/json/cluster/status\": dial tcp 127.0.0.1:8006: connect: connection refused",
+        "lastSuccess": 1783659228,
+        "stale": true
+      },
+      {
+        "name": "host",
+        "node": "pve1",
+        "lastSuccess": 1783659524,
+        "stale": false
+      },
+      {
+        "name": "lldp",
+        "node": "pve1",
+        "lastError": "lldp (pve1): host: running [lldpctl -f json]: exec: \"lldpctl\": executable file not found in $PATH",
+        "lastSuccess": 1783659108,
+        "stale": true
+      }
+    ],
+    "stale": true
+  },
+  "nodes": [
+    {
+      "id": "bond:pve1:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "mode=802.3ad"
+      ]
+    },
+    {
+      "id": "bond:pve2:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "unknown",
+      "badges": [
+        "mode=802.3ad"
+      ]
+    },
+    {
+      "id": "bond:pve3:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "unknown",
+      "badges": [
+        "mode=802.3ad"
+      ]
+    },
+    {
+      "id": "bridge:pve1:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve2:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve3:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "guest-nic:pve1:200/net0",
+      "kind": "guest-nic",
+      "label": "app01/net0",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "vid=100"
+      ]
+    },
+    {
+      "id": "guest-nic:pve2:201/net0",
+      "kind": "guest-nic",
+      "label": "cache01/net0",
+      "layer": "guest",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": [
+        "vid=100"
+      ]
+    },
+    {
+      "id": "guest:pve1:200",
+      "kind": "guest",
+      "label": "app01",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "vmid=200"
+      ]
+    },
+    {
+      "id": "guest:pve2:201",
+      "kind": "guest",
+      "label": "cache01",
+      "layer": "guest",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": [
+        "vmid=201"
+      ]
+    },
+    {
+      "id": "lldp-neighbor:pve1:eno1/ac:1f:6b:01:00:01/Te1/0/1",
+      "kind": "lldp-neighbor",
+      "label": "sw-core-01",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "port=Te1/0/1"
+      ]
+    },
+    {
+      "id": "lldp-neighbor:pve1:eno2/ac:1f:6b:02:00:01/Te1/0/1",
+      "kind": "lldp-neighbor",
+      "label": "sw-core-02",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "port=Te1/0/1"
+      ]
+    },
+    {
+      "id": "physnic:pve1:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve1:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve2:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve2:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve3:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve3:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "sdn-subnet::10.100.0.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.100.0.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-subnet::10.200.0.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.200.0.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-vnet::vlanz/vnet100",
+      "kind": "sdn-vnet",
+      "label": "vnet100 (app-tier)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "tag=100"
+      ]
+    },
+    {
+      "id": "sdn-vnet::vlanz/vnet200",
+      "kind": "sdn-vnet",
+      "label": "vnet200 (db-tier)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "tag=200"
+      ]
+    },
+    {
+      "id": "sdn-zone::vlanz",
+      "kind": "sdn-zone",
+      "label": "vlanz",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "type=vlan"
+      ]
+    },
+    {
+      "id": "vlan:pve1:vmbr0.20",
+      "kind": "vlan",
+      "label": "vmbr0.20",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    },
+    {
+      "id": "vlan:pve2:vmbr0.20",
+      "kind": "vlan",
+      "label": "vmbr0.20",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    },
+    {
+      "id": "vlan:pve3:vmbr0.20",
+      "kind": "vlan",
+      "label": "vmbr0.20",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "bond:pve1:bond0",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "port-of",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "bond:pve2:bond0",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "port-of",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "bond:pve3:bond0",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "port-of",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "guest-nic:pve1:200/net0",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "attached-to",
+      "status": "ok",
+      "badges": [
+        "vid=100"
+      ]
+    },
+    {
+      "from": "guest-nic:pve2:201/net0",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "attached-to",
+      "status": "ok",
+      "badges": [
+        "vid=100"
+      ]
+    },
+    {
+      "from": "physnic:pve1:eno1",
+      "to": "bond:pve1:bond0",
+      "kind": "enslaved-by",
+      "status": "ok",
+      "badges": [
+        "active"
+      ]
+    },
+    {
+      "from": "physnic:pve1:eno1",
+      "to": "lldp-neighbor:pve1:eno1/ac:1f:6b:01:00:01/Te1/0/1",
+      "kind": "lldp-adjacent",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve1:eno2",
+      "to": "bond:pve1:bond0",
+      "kind": "enslaved-by",
+      "status": "ok",
+      "badges": [
+        "active"
+      ]
+    },
+    {
+      "from": "physnic:pve1:eno2",
+      "to": "lldp-neighbor:pve1:eno2/ac:1f:6b:02:00:01/Te1/0/1",
+      "kind": "lldp-adjacent",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve2:eno1",
+      "to": "bond:pve2:bond0",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve2:eno2",
+      "to": "bond:pve2:bond0",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve3:eno1",
+      "to": "bond:pve3:bond0",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve3:eno2",
+      "to": "bond:pve3:bond0",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "sdn-vnet::vlanz/vnet100",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve1",
+        "tag=100"
+      ]
+    },
+    {
+      "from": "sdn-vnet::vlanz/vnet100",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve2",
+        "tag=100"
+      ]
+    },
+    {
+      "from": "sdn-vnet::vlanz/vnet100",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve3",
+        "tag=100"
+      ]
+    },
+    {
+      "from": "sdn-vnet::vlanz/vnet200",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve1",
+        "tag=200"
+      ]
+    },
+    {
+      "from": "sdn-vnet::vlanz/vnet200",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve2",
+        "tag=200"
+      ]
+    },
+    {
+      "from": "sdn-vnet::vlanz/vnet200",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve3",
+        "tag=200"
+      ]
+    },
+    {
+      "from": "vlan:pve1:vmbr0.20",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "tagged-on",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    },
+    {
+      "from": "vlan:pve2:vmbr0.20",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "tagged-on",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    },
+    {
+      "from": "vlan:pve3:vmbr0.20",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "tagged-on",
+      "status": "ok",
+      "badges": [
+        "vid=20"
+      ]
+    }
+  ],
+  "layers": [
+    "phys",
+    "l2",
+    "sdn",
+    "guest"
+  ],
+  "generatedAt": 1783622764
+}

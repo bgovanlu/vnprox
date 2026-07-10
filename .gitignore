@@ -17,6 +17,9 @@ node_modules/
 web/dist/*
 !web/dist/index.html
 *.tsbuildinfo
+# Playwright (opt-in e2e — `npm run e2e`; baselines in *-snapshots/ ARE committed)
+web/test-results/
+web/playwright-report/
 
 # Local dev
 /.env

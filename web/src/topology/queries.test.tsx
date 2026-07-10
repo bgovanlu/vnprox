@@ -11,6 +11,7 @@ import {
   applyTopologyDelta,
   guestGroupExpandKey,
   inventoryDetailKey,
+  isTopologyDeltaEvent,
   useTopologyWsBridge,
 } from "./queries";
 
@@ -25,6 +26,56 @@ async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void
 }
 
 const emptyTopology: TopologyResponse = { nodes: [], edges: [], layers: [], generatedAt: 1 };
+
+// Runtime validation of the topology.delta payload (audit F-16: the WS
+// event was previously cast without checking the delta payload's shape).
+describe("isTopologyDeltaEvent", () => {
+  it("accepts a well-formed delta payload", () => {
+    expect(
+      isTopologyDeltaEvent({
+        event: "topology.delta",
+        added: ["bridge:pve1:vmbr0"],
+        updated: [],
+        removed: ["bond:pve1:bond0"],
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects other event names even with delta-shaped fields", () => {
+    expect(isTopologyDeltaEvent({ event: "changeset.status", added: [], updated: [], removed: [] })).toBe(false);
+  });
+
+  it("rejects a delta with missing array fields", () => {
+    expect(isTopologyDeltaEvent({ event: "topology.delta", added: [], updated: [] })).toBe(false);
+    expect(isTopologyDeltaEvent({ event: "topology.delta" })).toBe(false);
+  });
+
+  it("rejects a delta whose fields are not arrays", () => {
+    expect(
+      isTopologyDeltaEvent({ event: "topology.delta", added: "bridge:pve1:vmbr0", updated: [], removed: [] }),
+    ).toBe(false);
+    expect(isTopologyDeltaEvent({ event: "topology.delta", added: null, updated: [], removed: [] })).toBe(false);
+  });
+
+  it("rejects a delta whose arrays contain non-string refs", () => {
+    expect(
+      isTopologyDeltaEvent({ event: "topology.delta", added: [42], updated: [], removed: [] }),
+    ).toBe(false);
+    expect(
+      isTopologyDeltaEvent({ event: "topology.delta", added: [], updated: [{ ref: "x" }], removed: [] }),
+    ).toBe(false);
+  });
+
+  it("narrows the type: a guarded event is usable as a TopologyDeltaEvent with no cast", () => {
+    const evt = { event: "topology.delta", added: ["a"], updated: [], removed: [] };
+    if (isTopologyDeltaEvent(evt)) {
+      const typed: TopologyDeltaEvent = evt; // compile-time assertion
+      expect(typed.added).toEqual(["a"]);
+    } else {
+      throw new Error("guard should have accepted this event");
+    }
+  });
+});
 
 describe("applyTopologyDelta", () => {
   it("invalidates the topology query and any detail queries for added/updated refs", () => {

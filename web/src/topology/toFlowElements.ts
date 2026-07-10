@@ -22,6 +22,13 @@ export interface ToFlowElementsParams {
   vlanFilter?: number;
   hoveredId?: string;
   selectedId?: string;
+  /** Node bands (TopologyNode.nodeGroup values) whose collector data is
+   * stale — those nodes render greyed from last-known data
+   * (docs/features/topology.md §5; see staleness.ts's summarizeStaleness).
+   * The "" (cluster-spanning SDN band) group never matches a node-scoped
+   * source, so SDN entities are only ever greyed by cluster-wide staleness,
+   * which the banner covers instead. */
+  staleNodeGroups?: ReadonlySet<string>;
   layoutPositions: ReadonlyMap<string, XYPosition>;
   manualPositions: Readonly<Record<string, XYPosition>>;
 }
@@ -46,6 +53,7 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
     vlanFilter,
     hoveredId,
     selectedId,
+    staleNodeGroups,
     layoutPositions,
     manualPositions,
   } = params;
@@ -80,6 +88,7 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
         status: n.status,
         badges: n.badges,
         dimmed: vlanMatch ? !vlanMatch.nodes.has(n.id) : false,
+        stale: staleNodeGroups?.has(n.nodeGroup) ?? false,
         highlighted,
         isGuestGroup: isGuestGroupId(n.id),
         collapsedCount: n.collapsedCount,

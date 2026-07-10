@@ -2,6 +2,7 @@ import * as RadixTabs from "@radix-ui/react-tabs";
 import clsx from "clsx";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "../components/Drawer";
 import { EmptyState } from "../components/EmptyState";
+import { fieldRows } from "./fields";
 import { useInventoryDetailQuery } from "./queries";
 
 export interface InspectorPanelProps {
@@ -13,31 +14,21 @@ export interface InspectorPanelProps {
   onSelectRelated: (ref: string) => void;
 }
 
-function stringifyFieldValue(v: unknown): string {
-  if (typeof v === "string") return v;
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  return JSON.stringify(v);
-}
-
-function fieldRows(fields: Record<string, unknown>): [string, string][] {
-  return Object.entries(fields)
-    .filter(([, v]) => v !== undefined && v !== null && v !== "")
-    .map(([k, v]) => [k, stringifyFieldValue(v)]);
-}
-
 const tabTriggerClass =
   "rounded-t px-3 py-1.5 text-xs font-medium text-slate-500 data-[state=active]:border-b-2 data-[state=active]:border-accent-600 data-[state=active]:text-accent-700 dark:text-slate-400 dark:data-[state=active]:text-accent-400";
 
 /**
  * The click-to-inspect panel (docs/features/topology.md §2: "inspector
  * panel: normalized fields, live status, raw source, related entities").
- * "Raw source" here is the resolved-field provenance view GET
- * /inventory/{ref} actually returns, not original interfaces(5)/PVE JSON
- * text — a documented backend limitation (internal/topology/detail.go's
- * doc comment), surfaced honestly rather than faked.
+ * "Raw source" is GET /inventory/{ref}'s `rawSource` map — the verbatim
+ * interfaces(5) stanza / pretty-printed PVE API object / observed-state
+ * JSON per contributing source (docs/api.md). Per-field provenance (which
+ * source won each resolved field) stays visible on its own tab alongside
+ * it: rawSource shows what each source said, provenance shows who won.
  */
 export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: InspectorPanelProps) {
   const { data, isLoading, isError } = useInventoryDetailQuery(selectedRef);
+  const rawSourceEntries = Object.entries(data?.rawSource ?? {});
 
   return (
     <Drawer open={selectedRef !== undefined} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -61,6 +52,9 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: Inspec
               <RadixTabs.Trigger value="raw" className={tabTriggerClass}>
                 Raw source
               </RadixTabs.Trigger>
+              <RadixTabs.Trigger value="provenance" className={tabTriggerClass}>
+                Provenance
+              </RadixTabs.Trigger>
               <RadixTabs.Trigger value="related" className={tabTriggerClass}>
                 Related ({data.related.length})
               </RadixTabs.Trigger>
@@ -78,6 +72,26 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: Inspec
             </RadixTabs.Content>
 
             <RadixTabs.Content value="raw" className="mt-3 flex-1 overflow-y-auto">
+              {rawSourceEntries.length === 0 ? (
+                <p className="text-xs text-slate-400">
+                  No raw source retained for this entity — none of its contributing sources kept original
+                  config text (common for purely observed entities).
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {rawSourceEntries.map(([source, text]) => (
+                    <section key={source}>
+                      <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">{source}</h3>
+                      <pre className="overflow-x-auto rounded border border-slate-200 bg-slate-50 p-2 font-mono text-[11px] leading-snug text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        {text}
+                      </pre>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </RadixTabs.Content>
+
+            <RadixTabs.Content value="provenance" className="mt-3 flex-1 overflow-y-auto">
               <p className="mb-2 text-xs text-slate-400">
                 Resolved-field provenance: which poll source won each field, and any disagreeing values.
               </p>

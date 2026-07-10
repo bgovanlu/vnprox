@@ -108,4 +108,40 @@ describe("toFlowElements", () => {
     });
     expect(flowEdges).toHaveLength(0);
   });
+
+  // docs/features/topology.md §5: a stale node-scoped collector source
+  // greys exactly that node's band; other bands and the cluster-spanning
+  // SDN band (nodeGroup === "") are untouched.
+  it("marks exactly the stale node band's nodes as stale", () => {
+    const nodes: TopologyNode[] = [
+      node({ id: "bridge:pve1:vmbr0", kind: "bridge", layer: "l2", nodeGroup: "pve1" }),
+      node({ id: "bridge:pve2:vmbr0", kind: "bridge", layer: "l2", nodeGroup: "pve2" }),
+      node({ id: "sdn-vnet::vlanz/vnet100", kind: "sdn-vnet", layer: "sdn", nodeGroup: "" }),
+    ];
+    const { nodes: flowNodes } = toFlowElements({
+      nodes,
+      edges: [],
+      expandedGroups: new Set(),
+      activeLayers: allLayers,
+      staleNodeGroups: new Set(["pve2"]),
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+    const staleById = new Map(flowNodes.map((n) => [n.id, n.data.stale]));
+    expect(staleById.get("bridge:pve1:vmbr0")).toBe(false);
+    expect(staleById.get("bridge:pve2:vmbr0")).toBe(true);
+    expect(staleById.get("sdn-vnet::vlanz/vnet100")).toBe(false);
+  });
+
+  it("marks nothing stale when staleNodeGroups is absent (healthy topology)", () => {
+    const { nodes: flowNodes } = toFlowElements({
+      nodes: baseNodes,
+      edges: baseEdges,
+      expandedGroups: new Set(),
+      activeLayers: allLayers,
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+    expect(flowNodes.every((n) => n.data.stale === false)).toBe(true);
+  });
 });

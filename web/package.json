@@ -13,7 +13,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "npm run build && playwright test",
+    "e2e:update": "npm run build && playwright test --update-snapshots"
+  },
+  "overrides": {
+    "dompurify": "^3.4.11"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.19",
@@ -34,6 +39,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.3.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

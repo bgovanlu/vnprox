@@ -1,5 +1,5 @@
-/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -30,5 +30,8 @@ export default defineConfig({
     css: true,
     setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
+    // Playwright specs (e2e/) are a separate, opt-in runner (`npm run
+    // e2e`) — vitest must not pick them up via its default include glob.
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });

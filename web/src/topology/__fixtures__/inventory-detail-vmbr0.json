@@ -1,0 +1,94 @@
+{
+  "ref": "bridge:pve1:vmbr0",
+  "kind": "bridge",
+  "node": "pve1",
+  "label": "vmbr0",
+  "fields": {
+    "Addresses": [
+      "10.10.0.11/24"
+    ],
+    "Comments": "cluster/mgmt trunk, VLAN-aware",
+    "DeclaredPortNames": [
+      "bond0"
+    ],
+    "Gateway": "10.10.0.1",
+    "ID": "vmbr0",
+    "Kind": "bridge",
+    "MTU": 0,
+    "MTUDeclared": 1500,
+    "Name": "vmbr0",
+    "Node": "pve1",
+    "PortNames": null,
+    "Ports": [
+      {
+        "ID": "bond0",
+        "Kind": "bond",
+        "Node": "pve1"
+      }
+    ],
+    "STP": false,
+    "STPSet": false,
+    "Vids": null,
+    "Virt": "linux",
+    "VlanAware": true,
+    "VlanAwareSet": true
+  },
+  "provenance": {
+    "addresses": {
+      "owner": "pve-network"
+    },
+    "comments": {
+      "owner": "pve-network"
+    },
+    "declaredPortNames": {
+      "owner": "pve-network"
+    },
+    "gateway": {
+      "owner": "pve-network"
+    },
+    "mtuDeclared": {
+      "owner": "pve-network"
+    },
+    "name": {
+      "owner": "pve-network"
+    },
+    "virt": {
+      "owner": "pve-network"
+    },
+    "vlanAware": {
+      "owner": "pve-network"
+    }
+  },
+  "rawSource": {
+    "host-interfaces": "auto vmbr0\niface vmbr0 inet static\n\taddress 10.10.0.11/24\n\tgateway 10.10.0.1\n\tbridge-ports bond0\n\tbridge-stp off\n\tbridge-fd 0\n\tbridge-vlan-aware yes\n\tbridge-vids 2-4094\n\tmtu 1500\n# cluster/mgmt trunk, VLAN-aware\n",
+    "pve-network": "{\n  \"iface\": \"vmbr0\",\n  \"type\": \"bridge\",\n  \"method\": \"static\",\n  \"address\": \"10.10.0.11/24\",\n  \"gateway\": \"10.10.0.1\",\n  \"comments\": \"cluster/mgmt trunk, VLAN-aware\",\n  \"bridge_ports\": \"bond0\",\n  \"mtu\": 1500,\n  \"bridge_vlan_aware\": true,\n  \"autostart\": true\n}"
+  },
+  "related": [
+    {
+      "ref": "bond:pve1:bond0",
+      "edgeKind": "port-of",
+      "direction": "from"
+    },
+    {
+      "ref": "guest-nic:pve1:200/net0",
+      "edgeKind": "attached-to",
+      "direction": "from"
+    },
+    {
+      "ref": "sdn-vnet::vlanz/vnet100",
+      "edgeKind": "realizes",
+      "direction": "from"
+    },
+    {
+      "ref": "sdn-vnet::vlanz/vnet200",
+      "edgeKind": "realizes",
+      "direction": "from"
+    },
+    {
+      "ref": "vlan:pve1:vmbr0.20",
+      "edgeKind": "tagged-on",
+      "direction": "from"
+    }
+  ],
+  "generatedAt": 1783659198
+}

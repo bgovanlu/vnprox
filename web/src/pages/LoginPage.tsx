@@ -14,11 +14,11 @@ interface LocationState {
 
 /**
  * Login page + session bootstrap entry point. Posts to the real
- * `/auth/login` (docs/api.md §Auth) using the Proxmox-credential shape
- * the eventual T-105 backend expects. Until T-105 lands, vnproxd's T-002
- * stub doesn't implement this route at all, so a real submit here will
- * fail (404) — the demo-mode button below (gated by AUTH_STUB_ENABLED)
- * is the supported way to see the rest of the shell in the meantime.
+ * `/auth/login` (docs/api.md §Auth) with Proxmox credentials — T-105's
+ * backend implements it end to end (under `make dev`, the pvemock fixture
+ * users work, e.g. root / vnprox-mock, realm pam). The demo-mode button
+ * below (gated by AUTH_STUB_ENABLED, off by default — see
+ * store/authStub.ts) remains only for demoing the SPA with no backend.
  */
 export function LoginPage() {
   const [username, setUsername] = useState("");
@@ -60,7 +60,7 @@ export function LoginPage() {
   const errorMessage =
     mutation.error instanceof ApiError
       ? mutation.error.status === 404
-        ? "The backend doesn't implement /auth/login yet (T-105 lands real auth) — use demo mode below."
+        ? "This backend doesn't serve /auth/login — check that vnproxd is current."
         : mutation.error.message
       : mutation.error
         ? "Login failed."
@@ -129,7 +129,7 @@ export function LoginPage() {
         {AUTH_STUB_ENABLED ? (
           <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
             <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-              Real auth (T-105) isn't wired up yet.
+              Demo mode: explore the UI without a backend (client-side only).
             </p>
             <Button
               variant="secondary"

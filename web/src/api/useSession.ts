@@ -1,8 +1,8 @@
-// Session bootstrap: calls GET /auth/me on load via TanStack Query.
-// Per T-005's task card, any non-200 (401 not-logged-in today, or a 404
-// before T-105 wires up the real route on top of T-002's stub) is
-// treated uniformly as "logged out" — retry:false so a 404 doesn't spin
-// forever, and callers branch on isError rather than inspecting status.
+// Session bootstrap: calls GET /auth/me (T-105's real route) on load via
+// TanStack Query. Any non-200 (401 not-logged-in, or a 404 from an
+// out-of-date backend) is treated uniformly as "logged out" — retry:false
+// so an error doesn't spin forever, and callers branch on isError rather
+// than inspecting status.
 import { useQuery } from "@tanstack/react-query";
 import { getMe } from "./auth";
 import type { MeResponse } from "./types";

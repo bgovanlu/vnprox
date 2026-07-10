@@ -99,19 +99,29 @@ export function useSaveLayoutMutation(name: string = LAYOUT_NAME) {
   });
 }
 
-// Not expressed as a `evt is TopologyDeltaEvent` type predicate: WsServerEvent
-// carries an index signature (`[key: string]: unknown`) that TopologyDeltaEvent
-// deliberately doesn't (its fields are typed arrays, not `unknown`), and
-// TypeScript requires a predicate's narrowed type to be structurally
-// assignable to the input type, which an index-signature type never is to a
-// more specific interface. Callers cast explicitly instead (see
-// useTopologyWsBridge below) — a one-line, well-understood escape hatch
-// rather than fighting the type checker over a real inference limitation.
-function isTopologyDeltaEvent(evt: WsServerEvent): boolean {
-  const added: unknown = evt.added;
-  const updated: unknown = evt.updated;
-  const removed: unknown = evt.removed;
-  return evt.event === "topology.delta" && Array.isArray(added) && Array.isArray(updated) && Array.isArray(removed);
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((item) => typeof item === "string");
+}
+
+/**
+ * Runtime guard for the full `topology.delta` payload shape (docs/api.md's
+ * WebSocket section: `{added, updated, removed: [Ref]}`) — every element of
+ * all three arrays is verified to be a string, mirroring how client.ts's
+ * isErrorEnvelope validates the error envelope rather than trusting the
+ * wire. The predicate narrows to `WsServerEvent & TopologyDeltaEvent`
+ * (rather than plain TopologyDeltaEvent) because TypeScript requires a
+ * predicate's narrowed type to be assignable to the parameter type, and a
+ * specific interface without an index signature never is to WsServerEvent's
+ * `[key: string]: unknown` — the intersection satisfies both sides with no
+ * cast anywhere. Exported for direct unit testing (queries.test.tsx).
+ */
+export function isTopologyDeltaEvent(evt: WsServerEvent): evt is WsServerEvent & TopologyDeltaEvent {
+  return (
+    evt.event === "topology.delta" &&
+    isStringArray(evt.added) &&
+    isStringArray(evt.updated) &&
+    isStringArray(evt.removed)
+  );
 }
 
 /** Applies one topology.delta event to the query cache: invalidates the
@@ -162,10 +172,7 @@ export function useTopologyWsBridge(client?: WsClient): void {
     const ws = client ?? getSharedWsClient();
     const unsubscribe = ws.subscribe(["topology"], (evt) => {
       if (isTopologyDeltaEvent(evt)) {
-        // Safe: isTopologyDeltaEvent has already verified `event` and the
-        // three array fields' runtime shape above — see its doc comment
-        // for why this can't be expressed as a type predicate directly.
-        applyTopologyDelta(queryClientRef.current, evt as unknown as TopologyDeltaEvent);
+        applyTopologyDelta(queryClientRef.current, evt);
       }
     });
     return unsubscribe;

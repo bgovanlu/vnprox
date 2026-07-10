@@ -34,11 +34,16 @@ src/
 
 ## Auth today
 
-Real Proxmox-credential auth lands in T-105. Until then, `GET /auth/me` 404s against the
-current backend stub, which the session bootstrap (`src/api/useSession.ts`) treats the
-same as "logged out" — and the login page offers a demo-mode bypass
-(`src/store/authStub.ts`, `VITE_AUTH_STUB=false` to disable) so the shell is still
-demoable. See that file and `src/routes/RequireAuth.tsx` for the exact contract.
+Real Proxmox-credential auth landed in T-105: the login page POSTs `/auth/login` and the
+session bootstrap (`src/api/useSession.ts`) drives `GET /auth/me`. Under `make dev`
+(vnproxd + pvemock) log in with the mock fixture's users — e.g. `root` / `vnprox-mock`,
+realm `pam` (see `testdata/clusters/*.yaml` for the other personas).
+
+The old demo-mode bypass (`src/store/authStub.ts`) still exists for demoing the SPA with
+no backend at all, but is **off by default** — set `VITE_AUTH_STUB=true` (e.g.
+`VITE_AUTH_STUB=true npm run dev`) to show it. It is client-side only: the backend still
+401s every API call without a real session. See that file and
+`src/routes/RequireAuth.tsx` for the exact contract.
 
 ## Testing
 
@@ -48,3 +53,7 @@ demoable. See that file and `src/routes/RequireAuth.tsx` for the exact contract.
 - `src/api/ws.test.ts` — the WS client's reconnect/backoff and resubscribe behavior,
   against a real `ws` server that's killed and restarted mid-test.
 - `src/store/theme.test.ts` — the dark/light theme persisting across a simulated reload.
+
+Opt-in Playwright e2e (`npm run e2e` — real pvemock + vnproxd stack, real login,
+screenshot baseline, pan/zoom frame timing) lives in `e2e/`; it is deliberately not part
+of `npm test`/`make check`. See `docs/testing/topology-render-verification.md`.

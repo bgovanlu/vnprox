@@ -7,6 +7,8 @@ import type { Layer, TopologyEdge, TopologyNode } from "../api/types";
 import { InspectorPanel } from "./InspectorPanel";
 import { LayerToggleBar } from "./LayerToggleBar";
 import { SpotlightSearch } from "./SpotlightSearch";
+import { StalenessBanner } from "./StalenessBanner";
+import { summarizeStaleness } from "./staleness";
 import { TopologyCanvas } from "./TopologyCanvas";
 import { VlanFilterInput } from "./VlanFilterInput";
 import { computeLayout, type XYPosition } from "./layout";
@@ -153,6 +155,10 @@ function TopologyPageContent() {
     [expandedGroups, expandedData],
   );
 
+  // §5 staleness: grey the bands whose node-scoped collector data is stale
+  // (cluster-wide staleness is the banner's job — see StalenessBanner).
+  const staleSummary = useMemo(() => summarizeStaleness(topology?.staleness), [topology?.staleness]);
+
   const elements = useMemo(
     () =>
       toFlowElements({
@@ -165,10 +171,11 @@ function TopologyPageContent() {
         vlanFilter,
         hoveredId,
         selectedId,
+        staleNodeGroups: staleSummary.staleNodeGroups,
         layoutPositions,
         manualPositions: positions,
       }),
-    [topology, extraNodes, extraEdges, expandedGroups, activeLayers, vlanFilter, hoveredId, selectedId, layoutPositions, positions],
+    [topology, extraNodes, extraEdges, expandedGroups, activeLayers, vlanFilter, hoveredId, selectedId, staleSummary, layoutPositions, positions],
   );
 
   const overCap = elements.nodes.length + elements.edges.length > RENDER_CAP;
@@ -209,6 +216,8 @@ function TopologyPageContent() {
           </Button>
         </div>
       </div>
+
+      <StalenessBanner staleness={topology?.staleness} />
 
       {noLldpData && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
