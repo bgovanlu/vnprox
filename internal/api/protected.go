@@ -26,6 +26,12 @@ const maxProtectedBodyBytes = 1 << 20 // 1 MiB
 type ProtectedService interface {
 	GetProtected(ctx context.Context) (change.ProtectedConfig, error)
 	SetProtected(ctx context.Context, author string, cfg change.ProtectedConfig) (change.ProtectedConfig, error)
+
+	// SuggestProtected computes the detection-suggested set (inventory +
+	// corosync.conf composed through change.DetectProtected) for the
+	// onboarding "confirm or correct" flow — GET /protected-interfaces/
+	// suggest (T-203's detection deliverable, wired per audit-phase-2 F-14).
+	SuggestProtected(ctx context.Context) change.ProtectedSet
 }
 
 // protectedResponse is the wire shape of GET/PUT /api/v1/protected-interfaces
@@ -79,6 +85,7 @@ func mountProtectedRoutes(r chi.Router, svc ProtectedService, auth AuthService) 
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
 		r.Get("/protected-interfaces", handleGetProtected(svc))
+		r.Get("/protected-interfaces/suggest", handleSuggestProtected(svc))
 	})
 
 	r.Group(func(r chi.Router) {
@@ -99,6 +106,17 @@ func handleGetProtected(svc ProtectedService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, toProtectedResponse(cfg))
+	}
+}
+
+// handleSuggestProtected backs GET /protected-interfaces/suggest: the
+// detection-suggested protected set, in the same {"nodes": {...}} shape the
+// PUT accepts, so the onboarding UI can present it for confirmation and
+// submit the (possibly corrected) result straight back.
+func handleSuggestProtected(svc ProtectedService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		set := svc.SuggestProtected(r.Context())
+		writeJSON(w, http.StatusOK, map[string]any{"nodes": set.ToConfig()})
 	}
 }
 

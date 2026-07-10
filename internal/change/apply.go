@@ -107,6 +107,13 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 		return Changeset{}, Plan{}, &ErrValidationBlocked{Findings: findings}
 	}
 
+	// An apply that proceeds only because allow_dangerous_ops downgraded
+	// safety-interlock findings to warnings must leave an apply-time audit
+	// entry of its own (T-203's card: "its use audited") — the create/
+	// validate-time entries don't prove the flag was still exercised at the
+	// moment of apply (audit-phase-2 F-12).
+	s.auditSafetyOverride(ctx, author, id, findings)
+
 	plan, err := BuildPlan(cs.Ops)
 	if err != nil {
 		s.appendAudit(ctx, author, "changeset.apply", "unsupported_op", id, map[string]any{"error": err.Error()})

@@ -4,11 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"sort"
 	"sync"
 	"time"
 
+	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
@@ -46,17 +50,21 @@ type InventorySource interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Nodes             NodeAgent
-	Refresher         InventoryRefresher
-	WS                Broadcaster
-	Inventory         InventorySource
-	Snapshots         *store.SnapshotRepo
-	Logger            *slog.Logger
-	Now               func() time.Time
-	Changesets        *store.ChangesetRepo
-	Audit             *store.AuditRepo
-	TimerFunc         TimerFunc
-	ProtectedPath     string
+	Nodes         NodeAgent
+	Refresher     InventoryRefresher
+	WS            Broadcaster
+	Inventory     InventorySource
+	Snapshots     *store.SnapshotRepo
+	Logger        *slog.Logger
+	Now           func() time.Time
+	Changesets    *store.ChangesetRepo
+	Audit         *store.AuditRepo
+	TimerFunc     TimerFunc
+	ProtectedPath string
+	// CorosyncPath is where SuggestProtected reads corosync.conf from;
+	// empty means host.DefaultCorosyncConfPath. Overridable so tests (and
+	// a dev daemon outside a PVE node) can point it at a fixture.
+	CorosyncPath      string
 	ConfirmTimeout    time.Duration
 	AllowDangerousOps bool
 }
@@ -93,6 +101,7 @@ type Service struct {
 	timers            map[string]Stopper
 	newTimer          TimerFunc
 	protectedPath     string
+	corosyncPath      string
 	lockHeldBy        string
 	confirmTimeout    time.Duration
 	applyMu           sync.Mutex
@@ -137,7 +146,7 @@ func NewService(cfg Config) (*Service, error) {
 	}
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, now: now, log: logger,
-		protectedPath: protectedPath, allowDangerousOps: cfg.AllowDangerousOps,
+		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		nodes: cfg.Nodes, snapshots: cfg.Snapshots, refresher: cfg.Refresher,
 		confirmTimeout: clampConfirmTimeout(confirmTimeout),
 		timers:         map[string]Stopper{},
@@ -427,14 +436,51 @@ func (s *Service) GetProtected(_ context.Context) (ProtectedConfig, error) {
 	return cfg, nil
 }
 
+// SuggestProtected computes the detection-suggested protected-interface set
+// (T-203's "detection of protected interfaces per node" deliverable, wired
+// to GET /protected-interfaces/suggest per audit-phase-2 F-14): the live
+// inventory snapshot composed with the node's parsed corosync.conf through
+// DetectProtected. corosync.conf lives on pmxcfs, so the local copy names
+// every cluster node's ring addresses — detection is cluster-wide from one
+// read. A missing or unreadable corosync.conf degrades to management-IP-only
+// detection (a not-yet-clustered node has no corosync links to protect);
+// that is a documented fallback, not an error, so this never fails the
+// suggest endpoint — the admin reviews and corrects the suggestion during
+// onboarding anyway.
+func (s *Service) SuggestProtected(_ context.Context) ProtectedSet {
+	cor, err := host.ReadCorosyncConf(s.corosyncPath)
+	if err != nil {
+		if !os.IsNotExist(errors.Unwrap(err)) && !errors.Is(err, os.ErrNotExist) {
+			s.log.Warn("change: reading corosync.conf for protected-interface detection; falling back to management-IP-only detection", "error", err)
+		}
+		cor = nil
+	}
+	return DetectProtected(s.inventorySnapshot(), cor)
+}
+
 // SetProtected validates and persists a new protected-interface config
 // (the onboarding confirmation/correction flow, docs/features/blueprints.md
 // §3), stamping Version/UpdatedAt/UpdatedBy, and audits the change. It
 // returns *ErrInvalidProtectedRef if any ref string in cfg.Nodes fails to
 // parse — the API layer maps that to a 400, mirroring how a malformed op
-// target is handled elsewhere in this package.
+// target is handled elsewhere in this package — or if a ref's embedded node
+// doesn't match the map key it is filed under (audit-phase-2 F-15: a
+// mis-filed ref would silently be validated against the wrong node's
+// address table, which is worse than rejecting it loudly).
 func (s *Service) SetProtected(ctx context.Context, author string, cfg ProtectedConfig) (ProtectedConfig, error) {
-	if _, bad := cfg.Resolve(); len(bad) > 0 {
+	set, bad := cfg.Resolve()
+	if len(bad) > 0 {
+		return ProtectedConfig{}, &ErrInvalidProtectedRef{Refs: bad}
+	}
+	for node, refs := range set {
+		for _, ref := range refs {
+			if ref.Node != node {
+				bad = append(bad, ref.String())
+			}
+		}
+	}
+	if len(bad) > 0 {
+		sort.Strings(bad) // set is a map — make the reported order stable
 		return ProtectedConfig{}, &ErrInvalidProtectedRef{Refs: bad}
 	}
 	if cfg.Nodes == nil {

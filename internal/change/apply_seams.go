@@ -22,12 +22,15 @@ import (
 // exactly this host-level path. Cluster-scope PVE writes (SDN, guests) still
 // flow through the user's own ticket — see PVEGateway.
 //
-// Every method takes a node name because vnprox is cluster-aware: a
-// coordinating daemon stages/reloads a peer node's file via the peer API
-// (docs/architecture.md §1, §5). The production implementation routes
-// localhost writes to the real filesystem + ifreload and peer-node writes
-// to that peer's daemon; a single NodeAgent value abstracts both so the
-// planner/executor never branch on locality.
+// Every method takes a node name because vnprox is cluster-aware: the
+// intended production shape (docs/architecture.md §1, §5) is that a
+// coordinating daemon stages/reloads a peer node's file via the peer API,
+// with a single NodeAgent value abstracting local and peer nodes so the
+// planner/executor never branch on locality. Peer routing is NOT
+// implemented yet — it is T-304's scope. The current production
+// implementation (cmd/vnproxd's hostNodeAgent) only operates on the local
+// node's files and must not be handed peer-node steps until T-304 lands;
+// see hostNodeAgent's doc comment for the honest state of that constraint.
 type NodeAgent interface {
 	// ReadInterfaces returns node's current, committed /etc/network/interfaces
 	// content (never the staged interfaces.new). It is the byte-exact source

@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
@@ -197,5 +199,67 @@ func TestProtectedRoutes_Unauthenticated401(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
+
+// TestProtectedRoutes_Suggest covers GET /protected-interfaces/suggest
+// (audit-phase-2 F-14): the detection-suggested set, served through the
+// mounted router from a real change.Service wired with an inventory
+// snapshot and a corosync.conf fixture.
+func TestProtectedRoutes_Suggest(t *testing.T) {
+	corosync := `
+nodelist {
+    node {
+        name: pve1
+        nodeid: 1
+        ring0_addr: 10.10.0.1
+    }
+}
+`
+	corosyncPath := filepath.Join(t.TempDir(), "corosync.conf")
+	if err := os.WriteFile(corosyncPath, []byte(corosync), 0o644); err != nil {
+		t.Fatalf("writing corosync fixture: %v", err)
+	}
+
+	g := inventory.NewGraph()
+	g.ApplyPoll(inventory.SourceHostNetlink, inventory.Scope{}, []inventory.Entity{
+		&inventory.Node{Ref: inventory.Ref{Kind: inventory.KindNode, Node: "pve1", ID: "pve1"}, Name: "pve1", IP: "10.10.0.1"},
+		&inventory.Bridge{Ref: inventory.Ref{Kind: inventory.KindBridge, Node: "pve1", ID: "vmbr0"}, Name: "vmbr0", Addresses: []string{"10.10.0.1/24"}},
+	})
+
+	path := filepath.Join(t.TempDir(), "vnprox.db")
+	db, err := store.Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	svc, err := change.NewService(change.Config{
+		Changesets:    store.NewChangesetRepo(db),
+		Audit:         store.NewAuditRepo(db),
+		Inventory:     g,
+		Now:           func() time.Time { return time.Unix(1_700_000_000, 0) },
+		ProtectedPath: filepath.Join(t.TempDir(), "protected.json"),
+		CorosyncPath:  corosyncPath,
+	})
+	if err != nil {
+		t.Fatalf("change.NewService: %v", err)
+	}
+
+	r := newProtectedTestRouter(svc, fullCapsAuth("alice"))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/protected-interfaces/suggest", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Nodes map[string][]string `json:"nodes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	want := []string{"bridge:pve1:vmbr0"}
+	if len(got.Nodes) != 1 || len(got.Nodes["pve1"]) != 1 || got.Nodes["pve1"][0] != want[0] {
+		t.Errorf("nodes = %v, want {pve1: %v}", got.Nodes, want)
 	}
 }
