@@ -1,6 +1,7 @@
 package change
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -56,6 +57,26 @@ func fixCases() []fixCase {
 			snap: buildSnapshot(),
 			op: mkOp(OpBridgeCreate, testRef(inventory.KindBridge, "pve1", "vmbr9"),
 				&BridgeCreateParams{Comments: "x", VlanAware: true, Vids: []VidRange{{Low: 5000, High: 6000}}}),
+		},
+		// The next three entries close audit-phase-2 F-16(a): the
+		// bridge.update MTU/Vids clamps and the vlan.create MTU clamp were
+		// fix-emitting paths with no corpus coverage.
+		{
+			name: "bridge.update mtu clamp",
+			snap: buildSnapshot(vmbr0),
+			op:   mkOp(OpBridgeUpdate, testRef(inventory.KindBridge, "pve1", "vmbr0"), &BridgeUpdateParams{MTU: intPtr(100)}),
+		},
+		{
+			name: "bridge.update vid range clamp",
+			snap: buildSnapshot(vmbr0),
+			op: mkOp(OpBridgeUpdate, testRef(inventory.KindBridge, "pve1", "vmbr0"),
+				&BridgeUpdateParams{Vids: &[]VidRange{{Low: 5000, High: 6000}}}),
+		},
+		{
+			name: "vlan.create mtu clamp",
+			snap: buildSnapshot(vmbr0),
+			op: mkOp(OpVlanCreate, testRef(inventory.KindVlan, "pve1", "vmbr0.30"),
+				&VlanCreateParams{Parent: "vmbr0", Vid: 30, MTU: 100}),
 		},
 		{
 			name: "vlan.create vid clamp",
@@ -134,23 +155,58 @@ func TestValidate_FixProperty(t *testing.T) {
 
 // --- benchmark (T-202 acceptance criterion 4) ------------------------------
 
-// hundredOps builds a 100-op changeset of independent, schema/referential-
-// clean bridge.create ops (unique targets, no snapshot dependency) — enough
-// to exercise the full pipeline's per-op cost at a representative scale
-// without needing a large fixture snapshot.
+// hundredOps builds a 100-op changeset of schema/referential-clean
+// bridge.create ops that genuinely exercise the referential cross-checks
+// (audit-phase-2 F-17: the original comments+MTU-only workload on an empty
+// snapshot degenerated the O(n^2) address/VID/enslavement paths to map
+// lookups): every op declares a unique address CIDR (each checked against
+// all earlier ones plus the 100-NIC snapshot), enslaves a unique snapshot
+// NIC (each checked against the enslavement index), and carries a VID
+// trunk list.
 func hundredOps() []Op {
 	ops := make([]Op, 0, 100)
 	for i := 0; i < 100; i++ {
 		id := "vmbr" + string(rune('a'+i%26)) + string(rune('0'+i/26))
 		ops = append(ops, mkOp(OpBridgeCreate, testRef(inventory.KindBridge, "pve1", id),
-			&BridgeCreateParams{Comments: "bench", MTU: 1500}))
+			&BridgeCreateParams{
+				Comments:  "bench",
+				MTU:       1500,
+				Addresses: []string{fmt.Sprintf("10.%d.%d.1/24", i/250, i%250)},
+				Ports:     []string{fmt.Sprintf("eno%d", i)},
+				VlanAware: true,
+				Vids:      []VidRange{{Low: 100, High: 200}, {Low: 300, High: 400}},
+			}))
 	}
 	return ops
 }
 
+// benchSnapshot is hundredOps' counterpart: a 100-NIC, addressed snapshot
+// so the existence/enslavement/address-overlap checks scan real state.
+func benchSnapshot() inventory.Snapshot {
+	entities := make([]inventory.Entity, 0, 101)
+	entities = append(entities, &inventory.Node{Ref: testRef(inventory.KindNode, "pve1", "pve1"), Name: "pve1"})
+	for i := 0; i < 100; i++ {
+		name := fmt.Sprintf("eno%d", i)
+		entities = append(entities, &inventory.PhysNic{Ref: testRef(inventory.KindPhysNic, "pve1", name), Name: name})
+	}
+	// 50 pre-existing addressed VLAN ifaces the new bridges' addresses are
+	// each checked against (disjoint 172.16/12 space, so still clean).
+	vmbrX := &inventory.Bridge{Ref: testRef(inventory.KindBridge, "pve1", "vmbrx"), Name: "vmbrx"}
+	entities = append(entities, vmbrX)
+	for i := 0; i < 50; i++ {
+		name := fmt.Sprintf("vmbrx.%d", i+1000)
+		entities = append(entities, &inventory.VlanIface{
+			Ref: testRef(inventory.KindVlan, "pve1", name), Name: name,
+			ParentName: "vmbrx", Vid: i + 1000,
+			Addresses: []string{fmt.Sprintf("172.16.%d.1/24", i)},
+		})
+	}
+	return buildSnapshot(entities...)
+}
+
 func TestValidate_100OpsUnder200ms(t *testing.T) {
 	ops := hundredOps()
-	snap := buildSnapshot()
+	snap := benchSnapshot()
 
 	start := time.Now()
 	findings := Validate(ops, snap)
@@ -166,7 +222,7 @@ func TestValidate_100OpsUnder200ms(t *testing.T) {
 
 func BenchmarkValidate_100Ops(b *testing.B) {
 	ops := hundredOps()
-	snap := buildSnapshot()
+	snap := benchSnapshot()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		Validate(ops, snap)
