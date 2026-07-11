@@ -5,6 +5,7 @@ import { TopBar } from "./TopBar";
 import { useKeyboardShortcuts } from "../keyboard/useKeyboardShortcuts";
 import { ShortcutHelpDialog } from "../keyboard/ShortcutHelpDialog";
 import { ChangesetDrawer } from "../changesets/ChangesetDrawer";
+import { OnboardingWalkthrough } from "../onboarding/OnboardingWalkthrough";
 
 /** Top-level layout for every authenticated route: nav rail + top bar
  * around a routed <Outlet/>, with the keyboard-shortcut framework wired
@@ -25,6 +26,7 @@ export function AppShell() {
       </div>
       <ShortcutHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
       <ChangesetDrawer />
+      <OnboardingWalkthrough />
     </div>
   );
 }

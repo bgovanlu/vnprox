@@ -74,6 +74,39 @@ export function ToolsPage() {
 
       <MacFdbBrowser />
 
+      <hr className="border-slate-200 dark:border-slate-800" />
+
+      <div>
+        <h2 className="text-lg font-semibold">Export documentation</h2>
+        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+          A timestamped as-built document of the cluster network (docs/features/blueprints.md §4): rendered topology,
+          per-node interface tables, VLAN matrix, SDN inventory, firewall summaries, and the LLDP wiring table. This
+          is a read-only, GET-only export — no capability gating needed beyond ordinary network-read access.
+        </p>
+        <div className="flex gap-2">
+          {/* Plain <a download> rather than routing through apiFetch: these
+           * are file downloads (text/markdown, text/html), not JSON, and a
+           * normal same-origin navigation/click already sends the session
+           * cookie — see docs/api.md's "Config documentation export
+           * (T-605)" section. Also the most Playwright-testable shape
+           * (page.waitForEvent("download")). */}
+          <a
+            href="/api/v1/export/doc?format=md"
+            download
+            className="inline-flex h-9 items-center justify-center rounded-md bg-slate-200 px-3.5 text-sm font-medium text-slate-900 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+          >
+            Download Markdown
+          </a>
+          <a
+            href="/api/v1/export/doc?format=html"
+            download
+            className="inline-flex h-9 items-center justify-center rounded-md bg-slate-200 px-3.5 text-sm font-medium text-slate-900 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+          >
+            Download HTML
+          </a>
+        </div>
+      </div>
+
       <p className="text-xs text-slate-400 dark:text-slate-500">
         The path simulator ("why can't VM A reach VM B?") lands in a later task.
       </p>

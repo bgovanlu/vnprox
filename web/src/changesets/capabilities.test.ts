@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Capabilities, MeResponse } from "../api/types";
-import { capsForNode, missingCapTooltip } from "./capabilities";
+import { capsForNode, hasAnyCap, missingCapTooltip } from "./capabilities";
 
 const fullCaps: Capabilities = {
   netRead: true,
@@ -60,5 +60,21 @@ describe("missingCapTooltip", () => {
     const s = session({ "": readOnlyCaps });
     const msg = missingCapTooltip(s, "", "sdnWrite");
     expect(msg).toContain("cluster-wide");
+  });
+});
+
+describe("hasAnyCap", () => {
+  it("is false with no session", () => {
+    expect(hasAnyCap(undefined, "netWrite")).toBe(false);
+  });
+
+  it("is true when any node in the caps map grants the capability", () => {
+    const s = session({ pve1: readOnlyCaps, pve2: fullCaps });
+    expect(hasAnyCap(s, "netWrite")).toBe(true);
+  });
+
+  it("is false when no node grants it", () => {
+    const s = session({ pve1: readOnlyCaps, pve2: readOnlyCaps });
+    expect(hasAnyCap(s, "netWrite")).toBe(false);
   });
 });
