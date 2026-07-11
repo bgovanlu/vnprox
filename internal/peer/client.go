@@ -365,6 +365,23 @@ func (c *Client) frrRequest(ctx context.Context, p Peer, path, node string) (ava
 	return true, []byte(out.Content), nil
 }
 
+// DHCPLeases fetches node's raw dnsmasq DHCP lease-file content from peer
+// p (T-406). Unlike FRRBGPSummary/FRREVPNVNI there is no available/raw
+// split — an empty result is itself a clean "no leases" answer, not a
+// distinct absent condition (see HostReader.DHCPLeases' doc comment).
+func (c *Client) DHCPLeases(ctx context.Context, p Peer, node string) ([]byte, error) {
+	path := "/api/peer/host/dhcp-leases?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out dhcpLeasesResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return []byte(out.Content), nil
+}
+
 // FirewallLog fetches new pve-firewall log lines for node from peer p,
 // either from the start (cursor == "") or appended since cursor (T-505:
 // internal/fwlog.Service.Tick calls this once per known peer, per poll

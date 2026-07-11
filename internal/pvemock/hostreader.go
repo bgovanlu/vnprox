@@ -47,6 +47,11 @@ type HostReader interface {
 	// node. Same ErrFRRUnavailable convention as FRRBGPSummary.
 	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
 
+	// DHCPLeases returns node's fixture-declared raw dnsmasq lease-file
+	// content (T-406), or empty bytes for a node with none declared — see
+	// NodeSpec.DHCPLeases' doc comment.
+	DHCPLeases(ctx context.Context, node string) ([]byte, error)
+
 	// Services returns fixture-declared systemd unit status for node (T-602).
 	Services(ctx context.Context, node string) (map[string]bool, error)
 }
@@ -222,6 +227,20 @@ func (h *FixtureHostReader) FRREVPNVNI(_ context.Context, node string) ([]byte, 
 		return nil, fmt.Errorf("pvemock: host reader: %w: node %q", ErrFRRUnavailable, node)
 	}
 	return marshalEVPNVNI(ns.frr)
+}
+
+// DHCPLeases implements HostReader (T-406): node's fixture-declared raw
+// dnsmasq lease-file content, verbatim (an empty string for a node with
+// none declared, rendered as empty bytes — the clean "no leases" case, not
+// an error).
+func (h *FixtureHostReader) DHCPLeases(_ context.Context, node string) ([]byte, error) {
+	ns, ok := h.state.node(node)
+	if !ok {
+		return nil, fmt.Errorf("pvemock: host reader: %w: node %q", ErrNotFound, node)
+	}
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	return []byte(ns.dhcpLeases), nil
 }
 
 // watchedServiceNames is host.WatchedServices, duplicated here (as a plain

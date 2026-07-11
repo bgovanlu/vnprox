@@ -95,7 +95,17 @@ type NodeSpec struct {
 	// FRREVPNVNI return ErrFRRUnavailable for such a node, so the
 	// aggregation layer can report a clean per-node "no EVPN" rather than
 	// treating it as an error (T-404 AC2).
-	FRR            *FRRSpec   `yaml:"frr,omitempty"`
+	FRR *FRRSpec `yaml:"frr,omitempty"`
+	// DHCPLeases is this node's fixture-declared raw dnsmasq DHCP
+	// lease-file content (T-406, docs/features/sdn.md §5) — a YAML block
+	// scalar in the standard dnsmasq .leases line format
+	// ("<expiry> <mac> <ip> <hostname|*> <client-id|*>", one lease per
+	// line), rendered verbatim by FixtureHostReader.DHCPLeases so a
+	// fixture can include deliberately malformed lines to exercise
+	// host.ParseDHCPLeases' defensive skip-and-count behavior. Empty
+	// string (the default) models a node with no DHCP-managed SDN zone at
+	// all — a clean "no leases" result, not an error.
+	DHCPLeases     string     `yaml:"dhcp_leases,omitempty"`
 	Network        []NetIface `yaml:"network"`
 	NetworkPending []NetIface `yaml:"network_pending"`
 }

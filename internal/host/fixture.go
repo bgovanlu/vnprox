@@ -42,6 +42,7 @@ type pvemockReader interface {
 	Stats(ctx context.Context, node string) (map[string]pvemock.IfaceStats, error)
 	FRRBGPSummary(ctx context.Context, node string) ([]byte, error)
 	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
+	DHCPLeases(ctx context.Context, node string) ([]byte, error)
 	Services(ctx context.Context, node string) (map[string]bool, error)
 }
 
@@ -116,6 +117,15 @@ func (f *FixtureReader) FRRBGPSummary(ctx context.Context, node string) ([]byte,
 // FRREVPNVNI implements Reader by delegating directly.
 func (f *FixtureReader) FRREVPNVNI(ctx context.Context, node string) ([]byte, error) {
 	b, err := f.r.FRREVPNVNI(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	return b, nil
+}
+
+// DHCPLeases implements Reader by delegating directly (T-406).
+func (f *FixtureReader) DHCPLeases(ctx context.Context, node string) ([]byte, error) {
+	b, err := f.r.DHCPLeases(ctx, node)
 	if err != nil {
 		return nil, wrapFixtureErr(err)
 	}

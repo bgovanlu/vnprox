@@ -96,6 +96,13 @@ func (r nodeRestrictedReader) Services(ctx context.Context, node string) (map[st
 	return r.inner.Services(ctx, node)
 }
 
+func (r nodeRestrictedReader) DHCPLeases(ctx context.Context, node string) ([]byte, error) {
+	if node != r.node {
+		return nil, host.ErrNotFound
+	}
+	return r.inner.DHCPLeases(ctx, node)
+}
+
 // reorderLocalFirst returns a copy of nodes with local moved to index 0 —
 // pvemock's GET /cluster/status marks index 0 "local" unconditionally
 // (internal/pvemock/cluster.go), so this is how each simulated daemon gets

@@ -66,6 +66,17 @@ type Reader interface {
 	// ParseEVPNVNI to obtain a structured view.
 	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
 
+	// DHCPLeases returns node's raw dnsmasq DHCP lease-file content: the
+	// concatenation of every currently-configured SDN zone's dnsmasq
+	// .leases file on node (T-406, docs/features/sdn.md §5: "a live
+	// leases view (parsed per-node via peer API)"). Use ParseDHCPLeases
+	// to obtain a structured, defensively-parsed view. Unlike
+	// FRRBGPSummary/FRREVPNVNI, an absent-or-empty result is not an error
+	// condition worth its own sentinel: a node with no DHCP-managed SDN
+	// zone at all is the common case, not a fault, and simply yields no
+	// leases.
+	DHCPLeases(ctx context.Context, node string) ([]byte, error)
+
 	// Services reports whether each of a fixed, small set of
 	// network-relevant systemd units vnprox cares about (WatchedServices)
 	// is currently active on node (T-602, docs/features/monitoring.md §5:

@@ -77,6 +77,16 @@ type frrResponse struct {
 	Available bool            `json:"available"`
 }
 
+// dhcpLeasesResponse is GET /api/peer/host/dhcp-leases' body (T-406): the
+// raw dnsmasq lease-file content, the same "{content: string}" shape
+// interfacesResponse uses — no {available} envelope like frrResponse,
+// since an empty Content is itself a perfectly clean "no leases" result
+// (see HostReader.DHCPLeases' doc comment), not a distinct absent/error
+// state to distinguish.
+type dhcpLeasesResponse struct {
+	Content string `json:"content"`
+}
+
 // AuditRecord is one row of GET /api/peer/audit's page (T-303). Its fields
 // mirror docs/api.md's GET /audit list item shape field-for-field so
 // internal/api's cluster merge can decode a peer's page directly into the
