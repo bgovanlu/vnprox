@@ -318,6 +318,31 @@ func (c *Client) FDB(ctx context.Context, p Peer, node string) ([]host.FDBRow, e
 	return out.Entries, nil
 }
 
+// FirewallLog fetches new pve-firewall log lines for node from peer p,
+// either from the start (cursor == "") or appended since cursor (T-505:
+// internal/fwlog.Service.Tick calls this once per known peer, per poll
+// tick, exactly the way it calls its local Source.Tail — see that
+// package's PeerSource interface, which this method satisfies directly).
+func (c *Client) FirewallLog(ctx context.Context, p Peer, node, cursor string, maxLines int) ([]string, string, error) {
+	q := url.Values{}
+	q.Set("node", node)
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	if maxLines > 0 {
+		q.Set("maxLines", strconv.Itoa(maxLines))
+	}
+	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/firewall/log?"+q.Encode(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	var out firewallLogResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, "", err
+	}
+	return out.Lines, out.NextCursor, nil
+}
+
 // Audit fetches one page of peer p's own local audit log (T-303: the
 // per-peer fetch internal/api's cluster audit merge issues once per known
 // peer, per page, with the same filter/cursor/limit it uses locally).

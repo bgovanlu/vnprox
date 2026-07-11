@@ -25,6 +25,17 @@ const (
 	maxPeerPageLimit     = 200
 )
 
+// defaultPeerLogLines/maxPeerLogLines bound GET /api/peer/firewall/log's
+// own ?maxLines= (T-505) — a materially higher ceiling than
+// maxPeerPageLimit's audit/snapshot-page tuning, since internal/fwlog's
+// storm handling (AC3: a 10k-lines/min fixture) needs a single peer fetch
+// to be able to catch up on a real burst rather than trickling in 200
+// lines at a time across many polling ticks.
+const (
+	defaultPeerLogLines = 500
+	maxPeerLogLines     = 5000
+)
+
 // defaultMaxBodyBytes bounds request bodies the peer server will read
 // (docs/data-model.md's largest per-node artifact is the interfaces(5)
 // file, which is at most a few hundred KB even on a heavily-configured
@@ -73,6 +84,20 @@ type HostReader interface {
 	// that package's doc comment), so no wiring changes are needed to
 	// start serving it.
 	Links(ctx context.Context, node string) ([]host.LinkState, error)
+}
+
+// FirewallLogReader is the peer-server-side dependency for
+// GET /api/peer/firewall/log (T-505): one node's own pve-firewall log,
+// tail-or-follow depending on cursor. Its signature mirrors
+// internal/fwlog.Source (minus that interface's `reset` return value,
+// which this route folds into "nothing new yet" rather than exposing —
+// see handleFirewallLog) so cmd/vnproxd's wiring can pass a
+// *fwlog.FileSource straight through with a one-line adapter. Declared
+// against this package's own signature (not importing internal/fwlog
+// directly) for the same import-direction reason as AuditReader/
+// SnapshotReader below: internal/peer must not depend on internal/fwlog.
+type FirewallLogReader interface {
+	FirewallLogTail(ctx context.Context, node, cursor string, maxLines int) (lines []string, nextCursor string, err error)
 }
 
 // AuditReader is the peer-server-side dependency for GET /api/peer/audit
@@ -149,11 +174,16 @@ type ServerOptions struct {
 	Snapshots     SnapshotReader
 	Timers        TimerAgent
 	LLDPInstaller LLDPInstaller
-	Secrets       *SecretStore
-	Logger        *slog.Logger
-	Now           func() time.Time
-	Version       string
-	MaxBodyBytes  int64
+	// FirewallLog backs GET /api/peer/firewall/log (T-505). Optional
+	// (nil-safe, the same 503-not-panic treatment as every other optional
+	// ServerOptions dependency): a daemon that hasn't wired a firewall log
+	// source simply can't serve its own log to peers yet.
+	FirewallLog  FirewallLogReader
+	Secrets      *SecretStore
+	Logger       *slog.Logger
+	Now          func() time.Time
+	Version      string
+	MaxBodyBytes int64
 }
 
 // Server implements the /api/peer/* HTTP surface: the HMAC auth middleware
@@ -207,6 +237,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 
 		r.Get("/audit", s.handleAudit)
 		r.Get("/snapshots", s.handleSnapshots)
+		r.Get("/firewall/log", s.handleFirewallLog)
 
 		r.Post("/timer/arm", s.handleTimerArm)
 		r.Post("/timer/cancel", s.handleTimerCancel)
@@ -296,6 +327,54 @@ func (s *Server) handleFDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, fdbResponse{Entries: host.FlattenFDB(links)})
+}
+
+// handleFirewallLog implements GET /api/peer/firewall/log (T-505): node's
+// own pve-firewall log, tailed from the beginning (no ?cursor=) or
+// followed from a previous nextCursor. maxLines defaults to
+// defaultPeerPageLimit and clamps to maxPeerPageLimit, the same convention
+// parsePeerPageLimit already establishes for audit/snapshots (named
+// ?maxLines= here rather than ?limit= since "how many lines" reads more
+// clearly than "how many items" for a log tail, but the semantics and
+// bounds are identical).
+func (s *Server) handleFirewallLog(w http.ResponseWriter, r *http.Request) {
+	if s.opts.FirewallLog == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "firewall log reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	maxLines, ok := parsePeerLineLimit(w, r)
+	if !ok {
+		return
+	}
+	lines, next, err := s.opts.FirewallLog.FirewallLogTail(r.Context(), node, r.URL.Query().Get("cursor"), maxLines)
+	if err != nil {
+		s.writeHostError(w, "reading firewall log", err)
+		return
+	}
+	if lines == nil {
+		lines = []string{}
+	}
+	writeJSON(w, http.StatusOK, firewallLogResponse{Lines: lines, NextCursor: next})
+}
+
+// parsePeerLineLimit is parsePeerPageLimit's ?maxLines= counterpart (GET
+// /api/peer/firewall/log's own query param name — see handleFirewallLog's
+// doc comment for why it's spelled differently from ?limit=).
+func parsePeerLineLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
+	limit := defaultPeerLogLines
+	if v := r.URL.Query().Get("maxLines"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "maxLines must be a positive integer")
+			return 0, false
+		}
+		if n > maxPeerLogLines {
+			n = maxPeerLogLines
+		}
+		limit = n
+	}
+	return limit, true
 }
 
 // parsePeerPageLimit parses the shared ?limit= convention GET /audit and

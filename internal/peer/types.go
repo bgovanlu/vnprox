@@ -43,6 +43,16 @@ type linksResponse struct {
 	Links []host.LinkState `json:"links"`
 }
 
+// firewallLogResponse is GET /api/peer/firewall/log's body (T-505: one
+// node's own pve-firewall log tail/follow increment — internal/fwlog.
+// Service.fetch calls this for every non-local node in the cluster,
+// exactly the way internal/collect's host poller calls Links for a
+// remote node's netlink state).
+type firewallLogResponse struct {
+	NextCursor string   `json:"nextCursor"`
+	Lines      []string `json:"lines"`
+}
+
 // fdbResponse is GET /api/peer/host/fdb's body (T-306: the MAC/FDB
 // browser's node-local read — every bridge's forwarding-database table,
 // flattened and bridge-tagged; see host.FlattenFDB).
