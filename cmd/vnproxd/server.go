@@ -261,6 +261,21 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	defer changeSvc.StopTimers()
 
+	// T-505: the firewall log viewer's cluster-wide tailer/correlator.
+	// Built before peerSrv below so the same local log source
+	// (fwlogSource) backs both this daemon's own polling (fwlogSvc) and
+	// what it serves to peers over GET /api/peer/firewall/log
+	// (fwLogPeerReaderAdapter) — one source of truth for "this node's own
+	// log", not two independently-opened readers of the same file.
+	// coordPeerClient (constructed above for T-304's coordinator) is
+	// reused for fan-out rather than building a third peer.Client — it
+	// already carries the same cluster-secret/discovery wiring T-303's
+	// peerClient does.
+	fwlogSvc, fwlogSource, fwlogErr := setupFwlog(cfg, graph, topoSvc, coordPeerClient, localNode, logger)
+	if fwlogErr != nil {
+		logger.Error("fwlog: failed to initialize the firewall log viewer's local source; the feature will report empty/unavailable", "error", fwlogErr)
+	}
+
 	// T-301/T-304: the peer server backs the documented /api/peer/host/* and
 	// /api/peer/timer/* routes with the real netlink/interfaces(5)/lldpd
 	// reader (host.NewReal) for reads and the same nodeAgent/localTimers
@@ -270,6 +285,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// (POST /api/peer/host/lldp/install, docs/features/lldp-discovery.md
 	// §1) via its InstallLLDPD method (host/lldp_install_linux.go).
 	realHost := host.NewReal()
+	var fwLogReader peer.FirewallLogReader
+	if fwlogSource != nil {
+		fwLogReader = fwLogPeerReaderAdapter{src: fwlogSource}
+	}
 	peerSrv := peer.NewServer(peer.ServerOptions{
 		Secrets:       peerSecrets,
 		Reader:        realHost,
@@ -278,6 +297,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Snapshots:     snapshotPeerAdapter{changeSvc},
 		Timers:        localTimers,
 		LLDPInstaller: realHost,
+		FirewallLog:   fwLogReader,
 		Version:       version,
 		Logger:        logger,
 	})
@@ -292,6 +312,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if peerClient != nil {
 		peerAudit = peerClient
 		peerSnapshots = peerClient
+	}
+
+	// fwlogSvc is a *fwlog.Service, possibly nil (setupFwlog's dev-fixture
+	// load failure path) — assigned through an explicit nil check rather
+	// than handed to api.Options.FwLog directly, so a nil *fwlog.Service
+	// never becomes a non-nil FwLogService interface value wrapping a nil
+	// pointer (the classic Go footgun peer.Client.Peers' own doc comment
+	// calls out; mountFwLogRoutes' `if svc == nil` guard only works
+	// against a truly nil interface).
+	var fwLogAPI api.FwLogService
+	if fwlogSvc != nil {
+		fwLogAPI = fwlogSvc
 	}
 
 	handler := api.NewRouter(api.Options{
@@ -312,6 +344,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		PVEGateways:   pveGatewayProvider{authSvc},
 		Protected:     changeSvc,
 		Firewall:      graph,
+		FwLog:         fwLogAPI,
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,
 		PeerSnapshots: peerSnapshots,
@@ -371,6 +404,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		g.add(collector.RunLLDPLoop)
 	}
 	g.add(driftSvc.RunLoop)
+	if fwlogSvc != nil {
+		// T-505: continuously merges the local + every peer's pve-firewall
+		// log into the shared, rate-capped buffer GET /firewall/log and the
+		// `firewall.log.batch` WS push both read from (see
+		// internal/fwlog.Service.Run's doc comment). Runs unconditionally
+		// once initialized, the same "always on, not gated behind a
+		// subscriber" treatment driftSvc.RunLoop above gets.
+		g.add(fwlogSvc.Run)
+	}
 
 	logger.Info("vnproxd starting",
 		"version", version,
