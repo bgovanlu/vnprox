@@ -7,8 +7,11 @@ import { ResultPanel } from "./ResultPanel";
 function baseResult(overrides: Partial<SimulateResult>): SimulateResult {
   return {
     verdict: "allow",
-    src: { kind: "guest-nic", guest: "app01", node: "pve1" },
-    dst: { kind: "guest-nic", guest: "cache01", node: "pve2" },
+    // `guest` is a ref string (guest:<node>:<vmid>), not a display name —
+    // see deeplink.ts's doc comment; `description` is the human label the
+    // UI actually shows (matches internal/sim/endpoint.go's describeNic).
+    src: { kind: "guest-nic", guest: "guest:pve1:100", node: "pve1", description: "app01 net0 on bridge vmbr0 (vlan 100)" },
+    dst: { kind: "guest-nic", guest: "guest:pve2:101", node: "pve2", description: "cache01 net0 on bridge vmbr0 (vlan 100)" },
     hops: [],
     caveats: [{ code: "simulated", severity: "info", message: "Results reflect configured state, not live packets." }],
     ...overrides,
@@ -89,12 +92,16 @@ describe("ResultPanel caveats", () => {
 });
 
 describe("ResultPanel blocking rule card", () => {
-  it("renders the blocking rule with a deep link to the firewall editor (AC1)", () => {
+  it("deep-links via the destination guest's ref for a dest-guest-in block, ignoring rulesetRef (AC1)", () => {
+    // rulesetRef is deliberately left empty here, mirroring the real
+    // internal/sim behavior for origin: "guest" (see deeplink.ts's doc
+    // comment: internal/sim/firewall.go's ruleRef only populates
+    // RulesetRef for cluster/group origins) — the link must still work.
     const result = baseResult({
       verdict: "deny",
       blockingRule: {
         enforcementPoint: "dest-guest-in",
-        rulesetRef: "guest:pve1:102",
+        rulesetRef: "",
         origin: "guest",
         direction: "in",
         action: "DROP",
@@ -106,7 +113,25 @@ describe("ResultPanel blocking rule card", () => {
     expect(screen.getByText("Blocking rule")).toBeInTheDocument();
     expect(screen.getByText("tcp/80")).toBeInTheDocument();
     const link = screen.getByRole("link", { name: "Open in firewall editor" });
-    expect(link).toHaveAttribute("href", "/firewall?scope=guest&ref=guest%3Apve1%3A102&pos=0&origin=guest");
+    expect(link).toHaveAttribute("href", "/firewall?scope=guest&ref=guest%3Apve2%3A101&pos=0&origin=guest");
+  });
+
+  it("deep-links via the source guest's ref for a source-guest-out block", () => {
+    const result = baseResult({
+      verdict: "deny",
+      blockingRule: {
+        enforcementPoint: "source-guest-out",
+        rulesetRef: "",
+        origin: "cluster",
+        direction: "out",
+        action: "DROP",
+        pos: 2,
+        rule: { pos: 2, enabled: true, direction: "out", action: "DROP" },
+      },
+    });
+    renderPanel(result);
+    const link = screen.getByRole("link", { name: "Open in firewall editor" });
+    expect(link).toHaveAttribute("href", "/firewall?scope=guest&ref=guest%3Apve1%3A100&pos=2&origin=cluster");
   });
 
   it("renders no blocking-rule card for a non-deny verdict", () => {

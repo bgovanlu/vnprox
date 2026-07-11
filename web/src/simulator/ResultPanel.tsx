@@ -8,7 +8,7 @@ import clsx from "clsx";
 import { Link } from "react-router-dom";
 import type { SimCaveat, SimCaveatSeverity, SimResolvedEndpoint, SimVerdict, SimulateResult } from "../api/types";
 import { ruleMatchLabel } from "../firewall/format";
-import { blockingRuleDeepLinkPath } from "./deeplink";
+import { blockingRuleDeepLinkPath, blockingRuleGuestRef } from "./deeplink";
 
 const VERDICT_LABEL: Record<SimVerdict, string> = {
   allow: "Allowed",
@@ -37,12 +37,17 @@ const CAVEAT_SEVERITY_LABEL: Record<SimCaveatSeverity, string> = {
 };
 
 function endpointSummary(ep: SimResolvedEndpoint): string {
-  if (ep.kind === "external") return "External / WAN";
+  // `description` (internal/sim/endpoint.go's describeNic/et al.) is
+  // already the human-friendly summary — e.g. "vm-a net0 on bridge vmbr0
+  // (vlan 100)" — built server-side from the guest's real name, not its
+  // ref; prefer it. `guest` (see deeplink.ts's doc comment) is a *ref*
+  // string (`guest:<node>:<vmid>`), not a display name, so it's only ever
+  // used here as a last-resort fallback alongside the raw ip/node fields.
+  if (ep.description) return ep.description;
   const parts: string[] = [];
   if (ep.guest) parts.push(ep.guest);
   if (ep.ip) parts.push(ep.ip + (ep.ipSource ? ` (${ep.ipSource})` : ""));
   if (ep.node) parts.push(`on ${ep.node}`);
-  if (parts.length === 0 && ep.description) return ep.description;
   return parts.length > 0 ? parts.join(" · ") : "unresolved";
 }
 
@@ -97,16 +102,19 @@ function HopList({ result }: { result: SimulateResult }) {
 function BlockingRuleCard({ result }: { result: SimulateResult }) {
   const rule = result.blockingRule;
   if (!rule) return null;
+  const guestRef = blockingRuleGuestRef(rule, result.src, result.dst);
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-red-300 bg-red-50/60 p-3 dark:border-red-800 dark:bg-red-950/40">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-red-900 dark:text-red-100">Blocking rule</h3>
-        <Link
-          to={blockingRuleDeepLinkPath(rule)}
-          className="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-500"
-        >
-          Open in firewall editor
-        </Link>
+        {guestRef && (
+          <Link
+            to={blockingRuleDeepLinkPath(rule, guestRef)}
+            className="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-500"
+          >
+            Open in firewall editor
+          </Link>
+        )}
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
         <dt className="text-slate-500 dark:text-slate-400">Enforcement point</dt>

@@ -30,7 +30,7 @@ describe("parseFirewallDeepLink", () => {
       pos: 3,
       rule: { pos: 3, enabled: true, direction: "in", action: "DROP" },
     };
-    const path = blockingRuleDeepLinkPath(blockingRule);
+    const path = blockingRuleDeepLinkPath(blockingRule, "guest:pve1:100");
     const parsed = parseFirewallDeepLink(queryOf(path));
     expect(parsed).toEqual({
       scope: "guest",
