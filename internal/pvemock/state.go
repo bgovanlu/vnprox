@@ -21,11 +21,24 @@ type nodeState struct {
 }
 
 // sdnState is the mutable runtime SDN tree (cluster-scope, one instance).
+//
+// zones/vnets/subnets is the staged (default, pending-merged) view GET
+// /cluster/sdn/{zones,vnets,vnets/{v}/subnets} serve by default — the one
+// every handler in sdn.go already mutated before T-401. zonesRunning/
+// vnetsRunning/subnetsRunning is the parallel last-applied view the same
+// routes serve under "?running=1" (T-401, docs/features/sdn.md §1's
+// staged-vs-running diff): derived once at load (see runningZone/
+// runningVnet/runningSubnet) and re-synced on every successful
+// handleSDNApply, exactly mirroring what a real apply does to PVE's own
+// running config.
 type sdnState struct {
-	zones   map[string]SDNZoneSpec
-	vnets   map[string]SDNVnetSpec
-	subnets map[string]SDNSubnetSpec
-	mu      sync.RWMutex
+	zones          map[string]SDNZoneSpec
+	vnets          map[string]SDNVnetSpec
+	subnets        map[string]SDNSubnetSpec
+	zonesRunning   map[string]SDNZoneSpec
+	vnetsRunning   map[string]SDNVnetSpec
+	subnetsRunning map[string]SDNSubnetSpec
+	mu             sync.RWMutex
 }
 
 // State is the full mutable runtime state of a mock PVE server, built from
@@ -58,14 +71,26 @@ func NewState(f *Fixture) *State {
 	s.sdn.zones = make(map[string]SDNZoneSpec, len(f.SDN.Zones))
 	s.sdn.vnets = make(map[string]SDNVnetSpec, len(f.SDN.Vnets))
 	s.sdn.subnets = make(map[string]SDNSubnetSpec, len(f.SDN.Subnets))
+	s.sdn.zonesRunning = make(map[string]SDNZoneSpec, len(f.SDN.Zones))
+	s.sdn.vnetsRunning = make(map[string]SDNVnetSpec, len(f.SDN.Vnets))
+	s.sdn.subnetsRunning = make(map[string]SDNSubnetSpec, len(f.SDN.Subnets))
 	for _, z := range f.SDN.Zones {
 		s.sdn.zones[z.ID] = z
+		if r, ok := runningZone(z); ok {
+			s.sdn.zonesRunning[z.ID] = r
+		}
 	}
 	for _, v := range f.SDN.Vnets {
 		s.sdn.vnets[v.ID] = v
+		if r, ok := runningVnet(v); ok {
+			s.sdn.vnetsRunning[v.ID] = r
+		}
 	}
 	for _, sub := range f.SDN.Subnets {
 		s.sdn.subnets[sub.ID] = sub
+		if r, ok := runningSubnet(sub); ok {
+			s.sdn.subnetsRunning[sub.ID] = r
+		}
 	}
 
 	for name, ns := range f.Nodes {

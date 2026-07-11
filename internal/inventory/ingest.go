@@ -469,6 +469,7 @@ func FromPVESDN(
 			Type:       z.Type,
 			Bridge:     z.Bridge,
 			Controller: z.Controller,
+			Pending:    string(z.Pending),
 			VrfVxlan:   z.VrfVxlan,
 			MTU:        z.MTU,
 			Nodes:      append([]string(nil), z.Nodes...),
@@ -496,6 +497,7 @@ func FromPVESDN(
 			ID:        n.ID,
 			Zone:      n.Zone,
 			Alias:     n.Alias,
+			Pending:   string(n.Pending),
 			Tag:       n.Tag,
 			VlanAware: n.VlanAware,
 		}
@@ -507,6 +509,7 @@ func FromPVESDN(
 				ID:      s.CIDR,
 				Vnet:    s.Vnet,
 				Gateway: s.Gateway,
+				Pending: string(s.Pending),
 				SNAT:    s.SNAT,
 			}
 			if s.DHCPRangeStart != "" || s.DHCPRangeEnd != "" {

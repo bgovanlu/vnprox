@@ -322,7 +322,14 @@ func (v *VlanIface) fieldMap() map[string]string {
 // --- SDN entities (single-source: pve-sdn) -------------------------------
 
 // SdnZone is a cluster-scoped SDN zone. NodeStatus records per-node
-// realization status from GET /cluster/sdn/zones/{zone}/status.
+// realization status from GET /cluster/sdn/zones/{zone}/status. Pending
+// mirrors PVE's own staged-edit marker ("" | "new" | "changed" | "deleted",
+// see pve.PendingState) — added by T-401 alongside the same-named field
+// T-305 gave PhysNic/Bond/Bridge/VlanIface (docs/data-model.md's Pending
+// doc comment), since SDN objects carry the identical staging concept.
+// Structural (badge/topology) use only: the authoritative staged-vs-running
+// field-level diff is internal/sdn.Service's job (a live PVE comparison,
+// docs/features/sdn.md §1), not this entity.
 type SdnZone struct {
 	NodeStatus map[string]string
 	Ref
@@ -332,6 +339,7 @@ type SdnZone struct {
 	Bridge     string
 	Controller string
 	IPAM       string
+	Pending    string
 	Nodes      []string
 	ExitNodes  []string
 	Peers      []string
@@ -362,16 +370,19 @@ func (z *SdnZone) fieldMap() map[string]string {
 		"ipam": z.IPAM, "vrfVxlan": strconv.Itoa(z.VrfVxlan), "mtu": strconv.Itoa(z.MTU),
 		"nodes": sortedJoin(z.Nodes), "exitNodes": sortedJoin(z.ExitNodes),
 		"peers": sortedJoin(z.Peers), "nodeStatus": strings.Join(ns, ","),
+		"pending": z.Pending,
 	}
 }
 
-// SdnVnet is a cluster-scoped VNet inside a zone.
+// SdnVnet is a cluster-scoped VNet inside a zone. Pending: see SdnZone's
+// doc comment.
 type SdnVnet struct {
 	Ref
 	rawSrc
 	ID        string
 	Zone      string
 	Alias     string
+	Pending   string
 	Tag       int
 	VlanAware bool
 }
@@ -385,10 +396,12 @@ func (n *SdnVnet) fieldMap() map[string]string {
 	return map[string]string{
 		"id": n.ID, "zone": n.Zone, "alias": n.Alias,
 		"tag": strconv.Itoa(n.Tag), "vlanAware": boolStr(n.VlanAware),
+		"pending": n.Pending,
 	}
 }
 
 // SdnSubnet is a cluster-scoped subnet inside a VNet. ID is the CIDR.
+// Pending: see SdnZone's doc comment.
 type SdnSubnet struct {
 	Ref
 	rawSrc
@@ -396,6 +409,7 @@ type SdnSubnet struct {
 	Vnet          string
 	Gateway       string
 	DNSZonePrefix string
+	Pending       string
 	DHCPRanges    []string
 	SNAT          bool
 }
@@ -410,7 +424,7 @@ func (s *SdnSubnet) fieldMap() map[string]string {
 	return map[string]string{
 		"id": s.ID, "vnet": s.Vnet, "gateway": s.Gateway,
 		"dhcpRanges": sortedJoin(s.DHCPRanges), "dnsZonePrefix": s.DNSZonePrefix,
-		"snat": boolStr(s.SNAT),
+		"snat": boolStr(s.SNAT), "pending": s.Pending,
 	}
 }
 
