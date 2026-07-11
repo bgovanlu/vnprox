@@ -301,6 +301,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Audit:         auditRepo,
 		PVEGateways:   pveGatewayProvider{authSvc},
 		Protected:     changeSvc,
+		Firewall:      graph,
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,
 		PeerSnapshots: peerSnapshots,
