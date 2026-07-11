@@ -99,6 +99,15 @@ type HostReader interface {
 	// FRREVPNVNI returns node's raw `vtysh -c "show evpn vni json"`
 	// output. Same host.ErrFRRUnavailable convention as FRRBGPSummary.
 	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
+
+	// DHCPLeases returns node's raw dnsmasq DHCP lease-file content
+	// (T-406, docs/features/sdn.md §5), the concatenation of every
+	// currently-configured SDN zone's dnsmasq .leases file on node.
+	// Unlike FRRBGPSummary/FRREVPNVNI, an empty result is not a distinct
+	// "unavailable" condition worth its own error/available-flag
+	// convention — a node with no DHCP-managed SDN zone simply has no
+	// leases, the common case.
+	DHCPLeases(ctx context.Context, node string) ([]byte, error)
 }
 
 // FirewallLogReader is the peer-server-side dependency for
@@ -247,6 +256,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/fdb", s.handleFDB)
 		r.Get("/host/frr/bgp-summary", s.handleFRRBGPSummary)
 		r.Get("/host/frr/evpn-vni", s.handleFRREVPNVNI)
+		r.Get("/host/dhcp-leases", s.handleDHCPLeases)
 		r.Post("/host/stage-interfaces", s.handleStageInterfaces)
 		r.Post("/host/ifreload", s.handleIfreload)
 		r.Post("/host/restore", s.handleRestore)
@@ -405,6 +415,22 @@ func (s *Server) handleFRREVPNVNI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, frrResponse{Available: true, Content: json.RawMessage(data)})
+}
+
+// handleDHCPLeases implements GET /api/peer/host/dhcp-leases (T-406):
+// node's raw dnsmasq DHCP lease-file content, verbatim.
+func (s *Server) handleDHCPLeases(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	data, err := s.opts.Reader.DHCPLeases(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading dhcp leases", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dhcpLeasesResponse{Content: string(data)})
 }
 
 // handleFirewallLog implements GET /api/peer/firewall/log (T-505): node's

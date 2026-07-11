@@ -101,7 +101,9 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 	// Revalidate immediately before apply, through safetyOptions() so
 	// allow_dangerous_ops and the protected-interface set are honored (T-203
 	// deviation note 5a) — a bare Validate would silently drop them.
-	findings := ValidateWithSafety(cs.Ops, s.inventorySnapshot(), s.safetyOptions())
+	safety := s.safetyOptions()
+	safety.Allocations = s.dhcpAllocations(ctx)
+	findings := ValidateWithSafety(cs.Ops, s.inventorySnapshot(), safety)
 	cs.Findings = findings
 	if hasError(findings) {
 		if cs.Status == StatusValidated {
@@ -640,6 +642,10 @@ func (r nodeAgentReader) FRRBGPSummary(context.Context, string) ([]byte, error) 
 
 func (r nodeAgentReader) FRREVPNVNI(context.Context, string) ([]byte, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.FRREVPNVNI not supported")
+}
+
+func (r nodeAgentReader) DHCPLeases(context.Context, string) ([]byte, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.DHCPLeases not supported")
 }
 
 func (r nodeAgentReader) Services(context.Context, string) (map[string]bool, error) {

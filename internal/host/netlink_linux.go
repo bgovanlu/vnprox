@@ -3,12 +3,15 @@
 package host
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/vishvananda/netlink"
@@ -31,6 +34,16 @@ type Real struct {
 	// OVSVSCtlPath is the ovs-vsctl binary name/path OVSStatus invokes;
 	// defaults to "ovs-vsctl" (resolved via PATH). Overridable for tests.
 	OVSVSCtlPath string
+	// DHCPLeaseGlob is the filesystem glob DHCPLeases reads every matched
+	// file from (T-406, docs/features/sdn.md §5); defaults to
+	// "/var/lib/misc/dnsmasq.*.leases" — PVE SDN's own per-zone dnsmasq
+	// instances each write their lease file under this convention.
+	// Overridable for tests. **Needs hardware validation**: this glob is
+	// this codebase's own best inference (PVE's exact dnsmasq lease-file
+	// naming is not otherwise documented in this repo) rather than
+	// verified against a live PVE cluster — see this task's completion
+	// report.
+	DHCPLeaseGlob string
 	// LLDPCommand is the argv used to fetch LLDP neighbor data as JSON;
 	// defaults to `lldpctl -f json`. Overridable for tests/environments
 	// where lldpd is installed under a different name or path.
@@ -55,6 +68,7 @@ func NewReal() *Real {
 		BGPSummaryCommand:     []string{"vtysh", "-c", "show bgp summary json"},
 		EVPNVNICommand:        []string{"vtysh", "-c", "show evpn vni json"},
 		OVSVSCtlPath:          "ovs-vsctl",
+		DHCPLeaseGlob:         "/var/lib/misc/dnsmasq.*.leases",
 	}
 }
 
@@ -157,6 +171,37 @@ func (r *Real) runFRRCommand(ctx context.Context, argv []string) ([]byte, error)
 		return nil, fmt.Errorf("host: running %v: %w", argv, err)
 	}
 	return out, nil
+}
+
+// DHCPLeases implements Reader (T-406) by globbing DHCPLeaseGlob and
+// concatenating every matched file's raw content. A single unreadable
+// lease file (permissions, or a race with dnsmasq mid-rewrite) is skipped
+// rather than failing the whole read — one zone's lease file being
+// temporarily unavailable should not blank every other zone's leases. No
+// matches (the common case: no DHCP-managed SDN zone configured on this
+// node at all) returns an empty, non-error result.
+func (r *Real) DHCPLeases(_ context.Context, _ string) ([]byte, error) {
+	glob := r.DHCPLeaseGlob
+	if glob == "" {
+		glob = "/var/lib/misc/dnsmasq.*.leases"
+	}
+	matches, err := filepath.Glob(glob)
+	if err != nil {
+		return nil, fmt.Errorf("host: dhcp leases: globbing %s: %w", glob, err)
+	}
+	sort.Strings(matches)
+	var buf bytes.Buffer
+	for _, path := range matches {
+		content, readErr := os.ReadFile(path) //nolint:gosec // fixed glob pattern, not user input
+		if readErr != nil {
+			continue
+		}
+		buf.Write(content)
+		if len(content) > 0 && content[len(content)-1] != '\n' {
+			buf.WriteByte('\n')
+		}
+	}
+	return buf.Bytes(), nil
 }
 
 // Links implements Reader using github.com/vishvananda/netlink for link,

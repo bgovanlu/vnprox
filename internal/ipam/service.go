@@ -139,6 +139,16 @@ func (s *Service) sdnSubnets(ctx context.Context) ([]sdnSubnetInfo, error) {
 	return out, nil
 }
 
+// AllAllocations returns every currently-configured SDN subnet's raw
+// PVE-IPAM allocation set, keyed by subnet CIDR — the exported form of
+// allocationsByCIDR, consumed by cmd/vnproxd's small change.AllocationsSource
+// adapter for T-406's DHCP-range-overlap advisory check
+// (internal/change deliberately never imports internal/ipam directly; see
+// that package's AllocationsSource doc comment).
+func (s *Service) AllAllocations(ctx context.Context) (map[string][]Allocation, error) {
+	return s.allocationsByCIDR(ctx)
+}
+
 // allocationsByCIDR fetches every configured IPAM plugin's full allocation
 // set and buckets entries by their owning subnet CIDR.
 func (s *Service) allocationsByCIDR(ctx context.Context) (map[string][]Allocation, error) {

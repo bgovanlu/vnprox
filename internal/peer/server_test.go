@@ -220,6 +220,36 @@ func TestTwoDaemonHarness_FDB(t *testing.T) {
 	}
 }
 
+// TestTwoDaemonHarness_DHCPLeases is T-406: GET /api/peer/host/dhcp-leases
+// serves node's raw dnsmasq lease-file content verbatim, and an
+// unconfigured node cleanly returns empty content (not an error) — the
+// "no DHCP-managed SDN zone" common case.
+func TestTwoDaemonHarness_DHCPLeases(t *testing.T) {
+	h := newTwoDaemonHarness(t)
+
+	raw := "1735689600 aa:bb:cc:dd:ee:01 10.50.0.10 web1 *\ngarbage-line-not-a-lease\n"
+	h.readerA.dhcpLeases["pve1"] = []byte(raw)
+
+	got, err := h.client.DHCPLeases(t.Context(), h.nodeA, "pve1")
+	if err != nil {
+		t.Fatalf("DHCPLeases(nodeA): %v", err)
+	}
+	if string(got) != raw {
+		t.Errorf("DHCPLeases(nodeA) = %q, want %q", got, raw)
+	}
+	if h.readerA.dhcpLeasesCalls != 1 {
+		t.Errorf("readerA.dhcpLeasesCalls = %d, want 1", h.readerA.dhcpLeasesCalls)
+	}
+
+	empty, err := h.client.DHCPLeases(t.Context(), h.nodeA, "pve-unconfigured")
+	if err != nil {
+		t.Fatalf("DHCPLeases(unconfigured node): %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("DHCPLeases(unconfigured node) = %q, want empty", empty)
+	}
+}
+
 // TestPeerAudit_FetchesFilteredPage is T-303: GET /api/peer/audit parses
 // every documented GET /audit query param into peer.AuditFilter and
 // forwards it, and decodes the served page back into []AuditRecord/

@@ -69,6 +69,9 @@ func (r fakeHostReader) FRRBGPSummary(context.Context, string) ([]byte, error) {
 func (r fakeHostReader) FRREVPNVNI(context.Context, string) ([]byte, error) {
 	return nil, host.ErrFRRUnavailable
 }
+func (r fakeHostReader) DHCPLeases(context.Context, string) ([]byte, error) {
+	return nil, nil
+}
 func (r fakeHostReader) Services(context.Context, string) (map[string]bool, error) {
 	return nil, nil
 }

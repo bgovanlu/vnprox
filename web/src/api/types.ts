@@ -1050,6 +1050,44 @@ export interface IpamAllocationGrid {
   generatedAt: number;
 }
 
+// --- DHCP (docs/api.md; GET /sdn/dhcp) ------------------------------------
+// Mirrors internal/ipam/dhcp.go's Reservation/Lease/DHCPView exactly.
+// Added by T-406 (docs/features/sdn.md §5).
+
+/** One DHCP-eligible subnet's MAC-bound static reservation — a filtered,
+ * derived view over the exact same PVE-IPAM allocation record the IPAM
+ * grid renders as an allocated cell (see internal/ipam/dhcp.go's doc
+ * comment: "one dataset", never a second stored copy). */
+export interface DhcpReservation {
+  cidr: string;
+  zone: string;
+  vnet: string;
+  ip: string;
+  mac: string;
+  hostname?: string;
+  vmid?: number;
+  guestRef?: string;
+}
+
+/** One live dnsmasq-observed DHCP lease, correlated to a known guest by
+ * MAC when one matches. */
+export interface DhcpLease {
+  cidr: string;
+  zone: string;
+  vnet: string;
+  ip: string;
+  mac: string;
+  hostname?: string;
+  guestRef?: string;
+}
+
+/** GET /sdn/dhcp response. */
+export interface DhcpView {
+  reservations: DhcpReservation[];
+  leases: DhcpLease[];
+  generatedAt: number;
+}
+
 // --- EVPN/BGP observability (docs/api.md; GET /sdn/evpn/status) -----------
 // Mirrors internal/evpn/types.go's Status/NodeStatus/Peer/VNI/
 // ExitNodeHealth/Finding exactly — see that file's doc comments and

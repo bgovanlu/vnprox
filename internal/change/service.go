@@ -44,6 +44,19 @@ type InventorySource interface {
 	Snapshot() inventory.Snapshot
 }
 
+// AllocationsSource is the seam Service uses to fetch live IPAM allocation
+// data for T-406's DHCP-range-overlap advisory check
+// (validate_advisory.go's checkDHCPRangeOverlap, SafetyOptions.Allocations'
+// doc comment): cmd/vnproxd wires a small adapter around *ipam.Service
+// (internal/change deliberately never imports internal/ipam directly —
+// the same "small seam, adapted by the caller" convention every other
+// cross-package Config dependency here already follows). Optional: nil
+// disables the check (dhcpAllocations then always returns nil, exactly
+// like a nil Inventory validates against an empty snapshot).
+type AllocationsSource interface {
+	DHCPRangeAllocations(ctx context.Context) ([]DHCPRangeAllocation, error)
+}
+
 // Config configures a Service. Changesets and Audit are required; WS and
 // Inventory are optional (nil disables WS broadcasting / validates against
 // an empty snapshot, respectively — e.g. in tests that don't need them) and
@@ -54,10 +67,14 @@ type Config struct {
 	// Timers is T-304's per-node local-timer protocol seam (apply_seams.go's
 	// NodeTimerAgent doc comment). Nil disables it: Apply falls back to
 	// T-205's single coordinator-side commit-confirm timer only.
-	Timers        NodeTimerAgent
-	Refresher     InventoryRefresher
-	WS            Broadcaster
-	Inventory     InventorySource
+	Timers    NodeTimerAgent
+	Refresher InventoryRefresher
+	WS        Broadcaster
+	Inventory InventorySource
+	// Allocations is T-406's optional DHCP-range-overlap advisory data
+	// source — see AllocationsSource's doc comment. Nil disables the
+	// check.
+	Allocations   AllocationsSource
 	Snapshots     *store.SnapshotRepo
 	Blobs         *store.BlobRepo
 	Logger        *slog.Logger
@@ -107,6 +124,7 @@ type Service struct {
 	refresher          InventoryRefresher
 	ws                 Broadcaster
 	inv                InventorySource
+	allocations        AllocationsSource
 	now                func() time.Time
 	log                *slog.Logger
 	repo               *store.ChangesetRepo
@@ -171,7 +189,7 @@ func NewService(cfg Config) (*Service, error) {
 		rollbackWindowDays = DefaultRollbackWindowDays
 	}
 	return &Service{
-		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, now: now, log: logger,
+		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		nodes: cfg.Nodes, nodeTimers: cfg.Timers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
@@ -232,6 +250,24 @@ func (s *Service) safetyOptions() SafetyOptions {
 		s.log.Warn("change: protected-interface config has an unparsable ref, ignoring", "ref", ref)
 	}
 	return SafetyOptions{Protected: protected, AllowDangerousOps: s.allowDangerousOps}
+}
+
+// dhcpAllocations fetches live IPAM allocation data for T-406's
+// DHCP-range-overlap advisory check (SafetyOptions.Allocations), or nil
+// when no AllocationsSource is configured or the live read fails — a
+// soft-fail read exactly like every other optional enrichment source in
+// this codebase (e.g. internal/ipam's own agentObservations), never
+// blocking validation on a transient PVE hiccup.
+func (s *Service) dhcpAllocations(ctx context.Context) []DHCPRangeAllocation {
+	if s.allocations == nil {
+		return nil
+	}
+	allocs, err := s.allocations.DHCPRangeAllocations(ctx)
+	if err != nil {
+		s.log.Debug("change: reading live IPAM allocations for DHCP-range overlap check failed, skipping", "error", err)
+		return nil
+	}
+	return allocs
 }
 
 // auditSafetyOverride records an audit entry when allow_dangerous_ops

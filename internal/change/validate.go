@@ -20,11 +20,41 @@ type SafetyOptions struct {
 	// only evaluates the guest-bearing-bridge check.
 	Protected ProtectedSet
 
+	// Allocations is T-406's DHCP-range-overlap advisory input: every
+	// currently-known IPAM allocation, already fetched fresh by the
+	// caller (Service.dhcpAllocations, via the optional
+	// Config.Allocations seam — see AllocationsSource in service.go) the
+	// same way Protected above is fetched fresh from disk on every
+	// validation call. A nil/empty Allocations means either "no live IPAM
+	// data is wired" or "genuinely nothing allocated yet" — either way,
+	// advisoryValidate's checkDHCPRangeOverlap simply has nothing to warn
+	// about, never an error.
+	Allocations []DHCPRangeAllocation
+
 	// AllowDangerousOps downgrades every finding this class would
 	// otherwise emit at SeverityError down to SeverityWarning, without
 	// changing Validate's short-circuit behavior (a warning never
 	// short-circuits, matching every other class).
 	AllowDangerousOps bool
+}
+
+// DHCPRangeAllocation is one existing IPAM allocation's (subnet, address,
+// who) triple, as advisoryValidate's checkDHCPRangeOverlap needs it to
+// detect and describe a DHCP range that would overlap already-allocated
+// addresses (T-406 acceptance criterion 4). Deliberately this package's own
+// small, independent shape (not internal/ipam.Allocation) — the same
+// "small seam, adapted by the caller" convention every other cross-package
+// input to this pure validation package already follows (compare
+// InventorySource/ProtectedSet).
+type DHCPRangeAllocation struct {
+	// Subnet is the owning SdnSubnet's CIDR (Ref.ID convention) — matched
+	// against the op's own Target.ID, not recomputed from IP containment,
+	// so an allocation the caller mis-attributes to the wrong subnet never
+	// silently leaks into another subnet's overlap check.
+	Subnet   string
+	IP       string
+	Hostname string
+	MAC      string
 }
 
 // Validate runs the full layered validator pipeline (docs/features/
@@ -91,7 +121,7 @@ func ValidateWithSafety(ops []Op, snap inventory.Snapshot, safety SafetyOptions)
 	// --- a future task's cross-node consistency class (spec item 4) would
 	// insert here, after safety and before advisory.
 
-	advisoryFindings := advisoryValidate(ops, snap)
+	advisoryFindings := advisoryValidate(ops, snap, safety.Allocations)
 	findings = append(findings, advisoryFindings...)
 
 	return findings

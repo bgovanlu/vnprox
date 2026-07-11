@@ -44,12 +44,14 @@ type spyHostReader struct {
 	links           map[string][]host.LinkState
 	bgpSummary      map[string][]byte
 	evpnVNI         map[string][]byte
+	dhcpLeases      map[string][]byte
 	interfacesCalls int
 	lldpCalls       int
 	statsCalls      int
 	linksCalls      int
 	bgpSummaryCalls int
 	evpnVNICalls    int
+	dhcpLeasesCalls int
 }
 
 func newSpyHostReader() *spyHostReader {
@@ -60,6 +62,7 @@ func newSpyHostReader() *spyHostReader {
 		links:      map[string][]host.LinkState{},
 		bgpSummary: map[string][]byte{},
 		evpnVNI:    map[string][]byte{},
+		dhcpLeases: map[string][]byte{},
 	}
 }
 
@@ -115,6 +118,14 @@ func (r *spyHostReader) FRREVPNVNI(_ context.Context, node string) ([]byte, erro
 		return nil, errors.Join(host.ErrFRRUnavailable, errors.New("node "+node))
 	}
 	return b, nil
+}
+
+func (r *spyHostReader) DHCPLeases(_ context.Context, node string) ([]byte, error) {
+	r.dhcpLeasesCalls++
+	// Unlike Links/InterfacesFile/etc., an unconfigured node is simply "no
+	// leases" (empty, nil error), not host.ErrNotFound -- matching
+	// DHCPLeases' doc comment: absent/empty is the common, non-error case.
+	return r.dhcpLeases[node], nil
 }
 
 func (r *spyHostReader) Services(_ context.Context, node string) (map[string]bool, error) {

@@ -1,6 +1,12 @@
 package change
 
-import "github.com/bgovanlu/vnprox/internal/inventory"
+import (
+	"bytes"
+	"net"
+	"strings"
+
+	"github.com/bgovanlu/vnprox/internal/inventory"
+)
 
 // advisoryValidate is validator class 5 (docs/features/change-management.md
 // §2 item 5: "style/health warnings ... bond without
@@ -13,15 +19,20 @@ import "github.com/bgovanlu/vnprox/internal/inventory"
 // e.g. a bond.update that only sets XmitHashPolicy still correctly warns
 // (or doesn't) if the bond's Mode is already 802.3ad without needing that
 // op to also touch Mode.
-func advisoryValidate(ops []Op, snap inventory.Snapshot) []Finding {
+//
+// allocations is T-406's DHCP-range-overlap input (SafetyOptions.Allocations,
+// see that field's doc comment) — threaded through here rather than only to
+// the one check that needs it, matching how snap is already threaded
+// through unconditionally for every other check.
+func advisoryValidate(ops []Op, snap inventory.Snapshot, allocations []DHCPRangeAllocation) []Finding {
 	var out []Finding
 	for _, op := range ops {
-		out = append(out, advisoryValidateOp(op, snap)...)
+		out = append(out, advisoryValidateOp(op, snap, allocations)...)
 	}
 	return out
 }
 
-func advisoryValidateOp(op Op, snap inventory.Snapshot) []Finding {
+func advisoryValidateOp(op Op, snap inventory.Snapshot, allocations []DHCPRangeAllocation) []Finding {
 	ref := refOf(op)
 	var out []Finding
 
@@ -86,9 +97,111 @@ func advisoryValidateOp(op Op, snap inventory.Snapshot) []Finding {
 				checkVxlanMTU(op, *params.MTU, ref, &out)
 			}
 		}
+
+	case *SdnSubnetCreateParams:
+		if len(params.DHCPRanges) > 0 {
+			checkDHCPRangeOverlap(op.Target, params.DHCPRanges, ref, allocations, &out)
+		}
+
+	case *SdnSubnetUpdateParams:
+		if params.DHCPRanges != nil {
+			checkDHCPRangeOverlap(op.Target, *params.DHCPRanges, ref, allocations, &out)
+		}
 	}
 
 	return out
+}
+
+// checkDHCPRangeOverlap is T-406 acceptance criterion 4: a staged/updated
+// subnet DHCP range that overlaps one or more existing IPAM allocations
+// (allocations — see SafetyOptions.Allocations' doc comment, and this
+// package's completion report for why this data is threaded in as an
+// already-fetched slice rather than a live-fetch seam this pure package
+// would own itself) warns, listing the specific overlapping addresses (and
+// their hostname/MAC when known) so the operator can see exactly what
+// they'd be stepping on. Never blocks: real PVE itself does not reject
+// this at config-apply time (a dnsmasq DHCP pool freely coexists with
+// statically-reserved addresses inside its range — the standard "static
+// reservation carved out of a DHCP pool" pattern), so this is advisory,
+// not referential.
+func checkDHCPRangeOverlap(target inventory.Ref, ranges []string, ref string, allocations []DHCPRangeAllocation, out *[]Finding) {
+	if len(allocations) == 0 {
+		return
+	}
+	subnetCIDR := target.ID
+	for _, r := range ranges {
+		start, end, ok := parseDHCPRangeIPs(r)
+		if !ok {
+			// schema class (validate_schema.go's validDHCPRange) already
+			// flags an unparsable range as a blocking error, which
+			// short-circuits before advisory ever runs — this is just
+			// defensive against being called directly (e.g. from a test)
+			// with a range schemaValidate would have rejected.
+			continue
+		}
+		var hits []DHCPRangeAllocation
+		for _, a := range allocations {
+			if a.Subnet != subnetCIDR {
+				continue
+			}
+			ip := net.ParseIP(a.IP)
+			if ip == nil || !ipInRange(ip, start, end) {
+				continue
+			}
+			hits = append(hits, a)
+		}
+		if len(hits) == 0 {
+			continue
+		}
+		*out = append(*out, warnf(codeAdvisoryDHCPRangeOverlap, ref,
+			"dhcp range %s overlaps %d existing allocation(s): %s", r, len(hits), describeDHCPAllocations(hits)))
+	}
+}
+
+// parseDHCPRangeIPs parses s ("startIP-endIP", validDHCPRange's own shape)
+// into its two endpoint IPs.
+func parseDHCPRangeIPs(s string) (start, end net.IP, ok bool) {
+	parts := strings.SplitN(s, "-", 2)
+	if len(parts) != 2 {
+		return nil, nil, false
+	}
+	start = net.ParseIP(strings.TrimSpace(parts[0]))
+	end = net.ParseIP(strings.TrimSpace(parts[1]))
+	if start == nil || end == nil {
+		return nil, nil, false
+	}
+	return start, end, true
+}
+
+// ipInRange reports whether ip falls within [start, end] inclusive,
+// comparing each IP's 16-byte (v4-in-v6) form so IPv4 and IPv6 addresses
+// compare consistently regardless of which literal form net.ParseIP
+// produced for each.
+func ipInRange(ip, start, end net.IP) bool {
+	ip16, start16, end16 := ip.To16(), start.To16(), end.To16()
+	if ip16 == nil || start16 == nil || end16 == nil {
+		return false
+	}
+	return bytes.Compare(ip16, start16) >= 0 && bytes.Compare(ip16, end16) <= 0
+}
+
+// describeDHCPAllocations renders hits as a human-readable, comma-joined
+// "ip (who)" list for checkDHCPRangeOverlap's warning message — "who" is
+// the allocation's hostname, falling back to its MAC, falling back to just
+// the bare IP when neither is known.
+func describeDHCPAllocations(hits []DHCPRangeAllocation) string {
+	labels := make([]string, 0, len(hits))
+	for _, h := range hits {
+		switch {
+		case h.Hostname != "":
+			labels = append(labels, h.IP+" ("+h.Hostname+")")
+		case h.MAC != "":
+			labels = append(labels, h.IP+" ("+h.MAC+")")
+		default:
+			labels = append(labels, h.IP)
+		}
+	}
+	return strings.Join(labels, ", ")
 }
 
 // checkVxlanMTU is docs/features/sdn.md §2's VXLAN wizard MTU math, run as
