@@ -37,6 +37,13 @@ const CODE_TO_FIELD: Record<string, string> = {
   "referential.vid_overlap": "vids",
   "referential.address_overlap": "addresses",
   "referential.address_out_of_subnet": "addresses",
+  // sdn (T-402)
+  "referential.node_not_found": "nodes",
+  "referential.zone_not_found": "zone",
+  "referential.vnet_not_found": "vnet",
+  "sdn.bridge_missing_on_node": "bridge",
+  "sdn.tag_duplicate": "tag",
+  "advisory.vxlan_mtu_no_headroom": "mtu",
 };
 
 /** The logical form-field key a finding code originates from, or undefined

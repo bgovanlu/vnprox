@@ -25,6 +25,17 @@ const (
 	maxPeerPageLimit     = 200
 )
 
+// defaultPeerLogLines/maxPeerLogLines bound GET /api/peer/firewall/log's
+// own ?maxLines= (T-505) — a materially higher ceiling than
+// maxPeerPageLimit's audit/snapshot-page tuning, since internal/fwlog's
+// storm handling (AC3: a 10k-lines/min fixture) needs a single peer fetch
+// to be able to catch up on a real burst rather than trickling in 200
+// lines at a time across many polling ticks.
+const (
+	defaultPeerLogLines = 500
+	maxPeerLogLines     = 5000
+)
+
 // defaultMaxBodyBytes bounds request bodies the peer server will read
 // (docs/data-model.md's largest per-node artifact is the interfaces(5)
 // file, which is at most a few hundred KB even on a heavily-configured
@@ -62,6 +73,10 @@ type HostReader interface {
 	// Stats returns node's interface counters, keyed by interface name.
 	Stats(ctx context.Context, node string) (map[string]host.IfaceStats, error)
 
+	// Services returns node's systemd unit status for T-602's watched
+	// service set (host.WatchedServices).
+	Services(ctx context.Context, node string) (map[string]bool, error)
+
 	// Links returns node's netlink-equivalent link state (physical NICs,
 	// bonds, bridges, VLAN sub-interfaces), including bond runtime detail
 	// and bridge VLAN/FDB tables. T-303 added this to the interface (and
@@ -73,6 +88,31 @@ type HostReader interface {
 	// that package's doc comment), so no wiring changes are needed to
 	// start serving it.
 	Links(ctx context.Context, node string) ([]host.LinkState, error)
+
+	// FRRBGPSummary returns node's raw `vtysh -c "show bgp summary json"`
+	// output (T-404's EVPN/BGP observability, docs/features/sdn.md §3).
+	// Returns an error wrapping host.ErrFRRUnavailable when node runs no
+	// FRR at all; handleFRRBGPSummary below translates that into the
+	// documented `{available:false}` response rather than an error status.
+	FRRBGPSummary(ctx context.Context, node string) ([]byte, error)
+
+	// FRREVPNVNI returns node's raw `vtysh -c "show evpn vni json"`
+	// output. Same host.ErrFRRUnavailable convention as FRRBGPSummary.
+	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
+}
+
+// FirewallLogReader is the peer-server-side dependency for
+// GET /api/peer/firewall/log (T-505): one node's own pve-firewall log,
+// tail-or-follow depending on cursor. Its signature mirrors
+// internal/fwlog.Source (minus that interface's `reset` return value,
+// which this route folds into "nothing new yet" rather than exposing —
+// see handleFirewallLog) so cmd/vnproxd's wiring can pass a
+// *fwlog.FileSource straight through with a one-line adapter. Declared
+// against this package's own signature (not importing internal/fwlog
+// directly) for the same import-direction reason as AuditReader/
+// SnapshotReader below: internal/peer must not depend on internal/fwlog.
+type FirewallLogReader interface {
+	FirewallLogTail(ctx context.Context, node, cursor string, maxLines int) (lines []string, nextCursor string, err error)
 }
 
 // AuditReader is the peer-server-side dependency for GET /api/peer/audit
@@ -149,11 +189,16 @@ type ServerOptions struct {
 	Snapshots     SnapshotReader
 	Timers        TimerAgent
 	LLDPInstaller LLDPInstaller
-	Secrets       *SecretStore
-	Logger        *slog.Logger
-	Now           func() time.Time
-	Version       string
-	MaxBodyBytes  int64
+	// FirewallLog backs GET /api/peer/firewall/log (T-505). Optional
+	// (nil-safe, the same 503-not-panic treatment as every other optional
+	// ServerOptions dependency): a daemon that hasn't wired a firewall log
+	// source simply can't serve its own log to peers yet.
+	FirewallLog  FirewallLogReader
+	Secrets      *SecretStore
+	Logger       *slog.Logger
+	Now          func() time.Time
+	Version      string
+	MaxBodyBytes int64
 }
 
 // Server implements the /api/peer/* HTTP surface: the HMAC auth middleware
@@ -197,8 +242,11 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/interfaces", s.handleInterfaces)
 		r.Get("/host/lldp", s.handleLLDP)
 		r.Get("/host/stats", s.handleStats)
+		r.Get("/host/services", s.handleServices)
 		r.Get("/host/links", s.handleLinks)
 		r.Get("/host/fdb", s.handleFDB)
+		r.Get("/host/frr/bgp-summary", s.handleFRRBGPSummary)
+		r.Get("/host/frr/evpn-vni", s.handleFRREVPNVNI)
 		r.Post("/host/stage-interfaces", s.handleStageInterfaces)
 		r.Post("/host/ifreload", s.handleIfreload)
 		r.Post("/host/restore", s.handleRestore)
@@ -207,6 +255,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 
 		r.Get("/audit", s.handleAudit)
 		r.Get("/snapshots", s.handleSnapshots)
+		r.Get("/firewall/log", s.handleFirewallLog)
 
 		r.Post("/timer/arm", s.handleTimerArm)
 		r.Post("/timer/cancel", s.handleTimerCancel)
@@ -267,6 +316,20 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, statsResponse{Stats: stats})
 }
 
+func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	services, err := s.opts.Reader.Services(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading service status", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, servicesResponse{Services: services})
+}
+
 func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 	if s.opts.Reader == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
@@ -296,6 +359,100 @@ func (s *Server) handleFDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, fdbResponse{Entries: host.FlattenFDB(links)})
+}
+
+// handleFRRBGPSummary implements GET /api/peer/host/frr/bgp-summary
+// (T-404): node's raw `vtysh -c "show bgp summary json"` output, wrapped
+// in {available, content} rather than passed through raw (unlike
+// handleLLDP) so a node with no FRR installed at all can report that
+// cleanly ({"available":false}) instead of as an error status —
+// docs/features/sdn.md §3's "absent FRR on a node reports no EVPN
+// cleanly" requirement, at the transport layer.
+func (s *Server) handleFRRBGPSummary(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	data, err := s.opts.Reader.FRRBGPSummary(r.Context(), node)
+	if err != nil {
+		if errors.Is(err, host.ErrFRRUnavailable) {
+			writeJSON(w, http.StatusOK, frrResponse{Available: false})
+			return
+		}
+		s.writeHostError(w, "reading bgp summary", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, frrResponse{Available: true, Content: json.RawMessage(data)})
+}
+
+// handleFRREVPNVNI implements GET /api/peer/host/frr/evpn-vni (T-404):
+// node's raw `vtysh -c "show evpn vni json"` output, same
+// {available, content} convention as handleFRRBGPSummary.
+func (s *Server) handleFRREVPNVNI(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	data, err := s.opts.Reader.FRREVPNVNI(r.Context(), node)
+	if err != nil {
+		if errors.Is(err, host.ErrFRRUnavailable) {
+			writeJSON(w, http.StatusOK, frrResponse{Available: false})
+			return
+		}
+		s.writeHostError(w, "reading evpn vni table", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, frrResponse{Available: true, Content: json.RawMessage(data)})
+}
+
+// handleFirewallLog implements GET /api/peer/firewall/log (T-505): node's
+// own pve-firewall log, tailed from the beginning (no ?cursor=) or
+// followed from a previous nextCursor. maxLines defaults to
+// defaultPeerPageLimit and clamps to maxPeerPageLimit, the same convention
+// parsePeerPageLimit already establishes for audit/snapshots (named
+// ?maxLines= here rather than ?limit= since "how many lines" reads more
+// clearly than "how many items" for a log tail, but the semantics and
+// bounds are identical).
+func (s *Server) handleFirewallLog(w http.ResponseWriter, r *http.Request) {
+	if s.opts.FirewallLog == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "firewall log reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	maxLines, ok := parsePeerLineLimit(w, r)
+	if !ok {
+		return
+	}
+	lines, next, err := s.opts.FirewallLog.FirewallLogTail(r.Context(), node, r.URL.Query().Get("cursor"), maxLines)
+	if err != nil {
+		s.writeHostError(w, "reading firewall log", err)
+		return
+	}
+	if lines == nil {
+		lines = []string{}
+	}
+	writeJSON(w, http.StatusOK, firewallLogResponse{Lines: lines, NextCursor: next})
+}
+
+// parsePeerLineLimit is parsePeerPageLimit's ?maxLines= counterpart (GET
+// /api/peer/firewall/log's own query param name — see handleFirewallLog's
+// doc comment for why it's spelled differently from ?limit=).
+func parsePeerLineLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
+	limit := defaultPeerLogLines
+	if v := r.URL.Query().Get("maxLines"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "maxLines must be a positive integer")
+			return 0, false
+		}
+		if n > maxPeerLogLines {
+			n = maxPeerLogLines
+		}
+		limit = n
+	}
+	return limit, true
 }
 
 // parsePeerPageLimit parses the shared ?limit= convention GET /audit and

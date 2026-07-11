@@ -89,6 +89,12 @@ func (srv *Server) mountFirewall(api chi.Router) {
 	srv.mountFirewallScope(api, "/nodes/{node}/qemu/{vmid}/firewall", PrivVMAudit, PrivVMConfigNet, srv.guestScope("qemu"))
 	srv.mountFirewallScope(api, "/nodes/{node}/lxc/{vmid}/firewall", PrivVMAudit, PrivVMConfigNet, srv.guestScope("lxc"))
 
+	// T-502's post-apply verification (docs/features/firewall.md §3) needs
+	// somewhere to read "did this node's firewall compile cleanly" — see
+	// handleFirewallStatus's doc comment for why this route is a mock-only
+	// extension, not a real PVE API endpoint.
+	api.Get("/nodes/{node}/firewall/status", srv.requirePrivilege(PrivSysAudit, srv.handleFirewallStatus))
+
 	// Security groups are a cluster-scope concept in real PVE (reusable
 	// rule bundles referenced by rules at any scope), so they are mounted
 	// once under /cluster/firewall/groups rather than per-scope.
@@ -122,9 +128,43 @@ func (srv *Server) mountFirewallScope(api chi.Router, prefix, readPriv, writePri
 	api.Get(prefix+"/ipset", srv.requirePrivilege(readPriv, srv.handleFwIPSetsList(get)))
 	api.Post(prefix+"/ipset", srv.requirePrivilege(writePriv, srv.handleFwIPSetCreate(get)))
 	api.Get(prefix+"/ipset/{name}", srv.requirePrivilege(readPriv, srv.handleFwIPSetEntriesList(get)))
+	api.Put(prefix+"/ipset/{name}", srv.requirePrivilege(writePriv, srv.handleFwIPSetUpdate(get)))
 	api.Delete(prefix+"/ipset/{name}", srv.requirePrivilege(writePriv, srv.handleFwIPSetDelete(get)))
 	api.Post(prefix+"/ipset/{name}", srv.requirePrivilege(writePriv, srv.handleFwIPSetEntryCreate(get)))
 	api.Delete(prefix+"/ipset/{name}/{cidr}", srv.requirePrivilege(writePriv, srv.handleFwIPSetEntryDelete(get)))
+}
+
+// handleFirewallStatus reports node's pve-firewall compile status (T-502's
+// post-apply verification, docs/features/firewall.md §3: "vnprox verifies
+// post-apply that the compiled status reports no errors and surfaces
+// pve-firewall status per node"). This is a mock-only extension: real PVE
+// has no REST endpoint exposing pve-firewall's own compile-loop result —
+// an administrator (or vnprox) checks it via `pve-firewall status`
+// locally on the node. A real vnproxd implementation would read this the
+// same way it reads LLDP/netlink (internal/host, root-level, proxied
+// through the peer API for a non-local node), not through the PVE API;
+// this mock endpoint stands in for that so the change engine's
+// verification step has something to call in tests. Flagged in T-502's
+// report as needing hardware validation / a real internal/host reader.
+func (srv *Server) handleFirewallStatus(w http.ResponseWriter, r *http.Request) {
+	node := chi.URLParam(r, "node")
+	ns, ok := srv.state.node(node)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", node))
+		return
+	}
+	ns.mu.RLock()
+	fail := ns.mock.FirewallCompileFail
+	ns.mu.RUnlock()
+	status := struct {
+		Status  string `json:"status"`
+		Message string `json:"message,omitempty"`
+	}{Status: "ok"}
+	if fail {
+		status.Status = "error"
+		status.Message = "pve-firewall: syntax error in ruleset (mock-injected failure)"
+	}
+	writeData(w, http.StatusOK, status)
 }
 
 // --- rules -----------------------------------------------------------------
@@ -179,10 +219,22 @@ func (srv *Server) handleFwRuleCreate(get scopeGetter) http.HandlerFunc {
 	}
 }
 
+// fwRuleUpdateBody is the PUT rules/{pos} body: the rule's full field
+// content (mock's update semantics are a full replace, not a patch — see
+// handleFwRuleUpdate's pre-T-502 doc history) plus real PVE's own
+// "moveto" param, which relocates the rule to a new position in the same
+// call (docs/features/firewall.md §2: "reorders are fw.rule.move ops" —
+// T-502's op executor sends the rule's own unchanged fields alongside
+// moveto for a pure move, and moveto omitted for a pure field update).
+type fwRuleUpdateBody struct {
+	Moveto *int `json:"moveto,omitempty"`
+	FwRuleSpec
+}
+
 func (srv *Server) handleFwRuleUpdate(get scopeGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var rule FwRuleSpec
-		if err := decodeRequest(r, &rule); err != nil {
+		var body fwRuleUpdateBody
+		if err := decodeRequest(r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -193,16 +245,55 @@ func (srv *Server) handleFwRuleUpdate(get scopeGetter) http.HandlerFunc {
 		}
 		defer sc.unlock()
 		pos := atoiOr(chi.URLParam(r, "pos"), -1)
+		found := false
 		for i, existing := range sc.scope.Rules {
 			if existing.Pos == pos {
-				rule.Pos = pos
-				sc.scope.Rules[i] = rule
-				writeData(w, http.StatusOK, nil)
-				return
+				updated := body.FwRuleSpec
+				updated.Pos = pos
+				sc.scope.Rules[i] = updated
+				found = true
+				break
 			}
 		}
-		writeError(w, http.StatusNotFound, fmt.Sprintf("rule at pos %d not found", pos))
+		if !found {
+			writeError(w, http.StatusNotFound, fmt.Sprintf("rule at pos %d not found", pos))
+			return
+		}
+		if body.Moveto != nil {
+			sc.scope.Rules = moveFwRule(sc.scope.Rules, pos, *body.Moveto)
+		}
+		writeData(w, http.StatusOK, nil)
 	}
+}
+
+// moveFwRule relocates the rule currently at fromPos to destPos (clamped
+// to the valid [0,len-1] range after removal), renumbering every
+// remaining rule's Pos to stay contiguous — mirrors real pve-firewall's
+// own PUT .../rules/{pos} "moveto" semantics.
+func moveFwRule(rules []FwRuleSpec, fromPos, destPos int) []FwRuleSpec {
+	var moved FwRuleSpec
+	rest := make([]FwRuleSpec, 0, len(rules))
+	for _, ru := range rules {
+		if ru.Pos == fromPos {
+			moved = ru
+			continue
+		}
+		rest = append(rest, ru)
+	}
+	if destPos < 0 {
+		destPos = 0
+	}
+	if destPos > len(rest) {
+		destPos = len(rest)
+	}
+	out := make([]FwRuleSpec, 0, len(rest)+1)
+	out = append(out, rest[:destPos]...)
+	out = append(out, moved)
+	out = append(out, rest[destPos:]...)
+	for i := range out {
+		out[i].Pos = i
+	}
+	return out
 }
 
 func (srv *Server) handleFwRuleDelete(get scopeGetter) http.HandlerFunc {
@@ -394,6 +485,38 @@ func (srv *Server) handleFwAliasDelete(get scopeGetter) http.HandlerFunc {
 }
 
 // --- ipsets ------------------------------------------------------------------
+
+// handleFwIPSetUpdate updates an ipset's comment (real PVE's PUT
+// .../ipset/{name} also supports renaming via a "rename" param; T-502's
+// fw.ipset.update op never renames — Name is the op's own identity field,
+// not editable, matching fw.alias.update's same convention — so this mock
+// endpoint only ever touches Comment).
+func (srv *Server) handleFwIPSetUpdate(get scopeGetter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Comment string `json:"comment"`
+		}
+		if err := decodeRequest(r, &body); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		sc, err := get(r, true)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		defer sc.unlock()
+		name := chi.URLParam(r, "name")
+		for i, s := range sc.scope.IPSets {
+			if s.Name == name {
+				sc.scope.IPSets[i].Comment = body.Comment
+				writeData(w, http.StatusOK, nil)
+				return
+			}
+		}
+		writeError(w, http.StatusNotFound, fmt.Sprintf("ipset %q not found", name))
+	}
+}
 
 func (srv *Server) handleFwIPSetsList(get scopeGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

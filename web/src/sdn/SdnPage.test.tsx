@@ -60,15 +60,23 @@ function renderPage() {
   );
 }
 
+// T-404: SdnPage now also mounts EvpnView on its EVPN/BGP tab, which fires
+// its own GET /sdn/evpn/status query — the mock below branches on request
+// URL so that query gets a shape-correct (if empty) EvpnStatus rather than
+// the SdnTree fixture above (EvpnView.test.tsx covers EVPN content itself
+// in depth; this file only needs the tab switch not to crash).
+const emptyEvpnStatus = { nodes: [], exitNodes: [], findings: [], generatedAt: 1_752_000_000 };
+
 describe("SdnPage", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(JSON.stringify(tree), { status: 200, headers: { "Content-Type": "application/json" } }),
-        ),
-      ),
+      vi.fn((url: string) => {
+        const body = url.includes("/sdn/evpn/status") ? emptyEvpnStatus : tree;
+        return Promise.resolve(
+          new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }),
+        );
+      }),
     );
   });
 
@@ -143,5 +151,29 @@ describe("SdnPage", () => {
       expect(screen.getByRole("heading", { name: "10.0.0.0/24" })).toBeInTheDocument();
     });
     expect(screen.getByText("10.0.0.1")).toBeInTheDocument();
+  });
+
+  // T-404: the EVPN/BGP observability view lives alongside the
+  // configuration tree in the same SDN cockpit page, switched via a tab —
+  // this only checks the tab switch itself renders the EVPN view's own
+  // top-level heading; EvpnView.test.tsx covers that view's content in
+  // depth against its own fixture.
+  it("switching to the EVPN / BGP tab renders the EVPN view instead of the configuration tree", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("vlanz (vlan)")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("tab", { name: "EVPN / BGP" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Peering matrix")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("vlanz (vlan)")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Configuration" }));
+    await waitFor(() => {
+      expect(screen.getByText("vlanz (vlan)")).toBeInTheDocument();
+    });
   });
 });

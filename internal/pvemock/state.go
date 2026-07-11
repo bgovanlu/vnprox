@@ -11,8 +11,10 @@ type nodeState struct {
 	links          map[string]LinkInfo
 	lldp           map[string]LLDPNeighbor
 	stats          map[string]IfaceStats
+	services       map[string]bool
 	qemu           map[string]*GuestSpec
 	lxc            map[string]*GuestSpec
+	frr            *FRRSpec
 	network        []NetIface
 	networkPending []NetIface
 	firewall       FirewallScope
@@ -113,13 +115,15 @@ func NewState(f *Fixture) *State {
 
 	for name, ns := range f.Nodes {
 		rt := &nodeState{
-			links:   cloneMap(ns.Links),
-			lldp:    cloneMap(ns.LLDP),
-			stats:   cloneMap(ns.Stats),
-			qemu:    cloneGuestMap(ns.Qemu),
-			lxc:     cloneGuestMap(ns.Lxc),
-			mock:    f.Mock.merge(ns.Mock),
-			network: append([]NetIface(nil), ns.Network...),
+			links:    cloneMap(ns.Links),
+			lldp:     cloneMap(ns.LLDP),
+			stats:    cloneMap(ns.Stats),
+			services: cloneMap(ns.Services),
+			qemu:     cloneGuestMap(ns.Qemu),
+			lxc:      cloneGuestMap(ns.Lxc),
+			mock:     f.Mock.merge(ns.Mock),
+			network:  append([]NetIface(nil), ns.Network...),
+			frr:      ns.FRR,
 		}
 		if ns.Firewall != nil {
 			rt.firewall = *ns.Firewall

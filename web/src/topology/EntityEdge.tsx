@@ -5,12 +5,21 @@
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps, type Edge } from "@xyflow/react";
 import clsx from "clsx";
 import type { EntityStatus } from "../api/types";
+import { trafficEdgeStyle } from "./trafficMode";
 
 export interface EntityEdgeData extends Record<string, unknown> {
   status: EntityStatus;
   badges: string[];
   dimmed: boolean;
   highlighted: boolean;
+  /** "Traffic" paint mode (docs/features/monitoring.md §1): when true, the
+   * edge's stroke color/width come from utilizationPct instead of status,
+   * via trafficMode.ts's shared heat mapping. */
+  trafficMode?: boolean;
+  /** This edge's resolved link utilization % (see
+   * trafficMode.ts's resolveEdgeUtilizationRef) — undefined means "no live
+   * data yet for either endpoint", rendered as idle rather than blank. */
+  utilizationPct?: number;
 }
 
 export type EntityFlowEdge = Edge<EntityEdgeData, "entity">;
@@ -46,6 +55,8 @@ export function EntityEdge({
   const dimmed = data?.dimmed ?? false;
   const highlighted = data?.highlighted ?? false;
   const badges = data?.badges ?? [];
+  const trafficMode = data?.trafficMode ?? false;
+  const traffic = trafficEdgeStyle(data?.utilizationPct);
 
   return (
     <>
@@ -54,12 +65,12 @@ export function EntityEdge({
         path={edgePath}
         markerEnd={markerEnd}
         style={{
-          stroke: STATUS_STROKE[status],
-          strokeWidth: highlighted ? 2.5 : 1.5,
+          stroke: trafficMode ? traffic.stroke : STATUS_STROKE[status],
+          strokeWidth: trafficMode ? traffic.strokeWidth : highlighted ? 2.5 : 1.5,
           // drift = dashed outline (docs/features/topology.md §2), additive
           // to the existing "unknown"-status dashing — either condition
           // dashes the edge, independent of its status-driven color.
-          strokeDasharray: status === "unknown" || badges.includes("drift") ? "4 3" : undefined,
+          strokeDasharray: !trafficMode && (status === "unknown" || badges.includes("drift")) ? "4 3" : undefined,
           opacity: dimmed && !highlighted ? 0.15 : 1,
         }}
       />

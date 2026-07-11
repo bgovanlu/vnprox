@@ -189,6 +189,18 @@ var ownershipRules = map[Kind]map[string]Ownership{
 			FlagConflict: true,
 		},
 		"pending": {Precedence: []Source{SourcePVENetwork}},
+		// virt (T-407) distinguishes a plain 802.1q VLAN sub-interface from
+		// an OVS Int Port, mirroring Bridge.virt's precedence exactly (both
+		// declared sources agree in practice; flagged in case they don't).
+		"virt": {
+			Precedence:   []Source{SourceHostInterfaces, SourcePVENetwork},
+			FlagConflict: true,
+		},
+		// trunks (T-407) is OVS-only and only ever declared by the
+		// interfaces file today (pve-network's adapter carries no trunks
+		// concept — see FromPVENetwork's OVSIntPort case) — no conflict to
+		// flag against a source that never reports it.
+		"trunks": {Precedence: []Source{SourceHostInterfaces}},
 	},
 }
 

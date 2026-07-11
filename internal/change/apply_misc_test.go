@@ -57,7 +57,7 @@ func TestRollback_CommittedCreatesRestoringDraft(t *testing.T) {
 		t.Fatalf("confirm: %v", err)
 	}
 
-	draft, err := h.svc.Rollback(ctx, orig.ID, "root@pam")
+	draft, err := h.svc.Rollback(ctx, orig.ID, "root@pam", nil)
 	if err != nil {
 		t.Fatalf("rollback committed: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestRollback_CommittedWindowExpired(t *testing.T) {
 	}
 
 	var expired *change.ErrRollbackWindowExpired
-	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam"); !errors.As(err, &expired) {
+	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam", nil); !errors.As(err, &expired) {
 		t.Fatalf("rollback of aged committed changeset err = %v, want *ErrRollbackWindowExpired", err)
 	}
 	if expired.WindowDays != change.DefaultRollbackWindowDays {
@@ -154,7 +154,7 @@ func TestRollback_AwaitingConfirm_Manual(t *testing.T) {
 	if _, err := h.svc.Apply(ctx, cs.ID, "erin@pve", nil, 0); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	rolled, err := h.svc.Rollback(ctx, cs.ID, "erin@pve")
+	rolled, err := h.svc.Rollback(ctx, cs.ID, "erin@pve", nil)
 	if err != nil {
 		t.Fatalf("manual rollback: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestApply_NotConfigured(t *testing.T) {
 	if _, err := svc.Confirm(context.Background(), cs.ID, "root@pam"); !errors.As(err, &notConf) {
 		t.Fatalf("Confirm err = %v, want *ErrApplyNotConfigured", err)
 	}
-	if _, err := svc.Rollback(context.Background(), cs.ID, "root@pam"); !errors.As(err, &notConf) {
+	if _, err := svc.Rollback(context.Background(), cs.ID, "root@pam", nil); !errors.As(err, &notConf) {
 		t.Fatalf("Rollback err = %v, want *ErrApplyNotConfigured", err)
 	}
 	if _, err := svc.Diff(context.Background(), cs.ID); !errors.As(err, &notConf) {
@@ -244,7 +244,7 @@ func TestRollback_NotEligible(t *testing.T) {
 	ctx := context.Background()
 	cs := h.mustCreate(t, "root@pam", "x", []change.Op{bridgeCreateOp("pve1", "vmbr1", nil)})
 	var nc *change.ErrNotConfirmable
-	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam"); !errors.As(err, &nc) {
+	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam", nil); !errors.As(err, &nc) {
 		t.Fatalf("Rollback on draft err = %v, want *ErrNotConfirmable", err)
 	}
 }
@@ -276,7 +276,7 @@ func TestRollback_CommittedCreatePlusUpdate_RestoresViaSnapshotDiff(t *testing.T
 	if _, err := h.svc.Confirm(ctx, cs.ID, "root@pam"); err != nil {
 		t.Fatalf("confirm: %v", err)
 	}
-	draft, err := h.svc.Rollback(ctx, cs.ID, "root@pam")
+	draft, err := h.svc.Rollback(ctx, cs.ID, "root@pam", nil)
 	if err != nil {
 		t.Fatalf("rollback committed create+update: %v", err)
 	}
@@ -389,7 +389,7 @@ func TestApply_NotFoundAndIllegalTransition(t *testing.T) {
 	if _, err := h.svc.Confirm(ctx, "does-not-exist", "root@pam"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("Confirm not-found err = %v", err)
 	}
-	if _, err := h.svc.Rollback(ctx, "does-not-exist", "root@pam"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := h.svc.Rollback(ctx, "does-not-exist", "root@pam", nil); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("Rollback not-found err = %v", err)
 	}
 

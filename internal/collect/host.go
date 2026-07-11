@@ -21,6 +21,7 @@ type nodeHostReader interface {
 	InterfacesFile(ctx context.Context, node string, includePending bool) (string, error)
 	Links(ctx context.Context, node string) ([]host.LinkState, error)
 	Stats(ctx context.Context, node string) (map[string]host.IfaceStats, error)
+	Services(ctx context.Context, node string) (map[string]bool, error)
 }
 
 // peerHostReader adapts a *peer.Client + a specific Peer address into a
@@ -43,6 +44,10 @@ func (r peerHostReader) Stats(ctx context.Context, node string) (map[string]host
 	return r.client.Stats(ctx, r.peer, node)
 }
 
+func (r peerHostReader) Services(ctx context.Context, node string) (map[string]bool, error) {
+	return r.client.Services(ctx, r.peer, node)
+}
+
 // hostPollStateFor polls one node's netlink-equivalent link state (physical
 // NICs, bonds, bridges, VLAN sub-interfaces) into SourceHostNetlink
 // partials, and its interfaces(5) file into SourceHostInterfaces partials
@@ -56,10 +61,12 @@ func (r peerHostReader) Stats(ctx context.Context, node string) (map[string]host
 // than clobbering declared state the graph already has correct (the same
 // keep-last-known policy pvePollAll applies to individual step failures).
 //
-// Interface counters (reader.Stats) are read per deliverable 2 but still
-// discarded: raw counters have no inventory entity fields at all —
-// modeling them is internal/metrics' future job. A stats read failure does
-// not affect this poll's returned error/success state.
+// Interface counters (reader.Stats) have no inventory entity fields at all,
+// so they never feed ApplyPoll — instead they are handed to Config.OnStats
+// (T-601's internal/metrics.Sampler.Ingest, when configured) alongside this
+// same links read, since the sampler needs Links for interface kind/speed/
+// bond-slave metadata to make sense of the raw counters. A stats read
+// failure does not affect this poll's returned error/success state.
 func (c *Collector) hostPollStateFor(ctx context.Context, node string, reader nodeHostReader) error {
 	links, err := reader.Links(ctx, node)
 	if err != nil {
@@ -68,8 +75,18 @@ func (c *Collector) hostPollStateFor(ctx context.Context, node string, reader no
 	entities := inventory.FromNetlinkLinks(node, links)
 	c.graph.ApplyPoll(inventory.SourceHostNetlink, inventory.Scope{Node: node}, entities)
 
-	if _, statsErr := reader.Stats(ctx, node); statsErr != nil {
+	if stats, statsErr := reader.Stats(ctx, node); statsErr != nil {
 		c.log.Debug("collect: host stats read failed", "node", node, "error", statsErr)
+	} else if c.onStats != nil {
+		c.onStats(ctx, node, time.Now(), links, stats)
+	}
+
+	if c.onServices != nil {
+		if services, svcErr := reader.Services(ctx, node); svcErr != nil {
+			c.log.Debug("collect: host service-status read failed", "node", node, "error", svcErr)
+		} else {
+			c.onServices(node, services)
+		}
 	}
 
 	raw, err := reader.InterfacesFile(ctx, node, false)

@@ -1,6 +1,7 @@
 package collect
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -44,9 +45,30 @@ type Config struct {
 	// behavior exactly — single-node deployments have zero peers per
 	// internal/peer's documented contract, so this is never required for
 	// correctness on a single node.
-	Peer         *peer.Client
-	Logger       *slog.Logger
-	OnDelta      func(inventory.Delta)
+	Peer    *peer.Client
+	Logger  *slog.Logger
+	OnDelta func(inventory.Delta)
+	// OnStats is T-601's metrics sampler hook: called once per successfully
+	// polled node (local node directly, each reachable peer via
+	// peerHostReader), every host-loop tick, with that node's raw interface
+	// counters (host.Reader.Stats) alongside the same Links() read used to
+	// populate inventory — the sampler needs Links for interface kind/speed/
+	// bond-slave metadata, not just the counters themselves. Nil (the
+	// default, matching every pre-T-601 caller) preserves the original
+	// "read stats, discard" behavior exactly: hostPollStateFor's doc comment
+	// used to note counters were "read per deliverable 2 but still
+	// discarded ... modeling them is internal/metrics' future job" — this is
+	// that job. A failed reader.Stats read never reaches this hook at all
+	// (same as before: the read's own error is logged and swallowed there).
+	OnStats func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats)
+	// OnServices is T-602's findings-engine hook: called once per
+	// successfully polled node (local directly, each reachable peer via
+	// peerHostReader), every host-loop tick, with that node's current
+	// host.Reader.Services result (T-602's watched systemd unit status —
+	// see internal/findings/health_service.go). Nil (the default) simply
+	// skips the Services() read entirely — the same "no hook, no work"
+	// contract OnStats already establishes for reader.Stats.
+	OnServices   func(node string, status map[string]bool)
 	LocalNode    string
 	PVEInterval  time.Duration
 	HostInterval time.Duration
@@ -73,6 +95,8 @@ type Collector struct {
 	graph      *inventory.Graph
 	log        *slog.Logger
 	onDelta    func(inventory.Delta)
+	onStats    func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats)
+	onServices func(node string, status map[string]bool)
 	status     map[string]*sourceState
 	// hostNodeStatus is the per-cluster-node staleness/backoff bookkeeping
 	// for the "host" source (T-303: unlike "pve" and "lldp", which stay a
@@ -140,6 +164,8 @@ func New(cfg Config) (*Collector, error) {
 		hostInterval: hostInterval,
 		lldpInterval: lldpInterval,
 		onDelta:      cfg.OnDelta,
+		onStats:      cfg.OnStats,
+		onServices:   cfg.OnServices,
 		localNode:    cfg.LocalNode,
 		status: map[string]*sourceState{
 			"pve":  {},

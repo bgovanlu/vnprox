@@ -13,6 +13,12 @@ import type {
   IfaceUpdateParams,
   IpamAllocCreateParams,
   Op,
+  SdnSubnetCreateParams,
+  SdnSubnetUpdateParams,
+  SdnVnetCreateParams,
+  SdnVnetUpdateParams,
+  SdnZoneCreateParams,
+  SdnZoneUpdateParams,
   VidRange,
   VlanCreateParams,
   VlanUpdateParams,
@@ -87,8 +93,14 @@ export interface BondFormValues {
   miimon: number;
   mtu: number;
   comments: string;
+  /** OVS-only: the OVS bridge this bond attaches to (BondCreateParams.bridge).
+   * Ignored for a plain "bond:..." target. */
+  ovsBridge?: string;
 }
 
+/** target's kind prefix ("ovs-bond:" vs "bond:") decides whether this is an
+ * OVS bond create — see BridgeEditor/BondEditor's kind selector, which
+ * constructs target accordingly. */
 export function buildBondCreateOp(target: string, form: BondFormValues): Op {
   const params: BondCreateParams = {
     mode: form.mode,
@@ -98,6 +110,7 @@ export function buildBondCreateOp(target: string, form: BondFormValues): Op {
     miimon: form.miimon || undefined,
     mtu: form.mtu || undefined,
     comments: form.comments || undefined,
+    bridge: target.startsWith("ovs-bond:") ? (form.ovsBridge ?? undefined) : undefined,
   };
   return { op: "bond.create", target, params };
 }
@@ -123,6 +136,11 @@ export interface VlanFormValues {
   vid: number;
   addresses: string[];
   mtu: number;
+  /** True for an OVS Int Port instead of a plain 802.1q sub-interface (see
+   * VlanCreateParams.ovs). Drives whether `trunks` is sent. */
+  ovs?: boolean;
+  /** OVS-only trunk VLAN ranges. */
+  trunks?: VidRange[];
 }
 
 export function buildVlanCreateOp(target: string, form: VlanFormValues): Op {
@@ -131,6 +149,8 @@ export function buildVlanCreateOp(target: string, form: VlanFormValues): Op {
     vid: form.vid,
     addresses: form.addresses.length > 0 ? form.addresses : undefined,
     mtu: form.mtu || undefined,
+    ovs: form.ovs ?? undefined,
+    trunks: form.ovs && form.trunks && form.trunks.length > 0 ? form.trunks : undefined,
   };
   return { op: "vlan.create", target, params };
 }
@@ -162,6 +182,119 @@ export function buildIfaceUpdateOp(target: string, initial: IfaceFormValues, for
   if (form.gateway !== initial.gateway) params.gateway = form.gateway;
   if (form.autostart !== initial.autostart) params.autostart = form.autostart;
   return { op: "iface.update", target, params };
+}
+
+// --- SDN zone/vnet/subnet (T-402, docs/features/sdn.md §1/§4) -------------
+
+export interface SdnZoneFormValues {
+  type: string;
+  bridge: string;
+  controller: string;
+  nodes: string[];
+  vrfVxlan: number;
+  mtu: number;
+}
+
+/** target is `sdn-zone::<id>` (cluster-scoped: no node segment — Ref.Node
+ * is empty for every sdn-* Kind, internal/inventory/entity.go's Ref doc
+ * comment). */
+export function buildSdnZoneCreateOp(target: string, form: SdnZoneFormValues): Op {
+  const params: SdnZoneCreateParams = {
+    type: form.type,
+    bridge: form.bridge || undefined,
+    nodes: form.nodes.length > 0 ? form.nodes : undefined,
+    vrfVxlan: form.vrfVxlan || undefined,
+    mtu: form.mtu || undefined,
+  };
+  return { op: "sdn.zone.create", target, params };
+}
+
+export function buildSdnZoneUpdateOp(target: string, initial: SdnZoneFormValues, form: SdnZoneFormValues): Op {
+  const params: SdnZoneUpdateParams = {};
+  if (form.bridge !== initial.bridge) params.bridge = form.bridge;
+  if (form.controller !== initial.controller) params.controller = form.controller;
+  if (JSON.stringify(form.nodes) !== JSON.stringify(initial.nodes)) params.nodes = form.nodes;
+  if (form.vrfVxlan !== initial.vrfVxlan) params.vrfVxlan = form.vrfVxlan;
+  if (form.mtu !== initial.mtu) params.mtu = form.mtu;
+  return { op: "sdn.zone.update", target, params };
+}
+
+export function buildSdnZoneDeleteOp(target: string): Op {
+  return { op: "sdn.zone.delete", target, params: {} };
+}
+
+export interface SdnVnetFormValues {
+  zone: string;
+  alias: string;
+  tag: number;
+  vlanAware: boolean;
+}
+
+/** target is `sdn-vnet::<zone>/<vnetId>` — internal/change's own Ref.ID
+ * convention for vnets (params_sdn.go's SdnVnetCreateParams doc comment). */
+export function buildSdnVnetCreateOp(target: string, form: SdnVnetFormValues): Op {
+  const params: SdnVnetCreateParams = {
+    zone: form.zone,
+    alias: form.alias || undefined,
+    tag: form.tag || undefined,
+    vlanAware: form.vlanAware,
+  };
+  return { op: "sdn.vnet.create", target, params };
+}
+
+export function buildSdnVnetUpdateOp(target: string, initial: SdnVnetFormValues, form: SdnVnetFormValues): Op {
+  const params: SdnVnetUpdateParams = {};
+  if (form.alias !== initial.alias) params.alias = form.alias;
+  if (form.tag !== initial.tag) params.tag = form.tag;
+  if (form.vlanAware !== initial.vlanAware) params.vlanAware = form.vlanAware;
+  return { op: "sdn.vnet.update", target, params };
+}
+
+export function buildSdnVnetDeleteOp(target: string): Op {
+  return { op: "sdn.vnet.delete", target, params: {} };
+}
+
+export interface SdnSubnetFormValues {
+  vnet: string;
+  cidr: string;
+  gateway: string;
+  dnsZonePrefix: string;
+  dhcpRanges: string[];
+  snat: boolean;
+}
+
+/** target is `sdn-subnet::<cidr>` — the subnet's id *is* its CIDR
+ * (docs/data-model.md's SdnSubnet.ID doc comment). */
+export function buildSdnSubnetCreateOp(target: string, form: SdnSubnetFormValues): Op {
+  const params: SdnSubnetCreateParams = {
+    vnet: form.vnet,
+    cidr: form.cidr,
+    gateway: form.gateway || undefined,
+    dnsZonePrefix: form.dnsZonePrefix || undefined,
+    dhcpRanges: form.dhcpRanges.length > 0 ? form.dhcpRanges : undefined,
+    snat: form.snat,
+  };
+  return { op: "sdn.subnet.create", target, params };
+}
+
+export function buildSdnSubnetUpdateOp(target: string, initial: SdnSubnetFormValues, form: SdnSubnetFormValues): Op {
+  const params: SdnSubnetUpdateParams = {};
+  if (form.gateway !== initial.gateway) params.gateway = form.gateway;
+  if (form.dnsZonePrefix !== initial.dnsZonePrefix) params.dnsZonePrefix = form.dnsZonePrefix;
+  if (JSON.stringify(form.dhcpRanges) !== JSON.stringify(initial.dhcpRanges)) params.dhcpRanges = form.dhcpRanges;
+  if (form.snat !== initial.snat) params.snat = form.snat;
+  return { op: "sdn.subnet.update", target, params };
+}
+
+export function buildSdnSubnetDeleteOp(target: string): Op {
+  return { op: "sdn.subnet.delete", target, params: {} };
+}
+
+/** The trailing `sdn.apply` step every SDN-carrying changeset needs
+ * (docs/data-model.md §3: ordered last when present) — no target
+ * (internal/change/op.go's `noTargetOps`). */
+export function buildSdnApplyOp(): Op {
+  return { op: "sdn.apply", target: undefined, params: {} };
 }
 
 export function buildGuestNicUpdateOp(target: string, params: GuestNicUpdateParams): Op {

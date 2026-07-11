@@ -42,10 +42,14 @@ type spyHostReader struct {
 	lldp            map[string][]byte
 	stats           map[string]map[string]host.IfaceStats
 	links           map[string][]host.LinkState
+	bgpSummary      map[string][]byte
+	evpnVNI         map[string][]byte
 	interfacesCalls int
 	lldpCalls       int
 	statsCalls      int
 	linksCalls      int
+	bgpSummaryCalls int
+	evpnVNICalls    int
 }
 
 func newSpyHostReader() *spyHostReader {
@@ -54,6 +58,8 @@ func newSpyHostReader() *spyHostReader {
 		lldp:       map[string][]byte{},
 		stats:      map[string]map[string]host.IfaceStats{},
 		links:      map[string][]host.LinkState{},
+		bgpSummary: map[string][]byte{},
+		evpnVNI:    map[string][]byte{},
 	}
 }
 
@@ -91,6 +97,28 @@ func (r *spyHostReader) Stats(_ context.Context, node string) (map[string]host.I
 		return nil, errors.Join(host.ErrNotFound, errors.New("node "+node))
 	}
 	return s, nil
+}
+
+func (r *spyHostReader) FRRBGPSummary(_ context.Context, node string) ([]byte, error) {
+	r.bgpSummaryCalls++
+	b, ok := r.bgpSummary[node]
+	if !ok {
+		return nil, errors.Join(host.ErrFRRUnavailable, errors.New("node "+node))
+	}
+	return b, nil
+}
+
+func (r *spyHostReader) FRREVPNVNI(_ context.Context, node string) ([]byte, error) {
+	r.evpnVNICalls++
+	b, ok := r.evpnVNI[node]
+	if !ok {
+		return nil, errors.Join(host.ErrFRRUnavailable, errors.New("node "+node))
+	}
+	return b, nil
+}
+
+func (r *spyHostReader) Services(_ context.Context, node string) (map[string]bool, error) {
+	return nil, nil
 }
 
 // spyHostWriter records every call it receives and its arguments.

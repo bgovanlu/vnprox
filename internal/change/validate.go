@@ -71,6 +71,17 @@ func ValidateWithSafety(ops []Op, snap inventory.Snapshot, safety SafetyOptions)
 		return findings
 	}
 
+	// T-402's SDN pre-apply validator class (zone node coverage, bridge
+	// existence on member nodes, tag uniqueness — docs/features/sdn.md §4)
+	// runs here: after referential (targets must exist first) and before
+	// safety (a zone that can't even apply shouldn't also be evaluated for
+	// interlocks against inconsistent state).
+	sdnFindings := sdnValidate(ops, snap)
+	findings = append(findings, sdnFindings...)
+	if hasError(sdnFindings) {
+		return findings
+	}
+
 	safetyFindings := safetyValidate(ops, snap, safety)
 	findings = append(findings, safetyFindings...)
 	if hasError(safetyFindings) {

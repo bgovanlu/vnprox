@@ -11,15 +11,21 @@ import (
 )
 
 // wrapFixtureErr maps pvemock.ErrNotFound (returned for an unknown node)
-// onto this package's own ErrNotFound sentinel, so callers can use
-// errors.Is(err, host.ErrNotFound) without depending on pvemock's error
-// values directly; any other error is wrapped with context as-is.
+// onto this package's own ErrNotFound sentinel, and pvemock.ErrFRRUnavailable
+// (returned for a node whose fixture declares no FRR state at all) onto
+// this package's own ErrFRRUnavailable sentinel, so callers can use
+// errors.Is(err, host.ErrNotFound)/errors.Is(err, host.ErrFRRUnavailable)
+// without depending on pvemock's error values directly; any other error is
+// wrapped with context as-is.
 func wrapFixtureErr(err error) error {
 	if err == nil {
 		return nil
 	}
 	if errors.Is(err, pvemock.ErrNotFound) {
 		return fmt.Errorf("host: fixture: %w: %w", ErrNotFound, err)
+	}
+	if errors.Is(err, pvemock.ErrFRRUnavailable) {
+		return fmt.Errorf("host: fixture: %w: %w", ErrFRRUnavailable, err)
 	}
 	return fmt.Errorf("host: fixture: %w", err)
 }
@@ -34,6 +40,9 @@ type pvemockReader interface {
 	Links(ctx context.Context, node string) ([]pvemock.LinkState, error)
 	LLDP(ctx context.Context, node string) ([]byte, error)
 	Stats(ctx context.Context, node string) (map[string]pvemock.IfaceStats, error)
+	FRRBGPSummary(ctx context.Context, node string) ([]byte, error)
+	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
+	Services(ctx context.Context, node string) (map[string]bool, error)
 }
 
 // FixtureReader adapts a *pvemock.FixtureHostReader (T-004's YAML
@@ -92,6 +101,27 @@ func (f *FixtureReader) LLDP(ctx context.Context, node string) ([]byte, error) {
 	return b, nil
 }
 
+// FRRBGPSummary implements Reader by delegating directly; wrapFixtureErr
+// maps pvemock.ErrFRRUnavailable (a node whose fixture declares no `frr:`
+// block at all — T-404's "FRR entirely absent on a node" case) onto this
+// package's ErrFRRUnavailable.
+func (f *FixtureReader) FRRBGPSummary(ctx context.Context, node string) ([]byte, error) {
+	b, err := f.r.FRRBGPSummary(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	return b, nil
+}
+
+// FRREVPNVNI implements Reader by delegating directly.
+func (f *FixtureReader) FRREVPNVNI(ctx context.Context, node string) ([]byte, error) {
+	b, err := f.r.FRREVPNVNI(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	return b, nil
+}
+
 // Stats implements Reader, converting pvemock.IfaceStats to
 // host.IfaceStats (identical field sets, different named types — see the
 // Reader doc comment in reader.go on why the two aren't the same type).
@@ -110,6 +140,15 @@ func (f *FixtureReader) Stats(ctx context.Context, node string) (map[string]Ifac
 		}
 	}
 	return out, nil
+}
+
+// Services implements Reader by delegating directly.
+func (f *FixtureReader) Services(ctx context.Context, node string) (map[string]bool, error) {
+	s, err := f.r.Services(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	return s, nil
 }
 
 // Links implements Reader: it fetches pvemock's minimal LinkState list,

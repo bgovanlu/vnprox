@@ -1,0 +1,20 @@
+{
+  "10001": {
+    "vni": 10001,
+    "type": "L2",
+    "vxlanIf": "vxlan10001",
+    "vtepIp": "10.20.0.11",
+    "mcastGroup": "0.0.0.0",
+    "numMacs": 12,
+    "numArpNd": 4,
+    "numRemoteVteps": 2
+  },
+  "10000": {
+    "vni": 10000,
+    "type": "L3",
+    "vxlanIf": "vxlan10000",
+    "svi": "vlan4000",
+    "vrf": "vrf10000",
+    "tenantVrf": "vrf10000"
+  }
+}

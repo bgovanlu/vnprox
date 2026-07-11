@@ -94,7 +94,10 @@ describe("BridgeEditor + NextFreePicker integration (T-405 AC4)", () => {
       expect(screen.getByText("10.50.0.0/24")).toBeInTheDocument();
     });
 
-    await userEvent.selectOptions(screen.getByRole("combobox"), "10.50.0.0/24");
+    // BridgeEditor's own Kind selector (Linux/OVS) is also a combobox as of
+    // the T-402/T-502 merge, so target this one by its accessible name
+    // rather than assuming it's the only one on the page.
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Suggest address from subnet" }), "10.50.0.0/24");
 
     // NextFreePicker fetches that subnet's grid and suggests its lowest
     // free address (10.50.0.1 is the gateway, so 10.50.0.2 is first free).

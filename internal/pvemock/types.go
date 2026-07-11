@@ -73,15 +73,68 @@ func (u UserSpec) HasPrivilege(priv string) bool {
 // NodeSpec is per-node state: network topology, host-level metadata, guests,
 // and node-scope firewall.
 type NodeSpec struct {
-	Links          map[string]LinkInfo     `yaml:"links"`
-	LLDP           map[string]LLDPNeighbor `yaml:"lldp"`
-	Stats          map[string]IfaceStats   `yaml:"stats"`
-	Qemu           map[string]*GuestSpec   `yaml:"qemu"`
-	Lxc            map[string]*GuestSpec   `yaml:"lxc"`
-	Firewall       *FirewallScope          `yaml:"firewall"`
-	Mock           *MockOptions            `yaml:"mock"`
-	Network        []NetIface              `yaml:"network"`
-	NetworkPending []NetIface              `yaml:"network_pending"`
+	Links map[string]LinkInfo     `yaml:"links"`
+	LLDP  map[string]LLDPNeighbor `yaml:"lldp"`
+	Stats map[string]IfaceStats   `yaml:"stats"`
+	// Services is T-602's fixture-declared systemd unit status
+	// (host.WatchedServices' keys: "dnsmasq", "frr") for this node's
+	// FixtureHostReader.Services. A unit omitted from this map (including
+	// when the whole map/key is unset — the common case for a fixture that
+	// doesn't care about this check) defaults to active=true: most fixture
+	// nodes should read as healthy unless a test deliberately declares
+	// otherwise, mirroring how Stats/Links default to "unremarkable" absent
+	// an explicit override.
+	Services map[string]bool       `yaml:"services,omitempty"`
+	Qemu     map[string]*GuestSpec `yaml:"qemu"`
+	Lxc      map[string]*GuestSpec `yaml:"lxc"`
+	Firewall *FirewallScope        `yaml:"firewall"`
+	Mock     *MockOptions          `yaml:"mock"`
+	// FRR is this node's fixture-declared FRR/BGP EVPN daemon state
+	// (T-404, docs/features/sdn.md §3). Nil models a node with no FRR
+	// installed/running at all — this package's HostReader.FRRBGPSummary/
+	// FRREVPNVNI return ErrFRRUnavailable for such a node, so the
+	// aggregation layer can report a clean per-node "no EVPN" rather than
+	// treating it as an error (T-404 AC2).
+	FRR            *FRRSpec   `yaml:"frr,omitempty"`
+	Network        []NetIface `yaml:"network"`
+	NetworkPending []NetIface `yaml:"network_pending"`
+}
+
+// FRRSpec is a node's fixture-declared FRR daemon state: its own BGP
+// identity plus every configured peer session and EVPN VNI.
+type FRRSpec struct {
+	RouterID string        `yaml:"router_id"`
+	Peers    []BGPPeerSpec `yaml:"peers"`
+	VNIs     []EVPNVniSpec `yaml:"vnis"`
+	ASN      int           `yaml:"asn"`
+}
+
+// BGPPeerSpec is one fixture-declared BGP neighbor session. State is a raw
+// FRR FSM state string, matching real vtysh vocabulary exactly (e.g.
+// "Established", "Active", "Idle", or "Idle (Admin)"/"Idle (PfxCt)" with a
+// parenthetical reason — internal/host.ParseBGPSummary splits the reason
+// out) — this lets fixtures model FRR's own "last error" signal without
+// this package inventing a separate field for it.
+type BGPPeerSpec struct {
+	Addr          string `yaml:"addr"`
+	Hostname      string `yaml:"hostname,omitempty"`
+	State         string `yaml:"state"`
+	AddressFamily string `yaml:"address_family,omitempty"` // "" defaults to "l2VpnEvpn"
+	PeerUptime    string `yaml:"peer_uptime,omitempty"`    // e.g. "01:23:45", "never"
+	RemoteAS      int    `yaml:"remote_as"`
+	PfxRcd        int    `yaml:"pfx_rcd,omitempty"`
+	PfxSnt        int    `yaml:"pfx_snt,omitempty"`
+}
+
+// EVPNVniSpec is one fixture-declared EVPN VNI (L2 tenant bridge domain or
+// L3 tenant VRF).
+type EVPNVniSpec struct {
+	Type      string `yaml:"type"` // "L2" | "L3"
+	VxlanIf   string `yaml:"vxlan_if,omitempty"`
+	TenantVRF string `yaml:"tenant_vrf,omitempty"`
+	VNI       int    `yaml:"vni"`
+	NumMacs   int    `yaml:"num_macs,omitempty"`
+	NumArpND  int    `yaml:"num_arp_nd,omitempty"`
 }
 
 // NetIface is one stanza of /etc/network/interfaces, matching the field
@@ -359,6 +412,26 @@ type MockOptions struct {
 	// NetworkReloadFail, when true, makes the next (and every subsequent,
 	// until cleared) `PUT /nodes/{node}/network` reload task fail.
 	NetworkReloadFail bool `yaml:"network_reload_fail,omitempty"`
+
+	// SDNZoneStatusFail, when true, makes this node report "error" on
+	// GET /cluster/sdn/zones/{zone}/status for every zone it is a member
+	// of, regardless of whether its bridge actually exists (T-402: models
+	// a node whose SDN apply task itself reported success but the node
+	// nonetheless failed to realize the config — a failure mode no
+	// pre-apply validator can predict, unlike a genuinely-missing bridge,
+	// which docs/features/sdn.md §4's own pre-apply validation already
+	// catches before an apply is even attempted). Set per-node via the
+	// fixture or POST /mock/nodes/{node}/sdn-status-fail, mirroring
+	// NetworkReloadFail's exact pattern.
+	SDNZoneStatusFail bool `yaml:"sdn_zone_status_fail,omitempty"`
+
+	// FirewallCompileFail, when true, makes GET /nodes/{node}/firewall/status
+	// (T-502's mock-only extension — see firewall.go's handleFirewallStatus
+	// doc comment for why this route isn't part of the real PVE API) report
+	// a compile error instead of "ok", so the change engine's post-apply
+	// verification step (docs/features/firewall.md §3) has something to
+	// actually catch in tests.
+	FirewallCompileFail bool `yaml:"firewall_compile_fail,omitempty"`
 }
 
 // merge returns o overridden by any non-zero fields in override.
@@ -372,6 +445,12 @@ func (o MockOptions) merge(override *MockOptions) MockOptions {
 	}
 	if override.NetworkReloadFail {
 		out.NetworkReloadFail = true
+	}
+	if override.SDNZoneStatusFail {
+		out.SDNZoneStatusFail = true
+	}
+	if override.FirewallCompileFail {
+		out.FirewallCompileFail = true
 	}
 	return out
 }

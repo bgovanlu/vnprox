@@ -3,6 +3,9 @@ package change
 import (
 	"net"
 	"strings"
+
+	"github.com/bgovanlu/vnprox/internal/fw"
+	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
 // Range/enum constants for the schema validator class (docs/features/
@@ -20,6 +23,30 @@ var validBondModes = map[string]bool{
 	"broadcast": true, "802.3ad": true, "balance-tlb": true, "balance-alb": true,
 }
 
+// validOVSBondModes is the enum for an OVS bond's Mode (op.Target.Kind ==
+// KindOVSBond) — a materially different vocabulary from the Linux bonding
+// driver's validBondModes (e.g. "balance-slb"/"balance-tcp" are OVS-only;
+// "balance-rr"/"balance-xor"/"broadcast"/"balance-tlb"/"balance-alb" are
+// Linux-bonding-only and not valid ovs-vsctl bond_mode values). "802.3ad"
+// and "lacp" are accepted as user-facing aliases for LACP-mode OVS bonding
+// (internal/change/ifaces.ovsBondModeOptions renders either as
+// "bond_mode=balance-slb lacp=active ...", matching
+// testdata/interfaces/05-ovs-bond.interfaces).
+var validOVSBondModes = map[string]bool{
+	"active-backup": true, "balance-slb": true, "balance-tcp": true,
+	"802.3ad": true, "lacp": true,
+}
+
+// bondModeSet selects the bond-mode enum to validate Mode against, per
+// target.Kind (docs/features/change-management.md §5's OVS deliverable:
+// "OVS bond mode enums validated").
+func bondModeSet(kind inventory.Kind) map[string]bool {
+	if kind == inventory.KindOVSBond {
+		return validOVSBondModes
+	}
+	return validBondModes
+}
+
 var validLACPRates = map[string]bool{"slow": true, "fast": true}
 
 var validXmitHashPolicies = map[string]bool{
@@ -28,7 +55,13 @@ var validXmitHashPolicies = map[string]bool{
 
 var validSdnZoneTypes = map[string]bool{"simple": true, "vlan": true, "qinq": true, "vxlan": true, "evpn": true}
 
-var validFwDirections = map[string]bool{"in": true, "out": true}
+// validFwDirections includes "group" alongside the real traffic
+// directions "in"/"out": a rule row whose Direction is "group" is not a
+// traffic-direction rule at all but a security-group reference (T-501's
+// documented convention, matching real PVE's own "type":"group" rule
+// shape — see internal/fw/resolve.go's appendRule doc comment), so it must
+// pass this same-field schema check too.
+var validFwDirections = map[string]bool{"in": true, "out": true, "group": true}
 
 var validFwActions = map[string]bool{"ACCEPT": true, "DROP": true, "REJECT": true}
 
@@ -119,13 +152,16 @@ func schemaValidateOp(op Op) []Finding {
 	case *BondCreateParams:
 		if p.Mode == "" {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "bond.create requires mode"))
-		} else if !validBondModes[p.Mode] {
+		} else if !bondModeSet(op.Target.Kind)[p.Mode] {
 			out = append(out, errorf(codeBondModeInvalid, ref, "bond mode %q is not a recognized mode", p.Mode))
 		}
 		if len(p.Slaves) == 0 {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "bond.create requires at least one slave"))
 		} else {
 			schemaDuplicateStrings(p.Slaves, ref, codeDuplicateSlave, "slave %q listed twice", &out)
+		}
+		if op.Target.Kind == inventory.KindOVSBond && p.Bridge == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "ovs bond.create requires bridge"))
 		}
 		if p.LACPRate != "" && !validLACPRates[p.LACPRate] {
 			out = append(out, errorf(codeLACPRateInvalid, ref, "lacpRate %q must be one of slow, fast", p.LACPRate))
@@ -139,7 +175,7 @@ func schemaValidateOp(op Op) []Finding {
 		schemaMTU(op, p.MTU, ref, &out)
 
 	case *BondUpdateParams:
-		if p.Mode != nil && !validBondModes[*p.Mode] {
+		if p.Mode != nil && !bondModeSet(op.Target.Kind)[*p.Mode] {
 			out = append(out, errorf(codeBondModeInvalid, ref, "bond mode %q is not a recognized mode", *p.Mode))
 		}
 		if p.Slaves != nil {
@@ -195,10 +231,29 @@ func schemaValidateOp(op Op) []Finding {
 		if p.Parent == "" {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "vlan.create requires parent"))
 		}
-		if p.Vid < minVID || p.Vid > maxVID {
-			f := errorf(codeVIDOutOfRange, ref, "vid %d out of range [%d,%d]", p.Vid, minVID, maxVID)
-			f.Fix = fixClampVID(op)
-			out = append(out, f)
+		// A plain 802.1q sub-interface's vid is always meaningful (its
+		// entire identity, per VlanName's "<parent>.<vid>" convention). An
+		// OVS Int Port's vid is instead an optional access "tag" — 0 is a
+		// legitimate "untagged/native, possibly trunk-only" port, so it is
+		// only range-checked when non-zero (schemaVidRanges' sibling
+		// checkVIDRangeAllowZero convention).
+		if p.OVS {
+			if p.Vid != 0 {
+				if f := checkVIDRange(p.Vid, ref); f != nil {
+					f.Fix = fixClampVID(op)
+					out = append(out, *f)
+				}
+			}
+			schemaVidRanges(op, p.Trunks, ref, &out)
+		} else {
+			if p.Vid < minVID || p.Vid > maxVID {
+				f := errorf(codeVIDOutOfRange, ref, "vid %d out of range [%d,%d]", p.Vid, minVID, maxVID)
+				f.Fix = fixClampVID(op)
+				out = append(out, f)
+			}
+			if len(p.Trunks) > 0 {
+				out = append(out, errorf(codeOVSTrunkNotAllowed, ref, "trunks is only valid for an OVS Int Port (ovs: true)"))
+			}
 		}
 		schemaAddresses(p.Addresses, ref, &out)
 		schemaMTU(op, p.MTU, ref, &out)
@@ -295,21 +350,27 @@ func schemaValidateOp(op Op) []Finding {
 
 	case *FwRuleCreateParams:
 		schemaFwDirection(p.Direction, ref, &out)
-		schemaFwAction(p.Action, ref, &out)
+		schemaFwActionForDirection(p.Direction, p.Action, ref, &out)
 		schemaFwLog(p.Log, ref, &out)
+		schemaFwMacro(p.Macro, ref, &out)
 		if p.Pos < 0 {
 			out = append(out, errorf(codeFwPosInvalid, ref, "pos %d must not be negative", p.Pos))
 		}
 
 	case *FwRuleUpdateParams:
+		direction := ""
 		if p.Direction != nil {
 			schemaFwDirection(*p.Direction, ref, &out)
+			direction = *p.Direction
 		}
 		if p.Action != nil {
-			schemaFwAction(*p.Action, ref, &out)
+			schemaFwActionForDirection(direction, *p.Action, ref, &out)
 		}
 		if p.Log != nil {
 			schemaFwLog(*p.Log, ref, &out)
+		}
+		if p.Macro != nil {
+			schemaFwMacro(*p.Macro, ref, &out)
 		}
 		if p.Pos < 0 {
 			out = append(out, errorf(codeFwPosInvalid, ref, "pos %d must not be negative", p.Pos))
@@ -441,6 +502,38 @@ func schemaFwDirection(v, ref string, out *[]Finding) {
 func schemaFwAction(v, ref string, out *[]Finding) {
 	if !validFwActions[v] {
 		*out = append(*out, errorf(codeFwActionInvalid, ref, "action %q must be one of ACCEPT, DROP, REJECT", v))
+	}
+}
+
+// schemaFwActionForDirection validates a rule's action field, special-
+// casing direction == "group": per T-501's documented convention
+// (internal/fw/resolve.go's appendRule doc comment, matching real PVE's
+// own "type":"group" rule shape), a group-reference rule's Action field
+// holds the referenced security group's *name*, not one of ACCEPT/DROP/
+// REJECT — so the enum check doesn't apply; only non-empty is required
+// here (does the named group actually exist is a referential-class
+// concern, not schema's).
+func schemaFwActionForDirection(direction, action, ref string, out *[]Finding) {
+	if direction == "group" {
+		if action == "" {
+			*out = append(*out, errorf(codeFwActionInvalid, ref, "a group-reference rule's action must name the security group"))
+		}
+		return
+	}
+	schemaFwAction(action, ref, out)
+}
+
+// schemaFwMacro validates that macro, when set, names a macro the built-in
+// catalog (internal/fw.KnownMacros) actually recognizes — the "macro
+// existence" validator the T-502 task card calls for. An empty macro is
+// always valid (most rules don't use one; proto/ports are set directly
+// instead).
+func schemaFwMacro(macro, ref string, out *[]Finding) {
+	if macro == "" {
+		return
+	}
+	if _, ok := fw.MacroExpansion(macro); !ok {
+		*out = append(*out, errorf(codeFwMacroUnknown, ref, "macro %q is not a known firewall macro", macro))
 	}
 }
 

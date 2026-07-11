@@ -1,6 +1,7 @@
 package pvemock
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -167,5 +168,133 @@ func TestFirewall_NodeAndGuestScopeOptionsAndRules(t *testing.T) {
 	roReq := authedRequest(t, http.MethodPost, "/api2/json/nodes/pve1/qemu/100/firewall/rules", roTicket, roCSRF, ruleBody)
 	if rec, _ := doJSON(t, srv, roReq); rec.Code != http.StatusForbidden {
 		t.Fatalf("read-only guest fw rule create status = %d, want 403", rec.Code)
+	}
+}
+
+// TestFirewall_RuleUpdate_Moveto is T-502's addition to the rule update
+// endpoint: PUT .../rules/{pos} with a "moveto" field relocates the rule
+// (real pve-firewall's own semantics on this same endpoint), renumbering
+// every rule to stay contiguous.
+func TestFirewall_RuleUpdate_Moveto(t *testing.T) {
+	srv := newTestServer(t, "single-node.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	// cluster.fw starts empty in single-node.yaml; create three rules.
+	for _, comment := range []string{"first", "second", "third"} {
+		body, _ := json.Marshal(FwRuleSpec{Enabled: true, Type: "in", Action: "ACCEPT", Comment: comment})
+		req := authedRequest(t, http.MethodPost, "/api2/json/cluster/firewall/rules", ticket, csrf, body)
+		if rec, _ := doJSON(t, srv, req); rec.Code != http.StatusOK {
+			t.Fatalf("create rule %q status = %d", comment, rec.Code)
+		}
+	}
+
+	// Move "first" (pos 0) to the end (pos 2), resending its own unchanged
+	// fields plus moveto — fw.rule.move's realization.
+	moveBody, _ := json.Marshal(fwRuleUpdateBody{
+		FwRuleSpec: FwRuleSpec{Enabled: true, Type: "in", Action: "ACCEPT", Comment: "first"},
+		Moveto:     intPtrPvemock(2),
+	})
+	moveReq := authedRequest(t, http.MethodPut, "/api2/json/cluster/firewall/rules/0", ticket, csrf, moveBody)
+	if rec, _ := doJSON(t, srv, moveReq); rec.Code != http.StatusOK {
+		t.Fatalf("move rule status = %d", rec.Code)
+	}
+
+	listReq := authedRequest(t, http.MethodGet, "/api2/json/cluster/firewall/rules", ticket, "", nil)
+	rec, body := doJSON(t, srv, listReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list rules status = %d", rec.Code)
+	}
+	rules, _ := body["data"].([]any)
+	if len(rules) != 3 {
+		t.Fatalf("len(rules) = %d, want 3", len(rules))
+	}
+	wantOrder := []string{"second", "third", "first"}
+	for i, raw := range rules {
+		r, _ := raw.(map[string]any)
+		if r["comment"] != wantOrder[i] {
+			t.Errorf("rules[%d].comment = %v, want %q (order: %+v)", i, r["comment"], wantOrder[i], rules)
+		}
+		if int(r["pos"].(float64)) != i {
+			t.Errorf("rules[%d].pos = %v, want %d", i, r["pos"], i)
+		}
+	}
+}
+
+func intPtrPvemock(v int) *int { return &v }
+
+// TestFirewall_IPSetUpdate_Comment covers T-502's new PUT .../ipset/{name}
+// endpoint (rename the comment; Name itself is not editable).
+func TestFirewall_IPSetUpdate_Comment(t *testing.T) {
+	srv := newTestServer(t, "single-node.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	createBody, _ := json.Marshal(FwIPSetSpec{Name: "blocklist", Comment: "original"})
+	create := authedRequest(t, http.MethodPost, "/api2/json/cluster/firewall/ipset", ticket, csrf, createBody)
+	if rec, _ := doJSON(t, srv, create); rec.Code != http.StatusOK {
+		t.Fatalf("create ipset status = %d", rec.Code)
+	}
+
+	updateBody, _ := json.Marshal(map[string]string{"comment": "updated"})
+	update := authedRequest(t, http.MethodPut, "/api2/json/cluster/firewall/ipset/blocklist", ticket, csrf, updateBody)
+	if rec, _ := doJSON(t, srv, update); rec.Code != http.StatusOK {
+		t.Fatalf("update ipset status = %d", rec.Code)
+	}
+
+	list := authedRequest(t, http.MethodGet, "/api2/json/cluster/firewall/ipset", ticket, "", nil)
+	rec, body := doJSON(t, srv, list)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list ipsets status = %d", rec.Code)
+	}
+	sets, _ := body["data"].([]any)
+	found := false
+	for _, raw := range sets {
+		s, _ := raw.(map[string]any)
+		if s["name"] == "blocklist" {
+			found = true
+			if s["comment"] != "updated" {
+				t.Errorf("comment = %v, want %q", s["comment"], "updated")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("blocklist ipset not found in list")
+	}
+}
+
+// TestFirewall_CompileStatus covers T-502's mock-only /nodes/{node}/firewall/
+// status route and its failure-injection control endpoint.
+func TestFirewall_CompileStatus(t *testing.T) {
+	srv := newTestServer(t, "single-node.yaml")
+	ticket, _ := login(t, srv, "root@pam", "vnprox-mock")
+
+	ok := authedRequest(t, http.MethodGet, "/api2/json/nodes/pve1/firewall/status", ticket, "", nil)
+	rec, body := doJSON(t, srv, ok)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	data, _ := body["data"].(map[string]any)
+	if data["status"] != "ok" {
+		t.Fatalf("status field = %v, want ok", data["status"])
+	}
+
+	failBody, _ := json.Marshal(map[string]bool{"fail": true})
+	failReq, err := http.NewRequest(http.MethodPost, "/mock/nodes/pve1/firewall-compile-fail", bytes.NewReader(failBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	failReq.Header.Set("Content-Type", "application/json")
+	rec2, _ := doJSON(t, srv, failReq)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("toggling compile-fail status = %d", rec2.Code)
+	}
+
+	failed := authedRequest(t, http.MethodGet, "/api2/json/nodes/pve1/firewall/status", ticket, "", nil)
+	rec3, body3 := doJSON(t, srv, failed)
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec3.Code)
+	}
+	data3, _ := body3["data"].(map[string]any)
+	if data3["status"] != "error" || data3["message"] == "" {
+		t.Fatalf("data = %+v, want status=error with a message", data3)
 	}
 }

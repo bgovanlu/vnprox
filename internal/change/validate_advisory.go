@@ -68,9 +68,51 @@ func advisoryValidateOp(op Op, snap inventory.Snapshot) []Finding {
 		if comments == "" {
 			out = append(out, warnf(codeAdvisoryBridgeComment, ref, "bridge %s has no description", op.Target.ID))
 		}
+
+	case *SdnZoneCreateParams:
+		if params.Type == "vxlan" || params.Type == "evpn" {
+			checkVxlanMTU(op, params.MTU, ref, &out)
+		}
+
+	case *SdnZoneUpdateParams:
+		if params.MTU != nil {
+			typ := ""
+			if e, ok := snap.Get(op.Target); ok {
+				if z, ok := e.(*inventory.SdnZone); ok {
+					typ = z.Type
+				}
+			}
+			if typ == "vxlan" || typ == "evpn" {
+				checkVxlanMTU(op, *params.MTU, ref, &out)
+			}
+		}
 	}
 
 	return out
+}
+
+// checkVxlanMTU is docs/features/sdn.md §2's VXLAN wizard MTU math, run as
+// an advisory check on any vxlan/evpn zone.create/update carrying an
+// explicit MTU (docs/features/sdn.md §4's "MTU sanity"): a zone MTU that
+// leaves no room for VXLAN's encapsulation overhead over the assumed
+// underlay path MTU (underlayMTU, validate_sdn.go) degrades or silently
+// drops encapsulated traffic rather than an apply-time hard failure, so
+// this is a warning (never blocking) with a one-click fix clamping it to
+// exactly the PVE-recommended figure — T-402 acceptance criterion 3: "1500
+// underlay + vnet MTU 1500 → warning with fix patch (set 1450)". mtu == 0
+// (unset — PVE applies its own sane default) is not flagged.
+func checkVxlanMTU(op Op, mtu int, ref string, out *[]Finding) {
+	if mtu == 0 {
+		return
+	}
+	safe := underlayMTU - vxlanOverhead
+	if mtu > safe {
+		f := warnf(codeAdvisoryVxlanMTU, ref,
+			"zone mtu %d leaves no headroom for VXLAN's %d-byte encapsulation overhead over the assumed %d-byte underlay path MTU — encapsulated traffic may be fragmented or dropped; set it to %d",
+			mtu, vxlanOverhead, underlayMTU, safe)
+		f.Fix = fixSetVxlanMTU(op, safe)
+		*out = append(*out, f)
+	}
 }
 
 // checkBondAdvisory evaluates the two bond-shaped advisories against an

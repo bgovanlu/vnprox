@@ -228,6 +228,30 @@ func goldenCases() []goldenCase {
 				&FwRuleDeleteParams{Pos: -1})},
 			want: []wantFinding{{SeverityError, codeFwPosInvalid, "fw-ruleset::cluster"}},
 		},
+		{
+			name: "schema: bond.create ovs bond rejects linux-only mode",
+			ops: []Op{mkOp(OpBondCreate, testRef(inventory.KindOVSBond, "pve1", "bond0"),
+				&BondCreateParams{Mode: "balance-rr", Slaves: []string{"eno1"}, Bridge: "vmbr0"})},
+			want: []wantFinding{{SeverityError, codeBondModeInvalid, "ovs-bond:pve1:bond0"}},
+		},
+		{
+			name: "schema: bond.create linux bond rejects ovs-only mode",
+			ops: []Op{mkOp(OpBondCreate, testRef(inventory.KindBond, "pve1", "bond0"),
+				&BondCreateParams{Mode: "balance-slb", Slaves: []string{"eno1"}})},
+			want: []wantFinding{{SeverityError, codeBondModeInvalid, "bond:pve1:bond0"}},
+		},
+		{
+			name: "schema: bond.create ovs bond missing bridge",
+			ops: []Op{mkOp(OpBondCreate, testRef(inventory.KindOVSBond, "pve1", "bond0"),
+				&BondCreateParams{Mode: "active-backup", Slaves: []string{"eno1"}})},
+			want: []wantFinding{{SeverityError, codeRequiredFieldMissing, "ovs-bond:pve1:bond0"}},
+		},
+		{
+			name: "schema: vlan.create trunks without ovs flag",
+			ops: []Op{mkOp(OpVlanCreate, testRef(inventory.KindVlan, "pve1", "vmbr0.20"),
+				&VlanCreateParams{Parent: "vmbr0", Vid: 20, Trunks: []VidRange{{Low: 10, High: 20}}})},
+			want: []wantFinding{{SeverityError, codeOVSTrunkNotAllowed, "vlan:pve1:vmbr0.20"}},
+		},
 
 		// --- referential (class 2) --------------------------------------
 
@@ -298,6 +322,84 @@ func goldenCases() []goldenCase {
 			ops: []Op{mkOp(OpBondCreate, testRef(inventory.KindBond, "pve1", "bond1"),
 				&BondCreateParams{Mode: "active-backup", Slaves: []string{"eno1", "eno2"}})},
 			want: []wantFinding{{SeverityError, codeDuplicateEnslavement, "bond:pve1:bond1"}},
+		},
+		{
+			name: "referential: bridge.port.add rejects linux bond onto ovs bridge",
+			snap: buildSnapshot(
+				&inventory.Bridge{Ref: testRef(inventory.KindOVSBridge, "pve1", "vmbr0"), Name: "vmbr0", Virt: inventory.BridgeOVS},
+				&inventory.Bond{Ref: testRef(inventory.KindBond, "pve1", "bond0"), Name: "bond0", Mode: "active-backup"},
+			),
+			ops: []Op{mkOp(OpBridgePortAdd, testRef(inventory.KindOVSBridge, "pve1", "vmbr0"),
+				&BridgePortAddParams{Port: "bond0"})},
+			want: []wantFinding{{SeverityError, codeOVSKindMismatch, "ovs-bridge:pve1:vmbr0"}},
+		},
+		{
+			name: "referential: bridge.port.add rejects ovs bond onto linux bridge",
+			snap: buildSnapshot(
+				&inventory.Bridge{Ref: testRef(inventory.KindBridge, "pve1", "vmbr0"), Name: "vmbr0"},
+				&inventory.Bond{Ref: testRef(inventory.KindOVSBond, "pve1", "bond0"), Name: "bond0", Mode: "active-backup"},
+			),
+			ops: []Op{mkOp(OpBridgePortAdd, testRef(inventory.KindBridge, "pve1", "vmbr0"),
+				&BridgePortAddParams{Port: "bond0"})},
+			want: []wantFinding{{SeverityError, codeOVSKindMismatch, "bridge:pve1:vmbr0"}},
+		},
+		{
+			name: "referential: bridge.create rejects ovs bridge as linux bridge port",
+			snap: buildSnapshot(&inventory.Bridge{Ref: testRef(inventory.KindOVSBridge, "pve1", "vmbr-ovs"), Name: "vmbr-ovs", Virt: inventory.BridgeOVS}),
+			ops: []Op{mkOp(OpBridgeCreate, testRef(inventory.KindBridge, "pve1", "vmbr9"),
+				&BridgeCreateParams{Ports: []string{"vmbr-ovs"}})},
+			want: []wantFinding{{SeverityError, codeOVSKindMismatch, "bridge:pve1:vmbr9"}},
+		},
+		{
+			name: "referential: bond.create ovs bond bridge not found",
+			ops: []Op{mkOp(OpBondCreate, testRef(inventory.KindOVSBond, "pve1", "bond0"),
+				&BondCreateParams{Mode: "active-backup", Slaves: []string{"eno1"}, Bridge: "vmbr9"})},
+			want: []wantFinding{
+				{SeverityError, codeSlaveNotFound, "ovs-bond:pve1:bond0"},
+				{SeverityError, codeParentNotFound, "ovs-bond:pve1:bond0"},
+			},
+		},
+		{
+			name: "referential: bond.create ovs bond bridge wrong kind",
+			snap: buildSnapshot(
+				pve1eno1,
+				&inventory.Bridge{Ref: testRef(inventory.KindBridge, "pve1", "vmbr0"), Name: "vmbr0"},
+			),
+			ops: []Op{mkOp(OpBondCreate, testRef(inventory.KindOVSBond, "pve1", "bond0"),
+				&BondCreateParams{Mode: "active-backup", Slaves: []string{"eno1"}, Bridge: "vmbr0"})},
+			want: []wantFinding{{SeverityError, codeOVSKindMismatch, "ovs-bond:pve1:bond0"}},
+		},
+		{
+			name: "referential: vlan.create ovs int port parent not an ovs bridge",
+			snap: buildSnapshot(&inventory.Bridge{Ref: testRef(inventory.KindBridge, "pve1", "vmbr0"), Name: "vmbr0"}),
+			ops: []Op{mkOp(OpVlanCreate, testRef(inventory.KindVlan, "pve1", "vlan20"),
+				&VlanCreateParams{Parent: "vmbr0", Vid: 20, OVS: true})},
+			want: []wantFinding{{SeverityError, codeOVSKindMismatch, "vlan:pve1:vlan20"}},
+		},
+		{
+			name: "referential: vlan.create plain vlan rejects ovs bridge parent",
+			snap: buildSnapshot(&inventory.Bridge{Ref: testRef(inventory.KindOVSBridge, "pve1", "vmbr0"), Name: "vmbr0", Virt: inventory.BridgeOVS}),
+			ops: []Op{mkOp(OpVlanCreate, testRef(inventory.KindVlan, "pve1", "vmbr0.20"),
+				&VlanCreateParams{Parent: "vmbr0", Vid: 20})},
+			want: []wantFinding{{SeverityError, codeOVSKindMismatch, "vlan:pve1:vmbr0.20"}},
+		},
+		{
+			name: "referential: vlan.create ovs int port trunk overlap",
+			snap: buildSnapshot(&inventory.Bridge{Ref: testRef(inventory.KindOVSBridge, "pve1", "vmbr0"), Name: "vmbr0", Virt: inventory.BridgeOVS}),
+			ops: []Op{mkOp(OpVlanCreate, testRef(inventory.KindVlan, "pve1", "vlan30"),
+				&VlanCreateParams{Parent: "vmbr0", OVS: true, Trunks: []VidRange{{Low: 10, High: 20}, {Low: 15, High: 25}}})},
+			want: []wantFinding{{SeverityError, codeVIDOverlap, "vlan:pve1:vlan30"}},
+		},
+		{
+			name: "referential: vlan.create two untagged ovs int ports on same bridge do not collide",
+			snap: buildSnapshot(&inventory.Bridge{Ref: testRef(inventory.KindOVSBridge, "pve1", "vmbr0"), Name: "vmbr0", Virt: inventory.BridgeOVS}),
+			ops: []Op{
+				mkOp(OpVlanCreate, testRef(inventory.KindVlan, "pve1", "vlan-trunk-a"),
+					&VlanCreateParams{Parent: "vmbr0", OVS: true, Trunks: []VidRange{{Low: 10, High: 20}}}),
+				mkOp(OpVlanCreate, testRef(inventory.KindVlan, "pve1", "vlan-trunk-b"),
+					&VlanCreateParams{Parent: "vmbr0", OVS: true, Trunks: []VidRange{{Low: 30, High: 40}}}),
+			},
+			want: nil,
 		},
 		{
 			name: "referential: sdn.vnet.create zone not found",
@@ -534,7 +636,11 @@ func TestValidate_EveryOpTypeHasAPassingCase(t *testing.T) {
 		&inventory.SdnSubnet{Ref: testRef(inventory.KindSDNSubnet, "", "10.0.0.0/24"), ID: "10.0.0.0/24", Vnet: "zone1/vnet1"},
 		&inventory.GuestNic{Ref: testRef(inventory.KindGuestNic, "pve1", "100/net0"), Guest: testRef(inventory.KindGuest, "pve1", "100")},
 		&inventory.FwRuleset{Ref: testRef(inventory.KindFwRuleset, "", "cluster"), Scope: inventory.FwScopeCluster,
-			Rules: []inventory.FwRule{{Pos: 0, Direction: "in", Action: "ACCEPT"}}},
+			Rules:   []inventory.FwRule{{Pos: 0, Direction: "in", Action: "ACCEPT"}},
+			Aliases: []inventory.FwAlias{{Name: "office", CIDR: "203.0.113.0/24"}},
+			IPSets:  []inventory.FwIPSet{{Name: "blocklist"}},
+			Groups:  []inventory.FwGroup{{Name: "web"}},
+		},
 	)
 
 	cases := []struct {

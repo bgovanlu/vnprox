@@ -21,6 +21,11 @@ type statsResponse struct {
 	Stats map[string]host.IfaceStats `json:"stats"`
 }
 
+// servicesResponse is GET /api/peer/host/services's body (T-602).
+type servicesResponse struct {
+	Services map[string]bool `json:"services"`
+}
+
 // stageRequest is POST /api/peer/host/stage-interfaces and
 // POST /api/peer/host/restore's shared body shape: the target node and the
 // full interfaces(5) content to write.
@@ -43,11 +48,33 @@ type linksResponse struct {
 	Links []host.LinkState `json:"links"`
 }
 
+// firewallLogResponse is GET /api/peer/firewall/log's body (T-505: one
+// node's own pve-firewall log tail/follow increment — internal/fwlog.
+// Service.fetch calls this for every non-local node in the cluster,
+// exactly the way internal/collect's host poller calls Links for a
+// remote node's netlink state).
+type firewallLogResponse struct {
+	NextCursor string   `json:"nextCursor"`
+	Lines      []string `json:"lines"`
+}
+
 // fdbResponse is GET /api/peer/host/fdb's body (T-306: the MAC/FDB
 // browser's node-local read — every bridge's forwarding-database table,
 // flattened and bridge-tagged; see host.FlattenFDB).
 type fdbResponse struct {
 	Entries []host.FDBRow `json:"entries"`
+}
+
+// frrResponse is GET /api/peer/host/frr/{bgp-summary,evpn-vni}'s shared
+// body shape (T-404): Available is false (Content omitted) when node runs
+// no FRR at all (host.ErrFRRUnavailable), true with the raw vtysh JSON
+// output as Content otherwise. Wrapping rather than passing the raw vtysh
+// bytes straight through (unlike handleLLDP) is what lets "FRR entirely
+// absent" travel over the wire as a clean, distinguishable 200 instead of
+// an error status.
+type frrResponse struct {
+	Content   json.RawMessage `json:"content,omitempty"`
+	Available bool            `json:"available"`
 }
 
 // AuditRecord is one row of GET /api/peer/audit's page (T-303). Its fields

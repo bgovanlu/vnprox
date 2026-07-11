@@ -52,7 +52,36 @@ type Reader interface {
 
 	// Stats returns interface counters for node, keyed by interface name.
 	Stats(ctx context.Context, node string) (map[string]IfaceStats, error)
+
+	// FRRBGPSummary returns raw `vtysh -c "show bgp summary json"` output
+	// for node (T-404's EVPN/BGP observability, docs/features/sdn.md §3).
+	// Returns an error wrapping ErrFRRUnavailable when FRR is not
+	// installed/running on node at all — a documented, cleanly-degraded
+	// condition distinct from a transient/parse failure. Use
+	// ParseBGPSummary to obtain a structured view.
+	FRRBGPSummary(ctx context.Context, node string) ([]byte, error)
+
+	// FRREVPNVNI returns raw `vtysh -c "show evpn vni json"` output for
+	// node. Same ErrFRRUnavailable convention as FRRBGPSummary. Use
+	// ParseEVPNVNI to obtain a structured view.
+	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
+
+	// Services reports whether each of a fixed, small set of
+	// network-relevant systemd units vnprox cares about (WatchedServices)
+	// is currently active on node (T-602, docs/features/monitoring.md §5:
+	// "dnsmasq/frr service down on a node"). A unit this node has never
+	// installed (e.g. a node with no SDN EVPN zone has no reason to run
+	// frr) is simply absent from the returned map — callers must not treat
+	// a missing key as "down", only a present key mapped to false.
+	Services(ctx context.Context, node string) (map[string]bool, error)
 }
+
+// WatchedServices is the fixed set of systemd unit names Services reports
+// on: dnsmasq (SDN DHCP) and frr (SDN EVPN/routing) — the two services
+// docs/features/monitoring.md §5 names explicitly. Exported so callers
+// (internal/collect, internal/pvemock fixtures) share one list rather than
+// each hand-rolling their own.
+var WatchedServices = []string{"dnsmasq", "frr"}
 
 // ErrUnsupportedPlatform is returned by real.go's OS-specific paths (raw
 // ethtool ioctls, netlink) when built for or run on a platform that does

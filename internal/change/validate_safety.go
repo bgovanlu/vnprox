@@ -23,6 +23,7 @@ func safetyValidate(ops []Op, snap inventory.Snapshot, safety SafetyOptions) []F
 	var out []Finding
 	out = append(out, protectedInterfaceFindings(ops, snap, safety.Protected)...)
 	out = append(out, guestBearingBridgeFindings(ops, snap)...)
+	out = append(out, vnetDeletionGuardFindings(ops, snap)...)
 
 	if safety.AllowDangerousOps {
 		for i := range out {
@@ -185,6 +186,108 @@ func protectedBridgePathFindings(snap inventory.Snapshot, proj *projection, refs
 				"this changeset detaches every port from protected bridge %s, severing its network path even though its address is unchanged",
 				ref))
 		}
+	}
+	return out
+}
+
+// --- guest-bearing sdn vnet deletion (T-402) -------------------------------
+
+// vnetDeletionGuardFindings is guestBearingBridgeFindings' sdn.vnet.delete
+// counterpart (T-402, deliberately mirroring T-203's interlock pattern
+// exactly, including net-effect analysis and reattach-in-same-changeset
+// clearing — the task card's own words: "Deleting a vnet with attached
+// guest NICs → blocked with attachment list (reattach-in-same-changeset
+// clears it, mirroring T-203 pattern)"): flags every sdn.vnet.delete op
+// whose net effect leaves a running guest's NIC attached to nothing that
+// survives the changeset.
+//
+// This is a separate function rather than a generalization of
+// guestBearingBridgeFindings because bridges are per-node (keyed by
+// (node,name) in that function's ifaceKey) while sdn-vnets are
+// cluster-scoped (keyed by plain vnet ID here) — different enough key
+// shapes that sharing one function body would need a false node dimension
+// threaded through the vnet-only path.
+func vnetDeletionGuardFindings(ops []Op, snap inventory.Snapshot) []Finding {
+	// deleteOps: vnet id -> index of its (last) sdn.vnet.delete op.
+	deleteOps := map[string]int{}
+	for i, op := range ops {
+		if op.Type == OpSdnVnetDelete {
+			deleteOps[op.Target.ID] = i
+		}
+	}
+	if len(deleteOps) == 0 {
+		return nil
+	}
+
+	proj := newProjection(snap)
+	for _, op := range ops {
+		proj.fold(op)
+	}
+
+	finalAttach := map[inventory.Ref]string{}
+	for _, op := range ops {
+		if op.Type != OpGuestNicUpdate {
+			continue
+		}
+		if params, ok := op.Params.(*GuestNicUpdateParams); ok && params.BridgeOrVnet != nil {
+			finalAttach[op.Target] = *params.BridgeOrVnet
+		}
+	}
+
+	stranded := map[int][]string{}
+	for _, e := range snap.All() {
+		nic, ok := e.(*inventory.GuestNic)
+		if !ok {
+			continue
+		}
+		nicRef := nic.GetRef()
+		node := nicRef.Node
+
+		origDeleted := false
+		if nic.BridgeOrVnet.Kind == inventory.KindSDNVnet {
+			_, origDeleted = deleteOps[nic.BridgeOrVnet.ID]
+		}
+
+		finalName, updated := finalAttach[nicRef]
+		if !updated {
+			if !origDeleted {
+				continue // attachment untouched and its vnet survives
+			}
+			finalName = nic.BridgeOrVnet.ID
+		}
+		if proj.guestTargetExists(node, finalName) {
+			continue // net effect: attached to a surviving bridge/vnet
+		}
+
+		opIdx, ok := deleteOps[finalName]
+		if !ok {
+			if !origDeleted {
+				continue
+			}
+			opIdx = deleteOps[nic.BridgeOrVnet.ID]
+		}
+
+		guestEntity, ok := snap.Get(nic.Guest)
+		if !ok {
+			continue
+		}
+		guest, ok := guestEntity.(*inventory.Guest)
+		if !ok || guest.Status != "running" {
+			continue
+		}
+		stranded[opIdx] = append(stranded[opIdx], fmt.Sprintf("%s (vmid %d, %s)", guest.Name, guest.VMID, nic.Key))
+	}
+
+	var out []Finding
+	for i, op := range ops {
+		attached := stranded[i]
+		if len(attached) == 0 {
+			continue
+		}
+		sort.Strings(attached)
+		out = append(out, errorf(codeGuestBearingBridge, refOf(op),
+			"vnet %s still has %d running guest(s) attached in this changeset's final state: %s — add guest.nic.update ops reattaching all of them to a surviving bridge or vnet before deleting it",
+			op.Target.ID, len(attached), strings.Join(attached, "; ")))
 	}
 	return out
 }

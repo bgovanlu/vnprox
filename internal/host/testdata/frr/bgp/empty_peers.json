@@ -1,0 +1,9 @@
+{
+  "l2VpnEvpn": {
+    "routerId": "10.40.0.1",
+    "as": 65020,
+    "vrfName": "default",
+    "peerCount": 0,
+    "peers": {}
+  }
+}

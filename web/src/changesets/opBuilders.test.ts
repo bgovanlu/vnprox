@@ -10,11 +10,24 @@ import {
   buildGuestNicUpdateOp,
   buildGuestReattachOps,
   buildIfaceUpdateOp,
+  buildSdnApplyOp,
+  buildSdnSubnetCreateOp,
+  buildSdnSubnetDeleteOp,
+  buildSdnSubnetUpdateOp,
+  buildSdnVnetCreateOp,
+  buildSdnVnetDeleteOp,
+  buildSdnVnetUpdateOp,
+  buildSdnZoneCreateOp,
+  buildSdnZoneDeleteOp,
+  buildSdnZoneUpdateOp,
   buildVlanCreateOp,
   buildVlanUpdateOp,
   type BondFormValues,
   type BridgeFormValues,
   type IfaceFormValues,
+  type SdnSubnetFormValues,
+  type SdnVnetFormValues,
+  type SdnZoneFormValues,
   type VlanFormValues,
 } from "./opBuilders";
 
@@ -101,6 +114,18 @@ describe("bond op builders", () => {
     const op = buildBondUpdateOp("bond:pve1:bond0", bondForm, changed);
     expect(op.params).toEqual({ slaves: ["eno1", "eno2", "eno3"] });
   });
+
+  it("bond.create on an ovs-bond target carries bridge", () => {
+    const ovsForm: BondFormValues = { ...bondForm, mode: "active-backup", ovsBridge: "vmbr1" };
+    const op = buildBondCreateOp("ovs-bond:pve1:bond0", ovsForm);
+    expect(op.params).toMatchObject({ mode: "active-backup", bridge: "vmbr1" });
+  });
+
+  it("bond.create on a plain bond target never sends bridge, even if ovsBridge is set", () => {
+    const formWithStrayBridge: BondFormValues = { ...bondForm, ovsBridge: "vmbr1" };
+    const op = buildBondCreateOp("bond:pve1:bond0", formWithStrayBridge);
+    expect((op.params as { bridge?: string }).bridge).toBeUndefined();
+  });
 });
 
 describe("vlan op builders", () => {
@@ -115,6 +140,23 @@ describe("vlan op builders", () => {
     const changed: VlanFormValues = { ...vlanForm, mtu: 9000 };
     const op = buildVlanUpdateOp("vlan:pve1:vmbr0.30", vlanForm, changed);
     expect(op.params).toEqual({ mtu: 9000 });
+  });
+
+  it("vlan.create for an ovs int port carries ovs + tag", () => {
+    const ovsForm: VlanFormValues = { parent: "vmbr1", vid: 20, addresses: [], mtu: 0, ovs: true };
+    const op = buildVlanCreateOp("vlan:pve1:vlan20", ovsForm);
+    expect(op.params).toEqual({ parent: "vmbr1", vid: 20, ovs: true });
+  });
+
+  it("vlan.create for an ovs int port carries trunks only when ovs is true", () => {
+    const trunks = [{ low: 10, high: 20 }];
+    const ovsOp = buildVlanCreateOp("vlan:pve1:vlan-trunk", { parent: "vmbr1", vid: 0, addresses: [], mtu: 0, ovs: true, trunks });
+    expect(ovsOp.params).toMatchObject({ trunks });
+
+    const plainOp = buildVlanCreateOp("vlan:pve1:vmbr0.20", { ...vlanForm, trunks });
+    const plainParams = plainOp.params as { trunks?: unknown; ovs?: unknown };
+    expect(plainParams.trunks).toBeUndefined();
+    expect(plainParams.ovs).toBeUndefined();
   });
 });
 
@@ -143,5 +185,118 @@ describe("guest nic op builders", () => {
       target: "guest-nic:pve1:200/net0",
       params: { linkDown: true },
     });
+  });
+});
+
+describe("sdn zone op builders", () => {
+  const zoneForm: SdnZoneFormValues = {
+    type: "vlan",
+    bridge: "vmbr0",
+    controller: "",
+    nodes: ["pve1", "pve2"],
+    vrfVxlan: 0,
+    mtu: 1500,
+  };
+
+  it("sdn.zone.create carries type/bridge/nodes/mtu", () => {
+    const op = buildSdnZoneCreateOp("sdn-zone::zone1", zoneForm);
+    expect(op).toEqual({
+      op: "sdn.zone.create",
+      target: "sdn-zone::zone1",
+      params: { type: "vlan", bridge: "vmbr0", nodes: ["pve1", "pve2"], mtu: 1500 },
+    });
+  });
+
+  it("sdn.zone.update is a diff against the initial values", () => {
+    const changed: SdnZoneFormValues = { ...zoneForm, mtu: 1450, nodes: ["pve1"] };
+    const op = buildSdnZoneUpdateOp("sdn-zone::zone1", zoneForm, changed);
+    expect(op.op).toBe("sdn.zone.update");
+    expect(op.params).toEqual({ mtu: 1450, nodes: ["pve1"] });
+  });
+
+  it("sdn.zone.update omits every field that didn't change", () => {
+    const op = buildSdnZoneUpdateOp("sdn-zone::zone1", zoneForm, zoneForm);
+    expect(op.params).toEqual({});
+  });
+
+  it("sdn.zone.delete carries no params", () => {
+    expect(buildSdnZoneDeleteOp("sdn-zone::zone1")).toEqual({
+      op: "sdn.zone.delete",
+      target: "sdn-zone::zone1",
+      params: {},
+    });
+  });
+});
+
+describe("sdn vnet op builders", () => {
+  const vnetForm: SdnVnetFormValues = { zone: "zone1", alias: "app-tier", tag: 100, vlanAware: false };
+
+  it("sdn.vnet.create carries zone/alias/tag/vlanAware", () => {
+    const op = buildSdnVnetCreateOp("sdn-vnet::zone1/vnet100", vnetForm);
+    expect(op).toEqual({
+      op: "sdn.vnet.create",
+      target: "sdn-vnet::zone1/vnet100",
+      params: { zone: "zone1", alias: "app-tier", tag: 100, vlanAware: false },
+    });
+  });
+
+  it("sdn.vnet.update only diffs alias/tag/vlanAware (zone is not editable post-create)", () => {
+    const changed: SdnVnetFormValues = { ...vnetForm, tag: 200 };
+    const op = buildSdnVnetUpdateOp("sdn-vnet::zone1/vnet100", vnetForm, changed);
+    expect(op.params).toEqual({ tag: 200 });
+  });
+
+  it("sdn.vnet.delete carries no params", () => {
+    expect(buildSdnVnetDeleteOp("sdn-vnet::zone1/vnet100")).toEqual({
+      op: "sdn.vnet.delete",
+      target: "sdn-vnet::zone1/vnet100",
+      params: {},
+    });
+  });
+});
+
+describe("sdn subnet op builders", () => {
+  const subnetForm: SdnSubnetFormValues = {
+    vnet: "zone1/vnet100",
+    cidr: "10.100.0.0/24",
+    gateway: "10.100.0.1",
+    dnsZonePrefix: "",
+    dhcpRanges: ["10.100.0.100-10.100.0.200"],
+    snat: true,
+  };
+
+  it("sdn.subnet.create carries vnet/cidr/gateway/dhcpRanges/snat", () => {
+    const op = buildSdnSubnetCreateOp("sdn-subnet::10.100.0.0/24", subnetForm);
+    expect(op).toEqual({
+      op: "sdn.subnet.create",
+      target: "sdn-subnet::10.100.0.0/24",
+      params: {
+        vnet: "zone1/vnet100",
+        cidr: "10.100.0.0/24",
+        gateway: "10.100.0.1",
+        dhcpRanges: ["10.100.0.100-10.100.0.200"],
+        snat: true,
+      },
+    });
+  });
+
+  it("sdn.subnet.update only diffs gateway/dnsZonePrefix/dhcpRanges/snat (vnet/cidr are not editable post-create)", () => {
+    const changed: SdnSubnetFormValues = { ...subnetForm, gateway: "10.100.0.254" };
+    const op = buildSdnSubnetUpdateOp("sdn-subnet::10.100.0.0/24", subnetForm, changed);
+    expect(op.params).toEqual({ gateway: "10.100.0.254" });
+  });
+
+  it("sdn.subnet.delete carries no params", () => {
+    expect(buildSdnSubnetDeleteOp("sdn-subnet::10.100.0.0/24")).toEqual({
+      op: "sdn.subnet.delete",
+      target: "sdn-subnet::10.100.0.0/24",
+      params: {},
+    });
+  });
+});
+
+describe("sdn.apply op builder", () => {
+  it("carries no target (cluster-wide, no single entity) and no params", () => {
+    expect(buildSdnApplyOp()).toEqual({ op: "sdn.apply", target: undefined, params: {} });
   });
 });

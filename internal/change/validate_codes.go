@@ -30,6 +30,12 @@ const (
 	codeFwPolicyInvalid      = "schema.fw_policy_invalid"
 	codeFwLogInvalid         = "schema.fw_log_invalid"
 	codeFwPosInvalid         = "schema.fw_pos_invalid"
+	// codeOVSTrunkNotAllowed flags a vlan.create with a non-empty Trunks
+	// list but OVS false: trunks are an OVS Int Port concept (ovs-vsctl's
+	// Port "trunks" column) — a plain 802.1q sub-interface always carries
+	// exactly one VID (Vid itself), so a Trunks list there is meaningless.
+	codeOVSTrunkNotAllowed = "schema.ovs_trunk_not_allowed"
+	codeFwMacroUnknown     = "schema.fw_macro_unknown"
 
 	// --- referential (class 2: existence, collisions, overlaps) --------
 
@@ -48,6 +54,20 @@ const (
 	codeAddressOverlap       = "referential.address_overlap"
 	codeAddressOutOfSubnet   = "referential.address_out_of_subnet"
 	codeFwPosOutOfRange      = "referential.fw_pos_out_of_range"
+	// codeOVSKindMismatch (T-407) flags mixing Linux-bridge/bond entities
+	// into an OVS bridge/bond's port/slave list or vice versa (docs/features/
+	// change-management.md §5's OVS kind-selector spec: "mixing Linux-bridge
+	// ports into OVS bridges and vice versa -> error"), and the symmetric
+	// case for an OVS Int Port's parent (must be an OVS bridge) vs. a plain
+	// VLAN sub-interface's parent (must not be one).
+	codeOVSKindMismatch  = "referential.ovs_kind_mismatch"
+	codeFwObjectNotFound = "referential.fw_object_not_found"
+	// codeFwObjectInUse is T-502 acceptance criterion 2: deleting an
+	// alias/ipset/security-group still referenced by at least one rule is
+	// blocked. internal/fw.UsageCounts already gives the exact reference
+	// list (scope, ruleset ref, position) the editor UI's deep-links need
+	// — see checkFwObjectDeletable's doc comment.
+	codeFwObjectInUse = "referential.fw_object_in_use"
 
 	// --- safety (class 3: protected interfaces, guest-bearing bridges) --
 	// T-203, docs/security.md "Safety interlocks" / docs/features/
@@ -61,11 +81,24 @@ const (
 	codeProtectedInterface = "safety.protected_interface"
 	codeGuestBearingBridge = "safety.guest_bearing_bridge"
 
+	// --- sdn (T-402: docs/features/sdn.md §4's documented pre-apply
+	// validation — "zone node coverage, bridge existence on member nodes,
+	// MTU sanity" — plus tag uniqueness and the vnet-deletion interlock).
+	// Node-coverage/bridge-existence/tag-uniqueness are blocking (real PVE
+	// apply would itself fail against these), run right after the
+	// referential class and before safety; the vnet-deletion guard is
+	// safety-interlock-shaped (mirrors codeGuestBearingBridge exactly, incl.
+	// AllowDangerousOps downgrade) and lives in validate_safety.go instead.
+
+	codeSDNBridgeMissing = "sdn.bridge_missing_on_node"
+	codeSDNTagDuplicate  = "sdn.tag_duplicate"
+
 	// --- advisory (class 5: style/health warnings) ----------------------
 
 	codeAdvisoryBondHashPolicy = "advisory.bond_missing_layer34_hash"
 	codeAdvisoryBridgeComment  = "advisory.bridge_missing_comment"
 	codeAdvisorySingleSlave    = "advisory.bond_single_slave"
+	codeAdvisoryVxlanMTU       = "advisory.vxlan_mtu_no_headroom"
 
 	// --- raw file replace guard (T-208's iface.raw.replace) -------------
 	// These are produced outside the classed pipeline above, by Service's

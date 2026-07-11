@@ -201,6 +201,22 @@ func (srv *Server) handleSDNZoneStatus(w http.ResponseWriter, r *http.Request) {
 			entry.Status = "pending"
 			entry.Detail = "zone has unapplied changes"
 		}
+		// T-402: a node-level injected failure (POST /mock/nodes/{node}/
+		// sdn-status-fail) always wins — it models a node whose SDN apply
+		// task itself reported success but which nonetheless failed to
+		// realize the config, independent of (and not detectable by) any
+		// static pre-apply check like bridge existence.
+		if ns, ok := srv.state.node(nodeName); ok {
+			ns.mu.RLock()
+			fail := ns.mock.SDNZoneStatusFail
+			ns.mu.RUnlock()
+			if fail {
+				entry.Status = "error"
+				entry.Detail = fmt.Sprintf("simulated sdn apply failure on node %q", nodeName)
+				out = append(out, entry)
+				continue
+			}
+		}
 		if z.Bridge != "" && (z.Type == "simple" || z.Type == "vlan") {
 			if ns, ok := srv.state.node(nodeName); ok {
 				ns.mu.RLock()

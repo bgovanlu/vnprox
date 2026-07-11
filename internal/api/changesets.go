@@ -46,7 +46,10 @@ type ChangesetService interface {
 	Diff(ctx context.Context, id string) (*ifaces.ChangesetDiff, error)
 	Apply(ctx context.Context, id, author string, pveGW change.PVEGateway, confirmTimeout time.Duration) (change.Changeset, error)
 	Confirm(ctx context.Context, id, author string) (change.Changeset, error)
-	Rollback(ctx context.Context, id, author string) (change.Changeset, error)
+	// Rollback's pveGW (T-402) carries the requesting user's own PVE
+	// ticket, needed only when the changeset being rolled back has an SDN
+	// portion — see change.Service.Rollback's doc comment.
+	Rollback(ctx context.Context, id, author string, pveGW change.PVEGateway) (change.Changeset, error)
 
 	// T-208 raw editor: the current live file + hash the editor opens
 	// against (see the raw-editor routes mounted alongside the changeset
@@ -165,7 +168,7 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup))
 		r.Post("/changesets/{id}/apply", handleApplyChangeset(svc, lookup, gateways))
 		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup))
-		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup))
+		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup, gateways))
 	})
 }
 
@@ -224,14 +227,18 @@ func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup) http.Ha
 	}
 }
 
-func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
 			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
 			return
 		}
-		c, err := svc.Rollback(r.Context(), chi.URLParam(r, "id"), username)
+		var gw change.PVEGateway
+		if gateways != nil {
+			gw, _ = gateways.GatewayFor(r.Context())
+		}
+		c, err := svc.Rollback(r.Context(), chi.URLParam(r, "id"), username, gw)
 		if err != nil {
 			writeApplyError(w, err)
 			return
@@ -330,6 +337,14 @@ func writeApplyError(w http.ResponseWriter, err error) {
 	var unsupported *change.ErrUnsupportedOp
 	if errors.As(err, &unsupported) {
 		writeJSONError(w, http.StatusUnprocessableEntity, "unsupported_op", err.Error())
+		return
+	}
+	var sdnUnhealthy *change.ErrSDNZoneUnhealthy
+	if errors.As(err, &sdnUnhealthy) {
+		writeJSONErrorDetails(w, http.StatusUnprocessableEntity, "sdn_zone_unhealthy", err.Error(), map[string]any{
+			"zone": sdnUnhealthy.Zone, "node": sdnUnhealthy.Node, "status": sdnUnhealthy.Status,
+			"detail": sdnUnhealthy.Detail, "taskUpid": sdnUnhealthy.UPID, "taskNode": sdnUnhealthy.TaskNode,
+		})
 		return
 	}
 	var restoreUnsupported *change.ErrRestoreUnsupported

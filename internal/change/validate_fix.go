@@ -80,6 +80,26 @@ func fixClampMTU(op Op) []Op {
 	}
 }
 
+// fixSetVxlanMTU returns a one-op fix that sets op's MTU field to exactly
+// mtu (not a clamp — checkVxlanMTU's caller already computed the precise
+// PVE-recommended value, underlayMTU-vxlanOverhead). It returns nil for op
+// types with no MTU field.
+func fixSetVxlanMTU(op Op, mtu int) []Op {
+	switch p := op.Params.(type) {
+	case *SdnZoneCreateParams:
+		cp := *p
+		cp.MTU = mtu
+		return []Op{{Type: op.Type, Target: op.Target, Params: &cp}}
+	case *SdnZoneUpdateParams:
+		cp := *p
+		v := mtu
+		cp.MTU = &v
+		return []Op{{Type: op.Type, Target: op.Target, Params: &cp}}
+	default:
+		return nil
+	}
+}
+
 // fixClampVID returns a one-op fix that clamps op's single VID/Tag field
 // into [minVID, maxVID]. It returns nil for op types with no such field.
 func fixClampVID(op Op) []Op {

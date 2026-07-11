@@ -77,6 +77,43 @@ describe("summarizeOp", () => {
     expect(summarizeOp({ op: "sdn.apply", params: {} })).toBe("Apply pending SDN configuration (cluster-wide)");
   });
 
+  it("renders sdn.zone.create/update/delete", () => {
+    expect(
+      summarizeOp({ op: "sdn.zone.create", target: "sdn-zone::zone1", params: { type: "vlan", nodes: ["pve1", "pve2"] } }),
+    ).toBe("Create sdn zone zone1 (vlan) on pve1, pve2");
+    expect(summarizeOp({ op: "sdn.zone.create", target: "sdn-zone::zone1", params: { type: "vxlan" } })).toBe(
+      "Create sdn zone zone1 (vxlan) on every node",
+    );
+    expect(summarizeOp({ op: "sdn.zone.update", target: "sdn-zone::zone1", params: { mtu: 1450 } })).toBe(
+      "Update sdn zone zone1 (mtu=1450)",
+    );
+    expect(summarizeOp({ op: "sdn.zone.delete", target: "sdn-zone::zone1", params: {} })).toBe("Delete sdn zone zone1");
+  });
+
+  it("renders sdn.vnet.create/update/delete", () => {
+    expect(
+      summarizeOp({ op: "sdn.vnet.create", target: "sdn-vnet::zone1/vnet100", params: { zone: "zone1", tag: 100 } }),
+    ).toBe("Create sdn vnet zone1/vnet100 in zone zone1 (tag 100)");
+    expect(summarizeOp({ op: "sdn.vnet.update", target: "sdn-vnet::zone1/vnet100", params: { tag: 200 } })).toBe(
+      "Update sdn vnet zone1/vnet100 (tag=200)",
+    );
+    expect(summarizeOp({ op: "sdn.vnet.delete", target: "sdn-vnet::zone1/vnet100", params: {} })).toBe(
+      "Delete sdn vnet zone1/vnet100",
+    );
+  });
+
+  it("renders sdn.subnet.create/update/delete", () => {
+    expect(
+      summarizeOp({ op: "sdn.subnet.create", target: "sdn-subnet::10.0.0.0/24", params: { vnet: "zone1/vnet100" } }),
+    ).toBe("Create sdn subnet 10.0.0.0/24 in vnet zone1/vnet100");
+    expect(summarizeOp({ op: "sdn.subnet.update", target: "sdn-subnet::10.0.0.0/24", params: { snat: true } })).toBe(
+      "Update sdn subnet 10.0.0.0/24 (snat=true)",
+    );
+    expect(summarizeOp({ op: "sdn.subnet.delete", target: "sdn-subnet::10.0.0.0/24", params: {} })).toBe(
+      "Delete sdn subnet 10.0.0.0/24",
+    );
+  });
+
   it("falls back to a generic '<op> <id>' for op families the drawer doesn't special-case", () => {
     expect(summarizeOp({ op: "fw.rule.create", target: "fw-ruleset::cluster", params: {} })).toBe(
       "fw.rule.create cluster",

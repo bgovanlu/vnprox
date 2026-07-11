@@ -57,8 +57,10 @@ func (s *Service) Apply(ctx context.Context, id, author string, pveGW PVEGateway
 	// below.
 	deadline := s.now().Add(confirmTimeout).Unix()
 
-	// --- pre-state snapshot: before any mutation (docs/data-model.md §2) ---
-	pre, err := s.captureSnapshot(ctx, id, snapshotKindPre, plan.affectedNodes())
+	// --- pre-state snapshot: before any mutation (docs/data-model.md §2).
+	// captureSnapshotFull additionally captures SDN config (T-402) when the
+	// plan carries any sdn.* step, in the same snapshot row.
+	pre, err := s.captureSnapshotFull(ctx, id, snapshotKindPre, plan, pveGW)
 	if err != nil {
 		return s.finishFailedApply(ctx, cs, plan, author, &ApplyLog{}, err)
 	}
@@ -272,7 +274,16 @@ func (s *Service) Confirm(ctx context.Context, id, author string) (Changeset, er
 //     committed changeset untouched. The returned Changeset is that draft.
 //
 // Any other status returns *ErrNotConfirmable.
-func (s *Service) Rollback(ctx context.Context, id, author string) (Changeset, error) {
+//
+// pveGW carries the requesting user's own PVE ticket (T-402), needed only
+// when the changeset being rolled back has an SDN portion (plan.hasSDN()) —
+// see restoreSDN's doc comment for why that revert has no daemon-level,
+// ticket-less path the way node-file rollback does. It may be nil: a
+// node-file-only changeset never touches it, and a nil gateway on an
+// SDN-carrying changeset degrades to a logged, non-fatal
+// "sdn restore skipped" rollback-log entry (doRollbackLocked) rather than
+// failing the whole rollback — the node-file half still completes.
+func (s *Service) Rollback(ctx context.Context, id, author string, pveGW PVEGateway) (Changeset, error) {
 	if !s.applyConfigured() {
 		return Changeset{}, &ErrApplyNotConfigured{}
 	}
@@ -285,7 +296,7 @@ func (s *Service) Rollback(ctx context.Context, id, author string) (Changeset, e
 	switch cs.Status {
 	case StatusAwaitingConfirm:
 		s.cancelTimerLocked(id)
-		plan, rbErr := s.doRollbackLocked(ctx, &cs, author)
+		plan, rbErr := s.doRollbackLocked(ctx, &cs, author, pveGW)
 		s.applyMu.Unlock()
 		s.refreshAfterTerminal(ctx, plan)
 		return cs, rbErr
@@ -325,7 +336,13 @@ func (s *Service) autoRollback(ctx context.Context, id string) {
 		s.applyMu.Unlock()
 		return
 	}
-	plan, rbErr := s.doRollbackLocked(ctx, &cs, systemRollbackActor)
+	// The confirm-timeout timer fires with no live user session at all
+	// (docs/features/change-management.md §4: "the rollback timer runs on
+	// the node's daemon") — no PVEGateway is available here by
+	// construction, so an SDN-carrying changeset's SDN portion cannot be
+	// reverted on this path (see Rollback's doc comment and the T-402
+	// report's flagged gap); the node-file portion still rolls back.
+	plan, rbErr := s.doRollbackLocked(ctx, &cs, systemRollbackActor, nil)
 	s.applyMu.Unlock()
 	if rbErr != nil {
 		s.log.Error("change: auto-rollback failed", "changeset_id", id, "error", rbErr)
@@ -334,12 +351,14 @@ func (s *Service) autoRollback(ctx context.Context, id string) {
 }
 
 // doRollbackLocked restores an applied (awaiting_confirm) changeset's pre-apply
-// file state on every affected node and transitions it to rolled_back (or
-// failed if any node could not be restored — the "couldn't even fully roll
-// back" case changeset.go's StatusFailed doc distinguishes). It releases the
-// apply lock. Caller must hold applyMu; it does NOT refresh inventory (the
-// caller does, after unlocking).
-func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor string) (Plan, error) {
+// file state on every affected node (and, when pveGW is available and the
+// plan carries an SDN portion, its SDN config too — T-402's restoreSDN) and
+// transitions it to rolled_back (or failed if any node/SDN restore could not
+// complete — the "couldn't even fully roll back" case changeset.go's
+// StatusFailed doc distinguishes). It releases the apply lock. Caller must
+// hold applyMu; it does NOT refresh inventory (the caller does, after
+// unlocking).
+func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor string, pveGW PVEGateway) (Plan, error) {
 	plan := decodePlan(cs.Plan)
 	log := decodeApplyLog(cs.ApplyLog)
 
@@ -366,6 +385,17 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 	} else {
 		rbLogs, anyFailed = s.restoreAll(ctx, plan, pre)
 	}
+
+	if plan.hasSDN() {
+		if sdnPre, ok := sdnConfigFromSnapshot(pre); ok {
+			sdnLog := s.restoreSDN(ctx, pveGW, sdnPre)
+			if sdnLog.Status != StepOK {
+				anyFailed = true
+			}
+			rbLogs = append(rbLogs, sdnLog)
+		}
+	}
+
 	log.Rollback = append(log.Rollback, rbLogs...)
 	log.RolledBackBy = actor
 	if logJSON, mErr := json.Marshal(log); mErr == nil {
@@ -583,7 +613,8 @@ func decodeApplyLog(raw json.RawMessage) ApplyLog {
 
 // nodeAgentReader adapts a NodeAgent to the host.Reader ifaces.DiffChangeset
 // consumes. DiffChangeset only ever calls InterfacesFile (with
-// includePending=false), so the other three methods are intentionally
+// includePending=false), so the other methods (including T-404's
+// FRRBGPSummary/FRREVPNVNI and T-602's Services) are intentionally
 // unsupported — they are never reached on the diff path.
 type nodeAgentReader struct{ agent NodeAgent }
 
@@ -601,4 +632,16 @@ func (r nodeAgentReader) LLDP(context.Context, string) ([]byte, error) {
 
 func (r nodeAgentReader) Stats(context.Context, string) (map[string]host.IfaceStats, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.Stats not supported")
+}
+
+func (r nodeAgentReader) FRRBGPSummary(context.Context, string) ([]byte, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.FRRBGPSummary not supported")
+}
+
+func (r nodeAgentReader) FRREVPNVNI(context.Context, string) ([]byte, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.FRREVPNVNI not supported")
+}
+
+func (r nodeAgentReader) Services(context.Context, string) (map[string]bool, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.Services not supported")
 }

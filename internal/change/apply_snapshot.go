@@ -9,9 +9,25 @@ import (
 )
 
 // interfacesPath is the one node file the T-205 apply engine snapshots and
-// restores. SDN/firewall config files are other op families' concern (and
-// out of T-205's executable scope); T-206 generalizes snapshot storage.
+// restores. Firewall config files are still another op family's concern
+// (out of T-402's scope too); T-206 generalizes snapshot storage.
 const interfacesPath = "/etc/network/interfaces"
+
+// SDN config snapshot paths (T-402): synthetic, cluster-scoped (Node="")
+// snapshotFile entries standing in for real PVE's /etc/pve/sdn/*.cfg —
+// vnprox has no raw-text read of those files the way it does for
+// /etc/network/interfaces (the PVE API exposes SDN config only as typed
+// zone/vnet/subnet objects, never the on-disk cfg text; see PVEGateway's
+// SDNConfig doc comment), so each path's Content is a JSON encoding of that
+// entity family's SDNConfig slice rather than PVE's native cfg syntax. This
+// is the smallest reasonable stand-in that still satisfies "pre-snapshot of
+// /etc/pve/sdn/*.cfg" (T-402's card) well enough to restore from — flagged
+// in the T-402 report as a documented extension.
+const (
+	sdnZonesSnapshotPath   = "/etc/pve/sdn/zones.cfg"
+	sdnVnetsSnapshotPath   = "/etc/pve/sdn/vnets.cfg"
+	sdnSubnetsSnapshotPath = "/etc/pve/sdn/subnets.cfg"
+)
 
 // Snapshot kinds (store.Snapshot.Kind, docs/data-model.md §2: pre|post|
 // manual|scheduled).
@@ -64,6 +80,102 @@ func (s *Service) captureSnapshot(ctx context.Context, changesetID, kind string,
 		return nil, err
 	}
 	return files, nil
+}
+
+// captureSnapshotFull is captureSnapshot plus, when plan carries any SDN
+// step, the SDN config snapshot (sdnConfigSnapshotFiles) in the *same*
+// persisted snapshot row — loadPreSnapshot only ever reads the first "pre"
+// row it finds for a changeset, so the node-file and SDN halves of one
+// apply's pre-state must live in one row, not two. pveGW is required (and
+// its absence is an error) iff plan.hasSDN(); a plan with no SDN step never
+// touches it, so a nil pveGW is fine for the (still-common) node-file-only
+// case.
+func (s *Service) captureSnapshotFull(ctx context.Context, changesetID, kind string, plan Plan, pveGW PVEGateway) ([]snapshotFile, error) {
+	files := make([]snapshotFile, 0, len(plan.affectedNodes())+3)
+	for _, node := range plan.affectedNodes() {
+		content, err := s.nodes.ReadInterfaces(ctx, node)
+		if err != nil {
+			return nil, fmt.Errorf("change: snapshotting %s on node %s: %w", interfacesPath, node, err)
+		}
+		hash, err := s.blobs.Put(ctx, content)
+		if err != nil {
+			return nil, fmt.Errorf("change: storing snapshot blob for %s on node %s: %w", interfacesPath, node, err)
+		}
+		files = append(files, snapshotFile{Node: node, Path: interfacesPath, SHA256: hash, Content: content})
+	}
+
+	if plan.hasSDN() {
+		if pveGW == nil {
+			return nil, fmt.Errorf("change: snapshotting %s changeset %s: no PVE gateway available (no user session)", kind, changesetID)
+		}
+		cfg, err := pveGW.SDNConfig(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("change: snapshotting SDN config for changeset %s: %w", changesetID, err)
+		}
+		sdnFiles, err := sdnConfigSnapshotFiles(ctx, s, cfg)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, sdnFiles...)
+	}
+
+	if _, err := s.persistSnapshot(ctx, changesetID, kind, "", files); err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+// sdnConfigSnapshotFiles encodes cfg's three entity families as the
+// synthetic cluster-scoped (Node="") snapshotFile entries described by the
+// sdn*SnapshotPath constants above, storing each in the blob store exactly
+// like captureSnapshot does for a node's interfaces file.
+func sdnConfigSnapshotFiles(ctx context.Context, s *Service, cfg SDNConfig) ([]snapshotFile, error) {
+	entries := []struct {
+		v    any
+		path string
+	}{
+		{v: cfg.Zones, path: sdnZonesSnapshotPath},
+		{v: cfg.Vnets, path: sdnVnetsSnapshotPath},
+		{v: cfg.Subnets, path: sdnSubnetsSnapshotPath},
+	}
+	out := make([]snapshotFile, 0, len(entries))
+	for _, e := range entries {
+		b, err := json.Marshal(e.v)
+		if err != nil {
+			return nil, fmt.Errorf("change: encoding sdn snapshot %s: %w", e.path, err)
+		}
+		content := string(b)
+		hash, err := s.blobs.Put(ctx, content)
+		if err != nil {
+			return nil, fmt.Errorf("change: storing sdn snapshot blob %s: %w", e.path, err)
+		}
+		out = append(out, snapshotFile{Path: e.path, SHA256: hash, Content: content})
+	}
+	return out, nil
+}
+
+// sdnConfigFromSnapshot decodes an SDNConfig back out of a loaded pre-
+// snapshot's file list (loadPreSnapshot/loadSnapshotFiles already hydrated
+// Content). ok is false if the snapshot carries no SDN files at all (a
+// node-file-only changeset's pre-snapshot).
+func sdnConfigFromSnapshot(files []snapshotFile) (cfg SDNConfig, ok bool) {
+	for _, f := range files {
+		switch f.Path {
+		case sdnZonesSnapshotPath:
+			if json.Unmarshal([]byte(f.Content), &cfg.Zones) == nil {
+				ok = true
+			}
+		case sdnVnetsSnapshotPath:
+			if json.Unmarshal([]byte(f.Content), &cfg.Vnets) == nil {
+				ok = true
+			}
+		case sdnSubnetsSnapshotPath:
+			if json.Unmarshal([]byte(f.Content), &cfg.Subnets) == nil {
+				ok = true
+			}
+		}
+	}
+	return cfg, ok
 }
 
 // persistSnapshot writes the snapshot row (files_json, no inline content)

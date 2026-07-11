@@ -4,13 +4,19 @@
 // (docs/features/sdn.md §2) and editors land with T-402/T-403.
 import { useEffect, useState } from "react";
 import clsx from "clsx";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import type { SdnSubnet, SdnTree, SdnVnet, SdnZone } from "../api/types";
+import { SdnEditorLauncher } from "./SdnEditorLauncher";
+import { EvpnView } from "./EvpnView";
 import { InSyncBadge, PendingDiffView } from "./PendingDiffView";
+import { useSdnEditorStore } from "./sdnEditorStore";
 import { StatusDot } from "./StatusDot";
 import { sdnNodeEntityStatus, sdnZoneEntityStatus } from "./status";
 import { firstSelection, resolveSdnSelection, type SdnSelection } from "./tree";
 import { useSdnQuery } from "./queries";
+
+type SdnTab = "configuration" | "evpn";
 
 function TreeRow({
   depth,
@@ -150,11 +156,25 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 function ZoneDetail({ zone }: { zone: SdnZone }) {
+  const open = useSdnEditorStore((s) => s.open);
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lg font-semibold">{zone.id}</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Zone · {zone.type}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">{zone.id}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Zone · {zone.type}</p>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button variant="secondary" size="sm" onClick={() => { open({ kind: "vnet-create", zoneId: zone.id }); }}>
+            + VNet
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "zone-edit", zone }); }}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "zone-delete", zone }); }}>
+            Delete
+          </Button>
+        </div>
       </div>
       {zone.pendingDiff ? <PendingDiffView diff={zone.pendingDiff} /> : <InSyncBadge />}
       <dl>
@@ -187,11 +207,25 @@ function ZoneDetail({ zone }: { zone: SdnZone }) {
 }
 
 function VnetDetail({ vnet }: { vnet: SdnVnet }) {
+  const open = useSdnEditorStore((s) => s.open);
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lg font-semibold">{vnet.id}</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">VNet · zone {vnet.zone}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">{vnet.id}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">VNet · zone {vnet.zone}</p>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button variant="secondary" size="sm" onClick={() => { open({ kind: "subnet-create", vnetId: vnet.id }); }}>
+            + Subnet
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "vnet-edit", vnet }); }}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "vnet-delete", vnet }); }}>
+            Delete
+          </Button>
+        </div>
       </div>
       {vnet.pendingDiff ? <PendingDiffView diff={vnet.pendingDiff} /> : <InSyncBadge />}
       <dl>
@@ -204,11 +238,22 @@ function VnetDetail({ vnet }: { vnet: SdnVnet }) {
 }
 
 function SubnetDetail({ subnet }: { subnet: SdnSubnet }) {
+  const open = useSdnEditorStore((s) => s.open);
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lg font-semibold">{subnet.cidr || subnet.id}</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Subnet · vnet {subnet.vnet}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">{subnet.cidr || subnet.id}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Subnet · vnet {subnet.vnet}</p>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "subnet-edit", subnet }); }}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "subnet-delete", subnet }); }}>
+            Delete
+          </Button>
+        </div>
       </div>
       {subnet.pendingDiff ? <PendingDiffView diff={subnet.pendingDiff} /> : <InSyncBadge />}
       <dl>
@@ -220,9 +265,38 @@ function SubnetDetail({ subnet }: { subnet: SdnSubnet }) {
   );
 }
 
+function TabButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={clsx(
+        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function SdnPage() {
   const { data: tree, isLoading, isError } = useSdnQuery();
   const [selection, setSelection] = useState<SdnSelection | undefined>(undefined);
+  const openEditor = useSdnEditorStore((s) => s.open);
+  const [tab, setTab] = useState<SdnTab>("configuration");
 
   // Default-select the first zone once the tree first loads, so the detail
   // panel isn't blank on arrival (tree.ts's firstSelection).
@@ -241,32 +315,54 @@ export function SdnPage() {
     <div className="flex h-full flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">SDN</h1>
+        <div className="flex items-center gap-2">
+          <div role="tablist" aria-label="SDN cockpit views" className="flex items-center gap-1">
+            <TabButton active={tab === "configuration"} label="Configuration" onClick={() => { setTab("configuration"); }} />
+            <TabButton active={tab === "evpn"} label="EVPN / BGP" onClick={() => { setTab("evpn"); }} />
+          </div>
+          {tab === "configuration" && (
+            <Button variant="primary" size="sm" onClick={() => { openEditor({ kind: "zone-create" }); }}>
+              + New zone
+            </Button>
+          )}
+        </div>
       </div>
+      <SdnEditorLauncher />
 
-      {isLoading && <p className="text-sm text-slate-400">Loading SDN configuration…</p>}
-      {isError && (
-        <EmptyState
-          title="Could not load SDN configuration"
-          description="Check that vnproxd can reach the local PVE API, then reload."
-        />
-      )}
-      {!isLoading && !isError && tree && tree.zones.length === 0 && (
-        <EmptyState title="No SDN zones configured" description="Create a zone in Proxmox's SDN configuration to see it here." />
+      {tab === "configuration" && (
+        <>
+          {isLoading && <p className="text-sm text-slate-400">Loading SDN configuration…</p>}
+          {isError && (
+            <EmptyState
+              title="Could not load SDN configuration"
+              description="Check that vnproxd can reach the local PVE API, then reload."
+            />
+          )}
+          {!isLoading && !isError && tree && tree.zones.length === 0 && (
+            <EmptyState title="No SDN zones configured" description="Create a zone in Proxmox's SDN configuration to see it here." />
+          )}
+
+          {!isLoading && !isError && tree && tree.zones.length > 0 && (
+            <div className="grid min-h-0 flex-1 grid-cols-[minmax(220px,320px)_1fr] gap-3">
+              <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-800">
+                <SdnTreeView tree={tree} selection={selection} onSelect={setSelection} />
+              </div>
+              <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+                {!resolved && (
+                  <EmptyState title="Nothing selected" description="Pick a zone, VNet, or subnet from the tree." />
+                )}
+                {resolved?.selection.kind === "zone" && <ZoneDetail zone={resolved.zone} />}
+                {resolved?.selection.kind === "vnet" && resolved.vnet && <VnetDetail vnet={resolved.vnet} />}
+                {resolved?.selection.kind === "subnet" && resolved.subnet && <SubnetDetail subnet={resolved.subnet} />}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {!isLoading && !isError && tree && tree.zones.length > 0 && (
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(220px,320px)_1fr] gap-3">
-          <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-800">
-            <SdnTreeView tree={tree} selection={selection} onSelect={setSelection} />
-          </div>
-          <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-            {!resolved && (
-              <EmptyState title="Nothing selected" description="Pick a zone, VNet, or subnet from the tree." />
-            )}
-            {resolved?.selection.kind === "zone" && <ZoneDetail zone={resolved.zone} />}
-            {resolved?.selection.kind === "vnet" && resolved.vnet && <VnetDetail vnet={resolved.vnet} />}
-            {resolved?.selection.kind === "subnet" && resolved.subnet && <SubnetDetail subnet={resolved.subnet} />}
-          </div>
+      {tab === "evpn" && (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <EvpnView />
         </div>
       )}
     </div>

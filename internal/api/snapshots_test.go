@@ -312,7 +312,7 @@ func TestAuditRoutes_LifecycleEventsAppear(t *testing.T) {
 	if _, err := svc.Confirm(ctx, cs.ID, "root@pam"); err != nil {
 		t.Fatalf("Confirm: %v", err)
 	}
-	if _, err := svc.Rollback(ctx, cs.ID, "root@pam"); err != nil {
+	if _, err := svc.Rollback(ctx, cs.ID, "root@pam", nil); err != nil {
 		t.Fatalf("Rollback (committed): %v", err)
 	}
 
