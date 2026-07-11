@@ -146,7 +146,7 @@ func TestNodeAgentReader_UnsupportedMethods(t *testing.T) {
 // the union — or a new op whose params were never wired in — is caught here.
 func TestParamsUnion_Membership(t *testing.T) {
 	members := []Params{
-		&IfaceUpdateParams{},
+		&IfaceUpdateParams{}, &IfaceRawReplaceParams{},
 		&BondCreateParams{}, &BondUpdateParams{}, &BondDeleteParams{},
 		&BridgeCreateParams{}, &BridgeUpdateParams{}, &BridgeDeleteParams{},
 		&BridgePortAddParams{}, &BridgePortRemoveParams{},

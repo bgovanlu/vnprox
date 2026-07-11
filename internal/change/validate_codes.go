@@ -66,4 +66,16 @@ const (
 	codeAdvisoryBondHashPolicy = "advisory.bond_missing_layer34_hash"
 	codeAdvisoryBridgeComment  = "advisory.bridge_missing_comment"
 	codeAdvisorySingleSlave    = "advisory.bond_single_slave"
+
+	// --- raw file replace guard (T-208's iface.raw.replace) -------------
+	// These are produced outside the classed pipeline above, by Service's
+	// expandRawReplaceOps (validate_raw.go) before ValidateWithSafety ever
+	// runs — they concern the raw op itself (its content, and the live
+	// file it's about to overwrite), not a decoded per-entity op, so they
+	// don't fit the schema/referential/safety/advisory classification.
+
+	codeRawReplaceNotExclusive = "raw.not_exclusive_with_other_ops"
+	codeRawReplaceParseError   = "raw.parse_error"
+	codeRawReplaceReadFailed   = "raw.read_failed"
+	codeRawReplaceHashConflict = "raw.hash_conflict"
 )

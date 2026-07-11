@@ -16,7 +16,7 @@ import (
 // panic at decode time in production), or a stray factory entry keyed by
 // something that isn't a documented op at all.
 var allOpTypeConstants = []OpType{
-	OpIfaceUpdate,
+	OpIfaceUpdate, OpIfaceRawReplace,
 	OpBondCreate, OpBondUpdate, OpBondDelete,
 	OpBridgeCreate, OpBridgeUpdate, OpBridgeDelete, OpBridgePortAdd, OpBridgePortRemove,
 	OpVlanCreate, OpVlanUpdate, OpVlanDelete,
@@ -31,9 +31,10 @@ var allOpTypeConstants = []OpType{
 	OpIpamAllocCreate, OpIpamAllocDelete,
 }
 
-// docs/data-model.md §3's table lists exactly these groups: iface(1),
-// bond(3), bridge(5), vlan(3), sdn(10), guest(1), fw(14), ipam(2) = 39.
-const wantOpVocabularySize = 39
+// docs/data-model.md §3's table lists exactly these groups: iface(2, incl.
+// T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
+// fw(14), ipam(2) = 40.
+const wantOpVocabularySize = 40
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -93,6 +94,11 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "iface.update", opType: OpIfaceUpdate,
 			target: ref(inventory.KindPhysNic, "pve1", "eno1"),
 			params: &IfaceUpdateParams{MTU: i(9000), Comments: str("uplink"), Addresses: ss("10.0.0.1/24"), Gateway: str("10.0.0.254"), Autostart: b(true)},
+		},
+		{
+			name: "iface.raw.replace", opType: OpIfaceRawReplace,
+			target: ref(inventory.KindNode, "pve1", "pve1"),
+			params: &IfaceRawReplaceParams{Content: "auto lo\niface lo inet loopback\n", BaseHash: "deadbeef"},
 		},
 		{
 			name: "bond.create", opType: OpBondCreate,
