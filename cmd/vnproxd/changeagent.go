@@ -19,6 +19,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/auth"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/ipam"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/pve"
 )
@@ -968,4 +969,38 @@ func (g *pveGateway) FirewallCompileStatus(ctx context.Context, node string) (ch
 		return change.FwCompileStatus{}, err
 	}
 	return change.FwCompileStatus{OK: status.OK(), Message: status.Message}, nil
+}
+
+// dhcpAllocationsAdapter adapts *ipam.Service into change.AllocationsSource
+// for T-406's DHCP-range-overlap advisory check (validate_advisory.go's
+// checkDHCPRangeOverlap in internal/change). internal/change deliberately
+// never imports internal/ipam directly — this small adapter, living in
+// cmd/vnproxd alongside every other production PVEGateway/seam
+// implementation, is the conversion boundary, the same "small interface,
+// adapted by the caller" convention this file's pveGateway itself follows
+// throughout for internal/pve types.
+type dhcpAllocationsAdapter struct{ ipam *ipam.Service }
+
+// DHCPRangeAllocations implements change.AllocationsSource: every current
+// SDN subnet's raw PVE-IPAM allocation set (ipam.Service.AllAllocations),
+// flattened into change.DHCPRangeAllocation and excluding gateway entries
+// (a gateway is never a "DHCP range overlaps this reservation" candidate —
+// it isn't a reservation at all).
+func (a dhcpAllocationsAdapter) DHCPRangeAllocations(ctx context.Context) ([]change.DHCPRangeAllocation, error) {
+	byCIDR, err := a.ipam.AllAllocations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("dhcp allocations adapter: %w", err)
+	}
+	var out []change.DHCPRangeAllocation
+	for cidr, allocs := range byCIDR {
+		for _, alloc := range allocs {
+			if alloc.Gateway {
+				continue
+			}
+			out = append(out, change.DHCPRangeAllocation{
+				Subnet: cidr, IP: alloc.IP, Hostname: alloc.Hostname, MAC: alloc.MAC,
+			})
+		}
+	}
+	return out, nil
 }
