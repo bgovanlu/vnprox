@@ -266,3 +266,95 @@ func TestBadgesOf_Bridge_OptionalVlanAware(t *testing.T) {
 		}
 	})
 }
+
+// TestBadgesOf_OVS is T-407's map deliverable: every OVS entity kind
+// carries a distinguishing "ovs" badge (additive to the corner kind label
+// EntityNode already renders — see project.go's badgesOf doc comment), and
+// an OVS Int Port's tag/trunks reuse the existing "tag="/"vlans=" badge
+// vocabulary so the VLAN filter (web/src/topology/projection.ts's
+// badgeCarriesVlan) highlights it exactly like a tagged VLAN sub-interface
+// or a VLAN-aware bridge's trunk ranges already do, with no frontend change
+// needed.
+func TestBadgesOf_OVS(t *testing.T) {
+	t.Run("ovs bridge", func(t *testing.T) {
+		ref := inventory.Ref{Kind: inventory.KindOVSBridge, Node: "n1", ID: "vmbr1"}
+		snap := snapshotOf(t, sourceBatch{inventory.SourceHostNetlink, []inventory.Entity{
+			&inventory.Bridge{Ref: ref, Name: "vmbr1", Virt: inventory.BridgeOVS},
+		}})
+		badges := badgesOf(snap, resolved(t, snap, ref))
+		if !hasBadge(badges, "ovs") {
+			t.Errorf("badges = %v, want to contain ovs", badges)
+		}
+	})
+
+	t.Run("linux bridge has no ovs badge", func(t *testing.T) {
+		ref := inventory.Ref{Kind: inventory.KindBridge, Node: "n1", ID: "vmbr0"}
+		snap := snapshotOf(t, sourceBatch{inventory.SourceHostNetlink, []inventory.Entity{
+			&inventory.Bridge{Ref: ref, Name: "vmbr0", Virt: inventory.BridgeLinux},
+		}})
+		badges := badgesOf(snap, resolved(t, snap, ref))
+		if hasBadge(badges, "ovs") {
+			t.Errorf("badges = %v, must not contain ovs", badges)
+		}
+	})
+
+	t.Run("ovs bond", func(t *testing.T) {
+		ref := inventory.Ref{Kind: inventory.KindOVSBond, Node: "n1", ID: "bond0"}
+		snap := snapshotOf(t, sourceBatch{inventory.SourceHostNetlink, []inventory.Entity{
+			&inventory.Bond{Ref: ref, Name: "bond0", Mode: "active-backup"},
+		}})
+		badges := badgesOf(snap, resolved(t, snap, ref))
+		if !hasBadge(badges, "ovs") || !hasBadge(badges, "mode=active-backup") {
+			t.Errorf("badges = %v, want to contain ovs and mode=active-backup", badges)
+		}
+	})
+
+	t.Run("linux bond has no ovs badge", func(t *testing.T) {
+		ref := inventory.Ref{Kind: inventory.KindBond, Node: "n1", ID: "bond0"}
+		snap := snapshotOf(t, sourceBatch{inventory.SourceHostNetlink, []inventory.Entity{
+			&inventory.Bond{Ref: ref, Name: "bond0", Mode: "active-backup"},
+		}})
+		badges := badgesOf(snap, resolved(t, snap, ref))
+		if hasBadge(badges, "ovs") {
+			t.Errorf("badges = %v, must not contain ovs", badges)
+		}
+	})
+
+	t.Run("tagged ovs int port", func(t *testing.T) {
+		ref := inventory.Ref{Kind: inventory.KindVlan, Node: "n1", ID: "vlan20"}
+		snap := snapshotOf(t, sourceBatch{inventory.SourceHostInterfaces, []inventory.Entity{
+			&inventory.VlanIface{Ref: ref, Name: "vlan20", Virt: "ovs", Vid: 20, ParentName: "vmbr1"},
+		}})
+		badges := badgesOf(snap, resolved(t, snap, ref))
+		if !hasBadge(badges, "ovs") || !hasBadge(badges, "tag=20") {
+			t.Errorf("badges = %v, want to contain ovs and tag=20", badges)
+		}
+		if hasBadge(badges, "vid=20") {
+			t.Errorf("badges = %v, must not contain the plain-vlan vid= form", badges)
+		}
+	})
+
+	t.Run("trunked ovs int port", func(t *testing.T) {
+		ref := inventory.Ref{Kind: inventory.KindVlan, Node: "n1", ID: "vlan-trunk"}
+		snap := snapshotOf(t, sourceBatch{inventory.SourceHostInterfaces, []inventory.Entity{
+			&inventory.VlanIface{Ref: ref, Name: "vlan-trunk", Virt: "ovs", ParentName: "vmbr1",
+				Trunks: []inventory.VidRange{{Low: 10, High: 20}, {Low: 30, High: 30}},
+			},
+		}})
+		badges := badgesOf(snap, resolved(t, snap, ref))
+		if !hasBadge(badges, "ovs") || !hasBadge(badges, "vlans=10-20,30") {
+			t.Errorf("badges = %v, want to contain ovs and vlans=10-20,30", badges)
+		}
+	})
+
+	t.Run("plain vlan sub-interface still uses vid=", func(t *testing.T) {
+		ref := inventory.Ref{Kind: inventory.KindVlan, Node: "n1", ID: "vmbr0.20"}
+		snap := snapshotOf(t, sourceBatch{inventory.SourceHostInterfaces, []inventory.Entity{
+			&inventory.VlanIface{Ref: ref, Name: "vmbr0.20", Vid: 20, ParentName: "vmbr0"},
+		}})
+		badges := badgesOf(snap, resolved(t, snap, ref))
+		if !hasBadge(badges, "vid=20") || hasBadge(badges, "ovs") {
+			t.Errorf("badges = %v, want vid=20 and no ovs badge", badges)
+		}
+	})
+}
