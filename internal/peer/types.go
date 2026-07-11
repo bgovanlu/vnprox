@@ -21,6 +21,11 @@ type statsResponse struct {
 	Stats map[string]host.IfaceStats `json:"stats"`
 }
 
+// servicesResponse is GET /api/peer/host/services's body (T-602).
+type servicesResponse struct {
+	Services map[string]bool `json:"services"`
+}
+
 // stageRequest is POST /api/peer/host/stage-interfaces and
 // POST /api/peer/host/restore's shared body shape: the target node and the
 // full interfaces(5) content to write.

@@ -583,7 +583,7 @@ func decodeApplyLog(raw json.RawMessage) ApplyLog {
 
 // nodeAgentReader adapts a NodeAgent to the host.Reader ifaces.DiffChangeset
 // consumes. DiffChangeset only ever calls InterfacesFile (with
-// includePending=false), so the other three methods are intentionally
+// includePending=false), so the other methods are intentionally
 // unsupported — they are never reached on the diff path.
 type nodeAgentReader struct{ agent NodeAgent }
 
@@ -601,4 +601,8 @@ func (r nodeAgentReader) LLDP(context.Context, string) ([]byte, error) {
 
 func (r nodeAgentReader) Stats(context.Context, string) (map[string]host.IfaceStats, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.Stats not supported")
+}
+
+func (r nodeAgentReader) Services(context.Context, string) (map[string]bool, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.Services not supported")
 }

@@ -60,7 +60,15 @@ type Config struct {
 	// discarded ... modeling them is internal/metrics' future job" — this is
 	// that job. A failed reader.Stats read never reaches this hook at all
 	// (same as before: the read's own error is logged and swallowed there).
-	OnStats      func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats)
+	OnStats func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats)
+	// OnServices is T-602's findings-engine hook: called once per
+	// successfully polled node (local directly, each reachable peer via
+	// peerHostReader), every host-loop tick, with that node's current
+	// host.Reader.Services result (T-602's watched systemd unit status —
+	// see internal/findings/health_service.go). Nil (the default) simply
+	// skips the Services() read entirely — the same "no hook, no work"
+	// contract OnStats already establishes for reader.Stats.
+	OnServices   func(node string, status map[string]bool)
 	LocalNode    string
 	PVEInterval  time.Duration
 	HostInterval time.Duration
@@ -88,6 +96,7 @@ type Collector struct {
 	log        *slog.Logger
 	onDelta    func(inventory.Delta)
 	onStats    func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats)
+	onServices func(node string, status map[string]bool)
 	status     map[string]*sourceState
 	// hostNodeStatus is the per-cluster-node staleness/backoff bookkeeping
 	// for the "host" source (T-303: unlike "pve" and "lldp", which stay a
@@ -156,6 +165,7 @@ func New(cfg Config) (*Collector, error) {
 		lldpInterval: lldpInterval,
 		onDelta:      cfg.OnDelta,
 		onStats:      cfg.OnStats,
+		onServices:   cfg.OnServices,
 		localNode:    cfg.LocalNode,
 		status: map[string]*sourceState{
 			"pve":  {},

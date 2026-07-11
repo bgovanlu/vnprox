@@ -34,3 +34,7 @@ func (r *Real) LLDP(_ context.Context, _ string) ([]byte, error) {
 func (r *Real) Stats(_ context.Context, _ string) (map[string]IfaceStats, error) {
 	return nil, fmt.Errorf("host: Stats: %w", ErrUnsupportedPlatform)
 }
+
+func (r *Real) Services(_ context.Context, _ string) (map[string]bool, error) {
+	return nil, fmt.Errorf("host: Services: %w", ErrUnsupportedPlatform)
+}

@@ -246,6 +246,21 @@ func (c *Client) Stats(ctx context.Context, p Peer, node string) (map[string]hos
 	return out.Stats, nil
 }
 
+// Services fetches node's systemd unit status (T-602's
+// host.WatchedServices) from peer p.
+func (c *Client) Services(ctx context.Context, p Peer, node string) (map[string]bool, error) {
+	path := "/api/peer/host/services?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out servicesResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Services, nil
+}
+
 // StageInterfaces asks peer p to stage content as node's interfaces.new.
 func (c *Client) StageInterfaces(ctx context.Context, p Peer, node, content string) error {
 	body, err := json.Marshal(stageRequest{Node: node, Content: content})

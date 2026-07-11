@@ -63,6 +63,9 @@ func (r fakeHostReader) Stats(context.Context, string) (map[string]host.IfaceSta
 func (r fakeHostReader) Links(context.Context, string) ([]host.LinkState, error) {
 	return nil, nil
 }
+func (r fakeHostReader) Services(context.Context, string) (map[string]bool, error) {
+	return nil, nil
+}
 
 // partitionableTransport is an http.RoundTripper that fails every request to
 // a "cut" host (address, as in req.URL.Host) with a network-shaped error —

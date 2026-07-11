@@ -93,6 +93,10 @@ func (r *spyHostReader) Stats(_ context.Context, node string) (map[string]host.I
 	return s, nil
 }
 
+func (r *spyHostReader) Services(_ context.Context, node string) (map[string]bool, error) {
+	return nil, nil
+}
+
 // spyHostWriter records every call it receives and its arguments.
 type spyHostWriter struct {
 	failNext  error
