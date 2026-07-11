@@ -66,6 +66,21 @@ nodes:
           net0: "virtio=BC:24:11:AA:03:2C,bridge=vnet-tenant-a,firewall=1"
     lxc: {}
     firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
+    # T-404: FRR/EVPN observability fixture — pve1<->pve2 is a healthy
+    # established iBGP/EVPN session; pve1<->pve3 is deliberately down
+    # (Idle, administratively shut) so the peering matrix and pve3's
+    # exit-node health both have a real degraded case to render, not just
+    # an all-green fixture (docs/features/sdn.md §3 AC1's "established/
+    # idle/active states colored correctly").
+    frr:
+      router_id: 10.20.0.11
+      asn: 65001
+      peers:
+        - {addr: 10.20.0.12, hostname: pve2, remote_as: 65001, state: Established, peer_uptime: "01:23:45", pfx_rcd: 6, pfx_snt: 6}
+        - {addr: 10.20.0.13, hostname: pve3, remote_as: 65001, state: "Idle (Admin)", peer_uptime: never}
+      vnis:
+        - {vni: 10001, type: L2, vxlan_if: vxlan10001, tenant_vrf: vrf10000, num_macs: 12, num_arp_nd: 4}
+        - {vni: 10000, type: L3, vxlan_if: vxlan10000, tenant_vrf: vrf10000}
 
   pve2:
     network:
@@ -100,6 +115,18 @@ nodes:
           memory: "512"
           net0: "name=eth0,bridge=vnet-tenant-a,firewall=1"
     firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
+    # T-404: pve2<->pve3 is "Active" — still attempting to connect, never
+    # established — the matrix's third color state alongside pve1<->pve2's
+    # Established and pve1<->pve3's Idle.
+    frr:
+      router_id: 10.20.0.12
+      asn: 65001
+      peers:
+        - {addr: 10.20.0.11, hostname: pve1, remote_as: 65001, state: Established, peer_uptime: "01:23:45", pfx_rcd: 6, pfx_snt: 6}
+        - {addr: 10.20.0.13, hostname: pve3, remote_as: 65001, state: Active, peer_uptime: never}
+      vnis:
+        - {vni: 10001, type: L2, vxlan_if: vxlan10001, tenant_vrf: vrf10000, num_macs: 8, num_arp_nd: 2}
+        - {vni: 10000, type: L3, vxlan_if: vxlan10000, tenant_vrf: vrf10000}
 
   # pve3 is this zone's designated exit node: it carries the default route
   # out of the VXLAN fabric to the physical network, per PVE EVPN's
@@ -128,6 +155,20 @@ nodes:
     qemu: {}
     lxc: {}
     firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
+    # T-404: pve3 is evpnz's exit node (see exit_nodes below) — its FRR
+    # state mirrors pve1's/pve2's declared sessions from pve3's own side
+    # (Idle to pve1, Active to pve2), so this exit node's derived health
+    # is deliberately unhealthy: docs/features/sdn.md §3's exit-node
+    # health surface needs a real degraded case, not just an all-green one.
+    frr:
+      router_id: 10.20.0.13
+      asn: 65001
+      peers:
+        - {addr: 10.20.0.11, hostname: pve1, remote_as: 65001, state: "Idle (Admin)", peer_uptime: never}
+        - {addr: 10.20.0.12, hostname: pve2, remote_as: 65001, state: Active, peer_uptime: never}
+      vnis:
+        - {vni: 10001, type: L2, vxlan_if: vxlan10001, tenant_vrf: vrf10000, num_macs: 0, num_arp_nd: 0}
+        - {vni: 10000, type: L3, vxlan_if: vxlan10000, tenant_vrf: vrf10000}
 
 # T-401: this fixture now covers all five real-PVE zone types (simple,
 # vlan, qinq, vxlan, evpn — docs/features/sdn.md §2's five wizards) so the

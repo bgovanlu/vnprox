@@ -1,0 +1,1 @@
+{"l2VpnEvpn":{"routerId":"10.20.0.11","as":999999999999999999999999999999,"peers":{"10.20.0.12":{"hostname":"pve2","remoteAs":99999999999999999999,"pfxRcd":-1,"pfxSnt":1e400,"state":"Established","peerUptimeMsec":-99999999999999999999}}}}

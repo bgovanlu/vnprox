@@ -1,0 +1,93 @@
+{
+  "ipv4Unicast": {
+    "routerId": "10.20.0.11",
+    "as": 65001,
+    "vrfId": 0,
+    "vrfName": "default",
+    "tableVersion": 5,
+    "ribCount": 3,
+    "ribMemory": 504,
+    "peerCount": 2,
+    "peerMemory": 41000,
+    "peers": {
+      "10.20.0.12": {
+        "hostname": "pve2",
+        "remoteAs": 65001,
+        "localAs": 65001,
+        "version": 4,
+        "msgRcvd": 1200,
+        "msgSent": 1180,
+        "tableVersion": 5,
+        "outq": 0,
+        "inq": 0,
+        "peerUptime": "01:23:45",
+        "peerUptimeMsec": 5025000,
+        "peerUptimeEstablishedEpoch": 1699999999,
+        "pfxRcd": 12,
+        "pfxSnt": 10,
+        "state": "Established",
+        "connectionsEstablished": 1,
+        "connectionsDropped": 0,
+        "idType": "ipv4"
+      },
+      "10.20.0.13": {
+        "hostname": "pve3",
+        "remoteAs": 65001,
+        "localAs": 65001,
+        "version": 4,
+        "msgRcvd": 1150,
+        "msgSent": 1140,
+        "tableVersion": 5,
+        "outq": 0,
+        "inq": 0,
+        "peerUptime": "01:20:02",
+        "peerUptimeMsec": 4802000,
+        "peerUptimeEstablishedEpoch": 1699999900,
+        "pfxRcd": 12,
+        "pfxSnt": 10,
+        "state": "Established",
+        "connectionsEstablished": 1,
+        "connectionsDropped": 0,
+        "idType": "ipv4"
+      }
+    },
+    "totalPeers": 2,
+    "dynamicPeers": 0,
+    "bestPath": {"multiPathRelax": "false"}
+  },
+  "l2VpnEvpn": {
+    "routerId": "10.20.0.11",
+    "as": 65001,
+    "vrfId": 0,
+    "vrfName": "default",
+    "peerCount": 2,
+    "peers": {
+      "10.20.0.12": {
+        "hostname": "pve2",
+        "remoteAs": 65001,
+        "version": 4,
+        "msgRcvd": 500,
+        "msgSent": 490,
+        "peerUptime": "01:23:45",
+        "peerUptimeMsec": 5025000,
+        "pfxRcd": 6,
+        "pfxSnt": 6,
+        "state": "Established",
+        "idType": "ipv4"
+      },
+      "10.20.0.13": {
+        "hostname": "pve3",
+        "remoteAs": 65001,
+        "version": 4,
+        "msgRcvd": 480,
+        "msgSent": 470,
+        "peerUptime": "01:20:02",
+        "peerUptimeMsec": 4802000,
+        "pfxRcd": 6,
+        "pfxSnt": 6,
+        "state": "Established",
+        "idType": "ipv4"
+      }
+    }
+  }
+}

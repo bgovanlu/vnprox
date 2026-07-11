@@ -1,0 +1,32 @@
+{
+  "l2VpnEvpn": {
+    "routerId": "10.20.0.13",
+    "as": 65001,
+    "vrfName": "default",
+    "peerCount": 2,
+    "peers": {
+      "10.20.0.11": {
+        "hostname": "pve1",
+        "remoteAs": 65001,
+        "version": 4,
+        "msgRcvd": 0,
+        "msgSent": 0,
+        "peerUptime": "never",
+        "pfxRcd": 0,
+        "pfxSnt": 0,
+        "state": "Idle (Admin)"
+      },
+      "10.20.0.12": {
+        "hostname": "pve2",
+        "remoteAs": 65001,
+        "version": 4,
+        "msgRcvd": 3,
+        "msgSent": 0,
+        "peerUptime": "never",
+        "pfxRcd": 0,
+        "pfxSnt": 0,
+        "state": "Idle (PfxCt)"
+      }
+    }
+  }
+}

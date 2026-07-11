@@ -1,0 +1,74 @@
+{
+  "ipv4Unicast": {
+    "routerId": "10.20.0.11",
+    "as": "65001",
+    "vrfId": 0,
+    "vrfName": "default",
+    "tableVersion": 8,
+    "ribCount": 1,
+    "ribMemory": 168,
+    "peerCount": 2,
+    "peerMemory": 41000,
+    "peers": {
+      "10.20.0.12": {
+        "hostname": "pve2",
+        "remoteAs": "65001",
+        "localAs": "65001",
+        "version": 4,
+        "msgRcvd": "1200",
+        "msgSent": "1180",
+        "peerUptime": "01:23:45",
+        "peerUptimeMsec": 5025000,
+        "pfxRcd": "12",
+        "pfxSnt": "10",
+        "state": "Established",
+        "neighborCapabilities": {"4byteAs": true, "extendedNexthop": true},
+        "gracefulRestartInfo": {"gracefulRestart": false}
+      },
+      "10.20.0.13": {
+        "hostname": "pve3",
+        "remoteAs": "65001",
+        "version": 4,
+        "msgRcvd": "0",
+        "msgSent": "0",
+        "peerUptime": "never",
+        "pfxRcd": "0",
+        "pfxSnt": "0",
+        "state": "Active",
+        "connectionsDropped": 4
+      }
+    },
+    "totalPeers": 2,
+    "dynamicPeers": 0
+  },
+  "l2VpnEvpn": {
+    "routerId": "10.20.0.11",
+    "as": "65001",
+    "vrfName": "default",
+    "peerCount": 2,
+    "peers": {
+      "10.20.0.12": {
+        "hostname": "pve2",
+        "remoteAs": "65001",
+        "version": 4,
+        "msgRcvd": "500",
+        "msgSent": "490",
+        "peerUptime": "01:23:45",
+        "pfxRcd": "6",
+        "pfxSnt": "6",
+        "state": "Established"
+      },
+      "10.20.0.13": {
+        "hostname": "pve3",
+        "remoteAs": "65001",
+        "version": 4,
+        "msgRcvd": "0",
+        "msgSent": "0",
+        "peerUptime": "never",
+        "pfxRcd": "0",
+        "pfxSnt": "0",
+        "state": "Idle (Admin)"
+      }
+    }
+  }
+}

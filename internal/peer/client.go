@@ -318,6 +318,38 @@ func (c *Client) FDB(ctx context.Context, p Peer, node string) ([]host.FDBRow, e
 	return out.Entries, nil
 }
 
+// FRRBGPSummary fetches node's raw `vtysh -c "show bgp summary json"`
+// output from peer p (T-404). available is false (raw is nil) when node
+// runs no FRR at all — the peer-routed counterpart of
+// errors.Is(err, host.ErrFRRUnavailable) for a local read, translated back
+// out of the wire's {available,content} envelope (see frrResponse's doc
+// comment) rather than as an error, so callers handle "local" and "peer"
+// nodes identically by checking the bool.
+func (c *Client) FRRBGPSummary(ctx context.Context, p Peer, node string) (available bool, raw []byte, err error) {
+	return c.frrRequest(ctx, p, "/api/peer/host/frr/bgp-summary", node)
+}
+
+// FRREVPNVNI fetches node's raw `vtysh -c "show evpn vni json"` output
+// from peer p (T-404). Same available/raw convention as FRRBGPSummary.
+func (c *Client) FRREVPNVNI(ctx context.Context, p Peer, node string) (available bool, raw []byte, err error) {
+	return c.frrRequest(ctx, p, "/api/peer/host/frr/evpn-vni", node)
+}
+
+func (c *Client) frrRequest(ctx context.Context, p Peer, path, node string) (available bool, raw []byte, err error) {
+	resp, err := c.do(ctx, p, http.MethodGet, path+"?node="+url.QueryEscape(node), nil)
+	if err != nil {
+		return false, nil, err
+	}
+	var out frrResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return false, nil, err
+	}
+	if !out.Available {
+		return false, nil, nil
+	}
+	return true, []byte(out.Content), nil
+}
+
 // Audit fetches one page of peer p's own local audit log (T-303: the
 // per-peer fetch internal/api's cluster audit merge issues once per known
 // peer, per page, with the same filter/cursor/limit it uses locally).

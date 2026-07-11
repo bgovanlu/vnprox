@@ -50,6 +50,18 @@ type fdbResponse struct {
 	Entries []host.FDBRow `json:"entries"`
 }
 
+// frrResponse is GET /api/peer/host/frr/{bgp-summary,evpn-vni}'s shared
+// body shape (T-404): Available is false (Content omitted) when node runs
+// no FRR at all (host.ErrFRRUnavailable), true with the raw vtysh JSON
+// output as Content otherwise. Wrapping rather than passing the raw vtysh
+// bytes straight through (unlike handleLLDP) is what lets "FRR entirely
+// absent" travel over the wire as a clean, distinguishable 200 instead of
+// an error status.
+type frrResponse struct {
+	Content   json.RawMessage `json:"content,omitempty"`
+	Available bool            `json:"available"`
+}
+
 // AuditRecord is one row of GET /api/peer/audit's page (T-303). Its fields
 // mirror docs/api.md's GET /audit list item shape field-for-field so
 // internal/api's cluster merge can decode a peer's page directly into the

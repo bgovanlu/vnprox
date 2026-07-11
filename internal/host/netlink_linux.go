@@ -35,15 +35,25 @@ type Real struct {
 	// defaults to `lldpctl -f json`. Overridable for tests/environments
 	// where lldpd is installed under a different name or path.
 	LLDPCommand []string
+	// BGPSummaryCommand is the argv used to fetch FRR's BGP peering
+	// summary as JSON; defaults to `vtysh -c "show bgp summary json"`
+	// (T-404, docs/features/sdn.md §3). Overridable for tests.
+	BGPSummaryCommand []string
+	// EVPNVNICommand is the argv used to fetch FRR's EVPN VNI table as
+	// JSON; defaults to `vtysh -c "show evpn vni json"`. Overridable for
+	// tests.
+	EVPNVNICommand []string
 }
 
 // NewReal constructs a Real reader with the standard Debian/Proxmox paths
-// and lldpd/ovs-vsctl commands.
+// and lldpd/vtysh/ovs-vsctl commands.
 func NewReal() *Real {
 	return &Real{
 		InterfacesPath:        "/etc/network/interfaces",
 		InterfacesPendingPath: "/etc/network/interfaces.new",
 		LLDPCommand:           []string{"lldpctl", "-f", "json"},
+		BGPSummaryCommand:     []string{"vtysh", "-c", "show bgp summary json"},
+		EVPNVNICommand:        []string{"vtysh", "-c", "show evpn vni json"},
 		OVSVSCtlPath:          "ovs-vsctl",
 	}
 }
@@ -110,6 +120,41 @@ func (r *Real) LLDP(ctx context.Context, _ string) ([]byte, error) {
 			return nil, fmt.Errorf("host: %w: %v", ErrLLDPUnavailable, err)
 		}
 		return nil, fmt.Errorf("host: running %v: %w", r.LLDPCommand, err)
+	}
+	return out, nil
+}
+
+// FRRBGPSummary implements Reader by shelling out to FRR's vtysh in JSON
+// mode. Like LLDP, there is no netlink/procfs source for BGP session
+// state — it is strictly FRR's own userspace daemon state, reachable only
+// via vtysh — so this is necessarily exec-based.
+func (r *Real) FRRBGPSummary(ctx context.Context, _ string) ([]byte, error) {
+	return r.runFRRCommand(ctx, r.BGPSummaryCommand)
+}
+
+// FRREVPNVNI implements Reader by shelling out to FRR's vtysh in JSON mode.
+func (r *Real) FRREVPNVNI(ctx context.Context, _ string) ([]byte, error) {
+	return r.runFRRCommand(ctx, r.EVPNVNICommand)
+}
+
+// runFRRCommand runs a fixed-argv vtysh invocation (never shell-
+// interpolated) and distinguishes "vtysh is not installed at all" (FRR
+// entirely absent on this node — docs/features/sdn.md §3's documented
+// graceful-degradation case) from any other failure (permission, timeout,
+// FRR installed but erroring), exactly like LLDP's own exec.ErrNotFound
+// detection.
+func (r *Real) runFRRCommand(ctx context.Context, argv []string) ([]byte, error) {
+	if len(argv) == 0 {
+		return nil, fmt.Errorf("host: frr: no command configured")
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // fixed, config-supplied argv, not user input
+	out, err := cmd.Output()
+	if err != nil {
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return nil, fmt.Errorf("host: %w: %v", ErrFRRUnavailable, err)
+		}
+		return nil, fmt.Errorf("host: running %v: %w", argv, err)
 	}
 	return out, nil
 }

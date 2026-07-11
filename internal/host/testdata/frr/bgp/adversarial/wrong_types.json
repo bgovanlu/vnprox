@@ -1,0 +1,1 @@
+{"l2VpnEvpn":{"routerId":123,"as":"not-a-number","peers":["10.20.0.12","10.20.0.13"]},"ipv4Unicast":"unexpected-scalar","weirdTopLevelKey":42}
