@@ -51,11 +51,49 @@ type FwRuleDeleteParams struct {
 
 func (FwRuleDeleteParams) isChangeParams() {}
 
+// FwRuleFields is a firewall rule's content identity (every field except
+// Pos): used by FwRuleMoveParams.Expect to detect a live position race
+// (T-502 acceptance criterion 3) and, on the executor side, as the
+// wire shape read back from PVE to compare against. Two FwRuleFields
+// values are compared with reflect.DeepEqual-equivalent field-by-field
+// equality (see Equal) rather than a hash, so a mismatch's failure message
+// can name which field actually changed.
+type FwRuleFields struct {
+	Direction string `json:"direction"`
+	Action    string `json:"action"`
+	Proto     string `json:"proto,omitempty"`
+	Source    string `json:"source,omitempty"`
+	Dest      string `json:"dest,omitempty"`
+	Sport     string `json:"sport,omitempty"`
+	Dport     string `json:"dport,omitempty"`
+	Iface     string `json:"iface,omitempty"`
+	Macro     string `json:"macro,omitempty"`
+	Log       string `json:"log,omitempty"`
+	Comment   string `json:"comment,omitempty"`
+	Enabled   bool   `json:"enabled"`
+}
+
+// Equal reports whether f and other carry identical rule content.
+func (f FwRuleFields) Equal(other FwRuleFields) bool { return f == other }
+
 // FwRuleMoveParams is op "fw.rule.move": relocates the rule at FromPos to
 // ToPos within the same ruleset.
+//
+// Expect, when set, is the rule content the client observed at FromPos
+// when the move was drafted (the drag-to-reorder UI captures it at drag
+// start). The apply-time executor re-fetches the live rule at FromPos
+// immediately before moving it and refuses the move (failing the whole
+// step, per docs/features/firewall.md §2's "concurrent-edit-safe via
+// revalidation against live position state at apply") if it no longer
+// matches — acceptance criterion 3's "fixture position shifted between
+// draft and apply" race. Expect is optional (nil skips revalidation) so
+// a programmatic move — e.g. from a rollback/inverse-op replay, which by
+// construction runs immediately after the forward move and cannot race
+// with anything — doesn't need to fabricate one.
 type FwRuleMoveParams struct {
-	FromPos int `json:"fromPos"`
-	ToPos   int `json:"toPos"`
+	Expect  *FwRuleFields `json:"expect,omitempty"`
+	FromPos int           `json:"fromPos"`
+	ToPos   int           `json:"toPos"`
 }
 
 func (FwRuleMoveParams) isChangeParams() {}

@@ -335,6 +335,14 @@ type MockOptions struct {
 	// NetworkReloadFail, when true, makes the next (and every subsequent,
 	// until cleared) `PUT /nodes/{node}/network` reload task fail.
 	NetworkReloadFail bool `yaml:"network_reload_fail,omitempty"`
+
+	// FirewallCompileFail, when true, makes GET /nodes/{node}/firewall/status
+	// (T-502's mock-only extension — see firewall.go's handleFirewallStatus
+	// doc comment for why this route isn't part of the real PVE API) report
+	// a compile error instead of "ok", so the change engine's post-apply
+	// verification step (docs/features/firewall.md §3) has something to
+	// actually catch in tests.
+	FirewallCompileFail bool `yaml:"firewall_compile_fail,omitempty"`
 }
 
 // merge returns o overridden by any non-zero fields in override.
@@ -348,6 +356,9 @@ func (o MockOptions) merge(override *MockOptions) MockOptions {
 	}
 	if override.NetworkReloadFail {
 		out.NetworkReloadFail = true
+	}
+	if override.FirewallCompileFail {
+		out.FirewallCompileFail = true
 	}
 	return out
 }

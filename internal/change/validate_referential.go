@@ -3,6 +3,7 @@ package change
 import (
 	"net"
 
+	"github.com/bgovanlu/vnprox/internal/fw"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
@@ -249,11 +250,22 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 	case *FwGroupCreateParams:
 		checkFwNameCollision(p, "group", params.Name, ref, &out)
 
-	case *FwAliasUpdateParams, *FwAliasDeleteParams, *FwIpsetUpdateParams,
-		*FwIpsetDeleteParams, *FwGroupUpdateParams, *FwGroupDeleteParams:
-		// no snapshot-backed existence check possible for these — see
+	case *FwAliasUpdateParams, *FwIpsetUpdateParams, *FwGroupUpdateParams:
+		// no snapshot-backed existence check possible for these yet — see
 		// projection.fwNames's doc comment (known scope gap, in the T-202
-		// report).
+		// report). T-502 closes the gap for the delete ops below, since
+		// acceptance criterion 2 specifically needs delete usage-guarded;
+		// extending it to update (rename/recomment) existence-checking too
+		// is left for a future pass.
+
+	case *FwAliasDeleteParams:
+		checkFwObjectDeletable(p, fw.ObjectAlias, op.Target, params.Name, ref, &out)
+
+	case *FwIpsetDeleteParams:
+		checkFwObjectDeletable(p, fw.ObjectIPSet, op.Target, params.Name, ref, &out)
+
+	case *FwGroupDeleteParams:
+		checkFwObjectDeletable(p, fw.ObjectGroup, op.Target, params.Name, ref, &out)
 
 	case *IpamAllocCreateParams:
 		if !p.exists(op.Target) {
@@ -374,32 +386,52 @@ func checkSiblingSubnetOverlap(p *projection, target inventory.Ref, vnet string,
 	}
 }
 
-// checkFwPos validates a rule position against ruleset target's current
-// rule count. allowEnd permits pos == len(rules) (an append/insert-at-end
+// checkFwPos validates a rule position against ruleset target's *effective*
+// rule count: the snapshot's own rule count (0 if the ruleset isn't in the
+// snapshot at all) plus the net rule-count delta this same changeset's
+// earlier fw.rule.create/delete ops have already made to it
+// (p.fwRuleDelta — see its doc comment). This makes a changeset that
+// creates rules and then reorders/updates/deletes one of them, all before
+// ever applying, validate correctly even though the snapshot (a poll-cache,
+// not live state) has no way to know about those not-yet-applied creates —
+// acceptance criterion 1's "build 3 rules via the builder, then reorder
+// one" workflow depends on exactly this.
+//
+// allowEnd permits pos == the effective count (an append/insert-at-end
 // position, valid for fw.rule.create's Pos and fw.rule.move's ToPos);
-// requireRuleset controls whether a missing FwRuleset entity is itself an
-// error — true for update/delete/move, which reference an existing rule by
-// position, false for create, whose ruleset may not be independently
-// modeled yet (see the FwOptionsUpdateParams case's doc comment above for
-// why cluster/node rulesets are assumed to always exist).
+// requireRuleset controls whether "neither the snapshot nor this
+// changeset's own earlier ops have established this ruleset at all" is
+// itself an error — true for update/delete/move, which reference an
+// existing rule by position, false for create, whose ruleset may not be
+// independently modeled yet (see the FwOptionsUpdateParams case's doc
+// comment above for why cluster/node rulesets are assumed to always
+// exist).
 func checkFwPos(p *projection, target inventory.Ref, pos int, allowEnd, requireRuleset bool, ref string, out *[]Finding) {
-	e, ok := p.snap.Get(target)
-	if !ok {
+	baseCount := 0
+	rulesetKnown := false
+	if e, ok := p.snap.Get(target); ok {
+		if rs, ok := e.(*inventory.FwRuleset); ok {
+			baseCount = len(rs.Rules)
+			rulesetKnown = true
+		}
+	}
+	delta := p.fwRuleDelta[target]
+	if !rulesetKnown && delta == 0 {
 		if requireRuleset {
 			*out = append(*out, errorf(codeTargetNotFound, ref, "firewall ruleset %s does not exist", target))
 		}
 		return
 	}
-	rs, ok := e.(*inventory.FwRuleset)
-	if !ok {
-		return
+	count := baseCount + delta
+	if count < 0 {
+		count = 0
 	}
-	maxPos := len(rs.Rules)
+	maxPos := count
 	if !allowEnd {
 		maxPos--
 	}
 	if pos < 0 || pos > maxPos {
-		*out = append(*out, errorf(codeFwPosOutOfRange, ref, "pos %d out of range for ruleset with %d rule(s)", pos, len(rs.Rules)))
+		*out = append(*out, errorf(codeFwPosOutOfRange, ref, "pos %d out of range for ruleset with %d rule(s)", pos, count))
 	}
 }
 
@@ -409,4 +441,53 @@ func checkFwNameCollision(p *projection, kind, name, ref string, out *[]Finding)
 	if p.fwNames[kind+"/"+name] {
 		*out = append(*out, errorf(codeAlreadyExists, ref, "a %s named %q was already created earlier in this changeset", kind, name))
 	}
+}
+
+// fwScopeOfRef recovers the FwScope an fw.alias/ipset/group op's Target
+// names, from the same Ref convention params_fw.go documents (cluster:
+// ID=="cluster"; node: ID=="node"; guest: ID=="guest/<kind>/<vmid>").
+func fwScopeOfRef(target inventory.Ref) inventory.FwScope {
+	switch target.ID {
+	case "cluster":
+		return inventory.FwScopeCluster
+	case "node":
+		return inventory.FwScopeNode
+	default:
+		return inventory.FwScopeGuest
+	}
+}
+
+// checkFwObjectDeletable is T-502 acceptance criterion 2: deleting an
+// alias/ipset/security-group still referenced by at least one rule
+// anywhere it's visible from is blocked, with the exact reference count
+// (the editor UI renders internal/fw.UsageCounts' own ReferencedBy list
+// for the deep-links — no new usage-scanning logic needed here, per
+// T-501's report). This also closes the "does this object even exist"
+// gap for delete ops specifically (checkFwNameCollision only ever guarded
+// create): a delete naming an object neither the live snapshot nor this
+// changeset's own earlier creates ever produced is itself an error.
+//
+// It rebuilds a fresh fw.Snapshot from p.snap per call rather than caching
+// one on the projection: fw ops are a small fraction of any realistic
+// changeset (unlike e.g. per-node address checks run on every iface op),
+// so the extra work is not worth the complexity of keeping a second
+// cache in sync with intra-changeset fw.alias/ipset.create ops the way
+// p.fwNames does for the collision check above (those never affect
+// UsageCounts, which only reads *existing* rule references, so a
+// same-changeset create-then-delete-of-a-referencing-rule sequence is a
+// known, narrow edge this snapshot-only view won't catch — acceptable
+// since AC2 only requires the live-fixture case to be caught).
+func checkFwObjectDeletable(p *projection, kind fw.ObjectKind, target inventory.Ref, name, ref string, out *[]Finding) {
+	snap := fw.BuildSnapshot(p.snap.All())
+	scope := fwScopeOfRef(target)
+	for _, u := range fw.UsageCounts(snap) {
+		if u.Kind != kind || u.Scope != scope || u.Name != name {
+			continue
+		}
+		if u.Count > 0 {
+			*out = append(*out, errorf(codeFwObjectInUse, ref, "%s %q is referenced by %d rule(s) and cannot be deleted while referenced", kind, name, u.Count))
+		}
+		return
+	}
+	*out = append(*out, errorf(codeFwObjectNotFound, ref, "%s %q does not exist at this scope", kind, name))
 }

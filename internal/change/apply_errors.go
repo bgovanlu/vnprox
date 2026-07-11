@@ -1,6 +1,10 @@
 package change
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/bgovanlu/vnprox/internal/inventory"
+)
 
 // ErrChangesetLocked is returned by Apply when another changeset is already
 // in flight (status applying or awaiting_confirm) cluster-wide: only one
@@ -28,16 +32,49 @@ func (e *ErrApplyNotConfigured) Error() string {
 }
 
 // ErrUnsupportedOp is returned by the planner when a changeset contains an op
-// the T-205 apply engine cannot yet execute (the guest/SDN-write/fw/ipam op
-// families, pending their pve.Client write methods). It is raised at plan
-// time — before any mutation — so an un-executable changeset is rejected up
-// front rather than partially applied. The API layer maps it to a 422.
+// the apply engine cannot yet execute (the guest/SDN-write/ipam op
+// families, pending their pve.Client write methods — fw.* is executable as
+// of T-502). It is raised at plan time — before any mutation — so an
+// un-executable changeset is rejected up front rather than partially
+// applied. The API layer maps it to a 422.
 type ErrUnsupportedOp struct {
 	OpType OpType
 }
 
 func (e *ErrUnsupportedOp) Error() string {
 	return fmt.Sprintf("change: apply engine does not yet execute op type %q", e.OpType)
+}
+
+// ErrFwRuleNotFound is returned by PVEGateway.FirewallRuleFields (and
+// surfaced by fw.rule.move's apply-time revalidation) when the position it
+// was asked about no longer holds any rule.
+type ErrFwRuleNotFound struct {
+	Ref inventory.Ref
+	Pos int
+}
+
+func (e *ErrFwRuleNotFound) Error() string {
+	return fmt.Sprintf("change: no rule at pos %d in ruleset %s", e.Pos, e.Ref)
+}
+
+// ErrFwPositionChanged is T-502 acceptance criterion 3: fw.rule.move's
+// apply-time revalidation found that the rule now at FromPos no longer
+// matches what the client observed when the move was drafted (the fixture
+// shifted between draft and apply — someone else's concurrent edit, or a
+// stale UI). The apply step fails with this error rather than silently
+// moving whatever now happens to occupy that position; the API layer
+// surfaces it distinctly (not just a generic apply failure) so the UI can
+// prompt the user to refresh the ruleset and retry instead of quietly
+// reporting "apply failed".
+type ErrFwPositionChanged struct {
+	Ref  inventory.Ref
+	Want FwRuleFields
+	Got  FwRuleFields
+	Pos  int
+}
+
+func (e *ErrFwPositionChanged) Error() string {
+	return fmt.Sprintf("change: firewall ruleset %s changed since this move was drafted: the rule at pos %d no longer matches what was expected there — refresh and retry", e.Ref, e.Pos)
 }
 
 // ErrNotConfirmable is returned by Confirm when the changeset is not in the

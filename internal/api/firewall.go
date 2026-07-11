@@ -36,6 +36,7 @@ func mountFirewallRoutes(r chi.Router, graph FirewallGraph, auth AuthService) {
 		r.Use(auth.RequireCap(capNetRead))
 		r.Get("/firewall/rulesets", handleFirewallRulesets(graph))
 		r.Get("/firewall/objects", handleFirewallObjects(graph))
+		r.Get("/firewall/effects", handleFirewallEffects(graph))
 	})
 }
 
@@ -330,6 +331,43 @@ func toMacroViews(macros []fw.Macro) []macroView {
 		out[i] = macroView{Name: m.Name, Comment: m.Comment, Ports: toMacroPortViews(m.Ports)}
 	}
 	return out
+}
+
+// --- GET /firewall/effects?group= -------------------------------------------
+
+type effectsResponse struct {
+	Group  string   `json:"group"`
+	Guests []string `json:"guests"`
+}
+
+// handleFirewallEffects implements `GET /firewall/effects?group=<name>`
+// (added by T-502): docs/features/firewall.md §2's P1 rule-effects
+// preview for a security-group reference — every guest ref whose resolved
+// evaluation order actually splices in group's own rules, computed by
+// internal/fw.MatchingGuests (which itself calls the same fw.Resolve the
+// read-side resolved view uses — no separate resolution logic). A group
+// name matching zero guests (including one that doesn't exist) returns an
+// empty list, not a 404: "no matches" is a legitimate, informative answer
+// for a preview, not an error.
+func handleFirewallEffects(graph FirewallGraph) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		group := r.URL.Query().Get("group")
+		if group == "" {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "group is required")
+			return
+		}
+		snap := firewallSnapshot(graph)
+		guests, err := fw.MatchingGuests(snap, group)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		out := make([]string, len(guests))
+		for i, g := range guests {
+			out[i] = g.String()
+		}
+		writeJSON(w, http.StatusOK, effectsResponse{Group: group, Guests: out})
+	}
 }
 
 // sortedNodeNames/sortedGuestRefs give the "list every node/guest ruleset"

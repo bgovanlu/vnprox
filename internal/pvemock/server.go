@@ -119,6 +119,7 @@ func (srv *Server) buildRouter() chi.Router {
 	r.Route("/mock", func(m chi.Router) {
 		m.Get("/mess", srv.handleMockMess)
 		m.Post("/nodes/{node}/network-reload-fail", srv.handleMockSetNetworkReloadFail)
+		m.Post("/nodes/{node}/firewall-compile-fail", srv.handleMockSetFirewallCompileFail)
 	})
 
 	return r

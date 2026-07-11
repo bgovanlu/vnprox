@@ -97,6 +97,17 @@ type projection struct {
 	// no snapshot-backed existence check for their update/delete ops.
 	fwNames map[string]bool
 
+	// fwRuleDelta tracks the net rule-count change fw.rule.create/delete
+	// ops earlier in this same changeset have made to each ruleset target
+	// (T-502), so checkFwPos's position-bounds check reflects the
+	// changeset's own net effect, not only the (possibly several-seconds-
+	// stale) snapshot's rule count. Acceptance criterion 1's "build 3
+	// rules via the builder, then reorder one" workflow creates and moves
+	// rules within the very same changeset — without this, a fw.rule.move
+	// referencing a position only this changeset's own earlier creates
+	// established would always fail validation.
+	fwRuleDelta map[inventory.Ref]int
+
 	// pendingDelete maps every iface-namespace Ref that some delete op in
 	// this changeset targets to the index of its *last* delete op, and
 	// cursor is the index of the op currently being checked (maintained by
@@ -137,6 +148,7 @@ func newProjection(snap inventory.Snapshot) *projection {
 		allocsBySubnet: map[inventory.Ref][]string{},
 		nodeNames:      map[string]bool{},
 		fwNames:        map[string]bool{},
+		fwRuleDelta:    map[inventory.Ref]int{},
 		pendingDelete:  map[inventory.Ref]int{},
 	}
 
@@ -480,6 +492,12 @@ func (p *projection) fold(op Op) {
 
 	case *IpamAllocCreateParams:
 		p.allocsBySubnet[op.Target] = append(p.allocsBySubnet[op.Target], params.CIDR)
+
+	case *FwRuleCreateParams:
+		p.fwRuleDelta[op.Target]++
+
+	case *FwRuleDeleteParams:
+		p.fwRuleDelta[op.Target]--
 
 	case *FwAliasCreateParams:
 		p.fwNames["alias/"+params.Name] = true
