@@ -75,6 +75,20 @@ func (r nodeRestrictedReader) Stats(ctx context.Context, node string) (map[strin
 	return r.inner.Stats(ctx, node)
 }
 
+func (r nodeRestrictedReader) FRRBGPSummary(ctx context.Context, node string) ([]byte, error) {
+	if node != r.node {
+		return nil, host.ErrNotFound
+	}
+	return r.inner.FRRBGPSummary(ctx, node)
+}
+
+func (r nodeRestrictedReader) FRREVPNVNI(ctx context.Context, node string) ([]byte, error) {
+	if node != r.node {
+		return nil, host.ErrNotFound
+	}
+	return r.inner.FRREVPNVNI(ctx, node)
+}
+
 // reorderLocalFirst returns a copy of nodes with local moved to index 0 —
 // pvemock's GET /cluster/status marks index 0 "local" unconditionally
 // (internal/pvemock/cluster.go), so this is how each simulated daemon gets
