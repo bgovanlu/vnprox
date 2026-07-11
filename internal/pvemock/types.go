@@ -185,12 +185,23 @@ type FDBEntrySpec struct {
 }
 
 // LLDPNeighbor is one LLDP-discovered neighbor on a local iface.
+//
+// TaggedVLANs (T-403) is the switch port's advertised *trunked* VLAN IDs,
+// distinct from VLAN (the port's untagged/native PVID) — the VLAN zone
+// wizard's LLDP trunk cross-check (docs/features/sdn.md §2) needs this to
+// tell "port trunks VID 200" apart from "port's native VLAN happens to be
+// 200". Added as its own optional fixture field rather than overloading
+// VLAN, since real lldpd reports both independently (see
+// internal/host/lldp.go's flexVlans, which already parses both from real
+// `lldpctl -f json` output — only this package's flat fixture shape was
+// missing the tagged half).
 type LLDPNeighbor struct {
 	ChassisName string `yaml:"chassis_name" json:"chassis_name"`
 	ChassisID   string `yaml:"chassis_id" json:"chassis_id"`
 	PortID      string `yaml:"port_id" json:"port_id"`
 	PortDescr   string `yaml:"port_descr,omitempty" json:"port_descr,omitempty"`
 	MgmtIP      string `yaml:"mgmt_ip,omitempty" json:"mgmt_ip,omitempty"`
+	TaggedVLANs []int  `yaml:"tagged_vlans,omitempty" json:"tagged_vlans,omitempty"`
 	VLAN        int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
 	TTL         int    `yaml:"ttl,omitempty" json:"ttl,omitempty"`
 }

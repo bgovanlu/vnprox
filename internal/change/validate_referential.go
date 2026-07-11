@@ -172,6 +172,14 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 				out = append(out, errorf(codeNodeNotFound, ref, "node %q is not a known cluster node", n))
 			}
 		}
+		// ExitNodes (T-403, EVPN wizard) names real cluster nodes, exactly
+		// like Nodes — Peers does not (it holds underlay IP addresses, not
+		// node names; see params_sdn.go's SdnZoneCreateParams doc comment).
+		for _, n := range params.ExitNodes {
+			if !p.nodeNames[n] {
+				out = append(out, errorf(codeNodeNotFound, ref, "node %q is not a known cluster node", n))
+			}
+		}
 
 	case *SdnZoneUpdateParams:
 		if !p.exists(op.Target) {
@@ -179,6 +187,13 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 		}
 		if params.Nodes != nil {
 			for _, n := range *params.Nodes {
+				if !p.nodeNames[n] {
+					out = append(out, errorf(codeNodeNotFound, ref, "node %q is not a known cluster node", n))
+				}
+			}
+		}
+		if params.ExitNodes != nil {
+			for _, n := range *params.ExitNodes {
 				if !p.nodeNames[n] {
 					out = append(out, errorf(codeNodeNotFound, ref, "node %q is not a known cluster node", n))
 				}

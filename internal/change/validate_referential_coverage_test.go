@@ -95,7 +95,12 @@ func TestReferentialValidate_AgainstPopulatedSnapshot(t *testing.T) {
 		{"zone.create exists", change.Op{Type: change.OpSdnZoneCreate, Target: zoneR("zone1"), Params: &change.SdnZoneCreateParams{Type: "simple"}}, true},
 		{"zone.create node missing", change.Op{Type: change.OpSdnZoneCreate, Target: zoneR("zone2"), Params: &change.SdnZoneCreateParams{Type: "simple", Nodes: []string{"ghostnode"}}}, true},
 		{"zone.create ok", change.Op{Type: change.OpSdnZoneCreate, Target: zoneR("zone3"), Params: &change.SdnZoneCreateParams{Type: "simple", Nodes: []string{"pve1"}}}, false},
+		// T-403: exitNodes is checked against known cluster nodes exactly
+		// like nodes; peers (underlay IPs, not node names) is not.
+		{"zone.create exitNode missing", change.Op{Type: change.OpSdnZoneCreate, Target: zoneR("zone4"), Params: &change.SdnZoneCreateParams{Type: "evpn", Nodes: []string{"pve1"}, ExitNodes: []string{"ghostnode"}}}, true},
+		{"zone.create exitNode ok, peers unchecked", change.Op{Type: change.OpSdnZoneCreate, Target: zoneR("zone5"), Params: &change.SdnZoneCreateParams{Type: "evpn", Nodes: []string{"pve1"}, ExitNodes: []string{"pve1"}, Peers: []string{"10.10.0.99"}}}, false},
 		{"zone.update missing", change.Op{Type: change.OpSdnZoneUpdate, Target: zoneR("ghost"), Params: &change.SdnZoneUpdateParams{}}, true},
+		{"zone.update exitNode missing", change.Op{Type: change.OpSdnZoneUpdate, Target: zoneR("zone1"), Params: &change.SdnZoneUpdateParams{ExitNodes: &[]string{"ghostnode"}}}, true},
 		{"zone.delete existing", change.Op{Type: change.OpSdnZoneDelete, Target: zoneR("zone1"), Params: &change.SdnZoneDeleteParams{}}, false},
 
 		{"vnet.create bad zone", change.Op{Type: change.OpSdnVnetCreate, Target: vnetR("zone1/vnetX"), Params: &change.SdnVnetCreateParams{Zone: "ghostzone"}}, true},

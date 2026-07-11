@@ -377,7 +377,10 @@ func parseMauSpeedMbps(descr string) int {
 
 // flatNeighborJSON mirrors internal/pvemock's marshalLLDP output and
 // inventory's pre-T-302 flat parsing (kept for fixture/back-compat — see
-// ParseLLDP's doc comment).
+// ParseLLDP's doc comment). TaggedVLANs (T-403) is additive: fixtures
+// predating it simply omit the key, decoding to nil (no tagged VLANs
+// reported), matching flexVlans' own "unreported" convention for the
+// nested schema.
 type flatNeighborJSON struct {
 	Local       string `json:"local-iface"`
 	ChassisName string `json:"chassis_name"`
@@ -385,6 +388,7 @@ type flatNeighborJSON struct {
 	PortID      string `json:"port_id"`
 	PortDescr   string `json:"port_descr"`
 	MgmtIP      string `json:"mgmt_ip"`
+	TaggedVLANs []int  `json:"tagged_vlans"`
 	VLAN        int    `json:"vlan"`
 	TTL         int    `json:"ttl"`
 }
@@ -411,6 +415,7 @@ func parseFlatLLDP(raw []byte) ([]LLDPNeighbor, error) {
 			PortID:      r.PortID,
 			PortDescr:   r.PortDescr,
 			PVID:        r.VLAN,
+			TaggedVLANs: append([]int(nil), r.TaggedVLANs...),
 			TTL:         r.TTL,
 		}
 		if r.MgmtIP != "" {

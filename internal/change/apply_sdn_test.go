@@ -3,6 +3,7 @@ package change_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -190,6 +191,62 @@ func TestApply_SDNLifecycle_ZoneVnetSubnet(t *testing.T) {
 	}
 	if !foundSubnet {
 		t.Fatalf("subnet 10.60.0.0/24 not in running view: %+v", subnets)
+	}
+}
+
+// TestApply_SDNZone_ExitNodesAndPeers_RoundTrip is T-403: the EVPN zone
+// wizard's exit-node/peer selections must actually survive an apply, not
+// just be accepted by validation — proving the write-path gap flagged in
+// params_sdn.go's SdnZoneCreateParams doc comment (ExitNodes/Peers were
+// readable via GET /sdn since T-401 but had no changeset-op way to set them
+// until this task) is genuinely closed end to end.
+func TestApply_SDNZone_ExitNodesAndPeers_RoundTrip(t *testing.T) {
+	h := newSDNHarness(t)
+	ctx := context.Background()
+	gw := &fakePVEGateway{client: h.client, pollNode: "pve1"}
+
+	ops := []change.Op{
+		{
+			Type:   change.OpSdnZoneCreate,
+			Target: inventory.Ref{Kind: inventory.KindSDNZone, ID: "zoneT403evpn"},
+			Params: &change.SdnZoneCreateParams{
+				Type:      "evpn",
+				Nodes:     []string{"pve1", "pve2", "pve3"},
+				ExitNodes: []string{"pve1", "pve2"},
+				Peers:     []string{"10.10.0.11", "10.10.0.12", "10.10.0.13"},
+			},
+		},
+		sdnApplyOp(),
+	}
+	cs := h.mustCreate(t, "root@pam", "sdn exit nodes/peers", ops)
+
+	if _, err := h.svc.Apply(ctx, cs.ID, "root@pam", gw, 0); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if _, err := h.svc.Confirm(ctx, cs.ID, "root@pam"); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+
+	zones, err := h.client.ListSDNZonesRunning(ctx)
+	if err != nil {
+		t.Fatalf("ListSDNZonesRunning: %v", err)
+	}
+	var zone *pve.SDNZone
+	for i := range zones {
+		if zones[i].ID == "zoneT403evpn" {
+			zone = &zones[i]
+		}
+	}
+	if zone == nil {
+		t.Fatalf("zone zoneT403evpn not in running view: %+v", zones)
+	}
+	wantExit := []string{"pve1", "pve2"}
+	if !reflect.DeepEqual(zone.ExitNodes, wantExit) {
+		t.Errorf("exitNodes = %v, want %v", zone.ExitNodes, wantExit)
+	}
+	wantPeers := []string{"10.10.0.11", "10.10.0.12", "10.10.0.13"}
+	if !reflect.DeepEqual(zone.Peers, wantPeers) {
+		t.Errorf("peers = %v, want %v", zone.Peers, wantPeers)
 	}
 }
 

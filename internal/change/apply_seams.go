@@ -245,6 +245,8 @@ type SDNZoneConfig struct {
 	Bridge     string   `json:"bridge,omitempty"`
 	Controller string   `json:"controller,omitempty"`
 	Nodes      []string `json:"nodes,omitempty"`
+	ExitNodes  []string `json:"exitNodes,omitempty"`
+	Peers      []string `json:"peers,omitempty"`
 	VrfVxlan   int      `json:"vrfVxlan,omitempty"`
 	MTU        int      `json:"mtu,omitempty"`
 }

@@ -161,7 +161,7 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 		}
 		z := preZones[id]
 		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnZoneCreate, Target: inventory.Ref{Kind: inventory.KindSDNZone, ID: id}, Params: &SdnZoneCreateParams{
-			Type: z.Type, Bridge: z.Bridge, Controller: z.Controller, Nodes: z.Nodes, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
+			Type: z.Type, Bridge: z.Bridge, Controller: z.Controller, Nodes: z.Nodes, ExitNodes: z.ExitNodes, Peers: z.Peers, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
 		}}})
 	}
 	for _, id := range sortedKeys(preVnets) {
@@ -193,9 +193,9 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 			continue
 		}
 		z := preZones[id]
-		bridge, controller, nodes, vrf, mtu := z.Bridge, z.Controller, z.Nodes, z.VrfVxlan, z.MTU
+		bridge, controller, nodes, exitNodes, peers, vrf, mtu := z.Bridge, z.Controller, z.Nodes, z.ExitNodes, z.Peers, z.VrfVxlan, z.MTU
 		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnZoneUpdate, Target: inventory.Ref{Kind: inventory.KindSDNZone, ID: id}, Params: &SdnZoneUpdateParams{
-			Bridge: &bridge, Controller: &controller, Nodes: &nodes, VrfVxlan: &vrf, MTU: &mtu,
+			Bridge: &bridge, Controller: &controller, Nodes: &nodes, ExitNodes: &exitNodes, Peers: &peers, VrfVxlan: &vrf, MTU: &mtu,
 		}}})
 	}
 	for _, id := range sortedKeys(preVnets) {

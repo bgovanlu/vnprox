@@ -100,8 +100,8 @@ nodes:
           - {mac: "DE:AD:BE:EF:00:01", port: "bond0", vlan: 1}
           - {mac: "CA:FE:BA:BE:00:02", port: "bond0", vlan: 1, stale: true}
     lldp:
-      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.254, vlan: 10, ttl: 120}
-      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.253, vlan: 10, ttl: 120}
+      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.254, vlan: 10, tagged_vlans: [100, 200, 300], ttl: 120}
+      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.253, vlan: 10, tagged_vlans: [100, 200, 300], ttl: 120}
     stats:
       eno1: {rx_bytes: 5000000000, tx_bytes: 2000000000, rx_packets: 4000000, tx_packets: 1800000}
       eno2: {rx_bytes: 4800000000, tx_bytes: 1900000000, rx_packets: 3900000, tx_packets: 1750000}
@@ -180,8 +180,8 @@ nodes:
           - {mac: "bc:24:11:01:00:01", port: "bond0", vlan: 1}
           - {mac: "DE:AD:BE:EF:00:02", port: "bond0", vlan: 1}
     lldp:
-      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.254, vlan: 10, ttl: 120}
-      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.253, vlan: 10, ttl: 120}
+      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.254, vlan: 10, tagged_vlans: [100, 200, 300], ttl: 120}
+      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.253, vlan: 10, tagged_vlans: [100, 200, 300], ttl: 120}
     stats:
       eno1: {rx_bytes: 4700000000, tx_bytes: 1950000000, rx_packets: 3800000, tx_packets: 1700000}
       eno2: {rx_bytes: 4600000000, tx_bytes: 1900000000, rx_packets: 3750000, tx_packets: 1680000}
@@ -256,8 +256,12 @@ nodes:
         fdb:
           - {mac: "DE:AD:BE:EF:00:03", port: "bond0", vlan: 1}
     lldp:
-      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.254, vlan: 10, ttl: 120}
-      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.253, vlan: 10, ttl: 120}
+      # T-403 VLAN-zone-wizard LLDP trunk cross-check fixture: pve3's
+      # trunk is deliberately missing VID 300 (present on pve1/pve2) so
+      # the wizard's LLDP cross-check has a real "VID not trunked on
+      # this switch port" case to warn about, naming the port.
+      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.254, vlan: 10, tagged_vlans: [100, 200], ttl: 120}
+      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.253, vlan: 10, tagged_vlans: [100, 200], ttl: 120}
     stats:
       eno1: {rx_bytes: 4500000000, tx_bytes: 1850000000, rx_packets: 3700000, tx_packets: 1650000}
       eno2: {rx_bytes: 4400000000, tx_bytes: 1800000000, rx_packets: 3650000, tx_packets: 1620000}

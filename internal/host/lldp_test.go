@@ -114,6 +114,48 @@ func TestParseLLDP_FlatLegacy(t *testing.T) {
 	}
 }
 
+// TestParseLLDP_FlatTaggedVLANs is T-403's LLDP trunk cross-check plumbing:
+// the flat fixture schema (internal/pvemock's marshalLLDP output) needs to
+// carry a switch port's trunked VLANs, not just its native PVID, for the
+// VLAN zone wizard's "does the physical path actually trunk this VID"
+// check to have anything to check against.
+func TestParseLLDP_FlatTaggedVLANs(t *testing.T) {
+	raw := []byte(`[{"local-iface":"eno1","chassis_name":"sw-core-01","chassis_id":"ac:1f:6b:01:00:01","port_id":"Te1/0/1","vlan":10,"tagged_vlans":[100,200,300],"ttl":120}]`)
+	neighbors, err := ParseLLDP(raw)
+	if err != nil {
+		t.Fatalf("ParseLLDP: %v", err)
+	}
+	if len(neighbors) != 1 {
+		t.Fatalf("got %d neighbors, want 1", len(neighbors))
+	}
+	n := neighbors[0]
+	if n.PVID != 10 {
+		t.Errorf("pvid = %d, want 10", n.PVID)
+	}
+	want := []int{100, 200, 300}
+	if len(n.TaggedVLANs) != len(want) {
+		t.Fatalf("taggedVlans = %v, want %v", n.TaggedVLANs, want)
+	}
+	for i, v := range want {
+		if n.TaggedVLANs[i] != v {
+			t.Errorf("taggedVlans[%d] = %d, want %d", i, n.TaggedVLANs[i], v)
+		}
+	}
+}
+
+// TestParseLLDP_FlatTaggedVLANsAbsent confirms a fixture predating T-403
+// (no "tagged_vlans" key at all) still parses cleanly with a nil/empty
+// TaggedVLANs — the flat schema's addition is backward-compatible.
+func TestParseLLDP_FlatTaggedVLANsAbsent(t *testing.T) {
+	neighbors, err := ParseLLDP(mustReadTestdata(t, "flat_legacy.json"))
+	if err != nil {
+		t.Fatalf("ParseLLDP: %v", err)
+	}
+	if len(neighbors[0].TaggedVLANs) != 0 {
+		t.Errorf("taggedVlans = %v, want empty (fixture predates tagged_vlans)", neighbors[0].TaggedVLANs)
+	}
+}
+
 func TestParseLLDP_Empty(t *testing.T) {
 	neighbors, err := ParseLLDP(nil)
 	if err != nil || neighbors != nil {

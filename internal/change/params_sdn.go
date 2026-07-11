@@ -3,12 +3,26 @@ package change
 // SdnZoneCreateParams is op "sdn.zone.create". Target carries the new
 // zone's cluster-scoped identity (Ref{Kind: KindSDNZone, Node: "", ID:
 // "zone1"}).
+//
+// ExitNodes/Peers (T-403) close a write-path gap the SDN zone wizards
+// surfaced: internal/inventory.SdnZone and internal/pve.SDNZone (the read
+// model and the PVE wire type, respectively) have carried both fields
+// since T-401, and internal/pvemock's SDNZoneSpec already accepts them on
+// write, but this params struct — the only thing a changeset op can
+// actually set — never exposed them, so nothing above the PVE-client layer
+// could draft a VXLAN/EVPN zone with peers or an EVPN zone's exit nodes.
+// Peers holds underlay IP addresses (docs/features/sdn.md §2's VXLAN
+// wizard: "peer address list auto-suggested from cluster node IPs"), not
+// node names, so — unlike Nodes/ExitNodes — it is not checked against the
+// known-cluster-node-name referential rule.
 type SdnZoneCreateParams struct {
 	Type       string   `json:"type"` // simple|vlan|qinq|vxlan|evpn
 	Bridge     string   `json:"bridge,omitempty"`
 	Controller string   `json:"controller,omitempty"`
 	IPAM       string   `json:"ipam,omitempty"`
 	Nodes      []string `json:"nodes,omitempty"`
+	ExitNodes  []string `json:"exitNodes,omitempty"`
+	Peers      []string `json:"peers,omitempty"`
 	VrfVxlan   int      `json:"vrfVxlan,omitempty"`
 	MTU        int      `json:"mtu,omitempty"`
 }
@@ -22,6 +36,8 @@ type SdnZoneUpdateParams struct {
 	Controller *string   `json:"controller,omitempty"`
 	IPAM       *string   `json:"ipam,omitempty"`
 	Nodes      *[]string `json:"nodes,omitempty"`
+	ExitNodes  *[]string `json:"exitNodes,omitempty"`
+	Peers      *[]string `json:"peers,omitempty"`
 	VrfVxlan   *int      `json:"vrfVxlan,omitempty"`
 	MTU        *int      `json:"mtu,omitempty"`
 }

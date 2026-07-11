@@ -168,7 +168,7 @@ func (g *fakePVEGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVne
 	case *change.SdnZoneCreateParams:
 		return g.client.CreateSDNZone(ctx, pve.SDNZone{
 			ID: op.Target.ID, Type: p.Type, Bridge: p.Bridge, Controller: p.Controller,
-			Nodes: p.Nodes, VrfVxlan: p.VrfVxlan, MTU: p.MTU,
+			Nodes: p.Nodes, ExitNodes: p.ExitNodes, Peers: p.Peers, VrfVxlan: p.VrfVxlan, MTU: p.MTU,
 		})
 	case *change.SdnZoneUpdateParams:
 		z := pve.SDNZone{ID: op.Target.ID}
@@ -180,6 +180,12 @@ func (g *fakePVEGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVne
 		}
 		if p.Nodes != nil {
 			z.Nodes = *p.Nodes
+		}
+		if p.ExitNodes != nil {
+			z.ExitNodes = *p.ExitNodes
+		}
+		if p.Peers != nil {
+			z.Peers = *p.Peers
 		}
 		if p.VrfVxlan != nil {
 			z.VrfVxlan = *p.VrfVxlan
@@ -285,7 +291,7 @@ func (g *fakePVEGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error
 	for _, z := range zones {
 		cfg.Zones = append(cfg.Zones, change.SDNZoneConfig{
 			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller,
-			Nodes: z.Nodes, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
+			Nodes: z.Nodes, ExitNodes: z.ExitNodes, Peers: z.Peers, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
 		})
 	}
 	for _, v := range vnets {
