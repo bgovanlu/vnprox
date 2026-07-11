@@ -579,9 +579,78 @@ const (
 	FwScopeGuest   FwScope = "guest"
 )
 
+// FwAlias is a named IP/CIDR alias defined within a ruleset's scope. Per
+// real pve-firewall semantics (docs/features/firewall.md §1/§2), a
+// cluster-scope alias is visible from every scope (referenced by bare
+// name from node or guest rules too); a node- or guest-scope alias is only
+// visible within the ruleset that defines it. internal/fw's resolver
+// applies this visibility rule when expanding rule references and
+// counting object usage.
+type FwAlias struct {
+	Name    string
+	CIDR    string
+	Comment string
+}
+
+func (a FwAlias) canonical() string {
+	return a.Name + "|" + a.CIDR + "|" + a.Comment
+}
+
+// FwIPSetEntry is one member of an FwIPSet.
+type FwIPSetEntry struct {
+	CIDR    string
+	Comment string
+	NoMatch bool
+}
+
+func (e FwIPSetEntry) canonical() string {
+	return fmt.Sprintf("%s|%v|%s", e.CIDR, e.NoMatch, e.Comment)
+}
+
+// FwIPSet is a named set of CIDR entries, with the same scope-visibility
+// rule as FwAlias (referenced in rule source/dest fields with a leading
+// "+", e.g. "+blocklist").
+type FwIPSet struct {
+	Name    string
+	Comment string
+	Entries []FwIPSetEntry
+}
+
+func (s FwIPSet) canonical() string {
+	entries := make([]string, len(s.Entries))
+	for i, e := range s.Entries {
+		entries[i] = e.canonical()
+	}
+	sort.Strings(entries)
+	return s.Name + "|" + s.Comment + "|" + strings.Join(entries, ",")
+}
+
+// FwGroup is a reusable, cluster-scope-only security group of rules,
+// referenced from any ruleset's own rule list via a rule whose Direction
+// is "group" and whose Action names the group (see FwRule.Direction and
+// internal/fw's resolver for expansion semantics). Real PVE only exposes
+// security groups at the cluster level (pvemock mounts the group CRUD
+// routes once, at /cluster/firewall/groups, never per node/guest), so
+// Groups is only ever populated on the cluster-scope FwRuleset.
+type FwGroup struct {
+	Name    string
+	Comment string
+	Rules   []FwRule
+}
+
+func (g FwGroup) canonical() string {
+	rules := make([]string, len(g.Rules))
+	for i, r := range g.Rules {
+		rules[i] = r.canonical()
+	}
+	return g.Name + "|" + g.Comment + "|" + strings.Join(rules, "\n")
+}
+
 // FwRuleset is a firewall ruleset at cluster, node, or guest scope. Rules
 // are ordered by Pos; order is significant, so it is not sorted for
-// canonicalization.
+// canonicalization. Aliases/IPSets/Groups are the scope's own object
+// definitions (docs/features/firewall.md §2's alias/ipset/security-group
+// editors); Groups is populated only for FwScopeCluster (see FwGroup).
 type FwRuleset struct {
 	Ref
 	rawSrc
@@ -589,6 +658,9 @@ type FwRuleset struct {
 	DefaultIn  string
 	DefaultOut string
 	Rules      []FwRule
+	Aliases    []FwAlias
+	IPSets     []FwIPSet
+	Groups     []FwGroup
 	Enabled    bool
 }
 
@@ -596,6 +668,15 @@ func (f *FwRuleset) GetRef() Ref { return f.Ref }
 func (f *FwRuleset) clone() Entity {
 	cp := *f
 	cp.Rules = append([]FwRule(nil), f.Rules...)
+	cp.Aliases = append([]FwAlias(nil), f.Aliases...)
+	cp.IPSets = make([]FwIPSet, len(f.IPSets))
+	for i, s := range f.IPSets {
+		cp.IPSets[i] = FwIPSet{Name: s.Name, Comment: s.Comment, Entries: append([]FwIPSetEntry(nil), s.Entries...)}
+	}
+	cp.Groups = make([]FwGroup, len(f.Groups))
+	for i, g := range f.Groups {
+		cp.Groups[i] = FwGroup{Name: g.Name, Comment: g.Comment, Rules: append([]FwRule(nil), g.Rules...)}
+	}
 	return &cp
 }
 func (f *FwRuleset) fieldMap() map[string]string {
@@ -603,9 +684,26 @@ func (f *FwRuleset) fieldMap() map[string]string {
 	for i, r := range f.Rules {
 		rules[i] = r.canonical()
 	}
+	aliases := make([]string, len(f.Aliases))
+	for i, a := range f.Aliases {
+		aliases[i] = a.canonical()
+	}
+	sort.Strings(aliases)
+	ipsets := make([]string, len(f.IPSets))
+	for i, s := range f.IPSets {
+		ipsets[i] = s.canonical()
+	}
+	sort.Strings(ipsets)
+	groups := make([]string, len(f.Groups))
+	for i, g := range f.Groups {
+		groups[i] = g.canonical()
+	}
+	sort.Strings(groups)
 	return map[string]string{
 		"scope": string(f.Scope), "enabled": boolStr(f.Enabled),
 		"defaultIn": f.DefaultIn, "defaultOut": f.DefaultOut,
-		"rules": strings.Join(rules, "\n"),
+		"rules":   strings.Join(rules, "\n"),
+		"aliases": strings.Join(aliases, "\n"), "ipsets": strings.Join(ipsets, "\n"),
+		"groups": strings.Join(groups, "\n"),
 	}
 }
