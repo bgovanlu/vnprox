@@ -107,14 +107,28 @@ type NetIface struct {
 
 // LinkInfo is netlink-equivalent physical/virtual link state for one iface.
 type LinkInfo struct {
-	Mac       string   `yaml:"mac" json:"mac"`
-	Driver    string   `yaml:"driver,omitempty" json:"driver,omitempty"`
-	Duplex    string   `yaml:"duplex,omitempty" json:"duplex,omitempty"`
-	PCIAddr   string   `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
-	Members   []string `yaml:"members,omitempty" json:"members,omitempty"`
-	SpeedMbps int      `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
-	MTU       int      `yaml:"mtu,omitempty" json:"mtu,omitempty"`
-	LinkUp    bool     `yaml:"link_up" json:"link_up"`
+	Mac       string         `yaml:"mac" json:"mac"`
+	Driver    string         `yaml:"driver,omitempty" json:"driver,omitempty"`
+	Duplex    string         `yaml:"duplex,omitempty" json:"duplex,omitempty"`
+	PCIAddr   string         `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
+	Members   []string       `yaml:"members,omitempty" json:"members,omitempty"`
+	FDB       []FDBEntrySpec `yaml:"fdb,omitempty" json:"fdb,omitempty"`
+	SpeedMbps int            `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
+	MTU       int            `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	LinkUp    bool           `yaml:"link_up" json:"link_up"`
+}
+
+// FDBEntrySpec is one fixture-declared bridge forwarding-database entry: a
+// MAC learned on a given port/VLAN, optionally flagged permanent (static)
+// or stale (aged past the bridge's learning timer without fresh traffic —
+// T-306's staleness signal).
+type FDBEntrySpec struct {
+	Mac       string `yaml:"mac" json:"mac"`
+	Port      string `yaml:"port,omitempty" json:"port,omitempty"`
+	Vlan      int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
+	Master    bool   `yaml:"master,omitempty" json:"master,omitempty"`
+	Permanent bool   `yaml:"permanent,omitempty" json:"permanent,omitempty"`
+	Stale     bool   `yaml:"stale,omitempty" json:"stale,omitempty"`
 }
 
 // LLDPNeighbor is one LLDP-discovered neighbor on a local iface.

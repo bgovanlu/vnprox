@@ -62,6 +62,7 @@ type Options struct {
 	Topology    TopologyService
 	LLDP        LLDPService
 	Drift       DriftService
+	FDB         FDBService
 	Layouts     LayoutStore
 	Changesets  ChangesetService
 	Snapshots   SnapshotService
@@ -103,6 +104,7 @@ func NewRouter(opts Options) http.Handler {
 		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift)
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
+		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)

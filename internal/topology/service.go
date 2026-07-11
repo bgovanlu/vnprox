@@ -67,6 +67,19 @@ func (s *Service) Ports() []PortRow {
 	return Ports(s.graph.Snapshot(), time.Now())
 }
 
+// FDB returns every bridge forwarding-database entry cluster-wide,
+// ownership-labeled, over the current snapshot (T-306's MAC/FDB browser,
+// docs/features/lldp-discovery.md §4).
+func (s *Service) FDB() []FDBRow {
+	return FDB(s.graph.Snapshot())
+}
+
+// FDBSearch ranks every FDB entry cluster-wide against q over the current
+// snapshot.
+func (s *Service) FDBSearch(q string) []FDBRow {
+	return FDBSearch(s.graph.Snapshot(), q)
+}
+
 // ServeWS upgrades and serves one /api/ws client.
 func (s *Service) ServeWS(w http.ResponseWriter, r *http.Request) {
 	s.hub.ServeWS(w, r)

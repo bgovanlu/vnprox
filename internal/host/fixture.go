@@ -45,19 +45,24 @@ type pvemockReader interface {
 // It is deliberately thin: pvemock.LinkState only carries what
 // docs/data-model.md's PhysNic/Bond/Bridge contract needs at the surface
 // (name, kind, mac, driver, speed, duplex, mtu, members, link state) —
-// there is no /proc/net/bonding or netlink bridge-VLAN/FDB dump behind a
+// there is no /proc/net/bonding or netlink bridge-VLAN dump behind a
 // fixture, since fixtures describe declared intent and simple runtime
 // facts, not full kernel state. FixtureReader recovers the bond
 // mode/xmit-hash-policy and bridge VLAN-awareness/VLAN-ID detail that
 // *is* expressed in the fixture's rendered interfaces(5) text by parsing
 // that text with this package's own ParseInterfaces — the same parser
 // Real's callers would use — rather than reaching into pvemock's
-// unexported fixture state. Addresses, per-port VLAN membership, and FDB
-// are left empty: they are live-runtime-only concepts fixtures do not
-// model at that granularity. Bond slave MII status/active-slave detail is
-// approximated as "every member is up and active" when the underlying
-// link itself reports LinkUp, since fixtures do not carry independent
-// per-slave failure state.
+// unexported fixture state. Addresses and per-port VLAN membership are left
+// empty: they are live-runtime-only concepts fixtures do not model at that
+// granularity. Bond slave MII status/active-slave detail is approximated as
+// "every member is up and active" when the underlying link itself reports
+// LinkUp, since fixtures do not carry independent per-slave failure state.
+//
+// FDB is the one exception (T-306): a bridge's forwarding table is
+// naturally expressible as declared fixture data ("these MACs were learned
+// on these ports"), so pvemock.LinkInfo.FDB is fixture-declared directly
+// and passed through by convertFixtureFDB below, rather than being left
+// empty like the other live-runtime-only fields.
 type FixtureReader struct {
 	r pvemockReader
 }
@@ -159,7 +164,7 @@ func convertFixtureLink(l pvemock.LinkState, parsed *File) LinkState {
 	case "bond":
 		ls.Bond = fixtureBondDetail(ls.Members, ls.LinkUp, opts)
 	case "bridge":
-		ls.Bridge = fixtureBridgeDetail(opts)
+		ls.Bridge = fixtureBridgeDetail(opts, l.FDB)
 	case "vlan":
 		ls.VlanID, ls.VlanParent = fixtureVlanInfo(l.Name, opts)
 	}
@@ -211,8 +216,8 @@ func fixtureBondDetail(members []string, up bool, opts *Entry) *BondDetail {
 	return bd
 }
 
-func fixtureBridgeDetail(opts *Entry) *BridgeDetail {
-	bd := &BridgeDetail{}
+func fixtureBridgeDetail(opts *Entry, fdb []pvemock.FDBEntry) *BridgeDetail {
+	bd := &BridgeDetail{FDB: convertFixtureFDB(fdb)}
 	if opts == nil {
 		return bd
 	}
@@ -226,6 +231,30 @@ func fixtureBridgeDetail(opts *Entry) *BridgeDetail {
 		bd.VLANs = parseVidRangesText(v)
 	}
 	return bd
+}
+
+// convertFixtureFDB converts pvemock's fixture-declared FDB entries
+// (T-306) to this package's FDBEntry shape. Unlike the rest of
+// BridgeDetail (see the FixtureReader doc comment above), FDB *is*
+// fixture-modelable: docs/features/lldp-discovery.md §4's MAC/FDB browser
+// needs deterministic fixture data to test against, and a bridge's
+// forwarding table is naturally expressed as declared fixture data (unlike
+// e.g. live VLAN-table dumps) since it's just "these MACs were learned on
+// these ports" — nil (not empty) when the fixture declares no fdb entries,
+// matching the zero-value convention every other optional BridgeDetail
+// field already follows.
+func convertFixtureFDB(fdb []pvemock.FDBEntry) []FDBEntry {
+	if len(fdb) == 0 {
+		return nil
+	}
+	out := make([]FDBEntry, len(fdb))
+	for i, e := range fdb {
+		out[i] = FDBEntry{
+			Mac: e.Mac, Port: e.Port, Vlan: e.Vlan,
+			Master: e.Master, Permanent: e.Permanent, Stale: e.Stale,
+		}
+	}
+	return out
 }
 
 // parseVidRangesText parses a bridge-vids-style option value ("2-4094",

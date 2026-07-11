@@ -14,6 +14,7 @@ import detailFixture from "./__fixtures__/inventory-detail-vmbr0.json";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { EntityDetail } from "../api/types";
 import { ToastProvider } from "../components/Toast";
@@ -43,10 +44,13 @@ function renderPanel(): void {
   render(
     <QueryClientProvider client={queryClient}>
       {/* ToastProvider: the panel's T-207 Edit/Delete affordances use
-       * useToast, which requires the provider (mounted app-wide in main.tsx). */}
-      <ToastProvider>
-        <InspectorPanel selectedRef={detail.ref} onClose={() => undefined} onSelectRelated={() => undefined} />
-      </ToastProvider>
+       * useToast, which requires the provider (mounted app-wide in main.tsx).
+       * MemoryRouter: T-306's FDB tab deep-links via useNavigate. */}
+      <MemoryRouter>
+        <ToastProvider>
+          <InspectorPanel selectedRef={detail.ref} onClose={() => undefined} onSelectRelated={() => undefined} />
+        </ToastProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

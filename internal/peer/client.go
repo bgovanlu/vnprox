@@ -303,6 +303,21 @@ func (c *Client) Links(ctx context.Context, p Peer, node string) ([]host.LinkSta
 	return out.Links, nil
 }
 
+// FDB fetches node's flattened, bridge-tagged forwarding-database tables
+// from peer p (T-306's MAC/FDB browser).
+func (c *Client) FDB(ctx context.Context, p Peer, node string) ([]host.FDBRow, error) {
+	path := "/api/peer/host/fdb?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out fdbResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Entries, nil
+}
+
 // Audit fetches one page of peer p's own local audit log (T-303: the
 // per-peer fetch internal/api's cluster audit merge issues once per known
 // peer, per page, with the same filter/cursor/limit it uses locally).

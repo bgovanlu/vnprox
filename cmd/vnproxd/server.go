@@ -294,6 +294,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Topology:      topoSvc,
 		LLDP:          topoSvc,
 		Drift:         driftSvc,
+		FDB:           topoSvc,
 		Layouts:       store.NewLayoutRepo(db),
 		Changesets:    changeSvc,
 		Snapshots:     changeSvc,

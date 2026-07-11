@@ -42,16 +42,33 @@ type HostReader interface {
 // LinkState is one netlink-equivalent link (physical NIC, bond, bridge, or
 // VLAN sub-interface) as internal/host would report it.
 type LinkState struct {
-	Name      string
-	Kind      string
-	Mac       string
-	Driver    string
-	Duplex    string
-	PCIAddr   string
-	Members   []string
+	Name    string
+	Kind    string
+	Mac     string
+	Driver  string
+	Duplex  string
+	PCIAddr string
+	Members []string
+	// FDB is this (bridge-kind) link's fixture-declared forwarding
+	// database (T-306's MAC/FDB browser) — nil for every non-bridge Kind.
+	FDB       []FDBEntry
 	SpeedMbps int
 	MTU       int
 	LinkUp    bool
+}
+
+// FDBEntry is one bridge forwarding-database entry, as internal/host would
+// report it (mirrors internal/host.FDBEntry's field set; kept as this
+// package's own type for the same reason the rest of LinkState is, per
+// internal/host's Reader doc comment: Go's structural typing requires
+// identical result types, not just structurally similar ones).
+type FDBEntry struct {
+	Mac       string
+	Port      string
+	Vlan      int
+	Master    bool
+	Permanent bool
+	Stale     bool
 }
 
 // FixtureHostReader implements HostReader by reading a mock server's
@@ -118,10 +135,28 @@ func (h *FixtureHostReader) Links(_ context.Context, node string) ([]LinkState, 
 				ls.Members = strings.Fields(iface.Slaves)
 			}
 		}
+		if iface.Type == "bridge" || iface.Type == "OVSBridge" {
+			if link, ok := ns.links[iface.Iface]; ok {
+				ls.FDB = convertFDBSpecs(link.FDB)
+			}
+		}
 		out = append(out, ls)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+// convertFDBSpecs converts a fixture's declared FDB entries (LinkInfo.FDB,
+// YAML-tagged) to this file's plain LinkState.FDB shape.
+func convertFDBSpecs(specs []FDBEntrySpec) []FDBEntry {
+	if len(specs) == 0 {
+		return nil
+	}
+	out := make([]FDBEntry, len(specs))
+	for i, s := range specs {
+		out[i] = FDBEntry(s)
+	}
+	return out
 }
 
 func (h *FixtureHostReader) LLDP(_ context.Context, node string) ([]byte, error) {

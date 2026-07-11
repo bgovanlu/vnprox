@@ -143,6 +143,14 @@ type FDBEntry struct {
 	Vlan      int
 	Master    bool // learned on the bridge itself, not a port
 	Permanent bool
+	// Stale mirrors the kernel's NUD_STALE neighbor state (netlink_linux.go)
+	// for a dynamically-learned entry that has aged past the bridge's
+	// ageing timer without fresh traffic — T-306's MAC/FDB browser staleness
+	// signal (docs/features/lldp-discovery.md §4). It is independent of
+	// Permanent (a permanent entry is never stale) and of collector
+	// staleness (docs/features/topology.md §5's poll-freshness banner):
+	// this is the switch's own "have I seen this MAC recently" bit.
+	Stale bool
 }
 
 // IfaceStats is a counters snapshot for one interface, from
