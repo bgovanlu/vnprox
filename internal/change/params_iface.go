@@ -19,3 +19,23 @@ type IfaceUpdateParams struct {
 }
 
 func (IfaceUpdateParams) isChangeParams() {}
+
+// IfaceRawReplaceParams is op "iface.raw.replace" (docs/features/
+// change-management.md §7): the raw editor's save. Content is the entire
+// new /etc/network/interfaces text for Target's node, applied wholesale
+// (internal/change/ifaces.IfaceRawReplace) rather than as an AST patch.
+// BaseHash is the sha256 hex digest of the file's content as read when the
+// editor was opened (GET /nodes/{node}/interfaces/raw's "sha256" field,
+// round-tripped verbatim) — the conflict guard: Service compares it against
+// the live file's current hash at validate time, and a mismatch (someone
+// else changed the file since this editor session opened it) produces a
+// blocking finding instead of silently clobbering the intervening edit. An
+// empty BaseHash skips the check (accepted for programmatic/test callers
+// that don't have a prior read to compare against; the web editor always
+// sends one).
+type IfaceRawReplaceParams struct {
+	Content  string `json:"content"`
+	BaseHash string `json:"baseHash,omitempty"`
+}
+
+func (IfaceRawReplaceParams) isChangeParams() {}
