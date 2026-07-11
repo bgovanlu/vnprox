@@ -339,19 +339,31 @@ func bondStatus(b *inventory.Bond, prov inventory.Provenance) Status {
 	return StatusOK
 }
 
-// sdnZoneStatus flags a zone degraded if any node's realization status is
-// reported and isn't a clean "ok", unknown if PVE hasn't reported any
-// per-node status yet.
+// sdnZoneStatus paints a zone from its per-node realization status
+// (docs/api.md's GET /cluster/sdn/zones/{zone}/status "ok"|"pending"|
+// "error" vocabulary, mirrored in T-401's GET /sdn tree so the cockpit tree
+// and this map painting agree): red (StatusDown) if any node reports
+// "error" (the zone is broken there — e.g. its bridge is missing, AC4),
+// amber (StatusDegraded) if any node reports "pending" with no outright
+// error, unknown if PVE hasn't reported any per-node status yet, else ok.
+// "Error" wins over "pending" when a zone has both, since it's the more
+// severe condition.
 func sdnZoneStatus(z *inventory.SdnZone) Status {
 	if len(z.NodeStatus) == 0 {
 		return StatusUnknown
 	}
+	worst := StatusOK
 	for _, st := range z.NodeStatus {
-		if st != "" && !strings.EqualFold(st, "ok") {
-			return StatusDegraded
+		switch {
+		case st == "" || strings.EqualFold(st, "ok"):
+			continue
+		case strings.EqualFold(st, "error"):
+			return StatusDown
+		default: // "pending", or any other non-ok/non-error status PVE reports
+			worst = StatusDegraded
 		}
 	}
-	return StatusOK
+	return worst
 }
 
 // badgesOf renders the badges shown on a node's chip
@@ -417,9 +429,19 @@ func badgesOf(snap inventory.Snapshot, e inventory.Entity) []string {
 		}
 	case *inventory.SdnZone:
 		badges = append(badges, "type="+v.Type)
+		if v.Pending != "" {
+			badges = append(badges, "pending="+v.Pending)
+		}
 	case *inventory.SdnVnet:
 		if v.Tag != 0 {
 			badges = append(badges, "tag="+strconv.Itoa(v.Tag))
+		}
+		if v.Pending != "" {
+			badges = append(badges, "pending="+v.Pending)
+		}
+	case *inventory.SdnSubnet:
+		if v.Pending != "" {
+			badges = append(badges, "pending="+v.Pending)
 		}
 	case *inventory.Guest:
 		badges = append(badges, "vmid="+strconv.Itoa(v.VMID))

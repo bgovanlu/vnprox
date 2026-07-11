@@ -77,6 +77,65 @@ func TestSDN_ZoneVnetSubnetCRUD(t *testing.T) {
 	mustStatus(t, srv, getZoneGone, http.StatusNotFound)
 }
 
+// TestSDN_RunningView exercises T-401's "?running=1" view against
+// evpn-lab.yaml's "vlanz" zone, which the fixture stages as pending=changed
+// (mtu 1600) with an explicit running override (mtu 1500): the default
+// view must show the staged edit, "?running=1" must show the pre-edit
+// value, and a create+apply cycle for a fresh object must appear in the
+// running view only after the apply (never before).
+func TestSDN_RunningView(t *testing.T) {
+	srv := newTestServer(t, "evpn-lab.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	staged := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/zones/vlanz", ticket, "", nil)
+	body := mustStatus(t, srv, staged, http.StatusOK)
+	data, _ := body["data"].(map[string]any)
+	if data["pending"] != string(PendingChanged) {
+		t.Fatalf("staged vlanz pending = %v, want changed", data["pending"])
+	}
+	if mtu, _ := data["mtu"].(float64); mtu != 1600 {
+		t.Fatalf("staged vlanz mtu = %v, want 1600", data["mtu"])
+	}
+
+	running := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/zones/vlanz?running=1", ticket, "", nil)
+	body = mustStatus(t, srv, running, http.StatusOK)
+	data, _ = body["data"].(map[string]any)
+	if data["pending"] != "" && data["pending"] != nil {
+		t.Fatalf("running vlanz pending = %v, want empty", data["pending"])
+	}
+	if mtu, _ := data["mtu"].(float64); mtu != 1500 {
+		t.Fatalf("running vlanz mtu = %v, want 1500 (the pre-edit value)", data["mtu"])
+	}
+
+	// A brand-new object (pending=new) has no running counterpart at all
+	// until it's applied.
+	zoneBody, _ := json.Marshal(SDNZoneSpec{ID: "ztest2", Type: "simple", Nodes: []string{"pve1"}})
+	createZone := authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/zones", ticket, csrf, zoneBody)
+	mustStatus(t, srv, createZone, http.StatusOK)
+
+	beforeApply := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/zones/ztest2?running=1", ticket, "", nil)
+	mustStatus(t, srv, beforeApply, http.StatusNotFound)
+
+	applyReq := authedRequest(t, http.MethodPut, "/api2/json/cluster/sdn", ticket, csrf, nil)
+	mustStatus(t, srv, applyReq, http.StatusOK)
+
+	afterApply := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/zones/ztest2?running=1", ticket, "", nil)
+	body = mustStatus(t, srv, afterApply, http.StatusOK)
+	data, _ = body["data"].(map[string]any)
+	if data["pending"] != "" && data["pending"] != nil {
+		t.Fatalf("post-apply running ztest2 pending = %v, want empty", data["pending"])
+	}
+
+	// vlanz's own running view should now match its (now-applied) staged
+	// view too — the apply synced them.
+	runningAfter := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/zones/vlanz?running=1", ticket, "", nil)
+	body = mustStatus(t, srv, runningAfter, http.StatusOK)
+	data, _ = body["data"].(map[string]any)
+	if mtu, _ := data["mtu"].(float64); mtu != 1600 {
+		t.Fatalf("post-apply running vlanz mtu = %v, want 1600 (now in sync with staged)", data["mtu"])
+	}
+}
+
 // TestSDN_ReadOnlyUserCannotAllocate proves SDN.Audit alone does not confer
 // SDN.Allocate.
 func TestSDN_ReadOnlyUserCannotAllocate(t *testing.T) {

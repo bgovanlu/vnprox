@@ -41,9 +41,15 @@ nodes:
         mtu: 9216
         bridge_ports: eno1
         comments: "underlay + mgmt"
+      # Realizes the "simplez" SDN zone below on pve1/pve2 only — pve3
+      # deliberately has no vmbr1, so its handleSDNZoneStatus check reports
+      # status=error there (T-401 AC4: a zone with a node reporting error
+      # status paints amber/red consistently in the tree and the map).
+      - {iface: vmbr1, type: bridge, method: manual, autostart: true, mtu: 1500}
     links:
       eno1: {mac: "bc:24:11:04:00:01", driver: mlx5_core, speed_mbps: 25000, duplex: full, link_up: true, pci_addr: "0000:02:00.0"}
       vmbr0: {mac: "bc:24:11:04:00:01", link_up: true}
+      vmbr1: {mac: "bc:24:11:04:00:02", link_up: true}
     lldp:
       eno1: {chassis_name: sw-leaf-01, chassis_id: "ac:1f:6b:03:00:01", port_id: "Eth1/1", mgmt_ip: 10.20.0.254, vlan: 1, ttl: 120}
     stats:
@@ -73,9 +79,11 @@ nodes:
         autostart: true
         mtu: 9216
         bridge_ports: eno1
+      - {iface: vmbr1, type: bridge, method: manual, autostart: true, mtu: 1500}
     links:
       eno1: {mac: "bc:24:11:05:00:01", driver: mlx5_core, speed_mbps: 25000, duplex: full, link_up: true, pci_addr: "0000:02:00.0"}
       vmbr0: {mac: "bc:24:11:05:00:01", link_up: true}
+      vmbr1: {mac: "bc:24:11:05:00:02", link_up: true}
     lldp:
       eno1: {chassis_name: sw-leaf-02, chassis_id: "ac:1f:6b:04:00:01", port_id: "Eth1/1", mgmt_ip: 10.20.0.253, vlan: 1, ttl: 120}
     stats:
@@ -121,8 +129,38 @@ nodes:
     lxc: {}
     firewall: {enabled: true, policy_in: DROP, policy_out: ACCEPT, rules: []}
 
+# T-401: this fixture now covers all five real-PVE zone types (simple,
+# vlan, qinq, vxlan, evpn — docs/features/sdn.md §2's five wizards) so the
+# SDN cockpit tree/golden-JSON test has one fixture exercising every kind,
+# not just EVPN. Per-node status is deliberately mixed:
+#   - simplez has no vmbr1 on pve3 -> that node's status is "error" (AC4:
+#     error paints amber/red consistently in the tree and the map).
+#   - vlanz is staged with pending=changed and an explicit "running"
+#     override, so its pendingDiff shows a real field-level delta (AC2).
+#   - qinqz's vnet is staged pending=new (never applied at all).
+#   - everything else is pending="" ("in sync").
 sdn:
   zones:
+    - id: simplez
+      type: simple
+      bridge: vmbr1
+      nodes: [pve1, pve2, pve3]
+    - id: vlanz
+      type: vlan
+      bridge: vmbr0
+      nodes: [pve1, pve2, pve3]
+      mtu: 1600
+      pending: changed
+      running: {id: vlanz, type: vlan, bridge: vmbr0, nodes: [pve1, pve2, pve3], mtu: 1500}
+    - id: qinqz
+      type: qinq
+      bridge: vmbr0
+      nodes: [pve1, pve2, pve3]
+    - id: vxlanz
+      type: vxlan
+      nodes: [pve1, pve2, pve3]
+      mtu: 9166 # underlay MTU (9216) - 50 for VXLAN encapsulation overhead
+      peers: ["10.20.0.11", "10.20.0.12", "10.20.0.13"]
     - id: evpnz
       type: evpn
       nodes: [pve1, pve2, pve3]
@@ -132,11 +170,44 @@ sdn:
       exit_nodes: [pve3]
       peers: ["10.20.0.11", "10.20.0.12", "10.20.0.13"]
   vnets:
+    - id: vnet-simple1
+      zone: simplez
+      alias: "simple-net"
+    - id: vnet-vlan1
+      zone: vlanz
+      alias: "vlan-net"
+      tag: 100
+    - id: vnet-qinq1
+      zone: qinqz
+      alias: "qinq-net"
+      tag: 200
+      pending: new
+    - id: vnet-vxlan1
+      zone: vxlanz
+      alias: "vxlan-net"
+      vlan_aware: false
     - id: vnet-tenant-a
       zone: evpnz
       alias: "tenant-a"
       vlan_aware: false
   subnets:
+    - id: 10.55.0.0-24
+      vnet: vnet-simple1
+      cidr: 10.55.0.0/24
+      gateway: 10.55.0.1
+    - id: 10.60.0.0-24
+      vnet: vnet-vlan1
+      cidr: 10.60.0.0/24
+      gateway: 10.60.0.1
+    - id: 10.70.0.0-24
+      vnet: vnet-qinq1
+      cidr: 10.70.0.0/24
+      gateway: 10.70.0.1
+      pending: new
+    - id: 10.80.0.0-24
+      vnet: vnet-vxlan1
+      cidr: 10.80.0.0/24
+      gateway: 10.80.0.1
     - id: "192.168.50.0-24"
       vnet: vnet-tenant-a
       cidr: 192.168.50.0/24

@@ -7,6 +7,65 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// runningZone derives one zone's last-applied ("?running=1") value from its
+// fixture-loaded (staged) value, per SDNZoneSpec.Running's doc comment:
+// absent for a staged "new" object (ok=false), the fixture-declared
+// Running override (or, absent that, the staged value itself with the
+// marker cleared) for "changed", and the staged value with the marker
+// cleared for "" and "deleted" — a "deleted" object is still fully present
+// in the running config until an apply actually removes it.
+func runningZone(z SDNZoneSpec) (SDNZoneSpec, bool) {
+	if z.Pending == PendingNew {
+		return SDNZoneSpec{}, false
+	}
+	r := z
+	if z.Pending == PendingChanged && z.Running != nil {
+		r = *z.Running
+		r.ID = z.ID
+	}
+	r.Pending = PendingNone
+	r.Running = nil
+	return r, true
+}
+
+func runningVnet(v SDNVnetSpec) (SDNVnetSpec, bool) {
+	if v.Pending == PendingNew {
+		return SDNVnetSpec{}, false
+	}
+	r := v
+	if v.Pending == PendingChanged && v.Running != nil {
+		r = *v.Running
+		r.ID = v.ID
+		r.Zone = v.Zone
+	}
+	r.Pending = PendingNone
+	r.Running = nil
+	return r, true
+}
+
+func runningSubnet(s SDNSubnetSpec) (SDNSubnetSpec, bool) {
+	if s.Pending == PendingNew {
+		return SDNSubnetSpec{}, false
+	}
+	r := s
+	if s.Pending == PendingChanged && s.Running != nil {
+		r = *s.Running
+		r.ID = s.ID
+		r.Vnet = s.Vnet
+	}
+	r.Pending = PendingNone
+	r.Running = nil
+	return r, true
+}
+
+// isRunningRequest reports whether r asked for the last-applied
+// ("?running=1") view of an SDN listing/get route, rather than the default
+// staged (pending-merged) view — T-401's addition, docs/api.md's /sdn
+// section and internal/pve/sdn.go's ListSDN*Running doc comments.
+func isRunningRequest(r *http.Request) bool {
+	return r.URL.Query().Get("running") == "1"
+}
+
 func (srv *Server) mountSDN(api chi.Router) {
 	api.Get("/cluster/sdn/zones", srv.requirePrivilege(PrivSDNAudit, srv.handleSDNZonesList))
 	api.Post("/cluster/sdn/zones", srv.requirePrivilege(PrivSDNAllocate, srv.handleSDNZoneCreate))
@@ -34,8 +93,12 @@ func (srv *Server) mountSDN(api chi.Router) {
 func (srv *Server) handleSDNZonesList(w http.ResponseWriter, r *http.Request) {
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
-	out := make([]SDNZoneSpec, 0, len(srv.state.sdn.zones))
-	for _, z := range srv.state.sdn.zones {
+	zones := srv.state.sdn.zones
+	if isRunningRequest(r) {
+		zones = srv.state.sdn.zonesRunning
+	}
+	out := make([]SDNZoneSpec, 0, len(zones))
+	for _, z := range zones {
 		out = append(out, z)
 	}
 	writeData(w, http.StatusOK, out)
@@ -45,7 +108,11 @@ func (srv *Server) handleSDNZoneGet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "zone")
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
-	z, ok := srv.state.sdn.zones[id]
+	zones := srv.state.sdn.zones
+	if isRunningRequest(r) {
+		zones = srv.state.sdn.zonesRunning
+	}
+	z, ok := zones[id]
 	if !ok {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("zone %q not found", id))
 		return
@@ -156,8 +223,12 @@ func (srv *Server) handleSDNZoneStatus(w http.ResponseWriter, r *http.Request) {
 func (srv *Server) handleSDNVnetsList(w http.ResponseWriter, r *http.Request) {
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
-	out := make([]SDNVnetSpec, 0, len(srv.state.sdn.vnets))
-	for _, v := range srv.state.sdn.vnets {
+	vnets := srv.state.sdn.vnets
+	if isRunningRequest(r) {
+		vnets = srv.state.sdn.vnetsRunning
+	}
+	out := make([]SDNVnetSpec, 0, len(vnets))
+	for _, v := range vnets {
 		out = append(out, v)
 	}
 	writeData(w, http.StatusOK, out)
@@ -167,7 +238,11 @@ func (srv *Server) handleSDNVnetGet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "vnet")
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
-	v, ok := srv.state.sdn.vnets[id]
+	vnets := srv.state.sdn.vnets
+	if isRunningRequest(r) {
+		vnets = srv.state.sdn.vnetsRunning
+	}
+	v, ok := vnets[id]
 	if !ok {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("vnet %q not found", id))
 		return
@@ -237,8 +312,12 @@ func (srv *Server) handleSDNSubnetsList(w http.ResponseWriter, r *http.Request) 
 	vnet := chi.URLParam(r, "vnet")
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
+	subnets := srv.state.sdn.subnets
+	if isRunningRequest(r) {
+		subnets = srv.state.sdn.subnetsRunning
+	}
 	var out []SDNSubnetSpec
-	for _, s := range srv.state.sdn.subnets {
+	for _, s := range subnets {
 		if s.Vnet == vnet {
 			out = append(out, s)
 		}
@@ -250,7 +329,11 @@ func (srv *Server) handleSDNSubnetGet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "subnet")
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
-	s, ok := srv.state.sdn.subnets[id]
+	subnets := srv.state.sdn.subnets
+	if isRunningRequest(r) {
+		subnets = srv.state.sdn.subnetsRunning
+	}
+	s, ok := subnets[id]
 	if !ok {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("subnet %q not found", id))
 		return
@@ -389,6 +472,26 @@ func (srv *Server) handleSDNApply(w http.ResponseWriter, r *http.Request) {
 			}
 			s.Pending = PendingNone
 			srv.state.sdn.subnets[id] = s
+		}
+
+		// T-401: the running (last-applied) view now matches the
+		// just-applied staged view exactly — a deep copy with every
+		// Pending marker already cleared above and every Running override
+		// dropped (it described the pre-apply value, now obsolete).
+		srv.state.sdn.zonesRunning = make(map[string]SDNZoneSpec, len(srv.state.sdn.zones))
+		for id, z := range srv.state.sdn.zones {
+			z.Running = nil
+			srv.state.sdn.zonesRunning[id] = z
+		}
+		srv.state.sdn.vnetsRunning = make(map[string]SDNVnetSpec, len(srv.state.sdn.vnets))
+		for id, v := range srv.state.sdn.vnets {
+			v.Running = nil
+			srv.state.sdn.vnetsRunning[id] = v
+		}
+		srv.state.sdn.subnetsRunning = make(map[string]SDNSubnetSpec, len(srv.state.sdn.subnets))
+		for id, s := range srv.state.sdn.subnets {
+			s.Running = nil
+			srv.state.sdn.subnetsRunning[id] = s
 		}
 	})
 	writeData(w, http.StatusOK, task.UPID)

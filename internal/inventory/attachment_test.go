@@ -103,6 +103,65 @@ func TestVNetRealizesBridge(t *testing.T) {
 	}
 }
 
+// TestVxlanZoneVtepMesh checks T-401's VTEP mesh edges: a vxlan/evpn zone's
+// peer addresses resolve to the bridges that own them, and every pair gets
+// a full-mesh vtep-peer edge badged with the zone id and VNI MTU. A peer
+// address with no matching bridge (unreachable/unknown) is simply skipped,
+// not an error.
+func TestVxlanZoneVtepMesh(t *testing.T) {
+	g := NewGraph()
+	zoneRef := Ref{Kind: KindSDNZone, ID: "vxlanz"}
+	br1 := Ref{Kind: KindBridge, Node: "pve1", ID: "vmbr0"}
+	br2 := Ref{Kind: KindBridge, Node: "pve2", ID: "vmbr0"}
+	br3 := Ref{Kind: KindBridge, Node: "pve3", ID: "vmbr0"}
+
+	g.ApplyPoll(SourcePVESDN, Scope{}, []Entity{
+		&SdnZone{
+			Ref: zoneRef, ID: "vxlanz", Type: "vxlan", MTU: 1450,
+			Nodes: []string{"pve1", "pve2", "pve3"},
+			Peers: []string{"10.0.0.11", "10.0.0.12", "10.0.0.13", "10.0.0.99"},
+		},
+	})
+	g.ApplyPoll(SourceHostNetlink, Scope{Node: "pve1"}, []Entity{&Bridge{Ref: br1, Name: "vmbr0", Addresses: []string{"10.0.0.11/24"}}})
+	g.ApplyPoll(SourceHostNetlink, Scope{Node: "pve2"}, []Entity{&Bridge{Ref: br2, Name: "vmbr0", Addresses: []string{"10.0.0.12/24"}}})
+	g.ApplyPoll(SourceHostNetlink, Scope{Node: "pve3"}, []Entity{&Bridge{Ref: br3, Name: "vmbr0", Addresses: []string{"10.0.0.13/24"}}})
+
+	snap := g.Snapshot()
+	pairs := [][2]Ref{{br1, br2}, {br1, br3}, {br2, br3}}
+	for _, pair := range pairs {
+		e, ok := findEdge(snap.Edges(), pair[0], pair[1], EdgeVtepPeer)
+		if !ok {
+			t.Fatalf("missing vtep-peer edge %v -> %v", pair[0], pair[1])
+		}
+		if !hasBadgeT(e.Badges, "zone=vxlanz") {
+			t.Errorf("edge %v -> %v badges = %v, want zone=vxlanz", pair[0], pair[1], e.Badges)
+		}
+		if !hasBadgeT(e.Badges, "vniMtu=1450") {
+			t.Errorf("edge %v -> %v badges = %v, want vniMtu=1450", pair[0], pair[1], e.Badges)
+		}
+	}
+	// Exactly 3 mesh edges (3 endpoints, C(3,2)=3) — the unresolvable
+	// 10.0.0.99 peer contributes no extra endpoint.
+	var meshCount int
+	for _, e := range snap.Edges() {
+		if e.Kind == EdgeVtepPeer {
+			meshCount++
+		}
+	}
+	if meshCount != 3 {
+		t.Errorf("vtep-peer edge count = %d, want 3", meshCount)
+	}
+}
+
+func hasBadgeT(badges []string, want string) bool {
+	for _, b := range badges {
+		if b == want {
+			return true
+		}
+	}
+	return false
+}
+
 // TestVlanAndBondEdges checks tagged-on, port-of, and enslaved-by edges.
 func TestL2Edges(t *testing.T) {
 	g := NewGraph()

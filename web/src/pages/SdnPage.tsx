@@ -1,10 +1,6 @@
-import { PlaceholderPage } from "./PlaceholderPage";
-
-export function SdnPage() {
-  return (
-    <PlaceholderPage
-      title="SDN"
-      description="Zones, VNets, subnets, and EVPN/BGP peering status — the SDN cockpit lands in a later task."
-    />
-  );
-}
+// The real implementation lives in src/sdn/ (the SDN cockpit feature
+// module: tree + detail, pending diff, status painting) alongside its own
+// tests — this file only wires it to the routed /sdn path App.tsx expects,
+// per the existing per-route-file layout T-005 established (see
+// pages/TopologyPage.tsx/pages/GuestsPage.tsx).
+export { SdnPage } from "../sdn/SdnPage";

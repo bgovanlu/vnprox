@@ -3,12 +3,33 @@ package pve
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
+
+// runningQuery is the query string for the "?running=1" view real PVE (and
+// internal/pvemock) serve alongside the default staged/pending-merged view
+// on the SDN zones/vnets/subnets list endpoints — the last-applied
+// (running) config, as opposed to the default response's staged-with-
+// pending-markers view (docs/features/sdn.md §1: "vnprox surfaces
+// staged-vs-running as a first-class diff"). Not part of the original
+// docs/api.md contract; documented here and in docs/api.md itself per
+// docs/development.md's definition-of-done #4 (added by T-401).
+var runningQuery = url.Values{"running": {"1"}}
 
 // ListSDNZones calls GET /cluster/sdn/zones.
 func (c *Client) ListSDNZones(ctx context.Context) ([]SDNZone, error) {
 	var out []SDNZone
 	if err := c.do(ctx, "GET", "/cluster/sdn/zones", requestParams{}, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ListSDNZonesRunning calls GET /cluster/sdn/zones?running=1: the
+// last-applied config, for comparison against ListSDNZones' staged view.
+func (c *Client) ListSDNZonesRunning(ctx context.Context) ([]SDNZone, error) {
+	var out []SDNZone
+	if err := c.do(ctx, "GET", "/cluster/sdn/zones", requestParams{query: runningQuery}, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -44,6 +65,16 @@ func (c *Client) ListSDNVnets(ctx context.Context) ([]SDNVnet, error) {
 	return out, nil
 }
 
+// ListSDNVnetsRunning calls GET /cluster/sdn/vnets?running=1: see
+// ListSDNZonesRunning's doc comment.
+func (c *Client) ListSDNVnetsRunning(ctx context.Context) ([]SDNVnet, error) {
+	var out []SDNVnet
+	if err := c.do(ctx, "GET", "/cluster/sdn/vnets", requestParams{query: runningQuery}, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GetSDNVnet calls GET /cluster/sdn/vnets/{vnet}.
 func (c *Client) GetSDNVnet(ctx context.Context, vnet string) (*SDNVnet, error) {
 	var out SDNVnet
@@ -59,6 +90,17 @@ func (c *Client) ListSDNSubnets(ctx context.Context, vnet string) ([]SDNSubnet, 
 	var out []SDNSubnet
 	path := fmt.Sprintf("/cluster/sdn/vnets/%s/subnets", vnet)
 	if err := c.do(ctx, "GET", path, requestParams{}, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ListSDNSubnetsRunning calls GET /cluster/sdn/vnets/{vnet}/subnets?running=1:
+// see ListSDNZonesRunning's doc comment.
+func (c *Client) ListSDNSubnetsRunning(ctx context.Context, vnet string) ([]SDNSubnet, error) {
+	var out []SDNSubnet
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s/subnets", vnet)
+	if err := c.do(ctx, "GET", path, requestParams{query: runningQuery}, &out); err != nil {
 		return nil, err
 	}
 	return out, nil

@@ -33,10 +33,17 @@ import (
 // provisioning (vnprox@pve!daemon) is a tracked but not yet implemented
 // installer step (T-606; see packaging/bin/vnprox-setup), so a fresh
 // production install's token file genuinely may not exist yet.
-func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta), peerSecrets *peer.SecretStore) (*collect.Collector, *peer.Client, error) {
+//
+// pveClient itself is also returned (T-401): internal/sdn.Service reads
+// PVE directly and live per request (see that package's doc comment for
+// why), reusing the collectors' own read-only identity rather than
+// building a second client — the same "returned alongside the collector so
+// callers can reuse it" pattern peerClient already established for T-303's
+// cluster fan-out.
+func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta), peerSecrets *peer.SecretStore) (*collect.Collector, *peer.Client, *pve.Client, error) {
 	pveClient, err := buildCollectorPVEClient(cfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("building collectors' PVE client: %w", err)
+		return nil, nil, nil, fmt.Errorf("building collectors' PVE client: %w", err)
 	}
 
 	var peerClient *peer.Client
@@ -60,9 +67,9 @@ func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logge
 		OnDelta:      onDelta,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("constructing collector: %w", err)
+		return nil, nil, nil, fmt.Errorf("constructing collector: %w", err)
 	}
-	return c, peerClient, nil
+	return c, peerClient, pveClient, nil
 }
 
 // buildCollectorPVEClient constructs the collectors' own PVE API client.

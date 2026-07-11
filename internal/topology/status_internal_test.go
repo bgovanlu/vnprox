@@ -200,7 +200,13 @@ func TestStatusOf_SdnZone(t *testing.T) {
 	}{
 		{"no per-node status reported yet is unknown", nil, StatusUnknown},
 		{"all nodes ok is ok", map[string]string{"n1": "ok", "n2": "OK"}, StatusOK},
-		{"any non-ok node degrades the zone", map[string]string{"n1": "ok", "n2": "error"}, StatusDegraded},
+		// T-401 AC4: an "error" node paints the zone down (red) — the more
+		// severe of the two non-ok PVE zone-status values — while a
+		// "pending" node (still-unapplied realization, no failure) only
+		// degrades it (amber). "Error" wins when a zone has both.
+		{"any error node paints the zone down", map[string]string{"n1": "ok", "n2": "error"}, StatusDown},
+		{"a pending (no error) node degrades the zone", map[string]string{"n1": "ok", "n2": "pending"}, StatusDegraded},
+		{"error wins over pending when both are present", map[string]string{"n1": "pending", "n2": "error"}, StatusDown},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -214,6 +214,7 @@ const (
 
 // SDNZoneSpec is one SDN zone.
 type SDNZoneSpec struct {
+	Running    *SDNZoneSpec `yaml:"running,omitempty" json:"-"`
 	ID         string       `yaml:"id" json:"zone"`
 	Type       string       `yaml:"type" json:"type"`
 	Bridge     string       `yaml:"bridge,omitempty" json:"bridge,omitempty"`
@@ -228,6 +229,7 @@ type SDNZoneSpec struct {
 
 // SDNVnetSpec is one VNet inside a zone.
 type SDNVnetSpec struct {
+	Running   *SDNVnetSpec `yaml:"running,omitempty" json:"-"`
 	ID        string       `yaml:"id" json:"vnet"`
 	Zone      string       `yaml:"zone" json:"zone"`
 	Alias     string       `yaml:"alias,omitempty" json:"alias,omitempty"`
@@ -238,14 +240,15 @@ type SDNVnetSpec struct {
 
 // SDNSubnetSpec is one subnet inside a VNet.
 type SDNSubnetSpec struct {
-	ID             string       `yaml:"id" json:"subnet"`
-	Vnet           string       `yaml:"vnet" json:"vnet"`
-	CIDR           string       `yaml:"cidr" json:"cidr"`
-	Gateway        string       `yaml:"gateway,omitempty" json:"gateway,omitempty"`
-	DHCPRangeStart string       `yaml:"dhcp_range_start,omitempty" json:"dhcp_range_start,omitempty"`
-	DHCPRangeEnd   string       `yaml:"dhcp_range_end,omitempty" json:"dhcp_range_end,omitempty"`
-	Pending        PendingState `yaml:"pending,omitempty" json:"pending,omitempty"`
-	SNAT           bool         `yaml:"snat,omitempty" json:"snat,omitempty"`
+	Running        *SDNSubnetSpec `yaml:"running,omitempty" json:"-"`
+	ID             string         `yaml:"id" json:"subnet"`
+	Vnet           string         `yaml:"vnet" json:"vnet"`
+	CIDR           string         `yaml:"cidr" json:"cidr"`
+	Gateway        string         `yaml:"gateway,omitempty" json:"gateway,omitempty"`
+	DHCPRangeStart string         `yaml:"dhcp_range_start,omitempty" json:"dhcp_range_start,omitempty"`
+	DHCPRangeEnd   string         `yaml:"dhcp_range_end,omitempty" json:"dhcp_range_end,omitempty"`
+	Pending        PendingState   `yaml:"pending,omitempty" json:"pending,omitempty"`
+	SNAT           bool           `yaml:"snat,omitempty" json:"snat,omitempty"`
 }
 
 // FirewallSpec is the cluster-scope firewall tree. Node-scope and
