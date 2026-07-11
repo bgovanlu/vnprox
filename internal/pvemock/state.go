@@ -13,6 +13,7 @@ type nodeState struct {
 	stats          map[string]IfaceStats
 	qemu           map[string]*GuestSpec
 	lxc            map[string]*GuestSpec
+	frr            *FRRSpec
 	network        []NetIface
 	networkPending []NetIface
 	firewall       FirewallScope
@@ -102,6 +103,7 @@ func NewState(f *Fixture) *State {
 			lxc:     cloneGuestMap(ns.Lxc),
 			mock:    f.Mock.merge(ns.Mock),
 			network: append([]NetIface(nil), ns.Network...),
+			frr:     ns.FRR,
 		}
 		if ns.Firewall != nil {
 			rt.firewall = *ns.Firewall

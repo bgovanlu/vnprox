@@ -73,15 +73,59 @@ func (u UserSpec) HasPrivilege(priv string) bool {
 // NodeSpec is per-node state: network topology, host-level metadata, guests,
 // and node-scope firewall.
 type NodeSpec struct {
-	Links          map[string]LinkInfo     `yaml:"links"`
-	LLDP           map[string]LLDPNeighbor `yaml:"lldp"`
-	Stats          map[string]IfaceStats   `yaml:"stats"`
-	Qemu           map[string]*GuestSpec   `yaml:"qemu"`
-	Lxc            map[string]*GuestSpec   `yaml:"lxc"`
-	Firewall       *FirewallScope          `yaml:"firewall"`
-	Mock           *MockOptions            `yaml:"mock"`
-	Network        []NetIface              `yaml:"network"`
-	NetworkPending []NetIface              `yaml:"network_pending"`
+	Links    map[string]LinkInfo     `yaml:"links"`
+	LLDP     map[string]LLDPNeighbor `yaml:"lldp"`
+	Stats    map[string]IfaceStats   `yaml:"stats"`
+	Qemu     map[string]*GuestSpec   `yaml:"qemu"`
+	Lxc      map[string]*GuestSpec   `yaml:"lxc"`
+	Firewall *FirewallScope          `yaml:"firewall"`
+	Mock     *MockOptions            `yaml:"mock"`
+	// FRR is this node's fixture-declared FRR/BGP EVPN daemon state
+	// (T-404, docs/features/sdn.md §3). Nil models a node with no FRR
+	// installed/running at all — this package's HostReader.FRRBGPSummary/
+	// FRREVPNVNI return ErrFRRUnavailable for such a node, so the
+	// aggregation layer can report a clean per-node "no EVPN" rather than
+	// treating it as an error (T-404 AC2).
+	FRR            *FRRSpec   `yaml:"frr,omitempty"`
+	Network        []NetIface `yaml:"network"`
+	NetworkPending []NetIface `yaml:"network_pending"`
+}
+
+// FRRSpec is a node's fixture-declared FRR daemon state: its own BGP
+// identity plus every configured peer session and EVPN VNI.
+type FRRSpec struct {
+	RouterID string        `yaml:"router_id"`
+	Peers    []BGPPeerSpec `yaml:"peers"`
+	VNIs     []EVPNVniSpec `yaml:"vnis"`
+	ASN      int           `yaml:"asn"`
+}
+
+// BGPPeerSpec is one fixture-declared BGP neighbor session. State is a raw
+// FRR FSM state string, matching real vtysh vocabulary exactly (e.g.
+// "Established", "Active", "Idle", or "Idle (Admin)"/"Idle (PfxCt)" with a
+// parenthetical reason — internal/host.ParseBGPSummary splits the reason
+// out) — this lets fixtures model FRR's own "last error" signal without
+// this package inventing a separate field for it.
+type BGPPeerSpec struct {
+	Addr          string `yaml:"addr"`
+	Hostname      string `yaml:"hostname,omitempty"`
+	State         string `yaml:"state"`
+	AddressFamily string `yaml:"address_family,omitempty"` // "" defaults to "l2VpnEvpn"
+	PeerUptime    string `yaml:"peer_uptime,omitempty"`    // e.g. "01:23:45", "never"
+	RemoteAS      int    `yaml:"remote_as"`
+	PfxRcd        int    `yaml:"pfx_rcd,omitempty"`
+	PfxSnt        int    `yaml:"pfx_snt,omitempty"`
+}
+
+// EVPNVniSpec is one fixture-declared EVPN VNI (L2 tenant bridge domain or
+// L3 tenant VRF).
+type EVPNVniSpec struct {
+	Type      string `yaml:"type"` // "L2" | "L3"
+	VxlanIf   string `yaml:"vxlan_if,omitempty"`
+	TenantVRF string `yaml:"tenant_vrf,omitempty"`
+	VNI       int    `yaml:"vni"`
+	NumMacs   int    `yaml:"num_macs,omitempty"`
+	NumArpND  int    `yaml:"num_arp_nd,omitempty"`
 }
 
 // NetIface is one stanza of /etc/network/interfaces, matching the field

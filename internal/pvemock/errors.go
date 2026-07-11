@@ -27,4 +27,11 @@ var (
 	// default or per-request override) triggers a simulated apply
 	// failure.
 	ErrTaskFailed = errors.New("pvemock: task failed (injected)")
+
+	// ErrFRRUnavailable indicates a node's fixture declares no `frr:`
+	// block at all (T-404): the mock's modeled equivalent of a real node
+	// that never installed/ran FRR — internal/host's FixtureReader maps
+	// this onto its own ErrFRRUnavailable sentinel (see that package's
+	// fixture.go doc comment).
+	ErrFRRUnavailable = errors.New("pvemock: frr not configured")
 )
