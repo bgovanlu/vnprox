@@ -148,6 +148,12 @@ Cluster fan-out (T-303): each node's audit log is node-local (docs/architecture.
 | GET | `/metrics/live?refs=a,b,c` | current rates for entities |
 | GET | `/metrics/history?ref=&fromTs=&toTs=` | 24h ring data |
 
+Added by T-601 (documented here retroactively per docs/development.md's definition-of-done #4). `Rates` (shared by both routes and the `metrics.sample` WS event below): `{rxBps, txBps, rxPps, txPps, rxErrsPerSec, txErrsPerSec, rxDropPerSec, txDropPerSec}` — `*Bps` are bits/sec, everything else is events/sec.
+
+**`GET /metrics/live`** response: `{items: [LiveMetric]}`. `refs` is a comma-separated list of `Ref` strings; a blank/omitted `refs` returns `{items: []}` without erroring. `LiveMetric`: `{ref, at, rates: Rates, speedMbps?, rxUtilPct?, txUtilPct?, utilizationPct?, slaves?: [SlaveRate]}` — `at` is unix seconds; `speedMbps`/`*UtilPct` are omitted when the entity's link speed isn't known (e.g. a bond with no active slave yet); `slaves` (per-slave balance, docs/features/monitoring.md §1) is present only for a Bond ref: `SlaveRate` is `{ref, active, rates: Rates}`. A ref the sampler hasn't observed at least twice yet (no rate computable) is simply absent from `items` — not an error.
+
+**`GET /metrics/history`** response: `{ref, items: [HistoryPoint]}`. `HistoryPoint`: `{at, rates: Rates}` — one entry per stored 30s-downsampled sample after the first (a rate needs a predecessor to diff against), `at` the later sample's unix-second timestamp. `fromTs`/`toTs` default to "no bound on that side" when omitted/unparsable.
+
 ## Blueprints
 
 | Method | Path | Purpose |
