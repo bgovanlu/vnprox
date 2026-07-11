@@ -56,10 +56,12 @@ func (r peerHostReader) Stats(ctx context.Context, node string) (map[string]host
 // than clobbering declared state the graph already has correct (the same
 // keep-last-known policy pvePollAll applies to individual step failures).
 //
-// Interface counters (reader.Stats) are read per deliverable 2 but still
-// discarded: raw counters have no inventory entity fields at all —
-// modeling them is internal/metrics' future job. A stats read failure does
-// not affect this poll's returned error/success state.
+// Interface counters (reader.Stats) have no inventory entity fields at all,
+// so they never feed ApplyPoll — instead they are handed to Config.OnStats
+// (T-601's internal/metrics.Sampler.Ingest, when configured) alongside this
+// same links read, since the sampler needs Links for interface kind/speed/
+// bond-slave metadata to make sense of the raw counters. A stats read
+// failure does not affect this poll's returned error/success state.
 func (c *Collector) hostPollStateFor(ctx context.Context, node string, reader nodeHostReader) error {
 	links, err := reader.Links(ctx, node)
 	if err != nil {
@@ -68,8 +70,10 @@ func (c *Collector) hostPollStateFor(ctx context.Context, node string, reader no
 	entities := inventory.FromNetlinkLinks(node, links)
 	c.graph.ApplyPoll(inventory.SourceHostNetlink, inventory.Scope{Node: node}, entities)
 
-	if _, statsErr := reader.Stats(ctx, node); statsErr != nil {
+	if stats, statsErr := reader.Stats(ctx, node); statsErr != nil {
 		c.log.Debug("collect: host stats read failed", "node", node, "error", statsErr)
+	} else if c.onStats != nil {
+		c.onStats(ctx, node, time.Now(), links, stats)
 	}
 
 	raw, err := reader.InterfacesFile(ctx, node, false)

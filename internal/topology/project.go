@@ -376,6 +376,15 @@ func badgesOf(snap inventory.Snapshot, e inventory.Entity) []string {
 	badges := []string{}
 	switch v := e.(type) {
 	case *inventory.Bond:
+		// "ovs" (T-407) is the map's distinguishing badge for every OVS
+		// entity kind (mirrored below for Bridge/VlanIface-as-Int-Port) —
+		// additive to the corner kind label (EntityNode already renders
+		// "ovs-bond"/"ovs-bridge" there), giving OVS entities a second,
+		// filterable/legend-able visual marker the way every other badge
+		// works.
+		if v.Kind == inventory.KindOVSBond {
+			badges = append(badges, "ovs")
+		}
 		if v.Mode != "" {
 			badges = append(badges, "mode="+v.Mode)
 		}
@@ -384,6 +393,9 @@ func badgesOf(snap inventory.Snapshot, e inventory.Entity) []string {
 			badges = append(badges, "missing-slave")
 		}
 	case *inventory.Bridge:
+		if v.Kind == inventory.KindOVSBridge {
+			badges = append(badges, "ovs")
+		}
 		if v.VlanAware && len(v.Vids) > 0 {
 			ranges := make([]string, len(v.Vids))
 			for i, r := range v.Vids {
@@ -393,7 +405,28 @@ func badgesOf(snap inventory.Snapshot, e inventory.Entity) []string {
 			badges = append(badges, "vlans="+strings.Join(ranges, ","))
 		}
 	case *inventory.VlanIface:
-		badges = append(badges, "vid="+strconv.Itoa(v.Vid))
+		// An OVS Int Port (VlanIface.Virt == "ovs" — it carries no
+		// dedicated inventory.Kind of its own, see that field's doc
+		// comment) badges its tag/trunks the same way a tagged VLAN
+		// sub-interface / VLAN-aware bridge already do ("tag="/"vlans="),
+		// so the existing VLAN-filter logic (web/src/topology/
+		// projection.ts's badgeCarriesVlan) highlights it for free.
+		if v.Virt == "ovs" {
+			badges = append(badges, "ovs")
+			if v.Vid != 0 {
+				badges = append(badges, "tag="+strconv.Itoa(v.Vid))
+			}
+			if len(v.Trunks) > 0 {
+				ranges := make([]string, len(v.Trunks))
+				for i, r := range v.Trunks {
+					ranges[i] = r.String()
+				}
+				sort.Strings(ranges)
+				badges = append(badges, "vlans="+strings.Join(ranges, ","))
+			}
+		} else {
+			badges = append(badges, "vid="+strconv.Itoa(v.Vid))
+		}
 	case *inventory.SdnZone:
 		badges = append(badges, "type="+v.Type)
 		if v.Pending != "" {

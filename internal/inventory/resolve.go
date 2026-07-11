@@ -152,6 +152,8 @@ func resolveVlan(ref Ref, parts map[Source]*VlanIface) resolved {
 	out.MTU, _ = pick(prov, "mtu", ruleFor(ref.Kind, "mtu"), parts, func(v *VlanIface) int { return v.MTU }, nonZeroInt, keyInt)
 	out.MTUDeclared, _ = pick(prov, "mtuDeclared", ruleFor(ref.Kind, "mtuDeclared"), parts, func(v *VlanIface) int { return v.MTUDeclared }, nonZeroInt, keyInt)
 	out.Pending, _ = pick(prov, "pending", ruleFor(ref.Kind, "pending"), parts, func(v *VlanIface) string { return v.Pending }, nonEmptyStr, keyStr)
+	out.Virt, _ = pick(prov, "virt", ruleFor(ref.Kind, "virt"), parts, func(v *VlanIface) string { return v.Virt }, nonEmptyStr, keyStr)
+	out.Trunks, _ = pick(prov, "trunks", ruleFor(ref.Kind, "trunks"), parts, func(v *VlanIface) []VidRange { return v.Trunks }, nonEmptySlc[VidRange], vidsString)
 	return resolved{entity: out, prov: *prov}
 }
 

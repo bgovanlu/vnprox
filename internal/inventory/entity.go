@@ -288,9 +288,18 @@ func (b *Bridge) fieldMap() map[string]string {
 	}
 }
 
-// VlanIface is a VLAN sub-interface (e.g. eno1.100 or vmbr0.20). Parent is
-// resolved during linking from ParentName; Vid/addresses are declared, MTU
-// runtime.
+// VlanIface is a VLAN sub-interface (e.g. eno1.100 or vmbr0.20) OR an OVS
+// Int Port (e.g. ovs_type OVSIntPort). Parent is resolved during linking
+// from ParentName; Vid/addresses are declared, MTU runtime.
+//
+// An OVS Int Port has no dedicated inventory.Kind of its own (unlike
+// OVSBridge/OVSBond) — per docs/data-model.md, "OVSIntPort ... map[s] to
+// KindVlan" — so Virt is what distinguishes the two: "" for a plain 802.1q
+// VLAN sub-interface, "ovs" for an OVS Int Port. This mirrors Bridge.Virt's
+// exact shape/precedence rules (T-407) rather than inventing a new pattern.
+// Trunks is OVS-only (a plain 802.1q sub-interface always carries exactly
+// one VID, already in Vid); an OVS Int Port may instead (or additionally)
+// carry a trunk VID set, per ovs-vsctl's port "trunks" column.
 type VlanIface struct {
 	Ref
 	Parent Ref
@@ -298,7 +307,9 @@ type VlanIface struct {
 	Name        string
 	ParentName  string
 	Pending     string
+	Virt        string // "" (plain 802.1q) | "ovs" (OVS Int Port)
 	Addresses   []string
+	Trunks      []VidRange
 	Vid         int
 	MTU         int
 	MTUDeclared int
@@ -308,6 +319,7 @@ func (v *VlanIface) GetRef() Ref { return v.Ref }
 func (v *VlanIface) clone() Entity {
 	cp := *v
 	cp.Addresses = append([]string(nil), v.Addresses...)
+	cp.Trunks = append([]VidRange(nil), v.Trunks...)
 	return &cp
 }
 func (v *VlanIface) fieldMap() map[string]string {
@@ -315,7 +327,7 @@ func (v *VlanIface) fieldMap() map[string]string {
 		"name": v.Name, "parent": v.Parent.String(), "parentName": v.ParentName,
 		"addresses": sortedJoin(v.Addresses), "vid": strconv.Itoa(v.Vid),
 		"mtu": strconv.Itoa(v.MTU), "mtuDeclared": strconv.Itoa(v.MTUDeclared),
-		"pending": v.Pending,
+		"pending": v.Pending, "virt": v.Virt, "trunks": vidsString(v.Trunks),
 	}
 }
 
@@ -593,9 +605,78 @@ const (
 	FwScopeGuest   FwScope = "guest"
 )
 
+// FwAlias is a named IP/CIDR alias defined within a ruleset's scope. Per
+// real pve-firewall semantics (docs/features/firewall.md §1/§2), a
+// cluster-scope alias is visible from every scope (referenced by bare
+// name from node or guest rules too); a node- or guest-scope alias is only
+// visible within the ruleset that defines it. internal/fw's resolver
+// applies this visibility rule when expanding rule references and
+// counting object usage.
+type FwAlias struct {
+	Name    string
+	CIDR    string
+	Comment string
+}
+
+func (a FwAlias) canonical() string {
+	return a.Name + "|" + a.CIDR + "|" + a.Comment
+}
+
+// FwIPSetEntry is one member of an FwIPSet.
+type FwIPSetEntry struct {
+	CIDR    string
+	Comment string
+	NoMatch bool
+}
+
+func (e FwIPSetEntry) canonical() string {
+	return fmt.Sprintf("%s|%v|%s", e.CIDR, e.NoMatch, e.Comment)
+}
+
+// FwIPSet is a named set of CIDR entries, with the same scope-visibility
+// rule as FwAlias (referenced in rule source/dest fields with a leading
+// "+", e.g. "+blocklist").
+type FwIPSet struct {
+	Name    string
+	Comment string
+	Entries []FwIPSetEntry
+}
+
+func (s FwIPSet) canonical() string {
+	entries := make([]string, len(s.Entries))
+	for i, e := range s.Entries {
+		entries[i] = e.canonical()
+	}
+	sort.Strings(entries)
+	return s.Name + "|" + s.Comment + "|" + strings.Join(entries, ",")
+}
+
+// FwGroup is a reusable, cluster-scope-only security group of rules,
+// referenced from any ruleset's own rule list via a rule whose Direction
+// is "group" and whose Action names the group (see FwRule.Direction and
+// internal/fw's resolver for expansion semantics). Real PVE only exposes
+// security groups at the cluster level (pvemock mounts the group CRUD
+// routes once, at /cluster/firewall/groups, never per node/guest), so
+// Groups is only ever populated on the cluster-scope FwRuleset.
+type FwGroup struct {
+	Name    string
+	Comment string
+	Rules   []FwRule
+}
+
+func (g FwGroup) canonical() string {
+	rules := make([]string, len(g.Rules))
+	for i, r := range g.Rules {
+		rules[i] = r.canonical()
+	}
+	return g.Name + "|" + g.Comment + "|" + strings.Join(rules, "\n")
+}
+
 // FwRuleset is a firewall ruleset at cluster, node, or guest scope. Rules
 // are ordered by Pos; order is significant, so it is not sorted for
-// canonicalization.
+// canonicalization. Aliases/IPSets/Groups are the scope's own object
+// definitions (docs/features/firewall.md §2's alias/ipset/security-group
+// editors); Groups is populated only for FwScopeCluster (see FwGroup).
 type FwRuleset struct {
 	Ref
 	rawSrc
@@ -603,6 +684,9 @@ type FwRuleset struct {
 	DefaultIn  string
 	DefaultOut string
 	Rules      []FwRule
+	Aliases    []FwAlias
+	IPSets     []FwIPSet
+	Groups     []FwGroup
 	Enabled    bool
 }
 
@@ -610,6 +694,15 @@ func (f *FwRuleset) GetRef() Ref { return f.Ref }
 func (f *FwRuleset) clone() Entity {
 	cp := *f
 	cp.Rules = append([]FwRule(nil), f.Rules...)
+	cp.Aliases = append([]FwAlias(nil), f.Aliases...)
+	cp.IPSets = make([]FwIPSet, len(f.IPSets))
+	for i, s := range f.IPSets {
+		cp.IPSets[i] = FwIPSet{Name: s.Name, Comment: s.Comment, Entries: append([]FwIPSetEntry(nil), s.Entries...)}
+	}
+	cp.Groups = make([]FwGroup, len(f.Groups))
+	for i, g := range f.Groups {
+		cp.Groups[i] = FwGroup{Name: g.Name, Comment: g.Comment, Rules: append([]FwRule(nil), g.Rules...)}
+	}
 	return &cp
 }
 func (f *FwRuleset) fieldMap() map[string]string {
@@ -617,9 +710,26 @@ func (f *FwRuleset) fieldMap() map[string]string {
 	for i, r := range f.Rules {
 		rules[i] = r.canonical()
 	}
+	aliases := make([]string, len(f.Aliases))
+	for i, a := range f.Aliases {
+		aliases[i] = a.canonical()
+	}
+	sort.Strings(aliases)
+	ipsets := make([]string, len(f.IPSets))
+	for i, s := range f.IPSets {
+		ipsets[i] = s.canonical()
+	}
+	sort.Strings(ipsets)
+	groups := make([]string, len(f.Groups))
+	for i, g := range f.Groups {
+		groups[i] = g.canonical()
+	}
+	sort.Strings(groups)
 	return map[string]string{
 		"scope": string(f.Scope), "enabled": boolStr(f.Enabled),
 		"defaultIn": f.DefaultIn, "defaultOut": f.DefaultOut,
-		"rules": strings.Join(rules, "\n"),
+		"rules":   strings.Join(rules, "\n"),
+		"aliases": strings.Join(aliases, "\n"), "ipsets": strings.Join(ipsets, "\n"),
+		"groups": strings.Join(groups, "\n"),
 	}
 }

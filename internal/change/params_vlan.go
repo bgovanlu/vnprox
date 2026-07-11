@@ -4,11 +4,25 @@ package change
 // sub-interface's identity (e.g. Ref{Kind: KindVlan, Node: "pve1", ID:
 // "vmbr0.20"}); Parent names the parent interface (by name — always the
 // same node as the target).
+//
+// OVS marks this create as an OVS Int Port instead of a plain 802.1q
+// sub-interface (docs/data-model.md: KindVlan has no dedicated OVS-kind
+// sibling the way Bridge/Bond do, so — per the data model's "params carry
+// ovs-specific fields" note — the distinction lives here, not on Target.Kind).
+// When OVS is true, Parent must name an existing OVS bridge (ovs_bridge),
+// Vid becomes the OVS access "tag" (0 = untagged/native), and Trunks is an
+// optional set of additional trunked VLAN ranges (ovs-vsctl's Port "trunks"
+// column) — both may be set together (OVS's native-tagged/native-untagged
+// vlan_mode use case) or Vid may be 0 with only Trunks set (a pure trunk
+// port). Trunks is rejected when OVS is false: a plain 802.1q sub-interface
+// always carries exactly one VID (Vid itself).
 type VlanCreateParams struct {
-	Parent    string   `json:"parent"`
-	Addresses []string `json:"addresses,omitempty"`
-	Vid       int      `json:"vid"`
-	MTU       int      `json:"mtu,omitempty"`
+	Parent    string     `json:"parent"`
+	Addresses []string   `json:"addresses,omitempty"`
+	Trunks    []VidRange `json:"trunks,omitempty"`
+	Vid       int        `json:"vid"`
+	MTU       int        `json:"mtu,omitempty"`
+	OVS       bool       `json:"ovs,omitempty"`
 }
 
 func (VlanCreateParams) isChangeParams() {}

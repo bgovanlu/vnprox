@@ -75,10 +75,19 @@ type Options struct {
 	// EVPN is T-404's read view seam (docs/api.md's `GET /sdn/evpn/status`);
 	// nil (no PVE/peer clients wired) simply skips mounting the route,
 	// same degraded-mode treatment as SDN above.
-	EVPN        EVPNService
+	EVPN EVPNService
+	// Metrics is T-601's *metrics.Sampler seam for GET /metrics/live and
+	// GET /metrics/history; nil (no daemon-side sampler wired, e.g. tests)
+	// simply omits both routes.
+	Metrics     MetricsService
 	PVEGateways PVEGatewayProvider
 	Protected   ProtectedService
-	Peer        PeerServer
+	// Firewall backs T-501's read routes (GET /firewall/rulesets,
+	// GET /firewall/objects) — typically the daemon's live *inventory.Graph
+	// (which satisfies FirewallGraph's one-method seam directly).
+	Firewall   FirewallGraph
+	Blueprints BlueprintService
+	Peer       PeerServer
 	// PeerAudit and PeerSnapshots are T-303's cluster fan-out dependencies
 	// for GET /audit and GET /snapshots (docs/architecture.md §7: "Audit/
 	// snapshot queries in the UI fan out to peers and merge"). Nil (every
@@ -114,6 +123,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
+		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
@@ -121,6 +131,8 @@ func NewRouter(opts Options) http.Handler {
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
+		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
+		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

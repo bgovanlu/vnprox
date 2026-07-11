@@ -153,6 +153,21 @@ Cluster fan-out (T-303): each node's audit log is node-local (docs/architecture.
 
 `partial`/`failedNodes` mirror `GET /audit`/`GET /snapshots`' cluster-fan-out convention: `partial` is true iff peer discovery or an individual peer's FRR read failed (as opposed to that node cleanly reporting no FRR, which is `frrInstalled:false` with no failure at all); `failedNodes` names them. `GET /sdn/evpn/status` fans out across the cluster via the peer API (`GET /api/peer/host/frr/{bgp-summary,evpn-vni}` below) exactly like `internal/collect`'s host poller does for netlink/LLDP data — unlike `GET /sdn`, EVPN/BGP state is node-local FRR daemon state, not cluster-scoped PVE config, so it cannot be read from any single node's PVE API and does need this fan-out.
 
+**`GET /firewall/rulesets?scope=` response shapes** (added by T-501; documented here per docs/development.md's definition-of-done #4 — netRead-gated, read-only). `scope` is `cluster`\|`node`\|`guest`.
+
+- `scope=cluster`: one `RulesetView` — `{ref, scope, node?, enabled, defaultIn?, defaultOut?, rules: [RuleView], banners?: [Banner]}`. 404 `not_found` if the cluster firewall config has not been observed yet.
+- `scope=node`: with `?node=<name>`, that node's `RulesetView`; without it, `{items: [RulesetView]}` — every node this daemon has observed a ruleset for (hierarchy navigation).
+- `scope=guest`: with `?ref=<guest ref>` (a `guest:<node>:<vmid>` Ref triplet, URL-encoded), `{ruleset: RulesetView, resolved: ResolvedView}` — the guest's own raw ruleset plus its full resolved evaluation order in one payload; without `ref`, `{items: [RulesetView]}` (raw rulesets only, one per observed guest).
+- Any other `scope` value: 400 `validation_failed`.
+
+`RuleView`: `{pos, enabled, direction, action, proto?, source?, dest?, sport?, dport?, iface?, macro?, macroExpansion?, log?, comment?}` — mirrors `internal/inventory.FwRule` field-for-field; `macroExpansion` (`[{proto?, dport?}]`) is populated whenever `macro` names a macro this build's built-in catalog knows (docs/features/firewall.md §2's "expansion preview").
+
+`Banner`: `{scope, message}` — the "Datacenter firewall is OFF: none of these rules are active" footgun warning (docs/features/firewall.md §2) and its cascaded node/guest-scope variants, computed by `internal/fw.ScopeBanners`. Present on every `RulesetView` (and, for guest scope, additionally on `ResolvedView.gates`) whenever some scope's own toggle — or an ancestor scope's — means none of that ruleset's rules are actually enforced.
+
+`ResolvedView`: `{guest, active, gates?: [Banner], rules: [ResolvedRuleView], defaultIn: DefaultPolicy, defaultOut: DefaultPolicy}` — a guest's full effective evaluation order per docs/features/firewall.md §1 ("cluster rules → security groups → guest rules → default policies"), computed by `internal/fw.Resolve`. `active` is false iff some gate in `gates` makes every rule inert; `rules` is still populated in that case (transparency — the UI shows what's configured even when it's not enforced). `ResolvedRuleView`: `{origin, groupName?, rule: RuleView, pos}` where `origin` is `cluster`\|`group`\|`guest` (`group` when this entry came from a security group's own rule list, spliced in at the position a `"type":"group"` reference rule named it — `groupName` names it either way). `DefaultPolicy`: `{direction, policy, origin}` where `origin` additionally allows `default` (pve-firewall's own hardcoded fallback, DROP in/ACCEPT out, when neither the guest's own ruleset nor the cluster's set an explicit policy).
+
+**`GET /firewall/objects` response shape** (added by T-501): `{aliases: [ObjectUsage], ipsets: [ObjectUsage], groups: [ObjectUsage], macros: [Macro]}`. `ObjectUsage`: `{kind, scope, name, comment?, count, referencedBy?: [{scope, ref, pos}]}` — `kind` is `alias`\|`ipset`\|`group`; `scope` is the scope the object is *defined* in (cluster-scope objects are referenceable from any rule anywhere; node-/guest-scope objects only from their own ruleset's rules — real pve-firewall's alias/ipset visibility rule); `count`/`referencedBy` are docs/features/firewall.md §2's "referenced by N rules — view" usage tracking, computed by `internal/fw.UsageCounts`. `Macro`: `{name, comment?, ports: [{proto?, dport?}]}` — the built-in service-macro catalog's expansion preview (a representative subset of pve-firewall's own macros, not exhaustive; see `internal/fw`'s `KnownMacros`).
+
 ## Path simulator
 
 | Method | Path | Purpose |
@@ -166,12 +181,33 @@ Cluster fan-out (T-303): each node's audit log is node-local (docs/architecture.
 | GET | `/metrics/live?refs=a,b,c` | current rates for entities |
 | GET | `/metrics/history?ref=&fromTs=&toTs=` | 24h ring data |
 
+Added by T-601 (documented here retroactively per docs/development.md's definition-of-done #4). `Rates` (shared by both routes and the `metrics.sample` WS event below): `{rxBps, txBps, rxPps, txPps, rxErrsPerSec, txErrsPerSec, rxDropPerSec, txDropPerSec}` — `*Bps` are bits/sec, everything else is events/sec.
+
+**`GET /metrics/live`** response: `{items: [LiveMetric]}`. `refs` is a comma-separated list of `Ref` strings; a blank/omitted `refs` returns `{items: []}` without erroring. `LiveMetric`: `{ref, at, rates: Rates, speedMbps?, rxUtilPct?, txUtilPct?, utilizationPct?, slaves?: [SlaveRate]}` — `at` is unix seconds; `speedMbps`/`*UtilPct` are omitted when the entity's link speed isn't known (e.g. a bond with no active slave yet); `slaves` (per-slave balance, docs/features/monitoring.md §1) is present only for a Bond ref: `SlaveRate` is `{ref, active, rates: Rates}`. A ref the sampler hasn't observed at least twice yet (no rate computable) is simply absent from `items` — not an error.
+
+**`GET /metrics/history`** response: `{ref, items: [HistoryPoint]}`. `HistoryPoint`: `{at, rates: Rates}` — one entry per stored 30s-downsampled sample after the first (a rate needs a predecessor to diff against), `at` the later sample's unix-second timestamp. `fromTs`/`toTs` default to "no bound on that side" when omitted/unparsable.
+
 ## Blueprints
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET/POST | `/blueprints` | list / save (parameterized topology template JSON) |
 | POST | `/blueprints/{id}/instantiate` | `{params}` → changeset draft |
+
+**Blueprint shape** (T-603): `{blueprintVersion: 1, id, name, description?, readOnly?, nodeSelector: {mode: "all"|"single"}, params: [ParamDef], entities: [EntityTemplate], createdBy?, createdAt?, updatedAt?}`. `ParamDef`: `{name, type: "string"|"int"|"bool"|"cidr"|"ip"|"vid"|"vidList"|"iface"|"nodeList", label?, description?, default?, required?, addressSuggest?, subnet?}` — `addressSuggest` (only valid on `cidr`/`ip` params) marks it eligible for `GET /blueprints/{id}/suggest` below; `subnet` is the CIDR pool searched (falls back to the containing network of `default` for a `cidr` param). `EntityTemplate`: `{kind: "bridge"|"bond"|"vlan"|"sdn-zone"|"sdn-vnet"|"sdn-subnet", idTemplate, nodeSelector?, fields: {...}}` — `fields` keys are exactly the corresponding `change.*CreateParams` JSON field names; values may be literal, a `"{{param}}"` placeholder (whole-value substitution preserves the param's JSON type), or the builtin `"{{__nodes__}}"` token (the instantiate request's target node list). `readOnly: true` marks the five bundled starters (`GET /blueprints` always includes them; they cannot be saved-over or deleted — `403 blueprint_read_only`).
+
+**`POST /blueprints/{id}/instantiate` body** is additive to the documented `{params}` shape (per docs/development.md's definition-of-done #4): `{params: {...}, nodes?: [string], title?: string}`. `nodes` is the target cluster node list for `nodeSelector.mode: "all"` expansion and for entities' `"{{__nodes__}}"` substitution; omitted/empty defaults to every node currently in inventory. `title` overrides the default changeset title (`"blueprint: <name>"`). The response is the same shape `POST /changesets` returns (a draft changeset) — instantiation only ever produces a draft; nothing is applied.
+
+Additive routes (T-603, not in the original contract; documented here per docs/development.md's definition-of-done #4):
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/blueprints/{id}` | single blueprint detail (starter or saved) — also the export/download source |
+| DELETE | `/blueprints/{id}` | remove a saved blueprint; `403 blueprint_read_only` for a starter id |
+| POST | `/blueprints/capture` | `{node}` → an unsaved Blueprint captured from that node's live bonds/bridges/VLAN interfaces (addresses turned into named, address-suggest-eligible params); save it via `POST /blueprints` to persist |
+| GET | `/blueprints/{id}/suggest?param=` | next-free-address suggestion for one of the blueprint's `addressSuggest` params: `{address}` |
+
+Import/export is file-level, not a dedicated route: export is `GET /blueprints/{id}`'s JSON body saved to a file; import is that same JSON re-posted to `POST /blueprints` (with `id` cleared so a new blueprint is created, or set to overwrite an existing saved one — never a starter id).
 
 ## WebSocket `/api/ws`
 
