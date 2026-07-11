@@ -1,0 +1,19 @@
+[
+  {
+    "vni": 20001,
+    "type": "L2",
+    "vxlanIf": "vxlan20001",
+    "vtepIp": "10.20.0.12",
+    "mcastGroup": "0.0.0.0",
+    "numMacs": 8,
+    "numArpNd": 2,
+    "numRemoteVteps": ["10.20.0.11", "10.20.0.13"]
+  },
+  {
+    "vni": 20002,
+    "type": "L2",
+    "vxlanIf": "vxlan20002",
+    "numMacs": 0,
+    "numArpNd": 0
+  }
+]

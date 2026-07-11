@@ -22,9 +22,7 @@ func RenderInterfaces(ifaces []NetIface) string {
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Iface < sorted[j].Iface })
 
 	for _, i := range sorted {
-		if i.Autostart {
-			fmt.Fprintf(&b, "auto %s\n", i.Iface)
-		}
+		b.WriteString(autostartPrefixLine(i))
 		method := i.Method
 		if method == "" {
 			method = "manual"
@@ -45,7 +43,7 @@ func RenderInterfaces(ifaces []NetIface) string {
 			fmt.Fprintf(&b, "\tmtu %d\n", i.MTU)
 		}
 		switch i.Type {
-		case "bridge", "OVSBridge":
+		case "bridge":
 			if i.BridgePorts != "" {
 				fmt.Fprintf(&b, "\tbridge-ports %s\n", i.BridgePorts)
 			} else {
@@ -55,6 +53,15 @@ func RenderInterfaces(ifaces []NetIface) string {
 				b.WriteString("\tbridge-vlan-aware yes\n")
 			}
 			b.WriteString("\tbridge-stp off\n\tbridge-fd 0\n")
+		case "OVSBridge":
+			// OVS bridges use the ovs_* stanza vocabulary, not the Linux
+			// bridge-*/bridge-stp options above (T-407: rendering these as
+			// a plain Linux bridge misclassified every fixture-declared
+			// OVSBridge on the FromInterfaces/inventory read path).
+			if i.BridgePorts != "" {
+				fmt.Fprintf(&b, "\tovs_ports %s\n", i.BridgePorts)
+			}
+			b.WriteString("\tovs_type OVSBridge\n")
 		case "bond":
 			if i.Slaves != "" {
 				fmt.Fprintf(&b, "\tbond-slaves %s\n", i.Slaves)
@@ -62,9 +69,35 @@ func RenderInterfaces(ifaces []NetIface) string {
 			if i.BondMode != "" {
 				fmt.Fprintf(&b, "\tbond-mode %s\n", i.BondMode)
 			}
+		case "OVSBond":
+			// VlanRawDevice doubles as the OVS bridge this bond attaches to
+			// (ovs_bridge) for OVSBond/OVSIntPort fixture entries — see
+			// this file's doc comment and inventory.FromPVENetwork's
+			// OVSIntPort case, which reuses the same field for the same
+			// reason (no live PVE cluster to validate against a dedicated
+			// wire field name; matches this codebase's existing
+			// field-reuse convention rather than adding a new one).
+			if i.Slaves != "" {
+				fmt.Fprintf(&b, "\tovs_bonds %s\n", i.Slaves)
+			}
+			b.WriteString("\tovs_type OVSBond\n")
+			if i.VlanRawDevice != "" {
+				fmt.Fprintf(&b, "\tovs_bridge %s\n", i.VlanRawDevice)
+			}
+			if i.BondMode != "" {
+				fmt.Fprintf(&b, "\tovs_options %s\n", ovsBondModeOptions(i.BondMode))
+			}
 		case "vlan":
 			if i.VlanRawDevice != "" {
 				fmt.Fprintf(&b, "\tvlan-raw-device %s\n", i.VlanRawDevice)
+			}
+		case "OVSIntPort":
+			b.WriteString("\tovs_type OVSIntPort\n")
+			if i.VlanRawDevice != "" {
+				fmt.Fprintf(&b, "\tovs_bridge %s\n", i.VlanRawDevice)
+			}
+			if i.VlanID != 0 {
+				fmt.Fprintf(&b, "\tovs_options tag=%d\n", i.VlanID)
 			}
 		}
 		if i.Comments != "" {
@@ -75,6 +108,44 @@ func RenderInterfaces(ifaces []NetIface) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// autostartPrefixLine renders the "auto <name>"/"allow-*" line preceding an
+// iface stanza, or "" when Autostart is false. OVS stanzas use ifupdown2's
+// "allow-ovs"/"allow-<bridge>" convention instead of "auto" (matching
+// testdata/interfaces/04-ovs-bridge.interfaces, 05-ovs-bond.interfaces) —
+// both encode "start this at boot", but ifupdown2's OVS glue specifically
+// keys off allow-*.
+func autostartPrefixLine(i NetIface) string {
+	if !i.Autostart {
+		return ""
+	}
+	switch i.Type {
+	case "OVSBridge":
+		return fmt.Sprintf("allow-ovs %s\n", i.Iface)
+	case "OVSBond", "OVSIntPort":
+		if i.VlanRawDevice != "" {
+			return fmt.Sprintf("allow-%s %s\n", i.VlanRawDevice, i.Iface)
+		}
+		return fmt.Sprintf("auto %s\n", i.Iface)
+	default:
+		return fmt.Sprintf("auto %s\n", i.Iface)
+	}
+}
+
+// ovsBondModeOptions renders the ovs_options value for an OVS bond's mode,
+// mirroring internal/change/ifaces.ovsBondModeOptions exactly (duplicated
+// rather than imported: pvemock is a leaf test-fixture package that must
+// not depend on internal/change, and the mapping is small/stable — see
+// testdata/interfaces/05-ovs-bond.interfaces, the shared source of truth
+// both copies render towards).
+func ovsBondModeOptions(mode string) string {
+	switch mode {
+	case "802.3ad", "lacp":
+		return "bond_mode=balance-slb lacp=active other_config:lacp-time=fast"
+	default:
+		return "bond_mode=" + mode
+	}
 }
 
 func splitCIDR(cidr string) (addr, mask string, ok bool) {

@@ -434,7 +434,14 @@ func (p *projection) fold(op Op) {
 
 	case *VlanCreateParams:
 		p.names[ifaceKey{op.Target.Node, op.Target.ID}] = op.Target
-		p.vlanIfaces[vlanKey{op.Target.Node, params.Parent, params.Vid}] = op.Target
+		// See referentialValidateOp's VlanCreateParams case: an untagged/
+		// trunk-only OVS Int Port (OVS && Vid == 0) does not occupy the
+		// (node, parent, vid) slot the way a tagged VLAN/Int Port does, so
+		// several may coexist on the same parent without folding over one
+		// another here.
+		if !params.OVS || params.Vid != 0 {
+			p.vlanIfaces[vlanKey{op.Target.Node, params.Parent, params.Vid}] = op.Target
+		}
 		p.addAddrs(op.Target, params.Addresses)
 
 	case *VlanUpdateParams:

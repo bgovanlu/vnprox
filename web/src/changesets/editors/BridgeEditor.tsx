@@ -68,11 +68,16 @@ export function BridgeEditor({ open, onOpenChange, node, target, existing, newBr
   const [stp, setStp] = useState(initial.stp);
   const [comments, setComments] = useState(initial.comments);
   const [bridgeId, setBridgeId] = useState(newBridgeId ?? "");
+  // Kind selector (docs/features/change-management.md §5: "Bridge: kind
+  // (Linux/OVS) ... drives field sets"). Immutable post-create — an
+  // existing target's kind comes straight from its Ref prefix, same as
+  // every other identity field this editor treats as create-only.
+  const [kind, setKind] = useState<"linux" | "ovs">(target?.startsWith("ovs-bridge:") ? "ovs" : "linux");
 
   const caps = capsForNode(session, node);
   const disabledReason = missingCapTooltip(session, node, "netWrite");
   const isCreate = !target;
-  const bridgeTarget = target ?? `bridge:${node}:${bridgeId}`;
+  const bridgeTarget = target ?? `${kind === "ovs" ? "ovs-bridge" : "bridge"}:${node}:${bridgeId}`;
 
   function togglePort(name: string): void {
     setPorts((prev) => (prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name]));
@@ -113,6 +118,15 @@ export function BridgeEditor({ open, onOpenChange, node, target, existing, newBr
       generalErrors={findings.general}
     >
       {isCreate && (
+        <Field label="Kind" help="Linux bridges use the kernel bridge driver and its VLAN-aware trunking. OVS bridges are Open vSwitch's userspace switch — tag/trunk each port individually instead.">
+          <select className={inputClass} value={kind} onChange={(e) => { setKind(e.target.value === "ovs" ? "ovs" : "linux"); }}>
+            <option value="linux">Linux bridge</option>
+            <option value="ovs">OVS bridge</option>
+          </select>
+        </Field>
+      )}
+
+      {isCreate && (
         <Field label="Name" help="e.g. vmbr1. Bridge names conventionally start with vmbr.">
           <input className={inputClass} value={bridgeId} onChange={(e) => { setBridgeId(e.target.value); }} placeholder="vmbr1" />
         </Field>
@@ -133,17 +147,21 @@ export function BridgeEditor({ open, onOpenChange, node, target, existing, newBr
         </div>
       </Field>
 
-      <Field label="VLAN-aware" help="Enable to trunk multiple VLANs over this bridge (required for SDN VLAN zones and per-guest tagging).">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={vlanAware} onChange={(e) => { setVlanAware(e.target.checked); }} />
-          VLAN aware
-        </label>
-      </Field>
+      {kind === "linux" && (
+        <>
+          <Field label="VLAN-aware" help="Enable to trunk multiple VLANs over this bridge (required for SDN VLAN zones and per-guest tagging).">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={vlanAware} onChange={(e) => { setVlanAware(e.target.checked); }} />
+              VLAN aware
+            </label>
+          </Field>
 
-      {vlanAware && (
-        <Field label="Allowed VID range(s)" errors={findings.byField.vids} help="Comma-separated, e.g. 10-30, 100. Each single ID is low=high.">
-          <input className={inputClass} value={vidsText} onChange={(e) => { setVidsText(e.target.value); }} placeholder="10-30, 100" />
-        </Field>
+          {vlanAware && (
+            <Field label="Allowed VID range(s)" errors={findings.byField.vids} help="Comma-separated, e.g. 10-30, 100. Each single ID is low=high.">
+              <input className={inputClass} value={vidsText} onChange={(e) => { setVidsText(e.target.value); }} placeholder="10-30, 100" />
+            </Field>
+          )}
+        </>
       )}
 
       <Field label="Addresses" errors={findings.byField.addresses} help="Comma-separated CIDRs, e.g. 10.10.0.11/24. Leave blank for an unmanaged bridge.">
@@ -158,12 +176,14 @@ export function BridgeEditor({ open, onOpenChange, node, target, existing, newBr
         <Field label="MTU" errors={findings.byField.mtu} help="576–9216. Must not exceed the smallest port's MTU.">
           <input type="number" className={inputClass} value={mtu} onChange={(e) => { setMtu(Number(e.target.value)); }} />
         </Field>
-        <Field label="STP">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={stp} onChange={(e) => { setStp(e.target.checked); }} />
-            Spanning tree
-          </label>
-        </Field>
+        {kind === "linux" && (
+          <Field label="STP">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={stp} onChange={(e) => { setStp(e.target.checked); }} />
+              Spanning tree
+            </label>
+          </Field>
+        )}
       </div>
 
       <Field label="Comment">

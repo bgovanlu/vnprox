@@ -114,6 +114,18 @@ describe("bond op builders", () => {
     const op = buildBondUpdateOp("bond:pve1:bond0", bondForm, changed);
     expect(op.params).toEqual({ slaves: ["eno1", "eno2", "eno3"] });
   });
+
+  it("bond.create on an ovs-bond target carries bridge", () => {
+    const ovsForm: BondFormValues = { ...bondForm, mode: "active-backup", ovsBridge: "vmbr1" };
+    const op = buildBondCreateOp("ovs-bond:pve1:bond0", ovsForm);
+    expect(op.params).toMatchObject({ mode: "active-backup", bridge: "vmbr1" });
+  });
+
+  it("bond.create on a plain bond target never sends bridge, even if ovsBridge is set", () => {
+    const formWithStrayBridge: BondFormValues = { ...bondForm, ovsBridge: "vmbr1" };
+    const op = buildBondCreateOp("bond:pve1:bond0", formWithStrayBridge);
+    expect((op.params as { bridge?: string }).bridge).toBeUndefined();
+  });
 });
 
 describe("vlan op builders", () => {
@@ -128,6 +140,23 @@ describe("vlan op builders", () => {
     const changed: VlanFormValues = { ...vlanForm, mtu: 9000 };
     const op = buildVlanUpdateOp("vlan:pve1:vmbr0.30", vlanForm, changed);
     expect(op.params).toEqual({ mtu: 9000 });
+  });
+
+  it("vlan.create for an ovs int port carries ovs + tag", () => {
+    const ovsForm: VlanFormValues = { parent: "vmbr1", vid: 20, addresses: [], mtu: 0, ovs: true };
+    const op = buildVlanCreateOp("vlan:pve1:vlan20", ovsForm);
+    expect(op.params).toEqual({ parent: "vmbr1", vid: 20, ovs: true });
+  });
+
+  it("vlan.create for an ovs int port carries trunks only when ovs is true", () => {
+    const trunks = [{ low: 10, high: 20 }];
+    const ovsOp = buildVlanCreateOp("vlan:pve1:vlan-trunk", { parent: "vmbr1", vid: 0, addresses: [], mtu: 0, ovs: true, trunks });
+    expect(ovsOp.params).toMatchObject({ trunks });
+
+    const plainOp = buildVlanCreateOp("vlan:pve1:vmbr0.20", { ...vlanForm, trunks });
+    const plainParams = plainOp.params as { trunks?: unknown; ovs?: unknown };
+    expect(plainParams.trunks).toBeUndefined();
+    expect(plainParams.ovs).toBeUndefined();
   });
 });
 

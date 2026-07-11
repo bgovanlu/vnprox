@@ -18,8 +18,14 @@ export interface TopologyUIState {
   spotlightOpen: boolean;
   expandedGroups: Set<string>;
   positions: Record<string, { x: number; y: number }>;
+  /** "Traffic" paint mode (docs/features/monitoring.md §1: edge thickness/
+   * heat by current utilization %). Not part of the persisted layout —
+   * unlike activeLayers/vlanFilter/positions, it's a live-data view toggle
+   * a user flips per session, not a saved arrangement. */
+  trafficMode: boolean;
 
   toggleLayer: (layer: Layer) => void;
+  toggleTrafficMode: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
   hover: (id: string | undefined) => void;
@@ -43,6 +49,7 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   spotlightOpen: false,
   expandedGroups: new Set(),
   positions: {},
+  trafficMode: false,
 
   toggleLayer: (layer) => {
     set((state) => {
@@ -51,6 +58,9 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
       else next.add(layer);
       return { activeLayers: next };
     });
+  },
+  toggleTrafficMode: () => {
+    set((state) => ({ trafficMode: !state.trafficMode }));
   },
   setVlanFilter: (vlan) => {
     set({ vlanFilter: vlan });

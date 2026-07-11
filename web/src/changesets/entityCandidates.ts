@@ -63,6 +63,14 @@ export function vlanParentCandidates(topology: TopologyResponse, node: string): 
   return nodesOnNodeOfKinds(topology, node, ["physnic", "bond", "ovs-bond", "bridge", "ovs-bridge"]).map((n) => refId(n.id));
 }
 
+/** Candidates for an OVS bond's or OVS Int Port's "attach to which OVS
+ * bridge" picker: OVS bridges only, on `node` — the cross-kind mistake
+ * T-407's backend validators reject (internal/change's codeOVSKindMismatch)
+ * is exactly attaching to a bridge outside this list. */
+export function ovsBridgeCandidates(topology: TopologyResponse, node: string): string[] {
+  return nodesOnNodeOfKinds(topology, node, ["ovs-bridge"]).map((n) => refId(n.id));
+}
+
 /** Every bridge/VNet a guest could reattach to, cluster-wide (bridges are
  * per-node; VNets are cluster-scoped and shown once) — for the bridge
  * delete-with-reattach flow's target picker. `excludeRef` omits the bridge

@@ -30,6 +30,11 @@ const (
 	codeFwPolicyInvalid      = "schema.fw_policy_invalid"
 	codeFwLogInvalid         = "schema.fw_log_invalid"
 	codeFwPosInvalid         = "schema.fw_pos_invalid"
+	// codeOVSTrunkNotAllowed flags a vlan.create with a non-empty Trunks
+	// list but OVS false: trunks are an OVS Int Port concept (ovs-vsctl's
+	// Port "trunks" column) — a plain 802.1q sub-interface always carries
+	// exactly one VID (Vid itself), so a Trunks list there is meaningless.
+	codeOVSTrunkNotAllowed = "schema.ovs_trunk_not_allowed"
 
 	// --- referential (class 2: existence, collisions, overlaps) --------
 
@@ -48,6 +53,13 @@ const (
 	codeAddressOverlap       = "referential.address_overlap"
 	codeAddressOutOfSubnet   = "referential.address_out_of_subnet"
 	codeFwPosOutOfRange      = "referential.fw_pos_out_of_range"
+	// codeOVSKindMismatch (T-407) flags mixing Linux-bridge/bond entities
+	// into an OVS bridge/bond's port/slave list or vice versa (docs/features/
+	// change-management.md §5's OVS kind-selector spec: "mixing Linux-bridge
+	// ports into OVS bridges and vice versa -> error"), and the symmetric
+	// case for an OVS Int Port's parent (must be an OVS bridge) vs. a plain
+	// VLAN sub-interface's parent (must not be one).
+	codeOVSKindMismatch = "referential.ovs_kind_mismatch"
 
 	// --- safety (class 3: protected interfaces, guest-bearing bridges) --
 	// T-203, docs/security.md "Safety interlocks" / docs/features/

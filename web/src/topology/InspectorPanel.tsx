@@ -7,12 +7,15 @@ import { Button } from "../components/Button";
 import { Tooltip } from "../components/Tooltip";
 import { useSession } from "../api/useSession";
 import type { FDBRow } from "../api/types";
+import type { WsClient } from "../api/ws";
 import { useToast } from "../components/Toast";
 import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
 import { useEditorLauncherStore, type EditorKind } from "../changesets/editorLauncherStore";
 import { buildBondDeleteOp, buildVlanDeleteOp } from "../changesets/opBuilders";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { fieldRows } from "./fields";
+import { METRICS_KINDS } from "./metricsKinds";
+import { MetricsTab } from "./MetricsTab";
 import { useInventoryDetailQuery } from "./queries";
 import { useTopologyStore } from "./store";
 
@@ -52,6 +55,9 @@ export interface InspectorPanelProps {
   selectedRef: string | undefined;
   onClose: () => void;
   onSelectRelated: (ref: string) => void;
+  /** Injectable WS client for the Metrics tab (see MetricsTab's doc
+   * comment) — tests only; production never passes this. */
+  metricsWsClient?: WsClient;
 }
 
 const tabTriggerClass =
@@ -66,7 +72,7 @@ const tabTriggerClass =
  * source won each resolved field) stays visible on its own tab alongside
  * it: rawSource shows what each source said, provenance shows who won.
  */
-export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: InspectorPanelProps) {
+export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsWsClient }: InspectorPanelProps) {
   const { data, isLoading, isError } = useInventoryDetailQuery(selectedRef);
   const rawSourceEntries = Object.entries(data?.rawSource ?? {});
   const { data: session } = useSession();
@@ -80,6 +86,7 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: Inspec
   const canWrite = data ? capsForNode(session, data.node).netWrite : false;
   const isBridgeKind = data ? data.kind === "bridge" || data.kind === "ovs-bridge" : false;
   const fdbRows = isBridgeKind && data ? (isFDBRows(data.fields.FDB) ? data.fields.FDB : []) : [];
+  const hasMetrics = data ? METRICS_KINDS.has(data.kind) : false;
   const navigate = useNavigate();
   const select = useTopologyStore((s) => s.select);
 
@@ -167,6 +174,11 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: Inspec
               {isBridgeKind && (
                 <RadixTabs.Trigger value="fdb" className={tabTriggerClass}>
                   FDB ({fdbRows.length})
+                </RadixTabs.Trigger>
+              )}
+              {hasMetrics && (
+                <RadixTabs.Trigger value="metrics" className={tabTriggerClass}>
+                  Metrics
                 </RadixTabs.Trigger>
               )}
             </RadixTabs.List>
@@ -290,6 +302,12 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: Inspec
                   ))}
                   {fdbRows.length === 0 && <li className="text-slate-400">No FDB entries learned on this bridge.</li>}
                 </ul>
+              </RadixTabs.Content>
+            )}
+
+            {hasMetrics && (
+              <RadixTabs.Content value="metrics" className="mt-3 flex-1 overflow-y-auto">
+                <MetricsTab entityRef={data.ref} kind={data.kind} wsClient={metricsWsClient} />
               </RadixTabs.Content>
             )}
           </RadixTabs.Root>

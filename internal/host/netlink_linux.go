@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
@@ -27,19 +28,33 @@ type Real struct {
 	// InterfacesPendingPath is the ifupdown2 staged-config file
 	// (/etc/network/interfaces.new), overridable for tests.
 	InterfacesPendingPath string
+	// OVSVSCtlPath is the ovs-vsctl binary name/path OVSStatus invokes;
+	// defaults to "ovs-vsctl" (resolved via PATH). Overridable for tests.
+	OVSVSCtlPath string
 	// LLDPCommand is the argv used to fetch LLDP neighbor data as JSON;
 	// defaults to `lldpctl -f json`. Overridable for tests/environments
 	// where lldpd is installed under a different name or path.
 	LLDPCommand []string
+	// BGPSummaryCommand is the argv used to fetch FRR's BGP peering
+	// summary as JSON; defaults to `vtysh -c "show bgp summary json"`
+	// (T-404, docs/features/sdn.md §3). Overridable for tests.
+	BGPSummaryCommand []string
+	// EVPNVNICommand is the argv used to fetch FRR's EVPN VNI table as
+	// JSON; defaults to `vtysh -c "show evpn vni json"`. Overridable for
+	// tests.
+	EVPNVNICommand []string
 }
 
 // NewReal constructs a Real reader with the standard Debian/Proxmox paths
-// and lldpd command.
+// and lldpd/vtysh/ovs-vsctl commands.
 func NewReal() *Real {
 	return &Real{
 		InterfacesPath:        "/etc/network/interfaces",
 		InterfacesPendingPath: "/etc/network/interfaces.new",
 		LLDPCommand:           []string{"lldpctl", "-f", "json"},
+		BGPSummaryCommand:     []string{"vtysh", "-c", "show bgp summary json"},
+		EVPNVNICommand:        []string{"vtysh", "-c", "show evpn vni json"},
+		OVSVSCtlPath:          "ovs-vsctl",
 	}
 }
 
@@ -105,6 +120,41 @@ func (r *Real) LLDP(ctx context.Context, _ string) ([]byte, error) {
 			return nil, fmt.Errorf("host: %w: %v", ErrLLDPUnavailable, err)
 		}
 		return nil, fmt.Errorf("host: running %v: %w", r.LLDPCommand, err)
+	}
+	return out, nil
+}
+
+// FRRBGPSummary implements Reader by shelling out to FRR's vtysh in JSON
+// mode. Like LLDP, there is no netlink/procfs source for BGP session
+// state — it is strictly FRR's own userspace daemon state, reachable only
+// via vtysh — so this is necessarily exec-based.
+func (r *Real) FRRBGPSummary(ctx context.Context, _ string) ([]byte, error) {
+	return r.runFRRCommand(ctx, r.BGPSummaryCommand)
+}
+
+// FRREVPNVNI implements Reader by shelling out to FRR's vtysh in JSON mode.
+func (r *Real) FRREVPNVNI(ctx context.Context, _ string) ([]byte, error) {
+	return r.runFRRCommand(ctx, r.EVPNVNICommand)
+}
+
+// runFRRCommand runs a fixed-argv vtysh invocation (never shell-
+// interpolated) and distinguishes "vtysh is not installed at all" (FRR
+// entirely absent on this node — docs/features/sdn.md §3's documented
+// graceful-degradation case) from any other failure (permission, timeout,
+// FRR installed but erroring), exactly like LLDP's own exec.ErrNotFound
+// detection.
+func (r *Real) runFRRCommand(ctx context.Context, argv []string) ([]byte, error) {
+	if len(argv) == 0 {
+		return nil, fmt.Errorf("host: frr: no command configured")
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // fixed, config-supplied argv, not user input
+	out, err := cmd.Output()
+	if err != nil {
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return nil, fmt.Errorf("host: %w: %v", ErrFRRUnavailable, err)
+		}
+		return nil, fmt.Errorf("host: running %v: %w", argv, err)
 	}
 	return out, nil
 }
@@ -359,4 +409,50 @@ func portVlans(entries []*nl.BridgeVlanInfo) []PortVlan {
 		}
 	}
 	return out
+}
+
+var _ OVSReader = (*Real)(nil)
+
+// OVSStatus implements OVSReader by shelling out to ovs-vsctl three times
+// (fixed argv: -f json --columns=<fixed list> list <table>, once each for
+// Bridge/Port/Interface) and joining the results — see ovsvsctl.go's doc
+// comment for why this cannot reuse Links()'s netlink path. Node is
+// currently unused (like every other Real method, it always reports this
+// node's own state — see Reader's doc comment on routing a peer read).
+func (r *Real) OVSStatus(ctx context.Context, _ string) ([]OVSBridgeStatus, error) {
+	bridgeJSON, err := r.runOVSVSCtl(ctx, "Bridge", ovsBridgeColumns)
+	if err != nil {
+		return nil, err
+	}
+	portJSON, err := r.runOVSVSCtl(ctx, "Port", ovsPortColumns)
+	if err != nil {
+		return nil, err
+	}
+	ifaceJSON, err := r.runOVSVSCtl(ctx, "Interface", ovsInterfaceColumns)
+	if err != nil {
+		return nil, err
+	}
+	return BuildOVSBridgeStatus(bridgeJSON, portJSON, ifaceJSON)
+}
+
+// runOVSVSCtl runs `ovs-vsctl -f json --columns=<columns> list <table>` and
+// returns its stdout, wrapping "binary not found" in ErrOVSUnavailable so
+// callers can degrade gracefully (T-407 AC4) instead of treating an absent
+// ovs-vsctl the same as any other failure.
+func (r *Real) runOVSVSCtl(ctx context.Context, table string, columns []string) ([]byte, error) {
+	path := r.OVSVSCtlPath
+	if path == "" {
+		path = "ovs-vsctl"
+	}
+	args := []string{"-f", "json", "--columns=" + strings.Join(columns, ","), "list", table}
+	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // fixed, config-supplied argv, not user input
+	out, err := cmd.Output()
+	if err != nil {
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return nil, fmt.Errorf("host: %w: %v", ErrOVSUnavailable, err)
+		}
+		return nil, fmt.Errorf("host: running %s %v: %w", path, args, err)
+	}
+	return out, nil
 }

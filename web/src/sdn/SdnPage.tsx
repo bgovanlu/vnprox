@@ -8,12 +8,15 @@ import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import type { SdnSubnet, SdnTree, SdnVnet, SdnZone } from "../api/types";
 import { SdnEditorLauncher } from "./SdnEditorLauncher";
+import { EvpnView } from "./EvpnView";
 import { InSyncBadge, PendingDiffView } from "./PendingDiffView";
 import { useSdnEditorStore } from "./sdnEditorStore";
 import { StatusDot } from "./StatusDot";
 import { sdnNodeEntityStatus, sdnZoneEntityStatus } from "./status";
 import { firstSelection, resolveSdnSelection, type SdnSelection } from "./tree";
 import { useSdnQuery } from "./queries";
+
+type SdnTab = "configuration" | "evpn";
 
 function TreeRow({
   depth,
@@ -262,10 +265,38 @@ function SubnetDetail({ subnet }: { subnet: SdnSubnet }) {
   );
 }
 
+function TabButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={clsx(
+        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function SdnPage() {
   const { data: tree, isLoading, isError } = useSdnQuery();
   const [selection, setSelection] = useState<SdnSelection | undefined>(undefined);
   const openEditor = useSdnEditorStore((s) => s.open);
+  const [tab, setTab] = useState<SdnTab>("configuration");
 
   // Default-select the first zone once the tree first loads, so the detail
   // panel isn't blank on arrival (tree.ts's firstSelection).
@@ -284,36 +315,54 @@ export function SdnPage() {
     <div className="flex h-full flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">SDN</h1>
-        <Button variant="primary" size="sm" onClick={() => { openEditor({ kind: "zone-create" }); }}>
-          + New zone
-        </Button>
+        <div className="flex items-center gap-2">
+          <div role="tablist" aria-label="SDN cockpit views" className="flex items-center gap-1">
+            <TabButton active={tab === "configuration"} label="Configuration" onClick={() => { setTab("configuration"); }} />
+            <TabButton active={tab === "evpn"} label="EVPN / BGP" onClick={() => { setTab("evpn"); }} />
+          </div>
+          {tab === "configuration" && (
+            <Button variant="primary" size="sm" onClick={() => { openEditor({ kind: "zone-create" }); }}>
+              + New zone
+            </Button>
+          )}
+        </div>
       </div>
       <SdnEditorLauncher />
 
-      {isLoading && <p className="text-sm text-slate-400">Loading SDN configuration…</p>}
-      {isError && (
-        <EmptyState
-          title="Could not load SDN configuration"
-          description="Check that vnproxd can reach the local PVE API, then reload."
-        />
-      )}
-      {!isLoading && !isError && tree && tree.zones.length === 0 && (
-        <EmptyState title="No SDN zones configured" description="Create a zone in Proxmox's SDN configuration to see it here." />
+      {tab === "configuration" && (
+        <>
+          {isLoading && <p className="text-sm text-slate-400">Loading SDN configuration…</p>}
+          {isError && (
+            <EmptyState
+              title="Could not load SDN configuration"
+              description="Check that vnproxd can reach the local PVE API, then reload."
+            />
+          )}
+          {!isLoading && !isError && tree && tree.zones.length === 0 && (
+            <EmptyState title="No SDN zones configured" description="Create a zone in Proxmox's SDN configuration to see it here." />
+          )}
+
+          {!isLoading && !isError && tree && tree.zones.length > 0 && (
+            <div className="grid min-h-0 flex-1 grid-cols-[minmax(220px,320px)_1fr] gap-3">
+              <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-800">
+                <SdnTreeView tree={tree} selection={selection} onSelect={setSelection} />
+              </div>
+              <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+                {!resolved && (
+                  <EmptyState title="Nothing selected" description="Pick a zone, VNet, or subnet from the tree." />
+                )}
+                {resolved?.selection.kind === "zone" && <ZoneDetail zone={resolved.zone} />}
+                {resolved?.selection.kind === "vnet" && resolved.vnet && <VnetDetail vnet={resolved.vnet} />}
+                {resolved?.selection.kind === "subnet" && resolved.subnet && <SubnetDetail subnet={resolved.subnet} />}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {!isLoading && !isError && tree && tree.zones.length > 0 && (
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(220px,320px)_1fr] gap-3">
-          <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-800">
-            <SdnTreeView tree={tree} selection={selection} onSelect={setSelection} />
-          </div>
-          <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-            {!resolved && (
-              <EmptyState title="Nothing selected" description="Pick a zone, VNet, or subnet from the tree." />
-            )}
-            {resolved?.selection.kind === "zone" && <ZoneDetail zone={resolved.zone} />}
-            {resolved?.selection.kind === "vnet" && resolved.vnet && <VnetDetail vnet={resolved.vnet} />}
-            {resolved?.selection.kind === "subnet" && resolved.subnet && <SubnetDetail subnet={resolved.subnet} />}
-          </div>
+      {tab === "evpn" && (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <EvpnView />
         </div>
       )}
     </div>

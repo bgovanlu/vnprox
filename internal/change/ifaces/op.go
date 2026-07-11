@@ -204,19 +204,31 @@ func (o BridgePortRemove) Ref() inventory.Ref { return o.Target }
 
 // --- vlan.* ------------------------------------------------------------
 
-// VlanCreate stages a new VLAN sub-interface. Name is derived as
-// "<Parent>.<VID>" per the Debian vlan-raw-device naming convention (as
-// seen throughout T-102's testdata corpus, e.g. "bond0.10", "vmbr0.20") —
-// Target.ID is expected to already be in that form; VlanName can be used to
-// compute it before constructing the op.
+// VlanCreate stages a new VLAN sub-interface, or (when OVS is true) a new
+// OVS Int Port. For a plain 802.1q sub-interface, Name is conventionally
+// derived as "<Parent>.<VID>" (as seen throughout T-102's testdata corpus,
+// e.g. "bond0.10", "vmbr0.20") — Target.ID is expected to already be in
+// that form; VlanName can be used to compute it before constructing the op.
+// An OVS Int Port's name is caller-chosen (OVS int ports are not named by
+// convention — see testdata/interfaces/04-ovs-bridge.interfaces's
+// "vlan20").
+//
+// OVS selects ovs_type=OVSIntPort/ovs_bridge/ovs_options (tag=/trunks=)
+// instead of vlan-raw-device/vlan-id (inventory.KindVlan has no dedicated
+// OVS-kind sibling the way Bridge/Bond do, so this field carries the
+// distinction — see internal/change.VlanCreateParams' doc comment). Parent
+// is the OVS bridge name when OVS is true. VID is the OVS access "tag" (0 =
+// untagged/native); Trunks is an optional additional trunked VLAN range set.
 type VlanCreate struct {
 	Target    inventory.Ref
 	Parent    string
 	Comments  string
 	Addresses []string
+	Trunks    []inventory.VidRange
 	VID       int
 	MTU       int
 	Autostart bool
+	OVS       bool
 }
 
 func (o VlanCreate) Kind() OpType       { return OpVlanCreate }
@@ -296,6 +308,7 @@ type wireParams struct {
 	Addresses            []string             `json:"addresses"`
 	Ports                []string             `json:"ports"`
 	Vids                 []inventory.VidRange `json:"vids"`
+	Trunks               []inventory.VidRange `json:"trunks"`
 	MIIMon               int                  `json:"miimon"`
 	VID                  int                  `json:"vid"`
 	RemoveAddress        bool                 `json:"removeAddress"`
@@ -303,6 +316,7 @@ type wireParams struct {
 	RemoveVids           bool                 `json:"removeVids"`
 	RemoveLacpRate       bool                 `json:"removeLacpRate"`
 	RemoveXmitHashPolicy bool                 `json:"removeXmitHashPolicy"`
+	OVS                  bool                 `json:"ovs"`
 }
 
 func intOr(p *int) int {
@@ -391,6 +405,7 @@ func DecodeOp(raw json.RawMessage) (Op, error) {
 		return VlanCreate{
 			Target: target, Parent: p.Parent, VID: p.VID, Addresses: p.Addresses,
 			MTU: intOr(p.MTU), Comments: strOr(p.Comments), Autostart: boolOr(p.Autostart),
+			OVS: p.OVS, Trunks: p.Trunks,
 		}, nil
 	case OpVlanUpdate:
 		return VlanUpdate{Target: target, Addresses: p.Addresses, MTU: intOr(p.MTU), Comments: p.Comments}, nil

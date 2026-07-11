@@ -613,8 +613,9 @@ func decodeApplyLog(raw json.RawMessage) ApplyLog {
 
 // nodeAgentReader adapts a NodeAgent to the host.Reader ifaces.DiffChangeset
 // consumes. DiffChangeset only ever calls InterfacesFile (with
-// includePending=false), so the other three methods are intentionally
-// unsupported — they are never reached on the diff path.
+// includePending=false), so the other methods (including T-404's
+// FRRBGPSummary/FRREVPNVNI) are intentionally unsupported — they are never
+// reached on the diff path.
 type nodeAgentReader struct{ agent NodeAgent }
 
 func (r nodeAgentReader) InterfacesFile(ctx context.Context, node string, _ bool) (string, error) {
@@ -631,4 +632,12 @@ func (r nodeAgentReader) LLDP(context.Context, string) ([]byte, error) {
 
 func (r nodeAgentReader) Stats(context.Context, string) (map[string]host.IfaceStats, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.Stats not supported")
+}
+
+func (r nodeAgentReader) FRRBGPSummary(context.Context, string) ([]byte, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.FRRBGPSummary not supported")
+}
+
+func (r nodeAgentReader) FRREVPNVNI(context.Context, string) ([]byte, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.FRREVPNVNI not supported")
 }

@@ -1,14 +1,21 @@
 package change
 
 // BondCreateParams is op "bond.create". Target carries the new bond's
-// identity (e.g. Ref{Kind: KindBond, Node: "pve1", ID: "bond0"}); these
-// params carry everything else docs/data-model.md's Bond entity documents
-// as declared (not runtime-only) config.
+// identity (Kind is KindBond for a Linux bond or KindOVSBond for an OVS
+// one — Kind alone disambiguates most fields, same as BridgeCreateParams).
+// These params carry everything else docs/data-model.md's Bond entity
+// documents as declared (not runtime-only) config.
+//
+// Bridge is OVS-only: the name of the OVS bridge this bond attaches to
+// (rendered as ovs_bridge — see internal/change/ifaces.BondCreate's doc
+// comment). It is required when Target.Kind is KindOVSBond and ignored
+// otherwise ("params carry ovs-specific fields", per docs/data-model.md).
 type BondCreateParams struct {
 	Mode           string   `json:"mode"`
 	LACPRate       string   `json:"lacpRate,omitempty"`
 	XmitHashPolicy string   `json:"xmitHashPolicy,omitempty"`
 	Comments       string   `json:"comments,omitempty"`
+	Bridge         string   `json:"bridge,omitempty"`
 	Slaves         []string `json:"slaves"`
 	MIIMon         int      `json:"miimon,omitempty"`
 	MTU            int      `json:"mtu,omitempty"`

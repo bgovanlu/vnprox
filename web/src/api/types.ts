@@ -310,6 +310,11 @@ export interface BondCreateParams {
   lacpRate?: string;
   xmitHashPolicy?: string;
   comments?: string;
+  /** OVS-only: the OVS bridge this bond attaches to (rendered as
+   * ovs_bridge). Required when target is an "ovs-bond:..." ref, ignored
+   * for a plain "bond:..." ref (internal/change.BondCreateParams' doc
+   * comment). */
+  bridge?: string;
   slaves: string[];
   miimon?: number;
   mtu?: number;
@@ -363,6 +368,15 @@ export interface VlanCreateParams {
   addresses?: string[];
   vid: number;
   mtu?: number;
+  /** True for an OVS Int Port (ovs_type=OVSIntPort) instead of a plain
+   * 802.1q VLAN sub-interface: parent then names an OVS bridge, vid becomes
+   * the OVS access "tag" (0 = untagged/native), and trunks may carry an
+   * additional trunked VLAN range set (internal/change.VlanCreateParams'
+   * doc comment). */
+  ovs?: boolean;
+  /** OVS-only trunk VLAN ranges (ovs-vsctl's Port "trunks" column);
+   * rejected by the backend when ovs is not true. */
+  trunks?: VidRange[];
 }
 
 export interface VlanUpdateParams {
@@ -750,8 +764,373 @@ export interface SdnTree {
   generatedAt: number;
 }
 
+// --- EVPN/BGP observability (docs/api.md; GET /sdn/evpn/status) -----------
+// Mirrors internal/evpn/types.go's Status/NodeStatus/Peer/VNI/
+// ExitNodeHealth/Finding exactly — see that file's doc comments and
+// docs/api.md's `GET /sdn/evpn/status` row for the non-obvious bits
+// (frrInstalled=false is the clean "no EVPN" case, distinct from `error`
+// being set). Added by T-404.
+
+/** One BGP/EVPN peering session's detail — the peering matrix's per-cell
+ * data and the session detail panel's content. */
+export interface EvpnPeer {
+  peerAddr: string;
+  peerNode?: string;
+  addressFamily?: string;
+  /** FRR's own FSM vocabulary: "Idle" | "Connect" | "Active" | "OpenSent" |
+   * "OpenConfirm" | "Established", kept as a plain string per this file's
+   * open-ended-server-enum convention (see SdnNodeStatus.status). */
+  state: string;
+  /** FRR's parenthetical qualifier for a down session when present (e.g.
+   * "Idle (Admin)" -> state:"Idle", stateReason:"Admin") — the closest
+   * thing FRR's summary JSON has to a "last error". */
+  stateReason?: string;
+  remoteAs?: number;
+  pfxRcd?: number;
+  pfxSnt?: number;
+  uptimeSecs?: number;
+  flapTransitions?: number;
+}
+
+/** One EVPN VNI observed on a node. */
+export interface EvpnVni {
+  vni: number;
+  type: string; // "L2" | "L3"
+  vxlanIf?: string;
+  tenantVrf?: string;
+  numMacs?: number;
+  numArpNd?: number;
+}
+
+/** One cluster node's FRR observation. frrInstalled=false (peers/vnis
+ * empty, error unset) is the documented clean "no EVPN" case
+ * (docs/features/sdn.md §3) — distinct from `error` being set, a real
+ * read/parse failure on a node that does run FRR. */
+export interface EvpnNodeStatus {
+  node: string;
+  frrInstalled: boolean;
+  routerId?: string;
+  asn?: number;
+  peers: EvpnPeer[];
+  vnis: EvpnVni[];
+  error?: string;
+}
+
+/** One EVPN zone exit node's derived health. */
+export interface EvpnExitNodeHealth {
+  zone: string;
+  node: string;
+  healthy: boolean;
+  detail?: string;
+}
+
+/** A flapping-session health finding (docs/features/sdn.md §3: "Flapping
+ * sessions raise a health finding"). */
+export interface EvpnFinding {
+  id: string;
+  code: string;
+  severity: Severity;
+  node: string;
+  peerAddr: string;
+  detail: string;
+}
+
+/** GET /sdn/evpn/status response. */
+export interface EvpnStatus {
+  nodes: EvpnNodeStatus[];
+  exitNodes: EvpnExitNodeHealth[];
+  findings: EvpnFinding[];
+  generatedAt: number;
+  partial?: boolean;
+  failedNodes?: string[];
+}
+
+// --- Firewall (docs/api.md §"Firewall, SDN, IPAM"; internal/api/firewall.go,
+// internal/fw's pure resolver) ----------------------------------------------
+// GET /firewall/rulesets?scope= and GET /firewall/objects — T-501's read
+// views: per-scope raw rulesets, the guest resolved (group-expanded)
+// evaluation order with origin labels, enablement banners (the
+// "Datacenter firewall is OFF" footgun, docs/features/firewall.md §2), and
+// alias/ipset/security-group usage tracking with macro expansion previews.
+
+export type FwScope = "cluster" | "node" | "guest";
+
+/** One documented evaluation step's origin label
+ * (docs/features/firewall.md §1: "cluster rules → security groups → guest
+ * rules → default policies"). "default" only ever appears on a
+ * DefaultPolicy, never inside a ResolvedRuleView. */
+export type FwOrigin = "cluster" | "group" | "guest" | "default";
+
+/** A macro's proto/port expansion preview (docs/features/firewall.md §2's
+ * "macro picker ... with expansion preview"). */
+export interface MacroPortView {
+  proto?: string;
+  dport?: string;
+}
+
+export interface MacroView {
+  name: string;
+  comment?: string;
+  ports: MacroPortView[];
+}
+
+/** One firewall rule, as configured (internal/inventory.FwRule mirrored by
+ * internal/api/firewall.go's ruleView). `macroExpansion` is populated
+ * server-side whenever `macro` names a macro this build knows. */
+export interface RuleView {
+  pos: number;
+  enabled: boolean;
+  direction: string;
+  action: string;
+  proto?: string;
+  source?: string;
+  dest?: string;
+  sport?: string;
+  dport?: string;
+  iface?: string;
+  macro?: string;
+  macroExpansion?: MacroPortView[];
+  log?: string;
+  comment?: string;
+}
+
+/** An enablement banner (docs/features/firewall.md §2's "Datacenter
+ * firewall is OFF: none of these rules are active" example) — cascades
+ * from the datacenter scope down through node and guest scopes even when
+ * that scope's own toggle is nominally on. */
+export interface BannerView {
+  scope: FwScope;
+  message: string;
+}
+
+/** One scope's raw ruleset (the read-only per-scope rule table). */
+export interface RulesetView {
+  ref: string;
+  scope: FwScope;
+  node?: string;
+  enabled: boolean;
+  defaultIn?: string;
+  defaultOut?: string;
+  rules: RuleView[];
+  banners?: BannerView[];
+}
+
+/** One entry in a guest's effective, ordered evaluation
+ * (docs/features/firewall.md §1). `groupName` is set when this rule came
+ * from (or is itself a reference to) a security group. */
+export interface ResolvedRuleView {
+  origin: FwOrigin;
+  groupName?: string;
+  rule: RuleView;
+  pos: number;
+}
+
+export interface DefaultPolicyView {
+  direction: "in" | "out";
+  policy: string;
+  origin: FwOrigin;
+}
+
+/** A guest's full resolved view: the ordered rule list plus the two
+ * directions' fallthrough default policies and every enablement gate
+ * making some or all of it inert. */
+export interface ResolvedView {
+  guest: string;
+  active: boolean;
+  gates?: BannerView[];
+  rules: ResolvedRuleView[];
+  defaultIn: DefaultPolicyView;
+  defaultOut: DefaultPolicyView;
+}
+
+/** GET /firewall/rulesets?scope=guest&ref=... response: the guest's own
+ * raw ruleset plus its resolved view in one payload. */
+export interface GuestRulesetResponse {
+  ruleset: RulesetView;
+  resolved: ResolvedView;
+}
+
+/** `?scope=node`/`?scope=guest` with no `ref`/`node` — the hierarchy list
+ * view. */
+export interface RulesetListResponse {
+  items: RulesetView[];
+}
+
+export interface RuleRefView {
+  scope: FwScope;
+  ref: string;
+  pos: number;
+}
+
+/** One alias/ipset/security-group's "referenced by N rules" usage summary
+ * (docs/features/firewall.md §2). `kind` names which object kind this is;
+ * `scope` is the scope the object is *defined* in (cluster-scope objects
+ * are visible everywhere; node-/guest-scope ones only within their own
+ * ruleset). */
+export interface ObjectUsageView {
+  kind: "alias" | "ipset" | "group";
+  scope: FwScope;
+  name: string;
+  comment?: string;
+  count: number;
+  referencedBy?: RuleRefView[];
+}
+
+/** GET /firewall/objects response. */
+export interface FirewallObjectsResponse {
+  aliases: ObjectUsageView[];
+  ipsets: ObjectUsageView[];
+  groups: ObjectUsageView[];
+  macros: MacroView[];
+}
+
+// --- Metrics (GET /metrics/live, GET /metrics/history, `metrics.sample` WS
+// event; internal/metrics.Rates/LiveMetric/HistoryPoint/SlaveRate,
+// docs/features/monitoring.md §1-2) ----------------------------------------
+
+/** Per-second rate set for one entity, mirroring internal/metrics.Rates.
+ * Bps fields are bits/sec (link-utilization math's conventional unit); all
+ * others are events/sec. */
+export interface Rates {
+  rxBps: number;
+  txBps: number;
+  rxPps: number;
+  txPps: number;
+  rxErrsPerSec: number;
+  txErrsPerSec: number;
+  rxDropPerSec: number;
+  txDropPerSec: number;
+}
+
+/** One bond slave's own current rate + LACP/MII active state
+ * (docs/features/monitoring.md §1: "Bond member balance shown per-slave"). */
+export interface SlaveRate {
+  ref: string;
+  active: boolean;
+  rates: Rates;
+}
+
+/** One entity's current rate snapshot — GET /metrics/live's per-item shape
+ * and the traffic paint mode's data source (utilizationPct drives edge
+ * heat/thickness). `slaves` is only present for a Bond ref. */
+export interface LiveMetric {
+  ref: string;
+  at: number;
+  rates: Rates;
+  speedMbps?: number;
+  rxUtilPct?: number;
+  txUtilPct?: number;
+  utilizationPct?: number;
+  slaves?: SlaveRate[];
+}
+
+export interface MetricsLiveResponse {
+  items: LiveMetric[];
+}
+
+/** One 24h-ring history point — GET /metrics/history's per-item shape
+ * (rate derived between two consecutive 30s-downsampled stored samples). */
+export interface HistoryPoint {
+  at: number;
+  rates: Rates;
+}
+
+export interface MetricsHistoryResponse {
+  ref: string;
+  items: HistoryPoint[];
+}
+
+/** The `metrics.sample` WS push (docs/api.md: `{ref, at, rates}`). */
+export interface MetricsSampleEvent {
+  event: "metrics.sample";
+  ref: string;
+  at: number;
+  rates: Rates;
+}
+
+// --- Blueprints (GET/POST /blueprints, POST /blueprints/{id}/instantiate;
+// docs/api.md's Blueprints section; internal/blueprint's Go types) --------
+
+export type BlueprintParamType = "string" | "int" | "bool" | "cidr" | "ip" | "vid" | "vidList" | "iface" | "nodeList";
+
+/** JSON value a param's default/a form's submitted value can take —
+ * deliberately not `unknown` (every ParamDef.type above maps to exactly
+ * one of these shapes, and the param form/validators branch on `type` to
+ * narrow it, never on structural inspection). */
+export type BlueprintParamValue = string | number | boolean | string[] | number[];
+
+/** One parameter a blueprint's param form collects (docs/api.md's
+ * Blueprints section: "ParamDef"). `addressSuggest` (only ever true on a
+ * "cidr"/"ip" param) drives the param form's "suggest" button, calling
+ * `GET /blueprints/{id}/suggest?param=`. */
+export interface BlueprintParamDef {
+  name: string;
+  type: BlueprintParamType;
+  label?: string;
+  description?: string;
+  default?: BlueprintParamValue;
+  required?: boolean;
+  addressSuggest?: boolean;
+  subnet?: string;
+}
+
+export type BlueprintNodeSelectorMode = "all" | "single";
+
+export interface BlueprintNodeSelector {
+  mode: BlueprintNodeSelectorMode;
+}
+
+/** One entity a blueprint creates. `fields` keys mirror the corresponding
+ * change op's Create-params JSON field names (docs/api.md's Blueprints
+ * section) — the frontend never interprets them beyond rendering the
+ * preview diagram and passing them through untouched on save/import. */
+export interface BlueprintEntityTemplate {
+  kind: "bridge" | "bond" | "vlan" | "sdn-zone" | "sdn-vnet" | "sdn-subnet";
+  idTemplate: string;
+  nodeSelector?: BlueprintNodeSelector;
+  fields: Record<string, unknown>;
+}
+
+/** A parameterized topology template (docs/api.md's Blueprints section;
+ * docs/data-model.md §4). `readOnly` marks the five bundled starters. */
+export interface Blueprint {
+  blueprintVersion: number;
+  id: string;
+  name: string;
+  description?: string;
+  readOnly?: boolean;
+  nodeSelector: BlueprintNodeSelector;
+  params: BlueprintParamDef[];
+  entities: BlueprintEntityTemplate[];
+  createdBy?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface BlueprintsListResponse {
+  items: Blueprint[];
+}
+
+/** POST /blueprints/{id}/instantiate body (docs/api.md: `nodes`/`title`
+ * are additive to the documented `{params}` shape). */
+export interface InstantiateBlueprintRequest {
+  params: Record<string, BlueprintParamValue>;
+  nodes?: string[];
+  title?: string;
+}
+
+/** POST /blueprints/capture body (T-603 additive route). */
+export interface CaptureBlueprintRequest {
+  node: string;
+}
+
+/** GET /blueprints/{id}/suggest response. */
+export interface SuggestAddressResponse {
+  address: string;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
-// Snapshots, firewall/IPAM read views, the path simulator, metrics, and
-// blueprints all have routes defined in docs/api.md but no frontend
-// consumer yet — their request/response types land with the task that
-// first calls them (T-2xx). Add them here, not in a parallel file.
+// Snapshots, IPAM read views, and the path simulator all have routes
+// defined in docs/api.md but no frontend consumer yet — their
+// request/response types land with the task that first calls them.
+// Add them here, not in a parallel file.

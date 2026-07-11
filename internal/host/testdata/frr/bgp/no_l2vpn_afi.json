@@ -1,0 +1,21 @@
+{
+  "ipv4Unicast": {
+    "routerId": "10.50.0.1",
+    "as": 65030,
+    "vrfName": "default",
+    "peerCount": 1,
+    "peers": {
+      "10.50.0.2": {
+        "hostname": "core1",
+        "remoteAs": 65031,
+        "version": 4,
+        "msgRcvd": 10,
+        "msgSent": 10,
+        "peerUptime": "00:05:00",
+        "pfxRcd": 1,
+        "pfxSnt": 1,
+        "state": "Established"
+      }
+    }
+  }
+}

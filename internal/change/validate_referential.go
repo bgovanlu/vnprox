@@ -52,6 +52,9 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 			out = append(out, errorf(codeAlreadyExists, ref, "a bond named %q already exists", op.Target.ID))
 		}
 		checkSlaves(p, op.Target, ref, params.Slaves, &out)
+		if op.Target.Kind == inventory.KindOVSBond && params.Bridge != "" {
+			checkOVSBridgeParent(p, op.Target, params.Bridge, ref, &out)
+		}
 
 	case *BondUpdateParams:
 		if !p.exists(op.Target) {
@@ -100,6 +103,7 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 			out = append(out, errorf(codePortNotFound, ref, "port %q does not exist on node %s", params.Port, op.Target.Node))
 			break
 		}
+		checkOVSKindCompat(op.Target, portRef, ref, &out)
 		if owner, enslaved := p.enslaved[portRef]; enslaved && !p.deletedLater(owner) {
 			out = append(out, errorf(codeDuplicateEnslavement, ref, "%s is already enslaved by %s", portRef, owner))
 		}
@@ -122,11 +126,26 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 		if p.exists(op.Target) {
 			out = append(out, errorf(codeAlreadyExists, ref, "a vlan interface named %q already exists", op.Target.ID))
 		}
-		if _, ok := p.ifaceRef(op.Target.Node, params.Parent); !ok {
+		if params.OVS {
+			// An OVS Int Port's parent must be an existing OVS bridge — the
+			// symmetric cross-kind check to checkOVSKindCompat (T-407:
+			// "mixing Linux-bridge ports into OVS bridges and vice versa").
+			checkOVSBridgeParent(p, op.Target, params.Parent, ref, &out)
+			checkVIDOverlap(params.Trunks, ref, &out)
+		} else if pref, ok := p.ifaceRef(op.Target.Node, params.Parent); !ok {
 			out = append(out, errorf(codeParentNotFound, ref, "parent %q does not exist on node %s", params.Parent, op.Target.Node))
+		} else if pref.Kind == inventory.KindOVSBridge {
+			out = append(out, errorf(codeOVSKindMismatch, ref, "parent %q is an OVS bridge; a plain VLAN sub-interface cannot attach to it (use ovs: true)", params.Parent))
 		}
-		if _, dup := p.vlanIfaces[vlanKey{op.Target.Node, params.Parent, params.Vid}]; dup {
-			out = append(out, errorf(codeVIDOverlap, ref, "vid %d is already in use on parent %q", params.Vid, params.Parent))
+		// A vid of 0 is a legitimate "untagged/trunk-only" OVS Int Port
+		// (params.Vid's doc comment); several of those may share the same
+		// (node, parent) pair without conflicting, so the vlanKey duplicate
+		// check — which exists to catch two *tagged* interfaces racing for
+		// the same VID — only applies to a genuinely tagged vid.
+		if !params.OVS || params.Vid != 0 {
+			if _, dup := p.vlanIfaces[vlanKey{op.Target.Node, params.Parent, params.Vid}]; dup {
+				out = append(out, errorf(codeVIDOverlap, ref, "vid %d is already in use on parent %q", params.Vid, params.Parent))
+			}
 		}
 		checkAddressOverlap(p, op.Target, ref, params.Addresses, &out)
 
@@ -289,6 +308,7 @@ func checkSlaves(p *projection, target inventory.Ref, ref string, slaves []strin
 			*out = append(*out, errorf(codeSlaveNotFound, ref, "slave %q does not exist on node %s", s, target.Node))
 			continue
 		}
+		checkOVSKindCompat(target, sref, ref, out)
 		if owner, enslaved := p.enslaved[sref]; enslaved && owner != target && !p.deletedLater(owner) {
 			*out = append(*out, errorf(codeDuplicateEnslavement, ref, "%s is already enslaved by %s", sref, owner))
 		}
@@ -303,9 +323,49 @@ func checkPorts(p *projection, target inventory.Ref, ref string, ports []string,
 			*out = append(*out, errorf(codePortNotFound, ref, "port %q does not exist on node %s", port, target.Node))
 			continue
 		}
+		checkOVSKindCompat(target, pref, ref, out)
 		if owner, enslaved := p.enslaved[pref]; enslaved && owner != target && !p.deletedLater(owner) {
 			*out = append(*out, errorf(codeDuplicateEnslavement, ref, "%s is already enslaved by %s", pref, owner))
 		}
+	}
+}
+
+// ovsL2Kinds / linuxL2Kinds classify the two kind-families the cross-kind
+// port/slave/parent checks below reject mixing (docs/features/
+// change-management.md §5: "mixing Linux-bridge ports into OVS bridges and
+// vice versa -> error"). PhysNics and VLAN sub-interfaces/OVS Int Ports
+// (which share inventory.KindVlan — see VlanIface.Virt's doc comment) carry
+// no bridge/bond family of their own, so they are compatible with either
+// side and never trip this check.
+var ovsL2Kinds = map[inventory.Kind]bool{inventory.KindOVSBridge: true, inventory.KindOVSBond: true}
+var linuxL2Kinds = map[inventory.Kind]bool{inventory.KindBridge: true, inventory.KindBond: true}
+
+// checkOVSKindCompat flags attaching a Linux bridge/bond as a port/slave of
+// an OVS bridge/bond, or an OVS bridge/bond as a port/slave of a Linux
+// bridge/bond — the two symmetric halves of T-407's cross-kind mistake.
+func checkOVSKindCompat(target, member inventory.Ref, ref string, out *[]Finding) {
+	switch {
+	case ovsL2Kinds[target.Kind] && linuxL2Kinds[member.Kind]:
+		*out = append(*out, errorf(codeOVSKindMismatch, ref,
+			"%s is a Linux %s and cannot be a port/slave of OVS %s %s", member, member.Kind, target.Kind, target))
+	case linuxL2Kinds[target.Kind] && ovsL2Kinds[member.Kind]:
+		*out = append(*out, errorf(codeOVSKindMismatch, ref,
+			"%s is an OVS %s and cannot be a port/slave of Linux %s %s", member, member.Kind, target.Kind, target))
+	}
+}
+
+// checkOVSBridgeParent validates an OVS bond's or OVS Int Port's ovs_bridge
+// attachment: the named bridge must exist on target's node and be an OVS
+// bridge (attaching to a Linux bridge is the other cross-kind mistake
+// checkOVSKindCompat rejects the reverse direction of).
+func checkOVSBridgeParent(p *projection, target inventory.Ref, bridgeName, ref string, out *[]Finding) {
+	bref, ok := p.ifaceRef(target.Node, bridgeName)
+	if !ok {
+		*out = append(*out, errorf(codeParentNotFound, ref, "ovs bridge %q does not exist on node %s", bridgeName, target.Node))
+		return
+	}
+	if bref.Kind != inventory.KindOVSBridge {
+		*out = append(*out, errorf(codeOVSKindMismatch, ref, "%q is not an OVS bridge (kind %s)", bridgeName, bref.Kind))
 	}
 }
 

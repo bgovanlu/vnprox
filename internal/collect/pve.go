@@ -278,7 +278,8 @@ func (c *Collector) pollFirewall(ctx context.Context, targetNodes []string, reso
 			c.log.Warn("collect: fetching cluster firewall failed, skipping", "error", err)
 		} else {
 			ref := inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}
-			clusterEnts = inventory.FromPVEFirewall(ref, inventory.FwScopeCluster, opts, rules)
+			objs := c.fetchFirewallObjects(ctx, pve.ClusterFirewallScope(), true)
+			clusterEnts = inventory.FromPVEFirewall(ref, inventory.FwScopeCluster, opts, rules, objs)
 		}
 		c.graph.ApplyPoll(inventory.SourcePVEFirewall, inventory.Scope{Kinds: fwKinds}, clusterEnts)
 	}
@@ -289,7 +290,8 @@ func (c *Collector) pollFirewall(ctx context.Context, targetNodes []string, reso
 			c.log.Warn("collect: fetching node firewall failed, skipping", "node", n, "error", err)
 		} else {
 			ref := inventory.Ref{Kind: inventory.KindFwRuleset, Node: n, ID: "node"}
-			ents = append(ents, inventory.FromPVEFirewall(ref, inventory.FwScopeNode, opts, rules)...)
+			objs := c.fetchFirewallObjects(ctx, pve.NodeFirewallScope(n), false)
+			ents = append(ents, inventory.FromPVEFirewall(ref, inventory.FwScopeNode, opts, rules, objs)...)
 		}
 
 		for _, r := range resources {
@@ -306,7 +308,8 @@ func (c *Collector) pollFirewall(ctx context.Context, targetNodes []string, reso
 				continue
 			}
 			ref := inventory.Ref{Kind: inventory.KindFwRuleset, Node: n, ID: fmt.Sprintf("guest/%s/%d", kind, r.VMID)}
-			ents = append(ents, inventory.FromPVEFirewall(ref, inventory.FwScopeGuest, opts, rules)...)
+			objs := c.fetchFirewallObjects(ctx, pve.GuestFirewallScope(n, kind, r.VMID), false)
+			ents = append(ents, inventory.FromPVEFirewall(ref, inventory.FwScopeGuest, opts, rules, objs)...)
 		}
 
 		c.graph.ApplyPoll(inventory.SourcePVEFirewall, inventory.Scope{Node: n, Kinds: fwKinds}, ents)
@@ -325,4 +328,59 @@ func (c *Collector) fetchFirewall(ctx context.Context, scope pve.FirewallScope) 
 		return pve.FirewallOptions{}, nil, fmt.Errorf("firewall rules: %w", err)
 	}
 	return *opts, rules, nil
+}
+
+// fetchFirewallObjects fetches one scope's aliases and ipsets (with
+// entries), and — when includeGroups (cluster scope only; security groups
+// are a cluster-only concept in real PVE, see inventory.FwGroup's doc
+// comment) — the cluster-wide security groups with their rules. Individual
+// object fetch failures (one ipset's entries, one group's rules) are
+// logged and skipped, the same "don't blank out what's already known"
+// policy every other step in this poll cycle follows; a failure to list
+// aliases/ipsets/groups themselves just yields an empty result for that
+// object kind this poll.
+func (c *Collector) fetchFirewallObjects(ctx context.Context, scope pve.FirewallScope, includeGroups bool) inventory.FirewallObjects {
+	var objs inventory.FirewallObjects
+
+	if aliases, err := c.pve.ListFirewallAliases(ctx, scope); err != nil {
+		c.log.Warn("collect: listing firewall aliases failed, skipping", "error", err)
+	} else {
+		objs.Aliases = aliases
+	}
+
+	sets, err := c.pve.ListFirewallIPSets(ctx, scope)
+	if err != nil {
+		c.log.Warn("collect: listing firewall ipsets failed, skipping", "error", err)
+	} else {
+		objs.IPSets = sets
+		objs.IPSetEntries = make(map[string][]pve.FirewallIPSetEntry, len(sets))
+		for _, s := range sets {
+			entries, entriesErr := c.pve.ListFirewallIPSetEntries(ctx, scope, s.Name)
+			if entriesErr != nil {
+				c.log.Warn("collect: listing firewall ipset entries failed, skipping", "ipset", s.Name, "error", entriesErr)
+				continue
+			}
+			objs.IPSetEntries[s.Name] = entries
+		}
+	}
+
+	if !includeGroups {
+		return objs
+	}
+	groups, err := c.pve.ListFirewallGroups(ctx)
+	if err != nil {
+		c.log.Warn("collect: listing firewall groups failed, skipping", "error", err)
+		return objs
+	}
+	objs.Groups = groups
+	objs.GroupRules = make(map[string][]pve.FirewallRule, len(groups))
+	for _, g := range groups {
+		rules, err := c.pve.GetFirewallGroupRules(ctx, g.Name)
+		if err != nil {
+			c.log.Warn("collect: getting firewall group rules failed, skipping", "group", g.Name, "error", err)
+			continue
+		}
+		objs.GroupRules[g.Name] = rules
+	}
+	return objs
 }
