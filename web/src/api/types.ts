@@ -596,8 +596,88 @@ export interface FDBResponse {
   items: FDBRow[];
 }
 
+// --- SDN (docs/api.md §"Firewall, SDN, IPAM"; GET /sdn) --------------------
+// Mirrors internal/sdn/service.go's Tree/Zone/Vnet/Subnet/NodeStatus/
+// PendingDiff exactly — see that file's doc comments for the non-obvious
+// bits (Diff is entirely omitted, not present-but-empty, for an in-sync
+// object; ChangedFields/Running/Staged are only populated for state
+// "changed"). Added by T-401 (not in the original docs/api.md contract
+// beyond the bare route + one-line purpose; the full response shape is
+// documented in docs/api.md's GET /sdn row in this same change per
+// docs/development.md's definition-of-done #4).
+
+/** One node's realization status for a zone
+ * (docs/features/sdn.md §1: "applied / pending / error"). */
+export interface SdnNodeStatus {
+  node: string;
+  /** "ok" | "pending" | "error" in practice (docs/features/sdn.md §1), kept
+   * as a plain string since it's a server-controlled, open-ended enum
+   * (mirrors this file's other `kind` fields' convention). */
+  status: string;
+  detail?: string;
+}
+
+/** The staged-vs-running delta for one zone/vnet/subnet
+ * (docs/features/sdn.md §1: "vnprox surfaces staged-vs-running as a
+ * first-class diff instead of a mystery 'pending' flag"). Absent entirely
+ * (the entity's `pendingDiff` field is undefined) for an in-sync object. */
+export interface SdnPendingDiff {
+  state: "new" | "changed" | "deleted";
+  changedFields?: string[];
+  running?: Record<string, unknown>;
+  staged?: Record<string, unknown>;
+}
+
+export interface SdnSubnet {
+  id: string;
+  vnet: string;
+  cidr: string;
+  gateway?: string;
+  dhcpRangeStart?: string;
+  dhcpRangeEnd?: string;
+  snat?: boolean;
+  pending?: string;
+  pendingDiff?: SdnPendingDiff;
+}
+
+export interface SdnVnet {
+  id: string;
+  zone: string;
+  alias?: string;
+  tag?: number;
+  vlanAware?: boolean;
+  pending?: string;
+  pendingDiff?: SdnPendingDiff;
+  subnets: SdnSubnet[];
+}
+
+export interface SdnZone {
+  id: string;
+  /** "simple" | "vlan" | "qinq" | "vxlan" | "evpn" in practice
+   * (docs/features/sdn.md §2's five wizards), kept as a plain string per
+   * SdnNodeStatus.status's doc comment. */
+  type: string;
+  bridge?: string;
+  controller?: string;
+  nodes?: string[];
+  exitNodes?: string[];
+  peers?: string[];
+  mtu?: number;
+  vrfVxlan?: number;
+  pending?: string;
+  nodeStatus: SdnNodeStatus[];
+  pendingDiff?: SdnPendingDiff;
+  vnets: SdnVnet[];
+}
+
+/** GET /sdn response. */
+export interface SdnTree {
+  zones: SdnZone[];
+  generatedAt: number;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
-// Snapshots, firewall/SDN/IPAM read views, the path simulator, metrics, and
+// Snapshots, firewall/IPAM read views, the path simulator, metrics, and
 // blueprints all have routes defined in docs/api.md but no frontend
 // consumer yet — their request/response types land with the task that
 // first calls them (T-2xx). Add them here, not in a parallel file.

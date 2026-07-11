@@ -1,0 +1,491 @@
+{
+  "nodes": [
+    {
+      "id": "bridge:pve1:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve1:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve2:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve2:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "bridge:pve3:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "guest-nic:pve1:300/net0",
+      "kind": "guest-nic",
+      "label": "evpn-tester-a/net0",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "guest-nic:pve2:301/net0",
+      "kind": "guest-nic",
+      "label": "evpn-tester-b/net0",
+      "layer": "guest",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "guest:pve1:300",
+      "kind": "guest",
+      "label": "evpn-tester-a",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "vmid=300"
+      ]
+    },
+    {
+      "id": "guest:pve2:301",
+      "kind": "guest",
+      "label": "evpn-tester-b",
+      "layer": "guest",
+      "nodeGroup": "pve2",
+      "status": "ok",
+      "badges": [
+        "vmid=301"
+      ]
+    },
+    {
+      "id": "lldp-neighbor:pve1:eno1/ac:1f:6b:03:00:01/Eth1/1",
+      "kind": "lldp-neighbor",
+      "label": "sw-leaf-01",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": [
+        "port=Eth1/1"
+      ]
+    },
+    {
+      "id": "physnic:pve1:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve2:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "physnic:pve3:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "id": "sdn-subnet::10.55.0.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.55.0.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-subnet::10.60.0.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.60.0.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-subnet::10.70.0.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.70.0.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "pending=new"
+      ]
+    },
+    {
+      "id": "sdn-subnet::10.80.0.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.80.0.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-subnet::192.168.50.0/24",
+      "kind": "sdn-subnet",
+      "label": "192.168.50.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-vnet::evpnz/vnet-tenant-a",
+      "kind": "sdn-vnet",
+      "label": "vnet-tenant-a (tenant-a)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-vnet::qinqz/vnet-qinq1",
+      "kind": "sdn-vnet",
+      "label": "vnet-qinq1 (qinq-net)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "tag=200",
+        "pending=new"
+      ]
+    },
+    {
+      "id": "sdn-vnet::simplez/vnet-simple1",
+      "kind": "sdn-vnet",
+      "label": "vnet-simple1 (simple-net)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-vnet::vlanz/vnet-vlan1",
+      "kind": "sdn-vnet",
+      "label": "vnet-vlan1 (vlan-net)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "tag=100"
+      ]
+    },
+    {
+      "id": "sdn-vnet::vxlanz/vnet-vxlan1",
+      "kind": "sdn-vnet",
+      "label": "vnet-vxlan1 (vxlan-net)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "id": "sdn-zone::evpnz",
+      "kind": "sdn-zone",
+      "label": "evpnz",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "type=evpn"
+      ]
+    },
+    {
+      "id": "sdn-zone::qinqz",
+      "kind": "sdn-zone",
+      "label": "qinqz",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "type=qinq"
+      ]
+    },
+    {
+      "id": "sdn-zone::simplez",
+      "kind": "sdn-zone",
+      "label": "simplez",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "down",
+      "badges": [
+        "type=simple"
+      ]
+    },
+    {
+      "id": "sdn-zone::vlanz",
+      "kind": "sdn-zone",
+      "label": "vlanz",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "degraded",
+      "badges": [
+        "type=vlan",
+        "pending=changed"
+      ]
+    },
+    {
+      "id": "sdn-zone::vxlanz",
+      "kind": "sdn-zone",
+      "label": "vxlanz",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "type=vxlan"
+      ]
+    },
+    {
+      "id": "switch:ac:1f:6b:03:00:01",
+      "kind": "switch",
+      "label": "sw-leaf-01",
+      "layer": "phys",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "nodes=pve1",
+        "links=1"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "bridge:pve1:vmbr0",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "vtep-peer",
+      "status": "ok",
+      "badges": [
+        "zone=evpnz",
+        "vniMtu=9166"
+      ]
+    },
+    {
+      "from": "bridge:pve1:vmbr0",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "vtep-peer",
+      "status": "ok",
+      "badges": [
+        "zone=vxlanz",
+        "vniMtu=9166"
+      ]
+    },
+    {
+      "from": "bridge:pve1:vmbr0",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "vtep-peer",
+      "status": "ok",
+      "badges": [
+        "zone=vxlanz",
+        "vniMtu=9166"
+      ]
+    },
+    {
+      "from": "bridge:pve1:vmbr0",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "vtep-peer",
+      "status": "ok",
+      "badges": [
+        "zone=evpnz",
+        "vniMtu=9166"
+      ]
+    },
+    {
+      "from": "bridge:pve2:vmbr0",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "vtep-peer",
+      "status": "ok",
+      "badges": [
+        "zone=vxlanz",
+        "vniMtu=9166"
+      ]
+    },
+    {
+      "from": "bridge:pve2:vmbr0",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "vtep-peer",
+      "status": "ok",
+      "badges": [
+        "zone=evpnz",
+        "vniMtu=9166"
+      ]
+    },
+    {
+      "from": "guest-nic:pve1:300/net0",
+      "to": "sdn-vnet::evpnz/vnet-tenant-a",
+      "kind": "attached-to",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "guest-nic:pve2:301/net0",
+      "to": "sdn-vnet::evpnz/vnet-tenant-a",
+      "kind": "attached-to",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve1:eno1",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "port-of",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve1:eno1",
+      "to": "lldp-neighbor:pve1:eno1/ac:1f:6b:03:00:01/Eth1/1",
+      "kind": "lldp-adjacent",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve1:eno1",
+      "to": "switch:ac:1f:6b:03:00:01",
+      "kind": "lldp-port",
+      "status": "ok",
+      "badges": [
+        "port=Eth1/1",
+        "pvid=1"
+      ]
+    },
+    {
+      "from": "physnic:pve2:eno1",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "port-of",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve3:eno1",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "port-of",
+      "status": "unknown",
+      "badges": []
+    },
+    {
+      "from": "sdn-vnet::qinqz/vnet-qinq1",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve1",
+        "tag=200"
+      ]
+    },
+    {
+      "from": "sdn-vnet::qinqz/vnet-qinq1",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve2",
+        "tag=200"
+      ]
+    },
+    {
+      "from": "sdn-vnet::qinqz/vnet-qinq1",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve3",
+        "tag=200"
+      ]
+    },
+    {
+      "from": "sdn-vnet::simplez/vnet-simple1",
+      "to": "bridge:pve1:vmbr1",
+      "kind": "realizes",
+      "status": "unknown",
+      "badges": [
+        "node=pve1"
+      ]
+    },
+    {
+      "from": "sdn-vnet::simplez/vnet-simple1",
+      "to": "bridge:pve2:vmbr1",
+      "kind": "realizes",
+      "status": "unknown",
+      "badges": [
+        "node=pve2"
+      ]
+    },
+    {
+      "from": "sdn-vnet::vlanz/vnet-vlan1",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve1",
+        "tag=100"
+      ]
+    },
+    {
+      "from": "sdn-vnet::vlanz/vnet-vlan1",
+      "to": "bridge:pve2:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve2",
+        "tag=100"
+      ]
+    },
+    {
+      "from": "sdn-vnet::vlanz/vnet-vlan1",
+      "to": "bridge:pve3:vmbr0",
+      "kind": "realizes",
+      "status": "ok",
+      "badges": [
+        "node=pve3",
+        "tag=100"
+      ]
+    }
+  ],
+  "layers": [
+    "phys",
+    "l2",
+    "sdn",
+    "guest"
+  ],
+  "generatedAt": 1783741307
+}
