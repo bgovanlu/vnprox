@@ -28,7 +28,7 @@ const fixtureThreeNode = "../../testdata/clusters/three-node-vlan.yaml"
 
 // loadFixtureServer loads fixturePath and builds a fresh, unstarted
 // *pvemock.Server over it.
-func loadFixtureServer(t *testing.T, fixturePath string) *pvemock.Server {
+func loadFixtureServer(t testing.TB, fixturePath string) *pvemock.Server {
 	t.Helper()
 	f, err := pvemock.LoadFixture(fixturePath)
 	if err != nil {
@@ -39,7 +39,7 @@ func loadFixtureServer(t *testing.T, fixturePath string) *pvemock.Server {
 
 // newTicketClient builds a pve.Client authenticating via ticket auth
 // against a running mock at apiURL.
-func newTicketClient(t *testing.T, apiURL string) *pve.Client {
+func newTicketClient(t testing.TB, apiURL string) *pve.Client {
 	t.Helper()
 	c, err := pve.New(pve.Config{
 		APIURL:   apiURL,
@@ -64,7 +64,7 @@ func newFixtureHostReader(srv *pvemock.Server) host.Reader {
 // (non-restartable) httptest.Server wrapping the given mock server, with
 // short poll intervals suited to fast tests. t.Cleanup stops the
 // underlying HTTP server.
-func newTestCollector(t *testing.T, srv *pvemock.Server, opts ...func(*collect.Config)) (*collect.Collector, *inventory.Graph, *httptest.Server) {
+func newTestCollector(t testing.TB, srv *pvemock.Server, opts ...func(*collect.Config)) (*collect.Collector, *inventory.Graph, *httptest.Server) {
 	t.Helper()
 	return newTestCollectorHandler(t, srv, srv, opts...)
 }
@@ -74,7 +74,7 @@ func newTestCollector(t *testing.T, srv *pvemock.Server, opts ...func(*collect.C
 // API responses (e.g. the cluster-membership filter in
 // TestDepartedNodeRetired) while host/LLDP reads still come from srv's
 // fixture state.
-func newTestCollectorHandler(t *testing.T, srv *pvemock.Server, handler http.Handler, opts ...func(*collect.Config)) (*collect.Collector, *inventory.Graph, *httptest.Server) {
+func newTestCollectorHandler(t testing.TB, srv *pvemock.Server, handler http.Handler, opts ...func(*collect.Config)) (*collect.Collector, *inventory.Graph, *httptest.Server) {
 	t.Helper()
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
@@ -158,7 +158,7 @@ func (m *restartableMock) Start(t *testing.T) {
 
 // waitFor polls check every 20ms until it returns true or timeout elapses,
 // failing the test otherwise.
-func waitFor(t *testing.T, timeout time.Duration, msg string, check func() bool) {
+func waitFor(t testing.TB, timeout time.Duration, msg string, check func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {
