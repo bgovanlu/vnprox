@@ -184,6 +184,21 @@ Added by T-601 (documented here retroactively per docs/development.md's definiti
 | GET/POST | `/blueprints` | list / save (parameterized topology template JSON) |
 | POST | `/blueprints/{id}/instantiate` | `{params}` → changeset draft |
 
+**Blueprint shape** (T-603): `{blueprintVersion: 1, id, name, description?, readOnly?, nodeSelector: {mode: "all"|"single"}, params: [ParamDef], entities: [EntityTemplate], createdBy?, createdAt?, updatedAt?}`. `ParamDef`: `{name, type: "string"|"int"|"bool"|"cidr"|"ip"|"vid"|"vidList"|"iface"|"nodeList", label?, description?, default?, required?, addressSuggest?, subnet?}` — `addressSuggest` (only valid on `cidr`/`ip` params) marks it eligible for `GET /blueprints/{id}/suggest` below; `subnet` is the CIDR pool searched (falls back to the containing network of `default` for a `cidr` param). `EntityTemplate`: `{kind: "bridge"|"bond"|"vlan"|"sdn-zone"|"sdn-vnet"|"sdn-subnet", idTemplate, nodeSelector?, fields: {...}}` — `fields` keys are exactly the corresponding `change.*CreateParams` JSON field names; values may be literal, a `"{{param}}"` placeholder (whole-value substitution preserves the param's JSON type), or the builtin `"{{__nodes__}}"` token (the instantiate request's target node list). `readOnly: true` marks the five bundled starters (`GET /blueprints` always includes them; they cannot be saved-over or deleted — `403 blueprint_read_only`).
+
+**`POST /blueprints/{id}/instantiate` body** is additive to the documented `{params}` shape (per docs/development.md's definition-of-done #4): `{params: {...}, nodes?: [string], title?: string}`. `nodes` is the target cluster node list for `nodeSelector.mode: "all"` expansion and for entities' `"{{__nodes__}}"` substitution; omitted/empty defaults to every node currently in inventory. `title` overrides the default changeset title (`"blueprint: <name>"`). The response is the same shape `POST /changesets` returns (a draft changeset) — instantiation only ever produces a draft; nothing is applied.
+
+Additive routes (T-603, not in the original contract; documented here per docs/development.md's definition-of-done #4):
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/blueprints/{id}` | single blueprint detail (starter or saved) — also the export/download source |
+| DELETE | `/blueprints/{id}` | remove a saved blueprint; `403 blueprint_read_only` for a starter id |
+| POST | `/blueprints/capture` | `{node}` → an unsaved Blueprint captured from that node's live bonds/bridges/VLAN interfaces (addresses turned into named, address-suggest-eligible params); save it via `POST /blueprints` to persist |
+| GET | `/blueprints/{id}/suggest?param=` | next-free-address suggestion for one of the blueprint's `addressSuggest` params: `{address}` |
+
+Import/export is file-level, not a dedicated route: export is `GET /blueprints/{id}`'s JSON body saved to a file; import is that same JSON re-posted to `POST /blueprints` (with `id` cleared so a new blueprint is created, or set to overwrite an existing saved one — never a starter id).
+
 ## WebSocket `/api/ws`
 
 One connection multiplexes all topics; every frame (both directions) is a JSON text message.

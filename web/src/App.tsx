@@ -8,6 +8,7 @@ import { GuestsPage } from "./pages/GuestsPage";
 import { SdnPage } from "./pages/SdnPage";
 import { FirewallPage } from "./pages/FirewallPage";
 import { IpamPage } from "./pages/IpamPage";
+import { BlueprintsPage } from "./pages/BlueprintsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { AuditPage } from "./pages/AuditPage";
 import { ToolsPage } from "./pages/ToolsPage";
@@ -33,6 +34,7 @@ export function App() {
             <Route path="/sdn" element={<SdnPage />} />
             <Route path="/firewall" element={<FirewallPage />} />
             <Route path="/ipam" element={<IpamPage />} />
+            <Route path="/blueprints" element={<BlueprintsPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/tools" element={<ToolsPage />} />

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/api"
+	"github.com/bgovanlu/vnprox/internal/blueprint"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/host"
@@ -310,6 +311,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		peerSnapshots = peerClient
 	}
 
+	// T-603: blueprints diff/instantiate against the same live inventory
+	// graph every other read path (topology, drift, sim) shares — never a
+	// separate copy (docs/architecture.md §2/§3).
+	blueprintSvc := blueprint.New(blueprint.Config{
+		Repo:      store.NewBlueprintRepo(db),
+		Inventory: graph,
+	})
+
 	handler := api.NewRouter(api.Options{
 		Version:       version,
 		DistFS:        distFS,
@@ -329,6 +338,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		PVEGateways:   pveGatewayProvider{authSvc},
 		Protected:     changeSvc,
 		Firewall:      graph,
+		Blueprints:    blueprintSvc,
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,
 		PeerSnapshots: peerSnapshots,
