@@ -16,6 +16,13 @@ type OpType string
 const (
 	OpIfaceUpdate OpType = "iface.update"
 
+	// OpIfaceRawReplace is T-208's raw Monaco editor escape hatch
+	// (docs/features/change-management.md §7): a single op replacing one
+	// node's entire /etc/network/interfaces content wholesale. Target is a
+	// KindNode ref (Node and ID both the node name) — the op has no single
+	// iface-namespace entity target, it replaces the whole file.
+	OpIfaceRawReplace OpType = "iface.raw.replace"
+
 	OpBondCreate OpType = "bond.create"
 	OpBondUpdate OpType = "bond.update"
 	OpBondDelete OpType = "bond.delete"
@@ -85,7 +92,8 @@ type Params interface {
 // to a documented op), so a mismatch fails a test rather than panicking at
 // decode time in production.
 var paramFactories = map[OpType]func() Params{
-	OpIfaceUpdate: func() Params { return &IfaceUpdateParams{} },
+	OpIfaceUpdate:     func() Params { return &IfaceUpdateParams{} },
+	OpIfaceRawReplace: func() Params { return &IfaceRawReplaceParams{} },
 
 	OpBondCreate: func() Params { return &BondCreateParams{} },
 	OpBondUpdate: func() Params { return &BondUpdateParams{} },

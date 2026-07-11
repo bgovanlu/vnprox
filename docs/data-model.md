@@ -128,7 +128,7 @@ CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 
 | Group | Ops |
 |---|---|
-| iface | `iface.update` (mtu, comments, addresses, gateway, autostart) |
+| iface | `iface.update` (mtu, comments, addresses, gateway, autostart), `iface.raw.replace` (node + full file content; T-208's raw editor escape hatch — target is a `node` Ref, not one entity; validated by diffing the parsed entity delta between the live file and the new content through the same referential/safety/advisory checks — see docs/features/change-management.md §7) |
 | bond | `bond.create`, `bond.update`, `bond.delete` |
 | bridge | `bridge.create`, `bridge.update`, `bridge.delete`, `bridge.port.add`, `bridge.port.remove` |
 | vlan | `vlan.create`, `vlan.update`, `vlan.delete` |

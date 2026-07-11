@@ -29,6 +29,13 @@ const (
 	OpVlanCreate       OpType = "vlan.create"
 	OpVlanUpdate       OpType = "vlan.update"
 	OpVlanDelete       OpType = "vlan.delete"
+
+	// OpIfaceRawReplace is T-208's power-user escape hatch (docs/features/
+	// change-management.md §7): the raw Monaco editor's save produces a
+	// changeset whose single op replaces a node's entire
+	// /etc/network/interfaces content wholesale, rather than an AST-level
+	// patch. See IfaceRawReplace's doc comment for the mutation semantics.
+	OpIfaceRawReplace OpType = "iface.raw.replace"
 )
 
 // Op is the common interface every concrete op type in this package
@@ -236,6 +243,27 @@ type VlanDelete struct{ Target inventory.Ref }
 func (o VlanDelete) Kind() OpType       { return OpVlanDelete }
 func (o VlanDelete) Ref() inventory.Ref { return o.Target }
 
+// --- iface.raw.replace ---------------------------------------------------
+
+// IfaceRawReplace replaces a node's entire /etc/network/interfaces content
+// with Content verbatim. Unlike every other op in this package, Mutate does
+// not AST-edit f in place — it re-parses Content into a fresh host.File and
+// swaps f's Entries wholesale, so the rendered result is Content itself
+// (host.File.Render() reproduces an unmutated parse byte-for-byte). Target
+// is a inventory.KindNode ref (Node, ID both the node name) since this op
+// has no single iface-namespace entity target — it replaces the whole
+// file. BaseHash (the sha256 hex of the file's content at editor-open time)
+// is a internal/change-level concern for the hash-conflict guard, not
+// something this package's file-mutation logic needs, so it is not carried
+// here — see internal/change's IfaceRawReplaceParams.
+type IfaceRawReplace struct {
+	Target  inventory.Ref
+	Content string
+}
+
+func (o IfaceRawReplace) Kind() OpType       { return OpIfaceRawReplace }
+func (o IfaceRawReplace) Ref() inventory.Ref { return o.Target }
+
 // --- wire decode ---------------------------------------------------------
 
 // envelope is the docs/api.md wire shape: {"op": "<type>", "target": Ref,
@@ -263,6 +291,7 @@ type wireParams struct {
 	XmitHashPolicy       string               `json:"xmitHashPolicy"`
 	LacpRate             string               `json:"lacpRate"`
 	Mode                 string               `json:"mode"`
+	Content              string               `json:"content"`
 	Slaves               []string             `json:"slaves"`
 	Addresses            []string             `json:"addresses"`
 	Ports                []string             `json:"ports"`
@@ -367,6 +396,8 @@ func DecodeOp(raw json.RawMessage) (Op, error) {
 		return VlanUpdate{Target: target, Addresses: p.Addresses, MTU: intOr(p.MTU), Comments: p.Comments}, nil
 	case OpVlanDelete:
 		return VlanDelete{Target: target}, nil
+	case OpIfaceRawReplace:
+		return IfaceRawReplace{Target: target, Content: p.Content}, nil
 	default:
 		return nil, fmt.Errorf("ifaces: unsupported op type %q", env.Op)
 	}

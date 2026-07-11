@@ -1,5 +1,7 @@
 package topology
 
+import "time"
+
 // Layer names one of docs/features/topology.md §1's four toggleable layers.
 // The string values are docs/api.md's own `?layers=phys,l2,sdn,guest` query
 // tokens — the same vocabulary is reused for the `layer` field on every
@@ -131,8 +133,16 @@ type SourceStaleness struct {
 }
 
 // Filter is the server-side ?layers=&node=&vlan= filter for GET /topology.
-// A zero Filter (no Layers, no Node, VLAN == 0) means "everything".
+// A zero Filter (no Layers, no Node, VLAN == 0, zero Now) means "everything,
+// evaluated at the real current time".
+//
+// Now is the clock Project uses for the LLDP staleness lifecycle
+// (docs/features/lldp-discovery.md §3 — grey at 2×TTL, drop from the map at
+// 10 minutes; see switches.go). The zero value means "time.Now()"; callers
+// (internal/api's handler) never set it, only tests do, so this field is a
+// pure test seam with no behavioral change for production traffic.
 type Filter struct {
+	Now    time.Time
 	Node   string
 	Layers []Layer
 	VLAN   int

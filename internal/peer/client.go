@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -373,6 +374,107 @@ func (c *Client) Snapshots(ctx context.Context, p Peer, cursor string, limit int
 // for a second discovery round-trip via Peers) use the exact same port this
 // Client would.
 func (c *Client) Port() int { return c.opts.Port }
+
+// DiscardStaged asks peer p to drop node's staged interfaces.new, leaving
+// the committed file untouched.
+func (c *Client) DiscardStaged(ctx context.Context, p Peer, node string) error {
+	body, err := json.Marshal(nodeRequest{Node: node})
+	if err != nil {
+		return fmt.Errorf("peer: encoding discard-staged request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/host/discard-staged", body)
+	if err != nil {
+		return err
+	}
+	return decodeInto(resp, nil)
+}
+
+// InstallLLDPD asks peer p to install and enable lldpd on its node
+// (docs/features/lldp-discovery.md §1's guided-install flow). confirm must
+// be true or the peer rejects the request with validation_failed.
+func (c *Client) InstallLLDPD(ctx context.Context, p Peer, confirm bool) error {
+	body, err := json.Marshal(installLLDPRequest{Confirm: confirm})
+	if err != nil {
+		return fmt.Errorf("peer: encoding lldp install request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/host/lldp/install", body)
+	if err != nil {
+		return err
+	}
+	return decodeInto(resp, nil)
+}
+
+// ArmTimer asks peer p to arm node's local commit-confirm rollback timer for
+// changesetID: content is the byte-exact pre-apply state to restore if
+// deadline (unix seconds) elapses uncancelled (T-304's local-timer
+// protocol, docs/features/change-management.md §4).
+func (c *Client) ArmTimer(ctx context.Context, p Peer, changesetID, node, content string, deadline int64) (TimerRecord, error) {
+	body, err := json.Marshal(armTimerRequest{ChangesetID: changesetID, Node: node, Content: content, Deadline: deadline})
+	if err != nil {
+		return TimerRecord{}, fmt.Errorf("peer: encoding arm-timer request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/timer/arm", body)
+	if err != nil {
+		return TimerRecord{}, err
+	}
+	var out timerResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return TimerRecord{}, err
+	}
+	return out.Record, nil
+}
+
+// CancelTimer asks peer p to cancel node's armed rollback timer for
+// changesetID (the changeset was confirmed before the deadline).
+func (c *Client) CancelTimer(ctx context.Context, p Peer, changesetID, node string) (TimerRecord, error) {
+	return c.timerRequest(ctx, p, "/api/peer/timer/cancel", changesetID, node)
+}
+
+// TimerStatus fetches peer p's current record of node's rollback timer for
+// changesetID — the coordinator's reconciliation-on-reconnect read. Returns
+// *ResponseError with Code == "timer_not_found" (checkable via
+// errors.Is(err, peer.ErrTimerNotFound) after ResponseError's own doc, see
+// decodeInto) if p never armed one.
+func (c *Client) TimerStatus(ctx context.Context, p Peer, changesetID, node string) (TimerRecord, error) {
+	path := fmt.Sprintf("/api/peer/timer/status?changesetId=%s&node=%s", url.QueryEscape(changesetID), url.QueryEscape(node))
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return TimerRecord{}, err
+	}
+	var out timerResponse
+	if decErr := decodeInto(resp, &out); decErr != nil {
+		return TimerRecord{}, mapTimerNotFound(decErr)
+	}
+	return out.Record, nil
+}
+
+func (c *Client) timerRequest(ctx context.Context, p Peer, path, changesetID, node string) (TimerRecord, error) {
+	body, err := json.Marshal(timerRequest{ChangesetID: changesetID, Node: node})
+	if err != nil {
+		return TimerRecord{}, fmt.Errorf("peer: encoding %s request: %w", path, err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, path, body)
+	if err != nil {
+		return TimerRecord{}, err
+	}
+	var out timerResponse
+	if decErr := decodeInto(resp, &out); decErr != nil {
+		return TimerRecord{}, mapTimerNotFound(decErr)
+	}
+	return out.Record, nil
+}
+
+// mapTimerNotFound rewraps a *ResponseError carrying the timer_not_found
+// code so callers can errors.Is(err, ErrTimerNotFound) across the wire, the
+// same convention ErrPeerUnreachable/ErrPeerIncompatible already establish
+// for this client.
+func mapTimerNotFound(err error) error {
+	var respErr *ResponseError
+	if errors.As(err, &respErr) && respErr.Code == errCodeTimerNotFound {
+		return fmt.Errorf("peer: %w: %s", ErrTimerNotFound, respErr.Message)
+	}
+	return err
+}
 
 // Health checks peer p's /api/peer/health.
 func (c *Client) Health(ctx context.Context, p Peer) error {

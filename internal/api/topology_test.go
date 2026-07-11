@@ -135,18 +135,18 @@ func TestTopologyRoute_QueryParamParsing(t *testing.T) {
 		query string
 		want  topology.Filter
 	}{
-		{"no params means zero filter", "", topology.Filter{}},
+		{name: "no params means zero filter", query: "", want: topology.Filter{}},
 		{
-			"all three params",
-			"?vlan=30&layers=l2,sdn&node=pve2",
-			topology.Filter{VLAN: 30, Layers: []topology.Layer{topology.LayerL2, topology.LayerSDN}, Node: "pve2"},
+			name:  "all three params",
+			query: "?vlan=30&layers=l2,sdn&node=pve2",
+			want:  topology.Filter{VLAN: 30, Layers: []topology.Layer{topology.LayerL2, topology.LayerSDN}, Node: "pve2"},
 		},
 		{
-			"layers tolerate whitespace and empty segments",
-			"?layers=%20phys%20,,guest",
-			topology.Filter{Layers: []topology.Layer{topology.LayerPhysical, topology.LayerGuest}},
+			name:  "layers tolerate whitespace and empty segments",
+			query: "?layers=%20phys%20,,guest",
+			want:  topology.Filter{Layers: []topology.Layer{topology.LayerPhysical, topology.LayerGuest}},
 		},
-		{"non-numeric vlan is ignored", "?vlan=abc&node=pve1", topology.Filter{Node: "pve1"}},
+		{name: "non-numeric vlan is ignored", query: "?vlan=abc&node=pve1", want: topology.Filter{Node: "pve1"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

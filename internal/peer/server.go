@@ -108,19 +108,41 @@ type HostWriter interface {
 	// not go through the normal stage/review flow since it is restoring a
 	// known-good snapshot under time pressure.
 	RestoreInterfaces(ctx context.Context, node, content string) error
+
+	// DiscardStaged drops node's staged interfaces.new, if any, leaving the
+	// committed file untouched — the peer-routed twin of change.NodeAgent's
+	// same-named method (apply_seams.go), needed so a coordinator's
+	// mid-apply rollback can clean up a remote node that was staged but
+	// never reloaded (T-304; CLAUDE.md's "everything is cluster-aware" rule
+	// applies to this NodeAgent operation same as the other three).
+	DiscardStaged(ctx context.Context, node string) error
+}
+
+// LLDPInstaller is the T-302 guided-install dependency for
+// `POST /api/peer/host/lldp/install` (docs/features/lldp-discovery.md §1:
+// "one-click 'install lldpd on all nodes' runs through a changeset-like
+// confirmation, executed via peer API apt install; audited"). Optional
+// (nil-safe, ServerOptions.LLDPInstaller may be left unset): the route
+// 503s rather than panicking when not wired, the same nil-safety pattern
+// Reader/Writer already follow.
+type LLDPInstaller interface {
+	// InstallLLDPD installs and enables lldpd on this node.
+	InstallLLDPD(ctx context.Context) error
 }
 
 // ServerOptions configures a Server.
 type ServerOptions struct {
-	Reader       HostReader
-	Writer       HostWriter
-	Audit        AuditReader
-	Snapshots    SnapshotReader
-	Secrets      *SecretStore
-	Logger       *slog.Logger
-	Now          func() time.Time
-	Version      string
-	MaxBodyBytes int64
+	Reader        HostReader
+	Writer        HostWriter
+	Audit         AuditReader
+	Snapshots     SnapshotReader
+	Timers        TimerAgent
+	LLDPInstaller LLDPInstaller
+	Secrets       *SecretStore
+	Logger        *slog.Logger
+	Now           func() time.Time
+	Version       string
+	MaxBodyBytes  int64
 }
 
 // Server implements the /api/peer/* HTTP surface: the HMAC auth middleware
@@ -168,9 +190,15 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Post("/host/stage-interfaces", s.handleStageInterfaces)
 		r.Post("/host/ifreload", s.handleIfreload)
 		r.Post("/host/restore", s.handleRestore)
+		r.Post("/host/discard-staged", s.handleDiscardStaged)
+		r.Post("/host/lldp/install", s.handleInstallLLDPD)
 
 		r.Get("/audit", s.handleAudit)
 		r.Get("/snapshots", s.handleSnapshots)
+
+		r.Post("/timer/arm", s.handleTimerArm)
+		r.Post("/timer/cancel", s.handleTimerCancel)
+		r.Get("/timer/status", s.handleTimerStatus)
 	})
 }
 
@@ -372,6 +400,115 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, okResponse{OK: true})
+}
+
+func (s *Server) handleDiscardStaged(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Writer == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host writer not configured")
+		return
+	}
+	var req nodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Node == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "node is required")
+		return
+	}
+	if err := s.opts.Writer.DiscardStaged(r.Context(), req.Node); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, okResponse{OK: true})
+}
+
+// handleInstallLLDPD implements POST /api/peer/host/lldp/install: the
+// guided-install flow's node-local step. Requires an explicit
+// {"confirm":true} body field — this is the "changeset-like confirmation"
+// the spec calls for at the transport layer; the caller (a coordinating
+// daemon acting on an operator's explicit request) is responsible for
+// having obtained that confirmation and for audit-logging the action, same
+// division of responsibility as the stage/ifreload/restore handlers above
+// (this package never itself talks to internal/store).
+func (s *Server) handleInstallLLDPD(w http.ResponseWriter, r *http.Request) {
+	if s.opts.LLDPInstaller == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "lldp installer not configured")
+		return
+	}
+	var req installLLDPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "invalid request body")
+		return
+	}
+	if !req.Confirm {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "confirm must be true")
+		return
+	}
+	if err := s.opts.LLDPInstaller.InstallLLDPD(r.Context()); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, okResponse{OK: true})
+}
+
+func (s *Server) handleTimerArm(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Timers == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "timer agent not configured")
+		return
+	}
+	var req armTimerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ChangesetID == "" || req.Node == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "changesetId and node are required")
+		return
+	}
+	rec, err := s.opts.Timers.ArmTimer(r.Context(), req.ChangesetID, req.Node, req.Content, req.Deadline)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "timer_arm_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, timerResponse{Record: rec})
+}
+
+func (s *Server) handleTimerCancel(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Timers == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "timer agent not configured")
+		return
+	}
+	var req timerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ChangesetID == "" || req.Node == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "changesetId and node are required")
+		return
+	}
+	rec, err := s.opts.Timers.CancelTimer(r.Context(), req.ChangesetID, req.Node)
+	if err != nil {
+		s.writeTimerError(w, "cancelling timer", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, timerResponse{Record: rec})
+}
+
+func (s *Server) handleTimerStatus(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Timers == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "timer agent not configured")
+		return
+	}
+	changesetID := r.URL.Query().Get("changesetId")
+	node := r.URL.Query().Get("node")
+	if changesetID == "" || node == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "changesetId and node are required")
+		return
+	}
+	rec, err := s.opts.Timers.TimerStatus(r.Context(), changesetID, node)
+	if err != nil {
+		s.writeTimerError(w, "reading timer status", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, timerResponse{Record: rec})
+}
+
+func (s *Server) writeTimerError(w http.ResponseWriter, op string, err error) {
+	if errors.Is(err, ErrTimerNotFound) {
+		writeJSONError(w, http.StatusNotFound, errCodeTimerNotFound, op+": "+err.Error())
+		return
+	}
+	writeJSONError(w, http.StatusInternalServerError, "internal_error", op+": "+err.Error())
 }
 
 func (s *Server) writeHostError(w http.ResponseWriter, op string, err error) {

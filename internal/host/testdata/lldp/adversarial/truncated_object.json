@@ -1,0 +1,1 @@
+{"lldp": [{"interface": [{"name": "eno1", "via": "LLDP", "chassis": {"sw-core-01": {"id": {"type": "mac", "value": "ac:1f:6b:01

@@ -448,33 +448,71 @@ func (n *GuestNic) fieldMap() map[string]string {
 
 // --- LLDP (single-source: host-lldp) -------------------------------------
 
-// LldpNeighbor is one LLDP-discovered neighbor seen on a local NIC.
+// LldpNeighbor is one LLDP- (or CDP-decoded) neighbor seen on a local NIC.
 // LocalNic is resolved during linking from LocalIface + Node.
+//
+// VLAN is the neighbor's native/untagged (PVID) VLAN, kept under its
+// original T-104 field name for backward compatibility; TaggedVLANs is the
+// switch port's additional advertised tagged VLANs
+// (docs/features/lldp-discovery.md §1: "advertised VLANs (PVID + tagged)").
+// LastSeen is the unix-seconds timestamp of the poll that most recently
+// observed this neighbor — the basis for spec §3's staleness lifecycle
+// (internal/topology computes grey/drop state from it, clock-injectably, so
+// it stays a plain fact here rather than a derived status).
 type LldpNeighbor struct {
+	LocalNic Ref
 	Ref
+	MgmtIP        string
+	SpeedDescr    string
+	Node          string
+	Protocol      string
+	ChassisName   string
+	ChassisID     string
+	ChassisIDType string
+	ChassisDescr  string
 	rawSrc
-	LocalNic    Ref
 	LocalIface  string
-	Node        string
-	ChassisName string
-	ChassisID   string
 	PortID      string
+	PortIDType  string
 	PortDescr   string
-	MgmtIP      string
+	MgmtIPs     []string
+	TaggedVLANs []int
+	SpeedMbps   int
 	VLAN        int
 	TTL         int
+	LastSeen    int64
 }
 
 func (l *LldpNeighbor) GetRef() Ref { return l.Ref }
 func (l *LldpNeighbor) clone() Entity {
 	cp := *l
+	cp.MgmtIPs = append([]string(nil), l.MgmtIPs...)
+	cp.TaggedVLANs = append([]int(nil), l.TaggedVLANs...)
 	return &cp
 }
+
+// fieldMap deliberately omits LastSeen: it refreshes on every successful
+// poll for an unchanged neighbor (like the interface counters
+// hostPollOnce's doc comment describes), so including it here would mark
+// every still-present neighbor "updated" every poll cycle and spam
+// topology.delta — the same reasoning that keeps raw counters out of the
+// entity model entirely. LastSeen is still exposed via the entity's plain
+// exported field (topology.Detail's Fields uses JSON reflection, not
+// fieldMap) for the ports table / staleness computation to read directly.
 func (l *LldpNeighbor) fieldMap() map[string]string {
+	tagged := make([]string, len(l.TaggedVLANs))
+	for i, v := range l.TaggedVLANs {
+		tagged[i] = strconv.Itoa(v)
+	}
 	return map[string]string{
 		"localNic": l.LocalNic.String(), "localIface": l.LocalIface, "node": l.Node,
-		"chassisName": l.ChassisName, "chassisId": l.ChassisID, "portId": l.PortID,
-		"portDescr": l.PortDescr, "mgmtIP": l.MgmtIP, "vlan": strconv.Itoa(l.VLAN),
+		"protocol":    l.Protocol,
+		"chassisName": l.ChassisName, "chassisId": l.ChassisID, "chassisIdType": l.ChassisIDType,
+		"chassisDescr": l.ChassisDescr,
+		"portId":       l.PortID, "portIdType": l.PortIDType, "portDescr": l.PortDescr,
+		"mgmtIP": l.MgmtIP, "mgmtIPs": sortedJoin(l.MgmtIPs),
+		"vlan": strconv.Itoa(l.VLAN), "taggedVlans": strings.Join(tagged, ","),
+		"speedMbps": strconv.Itoa(l.SpeedMbps), "speedDescr": l.SpeedDescr,
 		"ttl": strconv.Itoa(l.TTL),
 	}
 }

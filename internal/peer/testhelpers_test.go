@@ -95,10 +95,11 @@ func (r *spyHostReader) Stats(_ context.Context, node string) (map[string]host.I
 
 // spyHostWriter records every call it receives and its arguments.
 type spyHostWriter struct {
-	failNext error
-	staged   map[string]string
-	restored map[string]string
-	reloaded []string
+	failNext  error
+	staged    map[string]string
+	restored  map[string]string
+	reloaded  []string
+	discarded []string
 }
 
 func newSpyHostWriter() *spyHostWriter {
@@ -132,6 +133,16 @@ func (w *spyHostWriter) RestoreInterfaces(_ context.Context, node, content strin
 		return err
 	}
 	w.restored[node] = content
+	return nil
+}
+
+func (w *spyHostWriter) DiscardStaged(_ context.Context, node string) error {
+	if w.failNext != nil {
+		err := w.failNext
+		w.failNext = nil
+		return err
+	}
+	w.discarded = append(w.discarded, node)
 	return nil
 }
 
@@ -215,4 +226,45 @@ func newTestServerFull(t *testing.T, now func() time.Time) (*Server, *spyHostRea
 		Now:       now,
 	})
 	return srv, reader, writer, auditR, snapR
+}
+
+// spyTimerAgent is an in-memory TimerAgent test double: no real timers, just
+// the state transitions arm/cancel/status would produce, so server_test.go
+// and client_test.go can exercise the /api/peer/timer/* routes without
+// pulling in internal/change's real LocalTimerAgent (which would be a
+// package-boundary violation — see HostWriter's doc comment on the intended
+// dependency direction).
+type spyTimerAgent struct {
+	records map[string]TimerRecord // key: changesetID+"/"+node
+}
+
+func newSpyTimerAgent() *spyTimerAgent {
+	return &spyTimerAgent{records: map[string]TimerRecord{}}
+}
+
+func timerKey(changesetID, node string) string { return changesetID + "/" + node }
+
+func (a *spyTimerAgent) ArmTimer(_ context.Context, changesetID, node, _ string, deadline int64) (TimerRecord, error) {
+	rec := TimerRecord{ChangesetID: changesetID, Node: node, Status: TimerArmed, Deadline: deadline, ArmedAt: 1}
+	a.records[timerKey(changesetID, node)] = rec
+	return rec, nil
+}
+
+func (a *spyTimerAgent) CancelTimer(_ context.Context, changesetID, node string) (TimerRecord, error) {
+	rec, ok := a.records[timerKey(changesetID, node)]
+	if !ok {
+		return TimerRecord{}, ErrTimerNotFound
+	}
+	rec.Status = TimerCancelled
+	rec.ResolvedAt = 2
+	a.records[timerKey(changesetID, node)] = rec
+	return rec, nil
+}
+
+func (a *spyTimerAgent) TimerStatus(_ context.Context, changesetID, node string) (TimerRecord, error) {
+	rec, ok := a.records[timerKey(changesetID, node)]
+	if !ok {
+		return TimerRecord{}, ErrTimerNotFound
+	}
+	return rec, nil
 }

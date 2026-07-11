@@ -47,6 +47,11 @@ type ChangesetService interface {
 	Apply(ctx context.Context, id, author string, pveGW change.PVEGateway, confirmTimeout time.Duration) (change.Changeset, error)
 	Confirm(ctx context.Context, id, author string) (change.Changeset, error)
 	Rollback(ctx context.Context, id, author string) (change.Changeset, error)
+
+	// T-208 raw editor: the current live file + hash the editor opens
+	// against (see the raw-editor routes mounted alongside the changeset
+	// CRUD routes below).
+	ReadRawInterfaces(ctx context.Context, node string) (content, hash string, err error)
 }
 
 // PVEGatewayProvider supplies a change.PVEGateway bound to the requesting
@@ -138,6 +143,14 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		r.Get("/changesets", handleListChangesets(svc))
 		r.Get("/changesets/{id}", handleGetChangeset(svc))
 		r.Get("/changesets/{id}/diff", handleDiffChangeset(svc))
+
+		// T-208 raw editor: the "open" call and its live syntax-lint
+		// round trip. Neither mutates server state (the lint endpoint
+		// only parses a client-supplied string; it does not even name a
+		// node), so both live in the netRead group with no CSRF
+		// requirement, alongside every other read route above.
+		r.Get("/nodes/{node}/interfaces/raw", handleGetRawInterfaces(svc))
+		r.Post("/interfaces/lint", handleLintInterfaces())
 	})
 
 	r.Group(func(r chi.Router) {
@@ -235,6 +248,62 @@ func handleDiffChangeset(svc ChangesetService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, diff)
+	}
+}
+
+// rawInterfacesResponse is `GET /nodes/{node}/interfaces/raw`'s body: the
+// raw Monaco editor's "open" call (T-208). SHA256 is the conflict-guard
+// baseline the editor stamps into its eventual iface.raw.replace op's
+// baseHash param.
+type rawInterfacesResponse struct {
+	Node    string `json:"node"`
+	Content string `json:"content"`
+	SHA256  string `json:"sha256"`
+}
+
+func handleGetRawInterfaces(svc ChangesetService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		node := chi.URLParam(r, "node")
+		content, hash, err := svc.ReadRawInterfaces(r.Context(), node)
+		if err != nil {
+			writeJSONError(w, http.StatusBadGateway, "peer_unreachable",
+				fmt.Sprintf("could not read /etc/network/interfaces on node %s", node))
+			return
+		}
+		writeJSON(w, http.StatusOK, rawInterfacesResponse{Node: node, Content: content, SHA256: hash})
+	}
+}
+
+// lintInterfacesRequest is `POST /interfaces/lint`'s body: `{content}` —
+// deliberately node-less, since this is a pure interfaces(5) syntax check
+// (T-208 AC1's "syntax errors underline with line-precise messages as you
+// type"), not a validation of any particular node's state.
+type lintInterfacesRequest struct {
+	Content string `json:"content"`
+}
+
+// lintInterfacesResponse is `POST /interfaces/lint`'s body: `{errors}`, one
+// entry per host.ParseError the T-102 parser reports (today: at most one,
+// since that parser stops at the first syntax error — see
+// change.LintRawInterfaces's doc comment).
+type lintInterfacesResponse struct {
+	Errors []change.LintMarker `json:"errors"`
+}
+
+func handleLintInterfaces() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxChangesetBodyBytes))
+		dec.DisallowUnknownFields()
+		var req lintInterfacesRequest
+		if err := dec.Decode(&req); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "malformed request body")
+			return
+		}
+		markers := change.LintRawInterfaces(req.Content)
+		if markers == nil {
+			markers = []change.LintMarker{}
+		}
+		writeJSON(w, http.StatusOK, lintInterfacesResponse{Errors: markers})
 	}
 }
 

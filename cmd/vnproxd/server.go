@@ -154,6 +154,68 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	snapshotRepo := store.NewSnapshotRepo(db)
 	blobRepo := store.NewBlobRepo(db)
 	auditRepo := store.NewAuditRepo(db)
+
+	// T-304: the local-timer protocol's node-side agent — every daemon runs
+	// one, independent of whether it ends up coordinating anything, so it
+	// can answer a coordinator's arm/cancel/status calls for its own node
+	// (peer.ServerOptions.Timers below) as well as serve this node's own
+	// Apply calls directly (ClusterTimerAgent's "local" branch, no HTTP
+	// round trip to itself).
+	nodeTimerRepo := store.NewNodeTimerRepo(db)
+	localTimers := change.NewLocalTimerAgent(change.LocalTimerConfig{
+		Nodes:  nodeAgent,
+		Repo:   nodeTimerRepo,
+		Logger: logger,
+	})
+	if armErr := localTimers.ArmPendingOnStartup(ctx); armErr != nil {
+		logger.Error("change: re-arming pending local rollback timers on startup", "error", armErr)
+	}
+	defer localTimers.StopTimers()
+
+	// The coordinator side of T-304: a dedicated peer client (cluster
+	// secret + PVE-cluster-status discovery) and the local-vs-peer routing
+	// agents that let internal/change treat every node — this one or a
+	// peer's — uniformly. discoverPVEClient failing is non-fatal (mirrors
+	// setupCollect's own tolerance below): a daemon that can't yet reach PVE
+	// for cluster-status coordinates only its own node, exactly the
+	// documented single-node "zero peers" case.
+	// clusterStatusSource is left a nil interface (not a non-nil interface
+	// wrapping a nil *pve.Client — a classic Go footgun) on discovery-client
+	// construction failure: peer.Client.Peers documents a nil
+	// ClusterStatusSource as "the documented single-node zero-peers case",
+	// exactly the degraded-but-safe behavior wanted here.
+	//
+	// coordPeerClient is deliberately a second *peer.Client, independent of
+	// T-303's peerClient above (also secret+cluster-status-driven, but tied
+	// to the collectors' own PVE client and its failure mode): T-304's
+	// coordination path must keep working (in degraded, local-node-only
+	// form) even when the collectors' PVE client has failed to build,
+	// whereas T-303's peerClient is intentionally nil in exactly that case.
+	// Unifying these into one shared client is a reasonable future cleanup
+	// (T-305/T-306 or a hardening pass) but not attempted here — see
+	// planning/reports/T-303.md and T-304.md, developed concurrently and
+	// integrated by hand.
+	var clusterStatusSource peer.ClusterStatusSource
+	if discoveryClient, discErr := buildCollectorPVEClient(cfg); discErr != nil {
+		logger.Warn("change: building peer-discovery PVE client; multi-node coordination unavailable until this succeeds", "error", discErr)
+	} else {
+		clusterStatusSource = discoveryClient
+	}
+	coordPeerClient := peer.NewClient(peer.ClientOptions{
+		ClusterStatus: clusterStatusSource,
+		Secrets:       peerSecrets,
+		Logger:        logger,
+	})
+	localNode := func() string {
+		if collector == nil {
+			return ""
+		}
+		return collector.Status().LocalNode
+	}
+	peerLocator := change.NewDiscoveringPeerLocator(coordPeerClient)
+	clusterNodes := change.NewClusterNodeAgent(localNode, nodeAgent, coordPeerClient, peerLocator)
+	clusterTimers := change.NewClusterTimerAgent(localNode, localTimers, coordPeerClient, peerLocator)
+
 	changeSvc, err := change.NewService(change.Config{
 		Changesets:        store.NewChangesetRepo(db),
 		Audit:             auditRepo,
@@ -162,7 +224,8 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Logger:            logger,
 		ProtectedPath:     cfg.Safety.ProtectedPath,
 		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
-		Nodes:             nodeAgent,
+		Nodes:             clusterNodes,
+		Timers:            clusterTimers,
 		Snapshots:         snapshotRepo,
 		Blobs:             blobRepo,
 		Refresher:         refresher,
@@ -183,17 +246,25 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	defer changeSvc.StopTimers()
 
-	// T-301: the peer server backs the documented /api/peer/host/* routes
-	// with the real netlink/interfaces(5)/lldpd reader (host.NewReal) for
-	// reads and the same nodeAgent constructed above for writes.
+	// T-301/T-304: the peer server backs the documented /api/peer/host/* and
+	// /api/peer/timer/* routes with the real netlink/interfaces(5)/lldpd
+	// reader (host.NewReal) for reads and the same nodeAgent/localTimers
+	// constructed above for writes.
+	//
+	// T-302: the same host.Real also backs the guided-install route
+	// (POST /api/peer/host/lldp/install, docs/features/lldp-discovery.md
+	// §1) via its InstallLLDPD method (host/lldp_install_linux.go).
+	realHost := host.NewReal()
 	peerSrv := peer.NewServer(peer.ServerOptions{
-		Secrets:   peerSecrets,
-		Reader:    host.NewReal(),
-		Writer:    nodeAgent,
-		Audit:     auditPeerAdapter{auditRepo},
-		Snapshots: snapshotPeerAdapter{changeSvc},
-		Version:   version,
-		Logger:    logger,
+		Secrets:       peerSecrets,
+		Reader:        realHost,
+		Writer:        nodeAgent,
+		Audit:         auditPeerAdapter{auditRepo},
+		Snapshots:     snapshotPeerAdapter{changeSvc},
+		Timers:        localTimers,
+		LLDPInstaller: realHost,
+		Version:       version,
+		Logger:        logger,
 	})
 
 	// T-303: peerClient also backs GET /audit and GET /snapshots' cluster
@@ -215,6 +286,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Auth:          authServiceAdapter{authSvc},
 		Collectors:    collectorHealthAdapter{collector},
 		Topology:      topoSvc,
+		LLDP:          topoSvc,
 		Layouts:       store.NewLayoutRepo(db),
 		Changesets:    changeSvc,
 		Snapshots:     changeSvc,

@@ -1,0 +1,1 @@
+[{"local-iface": "eno1", "chassis_id": "aa:bb:cc:dd:ee:ff", "extra_junk_field_that_should_be_ignored": [1,2,3,4,5,6,7,8,9,10]}, "not-an-object", 42, null, true, [1,2,3]]

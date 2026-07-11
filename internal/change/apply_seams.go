@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/peer"
 )
 
 // NodeAgent performs node-local /etc/network/interfaces(5) file operations
@@ -26,11 +27,11 @@ import (
 // intended production shape (docs/architecture.md §1, §5) is that a
 // coordinating daemon stages/reloads a peer node's file via the peer API,
 // with a single NodeAgent value abstracting local and peer nodes so the
-// planner/executor never branch on locality. Peer routing is NOT
-// implemented yet — it is T-304's scope. The current production
-// implementation (cmd/vnproxd's hostNodeAgent) only operates on the local
-// node's files and must not be handed peer-node steps until T-304 lands;
-// see hostNodeAgent's doc comment for the honest state of that constraint.
+// planner/executor never branch on locality. T-304's ClusterNodeAgent
+// (cluster_agent.go) is that single value in production: it routes each
+// call to cmd/vnproxd's local hostNodeAgent when node is this daemon's own
+// PVE node, or through a *peer.Client otherwise. hostNodeAgent itself still
+// only operates on local paths — do not hand it a peer-node step directly.
 type NodeAgent interface {
 	// ReadInterfaces returns node's current, committed /etc/network/interfaces
 	// content (never the staged interfaces.new). It is the byte-exact source
@@ -73,6 +74,35 @@ type PVEGateway interface {
 	// blocks until the resulting task reaches a terminal state, returning a
 	// non-nil error if the task fails or times out.
 	ApplySDN(ctx context.Context) error
+}
+
+// NodeTimerAgent is Service's seam onto T-304's local-timer protocol
+// (docs/features/change-management.md §4): arm, cancel, or inspect one
+// node's distributed commit-confirm rollback timer for a changeset, routed
+// to whichever daemon is actually responsible for that node. It is
+// NodeAgent's counterpart for the "single value abstracting local and peer
+// nodes" pattern — ClusterTimerAgent (cluster_agent.go) is the production
+// implementation, calling straight into a local *LocalTimerAgent for this
+// daemon's own node or through *peer.Client for a peer's.
+//
+// A nil NodeTimerAgent on Config disables the whole per-node protocol: Apply
+// falls back to T-205's original single coordinator-side timer (correct and
+// sufficient for a single-node deployment, and for any test that doesn't
+// need multi-node distributed-rollback coverage).
+type NodeTimerAgent interface {
+	// ArmTimer arms node's local rollback timer for changesetID: content is
+	// the byte-exact pre-apply state to restore if the timer fires
+	// uncancelled by deadline (unix seconds).
+	ArmTimer(ctx context.Context, changesetID, node, content string, deadline int64) (peer.TimerRecord, error)
+
+	// CancelTimer stops node's timer for changesetID (the changeset was
+	// confirmed, or the coordinator is restoring it itself and doesn't want
+	// a redundant later self-restore). Idempotent.
+	CancelTimer(ctx context.Context, changesetID, node string) (peer.TimerRecord, error)
+
+	// TimerStatus returns node's current record for changesetID — the
+	// reconciliation-on-reconnect read (Service.Reconcile).
+	TimerStatus(ctx context.Context, changesetID, node string) (peer.TimerRecord, error)
 }
 
 // InventoryRefresher forces an immediate, targeted inventory poll after a
