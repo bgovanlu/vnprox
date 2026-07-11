@@ -596,8 +596,147 @@ export interface FDBResponse {
   items: FDBRow[];
 }
 
+// --- Firewall (docs/api.md §"Firewall, SDN, IPAM"; internal/api/firewall.go,
+// internal/fw's pure resolver) ----------------------------------------------
+// GET /firewall/rulesets?scope= and GET /firewall/objects — T-501's read
+// views: per-scope raw rulesets, the guest resolved (group-expanded)
+// evaluation order with origin labels, enablement banners (the
+// "Datacenter firewall is OFF" footgun, docs/features/firewall.md §2), and
+// alias/ipset/security-group usage tracking with macro expansion previews.
+
+export type FwScope = "cluster" | "node" | "guest";
+
+/** One documented evaluation step's origin label
+ * (docs/features/firewall.md §1: "cluster rules → security groups → guest
+ * rules → default policies"). "default" only ever appears on a
+ * DefaultPolicy, never inside a ResolvedRuleView. */
+export type FwOrigin = "cluster" | "group" | "guest" | "default";
+
+/** A macro's proto/port expansion preview (docs/features/firewall.md §2's
+ * "macro picker ... with expansion preview"). */
+export interface MacroPortView {
+  proto?: string;
+  dport?: string;
+}
+
+export interface MacroView {
+  name: string;
+  comment?: string;
+  ports: MacroPortView[];
+}
+
+/** One firewall rule, as configured (internal/inventory.FwRule mirrored by
+ * internal/api/firewall.go's ruleView). `macroExpansion` is populated
+ * server-side whenever `macro` names a macro this build knows. */
+export interface RuleView {
+  pos: number;
+  enabled: boolean;
+  direction: string;
+  action: string;
+  proto?: string;
+  source?: string;
+  dest?: string;
+  sport?: string;
+  dport?: string;
+  iface?: string;
+  macro?: string;
+  macroExpansion?: MacroPortView[];
+  log?: string;
+  comment?: string;
+}
+
+/** An enablement banner (docs/features/firewall.md §2's "Datacenter
+ * firewall is OFF: none of these rules are active" example) — cascades
+ * from the datacenter scope down through node and guest scopes even when
+ * that scope's own toggle is nominally on. */
+export interface BannerView {
+  scope: FwScope;
+  message: string;
+}
+
+/** One scope's raw ruleset (the read-only per-scope rule table). */
+export interface RulesetView {
+  ref: string;
+  scope: FwScope;
+  node?: string;
+  enabled: boolean;
+  defaultIn?: string;
+  defaultOut?: string;
+  rules: RuleView[];
+  banners?: BannerView[];
+}
+
+/** One entry in a guest's effective, ordered evaluation
+ * (docs/features/firewall.md §1). `groupName` is set when this rule came
+ * from (or is itself a reference to) a security group. */
+export interface ResolvedRuleView {
+  origin: FwOrigin;
+  groupName?: string;
+  rule: RuleView;
+  pos: number;
+}
+
+export interface DefaultPolicyView {
+  direction: "in" | "out";
+  policy: string;
+  origin: FwOrigin;
+}
+
+/** A guest's full resolved view: the ordered rule list plus the two
+ * directions' fallthrough default policies and every enablement gate
+ * making some or all of it inert. */
+export interface ResolvedView {
+  guest: string;
+  active: boolean;
+  gates?: BannerView[];
+  rules: ResolvedRuleView[];
+  defaultIn: DefaultPolicyView;
+  defaultOut: DefaultPolicyView;
+}
+
+/** GET /firewall/rulesets?scope=guest&ref=... response: the guest's own
+ * raw ruleset plus its resolved view in one payload. */
+export interface GuestRulesetResponse {
+  ruleset: RulesetView;
+  resolved: ResolvedView;
+}
+
+/** `?scope=node`/`?scope=guest` with no `ref`/`node` — the hierarchy list
+ * view. */
+export interface RulesetListResponse {
+  items: RulesetView[];
+}
+
+export interface RuleRefView {
+  scope: FwScope;
+  ref: string;
+  pos: number;
+}
+
+/** One alias/ipset/security-group's "referenced by N rules" usage summary
+ * (docs/features/firewall.md §2). `kind` names which object kind this is;
+ * `scope` is the scope the object is *defined* in (cluster-scope objects
+ * are visible everywhere; node-/guest-scope ones only within their own
+ * ruleset). */
+export interface ObjectUsageView {
+  kind: "alias" | "ipset" | "group";
+  scope: FwScope;
+  name: string;
+  comment?: string;
+  count: number;
+  referencedBy?: RuleRefView[];
+}
+
+/** GET /firewall/objects response. */
+export interface FirewallObjectsResponse {
+  aliases: ObjectUsageView[];
+  ipsets: ObjectUsageView[];
+  groups: ObjectUsageView[];
+  macros: MacroView[];
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
-// Snapshots, firewall/SDN/IPAM read views, the path simulator, metrics, and
-// blueprints all have routes defined in docs/api.md but no frontend
-// consumer yet — their request/response types land with the task that
-// first calls them (T-2xx). Add them here, not in a parallel file.
+// Snapshots, SDN/IPAM read views, the path simulator, and metrics all have
+// routes defined in docs/api.md but no frontend consumer yet — their
+// request/response types land with the task that first calls them (T-2xx).
+// Add them here, not in a parallel file.
