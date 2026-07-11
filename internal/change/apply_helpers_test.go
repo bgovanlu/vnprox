@@ -21,6 +21,7 @@ import (
 const (
 	fixtureSingleNode = "../../testdata/clusters/single-node.yaml"
 	fixtureThreeNode  = "../../testdata/clusters/three-node-vlan.yaml"
+	fixtureOVSLab     = "../../testdata/clusters/ovs-lab.yaml"
 )
 
 // --- fake NodeAgent -------------------------------------------------------
@@ -275,6 +276,30 @@ func (r *fakeRefresher) count() int {
 	return len(r.calls)
 }
 
+// --- static inventory source ------------------------------------------
+
+// staticInventorySource is a change.InventorySource over a fixed snapshot,
+// for tests whose ops reference an entity (e.g. an OVS bond's slave
+// physnic) that only ever comes from the snapshot — the v1 op vocabulary
+// has no "physnic.create" (physnics are hardware, never op-created) — so
+// newHarness's default nil Inventory (an always-empty snapshot) isn't
+// enough (see newHarness's doc comment).
+type staticInventorySource struct{ snap inventory.Snapshot }
+
+func (s staticInventorySource) Snapshot() inventory.Snapshot { return s.snap }
+
+// withInventory is a newHarness opt that seeds entities (a minimal set,
+// not a full fixture replay) into a fresh graph and wires it as the
+// service's InventorySource.
+func withInventory(entities ...inventory.Entity) func(*change.Config) {
+	g := inventory.NewGraph()
+	g.ApplyPoll(inventory.SourceHostNetlink, inventory.Scope{}, entities)
+	snap := g.Snapshot()
+	return func(cfg *change.Config) {
+		cfg.Inventory = staticInventorySource{snap: snap}
+	}
+}
+
 // --- harness --------------------------------------------------------------
 
 type applyHarness struct {
@@ -294,8 +319,14 @@ type applyHarness struct {
 
 // newHarness wires a full apply-capable Service against a fresh SQLite DB and
 // a pvemock server for the given fixture, with the fake TimerFunc so the
-// commit-confirm deadline can be fired deterministically.
-func newHarness(t *testing.T, fixturePath string) *applyHarness {
+// commit-confirm deadline can be fired deterministically. opts (T-407) let a
+// caller override Config fields the base harness leaves zero — most tests in
+// this package never reference a pre-existing snapshot entity by name (their
+// ops only create fresh ones), so Inventory has always been left nil
+// (inventorySnapshot() then reads an empty graph); a test whose ops *do*
+// reference an existing entity (e.g. an OVS bond's slave physnic) needs
+// change.Config{Inventory: ...} set, hence this seam.
+func newHarness(t *testing.T, fixturePath string, opts ...func(*change.Config)) *applyHarness {
 	t.Helper()
 	f, err := pvemock.LoadFixture(fixturePath)
 	if err != nil {
@@ -322,11 +353,15 @@ func newHarness(t *testing.T, fixturePath string) *applyHarness {
 	refresher := &fakeRefresher{}
 
 	protectedPath := filepath.Join(t.TempDir(), "protected.json")
-	svc := newService(t, change.Config{
+	cfg := change.Config{
 		Changesets: csRepo, Audit: auditRepo, WS: ws,
 		Nodes: agent, Snapshots: snapRepo, Blobs: blobRepo, Refresher: refresher,
 		TimerFunc: timers.New, ProtectedPath: protectedPath,
-	})
+	}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	svc := newService(t, cfg)
 
 	return &applyHarness{
 		svc: svc, db: db, csRepo: csRepo, auditRepo: auditRepo, snapRepo: snapRepo, blobRepo: blobRepo,

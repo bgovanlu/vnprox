@@ -149,6 +149,35 @@ func TestGolden_VlanCreate(t *testing.T) {
 	checkGolden(t, "vlan-create-02.interfaces", f.Render())
 }
 
+func TestGolden_VlanCreate_OVS(t *testing.T) {
+	orig, _ := parseCorpus(t, "04-ovs-bridge.interfaces")
+	f, _ := parseCorpus(t, "04-ovs-bridge.interfaces")
+	op := VlanCreate{
+		Target: ref(inventory.KindVlan, "pve1", "vlan30"),
+		Parent: "vmbr0", VID: 30, OVS: true, Autostart: true,
+	}
+	if err := Mutate(f, op, goldenChangesetID); err != nil {
+		t.Fatalf("Mutate: %v", err)
+	}
+	requireOriginalEntriesPreserved(t, orig, f)
+	checkGolden(t, "vlan-create-ovs-04.interfaces", f.Render())
+}
+
+func TestGolden_VlanCreate_OVS_Trunk(t *testing.T) {
+	orig, _ := parseCorpus(t, "04-ovs-bridge.interfaces")
+	f, _ := parseCorpus(t, "04-ovs-bridge.interfaces")
+	op := VlanCreate{
+		Target: ref(inventory.KindVlan, "pve1", "vlan-trunk"),
+		Parent: "vmbr0", OVS: true,
+		Trunks: []inventory.VidRange{{Low: 10, High: 20}, {Low: 30, High: 30}},
+	}
+	if err := Mutate(f, op, goldenChangesetID); err != nil {
+		t.Fatalf("Mutate: %v", err)
+	}
+	requireOriginalEntriesPreserved(t, orig, f)
+	checkGolden(t, "vlan-create-ovs-trunk-04.interfaces", f.Render())
+}
+
 func TestGolden_VlanUpdate(t *testing.T) {
 	f, _ := parseCorpus(t, "02-vlan-aware-bridge.interfaces")
 	op := VlanUpdate{
