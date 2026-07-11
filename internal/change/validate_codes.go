@@ -61,11 +61,24 @@ const (
 	codeProtectedInterface = "safety.protected_interface"
 	codeGuestBearingBridge = "safety.guest_bearing_bridge"
 
+	// --- sdn (T-402: docs/features/sdn.md §4's documented pre-apply
+	// validation — "zone node coverage, bridge existence on member nodes,
+	// MTU sanity" — plus tag uniqueness and the vnet-deletion interlock).
+	// Node-coverage/bridge-existence/tag-uniqueness are blocking (real PVE
+	// apply would itself fail against these), run right after the
+	// referential class and before safety; the vnet-deletion guard is
+	// safety-interlock-shaped (mirrors codeGuestBearingBridge exactly, incl.
+	// AllowDangerousOps downgrade) and lives in validate_safety.go instead.
+
+	codeSDNBridgeMissing = "sdn.bridge_missing_on_node"
+	codeSDNTagDuplicate  = "sdn.tag_duplicate"
+
 	// --- advisory (class 5: style/health warnings) ----------------------
 
 	codeAdvisoryBondHashPolicy = "advisory.bond_missing_layer34_hash"
 	codeAdvisoryBridgeComment  = "advisory.bridge_missing_comment"
 	codeAdvisorySingleSlave    = "advisory.bond_single_slave"
+	codeAdvisoryVxlanMTU       = "advisory.vxlan_mtu_no_headroom"
 
 	// --- raw file replace guard (T-208's iface.raw.replace) -------------
 	// These are produced outside the classed pipeline above, by Service's
