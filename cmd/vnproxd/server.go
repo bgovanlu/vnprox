@@ -18,6 +18,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/blueprint"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
+	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/metrics"
@@ -128,12 +129,27 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Logger: logger,
 	})
 
+	// T-602: the unified findings engine's IngestServices is wired in as
+	// collect.Config.OnServices below (the same "piggyback on the host
+	// loop's existing per-tick hook" pattern OnStats already established
+	// for metricsSampler) — but the engine itself needs graph/driftSvc/
+	// topoSvc/metricsSampler/a notifier, none of which exist until after
+	// setupCollect returns the PVE client the notifier reuses, so
+	// findingsEngine is constructed just below setupCollect and its
+	// IngestServices method is closed over here for setupCollect's benefit.
+	var findingsEngine *findings.Engine
+	onServices := func(node string, status map[string]bool) {
+		if findingsEngine != nil {
+			findingsEngine.IngestServices(node, status)
+		}
+	}
+
 	// T-303: peerClient (built from the same PVE client the collectors use
 	// for cluster-status-based discovery) is nil exactly when collectErr is
 	// non-nil — see setupCollect's doc comment — so every peerClient use
 	// below is already guarded by the same "collectors initialized OK"
 	// nil-safety collector's own uses need.
-	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, peerSecrets)
+	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, onServices, peerSecrets)
 	if collectErr != nil {
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling or cluster fan-out", "error", collectErr)
 	}
@@ -145,6 +161,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if sdnPVEClient != nil {
 		sdnSvc = sdn.NewService(sdnPVEClient)
 	}
+
+	// T-602: one findings stream unifying drift (T-305), the LLDP VLAN
+	// cross-check (T-302), and this task's own health checks — composed
+	// over the same live graph/metrics substrate every other read path
+	// shares (docs/architecture.md §2/§3). IPAM (T-405) is not yet wired:
+	// still a stub package as of this task — see setupFindings' doc
+	// comment. The notifier reuses sdnPVEClient (the collectors' read-only
+	// PVE identity) rather than building a third client.
+	findingsNotifier := setupFindingsNotifier(sdnPVEClient, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, findingsNotifier, topoSvc, logger)
 
 	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
 	// (docs/api.md's WebSocket section documents one shared /api/ws
@@ -328,6 +354,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Topology:      topoSvc,
 		LLDP:          topoSvc,
 		Drift:         driftSvc,
+		Findings:      findingsEngine,
 		FDB:           topoSvc,
 		Metrics:       metricsSampler,
 		Layouts:       store.NewLayoutRepo(db),
@@ -399,6 +426,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		g.add(collector.RunLLDPLoop)
 	}
 	g.add(driftSvc.RunLoop)
+	g.add(findingsEngine.RunLoop)
 
 	logger.Info("vnproxd starting",
 		"version", version,
