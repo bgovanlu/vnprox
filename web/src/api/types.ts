@@ -815,6 +815,66 @@ export interface FirewallObjectsResponse {
   macros: MacroView[];
 }
 
+// --- Firewall log viewer (GET /firewall/log; `firewall.log.batch` WS
+// event; docs/features/firewall.md §4, internal/fwlog) -------------------
+
+/** Honest correlation outcome for one log line (internal/fwlog.Correlation
+ * — see docs/api.md's `GET /firewall/log` section for what each value
+ * means). Never a silent guess: `"ambiguous"`/`"unmatched"`/
+ * `"unknown_chain"`/`"no_guest_data"` are all first-class, always-labeled
+ * outcomes, not error states. */
+export type FwLogCorrelationStatus = "rule" | "default_policy" | "ambiguous" | "unmatched" | "unknown_chain" | "no_guest_data";
+
+/** A correlated line's deep-link target: enough to navigate to
+ * `/firewall` and locate the exact rule by identity (guestRef + pos +
+ * origin), never by DOM position — see this task's report on why that
+ * matters. */
+export interface FwLogRuleRef {
+  guestRef: string;
+  origin: "cluster" | "group" | "guest";
+  groupName?: string;
+  pos: number;
+}
+
+export interface FwLogCorrelation {
+  status: FwLogCorrelationStatus;
+  rule?: FwLogRuleRef;
+  candidatePositions?: number[];
+  reason?: string;
+}
+
+/** One parsed (and, where possible, correlated) pve-firewall log line. */
+export interface FwLogEntry {
+  seq: number;
+  node: string;
+  vmid: number;
+  guestRef?: string;
+  direction?: "in" | "out" | "";
+  action?: string;
+  proto?: string;
+  source?: string;
+  dest?: string;
+  sport?: string;
+  dport?: string;
+  at?: number;
+  raw: string;
+  correlation: FwLogCorrelation;
+}
+
+/** GET /firewall/log response. */
+export interface FwLogPage {
+  items: FwLogEntry[];
+  droppedTotal: number;
+  unavailableNodes?: string[];
+}
+
+/** The `firewall.log.batch` WS event (docs/api.md's WebSocket section). */
+export interface FwLogBatchEvent {
+  event: "firewall.log.batch";
+  entries: FwLogEntry[];
+  droppedTotal: number;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots, IPAM read views, the path simulator, metrics, and blueprints
 // all have routes defined in docs/api.md but no frontend consumer yet —
