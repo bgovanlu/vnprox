@@ -19,6 +19,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/ipam"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
@@ -127,6 +128,24 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	var sdnSvc *sdn.Service
 	if sdnPVEClient != nil {
 		sdnSvc = sdn.NewService(sdnPVEClient)
+	}
+	// T-405: GET /ipam/subnets(/{cidr}/allocations) reads PVE's IPAM plugin(s)
+	// directly and live, for the same "never stale relative to what a
+	// reserve/release apply just changed" reason sdnSvc above does — plus the
+	// cluster's own inventory graph (guest/bridge data for the guest-agent
+	// enrichment source and detected non-SDN subnets).
+	//
+	// ipamSvc is declared as the api.IPAMService interface (not a concrete
+	// *ipam.Service, unlike sdnSvc above) and only ever assigned inside the
+	// sdnPVEClient != nil branch, so an unset case is a true nil interface —
+	// the safe pattern peerAudit/peerSnapshots below already use, avoiding
+	// the "non-nil interface wrapping a typed nil pointer" footgun a bare
+	// `var ipamSvc *ipam.Service` would risk at Options{IPAM: ipamSvc}
+	// (mountIPAMRoutes' `svc == nil` degraded-mode check needs a literal
+	// nil interface to work).
+	var ipamSvc api.IPAMService
+	if sdnPVEClient != nil {
+		ipamSvc = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph})
 	}
 
 	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
@@ -309,6 +328,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Snapshots:     changeSvc,
 		Audit:         auditRepo,
 		SDN:           sdnSvc,
+		IPAM:          ipamSvc,
 		PVEGateways:   pveGatewayProvider{authSvc},
 		Protected:     changeSvc,
 		Peer:          peerSrv,

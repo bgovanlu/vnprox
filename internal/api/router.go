@@ -71,7 +71,10 @@ type Options struct {
 	// PVE client — see cmd/vnproxd/collect.go's setupCollect doc comment)
 	// simply skips mounting the route, the same degraded-mode treatment
 	// every other optional Options field gets.
-	SDN         SDNService
+	SDN SDNService
+	// IPAM is T-405's read view seam (docs/api.md's `GET /ipam/subnets` and
+	// `GET /ipam/subnets/{cidr}/allocations`); nil-safe like SDN above.
+	IPAM        IPAMService
 	PVEGateways PVEGatewayProvider
 	Protected   ProtectedService
 	Peer        PeerServer
@@ -116,6 +119,7 @@ func NewRouter(opts Options) http.Handler {
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
+		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket
