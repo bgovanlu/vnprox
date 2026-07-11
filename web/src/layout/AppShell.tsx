@@ -20,13 +20,26 @@ export function AppShell() {
       <NavRail />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onOpenHelp={() => { setHelpOpen(true); }} />
+        {/* Rendered in normal document flow, between TopBar and <main> —
+         * not a fixed overlay — so it pushes page content down instead of
+         * floating on top of it. Every page's own top-row controls (the
+         * topology page's "New ▾"/"Search" toolbar, React Flow's bottom-
+         * left zoom/fit-view Controls, ChangesetDrawer's bottom-right
+         * corner) turned out to collide with every fixed-position corner
+         * this was tried in (found via the Playwright e2e suite: it
+         * intercepted pointer events on the map's own controls) — "never
+         * blocks navigation" per the task card is satisfied by pushing
+         * content down (still fully visible and clickable, one scroll or
+         * an obviously-adjacent element) rather than by finding an
+         * unoccupied floating corner, since this app's pages don't
+         * reliably have one. */}
+        <OnboardingWalkthrough />
         <main className="min-w-0 flex-1 overflow-auto p-6">
           <Outlet />
         </main>
       </div>
       <ShortcutHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
       <ChangesetDrawer />
-      <OnboardingWalkthrough />
     </div>
   );
 }

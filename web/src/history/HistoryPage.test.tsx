@@ -1,7 +1,10 @@
 // T-605's read-only-mode UX sweep found this page's "Take snapshot" and
-// "Create restore draft" affordances had no capability gating at all —
-// this test pins the fix: both are disabled-with-tooltip for a
-// netWrite-less session, and enabled for a full session.
+// "Restore…"/"Create restore draft" affordances had no capability gating
+// at all — this test pins the fix: all three are disabled-with-tooltip
+// for a netWrite-less session (the "Restore…" dialog trigger is disabled
+// outright rather than left open to a dead-end dialog full of disabled
+// controls — a stricter, cleaner read than gating only the dialog's final
+// submit button), and enabled for a full session.
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -53,16 +56,14 @@ function renderPage(): void {
 }
 
 describe("HistoryPage read-only gating", () => {
-  it("disables Take snapshot and Create restore draft for a netWrite-less session", async () => {
+  it("disables Take snapshot and the Restore… trigger for a netWrite-less session", async () => {
     mockSession = readOnlySession;
-    const user = userEvent.setup();
     renderPage();
 
     expect(screen.getByRole("button", { name: "Take snapshot" })).toBeDisabled();
 
     await screen.findByText(/snap-1/);
-    await user.click(screen.getByRole("button", { name: "Restore…" }));
-    expect(await screen.findByRole("button", { name: "Create restore draft" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Restore…" })).toBeDisabled();
   });
 
   it("enables both for a full-capability session", async () => {

@@ -16,6 +16,57 @@
 // reference environment, not a universal truth.
 import { expect, test, type Page } from "@playwright/test";
 
+// T-605: a fresh-DB first login (every run here, per the shared webServer
+// command's own doc comment) shows the onboarding walkthrough banner
+// (docs/user-guide.md §1) between TopBar and <main> — in normal document
+// flow, so it pushes the topology canvas down rather than floating over
+// it (AppShell.tsx's doc comment explains why: every fixed-position corner
+// collided with some page's own controls). That's correct product
+// behavior, but this file's screenshot baseline is about the map's
+// steady-state rendering, not about the walkthrough. Suppressing it via an
+// injected stylesheet (rather than clicking its own "Minimize" button)
+// deliberately does NOT persist anything server-side (no PUT
+// /layouts/onboarding) — clicking Minimize was tried first and turned out
+// to permanently dismiss root@pam's walkthrough for the rest of this
+// shared-webServer test run, breaking onboarding.spec.ts's own later
+// assertion that a fresh root@pam login shows it. addInitScript runs
+// before page scripts on every navigation in this page (including this
+// file's own mid-test page.reload()), so the suppression holds throughout.
+async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    // docs/security.md's CSP is `style-src 'self'` (no 'unsafe-inline'),
+    // so an injected <style> element (tried first) is silently blocked —
+    // it exists in the DOM but the browser refuses to apply its rule.
+    // Directly setting a CSSStyleDeclaration property via the `.style`
+    // object (as opposed to the HTML `style` *attribute*, e.g. via
+    // setAttribute) is not restricted by style-src (a well-known CSP
+    // nuance), so this sets the property JS-side instead — reapplied via
+    // MutationObserver since the banner mounts asynchronously (after
+    // GET /layouts/onboarding resolves) well after this init script runs.
+    const suppress = () => {
+      const el = document.querySelector('[aria-label="Onboarding walkthrough"]');
+      if (el instanceof HTMLElement) {
+        el.style.setProperty("display", "none", "important");
+      }
+    };
+    // lib.dom.d.ts types document.documentElement as always non-null, but
+    // empirically (this exact init-script timing, before the parser has
+    // created it yet) it can genuinely be null here — hence the try/catch
+    // retry loop below instead of a type-checker-satisfying null check
+    // that strict lint would flag as "always falsy" against that (in this
+    // one narrow case, wrong) type.
+    const start = () => {
+      try {
+        suppress();
+        new MutationObserver(suppress).observe(document.documentElement, { childList: true, subtree: true });
+      } catch {
+        setTimeout(start, 0);
+      }
+    };
+    start();
+  });
+}
+
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Username").fill("root");
@@ -26,6 +77,7 @@ async function logIn(page: Page): Promise<void> {
 }
 
 test("all four layer bands render on /topology against the real backend", async ({ page }) => {
+  await suppressOnboardingWalkthrough(page);
   await logIn(page);
 
   // One fixture-declared entity per layer (labels from
@@ -71,8 +123,15 @@ test("all four layer bands render on /topology against the real backend", async 
     return nodes.length >= 10 && transforms.size > nodes.length / 2;
   });
   await page.getByRole("button", { name: "fit view" }).click();
-  // Let the viewport transition settle before pixel-comparing.
-  await page.waitForTimeout(800);
+  // Let the viewport transition settle before pixel-comparing. (T-605:
+  // bumped from 800ms — under the load of this repo's now-larger e2e
+  // suite run sequentially in one worker, 800ms occasionally wasn't
+  // enough for the canvas container's post-suppression reflow to fully
+  // settle before the screenshot, shrinking the captured height by
+  // 80-300px nondeterministically; this didn't reproduce running this
+  // spec file alone. Not fully eliminated by this change alone if the
+  // sandbox is under heavy load — see this task's report.)
+  await page.waitForTimeout(2000);
 
   // Committed baseline (see header comment: machine-dependent; regenerate
   // with npm run e2e:update). Screenshots the canvas element rather than

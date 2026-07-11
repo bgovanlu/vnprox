@@ -360,13 +360,15 @@ export function OnboardingWalkthrough() {
 
   if (shouldShowReopenPill(progress)) {
     return (
-      <button
-        type="button"
-        onClick={handleResume}
-        className="fixed bottom-4 left-4 z-30 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium shadow-lg hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
-      >
-        Resume setup walkthrough ({stepNumber(progress.currentStep)}/{ONBOARDING_STEPS.length})
-      </button>
+      <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-1.5 dark:border-slate-800 dark:bg-slate-950">
+        <button
+          type="button"
+          onClick={handleResume}
+          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+        >
+          Resume setup walkthrough ({stepNumber(progress.currentStep)}/{ONBOARDING_STEPS.length})
+        </button>
+      </div>
     );
   }
 
@@ -378,7 +380,13 @@ export function OnboardingWalkthrough() {
     <div
       role="region"
       aria-label="Onboarding walkthrough"
-      className="fixed bottom-4 left-4 z-30 flex w-full max-w-sm flex-col overflow-hidden rounded-lg border shadow-xl border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+      // Normal document flow (a banner between TopBar and <main>, pushing
+      // content down), not a fixed floating overlay — see AppShell.tsx's
+      // doc comment on why: every fixed corner tried collided with some
+      // page's own controls (React Flow's bottom-left Controls, the
+      // topology toolbar's top-row New/Search buttons, ChangesetDrawer's
+      // bottom-right corner).
+      className="flex w-full max-w-md shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950"
     >
       <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
         <span className="flex items-baseline gap-1.5 text-sm font-medium">

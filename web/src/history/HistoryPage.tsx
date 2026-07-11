@@ -225,15 +225,20 @@ export function HistoryPage() {
                           >
                             vs live
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              setRestoreTarget(snap);
-                            }}
-                          >
-                            Restore…
-                          </Button>
+                          <Tooltip content={writeDisabledReason}>
+                            <span>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={!canWrite}
+                                onClick={() => {
+                                  setRestoreTarget(snap);
+                                }}
+                              >
+                                Restore…
+                              </Button>
+                            </span>
+                          </Tooltip>
                         </div>
                       </li>
                     ))}

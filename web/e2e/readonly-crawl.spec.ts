@@ -42,24 +42,25 @@
 // reusing the resulting session cookie (via Playwright's `storageState`)
 // across every test in this file avoids that entirely, and is also just
 // faster.
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import * as os from "node:os";
 import * as path from "node:path";
 
 const AUDITOR_STORAGE_STATE = path.join(os.tmpdir(), `vnprox-e2e-auditor-storage-state-${String(process.pid)}.json`);
 
-const test = base.extend({
-  storageState: async ({}, use) => {
-    await use(AUDITOR_STORAGE_STATE);
-  },
-});
+// Every test in this file reuses the one session logged into below —
+// Playwright's documented "log in once, reuse storageState" pattern
+// (simpler than a custom fixture override, which also collides with this
+// repo's react-hooks/rules-of-hooks lint rule: a fixture literally named
+// `use`, per Playwright's own API, reads as a called-but-not-a-hook "use").
+test.use({ storageState: AUDITOR_STORAGE_STATE });
 
 test.beforeAll(async ({ browser }) => {
-  // storageState: undefined overrides the ambient default this file's own
-  // `test.extend` above sets for every OTHER context (browser.newContext()
-  // otherwise inherits the project's configured fixture defaults) — this
-  // bootstrap context must start from a clean slate to log in fresh, not
-  // try to read back the very file it's about to create.
+  // storageState: undefined overrides the ambient default `test.use` above
+  // sets for every OTHER context (browser.newContext() otherwise inherits
+  // the project's configured fixture defaults) — this bootstrap context
+  // must start from a clean slate to log in fresh, not try to read back
+  // the very file it's about to create.
   const context = await browser.newContext({ ignoreHTTPSErrors: true, storageState: undefined });
   const page = await context.newPage();
   await page.goto("/login");
