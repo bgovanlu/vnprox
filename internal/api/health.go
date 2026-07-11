@@ -30,9 +30,15 @@ type CollectorHealth interface {
 // exposed on /api/v1/health") and consumed by /topology's staleness
 // decoration (see stalenessFrom in topology.go).
 //
-// Node scopes the source: the host/lldp loops only poll the daemon's local
-// node, so the adapter sets Node to that node's name for them; the pve loop
-// covers the whole cluster and leaves it empty.
+// Node scopes the source. The pve loop covers the whole cluster and leaves
+// it empty. The lldp loop only polls the daemon's local node, so it is
+// always scoped to that node. Since T-303, the host loop polls every
+// cluster node it can reach (local directly, every peer through the peer
+// API) — collect.Collector.Status() reports one CollectorSourceStatus per
+// node it knows about, each already carrying its own Node value (the
+// cmd/vnproxd adapter copies it straight through; it no longer needs to
+// infer it), so a single unreachable peer's staleness is visible and
+// attributable to that peer's own band without affecting any other node's.
 type CollectorSourceStatus struct {
 	LastSuccess         time.Time `json:"last_success,omitempty"`
 	LastAttempt         time.Time `json:"last_attempt,omitempty"`

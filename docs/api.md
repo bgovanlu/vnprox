@@ -36,13 +36,15 @@ Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contra
   "sources": [
     {"name": "pve", "stale": false, "lastSuccess": 1720512345},
     {"name": "host", "node": "pve1", "stale": false, "lastSuccess": 1720512345},
+    {"name": "host", "node": "pve2", "stale": false, "lastSuccess": 1720512340},
+    {"name": "host", "node": "pve3", "stale": true, "lastSuccess": 1720512200, "lastError": "peer_unreachable"},
     {"name": "lldp", "node": "pve1", "stale": false, "lastSuccess": 1720512345}
   ]
 }
 ```
 
 - `name` is the collector loop: `pve` (all PVE-derived data, cluster-wide), `host` (netlink + interfaces-file data), `lldp`.
-- `node` scopes the source to one cluster node's band (`host`/`lldp` only poll the daemon's local node); absent = cluster-wide.
+- `node` scopes the source to one cluster node's band; absent = cluster-wide. Since T-303 (documented here retroactively per that task's report note), `host` carries one entry **per cluster node** this daemon can reach — itself directly, every peer through the peer API (docs/architecture.md §1, §5) — so a single unreachable peer's band degrades independently (docs/features/topology.md §5's "greyed from last-known data with a staleness banner and timestamp") without affecting any other node's; `lldp` is still local-node-only pending T-302's own cluster-wide collection.
 - `stale` per source flips true after 3 consecutive poll failures (≈ data 3 poll intervals old); top-level `stale` is true iff any source is stale. `lastSuccess` (unix seconds, omitted if no poll has ever succeeded) is the "data as of" timestamp for the banner; `lastError` (string, present while a source is failing) is the most recent poll error.
 
 **`GET /inventory/{ref}` response shape.** `{ref, kind, node, label, fields, provenance, rawSource?, related, generatedAt}`:
@@ -91,7 +93,7 @@ Added by T-203 (documented here retroactively per that task's report note; pinne
 | GET | `/snapshots/diff?from=&to=` | unified diffs between two snapshots (or `to=live`) |
 | POST | `/snapshots/{id}/restore` | creates a **changeset draft** that would restore this state (goes through normal review/apply) |
 
-Paginated list response envelope (`/snapshots`, `/audit` below): `{items: [...], nextCursor?: "<opaque>"}` — `nextCursor` is present iff there is a further page; pass it back verbatim as `?cursor=` to fetch it. An empty `?cursor=` (or omitted) starts from the newest item.
+Paginated list response envelope (`/snapshots`, `/audit` below): `{items: [...], nextCursor?: "<opaque>", partial?: boolean, failedNodes?: [string]}` — `nextCursor` is present iff there is a further page; pass it back verbatim as `?cursor=` to fetch it. An empty `?cursor=` (or omitted) starts from the newest item. Added by T-303 (retroactive doc note per that task's report): `partial`/`failedNodes` are cluster-fan-out fields (docs/architecture.md §7 — both tables are node-local app data, so a cluster-wide list re-queries every peer and merges the pages) — `partial` is present and `true` iff one or more peers (or peer discovery itself) could not be reached for this page, and `failedNodes` names them; both are omitted entirely on a fully-successful page, including every single-node deployment (zero peers) and every pre-T-303 caller's exact original response shape.
 
 Snapshot shape (list item and, with an added `files` array, the `/snapshots/{id}` detail response): `{id, kind: "pre"|"post"|"manual"|"scheduled", changesetId?, note?, takenAt, nodes: [string], files?: [{node, path, sha256}]}` — file *content* is never inlined (it lives in the content-addressed, zstd-compressed blob store, deduplicated by sha256); fetch it via `/snapshots/diff`.
 
@@ -103,7 +105,9 @@ Snapshot shape (list item and, with an added `files` array, the `/snapshots/{id}
 |---|---|---|
 | GET | `/audit?user=&action=&target=&result=&changesetId=&from=&to=&limit=&cursor=` | filtered, paginated audit log (docs/features/change-management.md §8) |
 
-Requires the `audit` capability (viewing vnprox's own audit log), not `netRead`. Every filter param is optional and ANDed together; `from`/`to` are unix seconds, inclusive. Response: `{items: [{id, at, username, action, target?, changesetId?, result, detail?}], nextCursor?}` — `detail` is the action-specific structured detail object (e.g. `{"stepCount":3}`), opaque JSON. Every T-205 apply-engine lifecycle action (`changeset.apply`, `changeset.confirm`, `changeset.rollback`, `changeset.timer_rearm`, `changeset.recover`, `changeset.safety_override`) and this task's `snapshot.create` / `snapshot.restore` appear here; each row's `changesetId` (when present) links to that changeset and, transitively, its snapshots.
+Requires the `audit` capability (viewing vnprox's own audit log), not `netRead`. Every filter param is optional and ANDed together; `from`/`to` are unix seconds, inclusive. Response: `{items: [{id, at, username, action, target?, changesetId?, result, detail?}], nextCursor?, partial?, failedNodes?}` (the last two per the pagination envelope note above) — `detail` is the action-specific structured detail object (e.g. `{"stepCount":3}`), opaque JSON. Every T-205 apply-engine lifecycle action (`changeset.apply`, `changeset.confirm`, `changeset.rollback`, `changeset.timer_rearm`, `changeset.recover`, `changeset.safety_override`) and this task's `snapshot.create` / `snapshot.restore` appear here; each row's `changesetId` (when present) links to that changeset and, transitively, its snapshots.
+
+Cluster fan-out (T-303): each node's audit log is node-local (docs/architecture.md §7), so `GET /audit` re-queries every reachable peer (via `GET /api/peer/audit` below) with the same filter/cursor/limit and merges the pages with the local one, newest-first, filtered per peer before merging (not fetched-then-filtered) — see the pagination envelope note for the `partial`/`failedNodes` fields this produces. A peer-supplied row is not otherwise distinguished from a local one in the response shape.
 
 ## Firewall, SDN, IPAM (read views; writes are changeset ops)
 
@@ -159,4 +163,8 @@ One connection multiplexes all topics; every frame (both directions) is a JSON t
 
 ## Peer API (`/api/peer/*`, internal only)
 
-HMAC-authenticated (cluster secret) endpoints between daemons: `GET /api/peer/host/interfaces`, `/api/peer/host/lldp`, `/api/peer/host/stats`, `POST /api/peer/host/stage-interfaces`, `POST /api/peer/host/ifreload`, `POST /api/peer/host/restore`, `GET /api/peer/health`, `GET /api/peer/version`. Never exposed in the SPA; rejected without valid HMAC + timestamp (±30s replay window).
+HMAC-authenticated (cluster secret) endpoints between daemons: `GET /api/peer/host/interfaces`, `/api/peer/host/lldp`, `/api/peer/host/stats`, `/api/peer/host/links`, `POST /api/peer/host/stage-interfaces`, `POST /api/peer/host/ifreload`, `POST /api/peer/host/restore`, `GET /api/peer/health`, `GET /api/peer/version`, `GET /api/peer/audit`, `GET /api/peer/snapshots`. Never exposed in the SPA; rejected without valid HMAC + timestamp (±30s replay window).
+
+`GET /api/peer/host/links` (added by T-303, documented here retroactively per that task's report note): a node's netlink-equivalent link state (`{links: [LinkState]}`, one entry per physical NIC/bond/bridge/VLAN sub-interface) — the remote-node counterpart of `internal/host.Reader.Links`, letting a peer's daemon fan its host poller out cluster-wide instead of only ever seeing its own node's netlink state.
+
+`GET /api/peer/audit` and `GET /api/peer/snapshots` (added by T-303): each node's own local page of its `/audit`/`/snapshots` data — `{items: [...], nextCursor?}`, the same shapes as the public `/audit`/`/snapshots` list items, minus the cluster-fan-out `partial`/`failedNodes` fields (a peer only ever reports its own node-local page here; the fan-out/merge happens on the calling daemon, inside `GET /audit`/`GET /snapshots` themselves). `/api/peer/audit` accepts the same filter query params as `GET /audit` (`user`, `action`, `target`, `result`, `changesetId`, `from`, `to`) plus `limit`/`cursor`; `/api/peer/snapshots` accepts `limit`/`cursor` only.

@@ -137,6 +137,151 @@ func TestTwoDaemonHarness_ReadEndpoints(t *testing.T) {
 	}
 }
 
+// TestTwoDaemonHarness_Links is T-303's Links read-endpoint counterpart to
+// TestTwoDaemonHarness_ReadEndpoints: bond runtime detail round-trips
+// through the peer API byte-for-byte (well, field-for-field, since it's
+// JSON not a raw file), which is what internal/collect's cluster-wide host
+// poller relies on for AC1's "bond runtime, stats presence" parity.
+func TestTwoDaemonHarness_Links(t *testing.T) {
+	h := newTwoDaemonHarness(t)
+
+	h.readerA.links["pve1"] = []host.LinkState{
+		{
+			Name: "bond0", Kind: "bond", MTU: 1500, LinkUp: true,
+			Bond: &host.BondDetail{
+				Mode: "802.3ad (4)", ActiveSlave: "eno1",
+				Slaves: []host.BondSlave{{Name: "eno1", MIIStatus: "up", Active: true}},
+			},
+		},
+	}
+
+	links, err := h.client.Links(t.Context(), h.nodeA, "pve1")
+	if err != nil {
+		t.Fatalf("Links(nodeA): %v", err)
+	}
+	if len(links) != 1 || links[0].Name != "bond0" {
+		t.Fatalf("Links(nodeA) = %+v, want one bond0 entry", links)
+	}
+	if links[0].Bond == nil || links[0].Bond.Mode != "802.3ad (4)" || links[0].Bond.ActiveSlave != "eno1" {
+		t.Errorf("Links(nodeA)[0].Bond = %+v, want mode 802.3ad (4) / active eno1", links[0].Bond)
+	}
+	if h.readerA.linksCalls != 1 {
+		t.Errorf("readerA.linksCalls = %d, want 1", h.readerA.linksCalls)
+	}
+
+	// Unknown node -> the reader's ErrNotFound surfaces as a peer
+	// ResponseError, not a transport-level failure.
+	if _, err := h.client.Links(t.Context(), h.nodeA, "nosuch"); err == nil {
+		t.Fatal("expected an error for an unknown node")
+	}
+}
+
+// TestPeerAudit_FetchesFilteredPage is T-303: GET /api/peer/audit parses
+// every documented GET /audit query param into peer.AuditFilter and
+// forwards it, and decodes the served page back into []AuditRecord/
+// nextCursor unchanged.
+func TestPeerAudit_FetchesFilteredPage(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	srv, _, _, auditR, _ := newTestServerFull(t, func() time.Time { return now })
+	ts := mountedTestServer(t, srv)
+	client := NewClient(ClientOptions{
+		Secrets: newStaticSecretStore(testSecret), Scheme: "http", Logger: discardLogger(),
+		Now: func() time.Time { return now },
+	})
+	p := Peer{Node: "pve1", Addr: ts.Listener.Addr().String()}
+
+	want := []AuditRecord{{ID: 1, At: 100, Username: "alice", Action: "changeset.apply", Result: "success"}}
+	auditR.pages[""] = auditPageResponse{Items: want, NextCursor: "100:1"}
+
+	filter := AuditFilter{User: "alice", Action: "changeset.apply", From: 1, To: 200}
+	items, next, err := client.Audit(t.Context(), p, filter, "", 10)
+	if err != nil {
+		t.Fatalf("Audit: %v", err)
+	}
+	if len(items) != 1 || items[0].Username != "alice" {
+		t.Fatalf("Audit items = %+v", items)
+	}
+	if next != "100:1" {
+		t.Errorf("nextCursor = %q, want 100:1", next)
+	}
+	if auditR.lastFilter != filter {
+		t.Errorf("server-observed filter = %+v, want %+v", auditR.lastFilter, filter)
+	}
+	if auditR.lastLimit != 10 {
+		t.Errorf("server-observed limit = %d, want 10", auditR.lastLimit)
+	}
+
+	// A subsequent page with a non-empty cursor is served from that
+	// cursor's bucket, proving the cursor round-trips through the query
+	// string untouched.
+	auditR.pages["100:1"] = auditPageResponse{Items: nil, NextCursor: ""}
+	items, next, err = client.Audit(t.Context(), p, AuditFilter{}, "100:1", 10)
+	if err != nil {
+		t.Fatalf("Audit (page 2): %v", err)
+	}
+	if len(items) != 0 || next != "" {
+		t.Errorf("Audit (page 2) = %v, %q, want empty/no next", items, next)
+	}
+}
+
+// TestPeerSnapshots_FetchesPage is T-303's snapshot analogue.
+func TestPeerSnapshots_FetchesPage(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	srv, _, _, _, snapR := newTestServerFull(t, func() time.Time { return now })
+	ts := mountedTestServer(t, srv)
+	client := NewClient(ClientOptions{
+		Secrets: newStaticSecretStore(testSecret), Scheme: "http", Logger: discardLogger(),
+		Now: func() time.Time { return now },
+	})
+	p := Peer{Node: "pve1", Addr: ts.Listener.Addr().String()}
+
+	want := []SnapshotRecord{{ID: "01ABC", Kind: "manual", Nodes: []string{"pve1", "pve2"}, TakenAt: 100}}
+	snapR.pages[""] = snapshotPageResponse{Items: want, NextCursor: ""}
+
+	items, next, err := client.Snapshots(t.Context(), p, "", 25)
+	if err != nil {
+		t.Fatalf("Snapshots: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "01ABC" {
+		t.Fatalf("Snapshots items = %+v", items)
+	}
+	if next != "" {
+		t.Errorf("nextCursor = %q, want empty", next)
+	}
+	if snapR.lastLimit != 25 {
+		t.Errorf("server-observed limit = %d, want 25", snapR.lastLimit)
+	}
+}
+
+// TestServer_UnconfiguredAuditSnapshotsAndLinks503s covers the nil-seam
+// guard paths for T-303's three new routes, mirroring
+// TestServer_UnconfiguredReaderWriter503s.
+func TestServer_UnconfiguredAuditSnapshotsAndLinks503s(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	srv := NewServer(ServerOptions{
+		Secrets: newStaticSecretStore(testSecret),
+		Version: "test",
+		Logger:  discardLogger(),
+		Now:     func() time.Time { return now },
+	})
+	ts := mountedTestServer(t, srv)
+	client := NewClient(ClientOptions{
+		Secrets: newStaticSecretStore(testSecret), Scheme: "http", Logger: discardLogger(),
+		Now: func() time.Time { return now },
+	})
+	p := Peer{Node: "solo", Addr: ts.Listener.Addr().String()}
+
+	if _, err := client.Links(t.Context(), p, "solo"); err == nil {
+		t.Fatal("expected an error with no Reader configured")
+	}
+	if _, _, err := client.Audit(t.Context(), p, AuditFilter{}, "", 10); err == nil {
+		t.Fatal("expected an error with no AuditReader configured")
+	}
+	if _, _, err := client.Snapshots(t.Context(), p, "", 10); err == nil {
+		t.Fatal("expected an error with no SnapshotReader configured")
+	}
+}
+
 func TestTwoDaemonHarness_WriteEndpoints(t *testing.T) {
 	h := newTwoDaemonHarness(t)
 	ctx := t.Context()

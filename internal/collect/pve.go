@@ -3,9 +3,12 @@ package collect
 import (
 	"context"
 	"fmt"
+	"net"
 	"sort"
+	"strconv"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/pve"
 )
 
@@ -73,6 +76,7 @@ func (c *Collector) pollClusterStatus(ctx context.Context) ([]string, error) {
 	}
 
 	var nodes []string
+	peers := make(map[string]peer.Peer, len(entries))
 	for _, e := range entries {
 		if e.Type != "node" {
 			continue
@@ -80,12 +84,23 @@ func (c *Collector) pollClusterStatus(ctx context.Context) ([]string, error) {
 		nodes = append(nodes, e.Name)
 		if e.Local {
 			c.setLocalNode(e.Name)
+		} else if c.peerClient != nil && e.IP != "" {
+			// T-303: build the peer address book from the same
+			// GET /cluster/status rows Peers() itself would filter to
+			// (Type=="node", !Local, IP!="") — see peer.Client.Peers — so
+			// the host loop's per-tick peer fan-out never pays for a
+			// second PVE round trip just to rediscover addresses this
+			// poll already fetched.
+			peers[e.Name] = peer.Peer{Node: e.Name, Addr: net.JoinHostPort(e.IP, strconv.Itoa(c.peerClient.Port()))}
 		}
 		var ents []inventory.Entity
 		if ent, ok := byNode[e.Name]; ok {
 			ents = []inventory.Entity{ent}
 		}
 		c.graph.ApplyPoll(inventory.SourcePVECluster, inventory.Scope{Node: e.Name}, ents)
+	}
+	if c.peerClient != nil {
+		c.setPeers(peers)
 	}
 	return nodes, nil
 }
@@ -97,10 +112,15 @@ func (c *Collector) pollClusterStatus(ctx context.Context) ([]string, error) {
 // rulesets, which would otherwise linger as stale ghosts forever (no
 // per-node poll step covers a node the membership list no longer names).
 //
-// Host-side sources (netlink/interfaces/LLDP) are deliberately not retired:
-// they are only ever populated for this daemon's own local node, whose
-// hardware does not vanish just because the node left the cluster — and the
-// host loop keeps reconciling them regardless.
+// Host-side sources for this daemon's own local node are never retired
+// here: local hardware does not vanish just because the local node's own
+// cluster-status row briefly disappears, and the host loop keeps
+// reconciling it regardless. Since T-303, a *departed peer's* host-side
+// contributions (netlink links, the interfaces file — populated only when
+// Config.Peer was fanning out to it) ARE retired below, the same as its
+// PVE-sourced entities: once a node leaves the cluster, this daemon has no
+// further way to reach it (peer discovery no longer lists it), so its
+// last-known host state would otherwise linger as a stale ghost forever.
 //
 // The membership set is guarded by c.mu, and each retirement ApplyPoll is
 // serialized by the graph itself, so concurrent cycles (the PVE loop plus a
@@ -120,6 +140,7 @@ func (c *Collector) retireDepartedNodes(current []string) {
 		}
 	}
 	c.seenNodes = cur
+	localNode := c.localNode
 	c.mu.Unlock()
 
 	sort.Strings(departed)
@@ -129,6 +150,11 @@ func (c *Collector) retireDepartedNodes(current []string) {
 		c.graph.ApplyPoll(inventory.SourcePVENetwork, inventory.Scope{Node: n}, nil)
 		c.graph.ApplyPoll(inventory.SourcePVEGuest, inventory.Scope{Node: n}, nil)
 		c.graph.ApplyPoll(inventory.SourcePVEFirewall, inventory.Scope{Node: n, Kinds: []inventory.Kind{inventory.KindFwRuleset}}, nil)
+		if c.peerClient != nil && n != localNode {
+			c.graph.ApplyPoll(inventory.SourceHostNetlink, inventory.Scope{Node: n}, nil)
+			c.graph.ApplyPoll(inventory.SourceHostInterfaces, inventory.Scope{Node: n}, nil)
+			c.retireHostNodeStatus(n)
+		}
 	}
 }
 

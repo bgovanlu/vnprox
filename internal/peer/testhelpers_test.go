@@ -41,9 +41,11 @@ type spyHostReader struct {
 	interfaces      map[string]string
 	lldp            map[string][]byte
 	stats           map[string]map[string]host.IfaceStats
+	links           map[string][]host.LinkState
 	interfacesCalls int
 	lldpCalls       int
 	statsCalls      int
+	linksCalls      int
 }
 
 func newSpyHostReader() *spyHostReader {
@@ -51,7 +53,17 @@ func newSpyHostReader() *spyHostReader {
 		interfaces: map[string]string{},
 		lldp:       map[string][]byte{},
 		stats:      map[string]map[string]host.IfaceStats{},
+		links:      map[string][]host.LinkState{},
 	}
+}
+
+func (r *spyHostReader) Links(_ context.Context, node string) ([]host.LinkState, error) {
+	r.linksCalls++
+	l, ok := r.links[node]
+	if !ok {
+		return nil, errors.Join(host.ErrNotFound, errors.New("node "+node))
+	}
+	return l, nil
 }
 
 func (r *spyHostReader) InterfacesFile(_ context.Context, node string, _ bool) (string, error) {
@@ -136,4 +148,71 @@ func newTestServer(t *testing.T, now func() time.Time) (*Server, *spyHostReader,
 		Now:     now,
 	})
 	return srv, reader, writer
+}
+
+// spyAuditReader is an in-memory AuditReader stand-in for T-303's peer
+// audit fan-out tests: pages is served verbatim (already paginated by the
+// caller's fixture setup), applyFilter records what filter this Server
+// received so tests can assert query params were parsed and forwarded
+// correctly.
+type spyAuditReader struct {
+	err        error
+	pages      map[string]auditPageResponse
+	lastFilter AuditFilter
+	lastLimit  int
+}
+
+func newSpyAuditReader() *spyAuditReader {
+	return &spyAuditReader{pages: map[string]auditPageResponse{}}
+}
+
+func (r *spyAuditReader) ListAuditPage(_ context.Context, filter AuditFilter, cursor string, limit int) ([]AuditRecord, string, error) {
+	r.lastFilter = filter
+	r.lastLimit = limit
+	if r.err != nil {
+		return nil, "", r.err
+	}
+	page := r.pages[cursor]
+	return page.Items, page.NextCursor, nil
+}
+
+// spySnapshotReader is the snapshot-list analogue of spyAuditReader.
+type spySnapshotReader struct {
+	err       error
+	pages     map[string]snapshotPageResponse
+	lastLimit int
+}
+
+func newSpySnapshotReader() *spySnapshotReader {
+	return &spySnapshotReader{pages: map[string]snapshotPageResponse{}}
+}
+
+func (r *spySnapshotReader) ListSnapshotPage(_ context.Context, cursor string, limit int) ([]SnapshotRecord, string, error) {
+	r.lastLimit = limit
+	if r.err != nil {
+		return nil, "", r.err
+	}
+	page := r.pages[cursor]
+	return page.Items, page.NextCursor, nil
+}
+
+// newTestServerFull is newTestServer plus T-303's Audit/Snapshots reader
+// seams wired to spies, for tests that exercise GET /api/peer/{audit,snapshots}.
+func newTestServerFull(t *testing.T, now func() time.Time) (*Server, *spyHostReader, *spyHostWriter, *spyAuditReader, *spySnapshotReader) {
+	t.Helper()
+	reader := newSpyHostReader()
+	writer := newSpyHostWriter()
+	auditR := newSpyAuditReader()
+	snapR := newSpySnapshotReader()
+	srv := NewServer(ServerOptions{
+		Secrets:   newStaticSecretStore(testSecret),
+		Reader:    reader,
+		Writer:    writer,
+		Audit:     auditR,
+		Snapshots: snapR,
+		Version:   "test",
+		Logger:    discardLogger(),
+		Now:       now,
+	})
+	return srv, reader, writer, auditR, snapR
 }

@@ -9,31 +9,49 @@ import (
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/pve"
 )
 
 // setupCollect builds the T-104 collectors: a *collect.Collector wired to
 // its own PVE client (see buildCollectorPVEClient), the real local-host
 // reader, and graph — ready for its RunPVELoop/RunHostLoop/RunLLDPLoop to
-// be registered with the run group.
+// be registered with the run group. It also builds (T-303) the *peer.Client
+// the host loop uses to fan out to every other cluster member, reusing the
+// exact same PVE client for peer discovery (GET /cluster/status) rather
+// than constructing a second one — returned alongside the collector so
+// callers can reuse it for other cluster fan-out (peer.Server's audit/
+// snapshot readers, internal/api's cluster-merge handlers).
 //
 // Collector construction failing (in practice: the PVE client's own
 // construction failing — a missing/unreadable token file or CA cert) is
 // deliberately not fatal to the whole daemon: runDaemon logs it and starts
-// without live inventory polling rather than refusing to serve the UI/API
-// at all. This matters today in particular because the documented
-// production PVE-token provisioning (vnprox@pve!daemon) is a tracked but
-// not yet implemented installer step (T-606; see packaging/bin/vnprox-setup),
-// so a fresh production install's token file genuinely may not exist yet.
-func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta)) (*collect.Collector, error) {
+// without live inventory polling (or cluster fan-out — peerClient is nil
+// too in this case, since peer discovery is itself PVE-cluster-status-
+// driven) rather than refusing to serve the UI/API at all. This matters
+// today in particular because the documented production PVE-token
+// provisioning (vnprox@pve!daemon) is a tracked but not yet implemented
+// installer step (T-606; see packaging/bin/vnprox-setup), so a fresh
+// production install's token file genuinely may not exist yet.
+func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta), peerSecrets *peer.SecretStore) (*collect.Collector, *peer.Client, error) {
 	pveClient, err := buildCollectorPVEClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("building collectors' PVE client: %w", err)
+		return nil, nil, fmt.Errorf("building collectors' PVE client: %w", err)
+	}
+
+	var peerClient *peer.Client
+	if peerSecrets != nil {
+		peerClient = peer.NewClient(peer.ClientOptions{
+			ClusterStatus: pveClient,
+			Secrets:       peerSecrets,
+			Logger:        logger,
+		})
 	}
 
 	c, err := collect.New(collect.Config{
 		PVE:          pveClient,
 		Host:         host.NewReal(),
+		Peer:         peerClient,
 		Graph:        graph,
 		PVEInterval:  cfg.Collect.PVEInterval,
 		HostInterval: cfg.Collect.HostInterval,
@@ -42,9 +60,9 @@ func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logge
 		OnDelta:      onDelta,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("constructing collector: %w", err)
+		return nil, nil, fmt.Errorf("constructing collector: %w", err)
 	}
-	return c, nil
+	return c, peerClient, nil
 }
 
 // buildCollectorPVEClient constructs the collectors' own PVE API client.
@@ -98,20 +116,18 @@ func (a collectorHealthAdapter) CollectorStatus() []api.CollectorSourceStatus {
 	st := a.c.Status()
 	out := make([]api.CollectorSourceStatus, len(st.Sources))
 	for i, s := range st.Sources {
+		// Since T-303, collect.Collector.Status() already sets each
+		// SourceStatus's own Node (one "host" entry per cluster node it
+		// polls, "lldp" scoped to the local node, "pve" cluster-wide/
+		// unscoped) — this adapter just copies it through rather than
+		// inferring it from LocalNode.
 		out[i] = api.CollectorSourceStatus{
 			Name:                s.Name,
+			Node:                s.Node,
 			LastSuccess:         s.LastSuccess,
 			LastAttempt:         s.LastAttempt,
 			ConsecutiveFailures: s.ConsecutiveFailures,
 			LastError:           s.LastError,
-		}
-		// The host/lldp loops only ever poll the daemon's own node (see
-		// internal/collect's hostPollOnce/lldpPollOnce), so their staleness
-		// is scoped to that node's topology band; the pve loop covers the
-		// whole cluster and stays unscoped (empty Node). LocalNode is empty
-		// until the pve poller's first successful cycle discovers it.
-		if s.Name == "host" || s.Name == "lldp" {
-			out[i].Node = st.LocalNode
 		}
 	}
 	return out

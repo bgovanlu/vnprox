@@ -34,10 +34,14 @@ type SnapshotService interface {
 
 // snapshotListResponse is GET /snapshots' response envelope: the requested
 // page plus an opaque nextCursor (omitted once there is no further page),
-// per docs/api.md's `?limit=&cursor=` pagination convention.
+// per docs/api.md's `?limit=&cursor=` pagination convention, plus (T-303)
+// the same partial/failedNodes cluster-fan-out fields auditListResponse
+// carries.
 type snapshotListResponse struct {
-	NextCursor string                   `json:"nextCursor,omitempty"`
-	Items      []change.SnapshotSummary `json:"items"`
+	NextCursor  string                   `json:"nextCursor,omitempty"`
+	Items       []change.SnapshotSummary `json:"items"`
+	FailedNodes []string                 `json:"failedNodes,omitempty"`
+	Partial     bool                     `json:"partial,omitempty"`
 }
 
 // snapshotCreateRequest is POST /snapshots' body: `{note}`.
@@ -51,7 +55,7 @@ type snapshotCreateRequest struct {
 // mountChangesetsRoutes' pattern — a snapshot restore is staged as a normal
 // draft changeset, so it carries the same write capability the changesets
 // write routes do, not a separate one.
-func mountSnapshotsRoutes(r chi.Router, svc SnapshotService, auth AuthService) {
+func mountSnapshotsRoutes(r chi.Router, svc SnapshotService, auth AuthService, peers PeerSnapshotSource) {
 	if svc == nil || auth == nil {
 		return
 	}
@@ -63,7 +67,7 @@ func mountSnapshotsRoutes(r chi.Router, svc SnapshotService, auth AuthService) {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Get("/snapshots", handleListSnapshots(svc))
+		r.Get("/snapshots", handleListSnapshots(svc, peers))
 		r.Get("/snapshots/diff", handleDiffSnapshots(svc))
 		r.Get("/snapshots/{id}", handleGetSnapshot(svc))
 	})
@@ -79,7 +83,7 @@ func mountSnapshotsRoutes(r chi.Router, svc SnapshotService, auth AuthService) {
 	})
 }
 
-func handleListSnapshots(svc SnapshotService) http.HandlerFunc {
+func handleListSnapshots(svc SnapshotService, peers PeerSnapshotSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit := defaultSnapshotPageLimit
 		if v := r.URL.Query().Get("limit"); v != "" {
@@ -93,7 +97,22 @@ func handleListSnapshots(svc SnapshotService) http.HandlerFunc {
 			}
 			limit = n
 		}
-		items, next, err := svc.ListSnapshots(r.Context(), r.URL.Query().Get("cursor"), limit)
+		cursor := r.URL.Query().Get("cursor")
+
+		if peers == nil {
+			items, next, err := svc.ListSnapshots(r.Context(), cursor, limit)
+			if err != nil {
+				writeSnapshotError(w, err)
+				return
+			}
+			if items == nil {
+				items = []change.SnapshotSummary{}
+			}
+			writeJSON(w, http.StatusOK, snapshotListResponse{Items: items, NextCursor: next})
+			return
+		}
+
+		items, next, partial, failed, err := fetchClusterSnapshots(r.Context(), svc, peers, cursor, limit)
 		if err != nil {
 			writeSnapshotError(w, err)
 			return
@@ -101,7 +120,7 @@ func handleListSnapshots(svc SnapshotService) http.HandlerFunc {
 		if items == nil {
 			items = []change.SnapshotSummary{}
 		}
-		writeJSON(w, http.StatusOK, snapshotListResponse{Items: items, NextCursor: next})
+		writeJSON(w, http.StatusOK, snapshotListResponse{Items: items, NextCursor: next, Partial: partial, FailedNodes: failed})
 	}
 }
 

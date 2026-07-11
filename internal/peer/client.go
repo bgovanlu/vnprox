@@ -285,6 +285,95 @@ func (c *Client) Restore(ctx context.Context, p Peer, node, content string) erro
 	return decodeInto(resp, nil)
 }
 
+// Links fetches node's netlink-equivalent link state from peer p (T-303:
+// the remote-node counterpart of a local host.Reader.Links call, so
+// internal/collect's host poller can treat "poll this node" uniformly
+// regardless of whether node is local or reached through a peer).
+func (c *Client) Links(ctx context.Context, p Peer, node string) ([]host.LinkState, error) {
+	path := "/api/peer/host/links?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out linksResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Links, nil
+}
+
+// Audit fetches one page of peer p's own local audit log (T-303: the
+// per-peer fetch internal/api's cluster audit merge issues once per known
+// peer, per page, with the same filter/cursor/limit it uses locally).
+func (c *Client) Audit(ctx context.Context, p Peer, filter AuditFilter, cursor string, limit int) ([]AuditRecord, string, error) {
+	q := url.Values{}
+	if filter.User != "" {
+		q.Set("user", filter.User)
+	}
+	if filter.Action != "" {
+		q.Set("action", filter.Action)
+	}
+	if filter.Target != "" {
+		q.Set("target", filter.Target)
+	}
+	if filter.Result != "" {
+		q.Set("result", filter.Result)
+	}
+	if filter.ChangesetID != "" {
+		q.Set("changesetId", filter.ChangesetID)
+	}
+	if filter.From != 0 {
+		q.Set("from", strconv.FormatInt(filter.From, 10))
+	}
+	if filter.To != 0 {
+		q.Set("to", strconv.FormatInt(filter.To, 10))
+	}
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/audit?"+q.Encode(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	var out auditPageResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, "", err
+	}
+	return out.Items, out.NextCursor, nil
+}
+
+// Snapshots fetches one page of peer p's own local snapshot list (T-303).
+func (c *Client) Snapshots(ctx context.Context, p Peer, cursor string, limit int) ([]SnapshotRecord, string, error) {
+	q := url.Values{}
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/snapshots?"+q.Encode(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	var out snapshotPageResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, "", err
+	}
+	return out.Items, out.NextCursor, nil
+}
+
+// Port returns the peer API port this Client dials when a discovered peer
+// address needs one synthesized (ClientOptions.Port, defaulted to
+// DefaultPort) — exported so callers that build their own Peer values from
+// data they already fetched (T-303's collector, which learns node IPs from
+// the same GET /cluster/status poll it already issues, rather than paying
+// for a second discovery round-trip via Peers) use the exact same port this
+// Client would.
+func (c *Client) Port() int { return c.opts.Port }
+
 // Health checks peer p's /api/peer/health.
 func (c *Client) Health(ctx context.Context, p Peer) error {
 	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/health", nil)

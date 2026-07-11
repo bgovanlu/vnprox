@@ -53,10 +53,15 @@ type auditEntryResponse struct {
 }
 
 // auditListResponse is GET /audit's response envelope, matching
-// snapshotListResponse's {items, nextCursor} shape.
+// snapshotListResponse's {items, nextCursor} shape, plus (T-303)
+// docs/api.md's cluster-fan-out additions: partial (present and true iff
+// one or more peers could not be reached for this page) and failedNodes
+// (which ones — "never silent" per that task's card).
 type auditListResponse struct {
-	NextCursor string               `json:"nextCursor,omitempty"`
-	Items      []auditEntryResponse `json:"items"`
+	NextCursor  string               `json:"nextCursor,omitempty"`
+	Items       []auditEntryResponse `json:"items"`
+	FailedNodes []string             `json:"failedNodes,omitempty"`
+	Partial     bool                 `json:"partial,omitempty"`
 }
 
 func toAuditEntryResponse(e store.AuditEntry) auditEntryResponse {
@@ -72,19 +77,22 @@ func toAuditEntryResponse(e store.AuditEntry) auditEntryResponse {
 
 // mountAuditRoutes registers docs/api.md's audit route: a single filterable,
 // paginated GET, gated on the audit capability (a read of vnprox's own audit
-// log, distinct from netRead's live-network-state reads).
-func mountAuditRoutes(r chi.Router, svc AuditService, auth AuthService) {
+// log, distinct from netRead's live-network-state reads). peers is T-303's
+// cluster fan-out dependency; nil-safe (falls back to the original
+// local-only behavior, unchanged, so every pre-T-303 caller keeps working
+// exactly as before).
+func mountAuditRoutes(r chi.Router, svc AuditService, auth AuthService, peers PeerAuditSource) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capAudit))
-		r.Get("/audit", handleListAudit(svc))
+		r.Get("/audit", handleListAudit(svc, peers))
 	})
 }
 
-func handleListAudit(svc AuditService) http.HandlerFunc {
+func handleListAudit(svc AuditService, peers PeerAuditSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		limit := defaultAuditPageLimit
@@ -121,15 +129,28 @@ func handleListAudit(svc AuditService) http.HandlerFunc {
 			filter.To = n
 		}
 
-		entries, next, err := svc.ListPage(r.Context(), filter, q.Get("cursor"), limit)
+		if peers == nil {
+			entries, next, err := svc.ListPage(r.Context(), filter, q.Get("cursor"), limit)
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not list audit entries")
+				return
+			}
+			items := make([]auditEntryResponse, len(entries))
+			for i, e := range entries {
+				items[i] = toAuditEntryResponse(e)
+			}
+			writeJSON(w, http.StatusOK, auditListResponse{Items: items, NextCursor: next})
+			return
+		}
+
+		items, next, partial, failed, err := fetchClusterAudit(r.Context(), svc, peers, filter, q.Get("cursor"), limit)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not list audit entries")
 			return
 		}
-		items := make([]auditEntryResponse, len(entries))
-		for i, e := range entries {
-			items[i] = toAuditEntryResponse(e)
+		if items == nil {
+			items = []auditEntryResponse{}
 		}
-		writeJSON(w, http.StatusOK, auditListResponse{Items: items, NextCursor: next})
+		writeJSON(w, http.StatusOK, auditListResponse{Items: items, NextCursor: next, Partial: partial, FailedNodes: failed})
 	}
 }

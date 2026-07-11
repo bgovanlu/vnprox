@@ -6,11 +6,23 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/bgovanlu/vnprox/internal/host"
+)
+
+// defaultPeerPageLimit and maxPeerPageLimit bound GET /audit and GET
+// /snapshots' ?limit= query param on the peer side, mirroring
+// internal/api's own audit/snapshots page-size conventions (docs/api.md's
+// pagination convention) so a peer's per-request page size never grows
+// unbounded regardless of what a (trusted, cluster-secret-authenticated)
+// caller requests.
+const (
+	defaultPeerPageLimit = 50
+	maxPeerPageLimit     = 200
 )
 
 // defaultMaxBodyBytes bounds request bodies the peer server will read
@@ -38,6 +50,39 @@ type HostReader interface {
 
 	// Stats returns node's interface counters, keyed by interface name.
 	Stats(ctx context.Context, node string) (map[string]host.IfaceStats, error)
+
+	// Links returns node's netlink-equivalent link state (physical NICs,
+	// bonds, bridges, VLAN sub-interfaces), including bond runtime detail
+	// and bridge VLAN/FDB tables. T-303 added this to the interface (and
+	// the corresponding GET /api/peer/host/links route below) so
+	// internal/collect's host poller can fan a remote node's netlink state
+	// in through the peer API exactly like it already does for the
+	// interfaces file, LLDP, and stats — host.Reader (the type every
+	// production Reader value already is) has always had this method (see
+	// that package's doc comment), so no wiring changes are needed to
+	// start serving it.
+	Links(ctx context.Context, node string) ([]host.LinkState, error)
+}
+
+// AuditReader is the peer-server-side dependency for GET /api/peer/audit
+// (T-303): one node's own local audit log, filtered and cursor-paginated
+// exactly like docs/api.md's GET /audit. internal/api's cluster fan-out
+// re-queries every peer with the same filter+cursor and merges the
+// returned pages with its own local page — see internal/api's audit
+// cluster-merge code. Declared against this package's own AuditFilter (not
+// internal/store's) so internal/peer never imports internal/store;
+// cmd/vnproxd adapts the concrete *store.AuditRepo to this shape.
+type AuditReader interface {
+	ListAuditPage(ctx context.Context, filter AuditFilter, cursor string, limit int) ([]AuditRecord, string, error)
+}
+
+// SnapshotReader is the peer-server-side dependency for GET
+// /api/peer/snapshots (T-303): one node's own local snapshot list,
+// cursor-paginated exactly like docs/api.md's GET /snapshots. Declared
+// against this package's own SnapshotRecord (not internal/change's
+// SnapshotSummary) for the same import-direction reason as AuditReader.
+type SnapshotReader interface {
+	ListSnapshotPage(ctx context.Context, cursor string, limit int) ([]SnapshotRecord, string, error)
 }
 
 // HostWriter is the write-side dependency for the documented
@@ -69,6 +114,8 @@ type HostWriter interface {
 type ServerOptions struct {
 	Reader       HostReader
 	Writer       HostWriter
+	Audit        AuditReader
+	Snapshots    SnapshotReader
 	Secrets      *SecretStore
 	Logger       *slog.Logger
 	Now          func() time.Time
@@ -117,9 +164,13 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/interfaces", s.handleInterfaces)
 		r.Get("/host/lldp", s.handleLLDP)
 		r.Get("/host/stats", s.handleStats)
+		r.Get("/host/links", s.handleLinks)
 		r.Post("/host/stage-interfaces", s.handleStageInterfaces)
 		r.Post("/host/ifreload", s.handleIfreload)
 		r.Post("/host/restore", s.handleRestore)
+
+		r.Get("/audit", s.handleAudit)
+		r.Get("/snapshots", s.handleSnapshots)
 	})
 }
 
@@ -174,6 +225,102 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, statsResponse{Stats: stats})
+}
+
+func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	links, err := s.opts.Reader.Links(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading netlink link state", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, linksResponse{Links: links})
+}
+
+// parsePeerPageLimit parses the shared ?limit= convention GET /audit and
+// GET /snapshots use, defaulting/clamping exactly like internal/api's own
+// list handlers. Returns ok=false (after writing the 400 itself) on a
+// non-positive-integer value.
+func parsePeerPageLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
+	limit := defaultPeerPageLimit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "limit must be a positive integer")
+			return 0, false
+		}
+		if n > maxPeerPageLimit {
+			n = maxPeerPageLimit
+		}
+		limit = n
+	}
+	return limit, true
+}
+
+func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Audit == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "audit reader not configured")
+		return
+	}
+	limit, ok := parsePeerPageLimit(w, r)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	filter := AuditFilter{
+		User: q.Get("user"), Action: q.Get("action"), Target: q.Get("target"),
+		Result: q.Get("result"), ChangesetID: q.Get("changesetId"),
+	}
+	if v := q.Get("from"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "from must be a unix-seconds integer")
+			return
+		}
+		filter.From = n
+	}
+	if v := q.Get("to"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "to must be a unix-seconds integer")
+			return
+		}
+		filter.To = n
+	}
+
+	items, next, err := s.opts.Audit.ListAuditPage(r.Context(), filter, q.Get("cursor"), limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal_error", "listing audit page: "+err.Error())
+		return
+	}
+	if items == nil {
+		items = []AuditRecord{}
+	}
+	writeJSON(w, http.StatusOK, auditPageResponse{Items: items, NextCursor: next})
+}
+
+func (s *Server) handleSnapshots(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Snapshots == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "snapshot reader not configured")
+		return
+	}
+	limit, ok := parsePeerPageLimit(w, r)
+	if !ok {
+		return
+	}
+	items, next, err := s.opts.Snapshots.ListSnapshotPage(r.Context(), r.URL.Query().Get("cursor"), limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal_error", "listing snapshot page: "+err.Error())
+		return
+	}
+	if items == nil {
+		items = []SnapshotRecord{}
+	}
+	writeJSON(w, http.StatusOK, snapshotPageResponse{Items: items, NextCursor: next})
 }
 
 func (s *Server) handleStageInterfaces(w http.ResponseWriter, r *http.Request) {

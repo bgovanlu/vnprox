@@ -3,11 +3,13 @@ package collect
 import (
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/pve"
 )
 
@@ -30,9 +32,19 @@ const maxBackoff = 60 * time.Second
 // Config configures a Collector. PVE, Host, and Graph are required; the
 // rest have sane defaults.
 type Config struct {
-	Host         host.Reader
-	PVE          *pve.Client
-	Graph        *inventory.Graph
+	Host  host.Reader
+	PVE   *pve.Client
+	Graph *inventory.Graph
+	// Peer is T-303's cluster fan-out dependency: when set, the host loop
+	// polls every other cluster member's netlink links, interfaces file,
+	// and stats through this Client (docs/architecture.md §1: "peer
+	// vnproxd instances on other cluster nodes for node-local data"), in
+	// addition to this daemon's own node via Host. Nil (the default,
+	// matching every pre-T-303 caller) preserves the original local-only
+	// behavior exactly — single-node deployments have zero peers per
+	// internal/peer's documented contract, so this is never required for
+	// correctness on a single node.
+	Peer         *peer.Client
 	Logger       *slog.Logger
 	OnDelta      func(inventory.Delta)
 	LocalNode    string
@@ -55,17 +67,30 @@ type sourceState struct {
 // registering RunPVELoop, RunHostLoop, and RunLLDPLoop with cmd/vnproxd's
 // runGroup. A Collector is safe for concurrent use.
 type Collector struct {
-	host    host.Reader
-	pve     *pve.Client
-	graph   *inventory.Graph
-	log     *slog.Logger
-	onDelta func(inventory.Delta)
-	status  map[string]*sourceState
+	host       host.Reader
+	pve        *pve.Client
+	peerClient *peer.Client
+	graph      *inventory.Graph
+	log        *slog.Logger
+	onDelta    func(inventory.Delta)
+	status     map[string]*sourceState
+	// hostNodeStatus is the per-cluster-node staleness/backoff bookkeeping
+	// for the "host" source (T-303: unlike "pve" and "lldp", which stay a
+	// single entry, "host" now polls every cluster member — self directly,
+	// every other node through peerClient — so Status() needs one entry
+	// per node, keyed here by node name; guarded by statusMu like status).
+	hostNodeStatus map[string]*sourceState
 	// seenNodes is the cluster membership observed by the previous
 	// successful cluster-status poll (guarded by mu). pvePollAll compares
 	// it against the current membership to retire departed nodes' entities
 	// (see retireDepartedNodes).
-	seenNodes    map[string]bool
+	seenNodes map[string]bool
+	// peers is the peer address book learned from the same GET
+	// /cluster/status poll that discovers seenNodes (guarded by mu),
+	// keyed by node name. Populated only when Config.Peer is set; used by
+	// hostPollOnce to fan out to every peer without a second discovery
+	// round-trip per host-loop tick.
+	peers        map[string]peer.Peer
 	localNode    string
 	pveInterval  time.Duration
 	hostInterval time.Duration
@@ -108,6 +133,7 @@ func New(cfg Config) (*Collector, error) {
 	return &Collector{
 		pve:          cfg.PVE,
 		host:         cfg.Host,
+		peerClient:   cfg.Peer,
 		graph:        cfg.Graph,
 		log:          logger,
 		pveInterval:  pveInterval,
@@ -120,6 +146,8 @@ func New(cfg Config) (*Collector, error) {
 			"host": {},
 			"lldp": {},
 		},
+		hostNodeStatus: map[string]*sourceState{},
+		peers:          map[string]peer.Peer{},
 	}, nil
 }
 
@@ -144,6 +172,64 @@ func (c *Collector) setLocalNode(node string) {
 		c.log.Info("collect: discovered local node", "node", node)
 	}
 	c.localNode = node
+}
+
+// setPeers records the peer address book discovered by the most recent
+// successful cluster-status poll (T-303). Called only when Config.Peer is
+// set; hostPollOnce reads it back via getPeers.
+func (c *Collector) setPeers(peers map[string]peer.Peer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.peers = peers
+}
+
+// getPeers returns a stable-ordered snapshot of the current peer address
+// book (empty, never nil, before the first cluster-status poll or when
+// Config.Peer is unset).
+func (c *Collector) getPeers() []peer.Peer {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]peer.Peer, 0, len(c.peers))
+	for _, p := range c.peers {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Node < out[j].Node })
+	return out
+}
+
+// recordNodeResult updates one cluster node's "host" source staleness/
+// backoff bookkeeping (T-303's per-node counterpart to recordResult, which
+// stays keyed purely by loop name for "pve"/"lldp" and for "host"'s
+// backoff-driving local-node result — see hostPollOnce).
+func (c *Collector) recordNodeResult(node string, attemptTime time.Time, err error) {
+	c.statusMu.Lock()
+	defer c.statusMu.Unlock()
+	st := c.hostNodeStatus[node]
+	if st == nil {
+		st = &sourceState{}
+		c.hostNodeStatus[node] = st
+	}
+	st.lastAttempt = attemptTime
+	if err == nil {
+		if st.consecutiveFailures > 0 {
+			c.log.Info("collect: peer host poll recovered", "node", node, "previous_failures", st.consecutiveFailures)
+		}
+		st.lastSuccess = attemptTime
+		st.lastErr = nil
+		st.consecutiveFailures = 0
+		return
+	}
+	st.lastErr = err
+	st.consecutiveFailures++
+}
+
+// retireHostNodeStatus drops node's per-node "host" staleness bookkeeping
+// (called by retireDepartedNodes when a node leaves the PVE cluster, so a
+// departed node doesn't linger forever in Status().Sources).
+func (c *Collector) retireHostNodeStatus(node string) {
+	c.statusMu.Lock()
+	defer c.statusMu.Unlock()
+	delete(c.hostNodeStatus, node)
 }
 
 // recordResult updates the named loop's staleness/backoff bookkeeping.
@@ -184,17 +270,30 @@ func (c *Collector) consecutiveFailures(name string) int {
 	return 0
 }
 
-// SourceStatus is one poll loop's staleness/health snapshot.
+// SourceStatus is one poll loop's staleness/health snapshot. Node scopes
+// the source to a single cluster node's topology band (docs/api.md's
+// staleness.sources[].node); empty means cluster-wide. Since T-303, "host"
+// carries one SourceStatus per cluster member (self plus every reachable
+// peer) rather than a single local-node-only entry — "lldp" and "pve" are
+// unaffected (see Status's doc comment).
 type SourceStatus struct {
 	LastSuccess         time.Time
 	LastAttempt         time.Time
 	Name                string
+	Node                string
 	LastError           string
 	ConsecutiveFailures int
 }
 
-// Status is a point-in-time snapshot of every poll loop's staleness, keyed
-// by loop name ("pve", "host", "lldp"). Deliverable 4: exposed so
+// Status is a point-in-time snapshot of every poll loop's staleness. "pve"
+// is always exactly one cluster-wide (Node == "") entry; "lldp" is always
+// exactly one local-node-scoped entry (T-302 owns fanning LLDP out
+// cluster-wide; until then this stays local-only, matching pre-T-303
+// behavior); "host" is one entry per cluster node this daemon knows about
+// (itself plus every peer discovered via the most recent cluster-status
+// poll, T-303) — before that first discovery (or on a single-node
+// deployment with Config.Peer unset), it is the same single local-node
+// entry pre-T-303 callers already expect. Deliverable 4: exposed so
 // /api/v1/health (via a small adapter cmd/vnproxd wires in) can surface
 // per-source staleness without this package knowing anything about HTTP or
 // JSON shapes.
@@ -203,28 +302,50 @@ type Status struct {
 	Sources   []SourceStatus
 }
 
+// toSourceStatus projects one sourceState (nil-safe: an unpolled loop
+// reports as its zero value) into the public SourceStatus shape.
+func toSourceStatus(name, node string, st *sourceState) SourceStatus {
+	if st == nil {
+		return SourceStatus{Name: name, Node: node}
+	}
+	s := SourceStatus{
+		Name: name, Node: node,
+		LastSuccess:         st.lastSuccess,
+		LastAttempt:         st.lastAttempt,
+		ConsecutiveFailures: st.consecutiveFailures,
+	}
+	if st.lastErr != nil {
+		s.LastError = st.lastErr.Error()
+	}
+	return s
+}
+
 // Status returns a snapshot of every loop's current staleness/health.
 func (c *Collector) Status() Status {
+	localNode := c.getLocalNode()
+
 	c.statusMu.Lock()
 	defer c.statusMu.Unlock()
-	names := []string{"pve", "host", "lldp"}
-	out := make([]SourceStatus, 0, len(names))
-	for _, name := range names {
-		st := c.status[name]
-		if st == nil {
-			out = append(out, SourceStatus{Name: name})
-			continue
+
+	out := make([]SourceStatus, 0, 2+len(c.hostNodeStatus))
+	out = append(out, toSourceStatus("pve", "", c.status["pve"]))
+
+	if len(c.hostNodeStatus) == 0 {
+		// Nothing has been discovered/polled yet (or Config.Peer is unset
+		// and even the local node hasn't been polled once) — report the
+		// single unscoped placeholder pre-T-303 callers expect.
+		out = append(out, SourceStatus{Name: "host"})
+	} else {
+		nodes := make([]string, 0, len(c.hostNodeStatus))
+		for n := range c.hostNodeStatus {
+			nodes = append(nodes, n)
 		}
-		s := SourceStatus{
-			Name:                name,
-			LastSuccess:         st.lastSuccess,
-			LastAttempt:         st.lastAttempt,
-			ConsecutiveFailures: st.consecutiveFailures,
+		sort.Strings(nodes)
+		for _, n := range nodes {
+			out = append(out, toSourceStatus("host", n, c.hostNodeStatus[n]))
 		}
-		if st.lastErr != nil {
-			s.LastError = st.lastErr.Error()
-		}
-		out = append(out, s)
 	}
-	return Status{LocalNode: c.getLocalNode(), Sources: out}
+
+	out = append(out, toSourceStatus("lldp", localNode, c.status["lldp"]))
+	return Status{LocalNode: localNode, Sources: out}
 }

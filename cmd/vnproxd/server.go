@@ -104,9 +104,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 
 	graph := inventory.NewGraph()
 	topoSvc := topology.NewService(graph, logger)
-	collector, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta)
+	// T-303: peerClient (built from the same PVE client the collectors use
+	// for cluster-status-based discovery) is nil exactly when collectErr is
+	// non-nil — see setupCollect's doc comment — so every peerClient use
+	// below is already guarded by the same "collectors initialized OK"
+	// nil-safety collector's own uses need.
+	collector, peerClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, peerSecrets)
 	if collectErr != nil {
-		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling", "error", collectErr)
+		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling or cluster fan-out", "error", collectErr)
 	}
 
 	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
@@ -182,27 +187,43 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// with the real netlink/interfaces(5)/lldpd reader (host.NewReal) for
 	// reads and the same nodeAgent constructed above for writes.
 	peerSrv := peer.NewServer(peer.ServerOptions{
-		Secrets: peerSecrets,
-		Reader:  host.NewReal(),
-		Writer:  nodeAgent,
-		Version: version,
-		Logger:  logger,
+		Secrets:   peerSecrets,
+		Reader:    host.NewReal(),
+		Writer:    nodeAgent,
+		Audit:     auditPeerAdapter{auditRepo},
+		Snapshots: snapshotPeerAdapter{changeSvc},
+		Version:   version,
+		Logger:    logger,
 	})
 
+	// T-303: peerClient also backs GET /audit and GET /snapshots' cluster
+	// fan-out (docs/architecture.md §7) — nil-safe, same as Peer above:
+	// when it's nil (no PVE client, or a genuinely peerless single-node
+	// deployment reporting zero peers) both routes stay exactly as
+	// node-local as they were before T-303.
+	var peerAudit api.PeerAuditSource
+	var peerSnapshots api.PeerSnapshotSource
+	if peerClient != nil {
+		peerAudit = peerClient
+		peerSnapshots = peerClient
+	}
+
 	handler := api.NewRouter(api.Options{
-		Version:     version,
-		DistFS:      distFS,
-		Logger:      logger,
-		Auth:        authServiceAdapter{authSvc},
-		Collectors:  collectorHealthAdapter{collector},
-		Topology:    topoSvc,
-		Layouts:     store.NewLayoutRepo(db),
-		Changesets:  changeSvc,
-		Snapshots:   changeSvc,
-		Audit:       auditRepo,
-		PVEGateways: pveGatewayProvider{authSvc},
-		Protected:   changeSvc,
-		Peer:        peerSrv,
+		Version:       version,
+		DistFS:        distFS,
+		Logger:        logger,
+		Auth:          authServiceAdapter{authSvc},
+		Collectors:    collectorHealthAdapter{collector},
+		Topology:      topoSvc,
+		Layouts:       store.NewLayoutRepo(db),
+		Changesets:    changeSvc,
+		Snapshots:     changeSvc,
+		Audit:         auditRepo,
+		PVEGateways:   pveGatewayProvider{authSvc},
+		Protected:     changeSvc,
+		Peer:          peerSrv,
+		PeerAudit:     peerAudit,
+		PeerSnapshots: peerSnapshots,
 	})
 
 	srv := &http.Server{

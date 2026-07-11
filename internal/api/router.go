@@ -67,8 +67,15 @@ type Options struct {
 	PVEGateways PVEGatewayProvider
 	Protected   ProtectedService
 	Peer        PeerServer
-	Logger      *slog.Logger
-	Version     string
+	// PeerAudit and PeerSnapshots are T-303's cluster fan-out dependencies
+	// for GET /audit and GET /snapshots (docs/architecture.md §7: "Audit/
+	// snapshot queries in the UI fan out to peers and merge"). Nil (every
+	// pre-T-303 caller) preserves the original node-local-only behavior of
+	// both routes exactly.
+	PeerAudit     PeerAuditSource
+	PeerSnapshots PeerSnapshotSource
+	Logger        *slog.Logger
+	Version       string
 }
 
 // NewRouter builds the vnproxd HTTP handler: the full middleware stack,
@@ -94,8 +101,8 @@ func NewRouter(opts Options) http.Handler {
 		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
-		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth)
-		mountAuditRoutes(r, opts.Audit, opts.Auth)
+		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
+		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 	})
 

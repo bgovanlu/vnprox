@@ -3,22 +3,52 @@ package collect
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/peer"
 )
 
-// hostPollOnce polls the local host's netlink-equivalent link state
-// (physical NICs, bonds, bridges, VLAN sub-interfaces) into
-// SourceHostNetlink partials, and its interfaces(5) file into
-// SourceHostInterfaces partials (inventory.FromInterfaces — the declared
-// config that outranks pve-network for every declared field in the merge
-// table), for whichever node the PVE poller has discovered as "local"
-// (host.Reader's Real implementation only ever serves its own node — see
-// that package's doc comment). Before that discovery has happened (process
-// just started, or the PVE poller hasn't completed a cycle yet), this is a
-// no-op, not an error, so the host loop does not spuriously back off
-// before it has anything to poll.
+// nodeHostReader is the read surface hostPollStateFor needs, satisfied
+// directly by host.Reader for the local node (Real's own doc comment: "only
+// ever serves its own node") and by peerHostReader (below) for every other
+// cluster node (T-303: "peer-API-backed reader for every other node" —
+// docs/architecture.md §1's "peer vnproxd instances on other cluster nodes
+// for node-local data"). Both concrete types are called identically by
+// hostPollOnce, so ingestion is uniform regardless of transport.
+type nodeHostReader interface {
+	InterfacesFile(ctx context.Context, node string, includePending bool) (string, error)
+	Links(ctx context.Context, node string) ([]host.LinkState, error)
+	Stats(ctx context.Context, node string) (map[string]host.IfaceStats, error)
+}
+
+// peerHostReader adapts a *peer.Client + a specific Peer address into a
+// nodeHostReader, so hostPollStateFor can poll a remote cluster node exactly
+// like it polls the local one.
+type peerHostReader struct {
+	client *peer.Client
+	peer   peer.Peer
+}
+
+func (r peerHostReader) InterfacesFile(ctx context.Context, node string, includePending bool) (string, error) {
+	return r.client.Interfaces(ctx, r.peer, node, includePending)
+}
+
+func (r peerHostReader) Links(ctx context.Context, node string) ([]host.LinkState, error) {
+	return r.client.Links(ctx, r.peer, node)
+}
+
+func (r peerHostReader) Stats(ctx context.Context, node string) (map[string]host.IfaceStats, error) {
+	return r.client.Stats(ctx, r.peer, node)
+}
+
+// hostPollStateFor polls one node's netlink-equivalent link state (physical
+// NICs, bonds, bridges, VLAN sub-interfaces) into SourceHostNetlink
+// partials, and its interfaces(5) file into SourceHostInterfaces partials
+// (inventory.FromInterfaces — the declared config that outranks
+// pve-network for every declared field in the merge table), via reader
+// (either the local host.Reader or a peerHostReader for a remote node).
 //
 // The poll's success/failure state is judged solely on the netlink Links()
 // read: an interfaces-file read or parse failure is logged and skipped,
@@ -26,27 +56,23 @@ import (
 // than clobbering declared state the graph already has correct (the same
 // keep-last-known policy pvePollAll applies to individual step failures).
 //
-// Interface counters (host.Reader.Stats) are read per deliverable 2 but
-// still discarded: raw counters have no inventory entity fields at all —
-// modeling them is internal/metrics' future job.
-func (c *Collector) hostPollOnce(ctx context.Context) error {
-	node := c.getLocalNode()
-	if node == "" {
-		return nil
-	}
-
-	links, err := c.host.Links(ctx, node)
+// Interface counters (reader.Stats) are read per deliverable 2 but still
+// discarded: raw counters have no inventory entity fields at all —
+// modeling them is internal/metrics' future job. A stats read failure does
+// not affect this poll's returned error/success state.
+func (c *Collector) hostPollStateFor(ctx context.Context, node string, reader nodeHostReader) error {
+	links, err := reader.Links(ctx, node)
 	if err != nil {
 		return fmt.Errorf("host links (%s): %w", node, err)
 	}
 	entities := inventory.FromNetlinkLinks(node, links)
 	c.graph.ApplyPoll(inventory.SourceHostNetlink, inventory.Scope{Node: node}, entities)
 
-	if _, statsErr := c.host.Stats(ctx, node); statsErr != nil {
+	if _, statsErr := reader.Stats(ctx, node); statsErr != nil {
 		c.log.Debug("collect: host stats read failed", "node", node, "error", statsErr)
 	}
 
-	raw, err := c.host.InterfacesFile(ctx, node, false)
+	raw, err := reader.InterfacesFile(ctx, node, false)
 	if err != nil {
 		c.log.Debug("collect: host interfaces file read failed, keeping previous declared state", "node", node, "error", err)
 		return nil
@@ -58,6 +84,55 @@ func (c *Collector) hostPollOnce(ctx context.Context) error {
 	}
 	c.graph.ApplyPoll(inventory.SourceHostInterfaces, inventory.Scope{Node: node}, inventory.FromInterfaces(node, parsed))
 	return nil
+}
+
+// hostPollOnce polls this daemon's own local node (via c.host) and, when
+// Config.Peer is set, every other currently-known cluster member (via a
+// peerHostReader built from the address book pollClusterStatus most
+// recently discovered) — T-303's "local host.Reader for self, peer-API-
+// backed reader for every other node, uniform ingestion into inventory"
+// deliverable.
+//
+// Before the PVE poller has discovered the local node (process just
+// started, or it hasn't completed a cycle yet), this is a no-op, not an
+// error, so the host loop does not spuriously back off before it has
+// anything to poll — matching pre-T-303 behavior exactly for the local
+// node.
+//
+// This poll step's returned error (and therefore RunHostLoop/RefreshNow's
+// backoff/staleness accounting for the "host" name) reflects only the local
+// node's result, exactly as before T-303: a peer being unreachable must not
+// throttle this daemon's own local polling cadence. Each polled node
+// (local and every peer) additionally gets its own per-node staleness
+// record via recordNodeResult, which is what makes a single dead peer's
+// band go stale (docs/features/topology.md §5) without affecting any other
+// node's.
+func (c *Collector) hostPollOnce(ctx context.Context) error {
+	localNode := c.getLocalNode()
+	if localNode == "" {
+		return nil
+	}
+
+	start := time.Now()
+	localErr := c.hostPollStateFor(ctx, localNode, c.host)
+	c.recordNodeResult(localNode, start, localErr)
+
+	if c.peerClient != nil {
+		for _, p := range c.getPeers() {
+			if p.Node == localNode {
+				continue
+			}
+			pStart := time.Now()
+			reader := peerHostReader{client: c.peerClient, peer: p}
+			err := c.hostPollStateFor(ctx, p.Node, reader)
+			c.recordNodeResult(p.Node, pStart, err)
+			if err != nil {
+				c.log.Warn("collect: peer host poll failed, keeping last-known state", "node", p.Node, "peer_addr", p.Addr, "error", err)
+			}
+		}
+	}
+
+	return localErr
 }
 
 // lldpPollOnce polls LLDP neighbor data for the local node into
