@@ -146,3 +146,17 @@ CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 | ipam | `ipam.alloc.create/delete` |
 
 Each op maps to one or more **apply steps**; the planner orders steps: (1) cluster-scope PVE API calls, (2) per-node interface file staging, (3) per-node `ifreload` via PVE network reload endpoint, (4) `sdn.apply` last when present. Rollback executes the inverse from the pre-snapshot in reverse order.
+
+## 4. Blueprints (`internal/blueprint`, T-603)
+
+A `Blueprint` (docs/api.md's Blueprints section has the full field-by-field shape) is app-owned data — a template a user wrote, captured, or copied from a starter — never a shadow copy of PVE config. The five bundled starters are compiled into the binary (`internal/blueprint.Starters`), not stored rows; only user-authored/captured/copied blueprints live in the `blueprints` table (`internal/store/migrations/0004_blueprints.sql`):
+
+```sql
+CREATE TABLE blueprints (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL,
+  blueprint_json TEXT NOT NULL,      -- the full Blueprint (id/name kept in sync)
+  created_by TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+```
+
+Instantiation (`blueprint.Instantiate`) is a pure function of `(Blueprint, params, target nodes, inventory.Snapshot)` → `[]change.Op`: it expands each `EntityTemplate` across its node selector, substitutes `{{param}}` placeholders, then diffs each expanded entity against the snapshot — absent → a `*.create` op, present-and-matching → no op, present-and-divergent → a `*.update` op naming only the diverging fields (bridge port membership divergence is the one exception: it always becomes `bridge.port.add`/`bridge.port.remove` ops, since `BridgeUpdateParams` has no `ports` field — port membership changes go through those dedicated ops everywhere else in this codebase too). It never persists or applies anything itself; the caller (`internal/api`'s instantiate handler) hands the returned ops to `change.Service.Create`, the same "compute an op patch, let the normal changeset lifecycle own it" pattern `internal/drift`'s `FixOps` already established.

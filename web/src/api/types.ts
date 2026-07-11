@@ -879,8 +879,89 @@ export interface MetricsSampleEvent {
   rates: Rates;
 }
 
+// --- Blueprints (GET/POST /blueprints, POST /blueprints/{id}/instantiate;
+// docs/api.md's Blueprints section; internal/blueprint's Go types) --------
+
+export type BlueprintParamType = "string" | "int" | "bool" | "cidr" | "ip" | "vid" | "vidList" | "iface" | "nodeList";
+
+/** JSON value a param's default/a form's submitted value can take —
+ * deliberately not `unknown` (every ParamDef.type above maps to exactly
+ * one of these shapes, and the param form/validators branch on `type` to
+ * narrow it, never on structural inspection). */
+export type BlueprintParamValue = string | number | boolean | string[] | number[];
+
+/** One parameter a blueprint's param form collects (docs/api.md's
+ * Blueprints section: "ParamDef"). `addressSuggest` (only ever true on a
+ * "cidr"/"ip" param) drives the param form's "suggest" button, calling
+ * `GET /blueprints/{id}/suggest?param=`. */
+export interface BlueprintParamDef {
+  name: string;
+  type: BlueprintParamType;
+  label?: string;
+  description?: string;
+  default?: BlueprintParamValue;
+  required?: boolean;
+  addressSuggest?: boolean;
+  subnet?: string;
+}
+
+export type BlueprintNodeSelectorMode = "all" | "single";
+
+export interface BlueprintNodeSelector {
+  mode: BlueprintNodeSelectorMode;
+}
+
+/** One entity a blueprint creates. `fields` keys mirror the corresponding
+ * change op's Create-params JSON field names (docs/api.md's Blueprints
+ * section) — the frontend never interprets them beyond rendering the
+ * preview diagram and passing them through untouched on save/import. */
+export interface BlueprintEntityTemplate {
+  kind: "bridge" | "bond" | "vlan" | "sdn-zone" | "sdn-vnet" | "sdn-subnet";
+  idTemplate: string;
+  nodeSelector?: BlueprintNodeSelector;
+  fields: Record<string, unknown>;
+}
+
+/** A parameterized topology template (docs/api.md's Blueprints section;
+ * docs/data-model.md §4). `readOnly` marks the five bundled starters. */
+export interface Blueprint {
+  blueprintVersion: number;
+  id: string;
+  name: string;
+  description?: string;
+  readOnly?: boolean;
+  nodeSelector: BlueprintNodeSelector;
+  params: BlueprintParamDef[];
+  entities: BlueprintEntityTemplate[];
+  createdBy?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface BlueprintsListResponse {
+  items: Blueprint[];
+}
+
+/** POST /blueprints/{id}/instantiate body (docs/api.md: `nodes`/`title`
+ * are additive to the documented `{params}` shape). */
+export interface InstantiateBlueprintRequest {
+  params: Record<string, BlueprintParamValue>;
+  nodes?: string[];
+  title?: string;
+}
+
+/** POST /blueprints/capture body (T-603 additive route). */
+export interface CaptureBlueprintRequest {
+  node: string;
+}
+
+/** GET /blueprints/{id}/suggest response. */
+export interface SuggestAddressResponse {
+  address: string;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
-// Snapshots, IPAM read views, the path simulator, and blueprints all have
-// routes defined in docs/api.md but no frontend consumer yet — their
-// request/response types land with the task that first calls them (T-2xx).
+// Snapshots, IPAM read views, and the path simulator all have routes
+// defined in docs/api.md but no frontend consumer yet — their
+// request/response types land with the task that first calls them.
 // Add them here, not in a parallel file.

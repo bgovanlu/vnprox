@@ -81,8 +81,9 @@ type Options struct {
 	// Firewall backs T-501's read routes (GET /firewall/rulesets,
 	// GET /firewall/objects) — typically the daemon's live *inventory.Graph
 	// (which satisfies FirewallGraph's one-method seam directly).
-	Firewall FirewallGraph
-	Peer     PeerServer
+	Firewall   FirewallGraph
+	Blueprints BlueprintService
+	Peer       PeerServer
 	// PeerAudit and PeerSnapshots are T-303's cluster fan-out dependencies
 	// for GET /audit and GET /snapshots (docs/architecture.md §7: "Audit/
 	// snapshot queries in the UI fan out to peers and merge"). Nil (every
@@ -126,6 +127,7 @@ func NewRouter(opts Options) http.Handler {
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
+		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket
