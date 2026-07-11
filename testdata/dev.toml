@@ -67,3 +67,10 @@ secret_path = "var/dev-cluster.secret"
 pve_interval = "10s"
 host_interval = "5s"
 lldp_interval = "30s"
+
+# T-505: pve-firewall's log lives at /var/log/pve-firewall.log on a real
+# node, which doesn't exist outside one. dev_fixture_dir points the log
+# viewer at this repo's static fixture corpus instead (one "<node>.log"
+# file per node) — production configs never set this.
+[firewalllog]
+dev_fixture_dir = "testdata/firewall-logs"

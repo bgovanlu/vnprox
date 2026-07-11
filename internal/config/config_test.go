@@ -118,6 +118,40 @@ tls_key = "` + keyPath + `"
 	if cfg.Collect.LLDPInterval != DefaultLLDPInterval {
 		t.Errorf("LLDPInterval = %v, want default %v", cfg.Collect.LLDPInterval, DefaultLLDPInterval)
 	}
+	if cfg.FirewallLog.Path != DefaultFirewallLogPath {
+		t.Errorf("FirewallLog.Path = %q, want default %q", cfg.FirewallLog.Path, DefaultFirewallLogPath)
+	}
+	if cfg.FirewallLog.DevFixtureDir != "" {
+		t.Errorf("FirewallLog.DevFixtureDir = %q, want empty (dev-only override) when unset", cfg.FirewallLog.DevFixtureDir)
+	}
+}
+
+// TestLoad_FirewallLogOverride covers T-505's [firewalllog] section: both
+// fields override cleanly, mirroring [safety]'s dev_interfaces_dir
+// precedent.
+func TestLoad_FirewallLogOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[firewalllog]
+path = "/custom/pve-firewall.log"
+dev_fixture_dir = "testdata/firewall-logs"
+`
+	path := writeTemp(t, "fwlog.toml", toml)
+
+	cfg, err := Load(path, discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.FirewallLog.Path != "/custom/pve-firewall.log" {
+		t.Errorf("FirewallLog.Path = %q, want /custom/pve-firewall.log", cfg.FirewallLog.Path)
+	}
+	if cfg.FirewallLog.DevFixtureDir != "testdata/firewall-logs" {
+		t.Errorf("FirewallLog.DevFixtureDir = %q, want testdata/firewall-logs", cfg.FirewallLog.DevFixtureDir)
+	}
 }
 
 func TestLoad_UnknownKeysWarnNotFail(t *testing.T) {

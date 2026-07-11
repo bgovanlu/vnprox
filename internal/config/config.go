@@ -68,17 +68,27 @@ const (
 	// the numbers.
 	DefaultSnapshotKeepDays = 90
 	DefaultSnapshotPinDays  = 7
+
+	// DefaultFirewallLogPath is pve-firewall's conventional log location
+	// (T-505, docs/features/firewall.md §4) — mirrors
+	// internal/fwlog.DefaultLogPath; a config test pins the two strings
+	// equal (this package can't import internal/fwlog for the constant
+	// itself without an import cycle risk, following the same
+	// duplicate-and-pin-equal precedent DefaultProtectedPath's doc comment
+	// already establishes for internal/change).
+	DefaultFirewallLogPath = "/var/log/pve-firewall.log"
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
 type Config struct {
-	PVE       PVEConfig
-	Storage   StorageConfig
-	Peer      PeerConfig
-	Safety    SafetyConfig
-	Server    ServerConfig
-	Collect   CollectConfig
-	Retention RetentionConfig
+	PVE         PVEConfig
+	Storage     StorageConfig
+	FirewallLog FirewallLogConfig
+	Peer        PeerConfig
+	Safety      SafetyConfig
+	Server      ServerConfig
+	Collect     CollectConfig
+	Retention   RetentionConfig
 }
 
 // ServerConfig is the [server] section.
@@ -166,6 +176,23 @@ type RetentionConfig struct {
 	SnapshotPinDays  int
 }
 
+// FirewallLogConfig is the [firewalllog] section (T-505): where this
+// node's pve-firewall log lives, and the dev-only fixture override.
+type FirewallLogConfig struct {
+	// Path is the real pve-firewall log file this daemon tails
+	// (docs/features/firewall.md §4). Defaults to
+	// DefaultFirewallLogPath.
+	Path string
+	// DevFixtureDir, when non-empty, replaces the real file with a static
+	// fixture corpus loaded from this directory (one file per node, named
+	// "<node>.log") — dev-only, per the dev_ticket_*/dev_interfaces_dir
+	// precedent in [pve]/[safety]: production configs never set it, and a
+	// dev daemon against internal/pvemock (which has no real
+	// /var/log/pve-firewall.log to read) has no other way to exercise the
+	// log viewer at all.
+	DevFixtureDir string
+}
+
 // CollectConfig is the [collect] section, parsed into durations.
 type CollectConfig struct {
 	PVEInterval  time.Duration
@@ -176,13 +203,14 @@ type CollectConfig struct {
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
-	PVE       rawPVE       `toml:"pve"`
-	Storage   rawStorage   `toml:"storage"`
-	Peer      rawPeer      `toml:"peer"`
-	Safety    rawSafety    `toml:"safety"`
-	Collect   rawCollect   `toml:"collect"`
-	Server    rawServer    `toml:"server"`
-	Retention rawRetention `toml:"retention"`
+	PVE         rawPVE         `toml:"pve"`
+	Collect     rawCollect     `toml:"collect"`
+	Storage     rawStorage     `toml:"storage"`
+	FirewallLog rawFirewallLog `toml:"firewalllog"`
+	Peer        rawPeer        `toml:"peer"`
+	Safety      rawSafety      `toml:"safety"`
+	Server      rawServer      `toml:"server"`
+	Retention   rawRetention   `toml:"retention"`
 }
 
 type rawServer struct {
@@ -219,6 +247,11 @@ type rawRetention struct {
 
 type rawPeer struct {
 	SecretPath string `toml:"secret_path"`
+}
+
+type rawFirewallLog struct {
+	Path          string `toml:"path"`
+	DevFixtureDir string `toml:"dev_fixture_dir"`
 }
 
 type rawCollect struct {
@@ -288,6 +321,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		Retention: RetentionConfig{
 			SnapshotKeepDays: firstNonZeroInt(raw.Retention.SnapshotKeepDays, DefaultSnapshotKeepDays),
 			SnapshotPinDays:  firstNonZeroInt(raw.Retention.SnapshotPinDays, DefaultSnapshotPinDays),
+		},
+		FirewallLog: FirewallLogConfig{
+			Path:          firstNonEmpty(raw.FirewallLog.Path, DefaultFirewallLogPath),
+			DevFixtureDir: raw.FirewallLog.DevFixtureDir,
 		},
 		Collect: collect,
 	}
