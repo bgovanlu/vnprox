@@ -4,6 +4,7 @@
 // adds the fw.* changeset ops this module will grow write helpers for.
 import { apiFetch } from "./client";
 import type {
+  FirewallEffectsResponse,
   FirewallObjectsResponse,
   GuestRulesetResponse,
   RulesetListResponse,
@@ -41,4 +42,11 @@ export function fetchGuestRulesets(): Promise<RulesetListResponse> {
  * anywhere, each with its usage count, plus the built-in macro catalog. */
 export function fetchFirewallObjects(): Promise<FirewallObjectsResponse> {
   return apiFetch<FirewallObjectsResponse>("/firewall/objects");
+}
+
+/** GET /firewall/effects?group= — T-502 acceptance criterion 4's rule-
+ * effects preview: every guest a security group's own rules actually
+ * reach. */
+export function fetchFirewallEffects(group: string): Promise<FirewallEffectsResponse> {
+  return apiFetch<FirewallEffectsResponse>(`/firewall/effects?group=${encodeURIComponent(group)}`);
 }

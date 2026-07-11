@@ -1,6 +1,10 @@
 package change
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/bgovanlu/vnprox/internal/inventory"
+)
 
 // StepKind classifies one apply step per docs/architecture.md §4 /
 // docs/data-model.md §3's ordering: cluster-scope PVE API calls, then
@@ -20,6 +24,19 @@ const (
 	// StepSDNApply applies pending cluster SDN config (PUT /cluster/sdn),
 	// always last (docs/data-model.md §3).
 	StepSDNApply StepKind = "sdn_apply"
+	// StepFwApply executes every fw.* op targeting one firewall ruleset
+	// (cluster/node/guest scope) against the PVE firewall API, in the
+	// order those ops appear in the changeset (T-502). One step per
+	// distinct target ruleset, mirroring StepStageFile/StepReload's
+	// "one step per distinct node" grouping.
+	StepFwApply StepKind = "fw_apply"
+	// StepFwVerify is docs/features/firewall.md §3's post-apply
+	// verification: after a node- or guest-scope ruleset's StepFwApply
+	// step runs, confirm that node's pve-firewall compiled the change
+	// cleanly (surfacing the compile error otherwise). Cluster-scope fw
+	// changes have no single node to check this way — see BuildPlan's
+	// doc comment — so they get no StepFwVerify.
+	StepFwVerify StepKind = "fw_verify"
 )
 
 // nodeFileOpTypes is the subset of the v1 op vocabulary that mutates a node's
@@ -41,6 +58,26 @@ var nodeFileOpTypes = map[OpType]bool{
 	OpVlanDelete:       true,
 }
 
+// fwOpTypes is the full T-502 firewall op vocabulary: every one of these
+// executes as a PVE firewall API call grouped into a StepFwApply step by
+// its target ruleset (see BuildPlan).
+var fwOpTypes = map[OpType]bool{
+	OpFwRuleCreate:    true,
+	OpFwRuleUpdate:    true,
+	OpFwRuleDelete:    true,
+	OpFwRuleMove:      true,
+	OpFwOptionsUpdate: true,
+	OpFwAliasCreate:   true,
+	OpFwAliasUpdate:   true,
+	OpFwAliasDelete:   true,
+	OpFwIpsetCreate:   true,
+	OpFwIpsetUpdate:   true,
+	OpFwIpsetDelete:   true,
+	OpFwGroupCreate:   true,
+	OpFwGroupUpdate:   true,
+	OpFwGroupDelete:   true,
+}
+
 // Step is one entry in a rendered apply Plan — the shape the review screen's
 // Plan tab (docs/features/change-management.md §3) renders and the executor
 // runs, persisted verbatim into changesets.plan_json before apply.
@@ -48,10 +85,8 @@ type Step struct {
 	Kind    StepKind `json:"kind"`
 	Node    string   `json:"node,omitempty"`
 	Summary string   `json:"summary"`
-	// OpIdx lists the indices (into the changeset's Ops slice) this step
-	// realizes, so the executor can recover the concrete ops for a step and
-	// the UI can cross-link a step to its op cards. Empty for sdn.apply.
-	OpIdx []int `json:"opIdx,omitempty"`
+	Target  string   `json:"target,omitempty"`
+	OpIdx   []int    `json:"opIdx,omitempty"`
 }
 
 // Plan is a changeset's full ordered apply plan (changesets.plan_json).
@@ -74,13 +109,30 @@ type Plan struct {
 // This is a documented interpretation of the doc's category ordering for the
 // multi-node case.
 //
-// It returns *ErrUnsupportedOp for any op the T-205 executor cannot run yet
-// (guest/SDN-write/fw/ipam families), so an un-executable changeset is
-// refused before any mutation rather than partially applied.
+// It returns *ErrUnsupportedOp for any op the executor cannot run yet
+// (guest/SDN-write/ipam families — fw.* is executable as of T-502), so an
+// un-executable changeset is refused before any mutation rather than
+// partially applied.
+//
+// fw.* ops are grouped by their target ruleset (first-appearance order,
+// same convention as the per-node file grouping above) into one StepFwApply
+// step per ruleset, placed after every node-file stage/reload pair and
+// before a trailing sdn.apply — fw ops and node-file/SDN ops are
+// independent op families with no documented relative ordering
+// requirement beyond "sdn.apply last" (docs/data-model.md §3), so this is
+// a defensible, documented placement rather than a spec-mandated one. A
+// node- or guest-scope target additionally gets a StepFwVerify
+// immediately after its StepFwApply (docs/features/firewall.md §3's
+// post-apply verification); cluster-scope targets do not, since BuildPlan
+// operates over ops alone with no cluster-node-list dependency to verify
+// every node's compile status against — see docs/features/firewall.md's
+// T-502 completion report for this flagged, deliberately narrow scope cut.
 func BuildPlan(ops []Op) (Plan, error) {
 	var nodeOrder []string
 	byNode := map[string][]int{}
 	sdnApply := false
+	var fwTargetOrder []inventory.Ref
+	byFwTarget := map[string][]int{}
 
 	for i, op := range ops {
 		switch {
@@ -92,6 +144,12 @@ func BuildPlan(ops []Op) (Plan, error) {
 			byNode[node] = append(byNode[node], i)
 		case op.Type == OpSdnApply:
 			sdnApply = true
+		case fwOpTypes[op.Type]:
+			key := op.Target.String()
+			if _, seen := byFwTarget[key]; !seen {
+				fwTargetOrder = append(fwTargetOrder, op.Target)
+			}
+			byFwTarget[key] = append(byFwTarget[key], i)
 		default:
 			return Plan{}, &ErrUnsupportedOp{OpType: op.Type}
 		}
@@ -114,6 +172,23 @@ func BuildPlan(ops []Op) (Plan, error) {
 			},
 		)
 	}
+	for _, target := range fwTargetOrder {
+		idxs := byFwTarget[target.String()]
+		steps = append(steps, Step{
+			Kind:    StepFwApply,
+			Node:    target.Node,
+			Target:  target.String(),
+			OpIdx:   idxs,
+			Summary: fmt.Sprintf("Apply %d firewall op(s) to %s", len(idxs), describeFwTarget(target)),
+		})
+		if target.Node != "" {
+			steps = append(steps, Step{
+				Kind:    StepFwVerify,
+				Node:    target.Node,
+				Summary: fmt.Sprintf("Verify firewall compiled cleanly on %s", target.Node),
+			})
+		}
+	}
 	if sdnApply {
 		steps = append(steps, Step{
 			Kind:    StepSDNApply,
@@ -122,6 +197,20 @@ func BuildPlan(ops []Op) (Plan, error) {
 	}
 
 	return Plan{Steps: steps}, nil
+}
+
+// describeFwTarget renders a firewall ruleset Ref as a short human string
+// for Step.Summary, matching the (cluster|node|guest) scope naming the rest
+// of this codebase's firewall surfaces use.
+func describeFwTarget(target inventory.Ref) string {
+	switch target.ID {
+	case "cluster":
+		return "the datacenter firewall"
+	case "node":
+		return fmt.Sprintf("node %s's firewall", target.Node)
+	default:
+		return fmt.Sprintf("%s's firewall", target)
+	}
 }
 
 // affectedNodes returns, in first-appearance order, every node the plan's
@@ -134,6 +223,22 @@ func (p Plan) affectedNodes() []string {
 		if s.Node != "" && !seen[s.Node] {
 			seen[s.Node] = true
 			out = append(out, s.Node)
+		}
+	}
+	return out
+}
+
+// fwTargets returns, in first-appearance order, every firewall ruleset Ref
+// this plan's StepFwApply steps touch — undoFwTargets' same-request
+// rollback iteration set.
+func (p Plan) fwTargets() []inventory.Ref {
+	var out []inventory.Ref
+	for _, s := range p.Steps {
+		if s.Kind != StepFwApply {
+			continue
+		}
+		if ref, err := inventory.ParseRef(s.Target); err == nil {
+			out = append(out, ref)
 		}
 	}
 	return out

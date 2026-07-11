@@ -65,15 +65,71 @@ type NodeAgent interface {
 // *pve.Client (auth.Service.PVEClientFor), so PVE authorizes every write as
 // the logged-in operator.
 //
-// T-205's executable cluster-scope step is sdn.apply; the guest/SDN-write/fw/
-// ipam op families need their own pve.Client write+task methods (a T-101/
-// follow-up surface) before the planner will emit steps for them — see
-// plan.go's supportedOpTypes and the T-205 report's residual-risk list.
+// T-205's executable cluster-scope step was sdn.apply alone; T-502 adds the
+// firewall op family's PVE-API-call methods below. The guest/SDN-write/ipam
+// op families still need their own pve.Client write+task methods before the
+// planner will emit steps for them — see plan.go's supportedOpTypes and the
+// T-205 report's residual-risk list.
+//
+// IMPORTANT, flagged limitation shared with sdn.apply (see T-502's
+// completion report for the full discussion): every method below runs
+// under the *user's* PVE ticket, which only exists for the duration of the
+// synchronous Apply()/Rollback() call that received a live pveGW. Unlike
+// NodeAgent (root-level host access, callable by the daemon at any time —
+// including the unattended commit-confirm-timeout and crash-recovery
+// paths), these methods cannot be invoked by the *unattended* rollback
+// paths (autoRollback, ArmPendingRollbacks' interrupted-apply recovery):
+// there is no live ticket to authenticate with once the originating HTTP
+// request has ended. T-502 therefore only implements SAME-REQUEST
+// rollback for fw.* steps (a later step's failure rolls back an earlier
+// fw.* step within the same Apply() call, while pveGW is still valid —
+// see apply_exec.go's fwPre/rollbackAfterFailure handling) — a fw.*-only
+// changeset that reaches awaiting_confirm and then times out (or the
+// daemon crashes mid-window) is NOT automatically reverted, exactly like
+// sdn.apply today. This is a pre-existing architectural gap this task
+// does not introduce, only inherits and makes more visible; see the T-502
+// report for the flagged follow-up (e.g. a narrowly-scoped daemon-level
+// PVE token for unattended firewall/SDN rollback).
 type PVEGateway interface {
 	// ApplySDN applies all pending cluster SDN config (PUT /cluster/sdn) and
 	// blocks until the resulting task reaches a terminal state, returning a
 	// non-nil error if the task fails or times out.
 	ApplySDN(ctx context.Context) error
+
+	// FirewallRuleFields fetches the live content of the rule currently at
+	// pos in the ruleset named by ref, for fw.rule.move's apply-time
+	// position revalidation (T-502 acceptance criterion 3). Returns
+	// *ErrFwRuleNotFound if pos doesn't currently exist.
+	FirewallRuleFields(ctx context.Context, ref inventory.Ref, pos int) (FwRuleFields, error)
+
+	// ApplyFwOp executes one fw.* op against the PVE firewall API scope
+	// named by op.Target.
+	ApplyFwOp(ctx context.Context, op Op) error
+
+	// SnapshotFirewallScope captures ref's full current ruleset content
+	// (rules/options/aliases/ipsets, plus security groups for the cluster
+	// scope) as an opaque string, for docs/architecture.md §4's "affected
+	// firewall files" snapshot and as RestoreFirewallScope's input.
+	SnapshotFirewallScope(ctx context.Context, ref inventory.Ref) (string, error)
+
+	// RestoreFirewallScope reconciles ref's live ruleset back to a
+	// snapshot SnapshotFirewallScope captured earlier (same-request
+	// rollback only — see this interface's doc comment above).
+	RestoreFirewallScope(ctx context.Context, ref inventory.Ref, snapshot string) error
+
+	// FirewallCompileStatus reports node's current pve-firewall compiled
+	// status (docs/features/firewall.md §3's post-apply verification).
+	FirewallCompileStatus(ctx context.Context, node string) (FwCompileStatus, error)
+}
+
+// FwCompileStatus is one node's pve-firewall compile-loop result, the
+// PVEGateway-level counterpart of pve.FirewallCompileStatus (kept as its
+// own type here so this package doesn't need to import internal/pve just
+// for this one shape — the same "small interface/seam-local type" pattern
+// this file already uses throughout).
+type FwCompileStatus struct {
+	Message string
+	OK      bool
 }
 
 // NodeTimerAgent is Service's seam onto T-304's local-timer protocol

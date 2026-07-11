@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -139,9 +143,10 @@ func (e *injectedError) Error() string { return e.msg }
 // --- fake PVEGateway ------------------------------------------------------
 
 type fakePVEGateway struct {
-	client   *pve.Client
-	pollNode string
-	fail     bool
+	client       *pve.Client
+	pollNode     string
+	failFwTarget string
+	fail         bool
 }
 
 func (g *fakePVEGateway) ApplySDN(ctx context.Context) error {
@@ -154,6 +159,233 @@ func (g *fakePVEGateway) ApplySDN(ctx context.Context) error {
 	}
 	_, err = g.client.WaitTask(ctx, g.pollNode, upid, pve.WaitOptions{Interval: 5 * time.Millisecond, Timeout: 5 * time.Second})
 	return err
+}
+
+// --- fake PVEGateway: T-502 firewall op family -----------------------------
+//
+// This is a compact, test-local mirror of cmd/vnproxd/changeagent.go's
+// production pveGateway (which this package cannot import — cmd/vnproxd
+// imports internal/change, not the reverse). It drives the exact same
+// *pve.Client write methods against a real pvemock server, so these tests
+// prove the wire path end to end, not just in-memory logic.
+
+func testFwScope(target inventory.Ref) (pve.FirewallScope, error) {
+	switch target.ID {
+	case "cluster":
+		return pve.ClusterFirewallScope(), nil
+	case "node":
+		return pve.NodeFirewallScope(target.Node), nil
+	default:
+		parts := strings.SplitN(target.ID, "/", 3)
+		if len(parts) != 3 || parts[0] != "guest" {
+			return pve.FirewallScope{}, fmt.Errorf("unrecognized firewall target %s", target)
+		}
+		vmid, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return pve.FirewallScope{}, fmt.Errorf("invalid vmid in %s: %w", target, err)
+		}
+		return pve.GuestFirewallScope(target.Node, pve.GuestKind(parts[1]), vmid), nil
+	}
+}
+
+func (g *fakePVEGateway) FirewallRuleFields(ctx context.Context, ref inventory.Ref, pos int) (change.FwRuleFields, error) {
+	scope, err := testFwScope(ref)
+	if err != nil {
+		return change.FwRuleFields{}, err
+	}
+	rule, err := g.client.GetFirewallRule(ctx, scope, pos)
+	if err != nil {
+		var reqErr *pve.ErrPVERequest
+		if errors.As(err, &reqErr) && reqErr.StatusCode == http.StatusNotFound {
+			return change.FwRuleFields{}, &change.ErrFwRuleNotFound{Ref: ref, Pos: pos}
+		}
+		return change.FwRuleFields{}, err
+	}
+	return change.FwRuleFields{
+		Direction: rule.Type, Action: rule.Action, Proto: rule.Proto, Source: rule.Source, Dest: rule.Dest,
+		Sport: rule.Sport, Dport: rule.Dport, Iface: rule.Iface, Macro: rule.Macro, Log: rule.Log,
+		Comment: rule.Comment, Enabled: rule.Enabled,
+	}, nil
+}
+
+func (g *fakePVEGateway) ApplyFwOp(ctx context.Context, op change.Op) error {
+	if g.failFwTarget != "" && op.Target.String() == g.failFwTarget {
+		return &injectedError{"injected fw apply failure"}
+	}
+	scope, err := testFwScope(op.Target)
+	if err != nil {
+		return err
+	}
+	switch p := op.Params.(type) {
+	case *change.FwRuleCreateParams:
+		rule := pve.FirewallRule{
+			Type: p.Direction, Action: p.Action, Proto: p.Proto, Source: p.Source, Dest: p.Dest,
+			Sport: p.Sport, Dport: p.Dport, Iface: p.Iface, Macro: p.Macro, Log: p.Log,
+			Comment: p.Comment, Enabled: p.Enabled,
+		}
+		if err := g.client.CreateFirewallRule(ctx, scope, rule); err != nil {
+			return err
+		}
+		rules, err := g.client.ListFirewallRules(ctx, scope)
+		if err != nil {
+			return err
+		}
+		endPos := len(rules) - 1
+		if p.Pos == endPos {
+			return nil
+		}
+		rule.Pos = endPos
+		moveTo := p.Pos
+		return g.client.UpdateFirewallRule(ctx, scope, endPos, rule, &moveTo)
+	case *change.FwRuleUpdateParams:
+		current, err := g.client.GetFirewallRule(ctx, scope, p.Pos)
+		if err != nil {
+			return err
+		}
+		merged := *current
+		if p.Direction != nil {
+			merged.Type = *p.Direction
+		}
+		if p.Action != nil {
+			merged.Action = *p.Action
+		}
+		if p.Proto != nil {
+			merged.Proto = *p.Proto
+		}
+		if p.Source != nil {
+			merged.Source = *p.Source
+		}
+		if p.Dest != nil {
+			merged.Dest = *p.Dest
+		}
+		if p.Sport != nil {
+			merged.Sport = *p.Sport
+		}
+		if p.Dport != nil {
+			merged.Dport = *p.Dport
+		}
+		if p.Iface != nil {
+			merged.Iface = *p.Iface
+		}
+		if p.Macro != nil {
+			merged.Macro = *p.Macro
+		}
+		if p.Log != nil {
+			merged.Log = *p.Log
+		}
+		if p.Comment != nil {
+			merged.Comment = *p.Comment
+		}
+		if p.Enabled != nil {
+			merged.Enabled = *p.Enabled
+		}
+		return g.client.UpdateFirewallRule(ctx, scope, p.Pos, merged, nil)
+	case *change.FwRuleDeleteParams:
+		return g.client.DeleteFirewallRule(ctx, scope, p.Pos)
+	case *change.FwRuleMoveParams:
+		current, err := g.client.GetFirewallRule(ctx, scope, p.FromPos)
+		if err != nil {
+			return err
+		}
+		moveTo := p.ToPos
+		return g.client.UpdateFirewallRule(ctx, scope, p.FromPos, *current, &moveTo)
+	case *change.FwOptionsUpdateParams:
+		return g.client.UpdateFirewallOptions(ctx, scope, pve.FirewallOptionsUpdate{Enable: p.Enabled, PolicyIn: p.DefaultIn, PolicyOut: p.DefaultOut})
+	case *change.FwAliasCreateParams:
+		return g.client.CreateFirewallAlias(ctx, scope, pve.FirewallAlias{Name: p.Name, CIDR: p.CIDR, Comment: p.Comment})
+	case *change.FwAliasUpdateParams:
+		current, err := g.client.GetFirewallAlias(ctx, scope, p.Name)
+		if err != nil {
+			return err
+		}
+		merged := *current
+		if p.CIDR != nil {
+			merged.CIDR = *p.CIDR
+		}
+		if p.Comment != nil {
+			merged.Comment = *p.Comment
+		}
+		return g.client.UpdateFirewallAlias(ctx, scope, p.Name, merged)
+	case *change.FwAliasDeleteParams:
+		return g.client.DeleteFirewallAlias(ctx, scope, p.Name)
+	case *change.FwIpsetCreateParams:
+		if err := g.client.CreateFirewallIPSet(ctx, scope, p.Name, p.Comment); err != nil {
+			return err
+		}
+		for _, cidr := range p.CIDRs {
+			if err := g.client.CreateFirewallIPSetEntry(ctx, scope, p.Name, pve.FirewallIPSetEntry{CIDR: cidr}); err != nil {
+				return err
+			}
+		}
+		return nil
+	case *change.FwIpsetDeleteParams:
+		return g.client.DeleteFirewallIPSet(ctx, scope, p.Name)
+	case *change.FwGroupCreateParams:
+		if err := g.client.CreateFirewallGroup(ctx, p.Name, p.Comment); err != nil {
+			return err
+		}
+		for _, r := range p.Rules {
+			rule := pve.FirewallRule{Type: r.Direction, Action: r.Action, Proto: r.Proto, Source: r.Source, Dest: r.Dest, Sport: r.Sport, Dport: r.Dport, Macro: r.Macro, Comment: r.Comment, Enabled: r.Enabled}
+			if err := g.client.CreateFirewallGroupRule(ctx, p.Name, rule); err != nil {
+				return err
+			}
+		}
+		return nil
+	case *change.FwGroupDeleteParams:
+		return g.client.DeleteFirewallGroup(ctx, p.Name)
+	default:
+		return fmt.Errorf("fakePVEGateway: unsupported firewall op params %T", op.Params)
+	}
+}
+
+func (g *fakePVEGateway) SnapshotFirewallScope(ctx context.Context, ref inventory.Ref) (string, error) {
+	scope, err := testFwScope(ref)
+	if err != nil {
+		return "", err
+	}
+	rules, err := g.client.ListFirewallRules(ctx, scope)
+	if err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(rules)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (g *fakePVEGateway) RestoreFirewallScope(ctx context.Context, ref inventory.Ref, snapshot string) error {
+	scope, err := testFwScope(ref)
+	if err != nil {
+		return err
+	}
+	var want []pve.FirewallRule
+	if err = json.Unmarshal([]byte(snapshot), &want); err != nil {
+		return err
+	}
+	live, err := g.client.ListFirewallRules(ctx, scope)
+	if err != nil {
+		return err
+	}
+	for i := len(live) - 1; i >= 0; i-- {
+		if err = g.client.DeleteFirewallRule(ctx, scope, live[i].Pos); err != nil {
+			return err
+		}
+	}
+	for _, r := range want {
+		if err = g.client.CreateFirewallRule(ctx, scope, r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (g *fakePVEGateway) FirewallCompileStatus(ctx context.Context, node string) (change.FwCompileStatus, error) {
+	status, err := g.client.GetFirewallCompileStatus(ctx, node)
+	if err != nil {
+		return change.FwCompileStatus{}, err
+	}
+	return change.FwCompileStatus{OK: status.OK(), Message: status.Message}, nil
 }
 
 // --- fake timer -----------------------------------------------------------

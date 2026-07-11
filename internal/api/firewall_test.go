@@ -223,6 +223,53 @@ func TestFirewallObjects_UsageCountsAndMacros(t *testing.T) {
 	}
 }
 
+// TestFirewallEffects_MatchingGuests is T-502 acceptance criterion 4 at the
+// router level: a group referenced by the cluster ruleset (T-501's
+// documented cluster-cascades-to-every-guest simplification) matches every
+// observed guest.
+func TestFirewallEffects_MatchingGuests(t *testing.T) {
+	cluster := &inventory.FwRuleset{
+		Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}, Scope: inventory.FwScopeCluster, Enabled: true,
+		Groups: []inventory.FwGroup{{Name: "base-services", Rules: []inventory.FwRule{{Pos: 0, Enabled: true, Direction: "in", Action: "ACCEPT", Dport: "80"}}}},
+		Rules:  []inventory.FwRule{{Pos: 0, Enabled: true, Direction: "group", Action: "base-services"}},
+	}
+	guestA := &inventory.FwRuleset{Ref: inventory.Ref{Kind: inventory.KindFwRuleset, Node: "pve1", ID: "guest/qemu/100"}, Scope: inventory.FwScopeGuest, Enabled: true}
+	guestB := &inventory.FwRuleset{Ref: inventory.Ref{Kind: inventory.KindFwRuleset, Node: "pve1", ID: "guest/qemu/101"}, Scope: inventory.FwScopeGuest, Enabled: true}
+	graph := buildTestGraph(t, cluster, guestA, guestB)
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: firewallTestAuth(map[string]bool{"netRead": true}), Firewall: graph,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/effects?group=base-services", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var got effectsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Group != "base-services" || len(got.Guests) != 2 {
+		t.Fatalf("got %+v, want 2 matching guests", got)
+	}
+}
+
+func TestFirewallEffects_MissingGroupParam400(t *testing.T) {
+	graph := buildTestGraph(t)
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: firewallTestAuth(map[string]bool{"netRead": true}), Firewall: graph,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/effects", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
 func TestFirewallRulesets_MissingGraph_NotMounted(t *testing.T) {
 	r := NewRouter(Options{
 		Version: "test", DistFS: testDistFS(), Logger: testLogger(),

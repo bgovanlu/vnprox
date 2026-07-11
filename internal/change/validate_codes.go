@@ -35,6 +35,7 @@ const (
 	// Port "trunks" column) — a plain 802.1q sub-interface always carries
 	// exactly one VID (Vid itself), so a Trunks list there is meaningless.
 	codeOVSTrunkNotAllowed = "schema.ovs_trunk_not_allowed"
+	codeFwMacroUnknown     = "schema.fw_macro_unknown"
 
 	// --- referential (class 2: existence, collisions, overlaps) --------
 
@@ -59,7 +60,14 @@ const (
 	// ports into OVS bridges and vice versa -> error"), and the symmetric
 	// case for an OVS Int Port's parent (must be an OVS bridge) vs. a plain
 	// VLAN sub-interface's parent (must not be one).
-	codeOVSKindMismatch = "referential.ovs_kind_mismatch"
+	codeOVSKindMismatch  = "referential.ovs_kind_mismatch"
+	codeFwObjectNotFound = "referential.fw_object_not_found"
+	// codeFwObjectInUse is T-502 acceptance criterion 2: deleting an
+	// alias/ipset/security-group still referenced by at least one rule is
+	// blocked. internal/fw.UsageCounts already gives the exact reference
+	// list (scope, ruleset ref, position) the editor UI's deep-links need
+	// — see checkFwObjectDeletable's doc comment.
+	codeFwObjectInUse = "referential.fw_object_in_use"
 
 	// --- safety (class 3: protected interfaces, guest-bearing bridges) --
 	// T-203, docs/security.md "Safety interlocks" / docs/features/

@@ -4,6 +4,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/bgovanlu/vnprox/internal/fw"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
@@ -54,7 +55,13 @@ var validXmitHashPolicies = map[string]bool{
 
 var validSdnZoneTypes = map[string]bool{"simple": true, "vlan": true, "qinq": true, "vxlan": true, "evpn": true}
 
-var validFwDirections = map[string]bool{"in": true, "out": true}
+// validFwDirections includes "group" alongside the real traffic
+// directions "in"/"out": a rule row whose Direction is "group" is not a
+// traffic-direction rule at all but a security-group reference (T-501's
+// documented convention, matching real PVE's own "type":"group" rule
+// shape — see internal/fw/resolve.go's appendRule doc comment), so it must
+// pass this same-field schema check too.
+var validFwDirections = map[string]bool{"in": true, "out": true, "group": true}
 
 var validFwActions = map[string]bool{"ACCEPT": true, "DROP": true, "REJECT": true}
 
@@ -343,21 +350,27 @@ func schemaValidateOp(op Op) []Finding {
 
 	case *FwRuleCreateParams:
 		schemaFwDirection(p.Direction, ref, &out)
-		schemaFwAction(p.Action, ref, &out)
+		schemaFwActionForDirection(p.Direction, p.Action, ref, &out)
 		schemaFwLog(p.Log, ref, &out)
+		schemaFwMacro(p.Macro, ref, &out)
 		if p.Pos < 0 {
 			out = append(out, errorf(codeFwPosInvalid, ref, "pos %d must not be negative", p.Pos))
 		}
 
 	case *FwRuleUpdateParams:
+		direction := ""
 		if p.Direction != nil {
 			schemaFwDirection(*p.Direction, ref, &out)
+			direction = *p.Direction
 		}
 		if p.Action != nil {
-			schemaFwAction(*p.Action, ref, &out)
+			schemaFwActionForDirection(direction, *p.Action, ref, &out)
 		}
 		if p.Log != nil {
 			schemaFwLog(*p.Log, ref, &out)
+		}
+		if p.Macro != nil {
+			schemaFwMacro(*p.Macro, ref, &out)
 		}
 		if p.Pos < 0 {
 			out = append(out, errorf(codeFwPosInvalid, ref, "pos %d must not be negative", p.Pos))
@@ -489,6 +502,38 @@ func schemaFwDirection(v, ref string, out *[]Finding) {
 func schemaFwAction(v, ref string, out *[]Finding) {
 	if !validFwActions[v] {
 		*out = append(*out, errorf(codeFwActionInvalid, ref, "action %q must be one of ACCEPT, DROP, REJECT", v))
+	}
+}
+
+// schemaFwActionForDirection validates a rule's action field, special-
+// casing direction == "group": per T-501's documented convention
+// (internal/fw/resolve.go's appendRule doc comment, matching real PVE's
+// own "type":"group" rule shape), a group-reference rule's Action field
+// holds the referenced security group's *name*, not one of ACCEPT/DROP/
+// REJECT — so the enum check doesn't apply; only non-empty is required
+// here (does the named group actually exist is a referential-class
+// concern, not schema's).
+func schemaFwActionForDirection(direction, action, ref string, out *[]Finding) {
+	if direction == "group" {
+		if action == "" {
+			*out = append(*out, errorf(codeFwActionInvalid, ref, "a group-reference rule's action must name the security group"))
+		}
+		return
+	}
+	schemaFwAction(action, ref, out)
+}
+
+// schemaFwMacro validates that macro, when set, names a macro the built-in
+// catalog (internal/fw.KnownMacros) actually recognizes — the "macro
+// existence" validator the T-502 task card calls for. An empty macro is
+// always valid (most rules don't use one; proto/ports are set directly
+// instead).
+func schemaFwMacro(macro, ref string, out *[]Finding) {
+	if macro == "" {
+		return
+	}
+	if _, ok := fw.MacroExpansion(macro); !ok {
+		*out = append(*out, errorf(codeFwMacroUnknown, ref, "macro %q is not a known firewall macro", macro))
 	}
 }
 
