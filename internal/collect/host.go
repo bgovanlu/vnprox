@@ -21,6 +21,7 @@ type nodeHostReader interface {
 	InterfacesFile(ctx context.Context, node string, includePending bool) (string, error)
 	Links(ctx context.Context, node string) ([]host.LinkState, error)
 	Stats(ctx context.Context, node string) (map[string]host.IfaceStats, error)
+	Services(ctx context.Context, node string) (map[string]bool, error)
 }
 
 // peerHostReader adapts a *peer.Client + a specific Peer address into a
@@ -41,6 +42,10 @@ func (r peerHostReader) Links(ctx context.Context, node string) ([]host.LinkStat
 
 func (r peerHostReader) Stats(ctx context.Context, node string) (map[string]host.IfaceStats, error) {
 	return r.client.Stats(ctx, r.peer, node)
+}
+
+func (r peerHostReader) Services(ctx context.Context, node string) (map[string]bool, error) {
+	return r.client.Services(ctx, r.peer, node)
 }
 
 // hostPollStateFor polls one node's netlink-equivalent link state (physical
@@ -74,6 +79,14 @@ func (c *Collector) hostPollStateFor(ctx context.Context, node string, reader no
 		c.log.Debug("collect: host stats read failed", "node", node, "error", statsErr)
 	} else if c.onStats != nil {
 		c.onStats(ctx, node, time.Now(), links, stats)
+	}
+
+	if c.onServices != nil {
+		if services, svcErr := reader.Services(ctx, node); svcErr != nil {
+			c.log.Debug("collect: host service-status read failed", "node", node, "error", svcErr)
+		} else {
+			c.onServices(node, services)
+		}
 	}
 
 	raw, err := reader.InterfacesFile(ctx, node, false)

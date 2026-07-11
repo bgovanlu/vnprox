@@ -5,6 +5,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchClusterRuleset,
+  fetchFirewallEffects,
   fetchFirewallObjects,
   fetchGuestRuleset,
   fetchGuestRulesets,
@@ -58,6 +59,18 @@ export function useFirewallObjectsQuery() {
   return useQuery({
     queryKey: ["firewall", "objects"],
     queryFn: fetchFirewallObjects,
+    staleTime: 15_000,
+  });
+}
+
+/** T-502 acceptance criterion 4: the rule-effects preview for a security-
+ * group reference. `group` undefined disables the query (e.g. the builder
+ * row's direction isn't "group" yet). */
+export function useFirewallEffectsQuery(group: string | undefined) {
+  return useQuery({
+    queryKey: ["firewall", "effects", group],
+    queryFn: () => fetchFirewallEffects(group ?? ""),
+    enabled: group !== undefined && group !== "",
     staleTime: 15_000,
   });
 }

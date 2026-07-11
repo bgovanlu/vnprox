@@ -1,10 +1,13 @@
 // Tools page: T-208's raw interfaces editor (the power-user escape hatch,
-// docs/features/change-management.md §7) and T-305's drift findings
-// stream. The path simulator lands in a later task.
+// docs/features/change-management.md §7), T-602's unified findings stream
+// (T-305's drift-only panel is superseded here — the unified stream already
+// includes every drift finding, source-tagged, plus LLDP/health), and
+// T-505's firewall log viewer. The path simulator lands in a later task.
 import { useEffect, useMemo, useState } from "react";
 import { RawEditorPanel } from "../changesets/rawEditor/RawEditorPanel";
 import { EmptyState } from "../components/EmptyState";
-import { DriftFindingsPanel } from "../drift/DriftFindingsPanel";
+import { FindingsStreamPanel } from "../findings/FindingsStreamPanel";
+import { FwLogViewer } from "../fwlog/FwLogViewer";
 import { MacFdbBrowser } from "../tools/MacFdbBrowser";
 import { useTopologyQuery } from "../topology/queries";
 
@@ -62,17 +65,22 @@ export function ToolsPage() {
       <hr className="border-slate-200 dark:border-slate-800" />
 
       <div>
-        <h2 className="text-lg font-semibold">Drift findings</h2>
+        <h2 className="text-lg font-semibold">Findings</h2>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-          Cross-node consistency checks, re-evaluated every 30s (docs/features/topology.md §6). Drifted entities
-          are also outlined with a dashed border on the topology map.
+          One stream for drift, LLDP VLAN mismatches, IPAM conflicts, and continuous health checks
+          (docs/features/monitoring.md §5), re-evaluated on a ~30s cycle. Affected entities are also outlined with a
+          dashed border on the topology map.
         </p>
-        <DriftFindingsPanel />
+        <FindingsStreamPanel />
       </div>
 
       <hr className="border-slate-200 dark:border-slate-800" />
 
       <MacFdbBrowser />
+
+      <hr className="border-slate-200 dark:border-slate-800" />
+
+      <FwLogViewer />
 
       <p className="text-xs text-slate-400 dark:text-slate-500">
         The path simulator ("why can't VM A reach VM B?") lands in a later task.

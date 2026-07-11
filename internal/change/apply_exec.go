@@ -7,6 +7,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/change/ifaces"
 	"github.com/bgovanlu/vnprox/internal/host"
+	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
 // executor runs one apply attempt for a changeset and, on any step failure,
@@ -15,13 +16,22 @@ import (
 // §4). It is a small value bundling the per-apply inputs so the step methods
 // don't each need a long parameter list; Service.applyPlan constructs one.
 type executor struct {
-	pveGW     PVEGateway
-	svc       *Service
-	pre       map[string]string
-	sdnPre    SDNConfig // valid iff hasSDNPre
-	log       *ApplyLog
-	stageIx   map[string]int
-	loadIx    map[string]int
+	pveGW   PVEGateway
+	svc     *Service
+	pre     map[string]string
+	sdnPre  SDNConfig // valid iff hasSDNPre
+	log     *ApplyLog
+	stageIx map[string]int
+	loadIx  map[string]int
+	// fwPre caches each fw target's pre-mutation snapshot (T-502's
+	// same-request rollback source — see PVEGateway's doc comment on the
+	// unattended-rollback limitation), keyed by Ref.String(), populated
+	// lazily the first time that target's StepFwApply step runs.
+	// undoFwTargets restores every key present here regardless of whether
+	// its StepFwApply step fully completed: the snapshot is taken before
+	// the step's *first* op, so a step that errored partway through still
+	// needs the same restore as one that ran to completion.
+	fwPre     map[string]string
 	plan      Plan
 	cs        Changeset
 	deadline  int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
@@ -60,7 +70,7 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 	return &executor{
 		svc: s, cs: cs, plan: plan, pre: preByNode, sdnPre: sdnPre, hasSDNPre: hasSDNPre, pveGW: pveGW, deadline: deadline,
 		log:     &ApplyLog{Steps: steps},
-		stageIx: stageIx, loadIx: loadIx,
+		stageIx: stageIx, loadIx: loadIx, fwPre: map[string]string{},
 	}
 }
 
@@ -166,9 +176,77 @@ func (e *executor) execStep(ctx context.Context, i int) error {
 		}
 		return nil
 
+	case StepFwApply:
+		return e.execFwApply(ctx, st)
+	case StepFwVerify:
+		return e.execFwVerify(ctx, st)
 	default:
 		return fmt.Errorf("unknown step kind %q", st.Kind)
 	}
+}
+
+// execFwApply runs every op targeting one firewall ruleset (T-502). Before
+// the first mutating call it snapshots the target's current content
+// (e.fwPre) for same-request rollback (see PVEGateway's doc comment on why
+// this can't also cover the unattended commit-confirm-timeout/crash-restart
+// paths), then executes each op in order. An fw.rule.move op with a
+// non-nil Expect is revalidated against a live re-fetch of its FromPos
+// immediately before moving — acceptance criterion 3's "no silent
+// misplacement" guarantee.
+func (e *executor) execFwApply(ctx context.Context, st Step) error {
+	if e.pveGW == nil {
+		return fmt.Errorf("no PVE gateway available for firewall ops (no user session)")
+	}
+	target, err := inventory.ParseRef(st.Target)
+	if err != nil {
+		return fmt.Errorf("change: parsing firewall step target %q: %w", st.Target, err)
+	}
+	if _, captured := e.fwPre[st.Target]; !captured {
+		pre, err := e.pveGW.SnapshotFirewallScope(ctx, target)
+		if err != nil {
+			return fmt.Errorf("change: snapshotting firewall scope %s before apply: %w", target, err)
+		}
+		e.fwPre[st.Target] = pre
+	}
+	for _, idx := range st.OpIdx {
+		op := e.cs.Ops[idx]
+		if move, ok := op.Params.(*FwRuleMoveParams); ok && move.Expect != nil {
+			live, err := e.pveGW.FirewallRuleFields(ctx, target, move.FromPos)
+			if err != nil {
+				return fmt.Errorf("change: revalidating firewall rule position before move: %w", err)
+			}
+			if !live.Equal(*move.Expect) {
+				return &ErrFwPositionChanged{Ref: target, Pos: move.FromPos, Want: *move.Expect, Got: live}
+			}
+		}
+		if err := e.pveGW.ApplyFwOp(ctx, op); err != nil {
+			return fmt.Errorf("change: applying %s to %s: %w", op.Type, target, err)
+		}
+	}
+	return nil
+}
+
+// execFwVerify implements docs/features/firewall.md §3's post-apply
+// verification: confirm st.Node's pve-firewall compiled the just-applied
+// change cleanly, surfacing the compile error as the step's failure
+// otherwise (rather than silently reporting a green apply for a ruleset
+// pve-firewall itself rejected).
+func (e *executor) execFwVerify(ctx context.Context, st Step) error {
+	if e.pveGW == nil {
+		return fmt.Errorf("no PVE gateway available for firewall verification (no user session)")
+	}
+	status, err := e.pveGW.FirewallCompileStatus(ctx, st.Node)
+	if err != nil {
+		return fmt.Errorf("change: checking firewall compile status on %s: %w", st.Node, err)
+	}
+	if !status.OK {
+		msg := status.Message
+		if msg == "" {
+			msg = "pve-firewall reported a non-clean compile status"
+		}
+		return fmt.Errorf("change: firewall did not compile cleanly on %s: %s", st.Node, msg)
+	}
+	return nil
 }
 
 // rollbackAfterFailure converges every affected node back to its pre-apply
@@ -181,9 +259,11 @@ func (e *executor) execStep(ctx context.Context, i int) error {
 // design note in apply_seams.go/PVEGateway's doc comment: SDN's rollback
 // has no daemon-level (ticket-less) path the way node-file rollback does,
 // so it can only ever happen here or in a manual/auto rollback that itself
-// has a gateway (see doRollbackLocked). Rollback is best-effort — an error
-// restoring one node/the SDN config is logged but does not abort restoring
-// the rest.
+// has a gateway (see doRollbackLocked). It also reverts any firewall
+// ruleset whose StepFwApply step had already completed (T-502's
+// same-request rollback — see PVEGateway's doc comment). Rollback is
+// best-effort across nodes/targets/SDN config — an error restoring one is
+// logged but does not abort restoring the rest.
 func (e *executor) rollbackAfterFailure(ctx context.Context) {
 	if e.hasSDNPre && e.anySDNStepSucceeded() {
 		e.log.Rollback = append(e.log.Rollback, e.svc.restoreSDN(ctx, e.pveGW, e.sdnPre))
@@ -195,6 +275,42 @@ func (e *executor) rollbackAfterFailure(ctx context.Context) {
 		reloadIdx, hasReload := e.loadIx[node]
 		committed := hasReload && e.log.Steps[reloadIdx].Status == StepOK
 		e.undoNode(ctx, node, committed)
+	}
+	e.undoFwTargets(ctx)
+}
+
+// undoFwTargets reverts every fw ruleset target whose StepFwApply step
+// reached StepOK, restoring the content execFwApply snapshotted just
+// before its first mutating call. Targets never reached (or whose apply
+// step itself is the one that failed, in which case PVE-side state may be
+// partially mutated by whichever op within that step errored — the mock
+// and real PVE both apply each rule/alias/ipset/group op atomically per
+// call, so "this step failed" means zero or more of its ops already took
+// effect; restoring from the pre-step snapshot converges either way) are
+// still restored as long as e.fwPre captured something for them, since a
+// snapshot is taken before the *first* op in the step runs, not after the
+// whole step succeeds.
+func (e *executor) undoFwTargets(ctx context.Context) {
+	if e.pveGW == nil {
+		return
+	}
+	for _, target := range e.plan.fwTargets() {
+		key := target.String()
+		pre, captured := e.fwPre[key]
+		if !captured {
+			continue
+		}
+		rb := RollbackLog{
+			Node:    target.Node,
+			At:      e.svc.now().Unix(),
+			Status:  StepOK,
+			Summary: fmt.Sprintf("Restore firewall scope %s from pre-apply snapshot", target),
+		}
+		if err := e.pveGW.RestoreFirewallScope(ctx, target, pre); err != nil {
+			rb.Status = StepFailed
+			rb.Error = err.Error()
+		}
+		e.log.Rollback = append(e.log.Rollback, rb)
 	}
 }
 

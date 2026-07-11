@@ -636,7 +636,11 @@ func TestValidate_EveryOpTypeHasAPassingCase(t *testing.T) {
 		&inventory.SdnSubnet{Ref: testRef(inventory.KindSDNSubnet, "", "10.0.0.0/24"), ID: "10.0.0.0/24", Vnet: "zone1/vnet1"},
 		&inventory.GuestNic{Ref: testRef(inventory.KindGuestNic, "pve1", "100/net0"), Guest: testRef(inventory.KindGuest, "pve1", "100")},
 		&inventory.FwRuleset{Ref: testRef(inventory.KindFwRuleset, "", "cluster"), Scope: inventory.FwScopeCluster,
-			Rules: []inventory.FwRule{{Pos: 0, Direction: "in", Action: "ACCEPT"}}},
+			Rules:   []inventory.FwRule{{Pos: 0, Direction: "in", Action: "ACCEPT"}},
+			Aliases: []inventory.FwAlias{{Name: "office", CIDR: "203.0.113.0/24"}},
+			IPSets:  []inventory.FwIPSet{{Name: "blocklist"}},
+			Groups:  []inventory.FwGroup{{Name: "web"}},
+		},
 	)
 
 	cases := []struct {

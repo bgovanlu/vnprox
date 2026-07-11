@@ -246,6 +246,21 @@ func (c *Client) Stats(ctx context.Context, p Peer, node string) (map[string]hos
 	return out.Stats, nil
 }
 
+// Services fetches node's systemd unit status (T-602's
+// host.WatchedServices) from peer p.
+func (c *Client) Services(ctx context.Context, p Peer, node string) (map[string]bool, error) {
+	path := "/api/peer/host/services?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out servicesResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Services, nil
+}
+
 // StageInterfaces asks peer p to stage content as node's interfaces.new.
 func (c *Client) StageInterfaces(ctx context.Context, p Peer, node, content string) error {
 	body, err := json.Marshal(stageRequest{Node: node, Content: content})
@@ -348,6 +363,31 @@ func (c *Client) frrRequest(ctx context.Context, p Peer, path, node string) (ava
 		return false, nil, nil
 	}
 	return true, []byte(out.Content), nil
+}
+
+// FirewallLog fetches new pve-firewall log lines for node from peer p,
+// either from the start (cursor == "") or appended since cursor (T-505:
+// internal/fwlog.Service.Tick calls this once per known peer, per poll
+// tick, exactly the way it calls its local Source.Tail — see that
+// package's PeerSource interface, which this method satisfies directly).
+func (c *Client) FirewallLog(ctx context.Context, p Peer, node, cursor string, maxLines int) ([]string, string, error) {
+	q := url.Values{}
+	q.Set("node", node)
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	if maxLines > 0 {
+		q.Set("maxLines", strconv.Itoa(maxLines))
+	}
+	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/firewall/log?"+q.Encode(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	var out firewallLogResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, "", err
+	}
+	return out.Lines, out.NextCursor, nil
 }
 
 // Audit fetches one page of peer p's own local audit log (T-303: the

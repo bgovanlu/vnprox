@@ -19,6 +19,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/evpn"
+	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/metrics"
@@ -129,12 +130,27 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Logger: logger,
 	})
 
+	// T-602: the unified findings engine's IngestServices is wired in as
+	// collect.Config.OnServices below (the same "piggyback on the host
+	// loop's existing per-tick hook" pattern OnStats already established
+	// for metricsSampler) — but the engine itself needs graph/driftSvc/
+	// topoSvc/metricsSampler/a notifier, none of which exist until after
+	// setupCollect returns the PVE client the notifier reuses, so
+	// findingsEngine is constructed just below setupCollect and its
+	// IngestServices method is closed over here for setupCollect's benefit.
+	var findingsEngine *findings.Engine
+	onServices := func(node string, status map[string]bool) {
+		if findingsEngine != nil {
+			findingsEngine.IngestServices(node, status)
+		}
+	}
+
 	// T-303: peerClient (built from the same PVE client the collectors use
 	// for cluster-status-based discovery) is nil exactly when collectErr is
 	// non-nil — see setupCollect's doc comment — so every peerClient use
 	// below is already guarded by the same "collectors initialized OK"
 	// nil-safety collector's own uses need.
-	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, peerSecrets)
+	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, onServices, peerSecrets)
 	if collectErr != nil {
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling or cluster fan-out", "error", collectErr)
 	}
@@ -146,6 +162,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if sdnPVEClient != nil {
 		sdnSvc = sdn.NewService(sdnPVEClient)
 	}
+
+	// T-602: one findings stream unifying drift (T-305), the LLDP VLAN
+	// cross-check (T-302), and this task's own health checks — composed
+	// over the same live graph/metrics substrate every other read path
+	// shares (docs/architecture.md §2/§3). IPAM (T-405) is not yet wired:
+	// still a stub package as of this task — see setupFindings' doc
+	// comment. The notifier reuses sdnPVEClient (the collectors' read-only
+	// PVE identity) rather than building a third client.
+	findingsNotifier := setupFindingsNotifier(sdnPVEClient, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, findingsNotifier, topoSvc, logger)
 
 	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
 	// (docs/api.md's WebSocket section documents one shared /api/ws
@@ -279,6 +305,21 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	defer changeSvc.StopTimers()
 
+	// T-505: the firewall log viewer's cluster-wide tailer/correlator.
+	// Built before peerSrv below so the same local log source
+	// (fwlogSource) backs both this daemon's own polling (fwlogSvc) and
+	// what it serves to peers over GET /api/peer/firewall/log
+	// (fwLogPeerReaderAdapter) — one source of truth for "this node's own
+	// log", not two independently-opened readers of the same file.
+	// coordPeerClient (constructed above for T-304's coordinator) is
+	// reused for fan-out rather than building a third peer.Client — it
+	// already carries the same cluster-secret/discovery wiring T-303's
+	// peerClient does.
+	fwlogSvc, fwlogSource, fwlogErr := setupFwlog(cfg, graph, topoSvc, coordPeerClient, localNode, logger)
+	if fwlogErr != nil {
+		logger.Error("fwlog: failed to initialize the firewall log viewer's local source; the feature will report empty/unavailable", "error", fwlogErr)
+	}
+
 	// T-301/T-304: the peer server backs the documented /api/peer/host/* and
 	// /api/peer/timer/* routes with the real netlink/interfaces(5)/lldpd
 	// reader (host.NewReal) for reads and the same nodeAgent/localTimers
@@ -288,6 +329,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// (POST /api/peer/host/lldp/install, docs/features/lldp-discovery.md
 	// §1) via its InstallLLDPD method (host/lldp_install_linux.go).
 	realHost := host.NewReal()
+	var fwLogReader peer.FirewallLogReader
+	if fwlogSource != nil {
+		fwLogReader = fwLogPeerReaderAdapter{src: fwlogSource}
+	}
 	peerSrv := peer.NewServer(peer.ServerOptions{
 		Secrets:       peerSecrets,
 		Reader:        realHost,
@@ -296,6 +341,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Snapshots:     snapshotPeerAdapter{changeSvc},
 		Timers:        localTimers,
 		LLDPInstaller: realHost,
+		FirewallLog:   fwLogReader,
 		Version:       version,
 		Logger:        logger,
 	})
@@ -345,6 +391,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Inventory: graph,
 	})
 
+	// fwlogSvc is a *fwlog.Service, possibly nil (setupFwlog's dev-fixture
+	// load failure path) — assigned through an explicit nil check rather
+	// than handed to api.Options.FwLog directly, so a nil *fwlog.Service
+	// never becomes a non-nil FwLogService interface value wrapping a nil
+	// pointer (the classic Go footgun peer.Client.Peers' own doc comment
+	// calls out; mountFwLogRoutes' `if svc == nil` guard only works
+	// against a truly nil interface).
+	var fwLogAPI api.FwLogService
+	if fwlogSvc != nil {
+		fwLogAPI = fwlogSvc
+	}
+
 	handler := api.NewRouter(api.Options{
 		Version:       version,
 		DistFS:        distFS,
@@ -354,6 +412,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Topology:      topoSvc,
 		LLDP:          topoSvc,
 		Drift:         driftSvc,
+		Findings:      findingsEngine,
 		FDB:           topoSvc,
 		Metrics:       metricsSampler,
 		Layouts:       store.NewLayoutRepo(db),
@@ -367,6 +426,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Firewall:      graph,
 		Blueprints:    blueprintSvc,
 		Simulator:     graph,
+		FwLog:         fwLogAPI,
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,
 		PeerSnapshots: peerSnapshots,
@@ -427,6 +487,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		g.add(collector.RunLLDPLoop)
 	}
 	g.add(driftSvc.RunLoop)
+	if fwlogSvc != nil {
+		// T-505: continuously merges the local + every peer's pve-firewall
+		// log into the shared, rate-capped buffer GET /firewall/log and the
+		// `firewall.log.batch` WS push both read from (see
+		// internal/fwlog.Service.Run's doc comment). Runs unconditionally
+		// once initialized, the same "always on, not gated behind a
+		// subscriber" treatment driftSvc.RunLoop above gets.
+		g.add(fwlogSvc.Run)
+	}
+	g.add(findingsEngine.RunLoop)
 
 	logger.Info("vnproxd starting",
 		"version", version,

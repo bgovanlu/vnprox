@@ -2,17 +2,22 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/auth"
 	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/pve"
 )
@@ -217,12 +222,13 @@ func (p pveGatewayProvider) GatewayFor(ctx context.Context) (change.PVEGateway, 
 	if !ok {
 		return nil, false
 	}
-	return &pveSDNGateway{client: client}, true
+	return &pveGateway{client: client}, true
 }
 
-// pveSDNGateway realizes the sdn.zone/vnet/subnet.* stage ops and sdn.apply
-// step (T-402) through the user's own client (docs/architecture.md §6).
-type pveSDNGateway struct {
+// pveGateway realizes every change.PVEGateway method — the sdn.zone/vnet/
+// subnet.* stage ops and sdn.apply step (T-402), plus the full fw.* op
+// family (T-502) — through the user's own client (docs/architecture.md §6).
+type pveGateway struct {
 	client *pve.Client
 }
 
@@ -237,7 +243,7 @@ type pveSDNGateway struct {
 // the time they reach here — see params_sdn.go's *UpdateParams doc
 // comments — so this is not a functional gap for the ops this package's
 // own validators/projection produce).
-func (g *pveSDNGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet string) error {
+func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet string) error {
 	switch p := op.Params.(type) {
 	case *change.SdnZoneCreateParams:
 		return g.client.CreateSDNZone(ctx, pve.SDNZone{
@@ -337,7 +343,7 @@ func firstDHCPRange(ranges []string) (start, end string) {
 // populated before the wait even starts, so a caller gets a task-log deep
 // link regardless of whether the task itself or the health check is what
 // ultimately fails.
-func (g *pveSDNGateway) ApplySDN(ctx context.Context, affectedZones []string) (change.SDNApplyResult, error) {
+func (g *pveGateway) ApplySDN(ctx context.Context, affectedZones []string) (change.SDNApplyResult, error) {
 	upid, err := g.client.ApplySDN(ctx)
 	if err != nil {
 		return change.SDNApplyResult{}, err
@@ -367,7 +373,7 @@ func (g *pveSDNGateway) ApplySDN(ctx context.Context, affectedZones []string) (c
 // merged) zone/vnet/subnet tree, T-402's pre-apply/rollback snapshot source
 // (see that interface method's doc comment for why "staged" and not
 // "?running=1").
-func (g *pveSDNGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
+func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 	zones, err := g.client.ListSDNZones(ctx)
 	if err != nil {
 		return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn zones: %w", err)
@@ -423,4 +429,510 @@ func upidNode(upid string) string {
 		return parts[1]
 	}
 	return ""
+}
+
+// --- T-502: firewall op family --------------------------------------------
+
+// fwScope resolves a firewall ruleset Ref (internal/inventory's cluster/
+// node/"guest/<kind>/<vmid>" ID convention — see internal/change/
+// params_fw.go's doc comment) to the pve.FirewallScope its API calls need.
+func (g *pveGateway) fwScope(target inventory.Ref) (pve.FirewallScope, error) {
+	switch target.ID {
+	case "cluster":
+		return pve.ClusterFirewallScope(), nil
+	case "node":
+		return pve.NodeFirewallScope(target.Node), nil
+	default:
+		parts := strings.SplitN(target.ID, "/", 3)
+		if len(parts) != 3 || parts[0] != "guest" {
+			return pve.FirewallScope{}, fmt.Errorf("pve gateway: unrecognized firewall ruleset target %s", target)
+		}
+		vmid, err := strconv.Atoi(parts[2])
+		if err != nil {
+			return pve.FirewallScope{}, fmt.Errorf("pve gateway: firewall ruleset target %s: invalid vmid: %w", target, err)
+		}
+		return pve.GuestFirewallScope(target.Node, pve.GuestKind(parts[1]), vmid), nil
+	}
+}
+
+// FirewallRuleFields implements change.PVEGateway.
+func (g *pveGateway) FirewallRuleFields(ctx context.Context, ref inventory.Ref, pos int) (change.FwRuleFields, error) {
+	scope, err := g.fwScope(ref)
+	if err != nil {
+		return change.FwRuleFields{}, err
+	}
+	rule, err := g.client.GetFirewallRule(ctx, scope, pos)
+	if err != nil {
+		var reqErr *pve.ErrPVERequest
+		if errors.As(err, &reqErr) && reqErr.StatusCode == http.StatusNotFound {
+			return change.FwRuleFields{}, &change.ErrFwRuleNotFound{Ref: ref, Pos: pos}
+		}
+		return change.FwRuleFields{}, err
+	}
+	return fwRuleFieldsFromPVE(*rule), nil
+}
+
+func fwRuleFieldsFromPVE(r pve.FirewallRule) change.FwRuleFields {
+	return change.FwRuleFields{
+		Direction: r.Type, Action: r.Action, Proto: r.Proto, Source: r.Source, Dest: r.Dest,
+		Sport: r.Sport, Dport: r.Dport, Iface: r.Iface, Macro: r.Macro, Log: r.Log,
+		Comment: r.Comment, Enabled: r.Enabled,
+	}
+}
+
+func fwRuleFromSpec(r change.FwRuleSpec) pve.FirewallRule {
+	return pve.FirewallRule{
+		Type: r.Direction, Action: r.Action, Proto: r.Proto, Source: r.Source, Dest: r.Dest,
+		Sport: r.Sport, Dport: r.Dport, Macro: r.Macro, Comment: r.Comment, Enabled: r.Enabled,
+	}
+}
+
+// ApplyFwOp implements change.PVEGateway: dispatches one fw.* op to the
+// concrete PVE API call(s) it realizes as. Object ops (alias/ipset/group)
+// with no natural "patch" endpoint (comment-only rename, ipset membership)
+// are realized as a read-current + diff + write-the-delta sequence; rule
+// creation at a non-appended position is realized as create-then-move
+// (see pve.Client.CreateFirewallRule's doc comment) — every one of these
+// multi-call realizations is not atomic against a concurrent external
+// edit, same as every other multi-step PVE API interaction in this
+// codebase (e.g. bridge port add/remove).
+func (g *pveGateway) ApplyFwOp(ctx context.Context, op change.Op) error {
+	scope, err := g.fwScope(op.Target)
+	if err != nil {
+		return err
+	}
+	switch p := op.Params.(type) {
+	case *change.FwRuleCreateParams:
+		return g.createFwRule(ctx, scope, p)
+	case *change.FwRuleUpdateParams:
+		return g.updateFwRule(ctx, scope, p)
+	case *change.FwRuleDeleteParams:
+		return g.client.DeleteFirewallRule(ctx, scope, p.Pos)
+	case *change.FwRuleMoveParams:
+		return g.moveFwRule(ctx, scope, p)
+	case *change.FwOptionsUpdateParams:
+		return g.client.UpdateFirewallOptions(ctx, scope, pve.FirewallOptionsUpdate{
+			Enable: p.Enabled, PolicyIn: p.DefaultIn, PolicyOut: p.DefaultOut,
+		})
+	case *change.FwAliasCreateParams:
+		return g.client.CreateFirewallAlias(ctx, scope, pve.FirewallAlias{Name: p.Name, CIDR: p.CIDR, Comment: p.Comment})
+	case *change.FwAliasUpdateParams:
+		return g.updateFwAlias(ctx, scope, p)
+	case *change.FwAliasDeleteParams:
+		return g.client.DeleteFirewallAlias(ctx, scope, p.Name)
+	case *change.FwIpsetCreateParams:
+		return g.createFwIpset(ctx, scope, p)
+	case *change.FwIpsetUpdateParams:
+		return g.updateFwIpset(ctx, scope, p)
+	case *change.FwIpsetDeleteParams:
+		return g.client.DeleteFirewallIPSet(ctx, scope, p.Name)
+	case *change.FwGroupCreateParams:
+		return g.createFwGroup(ctx, p)
+	case *change.FwGroupUpdateParams:
+		return g.updateFwGroup(ctx, p)
+	case *change.FwGroupDeleteParams:
+		return g.client.DeleteFirewallGroup(ctx, p.Name)
+	default:
+		return fmt.Errorf("pve gateway: unsupported firewall op params %T", op.Params)
+	}
+}
+
+func (g *pveGateway) createFwRule(ctx context.Context, scope pve.FirewallScope, p *change.FwRuleCreateParams) error {
+	rule := pve.FirewallRule{
+		Type: p.Direction, Action: p.Action, Proto: p.Proto, Source: p.Source, Dest: p.Dest,
+		Sport: p.Sport, Dport: p.Dport, Iface: p.Iface, Macro: p.Macro, Log: p.Log,
+		Comment: p.Comment, Enabled: p.Enabled,
+	}
+	if err := g.client.CreateFirewallRule(ctx, scope, rule); err != nil {
+		return fmt.Errorf("creating firewall rule: %w", err)
+	}
+	rules, err := g.client.ListFirewallRules(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("listing rules after create to locate the new rule: %w", err)
+	}
+	endPos := len(rules) - 1
+	if endPos < 0 {
+		return fmt.Errorf("pve gateway: created rule not found in ruleset")
+	}
+	if p.Pos == endPos {
+		return nil
+	}
+	rule.Pos = endPos
+	moveTo := p.Pos
+	if err := g.client.UpdateFirewallRule(ctx, scope, endPos, rule, &moveTo); err != nil {
+		return fmt.Errorf("moving newly created rule to pos %d: %w", p.Pos, err)
+	}
+	return nil
+}
+
+func (g *pveGateway) updateFwRule(ctx context.Context, scope pve.FirewallScope, p *change.FwRuleUpdateParams) error {
+	current, err := g.client.GetFirewallRule(ctx, scope, p.Pos)
+	if err != nil {
+		return fmt.Errorf("reading current rule before update: %w", err)
+	}
+	merged := *current
+	if p.Direction != nil {
+		merged.Type = *p.Direction
+	}
+	if p.Action != nil {
+		merged.Action = *p.Action
+	}
+	if p.Proto != nil {
+		merged.Proto = *p.Proto
+	}
+	if p.Source != nil {
+		merged.Source = *p.Source
+	}
+	if p.Dest != nil {
+		merged.Dest = *p.Dest
+	}
+	if p.Sport != nil {
+		merged.Sport = *p.Sport
+	}
+	if p.Dport != nil {
+		merged.Dport = *p.Dport
+	}
+	if p.Iface != nil {
+		merged.Iface = *p.Iface
+	}
+	if p.Macro != nil {
+		merged.Macro = *p.Macro
+	}
+	if p.Log != nil {
+		merged.Log = *p.Log
+	}
+	if p.Comment != nil {
+		merged.Comment = *p.Comment
+	}
+	if p.Enabled != nil {
+		merged.Enabled = *p.Enabled
+	}
+	if err := g.client.UpdateFirewallRule(ctx, scope, p.Pos, merged, nil); err != nil {
+		return fmt.Errorf("updating firewall rule at pos %d: %w", p.Pos, err)
+	}
+	return nil
+}
+
+// moveFwRule realizes fw.rule.move. The apply-time position revalidation
+// (acceptance criterion 3) already happened in the executor, against a
+// live FirewallRuleFields read, before this method is ever called — this
+// re-reads the rule's current content anyway because PVE's moveto call
+// still requires resending the rule's full field content unchanged.
+func (g *pveGateway) moveFwRule(ctx context.Context, scope pve.FirewallScope, p *change.FwRuleMoveParams) error {
+	current, err := g.client.GetFirewallRule(ctx, scope, p.FromPos)
+	if err != nil {
+		return fmt.Errorf("reading rule before move: %w", err)
+	}
+	moveTo := p.ToPos
+	if err := g.client.UpdateFirewallRule(ctx, scope, p.FromPos, *current, &moveTo); err != nil {
+		return fmt.Errorf("moving rule from pos %d to %d: %w", p.FromPos, p.ToPos, err)
+	}
+	return nil
+}
+
+func (g *pveGateway) updateFwAlias(ctx context.Context, scope pve.FirewallScope, p *change.FwAliasUpdateParams) error {
+	current, err := g.client.GetFirewallAlias(ctx, scope, p.Name)
+	if err != nil {
+		return fmt.Errorf("reading current alias before update: %w", err)
+	}
+	merged := *current
+	if p.CIDR != nil {
+		merged.CIDR = *p.CIDR
+	}
+	if p.Comment != nil {
+		merged.Comment = *p.Comment
+	}
+	if err := g.client.UpdateFirewallAlias(ctx, scope, p.Name, merged); err != nil {
+		return fmt.Errorf("updating alias %q: %w", p.Name, err)
+	}
+	return nil
+}
+
+func (g *pveGateway) createFwIpset(ctx context.Context, scope pve.FirewallScope, p *change.FwIpsetCreateParams) error {
+	if err := g.client.CreateFirewallIPSet(ctx, scope, p.Name, p.Comment); err != nil {
+		return fmt.Errorf("creating ipset %q: %w", p.Name, err)
+	}
+	for _, cidr := range p.CIDRs {
+		if err := g.client.CreateFirewallIPSetEntry(ctx, scope, p.Name, pve.FirewallIPSetEntry{CIDR: cidr}); err != nil {
+			return fmt.Errorf("adding entry %q to ipset %q: %w", cidr, p.Name, err)
+		}
+	}
+	return nil
+}
+
+// updateFwIpset realizes fw.ipset.update: a comment rename (if set) plus a
+// membership diff (if CIDRs is set) — add what's missing, remove what's no
+// longer wanted — since the PVE ipset API has no "replace all entries" call.
+func (g *pveGateway) updateFwIpset(ctx context.Context, scope pve.FirewallScope, p *change.FwIpsetUpdateParams) error {
+	if p.Comment != nil {
+		if err := g.client.UpdateFirewallIPSet(ctx, scope, p.Name, *p.Comment); err != nil {
+			return fmt.Errorf("renaming ipset %q's comment: %w", p.Name, err)
+		}
+	}
+	if p.CIDRs == nil {
+		return nil
+	}
+	current, err := g.client.ListFirewallIPSetEntries(ctx, scope, p.Name)
+	if err != nil {
+		return fmt.Errorf("listing current entries of ipset %q: %w", p.Name, err)
+	}
+	want := make(map[string]bool, len(*p.CIDRs))
+	for _, c := range *p.CIDRs {
+		want[c] = true
+	}
+	have := make(map[string]bool, len(current))
+	for _, e := range current {
+		have[e.CIDR] = true
+	}
+	for cidr := range have {
+		if want[cidr] {
+			continue
+		}
+		if err := g.client.DeleteFirewallIPSetEntry(ctx, scope, p.Name, cidr); err != nil {
+			return fmt.Errorf("removing entry %q from ipset %q: %w", cidr, p.Name, err)
+		}
+	}
+	for cidr := range want {
+		if have[cidr] {
+			continue
+		}
+		if err := g.client.CreateFirewallIPSetEntry(ctx, scope, p.Name, pve.FirewallIPSetEntry{CIDR: cidr}); err != nil {
+			return fmt.Errorf("adding entry %q to ipset %q: %w", cidr, p.Name, err)
+		}
+	}
+	return nil
+}
+
+func (g *pveGateway) createFwGroup(ctx context.Context, p *change.FwGroupCreateParams) error {
+	if err := g.client.CreateFirewallGroup(ctx, p.Name, p.Comment); err != nil {
+		return fmt.Errorf("creating security group %q: %w", p.Name, err)
+	}
+	for _, r := range p.Rules {
+		if err := g.client.CreateFirewallGroupRule(ctx, p.Name, fwRuleFromSpec(r)); err != nil {
+			return fmt.Errorf("adding rule to security group %q: %w", p.Name, err)
+		}
+	}
+	return nil
+}
+
+// updateFwGroup realizes fw.group.update's Rules replacement by deleting
+// every existing member rule (highest position first, so the mock/real
+// API's renumber-on-delete never shifts an index this loop hasn't visited
+// yet) and recreating from p.Rules in order. Comment is not handled here:
+// neither pvemock nor the real PVE security-group surface this task wires
+// exposes a rename-the-group-itself call distinct from its member-rule
+// CRUD — flagged as a narrow, documented gap in the T-502 report.
+func (g *pveGateway) updateFwGroup(ctx context.Context, p *change.FwGroupUpdateParams) error {
+	if p.Rules == nil {
+		return nil
+	}
+	current, err := g.client.GetFirewallGroupRules(ctx, p.Name)
+	if err != nil {
+		return fmt.Errorf("reading current rules of security group %q: %w", p.Name, err)
+	}
+	for i := len(current) - 1; i >= 0; i-- {
+		if err := g.client.DeleteFirewallGroupRule(ctx, p.Name, current[i].Pos); err != nil {
+			return fmt.Errorf("clearing rule %d of security group %q: %w", current[i].Pos, p.Name, err)
+		}
+	}
+	for _, r := range *p.Rules {
+		if err := g.client.CreateFirewallGroupRule(ctx, p.Name, fwRuleFromSpec(r)); err != nil {
+			return fmt.Errorf("recreating rule of security group %q: %w", p.Name, err)
+		}
+	}
+	return nil
+}
+
+// fwScopeSnapshot is the JSON-serializable form SnapshotFirewallScope/
+// RestoreFirewallScope exchange: one ruleset scope's full content.
+type fwScopeSnapshot struct {
+	Options pve.FirewallOptions `json:"options"`
+	Rules   []pve.FirewallRule  `json:"rules"`
+	Aliases []pve.FirewallAlias `json:"aliases"`
+	IPSets  []fwIPSetSnapshot   `json:"ipsets"`
+	Groups  []fwGroupSnapshot   `json:"groups,omitempty"`
+}
+
+type fwIPSetSnapshot struct {
+	Name    string                   `json:"name"`
+	Comment string                   `json:"comment,omitempty"`
+	Entries []pve.FirewallIPSetEntry `json:"entries"`
+}
+
+type fwGroupSnapshot struct {
+	Name    string             `json:"name"`
+	Comment string             `json:"comment,omitempty"`
+	Rules   []pve.FirewallRule `json:"rules"`
+}
+
+// SnapshotFirewallScope implements change.PVEGateway.
+func (g *pveGateway) SnapshotFirewallScope(ctx context.Context, ref inventory.Ref) (string, error) {
+	scope, err := g.fwScope(ref)
+	if err != nil {
+		return "", err
+	}
+	snap, err := g.captureFwScope(ctx, scope, ref.ID == "cluster")
+	if err != nil {
+		return "", fmt.Errorf("capturing firewall scope %s: %w", ref, err)
+	}
+	b, err := json.Marshal(snap)
+	if err != nil {
+		return "", fmt.Errorf("marshaling firewall scope snapshot for %s: %w", ref, err)
+	}
+	return string(b), nil
+}
+
+func (g *pveGateway) captureFwScope(ctx context.Context, scope pve.FirewallScope, includeGroups bool) (fwScopeSnapshot, error) {
+	var out fwScopeSnapshot
+	rules, err := g.client.ListFirewallRules(ctx, scope)
+	if err != nil {
+		return out, err
+	}
+	out.Rules = rules
+	opts, err := g.client.GetFirewallOptions(ctx, scope)
+	if err != nil {
+		return out, err
+	}
+	out.Options = *opts
+	aliases, err := g.client.ListFirewallAliases(ctx, scope)
+	if err != nil {
+		return out, err
+	}
+	out.Aliases = aliases
+	ipsets, err := g.client.ListFirewallIPSets(ctx, scope)
+	if err != nil {
+		return out, err
+	}
+	for _, s := range ipsets {
+		entries, err := g.client.ListFirewallIPSetEntries(ctx, scope, s.Name)
+		if err != nil {
+			return out, err
+		}
+		out.IPSets = append(out.IPSets, fwIPSetSnapshot{Name: s.Name, Comment: s.Comment, Entries: entries})
+	}
+	if includeGroups {
+		groups, err := g.client.ListFirewallGroups(ctx)
+		if err != nil {
+			return out, err
+		}
+		for _, gr := range groups {
+			grRules, err := g.client.GetFirewallGroupRules(ctx, gr.Name)
+			if err != nil {
+				return out, err
+			}
+			out.Groups = append(out.Groups, fwGroupSnapshot{Name: gr.Name, Comment: gr.Comment, Rules: grRules})
+		}
+	}
+	return out, nil
+}
+
+// RestoreFirewallScope implements change.PVEGateway: reconciles ref's live
+// ruleset back to a captured snapshot by clearing every collection (rules/
+// aliases/ipsets/groups) and recreating it from the snapshot, rather than a
+// surgical diff — the same "replace the whole thing" model the interfaces-
+// file restore uses, adapted to a CRUD API with no whole-file PUT. See
+// PVEGateway's doc comment for the scope this is (and isn't) invoked for.
+func (g *pveGateway) RestoreFirewallScope(ctx context.Context, ref inventory.Ref, snapshot string) error {
+	scope, err := g.fwScope(ref)
+	if err != nil {
+		return err
+	}
+	var want fwScopeSnapshot
+	if err := json.Unmarshal([]byte(snapshot), &want); err != nil {
+		return fmt.Errorf("decoding firewall scope snapshot for %s: %w", ref, err)
+	}
+	if err := g.reconcileFwScope(ctx, scope, ref.ID == "cluster", want); err != nil {
+		return fmt.Errorf("restoring firewall scope %s: %w", ref, err)
+	}
+	return nil
+}
+
+func (g *pveGateway) reconcileFwScope(ctx context.Context, scope pve.FirewallScope, includeGroups bool, want fwScopeSnapshot) error {
+	live, err := g.client.ListFirewallRules(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("listing live rules: %w", err)
+	}
+	for i := len(live) - 1; i >= 0; i-- {
+		if err = g.client.DeleteFirewallRule(ctx, scope, live[i].Pos); err != nil {
+			return fmt.Errorf("deleting rule %d: %w", live[i].Pos, err)
+		}
+	}
+	for _, r := range want.Rules {
+		if err = g.client.CreateFirewallRule(ctx, scope, r); err != nil {
+			return fmt.Errorf("recreating rule: %w", err)
+		}
+	}
+
+	enable, policyIn, policyOut := want.Options.Enable, want.Options.PolicyIn, want.Options.PolicyOut
+	if err = g.client.UpdateFirewallOptions(ctx, scope, pve.FirewallOptionsUpdate{Enable: &enable, PolicyIn: &policyIn, PolicyOut: &policyOut}); err != nil {
+		return fmt.Errorf("restoring options: %w", err)
+	}
+
+	liveAliases, err := g.client.ListFirewallAliases(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("listing live aliases: %w", err)
+	}
+	for _, a := range liveAliases {
+		if err = g.client.DeleteFirewallAlias(ctx, scope, a.Name); err != nil {
+			return fmt.Errorf("deleting alias %q: %w", a.Name, err)
+		}
+	}
+	for _, a := range want.Aliases {
+		if err = g.client.CreateFirewallAlias(ctx, scope, a); err != nil {
+			return fmt.Errorf("recreating alias %q: %w", a.Name, err)
+		}
+	}
+
+	liveSets, err := g.client.ListFirewallIPSets(ctx, scope)
+	if err != nil {
+		return fmt.Errorf("listing live ipsets: %w", err)
+	}
+	for _, s := range liveSets {
+		if err = g.client.DeleteFirewallIPSet(ctx, scope, s.Name); err != nil {
+			return fmt.Errorf("deleting ipset %q: %w", s.Name, err)
+		}
+	}
+	for _, s := range want.IPSets {
+		if err = g.client.CreateFirewallIPSet(ctx, scope, s.Name, s.Comment); err != nil {
+			return fmt.Errorf("recreating ipset %q: %w", s.Name, err)
+		}
+		for _, e := range s.Entries {
+			if err = g.client.CreateFirewallIPSetEntry(ctx, scope, s.Name, e); err != nil {
+				return fmt.Errorf("recreating ipset %q entry: %w", s.Name, err)
+			}
+		}
+	}
+
+	if !includeGroups {
+		return nil
+	}
+	liveGroups, err := g.client.ListFirewallGroups(ctx)
+	if err != nil {
+		return fmt.Errorf("listing live groups: %w", err)
+	}
+	for _, gr := range liveGroups {
+		if err = g.client.DeleteFirewallGroup(ctx, gr.Name); err != nil {
+			return fmt.Errorf("deleting group %q: %w", gr.Name, err)
+		}
+	}
+	for _, gr := range want.Groups {
+		if err = g.client.CreateFirewallGroup(ctx, gr.Name, gr.Comment); err != nil {
+			return fmt.Errorf("recreating group %q: %w", gr.Name, err)
+		}
+		for _, r := range gr.Rules {
+			if err = g.client.CreateFirewallGroupRule(ctx, gr.Name, r); err != nil {
+				return fmt.Errorf("recreating group %q rule: %w", gr.Name, err)
+			}
+		}
+	}
+	return nil
+}
+
+// FirewallCompileStatus implements change.PVEGateway.
+func (g *pveGateway) FirewallCompileStatus(ctx context.Context, node string) (change.FwCompileStatus, error) {
+	status, err := g.client.GetFirewallCompileStatus(ctx, node)
+	if err != nil {
+		return change.FwCompileStatus{}, err
+	}
+	return change.FwCompileStatus{OK: status.OK(), Message: status.Message}, nil
 }

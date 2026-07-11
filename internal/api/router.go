@@ -62,6 +62,13 @@ type Options struct {
 	Topology   TopologyService
 	LLDP       LLDPService
 	Drift      DriftService
+	// Findings is T-602's unified findings-stream seam (drift+lldp+ipam+
+	// health composed by *findings.Engine): backs `GET /findings`,
+	// `POST /findings/{id}/fix`, and (superseding Drift for this purpose
+	// when set) the `GET /topology` finding-badge overlay. Nil simply
+	// omits the /findings routes and falls back to Drift-only badge
+	// painting — see handleTopology's doc comment.
+	Findings   FindingsService
 	FDB        FDBService
 	Layouts    LayoutStore
 	Changesets ChangesetService
@@ -90,7 +97,14 @@ type Options struct {
 	// Simulator backs T-503's `POST /simulate/path` — the same live
 	// *inventory.Graph (satisfies SimulatorGraph's one-method seam directly).
 	Simulator SimulatorGraph
-	Peer      PeerServer
+	// FwLog backs T-505's GET /firewall/log (docs/features/firewall.md
+	// §4) — typically the daemon's *fwlog.Service, which also owns the
+	// `firewall.log.batch` WS push (fed directly from its own Run loop
+	// over the shared hub, not through this router — the same
+	// "producer pushes over the shared hub directly" pattern
+	// internal/topology.Service.Broadcast's other callers use).
+	FwLog FwLogService
+	Peer  PeerServer
 	// PeerAudit and PeerSnapshots are T-303's cluster fan-out dependencies
 	// for GET /audit and GET /snapshots (docs/architecture.md §7: "Audit/
 	// snapshot queries in the UI fan out to peers and merge"). Nil (every
@@ -122,9 +136,10 @@ func NewRouter(opts Options) http.Handler {
 		if opts.Auth != nil {
 			opts.Auth.MountRoutes(r)
 		}
-		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift)
+		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings)
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
+		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
@@ -137,6 +152,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 		mountSimulateRoutes(r, opts.Simulator, opts.Auth)
+		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

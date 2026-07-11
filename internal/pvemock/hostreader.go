@@ -46,6 +46,9 @@ type HostReader interface {
 	// FRREVPNVNI returns raw `vtysh -c "show evpn vni json"` output for
 	// node. Same ErrFRRUnavailable convention as FRRBGPSummary.
 	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
+
+	// Services returns fixture-declared systemd unit status for node (T-602).
+	Services(ctx context.Context, node string) (map[string]bool, error)
 }
 
 // LinkState is one netlink-equivalent link (physical NIC, bond, bridge, or
@@ -219,4 +222,33 @@ func (h *FixtureHostReader) FRREVPNVNI(_ context.Context, node string) ([]byte, 
 		return nil, fmt.Errorf("pvemock: host reader: %w: node %q", ErrFRRUnavailable, node)
 	}
 	return marshalEVPNVNI(ns.frr)
+}
+
+// watchedServiceNames is host.WatchedServices, duplicated here (as a plain
+// literal, not an import) so this package — deliberately host-package-free,
+// per its own doc comment on why HostReader is defined standalone rather
+// than depending on internal/host — doesn't need to import internal/host
+// purely for this one constant.
+var watchedServiceNames = []string{"dnsmasq", "frr"}
+
+// Services implements HostReader: every fixture-declared override in
+// ns.services wins; every other watched service name defaults to
+// active=true (see NodeSpec.Services' doc comment on why "unremarkable
+// unless declared otherwise" is the right default for a fixture).
+func (h *FixtureHostReader) Services(_ context.Context, node string) (map[string]bool, error) {
+	ns, ok := h.state.node(node)
+	if !ok {
+		return nil, fmt.Errorf("pvemock: host reader: %w: node %q", ErrNotFound, node)
+	}
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	out := make(map[string]bool, len(watchedServiceNames))
+	for _, name := range watchedServiceNames {
+		if v, ok := ns.services[name]; ok {
+			out[name] = v
+			continue
+		}
+		out[name] = true
+	}
+	return out, nil
 }

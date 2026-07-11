@@ -67,11 +67,32 @@ type NodeAgent interface {
 //
 // T-205's executable cluster-scope step was sdn.apply alone; T-402 adds the
 // sdn.zone/vnet/subnet.* write family (SDNStageOp) and the read-back
-// SDNConfig needs for its own pre-apply/rollback snapshot. The remaining
-// guest/fw/ipam op families still need their own pve.Client write+task
-// methods (a follow-up surface) before the planner will emit steps for
-// them — see apply_plan.go's nodeFileOpTypes/sdnStageOpTypes and the T-205
-// report's residual-risk list.
+// SDNConfig needs for its own pre-apply/rollback snapshot; T-502 adds the
+// full fw.* firewall op family below. The remaining guest/ipam op families
+// still need their own pve.Client write+task methods (a follow-up surface)
+// before the planner will emit steps for them — see apply_plan.go's
+// nodeFileOpTypes/sdnStageOpTypes/fwOpTypes and the T-205 report's
+// residual-risk list.
+//
+// IMPORTANT, flagged limitation shared by sdn.apply and every fw.* method
+// (see T-502's completion report for the full discussion): every PVE-API
+// method on this interface runs under the *user's* PVE ticket, which only
+// exists for the duration of the synchronous Apply()/Rollback() call that
+// received a live pveGW. Unlike NodeAgent (root-level host access, callable
+// by the daemon at any time — including the unattended commit-confirm-
+// timeout and crash-recovery paths), these methods cannot be invoked by the
+// *unattended* rollback paths (autoRollback, ArmPendingRollbacks'
+// interrupted-apply recovery): there is no live ticket to authenticate with
+// once the originating HTTP request has ended. Both SDN and fw.* therefore
+// only implement SAME-REQUEST rollback (a later step's failure rolls back
+// an earlier SDN/fw.* step within the same Apply() call, while pveGW is
+// still valid — see apply_exec.go's rollbackAfterFailure/undoFwTargets/
+// restoreSDN) — an SDN- or fw.*-only changeset that reaches
+// awaiting_confirm and then times out (or the daemon crashes mid-window) is
+// NOT automatically reverted. This is a pre-existing architectural gap
+// neither task introduces, only inherits and makes more visible; see the
+// T-502 report for the flagged follow-up (e.g. a narrowly-scoped
+// daemon-level PVE token for unattended firewall/SDN rollback).
 type PVEGateway interface {
 	// SDNStageOp performs one cluster-scope sdn.zone/vnet/subnet
 	// create/update/delete op against PVE's staged (pending) SDN config —
@@ -109,6 +130,31 @@ type PVEGateway interface {
 	// changeset) and, by rollback, to read the current state to diff
 	// against that target (apply_sdn.go's sdnRestoreOps).
 	SDNConfig(ctx context.Context) (SDNConfig, error)
+
+	// FirewallRuleFields fetches the live content of the rule currently at
+	// pos in the ruleset named by ref, for fw.rule.move's apply-time
+	// position revalidation (T-502 acceptance criterion 3). Returns
+	// *ErrFwRuleNotFound if pos doesn't currently exist.
+	FirewallRuleFields(ctx context.Context, ref inventory.Ref, pos int) (FwRuleFields, error)
+
+	// ApplyFwOp executes one fw.* op against the PVE firewall API scope
+	// named by op.Target.
+	ApplyFwOp(ctx context.Context, op Op) error
+
+	// SnapshotFirewallScope captures ref's full current ruleset content
+	// (rules/options/aliases/ipsets, plus security groups for the cluster
+	// scope) as an opaque string, for docs/architecture.md §4's "affected
+	// firewall files" snapshot and as RestoreFirewallScope's input.
+	SnapshotFirewallScope(ctx context.Context, ref inventory.Ref) (string, error)
+
+	// RestoreFirewallScope reconciles ref's live ruleset back to a
+	// snapshot SnapshotFirewallScope captured earlier (same-request
+	// rollback only — see this interface's doc comment above).
+	RestoreFirewallScope(ctx context.Context, ref inventory.Ref, snapshot string) error
+
+	// FirewallCompileStatus reports node's current pve-firewall compiled
+	// status (docs/features/firewall.md §3's post-apply verification).
+	FirewallCompileStatus(ctx context.Context, node string) (FwCompileStatus, error)
 }
 
 // SDNApplyResult is ApplySDN's outcome: the underlying PVE task's identity
@@ -204,6 +250,16 @@ type SDNSubnetConfig struct {
 	DNSZonePrefix string   `json:"dnsZonePrefix,omitempty"`
 	DHCPRanges    []string `json:"dhcpRanges,omitempty"`
 	SNAT          bool     `json:"snat,omitempty"`
+}
+
+// FwCompileStatus is one node's pve-firewall compile-loop result, the
+// PVEGateway-level counterpart of pve.FirewallCompileStatus (kept as its
+// own type here so this package doesn't need to import internal/pve just
+// for this one shape — the same "small interface/seam-local type" pattern
+// this file already uses throughout).
+type FwCompileStatus struct {
+	Message string
+	OK      bool
 }
 
 // NodeTimerAgent is Service's seam onto T-304's local-timer protocol

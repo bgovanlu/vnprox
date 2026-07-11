@@ -117,6 +117,10 @@ func (r *spyHostReader) FRREVPNVNI(_ context.Context, node string) ([]byte, erro
 	return b, nil
 }
 
+func (r *spyHostReader) Services(_ context.Context, node string) (map[string]bool, error) {
+	return nil, nil
+}
+
 // spyHostWriter records every call it receives and its arguments.
 type spyHostWriter struct {
 	failNext  error

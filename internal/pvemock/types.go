@@ -73,13 +73,22 @@ func (u UserSpec) HasPrivilege(priv string) bool {
 // NodeSpec is per-node state: network topology, host-level metadata, guests,
 // and node-scope firewall.
 type NodeSpec struct {
-	Links    map[string]LinkInfo     `yaml:"links"`
-	LLDP     map[string]LLDPNeighbor `yaml:"lldp"`
-	Stats    map[string]IfaceStats   `yaml:"stats"`
-	Qemu     map[string]*GuestSpec   `yaml:"qemu"`
-	Lxc      map[string]*GuestSpec   `yaml:"lxc"`
-	Firewall *FirewallScope          `yaml:"firewall"`
-	Mock     *MockOptions            `yaml:"mock"`
+	Links map[string]LinkInfo     `yaml:"links"`
+	LLDP  map[string]LLDPNeighbor `yaml:"lldp"`
+	Stats map[string]IfaceStats   `yaml:"stats"`
+	// Services is T-602's fixture-declared systemd unit status
+	// (host.WatchedServices' keys: "dnsmasq", "frr") for this node's
+	// FixtureHostReader.Services. A unit omitted from this map (including
+	// when the whole map/key is unset — the common case for a fixture that
+	// doesn't care about this check) defaults to active=true: most fixture
+	// nodes should read as healthy unless a test deliberately declares
+	// otherwise, mirroring how Stats/Links default to "unremarkable" absent
+	// an explicit override.
+	Services map[string]bool       `yaml:"services,omitempty"`
+	Qemu     map[string]*GuestSpec `yaml:"qemu"`
+	Lxc      map[string]*GuestSpec `yaml:"lxc"`
+	Firewall *FirewallScope        `yaml:"firewall"`
+	Mock     *MockOptions          `yaml:"mock"`
 	// FRR is this node's fixture-declared FRR/BGP EVPN daemon state
 	// (T-404, docs/features/sdn.md §3). Nil models a node with no FRR
 	// installed/running at all — this package's HostReader.FRRBGPSummary/
@@ -391,6 +400,14 @@ type MockOptions struct {
 	// fixture or POST /mock/nodes/{node}/sdn-status-fail, mirroring
 	// NetworkReloadFail's exact pattern.
 	SDNZoneStatusFail bool `yaml:"sdn_zone_status_fail,omitempty"`
+
+	// FirewallCompileFail, when true, makes GET /nodes/{node}/firewall/status
+	// (T-502's mock-only extension — see firewall.go's handleFirewallStatus
+	// doc comment for why this route isn't part of the real PVE API) report
+	// a compile error instead of "ok", so the change engine's post-apply
+	// verification step (docs/features/firewall.md §3) has something to
+	// actually catch in tests.
+	FirewallCompileFail bool `yaml:"firewall_compile_fail,omitempty"`
 }
 
 // merge returns o overridden by any non-zero fields in override.
@@ -407,6 +424,9 @@ func (o MockOptions) merge(override *MockOptions) MockOptions {
 	}
 	if override.SDNZoneStatusFail {
 		out.SDNZoneStatusFail = true
+	}
+	if override.FirewallCompileFail {
+		out.FirewallCompileFail = true
 	}
 	return out
 }
