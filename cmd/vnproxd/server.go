@@ -20,6 +20,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/peer"
+	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
 	"github.com/bgovanlu/vnprox/internal/topology"
 	webui "github.com/bgovanlu/vnprox/web"
@@ -115,9 +116,17 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// non-nil — see setupCollect's doc comment — so every peerClient use
 	// below is already guarded by the same "collectors initialized OK"
 	// nil-safety collector's own uses need.
-	collector, peerClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, peerSecrets)
+	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, peerSecrets)
 	if collectErr != nil {
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling or cluster fan-out", "error", collectErr)
+	}
+	// T-401: GET /sdn reads PVE directly and live (internal/sdn.Service's
+	// doc comment) via the same read-only client the collectors use — nil
+	// exactly when collectErr is non-nil, mirroring peerClient's own
+	// nil-safety above.
+	var sdnSvc *sdn.Service
+	if sdnPVEClient != nil {
+		sdnSvc = sdn.NewService(sdnPVEClient)
 	}
 
 	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
@@ -299,6 +308,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Changesets:    changeSvc,
 		Snapshots:     changeSvc,
 		Audit:         auditRepo,
+		SDN:           sdnSvc,
 		PVEGateways:   pveGatewayProvider{authSvc},
 		Protected:     changeSvc,
 		Peer:          peerSrv,

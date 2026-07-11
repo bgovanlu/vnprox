@@ -56,17 +56,22 @@ type PeerServer interface {
 
 // Options configures the router built by NewRouter.
 type Options struct {
-	DistFS      fs.FS
-	Auth        AuthService
-	Collectors  CollectorHealth
-	Topology    TopologyService
-	LLDP        LLDPService
-	Drift       DriftService
-	FDB         FDBService
-	Layouts     LayoutStore
-	Changesets  ChangesetService
-	Snapshots   SnapshotService
-	Audit       AuditService
+	DistFS     fs.FS
+	Auth       AuthService
+	Collectors CollectorHealth
+	Topology   TopologyService
+	LLDP       LLDPService
+	Drift      DriftService
+	FDB        FDBService
+	Layouts    LayoutStore
+	Changesets ChangesetService
+	Snapshots  SnapshotService
+	Audit      AuditService
+	// SDN is T-401's read view seam (docs/api.md's `GET /sdn`); nil (no
+	// PVE client — see cmd/vnproxd/collect.go's setupCollect doc comment)
+	// simply skips mounting the route, the same degraded-mode treatment
+	// every other optional Options field gets.
+	SDN         SDNService
 	PVEGateways PVEGatewayProvider
 	Protected   ProtectedService
 	Peer        PeerServer
@@ -110,6 +115,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
+		mountSDNRoutes(r, opts.SDN, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

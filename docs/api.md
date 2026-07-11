@@ -135,6 +135,14 @@ Cluster fan-out (T-303): each node's audit log is node-local (docs/architecture.
 | GET | `/ipam/subnets` | subnets with utilization counts |
 | GET | `/ipam/subnets/{cidr}/allocations` | allocation grid data |
 
+**`GET /sdn` response shape** (added by T-401; documented here per docs/development.md's definition-of-done #4 — the original contract was the one-line purpose above): `{zones: [Zone], generatedAt}`. `Zone` is `{id, type, bridge?, controller?, nodes?, exitNodes?, peers?, mtu?, vrfVxlan?, pending?, nodeStatus: [NodeStatus], pendingDiff?: PendingDiff, vnets: [Vnet]}`; `Vnet` is `{id, zone, alias?, tag?, vlanAware?, pending?, pendingDiff?: PendingDiff, subnets: [Subnet]}`; `Subnet` is `{id, vnet, cidr, gateway?, dhcpRangeStart?, dhcpRangeEnd?, snat?, pending?, pendingDiff?: PendingDiff}` (`id` is the CIDR, per docs/data-model.md's `SdnSubnet.ID` doc comment). `pending` mirrors PVE's own staged-edit marker (`""`\|`"new"`\|`"changed"`\|`"deleted"`).
+
+`NodeStatus` is `{node, status, detail?}` — `status` is `"ok"`\|`"pending"`\|`"error"` (docs/features/sdn.md §1: "every level shows per-node realization status").
+
+`PendingDiff` renders docs/features/sdn.md §1's "staged-vs-running as a first-class diff": `{state, changedFields?: [string], running?: {...}, staged?: {...}}`. `state` is `"new"`\|`"changed"`\|`"deleted"`; an in-sync object (`pending` is empty) carries no `pendingDiff` field at all — omitted entirely, not present-but-empty. `changedFields`/`running` are only populated for `state: "changed"` (a "new" object has nothing to diff against; a "deleted" object's fields haven't changed, only its existence is about to). `running`/`staged` are the two full objects (JSON-shaped, `id`/`pending` stripped) the UI renders the delta from.
+
+`GET /sdn` reads PVE directly and live on every request (not the poll-cached inventory graph `GET /topology` renders) via `?running=1` on the underlying `GET /cluster/sdn/{zones,vnets,vnets/{v}/subnets}` calls — a mock-server-only extension (`internal/pvemock`) mirroring real PVE's own running-vs-pending query convention, added alongside this route so the staged-vs-running diff is never stale relative to what an apply would actually do. SDN configuration is cluster-scoped PVE data (replicated via pmxcfs), so the local node's own PVE API always has the complete view regardless of which node's vnproxd the browser is talking to — no peer fan-out.
+
 ## Path simulator
 
 | Method | Path | Purpose |
