@@ -78,7 +78,10 @@ type Options struct {
 	// GET /firewall/objects) — typically the daemon's live *inventory.Graph
 	// (which satisfies FirewallGraph's one-method seam directly).
 	Firewall FirewallGraph
-	Peer     PeerServer
+	// Simulator backs T-503's `POST /simulate/path` — the same live
+	// *inventory.Graph (satisfies SimulatorGraph's one-method seam directly).
+	Simulator SimulatorGraph
+	Peer      PeerServer
 	// PeerAudit and PeerSnapshots are T-303's cluster fan-out dependencies
 	// for GET /audit and GET /snapshots (docs/architecture.md §7: "Audit/
 	// snapshot queries in the UI fan out to peers and merge"). Nil (every
@@ -121,6 +124,7 @@ func NewRouter(opts Options) http.Handler {
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
+		mountSimulateRoutes(r, opts.Simulator, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

@@ -312,6 +312,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		PVEGateways:   pveGatewayProvider{authSvc},
 		Protected:     changeSvc,
 		Firewall:      graph,
+		Simulator:     graph,
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,
 		PeerSnapshots: peerSnapshots,

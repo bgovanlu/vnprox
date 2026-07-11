@@ -162,7 +162,21 @@ Cluster fan-out (T-303): each node's audit log is node-local (docs/architecture.
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/simulate/path` | `{src: EndpointSpec, dst: EndpointSpec, proto, port}` → `{verdict: allow|deny|unreachable, hops:[...], blockingRule?, missing?}` where `EndpointSpec` is a guest NIC ref, an IP literal, or "external" |
+| POST | `/simulate/path` | `{src: EndpointSpec, dst: EndpointSpec, proto, port}` → `SimulateResult` where `EndpointSpec` is a guest NIC ref, an IP literal, or "external" |
+
+**Response shapes** (added by T-503; netRead-gated — a read-only static analysis over the poll-cached inventory snapshot, it mutates nothing). Documented here per docs/development.md's definition-of-done #4 (the route's one-line purpose above didn't pin a schema).
+
+- `EndpointSpec`: `{kind, ref?, ip?}` — `kind` is `guest-nic`\|`ip`\|`external`. `ref` (a `guest-nic:<node>:<vmid>/<key>` Ref triplet) is required for `guest-nic`; `ip` (a literal address) is required for `ip`; `external` needs neither.
+- `proto` is `tcp`\|`udp`\|`icmp`\|omitted (any); `port` is the destination port (omit/0 = any).
+- `SimulateResult`: `{verdict, src, dst, proto?, port?, hops: [Hop], blockingRule?, missing?, caveats: [Caveat]}`.
+  - **`verdict`** is `allow`\|`deny`\|`unreachable`\|**`indeterminate`**. *Flagged deviation from the original one-liner:* T-503 adds `indeterminate` because the spec's honesty contract (docs/features/firewall.md §6, AC5) forbids a confident allow/deny/unreachable when the engine could not fully evaluate the path — an unknown/unsupported entity kind, an unresolvable firewall alias/ipset/macro, or a firewall decision that would depend on a guest IP the inventory does not carry. An `indeterminate` result always carries at least one `blocker`-severity caveat explaining why, and the UI (T-504) must surface it as "could not determine", never as a pass/fail.
+  - `src`/`dst` (`ResolvedEndpoint`): `{kind, ref?, guest?, node?, ip?, ipSource?, attachment?, vid?, zone?, vnet?, subnet?, description?}` — how the engine resolved each endpoint. `ipSource` is `literal`\|`static`\|`ipam`\|`guest-agent`\|omitted (unknown).
+  - `Hop`: `{ref?, kind, node?, label, detail?}` — one step of the traced path (guest NIC → bridge/VNet → fabric/overlay/router/exit-node/gateway → …), for T-504's map rendering. `ref` is an inventory Ref string where the hop is a real entity, else a synthetic id (`external`, a fabric segment).
+  - `blockingRule` (present only for `deny`): `{enforcementPoint, rulesetRef, origin, groupName?, direction, action, pos, rule}` — `enforcementPoint` is `source-guest-out`\|`dest-guest-in`; `origin` is `cluster`\|`group`\|`guest`; `rule` is a `RuleView` (same shape as `GET /firewall/rulesets`, macro expansion included) for the editor deep-link.
+  - `missing` (present only for `unreachable`): `{code, message, atRef?, atNode?}` — `message` is the operator-facing break description (e.g. `"VLAN 30 is not trunked on bond0 of node pve2"`, `"no route between subnets … — different zones without exit node"`).
+  - `Caveat`: `{code, severity, message, feature?}` — the honesty-contract disclosures (docs/features/firewall.md §5/§6), **always present** (every result carries at least the standing "simulated"/conntrack/guest-internal-firewall notes). `severity` is `info`\|`warning`\|`blocker`; `code` includes `simulated`, `conntrack`, `snat-asymmetry`, `guest-agent-ip`, `guest-ip-unknown`, `not-evaluated`, `fw-cluster-host-guest-simplification`, `node-firewall-not-on-path`, `ovs-l2`, `lldp-trunk-cross-check`. `feature` names the un-evaluated PVE/SDN feature for `code: not-evaluated`.
+
+The engine is pure (`internal/sim`, no I/O) and reuses `internal/fw.Resolve` (T-501) as its firewall substrate; the API layer passes the live `*inventory.Graph`'s snapshot. Note: guest IPs (IPAM allocations / guest-agent reports) are **not** currently carried in the inventory graph, so a guest endpoint's IP resolves unknown at this route — any firewall rule that restricts by address then yields `indeterminate` with a `guest-ip-unknown` caveat (see the report's honesty inventory). Supplying resolved guest IPs is a documented follow-up.
 
 ## Metrics
 
