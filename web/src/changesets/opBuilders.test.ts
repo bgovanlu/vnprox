@@ -194,6 +194,8 @@ describe("sdn zone op builders", () => {
     bridge: "vmbr0",
     controller: "",
     nodes: ["pve1", "pve2"],
+    exitNodes: [],
+    peers: [],
     vrfVxlan: 0,
     mtu: 1500,
   };
@@ -217,6 +219,36 @@ describe("sdn zone op builders", () => {
   it("sdn.zone.update omits every field that didn't change", () => {
     const op = buildSdnZoneUpdateOp("sdn-zone::zone1", zoneForm, zoneForm);
     expect(op.params).toEqual({});
+  });
+
+  // T-403: the zone wizards' write-path gap fix (exitNodes/peers).
+  it("sdn.zone.create carries exitNodes/peers when present", () => {
+    const evpnForm: SdnZoneFormValues = {
+      ...zoneForm,
+      type: "evpn",
+      exitNodes: ["pve1", "pve2"],
+      peers: ["10.10.0.11", "10.10.0.12", "10.10.0.13"],
+    };
+    const op = buildSdnZoneCreateOp("sdn-zone::zone2", evpnForm);
+    expect(op.params).toMatchObject({
+      exitNodes: ["pve1", "pve2"],
+      peers: ["10.10.0.11", "10.10.0.12", "10.10.0.13"],
+    });
+  });
+
+  // T-403: caught while wiring the EVPN wizard — buildSdnZoneCreateOp
+  // dropped `controller` entirely even though SdnZoneEditor's own
+  // Controller field (type "evpn") writes into the form.
+  it("sdn.zone.create carries controller when present", () => {
+    const evpnForm: SdnZoneFormValues = { ...zoneForm, type: "evpn", controller: "evpn1" };
+    const op = buildSdnZoneCreateOp("sdn-zone::zone3", evpnForm);
+    expect(op.params).toMatchObject({ controller: "evpn1" });
+  });
+
+  it("sdn.zone.update diffs exitNodes/peers independently", () => {
+    const changed: SdnZoneFormValues = { ...zoneForm, peers: ["10.10.0.99"] };
+    const op = buildSdnZoneUpdateOp("sdn-zone::zone1", zoneForm, changed);
+    expect(op.params).toEqual({ peers: ["10.10.0.99"] });
   });
 
   it("sdn.zone.delete carries no params", () => {

@@ -423,6 +423,14 @@ export interface SdnZoneCreateParams {
   controller?: string;
   ipam?: string;
   nodes?: string[];
+  /** EVPN zones' egress path (T-403, docs/features/sdn.md §2: "exit nodes,
+   * primary exit") — must name real cluster nodes. */
+  exitNodes?: string[];
+  /** VXLAN/EVPN zones' VTEP mesh peer addresses (T-403, docs/features/
+   * sdn.md §2: "peer address list auto-suggested from cluster node IPs") —
+   * underlay IP addresses, not node names; unlike nodes/exitNodes this is
+   * not validated against the cluster's node list. */
+  peers?: string[];
   vrfVxlan?: number;
   mtu?: number;
 }
@@ -432,6 +440,8 @@ export interface SdnZoneUpdateParams {
   controller?: string;
   ipam?: string;
   nodes?: string[];
+  exitNodes?: string[];
+  peers?: string[];
   vrfVxlan?: number;
   mtu?: number;
 }

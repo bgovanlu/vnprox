@@ -1,0 +1,215 @@
+// VLAN zone wizard (docs/features/sdn.md §2): "picks the VLAN-aware
+// bridge, validates the physical path actually trunks the chosen VIDs
+// (cross-checks LLDP VLAN info when available)." — T-403 acceptance
+// criterion 2.
+import { useMemo, useState } from "react";
+import { useToast } from "../../components/Toast";
+import { useDrawerActions } from "../../changesets/useDrawerActions";
+import { Field, inputClass } from "../../changesets/editors/EditorDialog";
+import { buildVlanPreview, type VlanZoneParams } from "./previewEntities";
+import { wizardStrings } from "./strings";
+import { useClusterNodes } from "./useClusterNodes";
+import { useLldpTrunkCheck } from "./useLldpTrunkCheck";
+import { useWizardCapability } from "./useWizardCapability";
+import { buildVlanZoneOps } from "./wizardOps";
+import { WizardPreviewPane } from "./WizardPreviewPane";
+import { WizardShell, type WizardStep } from "./WizardShell";
+import { NodeCheckboxList } from "./NodeCheckboxList";
+
+const S = wizardStrings;
+
+export interface VlanZoneWizardProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
+  const { toast } = useToast();
+  const { addOps } = useDrawerActions();
+  const clusterNodes = useClusterNodes();
+  const cap = useWizardCapability();
+
+  const [zoneId, setZoneId] = useState("");
+  const [bridgeName, setBridgeName] = useState("");
+  const [memberNodes, setMemberNodes] = useState<string[]>([]);
+  const [vid, setVid] = useState(0);
+  const [vnetId, setVnetId] = useState("");
+  const [vnetAlias, setVnetAlias] = useState("");
+  const [subnetCidr, setSubnetCidr] = useState("");
+  const [subnetGateway, setSubnetGateway] = useState("");
+  const [snat, setSnat] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+
+  const trunkCheck = useLldpTrunkCheck(bridgeName, memberNodes, vid);
+
+  const params: VlanZoneParams = useMemo(
+    () => ({
+      zoneId,
+      zoneType: "vlan",
+      memberNodes,
+      vnetId,
+      vnetAlias,
+      subnetCidr,
+      subnetGateway,
+      snat,
+      bridgeName,
+      vid,
+    }),
+    [zoneId, memberNodes, vnetId, vnetAlias, subnetCidr, subnetGateway, snat, bridgeName, vid],
+  );
+
+  const graph = useMemo(() => buildVlanPreview(params), [params]);
+
+  function handleFinish(): void {
+    setFinishing(true);
+    const ops = buildVlanZoneOps(params);
+    void addOps(ops, `VLAN network: ${zoneId} (VID ${String(vid)})`)
+      .then(() => {
+        toast({ title: "Added to changeset", description: `${String(ops.length)} steps drafted — review before applying.` });
+        onOpenChange(false);
+      })
+      .catch(() => {
+        toast({ title: "Could not add to changeset", variant: "error" });
+      })
+      .finally(() => {
+        setFinishing(false);
+      });
+  }
+
+  const steps: WizardStep[] = [
+    {
+      id: "zone",
+      title: "Trunk",
+      isValid: zoneId.trim().length > 0 && bridgeName.trim().length > 0 && memberNodes.length > 0,
+      content: (
+        <div className="space-y-3">
+          <p className="text-slate-600 dark:text-slate-300">{S.vlan.intro}</p>
+          <p className="text-slate-600 dark:text-slate-300">{S.vlan.bridgeStepHelp}</p>
+          <Field label="Name" help="e.g. prodnet. Lowercase letters/digits, unique cluster-wide.">
+            <input className={inputClass} value={zoneId} onChange={(e) => { setZoneId(e.target.value); }} placeholder="prodnet" />
+          </Field>
+          <Field label="VLAN-aware bridge" help="Must exist, with this exact name, on every member node.">
+            <input className={inputClass} value={bridgeName} onChange={(e) => { setBridgeName(e.target.value); }} placeholder="vmbr0" />
+          </Field>
+          <NodeCheckboxList
+            label="Member nodes"
+            help={S.common.memberNodesHelp}
+            allNodes={clusterNodes}
+            selected={memberNodes}
+            onChange={setMemberNodes}
+          />
+        </div>
+      ),
+    },
+    {
+      id: "vid",
+      title: "VLAN ID + trunk check",
+      isValid: vid > 0 && vid < 4095 && vnetId.trim().length > 0,
+      content: (
+        <div className="space-y-3">
+          <Field label="VLAN ID (VID)" help={S.vlan.vidHelp}>
+            <input
+              type="number"
+              className={inputClass}
+              value={vid || ""}
+              onChange={(e) => { setVid(Number(e.target.value)); }}
+              min={1}
+              max={4094}
+            />
+          </Field>
+          <Field label="VNet name" help="e.g. vnet300. Unique cluster-wide.">
+            <input className={inputClass} value={vnetId} onChange={(e) => { setVnetId(e.target.value); }} placeholder="vnet300" />
+          </Field>
+          <Field label="Alias" help={S.common.vnetAliasHelp}>
+            <input className={inputClass} value={vnetAlias} onChange={(e) => { setVnetAlias(e.target.value); }} />
+          </Field>
+
+          <div>
+            <h4 className="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">{S.vlan.trunkCheckHeading}</h4>
+            <p className="mb-1.5 text-xs text-slate-500 dark:text-slate-400">{S.vlan.trunkCheckExplain}</p>
+            {vid <= 0 && <p className="text-xs text-slate-400">Enter a VLAN ID above to run the check.</p>}
+            {vid > 0 && !trunkCheck.ready && <p className="text-xs text-slate-400">{S.common.previewLoading}</p>}
+            {vid > 0 && trunkCheck.ready && !trunkCheck.hasData && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">{S.vlan.trunkCheckNoData}</p>
+            )}
+            {vid > 0 && trunkCheck.ready && trunkCheck.hasData && trunkCheck.warnings.length === 0 && (
+              <p role="status" className="text-xs text-emerald-600 dark:text-emerald-400">
+                {S.vlan.trunkCheckOk}
+              </p>
+            )}
+            {vid > 0 && trunkCheck.ready && trunkCheck.hasData && trunkCheck.warnings.length > 0 && (
+              <ul className="space-y-1" role="alert">
+                {trunkCheck.warnings.map((w) => (
+                  <li
+                    key={w.neighborRef}
+                    className="rounded border border-amber-300 bg-amber-50 p-1.5 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+                  >
+                    {S.vlan.trunkCheckWarning(w.portId, w.chassisName, vid)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "subnet",
+      title: "Addresses",
+      isValid: true,
+      content: (
+        <div className="space-y-3">
+          <p className="text-slate-600 dark:text-slate-300">{S.common.subnetSkipHelp}</p>
+          <Field label="Address range (CIDR)" help={S.common.cidrHelp}>
+            <input className={inputClass} value={subnetCidr} onChange={(e) => { setSubnetCidr(e.target.value); }} placeholder="10.30.0.0/24" />
+          </Field>
+          {subnetCidr && (
+            <>
+              <Field label="Gateway" help={S.common.gatewayHelp}>
+                <input className={inputClass} value={subnetGateway} onChange={(e) => { setSubnetGateway(e.target.value); }} placeholder="10.30.0.1" />
+              </Field>
+              <Field label="Internet access (SNAT)" help={S.common.snatHelp}>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={snat} onChange={(e) => { setSnat(e.target.checked); }} />
+                  Enable SNAT
+                </label>
+              </Field>
+            </>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "review",
+      title: "Review",
+      isValid: !cap.denied,
+      invalidReason: cap.reason,
+      content: (
+        <div className="space-y-2 text-slate-600 dark:text-slate-300">
+          <p>This will draft:</p>
+          <ul className="list-inside list-disc space-y-1">
+            <li>VLAN zone &quot;{zoneId}&quot; on bridge {bridgeName || "?"}, nodes {memberNodes.join(", ") || "none"}</li>
+            <li>VNet &quot;{vnetId}&quot; (VID {vid})</li>
+            {subnetCidr && <li>Subnet {subnetCidr}{snat ? " with SNAT" : ""}</li>}
+            {trunkCheck.hasData && trunkCheck.warnings.length > 0 && (
+              <li className="text-amber-700 dark:text-amber-300">{trunkCheck.warnings.length} trunk-check warning(s) — see the previous step.</li>
+            )}
+          </ul>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <WizardShell
+      open={open}
+      onOpenChange={onOpenChange}
+      title={S.vlan.title}
+      intro={S.vlan.intro}
+      steps={steps}
+      preview={<WizardPreviewPane graph={graph} />}
+      onFinish={handleFinish}
+      finishing={finishing}
+    />
+  );
+}

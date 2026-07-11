@@ -16,17 +16,32 @@ export const DialogTrigger = RadixDialog.Trigger;
 // eslint-disable-next-line react-refresh/only-export-components
 export const DialogClose = RadixDialog.Close;
 
+export interface DialogContentProps extends ComponentPropsWithoutRef<typeof RadixDialog.Content> {
+  /** Overrides the default `max-w-lg` sizing. A distinct prop rather than
+   * relying on `className`'s own `max-w-*` to win via source order: Tailwind
+   * utility precedence for two same-specificity `max-w-*` classes depends on
+   * generated-stylesheet order, not JSX concatenation order, so silently
+   * appending a wider `max-w-*` to `className` is not guaranteed to
+   * override the base class (T-403's zone wizards needed a wider dialog for
+   * the form+live-preview split and found this the safe way to get it,
+   * without adding a class-merging dependency (`tailwind-merge`) beyond
+   * docs/development.md's locked stack). */
+  widthClassName?: string;
+}
+
 export function DialogContent({
   className,
+  widthClassName = "max-w-lg",
   children,
   ...props
-}: ComponentPropsWithoutRef<typeof RadixDialog.Content>) {
+}: DialogContentProps) {
   return (
     <RadixDialog.Portal>
       <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/50 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out" />
       <RadixDialog.Content
         className={clsx(
-          "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border p-6 shadow-xl",
+          "fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-lg border p-6 shadow-xl",
+          widthClassName,
           "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
           "focus:outline-none",
           className,

@@ -48,6 +48,12 @@ export function SdnZoneEditor({ open, onOpenChange, existing }: SdnZoneEditorPro
     bridge: existing?.bridge ?? "",
     controller: existing?.controller ?? "",
     nodes: existing?.nodes ?? [],
+    // exitNodes/peers (T-403) have no affordance in this plain form editor
+    // — the guided EVPN/VXLAN wizards are where they're actually set; kept
+    // at their existing value here so an edit through this form never
+    // silently clears them.
+    exitNodes: existing?.exitNodes ?? [],
+    peers: existing?.peers ?? [],
     vrfVxlan: existing?.vrfVxlan ?? 0,
     mtu: existing?.mtu ?? 0,
   };
@@ -78,6 +84,8 @@ export function SdnZoneEditor({ open, onOpenChange, existing }: SdnZoneEditorPro
       bridge,
       controller,
       nodes: parseNodes(nodesText),
+      exitNodes: initial.exitNodes,
+      peers: initial.peers,
       vrfVxlan,
       mtu,
     };

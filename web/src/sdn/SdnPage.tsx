@@ -1,7 +1,8 @@
 // SDN cockpit: zone -> vnet -> subnet tree with per-node realization status
 // plus a detail panel rendering the staged-vs-running pending diff
-// (docs/features/sdn.md §1). Read-only for T-401 — the zone wizards
-// (docs/features/sdn.md §2) and editors land with T-402/T-403.
+// (docs/features/sdn.md §1). Read-only for T-401 — T-402 added the plain
+// form editors (SdnZoneEditor et al.); T-403 added the guided per-type
+// wizards with live preview (wizards/ZoneWizardPicker).
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Button } from "../components/Button";
@@ -15,6 +16,7 @@ import { StatusDot } from "./StatusDot";
 import { sdnNodeEntityStatus, sdnZoneEntityStatus } from "./status";
 import { firstSelection, resolveSdnSelection, type SdnSelection } from "./tree";
 import { useSdnQuery } from "./queries";
+import { ZoneWizardPicker } from "./wizards/ZoneWizardPicker";
 
 type SdnTab = "configuration" | "evpn";
 
@@ -297,6 +299,7 @@ export function SdnPage() {
   const [selection, setSelection] = useState<SdnSelection | undefined>(undefined);
   const openEditor = useSdnEditorStore((s) => s.open);
   const [tab, setTab] = useState<SdnTab>("configuration");
+  const [wizardPickerOpen, setWizardPickerOpen] = useState(false);
 
   // Default-select the first zone once the tree first loads, so the detail
   // panel isn't blank on arrival (tree.ts's firstSelection).
@@ -321,13 +324,25 @@ export function SdnPage() {
             <TabButton active={tab === "evpn"} label="EVPN / BGP" onClick={() => { setTab("evpn"); }} />
           </div>
           {tab === "configuration" && (
-            <Button variant="primary" size="sm" onClick={() => { openEditor({ kind: "zone-create" }); }}>
-              + New zone
-            </Button>
+            <>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setWizardPickerOpen(true);
+                }}
+              >
+                + New zone (guided)
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => { openEditor({ kind: "zone-create" }); }}>
+                + New zone (advanced)
+              </Button>
+            </>
           )}
         </div>
       </div>
       <SdnEditorLauncher />
+      <ZoneWizardPicker open={wizardPickerOpen} onOpenChange={setWizardPickerOpen} />
 
       {tab === "configuration" && (
         <>

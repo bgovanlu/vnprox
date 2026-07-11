@@ -191,6 +191,13 @@ export interface SdnZoneFormValues {
   bridge: string;
   controller: string;
   nodes: string[];
+  /** EVPN zones' egress path (T-403). Defaults to [] — the plain
+   * SdnZoneEditor form doesn't surface this (the guided EVPN wizard does),
+   * so it never diverges from `initial` there and no op field is emitted. */
+  exitNodes: string[];
+  /** VXLAN/EVPN zones' VTEP mesh peer addresses (T-403). Same
+   * editor-vs-wizard split as exitNodes above. */
+  peers: string[];
   vrfVxlan: number;
   mtu: number;
 }
@@ -202,7 +209,17 @@ export function buildSdnZoneCreateOp(target: string, form: SdnZoneFormValues): O
   const params: SdnZoneCreateParams = {
     type: form.type,
     bridge: form.bridge || undefined,
+    // T-403 fix: `controller` was missing here even though
+    // SdnZoneFormValues has carried it since T-402 and SdnZoneEditor's own
+    // Controller field (shown for type "evpn") writes into it — an EVPN
+    // zone drafted through either the plain editor or the guided wizard
+    // was silently created with no controller reference at all, which
+    // real PVE requires for an EVPN zone to actually function. Caught
+    // while wiring the EVPN zone wizard's golden-ops test.
+    controller: form.controller || undefined,
     nodes: form.nodes.length > 0 ? form.nodes : undefined,
+    exitNodes: form.exitNodes.length > 0 ? form.exitNodes : undefined,
+    peers: form.peers.length > 0 ? form.peers : undefined,
     vrfVxlan: form.vrfVxlan || undefined,
     mtu: form.mtu || undefined,
   };
@@ -214,6 +231,8 @@ export function buildSdnZoneUpdateOp(target: string, initial: SdnZoneFormValues,
   if (form.bridge !== initial.bridge) params.bridge = form.bridge;
   if (form.controller !== initial.controller) params.controller = form.controller;
   if (JSON.stringify(form.nodes) !== JSON.stringify(initial.nodes)) params.nodes = form.nodes;
+  if (JSON.stringify(form.exitNodes) !== JSON.stringify(initial.exitNodes)) params.exitNodes = form.exitNodes;
+  if (JSON.stringify(form.peers) !== JSON.stringify(initial.peers)) params.peers = form.peers;
   if (form.vrfVxlan !== initial.vrfVxlan) params.vrfVxlan = form.vrfVxlan;
   if (form.mtu !== initial.mtu) params.mtu = form.mtu;
   return { op: "sdn.zone.update", target, params };
