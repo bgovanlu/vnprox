@@ -67,6 +67,43 @@ linters:
               desc: "internal/fw must stay pure (T-501): no change-engine access (that package itself talks to PVE/host)"
             - pkg: nhooyr.io/websocket
               desc: "internal/fw must stay pure (T-501): no networking"
+        # T-503: internal/sim (the path simulator) has the identical purity
+        # contract as internal/fw — its task card requires "pure over an
+        # inventory snapshot ... no I/O imports, lint-enforced". It legitimately
+        # needs net/netip for pure IP/CIDR arithmetic (subnet membership), so
+        # the network denial is scoped to net/http rather than all of net.
+        sim-purity:
+          files:
+            - "**/internal/sim/**"
+          deny:
+            - pkg: net/http
+              desc: "internal/sim must stay pure (T-503): no HTTP/network I/O (net/netip is fine — pure address math)"
+            - pkg: os
+              desc: "internal/sim must stay pure (T-503): no OS/filesystem imports"
+            - pkg: os/exec
+              desc: "internal/sim must stay pure (T-503): no subprocess execution"
+            - pkg: io
+              desc: "internal/sim must stay pure (T-503): no I/O"
+            - pkg: database/sql
+              desc: "internal/sim must stay pure (T-503): no database access"
+            - pkg: github.com/bgovanlu/vnprox/internal/pve
+              desc: "internal/sim must stay pure (T-503): no direct PVE API client access — callers pass in a Snapshot"
+            - pkg: github.com/bgovanlu/vnprox/internal/pvemock
+              desc: "internal/sim must stay pure (T-503): no mock server access"
+            - pkg: github.com/bgovanlu/vnprox/internal/collect
+              desc: "internal/sim must stay pure (T-503): no collector access"
+            - pkg: github.com/bgovanlu/vnprox/internal/peer
+              desc: "internal/sim must stay pure (T-503): no peer/network access"
+            - pkg: github.com/bgovanlu/vnprox/internal/store
+              desc: "internal/sim must stay pure (T-503): no SQLite/app-store access"
+            - pkg: github.com/bgovanlu/vnprox/internal/host
+              desc: "internal/sim must stay pure (T-503): no host I/O access"
+            - pkg: github.com/bgovanlu/vnprox/internal/api
+              desc: "internal/sim must stay pure (T-503): no HTTP layer access (wrong dependency direction anyway)"
+            - pkg: github.com/bgovanlu/vnprox/internal/change
+              desc: "internal/sim must stay pure (T-503): no change-engine access (that package itself talks to PVE/host)"
+            - pkg: nhooyr.io/websocket
+              desc: "internal/sim must stay pure (T-503): no networking"
   exclusions:
     generated: lax
     paths:
