@@ -69,6 +69,7 @@ type Options struct {
 	Audit       AuditService
 	PVEGateways PVEGatewayProvider
 	Protected   ProtectedService
+	Blueprints  BlueprintService
 	Peer        PeerServer
 	// PeerAudit and PeerSnapshots are T-303's cluster fan-out dependencies
 	// for GET /audit and GET /snapshots (docs/architecture.md §7: "Audit/
@@ -110,6 +111,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
+		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket
