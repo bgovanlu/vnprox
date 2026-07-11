@@ -59,4 +59,23 @@ describe("FindingsList", () => {
     const button = screen.getByRole("button", { name: "Creating…" });
     expect(button).toBeDisabled();
   });
+
+  // T-605 read-only sweep: this button had no capability gating at all
+  // before this task (POST /drift/{id}/fix creates a changeset regardless
+  // of any node) — fixDisabledReason is the caller-computed gate.
+  it("disables the fix button when fixDisabledReason is set, and never calls onFix", async () => {
+    const user = userEvent.setup();
+    const onFix = vi.fn();
+    render(<FindingsList findings={[fixable]} onFix={onFix} fixDisabledReason="You don't have network write." />);
+
+    const button = screen.getByRole("button", { name: "Create fixing changeset" });
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(onFix).not.toHaveBeenCalled();
+  });
+
+  it("enables the fix button when fixDisabledReason is undefined", () => {
+    render(<FindingsList findings={[fixable]} onFix={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Create fixing changeset" })).toBeEnabled();
+  });
 });

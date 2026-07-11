@@ -9,6 +9,7 @@
 import clsx from "clsx";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { Tooltip } from "../components/Tooltip";
 import type { Severity } from "../api/types";
 
 /** The shape every findings-stream item needs — a structural subset both
@@ -35,6 +36,15 @@ export interface FindingsListProps {
   /** The id currently being fixed (disables its button, shows a pending
    * label) — callers own their own mutation's pending state. */
   fixingId?: string;
+  /** When set, every "Create fixing changeset" button is disabled and
+   * shows this as a tooltip (T-605 read-only sweep: `POST /drift/{id}/fix`
+   * creates a brand-new changeset regardless of any already-active draft,
+   * so it needs the same disabled-with-tooltip capability gating every
+   * other write affordance in this codebase uses — this component stays
+   * deliberately capability-agnostic per its own doc comment, so the
+   * caller computes this from the session, the same pattern ParamForm's
+   * `submitDisabledReason` prop already established). */
+  fixDisabledReason?: string;
   emptyTitle?: string;
   emptyDescription?: string;
   className?: string;
@@ -56,6 +66,7 @@ export function FindingsList({
   findings,
   onFix,
   fixingId,
+  fixDisabledReason,
   emptyTitle = "No findings",
   emptyDescription = "Nothing to report right now.",
   className,
@@ -96,14 +107,18 @@ export function FindingsList({
               )}
             </div>
             {f.fixable && onFix && (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={fixingId === f.id}
-                onClick={() => { onFix(f.id); }}
-              >
-                {fixingId === f.id ? "Creating…" : "Create fixing changeset"}
-              </Button>
+              <Tooltip content={fixDisabledReason}>
+                <span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={fixingId === f.id || fixDisabledReason !== undefined}
+                    onClick={() => { onFix(f.id); }}
+                  >
+                    {fixingId === f.id ? "Creating…" : "Create fixing changeset"}
+                  </Button>
+                </span>
+              </Tooltip>
             )}
           </div>
         </li>
