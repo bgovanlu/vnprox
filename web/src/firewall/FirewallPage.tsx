@@ -3,10 +3,19 @@
 // guest resolved view, and object usage tracking — per
 // docs/features/firewall.md §1/§2. Writes (T-502) are a later task; every
 // affordance here is view-only.
+//
+// T-504 additive change: reads the `scope`/`ref`/`pos`/`origin`/`group`
+// deep-link query params (focusRule.ts's parseFirewallDeepLink) so a
+// simulator deny verdict's blocking-rule card (or a correlated firewall
+// log line, T-505) can land here with the exact rule scrolled-to and
+// highlighted — never DOM position, always guestRef+pos+origin identity.
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
+import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { FirewallBanners } from "./Banner";
+import type { FocusRule } from "./focusRule";
+import { parseFirewallDeepLink } from "./focusRule";
 import { ObjectsPanel } from "./ObjectsPanel";
 import { ResolvedViewTable } from "./ResolvedViewTable";
 import { RuleTable } from "./RuleTable";
@@ -102,9 +111,9 @@ function NodePanel() {
   );
 }
 
-function GuestPanel() {
+function GuestPanel({ initialRef, focusRule }: { initialRef?: string; focusRule?: FocusRule }) {
   const { data: list, isLoading: listLoading } = useGuestRulesetsQuery();
-  const [selected, setSelected] = useState<string | undefined>(undefined);
+  const [selected, setSelected] = useState<string | undefined>(initialRef);
   const guests = useMemo(() => list?.items ?? [], [list]);
 
   useEffect(() => {
@@ -145,11 +154,11 @@ function GuestPanel() {
           </div>
           <div>
             <h3 className="mb-1 text-sm font-semibold">This guest's own rules</h3>
-            <RuleTable rules={detail.ruleset.rules} />
+            <RuleTable rules={detail.ruleset.rules} focusPos={focusRule?.origin === "guest" ? focusRule.pos : undefined} />
           </div>
           <div>
             <h3 className="mb-1 text-sm font-semibold">Resolved evaluation order</h3>
-            <ResolvedViewTable resolved={detail.resolved} />
+            <ResolvedViewTable resolved={detail.resolved} focusRule={focusRule} />
           </div>
         </div>
       )}
@@ -167,7 +176,14 @@ function ObjectsTab() {
 }
 
 export function FirewallPage() {
-  const [scope, setScope] = useState<Scope>("cluster");
+  const [searchParams] = useSearchParams();
+  // Parsed once, on mount: a deep link should pre-select the right scope
+  // and guest, but must not fight a user's own subsequent tab/guest
+  // clicks (which never rewrite the URL — see focusRule.ts's doc comment;
+  // this page manages scope/selection as local state, matching T-501's
+  // original design note in web/src/fwlog/deeplink.ts).
+  const deepLink = useMemo(() => parseFirewallDeepLink(searchParams), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [scope, setScope] = useState<Scope>(deepLink.scope === "guest" ? "guest" : "cluster");
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -182,7 +198,9 @@ export function FirewallPage() {
 
       {scope === "cluster" && <ClusterPanel />}
       {scope === "node" && <NodePanel />}
-      {scope === "guest" && <GuestPanel />}
+      {scope === "guest" && (
+        <GuestPanel initialRef={deepLink.scope === "guest" ? deepLink.ref : undefined} focusRule={deepLink.focusRule} />
+      )}
       {scope === "objects" && <ObjectsTab />}
     </div>
   );
