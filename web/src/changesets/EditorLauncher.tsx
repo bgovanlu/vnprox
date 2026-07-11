@@ -16,6 +16,7 @@ import {
   attachedGuestNics,
   bondSlaveCandidates,
   bridgePortCandidates,
+  ovsBridgeCandidates,
   reattachTargets,
   vlanParentCandidates,
 } from "./entityCandidates";
@@ -95,6 +96,7 @@ export function EditorLauncher() {
           target={request.target}
           existing={existing}
           candidateSlaves={slaveCandidates}
+          candidateOVSBridges={ovsBridgeCandidates(topology, request.node)}
         />
       );
     case "vlan":
@@ -106,6 +108,7 @@ export function EditorLauncher() {
           target={request.target}
           existing={existing}
           candidateParents={vlanParentCandidates(topology, request.node)}
+          candidateOVSBridges={ovsBridgeCandidates(topology, request.node)}
         />
       );
     case "iface":

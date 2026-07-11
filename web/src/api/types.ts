@@ -310,6 +310,11 @@ export interface BondCreateParams {
   lacpRate?: string;
   xmitHashPolicy?: string;
   comments?: string;
+  /** OVS-only: the OVS bridge this bond attaches to (rendered as
+   * ovs_bridge). Required when target is an "ovs-bond:..." ref, ignored
+   * for a plain "bond:..." ref (internal/change.BondCreateParams' doc
+   * comment). */
+  bridge?: string;
   slaves: string[];
   miimon?: number;
   mtu?: number;
@@ -363,6 +368,15 @@ export interface VlanCreateParams {
   addresses?: string[];
   vid: number;
   mtu?: number;
+  /** True for an OVS Int Port (ovs_type=OVSIntPort) instead of a plain
+   * 802.1q VLAN sub-interface: parent then names an OVS bridge, vid becomes
+   * the OVS access "tag" (0 = untagged/native), and trunks may carry an
+   * additional trunked VLAN range set (internal/change.VlanCreateParams'
+   * doc comment). */
+  ovs?: boolean;
+  /** OVS-only trunk VLAN ranges (ovs-vsctl's Port "trunks" column);
+   * rejected by the backend when ovs is not true. */
+  trunks?: VidRange[];
 }
 
 export interface VlanUpdateParams {

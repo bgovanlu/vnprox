@@ -5,6 +5,7 @@ import {
   bondSlaveCandidates,
   bridgePortCandidates,
   enslavementMap,
+  ovsBridgeCandidates,
   reattachTargets,
   vlanParentCandidates,
 } from "./entityCandidates";
@@ -22,6 +23,7 @@ const topology: TopologyResponse = {
     { id: "bond:pve1:bond0", kind: "bond", label: "bond0", layer: "l2", nodeGroup: "pve1", status: "ok", badges: [] },
     { id: "bridge:pve1:vmbr0", kind: "bridge", label: "vmbr0", layer: "l2", nodeGroup: "pve1", status: "ok", badges: [] },
     { id: "bridge:pve1:vmbr1", kind: "bridge", label: "vmbr1", layer: "l2", nodeGroup: "pve1", status: "ok", badges: [] },
+    { id: "ovs-bridge:pve1:vmbr2", kind: "ovs-bridge", label: "vmbr2", layer: "l2", nodeGroup: "pve1", status: "ok", badges: ["ovs"] },
     { id: "vlan:pve1:vmbr0.20", kind: "vlan", label: "vmbr0.20", layer: "l2", nodeGroup: "pve1", status: "ok", badges: [] },
     { id: "sdn-vnet::vnet100", kind: "sdn-vnet", label: "vnet100", layer: "sdn", nodeGroup: "", status: "ok", badges: [] },
   ],
@@ -64,16 +66,27 @@ describe("bondSlaveCandidates", () => {
 });
 
 describe("vlanParentCandidates", () => {
-  it("lists physnics, bonds, and bridges (not other VLANs) on the node", () => {
+  it("lists physnics, bonds, and bridges (linux and ovs; not other VLANs) on the node", () => {
     const parents = vlanParentCandidates(topology, "pve1");
-    expect(parents.sort()).toEqual(["bond0", "eno1", "eno2", "eno3", "vmbr0", "vmbr1"]);
+    expect(parents.sort()).toEqual(["bond0", "eno1", "eno2", "eno3", "vmbr0", "vmbr1", "vmbr2"]);
+  });
+});
+
+describe("ovsBridgeCandidates", () => {
+  it("lists only OVS bridges on the node, for the OVS bond/int-port 'attach to' picker", () => {
+    const candidates = ovsBridgeCandidates(topology, "pve1");
+    expect(candidates).toEqual(["vmbr2"]);
+  });
+
+  it("returns an empty list on a node with no OVS bridges", () => {
+    expect(ovsBridgeCandidates(topology, "pve2")).toEqual([]);
   });
 });
 
 describe("reattachTargets", () => {
   it("lists other bridges on the node plus cluster-scoped VNets, excluding the bridge being deleted", () => {
     const targets = reattachTargets(topology, "pve1", "bridge:pve1:vmbr0");
-    expect(targets.sort()).toEqual(["vmbr1", "vnet100"]);
+    expect(targets.sort()).toEqual(["vmbr1", "vmbr2", "vnet100"]);
   });
 });
 

@@ -86,8 +86,14 @@ export interface BondFormValues {
   miimon: number;
   mtu: number;
   comments: string;
+  /** OVS-only: the OVS bridge this bond attaches to (BondCreateParams.bridge).
+   * Ignored for a plain "bond:..." target. */
+  ovsBridge?: string;
 }
 
+/** target's kind prefix ("ovs-bond:" vs "bond:") decides whether this is an
+ * OVS bond create — see BridgeEditor/BondEditor's kind selector, which
+ * constructs target accordingly. */
 export function buildBondCreateOp(target: string, form: BondFormValues): Op {
   const params: BondCreateParams = {
     mode: form.mode,
@@ -97,6 +103,7 @@ export function buildBondCreateOp(target: string, form: BondFormValues): Op {
     miimon: form.miimon || undefined,
     mtu: form.mtu || undefined,
     comments: form.comments || undefined,
+    bridge: target.startsWith("ovs-bond:") ? (form.ovsBridge ?? undefined) : undefined,
   };
   return { op: "bond.create", target, params };
 }
@@ -122,6 +129,11 @@ export interface VlanFormValues {
   vid: number;
   addresses: string[];
   mtu: number;
+  /** True for an OVS Int Port instead of a plain 802.1q sub-interface (see
+   * VlanCreateParams.ovs). Drives whether `trunks` is sent. */
+  ovs?: boolean;
+  /** OVS-only trunk VLAN ranges. */
+  trunks?: VidRange[];
 }
 
 export function buildVlanCreateOp(target: string, form: VlanFormValues): Op {
@@ -130,6 +142,8 @@ export function buildVlanCreateOp(target: string, form: VlanFormValues): Op {
     vid: form.vid,
     addresses: form.addresses.length > 0 ? form.addresses : undefined,
     mtu: form.mtu || undefined,
+    ovs: form.ovs ?? undefined,
+    trunks: form.ovs && form.trunks && form.trunks.length > 0 ? form.trunks : undefined,
   };
   return { op: "vlan.create", target, params };
 }

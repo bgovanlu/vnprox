@@ -44,9 +44,18 @@ export interface BondEditorProps {
   existing?: EntityDetail;
   newBondId?: string;
   candidateSlaves: SlaveCandidate[];
+  /** OVS bridges on `node`, for the "attach to which OVS bridge" picker
+   * shown when kind is OVS (create-only). */
+  candidateOVSBridges?: string[];
 }
 
-export function BondEditor({ open, onOpenChange, node, target, existing, newBondId, candidateSlaves }: BondEditorProps) {
+/** OVS bond modes are a materially different vocabulary from the Linux
+ * bonding driver's (internal/change's validOVSBondModes doc comment). */
+const OVS_BOND_MODES = ["active-backup", "balance-slb", "balance-tcp", "802.3ad"];
+
+export function BondEditor({
+  open, onOpenChange, node, target, existing, newBondId, candidateSlaves, candidateOVSBridges = [],
+}: BondEditorProps) {
   const { data: session } = useSession();
   const { toast } = useToast();
   const { findings, submit } = useEditorSubmit();
@@ -59,8 +68,12 @@ export function BondEditor({ open, onOpenChange, node, target, existing, newBond
     miimon: fieldNum(existing?.fields, "miimon", 100),
     mtu: fieldNum(existing?.fields, "mtu", 1500),
     comments: fieldStr(existing?.fields, "comments"),
+    ovsBridge: fieldStr(existing?.fields, "ovsBridge"),
   };
 
+  // Kind selector (docs/features/change-management.md §5's OVS deliverable).
+  // Immutable post-create, same as BridgeEditor's.
+  const [kind, setKind] = useState<"linux" | "ovs">(target?.startsWith("ovs-bond:") ? "ovs" : "linux");
   const [mode, setMode] = useState(initial.mode);
   const [slaves, setSlaves] = useState<string[]>(initial.slaves);
   const [lacpRate, setLacpRate] = useState(initial.lacpRate);
@@ -69,10 +82,13 @@ export function BondEditor({ open, onOpenChange, node, target, existing, newBond
   const [mtu, setMtu] = useState(initial.mtu);
   const [comments, setComments] = useState(initial.comments);
   const [bondId, setBondId] = useState(newBondId ?? "");
+  const initialOvsBridge = initial.ovsBridge ?? "";
+  const [ovsBridge, setOvsBridge] = useState(initialOvsBridge !== "" ? initialOvsBridge : (candidateOVSBridges[0] ?? ""));
 
   const isCreate = !target;
-  const bondTarget = target ?? `bond:${node}:${bondId}`;
+  const bondTarget = target ?? `${kind === "ovs" ? "ovs-bond" : "bond"}:${node}:${bondId}`;
   const disabledReason = missingCapTooltip(session, node, "netWrite");
+  const modeOptions = kind === "ovs" ? OVS_BOND_MODES : Object.keys(MODE_GUIDANCE);
 
   function toggleSlave(name: string): void {
     setSlaves((prev) => (prev.includes(name) ? prev.filter((s) => s !== name) : [...prev, name]));
@@ -87,7 +103,11 @@ export function BondEditor({ open, onOpenChange, node, target, existing, newBond
       toast({ title: "Select at least one slave interface", variant: "error" });
       return;
     }
-    const form: BondFormValues = { mode, slaves, lacpRate, xmitHashPolicy, miimon, mtu, comments };
+    if (isCreate && kind === "ovs" && !ovsBridge.trim()) {
+      toast({ title: "Choose the OVS bridge this bond attaches to", variant: "error" });
+      return;
+    }
+    const form: BondFormValues = { mode, slaves, lacpRate, xmitHashPolicy, miimon, mtu, comments, ovsBridge };
     const op = isCreate ? buildBondCreateOp(bondTarget, form) : buildBondUpdateOp(bondTarget, initial, form);
     submit([op], `Edit ${bondId || (target ? refId(target) : "bond")}`, bondTarget, () => {
       onOpenChange(false);
@@ -105,14 +125,38 @@ export function BondEditor({ open, onOpenChange, node, target, existing, newBond
       generalErrors={findings.general}
     >
       {isCreate && (
+        <Field label="Kind" help="Linux bonds use the kernel bonding driver. OVS bonds are Open vSwitch's own bonding, attached to one OVS bridge.">
+          <select className={inputClass} value={kind} onChange={(e) => { setKind(e.target.value === "ovs" ? "ovs" : "linux"); setMode(e.target.value === "ovs" ? "active-backup" : "802.3ad"); }}>
+            <option value="linux">Linux bond</option>
+            <option value="ovs">OVS bond</option>
+          </select>
+        </Field>
+      )}
+
+      {isCreate && (
         <Field label="Name" help="e.g. bond1.">
           <input className={inputClass} value={bondId} onChange={(e) => { setBondId(e.target.value); }} placeholder="bond1" />
         </Field>
       )}
 
-      <Field label="Mode" errors={findings.byField.mode} help={MODE_GUIDANCE[mode]}>
+      {isCreate && kind === "ovs" && (
+        <Field label="OVS bridge" errors={findings.byField.bridge} help="The OVS bridge this bond attaches to (ovs_bridge).">
+          <select className={inputClass} value={ovsBridge} onChange={(e) => { setOvsBridge(e.target.value); }}>
+            <option value="" disabled>
+              Choose an OVS bridge…
+            </option>
+            {candidateOVSBridges.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      <Field label="Mode" errors={findings.byField.mode} help={kind === "linux" ? MODE_GUIDANCE[mode] : undefined}>
         <select className={inputClass} value={mode} onChange={(e) => { setMode(e.target.value); }}>
-          {Object.keys(MODE_GUIDANCE).map((m) => (
+          {modeOptions.map((m) => (
             <option key={m} value={m}>
               {m}
             </option>
@@ -136,7 +180,7 @@ export function BondEditor({ open, onOpenChange, node, target, existing, newBond
         </div>
       </Field>
 
-      {mode === "802.3ad" && (
+      {kind === "linux" && mode === "802.3ad" && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="LACP rate" errors={findings.byField.lacpRate}>
             <select className={inputClass} value={lacpRate} onChange={(e) => { setLacpRate(e.target.value); }}>
@@ -155,9 +199,11 @@ export function BondEditor({ open, onOpenChange, node, target, existing, newBond
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="MII monitor (ms)" errors={findings.byField.miimon} help="How often link state is polled.">
-          <input type="number" className={inputClass} value={miimon} onChange={(e) => { setMiimon(Number(e.target.value)); }} />
-        </Field>
+        {kind === "linux" && (
+          <Field label="MII monitor (ms)" errors={findings.byField.miimon} help="How often link state is polled.">
+            <input type="number" className={inputClass} value={miimon} onChange={(e) => { setMiimon(Number(e.target.value)); }} />
+          </Field>
+        )}
         <Field label="MTU" errors={findings.byField.mtu}>
           <input type="number" className={inputClass} value={mtu} onChange={(e) => { setMtu(Number(e.target.value)); }} />
         </Field>
