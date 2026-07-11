@@ -82,3 +82,54 @@ func (c *Client) GetIPAMStatus(ctx context.Context, ipam string) ([]IPAMEntry, e
 	}
 	return out, nil
 }
+
+// CreateIPAMAllocation is T-405's write path for ipam.alloc.create: POST
+// /cluster/sdn/vnets/{vnet}/ips reserves ip inside vnet's IPAM. Real PVE
+// resolves which configured IPAM plugin instance (built-in "pve", NetBox,
+// phpIPAM) backs vnet from the vnet's zone config server-side — callers
+// never name the plugin explicitly (docs/features/ipam.md §1: "vnprox
+// reads through PVE's plugin transparently"), which is why this method
+// (and its DeleteIPAMAllocation counterpart) is vnet-scoped rather than
+// ipam-instance-scoped like ListIPAMs/GetIPAMStatus above.
+func (c *Client) CreateIPAMAllocation(ctx context.Context, vnet string, alloc IPAMAllocation) error {
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s/ips", vnet)
+	body := map[string]string{"ip": alloc.IP}
+	if alloc.MAC != "" {
+		body["mac"] = alloc.MAC
+	}
+	if alloc.Hostname != "" {
+		body["hostname"] = alloc.Hostname
+	}
+	if alloc.Zone != "" {
+		body["zone"] = alloc.Zone
+	}
+	if alloc.Subnet != "" {
+		body["subnet"] = alloc.Subnet
+	}
+	return c.do(ctx, "POST", path, requestParams{body: body}, nil)
+}
+
+// DeleteIPAMAllocation is T-405's write path for ipam.alloc.delete: DELETE
+// /cluster/sdn/vnets/{vnet}/ips releases ip from vnet's IPAM. subnet
+// disambiguates when the same host address is legitimately allocated in
+// more than one subnet the vnet carries (rare, but the CIDR is the
+// referential identity ipam.alloc ops key off — docs/data-model.md §3).
+func (c *Client) DeleteIPAMAllocation(ctx context.Context, vnet, ip, subnet string) error {
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s/ips", vnet)
+	body := map[string]string{"ip": ip}
+	if subnet != "" {
+		body["subnet"] = subnet
+	}
+	return c.do(ctx, "DELETE", path, requestParams{body: body}, nil)
+}
+
+// IPAMAllocation is CreateIPAMAllocation's request shape: the address being
+// reserved plus the optional identifying metadata PVE's IPAM plugins record
+// alongside it (docs/data-model.md §3's ipam.alloc.create params).
+type IPAMAllocation struct {
+	IP       string
+	MAC      string
+	Hostname string
+	Zone     string
+	Subnet   string
+}

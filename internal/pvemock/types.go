@@ -156,11 +156,35 @@ type IfaceStats struct {
 
 // GuestSpec is a qemu or lxc guest. Config mirrors PVE's flat key/value
 // guest config object (e.g. "net0": "virtio=AA:BB:...,bridge=vmbr0,tag=100").
+// AgentInterfaces (T-405) is the fixture-declared response for
+// GET .../agent/network-get-interfaces — a qemu guest with the QEMU guest
+// agent installed and running reports its live in-guest network state this
+// way, the enrichment source docs/features/ipam.md §1 calls "guest
+// agent-reported IPs". A guest with no AgentInterfaces entries (no agent,
+// or agent not running) simply returns an empty result — matching real
+// PVE's behavior for an unreachable/absent agent on a stopped or
+// agent-less guest, a normal state rather than a fixture bug.
 type GuestSpec struct {
-	Config   map[string]string `yaml:"config"`
-	Firewall *FirewallScope    `yaml:"firewall"`
-	Name     string            `yaml:"name"`
-	Status   string            `yaml:"status"`
+	Config          map[string]string `yaml:"config"`
+	Firewall        *FirewallScope    `yaml:"firewall"`
+	Name            string            `yaml:"name"`
+	Status          string            `yaml:"status"`
+	AgentInterfaces []AgentIfaceSpec  `yaml:"agent_interfaces,omitempty"`
+}
+
+// AgentIfaceSpec is one NIC's entry in a qemu guest's
+// network-get-interfaces guest-agent response.
+type AgentIfaceSpec struct {
+	Name         string               `yaml:"name" json:"name"`
+	HardwareAddr string               `yaml:"hardware_address,omitempty" json:"hardware-address,omitempty"`
+	IPAddresses  []AgentIPAddressSpec `yaml:"ip_addresses,omitempty" json:"ip-addresses,omitempty"`
+}
+
+// AgentIPAddressSpec is one address reported for an agent-interfaces NIC.
+type AgentIPAddressSpec struct {
+	IPAddress     string `yaml:"ip" json:"ip-address"`
+	IPAddressType string `yaml:"type,omitempty" json:"ip-address-type,omitempty"` // ipv4|ipv6
+	Prefix        int    `yaml:"prefix,omitempty" json:"prefix,omitempty"`
 }
 
 // SDNSpec is the cluster-wide SDN configuration tree.

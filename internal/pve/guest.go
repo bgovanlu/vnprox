@@ -55,3 +55,40 @@ func (c *Client) UpdateGuestConfig(ctx context.Context, node string, kind GuestK
 	}
 	return c.do(ctx, "PUT", path, requestParams{body: body}, nil)
 }
+
+// AgentIface is one NIC reported by a qemu guest's QEMU guest agent, as
+// returned by GetGuestAgentInterfaces — T-405's guest-agent-reported-IP
+// IPAM enrichment source (docs/features/ipam.md §1).
+type AgentIface struct {
+	Name         string           `json:"name"`
+	HardwareAddr string           `json:"hardware-address,omitempty"`
+	IPAddresses  []AgentIPAddress `json:"ip-addresses,omitempty"`
+}
+
+// AgentIPAddress is one address reported for an AgentIface.
+type AgentIPAddress struct {
+	IPAddress     string `json:"ip-address"`
+	IPAddressType string `json:"ip-address-type,omitempty"` // ipv4|ipv6
+	Prefix        int    `json:"prefix,omitempty"`
+}
+
+// GetGuestAgentInterfaces calls
+// GET /nodes/{node}/qemu/{vmid}/agent/network-get-interfaces: the QEMU
+// guest agent's live in-guest network state, if the agent is installed,
+// enabled, and running inside the guest. Real PVE returns a 500
+// (agent-not-reachable) for a guest with no agent or the agent not
+// running; callers (internal/ipam) treat any error from this method as
+// "no agent data available for this guest" rather than surfacing it, since
+// that is the overwhelmingly common case, not an operational fault. LXC
+// guests have no equivalent route (a container's interfaces are read
+// directly from its netns, not a guest agent) — this method is qemu-only.
+func (c *Client) GetGuestAgentInterfaces(ctx context.Context, node string, vmid int) ([]AgentIface, error) {
+	var wrap struct {
+		Result []AgentIface `json:"result"`
+	}
+	path := fmt.Sprintf("/nodes/%s/qemu/%d/agent/network-get-interfaces", node, vmid)
+	if err := c.do(ctx, "GET", path, requestParams{}, &wrap); err != nil {
+		return nil, err
+	}
+	return wrap.Result, nil
+}

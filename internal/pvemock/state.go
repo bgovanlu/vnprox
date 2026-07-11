@@ -41,11 +41,24 @@ type sdnState struct {
 	mu             sync.RWMutex
 }
 
+// ipamState is the mutable runtime allocation set for every configured IPAM
+// plugin instance (cluster-scope, one instance — T-405's `ipam.alloc.*`
+// write path). Keyed by IPAM plugin id (SDNIpamSpec.ID), mirroring
+// sdnState's per-object maps; entries themselves carry their own
+// zone/vnet/subnet (IPAMEntrySpec), so — like real PVE — a caller never
+// names the plugin explicitly when reserving/releasing an address on a
+// vnet (see ipam.go's handleIPAMCreateIP/handleIPAMDeleteIP doc comments).
+type ipamState struct {
+	entries map[string][]IPAMEntrySpec
+	mu      sync.RWMutex
+}
+
 // State is the full mutable runtime state of a mock PVE server, built from
 // an immutable Fixture. Server handlers read/write State; Fixture itself is
 // never mutated after load.
 type State struct {
 	sdn         sdnState
+	ipam        ipamState
 	fixture     *Fixture
 	nodes       map[string]*nodeState
 	sessions    *sessionStore
@@ -91,6 +104,11 @@ func NewState(f *Fixture) *State {
 		if r, ok := runningSubnet(sub); ok {
 			s.sdn.subnetsRunning[sub.ID] = r
 		}
+	}
+
+	s.ipam.entries = make(map[string][]IPAMEntrySpec, len(f.SDN.Ipams))
+	for _, ip := range f.SDN.Ipams {
+		s.ipam.entries[ip.ID] = append([]IPAMEntrySpec(nil), ip.Entries...)
 	}
 
 	for name, ns := range f.Nodes {

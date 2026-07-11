@@ -103,6 +103,7 @@ func (srv *Server) buildRouter() chi.Router {
 		api.Put("/nodes/{node}/qemu/{vmid}/config", srv.requirePrivilege(PrivVMConfigNet, srv.handleGuestConfigPut("qemu")))
 		api.Get("/nodes/{node}/lxc/{vmid}/config", srv.requirePrivilege(PrivVMAudit, srv.handleGuestConfigGet("lxc")))
 		api.Put("/nodes/{node}/lxc/{vmid}/config", srv.requirePrivilege(PrivVMConfigNet, srv.handleGuestConfigPut("lxc")))
+		api.Get("/nodes/{node}/qemu/{vmid}/agent/network-get-interfaces", srv.requirePrivilege(PrivVMAudit, srv.handleGuestAgentInterfaces))
 
 		api.Get("/nodes/{node}/tasks/{upid}/status", srv.requirePrivilege(PrivSysAudit, srv.handleTaskStatus))
 		api.Get("/nodes/{node}/tasks/{upid}/log", srv.requirePrivilege(PrivSysAudit, srv.handleTaskLog))
