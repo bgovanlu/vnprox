@@ -176,6 +176,50 @@ func TestTwoDaemonHarness_Links(t *testing.T) {
 	}
 }
 
+// TestTwoDaemonHarness_FDB is T-306: GET /api/peer/host/fdb flattens a
+// node's bridge FDB tables out of the same Links() data
+// TestTwoDaemonHarness_Links exercises (see the HostReader doc comment on
+// why this route has no distinct Reader method to spy on).
+func TestTwoDaemonHarness_FDB(t *testing.T) {
+	h := newTwoDaemonHarness(t)
+
+	h.readerA.links["pve1"] = []host.LinkState{
+		{
+			Name: "vmbr0", Kind: "bridge", MTU: 1500, LinkUp: true,
+			Bridge: &host.BridgeDetail{
+				FDB: []host.FDBEntry{
+					{Mac: "AA:BB:CC:DD:EE:FF", Port: "tap100i0", Vlan: 100},
+					{Mac: "11:22:33:44:55:66", Port: "bond0", Vlan: 1, Stale: true},
+				},
+			},
+		},
+		{Name: "eno1", Kind: "physical", MTU: 1500, LinkUp: true}, // no FDB: not a bridge
+	}
+
+	rows, err := h.client.FDB(t.Context(), h.nodeA, "pve1")
+	if err != nil {
+		t.Fatalf("FDB(nodeA): %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("FDB(nodeA) = %+v, want 2 entries (only the bridge's)", rows)
+	}
+	for _, r := range rows {
+		if r.Bridge != "vmbr0" {
+			t.Errorf("row %+v: Bridge = %q, want vmbr0", r, r.Bridge)
+		}
+	}
+	if !rows[1].Stale || rows[1].Mac != "11:22:33:44:55:66" {
+		t.Errorf("rows[1] = %+v, want the stale 11:22:33:44:55:66 entry", rows[1])
+	}
+	if h.readerA.linksCalls != 1 {
+		t.Errorf("readerA.linksCalls = %d, want 1", h.readerA.linksCalls)
+	}
+
+	if _, err := h.client.FDB(t.Context(), h.nodeA, "nosuch"); err == nil {
+		t.Fatal("expected an error for an unknown node")
+	}
+}
+
 // TestPeerAudit_FetchesFilteredPage is T-303: GET /api/peer/audit parses
 // every documented GET /audit query param into peer.AuditFilter and
 // forwards it, and decodes the served page back into []AuditRecord/
@@ -272,6 +316,9 @@ func TestServer_UnconfiguredAuditSnapshotsAndLinks503s(t *testing.T) {
 	p := Peer{Node: "solo", Addr: ts.Listener.Addr().String()}
 
 	if _, err := client.Links(t.Context(), p, "solo"); err == nil {
+		t.Fatal("expected an error with no Reader configured")
+	}
+	if _, err := client.FDB(t.Context(), p, "solo"); err == nil {
 		t.Fatal("expected an error with no Reader configured")
 	}
 	if _, _, err := client.Audit(t.Context(), p, AuditFilter{}, "", 10); err == nil {

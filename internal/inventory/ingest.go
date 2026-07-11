@@ -120,6 +120,7 @@ func FromNetlinkLinks(node string, links []host.LinkState) []Entity {
 				br.VlanAware, br.VlanAwareSet = l.Bridge.VlanAware, true
 				br.STP, br.STPSet = l.Bridge.STP, true
 				br.Vids = convertVids(l.Bridge.VLANs)
+				br.FDB = convertFDB(l.Bridge.FDB)
 			}
 			ent = br
 		case "vlan":
@@ -152,6 +153,25 @@ func convertVids(vs []host.VidRange) []VidRange {
 	out := make([]VidRange, len(vs))
 	for i, v := range vs {
 		out[i] = VidRange{Low: v.Low, High: v.High}
+	}
+	return out
+}
+
+// convertFDB converts host.FDBEntry (T-306's netlink FDB reader,
+// internal/host.BridgeDetail.FDB) to this package's own FDBEntry, nil for
+// an empty/nil input so a bridge with no learned entries carries a nil
+// slice rather than an allocated-but-empty one (matching every other
+// optional-slice field's zero-value convention on this type).
+func convertFDB(fdb []host.FDBEntry) []FDBEntry {
+	if len(fdb) == 0 {
+		return nil
+	}
+	out := make([]FDBEntry, len(fdb))
+	for i, e := range fdb {
+		out[i] = FDBEntry{
+			Mac: e.Mac, Port: e.Port, Vlan: e.Vlan,
+			Master: e.Master, Permanent: e.Permanent, Stale: e.Stale,
+		}
 	}
 	return out
 }

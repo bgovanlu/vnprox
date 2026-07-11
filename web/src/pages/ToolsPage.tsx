@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RawEditorPanel } from "../changesets/rawEditor/RawEditorPanel";
 import { EmptyState } from "../components/EmptyState";
+import { MacFdbBrowser } from "../tools/MacFdbBrowser";
 import { useTopologyQuery } from "../topology/queries";
 
 export function ToolsPage() {
@@ -56,6 +57,10 @@ export function ToolsPage() {
       ) : (
         <EmptyState title="No nodes yet" description="The raw editor needs at least one cluster node to be discovered." />
       )}
+
+      <hr className="border-slate-200 dark:border-slate-800" />
+
+      <MacFdbBrowser />
 
       <p className="text-xs text-slate-400 dark:text-slate-500">
         The path simulator ("why can't VM A reach VM B?") lands in a later task.

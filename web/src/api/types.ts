@@ -539,6 +539,42 @@ export interface ChangesetStatusEvent {
   confirmDeadline?: number;
 }
 
+// --- MAC/FDB browser (GET /fdb; internal/topology/types.go's FDBRow,
+// docs/features/lldp-discovery.md §4) -----------------------------------
+
+/** Which known thing (if any) an FDBRow's `mac` resolves to elsewhere in
+ * the cluster-wide inventory: a guest's own NIC ("guest" — `ownerRef` is
+ * the owning Guest's ref, a valid GET /inventory/{ref} deep link), a MAC
+ * vnprox otherwise recognizes (a physical NIC on any node — "vnprox-known"),
+ * or neither ("unknown" — most often exactly what shows up on an
+ * uplink/trunk port: a real switch/device the FDB learned, not one of
+ * vnprox's own entities). */
+export type FDBOwner = "guest" | "vnprox-known" | "unknown";
+
+/** One bridge forwarding-database entry, cluster-wide and
+ * ownership-labeled. `score` is only meaningful (nonzero) on GET
+ * /fdb?mac=-search results — omitted (0) on the plain "browse everything"
+ * listing. */
+export interface FDBRow {
+  node: string;
+  bridge: string;
+  bridgeRef: string;
+  mac: string;
+  port?: string;
+  owner: FDBOwner;
+  ownerRef?: string;
+  ownerLabel?: string;
+  vlan?: number;
+  score?: number;
+  master?: boolean;
+  permanent?: boolean;
+  stale: boolean;
+}
+
+export interface FDBResponse {
+  items: FDBRow[];
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots, firewall/SDN/IPAM read views, the path simulator, metrics, and
 // blueprints all have routes defined in docs/api.md but no frontend

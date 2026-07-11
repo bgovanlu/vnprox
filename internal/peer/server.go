@@ -33,13 +33,24 @@ const (
 const defaultMaxBodyBytes = 4 << 20 // 4 MiB
 
 // HostReader is the read-side dependency for the documented
-// `/api/peer/host/{interfaces,lldp,stats}` routes (docs/api.md's Peer API
-// section — `Links` is deliberately not part of that contract, so this
-// interface only needs the three methods those routes use). host.Reader
+// `/api/peer/host/{interfaces,lldp,stats,links,fdb}` routes. host.Reader
 // satisfies this directly: Go allows assigning a wider interface value to
 // a narrower interface-typed field/parameter whenever its method set is a
 // superset, so host.NewReal() (or a host.FixtureReader) can be passed to
 // ServerOptions.Reader with no adapter.
+//
+// GET /api/peer/host/fdb (T-306) is deliberately *not* a separate interface
+// method: a bridge's FDB is already embedded in Links()' BridgeDetail, so
+// handleFDB below just calls Links and flattens it (host.FlattenFDB) —
+// adding a distinct HostReader.FDB method would mean either Real doing a
+// second, redundant netlink dump per request or FixtureReader needing a
+// second adapter path, for data this interface's existing method already
+// carries. The route exists as its own documented endpoint (T-301's
+// deviation note flagged its absence as T-306's deliverable) because a
+// caller that only wants the forwarding table — the MAC/FDB browser this
+// route serves, docs/features/lldp-discovery.md §4 — shouldn't have to
+// pull every bridge's full VLAN table and every physical NIC's link state
+// over the wire to get it.
 type HostReader interface {
 	// InterfacesFile returns node's literal /etc/network/interfaces (or
 	// interfaces.new when includePending) content.
@@ -187,6 +198,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/lldp", s.handleLLDP)
 		r.Get("/host/stats", s.handleStats)
 		r.Get("/host/links", s.handleLinks)
+		r.Get("/host/fdb", s.handleFDB)
 		r.Post("/host/stage-interfaces", s.handleStageInterfaces)
 		r.Post("/host/ifreload", s.handleIfreload)
 		r.Post("/host/restore", s.handleRestore)
@@ -267,6 +279,23 @@ func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, linksResponse{Links: links})
+}
+
+// handleFDB implements GET /api/peer/host/fdb (T-306): node's bridge
+// forwarding-database tables, flattened out of Links() (see the HostReader
+// doc comment above for why this isn't its own Reader method).
+func (s *Server) handleFDB(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	links, err := s.opts.Reader.Links(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading netlink link state for fdb", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, fdbResponse{Entries: host.FlattenFDB(links)})
 }
 
 // parsePeerPageLimit parses the shared ?limit= convention GET /audit and

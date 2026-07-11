@@ -287,6 +287,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Collectors:    collectorHealthAdapter{collector},
 		Topology:      topoSvc,
 		LLDP:          topoSvc,
+		FDB:           topoSvc,
 		Layouts:       store.NewLayoutRepo(db),
 		Changesets:    changeSvc,
 		Snapshots:     changeSvc,

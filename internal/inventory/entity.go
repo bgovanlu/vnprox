@@ -228,10 +228,22 @@ type Bridge struct {
 	Addresses         []string
 	DeclaredPortNames []string
 	PortNames         []string
-	MTU               int
-	MTUDeclared       int
-	VlanAware         bool
-	STP               bool
+	// FDB is this bridge's forwarding-database (MAC learning table),
+	// host-netlink-only (T-306's MAC/FDB browser,
+	// docs/features/lldp-discovery.md §4). Unlike every other field on this
+	// type it is deliberately excluded from fieldMap below: FDB churns on
+	// every poll as traffic moves (far more often than declared/runtime
+	// link config), and there is only ever one contributing source, so
+	// there is nothing to merge/flag conflicts on — including it in
+	// fieldMap would spam topology.delta on every MAC learn/age instead of
+	// only on actual topology changes. See resolveBridge for how it's
+	// copied straight through from the host-netlink partial rather than
+	// going through pick.
+	FDB         []FDBEntry
+	MTU         int
+	MTUDeclared int
+	VlanAware   bool
+	STP         bool
 	// VlanAwareSet / STPSet report whether the contributing source actually
 	// declared/observed VlanAware / STP (merge treats an unset flagged bool
 	// as "not reported", not as an implicit false). On a resolved entity
@@ -239,6 +251,19 @@ type Bridge struct {
 	// the field.
 	VlanAwareSet bool
 	STPSet       bool
+}
+
+// FDBEntry is one bridge forwarding-database entry (mirrors
+// host.FDBEntry's field set; kept as this package's own type so entity.go
+// does not need to import internal/host — see ingest.go's FromNetlinkLinks
+// for the conversion).
+type FDBEntry struct {
+	Mac       string
+	Port      string
+	Vlan      int
+	Master    bool
+	Permanent bool
+	Stale     bool
 }
 
 func (b *Bridge) GetRef() Ref { return b.Ref }
@@ -249,6 +274,7 @@ func (b *Bridge) clone() Entity {
 	cp.DeclaredPortNames = append([]string(nil), b.DeclaredPortNames...)
 	cp.Vids = append([]VidRange(nil), b.Vids...)
 	cp.Addresses = append([]string(nil), b.Addresses...)
+	cp.FDB = append([]FDBEntry(nil), b.FDB...)
 	return &cp
 }
 func (b *Bridge) fieldMap() map[string]string {

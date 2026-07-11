@@ -1,10 +1,12 @@
 import * as RadixTabs from "@radix-ui/react-tabs";
 import clsx from "clsx";
+import { useNavigate } from "react-router-dom";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "../components/Drawer";
 import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
 import { Tooltip } from "../components/Tooltip";
 import { useSession } from "../api/useSession";
+import type { FDBRow } from "../api/types";
 import { useToast } from "../components/Toast";
 import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
 import { useEditorLauncherStore, type EditorKind } from "../changesets/editorLauncherStore";
@@ -12,6 +14,18 @@ import { buildBondDeleteOp, buildVlanDeleteOp } from "../changesets/opBuilders";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { fieldRows } from "./fields";
 import { useInventoryDetailQuery } from "./queries";
+import { useTopologyStore } from "./store";
+
+/** Runtime narrowing for `data.fields.FDB` (typed `unknown` — EntityDetail's
+ * fields map is generic JSON, see fields.ts): internal/topology's Detail()
+ * only ever populates this key with T-306's FDBRow shape for bridge kinds
+ * (detail.go), but the frontend can't take that on faith across the wire. */
+function isFDBRows(v: unknown): v is FDBRow[] {
+  return (
+    Array.isArray(v) &&
+    v.every((row) => typeof row === "object" && row !== null && "mac" in row && "owner" in row)
+  );
+}
 
 /** Which editor kind (if any) opens for a given inventory kind — the
  * inspector's "Edit" button (T-207 acceptance criterion: "editors open
@@ -65,6 +79,9 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: Inspec
   const editDisabledReason = data ? missingCapTooltip(session, data.node, "netWrite") : undefined;
   const canWrite = data ? capsForNode(session, data.node).netWrite : false;
   const isBridgeKind = data ? data.kind === "bridge" || data.kind === "ovs-bridge" : false;
+  const fdbRows = isBridgeKind && data ? (isFDBRows(data.fields.FDB) ? data.fields.FDB : []) : [];
+  const navigate = useNavigate();
+  const select = useTopologyStore((s) => s.select);
 
   function handleDelete(): void {
     if (!data) return;
@@ -147,6 +164,11 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: Inspec
               <RadixTabs.Trigger value="related" className={tabTriggerClass}>
                 Related ({data.related.length})
               </RadixTabs.Trigger>
+              {isBridgeKind && (
+                <RadixTabs.Trigger value="fdb" className={tabTriggerClass}>
+                  FDB ({fdbRows.length})
+                </RadixTabs.Trigger>
+              )}
             </RadixTabs.List>
 
             <RadixTabs.Content value="fields" className="mt-3 flex-1 overflow-y-auto">
@@ -231,6 +253,45 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated }: Inspec
                 {data.related.length === 0 && <li className="text-slate-400">No related entities.</li>}
               </ul>
             </RadixTabs.Content>
+
+            {isBridgeKind && (
+              <RadixTabs.Content value="fdb" className="mt-3 flex-1 overflow-y-auto">
+                <p className="mb-2 text-xs text-slate-400">
+                  This bridge's forwarding-database table (docs/features/lldp-discovery.md §4), owner-labeled
+                  against the cluster-wide inventory.
+                </p>
+                <ul className="space-y-1 text-xs">
+                  {fdbRows.map((r) => (
+                    <li
+                      key={`${r.mac}-${r.port ?? ""}`}
+                      className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono text-slate-700 dark:text-slate-200">{r.mac}</span>
+                        {r.port && <span className="text-slate-400">on {r.port}</span>}
+                        {r.stale && <span className="text-amber-600 dark:text-amber-400">stale</span>}
+                      </span>
+                      {r.ownerRef ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            select(r.ownerRef);
+                            void navigate("/topology");
+                          }}
+                          className="shrink-0 text-slate-500 hover:underline dark:text-slate-400"
+                        >
+                          {r.owner}
+                          {r.ownerLabel ? ` (${r.ownerLabel})` : ""}
+                        </button>
+                      ) : (
+                        <span className="shrink-0 text-slate-400">{r.owner}</span>
+                      )}
+                    </li>
+                  ))}
+                  {fdbRows.length === 0 && <li className="text-slate-400">No FDB entries learned on this bridge.</li>}
+                </ul>
+              </RadixTabs.Content>
+            )}
           </RadixTabs.Root>
         )}
       </DrawerContent>

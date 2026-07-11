@@ -87,7 +87,18 @@ nodes:
       eno1: {mac: "bc:24:11:01:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
       eno2: {mac: "bc:24:11:01:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
       bond0: {mac: "bc:24:11:01:00:01", link_up: true}
-      vmbr0: {mac: "bc:24:11:01:00:01", link_up: true}
+      # T-306 MAC/FDB browser fixtures: app01's own NIC (owner=guest, via a
+      # tap device that is a dynamic bridge member, not a declared
+      # bridge_ports entry), an unrecognized device seen on the uplink trunk
+      # (owner=unknown), and a second unknown entry the bridge has aged out
+      # (stale=true, per the FDB browser's staleness AC).
+      vmbr0:
+        mac: "bc:24:11:01:00:01"
+        link_up: true
+        fdb:
+          - {mac: "BC:24:11:AA:02:C8", port: "tap200i0", vlan: 100}
+          - {mac: "DE:AD:BE:EF:00:01", port: "bond0", vlan: 1}
+          - {mac: "CA:FE:BA:BE:00:02", port: "bond0", vlan: 1, stale: true}
     lldp:
       eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.254, vlan: 10, ttl: 120}
       eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.253, vlan: 10, ttl: 120}
@@ -157,7 +168,17 @@ nodes:
       eno1: {mac: "bc:24:11:02:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
       eno2: {mac: "bc:24:11:02:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
       bond0: {mac: "bc:24:11:02:00:01", link_up: true}
-      vmbr0: {mac: "bc:24:11:02:00:01", link_up: true}
+      # T-306: one entry that is actually pve1's own uplink NIC MAC, seen
+      # here transiting the mgmt/cluster trunk (owner=vnprox-known — a
+      # known infra MAC, not a guest and not an unrecognized device), plus
+      # a second unrelated unknown device for the cluster-wide partial
+      # search AC (matches pve1's/pve3's "DE:AD:BE:EF:00:0*" entries).
+      vmbr0:
+        mac: "bc:24:11:02:00:01"
+        link_up: true
+        fdb:
+          - {mac: "bc:24:11:01:00:01", port: "bond0", vlan: 1}
+          - {mac: "DE:AD:BE:EF:00:02", port: "bond0", vlan: 1}
     lldp:
       eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.254, vlan: 10, ttl: 120}
       eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.253, vlan: 10, ttl: 120}
@@ -226,7 +247,14 @@ nodes:
       eno1: {mac: "bc:24:11:03:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
       eno2: {mac: "bc:24:11:03:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
       bond0: {mac: "bc:24:11:03:00:01", link_up: true}
-      vmbr0: {mac: "bc:24:11:03:00:01", link_up: true}
+      # T-306: a third unknown device, same MAC family as pve1's/pve2's, so
+      # a partial search ("deadbeef00") returns ranked hits from all three
+      # nodes.
+      vmbr0:
+        mac: "bc:24:11:03:00:01"
+        link_up: true
+        fdb:
+          - {mac: "DE:AD:BE:EF:00:03", port: "bond0", vlan: 1}
     lldp:
       eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.254, vlan: 10, ttl: 120}
       eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.253, vlan: 10, ttl: 120}

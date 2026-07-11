@@ -46,6 +46,16 @@ func Detail(snap inventory.Snapshot, ref inventory.Ref) (EntityDetail, bool) {
 	if err != nil {
 		fields = map[string]any{}
 	}
+	// T-306: a bridge's FDB table is otherwise just its raw Mac/Port/Vlan
+	// tuples (entityFields' generic JSON-reflection pass has no way to know
+	// about cross-entity ownership) — override the "FDB" key with the same
+	// guest/vnprox-known/unknown-labeled rows FDB()/FDBSearch() return, so
+	// the inspector's bridge detail (docs/features/lldp-discovery.md §4:
+	// "inspector integration: bridge detail shows its FDB with owner
+	// labels") needs no separate fetch.
+	if br, ok := e.(*inventory.Bridge); ok && len(br.FDB) > 0 {
+		fields["FDB"] = fdbRowsForBridge(br, buildMacIndex(snap))
+	}
 
 	// Raw source text per contributing source (docs/api.md's "including raw
 	// source (interfaces stanza / PVE API object)"): the graph retains, per

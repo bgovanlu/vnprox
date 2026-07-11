@@ -228,3 +228,28 @@ type SearchResult struct {
 	MatchedField string `json:"matchedField"`
 	Score        int    `json:"score"`
 }
+
+// FDBRow is one bridge forwarding-database entry, cluster-wide and
+// enriched with an ownership label (T-306's MAC/FDB browser,
+// docs/features/lldp-discovery.md §4: "search any MAC → which
+// bridge/port/guest it lives behind, cluster-wide"). Owner is one of
+// "guest" (Mac matches a GuestNic — OwnerRef/OwnerLabel identify the
+// owning guest), "vnprox-known" (Mac matches a PhysNic elsewhere in
+// inventory — a known infra device, not a guest), or "unknown" (no match —
+// most often exactly what shows up on an uplink/trunk port). Score is only
+// populated by FDBSearch (omitted, i.e. zero, on the plain FDB() listing).
+type FDBRow struct {
+	Node       string `json:"node"`
+	Bridge     string `json:"bridge"`
+	BridgeRef  string `json:"bridgeRef"`
+	Mac        string `json:"mac"`
+	Port       string `json:"port,omitempty"`
+	Owner      string `json:"owner"`
+	OwnerRef   string `json:"ownerRef,omitempty"`
+	OwnerLabel string `json:"ownerLabel,omitempty"`
+	Vlan       int    `json:"vlan,omitempty"`
+	Score      int    `json:"score,omitempty"`
+	Master     bool   `json:"master,omitempty"`
+	Permanent  bool   `json:"permanent,omitempty"`
+	Stale      bool   `json:"stale"`
+}

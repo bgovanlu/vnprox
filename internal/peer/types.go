@@ -43,6 +43,13 @@ type linksResponse struct {
 	Links []host.LinkState `json:"links"`
 }
 
+// fdbResponse is GET /api/peer/host/fdb's body (T-306: the MAC/FDB
+// browser's node-local read — every bridge's forwarding-database table,
+// flattened and bridge-tagged; see host.FlattenFDB).
+type fdbResponse struct {
+	Entries []host.FDBRow `json:"entries"`
+}
+
 // AuditRecord is one row of GET /api/peer/audit's page (T-303). Its fields
 // mirror docs/api.md's GET /audit list item shape field-for-field so
 // internal/api's cluster merge can decode a peer's page directly into the

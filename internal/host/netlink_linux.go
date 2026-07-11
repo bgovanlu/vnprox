@@ -275,6 +275,7 @@ func buildBridgeDetail(
 			Vlan:      n.Vlan,
 			Master:    n.Flags&netlink.NTF_MASTER != 0,
 			Permanent: n.State&netlink.NUD_PERMANENT != 0,
+			Stale:     n.State&netlink.NUD_STALE != 0,
 		})
 	}
 
