@@ -15,6 +15,8 @@ packaging/
   config/vnprox.toml      default config, shipped as a conffile at /etc/vnprox/vnprox.toml
   bin/vnprox-setup        per-node interactive setup (docs/deployment.md "Manual install")
   install.sh              the curl-fetchable quick-install script (docs/deployment.md "Quick install")
+  build-apt-repo.sh       assembles + signs the apt repo release.yml publishes (see apt-repo.md)
+  apt-repo.md             apt repo layout + signing key doc (docs/development.md's release.yml spec)
   test/                   container-based verification scripts (see below)
 ```
 
@@ -59,45 +61,58 @@ digit, so a bare commit hash isn't usable as-is).
   distinction. Network configuration (`/etc/network`, `/etc/pve`) is never
   touched by any of these scripts.
 
-## What's stubbed, and why
+## Status (T-606: install/upgrade/uninstall, apt repo, cluster rollout)
 
-`install.sh` and `vnprox-setup` implement the full documented flow
-end-to-end, except for three things that genuinely need a live Proxmox VE
-cluster to do or verify, and are marked `TODO(T-606)` at the point they're
-skipped rather than faked:
+`install.sh` and `vnprox-setup` implement the full documented flow for
+real: cluster detection (`pvecm`), port-conflict handling, PVE API token
+provisioning (`pveum`, idempotent), cluster-secret bootstrap, multi-node
+SSH rollout (per-node, with a per-node manual-instructions fallback when a
+node isn't reachable), and apt-repo-or-`--offline` package installation.
+`vnproxctl status/snapshots/rollback-now` are all real (T-206's
+daemon-independent disaster-recovery path; T-606 completed `status`'s rich
+output — peer reachability, PVE API health, collector ages, per
+docs/deployment.md).
 
-- Installing from a real apt repository (none exists yet — repo tooling is
-  T-606's job). Use `install.sh --offline <deb>` in the meantime.
-- Creating the PVE API token `vnprox@pve!daemon` (needs a live `pveum`).
-- Verifying pmxcfs replication of the cluster secret across real nodes, and
-  automatic multi-node SSH rollout (falls back to printing per-node manual
-  instructions, which the doc explicitly allows).
-
-`vnproxctl`'s `snapshots list/restore` and `rollback-now` subcommands are
-also stubs — they print `available after T-206` and exit non-zero. Only
-`status` is real: it hits the local daemon's `/api/v1/health` over TLS.
+What genuinely cannot be exercised in a sandbox without a live Proxmox VE
+cluster (CLAUDE.md: "you do NOT have a live Proxmox cluster") — the exact
+`pveum`/`pvecm` output shapes and real pmxcfs replication semantics are
+approximated by fixtures/stubs in `test/` rather than assumed; see the
+T-606 completion report's "needs hardware validation" list for specifics.
 
 ## Testing (`test/`)
 
-Both scripts spin up a throwaway `debian:12` podman container and are
-self-contained; run them after `make deb`:
+Every script spins up throwaway podman container(s) and is self-contained;
+run after `make deb`:
 
 ```
-bash packaging/test/deb-install.sh     # install / apt remove / apt purge semantics
-bash packaging/test/port-conflict.sh   # install.sh's port-8007-conflict detection
+bash packaging/test/deb-install.sh       # install / apt remove / apt purge semantics
+bash packaging/test/port-conflict.sh     # install.sh's port-8007-conflict detection
+bash packaging/test/pve-token.sh         # vnprox-setup's PVE token/role provisioning, idempotent (fakepveum)
+bash packaging/test/answers-parity.sh    # --answers file vs. interactive flow, resulting state diffed
+bash packaging/test/upgrade.sh           # dpkg upgrade (two synthetic versions — no real tag exists yet)
+bash packaging/test/cluster-ssh.sh       # 3-container SSH cluster rollout simulation
 ```
 
-Notes for the sandbox they were developed in (may not apply on a normal
-Debian/CI host): rootless podman here has no `pasta`/`slirp4netns` binary,
-so ordinary bridge networking fails outright; both scripts use
-`--network=host` to get real internet access for `apt-get`, and only ever
-bind test listeners to `127.0.0.1`, torn down with the container.
+Set `VNPROX_TEST_IMAGE=debian:13` (default `debian:12`) to run any of them
+against the other supported base; `.github/workflows/packaging-matrix.yml`
+runs the full set against both.
 
-Neither script exercises a live `systemctl start vnprox` under a real PID 1
-systemd — plain `debian:12` containers don't run systemd as PID 1. That
-*was* verified once, manually, by building a custom systemd-enabled image
-(`podman run --systemd=always ...`) and confirming `systemctl start vnprox`
-actually serves `/api/v1/health` and `systemctl stop` drains cleanly; see
-the task report for details. That verification isn't scripted into `test/`
-because it needs a non-stock base image, so it's not part of the routine
-one-liner test path.
+Notes for the sandbox these were developed in (may not apply on a normal
+Debian/CI host, including GitHub Actions' hosted runners): rootless podman
+here has no `pasta` binary, so a user-defined bridge network (real
+per-container IPs/hostnames) isn't available — every script uses
+`--network=host` instead (real internet access for `apt-get`, and for
+`cluster-ssh.sh`, one sshd per simulated node on a distinct port with SSH
+client aliases, rather than per-container addresses). This is an
+environment constraint documented in each script's header, not a design
+choice: nothing under test depends on which addressing scheme reaches a
+"node".
+
+None of these scripts exercise a live `systemctl start vnprox` under a
+real PID 1 systemd — plain `debian:12`/`debian:13` containers don't run
+systemd as PID 1. That *was* verified once, manually, by building a custom
+systemd-enabled image (`podman run --systemd=always ...`) and confirming
+`systemctl start vnprox` actually serves `/api/v1/health` and
+`systemctl stop` drains cleanly; see the T-006 task report for details.
+That verification isn't scripted into `test/` because it needs a
+non-stock base image, so it's not part of the routine test path.

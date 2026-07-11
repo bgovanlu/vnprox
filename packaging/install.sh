@@ -155,11 +155,26 @@ esac
 
 NODE_LIST=()
 if command -v pvecm >/dev/null 2>&1 && pvecm status >/dev/null 2>&1; then
-	# `pvecm nodes` output includes a header; node names are the last
-	# whitespace-separated field of each data row.
+	# `pvecm nodes` output is a short banner ("Membership information", a
+	# "----" rule, and a "Nodeid Votes Name" column header — the exact
+	# line count isn't treated as a stable contract here) followed by one
+	# data row per node, e.g.:
+	#   Membership information
+	#   ----------------------
+	#       Nodeid      Votes Name
+	#            1          1 pve1 (local)
+	#            2          1 pve2
+	# Matched by shape instead of by skipping a fixed number of header
+	# lines: a data row's first two whitespace-separated fields are both
+	# plain integers (nodeid, votes) — nothing in the banner looks like
+	# that. The node name is then the last field, EXCEPT this node's own
+	# row, which pvecm suffixes with a literal " (local)" — stripped
+	# before taking the last field, or "(local)" itself would be read as
+	# a node name (T-606's container-cluster test caught this against a
+	# fixture shaped like real `pvecm nodes` output).
 	while IFS= read -r node; do
 		[ -n "$node" ] && NODE_LIST+=("$node")
-	done < <(pvecm nodes 2>/dev/null | awk 'NR>2 && NF{print $NF}')
+	done < <(pvecm nodes 2>/dev/null | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ { sub(/ \(local\)$/, ""); print $NF }')
 fi
 if [ "${#NODE_LIST[@]}" -eq 0 ]; then
 	log "no cluster detected (or pvecm unavailable): treating this as a single-node install"

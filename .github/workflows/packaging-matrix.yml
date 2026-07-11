@@ -1,0 +1,103 @@
+name: Packaging matrix
+
+# T-606 (planning/tasks/phase-6.md#T-606) acceptance criteria 1-5: the
+# container-based install/upgrade/remove/purge/cluster/token test matrix,
+# on both supported Debian bases. Kept as its own workflow (parallel to
+# ci.yml, not serialized into it) since the full matrix — several
+# apt-get-heavy container legs per Debian base, plus the multi-container
+# SSH cluster simulation — comfortably exceeds docs/development.md's <10min
+# budget for ci.yml itself.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  matrix:
+    # AC1 (install/upgrade/remove/purge), AC3 (port conflict), AC4
+    # (--answers parity), AC5 (token/role idempotency), on both Debian
+    # bases (docs/deployment.md: "Proxmox VE 8.2+ (Debian 12) and 9.x
+    # (Debian 13)").
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:12", "debian:13"]
+    runs-on: ubuntu-latest
+    env:
+      VNPROX_TEST_IMAGE: ${{ matrix.image }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: make build (real frontend bundle)
+        run: make build
+
+      - name: make deb
+        run: make deb
+
+      - name: Install/remove/purge semantics (AC1)
+        run: bash packaging/test/deb-install.sh
+
+      - name: Port-conflict fallback (AC3)
+        run: bash packaging/test/port-conflict.sh
+
+      - name: PVE token/role provisioning idempotency (AC5)
+        run: bash packaging/test/pve-token.sh
+
+      - name: --answers vs. interactive parity (AC4)
+        run: bash packaging/test/answers-parity.sh
+
+      - name: Upgrade path (AC1, package-mechanics half — see script header)
+        run: bash packaging/test/upgrade.sh
+
+  cluster-ssh:
+    # AC2: 3-container SSH cluster install simulation (one-command
+    # rollout, same-port enforcement, simulated-pmxcfs secret
+    # replication). Split into its own job (vs. folded into `matrix`
+    # above) since it is the single slowest leg (three containers' worth
+    # of apt-get installs) and matrix-parallelizing it per Debian base
+    # would roughly double an already-heavy job; run once against the
+    # lower (more conservative) supported base.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: make build (real frontend bundle)
+        run: make build
+
+      - name: make deb
+        run: make deb
+
+      - name: 3-container SSH cluster simulation
+        env:
+          VNPROX_TEST_IMAGE: debian:12
+        run: bash packaging/test/cluster-ssh.sh
