@@ -104,6 +104,15 @@ linters:
         linters:
           - staticcheck
         text: "SA1019"
+      # T-601's WS load test (AC4: 200 subscribed entities, no backpressure
+      # collapse) drives the real production WS handler with real client
+      # connections — same locked nhooyr.io/websocket dependency, same
+      # unavoidable module-wide deprecation notice as the hub.go exclusion
+      # above, not a fresh dependency choice to re-litigate here either.
+      - path: internal/metrics/loadtest_test\.go
+        linters:
+          - staticcheck
+        text: "SA1019"
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

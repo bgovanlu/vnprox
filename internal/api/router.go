@@ -71,7 +71,11 @@ type Options struct {
 	// PVE client — see cmd/vnproxd/collect.go's setupCollect doc comment)
 	// simply skips mounting the route, the same degraded-mode treatment
 	// every other optional Options field gets.
-	SDN         SDNService
+	SDN SDNService
+	// Metrics is T-601's *metrics.Sampler seam for GET /metrics/live and
+	// GET /metrics/history; nil (no daemon-side sampler wired, e.g. tests)
+	// simply omits both routes.
+	Metrics     MetricsService
 	PVEGateways PVEGatewayProvider
 	Protected   ProtectedService
 	// Firewall backs T-501's read routes (GET /firewall/rulesets,
@@ -114,6 +118,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
+		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)

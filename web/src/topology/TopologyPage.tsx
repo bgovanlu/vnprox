@@ -14,6 +14,8 @@ import { useDrawerActions } from "../changesets/useDrawerActions";
 import { InspectorPanel } from "./InspectorPanel";
 import { NewEntityMenu } from "./NewEntityMenu";
 import { LayerToggleBar } from "./LayerToggleBar";
+import { METRICS_KINDS } from "./metricsKinds";
+import { useLiveMetrics, utilizationMap } from "./metricsQueries";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { StalenessBanner } from "./StalenessBanner";
 import { summarizeStaleness } from "./staleness";
@@ -81,6 +83,8 @@ function TopologyPageContent() {
   const spotlightOpen = useTopologyStore((s) => s.spotlightOpen);
   const expandedGroups = useTopologyStore((s) => s.expandedGroups);
   const positions = useTopologyStore((s) => s.positions);
+  const trafficMode = useTopologyStore((s) => s.trafficMode);
+  const toggleTrafficMode = useTopologyStore((s) => s.toggleTrafficMode);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
   const select = useTopologyStore((s) => s.select);
@@ -170,6 +174,17 @@ function TopologyPageContent() {
   // (cluster-wide staleness is the banner's job — see StalenessBanner).
   const staleSummary = useMemo(() => summarizeStaleness(topology?.staleness), [topology?.staleness]);
 
+  // Traffic paint mode (docs/features/monitoring.md §1): only subscribes to
+  // refs that could ever have live data, and only while the mode is on —
+  // per docs/api.md, a client should stream just the refs it needs, not
+  // everything.
+  const metricsCandidateRefs = useMemo(
+    () => (topology?.nodes ?? []).filter((n) => METRICS_KINDS.has(n.kind)).map((n) => n.id),
+    [topology],
+  );
+  const liveMetrics = useLiveMetrics(metricsCandidateRefs, trafficMode);
+  const utilizationByRef = useMemo(() => utilizationMap(liveMetrics), [liveMetrics]);
+
   const elements = useMemo(
     () =>
       toFlowElements({
@@ -185,8 +200,24 @@ function TopologyPageContent() {
         staleNodeGroups: staleSummary.staleNodeGroups,
         layoutPositions,
         manualPositions: positions,
+        trafficMode,
+        utilizationByRef,
       }),
-    [topology, extraNodes, extraEdges, expandedGroups, activeLayers, vlanFilter, hoveredId, selectedId, staleSummary, layoutPositions, positions],
+    [
+      topology,
+      extraNodes,
+      extraEdges,
+      expandedGroups,
+      activeLayers,
+      vlanFilter,
+      hoveredId,
+      selectedId,
+      staleSummary,
+      layoutPositions,
+      positions,
+      trafficMode,
+      utilizationByRef,
+    ],
   );
 
   const overCap = elements.nodes.length + elements.edges.length > RENDER_CAP;
@@ -295,6 +326,14 @@ function TopologyPageContent() {
         <h1 className="text-xl font-semibold">Topology</h1>
         <div className="flex flex-wrap items-center gap-2">
           <LayerToggleBar activeLayers={activeLayers} onToggle={toggleLayer} layerOrder={LAYER_ORDER} />
+          <Button
+            size="sm"
+            variant={trafficMode ? "primary" : "secondary"}
+            aria-pressed={trafficMode}
+            onClick={toggleTrafficMode}
+          >
+            Traffic
+          </Button>
           <VlanFilterInput ref={vlanInputRef} value={vlanFilter} onChange={setVlanFilter} />
           <Button
             size="sm"
