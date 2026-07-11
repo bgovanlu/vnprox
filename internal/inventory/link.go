@@ -1,8 +1,10 @@
 package inventory
 
 import (
+	"net"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // EdgeKind names a typed relationship between two entities
@@ -24,6 +26,12 @@ const (
 	// EdgeLldpAdjacent points from a physical NIC to a discovered LLDP
 	// neighbor.
 	EdgeLldpAdjacent EdgeKind = "lldp-adjacent"
+	// EdgeVtepPeer connects two underlay bridges/interfaces that own a
+	// vxlan/evpn zone's peer addresses — the VTEP tunnel mesh
+	// docs/features/sdn.md §1 draws for those zone types ("EVPN/VXLAN
+	// zones draw the VTEP mesh with tunnel endpoints and MTU
+	// annotations"). Added by T-401.
+	EdgeVtepPeer EdgeKind = "vtep-peer"
 )
 
 // Edge is a typed, directed relationship between two entity Refs, optionally
@@ -145,6 +153,42 @@ func linkAll(ents map[Ref]Entity) []Edge {
 		}
 	}
 
+	// VTEP mesh edges: for vxlan/evpn zones, every pair of the zone's peer
+	// addresses that resolves to a bridge/interface owning that address on
+	// some node gets a full-mesh "vtep-peer" edge between them (real VXLAN
+	// tunnels are unicast peer-to-peer, or route-reflected through EVPN's
+	// controller, but either way every pair of VTEPs needs reachability —
+	// docs/features/sdn.md §1: "EVPN/VXLAN zones draw the VTEP mesh with
+	// tunnel endpoints and MTU annotations"). badges carry the zone id and
+	// the zone's declared VNI MTU so the map can annotate the tunnel MTU
+	// inline, matching the VXLAN wizard's "underlay MTU - 50" math
+	// (docs/features/sdn.md §2).
+	for _, zone := range zoneByID {
+		if zone.Type != "vxlan" && zone.Type != "evpn" {
+			continue
+		}
+		var endpoints []Ref
+		seen := map[Ref]bool{}
+		for _, peer := range zone.Peers {
+			br := bridgeOwningAddress(bridges, peer)
+			if br == nil || seen[br.GetRef()] {
+				continue
+			}
+			seen[br.GetRef()] = true
+			endpoints = append(endpoints, br.GetRef())
+		}
+		sort.Slice(endpoints, func(i, j int) bool { return endpoints[i].String() < endpoints[j].String() })
+		badges := []string{"zone=" + zone.ID}
+		if zone.MTU != 0 {
+			badges = append(badges, "vniMtu="+strconv.Itoa(zone.MTU))
+		}
+		for i := 0; i < len(endpoints); i++ {
+			for j := i + 1; j < len(endpoints); j++ {
+				edges = append(edges, Edge{From: endpoints[i], To: endpoints[j], Kind: EdgeVtepPeer, Badges: badges})
+			}
+		}
+	}
+
 	// Guest NIC attachment: resolve to a plain bridge on the guest's node or,
 	// failing that, a cluster-scoped SDN VNet; propagate the effective VLAN.
 	for ref, e := range ents {
@@ -172,6 +216,31 @@ func linkAll(ents map[Ref]Entity) []Edge {
 		return edges[i].To.String() < edges[j].To.String()
 	})
 	return edges
+}
+
+// bridgeOwningAddress returns the bridge in bridges carrying addr (a bare
+// IP, as zone.Peers lists) among its declared Addresses (CIDR strings), or
+// nil if no bridge owns it. Used to anchor a vxlan/evpn zone's VTEP mesh
+// (peer addresses) onto the actual underlay bridge/interface entities the
+// map already renders, rather than introducing a new synthetic node kind
+// just to represent a tunnel endpoint.
+func bridgeOwningAddress(bridges []*Bridge, addr string) *Bridge {
+	want := net.ParseIP(addr)
+	if want == nil {
+		return nil
+	}
+	for _, b := range bridges {
+		for _, cidr := range b.Addresses {
+			host, _, ok := strings.Cut(cidr, "/")
+			if !ok {
+				host = cidr
+			}
+			if ip := net.ParseIP(host); ip != nil && ip.Equal(want) {
+				return b
+			}
+		}
+	}
+	return nil
 }
 
 // resolveGuestNic sets a guest NIC's BridgeOrVnet Ref and EffectiveVid.
