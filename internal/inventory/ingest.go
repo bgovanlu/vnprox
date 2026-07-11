@@ -522,9 +522,26 @@ func FromPVESDN(
 	return out
 }
 
+// FirewallObjects bundles one scope's alias/ipset/security-group
+// definitions (docs/features/firewall.md §2), fetched by the collector
+// alongside the scope's rules/options (see internal/collect's
+// pollFirewall). IPSetEntries and GroupRules are keyed by the
+// corresponding summary's Name — real PVE's list endpoints return names
+// only, with entries/rules fetched per-name separately. Groups/GroupRules
+// are only ever populated for the cluster scope (see FwGroup's doc
+// comment); a zero-value FirewallObjects is a valid "this scope reported
+// no objects" input.
+type FirewallObjects struct {
+	IPSetEntries map[string][]pve.FirewallIPSetEntry
+	GroupRules   map[string][]pve.FirewallRule
+	Aliases      []pve.FirewallAlias
+	IPSets       []pve.FirewallIPSetSummary
+	Groups       []pve.FirewallGroupSummary
+}
+
 // FromPVEFirewall maps a resolved firewall ruleset to an FwRuleset partial.
 // ref identifies the ruleset (scope-specific); rules are in PVE order.
-func FromPVEFirewall(ref Ref, scope FwScope, opts pve.FirewallOptions, rules []pve.FirewallRule) []Entity {
+func FromPVEFirewall(ref Ref, scope FwScope, opts pve.FirewallOptions, rules []pve.FirewallRule, objs FirewallObjects) []Entity {
 	rs := &FwRuleset{
 		Ref:        ref,
 		Scope:      scope,
@@ -549,12 +566,44 @@ func FromPVEFirewall(ref Ref, scope FwScope, opts pve.FirewallOptions, rules []p
 			Comment:   r.Comment,
 		})
 	}
-	// The ruleset entity merges two PVE responses (options + rules), so its
-	// raw source carries both.
+	for _, a := range objs.Aliases {
+		rs.Aliases = append(rs.Aliases, FwAlias{Name: a.Name, CIDR: a.CIDR, Comment: a.Comment})
+	}
+	for _, s := range objs.IPSets {
+		set := FwIPSet{Name: s.Name, Comment: s.Comment}
+		for _, e := range objs.IPSetEntries[s.Name] {
+			set.Entries = append(set.Entries, FwIPSetEntry{CIDR: e.CIDR, Comment: e.Comment, NoMatch: e.NoMatch})
+		}
+		rs.IPSets = append(rs.IPSets, set)
+	}
+	for _, g := range objs.Groups {
+		group := FwGroup{Name: g.Name, Comment: g.Comment}
+		for _, r := range objs.GroupRules[g.Name] {
+			group.Rules = append(group.Rules, FwRule{
+				Pos:       r.Pos,
+				Enabled:   r.Enabled,
+				Direction: strings.ToLower(r.Type),
+				Action:    r.Action,
+				Proto:     r.Proto,
+				Source:    r.Source,
+				Dest:      r.Dest,
+				Sport:     r.Sport,
+				Dport:     r.Dport,
+				Iface:     r.Iface,
+				Macro:     r.Macro,
+				Log:       r.Log,
+				Comment:   r.Comment,
+			})
+		}
+		rs.Groups = append(rs.Groups, group)
+	}
+	// The ruleset entity merges several PVE responses (options + rules +
+	// objects), so its raw source carries all of them.
 	setRaw(rs, prettyJSON(struct {
+		Objects FirewallObjects     `json:"objects,omitempty"`
 		Options pve.FirewallOptions `json:"options"`
 		Rules   []pve.FirewallRule  `json:"rules"`
-	}{opts, rules}))
+	}{Objects: objs, Options: opts, Rules: rules}))
 	return []Entity{rs}
 }
 

@@ -1,10 +1,4 @@
-import { PlaceholderPage } from "./PlaceholderPage";
-
-export function FirewallPage() {
-  return (
-    <PlaceholderPage
-      title="Firewall"
-      description="Cluster/node/guest rulesets and the rule builder land in a later task."
-    />
-  );
-}
+// The real implementation lives in src/firewall/ (T-501's read views) —
+// this file only wires it to the routed /firewall path App.tsx expects,
+// matching pages/GuestsPage.tsx's established per-route-file convention.
+export { FirewallPage } from "../firewall/FirewallPage";

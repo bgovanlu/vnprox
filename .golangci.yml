@@ -2,6 +2,7 @@ version: "2"
 linters:
   default: none
   enable:
+    - depguard
     - errcheck
     - govet
     - ineffassign
@@ -16,6 +17,56 @@ linters:
         - name: package-comments
         - name: error-strings
         - name: unreachable-code
+    # T-501: internal/fw is documented (its own doc.go) as a pure,
+    # I/O-free resolution engine — "operates only on the Snapshot value
+    # passed in ... does no I/O of its own" — because it is the exact
+    # substrate T-503's path simulator is specified to reuse, and a
+    # simulator whose core logic can reach the network/filesystem/a
+    # database is not the "pure over an inventory snapshot" library either
+    # task card requires. This rule is the acceptance-criterion-5 lint
+    # enforcement (package review alone is not durable against a later,
+    # unrelated change quietly adding an import); it only restricts this
+    # one package — no other package's import graph is affected. Only
+    # deny-listed here rather than turning on a package-wide allowlist:
+    # requiring an explicit allow list this small would need constant
+    # upkeep as unrelated stdlib packages get used (strings, sort, fmt,
+    # errors, ...), where the deny list only needs a new line if this
+    # package ever tries to import something that does I/O or reaches
+    # outside its own snapshot.
+    depguard:
+      rules:
+        fw-purity:
+          files:
+            - "**/internal/fw/**"
+          deny:
+            - pkg: net
+              desc: "internal/fw must stay pure (T-501): no network imports"
+            - pkg: net/http
+              desc: "internal/fw must stay pure (T-501): no network imports"
+            - pkg: os
+              desc: "internal/fw must stay pure (T-501): no OS/filesystem imports"
+            - pkg: os/exec
+              desc: "internal/fw must stay pure (T-501): no subprocess execution"
+            - pkg: io
+              desc: "internal/fw must stay pure (T-501): no I/O"
+            - pkg: database/sql
+              desc: "internal/fw must stay pure (T-501): no database access"
+            - pkg: github.com/bgovanlu/vnprox/internal/pve
+              desc: "internal/fw must stay pure (T-501): no direct PVE API client access — callers pass in a Snapshot"
+            - pkg: github.com/bgovanlu/vnprox/internal/pvemock
+              desc: "internal/fw must stay pure (T-501): no mock server access"
+            - pkg: github.com/bgovanlu/vnprox/internal/peer
+              desc: "internal/fw must stay pure (T-501): no peer/network access"
+            - pkg: github.com/bgovanlu/vnprox/internal/store
+              desc: "internal/fw must stay pure (T-501): no SQLite/app-store access"
+            - pkg: github.com/bgovanlu/vnprox/internal/host
+              desc: "internal/fw must stay pure (T-501): no host I/O access"
+            - pkg: github.com/bgovanlu/vnprox/internal/api
+              desc: "internal/fw must stay pure (T-501): no HTTP layer access (wrong dependency direction anyway)"
+            - pkg: github.com/bgovanlu/vnprox/internal/change
+              desc: "internal/fw must stay pure (T-501): no change-engine access (that package itself talks to PVE/host)"
+            - pkg: nhooyr.io/websocket
+              desc: "internal/fw must stay pure (T-501): no networking"
   exclusions:
     generated: lax
     paths:
