@@ -380,10 +380,26 @@ export interface GuestNicUpdateParams {
   linkDown?: boolean;
 }
 
-/** Every Params shape T-207's editors can produce. Ops this task doesn't
- * edit (SDN/firewall/IPAM) still round-trip through the drawer/review
- * screen — they just carry `Record<string, unknown>` params, since nothing
- * in this task ever needs to read a typed field off one. */
+/** internal/change.IpamAllocCreateParams (T-405's ipam.alloc.create op):
+ * target is the owning SdnSubnet Ref, cidr is typically a /32 (or /128)
+ * host route. */
+export interface IpamAllocCreateParams {
+  cidr: string;
+  hostname?: string;
+  mac?: string;
+  comment?: string;
+}
+
+/** internal/change.IpamAllocDeleteParams (T-405's ipam.alloc.delete op). */
+export interface IpamAllocDeleteParams {
+  cidr: string;
+}
+
+/** Every Params shape T-207's editors (plus T-405's ipam.alloc.* editor)
+ * can produce. Ops still not edited by name (SDN/firewall) still round-trip
+ * through the drawer/review screen — they just carry
+ * `Record<string, unknown>` params, since nothing needs to read a typed
+ * field off one yet. */
 export type OpParams =
   | IfaceUpdateParams
   | IfaceRawReplaceParams
@@ -399,6 +415,8 @@ export type OpParams =
   | VlanUpdateParams
   | VlanDeleteParams
   | GuestNicUpdateParams
+  | IpamAllocCreateParams
+  | IpamAllocDeleteParams
   | Record<string, unknown>;
 
 /** One changeset operation, the wire shape internal/change/op.go's Op
@@ -676,8 +694,96 @@ export interface SdnTree {
   generatedAt: number;
 }
 
+// --- IPAM (docs/api.md's /ipam routes; internal/ipam's Go types) ----------
+// Mirrors internal/ipam/types.go exactly — see that file's doc comments for
+// the non-obvious bits (Cell.state vs. Cell.confidence are related but
+// distinct axes; AllocationGrid is either a direct Cells render or, for a
+// subnet bigger than 256 addresses, a Blocks summary with Cells populated
+// only once a specific `?block=` is requested). Added by T-405 (not in the
+// original docs/api.md contract beyond the bare routes + one-line purpose;
+// documented in docs/api.md in this same change per docs/development.md's
+// definition-of-done #4).
+
+/** One row of GET /ipam/subnets. */
+export interface IpamSubnet {
+  cidr: string;
+  zone?: string;
+  vnet?: string;
+  gateway?: string;
+  /** Only set for a bridge-derived (non-SDN) subnet. */
+  node?: string;
+  source: "sdn" | "bridge";
+  readOnly?: boolean;
+  dhcpEnabled?: boolean;
+  total: number;
+  allocated: number;
+  observed: number;
+  conflicts: number;
+  utilization: number;
+}
+
+export interface IpamSubnetsResponse {
+  items: IpamSubnet[];
+  generatedAt: number;
+}
+
+/** One allocation-grid cell's render state
+ * (docs/features/ipam.md §2: "free / allocated / observed-unallocated /
+ * reserved / gateway / conflict"). */
+export type IpamCellState = "free" | "allocated" | "reserved" | "observed" | "gateway" | "conflict";
+
+/** The multi-source-merge confidence label
+ * (docs/features/ipam.md §1), independent of (but related to)
+ * IpamCellState — see internal/ipam/types.go's Cell doc comment. */
+export type IpamConfidence = "allocated" | "observed" | "both" | "conflict" | "";
+
+export interface IpamCell {
+  ip: string;
+  state: IpamCellState;
+  confidence?: IpamConfidence;
+  hostname?: string;
+  mac?: string;
+  vmid?: number;
+  guestRef?: string;
+  sources?: string[];
+}
+
+export interface IpamBlockSummary {
+  cidr: string;
+  total: number;
+  allocated: number;
+  observed: number;
+  conflicts: number;
+  utilization: number;
+}
+
+/** One conflict-detection health finding
+ * (docs/features/ipam.md §2: "Each conflict is a health finding with
+ * suggested resolution"). */
+export interface IpamConflict {
+  type: "duplicate_ip" | "observed_unallocated" | "allocated_dark";
+  severity: Severity;
+  ips: string[];
+  message: string;
+  suggestion: string;
+}
+
+/** GET /ipam/subnets/{cidr}/allocations response. */
+export interface IpamAllocationGrid {
+  cidr: string;
+  prefix: number;
+  total: number;
+  paged: boolean;
+  blocks?: IpamBlockSummary[];
+  block?: string;
+  cells?: IpamCell[];
+  conflicts: IpamConflict[];
+  readOnly?: boolean;
+  generatedAt: number;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
-// Snapshots, firewall/IPAM read views, the path simulator, metrics, and
+// Snapshots, firewall read views, the path simulator, metrics, and
 // blueprints all have routes defined in docs/api.md but no frontend
 // consumer yet — their request/response types land with the task that
 // first calls them (T-2xx). Add them here, not in a parallel file.

@@ -11,6 +11,7 @@ import type {
   BridgeUpdateParams,
   GuestNicUpdateParams,
   IfaceUpdateParams,
+  IpamAllocCreateParams,
   Op,
   VidRange,
   VlanCreateParams,
@@ -173,4 +174,20 @@ export function buildGuestNicUpdateOp(target: string, params: GuestNicUpdatePara
  * and per-guest results reported"). */
 export function buildBulkGuestNicOps(refs: string[], params: GuestNicUpdateParams): Op[] {
   return refs.map((ref) => buildGuestNicUpdateOp(ref, params));
+}
+
+/** T-405's ipam.alloc.create op: target is the owning SdnSubnet Ref
+ * ("sdn-subnet::<cidr>"), cidr is the address being reserved (host route,
+ * typically /32 or /128 — internal/change.IpamAllocCreateParams' doc
+ * comment). */
+export function buildIpamAllocCreateOp(subnetTarget: string, cidr: string, hostname?: string, mac?: string): Op {
+  const params: IpamAllocCreateParams = { cidr };
+  if (hostname) params.hostname = hostname;
+  if (mac) params.mac = mac;
+  return { op: "ipam.alloc.create", target: subnetTarget, params };
+}
+
+/** T-405's ipam.alloc.delete op. */
+export function buildIpamAllocDeleteOp(subnetTarget: string, cidr: string): Op {
+  return { op: "ipam.alloc.delete", target: subnetTarget, params: { cidr } };
 }
