@@ -70,6 +70,10 @@ func setupAuth(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*a
 		Audit:       auditRepo,
 		NewIdentity: identityFactory,
 		Logger:      logger,
+		// T-605: `[server] read_only = true` (docs/features/blueprints.md
+		// §3) forces every derived capability read-only, server-side, not
+		// just in the UI — see auth.Config.ReadOnly's doc comment.
+		ReadOnly: cfg.Server.ReadOnly,
 	})
 	if err != nil {
 		_ = db.Close()

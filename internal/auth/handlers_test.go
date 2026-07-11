@@ -378,6 +378,48 @@ func TestLoginLogoutMeCycle(t *testing.T) {
 	}
 }
 
+// --- read-only mode (T-605, docs/features/blueprints.md §3) ----------------
+
+// TestLogin_ReadOnlyConfigForcesWriteCapabilitiesFalse verifies that
+// `[server] read_only = true` (auth.Config.ReadOnly) zeroes every write
+// flag in the capabilities GET /auth/login and GET /auth/me report, even
+// for a user whose real PVE privileges grant full write access — the
+// config flag is a real, server-enforced override, not merely something
+// the frontend is trusted to respect.
+func TestLogin_ReadOnlyConfigForcesWriteCapabilitiesFalse(t *testing.T) {
+	factory := stubFactory(stubIdentity{
+		ticket: "tkt", csrf: "csrf-secret",
+		perms: pve.Permissions{"/": {"Sys.Audit": true, "Sys.Modify": true, "SDN.Audit": true, "SDN.Allocate": true, "VM.Config.Network": true}},
+		nodes: []string{"pve1", "pve2"},
+	})
+	svc := newTestService(t, factory, func(cfg *auth.Config) { cfg.ReadOnly = true })
+	ts := newTestServer(t, svc)
+
+	resp, err := http.Post(ts.URL+"/api/v1/auth/login", "application/json",
+		bytes.NewReader(loginBody(t, "root", "pw", "pam", "")))
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var body struct {
+		Caps map[string]auth.Capabilities `json:"caps"`
+	}
+	if decodeErr := json.NewDecoder(resp.Body).Decode(&body); decodeErr != nil {
+		t.Fatalf("decoding login response: %v", decodeErr)
+	}
+
+	for _, node := range []string{"pve1", "pve2"} {
+		c := body.Caps[node]
+		if !c.NetRead {
+			t.Errorf("caps[%s].NetRead = false, want true (read caps unaffected)", node)
+		}
+		if c.NetWrite || c.SDNWrite || c.FWWrite || c.GuestNet {
+			t.Errorf("caps[%s] = %+v, want every write flag false under read_only", node, c)
+		}
+	}
+}
+
 // --- rate limiting (T-105 acceptance criterion 4) --------------------------
 
 // doLoginFrom drives one POST /auth/login directly against r (bypassing a

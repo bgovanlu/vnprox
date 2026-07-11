@@ -5,6 +5,8 @@
 // doc comment on why this container/presentational split exists).
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSession } from "../api/useSession";
+import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
 import { FindingsList } from "../findings/FindingsList";
@@ -16,11 +18,19 @@ export function DriftFindingsPanel() {
   const setActiveId = useChangesetDrawerStore((s) => s.setActiveId);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { data: session } = useSession();
   const [fixingId, setFixingId] = useState<string | undefined>(undefined);
+  // POST /drift/{id}/fix creates a brand-new changeset regardless of any
+  // node it targets, so — like the onboarding walkthrough's own cluster-
+  // wide writes — it's gated on hasAnyCap rather than one specific node's
+  // capsForNode (T-605 read-only sweep: this button had no gating at all).
+  const canFix = hasAnyCap(session, "netWrite");
+  const fixDisabledReason = canFix ? undefined : missingCapTooltip(session, "", "netWrite");
 
   useDriftWsBridge();
 
   async function handleFix(id: string): Promise<void> {
+    if (!canFix) return;
     setFixingId(id);
     try {
       const changeset = await fixMutation.mutateAsync(id);
@@ -54,6 +64,7 @@ export function DriftFindingsPanel() {
       }))}
       onFix={(id) => { void handleFix(id); }}
       fixingId={fixingId}
+      fixDisabledReason={fixDisabledReason}
       emptyTitle="No drift detected"
       emptyDescription="The cluster's configuration is consistent across nodes."
     />

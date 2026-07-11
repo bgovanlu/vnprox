@@ -6,6 +6,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import type { BlueprintParamDef, BlueprintParamValue } from "../api/types";
+import { Tooltip } from "../components/Tooltip";
 import { defaultRawValue, validateParamForm } from "./paramValidation";
 import { useSuggestAddressMutation } from "./queries";
 
@@ -20,6 +21,12 @@ export interface ParamFormProps {
   onValidSubmit: (params: Record<string, BlueprintParamValue>) => void;
   submitLabel?: string;
   submitting?: boolean;
+  /** When set, the submit button is disabled and shows this as a tooltip —
+   * the capability-gating pattern every write affordance in this codebase
+   * uses (changesets/capabilities.ts's missingCapTooltip). BlueprintsPage
+   * computes this from the session's netWrite capability; ParamForm itself
+   * stays capability-agnostic. */
+  submitDisabledReason?: string;
 }
 
 function initialValues(params: BlueprintParamDef[]): Record<string, string> {
@@ -38,6 +45,7 @@ export function ParamForm({
   onValidSubmit,
   submitLabel = "Instantiate",
   submitting = false,
+  submitDisabledReason,
 }: ParamFormProps) {
   const [values, setValues] = useState<Record<string, string>>(() => initialValues(params));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -119,13 +127,17 @@ export function ParamForm({
         </div>
       ))}
 
-      <button
-        type="submit"
-        className="mt-2 rounded-md bg-accent-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-700 disabled:opacity-50"
-        disabled={submitting}
-      >
-        {submitting ? "Working…" : submitLabel}
-      </button>
+      <Tooltip content={submitDisabledReason}>
+        <span>
+          <button
+            type="submit"
+            className="mt-2 rounded-md bg-accent-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-700 disabled:opacity-50"
+            disabled={submitting || submitDisabledReason !== undefined}
+          >
+            {submitting ? "Working…" : submitLabel}
+          </button>
+        </span>
+      </Tooltip>
     </form>
   );
 }

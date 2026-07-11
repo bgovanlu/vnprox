@@ -62,3 +62,17 @@ export function missingCapTooltip(
     ? `You don't have ${CAP_LABELS[cap]} on ${node}.`
     : `You don't have ${CAP_LABELS[cap]} for this cluster-wide object.`;
 }
+
+/** True iff the session holds `cap` on at least one entry of its own `caps`
+ * map (including the "" cluster-wide entry, if present). For affordances
+ * that act cluster-wide in one call rather than against one specific node
+ * (T-605's onboarding walkthrough: confirming protected interfaces spans
+ * every node in one PUT; installing lldpd fans out to every peer from one
+ * POST) — mirrors NewEntityMenu's own "writableNodes.length === 0 -> hide"
+ * check, just as a disable-with-tooltip predicate instead of a visibility
+ * one, since a cluster-wide write affordance should always be gated
+ * disabled-with-tooltip, never hidden (docs/user-guide.md §5). */
+export function hasAnyCap(session: MeResponse | undefined, cap: keyof Capabilities): boolean {
+  if (!session) return false;
+  return Object.values(session.caps).some((caps) => caps[cap]);
+}
