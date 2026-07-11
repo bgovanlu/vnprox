@@ -1,0 +1,198 @@
+# sim-lab.yaml — T-504 fixture: a small 2-node cluster purpose-built for
+# the path simulator UI's E2E coverage (planning/tasks/phase-5.md T-504),
+# demonstrating both acceptance-criterion scenarios in one fixture rather
+# than editing three-node-vlan.yaml (widely shared by other tasks' e2e
+# specs) or firewall-scenarios.yaml (single-node, no cross-node L2 case):
+#
+#   - AC1 "why can't VM A reach VM B": vm-a and vm-c share pve1's vmbr0 at
+#     VLAN 100 — vm-c carries its own guest-scope DROP rule for tcp/80, so
+#     vm-a -> vm-c on tcp/80 is a clean deny with a blocking rule the UI
+#     can deep-link into (no address-restricted rule involved, so this
+#     also sidesteps T-503's documented guest-ip-unknown caveat rather than
+#     needing an indeterminate result for this particular scenario).
+#   - AC2 unreachable-VLAN: vm-b lives on pve2, whose vmbr0 is deliberately
+#     NOT VLAN-aware (bridge_vlan_aware omitted/false) while pve1's vmbr0
+#     is. vm-a (pve1, tag=100) -> vm-b (pve2, tag=100) trips
+#     internal/sim/l2.go's trunkCheck bridge_not_vlan_aware branch — a
+#     "VLAN case" fixture-producible without a bridge-vids restriction
+#     (which the pvemock fixture schema/renderer has no field for at all;
+#     Bridge.Vids in the resolved inventory is only ever populated from
+#     real host-netlink observation — internal/inventory/ingest.go — and
+#     this e2e harness runs host.NewReal() against whatever machine executes
+#     the test, never a fixture-backed host reader, so an empty/unrestricted
+#     Vids set is the only value achievable here regardless of what this
+#     YAML says; VlanAware, unlike Vids, IS carried straight from PVE's own
+#     `bridge_vlan_aware` network config — see FromPVENetwork in
+#     internal/inventory/ingest.go — so this mismatch is fully
+#     fixture-driven and deterministic).
+#   - AC5 trace-path: vm-a/vm-b/vm-c are all guest-nic-kind map entities,
+#     so "Trace path from/to here" (web/src/simulator/traceLink.ts) has
+#     real endpoints for guest->guest (vm-a/vm-c or vm-a/vm-b),
+#     guest->external (vm-a -> the WAN, pve1's vmbr0 has a gateway), and
+#     IP->guest (a literal IP typed as source, vm-a as the traced
+#     destination).
+cluster:
+  name: pve-sim-lab
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.20.0.11
+      online: true
+    - name: pve2
+      ip: 10.20.0.12
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 9c2f7a1e-4b3d-4a90-8e1a-6f0d2c5b8a17
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+        comments: "LACP to access switch"
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.20.0.11/24
+        gateway: 10.20.0.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        bridge_vlan_aware: true
+        comments: "VLAN-aware access bridge"
+    links:
+      eno1: {mac: "bc:24:11:20:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno2: {mac: "bc:24:11:20:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      bond0: {mac: "bc:24:11:20:00:01", link_up: true}
+      vmbr0: {mac: "bc:24:11:20:00:01", link_up: true}
+    qemu:
+      "300":
+        name: vm-a
+        status: running
+        config:
+          name: vm-a
+          cores: "1"
+          memory: "512"
+          net0: "virtio=BC:24:11:AA:20:01,bridge=vmbr0,tag=100,firewall=1"
+          ostype: l26
+        firewall:
+          enabled: true
+          rules: []
+      "301":
+        name: vm-c
+        status: running
+        config:
+          name: vm-c
+          cores: "1"
+          memory: "512"
+          net0: "virtio=BC:24:11:AA:20:02,bridge=vmbr0,tag=100,firewall=1"
+          ostype: l26
+        firewall:
+          enabled: true
+          rules:
+            - pos: 0
+              enabled: true
+              type: in
+              action: DROP
+              proto: tcp
+              dport: "80"
+              comment: "override: block http on this guest specifically"
+    lxc: {}
+    firewall:
+      enabled: true
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+  pve2:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.20.0.12/24
+        gateway: 10.20.0.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        bridge_vlan_aware: false
+        comments: "deliberately NOT VLAN-aware (AC2 fixture)"
+    links:
+      eno1: {mac: "bc:24:11:20:01:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno2: {mac: "bc:24:11:20:01:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      bond0: {mac: "bc:24:11:20:01:01", link_up: true}
+      vmbr0: {mac: "bc:24:11:20:01:01", link_up: true}
+    qemu: {}
+    lxc:
+      "302":
+        name: vm-b
+        status: running
+        config:
+          hostname: vm-b
+          cores: "1"
+          memory: "256"
+          net0: "name=eth0,bridge=vmbr0,tag=100,firewall=1"
+        firewall:
+          enabled: true
+          rules: []
+    firewall:
+      enabled: true
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: true
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+
+mess: []

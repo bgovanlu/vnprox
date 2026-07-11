@@ -50,5 +50,30 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    // T-504's own stack (simulator.spec.ts), additive: a second, distinct
+    // mock PVE + vnproxd pair on ports 18006/18007 serving
+    // testdata/clusters/sim-lab.yaml, purpose-built for the path
+    // simulator's AC1 (deny + firewall-editor deep link)/AC2
+    // (unreachable-VLAN map rendering)/AC5 (trace-path pre-fill) E2E
+    // coverage — see that fixture's own doc comment for why it's a
+    // separate cluster rather than reusing three-node-vlan.yaml (shared by
+    // other tasks' specs, and unable to express either scenario as-is) or
+    // firewall-scenarios.yaml (single-node, no cross-node L2 case for AC2).
+    {
+      command: "go run ./cmd/pvemock --addr 127.0.0.1:18006 --fixture testdata/clusters/sim-lab.yaml",
+      cwd: "..",
+      port: 18006,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command:
+        "sh -c 'rm -f var/dev-sim-vnprox.db && rm -rf var/dev-sim-host && exec go run ./cmd/vnproxd --config testdata/dev-sim.toml'",
+      cwd: "..",
+      url: "https://127.0.0.1:18007/api/v1/health",
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
 });

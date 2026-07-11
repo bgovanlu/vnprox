@@ -1,0 +1,36 @@
+# T-504's own dev config: identical shape to testdata/dev.toml, but on a
+# distinct port pair and pointed at testdata/clusters/sim-lab.yaml instead
+# of three-node-vlan.yaml, so web/e2e/simulator.spec.ts can run alongside
+# (not instead of) the existing e2e specs' own webServer pair without port
+# collisions or fixture cross-contamination — see that spec file's doc
+# comment and web/playwright.config.ts's webServer array.
+
+[server]
+listen = "127.0.0.1:18007"
+tls_cert = "testdata/certs/dev-cert.pem"
+tls_key = "testdata/certs/dev-key.pem"
+read_only = false
+confirm_timeout_default = 120
+
+[pve]
+api_url = "http://127.0.0.1:18006"
+token_file = "/etc/vnprox/keys/pve-token"
+dev_ticket_username = "root@pam"
+dev_ticket_password = "vnprox-mock"
+
+[safety]
+allow_dangerous_ops = false
+protected_path = "var/dev-sim-protected.json"
+dev_interfaces_dir = "var/dev-sim-host"
+
+[storage]
+db_path = "var/dev-sim-vnprox.db"
+session_key_file = "var/dev-sim-session.key"
+
+[peer]
+secret_path = "var/dev-sim-cluster.secret"
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"

@@ -10,6 +10,7 @@ import type { EntityNodeData } from "./EntityNode";
 import { computeHoverHighlight, computeVlanMatch, filterByLayers, isGuestGroupId } from "./projection";
 import { resolveEdgeUtilizationRef } from "./trafficMode";
 import type { XYPosition } from "./layout";
+import type { PathHighlight } from "../simulator/pathHighlight";
 
 export interface ToFlowElementsParams {
   nodes: TopologyNode[];
@@ -42,6 +43,15 @@ export interface ToFlowElementsParams {
    * colors, so the paint mode itself is always visually distinguishable
    * once toggled on. */
   utilizationByRef?: ReadonlyMap<string, number>;
+  /** Path simulator overlay (T-504, docs/features/firewall.md §5's "the
+   * hop-by-hop path rendered on the topology map"): paints the traced
+   * path's nodes/edges with the verdict's color and marks the blocking
+   * point / missing-link edge distinctly. Reuses this same "highlight a
+   * specific path with a status color" mechanism the hover chain-highlight
+   * above already established, rather than a second overlay system —
+   * see web/src/simulator/pathHighlight.ts for how hops become node/edge
+   * id sets. undefined (the default) leaves every node/edge unaffected. */
+  pathHighlight?: PathHighlight;
 }
 
 export interface FlowElements {
@@ -49,7 +59,10 @@ export interface FlowElements {
   edges: FlowEdge<EntityEdgeData, "entity">[];
 }
 
-function edgeId(e: TopologyEdge): string {
+/** The React Flow edge id convention this module and the path simulator's
+ * hop->edge matching (web/src/simulator/pathHighlight.ts) both rely on —
+ * exported so the latter never has to reinvent or drift from it. */
+export function edgeId(e: TopologyEdge): string {
   return `${e.from}=>${e.to}::${e.kind}`;
 }
 
@@ -69,6 +82,7 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
     manualPositions,
     trafficMode = false,
     utilizationByRef,
+    pathHighlight,
   } = params;
 
   // Expanded guest-group pills are superseded by their synthesized members:
@@ -90,11 +104,25 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
   const flowNodes: FlowNode<EntityNodeData, "entity">[] = visibleNodes.map((n) => {
     const position = manualPositions[n.id] ?? layoutPositions.get(n.id) ?? { x: 0, y: 0 };
     const highlighted = hoverSet ? hoverSet.has(n.id) : false;
+    const onPath = pathHighlight?.nodeIds.has(n.id) ?? false;
+    const isMissing = pathHighlight?.missingNodeIds.has(n.id) ?? false;
+    const isBlocking = pathHighlight?.blockingNodeId === n.id;
     return {
       id: n.id,
       type: "entity",
       position,
       selected: n.id === selectedId,
+      // A reasonable placeholder box (see EntityNode.tsx's own `minWidth:
+      // 140` and typical badge-row height) so React Flow considers the
+      // node "measured" immediately (@xyflow/system's nodeHasDimensions
+      // accepts initialWidth/initialHeight as a fallback ahead of its own
+      // ResizeObserver-driven `measured` value) rather than rendering it
+      // `visibility: hidden` until a real measurement arrives — which, in
+      // at least one observed headless-browser environment, never fires
+      // at all (see this task's report). A real measurement, when it does
+      // arrive, still overrides this via `measured`.
+      initialWidth: 160,
+      initialHeight: 64,
       data: {
         label: n.label,
         kind: n.kind,
@@ -105,6 +133,8 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
         highlighted,
         isGuestGroup: isGuestGroupId(n.id),
         collapsedCount: n.collapsedCount,
+        simVerdict: onPath || isMissing ? pathHighlight?.verdict : undefined,
+        simRole: isMissing ? "missing" : isBlocking ? "blocking" : onPath ? "path" : undefined,
       },
     };
   });
@@ -115,6 +145,7 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
       trafficMode && utilizationByRef
         ? resolveEdgeUtilizationRef(e.from, e.to, (ref) => nodesById.get(ref)?.kind, utilizationByRef)
         : undefined;
+    const onPathEdge = pathHighlight?.edgeIds.has(edgeId(e)) ?? false;
     return {
       id: edgeId(e),
       source: e.from,
@@ -127,6 +158,7 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
         highlighted,
         trafficMode,
         utilizationPct: utilizationRef !== undefined ? utilizationByRef?.get(utilizationRef) : undefined,
+        simVerdict: onPathEdge ? pathHighlight?.verdict : undefined,
       },
     };
   });

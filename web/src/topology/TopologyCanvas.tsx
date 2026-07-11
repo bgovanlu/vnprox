@@ -14,6 +14,11 @@ export interface TopologyCanvasProps {
   onNodeHover: (id: string | undefined) => void;
   onNodeDragStop: (id: string, position: XYPosition) => void;
   onPaneClick: () => void;
+  /** Right-click on a node (T-504's "Trace path" map action, invoked
+   * alongside the inspector's own quick action). `(clientX, clientY)` are
+   * viewport coordinates, for positioning a context menu at the pointer.
+   * Optional so every other TopologyCanvas call site is unaffected. */
+  onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
 }
 
 /**
@@ -23,7 +28,14 @@ export interface TopologyCanvasProps {
  * logic lives in projection.ts/TopologyPage, not here, so this component
  * stays a straightforward React Flow wrapper.
  */
-export function TopologyCanvas({ elements, onNodeClick, onNodeHover, onNodeDragStop, onPaneClick }: TopologyCanvasProps) {
+export function TopologyCanvas({
+  elements,
+  onNodeClick,
+  onNodeHover,
+  onNodeDragStop,
+  onPaneClick,
+  onNodeContextMenu,
+}: TopologyCanvasProps) {
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_evt, node) => {
       onNodeClick(node.id);
@@ -45,6 +57,14 @@ export function TopologyCanvas({ elements, onNodeClick, onNodeHover, onNodeDragS
     },
     [onNodeDragStop],
   );
+  const handleContextMenu: NodeMouseHandler = useCallback(
+    (evt, node) => {
+      if (!onNodeContextMenu) return;
+      evt.preventDefault();
+      onNodeContextMenu(node.id, evt.clientX, evt.clientY);
+    },
+    [onNodeContextMenu],
+  );
 
   return (
     <ReactFlow
@@ -62,6 +82,7 @@ export function TopologyCanvas({ elements, onNodeClick, onNodeHover, onNodeDragS
       onNodeMouseEnter={handleMouseEnter}
       onNodeMouseLeave={handleMouseLeave}
       onNodeDragStop={handleDragStop}
+      onNodeContextMenu={handleContextMenu}
       onPaneClick={onPaneClick}
       minZoom={0.05}
       maxZoom={2}
