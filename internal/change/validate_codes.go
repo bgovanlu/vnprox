@@ -99,6 +99,13 @@ const (
 	codeAdvisoryBridgeComment  = "advisory.bridge_missing_comment"
 	codeAdvisorySingleSlave    = "advisory.bond_single_slave"
 	codeAdvisoryVxlanMTU       = "advisory.vxlan_mtu_no_headroom"
+	// codeAdvisoryDHCPRangeOverlap is T-406 acceptance criterion 4: a
+	// staged/updated sdn.subnet DHCP range that overlaps one or more
+	// existing IPAM allocations warns (never blocks — an operator may
+	// deliberately shrink live allocations out of the pool later, or the
+	// overlap may be a false alarm against a stale allocation), listing
+	// the specific overlapping addresses in the message.
+	codeAdvisoryDHCPRangeOverlap = "advisory.dhcp_range_overlap"
 
 	// --- raw file replace guard (T-208's iface.raw.replace) -------------
 	// These are produced outside the classed pipeline above, by Service's
