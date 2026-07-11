@@ -676,6 +676,87 @@ export interface SdnTree {
   generatedAt: number;
 }
 
+// --- EVPN/BGP observability (docs/api.md; GET /sdn/evpn/status) -----------
+// Mirrors internal/evpn/types.go's Status/NodeStatus/Peer/VNI/
+// ExitNodeHealth/Finding exactly — see that file's doc comments and
+// docs/api.md's `GET /sdn/evpn/status` row for the non-obvious bits
+// (frrInstalled=false is the clean "no EVPN" case, distinct from `error`
+// being set). Added by T-404.
+
+/** One BGP/EVPN peering session's detail — the peering matrix's per-cell
+ * data and the session detail panel's content. */
+export interface EvpnPeer {
+  peerAddr: string;
+  peerNode?: string;
+  addressFamily?: string;
+  /** FRR's own FSM vocabulary: "Idle" | "Connect" | "Active" | "OpenSent" |
+   * "OpenConfirm" | "Established", kept as a plain string per this file's
+   * open-ended-server-enum convention (see SdnNodeStatus.status). */
+  state: string;
+  /** FRR's parenthetical qualifier for a down session when present (e.g.
+   * "Idle (Admin)" -> state:"Idle", stateReason:"Admin") — the closest
+   * thing FRR's summary JSON has to a "last error". */
+  stateReason?: string;
+  remoteAs?: number;
+  pfxRcd?: number;
+  pfxSnt?: number;
+  uptimeSecs?: number;
+  flapTransitions?: number;
+}
+
+/** One EVPN VNI observed on a node. */
+export interface EvpnVni {
+  vni: number;
+  type: string; // "L2" | "L3"
+  vxlanIf?: string;
+  tenantVrf?: string;
+  numMacs?: number;
+  numArpNd?: number;
+}
+
+/** One cluster node's FRR observation. frrInstalled=false (peers/vnis
+ * empty, error unset) is the documented clean "no EVPN" case
+ * (docs/features/sdn.md §3) — distinct from `error` being set, a real
+ * read/parse failure on a node that does run FRR. */
+export interface EvpnNodeStatus {
+  node: string;
+  frrInstalled: boolean;
+  routerId?: string;
+  asn?: number;
+  peers: EvpnPeer[];
+  vnis: EvpnVni[];
+  error?: string;
+}
+
+/** One EVPN zone exit node's derived health. */
+export interface EvpnExitNodeHealth {
+  zone: string;
+  node: string;
+  healthy: boolean;
+  detail?: string;
+}
+
+/** A flapping-session health finding (docs/features/sdn.md §3: "Flapping
+ * sessions raise a health finding"). */
+export interface EvpnFinding {
+  id: string;
+  code: string;
+  severity: Severity;
+  node: string;
+  peerAddr: string;
+  detail: string;
+}
+
+/** GET /sdn/evpn/status response. */
+export interface EvpnStatus {
+  nodes: EvpnNodeStatus[];
+  exitNodes: EvpnExitNodeHealth[];
+  findings: EvpnFinding[];
+  generatedAt: number;
+  partial?: boolean;
+  failedNodes?: string[];
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots, firewall/IPAM read views, the path simulator, metrics, and
 // blueprints all have routes defined in docs/api.md but no frontend
