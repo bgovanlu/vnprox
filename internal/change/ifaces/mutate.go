@@ -41,9 +41,28 @@ func Mutate(f *host.File, op Op, changesetID string) error {
 		return mutateVlanUpdate(f, o, nl)
 	case VlanDelete:
 		return mutateVlanDelete(f, o, nl)
+	case IfaceRawReplace:
+		return mutateIfaceRawReplace(f, o)
 	default:
 		return fmt.Errorf("ifaces: mutate: unsupported op %T", op)
 	}
+}
+
+// mutateIfaceRawReplace re-parses o.Content into a fresh AST and replaces
+// f's Entries wholesale — the one op in this package that does not edit f
+// in place. Render()ing f afterward reproduces o.Content byte-for-byte
+// (host.File's lossless-render guarantee for an unmutated parse), so this
+// is what makes DiffChangeset's "before vs. after Render()" comparison
+// yield a correct full-file diff, and what makes computeStagedFile's
+// generic parse->MutateAll->Render pipeline (internal/change/apply_exec.go)
+// stage exactly o.Content with no special-casing needed there.
+func mutateIfaceRawReplace(f *host.File, o IfaceRawReplace) error {
+	nf, err := host.ParseInterfaces([]byte(o.Content))
+	if err != nil {
+		return fmt.Errorf("ifaces: iface.raw.replace: parsing replacement content: %w", err)
+	}
+	f.Entries = nf.Entries
+	return nil
 }
 
 // MutateAll applies ops to f in order, stopping at the first error. It is a

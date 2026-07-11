@@ -233,6 +233,7 @@ export interface LayoutResponse {
  * values (still valid on the wire) don't need a cast. */
 export type OpType =
   | "iface.update"
+  | "iface.raw.replace"
   | "bond.create"
   | "bond.update"
   | "bond.delete"
@@ -293,6 +294,15 @@ export interface IfaceUpdateParams {
   addresses?: string[];
   gateway?: string;
   autostart?: boolean;
+}
+
+/** T-208's raw editor save op: params = the node's full new file content,
+ * plus the sha256 read at editor-open time (the hash-conflict guard —
+ * internal/change.IfaceRawReplaceParams). `target` is a `node:<n>:<n>` Ref
+ * (the whole file, not one entity — see rawEditor/rawEditorOps.ts). */
+export interface IfaceRawReplaceParams {
+  content: string;
+  baseHash?: string;
 }
 
 export interface BondCreateParams {
@@ -376,6 +386,7 @@ export interface GuestNicUpdateParams {
  * in this task ever needs to read a typed field off one. */
 export type OpParams =
   | IfaceUpdateParams
+  | IfaceRawReplaceParams
   | BondCreateParams
   | BondUpdateParams
   | BondDeleteParams

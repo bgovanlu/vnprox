@@ -83,6 +83,14 @@ func validDHCPRange(s string) bool {
 
 // schemaValidate is validator class 1: per-op types/ranges/enums/syntax,
 // independent of the inventory snapshot or any other op in the changeset.
+//
+// Note: the "iface.raw.replace must be exclusive on its node" check lives
+// in validate_raw.go's rawReplaceExclusiveFindings instead of here, even
+// though it is schema-shaped (pure, no snapshot needed) — it must run
+// against the *pre-expansion* ops Service.validate receives, before
+// expandRawReplaceOps injects that op's own synthesized delta (which also
+// targets the same node and would otherwise trip this same check against
+// itself).
 func schemaValidate(ops []Op) []Finding {
 	var out []Finding
 	for _, op := range ops {
@@ -100,6 +108,13 @@ func schemaValidateOp(op Op) []Finding {
 		schemaMTUPtr(op, p.MTU, ref, &out)
 		schemaAddressesPtr(p.Addresses, ref, &out)
 		schemaIPPtr(p.Gateway, ref, &out)
+
+	case *IfaceRawReplaceParams:
+		// Content's syntax is checked by Service.expandRawReplaceOps
+		// (validate_raw.go) before this pipeline runs — a parse failure
+		// there produces a raw.parse_error finding directly, since it
+		// needs host.ParseInterfaces's line-precise error, not a schema
+		// rule. Nothing further to check here structurally.
 
 	case *BondCreateParams:
 		if p.Mode == "" {

@@ -57,6 +57,8 @@ func summaryText(op Op) string {
 		return fmt.Sprintf("Update VLAN %s", o.Target.ID)
 	case VlanDelete:
 		return fmt.Sprintf("Delete VLAN %s", o.Target.ID)
+	case IfaceRawReplace:
+		return fmt.Sprintf("Replace /etc/network/interfaces on %s (raw edit, %d bytes)", o.Target.Node, len(o.Content))
 	default:
 		return fmt.Sprintf("%s %s", op.Kind(), op.Ref().ID)
 	}

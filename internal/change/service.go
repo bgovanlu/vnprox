@@ -299,7 +299,7 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 		ops = []Op{}
 	}
 	nowUnix := s.now().Unix()
-	findings := ValidateWithSafety(ops, s.inventorySnapshot(), s.safetyOptions())
+	findings := s.validate(ctx, ops)
 	c := Changeset{
 		ID: store.NewULID(), Title: title, Author: author, Status: StatusDraft,
 		Ops: ops, Findings: findings, CreatedAt: nowUnix, UpdatedAt: nowUnix,
@@ -346,7 +346,7 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 		ops = []Op{}
 	}
 	c.Ops = ops
-	findings := ValidateWithSafety(ops, s.inventorySnapshot(), s.safetyOptions())
+	findings := s.validate(ctx, ops)
 	c.Findings = findings
 	if title != nil {
 		c.Title = *title
@@ -413,7 +413,7 @@ func (s *Service) Validate(ctx context.Context, id, author string) (Changeset, e
 		return Changeset{}, &ErrIllegalTransition{From: c.Status, To: StatusValidated}
 	}
 
-	findings := ValidateWithSafety(c.Ops, s.inventorySnapshot(), s.safetyOptions())
+	findings := s.validate(ctx, c.Ops)
 	c.Findings = findings
 	clean := !hasError(findings)
 	prevStatus := c.Status
