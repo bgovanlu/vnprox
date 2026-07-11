@@ -112,6 +112,17 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
       type: "entity",
       position,
       selected: n.id === selectedId,
+      // A reasonable placeholder box (see EntityNode.tsx's own `minWidth:
+      // 140` and typical badge-row height) so React Flow considers the
+      // node "measured" immediately (@xyflow/system's nodeHasDimensions
+      // accepts initialWidth/initialHeight as a fallback ahead of its own
+      // ResizeObserver-driven `measured` value) rather than rendering it
+      // `visibility: hidden` until a real measurement arrives — which, in
+      // at least one observed headless-browser environment, never fires
+      // at all (see this task's report). A real measurement, when it does
+      // arrive, still overrides this via `measured`.
+      initialWidth: 160,
+      initialHeight: 64,
       data: {
         label: n.label,
         kind: n.kind,

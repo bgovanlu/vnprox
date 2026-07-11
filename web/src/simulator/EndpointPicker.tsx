@@ -131,8 +131,16 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
                 }}
                 className="w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700"
               />
+              {/* aria-label distinguishes this results list from the map's own
+                  node buttons (which share the same "<guest>/<nic>" text) so
+                  a query can unambiguously target a search result vs. the
+                  topology canvas rendered elsewhere on the page (see
+                  SimulatorPage.tsx's embedded map). */}
               {query.trim() !== "" && (
-                <ul className="max-h-40 overflow-y-auto rounded border border-slate-200 text-sm dark:border-slate-700">
+                <ul
+                  aria-label={`${label} guest NIC results`}
+                  className="max-h-40 overflow-y-auto rounded border border-slate-200 text-sm dark:border-slate-700"
+                >
                   {isFetching && <li className="px-2 py-1 text-slate-400">Searching…</li>}
                   {!isFetching && results.length === 0 && (
                     <li className="px-2 py-1 text-slate-400">No matching guest NICs.</li>

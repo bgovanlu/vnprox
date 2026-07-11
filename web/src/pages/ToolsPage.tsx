@@ -32,8 +32,9 @@ export function ToolsPage() {
         <div>
           <h1 className="text-xl font-semibold">Tools</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Raw <code>/etc/network/interfaces</code> editor. Saving still goes through the normal changeset
-            review/apply flow — this is a different way to author the same change, not a bypass of it.
+            Path simulator, the raw <code>/etc/network/interfaces</code> editor, drift findings, MAC/FDB search, and
+            the firewall log viewer. The node picker below applies to the raw editor only — saving there still goes
+            through the normal changeset review/apply flow, never a bypass.
           </p>
         </div>
         {nodes.length > 0 && (

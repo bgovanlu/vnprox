@@ -31,10 +31,20 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     // it ever reaches these window listeners (see the item button's and
     // the menu container's own onClick/onContextMenu below) — only a
     // genuine outside click/right-click reaches here.
-    window.addEventListener("click", handleOutside);
-    window.addEventListener("contextmenu", handleOutside);
+    //
+    // Attaching is deferred to the next macrotask: the right-click that
+    // *opens* this menu is still the current native "contextmenu" event's
+    // dispatch when this effect first runs (React commits the state update
+    // that renders this component before that dispatch has necessarily
+    // finished bubbling to `window`); attaching synchronously let that same
+    // event immediately close the menu it had just opened.
+    const timer = setTimeout(() => {
+      window.addEventListener("click", handleOutside);
+      window.addEventListener("contextmenu", handleOutside);
+    }, 0);
     window.addEventListener("keydown", handleKey);
     return () => {
+      clearTimeout(timer);
       window.removeEventListener("click", handleOutside);
       window.removeEventListener("contextmenu", handleOutside);
       window.removeEventListener("keydown", handleKey);
