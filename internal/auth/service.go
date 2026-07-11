@@ -51,6 +51,21 @@ type Config struct {
 	HardTimeout              time.Duration
 	CapRefreshInterval       time.Duration
 	TicketRenewCheckInterval time.Duration
+	// ReadOnly mirrors `[server].read_only` (docs/features/blueprints.md §3:
+	// "Read-only mode toggle — admins can run vnprox observe-only ... until
+	// they trust it; all write UI renders disabled with explanatory
+	// tooltips"). When true, every Capabilities value this package derives
+	// (at login and at each hourly refresh — see deriveCapabilities) has
+	// every write flag forced false regardless of the user's actual PVE
+	// privileges. Capabilities is both what GET /auth/me reports to the UI
+	// *and* what every mutating route's RequireCap middleware gates on
+	// (docs/api.md's routes all check these same flags), so this makes the
+	// config flag a real, server-enforced observe-only mode rather than a
+	// UI-only cosmetic — PVE's own ACL check on the user's ticket remains
+	// the underlying, authoritative enforcement either way (docs/
+	// security.md's "Authorization" section: this package's flags are
+	// always a secondary, vnprox-enforced UX/safety layer, never primary).
+	ReadOnly bool
 }
 
 // Service implements the login/session/CSRF/capability machinery described
@@ -70,6 +85,7 @@ type Service struct {
 	hardTimeout   time.Duration
 	capRefresh    time.Duration
 	renewInterval time.Duration
+	readOnly      bool
 	mu            sync.Mutex
 }
 
@@ -135,6 +151,7 @@ func NewService(cfg Config) (*Service, error) {
 		now:           now,
 		log:           logger,
 		live:          make(map[string]*liveSession),
+		readOnly:      cfg.ReadOnly,
 	}, nil
 }
 
