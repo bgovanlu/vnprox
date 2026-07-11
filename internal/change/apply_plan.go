@@ -20,6 +20,14 @@ const (
 	// StepSDNApply applies pending cluster SDN config (PUT /cluster/sdn),
 	// always last (docs/data-model.md §3).
 	StepSDNApply StepKind = "sdn_apply"
+	// StepIpamAlloc realizes one ipam.alloc.create/delete op (T-405): a
+	// cluster-scope PVE IPAM plugin write, category (1) in
+	// docs/data-model.md §3's ordering — emitted before any per-node file
+	// step, one step per op (unlike the grouped-by-node file steps, IPAM
+	// writes have no natural per-node grouping and no inter-op ordering
+	// requirement, so each op gets its own step for a precise per-op apply
+	// log entry).
+	StepIpamAlloc StepKind = "ipam_alloc"
 )
 
 // nodeFileOpTypes is the subset of the v1 op vocabulary that mutates a node's
@@ -75,11 +83,12 @@ type Plan struct {
 // multi-node case.
 //
 // It returns *ErrUnsupportedOp for any op the T-205 executor cannot run yet
-// (guest/SDN-write/fw/ipam families), so an un-executable changeset is
-// refused before any mutation rather than partially applied.
+// (guest/SDN-write/fw families), so an un-executable changeset is refused
+// before any mutation rather than partially applied.
 func BuildPlan(ops []Op) (Plan, error) {
 	var nodeOrder []string
 	byNode := map[string][]int{}
+	var ipamSteps []Step
 	sdnApply := false
 
 	for i, op := range ops {
@@ -90,6 +99,18 @@ func BuildPlan(ops []Op) (Plan, error) {
 				nodeOrder = append(nodeOrder, node)
 			}
 			byNode[node] = append(byNode[node], i)
+		case op.Type == OpIpamAllocCreate:
+			ipamSteps = append(ipamSteps, Step{
+				Kind:    StepIpamAlloc,
+				OpIdx:   []int{i},
+				Summary: fmt.Sprintf("Reserve %s in subnet %s", allocCIDR(op), op.Target.ID),
+			})
+		case op.Type == OpIpamAllocDelete:
+			ipamSteps = append(ipamSteps, Step{
+				Kind:    StepIpamAlloc,
+				OpIdx:   []int{i},
+				Summary: fmt.Sprintf("Release %s in subnet %s", allocCIDR(op), op.Target.ID),
+			})
 		case op.Type == OpSdnApply:
 			sdnApply = true
 		default:
@@ -97,7 +118,10 @@ func BuildPlan(ops []Op) (Plan, error) {
 		}
 	}
 
-	var steps []Step
+	// Category (1) cluster-scope PVE API calls (ipam.alloc.*) precede
+	// category (2)/(3) per-node file staging/reload, per docs/data-model.md
+	// §3's ordering.
+	steps := append([]Step(nil), ipamSteps...)
 	for _, node := range nodeOrder {
 		idxs := byNode[node]
 		steps = append(steps,
@@ -122,6 +146,20 @@ func BuildPlan(ops []Op) (Plan, error) {
 	}
 
 	return Plan{Steps: steps}, nil
+}
+
+// allocCIDR returns op's ipam.alloc.{create,delete} CIDR for a step summary,
+// or "?" if op's params are unexpectedly not one of those two types (never
+// happens for a caller that only reaches here via the two cases above).
+func allocCIDR(op Op) string {
+	switch p := op.Params.(type) {
+	case *IpamAllocCreateParams:
+		return p.CIDR
+	case *IpamAllocDeleteParams:
+		return p.CIDR
+	default:
+		return "?"
+	}
 }
 
 // affectedNodes returns, in first-appearance order, every node the plan's

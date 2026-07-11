@@ -65,15 +65,31 @@ type NodeAgent interface {
 // *pve.Client (auth.Service.PVEClientFor), so PVE authorizes every write as
 // the logged-in operator.
 //
-// T-205's executable cluster-scope step is sdn.apply; the guest/SDN-write/fw/
-// ipam op families need their own pve.Client write+task methods (a T-101/
-// follow-up surface) before the planner will emit steps for them — see
-// plan.go's supportedOpTypes and the T-205 report's residual-risk list.
+// T-205's executable cluster-scope step is sdn.apply; T-405 adds the ipam
+// family (AllocateIPAMAddress/ReleaseIPAMAddress) below. The guest/SDN-write/
+// fw op families still need their own pve.Client write+task methods (a
+// T-101/follow-up surface) before the planner will emit steps for them —
+// see plan.go's supportedOpTypes and the T-205 report's residual-risk list.
 type PVEGateway interface {
 	// ApplySDN applies all pending cluster SDN config (PUT /cluster/sdn) and
 	// blocks until the resulting task reaches a terminal state, returning a
 	// non-nil error if the task fails or times out.
 	ApplySDN(ctx context.Context) error
+
+	// AllocateIPAMAddress reserves an address inside vnet's IPAM (T-405's
+	// ipam.alloc.create op — docs/features/ipam.md §3). Real PVE resolves
+	// which configured IPAM plugin instance backs vnet server-side, so this
+	// method (like ReleaseIPAMAddress) is vnet-scoped, not
+	// ipam-instance-scoped. subnetCIDR is the op's target subnet (the
+	// allocation's owning subnet, docs/data-model.md's IpAllocation ->
+	// SdnSubnet relation) — passed through so the created IPAM entry
+	// records which subnet it belongs to (internal/ipam's per-subnet
+	// bucketing keys off exactly this field).
+	AllocateIPAMAddress(ctx context.Context, vnet, subnetCIDR string, alloc IpamAllocCreateParams) error
+
+	// ReleaseIPAMAddress releases cidr from vnet's IPAM (T-405's
+	// ipam.alloc.delete op). subnetCIDR: see AllocateIPAMAddress.
+	ReleaseIPAMAddress(ctx context.Context, vnet, subnetCIDR, cidr string) error
 }
 
 // NodeTimerAgent is Service's seam onto T-304's local-timer protocol

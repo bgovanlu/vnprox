@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -235,6 +236,37 @@ func (g *pveSDNGateway) ApplySDN(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// AllocateIPAMAddress realizes T-405's ipam.alloc.create op: PVE's IPAM
+// write is a synchronous API call (no task), unlike ApplySDN above.
+// subnetCIDR is recorded on the created entry so internal/ipam's
+// per-subnet bucketing (which keys off exactly this field) finds it.
+func (g *pveSDNGateway) AllocateIPAMAddress(ctx context.Context, vnet, subnetCIDR string, alloc change.IpamAllocCreateParams) error {
+	return g.client.CreateIPAMAllocation(ctx, vnet, pve.IPAMAllocation{
+		IP:       allocHostAddr(alloc.CIDR),
+		MAC:      alloc.MAC,
+		Hostname: alloc.Hostname,
+		Subnet:   subnetCIDR,
+	})
+}
+
+// ReleaseIPAMAddress realizes T-405's ipam.alloc.delete op.
+func (g *pveSDNGateway) ReleaseIPAMAddress(ctx context.Context, vnet, subnetCIDR, cidr string) error {
+	return g.client.DeleteIPAMAllocation(ctx, vnet, allocHostAddr(cidr), subnetCIDR)
+}
+
+// allocHostAddr reduces an ipam.alloc op's CIDR (docs/data-model.md §3:
+// "typically a /32 or /128 host route") to the bare host address PVE's
+// IPAM plugin API expects. cidr that fails to parse as a CIDR (already a
+// bare address, or malformed — schema validation already rejects the
+// latter before apply ever reaches here) is passed through unchanged.
+func allocHostAddr(cidr string) string {
+	ip, _, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return cidr
+	}
+	return ip.String()
 }
 
 // upidNode extracts the node segment from a PVE UPID

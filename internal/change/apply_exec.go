@@ -7,6 +7,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/change/ifaces"
 	"github.com/bgovanlu/vnprox/internal/host"
+	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
 // executor runs one apply attempt for a changeset and, on any step failure,
@@ -121,9 +122,50 @@ func (e *executor) execStep(ctx context.Context, st Step) error {
 			return fmt.Errorf("no PVE gateway available for sdn.apply (no user session)")
 		}
 		return e.pveGW.ApplySDN(ctx)
+	case StepIpamAlloc:
+		if e.pveGW == nil {
+			return fmt.Errorf("no PVE gateway available for ipam.alloc (no user session)")
+		}
+		return e.execIpamAlloc(ctx, st)
 	default:
 		return fmt.Errorf("unknown step kind %q", st.Kind)
 	}
+}
+
+// execIpamAlloc realizes one ipam.alloc.create/delete op's step: it
+// resolves the owning vnet from the target subnet's inventory entity (the
+// op only carries the subnet's CIDR, per params_ipam.go's doc comment —
+// PVEGateway's IPAM methods are vnet-scoped, mirroring real PVE's own
+// vnet-scoped IPAM write route) and dispatches to the matching PVEGateway
+// method.
+func (e *executor) execIpamAlloc(ctx context.Context, st Step) error {
+	op := e.cs.Ops[st.OpIdx[0]]
+	vnet, err := e.svc.subnetVnet(op.Target)
+	if err != nil {
+		return err
+	}
+	switch p := op.Params.(type) {
+	case *IpamAllocCreateParams:
+		return e.pveGW.AllocateIPAMAddress(ctx, vnet, op.Target.ID, *p)
+	case *IpamAllocDeleteParams:
+		return e.pveGW.ReleaseIPAMAddress(ctx, vnet, op.Target.ID, p.CIDR)
+	default:
+		return fmt.Errorf("change: step %q has unexpected params type %T", StepIpamAlloc, op.Params)
+	}
+}
+
+// subnetVnet resolves subnetRef (an sdn-subnet Ref, ID == CIDR) to its
+// owning vnet name from the current inventory snapshot.
+func (s *Service) subnetVnet(subnetRef inventory.Ref) (string, error) {
+	ent, ok := s.inventorySnapshot().Get(subnetRef)
+	if !ok {
+		return "", fmt.Errorf("change: subnet %s not found in inventory", subnetRef)
+	}
+	sub, ok := ent.(*inventory.SdnSubnet)
+	if !ok {
+		return "", fmt.Errorf("change: entity %s is not an sdn-subnet", subnetRef)
+	}
+	return sub.Vnet, nil
 }
 
 // rollbackAfterFailure converges every affected node back to its pre-apply
@@ -139,6 +181,46 @@ func (e *executor) rollbackAfterFailure(ctx context.Context) {
 		reloadIdx, hasReload := e.loadIx[node]
 		committed := hasReload && e.log.Steps[reloadIdx].Status == StepOK
 		e.undoNode(ctx, node, committed)
+	}
+	e.rollbackIpamSteps(ctx)
+}
+
+// rollbackIpamSteps best-effort undoes every already-succeeded
+// ipam.alloc.create step (releasing the just-reserved address) after a
+// later step's failure — ipam.alloc.create steps always precede the
+// per-node file steps (docs/data-model.md §3's category ordering), so any
+// of them that ran are exactly the ones e.log.Steps already marks StepOK
+// at this point. ipam.alloc.delete steps cannot be safely auto-reversed:
+// the executor does not retain the released allocation's original
+// metadata (hostname/MAC), so re-creating it would be a guess — these are
+// logged as a failed rollback action naming the address, for manual
+// reconciliation, rather than silently left unmentioned.
+func (e *executor) rollbackIpamSteps(ctx context.Context) {
+	for i := len(e.plan.Steps) - 1; i >= 0; i-- {
+		st := e.plan.Steps[i]
+		if st.Kind != StepIpamAlloc || e.log.Steps[i].Status != StepOK {
+			continue
+		}
+		op := e.cs.Ops[st.OpIdx[0]]
+		rb := RollbackLog{At: e.svc.now().Unix(), Status: StepOK, Summary: "Undo: " + st.Summary}
+		switch p := op.Params.(type) {
+		case *IpamAllocCreateParams:
+			switch e.pveGW {
+			case nil:
+				rb.Status, rb.Error = StepFailed, "no PVE gateway available to roll back IPAM allocation"
+			default:
+				vnet, err := e.svc.subnetVnet(op.Target)
+				if err != nil {
+					rb.Status, rb.Error = StepFailed, err.Error()
+				} else if err := e.pveGW.ReleaseIPAMAddress(ctx, vnet, op.Target.ID, p.CIDR); err != nil {
+					rb.Status, rb.Error = StepFailed, err.Error()
+				}
+			}
+		case *IpamAllocDeleteParams:
+			rb.Status = StepFailed
+			rb.Error = fmt.Sprintf("ipam.alloc.delete cannot be automatically rolled back; verify and re-reserve %s manually if still needed", p.CIDR)
+		}
+		e.log.Rollback = append(e.log.Rollback, rb)
 	}
 }
 

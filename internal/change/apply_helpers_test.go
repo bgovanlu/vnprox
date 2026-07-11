@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -138,9 +139,12 @@ func (e *injectedError) Error() string { return e.msg }
 // --- fake PVEGateway ------------------------------------------------------
 
 type fakePVEGateway struct {
-	client   *pve.Client
-	pollNode string
-	fail     bool
+	client    *pve.Client
+	pollNode  string
+	ipamCalls []string
+	fail      bool
+	failIpam  bool
+	noIpam    bool // AllocateIPAMAddress/ReleaseIPAMAddress return an error unconditionally (simulates "no PVE gateway" callers can't hit directly)
 }
 
 func (g *fakePVEGateway) ApplySDN(ctx context.Context) error {
@@ -153,6 +157,41 @@ func (g *fakePVEGateway) ApplySDN(ctx context.Context) error {
 	}
 	_, err = g.client.WaitTask(ctx, g.pollNode, upid, pve.WaitOptions{Interval: 5 * time.Millisecond, Timeout: 5 * time.Second})
 	return err
+}
+
+// testAllocHostAddr mirrors cmd/vnproxd/changeagent.go's allocHostAddr:
+// ipam.alloc ops carry a CIDR (docs/data-model.md §3), but PVE's IPAM
+// plugin API takes a bare host address.
+func testAllocHostAddr(cidr string) string {
+	ip, _, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return cidr
+	}
+	return ip.String()
+}
+
+func (g *fakePVEGateway) AllocateIPAMAddress(ctx context.Context, vnet, subnetCIDR string, alloc change.IpamAllocCreateParams) error {
+	g.ipamCalls = append(g.ipamCalls, "create:"+vnet+":"+alloc.CIDR)
+	if g.noIpam {
+		return &injectedError{"ipam gateway unavailable"}
+	}
+	if g.failIpam {
+		return &injectedError{"injected ipam.alloc.create failure"}
+	}
+	return g.client.CreateIPAMAllocation(ctx, vnet, pve.IPAMAllocation{
+		IP: testAllocHostAddr(alloc.CIDR), MAC: alloc.MAC, Hostname: alloc.Hostname, Subnet: subnetCIDR,
+	})
+}
+
+func (g *fakePVEGateway) ReleaseIPAMAddress(ctx context.Context, vnet, subnetCIDR, cidr string) error {
+	g.ipamCalls = append(g.ipamCalls, "delete:"+vnet+":"+cidr)
+	if g.noIpam {
+		return &injectedError{"ipam gateway unavailable"}
+	}
+	if g.failIpam {
+		return &injectedError{"injected ipam.alloc.delete failure"}
+	}
+	return g.client.DeleteIPAMAllocation(ctx, vnet, testAllocHostAddr(cidr), subnetCIDR)
 }
 
 // --- fake timer -----------------------------------------------------------
