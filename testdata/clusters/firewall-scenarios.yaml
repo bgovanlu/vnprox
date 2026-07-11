@@ -1,0 +1,225 @@
+# firewall-scenarios.yaml — T-501 fixture: one node, five guests, each
+# built to exercise exactly one of the five documented resolved-view
+# scenarios (planning/tasks/phase-5.md T-501 acceptance criterion 1):
+#
+#   - 100 cluster-only-guest: no rules of its own — its resolved view is
+#     entirely the cluster ruleset's own direct rule plus the security
+#     group ("base-services") the cluster references.
+#   - 101 group-guest: its OWN ruleset references a second security group
+#     ("webservers") directly — group inclusion from guest scope, distinct
+#     from the cluster-cascaded one every guest here also gets.
+#   - 102 override-guest: defines its own DROP rule for a port the
+#     cluster-referenced group already ACCEPTs — demonstrates a guest
+#     override sitting after the cluster+group block in evaluation order.
+#   - 103 disabled-guest: guest-scope firewall is off (enabled: false)
+#     despite having a configured rule — the disabled-scope scenario.
+#   - 104 fallthrough-guest: firewall on, zero rules, no explicit
+#     policy_in/policy_out of its own — falls through to the cluster's
+#     policy_in=DROP/policy_out=ACCEPT (default-policy fallthrough).
+#
+# Datacenter (cluster) and node firewalls are both left ON here (unlike
+# single-node.yaml/messy-brownfield.yaml's "footgun" fixtures) precisely so
+# every guest above is Active and its rules are genuinely evaluable — the
+# "datacenter is OFF" banner-cascade scenario (acceptance criterion 3) is
+# already covered by messy-brownfield.yaml/single-node.yaml and is
+# deliberately not re-modeled here to keep this fixture's own five
+# scenarios uncontaminated by a sixth gating concern.
+cluster:
+  name: pve-fw-scenarios
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 192.168.1.10
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 192.168.1.10/24
+        gateway: 192.168.1.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: false
+    links:
+      eno1:
+        mac: "bc:24:11:05:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+      vmbr0:
+        mac: "bc:24:11:05:00:01"
+        link_up: true
+    qemu:
+      "100":
+        name: cluster-only-guest
+        status: running
+        config:
+          name: cluster-only-guest
+          cores: "1"
+          memory: "512"
+          net0: "virtio=BC:24:11:AA:05:64,bridge=vmbr0,firewall=1"
+          ostype: l26
+        firewall:
+          enabled: true
+          rules: []
+      "101":
+        name: group-guest
+        status: running
+        config:
+          name: group-guest
+          cores: "1"
+          memory: "512"
+          net0: "virtio=BC:24:11:AA:05:65,bridge=vmbr0,firewall=1"
+          ostype: l26
+        firewall:
+          enabled: true
+          rules:
+            - pos: 0
+              enabled: true
+              type: group
+              action: webservers
+              comment: "guest-scope reference to the webservers security group"
+      "102":
+        name: override-guest
+        status: running
+        config:
+          name: override-guest
+          cores: "1"
+          memory: "512"
+          net0: "virtio=BC:24:11:AA:05:66,bridge=vmbr0,firewall=1"
+          ostype: l26
+        firewall:
+          enabled: true
+          rules:
+            - pos: 0
+              enabled: true
+              type: in
+              action: DROP
+              proto: tcp
+              dport: "80"
+              comment: "override: block http on this guest specifically, despite base-services ACCEPTing it"
+    lxc:
+      "103":
+        name: disabled-guest
+        status: running
+        config:
+          hostname: disabled-guest
+          cores: "1"
+          memory: "256"
+          net0: "name=eth0,bridge=vmbr0,firewall=1"
+        firewall:
+          enabled: false
+          rules:
+            - pos: 0
+              enabled: true
+              type: in
+              action: ACCEPT
+              proto: tcp
+              dport: "22"
+              comment: "configured but inert: guest-scope firewall is off"
+      "104":
+        name: fallthrough-guest
+        status: stopped
+        config:
+          hostname: fallthrough-guest
+          cores: "1"
+          memory: "256"
+          net0: "name=eth0,bridge=vmbr0,firewall=1"
+        firewall:
+          enabled: true
+          rules: []
+    firewall:
+      enabled: true
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules:
+        - pos: 0
+          enabled: true
+          type: in
+          action: ACCEPT
+          proto: tcp
+          dport: "22"
+          comment: "node-scope SSH management (host zone only, not part of any guest's resolved view)"
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: true
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules:
+      - pos: 0
+        enabled: true
+        type: in
+        action: ACCEPT
+        source: office_net
+        proto: tcp
+        dport: "22"
+        comment: "cluster-wide SSH from the office subnet (alias reference)"
+      - pos: 1
+        enabled: true
+        type: group
+        action: base-services
+        comment: "cluster-scope reference: base-services applies to every guest's resolved view"
+    aliases:
+      - name: office_net
+        cidr: 10.10.0.0/24
+        comment: "office/management subnet"
+    ipsets:
+      - name: blocklist
+        comment: "known-bad ranges"
+        entries:
+          - cidr: 198.51.100.0/24
+            comment: "example bogon range"
+    groups:
+      - name: base-services
+        comment: "baseline rules every guest inherits via the cluster's group reference"
+        rules:
+          - pos: 0
+            enabled: true
+            type: in
+            action: ACCEPT
+            proto: tcp
+            dport: "80"
+            comment: "http"
+          - pos: 1
+            enabled: true
+            type: in
+            action: DROP
+            dest: "+blocklist"
+            comment: "block known-bad ranges (ipset reference)"
+      - name: webservers
+        comment: "referenced directly by group-guest's own ruleset, not the cluster's"
+        rules:
+          - pos: 0
+            enabled: true
+            type: in
+            action: ACCEPT
+            proto: tcp
+            dport: "8080"
+            comment: "app port"
+
+mess: []
