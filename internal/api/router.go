@@ -71,7 +71,11 @@ type Options struct {
 	// PVE client — see cmd/vnproxd/collect.go's setupCollect doc comment)
 	// simply skips mounting the route, the same degraded-mode treatment
 	// every other optional Options field gets.
-	SDN         SDNService
+	SDN SDNService
+	// EVPN is T-404's read view seam (docs/api.md's `GET /sdn/evpn/status`);
+	// nil (no PVE/peer clients wired) simply skips mounting the route,
+	// same degraded-mode treatment as SDN above.
+	EVPN        EVPNService
 	PVEGateways PVEGatewayProvider
 	Protected   ProtectedService
 	Peer        PeerServer
@@ -116,6 +120,7 @@ func NewRouter(opts Options) http.Handler {
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
+		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

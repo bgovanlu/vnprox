@@ -17,6 +17,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/api"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
+	"github.com/bgovanlu/vnprox/internal/evpn"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -294,6 +295,31 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		peerSnapshots = peerClient
 	}
 
+	// T-404: GET /sdn/evpn/status fans FRR/BGP state across the cluster
+	// via the same realHost reader (local node) and peerClient (peers)
+	// every other node-local observability route above already uses;
+	// sdnSvc (may be nil) backs exit-node health. evpnSDN/evpnPeers are
+	// built as typed-nil-safe interface values (not a bare `sdnSvc`/
+	// `peerClient` assignment) for the same "non-nil interface wrapping a
+	// nil concrete pointer" footgun clusterStatusSource's own comment
+	// above already calls out — a nil *sdn.Service assigned directly to
+	// an evpn.SDNZoneSource field would make evpn.Service's own nil check
+	// pass and then panic calling Tree() on a nil receiver.
+	var evpnPeers evpn.PeerSource
+	if peerClient != nil {
+		evpnPeers = peerClient
+	}
+	var evpnSDN evpn.SDNZoneSource
+	if sdnSvc != nil {
+		evpnSDN = sdnSvc
+	}
+	evpnSvc := evpn.NewService(evpn.Config{
+		Host:      realHost,
+		Peers:     evpnPeers,
+		LocalNode: localNode,
+		SDN:       evpnSDN,
+	})
+
 	handler := api.NewRouter(api.Options{
 		Version:       version,
 		DistFS:        distFS,
@@ -309,6 +335,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Snapshots:     changeSvc,
 		Audit:         auditRepo,
 		SDN:           sdnSvc,
+		EVPN:          evpnSvc,
 		PVEGateways:   pveGatewayProvider{authSvc},
 		Protected:     changeSvc,
 		Peer:          peerSrv,
