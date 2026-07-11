@@ -1,0 +1,180 @@
+# ipam-lab.yaml — single-node fixture purpose-built for T-405's internal/ipam
+# package: one SDN VLAN zone/vnet/subnet with a pve-IPAM instance carrying a
+# deliberately messy allocation set, so the merge engine's four confidence
+# labels and all three conflict types are exercised from one small,
+# self-contained fixture (kept separate from the shared three-node-vlan.yaml/
+# messy-brownfield.yaml fixtures other tasks' golden tests already pin exact
+# shapes against).
+#
+# Deliberate scenarios (see internal/ipam's tests for the exact assertions):
+#   - 10.50.0.1  — gateway (state "gateway", not a confidence label).
+#   - 10.50.0.10 — allocated to web1 (vmid 300); web1's guest agent reports
+#                  the same address with the same MAC -> confidence "both".
+#   - 10.50.0.11 — allocated to vmid 999 / mac cc:cc:cc:cc:cc:cc, neither of
+#                  which corresponds to any real guest -> confidence
+#                  "allocated", conflict "allocated_dark" (a stale record).
+#   - 10.50.0.20 — allocated to web2 (vmid 301); web2's agent reports no
+#                  IPs at all -> confidence stays plain "allocated" (present
+#                  in PVE IPAM, simply not currently observed — distinct
+#                  from the "dark" case above, whose owning guest doesn't
+#                  exist at all).
+#   - 10.50.0.77 — no IPAM allocation; both web2 and web3 (different guests,
+#                  different MACs) agent-report this same address ->
+#                  confidence "conflict", conflict "duplicate_ip".
+#   - 10.50.0.88 — no IPAM allocation; only web3 agent-reports it ->
+#                  confidence "observed", conflict "observed_unallocated".
+cluster:
+  name: pve-ipam-lab
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.50.10.11
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 7a1c3e9f-2b4d-4a6e-9c1d-8f3a6b2e0d55
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.50.10.11/24
+        gateway: 10.50.10.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: true
+        comments: "management + vnet10 trunk"
+      # A second bridge with no SDN zone/vnet above it at all — T-405's
+      # "detected non-SDN subnets (derived from bridge addresses)" read-only
+      # subnet-list source.
+      - iface: vmbr1
+        type: bridge
+        method: static
+        address: 192.168.99.1/24
+        autostart: true
+        mtu: 1500
+        comments: "legacy unmanaged segment"
+    links:
+      eno1:
+        mac: "bc:24:11:50:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:11:50:00:01"
+        link_up: true
+        mtu: 1500
+      vmbr1:
+        mac: "bc:24:11:50:00:02"
+        link_up: true
+        mtu: 1500
+    lldp: {}
+    stats: {}
+    qemu:
+      "300":
+        name: web1
+        status: running
+        config:
+          name: web1
+          cores: "2"
+          memory: "2048"
+          net0: "virtio=AA:BB:CC:DD:EE:01,bridge=vmbr0,tag=10,firewall=1"
+          ostype: l26
+        agent_interfaces:
+          - name: eth0
+            hardware_address: "AA:BB:CC:DD:EE:01"
+            ip_addresses:
+              - {ip: 10.50.0.10, type: ipv4, prefix: 24}
+      "301":
+        name: web2
+        status: running
+        config:
+          name: web2
+          cores: "2"
+          memory: "2048"
+          net0: "virtio=AA:BB:CC:DD:EE:02,bridge=vmbr0,tag=10,firewall=1"
+          ostype: l26
+        agent_interfaces:
+          - name: eth0
+            hardware_address: "AA:BB:CC:DD:EE:02"
+            ip_addresses:
+              - {ip: 10.50.0.77, type: ipv4, prefix: 24}
+      "302":
+        name: web3
+        status: running
+        config:
+          name: web3
+          cores: "2"
+          memory: "2048"
+          net0: "virtio=AA:BB:CC:DD:EE:03,bridge=vmbr0,tag=10,firewall=1"
+          ostype: l26
+        agent_interfaces:
+          - name: eth0
+            hardware_address: "AA:BB:CC:DD:EE:03"
+            ip_addresses:
+              - {ip: 10.50.0.77, type: ipv4, prefix: 24}
+              - {ip: 10.50.0.88, type: ipv4, prefix: 24}
+    lxc: {}
+    firewall:
+      enabled: false
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+sdn:
+  zones:
+    - id: labz
+      type: vlan
+      bridge: vmbr0
+      nodes: [pve1]
+      mtu: 1500
+  vnets:
+    - id: vnet10
+      zone: labz
+      tag: 10
+      alias: "lab-tier"
+  subnets:
+    - id: "10.50.0.0-24"
+      vnet: vnet10
+      cidr: 10.50.0.0/24
+      gateway: 10.50.0.1
+  ipams:
+    - id: pve
+      type: pve
+      entries:
+        - {zone: labz, vnet: vnet10, subnet: 10.50.0.0/24, ip: 10.50.0.1, gateway: true}
+        - {zone: labz, vnet: vnet10, subnet: 10.50.0.0/24, ip: 10.50.0.10, mac: "AA:BB:CC:DD:EE:01", hostname: web1, vmid: 300}
+        - {zone: labz, vnet: vnet10, subnet: 10.50.0.0/24, ip: 10.50.0.11, mac: "CC:CC:CC:CC:CC:CC", hostname: ghost, vmid: 999}
+        - {zone: labz, vnet: vnet10, subnet: 10.50.0.0/24, ip: 10.50.0.20, mac: "AA:BB:CC:DD:EE:02", hostname: web2, vmid: 301}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []
