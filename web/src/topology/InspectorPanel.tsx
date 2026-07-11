@@ -1,3 +1,4 @@
+import * as RadixDropdown from "@radix-ui/react-dropdown-menu";
 import * as RadixTabs from "@radix-ui/react-tabs";
 import clsx from "clsx";
 import { useNavigate } from "react-router-dom";
@@ -13,6 +14,7 @@ import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
 import { useEditorLauncherStore, type EditorKind } from "../changesets/editorLauncherStore";
 import { buildBondDeleteOp, buildVlanDeleteOp } from "../changesets/opBuilders";
 import { useDrawerActions } from "../changesets/useDrawerActions";
+import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
 import { fieldRows } from "./fields";
 import { METRICS_KINDS } from "./metricsKinds";
 import { MetricsTab } from "./MetricsTab";
@@ -122,23 +124,69 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
               {data ? `${data.kind} on ${data.node || "cluster"}` : "Entity detail"}
             </DrawerDescription>
           </div>
-          {data && editorKind && (
+          {data && (editorKind !== undefined || isTraceableEntityKind(data.kind)) && (
             <div className="flex shrink-0 gap-1.5">
-              <Tooltip content={editDisabledReason}>
-                <span>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={!canWrite}
-                    onClick={() => {
-                      openEditor({ kind: editorKind, node: data.node, target: data.ref });
-                    }}
-                  >
-                    Edit
-                  </Button>
-                </span>
-              </Tooltip>
-              {deletable && (
+              {isTraceableEntityKind(data.kind) && (
+                <RadixDropdown.Root>
+                  <RadixDropdown.Trigger asChild>
+                    <Button size="sm" variant="secondary">
+                      Trace path ▾
+                    </Button>
+                  </RadixDropdown.Trigger>
+                  <RadixDropdown.Portal>
+                    <RadixDropdown.Content
+                      align="end"
+                      sideOffset={6}
+                      className="z-50 min-w-[12rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                    >
+                      <RadixDropdown.Item
+                        className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800"
+                        onSelect={() => {
+                          const path = traceFromPath(data.kind, data.ref);
+                          if (path) void navigate(path);
+                        }}
+                      >
+                        Trace path from here
+                      </RadixDropdown.Item>
+                      <RadixDropdown.Item
+                        className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800"
+                        onSelect={() => {
+                          const path = traceToPath(data.kind, data.ref);
+                          if (path) void navigate(path);
+                        }}
+                      >
+                        Trace path to here
+                      </RadixDropdown.Item>
+                      <RadixDropdown.Item
+                        className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800"
+                        onSelect={() => {
+                          const path = traceToExternalPath(data.kind, data.ref);
+                          if (path) void navigate(path);
+                        }}
+                      >
+                        Trace path to external
+                      </RadixDropdown.Item>
+                    </RadixDropdown.Content>
+                  </RadixDropdown.Portal>
+                </RadixDropdown.Root>
+              )}
+              {editorKind && (
+                <Tooltip content={editDisabledReason}>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={!canWrite}
+                      onClick={() => {
+                        openEditor({ kind: editorKind, node: data.node, target: data.ref });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+              {editorKind && deletable && (
                 <Tooltip content={editDisabledReason}>
                   <span>
                     <Button size="sm" variant="destructive" disabled={!canWrite} onClick={handleDelete}>

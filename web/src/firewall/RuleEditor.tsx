@@ -5,12 +5,20 @@
 // Op via useDrawerActions — nothing here mutates anything directly (the
 // change engine owns that after stage → validate → diff → apply →
 // confirm).
-import { useState } from "react";
+//
+// `focusPos` is T-504's deep-link consuming side (mirrors RuleTable's own
+// prop of the same name): a simulator deny verdict's blocking rule (or
+// T-505's firewall log correlation) can name a `guest`-origin rule's
+// position to land on and highlight — see FirewallPage.tsx's `focusRule`
+// parsing (web/src/firewall/focusRule.ts).
+import { useEffect, useRef, useState } from "react";
+import clsx from "clsx";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { useToast } from "../components/Toast";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import type { FirewallObjectsResponse, RuleView } from "../api/types";
+import { scrollIntoViewIfSupported } from "../lib/scrollIntoView";
 import { validateRuleBuilder, type RuleBuilderFormValues } from "./builderValidation";
 import { computeReorderMove } from "./dragReorder";
 import { macroExpansionLabel, ruleMatchLabel } from "./format";
@@ -139,12 +147,19 @@ export interface RuleEditorProps {
    * when omitted. */
   target?: string;
   objects?: FirewallObjectsResponse;
+  focusPos?: number;
 }
 
-export function RuleEditor({ rules, target, objects }: RuleEditorProps) {
+export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps) {
   const { addOps, replaceOps } = useDrawerActions();
   const { toast } = useToast();
   const [dragIndex, setDragIndex] = useState<number | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (focusPos === undefined) return;
+    scrollIntoViewIfSupported(containerRef.current?.querySelector('[data-focused="true"]'), { block: "center" });
+  }, [focusPos, rules]);
 
   function stage(op: Parameters<typeof addOps>[0][number], label: string): void {
     void addOps([op], label).catch((err: unknown) => {
@@ -179,7 +194,7 @@ export function RuleEditor({ rules, target, objects }: RuleEditorProps) {
   }
 
   return (
-    <div className="flex flex-col gap-0">
+    <div ref={containerRef} className="flex flex-col gap-0">
       <Table>
         <TableHeader>
           <TableRow>
@@ -193,10 +208,16 @@ export function RuleEditor({ rules, target, objects }: RuleEditorProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rules.map((r, i) => (
+          {rules.map((r, i) => {
+            const focused = r.pos === focusPos;
+            return (
             <TableRow
               key={r.pos}
-              className={r.enabled ? undefined : "opacity-50"}
+              data-focused={focused ? "true" : undefined}
+              className={clsx(
+                !r.enabled && "opacity-50",
+                focused && "bg-amber-100 ring-2 ring-inset ring-amber-500 dark:bg-amber-900/40",
+              )}
               draggable={Boolean(target)}
               onDragStart={() => { setDragIndex(i); }}
               onDragOver={(e) => { if (target) e.preventDefault(); }}
@@ -230,7 +251,8 @@ export function RuleEditor({ rules, target, objects }: RuleEditorProps) {
                 </TableCell>
               )}
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
       {target && <RuleBuilderRow target={target} nextPos={rules.length} objects={objects} />}

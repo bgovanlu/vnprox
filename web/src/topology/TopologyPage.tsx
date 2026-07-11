@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
+import { useNavigate } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
@@ -11,6 +12,8 @@ import { computeDragOp } from "../changesets/dragDropOps";
 import { EditorLauncher } from "../changesets/EditorLauncher";
 import { refNode, summarizeOp } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
+import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { InspectorPanel } from "./InspectorPanel";
 import { NewEntityMenu } from "./NewEntityMenu";
 import { LayerToggleBar } from "./LayerToggleBar";
@@ -221,6 +224,40 @@ function TopologyPageContent() {
   );
 
   const overCap = elements.nodes.length + elements.edges.length > RENDER_CAP;
+  const navigate = useNavigate();
+
+  // --- "Trace path" (T-504 AC5): right-click on the canvas or the -------
+  // inspector's own quick action, both build the same three items via
+  // traceLink.ts (only guest-nic entities are traceable — see that
+  // module's doc comment) and navigate to the Path simulator pre-filled.
+  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | undefined>(undefined);
+
+  function traceItemsFor(kind: string, ref: string): ContextMenuItem[] {
+    if (!isTraceableEntityKind(kind)) return [];
+    const items: ContextMenuItem[] = [];
+    const fromPath = traceFromPath(kind, ref);
+    const toPath = traceToPath(kind, ref);
+    const toExternalPath = traceToExternalPath(kind, ref);
+    if (fromPath) {
+      items.push({ label: "Trace path from here", onSelect: () => { void navigate(fromPath); } });
+    }
+    if (toPath) {
+      items.push({ label: "Trace path to here", onSelect: () => { void navigate(toPath); } });
+    }
+    if (toExternalPath) {
+      items.push({ label: "Trace path to external", onSelect: () => { void navigate(toExternalPath); } });
+    }
+    return items;
+  }
+
+  function handleNodeContextMenu(id: string, clientX: number, clientY: number): void {
+    const node = topology?.nodes.find((n) => n.id === id);
+    if (!node || traceItemsFor(node.kind, id).length === 0) {
+      setContextMenu(undefined);
+      return;
+    }
+    setContextMenu({ id, x: clientX, y: clientY });
+  }
 
   function handleNodeClick(id: string): void {
     if (isGuestGroupId(id)) {
@@ -395,12 +432,25 @@ function TopologyPageContent() {
             onNodeClick={handleNodeClick}
             onNodeHover={hover}
             onNodeDragStop={handleNodeDragStop}
+            onNodeContextMenu={handleNodeContextMenu}
             onPaneClick={() => {
               select(undefined);
+              setContextMenu(undefined);
             }}
           />
         )}
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={traceItemsFor(topology?.nodes.find((n) => n.id === contextMenu.id)?.kind ?? "", contextMenu.id)}
+          onClose={() => {
+            setContextMenu(undefined);
+          }}
+        />
+      )}
 
       {Array.from(expandedGroups).map((id) => (
         <GuestGroupExpansion key={id} groupId={id} onData={handleExpandedData} />
