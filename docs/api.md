@@ -98,6 +98,22 @@ Added by T-203 (documented here retroactively per that task's report note; pinne
 | GET | `/protected-interfaces/suggest` | detection-suggested set (inventory + corosync.conf): `{nodes: {...}}`, same shape PUT accepts |
 | PUT | `/protected-interfaces` | replace the set `{nodes: {...}}` (netWrite + CSRF); refs must parse and each ref's node must match its map key → else `400 validation_failed` with `details.refs` |
 
+### LLDP guided install (T-605)
+
+Added by T-605 (documented here per docs/development.md's definition-of-done #4). Backs the first-login walkthrough's "LLDP offer" step (docs/user-guide.md §1: "if `lldpd` isn't running, vnprox offers to enable it") — the coordinating half of docs/features/lldp-discovery.md §1's "one-click 'install lldpd on all nodes' runs through a changeset-like confirmation, executed via peer API apt install; audited" (the peer-internal half, `POST /api/peer/host/lldp/install`, already existed from T-302).
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/lldp/install` | `{confirm: true}` (netWrite + CSRF; `confirm` must be `true` or `400 validation_failed`) → installs and enables lldpd on this node, then fans out to every reachable peer → `{results: [{node, ok, error?}]}`, one entry per node attempted. Each node's outcome (including failures) is audit-logged as `lldp.install`. |
+
+### Config documentation export (T-605)
+
+Added by T-605 (documented here per docs/development.md's definition-of-done #4). Backs "Tools → Export documentation" and docs/features/blueprints.md §4's "as-built doc": Markdown or standalone HTML (embedded topology SVG, per-node interface tables, VLAN matrix, SDN inventory, firewall summaries, LLDP wiring table, timestamp) — a derived, read-only artifact assembled from the same live sources `GET /topology`/`GET /sdn`/`GET /firewall/*`/`GET /ports` already expose, never persisted.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/export/doc?format=md\|html` | netRead-gated; `format` is required (`400 validation_failed` if missing/unrecognized) → the rendered document as `text/markdown` or `text/html`, `Content-Disposition: attachment; filename="vnprox-network-<timestamp>.<ext>"` |
+
 ## Snapshots / time machine
 
 | Method | Path | Purpose |

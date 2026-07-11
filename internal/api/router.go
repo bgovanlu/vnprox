@@ -91,8 +91,19 @@ type Options struct {
 	// both routes exactly.
 	PeerAudit     PeerAuditSource
 	PeerSnapshots PeerSnapshotSource
-	Logger        *slog.Logger
-	Version       string
+	// DocExport backs T-605's GET /export/doc (config documentation
+	// export); nil skips mounting the route, matching every other optional
+	// Options field.
+	DocExport DocExportService
+	// LLDPInstaller/LLDPPeerInstaller/LLDPAudit/LocalNode back T-605's
+	// POST /lldp/install (the onboarding walkthrough's "LLDP offer" step,
+	// docs/user-guide.md §1.3); LLDPInstaller nil skips mounting the route.
+	LLDPInstaller     LocalLLDPInstaller
+	LLDPPeerInstaller PeerLLDPInstaller
+	LLDPAudit         lldpInstallAuditor
+	LocalNode         func() string
+	Logger            *slog.Logger
+	Version           string
 }
 
 // NewRouter builds the vnproxd HTTP handler: the full middleware stack,
@@ -128,6 +139,8 @@ func NewRouter(opts Options) http.Handler {
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
+		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
+		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

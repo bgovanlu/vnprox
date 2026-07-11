@@ -18,6 +18,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/blueprint"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
+	"github.com/bgovanlu/vnprox/internal/docexport"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/metrics"
@@ -144,6 +145,22 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	var sdnSvc *sdn.Service
 	if sdnPVEClient != nil {
 		sdnSvc = sdn.NewService(sdnPVEClient)
+	}
+
+	// T-605: the config documentation export (docs/features/blueprints.md
+	// §4) reads the exact same live sources the rest of this file's read
+	// routes already do — the shared inventory graph, sdnSvc (nil-safe,
+	// mirroring GET /sdn's own degraded-mode treatment above), and topoSvc
+	// for both the topology/SVG section and the LLDP ports table.
+	var docExportSDN docexport.SDNSource
+	if sdnSvc != nil {
+		docExportSDN = sdnSvc
+	}
+	docExportSvc := &docexport.Service{
+		Inventory: graph,
+		SDN:       docExportSDN,
+		Ports:     topoSvc,
+		Topo:      topoSvc,
 	}
 
 	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
@@ -306,9 +323,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// node-local as they were before T-303.
 	var peerAudit api.PeerAuditSource
 	var peerSnapshots api.PeerSnapshotSource
+	var lldpPeerInstaller api.PeerLLDPInstaller
 	if peerClient != nil {
 		peerAudit = peerClient
 		peerSnapshots = peerClient
+		lldpPeerInstaller = peerClient
 	}
 
 	// T-603: blueprints diff/instantiate against the same live inventory
@@ -342,6 +361,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,
 		PeerSnapshots: peerSnapshots,
+		// T-605: config documentation export (Tools -> Export documentation)
+		// and the onboarding walkthrough's "LLDP offer" step's guided
+		// install, both additive to docs/api.md's original contract (see
+		// docexport.go/lldpinstall.go's doc comments).
+		DocExport:         docExportSvc,
+		LLDPInstaller:     realHost,
+		LLDPPeerInstaller: lldpPeerInstaller,
+		LLDPAudit:         auditRepo,
+		LocalNode:         localNode,
 	})
 
 	srv := &http.Server{
