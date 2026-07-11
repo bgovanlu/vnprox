@@ -73,6 +73,10 @@ type HostReader interface {
 	// Stats returns node's interface counters, keyed by interface name.
 	Stats(ctx context.Context, node string) (map[string]host.IfaceStats, error)
 
+	// Services returns node's systemd unit status for T-602's watched
+	// service set (host.WatchedServices).
+	Services(ctx context.Context, node string) (map[string]bool, error)
+
 	// Links returns node's netlink-equivalent link state (physical NICs,
 	// bonds, bridges, VLAN sub-interfaces), including bond runtime detail
 	// and bridge VLAN/FDB tables. T-303 added this to the interface (and
@@ -238,6 +242,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/interfaces", s.handleInterfaces)
 		r.Get("/host/lldp", s.handleLLDP)
 		r.Get("/host/stats", s.handleStats)
+		r.Get("/host/services", s.handleServices)
 		r.Get("/host/links", s.handleLinks)
 		r.Get("/host/fdb", s.handleFDB)
 		r.Get("/host/frr/bgp-summary", s.handleFRRBGPSummary)
@@ -309,6 +314,20 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, statsResponse{Stats: stats})
+}
+
+func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	services, err := s.opts.Reader.Services(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading service status", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, servicesResponse{Services: services})
 }
 
 func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {

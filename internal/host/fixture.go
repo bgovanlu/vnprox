@@ -42,6 +42,7 @@ type pvemockReader interface {
 	Stats(ctx context.Context, node string) (map[string]pvemock.IfaceStats, error)
 	FRRBGPSummary(ctx context.Context, node string) ([]byte, error)
 	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
+	Services(ctx context.Context, node string) (map[string]bool, error)
 }
 
 // FixtureReader adapts a *pvemock.FixtureHostReader (T-004's YAML
@@ -139,6 +140,15 @@ func (f *FixtureReader) Stats(ctx context.Context, node string) (map[string]Ifac
 		}
 	}
 	return out, nil
+}
+
+// Services implements Reader by delegating directly.
+func (f *FixtureReader) Services(ctx context.Context, node string) (map[string]bool, error) {
+	s, err := f.r.Services(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	return s, nil
 }
 
 // Links implements Reader: it fetches pvemock's minimal LinkState list,

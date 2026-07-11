@@ -62,6 +62,13 @@ type Options struct {
 	Topology   TopologyService
 	LLDP       LLDPService
 	Drift      DriftService
+	// Findings is T-602's unified findings-stream seam (drift+lldp+ipam+
+	// health composed by *findings.Engine): backs `GET /findings`,
+	// `POST /findings/{id}/fix`, and (superseding Drift for this purpose
+	// when set) the `GET /topology` finding-badge overlay. Nil simply
+	// omits the /findings routes and falls back to Drift-only badge
+	// painting — see handleTopology's doc comment.
+	Findings   FindingsService
 	FDB        FDBService
 	Layouts    LayoutStore
 	Changesets ChangesetService
@@ -129,9 +136,10 @@ func NewRouter(opts Options) http.Handler {
 		if opts.Auth != nil {
 			opts.Auth.MountRoutes(r)
 		}
-		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift)
+		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings)
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
+		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)

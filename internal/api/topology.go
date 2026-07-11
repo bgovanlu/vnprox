@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/bgovanlu/vnprox/internal/drift"
+	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/topology"
 )
@@ -38,14 +39,14 @@ type TopologyService interface {
 // keep working unchanged. ch may be nil (no collector wired — tests, or the
 // collector failed to initialize): /topology then simply omits its
 // staleness section.
-func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService) {
+func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Get("/topology", handleTopology(svc, ch, driftSvc))
+		r.Get("/topology", handleTopology(svc, ch, driftSvc, findingsSvc))
 		r.Get("/inventory/search", handleInventorySearch(svc))
 		// A trailing chi wildcard (not a "{ref}" single-segment param) is
 		// required here: docs/api.md's Ref triplet scheme allows literal
@@ -113,45 +114,77 @@ func parseTopologyFilter(r *http.Request) topology.Filter {
 	return f
 }
 
-func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftService) http.HandlerFunc {
+func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t := svc.Topology(parseTopologyFilter(r))
 		if ch != nil {
 			t.Staleness = stalenessFrom(ch.CollectorStatus())
 		}
-		if driftSvc != nil {
+		// findingsSvc (T-602's unified stream, when wired) supersedes the
+		// drift-only painting below entirely — it already includes every
+		// drift finding (adapted, source=drift) plus lldp/ipam/health, so
+		// painting from both would double up the badge on any ref a drift
+		// finding also names. driftSvc stays the fallback for any caller
+		// (chiefly this package's own pre-T-602 tests) that only wires
+		// Drift, not Findings — see paintDrift's doc comment.
+		switch {
+		case findingsSvc != nil:
+			paintFindings(&t, findingsSvc.Findings())
+		case driftSvc != nil:
 			paintDrift(&t, driftSvc.Findings())
 		}
 		writeJSON(w, http.StatusOK, t)
 	}
 }
 
-// driftBadge marks a topology node/edge as carrying an open drift finding
-// (docs/features/topology.md §2: "drift = dashed outline") — the frontend
-// (EntityNode.tsx/EntityEdge.tsx) renders a dashed outline whenever this
-// badge is present, additive to (not replacing) any status-driven color.
-// This decoration is deliberately handler-level, not inside internal/topology
-// itself (the same pattern stalenessFrom above already uses): the pure
-// Project function stays a function of the inventory snapshot alone, and
-// drift findings are a second, independent input composed on top here.
-const driftBadge = "drift"
+// findingBadge marks a topology node/edge as carrying an open finding from
+// any unified-stream producer (drift, lldp, ipam, or health — T-602)
+// (docs/features/topology.md §2: "drift = dashed outline", generalized by
+// T-602 to reflect the whole findings stream, not only drift specifically —
+// the wire value stays "drift" for backward compatibility with the
+// frontend's existing EntityNode.tsx/EntityEdge.tsx check and with
+// docs/api.md's documented badge vocabulary, rather than introducing a
+// second, parallel badge string for the exact same "dashed outline" visual
+// treatment). This decoration is deliberately handler-level, not inside
+// internal/topology itself (the same pattern stalenessFrom above already
+// uses): the pure Project function stays a function of the inventory
+// snapshot alone, and findings are a second, independent input composed on
+// top here.
+const findingBadge = "drift"
 
-// paintDrift adds driftBadge to every node in t whose id is named by one of
+// paintDrift adds findingBadge to every node in t whose id is named by one of
 // findings' affected Refs (T-305's Finding.Refs — always concrete entity
-// refs, e.g. "bridge:pve2:vmbr0", never synthetic guest-group ids).
-func paintDrift(t *topology.Topology, findings []drift.Finding) {
+// refs, e.g. "bridge:pve2:vmbr0", never synthetic guest-group ids). Kept
+// unchanged as handleTopology's fallback when no FindingsService is wired.
+func paintDrift(t *topology.Topology, fs []drift.Finding) {
 	affected := make(map[string]bool)
-	for _, f := range findings {
+	for _, f := range fs {
 		for _, ref := range f.Refs {
 			affected[ref] = true
 		}
 	}
+	paintBadge(t, affected)
+}
+
+// paintFindings is paintDrift's T-602 generalization: same mechanism, fed
+// from the unified findings stream's Refs instead of drift's alone.
+func paintFindings(t *topology.Topology, fs []findings.Finding) {
+	affected := make(map[string]bool)
+	for _, f := range fs {
+		for _, ref := range f.Refs {
+			affected[ref] = true
+		}
+	}
+	paintBadge(t, affected)
+}
+
+func paintBadge(t *topology.Topology, affected map[string]bool) {
 	if len(affected) == 0 {
 		return
 	}
 	for i, n := range t.Nodes {
 		if affected[n.ID] {
-			t.Nodes[i].Badges = append(append([]string{}, n.Badges...), driftBadge)
+			t.Nodes[i].Badges = append(append([]string{}, n.Badges...), findingBadge)
 		}
 	}
 }

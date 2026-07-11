@@ -48,3 +48,7 @@ var _ OVSReader = (*Real)(nil)
 func (r *Real) OVSStatus(_ context.Context, _ string) ([]OVSBridgeStatus, error) {
 	return nil, fmt.Errorf("host: OVSStatus: %w", ErrUnsupportedPlatform)
 }
+
+func (r *Real) Services(_ context.Context, _ string) (map[string]bool, error) {
+	return nil, fmt.Errorf("host: Services: %w", ErrUnsupportedPlatform)
+}

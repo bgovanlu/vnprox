@@ -42,7 +42,7 @@ import (
 // building a second client — the same "returned alongside the collector so
 // callers can reuse it" pattern peerClient already established for T-303's
 // cluster fan-out.
-func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta), onStats func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats), peerSecrets *peer.SecretStore) (*collect.Collector, *peer.Client, *pve.Client, error) {
+func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta), onStats func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats), onServices func(node string, status map[string]bool), peerSecrets *peer.SecretStore) (*collect.Collector, *peer.Client, *pve.Client, error) {
 	pveClient, err := buildCollectorPVEClient(cfg)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("building collectors' PVE client: %w", err)
@@ -71,6 +71,9 @@ func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logge
 		// on this same host-loop poll (see collect.Config.OnStats's doc
 		// comment) rather than a second poll loop.
 		OnStats: onStats,
+		// T-602: the findings engine's service-status hook, piggybacked on
+		// this same host-loop poll exactly like OnStats above.
+		OnServices: onServices,
 	})
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("constructing collector: %w", err)
