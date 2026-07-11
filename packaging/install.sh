@@ -21,23 +21,30 @@
 # Steps 2 and 5-7 for *this* node are delegated to vnprox-setup (installed
 # by the .deb at /usr/bin/vnprox-setup) rather than duplicated here, so
 # there is exactly one implementation of "set up a single node" — see
-# packaging/bin/vnprox-setup.
+# packaging/bin/vnprox-setup. Step 8 (SSH rollout below) drives that same
+# script remotely, per node.
 #
-# What this script deliberately stubs, and why (planning/tasks/
-# phase-0.md#T-006's instruction: don't pretend untestable things work):
-#   - Installing from a real apt repository: no signed vnprox apt repo
-#     exists yet (release.yml / repo tooling is T-606's job per
-#     planning/tasks/phase-6.md#T-606) — use --offline <deb> for now.
-#   - PVE API token creation: needs a live `pveum` against a real PVE
-#     cluster (see vnprox-setup's own TODO(T-606) for the exact commands).
-#   - Multi-node SSH rollout: needs real inter-node root SSH the way
-#     `pvecm` setups rely on, which this sandbox cannot exercise — falls
-#     back to printing per-node manual instructions, as the doc allows
-#     ("or prints per-node instructions if SSH between nodes is
-#     unavailable").
-#
-# planning/tasks/phase-6.md#T-606 explicitly owns finishing all of the
-# above: "cluster rollout and PVE token creation are completed in T-606."
+# What this script cannot fully exercise in this sandbox, and why
+# (planning/tasks/phase-0.md#T-006's instruction: don't pretend untestable
+# things work) — see the T-606 completion report for the exact "needs
+# hardware validation" list:
+#   - Installing from a real, signed apt repository (no `--offline <deb>`):
+#     the repo tooling exists now (packaging/apt-repo.md, release.yml), but
+#     there is no live get.vnprox.io to actually publish to and no real PVE
+#     node with real network access to pull from one in this environment.
+#   - PVE API token/role creation (step 5, in vnprox-setup): the pveum
+#     commands are real, not stubbed, but pveum itself only exists on a
+#     real Proxmox VE node — this sandbox skips that block with a clear
+#     log line rather than faking success.
+#   - Cross-node pmxcfs replication of the cluster secret: generation is
+#     real (vnprox-setup step 6); actual replication across joined nodes
+#     needs a live pmxcfs mount this sandbox doesn't have.
+#   - Multi-node SSH rollout (step 8 below) is implemented for real (scp/ssh
+#     to each other cluster node, same root-SSH mechanism pvecm setups rely
+#     on) and is exercised by the T-606 container-based 3-node harness
+#     (packaging/test/cluster-ssh.sh) against real containers with real SSH
+#     keys; it still needs hardware validation against an actual multi-node
+#     PVE cluster.
 
 set -euo pipefail
 
@@ -49,6 +56,7 @@ FORCE_PORT=""
 WITH_LLDP=""
 ASSUME_YES=0
 SKIP_PVE_CHECK=0
+APT_REPO_URL="https://get.vnprox.io/apt"
 
 log() { printf '>> %s\n' "$*" >&2; } # stderr, for consistency with vnprox-setup's log() (see its comment)
 warn() { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
@@ -62,10 +70,10 @@ usage() {
 Usage: $PROG [options]
 
 Options:
-  --offline <file>     Install from this local .deb instead of an apt repo
-                        (required for now — see the TODO(T-606) note in
-                        this script's header; there is no vnprox apt repo
-                        yet).
+  --offline <file>     Install from this local .deb instead of the apt repo.
+  --apt-repo <url>      Base URL of the vnprox apt repo (default:
+                        https://get.vnprox.io/apt; see packaging/apt-repo.md).
+                        Ignored when --offline is given.
   --port <n>            Force the listen port (skips conflict detection).
   --with-lldp            Install lldpd on this node (default: ask).
   --no-lldp               Skip lldpd.
@@ -80,6 +88,10 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 	--offline)
 		OFFLINE_DEB="$2"
+		shift 2
+		;;
+	--apt-repo)
+		APT_REPO_URL="$2"
 		shift 2
 		;;
 	--port)
@@ -212,8 +224,16 @@ fi
 log "resolved listen port: $LISTEN_PORT"
 
 # --- step 3: install the .deb ---------------------------------------------
+#
+# docs/deployment.md: "Installs the vnprox .deb (from the apt repo it
+# configures, or a bundled offline .deb with --offline <file>)." See
+# packaging/apt-repo.md for the repo layout and signing key this configures
+# a client for; packaging/build-apt-repo.sh / release.yml build and sign it.
 
 log "step 3/9: installing the vnprox package"
+
+KEYRING_PATH="/usr/share/keyrings/vnprox-archive-keyring.gpg"
+APT_SOURCE_PATH="/etc/apt/sources.list.d/vnprox.list"
 
 if [ -n "$OFFLINE_DEB" ]; then
 	[ -f "$OFFLINE_DEB" ] || die "--offline file not found: $OFFLINE_DEB"
@@ -223,10 +243,31 @@ if [ -n "$OFFLINE_DEB" ]; then
 		dpkg -i "$OFFLINE_DEB" || die "dpkg -i $OFFLINE_DEB failed"
 	fi
 else
-	log "TODO(T-606): no signed vnprox apt repository exists yet; this script cannot"
-	log "  'apt install vnprox' from one. Re-run with --offline <path-to-vnprox.deb>"
-	log "  using a package built by 'make deb' (dist/vnprox_*.deb) in the meantime."
-	die "no install source given: pass --offline <file> (see TODO(T-606) above)"
+	log "configuring the vnprox apt repo at $APT_REPO_URL"
+	if ! command -v apt-get >/dev/null 2>&1; then
+		die "apt-get not found and no --offline package given"
+	fi
+	if ! command -v gpg >/dev/null 2>&1; then
+		die "gpg not found (needed to install the apt repo signing key) — install gnupg, or use --offline <file>"
+	fi
+
+	install -d -m 0755 "$(dirname "$KEYRING_PATH")"
+	if ! curl -fsSL "$APT_REPO_URL/vnprox-archive-keyring.gpg" | gpg --dearmor >"$KEYRING_PATH.tmp" 2>/dev/null; then
+		rm -f "$KEYRING_PATH.tmp"
+		die "could not fetch/import the vnprox apt signing key from $APT_REPO_URL (no live vnprox apt repo reachable from this host? use --offline <path-to-deb> instead — see 'make deb' / dist/vnprox_*.deb)"
+	fi
+	mv "$KEYRING_PATH.tmp" "$KEYRING_PATH"
+	chmod 0644 "$KEYRING_PATH"
+
+	echo "deb [signed-by=$KEYRING_PATH] $APT_REPO_URL stable main" >"$APT_SOURCE_PATH"
+	log "wrote $APT_SOURCE_PATH"
+
+	if ! apt-get update; then
+		die "'apt-get update' failed against $APT_REPO_URL — check network reachability, or use --offline <path-to-deb>"
+	fi
+	if ! apt-get install -y vnprox; then
+		die "'apt-get install vnprox' failed — check $APT_SOURCE_PATH, or use --offline <path-to-deb>"
+	fi
 fi
 
 # --- step 4: lldpd ---------------------------------------------------------
@@ -261,18 +302,134 @@ fi
 vnprox-setup "${setup_args[@]}"
 
 # --- step 8: remaining cluster nodes ---------------------------------------
+#
+# docs/deployment.md: "the script offers to roll out to all cluster nodes
+# via SSH" / "Repeats 3-7 on the remaining nodes (via SSH root, same
+# mechanism pvecm setups already rely on), or prints per-node instructions
+# if SSH between nodes is unavailable." Rollout is evaluated *per node*
+# (not all-or-nothing): a node this script can reach over SSH gets the full
+# automated flow; a node it can't falls back to printed instructions for
+# that node alone, so one unreachable node doesn't block the rest.
 
 log "step 8/9: remaining cluster nodes"
+
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new)
+
+# ssh_reachable checks root@$1 is reachable non-interactively (BatchMode:
+# never prompts for a password/passphrase — if key-based root SSH isn't
+# already set up, as pvecm cluster joins require, this fails fast rather
+# than hanging).
+ssh_reachable() {
+	ssh "${SSH_OPTS[@]}" "root@$1" true >/dev/null 2>&1
+}
+
+# remote_lldp_flag mirrors this node's own $WITH_LLDP choice onto the
+# remote vnprox-setup invocation, so a cluster rollout applies one
+# consistent lldpd decision everywhere rather than re-asking per node.
+remote_lldp_flag() {
+	if [ "$WITH_LLDP" = yes ]; then
+		echo "--with-lldp"
+	else
+		echo "--no-lldp"
+	fi
+}
+
+print_manual_instructions() {
+	node="$1"
+	reason="$2"
+	log "  - $node: $reason; manual install required:"
+	if [ -n "$OFFLINE_DEB" ]; then
+		log "      scp $OFFLINE_DEB root@$node:/root/$(basename "$OFFLINE_DEB")"
+		log "      ssh root@$node apt-get install -y /root/$(basename "$OFFLINE_DEB")"
+	else
+		log "      apt install ./vnprox_<version>_${ARCH}.deb   # or 'apt install vnprox' once an apt repo is configured"
+	fi
+	log "      vnprox-setup --port $LISTEN_PORT --yes $(remote_lldp_flag)"
+}
+
+rollout_to_node() {
+	node="$1"
+	log "  - $node: reachable over SSH, rolling out"
+
+	if [ -n "$OFFLINE_DEB" ]; then
+		remote_deb="/root/$(basename "$OFFLINE_DEB")"
+		if ! scp "${SSH_OPTS[@]}" "$OFFLINE_DEB" "root@$node:$remote_deb" >/dev/null; then
+			warn "$node: scp of $OFFLINE_DEB failed"
+			print_manual_instructions "$node" "package transfer failed"
+			return 1
+		fi
+		if ! ssh "${SSH_OPTS[@]}" "root@$node" "apt-get install -y '$remote_deb'"; then
+			warn "$node: remote package install failed"
+			print_manual_instructions "$node" "package install failed"
+			return 1
+		fi
+	else
+		# No --offline package given: this only succeeds once a real apt
+		# repository is configured on the remote node (T-606's apt-repo
+		# tooling — packaging/apt-repo.md, release.yml — publishes one; see
+		# that doc for the client-side `apt` source line). Until then this
+		# is expected to fail on a fresh node with no vnprox repo configured
+		# yet, which is exactly why --offline exists as the documented
+		# fallback (docs/deployment.md: "from the apt repo it configures,
+		# or a bundled offline .deb with --offline <file>").
+		if ! ssh "${SSH_OPTS[@]}" "root@$node" "apt-get update && apt-get install -y vnprox"; then
+			warn "$node: 'apt-get install vnprox' failed (no apt repo configured there yet?)"
+			print_manual_instructions "$node" "no apt repo configured and no --offline package given"
+			return 1
+		fi
+	fi
+
+	if ! ssh "${SSH_OPTS[@]}" "root@$node" "vnprox-setup --port '$LISTEN_PORT' --yes $(remote_lldp_flag)"; then
+		warn "$node: remote vnprox-setup failed"
+		return 1
+	fi
+	log "  - $node: done"
+	return 0
+}
+
 if [ "${#NODE_LIST[@]}" -le 1 ]; then
 	log "single-node install: nothing more to roll out"
 else
-	log "TODO(T-606): automatic multi-node SSH rollout is not implemented in this"
-	log "  installer skeleton (it needs the same root-SSH access pvecm setups rely"
-	log "  on, which cannot be exercised in this sandbox). Per-node manual"
-	log "  instructions, as the doc allows when SSH rollout isn't available:"
+	other_nodes=()
+	self_name="$(hostname -s 2>/dev/null || hostname)"
 	for node in "${NODE_LIST[@]}"; do
-		log "    - on $node: apt install ./vnprox_<version>_${ARCH}.deb && vnprox-setup --port $LISTEN_PORT --yes"
+		[ "$node" = "$self_name" ] || other_nodes+=("$node")
 	done
+
+	proceed=1
+	if [ "$ASSUME_YES" -ne 1 ]; then
+		read -r -p "Roll out vnprox to the other ${#other_nodes[@]} cluster node(s) via SSH now? [Y/n] " ans || true
+		case "$ans" in
+		[nN]*) proceed=0 ;;
+		*) proceed=1 ;;
+		esac
+	fi
+
+	if [ "$proceed" -ne 1 ]; then
+		log "skipping SSH rollout by request; per-node manual instructions:"
+		for node in "${other_nodes[@]}"; do
+			print_manual_instructions "$node" "rollout declined"
+		done
+	elif ! command -v ssh >/dev/null 2>&1; then
+		log "ssh not found on this node; per-node manual instructions:"
+		for node in "${other_nodes[@]}"; do
+			print_manual_instructions "$node" "ssh not available on this node"
+		done
+	else
+		failed_nodes=()
+		for node in "${other_nodes[@]}"; do
+			if ssh_reachable "$node"; then
+				if ! rollout_to_node "$node"; then
+					failed_nodes+=("$node")
+				fi
+			else
+				print_manual_instructions "$node" "not reachable over root SSH (BatchMode)"
+			fi
+		done
+		if [ "${#failed_nodes[@]}" -gt 0 ]; then
+			warn "rollout did not complete on: ${failed_nodes[*]} (see messages above)"
+		fi
+	fi
 fi
 
 # --- step 9: URL + checklist -----------------------------------------------
@@ -288,9 +445,14 @@ First-login checklist:
   - Log in with your existing Proxmox VE credentials.
   - Restrict port ${LISTEN_PORT} to management networks (docs/security.md
     "Firewalling vnprox itself"); allow node<->node traffic on the same port.
-  - All nodes in a cluster must use the same port — re-run this installer
-    (or vnprox-setup --port ${LISTEN_PORT}) on every other node.
-  - Remaining TODO(T-606) items printed above (apt repo, PVE token, cluster
-    secret cross-node verification, SSH rollout) still need a real PVE
-    cluster to finish and verify.
+  - All nodes in a cluster must use the same port — this installer's SSH
+    rollout (or the per-node instructions it printed above for any node it
+    could not reach) applies the same port everywhere.
+  - Verify each node's PVE API token was provisioned: vnproxctl status
+    reports "PVE API health" once vnprox.service is running.
+  - Cross-node items this sandbox cannot fully verify itself (pmxcfs
+    replication of the cluster secret to every joined node, and a real
+    apt-repo-backed rollout with no --offline package) are noted in the
+    T-606 report as needing hardware validation; the mechanisms above are
+    real, not stubbed.
 EOF

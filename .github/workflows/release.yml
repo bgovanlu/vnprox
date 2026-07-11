@@ -1,0 +1,130 @@
+name: Release
+
+# docs/development.md: "release.yml: on tag — build, sign .deb, publish to
+# the apt repo, GitHub release with changelog." Runs on every `vX.Y.Z` tag
+# push; mirrors ci.yml's `package` job (make build; make deb) per
+# architecture, then assembles+signs the apt repo (packaging/apt-repo.md)
+# and cuts the GitHub release.
+#
+# What this workflow cannot do without real production infrastructure (see
+# the T-606 completion report's "needs hardware/infra validation" list):
+#   - Publish the signed repo tree to a real get.vnprox.io host — the
+#     "sync artifact to the repo host" step is a documented placeholder,
+#     gated on secrets that don't exist yet (APT_REPO_DEPLOY_*).
+#   - Sign with a real production key — without `APT_SIGNING_KEY` set as a
+#     repository secret, packaging/build-apt-repo.sh transparently falls
+#     back to its own documented ephemeral-key dev/test path (never used
+#     for an actual release; the fallback exists so this workflow is
+#     dry-run-able today without that secret).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {} # manual dry run without needing to push a tag
+
+jobs:
+  build-sign-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to create the GitHub release
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # version.sh / changelog need tag history
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: make build (real frontend production bundle)
+        run: make build
+
+      - name: Build .deb for each supported architecture
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            make -C packaging deb DIST_DIR="$(pwd)/dist" ARCH="$arch"
+          done
+          ls -l dist/*.deb
+
+      - name: Assemble and sign the apt repository
+        env:
+          # Repository secret holding an ASCII-armored GPG private key
+          # (see packaging/apt-repo.md "Signing key"). Left unset in this
+          # repo today — build-apt-repo.sh falls back to an ephemeral
+          # dev-only key in that case, so this step always succeeds as a
+          # dry run; a real release requires this secret to be configured.
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/apt-repo
+          if [ -n "$APT_SIGNING_KEY" ]; then
+            key_file="$(mktemp)"
+            trap 'rm -f "$key_file"' EXIT
+            printf '%s' "$APT_SIGNING_KEY" >"$key_file"
+            VNPROX_SIGNING_KEY_FILE="$key_file" packaging/build-apt-repo.sh dist/apt-repo dist/*.deb
+          else
+            echo "::warning::APT_SIGNING_KEY secret not set — signing with an ephemeral, throwaway key (packaging/apt-repo.md). Not a real release artifact until this secret is configured."
+            packaging/build-apt-repo.sh dist/apt-repo dist/*.deb
+          fi
+
+      - name: Upload apt-repo artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnprox-apt-repo
+          path: dist/apt-repo
+          if-no-files-found: error
+
+      - name: Upload .deb artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnprox-deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+      - name: Publish apt repo to get.vnprox.io
+        env:
+          APT_REPO_DEPLOY_HOST: ${{ secrets.APT_REPO_DEPLOY_HOST }}
+        if: ${{ env.APT_REPO_DEPLOY_HOST != '' }}
+        run: |
+          echo "TODO(infra): rsync/publish dist/apt-repo to $APT_REPO_DEPLOY_HOST — no real apt-repo host exists yet (needs hardware/infra validation, see T-606 report)."
+          exit 1
+
+      - name: Generate changelog since previous tag
+        id: changelog
+        run: |
+          set -euo pipefail
+          prev_tag="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          {
+            echo 'body<<VNPROX_CHANGELOG_EOF'
+            if [ -n "$prev_tag" ]; then
+              echo "Changes since $prev_tag:"
+              echo
+              git log --pretty='format:- %s (%h)' "$prev_tag..${GITHUB_REF_NAME}"
+            else
+              echo "Initial release."
+            fi
+            echo
+            echo 'VNPROX_CHANGELOG_EOF'
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.body }}
+          files: |
+            dist/*.deb
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
