@@ -335,6 +335,18 @@ type MockOptions struct {
 	// NetworkReloadFail, when true, makes the next (and every subsequent,
 	// until cleared) `PUT /nodes/{node}/network` reload task fail.
 	NetworkReloadFail bool `yaml:"network_reload_fail,omitempty"`
+
+	// SDNZoneStatusFail, when true, makes this node report "error" on
+	// GET /cluster/sdn/zones/{zone}/status for every zone it is a member
+	// of, regardless of whether its bridge actually exists (T-402: models
+	// a node whose SDN apply task itself reported success but the node
+	// nonetheless failed to realize the config — a failure mode no
+	// pre-apply validator can predict, unlike a genuinely-missing bridge,
+	// which docs/features/sdn.md §4's own pre-apply validation already
+	// catches before an apply is even attempted). Set per-node via the
+	// fixture or POST /mock/nodes/{node}/sdn-status-fail, mirroring
+	// NetworkReloadFail's exact pattern.
+	SDNZoneStatusFail bool `yaml:"sdn_zone_status_fail,omitempty"`
 }
 
 // merge returns o overridden by any non-zero fields in override.
@@ -348,6 +360,9 @@ func (o MockOptions) merge(override *MockOptions) MockOptions {
 	}
 	if override.NetworkReloadFail {
 		out.NetworkReloadFail = true
+	}
+	if override.SDNZoneStatusFail {
+		out.SDNZoneStatusFail = true
 	}
 	return out
 }

@@ -4,7 +4,42 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 )
+
+// SDNSubnetID derives a subnet's PVE-facing identifier from its CIDR:
+// real PVE (and internal/pvemock, mirroring it — see that package's
+// sdn_test.go/three-node-vlan.yaml fixture, whose declared subnet ids are
+// exactly their cidr with "/" replaced by "-") uses this form as the
+// {subnet} URL path segment, since a literal "/" can't appear in one path
+// segment. docs/data-model.md's SdnSubnet.ID/internal/change's op Target.ID
+// convention is the literal CIDR (slash form) throughout — every write
+// call in this file that addresses a subnet by id (Update/DeleteSDNSubnet,
+// and the "subnet" field CreateSDNSubnet's body carries) needs this
+// conversion at the wire boundary; callers holding a CIDR never need to
+// call it directly except when constructing the write request itself.
+func SDNSubnetID(cidr string) string {
+	return strings.ReplaceAll(cidr, "/", "-")
+}
+
+// SDNVnetID derives a vnet's PVE-facing identifier (the bare vnet name, as
+// used both for the "vnet" wire field and the {vnet} URL path segment
+// throughout this file) from internal/change's own Ref.ID convention for
+// sdn-vnet targets, "<zone>/<vnet>" (params_sdn.go's SdnVnetCreateParams
+// doc comment: "Target carries the new vnet's identity ... zone1/vnet1").
+// Real PVE vnet names are already cluster-globally unique on their own (no
+// zone prefix in the actual API) and, like SDNSubnetID's CIDR, a literal
+// "/" cannot appear in a single URL path segment — so every write call
+// addressing a vnet by id must convert through here first. Returns refID
+// unchanged if it carries no "/" (a vnet id vnprox already received in
+// bare PVE form, e.g. read back from ListSDNVnets before this package
+// reconstructs the zone-prefixed form for SDNConfig).
+func SDNVnetID(refID string) string {
+	if i := strings.LastIndexByte(refID, '/'); i >= 0 {
+		return refID[i+1:]
+	}
+	return refID
+}
 
 // runningQuery is the query string for the "?running=1" view real PVE (and
 // internal/pvemock) serve alongside the default staged/pending-merged view
@@ -137,4 +172,69 @@ func (c *Client) ApplySDN(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return upid, nil
+}
+
+// --- SDN writes (T-402: sdn.zone/vnet/subnet.* ops' "(1) cluster-scope PVE
+// API calls" planner step, docs/data-model.md §3) -------------------------
+//
+// Every write stages a pending edit only — real PVE (and internal/pvemock,
+// see that package's sdn.go) does not realize a zone/vnet/subnet create/
+// update/delete until a subsequent ApplySDN (PUT /cluster/sdn) runs. The
+// zone/vnet fields these calls need are exactly SDNZone/SDNVnet/SDNSubnet's
+// own (defined above for the read paths); reusing them here rather than
+// declaring separate *Write request types keeps one field list per entity
+// instead of two that could drift.
+
+// CreateSDNZone calls POST /cluster/sdn/zones. z.ID is sent as the "zone"
+// field (SDNZone's own json tag) per PVE's create-by-body convention.
+func (c *Client) CreateSDNZone(ctx context.Context, z SDNZone) error {
+	return c.do(ctx, "POST", "/cluster/sdn/zones", requestParams{body: z}, nil)
+}
+
+// UpdateSDNZone calls PUT /cluster/sdn/zones/{zone}.
+func (c *Client) UpdateSDNZone(ctx context.Context, id string, z SDNZone) error {
+	path := fmt.Sprintf("/cluster/sdn/zones/%s", id)
+	return c.do(ctx, "PUT", path, requestParams{body: z}, nil)
+}
+
+// DeleteSDNZone calls DELETE /cluster/sdn/zones/{zone}.
+func (c *Client) DeleteSDNZone(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/cluster/sdn/zones/%s", id)
+	return c.do(ctx, "DELETE", path, requestParams{}, nil)
+}
+
+// CreateSDNVnet calls POST /cluster/sdn/vnets.
+func (c *Client) CreateSDNVnet(ctx context.Context, v SDNVnet) error {
+	return c.do(ctx, "POST", "/cluster/sdn/vnets", requestParams{body: v}, nil)
+}
+
+// UpdateSDNVnet calls PUT /cluster/sdn/vnets/{vnet}.
+func (c *Client) UpdateSDNVnet(ctx context.Context, id string, v SDNVnet) error {
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s", id)
+	return c.do(ctx, "PUT", path, requestParams{body: v}, nil)
+}
+
+// DeleteSDNVnet calls DELETE /cluster/sdn/vnets/{vnet}.
+func (c *Client) DeleteSDNVnet(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s", id)
+	return c.do(ctx, "DELETE", path, requestParams{}, nil)
+}
+
+// CreateSDNSubnet calls POST /cluster/sdn/vnets/{vnet}/subnets. s.ID must be
+// the subnet's CIDR (docs/data-model.md's SdnSubnet.ID doc comment).
+func (c *Client) CreateSDNSubnet(ctx context.Context, vnet string, s SDNSubnet) error {
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s/subnets", vnet)
+	return c.do(ctx, "POST", path, requestParams{body: s}, nil)
+}
+
+// UpdateSDNSubnet calls PUT /cluster/sdn/vnets/{vnet}/subnets/{subnet}.
+func (c *Client) UpdateSDNSubnet(ctx context.Context, vnet, id string, s SDNSubnet) error {
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s/subnets/%s", vnet, id)
+	return c.do(ctx, "PUT", path, requestParams{body: s}, nil)
+}
+
+// DeleteSDNSubnet calls DELETE /cluster/sdn/vnets/{vnet}/subnets/{subnet}.
+func (c *Client) DeleteSDNSubnet(ctx context.Context, vnet, id string) error {
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s/subnets/%s", vnet, id)
+	return c.do(ctx, "DELETE", path, requestParams{}, nil)
 }
