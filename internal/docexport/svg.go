@@ -162,9 +162,10 @@ func writeColumnBand(b *strings.Builder, t topology.Topology, cols []string, lay
 		for j, n := range rows {
 			ry := y + float64(j)*rowHeight
 			cls := "entity-box"
-			if n.Status == topology.StatusDown {
+			switch n.Status {
+			case topology.StatusDown:
 				cls += " status-down"
-			} else if n.Status == topology.StatusDegraded {
+			case topology.StatusDegraded:
 				cls += " status-degraded"
 			}
 			fmt.Fprintf(b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="3" class="%s"/>`+"\n",

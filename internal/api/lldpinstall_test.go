@@ -29,10 +29,10 @@ func (f *fakeLocalLLDPInstaller) InstallLLDPD(_ context.Context) error {
 // peer list, installErrs maps a peer node name to the error InstallLLDPD
 // should return for it (nil/absent = success).
 type fakePeerLLDPInstaller struct {
+	peersErr    error
 	installErrs map[string]error
 	installed   []string
 	peers       []peer.Peer
-	peersErr    error
 }
 
 func (f *fakePeerLLDPInstaller) Peers(_ context.Context) ([]peer.Peer, error) {
