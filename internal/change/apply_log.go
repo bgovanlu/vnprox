@@ -20,14 +20,23 @@ const (
 
 // StepLog is one step's execution record in changesets.apply_log_json.
 type StepLog struct {
-	Kind      StepKind   `json:"kind"`
-	Node      string     `json:"node,omitempty"`
-	Summary   string     `json:"summary"`
-	Status    StepStatus `json:"status"`
-	Error     string     `json:"error,omitempty"`
-	Index     int        `json:"index"`
-	StartedAt int64      `json:"startedAt,omitempty"`
-	EndedAt   int64      `json:"endedAt,omitempty"`
+	Kind    StepKind   `json:"kind"`
+	Node    string     `json:"node,omitempty"`
+	Summary string     `json:"summary"`
+	Status  StepStatus `json:"status"`
+	Error   string     `json:"error,omitempty"`
+	// TaskUPID is the PVE task identifier a StepSDNApply step ran as
+	// (docs/features/sdn.md §4: "failures link straight to the failing
+	// node's task log") — populated as soon as the underlying PUT
+	// /cluster/sdn task starts, even if the step goes on to fail (either
+	// the task itself failing, or T-402's post-apply health verification
+	// failing after a successful task). Node is set to the task's own node
+	// (parsed from the UPID) for the same step, so the pair (Node,
+	// TaskUPID) is enough for the UI to deep-link to that node's task log.
+	TaskUPID  string `json:"taskUpid,omitempty"`
+	StartedAt int64  `json:"startedAt,omitempty"`
+	EndedAt   int64  `json:"endedAt,omitempty"`
+	Index     int    `json:"index"`
 }
 
 // RollbackLog is one rollback action's record (restoring a node's file,

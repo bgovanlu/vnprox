@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -136,23 +137,168 @@ type injectedError struct{ msg string }
 func (e *injectedError) Error() string { return e.msg }
 
 // --- fake PVEGateway ------------------------------------------------------
-
+//
+// fakePVEGateway is a second, test-side implementation of change.PVEGateway
+// against a real *pve.Client/pvemock server — deliberately not reusing
+// cmd/vnproxd's production pveSDNGateway (an unexported type in package
+// main, unreachable from this test package), the same "two independent
+// implementations of one seam" precedent this type's original ApplySDN-only
+// form already set. fail injects an sdn.apply task-level failure (position
+// 4 of TestApply_StepFailure_AtEachPosition); T-402's post-apply zone
+// health verification is exercised for real (GetSDNZoneStatus against
+// pvemock, which itself derives "error" from a genuinely missing bridge —
+// see internal/pvemock/sdn.go's handleSDNZoneStatus), not injected here.
 type fakePVEGateway struct {
 	client   *pve.Client
 	pollNode string
 	fail     bool
 }
 
-func (g *fakePVEGateway) ApplySDN(ctx context.Context) error {
+func (g *fakePVEGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet string) error {
+	switch p := op.Params.(type) {
+	case *change.SdnZoneCreateParams:
+		return g.client.CreateSDNZone(ctx, pve.SDNZone{
+			ID: op.Target.ID, Type: p.Type, Bridge: p.Bridge, Controller: p.Controller,
+			Nodes: p.Nodes, VrfVxlan: p.VrfVxlan, MTU: p.MTU,
+		})
+	case *change.SdnZoneUpdateParams:
+		z := pve.SDNZone{ID: op.Target.ID}
+		if p.Bridge != nil {
+			z.Bridge = *p.Bridge
+		}
+		if p.Controller != nil {
+			z.Controller = *p.Controller
+		}
+		if p.Nodes != nil {
+			z.Nodes = *p.Nodes
+		}
+		if p.VrfVxlan != nil {
+			z.VrfVxlan = *p.VrfVxlan
+		}
+		if p.MTU != nil {
+			z.MTU = *p.MTU
+		}
+		return g.client.UpdateSDNZone(ctx, op.Target.ID, z)
+	case *change.SdnZoneDeleteParams:
+		return g.client.DeleteSDNZone(ctx, op.Target.ID)
+	case *change.SdnVnetCreateParams:
+		return g.client.CreateSDNVnet(ctx, pve.SDNVnet{
+			ID: pve.SDNVnetID(op.Target.ID), Zone: p.Zone, Alias: p.Alias, Tag: p.Tag, VlanAware: p.VlanAware,
+		})
+	case *change.SdnVnetUpdateParams:
+		id := pve.SDNVnetID(op.Target.ID)
+		v := pve.SDNVnet{ID: id}
+		if p.Alias != nil {
+			v.Alias = *p.Alias
+		}
+		if p.Tag != nil {
+			v.Tag = *p.Tag
+		}
+		if p.VlanAware != nil {
+			v.VlanAware = *p.VlanAware
+		}
+		return g.client.UpdateSDNVnet(ctx, id, v)
+	case *change.SdnVnetDeleteParams:
+		return g.client.DeleteSDNVnet(ctx, pve.SDNVnetID(op.Target.ID))
+	case *change.SdnSubnetCreateParams:
+		start, end := firstDHCPRange(p.DHCPRanges)
+		return g.client.CreateSDNSubnet(ctx, pve.SDNVnetID(p.Vnet), pve.SDNSubnet{
+			ID: pve.SDNSubnetID(op.Target.ID), Vnet: pve.SDNVnetID(p.Vnet), CIDR: p.CIDR, Gateway: p.Gateway,
+			DHCPRangeStart: start, DHCPRangeEnd: end, SNAT: p.SNAT,
+		})
+	case *change.SdnSubnetUpdateParams:
+		vnet := pve.SDNVnetID(subnetVnet)
+		s := pve.SDNSubnet{ID: pve.SDNSubnetID(op.Target.ID), Vnet: vnet, CIDR: op.Target.ID}
+		if p.Gateway != nil {
+			s.Gateway = *p.Gateway
+		}
+		if p.DHCPRanges != nil {
+			s.DHCPRangeStart, s.DHCPRangeEnd = firstDHCPRange(*p.DHCPRanges)
+		}
+		if p.SNAT != nil {
+			s.SNAT = *p.SNAT
+		}
+		return g.client.UpdateSDNSubnet(ctx, vnet, pve.SDNSubnetID(op.Target.ID), s)
+	case *change.SdnSubnetDeleteParams:
+		return g.client.DeleteSDNSubnet(ctx, pve.SDNVnetID(subnetVnet), pve.SDNSubnetID(op.Target.ID))
+	default:
+		return &injectedError{"fakePVEGateway: unsupported sdn stage op " + string(op.Type)}
+	}
+}
+
+func firstDHCPRange(ranges []string) (start, end string) {
+	if len(ranges) == 0 {
+		return "", ""
+	}
+	parts := strings.SplitN(ranges[0], "-", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+}
+
+func (g *fakePVEGateway) ApplySDN(ctx context.Context, affectedZones []string) (change.SDNApplyResult, error) {
 	if g.fail {
-		return &injectedError{"injected sdn.apply failure"}
+		return change.SDNApplyResult{}, &injectedError{"injected sdn.apply failure"}
 	}
 	upid, err := g.client.ApplySDN(ctx)
 	if err != nil {
-		return err
+		return change.SDNApplyResult{}, err
 	}
-	_, err = g.client.WaitTask(ctx, g.pollNode, upid, pve.WaitOptions{Interval: 5 * time.Millisecond, Timeout: 5 * time.Second})
-	return err
+	result := change.SDNApplyResult{UPID: upid, Node: g.pollNode}
+	if _, err := g.client.WaitTask(ctx, g.pollNode, upid, pve.WaitOptions{Interval: 5 * time.Millisecond, Timeout: 5 * time.Second}); err != nil {
+		return result, err
+	}
+	for _, zoneID := range affectedZones {
+		statuses, err := g.client.GetSDNZoneStatus(ctx, zoneID)
+		if err != nil {
+			return result, err
+		}
+		zh := change.SDNZoneHealth{Zone: zoneID}
+		for _, st := range statuses {
+			zh.Nodes = append(zh.Nodes, change.SDNNodeHealth{Node: st.Node, Status: st.Status, Detail: st.Detail})
+		}
+		result.Zones = append(result.Zones, zh)
+	}
+	return result, nil
+}
+
+func (g *fakePVEGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
+	zones, err := g.client.ListSDNZones(ctx)
+	if err != nil {
+		return change.SDNConfig{}, err
+	}
+	vnets, err := g.client.ListSDNVnets(ctx)
+	if err != nil {
+		return change.SDNConfig{}, err
+	}
+	var cfg change.SDNConfig
+	for _, z := range zones {
+		cfg.Zones = append(cfg.Zones, change.SDNZoneConfig{
+			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller,
+			Nodes: z.Nodes, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
+		})
+	}
+	for _, v := range vnets {
+		refID := v.Zone + "/" + v.ID
+		cfg.Vnets = append(cfg.Vnets, change.SDNVnetConfig{
+			ID: refID, Zone: v.Zone, Alias: v.Alias, Tag: v.Tag, VlanAware: v.VlanAware,
+		})
+		subnets, err := g.client.ListSDNSubnets(ctx, v.ID)
+		if err != nil {
+			return change.SDNConfig{}, err
+		}
+		for _, s := range subnets {
+			var ranges []string
+			if s.DHCPRangeStart != "" && s.DHCPRangeEnd != "" {
+				ranges = []string{s.DHCPRangeStart + "-" + s.DHCPRangeEnd}
+			}
+			cfg.Subnets = append(cfg.Subnets, change.SDNSubnetConfig{
+				ID: s.CIDR, Vnet: refID, Gateway: s.Gateway, DHCPRanges: ranges, SNAT: s.SNAT,
+			})
+		}
+	}
+	return cfg, nil
 }
 
 // --- fake timer -----------------------------------------------------------
@@ -366,6 +512,23 @@ func (h *applyHarness) setReloadFail(t *testing.T, node string, fail bool) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("setReloadFail: status %d", resp.StatusCode)
+	}
+}
+
+// setSDNZoneStatusFail flips pvemock's per-node SDN zone status failure
+// injection (T-402) via its documented control endpoint — models a node
+// whose SDN apply task succeeded but which nonetheless failed to realize
+// the config (see MockOptions.SDNZoneStatusFail's doc comment).
+func (h *applyHarness) setSDNZoneStatusFail(t *testing.T, node string, fail bool) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]bool{"fail": fail})
+	resp, err := http.Post(h.server.URL+"/mock/nodes/"+node+"/sdn-status-fail", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("setSDNZoneStatusFail: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("setSDNZoneStatusFail: status %d", resp.StatusCode)
 	}
 }
 

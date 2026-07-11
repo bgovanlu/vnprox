@@ -15,15 +15,17 @@ import (
 // §4). It is a small value bundling the per-apply inputs so the step methods
 // don't each need a long parameter list; Service.applyPlan constructs one.
 type executor struct {
-	pveGW    PVEGateway
-	svc      *Service
-	pre      map[string]string
-	log      *ApplyLog
-	stageIx  map[string]int
-	loadIx   map[string]int
-	plan     Plan
-	cs       Changeset
-	deadline int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
+	pveGW     PVEGateway
+	svc       *Service
+	pre       map[string]string
+	sdnPre    SDNConfig // valid iff hasSDNPre
+	log       *ApplyLog
+	stageIx   map[string]int
+	loadIx    map[string]int
+	plan      Plan
+	cs        Changeset
+	deadline  int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
+	hasSDNPre bool
 }
 
 // newExecutor builds an executor with a fresh apply log (all steps pending)
@@ -32,12 +34,17 @@ type executor struct {
 // node's local rollback timer (T-304) is armed with as its reload step runs
 // — the same absolute instant the coordinator's own bookkeeping timer uses,
 // so every node's safety net expires at the same wall-clock time regardless
-// of how long earlier nodes' steps took.
+// of how long earlier nodes' steps took. pre may additionally carry T-402's
+// synthetic SDN config snapshot entries (sdn*SnapshotPath) alongside the
+// per-node interfaces files; sdnConfigFromSnapshot recovers them.
 func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW PVEGateway, deadline int64) *executor {
 	preByNode := make(map[string]string, len(pre))
 	for _, f := range pre {
-		preByNode[f.Node] = f.Content
+		if f.Node != "" {
+			preByNode[f.Node] = f.Content
+		}
 	}
+	sdnPre, hasSDNPre := sdnConfigFromSnapshot(pre)
 	steps := make([]StepLog, len(plan.Steps))
 	stageIx := map[string]int{}
 	loadIx := map[string]int{}
@@ -51,7 +58,7 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		}
 	}
 	return &executor{
-		svc: s, cs: cs, plan: plan, pre: preByNode, pveGW: pveGW, deadline: deadline,
+		svc: s, cs: cs, plan: plan, pre: preByNode, sdnPre: sdnPre, hasSDNPre: hasSDNPre, pveGW: pveGW, deadline: deadline,
 		log:     &ApplyLog{Steps: steps},
 		stageIx: stageIx, loadIx: loadIx,
 	}
@@ -64,7 +71,7 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 func (e *executor) run(ctx context.Context) error {
 	for i := range e.plan.Steps {
 		e.log.Steps[i].StartedAt = e.svc.now().Unix()
-		err := e.execStep(ctx, e.plan.Steps[i])
+		err := e.execStep(ctx, i)
 		e.log.Steps[i].EndedAt = e.svc.now().Unix()
 		if err != nil {
 			e.log.Steps[i].Status = StepFailed
@@ -82,9 +89,27 @@ func (e *executor) run(ctx context.Context) error {
 	return nil
 }
 
-// execStep dispatches one step to its concrete action.
-func (e *executor) execStep(ctx context.Context, st Step) error {
+// execStep dispatches the step at plan index i to its concrete action. It
+// takes an index (rather than the Step value alone, as it did before T-402)
+// so StepSDNApply can record its task's UPID/Node onto e.log.Steps[i] as
+// soon as the task starts, for the task-log deep link even on failure.
+func (e *executor) execStep(ctx context.Context, i int) error {
+	st := e.plan.Steps[i]
 	switch st.Kind {
+	case StepSDNStage:
+		if e.pveGW == nil {
+			return fmt.Errorf("no PVE gateway available for sdn stage op (no user session)")
+		}
+		if len(st.OpIdx) != 1 {
+			return fmt.Errorf("sdn_stage step must reference exactly one op, got %d", len(st.OpIdx))
+		}
+		op := e.cs.Ops[st.OpIdx[0]]
+		vnet := ""
+		if op.Type == OpSdnSubnetUpdate || op.Type == OpSdnSubnetDelete {
+			vnet = resolveSubnetVnet(e.cs.Ops, st.OpIdx[0], e.svc.inventorySnapshot(), op.Target.ID)
+		}
+		return e.pveGW.SDNStageOp(ctx, op, vnet)
+
 	case StepStageFile:
 		// Reuse the pre-apply snapshot's content already captured for this
 		// node instead of a second ReadInterfaces call: they're the same
@@ -120,7 +145,27 @@ func (e *executor) execStep(ctx context.Context, st Step) error {
 		if e.pveGW == nil {
 			return fmt.Errorf("no PVE gateway available for sdn.apply (no user session)")
 		}
-		return e.pveGW.ApplySDN(ctx)
+		zones := sdnAffectedZones(e.cs.Ops)
+		result, err := e.pveGW.ApplySDN(ctx, zones)
+		// Record the task identity on this step's log entry as soon as it's
+		// known, even on failure (docs/features/sdn.md §4: "failures link
+		// straight to the failing node's task log") — a post-apply health
+		// failure still ran a real (successful) PVE task worth linking to.
+		e.log.Steps[i].TaskUPID = result.UPID
+		if result.Node != "" {
+			e.log.Steps[i].Node = result.Node
+		}
+		if err != nil {
+			return err
+		}
+		if zone, node, unhealthy := result.firstUnhealthy(); unhealthy {
+			return &ErrSDNZoneUnhealthy{
+				Zone: zone, Node: node.Node, Status: node.Status, Detail: node.Detail,
+				UPID: result.UPID, TaskNode: result.Node,
+			}
+		}
+		return nil
+
 	default:
 		return fmt.Errorf("unknown step kind %q", st.Kind)
 	}
@@ -130,9 +175,20 @@ func (e *executor) execStep(ctx context.Context, st Step) error {
 // file state after a mid-apply failure: a node whose reload had already
 // committed a change is restored from the pre-snapshot and reloaded; a node
 // that was only staged (or whose reload/stage was the failing step) has its
-// staged file discarded. Rollback is best-effort across nodes — an error
-// restoring one node is logged but does not abort restoring the others.
+// staged file discarded. It also reverts any SDN mutation this same apply
+// attempt already made (T-402's restoreSDN) — this runs synchronously,
+// still within the same Apply call that holds the live pveGW, exactly the
+// design note in apply_seams.go/PVEGateway's doc comment: SDN's rollback
+// has no daemon-level (ticket-less) path the way node-file rollback does,
+// so it can only ever happen here or in a manual/auto rollback that itself
+// has a gateway (see doRollbackLocked). Rollback is best-effort — an error
+// restoring one node/the SDN config is logged but does not abort restoring
+// the rest.
 func (e *executor) rollbackAfterFailure(ctx context.Context) {
+	if e.hasSDNPre && e.anySDNStepSucceeded() {
+		e.log.Rollback = append(e.log.Rollback, e.svc.restoreSDN(ctx, e.pveGW, e.sdnPre))
+	}
+
 	nodes := e.plan.affectedNodes()
 	for i := len(nodes) - 1; i >= 0; i-- {
 		node := nodes[i]
@@ -140,6 +196,20 @@ func (e *executor) rollbackAfterFailure(ctx context.Context) {
 		committed := hasReload && e.log.Steps[reloadIdx].Status == StepOK
 		e.undoNode(ctx, node, committed)
 	}
+}
+
+// anySDNStepSucceeded reports whether any StepSDNStage/StepSDNApply step in
+// this apply attempt reached StepOK — the gate for whether restoreSDN has
+// anything to actually undo (if every SDN step was skipped/failed before
+// ever mutating PVE, current == pre already and restoreSDN's own PVE
+// round-trips would be pure overhead).
+func (e *executor) anySDNStepSucceeded() bool {
+	for _, s := range e.log.Steps {
+		if (s.Kind == StepSDNStage || s.Kind == StepSDNApply) && s.Status == StepOK {
+			return true
+		}
+	}
+	return false
 }
 
 // undoNode restores one node. If committed is true, the node's live config

@@ -40,7 +40,7 @@ func TestRollback_MissingPreSnapshot(t *testing.T) {
 	if _, err := h.db.Conn().ExecContext(ctx, "DELETE FROM snapshots WHERE changeset_id = ?", cs.ID); err != nil {
 		t.Fatalf("delete snapshots: %v", err)
 	}
-	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam"); err == nil {
+	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam", nil); err == nil {
 		t.Fatal("expected rollback to error with no pre-snapshot")
 	}
 	if got := h.get(t, cs.ID); got.Status != change.StatusFailed {
@@ -130,11 +130,11 @@ func TestRollback_AlreadyRolledBack(t *testing.T) {
 	if _, err := h.svc.Apply(ctx, cs.ID, "root@pam", nil, 0); err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam"); err != nil {
+	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam", nil); err != nil {
 		t.Fatalf("rollback: %v", err)
 	}
 	var nc *change.ErrNotConfirmable
-	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam"); !errors.As(err, &nc) {
+	if _, err := h.svc.Rollback(ctx, cs.ID, "root@pam", nil); !errors.As(err, &nc) {
 		t.Fatalf("second rollback err = %v, want *ErrNotConfirmable", err)
 	}
 	if _, err := h.svc.Confirm(ctx, cs.ID, "root@pam"); !errors.As(err, &nc) {

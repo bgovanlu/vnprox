@@ -220,21 +220,199 @@ func (p pveGatewayProvider) GatewayFor(ctx context.Context) (change.PVEGateway, 
 	return &pveSDNGateway{client: client}, true
 }
 
-// pveSDNGateway realizes the sdn.apply step through the user's client.
+// pveSDNGateway realizes the sdn.zone/vnet/subnet.* stage ops and sdn.apply
+// step (T-402) through the user's own client (docs/architecture.md §6).
 type pveSDNGateway struct {
 	client *pve.Client
 }
 
-func (g *pveSDNGateway) ApplySDN(ctx context.Context) error {
+// SDNStageOp implements change.PVEGateway: dispatches one sdn.zone/vnet/
+// subnet create/update/delete op to the matching pve.Client write call.
+// Update ops only set the fields their params carry (nil pointer fields
+// leave the corresponding wire field zero-valued, matching a partial PUT —
+// real PVE/pvemock's update handlers replace the whole object server-side
+// per this codebase's existing SDNZoneSpec/SDNVnetSpec/SDNSubnetSpec update
+// handlers, so a caller wanting a true partial merge must read-modify-write;
+// change.Service's update ops are themselves already the merged intent by
+// the time they reach here — see params_sdn.go's *UpdateParams doc
+// comments — so this is not a functional gap for the ops this package's
+// own validators/projection produce).
+func (g *pveSDNGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet string) error {
+	switch p := op.Params.(type) {
+	case *change.SdnZoneCreateParams:
+		return g.client.CreateSDNZone(ctx, pve.SDNZone{
+			ID: op.Target.ID, Type: p.Type, Bridge: p.Bridge, Controller: p.Controller,
+			Nodes: p.Nodes, VrfVxlan: p.VrfVxlan, MTU: p.MTU,
+		})
+	case *change.SdnZoneUpdateParams:
+		z := pve.SDNZone{ID: op.Target.ID}
+		if p.Bridge != nil {
+			z.Bridge = *p.Bridge
+		}
+		if p.Controller != nil {
+			z.Controller = *p.Controller
+		}
+		if p.Nodes != nil {
+			z.Nodes = *p.Nodes
+		}
+		if p.VrfVxlan != nil {
+			z.VrfVxlan = *p.VrfVxlan
+		}
+		if p.MTU != nil {
+			z.MTU = *p.MTU
+		}
+		return g.client.UpdateSDNZone(ctx, op.Target.ID, z)
+	case *change.SdnZoneDeleteParams:
+		return g.client.DeleteSDNZone(ctx, op.Target.ID)
+
+	case *change.SdnVnetCreateParams:
+		return g.client.CreateSDNVnet(ctx, pve.SDNVnet{
+			ID: pve.SDNVnetID(op.Target.ID), Zone: p.Zone, Alias: p.Alias, Tag: p.Tag, VlanAware: p.VlanAware,
+		})
+	case *change.SdnVnetUpdateParams:
+		id := pve.SDNVnetID(op.Target.ID)
+		v := pve.SDNVnet{ID: id}
+		if p.Alias != nil {
+			v.Alias = *p.Alias
+		}
+		if p.Tag != nil {
+			v.Tag = *p.Tag
+		}
+		if p.VlanAware != nil {
+			v.VlanAware = *p.VlanAware
+		}
+		return g.client.UpdateSDNVnet(ctx, id, v)
+	case *change.SdnVnetDeleteParams:
+		return g.client.DeleteSDNVnet(ctx, pve.SDNVnetID(op.Target.ID))
+
+	case *change.SdnSubnetCreateParams:
+		start, end := firstDHCPRange(p.DHCPRanges)
+		return g.client.CreateSDNSubnet(ctx, pve.SDNVnetID(p.Vnet), pve.SDNSubnet{
+			ID: pve.SDNSubnetID(op.Target.ID), Vnet: pve.SDNVnetID(p.Vnet), CIDR: p.CIDR, Gateway: p.Gateway,
+			DHCPRangeStart: start, DHCPRangeEnd: end, SNAT: p.SNAT,
+		})
+	case *change.SdnSubnetUpdateParams:
+		vnet := pve.SDNVnetID(subnetVnet)
+		s := pve.SDNSubnet{ID: pve.SDNSubnetID(op.Target.ID), Vnet: vnet, CIDR: op.Target.ID}
+		if p.Gateway != nil {
+			s.Gateway = *p.Gateway
+		}
+		if p.DHCPRanges != nil {
+			s.DHCPRangeStart, s.DHCPRangeEnd = firstDHCPRange(*p.DHCPRanges)
+		}
+		if p.SNAT != nil {
+			s.SNAT = *p.SNAT
+		}
+		return g.client.UpdateSDNSubnet(ctx, vnet, pve.SDNSubnetID(op.Target.ID), s)
+	case *change.SdnSubnetDeleteParams:
+		return g.client.DeleteSDNSubnet(ctx, pve.SDNVnetID(subnetVnet), pve.SDNSubnetID(op.Target.ID))
+
+	default:
+		return fmt.Errorf("changeagent: SDNStageOp: unsupported op type %q", op.Type)
+	}
+}
+
+// firstDHCPRange splits ranges[0] ("start-end", change.validDHCPRange's
+// shape) into its two endpoints for pve.SDNSubnet's single-range wire
+// field. Real PVE (and this codebase's pve.SDNSubnet/pvemock SDNSubnetSpec,
+// unmodified by this task) models only one DHCP range per subnet and has no
+// DNSZonePrefix wire field at all — change.SdnSubnetCreateParams'
+// DNSZonePrefix and any DHCPRanges beyond the first have no PVE-side
+// representation to stage yet (a documented, pre-existing gap — see the
+// T-402 report).
+func firstDHCPRange(ranges []string) (start, end string) {
+	if len(ranges) == 0 {
+		return "", ""
+	}
+	parts := strings.SplitN(ranges[0], "-", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+}
+
+// ApplySDN implements change.PVEGateway: PUT /cluster/sdn, wait for the
+// task, then read back affectedZones' per-node status for T-402's post-apply
+// health verification (docs/features/sdn.md §4). The result (UPID/Node) is
+// populated before the wait even starts, so a caller gets a task-log deep
+// link regardless of whether the task itself or the health check is what
+// ultimately fails.
+func (g *pveSDNGateway) ApplySDN(ctx context.Context, affectedZones []string) (change.SDNApplyResult, error) {
 	upid, err := g.client.ApplySDN(ctx)
 	if err != nil {
-		return err
+		return change.SDNApplyResult{}, err
 	}
 	node := upidNode(upid)
+	result := change.SDNApplyResult{UPID: upid, Node: node}
+
 	if _, err := g.client.WaitTask(ctx, node, upid, pve.WaitOptions{Timeout: 5 * time.Minute}); err != nil {
-		return err
+		return result, err
 	}
-	return nil
+
+	for _, zoneID := range affectedZones {
+		statuses, err := g.client.GetSDNZoneStatus(ctx, zoneID)
+		if err != nil {
+			return result, fmt.Errorf("changeagent: reading post-apply status for sdn zone %s: %w", zoneID, err)
+		}
+		zh := change.SDNZoneHealth{Zone: zoneID}
+		for _, st := range statuses {
+			zh.Nodes = append(zh.Nodes, change.SDNNodeHealth{Node: st.Node, Status: st.Status, Detail: st.Detail})
+		}
+		result.Zones = append(result.Zones, zh)
+	}
+	return result, nil
+}
+
+// SDNConfig implements change.PVEGateway: reads the full staged (pending-
+// merged) zone/vnet/subnet tree, T-402's pre-apply/rollback snapshot source
+// (see that interface method's doc comment for why "staged" and not
+// "?running=1").
+func (g *pveSDNGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
+	zones, err := g.client.ListSDNZones(ctx)
+	if err != nil {
+		return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn zones: %w", err)
+	}
+	vnets, err := g.client.ListSDNVnets(ctx)
+	if err != nil {
+		return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn vnets: %w", err)
+	}
+
+	var cfg change.SDNConfig
+	for _, z := range zones {
+		cfg.Zones = append(cfg.Zones, change.SDNZoneConfig{
+			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller,
+			Nodes: z.Nodes, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
+		})
+	}
+	for _, v := range vnets {
+		// SDNVnetConfig.ID is internal/change's "<zone>/<vnet>" Ref.ID
+		// convention (see pve.SDNVnetID's doc comment), reconstructed here
+		// from PVE's own bare vnet id (v.ID) + zone (v.Zone) — not v.ID
+		// alone.
+		refID := v.Zone + "/" + v.ID
+		cfg.Vnets = append(cfg.Vnets, change.SDNVnetConfig{
+			ID: refID, Zone: v.Zone, Alias: v.Alias, Tag: v.Tag, VlanAware: v.VlanAware,
+		})
+		subnets, err := g.client.ListSDNSubnets(ctx, v.ID)
+		if err != nil {
+			return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn subnets for vnet %s: %w", v.ID, err)
+		}
+		for _, s := range subnets {
+			var ranges []string
+			if s.DHCPRangeStart != "" && s.DHCPRangeEnd != "" {
+				ranges = []string{s.DHCPRangeStart + "-" + s.DHCPRangeEnd}
+			}
+			// SDNSubnetConfig.ID is the CIDR (internal/change's convention
+			// throughout — see pve.SDNSubnetID's doc comment), not PVE's
+			// own dash-form wire id (s.ID) used only for the URL path
+			// segment; Vnet is likewise the "<zone>/<vnet>" Ref.ID form,
+			// not PVE's bare s.Vnet.
+			cfg.Subnets = append(cfg.Subnets, change.SDNSubnetConfig{
+				ID: s.CIDR, Vnet: refID, Gateway: s.Gateway, DHCPRanges: ranges, SNAT: s.SNAT,
+			})
+		}
+	}
+	return cfg, nil
 }
 
 // upidNode extracts the node segment from a PVE UPID

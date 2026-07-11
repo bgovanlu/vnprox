@@ -77,6 +77,8 @@ Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contra
 
 Validation finding shape: `{severity: "error"|"warning"|"info", code, message, ref?, fix?}` where `fix` is an optional machine-applicable amendment (an `[]Op` patch the UI can offer one-click).
 
+**SDN apply orchestration (added by T-402; documented here retroactively per docs/development.md's definition-of-done #4).** A changeset carrying `sdn.zone/vnet/subnet.*` ops and a trailing `sdn.apply` renders a plan whose cluster-scope SDN steps (`kind: "sdn_stage"`, one per op) come first and whose `sdn_apply` step is always last (docs/data-model.md §3). Each `apply_log` step gains an optional `taskUpid` field: for the `sdn_apply` step, the PVE task's UPID, populated as soon as the task starts (even on failure) so the UI can deep-link to that task's log on its node (`node` on the same step entry). If the underlying `PUT /cluster/sdn` task itself succeeds but T-402's post-apply per-zone health check (`GET /cluster/sdn/zones/{zone}/status`) finds a member node unhealthy, `POST /changesets/{id}/apply` fails with a `422` and the stable code `sdn_zone_unhealthy`, `details: {zone, node, status, detail, taskUpid, taskNode}`. `POST /changesets/{id}/rollback` on an SDN-carrying changeset additionally reverts the SDN portion (pre-apply zone/vnet/subnet config diffed against current and re-applied) — this needs the requesting user's own PVE ticket exactly like apply does, so a rollback with no live session (the auto commit-confirm-timeout path) skips the SDN portion and records it in `apply_log.rollback` rather than failing outright; the node-file portion still rolls back.
+
 ### Raw interfaces editor (T-208)
 
 | Method | Path | Purpose |

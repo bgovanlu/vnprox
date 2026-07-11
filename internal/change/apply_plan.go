@@ -20,6 +20,17 @@ const (
 	// StepSDNApply applies pending cluster SDN config (PUT /cluster/sdn),
 	// always last (docs/data-model.md §3).
 	StepSDNApply StepKind = "sdn_apply"
+
+	// StepSDNStage realizes one sdn.zone/vnet/subnet create/update/delete
+	// op as a cluster-scope PVE API call (docs/data-model.md §3's "(1)
+	// cluster-scope PVE API calls", which orders before the per-node file
+	// steps and before the trailing sdn.apply). One step per op — unlike
+	// StepStageFile, which batches every node-file op for one node into a
+	// single staged-file write — because each is its own independent PVE
+	// API call with its own success/failure and its own rollback inverse
+	// (apply_sdn.go's sdnRestoreOps), not a file render that can only be
+	// meaningfully staged as a whole.
+	StepSDNStage StepKind = "sdn_stage"
 )
 
 // nodeFileOpTypes is the subset of the v1 op vocabulary that mutates a node's
@@ -39,6 +50,22 @@ var nodeFileOpTypes = map[OpType]bool{
 	OpVlanCreate:       true,
 	OpVlanUpdate:       true,
 	OpVlanDelete:       true,
+}
+
+// sdnStageOpTypes is the subset of the v1 op vocabulary T-402 realizes as a
+// StepSDNStage cluster-scope PVE API call — every sdn.zone/vnet/subnet
+// create/update/delete op. sdn.apply itself is handled separately
+// (StepSDNApply, always last).
+var sdnStageOpTypes = map[OpType]bool{
+	OpSdnZoneCreate:   true,
+	OpSdnZoneUpdate:   true,
+	OpSdnZoneDelete:   true,
+	OpSdnVnetCreate:   true,
+	OpSdnVnetUpdate:   true,
+	OpSdnVnetDelete:   true,
+	OpSdnSubnetCreate: true,
+	OpSdnSubnetUpdate: true,
+	OpSdnSubnetDelete: true,
 }
 
 // Step is one entry in a rendered apply Plan — the shape the review screen's
@@ -75,11 +102,20 @@ type Plan struct {
 // multi-node case.
 //
 // It returns *ErrUnsupportedOp for any op the T-205 executor cannot run yet
-// (guest/SDN-write/fw/ipam families), so an un-executable changeset is
-// refused before any mutation rather than partially applied.
+// (guest/fw/ipam families), so an un-executable changeset is refused before
+// any mutation rather than partially applied.
+//
+// T-402 note on ordering: sdn.zone/vnet/subnet.* ops become StepSDNStage
+// steps, emitted *before* the per-node stage/reload pairs (docs/data-model.md
+// §3's category order: "(1) cluster-scope PVE API calls, (2) per-node
+// interface file staging, (3) per-node ifreload ..., (4) sdn.apply last").
+// One step per op, in the changeset's own op order, mirroring the doc's
+// same "documented interpretation of the category ordering" precedent the
+// per-node stage/reload pairing already set below.
 func BuildPlan(ops []Op) (Plan, error) {
 	var nodeOrder []string
 	byNode := map[string][]int{}
+	var sdnStageSteps []Step
 	sdnApply := false
 
 	for i, op := range ops {
@@ -90,6 +126,12 @@ func BuildPlan(ops []Op) (Plan, error) {
 				nodeOrder = append(nodeOrder, node)
 			}
 			byNode[node] = append(byNode[node], i)
+		case sdnStageOpTypes[op.Type]:
+			sdnStageSteps = append(sdnStageSteps, Step{
+				Kind:    StepSDNStage,
+				OpIdx:   []int{i},
+				Summary: sdnStageSummary(op),
+			})
 		case op.Type == OpSdnApply:
 			sdnApply = true
 		default:
@@ -98,6 +140,7 @@ func BuildPlan(ops []Op) (Plan, error) {
 	}
 
 	var steps []Step
+	steps = append(steps, sdnStageSteps...)
 	for _, node := range nodeOrder {
 		idxs := byNode[node]
 		steps = append(steps,
@@ -122,6 +165,36 @@ func BuildPlan(ops []Op) (Plan, error) {
 	}
 
 	return Plan{Steps: steps}, nil
+}
+
+// sdnStageSummary renders one StepSDNStage's human-readable Plan-tab summary
+// (docs/features/change-management.md §3's Plan review screen).
+func sdnStageSummary(op Op) string {
+	verb := map[OpType]string{
+		OpSdnZoneCreate: "Create", OpSdnZoneUpdate: "Update", OpSdnZoneDelete: "Delete",
+		OpSdnVnetCreate: "Create", OpSdnVnetUpdate: "Update", OpSdnVnetDelete: "Delete",
+		OpSdnSubnetCreate: "Create", OpSdnSubnetUpdate: "Update", OpSdnSubnetDelete: "Delete",
+	}[op.Type]
+	kind := map[OpType]string{
+		OpSdnZoneCreate: "sdn zone", OpSdnZoneUpdate: "sdn zone", OpSdnZoneDelete: "sdn zone",
+		OpSdnVnetCreate: "sdn vnet", OpSdnVnetUpdate: "sdn vnet", OpSdnVnetDelete: "sdn vnet",
+		OpSdnSubnetCreate: "sdn subnet", OpSdnSubnetUpdate: "sdn subnet", OpSdnSubnetDelete: "sdn subnet",
+	}[op.Type]
+	return fmt.Sprintf("%s %s %s", verb, kind, op.Target.ID)
+}
+
+// hasSDN reports whether the plan carries any SDN step (a cluster-scope
+// zone/vnet/subnet mutation, or the trailing sdn.apply) — the gate for
+// whether the apply/rollback engine needs to snapshot and be able to
+// restore SDN config alongside node interface files (apply_snapshot.go's
+// captureSnapshotFull, apply_sdn.go's restoreSDN).
+func (p Plan) hasSDN() bool {
+	for _, s := range p.Steps {
+		if s.Kind == StepSDNStage || s.Kind == StepSDNApply {
+			return true
+		}
+	}
+	return false
 }
 
 // affectedNodes returns, in first-appearance order, every node the plan's

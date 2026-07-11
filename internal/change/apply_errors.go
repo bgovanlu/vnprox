@@ -71,3 +71,27 @@ type ErrRollbackWindowExpired struct {
 func (e *ErrRollbackWindowExpired) Error() string {
 	return fmt.Sprintf("change: changeset %s was committed more than %d days ago; the manual-rollback window has expired (restore from a snapshot instead)", e.ID, e.WindowDays)
 }
+
+// ErrSDNZoneUnhealthy is returned by the sdn_apply step when the underlying
+// PVE task itself succeeded but T-402's post-apply verification finds a
+// zone unhealthy on one of its member nodes (docs/features/sdn.md §4:
+// "post-apply verification that each node's status reports the zone
+// healthy ... failures link straight to the failing node's task log") — a
+// deliberately distinct failure mode from the PVE task itself failing
+// (which surfaces as whatever error the gateway's WaitTask/*pve.ErrPVE*
+// call returned). Node/Detail/Status are the failing zone's first non-ok
+// entry; UPID/TaskNode identify the apply task itself for the task-log
+// deep link even though the task "succeeded".
+type ErrSDNZoneUnhealthy struct {
+	Zone     string
+	Node     string
+	Status   string
+	Detail   string
+	UPID     string
+	TaskNode string
+}
+
+func (e *ErrSDNZoneUnhealthy) Error() string {
+	return fmt.Sprintf("change: sdn zone %q reports %s on node %s after apply (task %s on %s): %s",
+		e.Zone, e.Status, e.Node, e.UPID, e.TaskNode, e.Detail)
+}
