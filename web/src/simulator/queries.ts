@@ -13,7 +13,15 @@ import type { SimulateRequest } from "../api/types";
 export function useSimulateQuery(request: SimulateRequest | undefined) {
   return useQuery({
     queryKey: ["simulate", "path", request],
-    queryFn: () => simulatePath(request as SimulateRequest),
+    // `enabled` below guarantees TanStack Query never actually calls this
+    // queryFn while `request` is undefined; the explicit check (rather than
+    // a non-null assertion) keeps this file honest without one.
+    queryFn: () => {
+      if (!request) {
+        return Promise.reject(new Error("useSimulateQuery: queryFn invoked with no request"));
+      }
+      return simulatePath(request);
+    },
     enabled: request !== undefined,
     // A simulation over a given request never changes without new
     // inventory data arriving (no live packets involved) — avoid refiring

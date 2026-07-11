@@ -1,12 +1,13 @@
-// Tools page: T-208's raw interfaces editor (the power-user escape hatch,
-// docs/features/change-management.md §7), T-305's drift findings stream,
-// and T-505's firewall log viewer. The path simulator lands in a later
-// task.
+// Tools page: T-504's path simulator (docs/user-guide.md §3: "Tools ->
+// Path simulator"), T-208's raw interfaces editor (the power-user escape
+// hatch, docs/features/change-management.md §7), T-305's drift findings
+// stream, and T-505's firewall log viewer.
 import { useEffect, useMemo, useState } from "react";
 import { RawEditorPanel } from "../changesets/rawEditor/RawEditorPanel";
 import { EmptyState } from "../components/EmptyState";
 import { DriftFindingsPanel } from "../drift/DriftFindingsPanel";
 import { FwLogViewer } from "../fwlog/FwLogViewer";
+import { SimulatorPage } from "../simulator/SimulatorPage";
 import { MacFdbBrowser } from "../tools/MacFdbBrowser";
 import { useTopologyQuery } from "../topology/queries";
 
@@ -55,6 +56,10 @@ export function ToolsPage() {
         )}
       </div>
 
+      <SimulatorPage />
+
+      <hr className="border-slate-200 dark:border-slate-800" />
+
       {node ? (
         <RawEditorPanel key={node} node={node} />
       ) : (
@@ -79,10 +84,6 @@ export function ToolsPage() {
       <hr className="border-slate-200 dark:border-slate-800" />
 
       <FwLogViewer />
-
-      <p className="text-xs text-slate-400 dark:text-slate-500">
-        The path simulator ("why can't VM A reach VM B?") lands in a later task.
-      </p>
     </div>
   );
 }

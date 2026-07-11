@@ -76,7 +76,7 @@ export function decodeSimState(search: string | URLSearchParams): SimUrlState {
   return {
     src,
     dst,
-    proto: proto || undefined,
+    proto: proto !== undefined && proto !== "" ? proto : undefined,
     port: port !== undefined && Number.isFinite(port) && port > 0 ? port : undefined,
   };
 }

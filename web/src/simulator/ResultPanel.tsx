@@ -138,7 +138,7 @@ function MissingLinkCard({ result }: { result: SimulateResult }) {
     <div className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50/60 p-3 dark:border-amber-800 dark:bg-amber-950/40">
       <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">Missing link</h3>
       <p className="text-sm text-amber-900 dark:text-amber-100">{missing.message}</p>
-      {(missing.atNode || missing.atRef) && (
+      {(missing.atNode !== undefined || missing.atRef !== undefined) && (
         <p className="text-xs text-amber-700 dark:text-amber-300">
           {missing.atNode && <>Node: {missing.atNode}. </>}
           {missing.atRef && <>Ref: {missing.atRef}</>}
