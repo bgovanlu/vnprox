@@ -4,9 +4,12 @@
 // (docs/features/sdn.md §2) and editors land with T-402/T-403.
 import { useEffect, useState } from "react";
 import clsx from "clsx";
+import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import type { SdnSubnet, SdnTree, SdnVnet, SdnZone } from "../api/types";
+import { SdnEditorLauncher } from "./SdnEditorLauncher";
 import { InSyncBadge, PendingDiffView } from "./PendingDiffView";
+import { useSdnEditorStore } from "./sdnEditorStore";
 import { StatusDot } from "./StatusDot";
 import { sdnNodeEntityStatus, sdnZoneEntityStatus } from "./status";
 import { firstSelection, resolveSdnSelection, type SdnSelection } from "./tree";
@@ -150,11 +153,25 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 function ZoneDetail({ zone }: { zone: SdnZone }) {
+  const open = useSdnEditorStore((s) => s.open);
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lg font-semibold">{zone.id}</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Zone · {zone.type}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">{zone.id}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Zone · {zone.type}</p>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button variant="secondary" size="sm" onClick={() => { open({ kind: "vnet-create", zoneId: zone.id }); }}>
+            + VNet
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "zone-edit", zone }); }}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "zone-delete", zone }); }}>
+            Delete
+          </Button>
+        </div>
       </div>
       {zone.pendingDiff ? <PendingDiffView diff={zone.pendingDiff} /> : <InSyncBadge />}
       <dl>
@@ -187,11 +204,25 @@ function ZoneDetail({ zone }: { zone: SdnZone }) {
 }
 
 function VnetDetail({ vnet }: { vnet: SdnVnet }) {
+  const open = useSdnEditorStore((s) => s.open);
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lg font-semibold">{vnet.id}</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">VNet · zone {vnet.zone}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">{vnet.id}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">VNet · zone {vnet.zone}</p>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button variant="secondary" size="sm" onClick={() => { open({ kind: "subnet-create", vnetId: vnet.id }); }}>
+            + Subnet
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "vnet-edit", vnet }); }}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "vnet-delete", vnet }); }}>
+            Delete
+          </Button>
+        </div>
       </div>
       {vnet.pendingDiff ? <PendingDiffView diff={vnet.pendingDiff} /> : <InSyncBadge />}
       <dl>
@@ -204,11 +235,22 @@ function VnetDetail({ vnet }: { vnet: SdnVnet }) {
 }
 
 function SubnetDetail({ subnet }: { subnet: SdnSubnet }) {
+  const open = useSdnEditorStore((s) => s.open);
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lg font-semibold">{subnet.cidr || subnet.id}</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Subnet · vnet {subnet.vnet}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">{subnet.cidr || subnet.id}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Subnet · vnet {subnet.vnet}</p>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "subnet-edit", subnet }); }}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "subnet-delete", subnet }); }}>
+            Delete
+          </Button>
+        </div>
       </div>
       {subnet.pendingDiff ? <PendingDiffView diff={subnet.pendingDiff} /> : <InSyncBadge />}
       <dl>
@@ -223,6 +265,7 @@ function SubnetDetail({ subnet }: { subnet: SdnSubnet }) {
 export function SdnPage() {
   const { data: tree, isLoading, isError } = useSdnQuery();
   const [selection, setSelection] = useState<SdnSelection | undefined>(undefined);
+  const openEditor = useSdnEditorStore((s) => s.open);
 
   // Default-select the first zone once the tree first loads, so the detail
   // panel isn't blank on arrival (tree.ts's firstSelection).
@@ -241,7 +284,11 @@ export function SdnPage() {
     <div className="flex h-full flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">SDN</h1>
+        <Button variant="primary" size="sm" onClick={() => { openEditor({ kind: "zone-create" }); }}>
+          + New zone
+        </Button>
       </div>
+      <SdnEditorLauncher />
 
       {isLoading && <p className="text-sm text-slate-400">Loading SDN configuration…</p>}
       {isError && (

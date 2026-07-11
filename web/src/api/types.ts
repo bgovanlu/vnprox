@@ -228,8 +228,8 @@ export interface LayoutResponse {
 
 /** The v1 op vocabulary (docs/data-model.md §3 / internal/change/op.go's
  * OpType constants). Kept as a plain string union (not every family has a
- * frontend consumer yet — SDN/firewall/IPAM ops are not editable in T-207,
- * see this task's report) rather than an enum so unknown-to-this-file
+ * frontend consumer yet — firewall/IPAM ops are not editable as of T-402,
+ * see that task's report) rather than an enum so unknown-to-this-file
  * values (still valid on the wire) don't need a cast. */
 export type OpType =
   | "iface.update"
@@ -380,10 +380,74 @@ export interface GuestNicUpdateParams {
   linkDown?: boolean;
 }
 
-/** Every Params shape T-207's editors can produce. Ops this task doesn't
- * edit (SDN/firewall/IPAM) still round-trip through the drawer/review
+// --- Params for the sdn.zone/vnet/subnet.* op family (T-402's editors,
+// internal/change/params_sdn.go). Field names/shapes mirror that file's
+// JSON tags exactly — note SdnSubnet*Params' `dhcpRanges` is an array of
+// "start-end" strings (the op's own wire shape), distinct from GET /sdn's
+// read-side SdnSubnet.dhcpRangeStart/dhcpRangeEnd (a single pair, PVE's own
+// read wire shape T-401 passed through as-is) — two different shapes for
+// two different purposes, both pre-existing.
+
+export interface SdnZoneCreateParams {
+  type: string;
+  bridge?: string;
+  controller?: string;
+  ipam?: string;
+  nodes?: string[];
+  vrfVxlan?: number;
+  mtu?: number;
+}
+
+export interface SdnZoneUpdateParams {
+  bridge?: string;
+  controller?: string;
+  ipam?: string;
+  nodes?: string[];
+  vrfVxlan?: number;
+  mtu?: number;
+}
+
+export type SdnZoneDeleteParams = Record<string, never>;
+
+export interface SdnVnetCreateParams {
+  zone: string;
+  alias?: string;
+  tag?: number;
+  vlanAware?: boolean;
+}
+
+export interface SdnVnetUpdateParams {
+  alias?: string;
+  tag?: number;
+  vlanAware?: boolean;
+}
+
+export type SdnVnetDeleteParams = Record<string, never>;
+
+export interface SdnSubnetCreateParams {
+  vnet: string;
+  cidr: string;
+  gateway?: string;
+  dnsZonePrefix?: string;
+  dhcpRanges?: string[];
+  snat?: boolean;
+}
+
+export interface SdnSubnetUpdateParams {
+  gateway?: string;
+  dnsZonePrefix?: string;
+  dhcpRanges?: string[];
+  snat?: boolean;
+}
+
+export type SdnSubnetDeleteParams = Record<string, never>;
+
+export type SdnApplyParams = Record<string, never>;
+
+/** Every Params shape T-207/T-402's editors can produce. Ops these tasks
+ * don't edit (firewall/IPAM) still round-trip through the drawer/review
  * screen — they just carry `Record<string, unknown>` params, since nothing
- * in this task ever needs to read a typed field off one. */
+ * needs to read a typed field off one yet. */
 export type OpParams =
   | IfaceUpdateParams
   | IfaceRawReplaceParams
@@ -399,6 +463,16 @@ export type OpParams =
   | VlanUpdateParams
   | VlanDeleteParams
   | GuestNicUpdateParams
+  | SdnZoneCreateParams
+  | SdnZoneUpdateParams
+  | SdnZoneDeleteParams
+  | SdnVnetCreateParams
+  | SdnVnetUpdateParams
+  | SdnVnetDeleteParams
+  | SdnSubnetCreateParams
+  | SdnSubnetUpdateParams
+  | SdnSubnetDeleteParams
+  | SdnApplyParams
   | Record<string, unknown>;
 
 /** One changeset operation, the wire shape internal/change/op.go's Op

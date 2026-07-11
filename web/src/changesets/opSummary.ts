@@ -119,6 +119,32 @@ export function summarizeOp(op: Op): string {
       if (down !== undefined) parts.push(down ? "disconnect" : "connect");
       return `Update guest NIC ${id ?? "?"} (${parts.length > 0 ? parts.join(", ") : "no changes"})`;
     }
+    case "sdn.zone.create": {
+      const type = str(op.params, "type") ?? "?";
+      const nodes = strArr(op.params, "nodes") ?? [];
+      return `Create sdn zone ${id ?? "?"} (${type}) on ${nodes.join(", ") || "every node"}`;
+    }
+    case "sdn.zone.update":
+      return `Update sdn zone ${id ?? "?"} (${updateFieldList(op.params)})`;
+    case "sdn.zone.delete":
+      return `Delete sdn zone ${id ?? "?"}`;
+    case "sdn.vnet.create": {
+      const zone = str(op.params, "zone") ?? "?";
+      const tag = num(op.params, "tag");
+      return `Create sdn vnet ${id ?? "?"} in zone ${zone}${tag === undefined ? "" : ` (tag ${String(tag)})`}`;
+    }
+    case "sdn.vnet.update":
+      return `Update sdn vnet ${id ?? "?"} (${updateFieldList(op.params)})`;
+    case "sdn.vnet.delete":
+      return `Delete sdn vnet ${id ?? "?"}`;
+    case "sdn.subnet.create": {
+      const vnet = str(op.params, "vnet") ?? "?";
+      return `Create sdn subnet ${id ?? "?"} in vnet ${vnet}`;
+    }
+    case "sdn.subnet.update":
+      return `Update sdn subnet ${id ?? "?"} (${updateFieldList(op.params)})`;
+    case "sdn.subnet.delete":
+      return `Delete sdn subnet ${id ?? "?"}`;
     case "sdn.apply":
       return "Apply pending SDN configuration (cluster-wide)";
     default:
@@ -154,6 +180,24 @@ function updateFieldList(params: unknown): string {
   if (xmitHashPolicy !== undefined) fields.push("xmitHashPolicy");
   const miimon = num(params, "miimon");
   if (miimon !== undefined) fields.push(`miimon=${String(miimon)}`);
+  const bridge = str(params, "bridge");
+  if (bridge !== undefined) fields.push("bridge");
+  const controller = str(params, "controller");
+  if (controller !== undefined) fields.push("controller");
+  const nodes = strArr(params, "nodes");
+  if (nodes !== undefined) fields.push("nodes");
+  const vrfVxlan = num(params, "vrfVxlan");
+  if (vrfVxlan !== undefined) fields.push(`vrfVxlan=${String(vrfVxlan)}`);
+  const alias = str(params, "alias");
+  if (alias !== undefined) fields.push("alias");
+  const tag = num(params, "tag");
+  if (tag !== undefined) fields.push(`tag=${String(tag)}`);
+  const dnsZonePrefix = str(params, "dnsZonePrefix");
+  if (dnsZonePrefix !== undefined) fields.push("dnsZonePrefix");
+  const dhcpRanges = strArr(params, "dhcpRanges");
+  if (dhcpRanges !== undefined) fields.push("dhcpRanges");
+  const snat = bool(params, "snat");
+  if (snat !== undefined) fields.push(`snat=${String(snat)}`);
   if (fields.length === 0) return "no changes";
   return fields.join(", ");
 }
