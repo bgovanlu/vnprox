@@ -1,0 +1,178 @@
+# ovs-lab.yaml — single-node fixture dedicated to T-407's Open vSwitch
+# support: one plain Linux management bridge alongside a full OVS stack
+# (OVSBridge + OVSBond + a tagged OVSIntPort), so inventory/map/inspector
+# and the change engine's OVS validators/mutators have a realistic,
+# self-contained cluster to run golden tests against (docs/development.md's
+# "every feature must work against a baseline fixture", mirrored here for
+# T-407's OVS deliverable the way single-node.yaml/three-node-vlan.yaml
+# serve earlier tasks).
+cluster:
+  name: pve-ovs-lab
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.20.0.11
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 8a3f5c12-4b90-4d7e-9c21-1f6a7e0b9d33
+  - userid: auditor@pve
+    password: readonly
+    privileges: ["Sys.Audit", "VM.Audit", "SDN.Audit"]
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno3
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno4
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      # Plain Linux management bridge, alongside the OVS stack below — the
+      # cross-kind mistake T-407's validators reject (a Linux bridge/bond
+      # can never be enslaved to an OVS bridge/bond or vice versa) needs
+      # both kinds present in the same fixture to be exercisable.
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.20.0.11/24
+        gateway: 10.20.0.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: false
+        comments: "management bridge (linux)"
+      # OVS bond aggregating eno3+eno4, attached to the OVS bridge below.
+      # vlan_raw_device doubles as the ovs_bridge attachment for OVSBond
+      # fixture entries (internal/pvemock/render.go's doc comment).
+      - iface: bond0
+        type: OVSBond
+        method: manual
+        autostart: true
+        slaves: "eno3 eno4"
+        bond_mode: active-backup
+        vlan_raw_device: vmbr1
+      # OVS bridge: ports list includes both the OVS bond and the tagged
+      # OVS Int Port below, matching testdata/interfaces/04-ovs-bridge's
+      # "ovs_ports eno1 vlan20" convention (a bridge's ovs_ports enumerates
+      # every attached port regardless of the port's own underlying kind).
+      - iface: vmbr1
+        type: OVSBridge
+        method: manual
+        autostart: true
+        mtu: 1500
+        bridge_ports: "bond0 vlan30"
+        comments: "ovs trunk bridge"
+      # Tagged OVS Int Port on vmbr1 (vlan_raw_device doubles as ovs_bridge
+      # per the same convention as OVSBond above; vlan_id doubles as the
+      # ovs_options tag=).
+      - iface: vlan30
+        type: OVSIntPort
+        method: static
+        address: 10.20.30.5/24
+        autostart: true
+        vlan_raw_device: vmbr1
+        vlan_id: 30
+    links:
+      eno1:
+        mac: "bc:24:11:aa:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.0"
+        mtu: 1500
+      eno2:
+        mac: "bc:24:11:aa:00:02"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: false
+        pci_addr: "0000:01:00.1"
+        mtu: 1500
+      eno3:
+        mac: "bc:24:11:aa:00:03"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:02:00.0"
+        mtu: 1500
+      eno4:
+        mac: "bc:24:11:aa:00:04"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:02:00.1"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:11:aa:00:01"
+        link_up: true
+        mtu: 1500
+      bond0:
+        mac: "bc:24:11:aa:00:03"
+        link_up: true
+        mtu: 1500
+      vmbr1:
+        mac: "bc:24:11:aa:00:10"
+        link_up: true
+        mtu: 1500
+      vlan30:
+        mac: "bc:24:11:aa:00:10"
+        link_up: true
+        mtu: 1500
+    stats:
+      eno3:
+        rx_bytes: 209715200
+        tx_bytes: 104857600
+        rx_packets: 180000
+        tx_packets: 90000
+      eno4:
+        rx_bytes: 199715200
+        tx_bytes: 94857600
+        rx_packets: 170000
+        tx_packets: 85000
+      vlan30:
+        rx_bytes: 10485760
+        tx_bytes: 5242880
+        rx_packets: 9000
+        tx_packets: 4500
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []

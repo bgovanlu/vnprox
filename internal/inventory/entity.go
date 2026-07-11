@@ -288,9 +288,18 @@ func (b *Bridge) fieldMap() map[string]string {
 	}
 }
 
-// VlanIface is a VLAN sub-interface (e.g. eno1.100 or vmbr0.20). Parent is
-// resolved during linking from ParentName; Vid/addresses are declared, MTU
-// runtime.
+// VlanIface is a VLAN sub-interface (e.g. eno1.100 or vmbr0.20) OR an OVS
+// Int Port (e.g. ovs_type OVSIntPort). Parent is resolved during linking
+// from ParentName; Vid/addresses are declared, MTU runtime.
+//
+// An OVS Int Port has no dedicated inventory.Kind of its own (unlike
+// OVSBridge/OVSBond) — per docs/data-model.md, "OVSIntPort ... map[s] to
+// KindVlan" — so Virt is what distinguishes the two: "" for a plain 802.1q
+// VLAN sub-interface, "ovs" for an OVS Int Port. This mirrors Bridge.Virt's
+// exact shape/precedence rules (T-407) rather than inventing a new pattern.
+// Trunks is OVS-only (a plain 802.1q sub-interface always carries exactly
+// one VID, already in Vid); an OVS Int Port may instead (or additionally)
+// carry a trunk VID set, per ovs-vsctl's port "trunks" column.
 type VlanIface struct {
 	Ref
 	Parent Ref
@@ -298,7 +307,9 @@ type VlanIface struct {
 	Name        string
 	ParentName  string
 	Pending     string
+	Virt        string // "" (plain 802.1q) | "ovs" (OVS Int Port)
 	Addresses   []string
+	Trunks      []VidRange
 	Vid         int
 	MTU         int
 	MTUDeclared int
@@ -308,6 +319,7 @@ func (v *VlanIface) GetRef() Ref { return v.Ref }
 func (v *VlanIface) clone() Entity {
 	cp := *v
 	cp.Addresses = append([]string(nil), v.Addresses...)
+	cp.Trunks = append([]VidRange(nil), v.Trunks...)
 	return &cp
 }
 func (v *VlanIface) fieldMap() map[string]string {
@@ -315,7 +327,7 @@ func (v *VlanIface) fieldMap() map[string]string {
 		"name": v.Name, "parent": v.Parent.String(), "parentName": v.ParentName,
 		"addresses": sortedJoin(v.Addresses), "vid": strconv.Itoa(v.Vid),
 		"mtu": strconv.Itoa(v.MTU), "mtuDeclared": strconv.Itoa(v.MTUDeclared),
-		"pending": v.Pending,
+		"pending": v.Pending, "virt": v.Virt, "trunks": vidsString(v.Trunks),
 	}
 }
 

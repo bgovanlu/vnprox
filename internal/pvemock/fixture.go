@@ -257,13 +257,19 @@ func validateNodeNetwork(nodeName string, _ *NodeSpec, ifaces []NetIface, field 
 					fail("nodes[%q].%s: bridge %q references non-existent port %q", nodeName, field, i.Iface, port)
 				}
 			}
-		case "bond":
+		case "bond", "OVSBond":
 			for _, slave := range strings.Fields(i.Slaves) {
 				if !names[slave] {
 					fail("nodes[%q].%s: bond %q references non-existent slave %q", nodeName, field, i.Iface, slave)
 				}
 			}
-		case "vlan":
+			// OVSBond's VlanRawDevice doubles as its ovs_bridge attachment
+			// (see render.go's doc comment) — validated the same as
+			// OVSIntPort's below.
+			if i.Type == "OVSBond" && i.VlanRawDevice != "" && !names[i.VlanRawDevice] {
+				fail("nodes[%q].%s: ovs bond %q references non-existent bridge %q", nodeName, field, i.Iface, i.VlanRawDevice)
+			}
+		case "vlan", "OVSIntPort":
 			if i.VlanRawDevice != "" && !names[i.VlanRawDevice] {
 				fail("nodes[%q].%s: vlan %q references non-existent parent %q", nodeName, field, i.Iface, i.VlanRawDevice)
 			}

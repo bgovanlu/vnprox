@@ -191,9 +191,13 @@ func FromPVENetwork(node string, ifaces []pve.NetworkInterface) []Entity {
 				MTUDeclared: n.MTU,
 				Pending:     string(n.Pending),
 			}
-		case "bond":
+		case "bond", "OVSBond":
+			kind := KindBond
+			if n.Type == "OVSBond" {
+				kind = KindOVSBond
+			}
 			ent = &Bond{
-				Ref:            Ref{Kind: KindBond, Node: node, ID: n.Iface},
+				Ref:            Ref{Kind: kind, Node: node, ID: n.Iface},
 				Name:           n.Iface,
 				Mode:           n.BondMode,
 				DeclaredSlaves: fields(n.Slaves),
@@ -227,9 +231,14 @@ func FromPVENetwork(node string, ifaces []pve.NetworkInterface) []Entity {
 			}
 			ent = br
 		case "vlan", "OVSIntPort":
+			virt := ""
+			if n.Type == "OVSIntPort" {
+				virt = "ovs"
+			}
 			v := &VlanIface{
 				Ref:         Ref{Kind: KindVlan, Node: node, ID: n.Iface},
 				Name:        n.Iface,
+				Virt:        virt,
 				ParentName:  n.VlanRawDevice,
 				Vid:         n.VlanID,
 				MTUDeclared: n.MTU,
@@ -723,12 +732,16 @@ func interfacesOVSIntPort(node, name string, entries []*host.Entry) Entity {
 	v := &VlanIface{
 		Ref:         Ref{Kind: KindVlan, Node: node, ID: name},
 		Name:        name,
+		Virt:        "ovs",
 		Addresses:   ifaceAddresses(entries),
 		MTUDeclared: ifaceOptInt(entries, "mtu"),
 	}
 	v.ParentName, _ = ifaceOpt(entries, "ovs-bridge")
 	if tag := ovsOption(entries, "tag"); tag != "" {
 		v.Vid, _ = strconv.Atoi(tag)
+	}
+	if trunks := ovsOption(entries, "trunks"); trunks != "" {
+		v.Trunks = parseVidRangeList(trunks)
 	}
 	return v
 }

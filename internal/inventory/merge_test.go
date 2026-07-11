@@ -147,6 +147,10 @@ func setField(t *testing.T, e Entity, field string, idx int) {
 			v.Addresses = []string{s}
 		case "pending":
 			v.Pending = s
+		case "virt":
+			v.Virt = s
+		case "trunks":
+			v.Trunks = []VidRange{{Low: 10 + idx, High: 10 + idx}}
 		default:
 			set(false)
 		}
