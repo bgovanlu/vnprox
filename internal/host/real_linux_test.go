@@ -131,6 +131,51 @@ func TestReal_LLDP_Unavailable(t *testing.T) {
 	}
 }
 
+// TestReal_FRRBGPSummary_Unavailable exercises the ErrFRRUnavailable path
+// (T-404): when BGPSummaryCommand names a binary that doesn't exist,
+// Real.FRRBGPSummary must return an error wrapping ErrFRRUnavailable
+// (docs/features/sdn.md §3's "absent FRR on a node reports no EVPN
+// cleanly" case) rather than a generic exec failure.
+func TestReal_FRRBGPSummary_Unavailable(t *testing.T) {
+	r := NewReal()
+	r.BGPSummaryCommand = []string{"vnprox-definitely-not-a-real-binary-xyz"}
+	_, err := r.FRRBGPSummary(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected an error for a nonexistent vtysh command")
+	}
+	if !errors.Is(err, ErrFRRUnavailable) {
+		t.Errorf("error = %v, want wrapped ErrFRRUnavailable", err)
+	}
+}
+
+// TestReal_FRREVPNVNI_Unavailable is FRREVPNVNI's counterpart to
+// TestReal_FRRBGPSummary_Unavailable.
+func TestReal_FRREVPNVNI_Unavailable(t *testing.T) {
+	r := NewReal()
+	r.EVPNVNICommand = []string{"vnprox-definitely-not-a-real-binary-xyz"}
+	_, err := r.FRREVPNVNI(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected an error for a nonexistent vtysh command")
+	}
+	if !errors.Is(err, ErrFRRUnavailable) {
+		t.Errorf("error = %v, want wrapped ErrFRRUnavailable", err)
+	}
+}
+
+// TestReal_FRRBGPSummary_Installed is a best-effort integration test: if
+// vtysh is actually installed on this sandbox, exercise the real exec
+// path end to end (skipped otherwise — CI runners never have FRR
+// installed, matching TestReal_LLDP's own skip-if-absent convention).
+func TestReal_FRRBGPSummary_Installed(t *testing.T) {
+	r := NewReal()
+	if _, err := exec.LookPath(r.BGPSummaryCommand[0]); err != nil {
+		t.Skipf("vtysh (%s) not installed on this sandbox — skipping FRR integration test", r.BGPSummaryCommand[0])
+	}
+	if _, err := r.FRRBGPSummary(context.Background(), ""); err != nil {
+		t.Fatalf("FRRBGPSummary: %v", err)
+	}
+}
+
 // TestReal_BondDetail_NoLiveBonds exercises the /proc/net/bonding path
 // against this sandbox, skipping cleanly (rather than failing) when the
 // bonding driver isn't loaded/no bonds exist here — which is the common

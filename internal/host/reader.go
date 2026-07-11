@@ -52,6 +52,19 @@ type Reader interface {
 
 	// Stats returns interface counters for node, keyed by interface name.
 	Stats(ctx context.Context, node string) (map[string]IfaceStats, error)
+
+	// FRRBGPSummary returns raw `vtysh -c "show bgp summary json"` output
+	// for node (T-404's EVPN/BGP observability, docs/features/sdn.md §3).
+	// Returns an error wrapping ErrFRRUnavailable when FRR is not
+	// installed/running on node at all — a documented, cleanly-degraded
+	// condition distinct from a transient/parse failure. Use
+	// ParseBGPSummary to obtain a structured view.
+	FRRBGPSummary(ctx context.Context, node string) ([]byte, error)
+
+	// FRREVPNVNI returns raw `vtysh -c "show evpn vni json"` output for
+	// node. Same ErrFRRUnavailable convention as FRRBGPSummary. Use
+	// ParseEVPNVNI to obtain a structured view.
+	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
 }
 
 // ErrUnsupportedPlatform is returned by real.go's OS-specific paths (raw
