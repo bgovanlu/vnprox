@@ -2,9 +2,10 @@
 // TypeScript standards: "server state via TanStack Query only — no fetch
 // in components").
 import { useQuery } from "@tanstack/react-query";
+import { fetchDhcpView } from "../api/dhcp";
 import { fetchEvpnStatus } from "../api/evpn";
 import { fetchSdnTree } from "../api/sdn";
-import type { EvpnStatus, SdnTree } from "../api/types";
+import type { DhcpView, EvpnStatus, SdnTree } from "../api/types";
 
 export const SDN_QUERY_KEY = ["sdn"] as const;
 
@@ -32,6 +33,24 @@ export function useEvpnStatusQuery(options?: { enabled?: boolean }) {
     queryFn: fetchEvpnStatus,
     staleTime: 5_000,
     refetchInterval: 10_000,
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export const DHCP_VIEW_QUERY_KEY = (zone?: string) => ["sdn", "dhcp", zone ?? ""] as const;
+
+// T-406: "a live leases view (parsed per-node via peer API)... live-ish 30s
+// refresh" (docs/features/sdn.md §5, this task's card) — dnsmasq leases
+// change independently of any changeset apply, so this needs its own
+// polling interval rather than relying on WS invalidation the way
+// changeset-driven data does. `enabled` mirrors useEvpnStatusQuery's own
+// "only poll while this tab is active" convention.
+export function useDhcpViewQuery(zone?: string, options?: { enabled?: boolean }) {
+  return useQuery<DhcpView>({
+    queryKey: DHCP_VIEW_QUERY_KEY(zone),
+    queryFn: () => fetchDhcpView(zone),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
     enabled: options?.enabled ?? true,
   });
 }
