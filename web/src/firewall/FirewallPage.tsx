@@ -5,10 +5,22 @@
 // builder row, scope enable/disable with a "what will happen" summary,
 // object usage-guarded delete with deep-links) and wires everything to
 // stage fw.* ops via the change engine.
+//
+// T-504 additive change: reads the `scope`/`ref`/`pos`/`origin`/`group`
+// deep-link query params (focusRule.ts's parseFirewallDeepLink) so a
+// simulator deny verdict's blocking-rule card (or a correlated firewall
+// log line, T-505) can land here with the exact rule scrolled-to and
+// highlighted — never DOM position, always guestRef+pos+origin identity.
+// The deep link only seeds the initial scope/guest selection; it never
+// fights a user's own subsequent tab/guest clicks (which don't rewrite the
+// URL — see focusRule.ts's doc comment).
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
+import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { FirewallBanners } from "./Banner";
+import type { FocusRule } from "./focusRule";
+import { parseFirewallDeepLink } from "./focusRule";
 import { ObjectsPanel } from "./ObjectsPanel";
 import { ResolvedViewTable } from "./ResolvedViewTable";
 import { RuleEditor } from "./RuleEditor";
@@ -117,9 +129,10 @@ function NodePanel({ selected, onSelect }: NodePanelProps) {
 interface GuestPanelProps {
   selected: string | undefined;
   onSelect: (guestRef: string) => void;
+  focusRule?: FocusRule;
 }
 
-function GuestPanel({ selected, onSelect }: GuestPanelProps) {
+function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
   const { data: list, isLoading: listLoading } = useGuestRulesetsQuery();
   const { data: objects } = useFirewallObjectsQuery();
   // The list endpoint's items carry each ruleset's *own* Ref
@@ -173,11 +186,16 @@ function GuestPanel({ selected, onSelect }: GuestPanelProps) {
           </div>
           <div>
             <h3 className="mb-1 text-sm font-semibold">This guest's own rules</h3>
-            <RuleEditor rules={detail.ruleset.rules} target={detail.ruleset.ref} objects={objects} />
+            <RuleEditor
+              rules={detail.ruleset.rules}
+              target={detail.ruleset.ref}
+              objects={objects}
+              focusPos={focusRule?.origin === "guest" ? focusRule.pos : undefined}
+            />
           </div>
           <div>
             <h3 className="mb-1 text-sm font-semibold">Resolved evaluation order</h3>
-            <ResolvedViewTable resolved={detail.resolved} />
+            <ResolvedViewTable resolved={detail.resolved} focusRule={focusRule} />
           </div>
         </div>
       )}
@@ -199,9 +217,18 @@ function ObjectsTab({ onNavigate }: ObjectsTabProps) {
 }
 
 export function FirewallPage() {
-  const [scope, setScope] = useState<Scope>("cluster");
+  const [searchParams] = useSearchParams();
+  // Parsed once, on mount: a deep link should pre-select the right scope
+  // and guest, but must not fight a user's own subsequent tab/guest
+  // clicks (which never rewrite the URL — see focusRule.ts's doc comment;
+  // this page manages scope/selection as local state, matching T-501's
+  // original design note in web/src/fwlog/deeplink.ts).
+  const deepLink = useMemo(() => parseFirewallDeepLink(searchParams), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [scope, setScope] = useState<Scope>(deepLink.scope === "guest" ? "guest" : "cluster");
   const [selectedNode, setSelectedNode] = useState<string | undefined>(undefined);
-  const [selectedGuestRef, setSelectedGuestRef] = useState<string | undefined>(undefined);
+  const [selectedGuestRef, setSelectedGuestRef] = useState<string | undefined>(
+    deepLink.scope === "guest" ? deepLink.ref : undefined,
+  );
 
   // Acceptance criterion 2's "deep-links work": jumping from an object's
   // "referenced by" list to the referencing rule's own scope/selection.
@@ -227,7 +254,9 @@ export function FirewallPage() {
 
       {scope === "cluster" && <ClusterPanel />}
       {scope === "node" && <NodePanel selected={selectedNode} onSelect={setSelectedNode} />}
-      {scope === "guest" && <GuestPanel selected={selectedGuestRef} onSelect={setSelectedGuestRef} />}
+      {scope === "guest" && (
+        <GuestPanel selected={selectedGuestRef} onSelect={setSelectedGuestRef} focusRule={deepLink.focusRule} />
+      )}
       {scope === "objects" && <ObjectsTab onNavigate={navigateToRuleset} />}
     </div>
   );

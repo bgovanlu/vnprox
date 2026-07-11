@@ -1060,6 +1060,44 @@ export interface IpamAllocationGrid {
   generatedAt: number;
 }
 
+// --- DHCP (docs/api.md; GET /sdn/dhcp) ------------------------------------
+// Mirrors internal/ipam/dhcp.go's Reservation/Lease/DHCPView exactly.
+// Added by T-406 (docs/features/sdn.md §5).
+
+/** One DHCP-eligible subnet's MAC-bound static reservation — a filtered,
+ * derived view over the exact same PVE-IPAM allocation record the IPAM
+ * grid renders as an allocated cell (see internal/ipam/dhcp.go's doc
+ * comment: "one dataset", never a second stored copy). */
+export interface DhcpReservation {
+  cidr: string;
+  zone: string;
+  vnet: string;
+  ip: string;
+  mac: string;
+  hostname?: string;
+  vmid?: number;
+  guestRef?: string;
+}
+
+/** One live dnsmasq-observed DHCP lease, correlated to a known guest by
+ * MAC when one matches. */
+export interface DhcpLease {
+  cidr: string;
+  zone: string;
+  vnet: string;
+  ip: string;
+  mac: string;
+  hostname?: string;
+  guestRef?: string;
+}
+
+/** GET /sdn/dhcp response. */
+export interface DhcpView {
+  reservations: DhcpReservation[];
+  leases: DhcpLease[];
+  generatedAt: number;
+}
+
 // --- EVPN/BGP observability (docs/api.md; GET /sdn/evpn/status) -----------
 // Mirrors internal/evpn/types.go's Status/NodeStatus/Peer/VNI/
 // ExitNodeHealth/Finding exactly — see that file's doc comments and
@@ -1492,7 +1530,131 @@ export interface FirewallEffectsResponse {
   guests: string[];
 }
 
+// --- Path simulator (docs/api.md §"Path simulator"; internal/sim + T-503's
+// `internal/api/simulate.go`) ------------------------------------------
+// Mirrors the server's `simulateRequest`/`simulateResponse` wire shapes
+// exactly (camelCase, macro-expanded `RuleView` reused for the blocking
+// rule's deep link). See planning/reports/T-503.md for the honesty
+// contract this type set exists to uphold: `indeterminate` is a fourth,
+// first-class verdict (never squeezed into allow/deny/unreachable), and
+// `caveats` is always non-empty and must always be rendered (T-504 AC3).
+
+export type SimEndpointKind = "guest-nic" | "ip" | "external";
+
+/** One end of a simulated flow, as sent to `POST /simulate/path`. `ref` (a
+ * `guest-nic:<node>:<vmid>/<key>` Ref triplet) is required for
+ * `guest-nic`; `ip` is required for `ip`; `external` needs neither. */
+export interface SimEndpointSpec {
+  kind: SimEndpointKind;
+  ref?: string;
+  ip?: string;
+}
+
+export interface SimulateRequest {
+  src: SimEndpointSpec;
+  dst: SimEndpointSpec;
+  proto?: string;
+  port?: number;
+}
+
+/** The four-value verdict (docs/api.md's flagged deviation note: the
+ * original one-liner pinned `allow|deny|unreachable` — T-503 added
+ * `indeterminate` because the honesty contract forbids a confident
+ * verdict when the engine could not fully evaluate the path). Never
+ * render `indeterminate` as if it were a pass or a fail. */
+export type SimVerdict = "allow" | "deny" | "unreachable" | "indeterminate";
+
+/** Where a resolved endpoint's IP came from, ordered by confidence
+ * (docs/api.md: `ipSource` is `literal|static|ipam|guest-agent|omitted`). */
+export type SimIpSource = "literal" | "static" | "ipam" | "guest-agent";
+
+/** How the engine understood one endpoint. */
+export interface SimResolvedEndpoint {
+  kind: SimEndpointKind;
+  ref?: string;
+  guest?: string;
+  node?: string;
+  ip?: string;
+  ipSource?: SimIpSource;
+  attachment?: string;
+  zone?: string;
+  vnet?: string;
+  subnet?: string;
+  description?: string;
+  vid?: number;
+}
+
+/** One step of the traced path, for map rendering (T-504). `ref` is a
+ * real inventory Ref when the hop is a real entity, else a synthetic id
+ * (`"external"`, a fabric segment) that will never match a topology node. */
+export interface SimHop {
+  ref?: string;
+  kind: string;
+  node?: string;
+  label: string;
+  detail?: string;
+}
+
+/** The evaluation-order origin of a blocking rule — mirrors
+ * `FwLogRuleRef.origin` above (never "default": a default-policy
+ * fallthrough is never reported as a `blockingRule`, only an explicit
+ * ACCEPT/DROP/REJECT rule is). */
+export type SimRuleOrigin = "cluster" | "group" | "guest";
+
+/** Present only for `verdict: "deny"` — the exact rule that produced it,
+ * with enough identity for the one-click deep link into the firewall
+ * editor: `rulesetRef` + `pos` + `origin` (never DOM position), mirroring
+ * `ruleDeepLinkPath`'s (web/src/fwlog/deeplink.ts) established contract. */
+export interface SimBlockingRule {
+  enforcementPoint: "source-guest-out" | "dest-guest-in";
+  rulesetRef: string;
+  origin: SimRuleOrigin;
+  groupName?: string;
+  direction: string;
+  action: string;
+  rule: RuleView;
+  pos: number;
+}
+
+/** Present only for `verdict: "unreachable"` — the missing-link
+ * explanation (docs/features/firewall.md §5's exact operator-facing
+ * messages, e.g. "VLAN 30 is not trunked on bond0 of node pve2").
+ * `atRef`/`atNode` mark the break for T-504's map rendering (AC2). */
+export interface SimMissing {
+  code: string;
+  message: string;
+  atRef?: string;
+  atNode?: string;
+}
+
+export type SimCaveatSeverity = "info" | "warning" | "blocker";
+
+/** One honesty-contract disclosure. `caveats` on a `SimulateResult` is
+ * always non-empty (every result carries at least the standing
+ * "simulated" note) and must always be rendered, never collapsed by
+ * default (T-504 AC3) — `severity: "blocker"` caveats are what explain an
+ * `indeterminate` verdict and must be surfaced prominently. */
+export interface SimCaveat {
+  code: string;
+  severity: SimCaveatSeverity;
+  message: string;
+  feature?: string;
+}
+
+/** `POST /simulate/path` response. */
+export interface SimulateResult {
+  verdict: SimVerdict;
+  src: SimResolvedEndpoint;
+  dst: SimResolvedEndpoint;
+  proto?: string;
+  port?: number;
+  hops: SimHop[];
+  blockingRule?: SimBlockingRule;
+  missing?: SimMissing;
+  caveats: SimCaveat[];
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
-// Snapshots and the path simulator have routes defined in docs/api.md but
-// no frontend consumer yet — their request/response types land with the
-// task that first calls them. Add them here, not in a parallel file.
+// Snapshots and IPAM read views have routes defined in docs/api.md but no
+// frontend consumer yet — their request/response types land with the task
+// that first calls them. Add them here, not in a parallel file.

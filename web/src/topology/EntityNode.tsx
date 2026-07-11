@@ -8,7 +8,13 @@
 // painting/dim/highlight/selection behavior (docs/features/topology.md §2).
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
-import type { EntityStatus } from "../api/types";
+import type { EntityStatus, SimVerdict } from "../api/types";
+
+/** This node's role along a path-simulator overlay (T-504): "path" is any
+ * hop on the traced route, "blocking" is the enforcement-point endpoint a
+ * deny verdict stopped at, "missing" is the break point of an unreachable
+ * verdict (docs/api.md's `Missing.atRef`). */
+export type SimPathRole = "path" | "blocking" | "missing";
 
 export interface EntityNodeData extends Record<string, unknown> {
   label: string;
@@ -23,6 +29,10 @@ export interface EntityNodeData extends Record<string, unknown> {
   highlighted: boolean;
   isGuestGroup: boolean;
   collapsedCount?: number;
+  /** Path simulator overlay (see toFlowElements.ts's `pathHighlight` param)
+   * — undefined leaves this node's normal status/hover rendering alone. */
+  simVerdict?: SimVerdict;
+  simRole?: SimPathRole;
 }
 
 export type EntityFlowNode = Node<EntityNodeData, "entity">;
@@ -55,14 +65,40 @@ const KIND_ACCENT: Record<string, string> = {
   "lldp-neighbor": "bg-slate-100 dark:bg-slate-800",
 };
 
+// Path simulator verdict colors (T-504, docs/features/firewall.md §5):
+// allow=emerald, deny=red, unreachable=amber, indeterminate=violet (a
+// distinct fourth color — never squeezed into the allow/deny/unreachable
+// palette, per the honesty contract's "never a pass/fail" requirement).
+const SIM_RING_CLASS: Record<SimVerdict, string> = {
+  allow: "ring-2 ring-emerald-500",
+  deny: "ring-2 ring-red-500",
+  unreachable: "ring-2 ring-amber-500",
+  indeterminate: "ring-2 ring-violet-500",
+};
+
+const SIM_MARKER_CLASS: Record<SimVerdict, string> = {
+  allow: "bg-emerald-500",
+  deny: "bg-red-500",
+  unreachable: "bg-amber-500",
+  indeterminate: "bg-violet-500",
+};
+
+const SIM_MARKER_LABEL: Record<SimPathRole, string> = {
+  path: "on traced path",
+  blocking: "blocking point",
+  missing: "missing link",
+};
+
 export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
   const isPill = data.isGuestGroup;
+  const simVerdict = data.simVerdict;
+  const simRole = data.simRole;
   return (
     <div
       role="button"
       aria-label={data.label}
       className={clsx(
-        "flex flex-col gap-1 border px-3 py-2 text-xs shadow-sm transition-opacity",
+        "relative flex flex-col gap-1 border px-3 py-2 text-xs shadow-sm transition-opacity",
         isPill ? "rounded-full text-center" : "rounded-md",
         KIND_ACCENT[data.kind] ?? "bg-white dark:bg-slate-900",
         STATUS_CLASSES[data.status],
@@ -76,11 +112,28 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
         // to (not replacing) the status-driven border color above — a
         // "down"/"degraded" node can also carry an open drift finding.
         data.badges.includes("drift") && "border-dashed",
+        // Path simulator overlay (T-504) wins visually over the plain hover
+        // ring above (a simulated trace is a more deliberate, rarer action
+        // than a passive hover) and marks the missing-link break with a
+        // dashed border so it reads as "broken", not just "highlighted".
+        simVerdict && SIM_RING_CLASS[simVerdict],
+        simVerdict && simRole === "missing" && "border-dashed border-2",
       )}
       style={{ minWidth: 140 }}
     >
       <Handle type="target" position={Position.Top} className="opacity-0" />
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
+      {simVerdict && simRole && (
+        <span
+          role="img"
+          aria-label={SIM_MARKER_LABEL[simRole]}
+          title={SIM_MARKER_LABEL[simRole]}
+          className={clsx(
+            "absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white dark:border-slate-900",
+            SIM_MARKER_CLASS[simVerdict],
+          )}
+        />
+      )}
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-medium text-slate-800 dark:text-slate-100">{data.label}</span>
         {!isPill && (

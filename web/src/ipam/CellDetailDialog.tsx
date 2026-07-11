@@ -11,6 +11,7 @@ import { buildIpamAllocCreateOp, buildIpamAllocDeleteOp } from "../changesets/op
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { useToast } from "../components/Toast";
 import type { IpamCell } from "../api/types";
+import { MacPicker } from "../guests/MacPicker";
 import { subnetRef } from "./ref";
 import { confidenceLabel, stateLabel } from "./labels";
 
@@ -112,6 +113,17 @@ export function CellDetailDialog({ open, onOpenChange, cell, subnetCidr, readOnl
               value={mac}
               onChange={(e) => {
                 setMac(e.target.value);
+              }}
+            />
+            {/* T-406: a reservation bound to a guest's MAC is exactly
+             * ipam.alloc.create with a MAC — the same op handleReserve
+             * already builds — so picking from a known guest NIC here is
+             * just a convenience over typing the MAC by hand above; it
+             * fills the same field, not a distinct code path. */}
+            <MacPicker
+              onPick={(pickedMac, guestLabel) => {
+                setMac(pickedMac);
+                if (!hostname) setHostname(guestLabel);
               }}
             />
             <Button variant="primary" size="sm" onClick={() => void handleReserve()}>

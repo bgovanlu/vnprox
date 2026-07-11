@@ -18,6 +18,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/blueprint"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
+	"github.com/bgovanlu/vnprox/internal/dhcp"
 	"github.com/bgovanlu/vnprox/internal/evpn"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/host"
@@ -155,6 +156,24 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if collectErr != nil {
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling or cluster fan-out", "error", collectErr)
 	}
+	// T-301/T-304/T-406: the peer server (below, peerSrv) and the local
+	// node's own T-406 DHCP-lease read both need a host.Reader over real
+	// netlink/interfaces(5)/lldpd/dnsmasq state — host.NewReal() has no
+	// dependencies of its own, so it's built here (rather than down by
+	// peerSrv, where it used to live) so dhcpSvc below can use the same
+	// instance too.
+	realHost := host.NewReal()
+	// localNode is a closure over collector (T-303's own doc comment
+	// explains why: collector may not have completed a poll cycle yet at
+	// startup) — built here, ahead of dhcpSvc/ipamSvc below, so both can
+	// close over the same func value; clusterNodes/clusterTimers further
+	// down reuse this identical variable.
+	localNode := func() string {
+		if collector == nil {
+			return ""
+		}
+		return collector.Status().LocalNode
+	}
 	// T-401: GET /sdn reads PVE directly and live (internal/sdn.Service's
 	// doc comment) via the same read-only client the collectors use — nil
 	// exactly when collectErr is non-nil, mirroring peerClient's own
@@ -163,23 +182,62 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if sdnPVEClient != nil {
 		sdnSvc = sdn.NewService(sdnPVEClient)
 	}
-	// T-405: GET /ipam/subnets(/{cidr}/allocations) reads PVE's IPAM plugin(s)
-	// directly and live, for the same "never stale relative to what a
-	// reserve/release apply just changed" reason sdnSvc above does — plus the
-	// cluster's own inventory graph (guest/bridge data for the guest-agent
-	// enrichment source and detected non-SDN subnets).
+	// T-406: internal/dhcp.Service fans DHCP-lease reads across the
+	// cluster (local node via realHost, every peer via peerClient) into
+	// ipam.Observation values — always constructed (mirrors evpnSvc's own
+	// unconditional construction below: it tolerates a nil Peers/empty
+	// LocalNode internally, so there's no typed-nil risk assigning it
+	// directly into ipam.Config.Leases, an interface field).
+	var dhcpPeers dhcp.PeerSource
+	if peerClient != nil {
+		dhcpPeers = peerClient
+	}
+	dhcpSvc := dhcp.NewService(dhcp.Config{Host: realHost, Peers: dhcpPeers, LocalNode: localNode, Logger: logger})
+
+	// T-405/T-406: GET /ipam/subnets(/{cidr}/allocations) and GET /sdn/dhcp
+	// read PVE's IPAM plugin(s) directly and live, for the same "never
+	// stale relative to what a reserve/release apply just changed" reason
+	// sdnSvc above does — plus the cluster's own inventory graph
+	// (guest/bridge data for the guest-agent enrichment source and
+	// detected non-SDN subnets) and dhcpSvc above (T-406's lease
+	// enrichment source, wired into exactly the interface point T-405 left
+	// open for it — ipam.Config.Leases).
 	//
-	// ipamSvc is declared as the api.IPAMService interface (not a concrete
-	// *ipam.Service, unlike sdnSvc above) and only ever assigned inside the
-	// sdnPVEClient != nil branch, so an unset case is a true nil interface —
-	// the safe pattern peerAudit/peerSnapshots below already use, avoiding
-	// the "non-nil interface wrapping a typed nil pointer" footgun a bare
-	// `var ipamSvc *ipam.Service` would risk at Options{IPAM: ipamSvc}
-	// (mountIPAMRoutes' `svc == nil` degraded-mode check needs a literal
-	// nil interface to work).
+	// ipamConcrete is kept as a second, concrete-typed handle (alongside
+	// the interface-typed ipamSvc below) purely so cmd/vnproxd's own
+	// dhcpAllocationsAdapter (changeagent.go) can call its exported
+	// AllAllocations method for T-406's DHCP-range-overlap advisory check
+	// — ipamSvc itself (declared as the api.IPAMService interface, not a
+	// concrete *ipam.Service) only ever assigned inside the
+	// sdnPVEClient != nil branch, so an unset case is a true nil
+	// interface — the safe pattern peerAudit/peerSnapshots below already
+	// use, avoiding the "non-nil interface wrapping a typed nil pointer"
+	// footgun a bare `var ipamSvc *ipam.Service` would risk at
+	// Options{IPAM: ipamSvc} (mountIPAMRoutes' `svc == nil` degraded-mode
+	// check needs a literal nil interface to work).
+	var ipamConcrete *ipam.Service
 	var ipamSvc api.IPAMService
+	// dhcpAPISvc is the same concrete *ipam.Service value as ipamSvc, typed
+	// as api.DHCPService (docs/api.md's GET /sdn/dhcp seam) — api.IPAMService
+	// doesn't declare the DHCP method, so ipamSvc's own interface-typed
+	// variable can't be assigned directly to a DHCPService-typed field; a
+	// second interface-typed variable, assigned from the same nil check, is
+	// the same "true nil interface until assigned" pattern as ipamSvc
+	// itself.
+	var dhcpAPISvc api.DHCPService
 	if sdnPVEClient != nil {
-		ipamSvc = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph})
+		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc})
+		ipamSvc = ipamConcrete
+		dhcpAPISvc = ipamConcrete
+	}
+	// changeAllocations adapts ipamConcrete into change.AllocationsSource
+	// for T-406's DHCP-range-overlap advisory check — see
+	// dhcpAllocationsAdapter's doc comment in changeagent.go for why
+	// internal/change never imports internal/ipam directly. Same
+	// true-nil-interface-until-assigned pattern as ipamSvc above.
+	var changeAllocations change.AllocationsSource
+	if ipamConcrete != nil {
+		changeAllocations = dhcpAllocationsAdapter{ipam: ipamConcrete}
 	}
 
 	// T-602: one findings stream unifying drift (T-305), the LLDP VLAN
@@ -283,12 +341,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Secrets:       peerSecrets,
 		Logger:        logger,
 	})
-	localNode := func() string {
-		if collector == nil {
-			return ""
-		}
-		return collector.Status().LocalNode
-	}
+	// localNode is the same closure already built up above (before
+	// dhcpSvc/ipamSvc) — reused here, not redeclared, so every one of its
+	// callers throughout this function shares one variable.
 	peerLocator := change.NewDiscoveringPeerLocator(coordPeerClient)
 	clusterNodes := change.NewClusterNodeAgent(localNode, nodeAgent, coordPeerClient, peerLocator)
 	clusterTimers := change.NewClusterTimerAgent(localNode, localTimers, coordPeerClient, peerLocator)
@@ -298,6 +353,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Audit:             auditRepo,
 		WS:                topoSvc,
 		Inventory:         graph,
+		Allocations:       changeAllocations,
 		Logger:            logger,
 		ProtectedPath:     cfg.Safety.ProtectedPath,
 		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
@@ -340,13 +396,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 
 	// T-301/T-304: the peer server backs the documented /api/peer/host/* and
 	// /api/peer/timer/* routes with the real netlink/interfaces(5)/lldpd
-	// reader (host.NewReal) for reads and the same nodeAgent/localTimers
-	// constructed above for writes.
+	// reader (realHost, built earlier above) for reads and the same
+	// nodeAgent/localTimers constructed above for writes.
 	//
 	// T-302: the same host.Real also backs the guided-install route
 	// (POST /api/peer/host/lldp/install, docs/features/lldp-discovery.md
 	// §1) via its InstallLLDPD method (host/lldp_install_linux.go).
-	realHost := host.NewReal()
 	var fwLogReader peer.FirewallLogReader
 	if fwlogSource != nil {
 		fwLogReader = fwLogPeerReaderAdapter{src: fwlogSource}
@@ -440,6 +495,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		SDN:           sdnSvc,
 		IPAM:          ipamSvc,
 		EVPN:          evpnSvc,
+		DHCP:          dhcpAPISvc,
 		PVEGateways:   pveGatewayProvider{authSvc},
 		Protected:     changeSvc,
 		Firewall:      graph,

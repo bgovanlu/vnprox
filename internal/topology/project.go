@@ -452,6 +452,15 @@ func badgesOf(snap inventory.Snapshot, e inventory.Entity) []string {
 		if v.LinkDown {
 			badges = append(badges, "link-down")
 		}
+		// mac= (T-406): the frontend's guest-MAC picker (web/src/guests/
+		// guestNics.ts) reads this straight out of the existing topology
+		// badges array — the same additive convention every other
+		// entity-specific badge here already follows (e.g. Guest's
+		// "vmid=") — rather than adding a second, dedicated MAC-listing
+		// API route just for this one picker.
+		if v.Mac != "" {
+			badges = append(badges, "mac="+v.Mac)
+		}
 	case *inventory.LldpNeighbor:
 		if v.PortID != "" {
 			badges = append(badges, "port="+v.PortID)

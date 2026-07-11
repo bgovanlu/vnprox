@@ -86,6 +86,9 @@ type Options struct {
 	// nil (no PVE/peer clients wired) simply skips mounting the route,
 	// same degraded-mode treatment as SDN above.
 	EVPN EVPNService
+	// DHCP is T-406's read view seam (docs/api.md's `GET /sdn/dhcp`:
+	// static reservations + live leases); nil-safe like SDN/EVPN above.
+	DHCP DHCPService
 	// Metrics is T-601's *metrics.Sampler seam for GET /metrics/live and
 	// GET /metrics/history; nil (no daemon-side sampler wired, e.g. tests)
 	// simply omits both routes.
@@ -153,6 +156,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
+		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 		mountSimulateRoutes(r, opts.Simulator, opts.Auth)

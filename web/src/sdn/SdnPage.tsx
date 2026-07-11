@@ -9,6 +9,7 @@ import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import type { SdnSubnet, SdnTree, SdnVnet, SdnZone } from "../api/types";
 import { SdnEditorLauncher } from "./SdnEditorLauncher";
+import { DhcpView } from "./DhcpView";
 import { EvpnView } from "./EvpnView";
 import { InSyncBadge, PendingDiffView } from "./PendingDiffView";
 import { useSdnEditorStore } from "./sdnEditorStore";
@@ -18,7 +19,7 @@ import { firstSelection, resolveSdnSelection, type SdnSelection } from "./tree";
 import { useSdnQuery } from "./queries";
 import { ZoneWizardPicker } from "./wizards/ZoneWizardPicker";
 
-type SdnTab = "configuration" | "evpn";
+type SdnTab = "configuration" | "evpn" | "dhcp";
 
 function TreeRow({
   depth,
@@ -322,6 +323,7 @@ export function SdnPage() {
           <div role="tablist" aria-label="SDN cockpit views" className="flex items-center gap-1">
             <TabButton active={tab === "configuration"} label="Configuration" onClick={() => { setTab("configuration"); }} />
             <TabButton active={tab === "evpn"} label="EVPN / BGP" onClick={() => { setTab("evpn"); }} />
+            <TabButton active={tab === "dhcp"} label="DHCP" onClick={() => { setTab("dhcp"); }} />
           </div>
           {tab === "configuration" && (
             <>
@@ -378,6 +380,12 @@ export function SdnPage() {
       {tab === "evpn" && (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <EvpnView />
+        </div>
+      )}
+
+      {tab === "dhcp" && (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <DhcpView />
         </div>
       )}
     </div>

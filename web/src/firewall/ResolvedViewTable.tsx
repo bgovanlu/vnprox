@@ -4,11 +4,21 @@
 // default policies — each entry labeled with its origin. Pure/
 // presentational over internal/fw's ResolvedView (via internal/api's JSON
 // shape); all order/origin computation happens server-side.
+//
+// `focusRule` is T-504's deep-link consuming side (see RuleTable.tsx's
+// identical `focusPos` doc comment and FirewallPage.tsx's parsing): a
+// `cluster`/`group`-origin blocking rule only ever appears here (the raw
+// per-scope RuleTable can't show it — it's not one of the guest's own
+// rules), so this table needs the full `{pos, origin, groupName?}` triple
+// to disambiguate, not just a position.
+import { useEffect, useRef } from "react";
 import clsx from "clsx";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import type { DefaultPolicyView, FwOrigin, ResolvedRuleView, ResolvedView } from "../api/types";
+import { scrollIntoViewIfSupported } from "../lib/scrollIntoView";
 import { ruleMatchLabel } from "./format";
+import type { FocusRule } from "./focusRule";
 
 const ORIGIN_LABEL: Record<FwOrigin, string> = {
   cluster: "Cluster",
@@ -32,9 +42,23 @@ export function OriginBadge({ origin, groupName }: { origin: FwOrigin; groupName
   );
 }
 
-function ResolvedRuleRow({ entry }: { entry: ResolvedRuleView }) {
+/** Whether `entry` is the exact rule `focusRule` names — position alone
+ * isn't quite enough to disambiguate origin/group in principle, so this
+ * checks the full identity triple the deep link carries. */
+function matchesFocus(entry: ResolvedRuleView, focusRule: FocusRule | undefined): boolean {
+  if (!focusRule) return false;
+  return entry.pos === focusRule.pos && entry.origin === focusRule.origin && (entry.groupName ?? "") === (focusRule.groupName ?? "");
+}
+
+function ResolvedRuleRow({ entry, focused }: { entry: ResolvedRuleView; focused: boolean }) {
   return (
-    <TableRow className={entry.rule.enabled ? undefined : "opacity-50"}>
+    <TableRow
+      data-focused={focused ? "true" : undefined}
+      className={clsx(
+        !entry.rule.enabled && "opacity-50",
+        focused && "bg-amber-100 ring-2 ring-inset ring-amber-500 dark:bg-amber-900/40",
+      )}
+    >
       <TableCell>{entry.pos}</TableCell>
       <TableCell>
         <OriginBadge origin={entry.origin} groupName={entry.groupName} />
@@ -63,7 +87,14 @@ function DefaultPolicyRow({ policy }: { policy: DefaultPolicyView }) {
   );
 }
 
-export function ResolvedViewTable({ resolved }: { resolved: ResolvedView }) {
+export function ResolvedViewTable({ resolved, focusRule }: { resolved: ResolvedView; focusRule?: FocusRule }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!focusRule) return;
+    scrollIntoViewIfSupported(containerRef.current?.querySelector('[data-focused="true"]'), { block: "center" });
+  }, [focusRule, resolved]);
+
   if (resolved.rules.length === 0) {
     return (
       <div className="flex flex-col gap-2">
@@ -76,25 +107,27 @@ export function ResolvedViewTable({ resolved }: { resolved: ResolvedView }) {
     );
   }
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Pos</TableHead>
-          <TableHead>Origin</TableHead>
-          <TableHead>Direction</TableHead>
-          <TableHead>Action</TableHead>
-          <TableHead>Match</TableHead>
-          <TableHead>Comment</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {resolved.rules.map((entry) => (
-          <ResolvedRuleRow key={entry.pos} entry={entry} />
-        ))}
-        <DefaultPolicyRow policy={resolved.defaultIn} />
-        <DefaultPolicyRow policy={resolved.defaultOut} />
-      </TableBody>
-    </Table>
+    <div ref={containerRef}>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Pos</TableHead>
+            <TableHead>Origin</TableHead>
+            <TableHead>Direction</TableHead>
+            <TableHead>Action</TableHead>
+            <TableHead>Match</TableHead>
+            <TableHead>Comment</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {resolved.rules.map((entry) => (
+            <ResolvedRuleRow key={entry.pos} entry={entry} focused={matchesFocus(entry, focusRule)} />
+          ))}
+          <DefaultPolicyRow policy={resolved.defaultIn} />
+          <DefaultPolicyRow policy={resolved.defaultOut} />
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 

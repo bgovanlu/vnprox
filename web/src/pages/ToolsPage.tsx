@@ -1,13 +1,15 @@
-// Tools page: T-208's raw interfaces editor (the power-user escape hatch,
-// docs/features/change-management.md §7), T-602's unified findings stream
-// (T-305's drift-only panel is superseded here — the unified stream already
-// includes every drift finding, source-tagged, plus LLDP/health), and
-// T-505's firewall log viewer. The path simulator lands in a later task.
+// Tools page: T-504's path simulator (docs/user-guide.md §3: "Tools ->
+// Path simulator"), T-208's raw interfaces editor (the power-user escape
+// hatch, docs/features/change-management.md §7), T-602's unified findings
+// stream (T-305's drift-only panel is superseded here — the unified stream
+// already includes every drift finding, source-tagged, plus LLDP/health),
+// and T-505's firewall log viewer.
 import { useEffect, useMemo, useState } from "react";
 import { RawEditorPanel } from "../changesets/rawEditor/RawEditorPanel";
 import { EmptyState } from "../components/EmptyState";
 import { FindingsStreamPanel } from "../findings/FindingsStreamPanel";
 import { FwLogViewer } from "../fwlog/FwLogViewer";
+import { SimulatorPage } from "../simulator/SimulatorPage";
 import { MacFdbBrowser } from "../tools/MacFdbBrowser";
 import { useTopologyQuery } from "../topology/queries";
 
@@ -32,8 +34,9 @@ export function ToolsPage() {
         <div>
           <h1 className="text-xl font-semibold">Tools</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Raw <code>/etc/network/interfaces</code> editor. Saving still goes through the normal changeset
-            review/apply flow — this is a different way to author the same change, not a bypass of it.
+            Path simulator, the raw <code>/etc/network/interfaces</code> editor, drift findings, MAC/FDB search, and
+            the firewall log viewer. The node picker below applies to the raw editor only — saving there still goes
+            through the normal changeset review/apply flow, never a bypass.
           </p>
         </div>
         {nodes.length > 0 && (
@@ -55,6 +58,10 @@ export function ToolsPage() {
           </label>
         )}
       </div>
+
+      <SimulatorPage />
+
+      <hr className="border-slate-200 dark:border-slate-800" />
 
       {node ? (
         <RawEditorPanel key={node} node={node} />
@@ -81,10 +88,6 @@ export function ToolsPage() {
       <hr className="border-slate-200 dark:border-slate-800" />
 
       <FwLogViewer />
-
-      <p className="text-xs text-slate-400 dark:text-slate-500">
-        The path simulator ("why can't VM A reach VM B?") lands in a later task.
-      </p>
     </div>
   );
 }

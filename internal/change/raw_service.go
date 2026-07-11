@@ -45,7 +45,9 @@ func (s *Service) ReadRawInterfaces(ctx context.Context, node string) (content, 
 // superset of the pre-T-208 behavior for every other op type.
 func (s *Service) validate(ctx context.Context, ops []Op) []Finding {
 	expanded, rawFindings := s.expandRawReplaceOps(ctx, ops)
-	findings := ValidateWithSafety(expanded, s.inventorySnapshot(), s.safetyOptions())
+	safety := s.safetyOptions()
+	safety.Allocations = s.dhcpAllocations(ctx)
+	findings := ValidateWithSafety(expanded, s.inventorySnapshot(), safety)
 	return append(rawFindings, findings...)
 }
 

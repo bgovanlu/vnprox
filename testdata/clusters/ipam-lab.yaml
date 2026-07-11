@@ -140,6 +140,16 @@ nodes:
       policy_in: DROP
       policy_out: ACCEPT
       rules: []
+    # T-406: pve1's dnsmasq lease file for the labz/vnet10 DHCP pool
+    # (10.50.0.100-10.50.0.200) -- deliberately includes malformed lines
+    # (host.ParseDHCPLeases' defensive corpus, exercised end-to-end via the
+    # peer/fixture path here, not just the pure-parser unit test).
+    dhcp_leases: |
+      1735689600 aa:bb:cc:dd:ee:01 10.50.0.150 web1-dhcp *
+      this line is not a lease at all
+      1735689700 aa:bb:cc:dd:ee:09 10.50.0.160 * *
+      -1 aa:bb:cc:dd:ee:10 10.50.0.161 bad-expiry *
+      1735689800 not-a-mac 10.50.0.162 bad-mac *
 
 sdn:
   zones:
@@ -158,6 +168,13 @@ sdn:
       vnet: vnet10
       cidr: 10.50.0.0/24
       gateway: 10.50.0.1
+      # T-406: a DHCP-managed range coexisting with the static IPAM
+      # allocations below (10.50.0.10/.11/.20, all MAC-bound) — the
+      # "static reservation carved out of a DHCP pool" pattern DHCP()'s
+      # reservations view and the range-overlap advisory check both need a
+      # DHCP-enabled subnet fixture to exercise.
+      dhcp_range_start: 10.50.0.100
+      dhcp_range_end: 10.50.0.200
   ipams:
     - id: pve
       type: pve

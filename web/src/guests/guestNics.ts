@@ -21,6 +21,10 @@ export interface GuestNicRow {
   bridgeOrVnet?: string;
   vid?: number;
   linkDown: boolean;
+  /** This NIC's MAC address, from the topology node's "mac=" badge
+   * (internal/topology/project.go's badgesOf — T-406). Undefined for a
+   * NIC with no known MAC. */
+  mac?: string;
 }
 
 function attachedTargetFor(edges: TopologyEdge[], nicRef: string): string | undefined {
@@ -32,6 +36,11 @@ function vidFromBadges(badges: string[]): number | undefined {
   if (!b) return undefined;
   const n = Number(b.slice("vid=".length));
   return Number.isFinite(n) ? n : undefined;
+}
+
+function macFromBadges(badges: string[]): string | undefined {
+  const b = badges.find((x) => x.startsWith("mac="));
+  return b ? b.slice("mac=".length) : undefined;
 }
 
 /** Rows for every guest NIC already present as an individual node in
@@ -46,6 +55,7 @@ export function guestNicRowsFromTopology(topology: TopologyResponse): GuestNicRo
       bridgeOrVnet: attachedTargetFor(topology.edges, n.id),
       vid: vidFromBadges(n.badges),
       linkDown: n.badges.includes("link-down"),
+      mac: macFromBadges(n.badges),
     }));
 }
 
