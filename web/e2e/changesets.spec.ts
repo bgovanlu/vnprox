@@ -17,13 +17,14 @@
 //     documented executable-op boundary (guest/SDN-write/fw/ipam families
 //     are refused with 422 unsupported_op before any mutation) surfaces
 //     as a clear error instead of a partial apply.
-//   - Apply of the node-file-only changeset, asserting the failure
-//     outcome banner: in this dev environment the daemon (running as a
-//     regular user) cannot write /etc/network/interfaces.new, so the
-//     stage step deterministically fails and the changeset lands in
-//     `failed` with the failed step pinpointed — which is exactly the
-//     WS-driven outcome-banner path. Skipped when running as root, since
-//     a root daemon would stage/reload the REAL machine's network config.
+//   - Apply of the node-file-only changeset, asserting the *success*
+//     path: the daemon runs with the `dev_interfaces_dir` sandbox
+//     (testdata/dev.toml, phase-2 audit F-22 remediation), so the stage
+//     and reload steps run against var/dev-host with a no-op ifreload and
+//     never touch the real machine — regardless of uid. The apply
+//     therefore succeeds into the commit-confirm window, giving us the
+//     full AC1 "apply -> countdown -> confirm -> committed" path plus
+//     AC3 reload-survival, both WS-driven.
 //
 //  NOT automatable here (documented per the task card):
 //   - Map drag-edit (AC1's "create bond from two NICs via drag") + snap-
@@ -34,15 +35,6 @@
 //     src/changesets/dragDropOps.test.ts (9 cases); the snap-back path
 //     (draft op -> revalidate -> pop the erroring op) shares the exact
 //     addOps/replaceOps flow this spec drives through the editors below.
-//   - A *successful* apply -> countdown -> confirm: needs either a real
-//     PVE node (hardware validation) or the sandboxed dev NodeAgent
-//     (`dev_interfaces_dir`, phase-2 audit F-22 remediation, in flight on
-//     another branch when this was written). The countdown banner,
-//     confirm/rollback controls, reload-survival, and outcome rendering
-//     are unit-covered in src/changesets/CountdownBanner.test.tsx and the
-//     drawer state machine tests; once the sandbox lands, extending this
-//     spec is: enable the sandbox in testdata/dev.toml, drop the two
-//     guards below, and assert the countdown -> confirm path.
 //   - "Create bond from two NICs via drag" *succeeding*: needs a fixture
 //     with unenslaved NICs; three-node-vlan deliberately has none.
 import { expect, test, type Page } from "@playwright/test";
@@ -65,8 +57,6 @@ async function waitForLayout(page: Page): Promise<void> {
     return nodes.length >= 10 && transforms.size > nodes.length / 2;
   });
 }
-
-const runningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 test("T-207 walkthrough: bridge editor, reload survival, bulk guests, review tabs, apply outcomes", async ({ page }) => {
   await logIn(page);
@@ -161,24 +151,32 @@ test("T-207 walkthrough: bridge editor, reload survival, bulk guests, review tab
   }
   await expect(drawerOnGuests).not.toContainText("Update guest NIC");
 
-  test.skip(
-    runningAsRoot,
-    "running as root: applying would stage/reload the REAL machine's network config — needs the dev_interfaces_dir sandbox or a lab PVE node",
-  );
-
   await page.getByRole("button", { name: "Review & apply" }).click();
   const review2 = page.getByRole("dialog");
   await review2.getByLabel("Apply with warnings").check();
   await review2.getByRole("button", { name: "Apply", exact: true }).click();
 
-  // As a non-root daemon, the stage step (writing /etc/network/
-  // interfaces.new) deterministically fails -> status `failed`, and the
-  // WS-driven outcome banner names the failure. (With the dev sandbox or on
-  // real hardware this instead becomes: countdown banner -> Confirm ->
-  // committed banner.) Scope to the one role=status carrying the failure
-  // text — Radix toasts also mount empty aria-live role=status spans.
-  const outcomeBanner = page.getByRole("status").filter({ hasText: "failed to apply" });
-  await expect(outcomeBanner).toBeVisible({ timeout: 60_000 });
+  // With the dev_interfaces_dir sandbox (testdata/dev.toml) the stage and
+  // reload steps run against var/dev-host with a no-op ifreload, so the
+  // apply SUCCEEDS into the commit-confirm window: status applying ->
+  // awaiting_confirm, and the WS-driven CountdownBanner renders the
+  // Confirm / Roll back controls in a role="alert" region (the applying
+  // and terminal-outcome states use role="status"; see CountdownBanner).
+  const countdownBanner = page
+    .getByRole("alert")
+    .filter({ has: page.getByRole("button", { name: "Confirm" }) });
+  await expect(countdownBanner).toBeVisible({ timeout: 60_000 });
+
+  // AC3: the countdown survives a full page reload — state is rehydrated
+  // from GET /changesets/{id} + a WS resubscribe, not held in memory.
+  await page.reload();
+  await expect(countdownBanner).toBeVisible({ timeout: 30_000 });
+
+  // Confirm within the window -> status `committed`, committed outcome
+  // banner (AC1's "apply -> countdown -> confirm").
+  await countdownBanner.getByRole("button", { name: "Confirm" }).click();
+  const committedBanner = page.getByRole("status").filter({ hasText: "was applied and committed" });
+  await expect(committedBanner).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "Dismiss" }).click();
   await expect(page.getByRole("region", { name: "Change drawer" })).toBeHidden();
 });
