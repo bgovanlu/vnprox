@@ -118,23 +118,20 @@ func (n *Node) fieldMap() map[string]string {
 // interfaces file / PVE network API.
 type PhysNic struct {
 	Ref
+	Duplex  string
+	Pending string
+	Mac     string
+	Driver  string
+	PCIAddr string
 	rawSrc
-	Name        string
-	Mac         string
-	Driver      string
-	PCIAddr     string
-	Duplex      string
 	OperState   string
+	Name        string
 	SpeedMbps   int
-	MTU         int // runtime (host-netlink authoritative)
-	MTUDeclared int // intended (host-interfaces authoritative, pve-network cross-check)
+	MTUDeclared int
 	SRIOVVFs    int
+	MTU         int
 	LinkUp      bool
-	// LinkUpSet reports whether the contributing source actually observed
-	// LinkUp (merge treats an unset flagged bool as "not reported", not as
-	// an implicit false). On a resolved entity it is true iff any source in
-	// the field's precedence list reported the field.
-	LinkUpSet bool
+	LinkUpSet   bool
 }
 
 func (p *PhysNic) GetRef() Ref { return p.Ref }
@@ -148,7 +145,7 @@ func (p *PhysNic) fieldMap() map[string]string {
 		"duplex": p.Duplex, "operState": p.OperState,
 		"speedMbps": strconv.Itoa(p.SpeedMbps), "mtu": strconv.Itoa(p.MTU),
 		"mtuDeclared": strconv.Itoa(p.MTUDeclared), "sriovVFs": strconv.Itoa(p.SRIOVVFs),
-		"linkUp": boolStr(p.LinkUp),
+		"linkUp": boolStr(p.LinkUp), "pending": p.Pending,
 	}
 }
 
@@ -167,15 +164,16 @@ type BondSlaveState struct {
 // interfaces file.
 type Bond struct {
 	Ref
-	rawSrc
+	MIIStatus      string
 	Name           string
 	Mode           string
 	LACPRate       string
 	XmitHashPolicy string
-	MIIStatus      string
+	rawSrc
 	ActiveSlave    string
-	Slaves         []string // runtime membership (host-netlink)
-	DeclaredSlaves []string // configured membership (host-interfaces / pve-network)
+	Pending        string
+	Slaves         []string
+	DeclaredSlaves []string
 	SlaveDetail    []BondSlaveState
 	MTU            int
 	MTUDeclared    int
@@ -201,6 +199,7 @@ func (b *Bond) fieldMap() map[string]string {
 		"activeSlave": b.ActiveSlave, "slaves": sortedJoin(b.Slaves),
 		"declaredSlaves": sortedJoin(b.DeclaredSlaves), "slaveDetail": strings.Join(sd, ";"),
 		"mtu": strconv.Itoa(b.MTU), "mtuDeclared": strconv.Itoa(b.MTUDeclared),
+		"pending": b.Pending,
 	}
 }
 
@@ -223,22 +222,18 @@ type Bridge struct {
 	Name              string
 	Virt              BridgeVirt
 	Comments          string
-	Ports             []Ref
-	Vids              []VidRange
+	Pending           string
 	Addresses         []string
+	Vids              []VidRange
 	DeclaredPortNames []string
 	PortNames         []string
+	Ports             []Ref
 	MTU               int
 	MTUDeclared       int
 	VlanAware         bool
 	STP               bool
-	// VlanAwareSet / STPSet report whether the contributing source actually
-	// declared/observed VlanAware / STP (merge treats an unset flagged bool
-	// as "not reported", not as an implicit false). On a resolved entity
-	// each is true iff any source in the field's precedence list reported
-	// the field.
-	VlanAwareSet bool
-	STPSet       bool
+	VlanAwareSet      bool
+	STPSet            bool
 }
 
 func (b *Bridge) GetRef() Ref { return b.Ref }
@@ -258,7 +253,7 @@ func (b *Bridge) fieldMap() map[string]string {
 		"vids": vidsString(b.Vids), "addresses": sortedJoin(b.Addresses),
 		"gateway": b.Gateway, "comments": b.Comments, "mtu": strconv.Itoa(b.MTU),
 		"mtuDeclared": strconv.Itoa(b.MTUDeclared), "vlanAware": boolStr(b.VlanAware),
-		"stp": boolStr(b.STP),
+		"stp": boolStr(b.STP), "pending": b.Pending,
 	}
 }
 
@@ -267,10 +262,11 @@ func (b *Bridge) fieldMap() map[string]string {
 // runtime.
 type VlanIface struct {
 	Ref
+	Parent Ref
 	rawSrc
 	Name        string
-	Parent      Ref // resolved during linking from ParentName
 	ParentName  string
+	Pending     string
 	Addresses   []string
 	Vid         int
 	MTU         int
@@ -288,6 +284,7 @@ func (v *VlanIface) fieldMap() map[string]string {
 		"name": v.Name, "parent": v.Parent.String(), "parentName": v.ParentName,
 		"addresses": sortedJoin(v.Addresses), "vid": strconv.Itoa(v.Vid),
 		"mtu": strconv.Itoa(v.MTU), "mtuDeclared": strconv.Itoa(v.MTUDeclared),
+		"pending": v.Pending,
 	}
 }
 

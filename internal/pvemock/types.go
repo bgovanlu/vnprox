@@ -107,13 +107,14 @@ type NetIface struct {
 
 // LinkInfo is netlink-equivalent physical/virtual link state for one iface.
 type LinkInfo struct {
-	Mac       string `yaml:"mac" json:"mac"`
-	Driver    string `yaml:"driver,omitempty" json:"driver,omitempty"`
-	Duplex    string `yaml:"duplex,omitempty" json:"duplex,omitempty"`
-	PCIAddr   string `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
-	SpeedMbps int    `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
-	MTU       int    `yaml:"mtu,omitempty" json:"mtu,omitempty"`
-	LinkUp    bool   `yaml:"link_up" json:"link_up"`
+	Mac       string   `yaml:"mac" json:"mac"`
+	Driver    string   `yaml:"driver,omitempty" json:"driver,omitempty"`
+	Duplex    string   `yaml:"duplex,omitempty" json:"duplex,omitempty"`
+	PCIAddr   string   `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
+	Members   []string `yaml:"members,omitempty" json:"members,omitempty"`
+	SpeedMbps int      `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
+	MTU       int      `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	LinkUp    bool     `yaml:"link_up" json:"link_up"`
 }
 
 // LLDPNeighbor is one LLDP-discovered neighbor on a local iface.

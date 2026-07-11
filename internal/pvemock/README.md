@@ -81,12 +81,18 @@ Not part of the real PVE API, but useful for tests and this walkthrough:
 | `testdata/clusters/single-node.yaml` | One standalone node, no SDN. The baseline every feature must work against. Declares an API token (`root@pam!daemon`) and a TOTP-required user (`totp-user@pve`, static code `246810`). |
 | `testdata/clusters/three-node-vlan.yaml` | 3-node cluster, bonded VLAN-aware bridges, one PVE SDN "vlan" zone with two VNets/subnets and a built-in `pve` IPAM with gateway + guest allocations. Users cover all four capability-matrix personas (root, auditor, `sdn-only@pve`, `vm-user@pve`) plus netops, and `root@pam!daemon` is a declared API token. |
 | `testdata/clusters/evpn-lab.yaml` | 3-node cluster with a VXLAN/EVPN zone: controller, VRF-VXLAN, an exit node, DHCP-managed subnet, and a built-in `pve` IPAM holding the gateway record plus two DHCP allocations. |
-| `testdata/clusters/messy-brownfield.yaml` | A cluster that drifted: staged-but-never-applied network edits, double NIC enslavement, cross-node MTU drift, a stale comment, a partially-realized SDN zone, an abandoned SDN VNet, a dangling firewall object reference, and the "datacenter firewall is off" footgun. Every item is enumerated in the fixture's `mess:` list (also served at `GET /mock/mess`) for T-305's drift detector to target. |
+| `testdata/clusters/messy-brownfield.yaml` | A cluster that drifted: staged-but-never-applied network edits, double NIC enslavement, cross-node MTU drift, a stale comment, a partially-realized SDN zone, an abandoned SDN VNet, a dangling firewall object reference, a manually-enslaved NIC outside the interfaces file, and the "datacenter firewall is off" footgun. Every item is enumerated in the fixture's `mess:` list (also served at `GET /mock/mess`) for T-305's drift detector to target. |
 
 Fixture schema, beyond the obvious node/network/guest/firewall trees:
 
 - `users[].tokens: [{tokenid, secret}]` — API tokens for
   `Authorization: PVEAPIToken=` auth; privileges follow the owning user.
+- `nodes[].links[].members: [string]` (added by T-305) — overrides a
+  bridge/bond's *live* (netlink) port/slave membership independently of the
+  declared interfaces file's `bridge_ports`/`slaves`, modeling a manual
+  `ip link set <iface> master <bridge>` done outside vnprox/ifupdown2.
+  Omitted/empty (every fixture before T-305) falls back to the declared
+  membership exactly as before.
 - `users[].totp: "<static code>"` — marks the user TOTP-required (see
   above).
 - `sdn.ipams: [{id, type, url?, entries: [...]}]` — IPAM plugin instances

@@ -104,6 +104,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 
 	graph := inventory.NewGraph()
 	topoSvc := topology.NewService(graph, logger)
+	// T-305: the drift detector runs its own 30s cycle over the same live
+	// graph the collectors populate, independent of any one poll loop
+	// (docs/features/topology.md §6); its findings changing broadcasts
+	// `drift.changed` over the same shared WS hub topoSvc's Broadcast
+	// already backs for internal/change's `changeset.status` events.
+	driftSvc := setupDrift(graph, topoSvc, logger)
 	// T-303: peerClient (built from the same PVE client the collectors use
 	// for cluster-status-based discovery) is nil exactly when collectErr is
 	// non-nil — see setupCollect's doc comment — so every peerClient use
@@ -287,6 +293,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Collectors:    collectorHealthAdapter{collector},
 		Topology:      topoSvc,
 		LLDP:          topoSvc,
+		Drift:         driftSvc,
 		Layouts:       store.NewLayoutRepo(db),
 		Changesets:    changeSvc,
 		Snapshots:     changeSvc,
@@ -351,6 +358,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		g.add(collector.RunHostLoop)
 		g.add(collector.RunLLDPLoop)
 	}
+	g.add(driftSvc.RunLoop)
 
 	logger.Info("vnproxd starting",
 		"version", version,

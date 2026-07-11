@@ -62,6 +62,8 @@ func setField(t *testing.T, e Entity, field string, idx int) {
 			// Flagged optional bool: a contribution only counts as reported
 			// when the companion Set flag is raised (see merge.go).
 			v.LinkUp, v.LinkUpSet = b, true
+		case "pending":
+			v.Pending = s
 		default:
 			set(false)
 		}
@@ -89,6 +91,8 @@ func setField(t *testing.T, e Entity, field string, idx int) {
 			v.DeclaredSlaves = []string{s}
 		case "slaveDetail":
 			v.SlaveDetail = []BondSlaveState{{Name: s}}
+		case "pending":
+			v.Pending = s
 		default:
 			set(false)
 		}
@@ -122,6 +126,8 @@ func setField(t *testing.T, e Entity, field string, idx int) {
 			v.VlanAware, v.VlanAwareSet = b, true
 		case "stp":
 			v.STP, v.STPSet = b, true
+		case "pending":
+			v.Pending = s
 		default:
 			set(false)
 		}
@@ -139,6 +145,8 @@ func setField(t *testing.T, e Entity, field string, idx int) {
 			v.MTUDeclared = n
 		case "addresses":
 			v.Addresses = []string{s}
+		case "pending":
+			v.Pending = s
 		default:
 			set(false)
 		}

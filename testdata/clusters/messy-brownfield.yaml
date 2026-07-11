@@ -37,6 +37,12 @@ nodes:
     network:
       - {iface: lo, type: loopback, method: loopback, autostart: true}
       - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 1500}
+      # MESS 10: eno3 is a spare NIC, declared but never referenced by any
+      # bridge_ports/slaves in this file — yet it is live-enslaved to vmbr0
+      # below (links.vmbr0.members), simulating `ip link set eno3 master
+      # vmbr0` run by hand outside vnprox/ifupdown2. The interfaces file
+      # still says vmbr0's only port is eno1.
+      - {iface: eno3, type: eth, method: manual, autostart: true, mtu: 1500}
       - iface: vmbr0
         type: bridge
         method: static
@@ -67,7 +73,10 @@ nodes:
         comments: "SDN zone-legacy bridge (pve3 rollout incomplete)"
     links:
       eno1: {mac: "bc:24:11:07:00:01", driver: e1000e, speed_mbps: 1000, duplex: full, link_up: true}
-      vmbr0: {mac: "bc:24:11:07:00:01", link_up: true}
+      eno3: {mac: "bc:24:11:07:00:04", driver: e1000e, speed_mbps: 1000, duplex: full, link_up: true}
+      # MESS 10: live bridge membership (eno1 + eno3) diverges from the
+      # declared bridge_ports (eno1 only) — see the eno3 network entry above.
+      vmbr0: {mac: "bc:24:11:07:00:01", link_up: true, members: [eno1, eno3]}
       vmbr1: {mac: "bc:24:11:07:00:02", link_up: true}
       vmbr99: {mac: "bc:24:11:07:00:03", link_up: true}
     lldp:
@@ -297,3 +306,4 @@ mess:
   - "cluster firewall rule at pos 0 references ipset '+legacy-blocklist', which does not exist in cluster.firewall.ipsets — a dangling object reference left over from a deleted ipset."
   - "sdn vnet-newapp (zone zone-legacy, tag 60) was created with pending=new and never applied via PUT /cluster/sdn — abandoned SDN work."
   - "pve1 guest 400 (legacy-app) net1 references bridge vmbr5, which does not exist on pve1 (or anywhere in the cluster) — the bridge was removed after the NIC was configured against it."
+  - "pve1: vmbr0's live (netlink) bridge membership is eno1+eno3, but /etc/network/interfaces still declares bridge_ports eno1 only — eno3 was enslaved by hand (`ip link set eno3 master vmbr0`) outside vnprox/ifupdown2 and the file was never updated."

@@ -169,6 +169,7 @@ func FromPVENetwork(node string, ifaces []pve.NetworkInterface) []Entity {
 				Ref:         Ref{Kind: KindPhysNic, Node: node, ID: n.Iface},
 				Name:        n.Iface,
 				MTUDeclared: n.MTU,
+				Pending:     string(n.Pending),
 			}
 		case "bond":
 			ent = &Bond{
@@ -177,6 +178,7 @@ func FromPVENetwork(node string, ifaces []pve.NetworkInterface) []Entity {
 				Mode:           n.BondMode,
 				DeclaredSlaves: fields(n.Slaves),
 				MTUDeclared:    n.MTU,
+				Pending:        string(n.Pending),
 			}
 		case "bridge", "OVSBridge":
 			kind, virt := KindBridge, BridgeLinux
@@ -198,6 +200,7 @@ func FromPVENetwork(node string, ifaces []pve.NetworkInterface) []Entity {
 				MTUDeclared:  n.MTU,
 				Gateway:      n.Gateway,
 				Comments:     strings.TrimSpace(n.Comments),
+				Pending:      string(n.Pending),
 			}
 			if n.Address != "" {
 				br.Addresses = []string{n.Address}
@@ -210,6 +213,7 @@ func FromPVENetwork(node string, ifaces []pve.NetworkInterface) []Entity {
 				ParentName:  n.VlanRawDevice,
 				Vid:         n.VlanID,
 				MTUDeclared: n.MTU,
+				Pending:     string(n.Pending),
 			}
 			if n.Address != "" {
 				v.Addresses = []string{n.Address}

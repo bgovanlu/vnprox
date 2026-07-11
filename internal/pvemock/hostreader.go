@@ -105,11 +105,18 @@ func (h *FixtureHostReader) Links(_ context.Context, node string) ([]LinkState, 
 				ls.MTU = link.MTU
 			}
 		}
-		switch iface.Type {
-		case "bridge", "OVSBridge":
-			ls.Members = strings.Fields(iface.BridgePorts)
-		case "bond":
-			ls.Members = strings.Fields(iface.Slaves)
+		if link, ok := ns.links[iface.Iface]; ok && len(link.Members) > 0 {
+			// Explicit fixture override: live membership diverges from the
+			// declared bridge_ports/slaves (see LinkInfo.Members' doc
+			// comment) — a fixture-simulated manual `ip link` change.
+			ls.Members = append([]string(nil), link.Members...)
+		} else {
+			switch iface.Type {
+			case "bridge", "OVSBridge":
+				ls.Members = strings.Fields(iface.BridgePorts)
+			case "bond":
+				ls.Members = strings.Fields(iface.Slaves)
+			}
 		}
 		out = append(out, ls)
 	}

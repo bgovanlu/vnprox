@@ -164,6 +164,15 @@
       "badges": []
     },
     {
+      "id": "physnic:pve1:eno3",
+      "kind": "physnic",
+      "label": "eno3",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok",
+      "badges": []
+    },
+    {
       "id": "physnic:pve2:eno1",
       "kind": "physnic",
       "label": "eno1",
@@ -231,6 +240,18 @@
       "badges": [
         "type=vlan"
       ]
+    },
+    {
+      "id": "switch:00:11:22:00:00:01",
+      "kind": "switch",
+      "label": "sw-old-01",
+      "layer": "phys",
+      "nodeGroup": "",
+      "status": "ok",
+      "badges": [
+        "nodes=pve1",
+        "links=1"
+      ]
     }
   ],
   "edges": [
@@ -273,6 +294,22 @@
       "from": "physnic:pve1:eno1",
       "to": "lldp-neighbor:pve1:eno1/00:11:22:00:00:01/1/1",
       "kind": "lldp-adjacent",
+      "status": "ok",
+      "badges": []
+    },
+    {
+      "from": "physnic:pve1:eno1",
+      "to": "switch:00:11:22:00:00:01",
+      "kind": "lldp-port",
+      "status": "ok",
+      "badges": [
+        "port=1/1"
+      ]
+    },
+    {
+      "from": "physnic:pve1:eno3",
+      "to": "bridge:pve1:vmbr0",
+      "kind": "port-of",
       "status": "ok",
       "badges": []
     },
@@ -344,5 +381,5 @@
     "sdn",
     "guest"
   ],
-  "generatedAt": 1783622244
+  "generatedAt": 1783730725
 }

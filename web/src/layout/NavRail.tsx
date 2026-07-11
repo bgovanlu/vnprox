@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import clsx from "clsx";
+import { useDriftQuery } from "../drift/queries";
 
 interface NavItem {
   path: string;
@@ -21,6 +22,24 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/tools", label: "Tools", glyph: "L" },
   { path: "/settings", label: "Settings", glyph: "G" },
 ];
+
+/** T-305: the current drift finding count, shown as a small pill next to
+ * the Tools nav item (where the findings stream itself lives — see
+ * ToolsPage.tsx). Zero/loading/error all render as "no badge" rather than
+ * a misleading "0" or an error state in the nav chrome. */
+function DriftCountBadge() {
+  const { data } = useDriftQuery();
+  const count = data?.length ?? 0;
+  if (count === 0) return null;
+  return (
+    <span
+      aria-label={`${String(count)} drift finding${count === 1 ? "" : "s"}`}
+      className="ml-auto hidden shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-semibold text-white sm:inline-block"
+    >
+      {count}
+    </span>
+  );
+}
 
 export function NavRail() {
   return (
@@ -51,6 +70,7 @@ export function NavRail() {
             {item.glyph}
           </span>
           <span className="hidden sm:inline">{item.label}</span>
+          {item.path === "/tools" && <DriftCountBadge />}
         </NavLink>
       ))}
     </nav>

@@ -98,6 +98,11 @@ var ownershipRules = map[Kind]map[string]Ownership{
 			Precedence:   []Source{SourceHostInterfaces, SourcePVENetwork},
 			FlagConflict: true,
 		},
+		// pending is exclusively pve-network's own staging concept (PVE's
+		// GET /nodes/{node}/network annotates the response with "pending"
+		// when interfaces.new differs from the live file) — no other source
+		// ever reports it, so there is nothing to conflict-flag against.
+		"pending": {Precedence: []Source{SourcePVENetwork}},
 	},
 	KindBond: {
 		"name":        {Precedence: []Source{SourceHostNetlink, SourceHostInterfaces, SourcePVENetwork}},
@@ -126,6 +131,7 @@ var ownershipRules = map[Kind]map[string]Ownership{
 			Precedence:   []Source{SourceHostInterfaces, SourcePVENetwork},
 			FlagConflict: true,
 		},
+		"pending": {Precedence: []Source{SourcePVENetwork}},
 	},
 	KindBridge: {
 		"name":      {Precedence: []Source{SourceHostNetlink, SourceHostInterfaces, SourcePVENetwork}},
@@ -164,6 +170,7 @@ var ownershipRules = map[Kind]map[string]Ownership{
 			Precedence:   []Source{SourceHostInterfaces, SourcePVENetwork},
 			FlagConflict: true,
 		},
+		"pending": {Precedence: []Source{SourcePVENetwork}},
 	},
 	KindVlan: {
 		"name":       {Precedence: []Source{SourceHostNetlink, SourceHostInterfaces, SourcePVENetwork}},
@@ -181,6 +188,7 @@ var ownershipRules = map[Kind]map[string]Ownership{
 			Precedence:   []Source{SourceHostInterfaces, SourcePVENetwork},
 			FlagConflict: true,
 		},
+		"pending": {Precedence: []Source{SourcePVENetwork}},
 	},
 }
 

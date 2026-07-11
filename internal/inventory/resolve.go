@@ -89,6 +89,7 @@ func resolvePhysNic(ref Ref, parts map[Source]*PhysNic) resolved {
 	out.MTUDeclared, _ = pick(prov, "mtuDeclared", ruleFor(ref.Kind, "mtuDeclared"), parts, func(p *PhysNic) int { return p.MTUDeclared }, nonZeroInt, keyInt)
 	linkUp, linkUpOK := pick(prov, "linkUp", ruleFor(ref.Kind, "linkUp"), parts, func(p *PhysNic) boolOpt { return boolOpt{p.LinkUp, p.LinkUpSet} }, boolOptSet, boolOptKey)
 	out.LinkUp, out.LinkUpSet = linkUp.v, linkUpOK
+	out.Pending, _ = pick(prov, "pending", ruleFor(ref.Kind, "pending"), parts, func(p *PhysNic) string { return p.Pending }, nonEmptyStr, keyStr)
 	return resolved{entity: out, prov: *prov}
 }
 
@@ -106,6 +107,7 @@ func resolveBond(ref Ref, parts map[Source]*Bond) resolved {
 	out.Slaves, _ = pick(prov, "slaves", ruleFor(ref.Kind, "slaves"), parts, func(b *Bond) []string { return b.Slaves }, nonEmptySlc[string], sortedJoin)
 	out.DeclaredSlaves, _ = pick(prov, "declaredSlaves", ruleFor(ref.Kind, "declaredSlaves"), parts, func(b *Bond) []string { return b.DeclaredSlaves }, nonEmptySlc[string], sortedJoin)
 	out.SlaveDetail, _ = pick(prov, "slaveDetail", ruleFor(ref.Kind, "slaveDetail"), parts, func(b *Bond) []BondSlaveState { return b.SlaveDetail }, nonEmptySlc[BondSlaveState], slaveDetailKey)
+	out.Pending, _ = pick(prov, "pending", ruleFor(ref.Kind, "pending"), parts, func(b *Bond) string { return b.Pending }, nonEmptyStr, keyStr)
 	return resolved{entity: out, prov: *prov}
 }
 
@@ -129,6 +131,7 @@ func resolveBridge(ref Ref, parts map[Source]*Bridge) resolved {
 	out.VlanAware, out.VlanAwareSet = vlanAware.v, vaOK
 	stp, stpOK := pick(prov, "stp", ruleFor(ref.Kind, "stp"), parts, func(b *Bridge) boolOpt { return boolOpt{b.STP, b.STPSet} }, boolOptSet, boolOptKey)
 	out.STP, out.STPSet = stp.v, stpOK
+	out.Pending, _ = pick(prov, "pending", ruleFor(ref.Kind, "pending"), parts, func(b *Bridge) string { return b.Pending }, nonEmptyStr, keyStr)
 	return resolved{entity: out, prov: *prov}
 }
 
@@ -141,6 +144,7 @@ func resolveVlan(ref Ref, parts map[Source]*VlanIface) resolved {
 	out.Addresses, _ = pick(prov, "addresses", ruleFor(ref.Kind, "addresses"), parts, func(v *VlanIface) []string { return v.Addresses }, nonEmptySlc[string], sortedJoin)
 	out.MTU, _ = pick(prov, "mtu", ruleFor(ref.Kind, "mtu"), parts, func(v *VlanIface) int { return v.MTU }, nonZeroInt, keyInt)
 	out.MTUDeclared, _ = pick(prov, "mtuDeclared", ruleFor(ref.Kind, "mtuDeclared"), parts, func(v *VlanIface) int { return v.MTUDeclared }, nonZeroInt, keyInt)
+	out.Pending, _ = pick(prov, "pending", ruleFor(ref.Kind, "pending"), parts, func(v *VlanIface) string { return v.Pending }, nonEmptyStr, keyStr)
 	return resolved{entity: out, prov: *prov}
 }
 

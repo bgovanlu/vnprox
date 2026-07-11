@@ -43,6 +43,7 @@ func (fakeAuth) RequireCap(string) func(http.Handler) http.Handler {
 type fakeTopologyService struct {
 	gotFilter *topology.Filter
 	searchHit []topology.SearchResult
+	nodes     []topology.Node
 	detail    topology.EntityDetail
 	detailOK  bool
 }
@@ -51,7 +52,11 @@ func (f fakeTopologyService) Topology(fl topology.Filter) topology.Topology {
 	if f.gotFilter != nil {
 		*f.gotFilter = fl
 	}
-	return topology.Topology{Nodes: []topology.Node{}, Edges: []topology.Edge{}, Layers: topology.AllLayers, GeneratedAt: 1}
+	nodes := f.nodes
+	if nodes == nil {
+		nodes = []topology.Node{}
+	}
+	return topology.Topology{Nodes: nodes, Edges: []topology.Edge{}, Layers: topology.AllLayers, GeneratedAt: 1}
 }
 
 func (f fakeTopologyService) InventoryDetail(inventory.Ref) (topology.EntityDetail, bool) {

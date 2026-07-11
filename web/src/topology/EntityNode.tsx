@@ -72,6 +72,10 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
         data.stale && "grayscale",
         data.highlighted && "ring-2 ring-blue-500",
         selected && "outline outline-2 outline-offset-1 outline-blue-600",
+        // drift = dashed outline (docs/features/topology.md §2), additive
+        // to (not replacing) the status-driven border color above — a
+        // "down"/"degraded" node can also carry an open drift finding.
+        data.badges.includes("drift") && "border-dashed",
       )}
       style={{ minWidth: 140 }}
     >

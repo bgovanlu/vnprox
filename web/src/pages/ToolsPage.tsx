@@ -1,9 +1,10 @@
 // Tools page: T-208's raw interfaces editor (the power-user escape hatch,
-// docs/features/change-management.md §7). The path simulator lands in a
-// later task.
+// docs/features/change-management.md §7) and T-305's drift findings
+// stream. The path simulator lands in a later task.
 import { useEffect, useMemo, useState } from "react";
 import { RawEditorPanel } from "../changesets/rawEditor/RawEditorPanel";
 import { EmptyState } from "../components/EmptyState";
+import { DriftFindingsPanel } from "../drift/DriftFindingsPanel";
 import { useTopologyQuery } from "../topology/queries";
 
 export function ToolsPage() {
@@ -56,6 +57,15 @@ export function ToolsPage() {
       ) : (
         <EmptyState title="No nodes yet" description="The raw editor needs at least one cluster node to be discovered." />
       )}
+
+      <div>
+        <h2 className="text-lg font-semibold">Drift findings</h2>
+        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+          Cross-node consistency checks, re-evaluated every 30s (docs/features/topology.md §6). Drifted entities
+          are also outlined with a dashed border on the topology map.
+        </p>
+        <DriftFindingsPanel />
+      </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">
         The path simulator ("why can't VM A reach VM B?") lands in a later task.

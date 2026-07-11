@@ -56,7 +56,10 @@ export function EntityEdge({
         style={{
           stroke: STATUS_STROKE[status],
           strokeWidth: highlighted ? 2.5 : 1.5,
-          strokeDasharray: status === "unknown" ? "4 3" : undefined,
+          // drift = dashed outline (docs/features/topology.md §2), additive
+          // to the existing "unknown"-status dashing — either condition
+          // dashes the edge, independent of its status-driven color.
+          strokeDasharray: status === "unknown" || badges.includes("drift") ? "4 3" : undefined,
           opacity: dimmed && !highlighted ? 0.15 : 1,
         }}
       />

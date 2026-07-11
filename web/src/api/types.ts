@@ -423,6 +423,27 @@ export interface Finding {
   fix?: Op[];
 }
 
+/** GET /drift item (docs/api.md: `[{check, severity, nodes, detail}]`, plus
+ * T-305's additive id/refs/fixable fields — internal/drift.Finding). `check`
+ * is one of "bridge_divergence"|"mtu_consistency"|"sdn_realization"|
+ * "pending_interfaces"|"file_runtime_divergence" (docs/features/topology.md
+ * §6's five check families), left as a plain string here since the frontend
+ * only ever displays it, never branches on a closed set of values. */
+export interface DriftFinding {
+  id: string;
+  check: string;
+  severity: Severity;
+  detail: string;
+  nodes: string[];
+  refs?: string[];
+  fixable: boolean;
+}
+
+/** WS `drift.changed` payload (docs/api.md's WebSocket section). */
+export interface DriftChangedEvent {
+  count: number;
+}
+
 export type ChangesetStatus =
   | "draft"
   | "validated"
