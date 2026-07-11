@@ -444,6 +444,33 @@ export interface DriftChangedEvent {
   count: number;
 }
 
+/** T-602's unified findings-stream source producer (docs/api.md's
+ * `GET /findings`, internal/findings.Source). */
+export type FindingSource = "drift" | "lldp" | "ipam" | "health";
+
+/** GET /findings item (docs/api.md's `GET /findings` section —
+ * internal/findings.Finding): the superset of DriftFinding's shape plus a
+ * `source` tag and an optional `docsLink` remediation pointer. Named
+ * `StreamFinding` (not `Finding`) to avoid colliding with this file's
+ * existing `Finding` (a changeset validation result — an unrelated, older
+ * concept that happens to share the English word). */
+export interface StreamFinding {
+  id: string;
+  source: FindingSource;
+  check: string;
+  severity: Severity;
+  detail: string;
+  nodes: string[];
+  refs?: string[];
+  fixable: boolean;
+  docsLink?: string;
+}
+
+/** WS `findings.changed` payload (docs/api.md's WebSocket section). */
+export interface FindingsChangedEvent {
+  count: number;
+}
+
 export type ChangesetStatus =
   | "draft"
   | "validated"
