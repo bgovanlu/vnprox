@@ -19,6 +19,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
@@ -111,12 +112,27 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// `drift.changed` over the same shared WS hub topoSvc's Broadcast
 	// already backs for internal/change's `changeset.status` events.
 	driftSvc := setupDrift(graph, topoSvc, logger)
+
+	// T-601: the metrics sampler is constructed before setupCollect so its
+	// Ingest method can be wired in as collect.Config.OnStats (the host
+	// loop's per-tick counter hook) — it persists a 24h, 30s-downsampled
+	// counter ring via the same metric_samples repo the hourly prune loop
+	// below enforces retention on, and pushes docs/api.md's `metrics.sample`
+	// WS event over topoSvc's shared hub, exactly like driftSvc's
+	// `drift.changed` above and changeSvc's `changeset.status` below.
+	metricSamples := store.NewMetricSampleRepo(db)
+	metricsSampler := metrics.New(metrics.Config{
+		Store:  metricSamples,
+		WS:     topoSvc,
+		Logger: logger,
+	})
+
 	// T-303: peerClient (built from the same PVE client the collectors use
 	// for cluster-status-based discovery) is nil exactly when collectErr is
 	// non-nil — see setupCollect's doc comment — so every peerClient use
 	// below is already guarded by the same "collectors initialized OK"
 	// nil-safety collector's own uses need.
-	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, peerSecrets)
+	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, peerSecrets)
 	if collectErr != nil {
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling or cluster fan-out", "error", collectErr)
 	}
@@ -304,6 +320,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LLDP:          topoSvc,
 		Drift:         driftSvc,
 		FDB:           topoSvc,
+		Metrics:       metricsSampler,
 		Layouts:       store.NewLayoutRepo(db),
 		Changesets:    changeSvc,
 		Snapshots:     changeSvc,
@@ -348,8 +365,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	g.add(authSvc.RunRenewalLoop)
 	// metric_samples retention (store.MetricRetention): RunPruneLoop's doc
 	// comment assigns the wiring to the daemon, and without it the table
-	// grows unboundedly once metrics flow (audit phase-0 F-01).
-	metricSamples := store.NewMetricSampleRepo(db)
+	// grows unboundedly once metrics flow (audit phase-0 F-01). Reuses the
+	// same *store.MetricSampleRepo instance T-601's metricsSampler above
+	// writes through, rather than a second repo over the same table.
 	g.add(func(ctx context.Context) error {
 		return metricSamples.RunPruneLoop(ctx, metricPruneInterval, func(err error) {
 			logger.Error("store: metric_samples prune failed", "error", err)

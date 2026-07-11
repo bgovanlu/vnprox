@@ -815,8 +815,72 @@ export interface FirewallObjectsResponse {
   macros: MacroView[];
 }
 
+// --- Metrics (GET /metrics/live, GET /metrics/history, `metrics.sample` WS
+// event; internal/metrics.Rates/LiveMetric/HistoryPoint/SlaveRate,
+// docs/features/monitoring.md §1-2) ----------------------------------------
+
+/** Per-second rate set for one entity, mirroring internal/metrics.Rates.
+ * Bps fields are bits/sec (link-utilization math's conventional unit); all
+ * others are events/sec. */
+export interface Rates {
+  rxBps: number;
+  txBps: number;
+  rxPps: number;
+  txPps: number;
+  rxErrsPerSec: number;
+  txErrsPerSec: number;
+  rxDropPerSec: number;
+  txDropPerSec: number;
+}
+
+/** One bond slave's own current rate + LACP/MII active state
+ * (docs/features/monitoring.md §1: "Bond member balance shown per-slave"). */
+export interface SlaveRate {
+  ref: string;
+  active: boolean;
+  rates: Rates;
+}
+
+/** One entity's current rate snapshot — GET /metrics/live's per-item shape
+ * and the traffic paint mode's data source (utilizationPct drives edge
+ * heat/thickness). `slaves` is only present for a Bond ref. */
+export interface LiveMetric {
+  ref: string;
+  at: number;
+  rates: Rates;
+  speedMbps?: number;
+  rxUtilPct?: number;
+  txUtilPct?: number;
+  utilizationPct?: number;
+  slaves?: SlaveRate[];
+}
+
+export interface MetricsLiveResponse {
+  items: LiveMetric[];
+}
+
+/** One 24h-ring history point — GET /metrics/history's per-item shape
+ * (rate derived between two consecutive 30s-downsampled stored samples). */
+export interface HistoryPoint {
+  at: number;
+  rates: Rates;
+}
+
+export interface MetricsHistoryResponse {
+  ref: string;
+  items: HistoryPoint[];
+}
+
+/** The `metrics.sample` WS push (docs/api.md: `{ref, at, rates}`). */
+export interface MetricsSampleEvent {
+  event: "metrics.sample";
+  ref: string;
+  at: number;
+  rates: Rates;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
-// Snapshots, IPAM read views, the path simulator, metrics, and blueprints
-// all have routes defined in docs/api.md but no frontend consumer yet —
-// their request/response types land with the task that first calls them
-// (T-2xx). Add them here, not in a parallel file.
+// Snapshots, IPAM read views, the path simulator, and blueprints all have
+// routes defined in docs/api.md but no frontend consumer yet — their
+// request/response types land with the task that first calls them (T-2xx).
+// Add them here, not in a parallel file.
