@@ -339,6 +339,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Protected:     changeSvc,
 		Firewall:      graph,
 		Blueprints:    blueprintSvc,
+		Simulator:     graph,
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,
 		PeerSnapshots: peerSnapshots,
