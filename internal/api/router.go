@@ -56,14 +56,18 @@ type PeerServer interface {
 
 // Options configures the router built by NewRouter.
 type Options struct {
-	DistFS      fs.FS
-	Auth        AuthService
-	Collectors  CollectorHealth
-	Topology    TopologyService
-	LLDP        LLDPService
-	Drift       DriftService
-	FDB         FDBService
-	Layouts     LayoutStore
+	DistFS     fs.FS
+	Auth       AuthService
+	Collectors CollectorHealth
+	Topology   TopologyService
+	LLDP       LLDPService
+	Drift      DriftService
+	FDB        FDBService
+	Layouts    LayoutStore
+	// Metrics is T-601's *metrics.Sampler seam for GET /metrics/live and
+	// GET /metrics/history; nil (no daemon-side sampler wired, e.g. tests)
+	// simply omits both routes.
+	Metrics     MetricsService
 	Changesets  ChangesetService
 	Snapshots   SnapshotService
 	Audit       AuditService
@@ -105,6 +109,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
+		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
