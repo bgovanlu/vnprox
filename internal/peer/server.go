@@ -63,12 +63,21 @@ type HostWriter interface {
 	// not go through the normal stage/review flow since it is restoring a
 	// known-good snapshot under time pressure.
 	RestoreInterfaces(ctx context.Context, node, content string) error
+
+	// DiscardStaged drops node's staged interfaces.new, if any, leaving the
+	// committed file untouched — the peer-routed twin of change.NodeAgent's
+	// same-named method (apply_seams.go), needed so a coordinator's
+	// mid-apply rollback can clean up a remote node that was staged but
+	// never reloaded (T-304; CLAUDE.md's "everything is cluster-aware" rule
+	// applies to this NodeAgent operation same as the other three).
+	DiscardStaged(ctx context.Context, node string) error
 }
 
 // ServerOptions configures a Server.
 type ServerOptions struct {
 	Reader       HostReader
 	Writer       HostWriter
+	Timers       TimerAgent
 	Secrets      *SecretStore
 	Logger       *slog.Logger
 	Now          func() time.Time
@@ -120,6 +129,11 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Post("/host/stage-interfaces", s.handleStageInterfaces)
 		r.Post("/host/ifreload", s.handleIfreload)
 		r.Post("/host/restore", s.handleRestore)
+		r.Post("/host/discard-staged", s.handleDiscardStaged)
+
+		r.Post("/timer/arm", s.handleTimerArm)
+		r.Post("/timer/cancel", s.handleTimerCancel)
+		r.Get("/timer/status", s.handleTimerStatus)
 	})
 }
 
@@ -225,6 +239,86 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, okResponse{OK: true})
+}
+
+func (s *Server) handleDiscardStaged(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Writer == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host writer not configured")
+		return
+	}
+	var req nodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Node == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "node is required")
+		return
+	}
+	if err := s.opts.Writer.DiscardStaged(r.Context(), req.Node); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, okResponse{OK: true})
+}
+
+func (s *Server) handleTimerArm(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Timers == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "timer agent not configured")
+		return
+	}
+	var req armTimerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ChangesetID == "" || req.Node == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "changesetId and node are required")
+		return
+	}
+	rec, err := s.opts.Timers.ArmTimer(r.Context(), req.ChangesetID, req.Node, req.Content, req.Deadline)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "timer_arm_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, timerResponse{Record: rec})
+}
+
+func (s *Server) handleTimerCancel(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Timers == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "timer agent not configured")
+		return
+	}
+	var req timerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ChangesetID == "" || req.Node == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "changesetId and node are required")
+		return
+	}
+	rec, err := s.opts.Timers.CancelTimer(r.Context(), req.ChangesetID, req.Node)
+	if err != nil {
+		s.writeTimerError(w, "cancelling timer", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, timerResponse{Record: rec})
+}
+
+func (s *Server) handleTimerStatus(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Timers == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "timer agent not configured")
+		return
+	}
+	changesetID := r.URL.Query().Get("changesetId")
+	node := r.URL.Query().Get("node")
+	if changesetID == "" || node == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "changesetId and node are required")
+		return
+	}
+	rec, err := s.opts.Timers.TimerStatus(r.Context(), changesetID, node)
+	if err != nil {
+		s.writeTimerError(w, "reading timer status", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, timerResponse{Record: rec})
+}
+
+func (s *Server) writeTimerError(w http.ResponseWriter, op string, err error) {
+	if errors.Is(err, ErrTimerNotFound) {
+		writeJSONError(w, http.StatusNotFound, errCodeTimerNotFound, op+": "+err.Error())
+		return
+	}
+	writeJSONError(w, http.StatusInternalServerError, "internal_error", op+": "+err.Error())
 }
 
 func (s *Server) writeHostError(w http.ResponseWriter, op string, err error) {

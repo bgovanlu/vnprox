@@ -46,6 +46,32 @@ Check items off with the PVE version tested.
       `planning/reports/T-301.md` §3) actually works on pmxcfs rather than
       silently failing or behaving like a copy.
 
+## Distributed rollback / local-timer protocol (T-304)
+
+- [ ] **Whole-second HMAC replay collisions under real timing**: `internal/peer`'s replay cache
+      keys on the exact signed request (method, path, body, whole-second timestamp). T-304's
+      testing surfaced that two genuinely-distinct requests to the same peer node with identical
+      bodies (e.g. `POST /api/peer/host/ifreload {"node":"pve2"}` issued once during apply and
+      again moments later during a mid-apply rollback of that same node) sign identically and
+      collide if they land in the same wall-clock second — the test harness works around this
+      with an auto-ticking fake clock (`internal/change/distributed_test.go`'s `clock()`), which
+      real time also provides in practice, but the actual gap between two such calls on a fast
+      LAN has not been measured against real hardware. If this proves to matter in practice, the
+      fix belongs in `internal/peer`'s signing/replay scheme (out of T-304's scope — see its
+      report's deviation notes), not in `internal/change`.
+- [ ] **`ClusterNodeAgent`/`ClusterTimerAgent` PVE cluster-status discovery timing**: production
+      wiring (`cmd/vnproxd/server.go`) resolves this daemon's own node name from
+      `collect.Collector.Status().LocalNode`, which is empty until the first successful PVE
+      cluster-status poll — confirm the real-world window between daemon startup and that first
+      poll succeeding doesn't leave a coordinator unable to recognize its own node during that
+      gap on a real cluster.
+- [ ] **Real elapsed-time behavior of the per-node local timer across an actual `ifreload`**:
+      `LocalTimerAgent`'s restore-on-fire path (`internal/change/localtimer.go`) reuses
+      `NodeAgent.StageInterfaces`/`ReloadInterfaces`, the same host-writer T-205 already flagged
+      as unvalidated against real ifupdown2 — T-304 adds no new host-level operation, but doubles
+      the real-hardware surface that flag covers (a mid-apply rollback and a confirm-timeout
+      rollback can now both invoke it, from two different daemons, on the same node).
+
 ## Host / OS behavior
 
 - [ ] **`systemctl start vnprox` from the .deb** on a real PVE node (the container test script

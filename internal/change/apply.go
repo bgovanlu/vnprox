@@ -49,6 +49,14 @@ func (s *Service) Apply(ctx context.Context, id, author string, pveGW PVEGateway
 		return Changeset{}, err
 	}
 
+	// The commit-confirm deadline is computed once, up front — every node's
+	// local rollback timer (T-304) is armed with this exact same absolute
+	// instant as it's reached in plan order, so every node's safety net
+	// expires at the same wall-clock time no matter how long earlier nodes'
+	// steps took, and it matches the coordinator's own bookkeeping deadline
+	// below.
+	deadline := s.now().Add(confirmTimeout).Unix()
+
 	// --- pre-state snapshot: before any mutation (docs/data-model.md §2) ---
 	pre, err := s.captureSnapshot(ctx, id, snapshotKindPre, plan.affectedNodes())
 	if err != nil {
@@ -56,14 +64,14 @@ func (s *Service) Apply(ctx context.Context, id, author string, pveGW PVEGateway
 	}
 
 	// --- execute the plan ---
-	ex := s.newExecutor(cs, plan, pre, pveGW)
+	ex := s.newExecutor(cs, plan, pre, pveGW, deadline)
 	runErr := ex.run(ctx)
 	if runErr != nil {
 		return s.finishFailedApply(ctx, cs, plan, author, ex.log, runErr)
 	}
 
 	// --- success: arm the commit-confirm window ---
-	return s.finishAwaitingConfirm(ctx, cs, plan, author, ex.log, confirmTimeout)
+	return s.finishAwaitingConfirm(ctx, cs, plan, author, ex.log, deadline)
 }
 
 // beginApply performs the locked prologue of Apply: acquire the advisory
@@ -163,12 +171,18 @@ func (s *Service) finishFailedApply(ctx context.Context, cs Changeset, plan Plan
 // finishAwaitingConfirm records a successful apply: persist the apply log,
 // move to awaiting_confirm with a persisted confirm deadline, arm the
 // daemon-side rollback timer, audit, and broadcast (keeping the apply lock
-// held for the duration of the window).
-func (s *Service) finishAwaitingConfirm(ctx context.Context, cs Changeset, plan Plan, author string, log *ApplyLog, confirmTimeout time.Duration) (Changeset, error) {
+// held for the duration of the window). deadline is the same value every
+// affected node's local timer (T-304) was already armed with during
+// execution (apply_exec.go's execStep).
+func (s *Service) finishAwaitingConfirm(ctx context.Context, cs Changeset, plan Plan, author string, log *ApplyLog, deadline int64) (Changeset, error) {
 	s.applyMu.Lock()
+	if s.nodeTimers != nil {
+		for _, node := range plan.affectedNodes() {
+			log.NodeTimers = append(log.NodeTimers, NodeTimerLog{Node: node, Status: NodeTimerStatusArmed, Deadline: deadline})
+		}
+	}
 	logJSON, _ := json.Marshal(log)
 	cs.ApplyLog = logJSON
-	deadline := s.now().Add(confirmTimeout).Unix()
 	if err := cs.Transition(StatusAwaitingConfirm, s.now().Unix()); err != nil {
 		s.applyMu.Unlock()
 		return Changeset{}, err
@@ -217,10 +231,28 @@ func (s *Service) Confirm(ctx context.Context, id, author string) (Changeset, er
 	}
 	s.lockHeldBy = ""
 	plan := decodePlan(cs.Plan)
+	log := decodeApplyLog(cs.ApplyLog)
 	s.applyMu.Unlock()
 
 	s.broadcastStatus(cs)
 	s.appendAudit(ctx, author, "changeset.confirm", "committed", id, nil)
+
+	// T-304: fan out cancellation to every node's local rollback timer — a
+	// confirmed changeset must not have some node still counting down to a
+	// self-restore behind the coordinator's back (docs/features/
+	// change-management.md §4: "confirm fans out cancellations"). This is
+	// best-effort per node: a node this call can't reach right now keeps its
+	// timer armed and may roll back a change the user already confirmed —
+	// a known, documented edge case (see T-304's report) — surfaced here as
+	// NodeTimerStatusUnknown for Reconcile to notice and audit.
+	if s.nodeTimers != nil && len(plan.affectedNodes()) > 0 {
+		results := s.cancelNodeTimers(ctx, id, plan.affectedNodes())
+		log.NodeTimers = mergeNodeTimerLogs(log.NodeTimers, results)
+		if err := s.updateApplyLog(ctx, id, log); err != nil {
+			s.log.Warn("change: persisting post-confirm node-timer cancellation log", "changeset_id", id, "error", err)
+		}
+	}
+
 	if _, err := s.captureSnapshot(ctx, id, snapshotKindPost, plan.affectedNodes()); err != nil {
 		s.log.Warn("change: capturing post-commit snapshot", "changeset_id", id, "error", err)
 	}
@@ -325,7 +357,15 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 		return plan, err
 	}
 
-	rbLogs, anyFailed := s.restoreAll(ctx, plan, pre)
+	var rbLogs []RollbackLog
+	var anyFailed bool
+	if s.nodeTimers != nil {
+		var nodeTimers []NodeTimerLog
+		rbLogs, nodeTimers, anyFailed = s.restoreAllDistributed(ctx, cs.ID, plan, pre)
+		log.NodeTimers = mergeNodeTimerLogs(log.NodeTimers, nodeTimers)
+	} else {
+		rbLogs, anyFailed = s.restoreAll(ctx, plan, pre)
+	}
 	log.Rollback = append(log.Rollback, rbLogs...)
 	log.RolledBackBy = actor
 	if logJSON, mErr := json.Marshal(log); mErr == nil {

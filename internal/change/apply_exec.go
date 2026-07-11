@@ -15,19 +15,25 @@ import (
 // §4). It is a small value bundling the per-apply inputs so the step methods
 // don't each need a long parameter list; Service.applyPlan constructs one.
 type executor struct {
-	pveGW   PVEGateway
-	svc     *Service
-	pre     map[string]string
-	log     *ApplyLog
-	stageIx map[string]int
-	loadIx  map[string]int
-	plan    Plan
-	cs      Changeset
+	pveGW    PVEGateway
+	svc      *Service
+	pre      map[string]string
+	log      *ApplyLog
+	stageIx  map[string]int
+	loadIx   map[string]int
+	plan     Plan
+	cs       Changeset
+	deadline int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
 }
 
 // newExecutor builds an executor with a fresh apply log (all steps pending)
-// and the per-node stage/reload step-index maps rollback needs.
-func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW PVEGateway) *executor {
+// and the per-node stage/reload step-index maps rollback needs. deadline is
+// the commit-confirm deadline (computed once, up front, by Apply) that every
+// node's local rollback timer (T-304) is armed with as its reload step runs
+// — the same absolute instant the coordinator's own bookkeeping timer uses,
+// so every node's safety net expires at the same wall-clock time regardless
+// of how long earlier nodes' steps took.
+func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW PVEGateway, deadline int64) *executor {
 	preByNode := make(map[string]string, len(pre))
 	for _, f := range pre {
 		preByNode[f.Node] = f.Content
@@ -45,7 +51,7 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		}
 	}
 	return &executor{
-		svc: s, cs: cs, plan: plan, pre: preByNode, pveGW: pveGW,
+		svc: s, cs: cs, plan: plan, pre: preByNode, pveGW: pveGW, deadline: deadline,
 		log:     &ApplyLog{Steps: steps},
 		stageIx: stageIx, loadIx: loadIx,
 	}
@@ -80,12 +86,35 @@ func (e *executor) run(ctx context.Context) error {
 func (e *executor) execStep(ctx context.Context, st Step) error {
 	switch st.Kind {
 	case StepStageFile:
-		content, err := e.svc.computeStagedFile(ctx, st.Node, e.cs.Ops, st.OpIdx, e.cs.ID)
+		// Reuse the pre-apply snapshot's content already captured for this
+		// node instead of a second ReadInterfaces call: they're the same
+		// read (nothing has mutated node yet), and for a peer node routed
+		// over HTTP a second identical GET within the same signing-clock
+		// second would collide with the first in the HMAC replay cache
+		// (internal/peer's replay protection keys purely on the signed
+		// request being byte-identical) — T-304 exposed this by making
+		// ReadInterfaces sometimes a real network call instead of always a
+		// free in-process one.
+		content, err := e.svc.computeStagedFile(e.pre[st.Node], st.Node, e.cs.Ops, st.OpIdx, e.cs.ID)
 		if err != nil {
 			return err
 		}
 		return e.svc.nodes.StageInterfaces(ctx, st.Node, content)
 	case StepReload:
+		// T-304: arm this node's own local rollback timer *before* the one
+		// mutating call in its stage->reload pair (docs/features/
+		// change-management.md §4: "each node arms its own local timer at
+		// step start"), so the node's safety never depends on the
+		// coordinator (or the network to it) surviving past this point. If
+		// arming fails — most likely because the node is unreachable right
+		// now — the reload never runs: an un-armed node must never be
+		// reloaded, exactly the "peer dies before its steps start" abort
+		// path (T-304 card AC3).
+		if e.svc.nodeTimers != nil {
+			if _, err := e.svc.nodeTimers.ArmTimer(ctx, e.cs.ID, st.Node, e.pre[st.Node], e.deadline); err != nil {
+				return fmt.Errorf("arming local rollback timer on %s: %w", st.Node, err)
+			}
+		}
 		return e.svc.nodes.ReloadInterfaces(ctx, st.Node)
 	case StepSDNApply:
 		if e.pveGW == nil {
@@ -179,16 +208,16 @@ func (s *Service) restoreAll(ctx context.Context, plan Plan, pre []snapshotFile)
 	return logs, anyFailed
 }
 
-// computeStagedFile reads node's current interfaces file, applies that node's
-// ops (opIdx into ops) via the T-204 ifaces mutators, and returns the new
-// rendered file content to stage — the same parse→mutate→render path
-// ifaces.DiffChangeset uses, so the staged file is byte-identical to the diff
-// the user reviewed.
-func (s *Service) computeStagedFile(ctx context.Context, node string, ops []Op, opIdx []int, changesetID string) (string, error) {
-	before, err := s.nodes.ReadInterfaces(ctx, node)
-	if err != nil {
-		return "", fmt.Errorf("change: reading %s on node %s: %w", interfacesPath, node, err)
-	}
+// computeStagedFile applies node's ops (opIdx into ops) via the T-204 ifaces
+// mutators to before (its current interfaces file content — the caller
+// passes the pre-apply snapshot already captured for node rather than this
+// function re-reading it: they're the same read, and issuing it twice would
+// be both wasteful and, for a peer node routed over HTTP, liable to collide
+// with itself in internal/peer's HMAC replay cache if both calls land in the
+// same signing-clock second) and returns the new rendered file content to
+// stage — the same parse→mutate→render path ifaces.DiffChangeset uses, so
+// the staged file is byte-identical to the diff the user reviewed.
+func (s *Service) computeStagedFile(before, node string, ops []Op, opIdx []int, changesetID string) (string, error) {
 	f, err := host.ParseInterfaces([]byte(before))
 	if err != nil {
 		return "", fmt.Errorf("change: parsing %s on node %s: %w", interfacesPath, node, err)

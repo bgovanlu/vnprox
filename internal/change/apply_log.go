@@ -50,6 +50,42 @@ type ApplyLog struct {
 	RolledBackBy string        `json:"rolledBackBy,omitempty"`
 	Steps        []StepLog     `json:"steps"`
 	Rollback     []RollbackLog `json:"rollback,omitempty"`
+	// NodeTimers is T-304's per-node local-timer bookkeeping: one entry per
+	// node the coordinator armed a distributed rollback timer on, updated as
+	// its fate becomes known (fanned-out cancel on confirm, best-effort
+	// restore-and-cancel on rollback, or — for a node the coordinator lost
+	// contact with — left "unknown" until a later Reconcile call resolves
+	// it). This is the per-node detail docs/features/change-management.md
+	// §4 and the T-304 card's AC2 ("reconciliation ... marks the changeset
+	// rolled_back with per-node detail") refer to.
+	NodeTimers []NodeTimerLog `json:"nodeTimers,omitempty"`
+}
+
+// NodeTimerStatus mirrors internal/peer.TimerStatus plus the
+// coordinator-only NodeTimerUnknown state (a node whose resolution the
+// coordinator could not observe directly and has not yet reconciled).
+type NodeTimerStatus string
+
+const (
+	NodeTimerStatusArmed          NodeTimerStatus = "armed"
+	NodeTimerStatusCancelled      NodeTimerStatus = "cancelled"
+	NodeTimerStatusRolledBack     NodeTimerStatus = "rolled_back"
+	NodeTimerStatusRollbackFailed NodeTimerStatus = "rollback_failed"
+	// NodeTimerStatusUnknown means the coordinator could not reach this node
+	// to arm/cancel/observe its timer (peer.ErrPeerUnreachable) — the node's
+	// own local timer is the only thing guaranteeing its safety until
+	// Reconcile resolves this entry.
+	NodeTimerStatusUnknown NodeTimerStatus = "unknown"
+)
+
+// NodeTimerLog is one node's distributed-rollback-timer bookkeeping entry
+// within an ApplyLog.
+type NodeTimerLog struct {
+	Node       string          `json:"node"`
+	Status     NodeTimerStatus `json:"status"`
+	Error      string          `json:"error,omitempty"`
+	Deadline   int64           `json:"deadline,omitempty"`
+	ResolvedAt int64           `json:"resolvedAt,omitempty"`
 }
 
 // systemRollbackActor is the audit/apply-log attribution for an automatic

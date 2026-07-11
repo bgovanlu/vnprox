@@ -50,7 +50,11 @@ type InventorySource interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Nodes         NodeAgent
+	Nodes NodeAgent
+	// Timers is T-304's per-node local-timer protocol seam (apply_seams.go's
+	// NodeTimerAgent doc comment). Nil disables it: Apply falls back to
+	// T-205's single coordinator-side commit-confirm timer only.
+	Timers        NodeTimerAgent
 	Refresher     InventoryRefresher
 	WS            Broadcaster
 	Inventory     InventorySource
@@ -99,6 +103,7 @@ type Stopper interface {
 // T-205's responsibility — see doc.go.
 type Service struct {
 	nodes              NodeAgent
+	nodeTimers         NodeTimerAgent // T-304 per-node local timers; nil = T-205 single-timer fallback
 	refresher          InventoryRefresher
 	ws                 Broadcaster
 	inv                InventorySource
@@ -168,7 +173,7 @@ func NewService(cfg Config) (*Service, error) {
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
-		nodes: cfg.Nodes, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
+		nodes: cfg.Nodes, nodeTimers: cfg.Timers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
 		rollbackWindowDays: rollbackWindowDays,
 		timers:             map[string]Stopper{},

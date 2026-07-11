@@ -29,7 +29,8 @@ type stageRequest struct {
 	Content string `json:"content"`
 }
 
-// nodeRequest is POST /api/peer/host/ifreload's body: just the target node.
+// nodeRequest is POST /api/peer/host/{ifreload,discard-staged}'s body: just
+// the target node.
 type nodeRequest struct {
 	Node string `json:"node"`
 }
@@ -37,6 +38,30 @@ type nodeRequest struct {
 // okResponse is the generic success body for the write endpoints.
 type okResponse struct {
 	OK bool `json:"ok"`
+}
+
+// armTimerRequest is POST /api/peer/timer/arm's body: T-304's local-timer
+// protocol arms a rollback deadline on the receiving node before the
+// coordinator's first mutating step for it (docs/features/
+// change-management.md §4).
+type armTimerRequest struct {
+	ChangesetID string `json:"changesetId"`
+	Node        string `json:"node"`
+	Content     string `json:"content"`
+	Deadline    int64  `json:"deadline"`
+}
+
+// timerRequest is POST /api/peer/timer/cancel and GET /api/peer/timer/
+// status's shared identifying key.
+type timerRequest struct {
+	ChangesetID string `json:"changesetId"`
+	Node        string `json:"node"`
+}
+
+// timerResponse is the body every /api/peer/timer/* route returns: the
+// resulting (or current, for status) TimerRecord.
+type timerResponse struct {
+	Record TimerRecord `json:"record"`
 }
 
 // errorEnvelope mirrors docs/api.md's global error shape:
