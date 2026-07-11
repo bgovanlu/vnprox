@@ -1654,6 +1654,102 @@ export interface SimulateResult {
   caveats: SimCaveat[];
 }
 
+// --- Protected interfaces (docs/api.md §"Protected interfaces"; T-203,
+// consumed by T-605's onboarding walkthrough step 2) -----------------------
+
+/** GET/PUT `/protected-interfaces` wire shape: node name -> the refs
+ * protected on that node. `updatedBy`/`updatedAt`/`version` are only ever
+ * populated by GET (internal/api/protected.go's protectedResponse); PUT's
+ * response carries them too (same handler builds both), but a freshly
+ * confirmed set from `/suggest` has none of them yet. */
+export interface ProtectedInterfacesResponse {
+  nodes: Record<string, string[]>;
+  updatedBy?: string;
+  updatedAt: number;
+  version: number;
+}
+
+/** GET `/protected-interfaces/suggest` response: same `{nodes}` shape the
+ * PUT accepts, so the onboarding UI can present it for confirmation and
+ * submit the (possibly corrected) result straight back. */
+export interface ProtectedInterfacesSuggestResponse {
+  nodes: Record<string, string[]>;
+}
+
+/** PUT `/protected-interfaces` request body. */
+export interface ProtectedInterfacesPutRequest {
+  nodes: Record<string, string[]>;
+}
+
+// --- LLDP (docs/api.md §"Inventory & topology"'s GET /lldp row, and
+// §"LLDP guided install (T-605)") -------------------------------------------
+
+/** One GET /lldp item (internal/api/lldp.go's lldpNeighborResponse,
+ * docs/data-model.md §1's LldpNeighbor contract). An empty `items` array is
+ * the onboarding walkthrough's signal that lldpd may not be running on this
+ * node yet (docs/user-guide.md §1.3). */
+export interface LldpNeighbor {
+  ref: string;
+  node: string;
+  localIface: string;
+  protocol: string;
+  chassisName: string;
+  chassisId: string;
+  chassisIdType?: string;
+  portId: string;
+  portIdType?: string;
+  portDescr?: string;
+  mgmtIps?: string[];
+  pvid?: number;
+  taggedVlans?: number[];
+  speedMbps?: number;
+  speedDescr?: string;
+  ttl?: number;
+  lastSeen?: number;
+}
+
+export interface LldpResponse {
+  items: LldpNeighbor[];
+}
+
+/** POST /lldp/install request body — `confirm` must literally be `true` or
+ * the server rejects with 400 `validation_failed`. */
+export interface LldpInstallRequest {
+  confirm: true;
+}
+
+export interface LldpInstallNodeResult {
+  node: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface LldpInstallResponse {
+  results: LldpInstallNodeResult[];
+}
+
+// --- Onboarding walkthrough (T-605; docs/user-guide.md §1) -----------------
+// Client-owned progress state, opaque to the backend, persisted via the
+// existing GET/PUT /layouts/{name} mechanism under name "onboarding" (see
+// api/onboarding.ts) — the same "frontend-owned payload, backend stores it
+// as a JSON blob" pattern TopologyLayoutPayload above already established.
+
+/** The walkthrough's four steps, in the fixed order docs/user-guide.md §1
+ * documents, plus the terminal "done" state once step 4 is finished. */
+export type OnboardingStep = "found-summary" | "protected" | "lldp" | "health" | "done";
+
+export interface OnboardingProgress {
+  version: 1;
+  /** Unix-ms timestamp of the last "minimize" click, or null while the
+   * panel is (or should be) fully open. Distinct from completion — a
+   * dismissed-but-not-done walkthrough resumes at `currentStep` when
+   * reopened via the AppShell's reopen pill. */
+  dismissedAt: number | null;
+  currentStep: OnboardingStep;
+  skippedSteps: OnboardingStep[];
+  completedSteps: OnboardingStep[];
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots and IPAM read views have routes defined in docs/api.md but no
 // frontend consumer yet — their request/response types land with the task

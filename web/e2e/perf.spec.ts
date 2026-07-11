@@ -13,7 +13,49 @@ declare global {
   }
 }
 
+// T-605: see topology.spec.ts's identical helper doc comment — suppressing
+// the onboarding walkthrough banner via an injected stylesheet (rather
+// than clicking its "Minimize" button) avoids persisting a PUT
+// /layouts/onboarding that would leak into other spec files sharing this
+// same webServer/DB within one test run (this measurement wants the map's
+// full steady-state viewport regardless of onboarding state either way).
+async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    // docs/security.md's CSP is `style-src 'self'` (no 'unsafe-inline'),
+    // so an injected <style> element (tried first) is silently blocked —
+    // it exists in the DOM but the browser refuses to apply its rule.
+    // Directly setting a CSSStyleDeclaration property via the `.style`
+    // object (as opposed to the HTML `style` *attribute*, e.g. via
+    // setAttribute) is not restricted by style-src (a well-known CSP
+    // nuance), so this sets the property JS-side instead — reapplied via
+    // MutationObserver since the banner mounts asynchronously (after
+    // GET /layouts/onboarding resolves) well after this init script runs.
+    const suppress = () => {
+      const el = document.querySelector('[aria-label="Onboarding walkthrough"]');
+      if (el instanceof HTMLElement) {
+        el.style.setProperty("display", "none", "important");
+      }
+    };
+    // lib.dom.d.ts types document.documentElement as always non-null, but
+    // empirically (this exact init-script timing, before the parser has
+    // created it yet) it can genuinely be null here — hence the try/catch
+    // retry loop below instead of a type-checker-satisfying null check
+    // that strict lint would flag as "always falsy" against that (in this
+    // one narrow case, wrong) type.
+    const start = () => {
+      try {
+        suppress();
+        new MutationObserver(suppress).observe(document.documentElement, { childList: true, subtree: true });
+      } catch {
+        setTimeout(start, 0);
+      }
+    };
+    start();
+  });
+}
+
 async function logIn(page: Page): Promise<void> {
+  await suppressOnboardingWalkthrough(page);
   await page.goto("/login");
   await page.getByLabel("Username").fill("root");
   await page.getByLabel("Password", { exact: true }).fill("vnprox-mock");

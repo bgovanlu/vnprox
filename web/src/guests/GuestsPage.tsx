@@ -65,6 +65,23 @@ export function GuestsPage() {
 
   const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.ref));
 
+  // T-605 read-only sweep finding: the bulk reattach button below was
+  // gated only on `!bulkTarget` (a target must be picked) with no
+  // capability check at all — a read-only session could select rows and
+  // draft a bulk guest.nic.update op regardless of guestNet/netWrite.
+  // Selected guests can span multiple nodes, so the bulk action is only
+  // enabled when *every* currently selected row's node grants write
+  // (the same per-row check the individual Disconnect/Connect button
+  // below already uses) — the strictest reading, matching this
+  // component's existing per-node capsForNode convention rather than a
+  // new cluster-wide hasAnyCap shortcut.
+  const selectedRows = filtered.filter((r) => selected.has(r.ref));
+  const canBulkReattach =
+    selectedRows.length > 0 && selectedRows.every((r) => capsForNode(session, r.node).guestNet || capsForNode(session, r.node).netWrite);
+  const bulkReattachDisabledReason = canBulkReattach
+    ? undefined
+    : "You don't have guest-network write on every selected guest's node.";
+
   function toggleAll(): void {
     setSelected(allSelected ? new Set() : new Set(filtered.map((r) => r.ref)));
   }
@@ -79,7 +96,7 @@ export function GuestsPage() {
   }
 
   async function handleBulkReattach(): Promise<void> {
-    if (!bulkTarget || selected.size === 0) return;
+    if (!bulkTarget || selected.size === 0 || !canBulkReattach) return;
     const refs = [...selected];
     const ops = buildBulkGuestNicOps(refs, { bridgeOrVnet: bulkTarget });
     try {
@@ -160,9 +177,18 @@ export function GuestsPage() {
                   </option>
                 ))}
               </select>
-              <Button size="sm" variant="primary" disabled={!bulkTarget} onClick={() => void handleBulkReattach()}>
-                Reattach {selected.size} guest(s)
-              </Button>
+              <Tooltip content={bulkReattachDisabledReason}>
+                <span>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!bulkTarget || !canBulkReattach}
+                    onClick={() => void handleBulkReattach()}
+                  >
+                    Reattach {selected.size} guest(s)
+                  </Button>
+                </span>
+              </Tooltip>
             </div>
           )}
 

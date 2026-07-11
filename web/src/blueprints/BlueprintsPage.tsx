@@ -6,9 +6,12 @@
 import { useRef, useState } from "react";
 import clsx from "clsx";
 import type { Blueprint, BlueprintParamValue } from "../api/types";
+import { useSession } from "../api/useSession";
+import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
 import { EmptyState } from "../components/EmptyState";
+import { Tooltip } from "../components/Tooltip";
 import { BlueprintPreviewDiagram } from "./BlueprintPreviewDiagram";
 import { ParamForm } from "./ParamForm";
 import {
@@ -40,6 +43,16 @@ export function BlueprintsPage() {
   const instantiateMutation = useInstantiateBlueprintMutation();
   const setActiveChangesetId = useChangesetDrawerStore((s) => s.setActiveId);
   const { toast } = useToast();
+  const { data: session } = useSession();
+  // Every write here (import/capture/delete/instantiate) ultimately lands
+  // as bridge/bond/vlan/SDN change ops or a new saved blueprint, none of it
+  // scoped to one specific node the way an entity editor's edits are — so
+  // this is gated the same way T-605's onboarding walkthrough gates its own
+  // cluster-wide writes: hasAnyCap(session, "netWrite"), disabled-with-
+  // tooltip rather than hidden (docs/user-guide.md §5), never a second
+  // gating mechanism.
+  const canWrite = hasAnyCap(session, "netWrite");
+  const writeDisabledReason = canWrite ? undefined : missingCapTooltip(session, "", "netWrite");
 
   const items = data?.items ?? [];
   const selected = items.find((b) => b.id === selectedId);
@@ -133,13 +146,18 @@ export function BlueprintsPage() {
                 e.target.value = "";
               }}
             />
-            <button
-              type="button"
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Import
-            </button>
+            <Tooltip content={writeDisabledReason}>
+              <span>
+                <button
+                  type="button"
+                  disabled={!canWrite}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Import
+                </button>
+              </span>
+            </Tooltip>
           </div>
         </div>
 
@@ -180,15 +198,20 @@ export function BlueprintsPage() {
                 setCaptureNode(e.target.value);
               }}
             />
-            <button
-              type="button"
-              className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-              onClick={() => {
-                void handleCapture();
-              }}
-            >
-              Capture
-            </button>
+            <Tooltip content={writeDisabledReason}>
+              <span>
+                <button
+                  type="button"
+                  disabled={!canWrite}
+                  className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  onClick={() => {
+                    void handleCapture();
+                  }}
+                >
+                  Capture
+                </button>
+              </span>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -216,15 +239,20 @@ export function BlueprintsPage() {
                   Export
                 </button>
                 {!selected.readOnly ? (
-                  <button
-                    type="button"
-                    className="rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
-                    onClick={() => {
-                      void handleDelete(selected);
-                    }}
-                  >
-                    Delete
-                  </button>
+                  <Tooltip content={writeDisabledReason}>
+                    <span>
+                      <button
+                        type="button"
+                        disabled={!canWrite}
+                        className="rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                        onClick={() => {
+                          void handleDelete(selected);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  </Tooltip>
                 ) : null}
               </div>
             </div>
@@ -246,6 +274,7 @@ export function BlueprintsPage() {
                   void handleInstantiate(params);
                 }}
                 submitting={instantiateMutation.isPending}
+                submitDisabledReason={writeDisabledReason}
               />
             </section>
           </div>

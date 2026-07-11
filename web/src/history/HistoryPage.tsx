@@ -12,10 +12,13 @@ import {
   type SnapshotListResponse,
   type SnapshotSummary,
 } from "../api/snapshots";
+import { useSession } from "../api/useSession";
 import { ApiError } from "../api/client";
+import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
+import { Tooltip } from "../components/Tooltip";
 import { useToast } from "../components/Toast";
 import { DiffView } from "./DiffView";
 import { groupSnapshots, kindLabel } from "./timeline";
@@ -37,9 +40,21 @@ interface DiffSelection {
 export function HistoryPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
   const [selection, setSelection] = useState<DiffSelection>({});
   const [note, setNote] = useState("");
   const [restoreTarget, setRestoreTarget] = useState<SnapshotSummary | undefined>(undefined);
+
+  // T-605 read-only sweep finding: neither "Take snapshot" (POST
+  // /snapshots) nor "Create restore draft" (POST /snapshots/{id}/restore)
+  // had any capability gating at all — this whole page's write surface
+  // predates the capsForNode/hasAnyCap convention every other write
+  // affordance in the app uses. Both actions are cluster-wide (a manual
+  // snapshot captures whichever nodes' files are relevant; a restore draft
+  // can span nodes too), so gated the same way the onboarding walkthrough/
+  // blueprints/drift-fix cluster-wide writes are: hasAnyCap(netWrite).
+  const canWrite = hasAnyCap(session, "netWrite");
+  const writeDisabledReason = canWrite ? undefined : missingCapTooltip(session, "", "netWrite");
 
   const snapshotsQuery = useInfiniteQuery<SnapshotListResponse>({
     queryKey: SNAPSHOTS_QUERY_KEY,
@@ -113,6 +128,7 @@ export function HistoryPage() {
           className="flex items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!canWrite) return;
             createMutation.mutate(note);
           }}
         >
@@ -126,9 +142,13 @@ export function HistoryPage() {
             aria-label="Snapshot note"
             className="h-9 w-56 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
           />
-          <Button type="submit" variant="primary" size="md" disabled={createMutation.isPending}>
-            {createMutation.isPending ? "Capturing…" : "Take snapshot"}
-          </Button>
+          <Tooltip content={writeDisabledReason}>
+            <span>
+              <Button type="submit" variant="primary" size="md" disabled={createMutation.isPending || !canWrite}>
+                {createMutation.isPending ? "Capturing…" : "Take snapshot"}
+              </Button>
+            </span>
+          </Tooltip>
         </form>
       </div>
 
@@ -205,15 +225,20 @@ export function HistoryPage() {
                           >
                             vs live
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              setRestoreTarget(snap);
-                            }}
-                          >
-                            Restore…
-                          </Button>
+                          <Tooltip content={writeDisabledReason}>
+                            <span>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={!canWrite}
+                                onClick={() => {
+                                  setRestoreTarget(snap);
+                                }}
+                              >
+                                Restore…
+                              </Button>
+                            </span>
+                          </Tooltip>
                         </div>
                       </li>
                     ))}
@@ -291,17 +316,21 @@ export function HistoryPage() {
             <DialogClose asChild>
               <Button variant="ghost">Cancel</Button>
             </DialogClose>
-            <Button
-              variant="primary"
-              disabled={restoreMutation.isPending}
-              onClick={() => {
-                if (restoreTarget) {
-                  restoreMutation.mutate(restoreTarget.id);
-                }
-              }}
-            >
-              {restoreMutation.isPending ? "Creating draft…" : "Create restore draft"}
-            </Button>
+            <Tooltip content={writeDisabledReason}>
+              <span>
+                <Button
+                  variant="primary"
+                  disabled={restoreMutation.isPending || !canWrite}
+                  onClick={() => {
+                    if (restoreTarget && canWrite) {
+                      restoreMutation.mutate(restoreTarget.id);
+                    }
+                  }}
+                >
+                  {restoreMutation.isPending ? "Creating draft…" : "Create restore draft"}
+                </Button>
+              </span>
+            </Tooltip>
           </div>
         </DialogContent>
       </Dialog>

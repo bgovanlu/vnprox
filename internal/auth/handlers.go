@@ -189,7 +189,25 @@ func (s *Service) deriveCapabilities(ctx context.Context, identity PVEIdentity) 
 			return nil, err
 		}
 	}
-	return BuildCapabilities(perms, nodes), nil
+	caps := BuildCapabilities(perms, nodes)
+	if s.readOnly {
+		forceReadOnly(caps)
+	}
+	return caps, nil
+}
+
+// forceReadOnly zeroes every write-shaped flag (every flag except netRead/
+// sdnRead/fwRead/audit) in place across every node's Capabilities, per
+// Config.ReadOnly's doc comment — the config's "observe-only until you
+// trust it" mode (docs/features/blueprints.md §3).
+func forceReadOnly(caps map[string]Capabilities) {
+	for node, c := range caps {
+		c.NetWrite = false
+		c.SDNWrite = false
+		c.FWWrite = false
+		c.GuestNet = false
+		caps[node] = c
+	}
 }
 
 func (s *Service) handleLogout(w http.ResponseWriter, r *http.Request) {
