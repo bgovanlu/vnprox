@@ -53,8 +53,8 @@ func openFrozenAt(t *testing.T, version int) *sql.DB {
 		t.Fatalf("sql.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if err := db.PingContext(context.Background()); err != nil {
-		t.Fatalf("ping: %v", err)
+	if pingErr := db.PingContext(context.Background()); pingErr != nil {
+		t.Fatalf("ping: %v", pingErr)
 	}
 
 	migrations, err := loadMigrations()
@@ -122,10 +122,10 @@ func seedAtVersion2(t *testing.T, db *sql.DB) {
 // an assertion function that all seeded data survived the subsequent
 // migrate-to-latest.
 type migrateFromEachTestCase struct {
+	seed          func(t *testing.T, db *sql.DB)
+	assertSeeded  func(t *testing.T, db *sql.DB)
 	name          string
 	frozenVersion int
-	seed          func(t *testing.T, db *sql.DB) // nil for "nothing existed yet" (fresh install)
-	assertSeeded  func(t *testing.T, db *sql.DB)
 }
 
 func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
@@ -183,8 +183,8 @@ func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
 			// This is the actual thing being tested: the same migrate() an
 			// upgraded vnproxd runs against this node's existing database on
 			// startup (store.Open calls it unconditionally).
-			if err := migrate(ctx, db); err != nil {
-				t.Fatalf("migrate() from version %d to latest: %v", tc.frozenVersion, err)
+			if migrateErr := migrate(ctx, db); migrateErr != nil {
+				t.Fatalf("migrate() from version %d to latest: %v", tc.frozenVersion, migrateErr)
 			}
 
 			gotAfter, err := currentSchemaVersion(ctx, db)

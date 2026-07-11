@@ -120,24 +120,18 @@ type peerDaemon struct {
 // plus pve2/pve3 as real peer daemons reachable over HTTP.
 type threeDaemonHarness struct {
 	now        time.Time
-	svc        *change.Service
+	svcTimers  *fakeTimers
 	coordAgent *fakeNodeAgent
 	coordTimer *fakeTimers
 	coordRepo  *store.NodeTimerRepo
 	coordDB    *store.DB
-	svcTimers  *fakeTimers
+	svc        *change.Service
 	peers      map[string]*peerDaemon
 	transport  *partitionableTransport
 	client     *pve.Client
+	locator    change.StaticPeerLocator
 	mockURL    string
 	nowMu      sync.Mutex
-	// locator is the same change.StaticPeerLocator instance wired into
-	// clusterNodes/clusterTimers below (maps are reference types, so
-	// mutating an entry here after construction is visible to the
-	// coordinator's Service too) — kept as a field so a test can retarget
-	// one node's Peer.Addr, e.g. mixedversion_test.go swapping pve3's real
-	// peer.Server for a stub that reports an incompatible protocol version.
-	locator change.StaticPeerLocator
 }
 
 // clock is the Now func every daemon in the harness shares (coordinator's

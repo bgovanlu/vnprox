@@ -66,8 +66,8 @@ func (e *ErrNotConfirmable) Error() string {
 // code `peer_incompatible` (docs/api.md's error-code list already reserves
 // this code).
 type ErrIncompatiblePeer struct {
-	Node string
 	Err  error
+	Node string
 }
 
 func (e *ErrIncompatiblePeer) Error() string {
