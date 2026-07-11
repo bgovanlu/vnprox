@@ -1,0 +1,44 @@
+{
+  "lldp": [
+    {
+      "interface": [
+        {
+          "name": "eno1",
+          "via": "LLDP",
+          "rid": "1",
+          "age": "0 day, 00:12:34",
+          "chassis": {
+            "sw-core-01": {
+              "id": {"type": "mac", "value": "ac:1f:6b:01:00:01"},
+              "name": "sw-core-01",
+              "descr": "Cisco IOS Software, C3850 Software",
+              "mgmt-ip": [
+                {"value": "10.10.0.254"}
+              ],
+              "capability": [
+                {"type": "Bridge", "enabled": true},
+                {"type": "Router", "enabled": false}
+              ]
+            }
+          },
+          "port": {
+            "id": {"type": "ifname", "value": "Te1/0/1"},
+            "descr": "GigabitEthernet1/0/1",
+            "ttl": "120",
+            "mfs": "9216",
+            "auto-negotiation": {
+              "support": true,
+              "enabled": true,
+              "current": "1000BaseTFD - Four-pair Category 5 UTP, full duplex mode"
+            },
+            "vlan": [
+              {"vlan-id": "10", "pvid": true, "label": "VLAN0010"},
+              {"vlan-id": "20", "label": "VLAN0020"},
+              {"vlan-id": "30", "label": "VLAN0030"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

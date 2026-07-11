@@ -73,16 +73,29 @@ type HostWriter interface {
 	DiscardStaged(ctx context.Context, node string) error
 }
 
+// LLDPInstaller is the T-302 guided-install dependency for
+// `POST /api/peer/host/lldp/install` (docs/features/lldp-discovery.md §1:
+// "one-click 'install lldpd on all nodes' runs through a changeset-like
+// confirmation, executed via peer API apt install; audited"). Optional
+// (nil-safe, ServerOptions.LLDPInstaller may be left unset): the route
+// 503s rather than panicking when not wired, the same nil-safety pattern
+// Reader/Writer already follow.
+type LLDPInstaller interface {
+	// InstallLLDPD installs and enables lldpd on this node.
+	InstallLLDPD(ctx context.Context) error
+}
+
 // ServerOptions configures a Server.
 type ServerOptions struct {
-	Reader       HostReader
-	Writer       HostWriter
-	Timers       TimerAgent
-	Secrets      *SecretStore
-	Logger       *slog.Logger
-	Now          func() time.Time
-	Version      string
-	MaxBodyBytes int64
+	Reader        HostReader
+	Writer        HostWriter
+	Timers        TimerAgent
+	LLDPInstaller LLDPInstaller
+	Secrets       *SecretStore
+	Logger        *slog.Logger
+	Now           func() time.Time
+	Version       string
+	MaxBodyBytes  int64
 }
 
 // Server implements the /api/peer/* HTTP surface: the HMAC auth middleware
@@ -130,6 +143,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Post("/host/ifreload", s.handleIfreload)
 		r.Post("/host/restore", s.handleRestore)
 		r.Post("/host/discard-staged", s.handleDiscardStaged)
+		r.Post("/host/lldp/install", s.handleInstallLLDPD)
 
 		r.Post("/timer/arm", s.handleTimerArm)
 		r.Post("/timer/cancel", s.handleTimerCancel)
@@ -252,6 +266,35 @@ func (s *Server) handleDiscardStaged(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.opts.Writer.DiscardStaged(r.Context(), req.Node); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, okResponse{OK: true})
+}
+
+// handleInstallLLDPD implements POST /api/peer/host/lldp/install: the
+// guided-install flow's node-local step. Requires an explicit
+// {"confirm":true} body field — this is the "changeset-like confirmation"
+// the spec calls for at the transport layer; the caller (a coordinating
+// daemon acting on an operator's explicit request) is responsible for
+// having obtained that confirmation and for audit-logging the action, same
+// division of responsibility as the stage/ifreload/restore handlers above
+// (this package never itself talks to internal/store).
+func (s *Server) handleInstallLLDPD(w http.ResponseWriter, r *http.Request) {
+	if s.opts.LLDPInstaller == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "lldp installer not configured")
+		return
+	}
+	var req installLLDPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "invalid request body")
+		return
+	}
+	if !req.Confirm {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "confirm must be true")
+		return
+	}
+	if err := s.opts.LLDPInstaller.InstallLLDPD(r.Context()); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
 		return
 	}

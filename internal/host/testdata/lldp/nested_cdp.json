@@ -1,0 +1,27 @@
+{
+  "lldp": [
+    {
+      "interface": [
+        {
+          "name": "eno3",
+          "via": "CDPv2",
+          "rid": "2",
+          "age": "0 day, 00:03:11",
+          "chassis": {
+            "old-switch-01.example.com": {
+              "id": {"type": "local", "value": "old-switch-01.example.com"},
+              "name": "old-switch-01.example.com",
+              "descr": "Cisco IOS Software, Catalyst 2960",
+              "mgmt-ip": {"value": "10.10.0.200"}
+            }
+          },
+          "port": {
+            "id": {"type": "local", "value": "GigabitEthernet0/5"},
+            "descr": "GigabitEthernet0/5",
+            "ttl": 180
+          }
+        }
+      ]
+    }
+  ]
+}

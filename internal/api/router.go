@@ -60,6 +60,7 @@ type Options struct {
 	Auth        AuthService
 	Collectors  CollectorHealth
 	Topology    TopologyService
+	LLDP        LLDPService
 	Layouts     LayoutStore
 	Changesets  ChangesetService
 	Snapshots   SnapshotService
@@ -92,6 +93,7 @@ func NewRouter(opts Options) http.Handler {
 			opts.Auth.MountRoutes(r)
 		}
 		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors)
+		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth)

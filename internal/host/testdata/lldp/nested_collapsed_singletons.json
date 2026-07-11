@@ -1,0 +1,21 @@
+{
+  "lldp": {
+    "interface": {
+      "name": "eno1",
+      "via": "LLDP",
+      "age": "0 day, 00:00:45",
+      "chassis": {
+        "sw-access-01": {
+          "id": {"type": "mac", "value": "ac:1f:6b:00:11:22"},
+          "name": "sw-access-01",
+          "mgmt-ip": "10.10.0.240"
+        }
+      },
+      "port": {
+        "id": {"type": "ifname", "value": "Gi1/0/1"},
+        "ttl": "120",
+        "vlan": {"vlan-id": 10, "pvid": true, "label": "VLAN0010"}
+      }
+    }
+  }
+}

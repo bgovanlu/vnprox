@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/pve"
@@ -107,8 +108,9 @@ func TestIngestGuestConfig(t *testing.T) {
 
 // TestIngestLLDP checks the LLDP JSON adapter.
 func TestIngestLLDP(t *testing.T) {
+	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	raw := []byte(`[{"local-iface":"eno1","chassis_name":"sw-access-01","chassis_id":"00:11:22:33:44:55","port_id":"Gi0/1","vlan":10,"ttl":120}]`)
-	ents, err := FromLLDP("pve1", raw)
+	ents, err := FromLLDP("pve1", raw, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +120,9 @@ func TestIngestLLDP(t *testing.T) {
 	n := ents[0].(*LldpNeighbor)
 	if n.ChassisName != "sw-access-01" || n.LocalIface != "eno1" || n.VLAN != 10 {
 		t.Errorf("lldp parsed wrong: %+v", n)
+	}
+	if n.LastSeen != now.Unix() {
+		t.Errorf("LastSeen = %d, want %d", n.LastSeen, now.Unix())
 	}
 
 	// End to end: the neighbor links to its local NIC.

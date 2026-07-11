@@ -114,6 +114,23 @@ func TestReal_LLDP(t *testing.T) {
 	}
 }
 
+// TestReal_LLDP_Unavailable exercises the ErrLLDPUnavailable path: when
+// LLDPCommand names a binary that doesn't exist, Real.LLDP must return an
+// error wrapping ErrLLDPUnavailable (docs/features/lldp-discovery.md §1's
+// "if lldpd is absent" graceful-degradation case) rather than a generic
+// exec failure indistinguishable from lldpd being installed but erroring.
+func TestReal_LLDP_Unavailable(t *testing.T) {
+	r := NewReal()
+	r.LLDPCommand = []string{"vnprox-definitely-not-a-real-binary-xyz"}
+	_, err := r.LLDP(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected an error for a nonexistent LLDP command")
+	}
+	if !errors.Is(err, ErrLLDPUnavailable) {
+		t.Errorf("error = %v, want wrapped ErrLLDPUnavailable", err)
+	}
+}
+
 // TestReal_BondDetail_NoLiveBonds exercises the /proc/net/bonding path
 // against this sandbox, skipping cleanly (rather than failing) when the
 // bonding driver isn't loaded/no bonds exist here — which is the common

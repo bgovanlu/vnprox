@@ -300,6 +300,21 @@ func (c *Client) DiscardStaged(ctx context.Context, p Peer, node string) error {
 	return decodeInto(resp, nil)
 }
 
+// InstallLLDPD asks peer p to install and enable lldpd on its node
+// (docs/features/lldp-discovery.md §1's guided-install flow). confirm must
+// be true or the peer rejects the request with validation_failed.
+func (c *Client) InstallLLDPD(ctx context.Context, p Peer, confirm bool) error {
+	body, err := json.Marshal(installLLDPRequest{Confirm: confirm})
+	if err != nil {
+		return fmt.Errorf("peer: encoding lldp install request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/host/lldp/install", body)
+	if err != nil {
+		return err
+	}
+	return decodeInto(resp, nil)
+}
+
 // ArmTimer asks peer p to arm node's local commit-confirm rollback timer for
 // changesetID: content is the byte-exact pre-apply state to restore if
 // deadline (unix seconds) elapses uncancelled (T-304's local-timer

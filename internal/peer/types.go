@@ -35,6 +35,13 @@ type nodeRequest struct {
 	Node string `json:"node"`
 }
 
+// installLLDPRequest is POST /api/peer/host/lldp/install's body: an
+// explicit confirmation flag (docs/features/lldp-discovery.md §1's
+// "changeset-like confirmation" for the guided-install flow).
+type installLLDPRequest struct {
+	Confirm bool `json:"confirm"`
+}
+
 // okResponse is the generic success body for the write endpoints.
 type okResponse struct {
 	OK bool `json:"ok"`

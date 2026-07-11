@@ -1,0 +1,4 @@
+[
+  {"local-iface": "eno1", "chassis_name": "sw-core-01", "chassis_id": "ac:1f:6b:01:00:01", "port_id": "Te1/0/1", "mgmt_ip": "10.10.0.254", "vlan": 10, "ttl": 120},
+  {"local-iface": "eno2", "chassis_name": "sw-core-02", "chassis_id": "ac:1f:6b:02:00:01", "port_id": "Te1/0/1", "mgmt_ip": "10.10.0.253", "vlan": 10, "ttl": 120}
+]

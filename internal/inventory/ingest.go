@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/pve"
@@ -259,43 +260,91 @@ func FromClusterStatus(entries []pve.ClusterStatusEntry) []Entity {
 }
 
 // FromLLDP parses raw lldpctl-style JSON (host.Reader.LLDP) into
-// LldpNeighbor partials for a node.
-func FromLLDP(node string, raw []byte) ([]Entity, error) {
+// LldpNeighbor partials for node, observed at now (LastSeen). Parsing
+// itself is host.ParseLLDP's job (the defensive lldpctl-schema reader,
+// T-302); this adapter only maps host.LLDPNeighbor onto the inventory
+// entity shape and assigns each neighbor's stable Ref id, unchanged from
+// pre-T-302 behavior: "<local-iface>/<chassis-id>/<port-id>".
+func FromLLDP(node string, raw []byte, now time.Time) ([]Entity, error) {
 	if len(raw) == 0 {
 		return nil, nil
 	}
-	var rows []struct {
-		Local       string `json:"local-iface"`
-		ChassisName string `json:"chassis_name"`
-		ChassisID   string `json:"chassis_id"`
-		PortID      string `json:"port_id"`
-		PortDescr   string `json:"port_descr"`
-		MgmtIP      string `json:"mgmt_ip"`
-		VLAN        int    `json:"vlan"`
-		TTL         int    `json:"ttl"`
-	}
-	if err := json.Unmarshal(raw, &rows); err != nil {
+	rows, err := host.ParseLLDP(raw)
+	if err != nil {
 		return nil, fmt.Errorf("inventory: parsing LLDP JSON for node %s: %w", node, err)
 	}
 	out := make([]Entity, 0, len(rows))
 	for _, r := range rows {
-		id := r.Local + "/" + r.ChassisID + "/" + r.PortID
+		id := r.LocalIface + "/" + r.ChassisID + "/" + r.PortID
 		n := &LldpNeighbor{
-			Ref:         Ref{Kind: KindLldpNeighbor, Node: node, ID: id},
-			LocalIface:  r.Local,
-			Node:        node,
-			ChassisName: r.ChassisName,
-			ChassisID:   r.ChassisID,
-			PortID:      r.PortID,
-			PortDescr:   r.PortDescr,
-			MgmtIP:      r.MgmtIP,
-			VLAN:        r.VLAN,
-			TTL:         r.TTL,
+			Ref:           Ref{Kind: KindLldpNeighbor, Node: node, ID: id},
+			LocalIface:    r.LocalIface,
+			Node:          node,
+			Protocol:      r.Protocol,
+			ChassisName:   r.ChassisName,
+			ChassisID:     r.ChassisID,
+			ChassisIDType: r.ChassisIDType,
+			ChassisDescr:  r.ChassisDescr,
+			PortID:        r.PortID,
+			PortIDType:    r.PortIDType,
+			PortDescr:     r.PortDescr,
+			MgmtIPs:       append([]string(nil), r.MgmtIPs...),
+			VLAN:          r.PVID,
+			TaggedVLANs:   append([]int(nil), r.TaggedVLANs...),
+			SpeedMbps:     r.SpeedMbps,
+			SpeedDescr:    r.SpeedDescr,
+			TTL:           r.TTL,
+			LastSeen:      now.Unix(),
+		}
+		if len(r.MgmtIPs) > 0 {
+			n.MgmtIP = r.MgmtIPs[0]
 		}
 		setRaw(n, compactJSON(r))
 		out = append(out, n)
 	}
 	return out, nil
+}
+
+// RetainStaleLLDP folds forward any of node's previously-resolved
+// LldpNeighbor entities in snap that fresh (this poll's just-parsed
+// FromLLDP result) omits but that have not yet crossed spec §3's 10-minute
+// drop threshold, so a neighbor that momentarily stops being reported (a
+// failed poll, or lldpd itself dropping it once its own TTL expires) lingers
+// — greying, per internal/topology's staleness computation — instead of
+// disappearing from the graph the instant one poll misses it. ApplyPoll's
+// normal per-Source scope reconciliation (graph.go) otherwise removes any
+// previously-contributed Ref a poll's entity list omits, which is exactly
+// right for netlink/interfaces state (always a live, complete snapshot) but
+// wrong for LLDP: the whole point of a TTL-based staleness lifecycle is
+// that a link's last-known neighbor should keep being shown, greyed, for a
+// while after we stop hearing about it.
+//
+// The returned slice is fresh plus the retained stale entries, ready to
+// pass straight to Graph.ApplyPoll(SourceHostLLDP, Scope{Node: node}, ...).
+func RetainStaleLLDP(snap Snapshot, node string, fresh []Entity, now time.Time) []Entity {
+	const dropAfter = 10 * time.Minute
+
+	freshRefs := make(map[Ref]bool, len(fresh))
+	for _, e := range fresh {
+		freshRefs[e.GetRef()] = true
+	}
+
+	out := append([]Entity(nil), fresh...)
+	for _, e := range snap.All() {
+		ref := e.GetRef()
+		if ref.Kind != KindLldpNeighbor || ref.Node != node || freshRefs[ref] {
+			continue
+		}
+		n, ok := e.(*LldpNeighbor)
+		if !ok || n.LastSeen == 0 {
+			continue
+		}
+		if now.Sub(time.Unix(n.LastSeen, 0)) > dropAfter {
+			continue // past the drop threshold: let ApplyPoll retire it normally.
+		}
+		out = append(out, n.clone())
+	}
+	return out
 }
 
 // FromPVEGuests maps guest summaries and their configs to Guest + GuestNic
