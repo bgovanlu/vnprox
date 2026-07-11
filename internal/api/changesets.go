@@ -337,6 +337,11 @@ func writeApplyError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusUnprocessableEntity, "unsupported_op", err.Error())
 		return
 	}
+	var incompatiblePeer *change.ErrIncompatiblePeer
+	if errors.As(err, &incompatiblePeer) {
+		writeJSONErrorDetails(w, http.StatusConflict, "peer_incompatible", err.Error(), map[string]any{"node": incompatiblePeer.Node})
+		return
+	}
 	var notConfirmable *change.ErrNotConfirmable
 	if errors.As(err, &notConfirmable) {
 		writeJSONError(w, http.StatusConflict, "invalid_transition", err.Error())

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -123,12 +124,20 @@ type threeDaemonHarness struct {
 	coordAgent *fakeNodeAgent
 	coordTimer *fakeTimers
 	coordRepo  *store.NodeTimerRepo
+	coordDB    *store.DB
 	svcTimers  *fakeTimers
 	peers      map[string]*peerDaemon
 	transport  *partitionableTransport
 	client     *pve.Client
 	mockURL    string
 	nowMu      sync.Mutex
+	// locator is the same change.StaticPeerLocator instance wired into
+	// clusterNodes/clusterTimers below (maps are reference types, so
+	// mutating an entry here after construction is visible to the
+	// coordinator's Service too) — kept as a field so a test can retarget
+	// one node's Peer.Addr, e.g. mixedversion_test.go swapping pve3's real
+	// peer.Server for a stub that reports an incompatible protocol version.
+	locator change.StaticPeerLocator
 }
 
 // clock is the Now func every daemon in the harness shares (coordinator's
@@ -180,6 +189,7 @@ func newThreeDaemonHarness(t *testing.T) *threeDaemonHarness {
 	h.coordAgent = newFakeNodeAgent(pvemock.NewFixtureHostReader(mockSrv), client)
 	h.coordTimer = &fakeTimers{}
 	coordDB := openTestDB(t)
+	h.coordDB = coordDB
 	h.coordRepo = store.NewNodeTimerRepo(coordDB)
 	coordLocal := change.NewLocalTimerAgent(change.LocalTimerConfig{
 		Nodes: h.coordAgent, Repo: h.coordRepo, TimerFunc: h.coordTimer.New,
@@ -204,6 +214,7 @@ func newThreeDaemonHarness(t *testing.T) *threeDaemonHarness {
 		locator[node] = h.peers[node].peer
 	}
 
+	h.locator = locator
 	localNode := func() string { return "pve1" }
 	clusterNodes := change.NewClusterNodeAgent(localNode, h.coordAgent, peerClient, locator)
 	clusterTimers := change.NewClusterTimerAgent(localNode, coordLocal, peerClient, locator)
@@ -255,6 +266,27 @@ func (h *threeDaemonHarness) newPeerDaemon(t *testing.T, node string, mockSrv *p
 func (h *threeDaemonHarness) cutPeer(node string) { h.transport.setCut(h.peers[node].peer.Addr, true) }
 func (h *threeDaemonHarness) healPeer(node string) {
 	h.transport.setCut(h.peers[node].peer.Addr, false)
+}
+
+// makePeerIncompatible retargets node's locator entry from its real
+// peer.Server to a bare stub that answers only GET /api/peer/version, with
+// a protocolVersion one higher than this build's peer.ProtocolVersion — the
+// same "hand-rolled peer.version stub" technique internal/peer's own
+// TestClient_CheckCompatible_VersionMismatch test uses, since
+// peer.ProtocolVersion is a package constant a real peer.Server can't be
+// told to override per-instance. This models a peer node still running an
+// older/newer vnproxd build (docs/architecture.md §5's "version skew")
+// without needing to actually run two different binaries.
+func (h *threeDaemonHarness) makePeerIncompatible(t *testing.T, node string) {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/peer/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"version":"old","protocolVersion":` + strconv.Itoa(peer.ProtocolVersion+1) + `}`))
+	})
+	stub := httptest.NewServer(mux)
+	t.Cleanup(stub.Close)
+	h.locator[node] = peer.Peer{Node: node, Addr: stub.Listener.Addr().String()}
 }
 
 // committed returns node's current committed interfaces content, whichever

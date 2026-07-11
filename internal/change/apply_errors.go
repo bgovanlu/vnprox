@@ -53,6 +53,29 @@ func (e *ErrNotConfirmable) Error() string {
 	return fmt.Sprintf("change: changeset %s in status %s cannot be confirmed/rolled back", e.ID, e.Status)
 }
 
+// ErrIncompatiblePeer is returned by Apply when the plan would coordinate a
+// step against a cluster peer whose wire-protocol version this daemon
+// cannot safely talk to, or that peer is unreachable for the compatibility
+// check itself (docs/architecture.md §5: "a daemon refuses to coordinate
+// changes involving a peer with an incompatible schema version (upgrade
+// prompt in UI)"). This check runs in beginApply, before any snapshot is
+// captured or any step executes, so an incompatible/unreachable peer never
+// results in a partial apply — the changeset stays in its pre-apply status
+// entirely untouched and can be retried once every affected node is
+// upgraded (or reachable). The API layer maps it to a 409 with the stable
+// code `peer_incompatible` (docs/api.md's error-code list already reserves
+// this code).
+type ErrIncompatiblePeer struct {
+	Node string
+	Err  error
+}
+
+func (e *ErrIncompatiblePeer) Error() string {
+	return fmt.Sprintf("change: cannot coordinate apply with node %s: %v", e.Node, e.Err)
+}
+
+func (e *ErrIncompatiblePeer) Unwrap() error { return e.Err }
+
 // ErrRollbackWindowExpired is returned by Rollback when a committed
 // changeset is older than the manual-rollback window (docs/features/
 // change-management.md §4: "Manual rollback of a committed changeset is
