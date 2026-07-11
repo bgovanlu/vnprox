@@ -8,6 +8,7 @@ import type { Layer, TopologyEdge, TopologyNode } from "../api/types";
 import type { EntityEdgeData } from "./EntityEdge";
 import type { EntityNodeData } from "./EntityNode";
 import { computeHoverHighlight, computeVlanMatch, filterByLayers, isGuestGroupId } from "./projection";
+import { resolveEdgeUtilizationRef } from "./trafficMode";
 import type { XYPosition } from "./layout";
 
 export interface ToFlowElementsParams {
@@ -31,6 +32,16 @@ export interface ToFlowElementsParams {
   staleNodeGroups?: ReadonlySet<string>;
   layoutPositions: ReadonlyMap<string, XYPosition>;
   manualPositions: Readonly<Record<string, XYPosition>>;
+  /** "Traffic" paint mode (docs/features/monitoring.md §1). false (the
+   * default) leaves every edge on its normal status-driven style. */
+  trafficMode?: boolean;
+  /** Ref -> current utilizationPct (see internal/metrics.LiveMetric),
+   * consulted only when trafficMode is true. Missing/undefined when no
+   * live metrics have arrived yet — edges then render at trafficMode's
+   * "idle" look (see trafficEdgeStyle) rather than reverting to status
+   * colors, so the paint mode itself is always visually distinguishable
+   * once toggled on. */
+  utilizationByRef?: ReadonlyMap<string, number>;
 }
 
 export interface FlowElements {
@@ -56,6 +67,8 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
     staleNodeGroups,
     layoutPositions,
     manualPositions,
+    trafficMode = false,
+    utilizationByRef,
   } = params;
 
   // Expanded guest-group pills are superseded by their synthesized members:
@@ -98,6 +111,10 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
 
   const flowEdges: FlowEdge<EntityEdgeData, "entity">[] = visibleEdges.map((e) => {
     const highlighted = hoverSet ? hoverSet.has(e.from) && hoverSet.has(e.to) : false;
+    const utilizationRef =
+      trafficMode && utilizationByRef
+        ? resolveEdgeUtilizationRef(e.from, e.to, (ref) => nodesById.get(ref)?.kind, utilizationByRef)
+        : undefined;
     return {
       id: edgeId(e),
       source: e.from,
@@ -108,6 +125,8 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
         badges: e.badges,
         dimmed: vlanMatch ? !vlanMatch.edges.has(e) : false,
         highlighted,
+        trafficMode,
+        utilizationPct: utilizationRef !== undefined ? utilizationByRef?.get(utilizationRef) : undefined,
       },
     };
   });
