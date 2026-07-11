@@ -35,11 +35,15 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      // Fresh SQLite store per run: e2e specs create/apply changesets
-      // (changesets.spec.ts, T-207) and stale drafts from a previous run
-      // would otherwise pile up in the drawer's "resume parked drafts"
-      // list and skew its assertions.
-      command: "sh -c 'rm -f var/dev-vnprox.db && exec go run ./cmd/vnproxd --config testdata/dev.toml'",
+      // Fresh SQLite store AND fresh interfaces sandbox per run: e2e specs
+      // create/apply changesets (changesets.spec.ts, T-207). Stale drafts
+      // would pile up in the drawer's "resume parked drafts" list, and —
+      // now that the dev_interfaces_dir sandbox lets an apply actually
+      // succeed — a committed change (e.g. vmbr77) would persist in
+      // var/dev-host and pollute the next run's base file. The dev
+      // NodeAgent re-seeds var/dev-host's fixture when it is missing, so
+      // removing it restores a clean, deterministic starting state.
+      command: "sh -c 'rm -f var/dev-vnprox.db && rm -rf var/dev-host && exec go run ./cmd/vnproxd --config testdata/dev.toml'",
       cwd: "..",
       url: "https://127.0.0.1:8007/api/v1/health",
       ignoreHTTPSErrors: true,
