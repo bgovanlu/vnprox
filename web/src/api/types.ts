@@ -380,10 +380,148 @@ export interface GuestNicUpdateParams {
   linkDown?: boolean;
 }
 
-/** Every Params shape T-207's editors can produce. Ops this task doesn't
- * edit (SDN/firewall/IPAM) still round-trip through the drawer/review
- * screen — they just carry `Record<string, unknown>` params, since nothing
- * in this task ever needs to read a typed field off one. */
+// --- Firewall op params (T-502; internal/change/params_fw.go) -------------
+// Mirrors the Go param structs field-for-field. Target is always a
+// FwRuleset scope Ref ("fw-ruleset:<node>:<cluster|node|guest/kind/vmid>")
+// per params_fw.go's doc comment — including for the alias/ipset/group
+// ops, which carry their own `name` to identify which object within that
+// scope's ruleset they operate on.
+
+export interface FwRuleCreateParams {
+  direction: string;
+  action: string;
+  proto?: string;
+  source?: string;
+  dest?: string;
+  sport?: string;
+  dport?: string;
+  iface?: string;
+  macro?: string;
+  log?: string;
+  comment?: string;
+  pos: number;
+  enabled: boolean;
+}
+
+export interface FwRuleUpdateParams {
+  direction?: string;
+  action?: string;
+  proto?: string;
+  source?: string;
+  dest?: string;
+  sport?: string;
+  dport?: string;
+  iface?: string;
+  macro?: string;
+  log?: string;
+  comment?: string;
+  enabled?: boolean;
+  pos: number;
+}
+
+export interface FwRuleDeleteParams {
+  pos: number;
+}
+
+/** The rule content the client observed at `fromPos` when the move was
+ * drafted (internal/change.FwRuleFields) — the apply-time executor
+ * re-fetches the live rule at `fromPos` and refuses the move if it no
+ * longer matches (acceptance criterion 3's move-race guard). */
+export interface FwRuleFields {
+  direction: string;
+  action: string;
+  proto?: string;
+  source?: string;
+  dest?: string;
+  sport?: string;
+  dport?: string;
+  iface?: string;
+  macro?: string;
+  log?: string;
+  comment?: string;
+  enabled: boolean;
+}
+
+export interface FwRuleMoveParams {
+  fromPos: number;
+  toPos: number;
+  expect?: FwRuleFields;
+}
+
+export interface FwOptionsUpdateParams {
+  defaultIn?: string;
+  defaultOut?: string;
+  enabled?: boolean;
+}
+
+export interface FwAliasCreateParams {
+  name: string;
+  cidr: string;
+  comment?: string;
+}
+
+export interface FwAliasUpdateParams {
+  name: string;
+  cidr?: string;
+  comment?: string;
+}
+
+export interface FwAliasDeleteParams {
+  name: string;
+}
+
+export interface FwIpsetCreateParams {
+  name: string;
+  comment?: string;
+  cidrs?: string[];
+}
+
+export interface FwIpsetUpdateParams {
+  name: string;
+  cidrs?: string[];
+  comment?: string;
+}
+
+export interface FwIpsetDeleteParams {
+  name: string;
+}
+
+/** One rule inside a security group's `rules` array — no independent
+ * `pos` on the wire (array order carries it), per FwGroupCreateParams'
+ * Go doc comment. */
+export interface FwRuleSpec {
+  direction: string;
+  action: string;
+  proto?: string;
+  source?: string;
+  dest?: string;
+  sport?: string;
+  dport?: string;
+  macro?: string;
+  comment?: string;
+  enabled: boolean;
+}
+
+export interface FwGroupCreateParams {
+  name: string;
+  comment?: string;
+  rules?: FwRuleSpec[];
+}
+
+export interface FwGroupUpdateParams {
+  name: string;
+  comment?: string;
+  rules?: FwRuleSpec[];
+}
+
+export interface FwGroupDeleteParams {
+  name: string;
+}
+
+/** Every Params shape editors in this codebase can produce. Ops nothing
+ * here edits yet (SDN/IPAM) still round-trip through the drawer/review
+ * screen — they just carry `Record<string, unknown>` params, since
+ * nothing needs to read a typed field off one. */
 export type OpParams =
   | IfaceUpdateParams
   | IfaceRawReplaceParams
@@ -399,6 +537,20 @@ export type OpParams =
   | VlanUpdateParams
   | VlanDeleteParams
   | GuestNicUpdateParams
+  | FwRuleCreateParams
+  | FwRuleUpdateParams
+  | FwRuleDeleteParams
+  | FwRuleMoveParams
+  | FwOptionsUpdateParams
+  | FwAliasCreateParams
+  | FwAliasUpdateParams
+  | FwAliasDeleteParams
+  | FwIpsetCreateParams
+  | FwIpsetUpdateParams
+  | FwIpsetDeleteParams
+  | FwGroupCreateParams
+  | FwGroupUpdateParams
+  | FwGroupDeleteParams
   | Record<string, unknown>;
 
 /** One changeset operation, the wire shape internal/change/op.go's Op
@@ -813,6 +965,13 @@ export interface FirewallObjectsResponse {
   ipsets: ObjectUsageView[];
   groups: ObjectUsageView[];
   macros: MacroView[];
+}
+
+/** GET /firewall/effects?group= response (T-502 acceptance criterion 4's
+ * rule-effects preview for a security-group reference). */
+export interface FirewallEffectsResponse {
+  group: string;
+  guests: string[];
 }
 
 // --- Everything else in docs/api.md ---------------------------------------
