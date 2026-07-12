@@ -90,6 +90,24 @@ everything below. Target platforms: Proxmox VE 8.2+ and 9.x.
   non-functional.
 - A cluster-installer parsing bug could mistake the coordinating node's own
   status line for another node's name during multi-node rollout.
+- SDN zone/VNet/subnet creation, editing, and deletion (both the guided
+  wizards and the plain editors) could be permanently disabled for every
+  user, including full-privilege admins, on any real multi-node cluster —
+  a capability-resolution bug that made the entire SDN cockpit's write
+  path non-functional outside of single-node test setups. Found and fixed
+  during v1.0 release verification.
+- Several SDN and firewall edit/delete controls (zone/VNet/subnet editors,
+  per-rule delete/enable/reorder, shared object deletion) were missing
+  read-only-mode capability gating entirely, so a read-only or
+  under-privileged session could see them enabled (the underlying write
+  would still be rejected server-side — no privilege escalation was
+  possible, but the controls should have been disabled with an
+  explanatory tooltip).
+- `vnproxctl snapshots list/restore` and `rollback-now` — the documented
+  "works even when the daemon/UI is unreachable" disaster-recovery path —
+  incorrectly required a resolvable Proxmox TLS certificate to run at
+  all, which these commands never actually need. Fixed so they work on
+  any host, with or without a working Proxmox VE certificate.
 
 ### Security
 
