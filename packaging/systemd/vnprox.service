@@ -64,6 +64,42 @@ ProtectClock=yes
 ProtectProc=invisible
 SystemCallArchitectures=native
 
+# T-604 hardening pass (planning/tasks/phase-6.md, docs/security.md's
+# "Host footprint" section) landed these two directives — measured, not
+# guessed, against every socket/syscall path this binary actually exercises
+# (internal/host's use of github.com/vishvananda/netlink for rtnetlink
+# link/address/route/neighbor management, the HTTPS/WS server and the
+# PVE/peer HTTP clients, and the fixed-argv subprocess execs documented
+# above CapabilityBoundingSet — lldpctl, ethtool, ifreload/ifup/ifdown,
+# ovs-vsctl, systemctl, vtysh):
+#
+# RestrictAddressFamilies: vnproxd is pure Go with no cgo (go.mod has no
+# cgo dependency; modernc.org/sqlite and vishvananda/netlink are both
+# cgo-free), so the stdlib name resolver never needs AF_UNIX to reach
+# nscd/systemd-resolved the way a cgo-linked getaddrinfo() call might —
+# only AF_INET/AF_INET6 (HTTPS/WS server, PVE API client, peer API
+# client/server) and AF_NETLINK (rtnetlink link/address/route/neighbor
+# operations) are ever opened. AF_UNIX is deliberately left out: this unit
+# uses Type=simple (no sd_notify socket) and vnproxd itself never opens a
+# Unix domain socket.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
+
+# SystemCallFilter: @system-service is systemd's own curated allowlist for
+# well-behaved services (networking, file I/O, process spawning for the
+# subprocess execs above, standard signal/timer/memory syscalls) and
+# already excludes the dangerous groups explicitly re-denied below for
+# defense in depth (belt-and-suspenders in case a future systemd release
+# ever loosens @system-service's own definition). None of vnproxd's
+# documented operations (netlink admin, ifreload-family subprocess execs,
+# HTTPS/WS serving, SQLite file I/O) need kernel module loading, mount/
+# reboot/swap control, raw I/O, or the debug/tracing syscalls below, so
+# they are removed even though root's capability bounding set (above)
+# already blocks most of the capabilities that would make them useful to
+# an attacker anyway.
+SystemCallFilter=@system-service
+SystemCallFilter=~@mount @reboot @swap @privileged @resources @raw-io @debug @module @cpu-emulation @obsolete @clock
+SystemCallErrorNumber=EPERM
+
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=vnproxd
