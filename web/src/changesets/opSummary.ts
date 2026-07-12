@@ -147,6 +147,42 @@ export function summarizeOp(op: Op): string {
       return `Delete sdn subnet ${id ?? "?"}`;
     case "sdn.apply":
       return "Apply pending SDN configuration (cluster-wide)";
+    // T-607: fw.rule.* and ipam.alloc.* previously fell through to the
+    // generic default below, which for these two families produces an
+    // uninformative line (e.g. "ipam.alloc.create 10.100.0.0/24" — the
+    // *subnet*, not the reserved address; "fw.rule.create guest/qemu/200"
+    // with no hint of what the rule actually does) — a real gap against
+    // docs/features/change-management.md §1's "op list (human-readable
+    // summaries)" contract, found while mapping E2E selectors for the
+    // IPAM-reserve and firewall-macro user-guide tasks. Added here rather
+    // than left as a follow-up since it's a small, same-pattern addition.
+    case "fw.rule.create": {
+      const action = str(op.params, "action") ?? "?";
+      const direction = str(op.params, "direction") ?? "?";
+      const macro = str(op.params, "macro");
+      const proto = str(op.params, "proto");
+      const dport = str(op.params, "dport");
+      const what = macro ?? [proto, dport ? `port ${dport}` : undefined].filter(Boolean).join(" ") ?? "";
+      return `Add firewall rule (${direction}, ${action}${what ? `, ${what}` : ""}) to ${id ?? "?"}`;
+    }
+    case "fw.rule.update":
+      return `Update firewall rule on ${id ?? "?"} (${updateFieldList(op.params)})`;
+    case "fw.rule.delete":
+      return `Delete firewall rule on ${id ?? "?"}`;
+    case "fw.rule.move": {
+      const from = num(op.params, "fromPos");
+      const to = num(op.params, "toPos");
+      return `Move firewall rule on ${id ?? "?"} (position ${String(from ?? "?")} → ${String(to ?? "?")})`;
+    }
+    case "ipam.alloc.create": {
+      const cidr = str(op.params, "cidr") ?? "?";
+      const hostname = str(op.params, "hostname");
+      return `Reserve ${cidr}${hostname ? ` (${hostname})` : ""} in subnet ${id ?? "?"}`;
+    }
+    case "ipam.alloc.delete": {
+      const cidr = str(op.params, "cidr") ?? "?";
+      return `Release ${cidr} in subnet ${id ?? "?"}`;
+    }
     default:
       return `${op.op} ${id ?? ""}`.trim();
   }
@@ -198,6 +234,22 @@ function updateFieldList(params: unknown): string {
   if (dhcpRanges !== undefined) fields.push("dhcpRanges");
   const snat = bool(params, "snat");
   if (snat !== undefined) fields.push(`snat=${String(snat)}`);
+  // fw.rule.update's own field set (T-607, added alongside the fw.rule.*/
+  // ipam.alloc.* summary cases above).
+  const direction = str(params, "direction");
+  if (direction !== undefined) fields.push(`direction=${direction}`);
+  const action = str(params, "action");
+  if (action !== undefined) fields.push(`action=${action}`);
+  const proto = str(params, "proto");
+  if (proto !== undefined) fields.push(`proto=${proto}`);
+  const source = str(params, "source");
+  if (source !== undefined) fields.push("source");
+  const dest = str(params, "dest");
+  if (dest !== undefined) fields.push("dest");
+  const dport = str(params, "dport");
+  if (dport !== undefined) fields.push(`dport=${dport}`);
+  const macro = str(params, "macro");
+  if (macro !== undefined) fields.push(`macro=${macro}`);
   if (fields.length === 0) return "no changes";
   return fields.join(", ");
 }

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as changesetsApi from "../api/changesets";
 import { ToastProvider } from "../components/Toast";
 import { ObjectsPanel } from "./ObjectsPanel";
-import type { Changeset, FirewallObjectsResponse } from "../api/types";
+import type { Changeset, FirewallObjectsResponse, MeResponse } from "../api/types";
 import type { FwRulesetLocation } from "./refs";
 
 vi.mock("../api/changesets", () => ({
@@ -13,6 +13,20 @@ vi.mock("../api/changesets", () => ({
   getChangeset: vi.fn(),
   createChangeset: vi.fn(),
   updateChangeset: vi.fn(),
+}));
+
+// T-607: ObjectsPanel now calls useSession() (its Delete button's fwWrite
+// capability gate — see the doc comment on that gate in ObjectsPanel.tsx);
+// this file mocks module calls directly rather than global fetch (see
+// the ../api/changesets mock above), so useSession's underlying GET
+// /auth/me is mocked the same way — full caps, since this file isn't
+// testing the read-only case (readonly-crawl.spec.ts covers that).
+const fullCapsMe: MeResponse = {
+  user: { username: "root", realm: "pam" },
+  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true } },
+};
+vi.mock("../api/useSession", () => ({
+  useSession: () => ({ data: fullCapsMe, isLoading: false, isError: false }),
 }));
 
 function draftChangeset(overrides: Partial<Changeset> = {}): Changeset {

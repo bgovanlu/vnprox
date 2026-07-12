@@ -2,8 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { SdnTree } from "../api/types";
+import type { MeResponse, SdnTree } from "../api/types";
 import { SdnPage } from "./SdnPage";
+
+// T-607: SdnPage now calls useSession() (for its write-trigger capability
+// gate — see useSdnWriteGate's doc comment in SdnPage.tsx), so its own
+// GET /auth/me needs a real response shape; previously this file's fetch
+// mock had no /auth/me branch at all (nothing in SdnPage.tsx called
+// useSession() yet) and every request — including /auth/me — fell through
+// to the SdnTree fixture body below, which has no `caps` field. Full caps
+// here (this file isn't testing the read-only case — readonly-crawl.spec.ts
+// and SdnPage's own new "read-only" test below cover that).
+const fullCapsMe: MeResponse = {
+  user: { username: "root", realm: "pam" },
+  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true } },
+};
 
 // A small tree covering both of T-401's headline behaviors: a zone with a
 // staged-but-unapplied "changed" edit (AC2) and a zone with an error-status
@@ -72,7 +85,7 @@ describe("SdnPage", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string) => {
-        const body = url.includes("/sdn/evpn/status") ? emptyEvpnStatus : tree;
+        const body = url.includes("/auth/me") ? fullCapsMe : url.includes("/sdn/evpn/status") ? emptyEvpnStatus : tree;
         return Promise.resolve(
           new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }),
         );

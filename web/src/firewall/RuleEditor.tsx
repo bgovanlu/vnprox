@@ -16,6 +16,8 @@ import clsx from "clsx";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { useToast } from "../components/Toast";
+import { useSession } from "../api/useSession";
+import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import type { FirewallObjectsResponse, RuleView } from "../api/types";
 import { scrollIntoViewIfSupported } from "../lib/scrollIntoView";
@@ -51,9 +53,11 @@ interface RuleBuilderRowProps {
   target: string;
   nextPos: number;
   objects: FirewallObjectsResponse | undefined;
+  fwWriteDisabled: boolean;
+  fwWriteTooltip: string | undefined;
 }
 
-function RuleBuilderRow({ target, nextPos, objects }: RuleBuilderRowProps) {
+function RuleBuilderRow({ target, nextPos, objects, fwWriteDisabled, fwWriteTooltip }: RuleBuilderRowProps) {
   const { addOps } = useDrawerActions();
   const { toast } = useToast();
   const [form, setForm] = useState<RuleFormValues>(emptyBuilderForm());
@@ -124,7 +128,13 @@ function RuleBuilderRow({ target, nextPos, objects }: RuleBuilderRowProps) {
           ))}
         </select>
         <input aria-label="Comment" placeholder="comment" className="w-36 rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.comment} onChange={(e) => { update("comment", e.target.value); }} />
-        <button type="button" onClick={handleAdd} disabled={errors.length > 0} className="rounded bg-accent-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40">
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={errors.length > 0 || fwWriteDisabled}
+          title={fwWriteDisabled ? fwWriteTooltip : undefined}
+          className="rounded bg-accent-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
+        >
           Add rule
         </button>
       </div>
@@ -155,6 +165,20 @@ export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps
   const { toast } = useToast();
   const [dragIndex, setDragIndex] = useState<number | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
+  // fw.rule.* ops are staged with the user's own PVE ticket exactly like
+  // every other firewall write (docs/features/firewall.md §3); this table
+  // previously had zero capability gating at all (delete, the per-row
+  // enable/disable toggle, drag-reorder, and the builder row's "Add rule"
+  // were all always-enabled regardless of session privileges) — a real
+  // gap the read-only E2E crawl caught (T-607), fixed here the same way
+  // SdnPage.tsx's write-trigger buttons and ObjectsPanel.tsx's object
+  // delete now are: capsForNode(session, "").fwWrite (cluster-wide
+  // fallback entry — the ruleset's own scope/node isn't threaded through
+  // RuleEditorProps today, and fwWrite/Sys.Modify is the same PVE
+  // privilege regardless of scope).
+  const { data: session } = useSession();
+  const fwWriteDisabled = !capsForNode(session, "").fwWrite;
+  const fwWriteTooltip = missingCapTooltip(session, "", "fwWrite");
 
   useEffect(() => {
     if (focusPos === undefined) return;
@@ -218,15 +242,22 @@ export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps
                 !r.enabled && "opacity-50",
                 focused && "bg-amber-100 ring-2 ring-inset ring-amber-500 dark:bg-amber-900/40",
               )}
-              draggable={Boolean(target)}
+              draggable={Boolean(target) && !fwWriteDisabled}
               onDragStart={() => { setDragIndex(i); }}
-              onDragOver={(e) => { if (target) e.preventDefault(); }}
-              onDrop={() => { handleDrop(i); }}
+              onDragOver={(e) => { if (target && !fwWriteDisabled) e.preventDefault(); }}
+              onDrop={() => { if (!fwWriteDisabled) handleDrop(i); }}
             >
               <TableCell>{r.pos}</TableCell>
               <TableCell>
                 {target ? (
-                  <input type="checkbox" aria-label={`Enabled: ${r.comment ?? `rule ${String(r.pos)}`}`} checked={r.enabled} onChange={() => { handleToggle(r); }} />
+                  <input
+                    type="checkbox"
+                    aria-label={`Enabled: ${r.comment ?? `rule ${String(r.pos)}`}`}
+                    checked={r.enabled}
+                    disabled={fwWriteDisabled}
+                    title={fwWriteDisabled ? fwWriteTooltip : undefined}
+                    onChange={() => { handleToggle(r); }}
+                  />
                 ) : (
                   r.enabled ? "on" : "off"
                 )}
@@ -245,7 +276,14 @@ export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps
               <TableCell>{r.comment ?? "—"}</TableCell>
               {target && (
                 <TableCell>
-                  <button type="button" aria-label={`Delete rule ${String(r.pos)}`} onClick={() => { handleDelete(r); }} className="text-xs text-red-600 hover:underline dark:text-red-400">
+                  <button
+                    type="button"
+                    aria-label={`Delete rule ${String(r.pos)}`}
+                    onClick={() => { handleDelete(r); }}
+                    disabled={fwWriteDisabled}
+                    title={fwWriteDisabled ? fwWriteTooltip : undefined}
+                    className="text-xs text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 dark:text-red-400 dark:disabled:text-slate-600"
+                  >
                     Delete
                   </button>
                 </TableCell>
@@ -255,7 +293,15 @@ export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps
           })}
         </TableBody>
       </Table>
-      {target && <RuleBuilderRow target={target} nextPos={rules.length} objects={objects} />}
+      {target && (
+        <RuleBuilderRow
+          target={target}
+          nextPos={rules.length}
+          objects={objects}
+          fwWriteDisabled={fwWriteDisabled}
+          fwWriteTooltip={fwWriteTooltip}
+        />
+      )}
     </div>
   );
 }

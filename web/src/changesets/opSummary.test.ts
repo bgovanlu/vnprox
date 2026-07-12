@@ -115,8 +115,60 @@ describe("summarizeOp", () => {
   });
 
   it("falls back to a generic '<op> <id>' for op families the drawer doesn't special-case", () => {
-    expect(summarizeOp({ op: "fw.rule.create", target: "fw-ruleset::cluster", params: {} })).toBe(
-      "fw.rule.create cluster",
+    expect(summarizeOp({ op: "fw.alias.create", target: "fw-ruleset::cluster", params: {} })).toBe(
+      "fw.alias.create cluster",
     );
+  });
+
+  // T-607: fw.rule.* and ipam.alloc.* previously fell through to that same
+  // generic default (an uninformative line for exactly the two op families
+  // the user-guide §3 "reserve an IP"/"allow only web traffic" tasks
+  // produce) — added real cases; see opSummary.ts's doc comment on them.
+  it("renders fw.rule.create with direction/action/macro", () => {
+    expect(
+      summarizeOp({
+        op: "fw.rule.create",
+        target: "fw-ruleset:pve1:guest/qemu/200",
+        params: { direction: "in", action: "ACCEPT", macro: "HTTP", pos: 0, enabled: true },
+      }),
+    ).toBe("Add firewall rule (in, ACCEPT, HTTP) to guest/qemu/200");
+  });
+
+  it("renders fw.rule.create with proto/dport when there's no macro", () => {
+    expect(
+      summarizeOp({
+        op: "fw.rule.create",
+        target: "fw-ruleset:pve1:guest/qemu/200",
+        params: { direction: "in", action: "ACCEPT", proto: "tcp", dport: "443", pos: 0, enabled: true },
+      }),
+    ).toBe("Add firewall rule (in, ACCEPT, tcp port 443) to guest/qemu/200");
+  });
+
+  it("renders fw.rule.update/delete/move", () => {
+    expect(summarizeOp({ op: "fw.rule.update", target: "fw-ruleset:pve1:guest/qemu/200", params: { action: "DROP" } })).toBe(
+      "Update firewall rule on guest/qemu/200 (action=DROP)",
+    );
+    expect(summarizeOp({ op: "fw.rule.delete", target: "fw-ruleset:pve1:guest/qemu/200", params: { pos: 2 } })).toBe(
+      "Delete firewall rule on guest/qemu/200",
+    );
+    expect(
+      summarizeOp({ op: "fw.rule.move", target: "fw-ruleset:pve1:guest/qemu/200", params: { fromPos: 2, toPos: 0 } }),
+    ).toBe("Move firewall rule on guest/qemu/200 (position 2 → 0)");
+  });
+
+  it("renders ipam.alloc.create/delete with the reserved address, not just the subnet", () => {
+    expect(
+      summarizeOp({
+        op: "ipam.alloc.create",
+        target: "sdn-subnet::10.100.0.0/24",
+        params: { cidr: "10.100.0.51/32", hostname: "web02" },
+      }),
+    ).toBe("Reserve 10.100.0.51/32 (web02) in subnet 10.100.0.0/24");
+    expect(
+      summarizeOp({ op: "ipam.alloc.create", target: "sdn-subnet::10.100.0.0/24", params: { cidr: "10.100.0.52/32" } }),
+    ).toBe("Reserve 10.100.0.52/32 in subnet 10.100.0.0/24");
+    expect(
+      summarizeOp({ op: "ipam.alloc.delete", target: "sdn-subnet::10.100.0.0/24", params: { cidr: "10.100.0.51/32" } }),
+    ).toBe("Release 10.100.0.51/32 in subnet 10.100.0.0/24");
   });
 });

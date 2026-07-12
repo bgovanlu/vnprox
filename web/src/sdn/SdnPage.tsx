@@ -8,6 +8,8 @@ import clsx from "clsx";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import type { SdnSubnet, SdnTree, SdnVnet, SdnZone } from "../api/types";
+import { useSession } from "../api/useSession";
+import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
 import { SdnEditorLauncher } from "./SdnEditorLauncher";
 import { DhcpView } from "./DhcpView";
 import { EvpnView } from "./EvpnView";
@@ -158,7 +160,31 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ZoneDetail({ zone }: { zone: SdnZone }) {
+/** SDN's write privilege (`SDN.Allocate`) is cluster-wide in PVE, not
+ * per-node, so every SDN write-trigger button below gates on the same one
+ * capsForNode(session, "") check (the cluster-wide fallback entry
+ * capabilities.ts's own doc comment describes) rather than any specific
+ * node. Threaded down as a single prop so every zone/vnet/subnet
+ * edit/delete/create trigger disables (with the standard missing-privilege
+ * tooltip) the same way the topology inspector's edit/delete buttons
+ * already do (docs/user-guide.md §5, T-605 AC4's read-only-sweep contract)
+ * — these trigger buttons previously had no gating at all (only the modal
+ * editors/delete-dialogs they open did), a real gap this task's E2E
+ * read-only crawl caught. */
+interface SdnWriteGate {
+  disabled: boolean;
+  title: string | undefined;
+}
+
+function useSdnWriteGate(): SdnWriteGate {
+  const { data: session } = useSession();
+  return {
+    disabled: !capsForNode(session, "").sdnWrite,
+    title: missingCapTooltip(session, "", "sdnWrite"),
+  };
+}
+
+function ZoneDetail({ zone, gate }: { zone: SdnZone; gate: SdnWriteGate }) {
   const open = useSdnEditorStore((s) => s.open);
   return (
     <div className="flex flex-col gap-4">
@@ -168,13 +194,31 @@ function ZoneDetail({ zone }: { zone: SdnZone }) {
           <p className="text-sm text-slate-500 dark:text-slate-400">Zone · {zone.type}</p>
         </div>
         <div className="flex shrink-0 gap-1.5">
-          <Button variant="secondary" size="sm" onClick={() => { open({ kind: "vnet-create", zoneId: zone.id }); }}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={gate.disabled}
+            title={gate.title}
+            onClick={() => { open({ kind: "vnet-create", zoneId: zone.id }); }}
+          >
             + VNet
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "zone-edit", zone }); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={gate.disabled}
+            title={gate.title}
+            onClick={() => { open({ kind: "zone-edit", zone }); }}
+          >
             Edit
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "zone-delete", zone }); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={gate.disabled}
+            title={gate.title}
+            onClick={() => { open({ kind: "zone-delete", zone }); }}
+          >
             Delete
           </Button>
         </div>
@@ -209,7 +253,7 @@ function ZoneDetail({ zone }: { zone: SdnZone }) {
   );
 }
 
-function VnetDetail({ vnet }: { vnet: SdnVnet }) {
+function VnetDetail({ vnet, gate }: { vnet: SdnVnet; gate: SdnWriteGate }) {
   const open = useSdnEditorStore((s) => s.open);
   return (
     <div className="flex flex-col gap-4">
@@ -219,13 +263,31 @@ function VnetDetail({ vnet }: { vnet: SdnVnet }) {
           <p className="text-sm text-slate-500 dark:text-slate-400">VNet · zone {vnet.zone}</p>
         </div>
         <div className="flex shrink-0 gap-1.5">
-          <Button variant="secondary" size="sm" onClick={() => { open({ kind: "subnet-create", vnetId: vnet.id }); }}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={gate.disabled}
+            title={gate.title}
+            onClick={() => { open({ kind: "subnet-create", vnetId: vnet.id }); }}
+          >
             + Subnet
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "vnet-edit", vnet }); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={gate.disabled}
+            title={gate.title}
+            onClick={() => { open({ kind: "vnet-edit", vnet }); }}
+          >
             Edit
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "vnet-delete", vnet }); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={gate.disabled}
+            title={gate.title}
+            onClick={() => { open({ kind: "vnet-delete", vnet }); }}
+          >
             Delete
           </Button>
         </div>
@@ -240,7 +302,7 @@ function VnetDetail({ vnet }: { vnet: SdnVnet }) {
   );
 }
 
-function SubnetDetail({ subnet }: { subnet: SdnSubnet }) {
+function SubnetDetail({ subnet, gate }: { subnet: SdnSubnet; gate: SdnWriteGate }) {
   const open = useSdnEditorStore((s) => s.open);
   return (
     <div className="flex flex-col gap-4">
@@ -250,10 +312,22 @@ function SubnetDetail({ subnet }: { subnet: SdnSubnet }) {
           <p className="text-sm text-slate-500 dark:text-slate-400">Subnet · vnet {subnet.vnet}</p>
         </div>
         <div className="flex shrink-0 gap-1.5">
-          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "subnet-edit", subnet }); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={gate.disabled}
+            title={gate.title}
+            onClick={() => { open({ kind: "subnet-edit", subnet }); }}
+          >
             Edit
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => { open({ kind: "subnet-delete", subnet }); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={gate.disabled}
+            title={gate.title}
+            onClick={() => { open({ kind: "subnet-delete", subnet }); }}
+          >
             Delete
           </Button>
         </div>
@@ -301,6 +375,7 @@ export function SdnPage() {
   const openEditor = useSdnEditorStore((s) => s.open);
   const [tab, setTab] = useState<SdnTab>("configuration");
   const [wizardPickerOpen, setWizardPickerOpen] = useState(false);
+  const gate = useSdnWriteGate();
 
   // Default-select the first zone once the tree first loads, so the detail
   // panel isn't blank on arrival (tree.ts's firstSelection).
@@ -330,13 +405,21 @@ export function SdnPage() {
               <Button
                 variant="primary"
                 size="sm"
+                disabled={gate.disabled}
+                title={gate.title}
                 onClick={() => {
                   setWizardPickerOpen(true);
                 }}
               >
                 + New zone (guided)
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => { openEditor({ kind: "zone-create" }); }}>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={gate.disabled}
+                title={gate.title}
+                onClick={() => { openEditor({ kind: "zone-create" }); }}
+              >
                 + New zone (advanced)
               </Button>
             </>
@@ -368,9 +451,9 @@ export function SdnPage() {
                 {!resolved && (
                   <EmptyState title="Nothing selected" description="Pick a zone, VNet, or subnet from the tree." />
                 )}
-                {resolved?.selection.kind === "zone" && <ZoneDetail zone={resolved.zone} />}
-                {resolved?.selection.kind === "vnet" && resolved.vnet && <VnetDetail vnet={resolved.vnet} />}
-                {resolved?.selection.kind === "subnet" && resolved.subnet && <SubnetDetail subnet={resolved.subnet} />}
+                {resolved?.selection.kind === "zone" && <ZoneDetail zone={resolved.zone} gate={gate} />}
+                {resolved?.selection.kind === "vnet" && resolved.vnet && <VnetDetail vnet={resolved.vnet} gate={gate} />}
+                {resolved?.selection.kind === "subnet" && resolved.subnet && <SubnetDetail subnet={resolved.subnet} gate={gate} />}
               </div>
             </div>
           )}

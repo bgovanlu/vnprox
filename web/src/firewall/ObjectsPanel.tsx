@@ -8,6 +8,8 @@ import { useState } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { useToast } from "../components/Toast";
+import { useSession } from "../api/useSession";
+import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import type { FirewallObjectsResponse, ObjectUsageView } from "../api/types";
 import { macroExpansionLabel } from "./format";
@@ -38,6 +40,14 @@ function UsageTable({ items, onNavigate }: UsageTableProps) {
   const [expanded, setExpanded] = useState<string | undefined>(undefined);
   const { addOps } = useDrawerActions();
   const { toast } = useToast();
+  // fw.alias/ipset/group ops are cluster-scope, so this gates on the same
+  // cluster-wide capsForNode(session, "") fallback entry the SDN cockpit's
+  // equivalent write-trigger gate uses (SdnPage.tsx's useSdnWriteGate) —
+  // this Delete control previously had no capability gating at all (a real
+  // gap the read-only E2E crawl caught, T-607).
+  const { data: session } = useSession();
+  const fwWriteDisabled = !capsForNode(session, "").fwWrite;
+  const fwWriteTooltip = missingCapTooltip(session, "", "fwWrite");
 
   if (items.length === 0) {
     return <EmptyState title="None defined" description="No objects of this kind are configured anywhere in the cluster." />;
@@ -118,9 +128,16 @@ function UsageTable({ items, onNavigate }: UsageTableProps) {
                 {item.scope === "cluster" ? (
                   <button
                     type="button"
+                    disabled={fwWriteDisabled}
                     onClick={() => { handleDelete(item); }}
                     className="text-xs text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 dark:text-red-400"
-                    title={item.count > 0 ? `Referenced by ${String(item.count)} rule(s) — cannot delete` : undefined}
+                    title={
+                      fwWriteDisabled
+                        ? fwWriteTooltip
+                        : item.count > 0
+                          ? `Referenced by ${String(item.count)} rule(s) — cannot delete`
+                          : undefined
+                    }
                   >
                     Delete
                   </button>
