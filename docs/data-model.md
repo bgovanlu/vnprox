@@ -147,7 +147,7 @@ CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 | fw | `fw.rule.create/update/delete/move`, `fw.options.update`, `fw.alias.*`, `fw.ipset.*`, `fw.group.*` |
 | ipam | `ipam.alloc.create/delete` |
 
-Each op maps to one or more **apply steps**; the planner orders steps: (1) cluster-scope PVE API calls, (2) per-node interface file staging, (3) per-node `ifreload` via PVE network reload endpoint, (4) `sdn.apply` last when present. Rollback executes the inverse from the pre-snapshot in reverse order.
+Each op maps to one or more **apply steps**; the planner orders steps: (1) cluster-scope PVE API calls, (2) per-node interface file staging, (3) per-node `ifreload -a` (executed directly by vnproxd's own `NodeAgent` — **correction, T-607 docs audit:** not "via PVE's network reload endpoint" as this line previously said; `cmd/vnproxd/changeagent.go` writes `/etc/network/interfaces` and execs `ifreload` itself, since vnproxd runs on the node — see `docs/architecture.md` §4 for the fuller correction), (4) `sdn.apply` last when present. Rollback executes the inverse from the pre-snapshot in reverse order.
 
 ## 4. Blueprints (`internal/blueprint`, T-603)
 

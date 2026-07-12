@@ -40,7 +40,7 @@ Firewall editors (all scopes, objects, resolved view), rule effects preview, pat
 Live traffic on map + history + health checks, blueprints + starters + capture, onboarding walkthrough final, config doc export, docs freeze, packaging polish (apt repo, signed), upgrade path testing, security pass (T-604 hardening), performance pass against scale targets.
 
 ## Post-1.0 (P2 backlog)
-Prometheus exporter · live path verification via guest agent · multi-cluster federation · NetFlow/sFlow integrations · external subnet records in IPAM · DNS management · switch config push (read-write physical) · PBS network awareness.
+Prometheus exporter · live path verification via guest agent · multi-cluster federation · NetFlow/sFlow integrations · external subnet records in IPAM · DNS management · switch config push (read-write physical) · PBS network awareness · physical-layer-to-per-node-summary collapse for cluster sizes materially beyond the documented topology.md §4 scale target (flagged, T-607 — not needed at that target itself) · ARP/neighbor IPAM enrichment source (flagged, T-607) · dedicated map-export-as-SVG/PNG control, separate from the existing config-doc export (flagged, T-607) · LLDP Ports-view frontend page (API already ships `GET /ports`; flagged, T-607) · LACP actor/partner state parsing in the bond inspector (flagged, T-607) · a genuine pre-apply cross-node consistency validator class (flagged, T-607 — today only the async drift checker catches this, after the fact).
 
 ## Compatibility policy
 Target PVE 8.2+ and 9.x at v1.0. New PVE releases get a compatibility validation task within one phase of their release. vnprox version scheme: semver; DB schema migrations forward-only.
