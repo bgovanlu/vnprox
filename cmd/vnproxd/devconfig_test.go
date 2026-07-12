@@ -22,7 +22,7 @@ import (
 // file says. It fails the test if any expected key is missing, so a
 // reshaped dev.toml breaks this test loudly instead of silently testing
 // something else.
-func rewriteDevConfig(t *testing.T, repoRoot, dir string, port int) string {
+func rewriteDevConfig(t testing.TB, repoRoot, dir string, port int) string {
 	t.Helper()
 
 	raw, err := os.ReadFile(filepath.Join(repoRoot, "testdata", "dev.toml"))

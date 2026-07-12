@@ -40,7 +40,10 @@ const LAYER_ORDER: readonly Layer[] = ["phys", "l2", "sdn", "guest"];
 const SAVE_DEBOUNCE_MS = 1000;
 // docs/features/topology.md §4: "Hard render cap ~2,000 visible elements;
 // beyond, require a filter (UI prompts)."
-const RENDER_CAP = 2000;
+// Exported (T-607) so scaleLab.render.test.tsx can assert the filter-prompt
+// threshold directly against this real constant instead of duplicating the
+// magic number.
+export const RENDER_CAP = 2000;
 
 /** Invisible data-fetching child: one per currently-expanded guest-group
  * pill (see expand.ts). Rendered as a list of these rather than calling

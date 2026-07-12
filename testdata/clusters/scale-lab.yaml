@@ -1,0 +1,5463 @@
+# scale-lab.yaml — T-607 scale target fixture (docs/features/topology.md §4):
+# 8 nodes x 6 NICs, 4 bridges/node (vmbr0 mgmt, vmbr1 SDN-zone, vmbr2/vmbr3
+# plain guest bridges), 300 guests, 40 VNets in one cluster-wide VLAN zone.
+# Generated (not hand-written) by testdata/genscale/main.go — regenerate
+# with `go run ./testdata/genscale > testdata/clusters/scale-lab.yaml`.
+# Used by: internal/api's scale benchmarks (BenchmarkTopologyAtScale et al,
+# internal/api/scale_bench_test.go), the T-607 soak-test churn harness
+# (testdata/genscale/soak), and web/e2e/scale.spec.ts's frontend
+# initial-render/pan-zoom measurement at this scale. See
+# planning/reports/T-607.md and docs/performance.md for the measurements
+# taken against it.
+nodes:
+    pve1:
+        links:
+            bond0:
+                mac: bc:24:01:01:00:01
+                link_up: true
+            bond1:
+                mac: bc:24:01:01:00:03
+                link_up: true
+            eno1:
+                mac: bc:24:01:01:00:01
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:01:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno2:
+                mac: bc:24:01:02:00:02
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:01:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno3:
+                mac: bc:24:01:03:00:03
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:01:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno4:
+                mac: bc:24:01:04:00:04
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:01:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno5:
+                mac: bc:24:01:05:00:05
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:01:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno6:
+                mac: bc:24:01:06:00:06
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:01:00.1"
+                speed_mbps: 10000
+                link_up: true
+            vmbr0:
+                mac: bc:24:01:01:00:01
+                link_up: true
+            vmbr1:
+                mac: bc:24:01:01:00:03
+                link_up: true
+            vmbr2:
+                mac: bc:24:01:05:00:05
+                link_up: true
+            vmbr3:
+                mac: bc:24:01:06:00:06
+                link_up: true
+        lldp: {}
+        stats:
+            eno1:
+                rx_bytes: 3000000000
+                tx_bytes: 1200000000
+                rx_packets: 2500000
+                tx_packets: 1400000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno2:
+                rx_bytes: 3001000000
+                tx_bytes: 1200500000
+                rx_packets: 2510000
+                tx_packets: 1408000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno3:
+                rx_bytes: 3002000000
+                tx_bytes: 1201000000
+                rx_packets: 2520000
+                tx_packets: 1416000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno4:
+                rx_bytes: 3003000000
+                tx_bytes: 1201500000
+                rx_packets: 2530000
+                tx_packets: 1424000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno5:
+                rx_bytes: 3004000000
+                tx_bytes: 1202000000
+                rx_packets: 2540000
+                tx_packets: 1432000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno6:
+                rx_bytes: 3005000000
+                tx_bytes: 1202500000
+                rx_packets: 2550000
+                tx_packets: 1440000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr0:
+                rx_bytes: 6000000000
+                tx_bytes: 2400000000
+                rx_packets: 5000000
+                tx_packets: 2800000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr1:
+                rx_bytes: 9000000000
+                tx_bytes: 3600000000
+                rx_packets: 7500000
+                tx_packets: 4100000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr2:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr3:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+        qemu:
+            "100":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-100
+                    net0: virtio=BC:24:11:00:00:64,bridge=vmbr2,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-100
+                status: running
+            "102":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-102
+                    net0: virtio=BC:24:11:00:00:66,bridge=vmbr1,tag=102,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-102
+                status: running
+            "104":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-104
+                    net0: virtio=BC:24:11:00:00:68,bridge=vmbr3,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-104
+                status: running
+            "106":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-106
+                    net0: virtio=BC:24:11:00:00:6A,bridge=vmbr2,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-106
+                status: running
+            "108":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-108
+                    net0: virtio=BC:24:11:00:00:6C,bridge=vmbr1,tag=108,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-108
+                status: running
+            "110":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-110
+                    net0: virtio=BC:24:11:00:00:6E,bridge=vmbr3,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-110
+                status: running
+            "112":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-112
+                    net0: virtio=BC:24:11:00:00:70,bridge=vmbr2,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-112
+                status: running
+            "114":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-114
+                    net0: virtio=BC:24:11:00:00:72,bridge=vmbr1,tag=114,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-114
+                status: running
+            "116":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-116
+                    net0: virtio=BC:24:11:00:00:74,bridge=vmbr3,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-116
+                status: running
+            "118":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-118
+                    net0: virtio=BC:24:11:00:00:76,bridge=vmbr2,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-118
+                status: running
+            "120":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-120
+                    net0: virtio=BC:24:11:00:00:78,bridge=vmbr1,tag=120,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-120
+                status: running
+            "122":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-122
+                    net0: virtio=BC:24:11:00:00:7A,bridge=vmbr3,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-122
+                status: running
+            "124":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-124
+                    net0: virtio=BC:24:11:00:00:7C,bridge=vmbr2,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-124
+                status: running
+            "126":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-126
+                    net0: virtio=BC:24:11:00:00:7E,bridge=vmbr1,tag=126,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-126
+                status: running
+            "128":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-128
+                    net0: virtio=BC:24:11:00:00:80,bridge=vmbr3,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-128
+                status: running
+            "130":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-130
+                    net0: virtio=BC:24:11:00:00:82,bridge=vmbr2,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-130
+                status: running
+            "132":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-132
+                    net0: virtio=BC:24:11:00:00:84,bridge=vmbr1,tag=132,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-132
+                status: running
+            "134":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-134
+                    net0: virtio=BC:24:11:00:00:86,bridge=vmbr3,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-134
+                status: running
+            "136":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-136
+                    net0: virtio=BC:24:11:00:00:88,bridge=vmbr2,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-136
+                status: running
+        lxc:
+            "101":
+                config:
+                    cores: "1"
+                    hostname: scale-101
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=11,firewall=1,hwaddr=BC:24:11:00:00:65
+                firewall: null
+                name: scale-101
+                status: running
+            "103":
+                config:
+                    cores: "1"
+                    hostname: scale-103
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=13,firewall=1,hwaddr=BC:24:11:00:00:67
+                firewall: null
+                name: scale-103
+                status: running
+            "105":
+                config:
+                    cores: "1"
+                    hostname: scale-105
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=105,firewall=1,hwaddr=BC:24:11:00:00:69
+                firewall: null
+                name: scale-105
+                status: running
+            "107":
+                config:
+                    cores: "1"
+                    hostname: scale-107
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=17,firewall=1,hwaddr=BC:24:11:00:00:6B
+                firewall: null
+                name: scale-107
+                status: running
+            "109":
+                config:
+                    cores: "1"
+                    hostname: scale-109
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=19,firewall=1,hwaddr=BC:24:11:00:00:6D
+                firewall: null
+                name: scale-109
+                status: running
+            "111":
+                config:
+                    cores: "1"
+                    hostname: scale-111
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=111,firewall=1,hwaddr=BC:24:11:00:00:6F
+                firewall: null
+                name: scale-111
+                status: running
+            "113":
+                config:
+                    cores: "1"
+                    hostname: scale-113
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=23,firewall=1,hwaddr=BC:24:11:00:00:71
+                firewall: null
+                name: scale-113
+                status: running
+            "115":
+                config:
+                    cores: "1"
+                    hostname: scale-115
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=25,firewall=1,hwaddr=BC:24:11:00:00:73
+                firewall: null
+                name: scale-115
+                status: running
+            "117":
+                config:
+                    cores: "1"
+                    hostname: scale-117
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=117,firewall=1,hwaddr=BC:24:11:00:00:75
+                firewall: null
+                name: scale-117
+                status: running
+            "119":
+                config:
+                    cores: "1"
+                    hostname: scale-119
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=29,firewall=1,hwaddr=BC:24:11:00:00:77
+                firewall: null
+                name: scale-119
+                status: running
+            "121":
+                config:
+                    cores: "1"
+                    hostname: scale-121
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=11,firewall=1,hwaddr=BC:24:11:00:00:79
+                firewall: null
+                name: scale-121
+                status: running
+            "123":
+                config:
+                    cores: "1"
+                    hostname: scale-123
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=123,firewall=1,hwaddr=BC:24:11:00:00:7B
+                firewall: null
+                name: scale-123
+                status: running
+            "125":
+                config:
+                    cores: "1"
+                    hostname: scale-125
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=15,firewall=1,hwaddr=BC:24:11:00:00:7D
+                firewall: null
+                name: scale-125
+                status: running
+            "127":
+                config:
+                    cores: "1"
+                    hostname: scale-127
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=17,firewall=1,hwaddr=BC:24:11:00:00:7F
+                firewall: null
+                name: scale-127
+                status: running
+            "129":
+                config:
+                    cores: "1"
+                    hostname: scale-129
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=129,firewall=1,hwaddr=BC:24:11:00:00:81
+                firewall: null
+                name: scale-129
+                status: running
+            "131":
+                config:
+                    cores: "1"
+                    hostname: scale-131
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=21,firewall=1,hwaddr=BC:24:11:00:00:83
+                firewall: null
+                name: scale-131
+                status: running
+            "133":
+                config:
+                    cores: "1"
+                    hostname: scale-133
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=23,firewall=1,hwaddr=BC:24:11:00:00:85
+                firewall: null
+                name: scale-133
+                status: running
+            "135":
+                config:
+                    cores: "1"
+                    hostname: scale-135
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=135,firewall=1,hwaddr=BC:24:11:00:00:87
+                firewall: null
+                name: scale-135
+                status: running
+            "137":
+                config:
+                    cores: "1"
+                    hostname: scale-137
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=27,firewall=1,hwaddr=BC:24:11:00:00:89
+                firewall: null
+                name: scale-137
+                status: running
+        firewall:
+            policy_in: DROP
+            policy_out: ACCEPT
+            rules: []
+            aliases: []
+            ipsets: []
+            groups: []
+            enabled: true
+        mock: null
+        network:
+            - type: loopback
+              method: loopback
+              iface: lo
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno1
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno2
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno3
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno4
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno5
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno6
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond0
+              comments: LACP mgmt/corosync uplink
+              slaves: eno1 eno2
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: static
+              address: 10.20.0.11/24
+              gateway: 10.20.0.1
+              iface: vmbr0
+              comments: management + corosync
+              bridge_ports: bond0
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond1
+              comments: LACP SDN overlay uplink
+              slaves: eno3 eno4
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr1
+              comments: SDN VLAN zone bridge (scalez)
+              bridge_ports: bond1
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr3
+              comments: guest access bridge
+              bridge_ports: eno6
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr2
+              comments: guest access bridge
+              bridge_ports: eno5
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+        network_pending: []
+    pve2:
+        links:
+            bond0:
+                mac: bc:24:02:01:00:01
+                link_up: true
+            bond1:
+                mac: bc:24:02:01:00:03
+                link_up: true
+            eno1:
+                mac: bc:24:02:01:00:01
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:02:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno2:
+                mac: bc:24:02:02:00:02
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:02:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno3:
+                mac: bc:24:02:03:00:03
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:02:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno4:
+                mac: bc:24:02:04:00:04
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:02:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno5:
+                mac: bc:24:02:05:00:05
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:02:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno6:
+                mac: bc:24:02:06:00:06
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:02:00.1"
+                speed_mbps: 10000
+                link_up: true
+            vmbr0:
+                mac: bc:24:02:01:00:01
+                link_up: true
+            vmbr1:
+                mac: bc:24:02:01:00:03
+                link_up: true
+            vmbr2:
+                mac: bc:24:02:05:00:05
+                link_up: true
+            vmbr3:
+                mac: bc:24:02:06:00:06
+                link_up: true
+        lldp: {}
+        stats:
+            eno1:
+                rx_bytes: 3010000000
+                tx_bytes: 1205000000
+                rx_packets: 2500000
+                tx_packets: 1400000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno2:
+                rx_bytes: 3011000000
+                tx_bytes: 1205500000
+                rx_packets: 2510000
+                tx_packets: 1408000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno3:
+                rx_bytes: 3012000000
+                tx_bytes: 1206000000
+                rx_packets: 2520000
+                tx_packets: 1416000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno4:
+                rx_bytes: 3013000000
+                tx_bytes: 1206500000
+                rx_packets: 2530000
+                tx_packets: 1424000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno5:
+                rx_bytes: 3014000000
+                tx_bytes: 1207000000
+                rx_packets: 2540000
+                tx_packets: 1432000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno6:
+                rx_bytes: 3015000000
+                tx_bytes: 1207500000
+                rx_packets: 2550000
+                tx_packets: 1440000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr0:
+                rx_bytes: 6000000000
+                tx_bytes: 2400000000
+                rx_packets: 5000000
+                tx_packets: 2800000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr1:
+                rx_bytes: 9000000000
+                tx_bytes: 3600000000
+                rx_packets: 7500000
+                tx_packets: 4100000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr2:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr3:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+        qemu:
+            "138":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-138
+                    net0: virtio=BC:24:11:00:00:8A,bridge=vmbr1,tag=138,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-138
+                status: running
+            "140":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-140
+                    net0: virtio=BC:24:11:00:00:8C,bridge=vmbr3,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-140
+                status: running
+            "142":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-142
+                    net0: virtio=BC:24:11:00:00:8E,bridge=vmbr2,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-142
+                status: running
+            "144":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-144
+                    net0: virtio=BC:24:11:00:00:90,bridge=vmbr1,tag=104,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-144
+                status: running
+            "146":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-146
+                    net0: virtio=BC:24:11:00:00:92,bridge=vmbr3,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-146
+                status: running
+            "148":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-148
+                    net0: virtio=BC:24:11:00:00:94,bridge=vmbr2,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-148
+                status: running
+            "150":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-150
+                    net0: virtio=BC:24:11:00:00:96,bridge=vmbr1,tag=110,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-150
+                status: running
+            "152":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-152
+                    net0: virtio=BC:24:11:00:00:98,bridge=vmbr3,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-152
+                status: running
+            "154":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-154
+                    net0: virtio=BC:24:11:00:00:9A,bridge=vmbr2,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-154
+                status: running
+            "156":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-156
+                    net0: virtio=BC:24:11:00:00:9C,bridge=vmbr1,tag=116,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-156
+                status: running
+            "158":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-158
+                    net0: virtio=BC:24:11:00:00:9E,bridge=vmbr3,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-158
+                status: running
+            "160":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-160
+                    net0: virtio=BC:24:11:00:00:A0,bridge=vmbr2,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-160
+                status: running
+            "162":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-162
+                    net0: virtio=BC:24:11:00:00:A2,bridge=vmbr1,tag=122,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-162
+                status: running
+            "164":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-164
+                    net0: virtio=BC:24:11:00:00:A4,bridge=vmbr3,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-164
+                status: running
+            "166":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-166
+                    net0: virtio=BC:24:11:00:00:A6,bridge=vmbr2,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-166
+                status: running
+            "168":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-168
+                    net0: virtio=BC:24:11:00:00:A8,bridge=vmbr1,tag=128,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-168
+                status: running
+            "170":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-170
+                    net0: virtio=BC:24:11:00:00:AA,bridge=vmbr3,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-170
+                status: running
+            "172":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-172
+                    net0: virtio=BC:24:11:00:00:AC,bridge=vmbr2,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-172
+                status: running
+            "174":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-174
+                    net0: virtio=BC:24:11:00:00:AE,bridge=vmbr1,tag=134,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-174
+                status: running
+        lxc:
+            "139":
+                config:
+                    cores: "1"
+                    hostname: scale-139
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=29,firewall=1,hwaddr=BC:24:11:00:00:8B
+                firewall: null
+                name: scale-139
+                status: running
+            "141":
+                config:
+                    cores: "1"
+                    hostname: scale-141
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=101,firewall=1,hwaddr=BC:24:11:00:00:8D
+                firewall: null
+                name: scale-141
+                status: running
+            "143":
+                config:
+                    cores: "1"
+                    hostname: scale-143
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=13,firewall=1,hwaddr=BC:24:11:00:00:8F
+                firewall: null
+                name: scale-143
+                status: running
+            "145":
+                config:
+                    cores: "1"
+                    hostname: scale-145
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=15,firewall=1,hwaddr=BC:24:11:00:00:91
+                firewall: null
+                name: scale-145
+                status: running
+            "147":
+                config:
+                    cores: "1"
+                    hostname: scale-147
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=107,firewall=1,hwaddr=BC:24:11:00:00:93
+                firewall: null
+                name: scale-147
+                status: running
+            "149":
+                config:
+                    cores: "1"
+                    hostname: scale-149
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=19,firewall=1,hwaddr=BC:24:11:00:00:95
+                firewall: null
+                name: scale-149
+                status: running
+            "151":
+                config:
+                    cores: "1"
+                    hostname: scale-151
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=21,firewall=1,hwaddr=BC:24:11:00:00:97
+                firewall: null
+                name: scale-151
+                status: running
+            "153":
+                config:
+                    cores: "1"
+                    hostname: scale-153
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=113,firewall=1,hwaddr=BC:24:11:00:00:99
+                firewall: null
+                name: scale-153
+                status: running
+            "155":
+                config:
+                    cores: "1"
+                    hostname: scale-155
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=25,firewall=1,hwaddr=BC:24:11:00:00:9B
+                firewall: null
+                name: scale-155
+                status: running
+            "157":
+                config:
+                    cores: "1"
+                    hostname: scale-157
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=27,firewall=1,hwaddr=BC:24:11:00:00:9D
+                firewall: null
+                name: scale-157
+                status: running
+            "159":
+                config:
+                    cores: "1"
+                    hostname: scale-159
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=119,firewall=1,hwaddr=BC:24:11:00:00:9F
+                firewall: null
+                name: scale-159
+                status: running
+            "161":
+                config:
+                    cores: "1"
+                    hostname: scale-161
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=11,firewall=1,hwaddr=BC:24:11:00:00:A1
+                firewall: null
+                name: scale-161
+                status: running
+            "163":
+                config:
+                    cores: "1"
+                    hostname: scale-163
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=13,firewall=1,hwaddr=BC:24:11:00:00:A3
+                firewall: null
+                name: scale-163
+                status: running
+            "165":
+                config:
+                    cores: "1"
+                    hostname: scale-165
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=125,firewall=1,hwaddr=BC:24:11:00:00:A5
+                firewall: null
+                name: scale-165
+                status: running
+            "167":
+                config:
+                    cores: "1"
+                    hostname: scale-167
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=17,firewall=1,hwaddr=BC:24:11:00:00:A7
+                firewall: null
+                name: scale-167
+                status: running
+            "169":
+                config:
+                    cores: "1"
+                    hostname: scale-169
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=19,firewall=1,hwaddr=BC:24:11:00:00:A9
+                firewall: null
+                name: scale-169
+                status: running
+            "171":
+                config:
+                    cores: "1"
+                    hostname: scale-171
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=131,firewall=1,hwaddr=BC:24:11:00:00:AB
+                firewall: null
+                name: scale-171
+                status: running
+            "173":
+                config:
+                    cores: "1"
+                    hostname: scale-173
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=23,firewall=1,hwaddr=BC:24:11:00:00:AD
+                firewall: null
+                name: scale-173
+                status: running
+            "175":
+                config:
+                    cores: "1"
+                    hostname: scale-175
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=25,firewall=1,hwaddr=BC:24:11:00:00:AF
+                firewall: null
+                name: scale-175
+                status: running
+        firewall:
+            policy_in: DROP
+            policy_out: ACCEPT
+            rules: []
+            aliases: []
+            ipsets: []
+            groups: []
+            enabled: true
+        mock: null
+        network:
+            - type: loopback
+              method: loopback
+              iface: lo
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno1
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno2
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno3
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno4
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno5
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno6
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond0
+              comments: LACP mgmt/corosync uplink
+              slaves: eno1 eno2
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: static
+              address: 10.20.0.12/24
+              gateway: 10.20.0.1
+              iface: vmbr0
+              comments: management + corosync
+              bridge_ports: bond0
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond1
+              comments: LACP SDN overlay uplink
+              slaves: eno3 eno4
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr1
+              comments: SDN VLAN zone bridge (scalez)
+              bridge_ports: bond1
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr2
+              comments: guest access bridge
+              bridge_ports: eno5
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr3
+              comments: guest access bridge
+              bridge_ports: eno6
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+        network_pending: []
+    pve3:
+        links:
+            bond0:
+                mac: bc:24:03:01:00:01
+                link_up: true
+            bond1:
+                mac: bc:24:03:01:00:03
+                link_up: true
+            eno1:
+                mac: bc:24:03:01:00:01
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:03:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno2:
+                mac: bc:24:03:02:00:02
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:03:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno3:
+                mac: bc:24:03:03:00:03
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:03:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno4:
+                mac: bc:24:03:04:00:04
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:03:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno5:
+                mac: bc:24:03:05:00:05
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:03:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno6:
+                mac: bc:24:03:06:00:06
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:03:00.1"
+                speed_mbps: 10000
+                link_up: true
+            vmbr0:
+                mac: bc:24:03:01:00:01
+                link_up: true
+            vmbr1:
+                mac: bc:24:03:01:00:03
+                link_up: true
+            vmbr2:
+                mac: bc:24:03:05:00:05
+                link_up: true
+            vmbr3:
+                mac: bc:24:03:06:00:06
+                link_up: true
+        lldp: {}
+        stats:
+            eno1:
+                rx_bytes: 3020000000
+                tx_bytes: 1210000000
+                rx_packets: 2500000
+                tx_packets: 1400000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno2:
+                rx_bytes: 3021000000
+                tx_bytes: 1210500000
+                rx_packets: 2510000
+                tx_packets: 1408000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno3:
+                rx_bytes: 3022000000
+                tx_bytes: 1211000000
+                rx_packets: 2520000
+                tx_packets: 1416000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno4:
+                rx_bytes: 3023000000
+                tx_bytes: 1211500000
+                rx_packets: 2530000
+                tx_packets: 1424000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno5:
+                rx_bytes: 3024000000
+                tx_bytes: 1212000000
+                rx_packets: 2540000
+                tx_packets: 1432000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno6:
+                rx_bytes: 3025000000
+                tx_bytes: 1212500000
+                rx_packets: 2550000
+                tx_packets: 1440000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr0:
+                rx_bytes: 6000000000
+                tx_bytes: 2400000000
+                rx_packets: 5000000
+                tx_packets: 2800000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr1:
+                rx_bytes: 9000000000
+                tx_bytes: 3600000000
+                rx_packets: 7500000
+                tx_packets: 4100000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr2:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr3:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+        qemu:
+            "176":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-176
+                    net0: virtio=BC:24:11:00:00:B0,bridge=vmbr3,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-176
+                status: running
+            "178":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-178
+                    net0: virtio=BC:24:11:00:00:B2,bridge=vmbr2,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-178
+                status: running
+            "180":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-180
+                    net0: virtio=BC:24:11:00:00:B4,bridge=vmbr1,tag=100,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-180
+                status: running
+            "182":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-182
+                    net0: virtio=BC:24:11:00:00:B6,bridge=vmbr3,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-182
+                status: running
+            "184":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-184
+                    net0: virtio=BC:24:11:00:00:B8,bridge=vmbr2,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-184
+                status: running
+            "186":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-186
+                    net0: virtio=BC:24:11:00:00:BA,bridge=vmbr1,tag=106,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-186
+                status: running
+            "188":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-188
+                    net0: virtio=BC:24:11:00:00:BC,bridge=vmbr3,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-188
+                status: running
+            "190":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-190
+                    net0: virtio=BC:24:11:00:00:BE,bridge=vmbr2,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-190
+                status: running
+            "192":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-192
+                    net0: virtio=BC:24:11:00:00:C0,bridge=vmbr1,tag=112,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-192
+                status: running
+            "194":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-194
+                    net0: virtio=BC:24:11:00:00:C2,bridge=vmbr3,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-194
+                status: running
+            "196":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-196
+                    net0: virtio=BC:24:11:00:00:C4,bridge=vmbr2,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-196
+                status: running
+            "198":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-198
+                    net0: virtio=BC:24:11:00:00:C6,bridge=vmbr1,tag=118,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-198
+                status: running
+            "200":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-200
+                    net0: virtio=BC:24:11:00:00:C8,bridge=vmbr3,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-200
+                status: running
+            "202":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-202
+                    net0: virtio=BC:24:11:00:00:CA,bridge=vmbr2,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-202
+                status: running
+            "204":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-204
+                    net0: virtio=BC:24:11:00:00:CC,bridge=vmbr1,tag=124,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-204
+                status: running
+            "206":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-206
+                    net0: virtio=BC:24:11:00:00:CE,bridge=vmbr3,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-206
+                status: running
+            "208":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-208
+                    net0: virtio=BC:24:11:00:00:D0,bridge=vmbr2,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-208
+                status: running
+            "210":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-210
+                    net0: virtio=BC:24:11:00:00:D2,bridge=vmbr1,tag=130,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-210
+                status: running
+            "212":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-212
+                    net0: virtio=BC:24:11:00:00:D4,bridge=vmbr3,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-212
+                status: running
+        lxc:
+            "177":
+                config:
+                    cores: "1"
+                    hostname: scale-177
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=137,firewall=1,hwaddr=BC:24:11:00:00:B1
+                firewall: null
+                name: scale-177
+                status: running
+            "179":
+                config:
+                    cores: "1"
+                    hostname: scale-179
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=29,firewall=1,hwaddr=BC:24:11:00:00:B3
+                firewall: null
+                name: scale-179
+                status: running
+            "181":
+                config:
+                    cores: "1"
+                    hostname: scale-181
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=11,firewall=1,hwaddr=BC:24:11:00:00:B5
+                firewall: null
+                name: scale-181
+                status: running
+            "183":
+                config:
+                    cores: "1"
+                    hostname: scale-183
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=103,firewall=1,hwaddr=BC:24:11:00:00:B7
+                firewall: null
+                name: scale-183
+                status: running
+            "185":
+                config:
+                    cores: "1"
+                    hostname: scale-185
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=15,firewall=1,hwaddr=BC:24:11:00:00:B9
+                firewall: null
+                name: scale-185
+                status: running
+            "187":
+                config:
+                    cores: "1"
+                    hostname: scale-187
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=17,firewall=1,hwaddr=BC:24:11:00:00:BB
+                firewall: null
+                name: scale-187
+                status: running
+            "189":
+                config:
+                    cores: "1"
+                    hostname: scale-189
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=109,firewall=1,hwaddr=BC:24:11:00:00:BD
+                firewall: null
+                name: scale-189
+                status: running
+            "191":
+                config:
+                    cores: "1"
+                    hostname: scale-191
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=21,firewall=1,hwaddr=BC:24:11:00:00:BF
+                firewall: null
+                name: scale-191
+                status: running
+            "193":
+                config:
+                    cores: "1"
+                    hostname: scale-193
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=23,firewall=1,hwaddr=BC:24:11:00:00:C1
+                firewall: null
+                name: scale-193
+                status: running
+            "195":
+                config:
+                    cores: "1"
+                    hostname: scale-195
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=115,firewall=1,hwaddr=BC:24:11:00:00:C3
+                firewall: null
+                name: scale-195
+                status: running
+            "197":
+                config:
+                    cores: "1"
+                    hostname: scale-197
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=27,firewall=1,hwaddr=BC:24:11:00:00:C5
+                firewall: null
+                name: scale-197
+                status: running
+            "199":
+                config:
+                    cores: "1"
+                    hostname: scale-199
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=29,firewall=1,hwaddr=BC:24:11:00:00:C7
+                firewall: null
+                name: scale-199
+                status: running
+            "201":
+                config:
+                    cores: "1"
+                    hostname: scale-201
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=121,firewall=1,hwaddr=BC:24:11:00:00:C9
+                firewall: null
+                name: scale-201
+                status: running
+            "203":
+                config:
+                    cores: "1"
+                    hostname: scale-203
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=13,firewall=1,hwaddr=BC:24:11:00:00:CB
+                firewall: null
+                name: scale-203
+                status: running
+            "205":
+                config:
+                    cores: "1"
+                    hostname: scale-205
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=15,firewall=1,hwaddr=BC:24:11:00:00:CD
+                firewall: null
+                name: scale-205
+                status: running
+            "207":
+                config:
+                    cores: "1"
+                    hostname: scale-207
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=127,firewall=1,hwaddr=BC:24:11:00:00:CF
+                firewall: null
+                name: scale-207
+                status: running
+            "209":
+                config:
+                    cores: "1"
+                    hostname: scale-209
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=19,firewall=1,hwaddr=BC:24:11:00:00:D1
+                firewall: null
+                name: scale-209
+                status: running
+            "211":
+                config:
+                    cores: "1"
+                    hostname: scale-211
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=21,firewall=1,hwaddr=BC:24:11:00:00:D3
+                firewall: null
+                name: scale-211
+                status: running
+            "213":
+                config:
+                    cores: "1"
+                    hostname: scale-213
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=133,firewall=1,hwaddr=BC:24:11:00:00:D5
+                firewall: null
+                name: scale-213
+                status: running
+        firewall:
+            policy_in: DROP
+            policy_out: ACCEPT
+            rules: []
+            aliases: []
+            ipsets: []
+            groups: []
+            enabled: true
+        mock: null
+        network:
+            - type: loopback
+              method: loopback
+              iface: lo
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno1
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno2
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno3
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno4
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno5
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno6
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond0
+              comments: LACP mgmt/corosync uplink
+              slaves: eno1 eno2
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: static
+              address: 10.20.0.13/24
+              gateway: 10.20.0.1
+              iface: vmbr0
+              comments: management + corosync
+              bridge_ports: bond0
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond1
+              comments: LACP SDN overlay uplink
+              slaves: eno3 eno4
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr1
+              comments: SDN VLAN zone bridge (scalez)
+              bridge_ports: bond1
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr2
+              comments: guest access bridge
+              bridge_ports: eno5
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr3
+              comments: guest access bridge
+              bridge_ports: eno6
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+        network_pending: []
+    pve4:
+        links:
+            bond0:
+                mac: bc:24:04:01:00:01
+                link_up: true
+            bond1:
+                mac: bc:24:04:01:00:03
+                link_up: true
+            eno1:
+                mac: bc:24:04:01:00:01
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:04:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno2:
+                mac: bc:24:04:02:00:02
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:04:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno3:
+                mac: bc:24:04:03:00:03
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:04:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno4:
+                mac: bc:24:04:04:00:04
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:04:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno5:
+                mac: bc:24:04:05:00:05
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:04:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno6:
+                mac: bc:24:04:06:00:06
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:04:00.1"
+                speed_mbps: 10000
+                link_up: true
+            vmbr0:
+                mac: bc:24:04:01:00:01
+                link_up: true
+            vmbr1:
+                mac: bc:24:04:01:00:03
+                link_up: true
+            vmbr2:
+                mac: bc:24:04:05:00:05
+                link_up: true
+            vmbr3:
+                mac: bc:24:04:06:00:06
+                link_up: true
+        lldp: {}
+        stats:
+            eno1:
+                rx_bytes: 3030000000
+                tx_bytes: 1215000000
+                rx_packets: 2500000
+                tx_packets: 1400000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno2:
+                rx_bytes: 3031000000
+                tx_bytes: 1215500000
+                rx_packets: 2510000
+                tx_packets: 1408000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno3:
+                rx_bytes: 3032000000
+                tx_bytes: 1216000000
+                rx_packets: 2520000
+                tx_packets: 1416000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno4:
+                rx_bytes: 3033000000
+                tx_bytes: 1216500000
+                rx_packets: 2530000
+                tx_packets: 1424000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno5:
+                rx_bytes: 3034000000
+                tx_bytes: 1217000000
+                rx_packets: 2540000
+                tx_packets: 1432000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno6:
+                rx_bytes: 3035000000
+                tx_bytes: 1217500000
+                rx_packets: 2550000
+                tx_packets: 1440000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr0:
+                rx_bytes: 6000000000
+                tx_bytes: 2400000000
+                rx_packets: 5000000
+                tx_packets: 2800000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr1:
+                rx_bytes: 9000000000
+                tx_bytes: 3600000000
+                rx_packets: 7500000
+                tx_packets: 4100000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr2:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr3:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+        qemu:
+            "214":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-214
+                    net0: virtio=BC:24:11:00:00:D6,bridge=vmbr2,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-214
+                status: running
+            "216":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-216
+                    net0: virtio=BC:24:11:00:00:D8,bridge=vmbr1,tag=136,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-216
+                status: running
+            "218":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-218
+                    net0: virtio=BC:24:11:00:00:DA,bridge=vmbr3,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-218
+                status: running
+            "220":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-220
+                    net0: virtio=BC:24:11:00:00:DC,bridge=vmbr2,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-220
+                status: running
+            "222":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-222
+                    net0: virtio=BC:24:11:00:00:DE,bridge=vmbr1,tag=102,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-222
+                status: running
+            "224":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-224
+                    net0: virtio=BC:24:11:00:00:E0,bridge=vmbr3,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-224
+                status: running
+            "226":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-226
+                    net0: virtio=BC:24:11:00:00:E2,bridge=vmbr2,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-226
+                status: running
+            "228":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-228
+                    net0: virtio=BC:24:11:00:00:E4,bridge=vmbr1,tag=108,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-228
+                status: running
+            "230":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-230
+                    net0: virtio=BC:24:11:00:00:E6,bridge=vmbr3,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-230
+                status: running
+            "232":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-232
+                    net0: virtio=BC:24:11:00:00:E8,bridge=vmbr2,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-232
+                status: running
+            "234":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-234
+                    net0: virtio=BC:24:11:00:00:EA,bridge=vmbr1,tag=114,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-234
+                status: running
+            "236":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-236
+                    net0: virtio=BC:24:11:00:00:EC,bridge=vmbr3,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-236
+                status: running
+            "238":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-238
+                    net0: virtio=BC:24:11:00:00:EE,bridge=vmbr2,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-238
+                status: running
+            "240":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-240
+                    net0: virtio=BC:24:11:00:00:F0,bridge=vmbr1,tag=120,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-240
+                status: running
+            "242":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-242
+                    net0: virtio=BC:24:11:00:00:F2,bridge=vmbr3,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-242
+                status: running
+            "244":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-244
+                    net0: virtio=BC:24:11:00:00:F4,bridge=vmbr2,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-244
+                status: running
+            "246":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-246
+                    net0: virtio=BC:24:11:00:00:F6,bridge=vmbr1,tag=126,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-246
+                status: running
+            "248":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-248
+                    net0: virtio=BC:24:11:00:00:F8,bridge=vmbr3,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-248
+                status: running
+            "250":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-250
+                    net0: virtio=BC:24:11:00:00:FA,bridge=vmbr2,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-250
+                status: running
+        lxc:
+            "215":
+                config:
+                    cores: "1"
+                    hostname: scale-215
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=25,firewall=1,hwaddr=BC:24:11:00:00:D7
+                firewall: null
+                name: scale-215
+                status: running
+            "217":
+                config:
+                    cores: "1"
+                    hostname: scale-217
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=27,firewall=1,hwaddr=BC:24:11:00:00:D9
+                firewall: null
+                name: scale-217
+                status: running
+            "219":
+                config:
+                    cores: "1"
+                    hostname: scale-219
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=139,firewall=1,hwaddr=BC:24:11:00:00:DB
+                firewall: null
+                name: scale-219
+                status: running
+            "221":
+                config:
+                    cores: "1"
+                    hostname: scale-221
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=11,firewall=1,hwaddr=BC:24:11:00:00:DD
+                firewall: null
+                name: scale-221
+                status: running
+            "223":
+                config:
+                    cores: "1"
+                    hostname: scale-223
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=13,firewall=1,hwaddr=BC:24:11:00:00:DF
+                firewall: null
+                name: scale-223
+                status: running
+            "225":
+                config:
+                    cores: "1"
+                    hostname: scale-225
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=105,firewall=1,hwaddr=BC:24:11:00:00:E1
+                firewall: null
+                name: scale-225
+                status: running
+            "227":
+                config:
+                    cores: "1"
+                    hostname: scale-227
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=17,firewall=1,hwaddr=BC:24:11:00:00:E3
+                firewall: null
+                name: scale-227
+                status: running
+            "229":
+                config:
+                    cores: "1"
+                    hostname: scale-229
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=19,firewall=1,hwaddr=BC:24:11:00:00:E5
+                firewall: null
+                name: scale-229
+                status: running
+            "231":
+                config:
+                    cores: "1"
+                    hostname: scale-231
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=111,firewall=1,hwaddr=BC:24:11:00:00:E7
+                firewall: null
+                name: scale-231
+                status: running
+            "233":
+                config:
+                    cores: "1"
+                    hostname: scale-233
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=23,firewall=1,hwaddr=BC:24:11:00:00:E9
+                firewall: null
+                name: scale-233
+                status: running
+            "235":
+                config:
+                    cores: "1"
+                    hostname: scale-235
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=25,firewall=1,hwaddr=BC:24:11:00:00:EB
+                firewall: null
+                name: scale-235
+                status: running
+            "237":
+                config:
+                    cores: "1"
+                    hostname: scale-237
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=117,firewall=1,hwaddr=BC:24:11:00:00:ED
+                firewall: null
+                name: scale-237
+                status: running
+            "239":
+                config:
+                    cores: "1"
+                    hostname: scale-239
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=29,firewall=1,hwaddr=BC:24:11:00:00:EF
+                firewall: null
+                name: scale-239
+                status: running
+            "241":
+                config:
+                    cores: "1"
+                    hostname: scale-241
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=11,firewall=1,hwaddr=BC:24:11:00:00:F1
+                firewall: null
+                name: scale-241
+                status: running
+            "243":
+                config:
+                    cores: "1"
+                    hostname: scale-243
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=123,firewall=1,hwaddr=BC:24:11:00:00:F3
+                firewall: null
+                name: scale-243
+                status: running
+            "245":
+                config:
+                    cores: "1"
+                    hostname: scale-245
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=15,firewall=1,hwaddr=BC:24:11:00:00:F5
+                firewall: null
+                name: scale-245
+                status: running
+            "247":
+                config:
+                    cores: "1"
+                    hostname: scale-247
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=17,firewall=1,hwaddr=BC:24:11:00:00:F7
+                firewall: null
+                name: scale-247
+                status: running
+            "249":
+                config:
+                    cores: "1"
+                    hostname: scale-249
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=129,firewall=1,hwaddr=BC:24:11:00:00:F9
+                firewall: null
+                name: scale-249
+                status: running
+            "251":
+                config:
+                    cores: "1"
+                    hostname: scale-251
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=21,firewall=1,hwaddr=BC:24:11:00:00:FB
+                firewall: null
+                name: scale-251
+                status: running
+        firewall:
+            policy_in: DROP
+            policy_out: ACCEPT
+            rules: []
+            aliases: []
+            ipsets: []
+            groups: []
+            enabled: true
+        mock: null
+        network:
+            - type: loopback
+              method: loopback
+              iface: lo
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno1
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno2
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno3
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno4
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno5
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno6
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond0
+              comments: LACP mgmt/corosync uplink
+              slaves: eno1 eno2
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: static
+              address: 10.20.0.14/24
+              gateway: 10.20.0.1
+              iface: vmbr0
+              comments: management + corosync
+              bridge_ports: bond0
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond1
+              comments: LACP SDN overlay uplink
+              slaves: eno3 eno4
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr1
+              comments: SDN VLAN zone bridge (scalez)
+              bridge_ports: bond1
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr2
+              comments: guest access bridge
+              bridge_ports: eno5
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr3
+              comments: guest access bridge
+              bridge_ports: eno6
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+        network_pending: []
+    pve5:
+        links:
+            bond0:
+                mac: bc:24:05:01:00:01
+                link_up: true
+            bond1:
+                mac: bc:24:05:01:00:03
+                link_up: true
+            eno1:
+                mac: bc:24:05:01:00:01
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:05:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno2:
+                mac: bc:24:05:02:00:02
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:05:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno3:
+                mac: bc:24:05:03:00:03
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:05:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno4:
+                mac: bc:24:05:04:00:04
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:05:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno5:
+                mac: bc:24:05:05:00:05
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:05:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno6:
+                mac: bc:24:05:06:00:06
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:05:00.1"
+                speed_mbps: 10000
+                link_up: true
+            vmbr0:
+                mac: bc:24:05:01:00:01
+                link_up: true
+            vmbr1:
+                mac: bc:24:05:01:00:03
+                link_up: true
+            vmbr2:
+                mac: bc:24:05:05:00:05
+                link_up: true
+            vmbr3:
+                mac: bc:24:05:06:00:06
+                link_up: true
+        lldp: {}
+        stats:
+            eno1:
+                rx_bytes: 3040000000
+                tx_bytes: 1220000000
+                rx_packets: 2500000
+                tx_packets: 1400000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno2:
+                rx_bytes: 3041000000
+                tx_bytes: 1220500000
+                rx_packets: 2510000
+                tx_packets: 1408000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno3:
+                rx_bytes: 3042000000
+                tx_bytes: 1221000000
+                rx_packets: 2520000
+                tx_packets: 1416000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno4:
+                rx_bytes: 3043000000
+                tx_bytes: 1221500000
+                rx_packets: 2530000
+                tx_packets: 1424000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno5:
+                rx_bytes: 3044000000
+                tx_bytes: 1222000000
+                rx_packets: 2540000
+                tx_packets: 1432000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno6:
+                rx_bytes: 3045000000
+                tx_bytes: 1222500000
+                rx_packets: 2550000
+                tx_packets: 1440000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr0:
+                rx_bytes: 6000000000
+                tx_bytes: 2400000000
+                rx_packets: 5000000
+                tx_packets: 2800000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr1:
+                rx_bytes: 9000000000
+                tx_bytes: 3600000000
+                rx_packets: 7500000
+                tx_packets: 4100000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr2:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr3:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+        qemu:
+            "252":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-252
+                    net0: virtio=BC:24:11:00:00:FC,bridge=vmbr1,tag=132,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-252
+                status: running
+            "254":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-254
+                    net0: virtio=BC:24:11:00:00:FE,bridge=vmbr3,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-254
+                status: running
+            "256":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-256
+                    net0: virtio=BC:24:11:00:01:00,bridge=vmbr2,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-256
+                status: running
+            "258":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-258
+                    net0: virtio=BC:24:11:00:01:02,bridge=vmbr1,tag=138,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-258
+                status: running
+            "260":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-260
+                    net0: virtio=BC:24:11:00:01:04,bridge=vmbr3,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-260
+                status: running
+            "262":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-262
+                    net0: virtio=BC:24:11:00:01:06,bridge=vmbr2,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-262
+                status: running
+            "264":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-264
+                    net0: virtio=BC:24:11:00:01:08,bridge=vmbr1,tag=104,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-264
+                status: running
+            "266":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-266
+                    net0: virtio=BC:24:11:00:01:0A,bridge=vmbr3,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-266
+                status: running
+            "268":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-268
+                    net0: virtio=BC:24:11:00:01:0C,bridge=vmbr2,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-268
+                status: running
+            "270":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-270
+                    net0: virtio=BC:24:11:00:01:0E,bridge=vmbr1,tag=110,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-270
+                status: running
+            "272":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-272
+                    net0: virtio=BC:24:11:00:01:10,bridge=vmbr3,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-272
+                status: running
+            "274":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-274
+                    net0: virtio=BC:24:11:00:01:12,bridge=vmbr2,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-274
+                status: running
+            "276":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-276
+                    net0: virtio=BC:24:11:00:01:14,bridge=vmbr1,tag=116,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-276
+                status: running
+            "278":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-278
+                    net0: virtio=BC:24:11:00:01:16,bridge=vmbr3,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-278
+                status: running
+            "280":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-280
+                    net0: virtio=BC:24:11:00:01:18,bridge=vmbr2,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-280
+                status: running
+            "282":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-282
+                    net0: virtio=BC:24:11:00:01:1A,bridge=vmbr1,tag=122,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-282
+                status: running
+            "284":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-284
+                    net0: virtio=BC:24:11:00:01:1C,bridge=vmbr3,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-284
+                status: running
+            "286":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-286
+                    net0: virtio=BC:24:11:00:01:1E,bridge=vmbr2,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-286
+                status: running
+            "288":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-288
+                    net0: virtio=BC:24:11:00:01:20,bridge=vmbr1,tag=128,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-288
+                status: running
+        lxc:
+            "253":
+                config:
+                    cores: "1"
+                    hostname: scale-253
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=23,firewall=1,hwaddr=BC:24:11:00:00:FD
+                firewall: null
+                name: scale-253
+                status: running
+            "255":
+                config:
+                    cores: "1"
+                    hostname: scale-255
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=135,firewall=1,hwaddr=BC:24:11:00:00:FF
+                firewall: null
+                name: scale-255
+                status: running
+            "257":
+                config:
+                    cores: "1"
+                    hostname: scale-257
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=27,firewall=1,hwaddr=BC:24:11:00:01:01
+                firewall: null
+                name: scale-257
+                status: running
+            "259":
+                config:
+                    cores: "1"
+                    hostname: scale-259
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=29,firewall=1,hwaddr=BC:24:11:00:01:03
+                firewall: null
+                name: scale-259
+                status: running
+            "261":
+                config:
+                    cores: "1"
+                    hostname: scale-261
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=101,firewall=1,hwaddr=BC:24:11:00:01:05
+                firewall: null
+                name: scale-261
+                status: running
+            "263":
+                config:
+                    cores: "1"
+                    hostname: scale-263
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=13,firewall=1,hwaddr=BC:24:11:00:01:07
+                firewall: null
+                name: scale-263
+                status: running
+            "265":
+                config:
+                    cores: "1"
+                    hostname: scale-265
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=15,firewall=1,hwaddr=BC:24:11:00:01:09
+                firewall: null
+                name: scale-265
+                status: running
+            "267":
+                config:
+                    cores: "1"
+                    hostname: scale-267
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=107,firewall=1,hwaddr=BC:24:11:00:01:0B
+                firewall: null
+                name: scale-267
+                status: running
+            "269":
+                config:
+                    cores: "1"
+                    hostname: scale-269
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=19,firewall=1,hwaddr=BC:24:11:00:01:0D
+                firewall: null
+                name: scale-269
+                status: running
+            "271":
+                config:
+                    cores: "1"
+                    hostname: scale-271
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=21,firewall=1,hwaddr=BC:24:11:00:01:0F
+                firewall: null
+                name: scale-271
+                status: running
+            "273":
+                config:
+                    cores: "1"
+                    hostname: scale-273
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=113,firewall=1,hwaddr=BC:24:11:00:01:11
+                firewall: null
+                name: scale-273
+                status: running
+            "275":
+                config:
+                    cores: "1"
+                    hostname: scale-275
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=25,firewall=1,hwaddr=BC:24:11:00:01:13
+                firewall: null
+                name: scale-275
+                status: running
+            "277":
+                config:
+                    cores: "1"
+                    hostname: scale-277
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=27,firewall=1,hwaddr=BC:24:11:00:01:15
+                firewall: null
+                name: scale-277
+                status: running
+            "279":
+                config:
+                    cores: "1"
+                    hostname: scale-279
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=119,firewall=1,hwaddr=BC:24:11:00:01:17
+                firewall: null
+                name: scale-279
+                status: running
+            "281":
+                config:
+                    cores: "1"
+                    hostname: scale-281
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=11,firewall=1,hwaddr=BC:24:11:00:01:19
+                firewall: null
+                name: scale-281
+                status: running
+            "283":
+                config:
+                    cores: "1"
+                    hostname: scale-283
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=13,firewall=1,hwaddr=BC:24:11:00:01:1B
+                firewall: null
+                name: scale-283
+                status: running
+            "285":
+                config:
+                    cores: "1"
+                    hostname: scale-285
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=125,firewall=1,hwaddr=BC:24:11:00:01:1D
+                firewall: null
+                name: scale-285
+                status: running
+            "287":
+                config:
+                    cores: "1"
+                    hostname: scale-287
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=17,firewall=1,hwaddr=BC:24:11:00:01:1F
+                firewall: null
+                name: scale-287
+                status: running
+        firewall:
+            policy_in: DROP
+            policy_out: ACCEPT
+            rules: []
+            aliases: []
+            ipsets: []
+            groups: []
+            enabled: true
+        mock: null
+        network:
+            - type: loopback
+              method: loopback
+              iface: lo
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno1
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno2
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno3
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno4
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno5
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno6
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond0
+              comments: LACP mgmt/corosync uplink
+              slaves: eno1 eno2
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: static
+              address: 10.20.0.15/24
+              gateway: 10.20.0.1
+              iface: vmbr0
+              comments: management + corosync
+              bridge_ports: bond0
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond1
+              comments: LACP SDN overlay uplink
+              slaves: eno3 eno4
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr1
+              comments: SDN VLAN zone bridge (scalez)
+              bridge_ports: bond1
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr2
+              comments: guest access bridge
+              bridge_ports: eno5
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr3
+              comments: guest access bridge
+              bridge_ports: eno6
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+        network_pending: []
+    pve6:
+        links:
+            bond0:
+                mac: bc:24:06:01:00:01
+                link_up: true
+            bond1:
+                mac: bc:24:06:01:00:03
+                link_up: true
+            eno1:
+                mac: bc:24:06:01:00:01
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:06:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno2:
+                mac: bc:24:06:02:00:02
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:06:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno3:
+                mac: bc:24:06:03:00:03
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:06:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno4:
+                mac: bc:24:06:04:00:04
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:06:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno5:
+                mac: bc:24:06:05:00:05
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:06:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno6:
+                mac: bc:24:06:06:00:06
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:06:00.1"
+                speed_mbps: 10000
+                link_up: true
+            vmbr0:
+                mac: bc:24:06:01:00:01
+                link_up: true
+            vmbr1:
+                mac: bc:24:06:01:00:03
+                link_up: true
+            vmbr2:
+                mac: bc:24:06:05:00:05
+                link_up: true
+            vmbr3:
+                mac: bc:24:06:06:00:06
+                link_up: true
+        lldp: {}
+        stats:
+            eno1:
+                rx_bytes: 3050000000
+                tx_bytes: 1225000000
+                rx_packets: 2500000
+                tx_packets: 1400000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno2:
+                rx_bytes: 3051000000
+                tx_bytes: 1225500000
+                rx_packets: 2510000
+                tx_packets: 1408000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno3:
+                rx_bytes: 3052000000
+                tx_bytes: 1226000000
+                rx_packets: 2520000
+                tx_packets: 1416000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno4:
+                rx_bytes: 3053000000
+                tx_bytes: 1226500000
+                rx_packets: 2530000
+                tx_packets: 1424000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno5:
+                rx_bytes: 3054000000
+                tx_bytes: 1227000000
+                rx_packets: 2540000
+                tx_packets: 1432000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno6:
+                rx_bytes: 3055000000
+                tx_bytes: 1227500000
+                rx_packets: 2550000
+                tx_packets: 1440000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr0:
+                rx_bytes: 6000000000
+                tx_bytes: 2400000000
+                rx_packets: 5000000
+                tx_packets: 2800000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr1:
+                rx_bytes: 9000000000
+                tx_bytes: 3600000000
+                rx_packets: 7500000
+                tx_packets: 4100000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr2:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr3:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+        qemu:
+            "290":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-290
+                    net0: virtio=BC:24:11:00:01:22,bridge=vmbr3,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-290
+                status: running
+            "292":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-292
+                    net0: virtio=BC:24:11:00:01:24,bridge=vmbr2,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-292
+                status: running
+            "294":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-294
+                    net0: virtio=BC:24:11:00:01:26,bridge=vmbr1,tag=134,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-294
+                status: running
+            "296":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-296
+                    net0: virtio=BC:24:11:00:01:28,bridge=vmbr3,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-296
+                status: running
+            "298":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-298
+                    net0: virtio=BC:24:11:00:01:2A,bridge=vmbr2,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-298
+                status: running
+            "300":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-300
+                    net0: virtio=BC:24:11:00:01:2C,bridge=vmbr1,tag=100,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-300
+                status: running
+            "302":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-302
+                    net0: virtio=BC:24:11:00:01:2E,bridge=vmbr3,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-302
+                status: running
+            "304":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-304
+                    net0: virtio=BC:24:11:00:01:30,bridge=vmbr2,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-304
+                status: running
+            "306":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-306
+                    net0: virtio=BC:24:11:00:01:32,bridge=vmbr1,tag=106,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-306
+                status: running
+            "308":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-308
+                    net0: virtio=BC:24:11:00:01:34,bridge=vmbr3,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-308
+                status: running
+            "310":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-310
+                    net0: virtio=BC:24:11:00:01:36,bridge=vmbr2,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-310
+                status: running
+            "312":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-312
+                    net0: virtio=BC:24:11:00:01:38,bridge=vmbr1,tag=112,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-312
+                status: running
+            "314":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-314
+                    net0: virtio=BC:24:11:00:01:3A,bridge=vmbr3,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-314
+                status: running
+            "316":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-316
+                    net0: virtio=BC:24:11:00:01:3C,bridge=vmbr2,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-316
+                status: running
+            "318":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-318
+                    net0: virtio=BC:24:11:00:01:3E,bridge=vmbr1,tag=118,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-318
+                status: running
+            "320":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-320
+                    net0: virtio=BC:24:11:00:01:40,bridge=vmbr3,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-320
+                status: running
+            "322":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-322
+                    net0: virtio=BC:24:11:00:01:42,bridge=vmbr2,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-322
+                status: running
+            "324":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-324
+                    net0: virtio=BC:24:11:00:01:44,bridge=vmbr1,tag=124,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-324
+                status: running
+        lxc:
+            "289":
+                config:
+                    cores: "1"
+                    hostname: scale-289
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=19,firewall=1,hwaddr=BC:24:11:00:01:21
+                firewall: null
+                name: scale-289
+                status: running
+            "291":
+                config:
+                    cores: "1"
+                    hostname: scale-291
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=131,firewall=1,hwaddr=BC:24:11:00:01:23
+                firewall: null
+                name: scale-291
+                status: running
+            "293":
+                config:
+                    cores: "1"
+                    hostname: scale-293
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=23,firewall=1,hwaddr=BC:24:11:00:01:25
+                firewall: null
+                name: scale-293
+                status: running
+            "295":
+                config:
+                    cores: "1"
+                    hostname: scale-295
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=25,firewall=1,hwaddr=BC:24:11:00:01:27
+                firewall: null
+                name: scale-295
+                status: running
+            "297":
+                config:
+                    cores: "1"
+                    hostname: scale-297
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=137,firewall=1,hwaddr=BC:24:11:00:01:29
+                firewall: null
+                name: scale-297
+                status: running
+            "299":
+                config:
+                    cores: "1"
+                    hostname: scale-299
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=29,firewall=1,hwaddr=BC:24:11:00:01:2B
+                firewall: null
+                name: scale-299
+                status: running
+            "301":
+                config:
+                    cores: "1"
+                    hostname: scale-301
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=11,firewall=1,hwaddr=BC:24:11:00:01:2D
+                firewall: null
+                name: scale-301
+                status: running
+            "303":
+                config:
+                    cores: "1"
+                    hostname: scale-303
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=103,firewall=1,hwaddr=BC:24:11:00:01:2F
+                firewall: null
+                name: scale-303
+                status: running
+            "305":
+                config:
+                    cores: "1"
+                    hostname: scale-305
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=15,firewall=1,hwaddr=BC:24:11:00:01:31
+                firewall: null
+                name: scale-305
+                status: running
+            "307":
+                config:
+                    cores: "1"
+                    hostname: scale-307
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=17,firewall=1,hwaddr=BC:24:11:00:01:33
+                firewall: null
+                name: scale-307
+                status: running
+            "309":
+                config:
+                    cores: "1"
+                    hostname: scale-309
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=109,firewall=1,hwaddr=BC:24:11:00:01:35
+                firewall: null
+                name: scale-309
+                status: running
+            "311":
+                config:
+                    cores: "1"
+                    hostname: scale-311
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=21,firewall=1,hwaddr=BC:24:11:00:01:37
+                firewall: null
+                name: scale-311
+                status: running
+            "313":
+                config:
+                    cores: "1"
+                    hostname: scale-313
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=23,firewall=1,hwaddr=BC:24:11:00:01:39
+                firewall: null
+                name: scale-313
+                status: running
+            "315":
+                config:
+                    cores: "1"
+                    hostname: scale-315
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=115,firewall=1,hwaddr=BC:24:11:00:01:3B
+                firewall: null
+                name: scale-315
+                status: running
+            "317":
+                config:
+                    cores: "1"
+                    hostname: scale-317
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=27,firewall=1,hwaddr=BC:24:11:00:01:3D
+                firewall: null
+                name: scale-317
+                status: running
+            "319":
+                config:
+                    cores: "1"
+                    hostname: scale-319
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=29,firewall=1,hwaddr=BC:24:11:00:01:3F
+                firewall: null
+                name: scale-319
+                status: running
+            "321":
+                config:
+                    cores: "1"
+                    hostname: scale-321
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=121,firewall=1,hwaddr=BC:24:11:00:01:41
+                firewall: null
+                name: scale-321
+                status: running
+            "323":
+                config:
+                    cores: "1"
+                    hostname: scale-323
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=13,firewall=1,hwaddr=BC:24:11:00:01:43
+                firewall: null
+                name: scale-323
+                status: running
+            "325":
+                config:
+                    cores: "1"
+                    hostname: scale-325
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=15,firewall=1,hwaddr=BC:24:11:00:01:45
+                firewall: null
+                name: scale-325
+                status: running
+        firewall:
+            policy_in: DROP
+            policy_out: ACCEPT
+            rules: []
+            aliases: []
+            ipsets: []
+            groups: []
+            enabled: true
+        mock: null
+        network:
+            - type: loopback
+              method: loopback
+              iface: lo
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno1
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno2
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno3
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno4
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno5
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno6
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond0
+              comments: LACP mgmt/corosync uplink
+              slaves: eno1 eno2
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: static
+              address: 10.20.0.16/24
+              gateway: 10.20.0.1
+              iface: vmbr0
+              comments: management + corosync
+              bridge_ports: bond0
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond1
+              comments: LACP SDN overlay uplink
+              slaves: eno3 eno4
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr1
+              comments: SDN VLAN zone bridge (scalez)
+              bridge_ports: bond1
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr2
+              comments: guest access bridge
+              bridge_ports: eno5
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr3
+              comments: guest access bridge
+              bridge_ports: eno6
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+        network_pending: []
+    pve7:
+        links:
+            bond0:
+                mac: bc:24:07:01:00:01
+                link_up: true
+            bond1:
+                mac: bc:24:07:01:00:03
+                link_up: true
+            eno1:
+                mac: bc:24:07:01:00:01
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:07:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno2:
+                mac: bc:24:07:02:00:02
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:07:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno3:
+                mac: bc:24:07:03:00:03
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:07:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno4:
+                mac: bc:24:07:04:00:04
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:07:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno5:
+                mac: bc:24:07:05:00:05
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:07:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno6:
+                mac: bc:24:07:06:00:06
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:07:00.1"
+                speed_mbps: 10000
+                link_up: true
+            vmbr0:
+                mac: bc:24:07:01:00:01
+                link_up: true
+            vmbr1:
+                mac: bc:24:07:01:00:03
+                link_up: true
+            vmbr2:
+                mac: bc:24:07:05:00:05
+                link_up: true
+            vmbr3:
+                mac: bc:24:07:06:00:06
+                link_up: true
+        lldp: {}
+        stats:
+            eno1:
+                rx_bytes: 3060000000
+                tx_bytes: 1230000000
+                rx_packets: 2500000
+                tx_packets: 1400000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno2:
+                rx_bytes: 3061000000
+                tx_bytes: 1230500000
+                rx_packets: 2510000
+                tx_packets: 1408000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno3:
+                rx_bytes: 3062000000
+                tx_bytes: 1231000000
+                rx_packets: 2520000
+                tx_packets: 1416000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno4:
+                rx_bytes: 3063000000
+                tx_bytes: 1231500000
+                rx_packets: 2530000
+                tx_packets: 1424000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno5:
+                rx_bytes: 3064000000
+                tx_bytes: 1232000000
+                rx_packets: 2540000
+                tx_packets: 1432000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno6:
+                rx_bytes: 3065000000
+                tx_bytes: 1232500000
+                rx_packets: 2550000
+                tx_packets: 1440000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr0:
+                rx_bytes: 6000000000
+                tx_bytes: 2400000000
+                rx_packets: 5000000
+                tx_packets: 2800000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr1:
+                rx_bytes: 9000000000
+                tx_bytes: 3600000000
+                rx_packets: 7500000
+                tx_packets: 4100000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr2:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr3:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+        qemu:
+            "326":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-326
+                    net0: virtio=BC:24:11:00:01:46,bridge=vmbr3,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-326
+                status: running
+            "328":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-328
+                    net0: virtio=BC:24:11:00:01:48,bridge=vmbr2,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-328
+                status: running
+            "330":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-330
+                    net0: virtio=BC:24:11:00:01:4A,bridge=vmbr1,tag=130,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-330
+                status: running
+            "332":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-332
+                    net0: virtio=BC:24:11:00:01:4C,bridge=vmbr3,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-332
+                status: running
+            "334":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-334
+                    net0: virtio=BC:24:11:00:01:4E,bridge=vmbr2,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-334
+                status: running
+            "336":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-336
+                    net0: virtio=BC:24:11:00:01:50,bridge=vmbr1,tag=136,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-336
+                status: running
+            "338":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-338
+                    net0: virtio=BC:24:11:00:01:52,bridge=vmbr3,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-338
+                status: running
+            "340":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-340
+                    net0: virtio=BC:24:11:00:01:54,bridge=vmbr2,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-340
+                status: running
+            "342":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-342
+                    net0: virtio=BC:24:11:00:01:56,bridge=vmbr1,tag=102,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-342
+                status: running
+            "344":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-344
+                    net0: virtio=BC:24:11:00:01:58,bridge=vmbr3,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-344
+                status: running
+            "346":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-346
+                    net0: virtio=BC:24:11:00:01:5A,bridge=vmbr2,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-346
+                status: running
+            "348":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-348
+                    net0: virtio=BC:24:11:00:01:5C,bridge=vmbr1,tag=108,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-348
+                status: running
+            "350":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-350
+                    net0: virtio=BC:24:11:00:01:5E,bridge=vmbr3,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-350
+                status: running
+            "352":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-352
+                    net0: virtio=BC:24:11:00:01:60,bridge=vmbr2,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-352
+                status: running
+            "354":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-354
+                    net0: virtio=BC:24:11:00:01:62,bridge=vmbr1,tag=114,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-354
+                status: running
+            "356":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-356
+                    net0: virtio=BC:24:11:00:01:64,bridge=vmbr3,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-356
+                status: running
+            "358":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-358
+                    net0: virtio=BC:24:11:00:01:66,bridge=vmbr2,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-358
+                status: running
+            "360":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-360
+                    net0: virtio=BC:24:11:00:01:68,bridge=vmbr1,tag=120,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-360
+                status: running
+            "362":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-362
+                    net0: virtio=BC:24:11:00:01:6A,bridge=vmbr3,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-362
+                status: running
+        lxc:
+            "327":
+                config:
+                    cores: "1"
+                    hostname: scale-327
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=127,firewall=1,hwaddr=BC:24:11:00:01:47
+                firewall: null
+                name: scale-327
+                status: running
+            "329":
+                config:
+                    cores: "1"
+                    hostname: scale-329
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=19,firewall=1,hwaddr=BC:24:11:00:01:49
+                firewall: null
+                name: scale-329
+                status: running
+            "331":
+                config:
+                    cores: "1"
+                    hostname: scale-331
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=21,firewall=1,hwaddr=BC:24:11:00:01:4B
+                firewall: null
+                name: scale-331
+                status: running
+            "333":
+                config:
+                    cores: "1"
+                    hostname: scale-333
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=133,firewall=1,hwaddr=BC:24:11:00:01:4D
+                firewall: null
+                name: scale-333
+                status: running
+            "335":
+                config:
+                    cores: "1"
+                    hostname: scale-335
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=25,firewall=1,hwaddr=BC:24:11:00:01:4F
+                firewall: null
+                name: scale-335
+                status: running
+            "337":
+                config:
+                    cores: "1"
+                    hostname: scale-337
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=27,firewall=1,hwaddr=BC:24:11:00:01:51
+                firewall: null
+                name: scale-337
+                status: running
+            "339":
+                config:
+                    cores: "1"
+                    hostname: scale-339
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=139,firewall=1,hwaddr=BC:24:11:00:01:53
+                firewall: null
+                name: scale-339
+                status: running
+            "341":
+                config:
+                    cores: "1"
+                    hostname: scale-341
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=11,firewall=1,hwaddr=BC:24:11:00:01:55
+                firewall: null
+                name: scale-341
+                status: running
+            "343":
+                config:
+                    cores: "1"
+                    hostname: scale-343
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=13,firewall=1,hwaddr=BC:24:11:00:01:57
+                firewall: null
+                name: scale-343
+                status: running
+            "345":
+                config:
+                    cores: "1"
+                    hostname: scale-345
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=105,firewall=1,hwaddr=BC:24:11:00:01:59
+                firewall: null
+                name: scale-345
+                status: running
+            "347":
+                config:
+                    cores: "1"
+                    hostname: scale-347
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=17,firewall=1,hwaddr=BC:24:11:00:01:5B
+                firewall: null
+                name: scale-347
+                status: running
+            "349":
+                config:
+                    cores: "1"
+                    hostname: scale-349
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=19,firewall=1,hwaddr=BC:24:11:00:01:5D
+                firewall: null
+                name: scale-349
+                status: running
+            "351":
+                config:
+                    cores: "1"
+                    hostname: scale-351
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=111,firewall=1,hwaddr=BC:24:11:00:01:5F
+                firewall: null
+                name: scale-351
+                status: running
+            "353":
+                config:
+                    cores: "1"
+                    hostname: scale-353
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=23,firewall=1,hwaddr=BC:24:11:00:01:61
+                firewall: null
+                name: scale-353
+                status: running
+            "355":
+                config:
+                    cores: "1"
+                    hostname: scale-355
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=25,firewall=1,hwaddr=BC:24:11:00:01:63
+                firewall: null
+                name: scale-355
+                status: running
+            "357":
+                config:
+                    cores: "1"
+                    hostname: scale-357
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=117,firewall=1,hwaddr=BC:24:11:00:01:65
+                firewall: null
+                name: scale-357
+                status: running
+            "359":
+                config:
+                    cores: "1"
+                    hostname: scale-359
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=29,firewall=1,hwaddr=BC:24:11:00:01:67
+                firewall: null
+                name: scale-359
+                status: running
+            "361":
+                config:
+                    cores: "1"
+                    hostname: scale-361
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=11,firewall=1,hwaddr=BC:24:11:00:01:69
+                firewall: null
+                name: scale-361
+                status: running
+        firewall:
+            policy_in: DROP
+            policy_out: ACCEPT
+            rules: []
+            aliases: []
+            ipsets: []
+            groups: []
+            enabled: true
+        mock: null
+        network:
+            - type: loopback
+              method: loopback
+              iface: lo
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno1
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno2
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno3
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno4
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno5
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno6
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond0
+              comments: LACP mgmt/corosync uplink
+              slaves: eno1 eno2
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: static
+              address: 10.20.0.17/24
+              gateway: 10.20.0.1
+              iface: vmbr0
+              comments: management + corosync
+              bridge_ports: bond0
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond1
+              comments: LACP SDN overlay uplink
+              slaves: eno3 eno4
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr1
+              comments: SDN VLAN zone bridge (scalez)
+              bridge_ports: bond1
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr2
+              comments: guest access bridge
+              bridge_ports: eno5
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr3
+              comments: guest access bridge
+              bridge_ports: eno6
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+        network_pending: []
+    pve8:
+        links:
+            bond0:
+                mac: bc:24:08:01:00:01
+                link_up: true
+            bond1:
+                mac: bc:24:08:01:00:03
+                link_up: true
+            eno1:
+                mac: bc:24:08:01:00:01
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:08:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno2:
+                mac: bc:24:08:02:00:02
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:08:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno3:
+                mac: bc:24:08:03:00:03
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:08:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno4:
+                mac: bc:24:08:04:00:04
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:08:00.1"
+                speed_mbps: 10000
+                link_up: true
+            eno5:
+                mac: bc:24:08:05:00:05
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:08:00.0"
+                speed_mbps: 10000
+                link_up: true
+            eno6:
+                mac: bc:24:08:06:00:06
+                driver: ixgbe
+                duplex: full
+                pci_addr: "0000:08:00.1"
+                speed_mbps: 10000
+                link_up: true
+            vmbr0:
+                mac: bc:24:08:01:00:01
+                link_up: true
+            vmbr1:
+                mac: bc:24:08:01:00:03
+                link_up: true
+            vmbr2:
+                mac: bc:24:08:05:00:05
+                link_up: true
+            vmbr3:
+                mac: bc:24:08:06:00:06
+                link_up: true
+        lldp: {}
+        stats:
+            eno1:
+                rx_bytes: 3070000000
+                tx_bytes: 1235000000
+                rx_packets: 2500000
+                tx_packets: 1400000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno2:
+                rx_bytes: 3071000000
+                tx_bytes: 1235500000
+                rx_packets: 2510000
+                tx_packets: 1408000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno3:
+                rx_bytes: 3072000000
+                tx_bytes: 1236000000
+                rx_packets: 2520000
+                tx_packets: 1416000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno4:
+                rx_bytes: 3073000000
+                tx_bytes: 1236500000
+                rx_packets: 2530000
+                tx_packets: 1424000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno5:
+                rx_bytes: 3074000000
+                tx_bytes: 1237000000
+                rx_packets: 2540000
+                tx_packets: 1432000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            eno6:
+                rx_bytes: 3075000000
+                tx_bytes: 1237500000
+                rx_packets: 2550000
+                tx_packets: 1440000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr0:
+                rx_bytes: 6000000000
+                tx_bytes: 2400000000
+                rx_packets: 5000000
+                tx_packets: 2800000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr1:
+                rx_bytes: 9000000000
+                tx_bytes: 3600000000
+                rx_packets: 7500000
+                tx_packets: 4100000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr2:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+            vmbr3:
+                rx_bytes: 2000000000
+                tx_bytes: 800000000
+                rx_packets: 1800000
+                tx_packets: 900000
+                rx_errors: 0
+                tx_errors: 0
+                rx_dropped: 0
+                tx_dropped: 0
+        qemu:
+            "364":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-364
+                    net0: virtio=BC:24:11:00:01:6C,bridge=vmbr2,tag=14,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-364
+                status: running
+            "366":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-366
+                    net0: virtio=BC:24:11:00:01:6E,bridge=vmbr1,tag=126,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-366
+                status: running
+            "368":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-368
+                    net0: virtio=BC:24:11:00:01:70,bridge=vmbr3,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-368
+                status: running
+            "370":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-370
+                    net0: virtio=BC:24:11:00:01:72,bridge=vmbr2,tag=20,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-370
+                status: running
+            "372":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-372
+                    net0: virtio=BC:24:11:00:01:74,bridge=vmbr1,tag=132,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-372
+                status: running
+            "374":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-374
+                    net0: virtio=BC:24:11:00:01:76,bridge=vmbr3,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-374
+                status: running
+            "376":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-376
+                    net0: virtio=BC:24:11:00:01:78,bridge=vmbr2,tag=26,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-376
+                status: running
+            "378":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-378
+                    net0: virtio=BC:24:11:00:01:7A,bridge=vmbr1,tag=138,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-378
+                status: running
+            "380":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-380
+                    net0: virtio=BC:24:11:00:01:7C,bridge=vmbr3,tag=10,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-380
+                status: running
+            "382":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-382
+                    net0: virtio=BC:24:11:00:01:7E,bridge=vmbr2,tag=12,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-382
+                status: running
+            "384":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-384
+                    net0: virtio=BC:24:11:00:01:80,bridge=vmbr1,tag=104,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-384
+                status: running
+            "386":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-386
+                    net0: virtio=BC:24:11:00:01:82,bridge=vmbr3,tag=16,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-386
+                status: running
+            "388":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-388
+                    net0: virtio=BC:24:11:00:01:84,bridge=vmbr2,tag=18,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-388
+                status: running
+            "390":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-390
+                    net0: virtio=BC:24:11:00:01:86,bridge=vmbr1,tag=110,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-390
+                status: running
+            "392":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-392
+                    net0: virtio=BC:24:11:00:01:88,bridge=vmbr3,tag=22,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-392
+                status: running
+            "394":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-394
+                    net0: virtio=BC:24:11:00:01:8A,bridge=vmbr2,tag=24,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-394
+                status: running
+            "396":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-396
+                    net0: virtio=BC:24:11:00:01:8C,bridge=vmbr1,tag=116,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-396
+                status: running
+            "398":
+                config:
+                    cores: "2"
+                    memory: "2048"
+                    name: scale-398
+                    net0: virtio=BC:24:11:00:01:8E,bridge=vmbr3,tag=28,firewall=1
+                    ostype: l26
+                firewall: null
+                name: scale-398
+                status: running
+        lxc:
+            "363":
+                config:
+                    cores: "1"
+                    hostname: scale-363
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=123,firewall=1,hwaddr=BC:24:11:00:01:6B
+                firewall: null
+                name: scale-363
+                status: running
+            "365":
+                config:
+                    cores: "1"
+                    hostname: scale-365
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=15,firewall=1,hwaddr=BC:24:11:00:01:6D
+                firewall: null
+                name: scale-365
+                status: running
+            "367":
+                config:
+                    cores: "1"
+                    hostname: scale-367
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=17,firewall=1,hwaddr=BC:24:11:00:01:6F
+                firewall: null
+                name: scale-367
+                status: running
+            "369":
+                config:
+                    cores: "1"
+                    hostname: scale-369
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=129,firewall=1,hwaddr=BC:24:11:00:01:71
+                firewall: null
+                name: scale-369
+                status: running
+            "371":
+                config:
+                    cores: "1"
+                    hostname: scale-371
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=21,firewall=1,hwaddr=BC:24:11:00:01:73
+                firewall: null
+                name: scale-371
+                status: running
+            "373":
+                config:
+                    cores: "1"
+                    hostname: scale-373
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=23,firewall=1,hwaddr=BC:24:11:00:01:75
+                firewall: null
+                name: scale-373
+                status: running
+            "375":
+                config:
+                    cores: "1"
+                    hostname: scale-375
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=135,firewall=1,hwaddr=BC:24:11:00:01:77
+                firewall: null
+                name: scale-375
+                status: running
+            "377":
+                config:
+                    cores: "1"
+                    hostname: scale-377
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=27,firewall=1,hwaddr=BC:24:11:00:01:79
+                firewall: null
+                name: scale-377
+                status: running
+            "379":
+                config:
+                    cores: "1"
+                    hostname: scale-379
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=29,firewall=1,hwaddr=BC:24:11:00:01:7B
+                firewall: null
+                name: scale-379
+                status: running
+            "381":
+                config:
+                    cores: "1"
+                    hostname: scale-381
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=101,firewall=1,hwaddr=BC:24:11:00:01:7D
+                firewall: null
+                name: scale-381
+                status: running
+            "383":
+                config:
+                    cores: "1"
+                    hostname: scale-383
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=13,firewall=1,hwaddr=BC:24:11:00:01:7F
+                firewall: null
+                name: scale-383
+                status: running
+            "385":
+                config:
+                    cores: "1"
+                    hostname: scale-385
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=15,firewall=1,hwaddr=BC:24:11:00:01:81
+                firewall: null
+                name: scale-385
+                status: running
+            "387":
+                config:
+                    cores: "1"
+                    hostname: scale-387
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=107,firewall=1,hwaddr=BC:24:11:00:01:83
+                firewall: null
+                name: scale-387
+                status: running
+            "389":
+                config:
+                    cores: "1"
+                    hostname: scale-389
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=19,firewall=1,hwaddr=BC:24:11:00:01:85
+                firewall: null
+                name: scale-389
+                status: running
+            "391":
+                config:
+                    cores: "1"
+                    hostname: scale-391
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=21,firewall=1,hwaddr=BC:24:11:00:01:87
+                firewall: null
+                name: scale-391
+                status: running
+            "393":
+                config:
+                    cores: "1"
+                    hostname: scale-393
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=113,firewall=1,hwaddr=BC:24:11:00:01:89
+                firewall: null
+                name: scale-393
+                status: running
+            "395":
+                config:
+                    cores: "1"
+                    hostname: scale-395
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr3,tag=25,firewall=1,hwaddr=BC:24:11:00:01:8B
+                firewall: null
+                name: scale-395
+                status: running
+            "397":
+                config:
+                    cores: "1"
+                    hostname: scale-397
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr2,tag=27,firewall=1,hwaddr=BC:24:11:00:01:8D
+                firewall: null
+                name: scale-397
+                status: running
+            "399":
+                config:
+                    cores: "1"
+                    hostname: scale-399
+                    memory: "512"
+                    net0: name=eth0,bridge=vmbr1,tag=119,firewall=1,hwaddr=BC:24:11:00:01:8F
+                firewall: null
+                name: scale-399
+                status: running
+        firewall:
+            policy_in: DROP
+            policy_out: ACCEPT
+            rules: []
+            aliases: []
+            ipsets: []
+            groups: []
+            enabled: true
+        mock: null
+        network:
+            - type: loopback
+              method: loopback
+              iface: lo
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno1
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno2
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno3
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno4
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno5
+              mtu: 1500
+              autostart: true
+            - type: eth
+              method: manual
+              iface: eno6
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond0
+              comments: LACP mgmt/corosync uplink
+              slaves: eno1 eno2
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: static
+              address: 10.20.0.18/24
+              gateway: 10.20.0.1
+              iface: vmbr0
+              comments: management + corosync
+              bridge_ports: bond0
+              mtu: 1500
+              autostart: true
+            - bond_mode: 802.3ad
+              type: bond
+              method: manual
+              iface: bond1
+              comments: LACP SDN overlay uplink
+              slaves: eno3 eno4
+              mtu: 1500
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr1
+              comments: SDN VLAN zone bridge (scalez)
+              bridge_ports: bond1
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr2
+              comments: guest access bridge
+              bridge_ports: eno5
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+            - type: bridge
+              method: manual
+              iface: vmbr3
+              comments: guest access bridge
+              bridge_ports: eno6
+              mtu: 1500
+              bridge_vlan_aware: true
+              autostart: true
+        network_pending: []
+sdn:
+    zones:
+        - id: scalez
+          type: vlan
+          bridge: vmbr1
+          nodes:
+            - pve1
+            - pve2
+            - pve3
+            - pve4
+            - pve5
+            - pve6
+            - pve7
+            - pve8
+          mtu: 1500
+    vnets:
+        - id: vnet0
+          zone: scalez
+          alias: tier-00
+          tag: 100
+        - id: vnet1
+          zone: scalez
+          alias: tier-01
+          tag: 101
+        - id: vnet2
+          zone: scalez
+          alias: tier-02
+          tag: 102
+        - id: vnet3
+          zone: scalez
+          alias: tier-03
+          tag: 103
+        - id: vnet4
+          zone: scalez
+          alias: tier-04
+          tag: 104
+        - id: vnet5
+          zone: scalez
+          alias: tier-05
+          tag: 105
+        - id: vnet6
+          zone: scalez
+          alias: tier-06
+          tag: 106
+        - id: vnet7
+          zone: scalez
+          alias: tier-07
+          tag: 107
+        - id: vnet8
+          zone: scalez
+          alias: tier-08
+          tag: 108
+        - id: vnet9
+          zone: scalez
+          alias: tier-09
+          tag: 109
+        - id: vnet10
+          zone: scalez
+          alias: tier-10
+          tag: 110
+        - id: vnet11
+          zone: scalez
+          alias: tier-11
+          tag: 111
+        - id: vnet12
+          zone: scalez
+          alias: tier-12
+          tag: 112
+        - id: vnet13
+          zone: scalez
+          alias: tier-13
+          tag: 113
+        - id: vnet14
+          zone: scalez
+          alias: tier-14
+          tag: 114
+        - id: vnet15
+          zone: scalez
+          alias: tier-15
+          tag: 115
+        - id: vnet16
+          zone: scalez
+          alias: tier-16
+          tag: 116
+        - id: vnet17
+          zone: scalez
+          alias: tier-17
+          tag: 117
+        - id: vnet18
+          zone: scalez
+          alias: tier-18
+          tag: 118
+        - id: vnet19
+          zone: scalez
+          alias: tier-19
+          tag: 119
+        - id: vnet20
+          zone: scalez
+          alias: tier-20
+          tag: 120
+        - id: vnet21
+          zone: scalez
+          alias: tier-21
+          tag: 121
+        - id: vnet22
+          zone: scalez
+          alias: tier-22
+          tag: 122
+        - id: vnet23
+          zone: scalez
+          alias: tier-23
+          tag: 123
+        - id: vnet24
+          zone: scalez
+          alias: tier-24
+          tag: 124
+        - id: vnet25
+          zone: scalez
+          alias: tier-25
+          tag: 125
+        - id: vnet26
+          zone: scalez
+          alias: tier-26
+          tag: 126
+        - id: vnet27
+          zone: scalez
+          alias: tier-27
+          tag: 127
+        - id: vnet28
+          zone: scalez
+          alias: tier-28
+          tag: 128
+        - id: vnet29
+          zone: scalez
+          alias: tier-29
+          tag: 129
+        - id: vnet30
+          zone: scalez
+          alias: tier-30
+          tag: 130
+        - id: vnet31
+          zone: scalez
+          alias: tier-31
+          tag: 131
+        - id: vnet32
+          zone: scalez
+          alias: tier-32
+          tag: 132
+        - id: vnet33
+          zone: scalez
+          alias: tier-33
+          tag: 133
+        - id: vnet34
+          zone: scalez
+          alias: tier-34
+          tag: 134
+        - id: vnet35
+          zone: scalez
+          alias: tier-35
+          tag: 135
+        - id: vnet36
+          zone: scalez
+          alias: tier-36
+          tag: 136
+        - id: vnet37
+          zone: scalez
+          alias: tier-37
+          tag: 137
+        - id: vnet38
+          zone: scalez
+          alias: tier-38
+          tag: 138
+        - id: vnet39
+          zone: scalez
+          alias: tier-39
+          tag: 139
+    subnets:
+        - id: 10.150.0.0/24
+          vnet: vnet0
+          cidr: 10.150.0.0/24
+          gateway: 10.150.0.1
+        - id: 10.150.1.0/24
+          vnet: vnet1
+          cidr: 10.150.1.0/24
+          gateway: 10.150.1.1
+        - id: 10.150.2.0/24
+          vnet: vnet2
+          cidr: 10.150.2.0/24
+          gateway: 10.150.2.1
+        - id: 10.150.3.0/24
+          vnet: vnet3
+          cidr: 10.150.3.0/24
+          gateway: 10.150.3.1
+        - id: 10.150.4.0/24
+          vnet: vnet4
+          cidr: 10.150.4.0/24
+          gateway: 10.150.4.1
+        - id: 10.150.5.0/24
+          vnet: vnet5
+          cidr: 10.150.5.0/24
+          gateway: 10.150.5.1
+        - id: 10.150.6.0/24
+          vnet: vnet6
+          cidr: 10.150.6.0/24
+          gateway: 10.150.6.1
+        - id: 10.150.7.0/24
+          vnet: vnet7
+          cidr: 10.150.7.0/24
+          gateway: 10.150.7.1
+        - id: 10.150.8.0/24
+          vnet: vnet8
+          cidr: 10.150.8.0/24
+          gateway: 10.150.8.1
+        - id: 10.150.9.0/24
+          vnet: vnet9
+          cidr: 10.150.9.0/24
+          gateway: 10.150.9.1
+        - id: 10.150.10.0/24
+          vnet: vnet10
+          cidr: 10.150.10.0/24
+          gateway: 10.150.10.1
+        - id: 10.150.11.0/24
+          vnet: vnet11
+          cidr: 10.150.11.0/24
+          gateway: 10.150.11.1
+        - id: 10.150.12.0/24
+          vnet: vnet12
+          cidr: 10.150.12.0/24
+          gateway: 10.150.12.1
+        - id: 10.150.13.0/24
+          vnet: vnet13
+          cidr: 10.150.13.0/24
+          gateway: 10.150.13.1
+        - id: 10.150.14.0/24
+          vnet: vnet14
+          cidr: 10.150.14.0/24
+          gateway: 10.150.14.1
+        - id: 10.150.15.0/24
+          vnet: vnet15
+          cidr: 10.150.15.0/24
+          gateway: 10.150.15.1
+        - id: 10.150.16.0/24
+          vnet: vnet16
+          cidr: 10.150.16.0/24
+          gateway: 10.150.16.1
+        - id: 10.150.17.0/24
+          vnet: vnet17
+          cidr: 10.150.17.0/24
+          gateway: 10.150.17.1
+        - id: 10.150.18.0/24
+          vnet: vnet18
+          cidr: 10.150.18.0/24
+          gateway: 10.150.18.1
+        - id: 10.150.19.0/24
+          vnet: vnet19
+          cidr: 10.150.19.0/24
+          gateway: 10.150.19.1
+        - id: 10.150.20.0/24
+          vnet: vnet20
+          cidr: 10.150.20.0/24
+          gateway: 10.150.20.1
+        - id: 10.150.21.0/24
+          vnet: vnet21
+          cidr: 10.150.21.0/24
+          gateway: 10.150.21.1
+        - id: 10.150.22.0/24
+          vnet: vnet22
+          cidr: 10.150.22.0/24
+          gateway: 10.150.22.1
+        - id: 10.150.23.0/24
+          vnet: vnet23
+          cidr: 10.150.23.0/24
+          gateway: 10.150.23.1
+        - id: 10.150.24.0/24
+          vnet: vnet24
+          cidr: 10.150.24.0/24
+          gateway: 10.150.24.1
+        - id: 10.150.25.0/24
+          vnet: vnet25
+          cidr: 10.150.25.0/24
+          gateway: 10.150.25.1
+        - id: 10.150.26.0/24
+          vnet: vnet26
+          cidr: 10.150.26.0/24
+          gateway: 10.150.26.1
+        - id: 10.150.27.0/24
+          vnet: vnet27
+          cidr: 10.150.27.0/24
+          gateway: 10.150.27.1
+        - id: 10.150.28.0/24
+          vnet: vnet28
+          cidr: 10.150.28.0/24
+          gateway: 10.150.28.1
+        - id: 10.150.29.0/24
+          vnet: vnet29
+          cidr: 10.150.29.0/24
+          gateway: 10.150.29.1
+        - id: 10.150.30.0/24
+          vnet: vnet30
+          cidr: 10.150.30.0/24
+          gateway: 10.150.30.1
+        - id: 10.150.31.0/24
+          vnet: vnet31
+          cidr: 10.150.31.0/24
+          gateway: 10.150.31.1
+        - id: 10.150.32.0/24
+          vnet: vnet32
+          cidr: 10.150.32.0/24
+          gateway: 10.150.32.1
+        - id: 10.150.33.0/24
+          vnet: vnet33
+          cidr: 10.150.33.0/24
+          gateway: 10.150.33.1
+        - id: 10.150.34.0/24
+          vnet: vnet34
+          cidr: 10.150.34.0/24
+          gateway: 10.150.34.1
+        - id: 10.150.35.0/24
+          vnet: vnet35
+          cidr: 10.150.35.0/24
+          gateway: 10.150.35.1
+        - id: 10.150.36.0/24
+          vnet: vnet36
+          cidr: 10.150.36.0/24
+          gateway: 10.150.36.1
+        - id: 10.150.37.0/24
+          vnet: vnet37
+          cidr: 10.150.37.0/24
+          gateway: 10.150.37.1
+        - id: 10.150.38.0/24
+          vnet: vnet38
+          cidr: 10.150.38.0/24
+          gateway: 10.150.38.1
+        - id: 10.150.39.0/24
+          vnet: vnet39
+          cidr: 10.150.39.0/24
+          gateway: 10.150.39.1
+    ipams:
+        - id: pve
+          type: pve
+          entries:
+            - zone: scalez
+              vnet: vnet0
+              subnet: 10.150.0.0/24
+              ip: 10.150.0.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet1
+              subnet: 10.150.1.0/24
+              ip: 10.150.1.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet2
+              subnet: 10.150.2.0/24
+              ip: 10.150.2.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet3
+              subnet: 10.150.3.0/24
+              ip: 10.150.3.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet4
+              subnet: 10.150.4.0/24
+              ip: 10.150.4.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet5
+              subnet: 10.150.5.0/24
+              ip: 10.150.5.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet6
+              subnet: 10.150.6.0/24
+              ip: 10.150.6.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet7
+              subnet: 10.150.7.0/24
+              ip: 10.150.7.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet8
+              subnet: 10.150.8.0/24
+              ip: 10.150.8.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet9
+              subnet: 10.150.9.0/24
+              ip: 10.150.9.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet10
+              subnet: 10.150.10.0/24
+              ip: 10.150.10.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet11
+              subnet: 10.150.11.0/24
+              ip: 10.150.11.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet12
+              subnet: 10.150.12.0/24
+              ip: 10.150.12.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet13
+              subnet: 10.150.13.0/24
+              ip: 10.150.13.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet14
+              subnet: 10.150.14.0/24
+              ip: 10.150.14.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet15
+              subnet: 10.150.15.0/24
+              ip: 10.150.15.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet16
+              subnet: 10.150.16.0/24
+              ip: 10.150.16.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet17
+              subnet: 10.150.17.0/24
+              ip: 10.150.17.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet18
+              subnet: 10.150.18.0/24
+              ip: 10.150.18.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet19
+              subnet: 10.150.19.0/24
+              ip: 10.150.19.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet20
+              subnet: 10.150.20.0/24
+              ip: 10.150.20.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet21
+              subnet: 10.150.21.0/24
+              ip: 10.150.21.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet22
+              subnet: 10.150.22.0/24
+              ip: 10.150.22.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet23
+              subnet: 10.150.23.0/24
+              ip: 10.150.23.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet24
+              subnet: 10.150.24.0/24
+              ip: 10.150.24.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet25
+              subnet: 10.150.25.0/24
+              ip: 10.150.25.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet26
+              subnet: 10.150.26.0/24
+              ip: 10.150.26.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet27
+              subnet: 10.150.27.0/24
+              ip: 10.150.27.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet28
+              subnet: 10.150.28.0/24
+              ip: 10.150.28.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet29
+              subnet: 10.150.29.0/24
+              ip: 10.150.29.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet30
+              subnet: 10.150.30.0/24
+              ip: 10.150.30.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet31
+              subnet: 10.150.31.0/24
+              ip: 10.150.31.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet32
+              subnet: 10.150.32.0/24
+              ip: 10.150.32.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet33
+              subnet: 10.150.33.0/24
+              ip: 10.150.33.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet34
+              subnet: 10.150.34.0/24
+              ip: 10.150.34.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet35
+              subnet: 10.150.35.0/24
+              ip: 10.150.35.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet36
+              subnet: 10.150.36.0/24
+              ip: 10.150.36.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet37
+              subnet: 10.150.37.0/24
+              ip: 10.150.37.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet38
+              subnet: 10.150.38.0/24
+              ip: 10.150.38.1
+              gateway: true
+            - zone: scalez
+              vnet: vnet39
+              subnet: 10.150.39.0/24
+              ip: 10.150.39.1
+              gateway: true
+users:
+    - userid: root@pam
+      password: vnprox-mock
+      privileges:
+        - '*'
+      tokens:
+        - tokenid: daemon
+          secret: 5c8e2a1f-9b40-4d7e-8a11-cafe0000scal
+    - userid: auditor@pve
+      password: readonly
+      privileges:
+        - Sys.Audit
+        - VM.Audit
+        - SDN.Audit
+mess: []
+firewall:
+    cluster:
+        policy_in: DROP
+        policy_out: ACCEPT
+        rules:
+            - type: in
+              action: ACCEPT
+              proto: tcp
+              dport: "22"
+              comment: cluster-wide SSH
+              pos: 0
+              enabled: true
+        aliases: []
+        ipsets: []
+        groups: []
+        enabled: true
+cluster:
+    name: pve-cluster-scale
+    nodes:
+        - name: pve1
+          ip: 10.20.0.11
+          online: true
+        - name: pve2
+          ip: 10.20.0.12
+          online: true
+        - name: pve3
+          ip: 10.20.0.13
+          online: true
+        - name: pve4
+          ip: 10.20.0.14
+          online: true
+        - name: pve5
+          ip: 10.20.0.15
+          online: true
+        - name: pve6
+          ip: 10.20.0.16
+          online: true
+        - name: pve7
+          ip: 10.20.0.17
+          online: true
+        - name: pve8
+          ip: 10.20.0.18
+          online: true
+    quorate: true
+mock: {}

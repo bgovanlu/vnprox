@@ -100,7 +100,7 @@ func jsonLoggerTo(w *syncBuffer) *slog.Logger {
 // deterministic-per-run mock, and needs a REAL POST /access/ticket login
 // to exercise the actual production handleLogin path with a real
 // password, not the dev_ticket_* collector-only shortcut).
-func rewriteDevConfigWithAPIURL(t *testing.T, repoRoot, dir string, port int, apiURL string) string {
+func rewriteDevConfigWithAPIURL(t testing.TB, repoRoot, dir string, port int, apiURL string) string {
 	t.Helper()
 	cfgPath := rewriteDevConfig(t, repoRoot, dir, port)
 
@@ -319,7 +319,7 @@ func isAllowlistedSecretValue(val string) bool {
 
 // doLogin POSTs to /auth/login and returns the session/csrf cookie values
 // set on success (empty strings on a rejected login).
-func doLogin(t *testing.T, client *http.Client, base, username, password string) (sessionID, csrfToken string) {
+func doLogin(t testing.TB, client *http.Client, base, username, password string) (sessionID, csrfToken string) {
 	t.Helper()
 	body := fmt.Sprintf(`{"username":%q,"password":%q,"realm":"pam"}`, username, password)
 	req, err := http.NewRequest(http.MethodPost, base+"/api/v1/auth/login", strings.NewReader(body))
@@ -343,7 +343,7 @@ func doLogin(t *testing.T, client *http.Client, base, username, password string)
 	return sessionID, csrfToken
 }
 
-func waitForHealth(t *testing.T, client *http.Client, base string, daemonDone <-chan error) {
+func waitForHealth(t testing.TB, client *http.Client, base string, daemonDone <-chan error) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {

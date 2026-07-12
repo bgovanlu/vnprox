@@ -1,0 +1,44 @@
+# T-607's own dev config: identical shape to testdata/dev.toml and
+# testdata/dev-sim.toml, but on a distinct port pair and pointed at
+# testdata/clusters/scale-lab.yaml instead — the docs/features/topology.md
+# §4 scale-target fixture (8 nodes x 6 NICs, 4 bridges/node, 300 guests, 40
+# VNets). Used by:
+#   - web/e2e/scale.spec.ts (frontend initial-render/pan-zoom measurement
+#     and progressive-disclosure verification at scale — see
+#     web/playwright.config.ts's third webServer pair)
+#   - testdata/genscale/soak (the T-607 24h-substitute soak harness), which
+#     runs vnproxd against this same config directly (not via Playwright)
+#     while a churn script mutates the fixture's backing mock-PVE state.
+# See testdata/dev-sim.toml's doc comment for why a distinct port pair
+# rather than reusing testdata/dev.toml: independent webServer stacks in
+# the same Playwright run must not fight over one vnproxd/session store.
+
+[server]
+listen = "127.0.0.1:28007"
+tls_cert = "testdata/certs/dev-cert.pem"
+tls_key = "testdata/certs/dev-key.pem"
+read_only = false
+confirm_timeout_default = 120
+
+[pve]
+api_url = "http://127.0.0.1:28006"
+token_file = "/etc/vnprox/keys/pve-token"
+dev_ticket_username = "root@pam"
+dev_ticket_password = "vnprox-mock"
+
+[safety]
+allow_dangerous_ops = false
+protected_path = "var/dev-scale-protected.json"
+dev_interfaces_dir = "var/dev-scale-host"
+
+[storage]
+db_path = "var/dev-scale-vnprox.db"
+session_key_file = "var/dev-scale-session.key"
+
+[peer]
+secret_path = "var/dev-scale-cluster.secret"
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"

@@ -75,5 +75,29 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    // T-607's own stack (scale.spec.ts), additive: a third mock PVE + vnproxd
+    // pair on ports 28006/28007 serving testdata/clusters/scale-lab.yaml (the
+    // docs/features/topology.md §4 scale target — 8 nodes x 6 NICs, 4
+    // bridges/node, 300 guests, 40 VNets), purpose-built for the frontend
+    // initial-render/pan-zoom measurement and progressive-disclosure
+    // verification at real scale. A longer boot timeout than the other two
+    // pairs: this fixture's collectors have ~8x the entities to poll on
+    // first cycle.
+    {
+      command: "go run ./cmd/pvemock --addr 127.0.0.1:28006 --fixture testdata/clusters/scale-lab.yaml",
+      cwd: "..",
+      port: 28006,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command:
+        "sh -c 'rm -f var/dev-scale-vnprox.db && rm -rf var/dev-scale-host && exec go run ./cmd/vnproxd --config testdata/dev-scale.toml'",
+      cwd: "..",
+      url: "https://127.0.0.1:28007/api/v1/health",
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: false,
+      timeout: 180_000,
+    },
   ],
 });

@@ -1,0 +1,5889 @@
+{
+  "edges": [
+    {
+      "badges": [],
+      "from": "bond:pve1:bond0",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve1:vmbr0"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve1:bond1",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve2:bond0",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve2:vmbr0"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve2:bond1",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve3:bond0",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve3:vmbr0"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve3:bond1",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve4:bond0",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve4:vmbr0"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve4:bond1",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve5:bond0",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve5:vmbr0"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve5:bond1",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve6:bond0",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve6:vmbr0"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve6:bond1",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve7:bond0",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve7:vmbr0"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve7:bond1",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve8:bond0",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve8:vmbr0"
+    },
+    {
+      "badges": [],
+      "from": "bond:pve8:bond1",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve1:bridge:pve1:vmbr1",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve1:bridge:pve1:vmbr2",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr2"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve1:bridge:pve1:vmbr3",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr3"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve2:bridge:pve2:vmbr1",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve2:bridge:pve2:vmbr2",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr2"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve2:bridge:pve2:vmbr3",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr3"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve3:bridge:pve3:vmbr1",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve3:bridge:pve3:vmbr2",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr2"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve3:bridge:pve3:vmbr3",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr3"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve4:bridge:pve4:vmbr1",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve4:bridge:pve4:vmbr2",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr2"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve4:bridge:pve4:vmbr3",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr3"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve5:bridge:pve5:vmbr1",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve5:bridge:pve5:vmbr2",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr2"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve5:bridge:pve5:vmbr3",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr3"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve6:bridge:pve6:vmbr1",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve6:bridge:pve6:vmbr2",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr2"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve6:bridge:pve6:vmbr3",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr3"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve7:bridge:pve7:vmbr1",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve7:bridge:pve7:vmbr2",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr2"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve7:bridge:pve7:vmbr3",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr3"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "from": "guest-group:pve8:bridge:pve8:vmbr1",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve8:bridge:pve8:vmbr2",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr2"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "from": "guest-group:pve8:bridge:pve8:vmbr3",
+      "kind": "attached-to",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr3"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve1:eno1",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve1:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve1:eno2",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve1:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve1:eno3",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve1:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve1:eno4",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve1:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve1:eno5",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve1:vmbr2"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve1:eno6",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve1:vmbr3"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve2:eno1",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve2:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve2:eno2",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve2:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve2:eno3",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve2:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve2:eno4",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve2:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve2:eno5",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve2:vmbr2"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve2:eno6",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve2:vmbr3"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve3:eno1",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve3:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve3:eno2",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve3:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve3:eno3",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve3:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve3:eno4",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve3:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve3:eno5",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve3:vmbr2"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve3:eno6",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve3:vmbr3"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve4:eno1",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve4:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve4:eno2",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve4:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve4:eno3",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve4:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve4:eno4",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve4:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve4:eno5",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve4:vmbr2"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve4:eno6",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve4:vmbr3"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve5:eno1",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve5:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve5:eno2",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve5:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve5:eno3",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve5:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve5:eno4",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve5:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve5:eno5",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve5:vmbr2"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve5:eno6",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve5:vmbr3"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve6:eno1",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve6:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve6:eno2",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve6:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve6:eno3",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve6:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve6:eno4",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve6:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve6:eno5",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve6:vmbr2"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve6:eno6",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve6:vmbr3"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve7:eno1",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve7:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve7:eno2",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve7:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve7:eno3",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve7:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve7:eno4",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve7:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve7:eno5",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve7:vmbr2"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve7:eno6",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve7:vmbr3"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve8:eno1",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve8:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve8:eno2",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve8:bond0"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve8:eno3",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve8:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve8:eno4",
+      "kind": "enslaved-by",
+      "status": "unknown",
+      "to": "bond:pve8:bond1"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve8:eno5",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve8:vmbr2"
+    },
+    {
+      "badges": [],
+      "from": "physnic:pve8:eno6",
+      "kind": "port-of",
+      "status": "unknown",
+      "to": "bridge:pve8:vmbr3"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=100"
+      ],
+      "from": "sdn-vnet::scalez/vnet0",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=100"
+      ],
+      "from": "sdn-vnet::scalez/vnet0",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=100"
+      ],
+      "from": "sdn-vnet::scalez/vnet0",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=100"
+      ],
+      "from": "sdn-vnet::scalez/vnet0",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=100"
+      ],
+      "from": "sdn-vnet::scalez/vnet0",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=100"
+      ],
+      "from": "sdn-vnet::scalez/vnet0",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=100"
+      ],
+      "from": "sdn-vnet::scalez/vnet0",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=100"
+      ],
+      "from": "sdn-vnet::scalez/vnet0",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=101"
+      ],
+      "from": "sdn-vnet::scalez/vnet1",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=101"
+      ],
+      "from": "sdn-vnet::scalez/vnet1",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=101"
+      ],
+      "from": "sdn-vnet::scalez/vnet1",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=101"
+      ],
+      "from": "sdn-vnet::scalez/vnet1",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=101"
+      ],
+      "from": "sdn-vnet::scalez/vnet1",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=101"
+      ],
+      "from": "sdn-vnet::scalez/vnet1",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=101"
+      ],
+      "from": "sdn-vnet::scalez/vnet1",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=101"
+      ],
+      "from": "sdn-vnet::scalez/vnet1",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=110"
+      ],
+      "from": "sdn-vnet::scalez/vnet10",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=110"
+      ],
+      "from": "sdn-vnet::scalez/vnet10",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=110"
+      ],
+      "from": "sdn-vnet::scalez/vnet10",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=110"
+      ],
+      "from": "sdn-vnet::scalez/vnet10",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=110"
+      ],
+      "from": "sdn-vnet::scalez/vnet10",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=110"
+      ],
+      "from": "sdn-vnet::scalez/vnet10",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=110"
+      ],
+      "from": "sdn-vnet::scalez/vnet10",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=110"
+      ],
+      "from": "sdn-vnet::scalez/vnet10",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=111"
+      ],
+      "from": "sdn-vnet::scalez/vnet11",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=111"
+      ],
+      "from": "sdn-vnet::scalez/vnet11",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=111"
+      ],
+      "from": "sdn-vnet::scalez/vnet11",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=111"
+      ],
+      "from": "sdn-vnet::scalez/vnet11",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=111"
+      ],
+      "from": "sdn-vnet::scalez/vnet11",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=111"
+      ],
+      "from": "sdn-vnet::scalez/vnet11",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=111"
+      ],
+      "from": "sdn-vnet::scalez/vnet11",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=111"
+      ],
+      "from": "sdn-vnet::scalez/vnet11",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=112"
+      ],
+      "from": "sdn-vnet::scalez/vnet12",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=112"
+      ],
+      "from": "sdn-vnet::scalez/vnet12",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=112"
+      ],
+      "from": "sdn-vnet::scalez/vnet12",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=112"
+      ],
+      "from": "sdn-vnet::scalez/vnet12",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=112"
+      ],
+      "from": "sdn-vnet::scalez/vnet12",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=112"
+      ],
+      "from": "sdn-vnet::scalez/vnet12",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=112"
+      ],
+      "from": "sdn-vnet::scalez/vnet12",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=112"
+      ],
+      "from": "sdn-vnet::scalez/vnet12",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=113"
+      ],
+      "from": "sdn-vnet::scalez/vnet13",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=113"
+      ],
+      "from": "sdn-vnet::scalez/vnet13",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=113"
+      ],
+      "from": "sdn-vnet::scalez/vnet13",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=113"
+      ],
+      "from": "sdn-vnet::scalez/vnet13",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=113"
+      ],
+      "from": "sdn-vnet::scalez/vnet13",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=113"
+      ],
+      "from": "sdn-vnet::scalez/vnet13",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=113"
+      ],
+      "from": "sdn-vnet::scalez/vnet13",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=113"
+      ],
+      "from": "sdn-vnet::scalez/vnet13",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=114"
+      ],
+      "from": "sdn-vnet::scalez/vnet14",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=114"
+      ],
+      "from": "sdn-vnet::scalez/vnet14",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=114"
+      ],
+      "from": "sdn-vnet::scalez/vnet14",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=114"
+      ],
+      "from": "sdn-vnet::scalez/vnet14",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=114"
+      ],
+      "from": "sdn-vnet::scalez/vnet14",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=114"
+      ],
+      "from": "sdn-vnet::scalez/vnet14",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=114"
+      ],
+      "from": "sdn-vnet::scalez/vnet14",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=114"
+      ],
+      "from": "sdn-vnet::scalez/vnet14",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=115"
+      ],
+      "from": "sdn-vnet::scalez/vnet15",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=115"
+      ],
+      "from": "sdn-vnet::scalez/vnet15",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=115"
+      ],
+      "from": "sdn-vnet::scalez/vnet15",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=115"
+      ],
+      "from": "sdn-vnet::scalez/vnet15",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=115"
+      ],
+      "from": "sdn-vnet::scalez/vnet15",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=115"
+      ],
+      "from": "sdn-vnet::scalez/vnet15",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=115"
+      ],
+      "from": "sdn-vnet::scalez/vnet15",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=115"
+      ],
+      "from": "sdn-vnet::scalez/vnet15",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=116"
+      ],
+      "from": "sdn-vnet::scalez/vnet16",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=116"
+      ],
+      "from": "sdn-vnet::scalez/vnet16",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=116"
+      ],
+      "from": "sdn-vnet::scalez/vnet16",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=116"
+      ],
+      "from": "sdn-vnet::scalez/vnet16",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=116"
+      ],
+      "from": "sdn-vnet::scalez/vnet16",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=116"
+      ],
+      "from": "sdn-vnet::scalez/vnet16",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=116"
+      ],
+      "from": "sdn-vnet::scalez/vnet16",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=116"
+      ],
+      "from": "sdn-vnet::scalez/vnet16",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=117"
+      ],
+      "from": "sdn-vnet::scalez/vnet17",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=117"
+      ],
+      "from": "sdn-vnet::scalez/vnet17",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=117"
+      ],
+      "from": "sdn-vnet::scalez/vnet17",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=117"
+      ],
+      "from": "sdn-vnet::scalez/vnet17",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=117"
+      ],
+      "from": "sdn-vnet::scalez/vnet17",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=117"
+      ],
+      "from": "sdn-vnet::scalez/vnet17",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=117"
+      ],
+      "from": "sdn-vnet::scalez/vnet17",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=117"
+      ],
+      "from": "sdn-vnet::scalez/vnet17",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=118"
+      ],
+      "from": "sdn-vnet::scalez/vnet18",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=118"
+      ],
+      "from": "sdn-vnet::scalez/vnet18",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=118"
+      ],
+      "from": "sdn-vnet::scalez/vnet18",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=118"
+      ],
+      "from": "sdn-vnet::scalez/vnet18",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=118"
+      ],
+      "from": "sdn-vnet::scalez/vnet18",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=118"
+      ],
+      "from": "sdn-vnet::scalez/vnet18",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=118"
+      ],
+      "from": "sdn-vnet::scalez/vnet18",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=118"
+      ],
+      "from": "sdn-vnet::scalez/vnet18",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=119"
+      ],
+      "from": "sdn-vnet::scalez/vnet19",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=119"
+      ],
+      "from": "sdn-vnet::scalez/vnet19",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=119"
+      ],
+      "from": "sdn-vnet::scalez/vnet19",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=119"
+      ],
+      "from": "sdn-vnet::scalez/vnet19",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=119"
+      ],
+      "from": "sdn-vnet::scalez/vnet19",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=119"
+      ],
+      "from": "sdn-vnet::scalez/vnet19",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=119"
+      ],
+      "from": "sdn-vnet::scalez/vnet19",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=119"
+      ],
+      "from": "sdn-vnet::scalez/vnet19",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=102"
+      ],
+      "from": "sdn-vnet::scalez/vnet2",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=102"
+      ],
+      "from": "sdn-vnet::scalez/vnet2",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=102"
+      ],
+      "from": "sdn-vnet::scalez/vnet2",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=102"
+      ],
+      "from": "sdn-vnet::scalez/vnet2",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=102"
+      ],
+      "from": "sdn-vnet::scalez/vnet2",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=102"
+      ],
+      "from": "sdn-vnet::scalez/vnet2",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=102"
+      ],
+      "from": "sdn-vnet::scalez/vnet2",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=102"
+      ],
+      "from": "sdn-vnet::scalez/vnet2",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=120"
+      ],
+      "from": "sdn-vnet::scalez/vnet20",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=120"
+      ],
+      "from": "sdn-vnet::scalez/vnet20",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=120"
+      ],
+      "from": "sdn-vnet::scalez/vnet20",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=120"
+      ],
+      "from": "sdn-vnet::scalez/vnet20",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=120"
+      ],
+      "from": "sdn-vnet::scalez/vnet20",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=120"
+      ],
+      "from": "sdn-vnet::scalez/vnet20",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=120"
+      ],
+      "from": "sdn-vnet::scalez/vnet20",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=120"
+      ],
+      "from": "sdn-vnet::scalez/vnet20",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=121"
+      ],
+      "from": "sdn-vnet::scalez/vnet21",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=121"
+      ],
+      "from": "sdn-vnet::scalez/vnet21",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=121"
+      ],
+      "from": "sdn-vnet::scalez/vnet21",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=121"
+      ],
+      "from": "sdn-vnet::scalez/vnet21",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=121"
+      ],
+      "from": "sdn-vnet::scalez/vnet21",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=121"
+      ],
+      "from": "sdn-vnet::scalez/vnet21",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=121"
+      ],
+      "from": "sdn-vnet::scalez/vnet21",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=121"
+      ],
+      "from": "sdn-vnet::scalez/vnet21",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=122"
+      ],
+      "from": "sdn-vnet::scalez/vnet22",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=122"
+      ],
+      "from": "sdn-vnet::scalez/vnet22",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=122"
+      ],
+      "from": "sdn-vnet::scalez/vnet22",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=122"
+      ],
+      "from": "sdn-vnet::scalez/vnet22",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=122"
+      ],
+      "from": "sdn-vnet::scalez/vnet22",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=122"
+      ],
+      "from": "sdn-vnet::scalez/vnet22",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=122"
+      ],
+      "from": "sdn-vnet::scalez/vnet22",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=122"
+      ],
+      "from": "sdn-vnet::scalez/vnet22",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=123"
+      ],
+      "from": "sdn-vnet::scalez/vnet23",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=123"
+      ],
+      "from": "sdn-vnet::scalez/vnet23",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=123"
+      ],
+      "from": "sdn-vnet::scalez/vnet23",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=123"
+      ],
+      "from": "sdn-vnet::scalez/vnet23",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=123"
+      ],
+      "from": "sdn-vnet::scalez/vnet23",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=123"
+      ],
+      "from": "sdn-vnet::scalez/vnet23",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=123"
+      ],
+      "from": "sdn-vnet::scalez/vnet23",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=123"
+      ],
+      "from": "sdn-vnet::scalez/vnet23",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=124"
+      ],
+      "from": "sdn-vnet::scalez/vnet24",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=124"
+      ],
+      "from": "sdn-vnet::scalez/vnet24",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=124"
+      ],
+      "from": "sdn-vnet::scalez/vnet24",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=124"
+      ],
+      "from": "sdn-vnet::scalez/vnet24",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=124"
+      ],
+      "from": "sdn-vnet::scalez/vnet24",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=124"
+      ],
+      "from": "sdn-vnet::scalez/vnet24",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=124"
+      ],
+      "from": "sdn-vnet::scalez/vnet24",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=124"
+      ],
+      "from": "sdn-vnet::scalez/vnet24",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=125"
+      ],
+      "from": "sdn-vnet::scalez/vnet25",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=125"
+      ],
+      "from": "sdn-vnet::scalez/vnet25",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=125"
+      ],
+      "from": "sdn-vnet::scalez/vnet25",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=125"
+      ],
+      "from": "sdn-vnet::scalez/vnet25",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=125"
+      ],
+      "from": "sdn-vnet::scalez/vnet25",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=125"
+      ],
+      "from": "sdn-vnet::scalez/vnet25",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=125"
+      ],
+      "from": "sdn-vnet::scalez/vnet25",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=125"
+      ],
+      "from": "sdn-vnet::scalez/vnet25",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=126"
+      ],
+      "from": "sdn-vnet::scalez/vnet26",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=126"
+      ],
+      "from": "sdn-vnet::scalez/vnet26",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=126"
+      ],
+      "from": "sdn-vnet::scalez/vnet26",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=126"
+      ],
+      "from": "sdn-vnet::scalez/vnet26",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=126"
+      ],
+      "from": "sdn-vnet::scalez/vnet26",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=126"
+      ],
+      "from": "sdn-vnet::scalez/vnet26",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=126"
+      ],
+      "from": "sdn-vnet::scalez/vnet26",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=126"
+      ],
+      "from": "sdn-vnet::scalez/vnet26",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=127"
+      ],
+      "from": "sdn-vnet::scalez/vnet27",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=127"
+      ],
+      "from": "sdn-vnet::scalez/vnet27",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=127"
+      ],
+      "from": "sdn-vnet::scalez/vnet27",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=127"
+      ],
+      "from": "sdn-vnet::scalez/vnet27",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=127"
+      ],
+      "from": "sdn-vnet::scalez/vnet27",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=127"
+      ],
+      "from": "sdn-vnet::scalez/vnet27",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=127"
+      ],
+      "from": "sdn-vnet::scalez/vnet27",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=127"
+      ],
+      "from": "sdn-vnet::scalez/vnet27",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=128"
+      ],
+      "from": "sdn-vnet::scalez/vnet28",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=128"
+      ],
+      "from": "sdn-vnet::scalez/vnet28",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=128"
+      ],
+      "from": "sdn-vnet::scalez/vnet28",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=128"
+      ],
+      "from": "sdn-vnet::scalez/vnet28",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=128"
+      ],
+      "from": "sdn-vnet::scalez/vnet28",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=128"
+      ],
+      "from": "sdn-vnet::scalez/vnet28",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=128"
+      ],
+      "from": "sdn-vnet::scalez/vnet28",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=128"
+      ],
+      "from": "sdn-vnet::scalez/vnet28",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=129"
+      ],
+      "from": "sdn-vnet::scalez/vnet29",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=129"
+      ],
+      "from": "sdn-vnet::scalez/vnet29",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=129"
+      ],
+      "from": "sdn-vnet::scalez/vnet29",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=129"
+      ],
+      "from": "sdn-vnet::scalez/vnet29",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=129"
+      ],
+      "from": "sdn-vnet::scalez/vnet29",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=129"
+      ],
+      "from": "sdn-vnet::scalez/vnet29",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=129"
+      ],
+      "from": "sdn-vnet::scalez/vnet29",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=129"
+      ],
+      "from": "sdn-vnet::scalez/vnet29",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=103"
+      ],
+      "from": "sdn-vnet::scalez/vnet3",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=103"
+      ],
+      "from": "sdn-vnet::scalez/vnet3",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=103"
+      ],
+      "from": "sdn-vnet::scalez/vnet3",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=103"
+      ],
+      "from": "sdn-vnet::scalez/vnet3",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=103"
+      ],
+      "from": "sdn-vnet::scalez/vnet3",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=103"
+      ],
+      "from": "sdn-vnet::scalez/vnet3",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=103"
+      ],
+      "from": "sdn-vnet::scalez/vnet3",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=103"
+      ],
+      "from": "sdn-vnet::scalez/vnet3",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=130"
+      ],
+      "from": "sdn-vnet::scalez/vnet30",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=130"
+      ],
+      "from": "sdn-vnet::scalez/vnet30",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=130"
+      ],
+      "from": "sdn-vnet::scalez/vnet30",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=130"
+      ],
+      "from": "sdn-vnet::scalez/vnet30",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=130"
+      ],
+      "from": "sdn-vnet::scalez/vnet30",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=130"
+      ],
+      "from": "sdn-vnet::scalez/vnet30",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=130"
+      ],
+      "from": "sdn-vnet::scalez/vnet30",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=130"
+      ],
+      "from": "sdn-vnet::scalez/vnet30",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=131"
+      ],
+      "from": "sdn-vnet::scalez/vnet31",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=131"
+      ],
+      "from": "sdn-vnet::scalez/vnet31",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=131"
+      ],
+      "from": "sdn-vnet::scalez/vnet31",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=131"
+      ],
+      "from": "sdn-vnet::scalez/vnet31",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=131"
+      ],
+      "from": "sdn-vnet::scalez/vnet31",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=131"
+      ],
+      "from": "sdn-vnet::scalez/vnet31",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=131"
+      ],
+      "from": "sdn-vnet::scalez/vnet31",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=131"
+      ],
+      "from": "sdn-vnet::scalez/vnet31",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=132"
+      ],
+      "from": "sdn-vnet::scalez/vnet32",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=132"
+      ],
+      "from": "sdn-vnet::scalez/vnet32",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=132"
+      ],
+      "from": "sdn-vnet::scalez/vnet32",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=132"
+      ],
+      "from": "sdn-vnet::scalez/vnet32",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=132"
+      ],
+      "from": "sdn-vnet::scalez/vnet32",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=132"
+      ],
+      "from": "sdn-vnet::scalez/vnet32",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=132"
+      ],
+      "from": "sdn-vnet::scalez/vnet32",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=132"
+      ],
+      "from": "sdn-vnet::scalez/vnet32",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=133"
+      ],
+      "from": "sdn-vnet::scalez/vnet33",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=133"
+      ],
+      "from": "sdn-vnet::scalez/vnet33",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=133"
+      ],
+      "from": "sdn-vnet::scalez/vnet33",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=133"
+      ],
+      "from": "sdn-vnet::scalez/vnet33",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=133"
+      ],
+      "from": "sdn-vnet::scalez/vnet33",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=133"
+      ],
+      "from": "sdn-vnet::scalez/vnet33",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=133"
+      ],
+      "from": "sdn-vnet::scalez/vnet33",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=133"
+      ],
+      "from": "sdn-vnet::scalez/vnet33",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=134"
+      ],
+      "from": "sdn-vnet::scalez/vnet34",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=134"
+      ],
+      "from": "sdn-vnet::scalez/vnet34",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=134"
+      ],
+      "from": "sdn-vnet::scalez/vnet34",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=134"
+      ],
+      "from": "sdn-vnet::scalez/vnet34",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=134"
+      ],
+      "from": "sdn-vnet::scalez/vnet34",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=134"
+      ],
+      "from": "sdn-vnet::scalez/vnet34",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=134"
+      ],
+      "from": "sdn-vnet::scalez/vnet34",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=134"
+      ],
+      "from": "sdn-vnet::scalez/vnet34",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=135"
+      ],
+      "from": "sdn-vnet::scalez/vnet35",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=135"
+      ],
+      "from": "sdn-vnet::scalez/vnet35",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=135"
+      ],
+      "from": "sdn-vnet::scalez/vnet35",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=135"
+      ],
+      "from": "sdn-vnet::scalez/vnet35",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=135"
+      ],
+      "from": "sdn-vnet::scalez/vnet35",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=135"
+      ],
+      "from": "sdn-vnet::scalez/vnet35",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=135"
+      ],
+      "from": "sdn-vnet::scalez/vnet35",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=135"
+      ],
+      "from": "sdn-vnet::scalez/vnet35",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=136"
+      ],
+      "from": "sdn-vnet::scalez/vnet36",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=136"
+      ],
+      "from": "sdn-vnet::scalez/vnet36",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=136"
+      ],
+      "from": "sdn-vnet::scalez/vnet36",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=136"
+      ],
+      "from": "sdn-vnet::scalez/vnet36",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=136"
+      ],
+      "from": "sdn-vnet::scalez/vnet36",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=136"
+      ],
+      "from": "sdn-vnet::scalez/vnet36",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=136"
+      ],
+      "from": "sdn-vnet::scalez/vnet36",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=136"
+      ],
+      "from": "sdn-vnet::scalez/vnet36",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=137"
+      ],
+      "from": "sdn-vnet::scalez/vnet37",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=137"
+      ],
+      "from": "sdn-vnet::scalez/vnet37",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=137"
+      ],
+      "from": "sdn-vnet::scalez/vnet37",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=137"
+      ],
+      "from": "sdn-vnet::scalez/vnet37",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=137"
+      ],
+      "from": "sdn-vnet::scalez/vnet37",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=137"
+      ],
+      "from": "sdn-vnet::scalez/vnet37",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=137"
+      ],
+      "from": "sdn-vnet::scalez/vnet37",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=137"
+      ],
+      "from": "sdn-vnet::scalez/vnet37",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=138"
+      ],
+      "from": "sdn-vnet::scalez/vnet38",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=138"
+      ],
+      "from": "sdn-vnet::scalez/vnet38",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=138"
+      ],
+      "from": "sdn-vnet::scalez/vnet38",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=138"
+      ],
+      "from": "sdn-vnet::scalez/vnet38",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=138"
+      ],
+      "from": "sdn-vnet::scalez/vnet38",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=138"
+      ],
+      "from": "sdn-vnet::scalez/vnet38",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=138"
+      ],
+      "from": "sdn-vnet::scalez/vnet38",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=138"
+      ],
+      "from": "sdn-vnet::scalez/vnet38",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=139"
+      ],
+      "from": "sdn-vnet::scalez/vnet39",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=139"
+      ],
+      "from": "sdn-vnet::scalez/vnet39",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=139"
+      ],
+      "from": "sdn-vnet::scalez/vnet39",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=139"
+      ],
+      "from": "sdn-vnet::scalez/vnet39",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=139"
+      ],
+      "from": "sdn-vnet::scalez/vnet39",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=139"
+      ],
+      "from": "sdn-vnet::scalez/vnet39",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=139"
+      ],
+      "from": "sdn-vnet::scalez/vnet39",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=139"
+      ],
+      "from": "sdn-vnet::scalez/vnet39",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=104"
+      ],
+      "from": "sdn-vnet::scalez/vnet4",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=104"
+      ],
+      "from": "sdn-vnet::scalez/vnet4",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=104"
+      ],
+      "from": "sdn-vnet::scalez/vnet4",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=104"
+      ],
+      "from": "sdn-vnet::scalez/vnet4",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=104"
+      ],
+      "from": "sdn-vnet::scalez/vnet4",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=104"
+      ],
+      "from": "sdn-vnet::scalez/vnet4",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=104"
+      ],
+      "from": "sdn-vnet::scalez/vnet4",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=104"
+      ],
+      "from": "sdn-vnet::scalez/vnet4",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=105"
+      ],
+      "from": "sdn-vnet::scalez/vnet5",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=105"
+      ],
+      "from": "sdn-vnet::scalez/vnet5",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=105"
+      ],
+      "from": "sdn-vnet::scalez/vnet5",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=105"
+      ],
+      "from": "sdn-vnet::scalez/vnet5",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=105"
+      ],
+      "from": "sdn-vnet::scalez/vnet5",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=105"
+      ],
+      "from": "sdn-vnet::scalez/vnet5",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=105"
+      ],
+      "from": "sdn-vnet::scalez/vnet5",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=105"
+      ],
+      "from": "sdn-vnet::scalez/vnet5",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=106"
+      ],
+      "from": "sdn-vnet::scalez/vnet6",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=106"
+      ],
+      "from": "sdn-vnet::scalez/vnet6",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=106"
+      ],
+      "from": "sdn-vnet::scalez/vnet6",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=106"
+      ],
+      "from": "sdn-vnet::scalez/vnet6",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=106"
+      ],
+      "from": "sdn-vnet::scalez/vnet6",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=106"
+      ],
+      "from": "sdn-vnet::scalez/vnet6",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=106"
+      ],
+      "from": "sdn-vnet::scalez/vnet6",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=106"
+      ],
+      "from": "sdn-vnet::scalez/vnet6",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=107"
+      ],
+      "from": "sdn-vnet::scalez/vnet7",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=107"
+      ],
+      "from": "sdn-vnet::scalez/vnet7",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=107"
+      ],
+      "from": "sdn-vnet::scalez/vnet7",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=107"
+      ],
+      "from": "sdn-vnet::scalez/vnet7",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=107"
+      ],
+      "from": "sdn-vnet::scalez/vnet7",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=107"
+      ],
+      "from": "sdn-vnet::scalez/vnet7",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=107"
+      ],
+      "from": "sdn-vnet::scalez/vnet7",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=107"
+      ],
+      "from": "sdn-vnet::scalez/vnet7",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=108"
+      ],
+      "from": "sdn-vnet::scalez/vnet8",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=108"
+      ],
+      "from": "sdn-vnet::scalez/vnet8",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=108"
+      ],
+      "from": "sdn-vnet::scalez/vnet8",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=108"
+      ],
+      "from": "sdn-vnet::scalez/vnet8",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=108"
+      ],
+      "from": "sdn-vnet::scalez/vnet8",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=108"
+      ],
+      "from": "sdn-vnet::scalez/vnet8",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=108"
+      ],
+      "from": "sdn-vnet::scalez/vnet8",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=108"
+      ],
+      "from": "sdn-vnet::scalez/vnet8",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve1",
+        "tag=109"
+      ],
+      "from": "sdn-vnet::scalez/vnet9",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve1:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve2",
+        "tag=109"
+      ],
+      "from": "sdn-vnet::scalez/vnet9",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve2:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve3",
+        "tag=109"
+      ],
+      "from": "sdn-vnet::scalez/vnet9",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve3:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve4",
+        "tag=109"
+      ],
+      "from": "sdn-vnet::scalez/vnet9",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve4:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve5",
+        "tag=109"
+      ],
+      "from": "sdn-vnet::scalez/vnet9",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve5:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve6",
+        "tag=109"
+      ],
+      "from": "sdn-vnet::scalez/vnet9",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve6:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve7",
+        "tag=109"
+      ],
+      "from": "sdn-vnet::scalez/vnet9",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve7:vmbr1"
+    },
+    {
+      "badges": [
+        "node=pve8",
+        "tag=109"
+      ],
+      "from": "sdn-vnet::scalez/vnet9",
+      "kind": "realizes",
+      "status": "ok",
+      "to": "bridge:pve8:vmbr1"
+    }
+  ],
+  "layers": [
+    "phys",
+    "l2",
+    "sdn",
+    "guest"
+  ],
+  "nodes": [
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve1:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve1:bond1",
+      "kind": "bond",
+      "label": "bond1",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve2:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve2:bond1",
+      "kind": "bond",
+      "label": "bond1",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve3:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve3:bond1",
+      "kind": "bond",
+      "label": "bond1",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve4:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve4",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve4:bond1",
+      "kind": "bond",
+      "label": "bond1",
+      "layer": "l2",
+      "nodeGroup": "pve4",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve5:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve5",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve5:bond1",
+      "kind": "bond",
+      "label": "bond1",
+      "layer": "l2",
+      "nodeGroup": "pve5",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve6:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve6",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve6:bond1",
+      "kind": "bond",
+      "label": "bond1",
+      "layer": "l2",
+      "nodeGroup": "pve6",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve7:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve7",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve7:bond1",
+      "kind": "bond",
+      "label": "bond1",
+      "layer": "l2",
+      "nodeGroup": "pve7",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve8:bond0",
+      "kind": "bond",
+      "label": "bond0",
+      "layer": "l2",
+      "nodeGroup": "pve8",
+      "status": "unknown"
+    },
+    {
+      "badges": [
+        "mode=802.3ad"
+      ],
+      "id": "bond:pve8:bond1",
+      "kind": "bond",
+      "label": "bond1",
+      "layer": "l2",
+      "nodeGroup": "pve8",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve1:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve1:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve1:vmbr2",
+      "kind": "bridge",
+      "label": "vmbr2",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve1:vmbr3",
+      "kind": "bridge",
+      "label": "vmbr3",
+      "layer": "l2",
+      "nodeGroup": "pve1",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve2:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve2:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve2:vmbr2",
+      "kind": "bridge",
+      "label": "vmbr2",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve2:vmbr3",
+      "kind": "bridge",
+      "label": "vmbr3",
+      "layer": "l2",
+      "nodeGroup": "pve2",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve3:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve3:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve3:vmbr2",
+      "kind": "bridge",
+      "label": "vmbr2",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve3:vmbr3",
+      "kind": "bridge",
+      "label": "vmbr3",
+      "layer": "l2",
+      "nodeGroup": "pve3",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve4:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve4",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve4:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve4",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve4:vmbr2",
+      "kind": "bridge",
+      "label": "vmbr2",
+      "layer": "l2",
+      "nodeGroup": "pve4",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve4:vmbr3",
+      "kind": "bridge",
+      "label": "vmbr3",
+      "layer": "l2",
+      "nodeGroup": "pve4",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve5:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve5",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve5:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve5",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve5:vmbr2",
+      "kind": "bridge",
+      "label": "vmbr2",
+      "layer": "l2",
+      "nodeGroup": "pve5",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve5:vmbr3",
+      "kind": "bridge",
+      "label": "vmbr3",
+      "layer": "l2",
+      "nodeGroup": "pve5",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve6:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve6",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve6:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve6",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve6:vmbr2",
+      "kind": "bridge",
+      "label": "vmbr2",
+      "layer": "l2",
+      "nodeGroup": "pve6",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve6:vmbr3",
+      "kind": "bridge",
+      "label": "vmbr3",
+      "layer": "l2",
+      "nodeGroup": "pve6",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve7:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve7",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve7:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve7",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve7:vmbr2",
+      "kind": "bridge",
+      "label": "vmbr2",
+      "layer": "l2",
+      "nodeGroup": "pve7",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve7:vmbr3",
+      "kind": "bridge",
+      "label": "vmbr3",
+      "layer": "l2",
+      "nodeGroup": "pve7",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve8:vmbr0",
+      "kind": "bridge",
+      "label": "vmbr0",
+      "layer": "l2",
+      "nodeGroup": "pve8",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve8:vmbr1",
+      "kind": "bridge",
+      "label": "vmbr1",
+      "layer": "l2",
+      "nodeGroup": "pve8",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve8:vmbr2",
+      "kind": "bridge",
+      "label": "vmbr2",
+      "layer": "l2",
+      "nodeGroup": "pve8",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "bridge:pve8:vmbr3",
+      "kind": "bridge",
+      "label": "vmbr3",
+      "layer": "l2",
+      "nodeGroup": "pve8",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve1:bridge:pve1:vmbr1",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve1:bridge:pve1:vmbr2",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve1:bridge:pve1:vmbr3",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve1",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve2:bridge:pve2:vmbr1",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve2",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve2:bridge:pve2:vmbr2",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve2",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve2:bridge:pve2:vmbr3",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve2",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve3:bridge:pve3:vmbr1",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve3",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve3:bridge:pve3:vmbr2",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve3",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve3:bridge:pve3:vmbr3",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve3",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve4:bridge:pve4:vmbr1",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve4",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve4:bridge:pve4:vmbr2",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve4",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve4:bridge:pve4:vmbr3",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve4",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve5:bridge:pve5:vmbr1",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve5",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve5:bridge:pve5:vmbr2",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve5",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve5:bridge:pve5:vmbr3",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve5",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve6:bridge:pve6:vmbr1",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve6",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve6:bridge:pve6:vmbr2",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve6",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve6:bridge:pve6:vmbr3",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve6",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve7:bridge:pve7:vmbr1",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve7",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve7:bridge:pve7:vmbr2",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve7",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve7:bridge:pve7:vmbr3",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve7",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=13"
+      ],
+      "collapsedCount": 13,
+      "id": "guest-group:pve8:bridge:pve8:vmbr1",
+      "kind": "guest-group",
+      "label": "13 guests",
+      "layer": "guest",
+      "nodeGroup": "pve8",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve8:bridge:pve8:vmbr2",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve8",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "count=12"
+      ],
+      "collapsedCount": 12,
+      "id": "guest-group:pve8:bridge:pve8:vmbr3",
+      "kind": "guest-group",
+      "label": "12 guests",
+      "layer": "guest",
+      "nodeGroup": "pve8",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve1:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve1:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve1:eno3",
+      "kind": "physnic",
+      "label": "eno3",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve1:eno4",
+      "kind": "physnic",
+      "label": "eno4",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve1:eno5",
+      "kind": "physnic",
+      "label": "eno5",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve1:eno6",
+      "kind": "physnic",
+      "label": "eno6",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve1:ens18",
+      "kind": "physnic",
+      "label": "ens18",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve1:lo",
+      "kind": "physnic",
+      "label": "lo",
+      "layer": "phys",
+      "nodeGroup": "pve1",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve2:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve2:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve2:eno3",
+      "kind": "physnic",
+      "label": "eno3",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve2:eno4",
+      "kind": "physnic",
+      "label": "eno4",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve2:eno5",
+      "kind": "physnic",
+      "label": "eno5",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve2:eno6",
+      "kind": "physnic",
+      "label": "eno6",
+      "layer": "phys",
+      "nodeGroup": "pve2",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve3:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve3:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve3:eno3",
+      "kind": "physnic",
+      "label": "eno3",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve3:eno4",
+      "kind": "physnic",
+      "label": "eno4",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve3:eno5",
+      "kind": "physnic",
+      "label": "eno5",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve3:eno6",
+      "kind": "physnic",
+      "label": "eno6",
+      "layer": "phys",
+      "nodeGroup": "pve3",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve4:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve4",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve4:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve4",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve4:eno3",
+      "kind": "physnic",
+      "label": "eno3",
+      "layer": "phys",
+      "nodeGroup": "pve4",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve4:eno4",
+      "kind": "physnic",
+      "label": "eno4",
+      "layer": "phys",
+      "nodeGroup": "pve4",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve4:eno5",
+      "kind": "physnic",
+      "label": "eno5",
+      "layer": "phys",
+      "nodeGroup": "pve4",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve4:eno6",
+      "kind": "physnic",
+      "label": "eno6",
+      "layer": "phys",
+      "nodeGroup": "pve4",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve5:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve5",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve5:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve5",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve5:eno3",
+      "kind": "physnic",
+      "label": "eno3",
+      "layer": "phys",
+      "nodeGroup": "pve5",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve5:eno4",
+      "kind": "physnic",
+      "label": "eno4",
+      "layer": "phys",
+      "nodeGroup": "pve5",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve5:eno5",
+      "kind": "physnic",
+      "label": "eno5",
+      "layer": "phys",
+      "nodeGroup": "pve5",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve5:eno6",
+      "kind": "physnic",
+      "label": "eno6",
+      "layer": "phys",
+      "nodeGroup": "pve5",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve6:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve6",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve6:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve6",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve6:eno3",
+      "kind": "physnic",
+      "label": "eno3",
+      "layer": "phys",
+      "nodeGroup": "pve6",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve6:eno4",
+      "kind": "physnic",
+      "label": "eno4",
+      "layer": "phys",
+      "nodeGroup": "pve6",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve6:eno5",
+      "kind": "physnic",
+      "label": "eno5",
+      "layer": "phys",
+      "nodeGroup": "pve6",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve6:eno6",
+      "kind": "physnic",
+      "label": "eno6",
+      "layer": "phys",
+      "nodeGroup": "pve6",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve7:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve7",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve7:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve7",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve7:eno3",
+      "kind": "physnic",
+      "label": "eno3",
+      "layer": "phys",
+      "nodeGroup": "pve7",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve7:eno4",
+      "kind": "physnic",
+      "label": "eno4",
+      "layer": "phys",
+      "nodeGroup": "pve7",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve7:eno5",
+      "kind": "physnic",
+      "label": "eno5",
+      "layer": "phys",
+      "nodeGroup": "pve7",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve7:eno6",
+      "kind": "physnic",
+      "label": "eno6",
+      "layer": "phys",
+      "nodeGroup": "pve7",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve8:eno1",
+      "kind": "physnic",
+      "label": "eno1",
+      "layer": "phys",
+      "nodeGroup": "pve8",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve8:eno2",
+      "kind": "physnic",
+      "label": "eno2",
+      "layer": "phys",
+      "nodeGroup": "pve8",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve8:eno3",
+      "kind": "physnic",
+      "label": "eno3",
+      "layer": "phys",
+      "nodeGroup": "pve8",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve8:eno4",
+      "kind": "physnic",
+      "label": "eno4",
+      "layer": "phys",
+      "nodeGroup": "pve8",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve8:eno5",
+      "kind": "physnic",
+      "label": "eno5",
+      "layer": "phys",
+      "nodeGroup": "pve8",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "physnic:pve8:eno6",
+      "kind": "physnic",
+      "label": "eno6",
+      "layer": "phys",
+      "nodeGroup": "pve8",
+      "status": "unknown"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.0.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.0.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.1.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.1.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.10.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.10.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.11.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.11.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.12.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.12.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.13.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.13.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.14.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.14.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.15.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.15.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.16.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.16.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.17.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.17.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.18.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.18.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.19.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.19.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.2.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.2.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.20.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.20.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.21.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.21.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.22.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.22.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.23.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.23.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.24.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.24.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.25.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.25.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.26.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.26.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.27.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.27.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.28.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.28.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.29.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.29.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.3.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.3.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.30.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.30.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.31.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.31.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.32.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.32.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.33.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.33.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.34.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.34.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.35.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.35.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.36.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.36.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.37.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.37.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.38.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.38.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.39.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.39.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.4.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.4.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.5.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.5.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.6.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.6.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.7.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.7.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.8.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.8.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [],
+      "id": "sdn-subnet::10.150.9.0/24",
+      "kind": "sdn-subnet",
+      "label": "10.150.9.0/24",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=100"
+      ],
+      "id": "sdn-vnet::scalez/vnet0",
+      "kind": "sdn-vnet",
+      "label": "vnet0 (tier-00)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=101"
+      ],
+      "id": "sdn-vnet::scalez/vnet1",
+      "kind": "sdn-vnet",
+      "label": "vnet1 (tier-01)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=110"
+      ],
+      "id": "sdn-vnet::scalez/vnet10",
+      "kind": "sdn-vnet",
+      "label": "vnet10 (tier-10)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=111"
+      ],
+      "id": "sdn-vnet::scalez/vnet11",
+      "kind": "sdn-vnet",
+      "label": "vnet11 (tier-11)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=112"
+      ],
+      "id": "sdn-vnet::scalez/vnet12",
+      "kind": "sdn-vnet",
+      "label": "vnet12 (tier-12)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=113"
+      ],
+      "id": "sdn-vnet::scalez/vnet13",
+      "kind": "sdn-vnet",
+      "label": "vnet13 (tier-13)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=114"
+      ],
+      "id": "sdn-vnet::scalez/vnet14",
+      "kind": "sdn-vnet",
+      "label": "vnet14 (tier-14)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=115"
+      ],
+      "id": "sdn-vnet::scalez/vnet15",
+      "kind": "sdn-vnet",
+      "label": "vnet15 (tier-15)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=116"
+      ],
+      "id": "sdn-vnet::scalez/vnet16",
+      "kind": "sdn-vnet",
+      "label": "vnet16 (tier-16)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=117"
+      ],
+      "id": "sdn-vnet::scalez/vnet17",
+      "kind": "sdn-vnet",
+      "label": "vnet17 (tier-17)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=118"
+      ],
+      "id": "sdn-vnet::scalez/vnet18",
+      "kind": "sdn-vnet",
+      "label": "vnet18 (tier-18)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=119"
+      ],
+      "id": "sdn-vnet::scalez/vnet19",
+      "kind": "sdn-vnet",
+      "label": "vnet19 (tier-19)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=102"
+      ],
+      "id": "sdn-vnet::scalez/vnet2",
+      "kind": "sdn-vnet",
+      "label": "vnet2 (tier-02)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=120"
+      ],
+      "id": "sdn-vnet::scalez/vnet20",
+      "kind": "sdn-vnet",
+      "label": "vnet20 (tier-20)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=121"
+      ],
+      "id": "sdn-vnet::scalez/vnet21",
+      "kind": "sdn-vnet",
+      "label": "vnet21 (tier-21)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=122"
+      ],
+      "id": "sdn-vnet::scalez/vnet22",
+      "kind": "sdn-vnet",
+      "label": "vnet22 (tier-22)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=123"
+      ],
+      "id": "sdn-vnet::scalez/vnet23",
+      "kind": "sdn-vnet",
+      "label": "vnet23 (tier-23)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=124"
+      ],
+      "id": "sdn-vnet::scalez/vnet24",
+      "kind": "sdn-vnet",
+      "label": "vnet24 (tier-24)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=125"
+      ],
+      "id": "sdn-vnet::scalez/vnet25",
+      "kind": "sdn-vnet",
+      "label": "vnet25 (tier-25)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=126"
+      ],
+      "id": "sdn-vnet::scalez/vnet26",
+      "kind": "sdn-vnet",
+      "label": "vnet26 (tier-26)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=127"
+      ],
+      "id": "sdn-vnet::scalez/vnet27",
+      "kind": "sdn-vnet",
+      "label": "vnet27 (tier-27)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=128"
+      ],
+      "id": "sdn-vnet::scalez/vnet28",
+      "kind": "sdn-vnet",
+      "label": "vnet28 (tier-28)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=129"
+      ],
+      "id": "sdn-vnet::scalez/vnet29",
+      "kind": "sdn-vnet",
+      "label": "vnet29 (tier-29)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=103"
+      ],
+      "id": "sdn-vnet::scalez/vnet3",
+      "kind": "sdn-vnet",
+      "label": "vnet3 (tier-03)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=130"
+      ],
+      "id": "sdn-vnet::scalez/vnet30",
+      "kind": "sdn-vnet",
+      "label": "vnet30 (tier-30)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=131"
+      ],
+      "id": "sdn-vnet::scalez/vnet31",
+      "kind": "sdn-vnet",
+      "label": "vnet31 (tier-31)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=132"
+      ],
+      "id": "sdn-vnet::scalez/vnet32",
+      "kind": "sdn-vnet",
+      "label": "vnet32 (tier-32)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=133"
+      ],
+      "id": "sdn-vnet::scalez/vnet33",
+      "kind": "sdn-vnet",
+      "label": "vnet33 (tier-33)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=134"
+      ],
+      "id": "sdn-vnet::scalez/vnet34",
+      "kind": "sdn-vnet",
+      "label": "vnet34 (tier-34)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=135"
+      ],
+      "id": "sdn-vnet::scalez/vnet35",
+      "kind": "sdn-vnet",
+      "label": "vnet35 (tier-35)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=136"
+      ],
+      "id": "sdn-vnet::scalez/vnet36",
+      "kind": "sdn-vnet",
+      "label": "vnet36 (tier-36)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=137"
+      ],
+      "id": "sdn-vnet::scalez/vnet37",
+      "kind": "sdn-vnet",
+      "label": "vnet37 (tier-37)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=138"
+      ],
+      "id": "sdn-vnet::scalez/vnet38",
+      "kind": "sdn-vnet",
+      "label": "vnet38 (tier-38)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=139"
+      ],
+      "id": "sdn-vnet::scalez/vnet39",
+      "kind": "sdn-vnet",
+      "label": "vnet39 (tier-39)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=104"
+      ],
+      "id": "sdn-vnet::scalez/vnet4",
+      "kind": "sdn-vnet",
+      "label": "vnet4 (tier-04)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=105"
+      ],
+      "id": "sdn-vnet::scalez/vnet5",
+      "kind": "sdn-vnet",
+      "label": "vnet5 (tier-05)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=106"
+      ],
+      "id": "sdn-vnet::scalez/vnet6",
+      "kind": "sdn-vnet",
+      "label": "vnet6 (tier-06)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=107"
+      ],
+      "id": "sdn-vnet::scalez/vnet7",
+      "kind": "sdn-vnet",
+      "label": "vnet7 (tier-07)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=108"
+      ],
+      "id": "sdn-vnet::scalez/vnet8",
+      "kind": "sdn-vnet",
+      "label": "vnet8 (tier-08)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "tag=109"
+      ],
+      "id": "sdn-vnet::scalez/vnet9",
+      "kind": "sdn-vnet",
+      "label": "vnet9 (tier-09)",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    },
+    {
+      "badges": [
+        "type=vlan"
+      ],
+      "id": "sdn-zone::scalez",
+      "kind": "sdn-zone",
+      "label": "scalez",
+      "layer": "sdn",
+      "nodeGroup": "",
+      "status": "ok"
+    }
+  ]
+}
