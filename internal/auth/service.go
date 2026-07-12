@@ -165,6 +165,33 @@ func newSessionID() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
+// redactedIDPrefixLen is how much of a session id logSessionID exposes.
+const redactedIDPrefixLen = 8
+
+// logSessionID returns a truncated, log-safe stand-in for a session id: the
+// id itself *is* the bearer credential presented in the vnprox_session
+// cookie (docs/security.md: "random 256-bit id in an HttpOnly; Secure;
+// SameSite=Strict cookie"), so logging it verbatim would hand anyone with
+// read access to the daemon's logs (a materially weaker privilege than
+// shell/root access to the host — e.g. a centralized log aggregator, or
+// `journalctl` group membership) everything needed to directly hijack that
+// session, bypassing HttpOnly/Secure/SameSite entirely (T-604 security
+// hardening pass; those cookie flags only defend against browser-side/
+// network attackers, never a log reader).
+//
+// Truncating to the first redactedIDPrefixLen base64url characters keeps
+// enough of the id for operators to correlate multiple log lines about the
+// "same session" (the practical reason every call site below logs the id
+// at all) while discarding the ~250 bits of remaining entropy that would
+// make the value replayable — i.e. this is a correlation handle, not a
+// secret, once truncated this short.
+func logSessionID(id string) string {
+	if len(id) <= redactedIDPrefixLen {
+		return id
+	}
+	return id[:redactedIDPrefixLen] + "…"
+}
+
 // Identity is the safe-to-expose (no PVE ticket/CSRF secret) subset of an
 // authenticated session, attached to each request's context by
 // SessionMiddleware. Handlers in this package and in later route

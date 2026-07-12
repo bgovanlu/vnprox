@@ -57,13 +57,13 @@ func (s *Service) SessionMiddleware(next http.Handler) http.Handler {
 		if newExpiry != rec.ExpiresAt {
 			rec.ExpiresAt = newExpiry
 			if updateErr := s.sessions.Update(r.Context(), rec); updateErr != nil {
-				s.log.Error("auth: sliding session expiry", "session_id", rec.ID, "error", updateErr)
+				s.log.Error("auth: sliding session expiry", "session_id", logSessionID(rec.ID), "error", updateErr)
 			}
 		}
 
 		caps, err := decodeCaps(rec.CapsJSON)
 		if err != nil {
-			s.log.Error("auth: decoding session capabilities", "session_id", rec.ID, "error", err)
+			s.log.Error("auth: decoding session capabilities", "session_id", logSessionID(rec.ID), "error", err)
 			caps = map[string]Capabilities{}
 		}
 

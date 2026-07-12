@@ -58,7 +58,7 @@ func (s *Service) renewAndRefreshOne(ctx context.Context, sessionID string) {
 
 	ticket, csrf, err := live.identity.Renew(ctx)
 	if err != nil {
-		s.log.Warn("auth: ticket renewal failed, invalidating session", "session_id", sessionID, "error", err)
+		s.log.Warn("auth: ticket renewal failed, invalidating session", "session_id", logSessionID(sessionID), "error", err)
 		s.invalidate(ctx, sessionID)
 		return
 	}
@@ -79,9 +79,9 @@ func (s *Service) renewAndRefreshOne(ctx context.Context, sessionID string) {
 	if now.Sub(live.lastCapRefresh) >= s.capRefresh {
 		caps, err := s.deriveCapabilities(ctx, live.identity)
 		if err != nil {
-			s.log.Warn("auth: hourly capability re-derivation failed, keeping previous capabilities", "session_id", sessionID, "error", err)
+			s.log.Warn("auth: hourly capability re-derivation failed, keeping previous capabilities", "session_id", logSessionID(sessionID), "error", err)
 		} else if capsJSONStr, err := capsJSON(caps); err != nil {
-			s.log.Error("auth: encoding refreshed capabilities", "session_id", sessionID, "error", err)
+			s.log.Error("auth: encoding refreshed capabilities", "session_id", logSessionID(sessionID), "error", err)
 		} else {
 			rec.CapsJSON = capsJSONStr
 			s.mu.Lock()
@@ -91,7 +91,7 @@ func (s *Service) renewAndRefreshOne(ctx context.Context, sessionID string) {
 	}
 
 	if err := s.sessions.Update(ctx, rec); err != nil {
-		s.log.Error("auth: persisting renewed session", "session_id", sessionID, "error", err)
+		s.log.Error("auth: persisting renewed session", "session_id", logSessionID(sessionID), "error", err)
 	}
 }
 
@@ -101,7 +101,7 @@ func (s *Service) renewAndRefreshOne(ctx context.Context, sessionID string) {
 // ticket could no longer be renewed.
 func (s *Service) invalidate(ctx context.Context, sessionID string) {
 	if err := s.sessions.Delete(ctx, sessionID); err != nil && !errors.Is(err, store.ErrNotFound) {
-		s.log.Error("auth: deleting session after failed renewal", "session_id", sessionID, "error", err)
+		s.log.Error("auth: deleting session after failed renewal", "session_id", logSessionID(sessionID), "error", err)
 	}
 	s.mu.Lock()
 	delete(s.live, sessionID)

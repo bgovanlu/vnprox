@@ -220,7 +220,7 @@ func (s *Service) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.sessions.Delete(ctx, rec.Identity.SessionID); err != nil {
-		s.log.Error("auth: deleting session", "session_id", rec.Identity.SessionID, "error", err)
+		s.log.Error("auth: deleting session", "session_id", logSessionID(rec.Identity.SessionID), "error", err)
 	}
 	s.mu.Lock()
 	delete(s.live, rec.Identity.SessionID)
