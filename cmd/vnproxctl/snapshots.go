@@ -71,14 +71,20 @@ func newCLIEnv() *cliEnv {
 // reader/writer even if the daemon *is* up — pulls the snapshot's blob
 // content out, writes /etc/network/interfaces itself, and execs
 // `ifreload -a` directly).
+//
+// Uses config.LoadStorageOnly, not config.Load (T-607 fix): the full
+// loader's validate() requires a resolvable PVE TLS certificate, which
+// this disaster-recovery path must NOT depend on — see that function's
+// doc comment for the bug this was found via (T-606's own packaging test
+// matrix, run as part of this task).
 func openStore(ctx context.Context, configPath string) (*store.DB, error) {
-	cfg, err := config.Load(configPath, discardLogger())
+	storageCfg, err := config.LoadStorageOnly(configPath, discardLogger())
 	if err != nil {
 		return nil, fmt.Errorf("loading %s: %w", configPath, err)
 	}
-	db, err := store.Open(ctx, cfg.Storage.DBPath)
+	db, err := store.Open(ctx, storageCfg.DBPath)
 	if err != nil {
-		return nil, fmt.Errorf("opening vnprox store %s: %w", cfg.Storage.DBPath, err)
+		return nil, fmt.Errorf("opening vnprox store %s: %w", storageCfg.DBPath, err)
 	}
 	return db, nil
 }

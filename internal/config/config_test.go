@@ -277,6 +277,59 @@ listen = "127.0.0.1:8007"
 	}
 }
 
+// TestLoadStorageOnly_SucceedsWithNoTLSCertAtAll is T-607's regression test
+// for the bug its own packaging-matrix run found: cmd/vnproxctl's
+// snapshots/rollback-now commands (docs/deployment.md's "daemon-
+// independent disaster-recovery path") must not require a resolvable PVE
+// TLS certificate at all — the same nooverride.toml shape
+// TestLoad_NoTLSOverrideFailsCleanlyWhenPVECertAbsent proves the full
+// Load() correctly rejects (for vnproxd itself, which does need to bind
+// HTTPS) must instead *succeed* through LoadStorageOnly, since a
+// storage-only caller never touches TLS.
+func TestLoadStorageOnly_SucceedsWithNoTLSCertAtAll(t *testing.T) {
+	toml := `
+[server]
+listen = "127.0.0.1:8007"
+
+[storage]
+db_path = "/var/lib/vnprox/vnprox.db"
+`
+	path := writeTemp(t, "storageonly.toml", toml)
+
+	storageCfg, err := LoadStorageOnly(path, discardLogger())
+	if err != nil {
+		t.Fatalf("LoadStorageOnly must succeed with no TLS cert/override present at all: %v", err)
+	}
+	if storageCfg.DBPath != "/var/lib/vnprox/vnprox.db" {
+		t.Errorf("DBPath = %q, want the configured value", storageCfg.DBPath)
+	}
+}
+
+// TestLoadStorageOnly_AppliesDefaultsWhenSectionOmitted mirrors
+// TestLoad_DefaultsAppliedWhenSectionsOmitted for the storage-only path.
+func TestLoadStorageOnly_AppliesDefaultsWhenSectionOmitted(t *testing.T) {
+	path := writeTemp(t, "empty.toml", "")
+
+	storageCfg, err := LoadStorageOnly(path, discardLogger())
+	if err != nil {
+		t.Fatalf("LoadStorageOnly with an empty file: %v", err)
+	}
+	if storageCfg.DBPath != DefaultDBPath {
+		t.Errorf("DBPath = %q, want default %q", storageCfg.DBPath, DefaultDBPath)
+	}
+	if storageCfg.SessionKeyFile != DefaultSessionKeyFile {
+		t.Errorf("SessionKeyFile = %q, want default %q", storageCfg.SessionKeyFile, DefaultSessionKeyFile)
+	}
+}
+
+// TestLoadStorageOnly_MissingFile mirrors TestLoad_MissingFile.
+func TestLoadStorageOnly_MissingFile(t *testing.T) {
+	_, err := LoadStorageOnly("/nonexistent/path.toml", discardLogger())
+	if err == nil {
+		t.Fatal("expected an error for a nonexistent config file, got nil")
+	}
+}
+
 func TestLoad_InvalidCollectDurationFailsFast(t *testing.T) {
 	certPath, keyPath := writeTestCert(t, t.TempDir())
 	toml := `

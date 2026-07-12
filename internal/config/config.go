@@ -336,6 +336,51 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 	return cfg, nil
 }
 
+// LoadStorageOnly reads and parses the config file at path and returns just
+// its resolved [storage] section, without running Load's full validate()
+// (listen-address syntax, retention bounds, PVE API URL parsing, and —
+// critically — TLS certificate/key path *resolution*, which fails fast
+// when neither an explicit override nor a real Proxmox node's
+// /etc/pve/local/pve-ssl.pem is present).
+//
+// Added (T-607, a bug this task's own release-gate packaging-matrix run
+// found): `vnproxctl snapshots list/restore` and `rollback-now` are
+// docs/deployment.md's documented "daemon-independent disaster-recovery
+// path" — they only ever need storage.db_path, and must work "even when
+// the UI is unreachable" (docs/user-guide.md §4), which in practice also
+// means "even when the daemon's own TLS cert is the very thing broken, or
+// this is a bare container/dev host with no PVE certificate at all yet."
+// Before this function existed, cmd/vnproxctl's openStore called the full
+// Load, so these commands failed outright with ErrTLSCertMissing on any
+// host without a resolvable PVE certificate — silently breaking the one
+// guarantee they exist for. cmd/vnproxctl/status.go's `status` subcommand
+// intentionally keeps using the full Load (it legitimately reports PVE/
+// peer health, which needs the rest of the config).
+func LoadStorageOnly(path string, logger *slog.Logger) (StorageConfig, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return StorageConfig{}, fmt.Errorf("reading config file %s: %w", path, err)
+	}
+
+	var raw rawConfig
+	meta, err := toml.Decode(string(data), &raw)
+	if err != nil {
+		return StorageConfig{}, fmt.Errorf("%w: parsing config file %s: %v", ErrInvalidConfig, path, err)
+	}
+	for _, key := range meta.Undecoded() {
+		logger.Warn("config: unrecognized key, ignoring", "key", key.String(), "file", path)
+	}
+
+	return StorageConfig{
+		DBPath:         firstNonEmpty(raw.Storage.DBPath, DefaultDBPath),
+		SessionKeyFile: firstNonEmpty(raw.Storage.SessionKeyFile, DefaultSessionKeyFile),
+	}, nil
+}
+
 // validate checks semantic constraints beyond what TOML decoding enforces
 // and resolves the effective TLS certificate/key paths. It is the single
 // place acceptance-criterion-4 failures (bad listen address, missing cert
