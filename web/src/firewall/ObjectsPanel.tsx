@@ -9,7 +9,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { useToast } from "../components/Toast";
 import { useSession } from "../api/useSession";
-import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
+import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import type { FirewallObjectsResponse, ObjectUsageView } from "../api/types";
 import { macroExpansionLabel } from "./format";
@@ -40,14 +40,17 @@ function UsageTable({ items, onNavigate }: UsageTableProps) {
   const [expanded, setExpanded] = useState<string | undefined>(undefined);
   const { addOps } = useDrawerActions();
   const { toast } = useToast();
-  // fw.alias/ipset/group ops are cluster-scope, so this gates on the same
-  // cluster-wide capsForNode(session, "") fallback entry the SDN cockpit's
-  // equivalent write-trigger gate uses (SdnPage.tsx's useSdnWriteGate) —
-  // this Delete control previously had no capability gating at all (a real
-  // gap the read-only E2E crawl caught, T-607).
+  // fw.alias/ipset/group ops are cluster-scope; gated via hasAnyCap, not
+  // capsForNode(session, "") (that idiom silently evaluates to NO_CAPS for
+  // any real multi-node session — see SdnPage.tsx's useSdnWriteGate doc
+  // comment for the full explanation and cross-references to the other
+  // five pre-existing dialogs this same T-607 fix corrected). This Delete
+  // control previously had no capability gating at all (a real gap the
+  // read-only E2E crawl caught, T-607).
   const { data: session } = useSession();
-  const fwWriteDisabled = !capsForNode(session, "").fwWrite;
-  const fwWriteTooltip = missingCapTooltip(session, "", "fwWrite");
+  const fwWrite = hasAnyCap(session, "fwWrite");
+  const fwWriteDisabled = !fwWrite;
+  const fwWriteTooltip = fwWrite ? undefined : missingCapTooltip(session, "", "fwWrite");
 
   if (items.length === 0) {
     return <EmptyState title="None defined" description="No objects of this kind are configured anywhere in the cluster." />;

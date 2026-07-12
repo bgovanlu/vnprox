@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useSession } from "../../api/useSession";
 import { useToast } from "../../components/Toast";
 import type { SdnVnet } from "../../api/types";
-import { capsForNode, missingCapTooltip } from "../../changesets/capabilities";
+import { hasAnyCap, missingCapTooltip } from "../../changesets/capabilities";
 import {
   buildSdnVnetCreateOp,
   buildSdnVnetUpdateOp,
@@ -62,7 +62,7 @@ export function SdnVnetEditor({ open, onOpenChange, zoneId, existing }: SdnVnetE
       title={isCreate ? `Create VNet in zone ${zoneId}` : `Edit VNet ${existing.id}`}
       description="A VNet is the virtual network guests actually attach a NIC to — it lives inside one zone."
       onSubmit={handleSubmit}
-      disabledReason={!capsForNode(session, "").sdnWrite ? disabledReason : undefined}
+      disabledReason={!hasAnyCap(session, "sdnWrite") ? disabledReason : undefined}
       generalErrors={findings.general}
     >
       {isCreate && (

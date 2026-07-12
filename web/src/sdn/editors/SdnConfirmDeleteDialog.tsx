@@ -7,7 +7,7 @@
 // for bond.delete, which likewise has no interlock).
 import { useSession } from "../../api/useSession";
 import { useToast } from "../../components/Toast";
-import { capsForNode, missingCapTooltip } from "../../changesets/capabilities";
+import { hasAnyCap, missingCapTooltip } from "../../changesets/capabilities";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { EditorDialog } from "../../changesets/editors/EditorDialog";
 import type { Op } from "../../api/types";
@@ -46,7 +46,7 @@ export function SdnConfirmDeleteDialog({ open, onOpenChange, title, description,
       description={description}
       onSubmit={handleSubmit}
       submitLabel="Delete"
-      disabledReason={!capsForNode(session, "").sdnWrite ? disabledReason : undefined}
+      disabledReason={!hasAnyCap(session, "sdnWrite") ? disabledReason : undefined}
     >
       <p className="text-sm text-slate-500 dark:text-slate-400">This adds a delete op to the current changeset draft — nothing is removed until the changeset applies.</p>
     </EditorDialog>

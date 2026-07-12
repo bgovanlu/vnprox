@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { useSession } from "../../api/useSession";
 import { useToast } from "../../components/Toast";
-import { capsForNode, missingCapTooltip } from "../../changesets/capabilities";
+import { hasAnyCap, missingCapTooltip } from "../../changesets/capabilities";
 import { buildGuestReattachOps, buildSdnVnetDeleteOp } from "../../changesets/opBuilders";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { EditorDialog, Field, inputClass } from "../../changesets/editors/EditorDialog";
@@ -74,7 +74,7 @@ export function SdnVnetDeleteDialog({
       onSubmit={handleSubmit}
       submitLabel="Delete"
       disabledReason={
-        !capsForNode(session, "").sdnWrite
+        !hasAnyCap(session, "sdnWrite")
           ? disabledReason
           : !canSubmit
             ? "Choose a reattachment target first."

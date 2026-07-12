@@ -17,7 +17,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { useToast } from "../components/Toast";
 import { useSession } from "../api/useSession";
-import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
+import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import type { FirewallObjectsResponse, RuleView } from "../api/types";
 import { scrollIntoViewIfSupported } from "../lib/scrollIntoView";
@@ -172,13 +172,16 @@ export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps
   // were all always-enabled regardless of session privileges) — a real
   // gap the read-only E2E crawl caught (T-607), fixed here the same way
   // SdnPage.tsx's write-trigger buttons and ObjectsPanel.tsx's object
-  // delete now are: capsForNode(session, "").fwWrite (cluster-wide
-  // fallback entry — the ruleset's own scope/node isn't threaded through
-  // RuleEditorProps today, and fwWrite/Sys.Modify is the same PVE
-  // privilege regardless of scope).
+  // delete now are: hasAnyCap(session, "fwWrite"), not
+  // capsForNode(session, "").fwWrite — that idiom silently evaluates to
+  // NO_CAPS for any real multi-node session (see SdnPage.tsx's
+  // useSdnWriteGate doc comment for the full explanation) — the ruleset's
+  // own scope/node isn't threaded through RuleEditorProps today, and
+  // fwWrite/Sys.Modify is the same PVE privilege regardless of scope.
   const { data: session } = useSession();
-  const fwWriteDisabled = !capsForNode(session, "").fwWrite;
-  const fwWriteTooltip = missingCapTooltip(session, "", "fwWrite");
+  const fwWrite = hasAnyCap(session, "fwWrite");
+  const fwWriteDisabled = !fwWrite;
+  const fwWriteTooltip = fwWrite ? undefined : missingCapTooltip(session, "", "fwWrite");
 
   useEffect(() => {
     if (focusPos === undefined) return;

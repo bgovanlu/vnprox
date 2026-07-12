@@ -9,7 +9,7 @@ import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import type { SdnSubnet, SdnTree, SdnVnet, SdnZone } from "../api/types";
 import { useSession } from "../api/useSession";
-import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
+import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { SdnEditorLauncher } from "./SdnEditorLauncher";
 import { DhcpView } from "./DhcpView";
 import { EvpnView } from "./EvpnView";
@@ -161,16 +161,23 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 /** SDN's write privilege (`SDN.Allocate`) is cluster-wide in PVE, not
- * per-node, so every SDN write-trigger button below gates on the same one
- * capsForNode(session, "") check (the cluster-wide fallback entry
- * capabilities.ts's own doc comment describes) rather than any specific
- * node. Threaded down as a single prop so every zone/vnet/subnet
- * edit/delete/create trigger disables (with the standard missing-privilege
- * tooltip) the same way the topology inspector's edit/delete buttons
- * already do (docs/user-guide.md §5, T-605 AC4's read-only-sweep contract)
- * — these trigger buttons previously had no gating at all (only the modal
- * editors/delete-dialogs they open did), a real gap this task's E2E
- * read-only crawl caught. */
+ * per-node — resolved via hasAnyCap (T-607 fix: internal/auth.
+ * BuildCapabilities only ever populates a `""` caps-map key in the
+ * zero-nodes edge case; a real multi-node session's caps map has only
+ * per-node keys, so the `capsForNode(session, "")` idiom this file
+ * originally used — copied from five pre-existing SDN editor dialogs that
+ * had the same bug, see the same-day fix to those — silently evaluates to
+ * NO_CAPS and disables every cluster-scope SDN write control permanently
+ * in any real multi-node cluster, root included; caught for real by this
+ * task's own new E2E wizard-completion test, not by any unit test, since
+ * every existing wizard/editor unit test's mock session fixture happens to
+ * include an artificial `""` key that masked it). Threaded down as a
+ * single prop so every zone/vnet/subnet edit/delete/create trigger
+ * disables (with the standard missing-privilege tooltip) the same way the
+ * topology inspector's edit/delete buttons already do (docs/user-guide.md
+ * §5, T-605 AC4's read-only-sweep contract) — these trigger buttons
+ * previously had no gating at all (only the modal editors/delete-dialogs
+ * they open did), a real gap this task's E2E read-only crawl caught. */
 interface SdnWriteGate {
   disabled: boolean;
   title: string | undefined;
@@ -178,9 +185,10 @@ interface SdnWriteGate {
 
 function useSdnWriteGate(): SdnWriteGate {
   const { data: session } = useSession();
+  const canWrite = hasAnyCap(session, "sdnWrite");
   return {
-    disabled: !capsForNode(session, "").sdnWrite,
-    title: missingCapTooltip(session, "", "sdnWrite"),
+    disabled: !canWrite,
+    title: canWrite ? undefined : missingCapTooltip(session, "", "sdnWrite"),
   };
 }
 

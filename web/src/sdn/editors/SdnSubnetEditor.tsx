@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useSession } from "../../api/useSession";
 import { useToast } from "../../components/Toast";
 import type { SdnSubnet } from "../../api/types";
-import { capsForNode, missingCapTooltip } from "../../changesets/capabilities";
+import { hasAnyCap, missingCapTooltip } from "../../changesets/capabilities";
 import {
   buildSdnSubnetCreateOp,
   buildSdnSubnetUpdateOp,
@@ -82,7 +82,7 @@ export function SdnSubnetEditor({ open, onOpenChange, vnetId, existing }: SdnSub
       title={isCreate ? `Create subnet in VNet ${vnetId}` : `Edit subnet ${existing.id}`}
       description="The IP range guests on this VNet draw addresses from."
       onSubmit={handleSubmit}
-      disabledReason={!capsForNode(session, "").sdnWrite ? disabledReason : undefined}
+      disabledReason={!hasAnyCap(session, "sdnWrite") ? disabledReason : undefined}
       generalErrors={findings.general}
     >
       {isCreate && (

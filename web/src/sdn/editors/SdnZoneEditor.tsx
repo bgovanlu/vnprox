@@ -10,7 +10,7 @@ import { useState } from "react";
 import { useSession } from "../../api/useSession";
 import { useToast } from "../../components/Toast";
 import type { SdnZone } from "../../api/types";
-import { capsForNode, missingCapTooltip } from "../../changesets/capabilities";
+import { hasAnyCap, missingCapTooltip } from "../../changesets/capabilities";
 import {
   buildSdnZoneCreateOp,
   buildSdnZoneUpdateOp,
@@ -103,7 +103,7 @@ export function SdnZoneEditor({ open, onOpenChange, existing }: SdnZoneEditorPro
       title={isCreate ? "Create SDN zone" : `Edit SDN zone ${existing.id}`}
       description="A zone groups VNets that share one realization mechanism (bridge, VLAN trunk, or VXLAN/EVPN overlay) across the nodes you list."
       onSubmit={handleSubmit}
-      disabledReason={!capsForNode(session, "").sdnWrite ? disabledReason : undefined}
+      disabledReason={!hasAnyCap(session, "sdnWrite") ? disabledReason : undefined}
       generalErrors={findings.general}
     >
       {isCreate && (
