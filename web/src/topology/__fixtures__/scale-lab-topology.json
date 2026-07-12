@@ -358,20 +358,6 @@
     },
     {
       "badges": [],
-      "from": "physnic:pve1:eno5",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve1:vmbr2"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve1:eno6",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve1:vmbr3"
-    },
-    {
-      "badges": [],
       "from": "physnic:pve2:eno1",
       "kind": "enslaved-by",
       "status": "unknown",
@@ -397,20 +383,6 @@
       "kind": "enslaved-by",
       "status": "unknown",
       "to": "bond:pve2:bond1"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve2:eno5",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve2:vmbr2"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve2:eno6",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve2:vmbr3"
     },
     {
       "badges": [],
@@ -442,20 +414,6 @@
     },
     {
       "badges": [],
-      "from": "physnic:pve3:eno5",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve3:vmbr2"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve3:eno6",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve3:vmbr3"
-    },
-    {
-      "badges": [],
       "from": "physnic:pve4:eno1",
       "kind": "enslaved-by",
       "status": "unknown",
@@ -481,20 +439,6 @@
       "kind": "enslaved-by",
       "status": "unknown",
       "to": "bond:pve4:bond1"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve4:eno5",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve4:vmbr2"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve4:eno6",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve4:vmbr3"
     },
     {
       "badges": [],
@@ -526,20 +470,6 @@
     },
     {
       "badges": [],
-      "from": "physnic:pve5:eno5",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve5:vmbr2"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve5:eno6",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve5:vmbr3"
-    },
-    {
-      "badges": [],
       "from": "physnic:pve6:eno1",
       "kind": "enslaved-by",
       "status": "unknown",
@@ -565,20 +495,6 @@
       "kind": "enslaved-by",
       "status": "unknown",
       "to": "bond:pve6:bond1"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve6:eno5",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve6:vmbr2"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve6:eno6",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve6:vmbr3"
     },
     {
       "badges": [],
@@ -610,20 +526,6 @@
     },
     {
       "badges": [],
-      "from": "physnic:pve7:eno5",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve7:vmbr2"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve7:eno6",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve7:vmbr3"
-    },
-    {
-      "badges": [],
       "from": "physnic:pve8:eno1",
       "kind": "enslaved-by",
       "status": "unknown",
@@ -649,20 +551,6 @@
       "kind": "enslaved-by",
       "status": "unknown",
       "to": "bond:pve8:bond1"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve8:eno5",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve8:vmbr2"
-    },
-    {
-      "badges": [],
-      "from": "physnic:pve8:eno6",
-      "kind": "port-of",
-      "status": "unknown",
-      "to": "bridge:pve8:vmbr3"
     },
     {
       "badges": [
@@ -4073,7 +3961,7 @@
       "label": "vmbr2",
       "layer": "l2",
       "nodeGroup": "pve1",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4082,7 +3970,7 @@
       "label": "vmbr3",
       "layer": "l2",
       "nodeGroup": "pve1",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4109,7 +3997,7 @@
       "label": "vmbr2",
       "layer": "l2",
       "nodeGroup": "pve2",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4118,7 +4006,7 @@
       "label": "vmbr3",
       "layer": "l2",
       "nodeGroup": "pve2",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4145,7 +4033,7 @@
       "label": "vmbr2",
       "layer": "l2",
       "nodeGroup": "pve3",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4154,7 +4042,7 @@
       "label": "vmbr3",
       "layer": "l2",
       "nodeGroup": "pve3",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4181,7 +4069,7 @@
       "label": "vmbr2",
       "layer": "l2",
       "nodeGroup": "pve4",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4190,7 +4078,7 @@
       "label": "vmbr3",
       "layer": "l2",
       "nodeGroup": "pve4",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4217,7 +4105,7 @@
       "label": "vmbr2",
       "layer": "l2",
       "nodeGroup": "pve5",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4226,7 +4114,7 @@
       "label": "vmbr3",
       "layer": "l2",
       "nodeGroup": "pve5",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4253,7 +4141,7 @@
       "label": "vmbr2",
       "layer": "l2",
       "nodeGroup": "pve6",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4262,7 +4150,7 @@
       "label": "vmbr3",
       "layer": "l2",
       "nodeGroup": "pve6",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4289,7 +4177,7 @@
       "label": "vmbr2",
       "layer": "l2",
       "nodeGroup": "pve7",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4298,7 +4186,7 @@
       "label": "vmbr3",
       "layer": "l2",
       "nodeGroup": "pve7",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4325,7 +4213,7 @@
       "label": "vmbr2",
       "layer": "l2",
       "nodeGroup": "pve8",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [],
@@ -4334,7 +4222,7 @@
       "label": "vmbr3",
       "layer": "l2",
       "nodeGroup": "pve8",
-      "status": "ok"
+      "status": "unknown"
     },
     {
       "badges": [

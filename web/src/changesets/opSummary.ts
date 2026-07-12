@@ -162,7 +162,7 @@ export function summarizeOp(op: Op): string {
       const macro = str(op.params, "macro");
       const proto = str(op.params, "proto");
       const dport = str(op.params, "dport");
-      const what = macro ?? [proto, dport ? `port ${dport}` : undefined].filter(Boolean).join(" ") ?? "";
+      const what = macro ?? [proto, dport ? `port ${dport}` : undefined].filter(Boolean).join(" ");
       return `Add firewall rule (${direction}, ${action}${what ? `, ${what}` : ""}) to ${id ?? "?"}`;
     }
     case "fw.rule.update":

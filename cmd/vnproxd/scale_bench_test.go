@@ -40,11 +40,11 @@ import (
 // nodes/300 guests) daemon boot only happens once per benchmark run.
 type scaleDaemon struct {
 	client     *http.Client
+	cancel     context.CancelFunc
+	daemonDone chan error
 	base       string
 	sessionID  string
 	csrfToken  string
-	cancel     context.CancelFunc
-	daemonDone chan error
 }
 
 func bootScaleDaemon(t testing.TB) *scaleDaemon {

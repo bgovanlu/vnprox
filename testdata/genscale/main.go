@@ -158,16 +158,21 @@ func buildFixture() *pvemock.Fixture {
 		ns.Links["vmbr1"] = pvemock.LinkInfo{Mac: bond1Mac, LinkUp: true}
 		ns.Stats["vmbr1"] = pvemock.IfaceStats{RxBytes: 9_000_000_000, TxBytes: 3_600_000_000, RxPackets: 7_500_000, TxPackets: 4_100_000}
 
-		// eno5 -> vmbr2, eno6 -> vmbr3: two plain guest bridges, each
-		// directly on a single physical NIC (no bond) so the fixture also
-		// covers non-bonded uplinks at scale.
-		for b, nic := range map[string]string{"vmbr2": "eno5", "vmbr3": "eno6"} {
+		// vmbr2, vmbr3: two plain, port-less guest bridges (prepared but not
+		// yet wired to an uplink — a realistic "isolated/internal network"
+		// shape, and it's what real PVE allows: a bridge needs no ports at
+		// all). Deliberately NOT attached to eno5/eno6 (unlike an earlier
+		// version of this generator, which enslaved them and left the
+		// fixture with zero free NICs anywhere — a real gap the "create a
+		// LACP bond from two NICs" E2E task surfaced, since it needs
+		// genuinely free NICs to bond). eno5/eno6 stay standalone physical
+		// NICs with no bridge/bond attachment at all.
+		for bi, b := range []string{"vmbr2", "vmbr3"} {
 			ns.Network = append(ns.Network, pvemock.NetIface{
 				Iface: b, Type: "bridge", Method: "manual", Autostart: true, MTU: 1500,
-				BridgePorts: nic, BridgeVlanAware: true, Comments: "guest access bridge",
+				BridgeVlanAware: true, Comments: "guest access bridge (no uplink yet)",
 			})
-			nicMac := ns.Links[nic].Mac
-			ns.Links[b] = pvemock.LinkInfo{Mac: nicMac, LinkUp: true}
+			ns.Links[b] = pvemock.LinkInfo{Mac: fmt.Sprintf("bc:24:%02x:02:00:%02x", i+1, 10+bi), LinkUp: true}
 			ns.Stats[b] = pvemock.IfaceStats{RxBytes: 2_000_000_000, TxBytes: 800_000_000, RxPackets: 1_800_000, TxPackets: 900_000}
 		}
 

@@ -4,11 +4,6 @@
 # Generated (not hand-written) by testdata/genscale/main.go — regenerate
 # with `go run ./testdata/genscale > testdata/clusters/scale-lab.yaml`.
 # Used by: internal/api's scale benchmarks (BenchmarkTopologyAtScale et al,
-# internal/api/scale_bench_test.go), the T-607 soak-test churn harness
-# (testdata/genscale/soak), and web/e2e/scale.spec.ts's frontend
-# initial-render/pan-zoom measurement at this scale. See
-# planning/reports/T-607.md and docs/performance.md for the measurements
-# taken against it.
 nodes:
     pve1:
         links:
@@ -67,10 +62,10 @@ nodes:
                 mac: bc:24:01:01:00:03
                 link_up: true
             vmbr2:
-                mac: bc:24:01:05:00:05
+                mac: bc:24:01:02:00:0a
                 link_up: true
             vmbr3:
-                mac: bc:24:01:06:00:06
+                mac: bc:24:01:02:00:0b
                 link_up: true
         lldp: {}
         stats:
@@ -606,17 +601,15 @@ nodes:
               autostart: true
             - type: bridge
               method: manual
-              iface: vmbr3
-              comments: guest access bridge
-              bridge_ports: eno6
+              iface: vmbr2
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
             - type: bridge
               method: manual
-              iface: vmbr2
-              comments: guest access bridge
-              bridge_ports: eno5
+              iface: vmbr3
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
@@ -678,10 +671,10 @@ nodes:
                 mac: bc:24:02:01:00:03
                 link_up: true
             vmbr2:
-                mac: bc:24:02:05:00:05
+                mac: bc:24:02:02:00:0a
                 link_up: true
             vmbr3:
-                mac: bc:24:02:06:00:06
+                mac: bc:24:02:02:00:0b
                 link_up: true
         lldp: {}
         stats:
@@ -1218,16 +1211,14 @@ nodes:
             - type: bridge
               method: manual
               iface: vmbr2
-              comments: guest access bridge
-              bridge_ports: eno5
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
             - type: bridge
               method: manual
               iface: vmbr3
-              comments: guest access bridge
-              bridge_ports: eno6
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
@@ -1289,10 +1280,10 @@ nodes:
                 mac: bc:24:03:01:00:03
                 link_up: true
             vmbr2:
-                mac: bc:24:03:05:00:05
+                mac: bc:24:03:02:00:0a
                 link_up: true
             vmbr3:
-                mac: bc:24:03:06:00:06
+                mac: bc:24:03:02:00:0b
                 link_up: true
         lldp: {}
         stats:
@@ -1829,16 +1820,14 @@ nodes:
             - type: bridge
               method: manual
               iface: vmbr2
-              comments: guest access bridge
-              bridge_ports: eno5
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
             - type: bridge
               method: manual
               iface: vmbr3
-              comments: guest access bridge
-              bridge_ports: eno6
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
@@ -1900,10 +1889,10 @@ nodes:
                 mac: bc:24:04:01:00:03
                 link_up: true
             vmbr2:
-                mac: bc:24:04:05:00:05
+                mac: bc:24:04:02:00:0a
                 link_up: true
             vmbr3:
-                mac: bc:24:04:06:00:06
+                mac: bc:24:04:02:00:0b
                 link_up: true
         lldp: {}
         stats:
@@ -2440,16 +2429,14 @@ nodes:
             - type: bridge
               method: manual
               iface: vmbr2
-              comments: guest access bridge
-              bridge_ports: eno5
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
             - type: bridge
               method: manual
               iface: vmbr3
-              comments: guest access bridge
-              bridge_ports: eno6
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
@@ -2511,10 +2498,10 @@ nodes:
                 mac: bc:24:05:01:00:03
                 link_up: true
             vmbr2:
-                mac: bc:24:05:05:00:05
+                mac: bc:24:05:02:00:0a
                 link_up: true
             vmbr3:
-                mac: bc:24:05:06:00:06
+                mac: bc:24:05:02:00:0b
                 link_up: true
         lldp: {}
         stats:
@@ -3042,16 +3029,14 @@ nodes:
             - type: bridge
               method: manual
               iface: vmbr2
-              comments: guest access bridge
-              bridge_ports: eno5
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
             - type: bridge
               method: manual
               iface: vmbr3
-              comments: guest access bridge
-              bridge_ports: eno6
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
@@ -3113,10 +3098,10 @@ nodes:
                 mac: bc:24:06:01:00:03
                 link_up: true
             vmbr2:
-                mac: bc:24:06:05:00:05
+                mac: bc:24:06:02:00:0a
                 link_up: true
             vmbr3:
-                mac: bc:24:06:06:00:06
+                mac: bc:24:06:02:00:0b
                 link_up: true
         lldp: {}
         stats:
@@ -3643,16 +3628,14 @@ nodes:
             - type: bridge
               method: manual
               iface: vmbr2
-              comments: guest access bridge
-              bridge_ports: eno5
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
             - type: bridge
               method: manual
               iface: vmbr3
-              comments: guest access bridge
-              bridge_ports: eno6
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
@@ -3714,10 +3697,10 @@ nodes:
                 mac: bc:24:07:01:00:03
                 link_up: true
             vmbr2:
-                mac: bc:24:07:05:00:05
+                mac: bc:24:07:02:00:0a
                 link_up: true
             vmbr3:
-                mac: bc:24:07:06:00:06
+                mac: bc:24:07:02:00:0b
                 link_up: true
         lldp: {}
         stats:
@@ -4245,16 +4228,14 @@ nodes:
             - type: bridge
               method: manual
               iface: vmbr2
-              comments: guest access bridge
-              bridge_ports: eno5
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
             - type: bridge
               method: manual
               iface: vmbr3
-              comments: guest access bridge
-              bridge_ports: eno6
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
@@ -4316,10 +4297,10 @@ nodes:
                 mac: bc:24:08:01:00:03
                 link_up: true
             vmbr2:
-                mac: bc:24:08:05:00:05
+                mac: bc:24:08:02:00:0a
                 link_up: true
             vmbr3:
-                mac: bc:24:08:06:00:06
+                mac: bc:24:08:02:00:0b
                 link_up: true
         lldp: {}
         stats:
@@ -4846,16 +4827,14 @@ nodes:
             - type: bridge
               method: manual
               iface: vmbr2
-              comments: guest access bridge
-              bridge_ports: eno5
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
             - type: bridge
               method: manual
               iface: vmbr3
-              comments: guest access bridge
-              bridge_ports: eno6
+              comments: guest access bridge (no uplink yet)
               mtu: 1500
               bridge_vlan_aware: true
               autostart: true
