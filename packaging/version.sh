@@ -12,7 +12,22 @@
 set -euo pipefail
 
 repo_dir="${1:-.}"
-describe="$(git -C "$repo_dir" describe --tags --always --dirty 2>/dev/null || true)"
+describe="$(git -C "$repo_dir" describe --tags --always 2>/dev/null || true)"
+
+# Append "-dirty" ourselves (rather than `git describe --dirty`, which
+# checks the whole working tree) excluding web/dist: hardware validation
+# (T-608) found every real release — including the actual published
+# v1.0.0 GitHub release — got tagged "+dirty" in its version string and
+# .deb filename, because `make build`'s `npm run build` step (which
+# release.yml and `make deb` both now always run first) legitimately
+# rewrites the git-tracked web/dist/index.html placeholder (see
+# .gitignore's comment on why it's tracked at all) with real Vite output.
+# That's expected, intentional churn in a build artifact, not an unclean
+# checkout — excluding it here is what makes a real, clean release tag
+# actually produce a clean version string again.
+if [ -n "$(git -C "$repo_dir" status --porcelain -- . ':!web/dist' 2>/dev/null)" ]; then
+	describe="${describe}-dirty"
+fi
 
 case "$describe" in
 "")
