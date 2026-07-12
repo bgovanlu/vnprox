@@ -104,6 +104,15 @@ func TestTicketAuth_FullReadSurface(t *testing.T) {
 	if vmbr0.BridgePorts != "eno1" {
 		t.Errorf("vmbr0.BridgePorts = %q, want eno1", vmbr0.BridgePorts)
 	}
+	if !vmbr0.Autostart {
+		// Regression test (T-608, hardware validation): real PVE reports
+		// autostart as a 0/1 int over the wire, not a JSON bool; pvemock now
+		// mirrors that (NetIface.MarshalJSON), and the client decodes via
+		// networkInterfaceWire — this assertion would have caught the bug
+		// where the client's plain `bool` field silently decoded wrong (or,
+		// against real PVE, failed to decode at all).
+		t.Errorf("vmbr0.Autostart = false, want true (wire: PVE/pvemock report this as a 0/1 int)")
+	}
 
 	got, err := c.GetNodeNetworkInterface(ctx, "pve1", "vmbr0")
 	if err != nil {

@@ -94,6 +94,50 @@ type NetworkInterface struct {
 	Autostart       bool         `json:"autostart"`
 }
 
+// networkInterfaceWire mirrors GET /nodes/{node}/network[/{iface}]'s wire
+// shape exactly (hardware validation against a real PVE 9.2.4 node found it
+// reports autostart/bridge_vlan_aware as 0/1 ints, like cluster/status's
+// online/quorate/local flags above — pvemock previously modeled these as
+// plain JSON booleans, which is why no test caught this); NetworkInterface
+// is the converted, ergonomic form callers see.
+type networkInterfaceWire struct {
+	Iface           string       `json:"iface"`
+	Type            string       `json:"type"`
+	Method          string       `json:"method,omitempty"`
+	Address         string       `json:"address,omitempty"`
+	Gateway         string       `json:"gateway,omitempty"`
+	Comments        string       `json:"comments,omitempty"`
+	BridgePorts     string       `json:"bridge_ports,omitempty"`
+	VlanRawDevice   string       `json:"vlan_raw_device,omitempty"`
+	Slaves          string       `json:"slaves,omitempty"`
+	BondMode        string       `json:"bond_mode,omitempty"`
+	Pending         PendingState `json:"pending,omitempty"`
+	MTU             int          `json:"mtu,omitempty"`
+	VlanID          int          `json:"vlan_id,omitempty"`
+	BridgeVlanAware int          `json:"bridge_vlan_aware,omitempty"`
+	Autostart       int          `json:"autostart,omitempty"`
+}
+
+func (w networkInterfaceWire) toEntry() NetworkInterface {
+	return NetworkInterface{
+		Iface:           w.Iface,
+		Type:            w.Type,
+		Method:          w.Method,
+		Address:         w.Address,
+		Gateway:         w.Gateway,
+		Comments:        w.Comments,
+		BridgePorts:     w.BridgePorts,
+		VlanRawDevice:   w.VlanRawDevice,
+		Slaves:          w.Slaves,
+		BondMode:        w.BondMode,
+		Pending:         w.Pending,
+		MTU:             w.MTU,
+		VlanID:          w.VlanID,
+		BridgeVlanAware: w.BridgeVlanAware != 0,
+		Autostart:       w.Autostart != 0,
+	}
+}
+
 // NetworkInterfaceUpdate is a partial edit for PUT
 // /nodes/{node}/network/{iface}: only non-nil fields are sent, matching
 // PVE's merge-not-replace PUT semantics (internal/pvemock/network.go's

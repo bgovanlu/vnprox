@@ -10,10 +10,14 @@ import (
 // interfaces list, live config annotated with any staged-but-unapplied
 // ("pending") edits.
 func (c *Client) ListNodeNetwork(ctx context.Context, node string) ([]NetworkInterface, error) {
-	var out []NetworkInterface
+	var wire []networkInterfaceWire
 	path := fmt.Sprintf("/nodes/%s/network", node)
-	if err := c.do(ctx, "GET", path, requestParams{}, &out); err != nil {
+	if err := c.do(ctx, "GET", path, requestParams{}, &wire); err != nil {
 		return nil, err
+	}
+	out := make([]NetworkInterface, len(wire))
+	for i, w := range wire {
+		out[i] = w.toEntry()
 	}
 	return out, nil
 }
@@ -21,11 +25,12 @@ func (c *Client) ListNodeNetwork(ctx context.Context, node string) ([]NetworkInt
 // GetNodeNetworkInterface calls GET /nodes/{node}/network/{iface} for a
 // single interface.
 func (c *Client) GetNodeNetworkInterface(ctx context.Context, node, iface string) (*NetworkInterface, error) {
-	var out NetworkInterface
+	var wire networkInterfaceWire
 	path := fmt.Sprintf("/nodes/%s/network/%s", node, iface)
-	if err := c.do(ctx, "GET", path, requestParams{}, &out); err != nil {
+	if err := c.do(ctx, "GET", path, requestParams{}, &wire); err != nil {
 		return nil, err
 	}
+	out := wire.toEntry()
 	return &out, nil
 }
 

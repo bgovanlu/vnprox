@@ -1,5 +1,7 @@
 package pvemock
 
+import "encoding/json"
+
 // Fixture is the top-level shape of a YAML cluster fixture under
 // testdata/clusters/. It is the single source of truth the mock server is
 // built from: the PVE API surface, the host.Reader fixture backing, and the
@@ -164,8 +166,51 @@ type NetIface struct {
 	Slaves          string       `yaml:"slaves,omitempty" json:"slaves,omitempty"`
 	MTU             int          `yaml:"mtu,omitempty" json:"mtu,omitempty"`
 	VlanID          int          `yaml:"vlan_id,omitempty" json:"vlan_id,omitempty"`
-	BridgeVlanAware bool         `yaml:"bridge_vlan_aware,omitempty" json:"bridge_vlan_aware,omitempty"`
-	Autostart       bool         `yaml:"autostart" json:"autostart"`
+	BridgeVlanAware bool         `yaml:"bridge_vlan_aware,omitempty" json:"-"`
+	Autostart       bool         `yaml:"autostart" json:"-"`
+}
+
+// netIfaceWire is NetIface's actual JSON wire shape: hardware validation
+// against a real PVE 9.2.4 node found GET /nodes/{node}/network reports
+// autostart/bridge_vlan_aware as 0/1 ints, not JSON booleans (see
+// internal/pve/types.go's networkInterfaceWire, the client-side
+// counterpart of this same fix). NetIface itself keeps plain Go bools for
+// every internal use (YAML fixtures, applyNetIfaceField, render.go) — only
+// MarshalJSON below needs to know about the wire quirk.
+type netIfaceWire struct {
+	BondMode        string       `json:"bond_mode,omitempty"`
+	Type            string       `json:"type"`
+	Method          string       `json:"method,omitempty"`
+	Address         string       `json:"address,omitempty"`
+	Gateway         string       `json:"gateway,omitempty"`
+	Pending         PendingState `json:"pending,omitempty"`
+	Iface           string       `json:"iface"`
+	Comments        string       `json:"comments,omitempty"`
+	BridgePorts     string       `json:"bridge_ports,omitempty"`
+	VlanRawDevice   string       `json:"vlan_raw_device,omitempty"`
+	Slaves          string       `json:"slaves,omitempty"`
+	MTU             int          `json:"mtu,omitempty"`
+	VlanID          int          `json:"vlan_id,omitempty"`
+	BridgeVlanAware int          `json:"bridge_vlan_aware,omitempty"`
+	Autostart       int          `json:"autostart"`
+}
+
+// MarshalJSON implements json.Marshaler, emitting autostart/
+// bridge_vlan_aware as 0/1 ints per netIfaceWire's doc comment.
+func (i NetIface) MarshalJSON() ([]byte, error) {
+	w := netIfaceWire{
+		BondMode: i.BondMode, Type: i.Type, Method: i.Method, Address: i.Address,
+		Gateway: i.Gateway, Pending: i.Pending, Iface: i.Iface, Comments: i.Comments,
+		BridgePorts: i.BridgePorts, VlanRawDevice: i.VlanRawDevice, Slaves: i.Slaves,
+		MTU: i.MTU, VlanID: i.VlanID,
+	}
+	if i.BridgeVlanAware {
+		w.BridgeVlanAware = 1
+	}
+	if i.Autostart {
+		w.Autostart = 1
+	}
+	return json.Marshal(w)
 }
 
 // LinkInfo is netlink-equivalent physical/virtual link state for one iface.
