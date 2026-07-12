@@ -340,10 +340,19 @@ if [ -d /etc/pve ]; then
 		log "cluster secret already present at $CLUSTER_SECRET_FILE, leaving it untouched"
 	else
 		umask 077
+		# Hex-encoded, not raw bytes: internal/peer/secret.go's SecretStore
+		# hex-decodes this file's content (it also generates hex-encoded
+		# content itself, for the case where the daemon wins the "who
+		# generates first" race instead of vnprox-setup). Hardware validation
+		# (T-608) found this file previously written as raw binary here,
+		# which made every real vnproxd crash-loop at startup with "cluster
+		# secret ... is not valid hex" — a bug no sandboxed test caught
+		# because none of them start a real vnprox.service under systemd
+		# against a vnprox-setup-generated secret.
 		if command -v openssl >/dev/null 2>&1; then
-			openssl rand -out "$CLUSTER_SECRET_FILE" 32 2>/dev/null && chmod 0600 "$CLUSTER_SECRET_FILE"
+			openssl rand -hex 32 >"$CLUSTER_SECRET_FILE" && chmod 0600 "$CLUSTER_SECRET_FILE"
 		else
-			head -c 32 /dev/urandom >"$CLUSTER_SECRET_FILE" && chmod 0600 "$CLUSTER_SECRET_FILE"
+			head -c 32 /dev/urandom | od -An -vtx1 | tr -d ' \n' >"$CLUSTER_SECRET_FILE" && printf '\n' >>"$CLUSTER_SECRET_FILE" && chmod 0600 "$CLUSTER_SECRET_FILE"
 		fi
 		if [ -s "$CLUSTER_SECRET_FILE" ]; then
 			log "generated new cluster secret at $CLUSTER_SECRET_FILE"
