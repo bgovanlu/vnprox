@@ -79,10 +79,17 @@ SystemCallArchitectures=native
 # nscd/systemd-resolved the way a cgo-linked getaddrinfo() call might —
 # only AF_INET/AF_INET6 (HTTPS/WS server, PVE API client, peer API
 # client/server) and AF_NETLINK (rtnetlink link/address/route/neighbor
-# operations) are ever opened. AF_UNIX is deliberately left out: this unit
-# uses Type=simple (no sd_notify socket) and vnproxd itself never opens a
-# Unix domain socket.
-RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
+# operations) are ever opened by vnproxd itself.
+#
+# AF_UNIX **is** required, though (hardware validation, T-608, found this
+# the hard way): this seccomp filter is inherited across exec by every
+# child process the unit spawns — including the lldpctl subprocess exec
+# the CapabilityBoundingSet comment above already documents. lldpctl talks
+# to lldpd over a Unix domain socket (/run/lldpd.socket); without AF_UNIX
+# here, that socket() call is killed by the kernel and every LLDP poll
+# fails outright. No sandboxed test caught this because none of them run a
+# real systemd-confined vnprox.service actually invoking lldpctl.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
 
 # SystemCallFilter: @system-service is systemd's own curated allowlist for
 # well-behaved services (networking, file I/O, process spawning for the

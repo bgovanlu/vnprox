@@ -247,9 +247,15 @@ PVE_TOKEN_FILE="$KEYS_DIR/pve-token"
 VNPROX_PVE_ROLE="VnproxAuditor"
 # Sys.Audit: node status/interfaces (GET /nodes/{node}/*), cluster status.
 # VM.Audit: qemu/lxc config reads (guest NIC inventory).
-# SDN.Audit: SDN zone/vnet/subnet reads. No *.Modify privilege anywhere —
-# the collectors' token is read-only by design (docs/security.md, D3).
-VNPROX_PVE_PRIVS="Sys.Audit,VM.Audit,SDN.Audit"
+# SDN.Audit: SDN zone/vnet/subnet reads.
+# Mapping.Audit: GET /cluster/notifications/targets (T-602's findings
+# notification hook) — hardware validation (T-608) found real PVE gates
+# this specific route on Mapping.Audit at /mapping/notifications, not
+# Sys.Audit at / like every other route this token calls; every
+# notification attempt failed with "Permission check failed" until this
+# was added. No *.Modify privilege anywhere — the collectors' token is
+# read-only by design (docs/security.md, D3).
+VNPROX_PVE_PRIVS="Sys.Audit,VM.Audit,SDN.Audit,Mapping.Audit"
 
 # pve_try_create runs a pveum create-style subcommand and treats "the thing
 # it would create already exists" as success rather than failure: pveum's
