@@ -112,6 +112,15 @@ func (srv *Server) handleTicket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Hardware validation (T-608) found real PVE rejects the request
+	// outright when username already contains "@realm" AND a separate
+	// realm field is also present — matched here so a client sending both
+	// (the exact bug this mock previously let slide) fails the same way
+	// against the mock as it would against a real node.
+	if req.Realm != "" && containsAt(req.Username) {
+		writeError(w, http.StatusUnauthorized, "authentication failure")
+		return
+	}
 	username := req.Username
 	if req.Realm != "" && !containsAt(username) {
 		username = username + "@" + req.Realm

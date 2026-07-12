@@ -119,12 +119,17 @@ func (a *ticketAuth) loginWith(ctx context.Context, c *Client, password, otp str
 		username = username + "@" + a.realm
 	}
 
+	// Deliberately no separate "realm" form field: hardware validation
+	// (T-608) found real PVE rejects the login outright ("authentication
+	// failure") when both a "user@realm"-shaped username AND a separate
+	// realm field are present in the same POST /access/ticket request.
+	// username above always ends up realm-qualified whenever a.realm is
+	// set, so a separate field is both redundant and actively broken.
+	// pvemock's handleTicket tolerates sending both (a no-op once username
+	// already contains "@"), which is why no test caught this.
 	form := url.Values{
 		"username": {username},
 		"password": {password},
-	}
-	if a.realm != "" {
-		form.Set("realm", a.realm)
 	}
 	if otp != "" {
 		form.Set("otp", otp)
