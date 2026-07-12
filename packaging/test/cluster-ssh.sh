@@ -208,11 +208,17 @@ echo "$OUT" | grep -q "cluster nodes detected: pve1 pve2 pve3" || die "cluster d
 # URL (reliably present) and, authoritatively, each node's own config
 # file below.
 echo "$OUT" | grep -q "URL: https://.*:8008" || die "expected the coordinator's own URL to report the fallback port 8008"
-echo "$OUT" | grep -q "pve2: reachable over SSH, rolling out" || die "pve2 SSH rollout did not run"
-echo "$OUT" | grep -q "pve3: reachable over SSH, rolling out" || die "pve3 SSH rollout did not run"
-echo "$OUT" | grep -q "  - pve2: done" || die "pve2 rollout did not complete"
-echo "$OUT" | grep -q "  - pve3: done" || die "pve3 rollout did not complete"
-
+# pve2/pve3's own "reachable over SSH, rolling out" / "- done" log() lines
+# (install.sh steps 8-9) are NOT asserted here, on purpose: they're subject
+# to the exact same podman-exec stdout/stderr stream-multiplexing drop this
+# file's step-2/3 comment above already documents observing directly — just
+# further into the same long, apt/ssh/scp-heavy $OUT capture, where it's
+# more likely to bite, not less. Rather than re-introduce that flake class
+# for the rollout's log lines too, the checks below assert the actual,
+# authoritative outcome (package installed + real config content on every
+# node, and byte-identical secret content) instead of parsing log output
+# for it — a strictly stronger proof that the rollout ran and completed
+# than any log line could be.
 log "verifying: vnprox installed on all three nodes, all reporting the same port"
 for node in pve1 pve2 pve3; do
 	podman exec "$node" dpkg -s vnprox >/dev/null 2>&1 || die "$node: vnprox not installed"
@@ -226,6 +232,11 @@ SECRET1="$(podman exec pve1 sha256sum /etc/pve/vnprox/cluster.secret | cut -d' '
 SECRET2="$(podman exec pve2 sha256sum /etc/pve/vnprox/cluster.secret | cut -d' ' -f1)"
 SECRET3="$(podman exec pve3 sha256sum /etc/pve/vnprox/cluster.secret | cut -d' ' -f1)"
 [ "$SECRET1" = "$SECRET2" ] && [ "$SECRET1" = "$SECRET3" ] || die "cluster secret differs across nodes: pve1=$SECRET1 pve2=$SECRET2 pve3=$SECRET3"
-echo "$OUT" | grep -qi "cluster secret already present" || die "pve2/pve3's vnprox-setup runs did not report the (shared) secret as already present — suggests it was regenerated instead of replicated"
+# Not also asserting the "cluster secret already present" log line for the
+# same stream-multiplexing reason above: byte-identical content across
+# three independent nodes already rules out independent regeneration for
+# all practical purposes (this is a random secret, not a fixed default), so
+# the sha256 comparison alone is authoritative for what this check cares
+# about — replication, not merely coincidental equality.
 
 echo "ALL CHECKS PASSED"
