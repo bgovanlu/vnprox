@@ -32,6 +32,15 @@ role)
 		: >"$STATE/roles/$name"
 		echo "role '$name' added"
 		;;
+	modify)
+		# Real pveum's role modify succeeds whether the role already
+		# existed or not (it's an upsert of the privs), so this stub
+		# doesn't require a prior "add" — it just (re)creates the marker
+		# file, same as a real modify would leave the role present.
+		name="$3"
+		: >"$STATE/roles/$name"
+		echo "role '$name' modified"
+		;;
 	delete)
 		rm -f "$STATE/roles/$3"
 		;;

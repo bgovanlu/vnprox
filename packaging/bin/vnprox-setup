@@ -288,13 +288,30 @@ pve_try_create() {
 if ! command -v pveum >/dev/null 2>&1; then
 	log "step 5: pveum not found (not a Proxmox VE node) — skipping PVE API token provisioning"
 	log "  -> on a real PVE node this creates role $VNPROX_PVE_ROLE, user vnprox@pve, and the vnprox@pve!daemon token; see docs/security.md"
+else
+	pve_try_create "role $VNPROX_PVE_ROLE ($VNPROX_PVE_PRIVS)" \
+		pveum role add "$VNPROX_PVE_ROLE" -privs "$VNPROX_PVE_PRIVS" >/dev/null || true
+
+	# Always reassert the role's privilege set too, even on an idempotent
+	# re-run that skips user/token creation below: `pveum role add` on an
+	# already-existing role is a no-op (the "already existed" branch just
+	# above), so an upgrade that changes VNPROX_PVE_PRIVS (like T-608 adding
+	# Mapping.Audit) would otherwise never actually reach an existing
+	# install. `role modify` is safe to run unconditionally, every time,
+	# whether the role was just created or already existed.
+	if pveum role modify "$VNPROX_PVE_ROLE" -privs "$VNPROX_PVE_PRIVS" >/dev/null 2>&1; then
+		log "  role $VNPROX_PVE_ROLE privileges up to date ($VNPROX_PVE_PRIVS)"
+	else
+		warn "  could not update role $VNPROX_PVE_ROLE to privs $VNPROX_PVE_PRIVS"
+	fi
+fi
+
+if ! command -v pveum >/dev/null 2>&1; then
+	: # already logged above
 elif [ -s "$PVE_TOKEN_FILE" ]; then
 	log "step 5: PVE API token file already present at $PVE_TOKEN_FILE, leaving it untouched (idempotent re-run)"
 else
 	log "step 5: provisioning the PVE API token vnprox@pve!daemon"
-
-	pve_try_create "role $VNPROX_PVE_ROLE ($VNPROX_PVE_PRIVS)" \
-		pveum role add "$VNPROX_PVE_ROLE" -privs "$VNPROX_PVE_PRIVS" >/dev/null || true
 
 	pve_try_create "user vnprox@pve" \
 		pveum user add vnprox@pve --comment "vnprox daemon read-only identity (docs/security.md)" >/dev/null || true
