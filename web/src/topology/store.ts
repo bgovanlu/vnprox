@@ -10,8 +10,16 @@
 import { create } from "zustand";
 import { ALL_LAYERS, type Layer, type TopologyLayoutPayload } from "../api/types";
 
+/** Which rendering of the same GET /topology data is shown: the switch
+ * faceplate view (the default — docs/features/topology.md §2's virtual-
+ * switch rework) or the elk pan/zoom graph. A per-session view toggle, not
+ * part of the persisted saved layout (like trafficMode), so a user can flip
+ * it without rewriting their saved arrangement. */
+export type TopologyViewMode = "switch" | "graph";
+
 export interface TopologyUIState {
   activeLayers: Set<Layer>;
+  viewMode: TopologyViewMode;
   vlanFilter: number | undefined;
   selectedId: string | undefined;
   hoveredId: string | undefined;
@@ -25,6 +33,7 @@ export interface TopologyUIState {
   trafficMode: boolean;
 
   toggleLayer: (layer: Layer) => void;
+  setViewMode: (mode: TopologyViewMode) => void;
   toggleTrafficMode: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
@@ -43,6 +52,7 @@ const DEFAULT_ACTIVE_LAYERS = new Set<Layer>(ALL_LAYERS);
 
 export const useTopologyStore = create<TopologyUIState>((set) => ({
   activeLayers: DEFAULT_ACTIVE_LAYERS,
+  viewMode: "switch",
   vlanFilter: undefined,
   selectedId: undefined,
   hoveredId: undefined,
@@ -58,6 +68,9 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
       else next.add(layer);
       return { activeLayers: next };
     });
+  },
+  setViewMode: (mode) => {
+    set({ viewMode: mode });
   },
   toggleTrafficMode: () => {
     set((state) => ({ trafficMode: !state.trafficMode }));

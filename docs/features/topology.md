@@ -13,6 +13,14 @@ Four toggleable layers, rendered as horizontal bands per cluster node (nodes sid
 
 ## 2. Interactions
 
+**Two views of the same data (Switch / Graph toggle).** The page header carries a segmented `Switch | Graph` control selecting how the one `GET /topology` response is rendered:
+
+- **Switch view (default)** — the virtual-switch faceplate. Each Linux/OVS bridge is drawn as a switch appliance: an uplink bay (bonds expanded to their member NICs with LACP/MII active state and the LLDP neighbor on the far end of each wire), a VLAN sub-interface strip, a grid of guest **access ports** (VMID as the port number, guest name, VLAN tag), and a strip of the SDN VNets realized on the bridge. Switches are grouped per cluster node; NICs/bonds not wired into any bridge surface as an "Unattached ports" panel. Because a Proxmox bridge *is* a virtual switch, this is the most literal rendering of the model. The four layer toggles map to faceplate sections (Physical→uplink bay + unattached ports, L2→VLAN strip, SDN→VNet strip, Guests→access ports); the switch header always shows. Click any switch/port/NIC/VNet → the same inspector; the VLAN filter greys switches (and individual ports) not carrying the VID; a stale node's switches grey out; collapsed-guest bridges show a `+N` access port that expands in place.
+- **Graph view** — the elk pan/zoom node-link canvas (below). It retains the interactions that are inherently spatial: drag-and-drop editing, the path-simulator map overlay, traffic paint mode, and hover-chain highlight. Selecting an entity, searching, the VLAN filter, and layer toggles work in both views.
+
+The chosen view is a per-session preference (like traffic mode), not part of the saved layout.
+
+
 - **Pan/zoom canvas** (React Flow), auto-layout via elkjs layered algorithm; manual repositioning persists per user (saved layouts, `layouts` table).
 - **Click** any entity → inspector panel: normalized fields, live status, raw source (interfaces(5) stanza or PVE object), related entities, quick actions (Edit → opens changeset drawer; Trace path; Show metrics).
 - **Hover** → highlight the full connectivity chain (guest NIC → bridge → bond → NIC → switch port) and dim the rest.

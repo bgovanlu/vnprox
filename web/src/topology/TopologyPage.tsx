@@ -23,6 +23,9 @@ import { SpotlightSearch } from "./SpotlightSearch";
 import { StalenessBanner } from "./StalenessBanner";
 import { summarizeStaleness } from "./staleness";
 import { TopologyCanvas } from "./TopologyCanvas";
+import { SwitchView } from "./SwitchView";
+import { buildSwitchModel } from "./switchModel";
+import { ViewModeToggle } from "./ViewModeToggle";
 import { VlanFilterInput } from "./VlanFilterInput";
 import { computeLayout, type XYPosition } from "./layout";
 import { isGuestGroupId } from "./projection";
@@ -83,6 +86,8 @@ function TopologyPageContent() {
   const { addOps, replaceOps } = useDrawerActions();
 
   const activeLayers = useTopologyStore((s) => s.activeLayers);
+  const viewMode = useTopologyStore((s) => s.viewMode);
+  const setViewMode = useTopologyStore((s) => s.setViewMode);
   const vlanFilter = useTopologyStore((s) => s.vlanFilter);
   const selectedId = useTopologyStore((s) => s.selectedId);
   const hoveredId = useTopologyStore((s) => s.hoveredId);
@@ -226,6 +231,20 @@ function TopologyPageContent() {
     ],
   );
 
+  // Switch faceplate model: built from the same merged node/edge set the
+  // graph view uses (base minus expanded guest-group pills, plus each
+  // expansion's synthesized members — mirroring toFlowElements) so guest-
+  // group expansion, WS deltas, and staleness all flow through both views
+  // identically. Only recomputed for the switch view.
+  const switchTopology = useMemo(() => {
+    if (viewMode !== "switch") return { nodes: [] };
+    const baseNodes = topology?.nodes ?? [];
+    const baseEdges = topology?.edges ?? [];
+    const mergedNodes = [...baseNodes.filter((n) => !expandedGroups.has(n.id)), ...extraNodes];
+    const mergedEdges = [...baseEdges.filter((e) => !expandedGroups.has(e.from)), ...extraEdges];
+    return buildSwitchModel(mergedNodes, mergedEdges);
+  }, [viewMode, topology, extraNodes, extraEdges, expandedGroups]);
+
   const overCap = elements.nodes.length + elements.edges.length > RENDER_CAP;
   const navigate = useNavigate();
 
@@ -365,15 +384,18 @@ function TopologyPageContent() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Topology</h1>
         <div className="flex flex-wrap items-center gap-2">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
           <LayerToggleBar activeLayers={activeLayers} onToggle={toggleLayer} layerOrder={LAYER_ORDER} />
-          <Button
-            size="sm"
-            variant={trafficMode ? "primary" : "secondary"}
-            aria-pressed={trafficMode}
-            onClick={toggleTrafficMode}
-          >
-            Traffic
-          </Button>
+          {viewMode === "graph" && (
+            <Button
+              size="sm"
+              variant={trafficMode ? "primary" : "secondary"}
+              aria-pressed={trafficMode}
+              onClick={toggleTrafficMode}
+            >
+              Traffic
+            </Button>
+          )}
           <VlanFilterInput ref={vlanInputRef} value={vlanFilter} onChange={setVlanFilter} />
           <Button
             size="sm"
@@ -400,7 +422,7 @@ function TopologyPageContent() {
         </div>
       )}
 
-      {overCap && (
+      {overCap && viewMode === "graph" && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
           This cluster has {elements.nodes.length + elements.edges.length} visible elements — above the ~2,000
           render cap (docs/features/topology.md §4). Use the VLAN filter or a layer toggle to narrow the view.
@@ -429,7 +451,18 @@ function TopologyPageContent() {
             />
           </div>
         )}
-        {!isLoading && !isError && topology && topology.nodes.length > 0 && (
+        {!isLoading && !isError && topology && topology.nodes.length > 0 && viewMode === "switch" && (
+          <SwitchView
+            topology={switchTopology}
+            selectedId={selectedId}
+            vlanFilter={vlanFilter}
+            activeLayers={activeLayers}
+            staleNodeGroups={staleSummary.staleNodeGroups}
+            onSelect={handleNodeClick}
+            onExpandGroup={toggleExpanded}
+          />
+        )}
+        {!isLoading && !isError && topology && topology.nodes.length > 0 && viewMode === "graph" && (
           <TopologyCanvas
             elements={elements}
             onNodeClick={handleNodeClick}
