@@ -20,7 +20,11 @@
 #     sandbox has no real pmxcfs to test against (CLAUDE.md), so a shared
 #     directory is the documented stand-in for "simulated pmxcfs path"
 #     (this AC's own wording): whatever pve1's vnprox-setup writes under
-#     /etc/pve/vnprox is immediately visible, unmodified, to pve2/pve3.
+#     /etc/pve/priv/vnprox is immediately visible, unmodified, to pve2/pve3.
+#     (This bind mount doesn't reproduce real pmxcfs's permission
+#     enforcement — see internal/peer/secret.go's DefaultSecretPath comment
+#     for why the secret specifically must live under priv/, confirmed
+#     against a real PVE 9.2.4 node.)
 #
 # Networking note: this sandbox's rootless podman has no `pasta` binary,
 # so a user-defined bridge network (real per-container IPs/hostnames) is
@@ -228,9 +232,9 @@ for node in pve1 pve2 pve3; do
 done
 
 log "verifying: the cluster secret is the SAME file content on all three nodes (simulated pmxcfs replication)"
-SECRET1="$(podman exec pve1 sha256sum /etc/pve/vnprox/cluster.secret | cut -d' ' -f1)"
-SECRET2="$(podman exec pve2 sha256sum /etc/pve/vnprox/cluster.secret | cut -d' ' -f1)"
-SECRET3="$(podman exec pve3 sha256sum /etc/pve/vnprox/cluster.secret | cut -d' ' -f1)"
+SECRET1="$(podman exec pve1 sha256sum /etc/pve/priv/vnprox/cluster.secret | cut -d' ' -f1)"
+SECRET2="$(podman exec pve2 sha256sum /etc/pve/priv/vnprox/cluster.secret | cut -d' ' -f1)"
+SECRET3="$(podman exec pve3 sha256sum /etc/pve/priv/vnprox/cluster.secret | cut -d' ' -f1)"
 [ "$SECRET1" = "$SECRET2" ] && [ "$SECRET1" = "$SECRET3" ] || die "cluster secret differs across nodes: pve1=$SECRET1 pve2=$SECRET2 pve3=$SECRET3"
 # Not also asserting the "cluster secret already present" log line for the
 # same stream-multiplexing reason above: byte-identical content across

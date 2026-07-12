@@ -38,13 +38,24 @@ Check items off with the PVE version tested.
       supplies `ClientOptions.HTTPClient`). Confirm the right pinning
       strategy against a real cluster before T-303/T-304 rely on it beyond
       the plain-HTTP test harness this task used.
-- [ ] **`/etc/pve/vnprox/cluster.secret` under pmxcfs**: `SecretStore`'s
-      generate-if-absent + `os.Link`-based atomic publish + mtime-poll
-      `Watch` have only run against a real filesystem in temp dirs — pmxcfs
-      is a FUSE filesystem with its own semantics for permissions/hard
-      links/rename; confirm `os.Link` (used to avoid a torn-write race, see
-      `planning/reports/T-301.md` §3) actually works on pmxcfs rather than
-      silently failing or behaving like a copy.
+- [x] **`/etc/pve/priv/vnprox/cluster.secret` under pmxcfs (T-608, validated
+      2026-07-12 against a real PVE 9.2.4 node, "pvecube")**: found two real
+      bugs, both fixed. (1) pmxcfs rejects `link(2)` outright with `EPERM`
+      everywhere — `SecretStore.generateSecretFile`'s `os.Link`-based atomic
+      publish (the mechanism `planning/reports/T-301.md` §3 describes) would
+      have failed on every single real-hardware secret-generation attempt,
+      not just raced unsafely; switched to `os.Rename`, which pmxcfs
+      supports and which is atomic on a given filesystem (see
+      `internal/peer/secret.go`'s updated `generateSecretFile` comment for
+      the concurrent-generation tradeoff this implies). (2) pmxcfs only
+      auto-restricts files to `0600 root-only` under `/etc/pve/priv/` — it
+      silently coerces creation-time mode to `0640 root:www-data` (and
+      rejects `chmod()` outright) everywhere else under `/etc/pve`, so the
+      secret's default path moved from `/etc/pve/vnprox/cluster.secret` to
+      `/etc/pve/priv/vnprox/cluster.secret` (`internal/peer.DefaultSecretPath`,
+      `packaging/bin/vnprox-setup`, `packaging/debian/postrm`, and the docs
+      referencing it were all updated to match). Not yet validated: real
+      cross-node pmxcfs replication (this was a single-node cluster).
 
 ## Distributed rollback / local-timer protocol (T-304)
 

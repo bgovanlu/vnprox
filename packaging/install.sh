@@ -11,7 +11,10 @@
 #   3. Install the vnprox .deb (apt repo, or --offline <file>).
 #   4. Optionally install + enable lldpd on all nodes.
 #   5. Create the read-only PVE API token vnprox@pve!daemon.
-#   6. Generate the cluster secret in /etc/pve/vnprox/ (first node only).
+#   6. Generate the cluster secret in /etc/pve/priv/vnprox/ (first node
+#      only) — under priv/ specifically, since that's the one pmxcfs
+#      subtree that actually enforces 0600 root-only (see vnprox-setup's
+#      step-6 comment for why).
 #   7. Write /etc/vnprox/vnprox.toml, generate the session key, enable +
 #      start vnprox.service.
 #   8. Repeat 3-7 on the remaining nodes via SSH, or print per-node

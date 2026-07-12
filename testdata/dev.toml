@@ -57,7 +57,7 @@ db_path = "var/dev-vnprox.db"
 session_key_file = "var/dev-session.key"
 
 # T-301: the peer API's cluster secret. Production defaults to pmxcfs'
-# /etc/pve/vnprox/cluster.secret (not present outside a real PVE node);
+# /etc/pve/priv/vnprox/cluster.secret (not present outside a real PVE node);
 # this dev-only override keeps `make dev` working without root/pmxcfs,
 # mirroring [storage]'s own var/ precedent.
 [peer]

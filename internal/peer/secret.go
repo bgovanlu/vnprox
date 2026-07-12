@@ -15,12 +15,17 @@ import (
 )
 
 // DefaultSecretPath is where the cluster secret lives in production
-// (docs/deployment.md: "Generates the cluster secret in /etc/pve/vnprox/
+// (docs/deployment.md: "Generates the cluster secret in /etc/pve/priv/vnprox/
 // (first node only; pmxcfs replicates it)."; docs/architecture.md §5). It
-// sits under pmxcfs, which is already cluster-replicated and root-only, so
-// every node's daemon converges on the same secret without vnprox needing
-// its own distribution mechanism.
-const DefaultSecretPath = "/etc/pve/vnprox/cluster.secret"
+// sits under pmxcfs's priv/ subtree specifically, not just anywhere under
+// /etc/pve: hardware validation against a real PVE 9.2.4 node found pmxcfs
+// silently coerces every file's creation-time mode to 0640 root:www-data
+// (and rejects chmod() outright) everywhere except /etc/pve/priv/, which it
+// alone auto-restricts to 0600 root-only — the same place PVE itself keeps
+// shadow.cfg and authkey.key. Putting the secret anywhere else under
+// /etc/pve would make it group-readable (by www-data, i.e. pveproxy)
+// despite the code and docs assuming/requiring 0600.
+const DefaultSecretPath = "/etc/pve/priv/vnprox/cluster.secret"
 
 // secretLen is the cluster secret's length in raw bytes (docs/security.md:
 // "cluster secret" is generated fresh; docs/architecture.md §5 doesn't pin
@@ -71,22 +76,33 @@ func LoadOrGenerateSecret(path string, logger *slog.Logger) (*SecretStore, error
 
 // generateSecretFile writes secretLen random bytes, hex-encoded, to path
 // with 0600 permissions, creating the parent directory if needed. It is a
-// no-op (not an error) if another process/node won a concurrent generation
-// race — see LoadOrGenerateSecret's doc comment.
+// no-op (not an error) if another process/node already published a secret
+// at path — see LoadOrGenerateSecret's doc comment.
 //
 // The content is written in full to a temporary file first and only then
-// published at path via os.Link, which atomically fails with ErrExist if
-// path already has an entry. This — rather than an O_CREATE|O_EXCL open
-// directly on path — is what closes the race a naive "reserve the name,
-// then write into it" approach leaves open: with O_EXCL, a concurrent
-// loser can observe the winner's reserved-but-not-yet-written file and
-// read it as empty/truncated. Here, nothing is ever visible at path until
-// its content already exists in full under the temp name, so any reader
-// that sees path exist always sees complete, valid content.
+// published at path via os.Rename, which is atomic on a given filesystem
+// (no reader ever observes a partially-written file). This used to publish
+// via os.Link (fails atomically with ErrExist if path already has an
+// entry, so a concurrent loser could never clobber a winner's file) —
+// hardware validation against a real PVE 9.2.4 node found pmxcfs (the
+// /etc/pve FUSE filesystem DefaultSecretPath lives under) rejects link(2)
+// outright with EPERM, which would make every secret-generation attempt
+// fail on real hardware, not just race unsafely. Rename instead, guarded
+// by a best-effort existence check immediately before it: this avoids
+// clobbering another racer's already-published secret in the overwhelming
+// common case. The narrow TOCTOU window this leaves (two nodes generating
+// for the very first time within the same instant) is self-healing
+// regardless — LoadOrGenerateSecret always reloads from disk after this
+// returns, so every daemon converges on whichever write landed last within
+// one Watch poll interval.
 func generateSecretFile(path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("peer: creating cluster secret directory %s: %w", dir, err)
+	}
+
+	if _, err := os.Stat(path); err == nil {
+		return nil // another process/node already published one; nothing to do
 	}
 
 	buf := make([]byte, secretLen)
@@ -99,7 +115,7 @@ func generateSecretFile(path string) error {
 		return fmt.Errorf("peer: creating temporary cluster secret file: %w", err)
 	}
 	tmpPath := tmp.Name()
-	defer func() { _ = os.Remove(tmpPath) }() // best-effort cleanup; a no-op once Link below has succeeded and removed the name's only other reference
+	defer func() { _ = os.Remove(tmpPath) }() // best-effort cleanup; a no-op once Rename below has succeeded and removed the name's only reference
 
 	if _, err := tmp.WriteString(hex.EncodeToString(buf) + "\n"); err != nil {
 		_ = tmp.Close()
@@ -109,10 +125,7 @@ func generateSecretFile(path string) error {
 		return fmt.Errorf("peer: closing temporary cluster secret file: %w", err)
 	}
 
-	if err := os.Link(tmpPath, path); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return nil // lost the race; the existing file is authoritative
-		}
+	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("peer: publishing cluster secret file %s: %w", path, err)
 	}
 	return nil

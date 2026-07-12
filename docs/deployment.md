@@ -31,7 +31,7 @@ The installer:
 3. Installs the `vnprox` .deb (from the apt repo it configures, or a bundled offline .deb with `--offline <file>`).
 4. Optionally installs + enables `lldpd` on all nodes (`--with-lldp`, default yes).
 5. Creates the read-only PVE API token `vnprox@pve!daemon` (privilege: auditor-level on `/`), stores it root-only.
-6. Generates the cluster secret in `/etc/pve/vnprox/` (first node only; pmxcfs replicates it).
+6. Generates the cluster secret in `/etc/pve/priv/vnprox/` (first node only; pmxcfs replicates it). **Correction (T-608, hardware validation):** this is under `priv/` specifically — pmxcfs only auto-restricts files under `/etc/pve/priv/` to `0600` root-only; everywhere else under `/etc/pve` it silently coerces creation-time permissions to `0640 root:www-data` and rejects `chmod()` outright, confirmed against a real PVE 9.2.4 node.
 7. Writes `/etc/vnprox/vnprox.toml`, generates the session key, enables + starts `vnprox.service`.
 8. Repeats 3–7 on the remaining nodes (via SSH root, same mechanism `pvecm` setups already rely on), or prints per-node instructions if SSH between nodes is unavailable.
 9. Prints the URL and a first-login checklist.
@@ -92,7 +92,7 @@ apt remove vnprox          # keeps /var/lib/vnprox (snapshots, audit) and config
 apt purge vnprox           # removes those too
 ```
 
-Uninstalling never touches network configuration — Proxmox remains the source of truth and keeps working exactly as configured (decision D5). The PVE token and `/etc/pve/vnprox/` are removed on purge of the last node (prompted).
+Uninstalling never touches network configuration — Proxmox remains the source of truth and keeps working exactly as configured (decision D5). The PVE token, `/etc/pve/priv/vnprox/` (cluster secret), and `/etc/pve/vnprox/` (protected-interface config) are removed on purge of the last node (prompted).
 
 ## Backup
 

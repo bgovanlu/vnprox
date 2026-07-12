@@ -149,7 +149,7 @@ Design points:
 
 - vnproxd runs on every node; there is **no elected leader**. Each daemon is capable of coordinating a changeset; the coordinating daemon is simply the one the user's browser is talking to.
 - Peer discovery: node list from the PVE API (`/cluster/status`); peers are reached at `https://<node-ip>:8007/api/peer/...`.
-- Peer auth: a **cluster secret** generated at first install and distributed via `/etc/pve/vnprox/` (pmxcfs — already cluster-replicated and root-only). Peer requests are authenticated with an HMAC of the request over this secret plus TLS.
+- Peer auth: a **cluster secret** generated at first install and distributed via `/etc/pve/priv/vnprox/` (pmxcfs — already cluster-replicated and root-only; specifically under `priv/`, the one pmxcfs subtree that actually enforces 0600, confirmed by hardware validation against a real PVE 9.2.4 node — see `internal/peer/secret.go`). Peer requests are authenticated with an HMAC of the request over this secret plus TLS.
 - Single-node (no cluster) works identically with zero peers.
 - Version skew: peers exchange versions; a daemon refuses to coordinate changes involving a peer with an incompatible schema version (upgrade prompt in UI).
 
@@ -174,7 +174,7 @@ SQLite (embedded, WAL mode) at `/var/lib/vnprox/vnprox.db`, one DB per node. Con
 | metrics rings | short-horizon (24h) counter history |
 | kv | schema version, install id, settings |
 
-Cluster-shared data is intentionally minimal (the cluster secret and instance settings under `/etc/pve/vnprox/`, replicated by pmxcfs). Audit/snapshot queries in the UI fan out to peers and merge.
+Cluster-shared data is intentionally minimal (the cluster secret under `/etc/pve/priv/vnprox/` and instance settings under `/etc/pve/vnprox/`, both replicated by pmxcfs). Audit/snapshot queries in the UI fan out to peers and merge.
 
 ## 8. Frontend architecture
 

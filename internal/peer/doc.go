@@ -15,7 +15,7 @@
 // /api/peer/* is authenticated by an HMAC-SHA256 signature over the
 // request's method, path (+query), a hash of the body, and a timestamp,
 // keyed by a 256-bit secret shared cluster-wide via pmxcfs
-// (/etc/pve/vnprox/, root:root 0600, already cluster-replicated). The
+// (/etc/pve/priv/vnprox/, root:root 0600, already cluster-replicated). The
 // signature is verified — including a ±30s replay window and a
 // short-lived exact-replay cache — before any route handler runs; there is
 // no other authentication layer on these routes (SPA session cookies are

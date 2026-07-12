@@ -5,8 +5,13 @@
 #
 #   2. Check port 8007 (PBS conflict); ask for the listen port if needed.
 #   5. Create the read-only PVE API token vnprox@pve!daemon.
-#   6. Generate the cluster secret in /etc/pve/vnprox/ (first node only;
-#      pmxcfs replicates it).
+#   6. Generate the cluster secret in /etc/pve/priv/vnprox/ (first node
+#      only; pmxcfs replicates it). Deliberately under priv/, not just
+#      /etc/pve/vnprox/: pmxcfs only auto-restricts files under priv/ to
+#      0600 root-only (it silently coerces everything else to 0640
+#      root:www-data and rejects chmod() outright — confirmed against a
+#      real PVE 9.2.4 node), so this is the one location that actually
+#      delivers the root-only guarantee docs/security.md documents.
 #   7. Write /etc/vnprox/vnprox.toml, generate the session key, enable +
 #      start vnprox.service.
 #
@@ -26,7 +31,7 @@ PROG=$(basename "$0")
 CONFIG_PATH="/etc/vnprox/vnprox.toml"
 KEYS_DIR="/etc/vnprox/keys"
 SESSION_KEY_FILE="$KEYS_DIR/session.key"
-PVE_CLUSTER_DIR="/etc/pve/vnprox"
+PVE_CLUSTER_DIR="/etc/pve/priv/vnprox"
 CLUSTER_SECRET_FILE="$PVE_CLUSTER_DIR/cluster.secret"
 DEFAULT_PORT=8007
 FALLBACK_PORT=8008
@@ -100,7 +105,7 @@ if [ -n "$ANSWERS_FILE" ]; then
 fi
 
 if [ "$(id -u)" -ne 0 ]; then
-	die "must run as root (vnprox needs to write /etc/vnprox, /etc/pve/vnprox, and manage vnprox.service)"
+	die "must run as root (vnprox needs to write /etc/vnprox, /etc/pve/priv/vnprox, and manage vnprox.service)"
 fi
 
 # --- step 2: port conflict detection --------------------------------------
