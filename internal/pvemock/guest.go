@@ -3,10 +3,43 @@ package pvemock
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// guestConfigNumericFields lists guest-config keys hardware validation
+// (T-608) found real PVE returns as JSON numbers rather than strings —
+// mirroring internal/pve's stringifyConfigValue, the client-side half of
+// this same fix. This is a best-effort subset, not an authoritative or
+// exhaustive contract: real PVE's per-field typing is genuinely
+// inconsistent (e.g. "memory" was observed as a string for qemu guests but
+// an int for lxc containers on the very same real node) and isn't
+// documented anywhere. The point is exercising the client's type-agnostic
+// conversion via tests, not replicating PVE's exact rules field-for-field.
+var guestConfigNumericFields = map[string]bool{
+	"cores": true, "sockets": true, "numa": true, "swap": true,
+	"onboot": true, "unprivileged": true, "vcpus": true,
+	"cpulimit": true, "cpuunits": true, "balloon": true,
+}
+
+// marshalGuestConfig converts cfg's fixture-declared strings into the mixed
+// string/number shape guestConfigNumericFields documents, so the JSON this
+// endpoint serves isn't uniformly all-strings (see that var's doc comment).
+func marshalGuestConfig(cfg map[string]string) map[string]any {
+	out := make(map[string]any, len(cfg))
+	for k, v := range cfg {
+		if guestConfigNumericFields[k] {
+			if n, err := strconv.Atoi(v); err == nil {
+				out[k] = n
+				continue
+			}
+		}
+		out[k] = v
+	}
+	return out
+}
 
 func (srv *Server) guestMap(ns *nodeState, kind string) map[string]*GuestSpec {
 	if kind == "lxc" {
@@ -33,7 +66,7 @@ func (srv *Server) handleGuestConfigGet(kind string) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, fmt.Sprintf("%s %s not found on node %q", kind, vmid, node))
 			return
 		}
-		writeData(w, http.StatusOK, g.Config)
+		writeData(w, http.StatusOK, marshalGuestConfig(g.Config))
 	}
 }
 

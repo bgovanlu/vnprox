@@ -2,7 +2,9 @@ package pve
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -33,12 +35,46 @@ func (c *Client) ListGuests(ctx context.Context, kind GuestKind) ([]ClusterResou
 // guest's flat key/value config (e.g. "net0":
 // "virtio=AA:BB:...,bridge=vmbr0,tag=100").
 func (c *Client) GetGuestConfig(ctx context.Context, node string, kind GuestKind, vmid int) (map[string]string, error) {
-	var out map[string]string
+	var raw map[string]any
 	path := fmt.Sprintf("/nodes/%s/%s/%d/config", node, kind, vmid)
-	if err := c.do(ctx, "GET", path, requestParams{}, &out); err != nil {
+	if err := c.do(ctx, "GET", path, requestParams{}, &raw); err != nil {
 		return nil, err
 	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		out[k] = stringifyConfigValue(v)
+	}
 	return out, nil
+}
+
+// stringifyConfigValue renders one GET .../config value as text, matching
+// PVE's own on-disk config-file representation (every field in
+// /etc/pve/{qemu,lxc}-server/*.conf is plain text). Hardware validation
+// against a real PVE 9.2.4 node found this endpoint returns a genuine mix
+// of JSON types per field on the very same guest (e.g. "cores":4,
+// "numa":0 as numbers, "memory":"4096" as a string) rather than the
+// all-strings shape this client previously assumed — a gap pvemock's
+// fixtures (which always emit strings) never exposed. Every caller of
+// GetGuestConfig expects map[string]string, so numbers/bools are
+// stringified here rather than pushing the type mix out to every
+// consumer.
+func stringifyConfigValue(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	case bool:
+		if t {
+			return "1"
+		}
+		return "0"
+	case nil:
+		return ""
+	default:
+		b, _ := json.Marshal(t)
+		return string(b)
+	}
 }
 
 // UpdateGuestConfig calls PUT /nodes/{node}/{qemu,lxc}/{vmid}/config: a

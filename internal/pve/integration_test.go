@@ -234,6 +234,16 @@ func TestTicketAuth_GuestConfigGetAndPut(t *testing.T) {
 	if cfg["name"] != "app01" {
 		t.Fatalf("GetGuestConfig: name = %q, want app01", cfg["name"])
 	}
+	if cfg["cores"] != "4" {
+		// Regression test (T-608, hardware validation): real PVE returns
+		// "cores" (and several other guest-config fields) as a JSON number,
+		// not a string — GetGuestConfig used to decode straight into
+		// map[string]string, which failed outright against real PVE. This
+		// asserts the stringified value survives the mock's number-typed
+		// wire shape (marshalGuestConfig) exactly as it would from a real
+		// node.
+		t.Fatalf("GetGuestConfig: cores = %q, want \"4\" (wire: PVE reports several guest-config fields, incl. this one, as JSON numbers)", cfg["cores"])
+	}
 
 	err = c.UpdateGuestConfig(ctx, "pve1", pve.GuestQemu, 200, pve.GuestConfigUpdate{
 		Set: map[string]string{"description": "updated by test"},
@@ -389,8 +399,12 @@ func TestTicketAuth_FirewallReadsAllScopes(t *testing.T) {
 	if _, nodeErr := c.ListFirewallRules(ctx, pve.NodeFirewallScope("pve1")); nodeErr != nil {
 		t.Fatalf("ListFirewallRules (node): %v", nodeErr)
 	}
-	if _, nodeErr := c.ListFirewallIPSets(ctx, pve.NodeFirewallScope("pve1")); nodeErr != nil {
-		t.Fatalf("ListFirewallIPSets (node): %v", nodeErr)
+	// Node scope has no aliases/ipset endpoint at all on real PVE (hardware
+	// validation, T-608) — a node's own host firewall can only reference
+	// cluster-defined aliases/ipsets, never define its own. This must keep
+	// erroring, not silently start succeeding again.
+	if _, nodeErr := c.ListFirewallIPSets(ctx, pve.NodeFirewallScope("pve1")); nodeErr == nil {
+		t.Fatalf("ListFirewallIPSets (node): want an error (real PVE has no node-scoped ipset endpoint), got success")
 	}
 
 	// Guest scope.

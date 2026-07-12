@@ -290,8 +290,14 @@ func (c *Collector) pollFirewall(ctx context.Context, targetNodes []string, reso
 			c.log.Warn("collect: fetching node firewall failed, skipping", "node", n, "error", err)
 		} else {
 			ref := inventory.Ref{Kind: inventory.KindFwRuleset, Node: n, ID: "node"}
-			objs := c.fetchFirewallObjects(ctx, pve.NodeFirewallScope(n), false)
-			ents = append(ents, inventory.FromPVEFirewall(ref, inventory.FwScopeNode, opts, rules, objs)...)
+			// No fetchFirewallObjects call here: hardware validation (T-608)
+			// found real PVE has no node-scoped aliases/ipset endpoint at
+			// all (404/"no handler" — unlike cluster and guest scope, which
+			// both support it), matching its actual firewall model — a
+			// node's own host firewall can only reference cluster-defined
+			// aliases/ipsets, never define its own. pvemock previously
+			// served this route anyway, masking the gap.
+			ents = append(ents, inventory.FromPVEFirewall(ref, inventory.FwScopeNode, opts, rules, inventory.FirewallObjects{})...)
 		}
 
 		for _, r := range resources {

@@ -84,10 +84,15 @@ func (srv *Server) resolveGuestScope(kind, node, vmid string, write bool) (*scop
 }
 
 func (srv *Server) mountFirewall(api chi.Router) {
-	srv.mountFirewallScope(api, "/cluster/firewall", PrivSysAudit, PrivSysModify, srv.clusterScope)
-	srv.mountFirewallScope(api, "/nodes/{node}/firewall", PrivSysAudit, PrivSysModify, srv.nodeScope)
-	srv.mountFirewallScope(api, "/nodes/{node}/qemu/{vmid}/firewall", PrivVMAudit, PrivVMConfigNet, srv.guestScope("qemu"))
-	srv.mountFirewallScope(api, "/nodes/{node}/lxc/{vmid}/firewall", PrivVMAudit, PrivVMConfigNet, srv.guestScope("lxc"))
+	srv.mountFirewallScope(api, "/cluster/firewall", PrivSysAudit, PrivSysModify, srv.clusterScope, true)
+	// includeObjects=false for node scope: hardware validation (T-608)
+	// found real PVE has no node-scoped aliases/ipset endpoint at all — a
+	// node's own host firewall can only reference cluster-defined
+	// aliases/ipsets, never define its own (cluster and guest scope both
+	// do support it).
+	srv.mountFirewallScope(api, "/nodes/{node}/firewall", PrivSysAudit, PrivSysModify, srv.nodeScope, false)
+	srv.mountFirewallScope(api, "/nodes/{node}/qemu/{vmid}/firewall", PrivVMAudit, PrivVMConfigNet, srv.guestScope("qemu"), true)
+	srv.mountFirewallScope(api, "/nodes/{node}/lxc/{vmid}/firewall", PrivVMAudit, PrivVMConfigNet, srv.guestScope("lxc"), true)
 
 	// T-502's post-apply verification (docs/features/firewall.md §3) needs
 	// somewhere to read "did this node's firewall compile cleanly" — see
@@ -107,9 +112,12 @@ func (srv *Server) mountFirewall(api chi.Router) {
 	api.Delete("/cluster/firewall/groups/{group}/{pos}", srv.requirePrivilege(PrivSysModify, srv.handleFwGroupRuleDelete))
 }
 
-// mountFirewallScope wires the rules/options/aliases/ipsets CRUD common to
-// all three PVE firewall scopes (cluster/node/guest) at prefix.
-func (srv *Server) mountFirewallScope(api chi.Router, prefix, readPriv, writePriv string, get scopeGetter) {
+// mountFirewallScope wires the rules/options CRUD common to all three PVE
+// firewall scopes (cluster/node/guest) at prefix, plus aliases/ipsets CRUD
+// when includeObjects is true — real PVE only exposes aliases/ipset at
+// cluster and guest scope, never node scope (hardware validation, T-608;
+// see mountFirewall's node-scope call site comment).
+func (srv *Server) mountFirewallScope(api chi.Router, prefix, readPriv, writePriv string, get scopeGetter, includeObjects bool) {
 	api.Get(prefix+"/rules", srv.requirePrivilege(readPriv, srv.handleFwRulesList(get)))
 	api.Post(prefix+"/rules", srv.requirePrivilege(writePriv, srv.handleFwRuleCreate(get)))
 	api.Get(prefix+"/rules/{pos}", srv.requirePrivilege(readPriv, srv.handleFwRuleGet(get)))
@@ -118,6 +126,10 @@ func (srv *Server) mountFirewallScope(api chi.Router, prefix, readPriv, writePri
 
 	api.Get(prefix+"/options", srv.requirePrivilege(readPriv, srv.handleFwOptionsGet(get)))
 	api.Put(prefix+"/options", srv.requirePrivilege(writePriv, srv.handleFwOptionsPut(get)))
+
+	if !includeObjects {
+		return
+	}
 
 	api.Get(prefix+"/aliases", srv.requirePrivilege(readPriv, srv.handleFwAliasesList(get)))
 	api.Post(prefix+"/aliases", srv.requirePrivilege(writePriv, srv.handleFwAliasCreate(get)))
