@@ -19,16 +19,22 @@ import (
 // (cfg.Storage.SessionKeyFile), and constructs the T-105 auth.Service that
 // internal/api's router mounts docs/api.md's /auth/* routes through.
 //
-// The returned *store.DB must be closed by the caller on shutdown. Note:
-// production TLS trust for the PVE-facing client this constructs
-// (identityFactory below) is left at its zero-value default (system CA
-// pool) rather than pinned to the node's PVE certificate — architecture.md
-// §9's CA-pinning story is genuinely T-101's TLSConfig knob to wire up, but
-// no earlier task has plumbed a concrete value through cmd/vnproxd yet
-// (there is no PVE collector wiring before this task; T-104 is later in the
-// plan). Flagged here rather than solved, since it's outside T-105's own
-// scope (login/session/CSRF/capabilities) and best decided alongside
-// T-104's collector wiring, which needs the exact same knob.
+// The returned *store.DB must be closed by the caller on shutdown.
+//
+// **Correction (T-608, hardware validation):** the PVE-facing client this
+// constructs (identityFactory below) used to be left at its zero-value TLS
+// default (system CA pool), on the reasoning that T-104's later collector
+// wiring would need the exact same CA-pinning knob and should decide it —
+// but when T-104 landed (cmd/vnproxd/collect.go's buildCollectorPVEClient,
+// TLS: pve.TLSConfig{CACertFile: config.DefaultPVECertPath}), this client
+// was never revisited to match. The result: on any real PVE node (a
+// self-signed pveproxy certificate, which is the default), interactive
+// login failed outright with "could not reach the PVE API" — a TLS
+// verification error the client only logged server-side — while the
+// read-only collector/vnproxctl status paths worked fine, since they
+// already trusted the node's own certificate. Every real deployment's
+// login flow was completely broken until this was caught by actually
+// logging in against a real node.
 func setupAuth(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*auth.Service, *store.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.Storage.DBPath), 0o750); err != nil {
 		return nil, nil, fmt.Errorf("creating storage directory for %s: %w", cfg.Storage.DBPath, err)
@@ -63,7 +69,20 @@ func setupAuth(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*a
 	sessions := store.NewSessionRepo(db, cipher)
 	auditRepo := store.NewAuditRepo(db)
 
-	identityFactory := auth.NewClientIdentityFactory(pve.Config{APIURL: cfg.PVE.APIURL})
+	// TLS trust mirrors buildCollectorPVEClient's own branching
+	// (cmd/vnproxd/collect.go) exactly: dev/test harnesses set
+	// dev_ticket_username to talk to a plain-HTTP pvemock and have no real
+	// node certificate to trust; real deployments (no override) pin to the
+	// node's own pveproxy certificate the same way the collector client
+	// does.
+	loginTLS := pve.TLSConfig{}
+	if cfg.PVE.TicketUsername == "" {
+		loginTLS.CACertFile = config.DefaultPVECertPath
+	}
+	identityFactory := auth.NewClientIdentityFactory(pve.Config{
+		APIURL: cfg.PVE.APIURL,
+		TLS:    loginTLS,
+	})
 
 	authSvc, err := auth.NewService(auth.Config{
 		Sessions:    sessions,
