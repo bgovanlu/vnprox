@@ -26,7 +26,7 @@ bash install.sh
 ```
 
 The installer:
-1. Verifies PVE version and architecture; detects cluster membership and node list.
+1. Checks that a PVE install is present (runs `pveversion`, logs its output) and detects architecture, cluster membership, and node list. **Correction (flagged, T-607):** this doc previously said the installer "verifies" the PVE version, implying it enforces the documented 8.2+ minimum — `packaging/install.sh` only logs `pveversion`'s output today, it does not parse/enforce a minimum version. Low-risk (an incompatible architecture is still caught), but the check is weaker than "verifies" implies; follow-up: parse and enforce the minimum if this matters for a real early-PVE-version install attempt.
 2. Checks port 8007 (see above); asks for the listen port if needed.
 3. Installs the `vnprox` .deb (from the apt repo it configures, or a bundled offline .deb with `--offline <file>`).
 4. Optionally installs + enables `lldpd` on all nodes (`--with-lldp`, default yes).
@@ -100,7 +100,7 @@ Back up `/var/lib/vnprox/vnprox.db` (snapshots/audit/layouts) and `/etc/vnprox/`
 
 ## Firewalling vnprox itself
 
-Restrict 8007 to management networks like you (should) restrict 8006. Peer traffic uses the same port between node IPs — allow node↔node on 8007. The install checklist prints suggested pve-firewall rules.
+Restrict 8007 to management networks like you (should) restrict 8006. Peer traffic uses the same port between node IPs — allow node↔node on 8007. **Correction (flagged, T-607):** the install checklist prints a generic prose reminder to do this (pointing at `docs/security.md`), not ready-to-apply pve-firewall rule syntax as this line previously implied — `install.sh`/`vnprox-setup` don't generate actual rule text. Follow-up: print copy-pasteable rule syntax if this becomes a real operator pain point.
 
 ## Troubleshooting quick refs
 

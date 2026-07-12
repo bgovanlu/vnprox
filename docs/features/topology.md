@@ -9,7 +9,7 @@ Four toggleable layers, rendered as horizontal bands per cluster node (nodes sid
 1. **Physical** — switch chassis/ports (from LLDP), physical NICs with link state/speed.
 2. **L2** — bonds, bridges (Linux + OVS), VLAN interfaces; edges show enslavement and bridge ports; VLAN-aware bridges show trunked VID ranges as edge badges.
 3. **Overlay (SDN)** — zones, VNets, subnets; edges show which bridges realize which VNets on which nodes; EVPN zones show VTEP mesh edges between nodes.
-4. **Guests** — VMs/CTs grouped per node; guest NIC edges to their bridge/VNet with VLAN tag badges. Collapsible per bridge ("23 guests" pill expands on click).
+4. **Guests** — VMs/CTs grouped per node; guest NIC edges to the physical bridge that realizes their attachment (an SDN VNet's own zone bridge included), with a VLAN tag badge naming the VID/VNet — not a separate edge to a VNet node (T-607 docs audit: verified against both the shipped three-node-vlan.yaml fixture and a real 8-node/40-VNet scale run — `guest-nic` entities always resolve to their `bridge:` target, badge-only for the VLAN/VNet identity). Collapsible per bridge ("23 guests" pill expands on click).
 
 ## 2. Interactions
 
@@ -27,7 +27,9 @@ Four toggleable layers, rendered as horizontal bands per cluster node (nodes sid
 
 ## 4. Scale targets
 
-Smooth (≥30fps pan/zoom) at: 8 nodes × 6 NICs, 4 bridges/node, 300 guests, 40 VNets. Above that, progressive disclosure kicks in: guests collapse by default, physical layer collapses to per-node summary. Hard render cap ~2,000 visible elements; beyond, require a filter (UI prompts).
+Smooth (≥30fps pan/zoom) at: 8 nodes × 6 NICs, 4 bridges/node, 300 guests, 40 VNets. Above that, progressive disclosure kicks in: guests collapse by default (server-side, `internal/topology/collapse.go`'s `DefaultCollapseThreshold`); hard render cap ~2,000 visible elements, beyond which the UI requires a filter (a banner names the exact count and points at the VLAN filter/layer toggles). Both measured and verified at the documented scale target in `docs/performance.md` (T-607).
+
+**Known gap (flagged, T-607):** "physical layer collapses to per-node summary" — the physical layer (NICs + bonds) has no collapse/summarization logic anywhere in `internal/topology` or the frontend; it renders every NIC/bond node uncollapsed regardless of scale. This was never implemented in any phase. It is not release-blocking for v1.0: at the documented scale target the physical layer is only ~50-65 nodes cluster-wide (8 nodes × ~6-8 phys/L2 entities), nowhere near the 2,000-element cap on its own, so the gap has no observed effect at target scale — the guest-layer collapse (which does exist and is load-bearing at scale, since 300 guests is the dominant contributor) covers the scale target's real pressure point. Follow-up: build physical-layer-to-per-node-summary collapse before supporting cluster sizes materially larger than the documented target (e.g. 16+ nodes or NIC counts high enough to matter on their own), or remove this sentence if the product decision is that it's not needed. Tracked as a P2-backlog follow-up in `docs/roadmap.md`.
 
 ## 5. Empty/degraded states
 

@@ -12,7 +12,9 @@ Priorities: **P0** = must ship in v1.0, **P1** = v1.x, **P2** = later. Detailed 
 | LLDP/CDP physical discovery (switch name/port per NIC, shown on map) | P0 | 3 | [lldp-discovery.md](features/lldp-discovery.md) |
 | MAC/FDB table browser ("which port is this MAC behind") | P1 | 3 | lldp-discovery.md |
 | Drift detection (cross-node consistency report) | P0 | 3 | topology.md §6 |
-| Export map as SVG/PNG; export config docs as Markdown | P1 | 6 | topology.md |
+| Export config docs as Markdown/HTML (embedded topology SVG) | P1 | 6 | topology.md |
+
+**Known gap (flagged, T-607):** a standalone "export the map itself as SVG/PNG" control does not exist — the only SVG export is the topology diagram embedded inside the config-doc export above (a different, broader artifact). Previously listed as a single combined row implying both existed; split out and corrected here. Not release-blocking (P1); follow-up: add a dedicated map-export control when a task picks this up.
 
 ## Configuration (all via change engine)
 

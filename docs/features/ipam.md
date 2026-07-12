@@ -5,7 +5,7 @@ Proxmox has IPAM plugins (built-in `pve`, NetBox, phpIPAM) but no usable view of
 ## 1. Data sources
 
 - Primary: PVE IPAM API (allocations per SDN subnet).
-- Enrichment: guest agent-reported IPs, DHCP leases (dnsmasq zones), ARP/neighbor tables via peer API — merged with confidence labels (`allocated`, `observed`, `both`, `conflict`).
+- Enrichment: guest agent-reported IPs, DHCP leases (dnsmasq zones) — merged with confidence labels (`allocated`, `observed`, `both`, `conflict`). **Known gap (flagged, T-607):** ARP/neighbor tables via peer API are not wired in — `internal/ipam/service.go`'s `NeighborSource` interface exists but has no implementation, and no `internal/host.Reader` method for it either, so today's merge is these two enrichment sources, not three. Not release-blocking (conflict detection already works off the two wired sources); follow-up: implement an ARP/neighbor collector when a task picks this up.
 - External IPAM (NetBox/phpIPAM) is configured in PVE, not vnprox; vnprox reads through PVE's plugin transparently and deep-links to the external tool for records it doesn't own.
 
 ## 2. Views
@@ -17,7 +17,7 @@ Proxmox has IPAM plugins (built-in `pve`, NetBox, phpIPAM) but no usable view of
 ## 3. Workflow
 
 - Reserve/release addresses (`ipam.alloc.*` ops through the change engine).
-- "Next free address" picker exposed everywhere an IP is entered elsewhere in the UI (subnet-aware autocomplete).
+- "Next free address" picker (`web/src/ipam/NextFreePicker.tsx`) exposed on the bridge editor's address field today; wiring it into every other IP-entry field in the UI (VLAN editor, interface editor, SDN subnet gateway) is a known follow-up (flagged, T-607), not yet done for all of them.
 - CSV export per subnet.
 
 ## 4. Out of scope v1

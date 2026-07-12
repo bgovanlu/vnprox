@@ -57,7 +57,7 @@ Every applied change is snapshotted. **Time machine** (History → Snapshots) le
 
 ## 4. The escape hatches
 
-- **Raw editor**: Node → Advanced → interfaces file. Full editor with linting; saving still goes through review + rollback protection.
+- **Raw editor**: Tools → Raw interfaces editor → pick a node. Full editor with linting; saving still goes through review + rollback protection. (Corrected, T-607: previously said "Node → Advanced," which is not where this lives in the shipped UI — it's under Tools with a node-select dropdown, not a per-node "Advanced" tab.)
 - **CLI on the node**: `vnproxctl` can list/restore snapshots and trigger rollbacks even when the UI is unreachable (`docs/deployment.md` §Troubleshooting).
 - **vnprox down?** Your network keeps working — Proxmox owns the config; vnprox is only a (very good) way of editing it.
 

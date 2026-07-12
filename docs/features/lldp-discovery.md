@@ -12,8 +12,8 @@ Answers "what is this NIC actually plugged into?" — the question every Proxmox
 ## 2. Presentation
 
 - **Map:** switch chassis rendered as physical-layer nodes; identical chassis IDs seen from multiple nodes/NICs merge into one switch entity — this is what makes the map show *the actual wiring*, including which nodes share a switch (failure-domain visibility).
-- **Inspector:** per-NIC neighbor detail, including a **VLAN cross-check**: VLANs the bridge/bond expects vs. VLANs the switch advertises on that port, with mismatches flagged ("bridge vmbr1 is VLAN-aware for 10–30 but switch port Gi1/0/14 advertises only 10,20").
-- **Ports view:** a flat table (node, NIC, switch, port, speed, PVID, tagged VLANs, last seen) — exportable CSV; this alone replaces most wiring spreadsheets.
+- **VLAN cross-check:** VLANs the bridge/bond expects vs. VLANs the switch advertises on that port, with mismatches flagged ("bridge vmbr1 is VLAN-aware for 10–30 but switch port Gi1/0/14 advertises only 10,20"). Surfaces through the unified findings stream (`GET /findings`, `source: "lldp"`), not as a dedicated section inside the entity inspector — this doc previously said "Inspector," which overstated where it renders.
+- **Ports view:** a flat table (node, NIC, switch, port, speed, PVID, tagged VLANs, last seen) — exportable CSV (`GET /ports`); this alone replaces most wiring spreadsheets. **Known gap (flagged, T-607):** the backend is complete, but there is no frontend page consuming `GET /ports` yet — reachable only by hitting the API URL directly, not through any in-app nav entry. Follow-up: add a Ports page (P1, not release-blocking — the data is fully available via the documented CSV export in the meantime).
 
 ## 3. Staleness & trust
 
@@ -21,4 +21,4 @@ Neighbors carry `lastSeen`; entries older than 2×TTL grey out, older than 10min
 
 ## 4. MAC/FDB browser (P1)
 
-Per-bridge forwarding table (`bridge fdb show`, via peer API) merged with guest MAC ownership from inventory: search any MAC → which bridge/port/guest it lives behind, cluster-wide. Useful for "where is this rogue device" hunts.
+Per-bridge forwarding table (read directly via netlink `NeighList(AF_BRIDGE)`, not a `bridge fdb show` shell-out — functionally equivalent, this doc previously named the wrong mechanism) merged with guest MAC ownership from inventory: search any MAC → which bridge/port/guest it lives behind, cluster-wide. Useful for "where is this rogue device" hunts. Shipped with a frontend (`web/src/lldp/MacFdbBrowser.tsx`) more complete than the "P1" label above implies.

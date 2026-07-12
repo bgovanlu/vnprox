@@ -6,7 +6,7 @@ A blueprint is a parameterized, reusable network topology template stored as JSO
 
 - **Create**: author from scratch in a form editor, or **capture from current state** ("blueprint-ify this node's network, parameterizing addresses").
 - **Instantiate**: pick blueprint → fill parameters (with validation + IPAM-aware address suggestions) → vnprox expands to a changeset draft → normal review/apply flow. Idempotent re-instantiation: entities that already match are skipped, divergent ones produce update ops (shown as such in the diff).
-- **Ship with starters** (bundled, read-only, copy-to-edit): "Single NIC homelab (VLAN-aware bridge + guest VLANs)", "Dual NIC: mgmt + trunk", "2-port LACP bond + storage VLAN", "3-node cluster with VXLAN overlay", "EVPN datacenter starter". Each starter carries a description of when to use it and a preview diagram.
+- **Ship with starters** (bundled, read-only, copy-to-edit): "Single NIC homelab (VLAN-aware bridge + guest VLANs)", "Dual NIC: mgmt + trunk", "2-port LACP bond + storage VLAN", "3-node cluster with VXLAN overlay", "EVPN datacenter starter". Each starter carries a description of when to use it and a preview diagram. **Caveat (flagged, T-607):** the "EVPN datacenter starter" is partial — there is no `sdn.controller.create` changeset op (`internal/change/op.go` has zone/vnet/subnet/apply ops only), so this starter can reference an already-existing EVPN controller but cannot provision one from scratch. See `planning/reports/T-603.md` §3.
 - Format is versioned (`"blueprintVersion": 1`) and export/importable as files — shareable in the community.
 
 ## 2. Cluster-wide consistency application
