@@ -49,10 +49,14 @@ jobs:
         run: GOOS=linux GOARCH=arm64 go build ./...
 
   fuzz:
-    # Runs the interfaces(5) parser fuzzer for the 60s T-102's acceptance
-    # criteria require (accept => byte-identical render; reject => typed
-    # *ParseError; never panic). A separate job so the minute of fuzzing
-    # runs in parallel with `check` instead of stretching its critical path.
+    # Runs every untrusted/external-input parser's fuzz target for a short
+    # 60s-each budget (T-604 acceptance criterion 5: "All fuzz targets run
+    # in CI (short) ... clean"). A separate job so the several minutes of
+    # fuzzing run in parallel with `check` instead of stretching its
+    # critical path. See docs/security-verification.md's fuzz inventory for
+    # why each of these (and no others) is in scope, and planning/reports/
+    # T-604.md for the local 10-minute combined soak this short CI budget
+    # stands in for on every push.
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -75,6 +79,15 @@ jobs:
 
       - name: Fuzz the FRR `show evpn vni json` parser
         run: go test -run='^$' -fuzz=FuzzParseEVPNVNI -fuzztime=60s ./internal/host/
+
+      - name: Fuzz the lldpctl JSON parser
+        run: go test -run='^$' -fuzz=FuzzParseLLDP -fuzztime=60s ./internal/host/
+
+      - name: Fuzz the dnsmasq DHCP lease-file parser
+        run: go test -run='^$' -fuzz=FuzzParseDHCPLeases -fuzztime=60s ./internal/host/
+
+      - name: Fuzz the PVE firewall log-line parser
+        run: go test -run='^$' -fuzz=FuzzParseAll -fuzztime=60s ./internal/fwlog/
 
   package:
     # Production build + .deb artifact per docs/development.md ("frontend
