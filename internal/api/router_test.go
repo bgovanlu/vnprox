@@ -180,6 +180,22 @@ func TestSecurityHeaders(t *testing.T) {
 			}
 		}
 	}
+
+	// T-604: tightened to the minimum the SPA actually uses — no
+	// <object>/<embed>, no iframes, no Worker()/service worker, no web app
+	// manifest, and mutations are always fetch() (TanStack Query), never an
+	// HTML <form> submit. See securityHeadersMiddleware's doc comment.
+	for _, want := range []string{
+		"object-src 'none'",
+		"frame-src 'none'",
+		"worker-src 'none'",
+		"manifest-src 'none'",
+		"form-action 'self'",
+	} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("CSP must contain %q: %q", want, csp)
+		}
+	}
 }
 
 func TestRequestIDHeader(t *testing.T) {

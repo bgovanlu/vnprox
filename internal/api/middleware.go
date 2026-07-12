@@ -64,11 +64,24 @@ func recovererMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 // (/api/ws, architecture.md §9) needs no scheme sources — and a bare wss:/ws:
 // would allow connections to arbitrary hosts, contradicting docs/security.md's
 // "WS to self".
+//
+// T-604 (security hardening pass) tightened this further, adding five
+// directives the original policy left at the (safe, since default-src
+// 'self' already covers them) implicit default rather than pinning
+// explicitly: object-src/frame-src/worker-src/manifest-src 'none' (the SPA
+// has no <object>/<embed>, no iframes, no Worker()/service worker — elkjs's
+// layout runs via elk.bundled.js on the main thread, not a Worker — and no
+// web app manifest, so all four attack surfaces are dead weight to leave
+// open) and form-action 'self' (every mutation is a fetch() through
+// TanStack Query per docs/architecture.md §8, never an HTML <form> submit,
+// but pinning it stops an injected <form> from ever exfiltrating to a
+// third-party action= origin). Verified against the full Playwright suite
+// (web/e2e) with no regressions — see planning/reports/T-604.md.
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "same-origin")
