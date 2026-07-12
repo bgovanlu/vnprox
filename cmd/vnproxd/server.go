@@ -563,6 +563,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	g.add(func(ctx context.Context) error {
 		return serveHTTPS(ctx, srv, nil, logger)
 	})
+	if pprofActor := maybeStartDebugPprof(logger); pprofActor != nil {
+		g.add(pprofActor)
+	}
 	g.add(authSvc.RunRenewalLoop)
 	// metric_samples retention (store.MetricRetention): RunPruneLoop's doc
 	// comment assigns the wiring to the daemon, and without it the table
