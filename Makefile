@@ -112,8 +112,14 @@ check: lint test ## lint + test + govulncheck + npm audit --audit-level=high
 
 # --- deb -------------------------------------------------------------------
 
-deb: ## build the .deb into dist/
+deb: ## build the .deb into dist/ (builds the frontend first — see below)
 	@if [ -n "$(DEB_READY)" ]; then \
+		if [ -n "$(WEB_READY)" ]; then \
+			echo ">> web: building SPA"; \
+			(cd $(WEB_DIR) && npm ci && npm run build); \
+		else \
+			echo ">> web: not yet implemented (T-005), skipping web build"; \
+		fi; \
 		mkdir -p $(DIST_DIR); \
 		$(MAKE) -C $(PACKAGING_DIR) deb DIST_DIR=$(abspath $(DIST_DIR)); \
 	else \

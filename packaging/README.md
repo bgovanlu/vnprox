@@ -26,7 +26,17 @@ packaging/
 make deb            # from the repo root; builds dist/vnprox_<version>_<arch>.deb
 ```
 
-This builds `vnproxd` and `vnproxctl` from source (`-trimpath`,
+This first builds the frontend production bundle (`cd web && npm ci && npm
+run build`) so `web/dist` is always fresh before packaging — **correction
+(T-608, hardware validation):** this used to be a separate prerequisite
+step the operator had to remember to run first; a real deployment built
+from a checkout with a stale `web/dist` silently shipped `vnproxd`'s
+"frontend not yet built" placeholder page instead of the real app, since
+`go:embed` just embeds whatever is on disk at build time. `make deb` now
+does this itself, and `packaging/Makefile` additionally refuses to build
+at all if `web/dist/index.html` is missing or still the placeholder.
+
+It then builds `vnproxd` and `vnproxctl` from source (`-trimpath`,
 version stamped via `-ldflags -X main.version=...`), assembles a package
 root under `packaging/build/pkgroot/`, and calls `dpkg-deb --root-owner-group
 --build`. No `nfpm` dependency — `dpkg-deb` alone is sufficient and is

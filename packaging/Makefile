@@ -26,6 +26,20 @@ DEB_FILE := $(DIST_DIR)/$(PKG_NAME)_$(VERSION)_$(ARCH).deb
 
 deb:
 	@echo ">> packaging: building $(PKG_NAME) $(VERSION) ($(ARCH))"
+	# Guard against packaging a stale/placeholder web/dist (hardware
+	# validation, T-608, found a real deployment silently served the T-005
+	# "frontend not yet built" placeholder — vnproxd's go:embed just embeds
+	# whatever is on disk under web/dist at build time, staleness and all).
+	# This target intentionally does NOT build the frontend itself — the
+	# root Makefile's `deb` target does that before invoking this one, and
+	# release.yml runs `make build` before this — but if either is skipped
+	# (e.g. this Makefile invoked directly), fail loudly here rather than
+	# silently ship a broken UI.
+	@if [ ! -f "$(ROOT_DIR)/web/dist/index.html" ] || grep -q "frontend not yet built" "$(ROOT_DIR)/web/dist/index.html" 2>/dev/null; then \
+		echo ">> packaging: ERROR: $(ROOT_DIR)/web/dist/index.html is missing or is the placeholder page" >&2; \
+		echo "   run 'make build' (or 'cd web && npm run build') first — see docs/development.md" >&2; \
+		exit 1; \
+	fi
 	rm -rf $(PKG_ROOT)
 	install -d -m 0755 $(PKG_ROOT)/DEBIAN
 	install -d -m 0755 $(PKG_ROOT)/usr/bin
