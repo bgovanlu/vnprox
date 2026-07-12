@@ -3,12 +3,14 @@ package change
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/change/ifaces"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/peer"
 )
 
 // ErrValidationBlocked is returned by Apply when the pre-apply revalidation
@@ -131,6 +133,36 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 		s.appendAudit(ctx, author, "changeset.apply", "unsupported_op", id, map[string]any{"error": err.Error()})
 		return Changeset{}, Plan{}, err
 	}
+
+	// Peer-version compatibility gate (docs/architecture.md §5: "a daemon
+	// refuses to coordinate changes involving a peer with an incompatible
+	// schema version"), checked before any snapshot/mutation so an
+	// incompatible peer never results in a partial apply. Only
+	// NodeAgents that opt into PeerCompatibilityChecker are asked
+	// (production's ClusterNodeAgent does; single-node test doubles
+	// typically don't, and are treated as "every node compatible").
+	//
+	// Deliberately narrow to peer.ErrPeerIncompatible: a peer that is merely
+	// unreachable right now (down, partitioned) is a different, already-
+	// handled failure mode — the existing per-step apply/rollback machinery
+	// (apply_exec.go/apply_distributed.go) tolerates and recovers from a
+	// node going unreachable mid-apply, and pre-emptively refusing the
+	// whole apply on a transient reachability blip here would make applies
+	// needlessly fragile. Only a confirmed version mismatch blocks up
+	// front; every other CheckNodeCompatible error is intentionally
+	// ignored at this pre-flight stage.
+	if checker, ok := s.nodes.(PeerCompatibilityChecker); ok {
+		for _, node := range plan.affectedNodes() {
+			cerr := checker.CheckNodeCompatible(ctx, node)
+			if cerr == nil || !errors.Is(cerr, peer.ErrPeerIncompatible) {
+				continue
+			}
+			incompatible := &ErrIncompatiblePeer{Node: node, Err: cerr}
+			s.appendAudit(ctx, author, "changeset.apply", "peer_incompatible", id, map[string]any{"node": node, "error": cerr.Error()})
+			return Changeset{}, Plan{}, incompatible
+		}
+	}
+
 	planJSON, err := json.Marshal(plan)
 	if err != nil {
 		return Changeset{}, Plan{}, fmt.Errorf("change: marshaling plan for changeset %s: %w", id, err)

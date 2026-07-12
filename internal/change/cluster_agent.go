@@ -64,6 +64,25 @@ func (l StaticPeerLocator) Peer(_ context.Context, node string) (peer.Peer, erro
 	return p, nil
 }
 
+// PeerCompatibilityChecker is an optional capability a NodeAgent
+// implementation may additionally satisfy: given a node name, report
+// whether that node is reachable through a peer whose wire-protocol version
+// this daemon can safely coordinate with (docs/architecture.md §5: "a
+// daemon refuses to coordinate changes involving a peer with an
+// incompatible schema version"). beginApply (apply.go) type-asserts a
+// Service's configured NodeAgent against this interface — the same
+// structural-seam pattern the T-303 deviation note documents for
+// API-->PEER — so a NodeAgent that has no notion of peers at all (e.g. a
+// single-node test double) simply isn't asked and every node is treated as
+// compatible.
+type PeerCompatibilityChecker interface {
+	// CheckNodeCompatible returns nil if node is this daemon's own node or a
+	// reachable peer whose advertised peer.ProtocolVersion matches this
+	// build's, and a *peer.ResponseError-wrapping error (see
+	// peer.ErrPeerIncompatible) otherwise.
+	CheckNodeCompatible(ctx context.Context, node string) error
+}
+
 // ClusterNodeAgent implements NodeAgent by routing each call to the local
 // host-writer when node is this daemon's own PVE node, or through the peer
 // API otherwise — the "single NodeAgent value abstracting local and peer
@@ -136,6 +155,26 @@ func (c *ClusterNodeAgent) DiscardStaged(ctx context.Context, node string) error
 	}
 	return c.client.DiscardStaged(ctx, p, node)
 }
+
+// CheckNodeCompatible implements PeerCompatibilityChecker: the local node is
+// always compatible with itself (no peer round trip); any other node is
+// resolved via the locator and checked with peer.Client.CheckCompatible,
+// which returns an error wrapping peer.ErrPeerIncompatible on a protocol
+// mismatch and peer.ErrPeerUnreachable if the peer can't be reached at all
+// (apply.go treats both the same way: refuse to coordinate, don't mutate
+// anything).
+func (c *ClusterNodeAgent) CheckNodeCompatible(ctx context.Context, node string) error {
+	if node == c.localNode() {
+		return nil
+	}
+	p, err := c.locator.Peer(ctx, node)
+	if err != nil {
+		return err
+	}
+	return c.client.CheckCompatible(ctx, p)
+}
+
+var _ PeerCompatibilityChecker = (*ClusterNodeAgent)(nil)
 
 // ClusterTimerAgent implements NodeTimerAgent the same way ClusterNodeAgent
 // implements NodeAgent: local node -> straight into this daemon's own

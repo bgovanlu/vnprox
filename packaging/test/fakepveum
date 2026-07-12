@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# fakepveum — a minimal stand-in for Proxmox VE's `pveum` CLI, used only by
+# packaging/test/pve-token.sh to exercise vnprox-setup's PVE API token
+# provisioning logic (packaging/bin/vnprox-setup step 5) without a real PVE
+# node. Real `pveum` is not something CI/containers have access to
+# (CLAUDE.md: "you do NOT have a live Proxmox cluster") — this stub mimics
+# just enough of its documented behavior for that: role/user/token
+# creation, and the "already exists" error text vnprox-setup's
+# pve_try_create() specifically greps for.
+#
+# State is a plain directory of marker files under $FAKEPVEUM_STATE (one
+# file per created role/user/token), so re-running this stub is itself a
+# faithful "already exists" check — real idempotency logic, not a canned
+# script of expected calls.
+
+set -euo pipefail
+
+STATE="${FAKEPVEUM_STATE:?FAKEPVEUM_STATE must be set}"
+mkdir -p "$STATE/roles" "$STATE/users" "$STATE/tokens"
+
+die_exists() {
+	echo "pveum: $1 already exists" >&2
+	exit 2
+}
+
+case "$1" in
+role)
+	case "$2" in
+	add)
+		name="$3"
+		[ -e "$STATE/roles/$name" ] && die_exists "role '$name'"
+		: >"$STATE/roles/$name"
+		echo "role '$name' added"
+		;;
+	delete)
+		rm -f "$STATE/roles/$3"
+		;;
+	list) : ;;
+	*) echo "fakepveum: unsupported: $*" >&2 && exit 1 ;;
+	esac
+	;;
+user)
+	case "$2" in
+	add)
+		name="$3"
+		[ -e "$STATE/users/$name" ] && die_exists "user '$name'"
+		: >"$STATE/users/$name"
+		echo "user '$name' added"
+		;;
+	delete)
+		rm -f "$STATE/users/$3"
+		;;
+	list) : ;;
+	token)
+		case "$3" in
+		add)
+			user="$4"
+			tokenid="$5"
+			key="$user!$tokenid"
+			[ -e "$STATE/tokens/$key" ] && die_exists "token '$key'"
+			value="fake-secret-$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+			: >"$STATE/tokens/$key"
+			printf '{"full-tokenid":"%s","info":{"privsep":"0"},"value":"%s"}\n' "$key" "$value"
+			;;
+		remove)
+			rm -f "$STATE/tokens/$4!$5"
+			;;
+		list) : ;;
+		*) echo "fakepveum: unsupported: $*" >&2 && exit 1 ;;
+		esac
+		;;
+	*) echo "fakepveum: unsupported: $*" >&2 && exit 1 ;;
+	esac
+	;;
+acl)
+	case "$2" in
+	modify) : ;; # always succeeds, add or --delete — matches real pveum's idempotent acl modify
+	*) echo "fakepveum: unsupported: $*" >&2 && exit 1 ;;
+	esac
+	;;
+*)
+	echo "fakepveum: unsupported: $*" >&2
+	exit 1
+	;;
+esac

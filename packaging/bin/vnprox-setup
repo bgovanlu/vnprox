@@ -209,19 +209,116 @@ else
 	log "skipping lldpd (per --no-lldp / answer)"
 fi
 
-# --- step 5: PVE API token ------------------------------------------------
+# --- step 5: PVE API token -------------------------------------------------
 #
-# TODO(T-606): create the read-only PVE API token `vnprox@pve!daemon`
-# (auditor-level privilege on `/`, creating the role if absent) via `pveum`,
-# and store it root-only at the path internal/config expects
-# ([pve].token_file, default /etc/vnprox/keys/pve-token). This requires a
-# live PVE API (pveum acting against pmxcfs/corosync) that this sandbox
-# does not have — see planning/tasks/phase-6.md#T-606
-# ("cluster rollout and PVE token creation are completed in T-606").
-log "TODO(T-606): PVE API token creation (vnprox@pve!daemon) is not implemented in this installer skeleton"
-log "  -> create it manually for now: pveum role add VnproxAuditor -privs \"Sys.Audit\"  (adjust privileges per docs/security.md)"
-log "     pveum user token add vnprox@pve daemon --privsep 0"
-log "     then place the resulting token secret at /etc/vnprox/keys/pve-token (root:root 0600)"
+# Creates the read-only PVE identity docs/security.md documents: "one
+# privileged internal identity: a PVE API token vnprox@pve!daemon ... used
+# exclusively for read polling by collectors — never for writes." Every
+# sub-step here is idempotent (re-running this script must not error or
+# create duplicates — T-606 acceptance criterion 5):
+#   - the VnproxAuditor role is created only if pveum doesn't already list it
+#     (a stock PVE always ships PVEAuditor too, but vnprox uses its own
+#     named role rather than depending on a stock role's exact privilege
+#     set never changing underneath it);
+#   - the vnprox@pve user and its "/"-scoped VnproxAuditor ACL grant are
+#     created/re-applied unconditionally — pveum's own add/modify commands
+#     are themselves idempotent (user add on an existing user, acl modify
+#     re-granting the same role) so there is nothing to guard here;
+#   - the token itself is created only if pveum doesn't already list a
+#     "daemon" token for vnprox@pve — a token's secret is returned by pveum
+#     exactly once at creation time and cannot be re-read later, so a
+#     second `pveum user token add` on an existing token either errors or
+#     (with pveum's own idempotency: it does not) silently invalidates the
+#     first secret; either way this script must not attempt it on a token
+#     that already exists. When skipped, the existing on-disk
+#     PVE_TOKEN_FILE is left exactly as it was.
+#
+# `pveum` only exists on a real Proxmox VE node (it drives PVE's own
+# pmxcfs-backed user.cfg); on any other host (dev machine, CI/container
+# matrix) this step is a documented no-op — see the T-606 report's
+# "needs hardware validation" list.
+
+PVE_TOKEN_FILE="$KEYS_DIR/pve-token"
+VNPROX_PVE_ROLE="VnproxAuditor"
+# Sys.Audit: node status/interfaces (GET /nodes/{node}/*), cluster status.
+# VM.Audit: qemu/lxc config reads (guest NIC inventory).
+# SDN.Audit: SDN zone/vnet/subnet reads. No *.Modify privilege anywhere —
+# the collectors' token is read-only by design (docs/security.md, D3).
+VNPROX_PVE_PRIVS="Sys.Audit,VM.Audit,SDN.Audit"
+
+# pve_try_create runs a pveum create-style subcommand and treats "the thing
+# it would create already exists" as success rather than failure: pveum's
+# own error text for this case is "... already exists" (role/user/token
+# add all phrase it this way), so this is more robust than pre-parsing
+# `pveum <resource> list`'s human-oriented table output (whose exact column
+# layout/separators aren't a stable contract this script should depend on,
+# and vary across pveum versions). Logs $2 on success/already-exists, warns
+# with pveum's own stderr on any other failure. Prints the command's stdout
+# on success (needed by the token-add caller below to recover the secret).
+pve_try_create() {
+	local label out rc
+	label="$1"
+	shift
+	out="$("$@" 2>&1)"
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		log "  $label"
+		printf '%s\n' "$out"
+		return 0
+	fi
+	if printf '%s' "$out" | grep -qi "already exists"; then
+		log "  $label (already existed)"
+		return 0
+	fi
+	warn "  $label failed: $out"
+	return 1
+}
+
+if ! command -v pveum >/dev/null 2>&1; then
+	log "step 5: pveum not found (not a Proxmox VE node) — skipping PVE API token provisioning"
+	log "  -> on a real PVE node this creates role $VNPROX_PVE_ROLE, user vnprox@pve, and the vnprox@pve!daemon token; see docs/security.md"
+elif [ -s "$PVE_TOKEN_FILE" ]; then
+	log "step 5: PVE API token file already present at $PVE_TOKEN_FILE, leaving it untouched (idempotent re-run)"
+else
+	log "step 5: provisioning the PVE API token vnprox@pve!daemon"
+
+	pve_try_create "role $VNPROX_PVE_ROLE ($VNPROX_PVE_PRIVS)" \
+		pveum role add "$VNPROX_PVE_ROLE" -privs "$VNPROX_PVE_PRIVS" >/dev/null || true
+
+	pve_try_create "user vnprox@pve" \
+		pveum user add vnprox@pve --comment "vnprox daemon read-only identity (docs/security.md)" >/dev/null || true
+
+	if pveum acl modify / --users vnprox@pve --roles "$VNPROX_PVE_ROLE" 2>&1; then
+		log "  granted $VNPROX_PVE_ROLE on / to vnprox@pve"
+	else
+		warn "  could not grant $VNPROX_PVE_ROLE on / to vnprox@pve; PVE API token setup incomplete"
+	fi
+
+	# set +e/-e around this one: it's a plain assignment (not part of an
+	# `||`/`if` list), so under `set -e` a non-zero pve_try_create here
+	# would abort the whole script instead of falling through to the
+	# warn-and-continue handling below.
+	set +e
+	token_out="$(pve_try_create "token vnprox@pve!daemon" \
+		pveum user token add vnprox@pve daemon --privsep 0 --output-format json)"
+	token_create_rc=$?
+	set -e
+	if [ $token_create_rc -ne 0 ]; then
+		: # pve_try_create already warned
+	elif printf '%s' "$token_out" | grep -q '"value"'; then
+		token_value="$(printf '%s' "$token_out" | sed -n 's/.*"value" *: *"\([^"]*\)".*/\1/p')"
+		install -d -m 0700 -o root -g root "$KEYS_DIR"
+		umask 077
+		printf 'vnprox@pve!daemon=%s\n' "$token_value" >"$PVE_TOKEN_FILE"
+		chmod 0600 "$PVE_TOKEN_FILE"
+		log "  stored token secret at $PVE_TOKEN_FILE (root:root 0600)"
+	else
+		# The "already existed" branch: pveum won't hand back a secret for
+		# a token that already existed before this run, and there is no
+		# way to recover one that was never written to disk here.
+		warn "  PVE API token vnprox@pve!daemon already exists but $PVE_TOKEN_FILE is missing/empty; its secret cannot be recovered — either restore $PVE_TOKEN_FILE from backup, or run: pveum user token remove vnprox@pve daemon && vnprox-setup again"
+	fi
+fi
 
 # --- step 6: cluster secret ------------------------------------------------
 #

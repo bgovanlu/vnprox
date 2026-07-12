@@ -10,19 +10,60 @@
 # /etc/pve) — decision D5, docs/deployment.md — this script does not go
 # near either path.
 #
-# Note: the cluster secret under /etc/pve/vnprox/ and the PVE API token are
-# explicitly out of scope here (pmxcfs-distributed / PVE-side state, not
-# owned by this package on any one node) — their "remove on purge of the
-# last node" behavior is a cluster-rollout concern handled by install.sh /
-# vnprox-setup, tracked at T-606 (planning/tasks/phase-6.md#T-606).
+# docs/deployment.md "Uninstall": "The PVE token and /etc/pve/vnprox/ are
+# removed on purge of the last node (prompted)." Both are cluster-shared,
+# not this-node-only data: /etc/pve/vnprox is pmxcfs-replicated to every
+# node, and the vnprox@pve PVE user/token/role live in PVE's own
+# cluster-wide user.cfg. Removing them unconditionally on *any* node's
+# purge would break every other still-installed node the moment the first
+# one is purged — so this is never automatic. It is prompted, interactively,
+# directly against /dev/tty (no debconf dependency for one yes/no question);
+# with no controlling tty to ask on (unattended/scripted purge, CI), the
+# safe default is to leave cluster-wide state untouched and say so.
 
 set -e
+
+remove_cluster_shared_state() {
+  echo "vnprox: purge — removing cluster-shared state (/etc/pve/vnprox, vnprox@pve PVE user/token/role)"
+  rm -rf /etc/pve/vnprox
+  if command -v pveum >/dev/null 2>&1; then
+    pveum user token remove vnprox@pve daemon >/dev/null 2>&1 || true
+    pveum acl modify / --users vnprox@pve --roles VnproxAuditor --delete >/dev/null 2>&1 || true
+    pveum user delete vnprox@pve >/dev/null 2>&1 || true
+    pveum role delete VnproxAuditor >/dev/null 2>&1 || true
+  fi
+}
+
+prompt_last_node_cleanup() {
+  # Nothing cluster-shared to consider removing at all (no pmxcfs mount,
+  # no pveum) — skip the prompt entirely rather than asking a question
+  # with no possible effect.
+  [ -e /etc/pve/vnprox ] || command -v pveum >/dev/null 2>&1 || return 0
+
+  ans=""
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    printf 'vnprox: is this the LAST node being purged from the cluster?\n' >/dev/tty
+    printf '  Answering yes also removes the cluster-shared /etc/pve/vnprox/\n' >/dev/tty
+    printf '  secret and the vnprox@pve PVE user/token/role (docs/deployment.md).\n' >/dev/tty
+    printf '  Remove cluster-wide vnprox state now? [y/N] ' >/dev/tty
+    read -r ans </dev/tty || ans=""
+  fi
+  case "$ans" in
+    y | Y | yes | YES)
+      remove_cluster_shared_state
+      ;;
+    *)
+      echo "vnprox: keeping cluster-shared state (/etc/pve/vnprox, PVE token/role/user) — remove manually if this really was the last node, or purge again from that node's own vnprox package to be asked again"
+      ;;
+  esac
+}
 
 case "$1" in
   purge)
     echo "vnprox: purge — removing /etc/vnprox and /var/lib/vnprox"
     rm -rf /etc/vnprox
     rm -rf /var/lib/vnprox
+    prompt_last_node_cleanup
 
     if [ -d /run/systemd/system ]; then
       systemctl daemon-reload >/dev/null 2>&1 || true

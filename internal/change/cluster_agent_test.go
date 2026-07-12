@@ -3,8 +3,13 @@ package change_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -152,6 +157,63 @@ func TestClusterNodeAgent_UnknownNode(t *testing.T) {
 	}
 	if err := agent.DiscardStaged(ctx, "pveX"); err != nil {
 		t.Fatalf("DiscardStaged(local): %v", err)
+	}
+}
+
+// TestClusterNodeAgent_CheckNodeCompatible covers PeerCompatibilityChecker's
+// three branches per docs/architecture.md §5: the local node never leaves
+// the process (always compatible), a peer advertising this build's
+// peer.ProtocolVersion is compatible, and a peer advertising a different
+// one is refused with an error wrapping peer.ErrPeerIncompatible — this is
+// the same building block beginApply (apply.go) uses for the mixed-version
+// apply-refusal path exercised end to end in
+// TestApply_RefusesWhenPeerProtocolIncompatible (mixedversion_test.go).
+func TestClusterNodeAgent_CheckNodeCompatible(t *testing.T) {
+	secrets := newTestSecretStoreForLocator(t)
+	client := peer.NewClient(peer.ClientOptions{Secrets: secrets, Scheme: "http"})
+	local := newMinimalNodeAgent()
+
+	// A real peer.Server always advertises the current build's
+	// ProtocolVersion, so it's the "compatible peer" fixture.
+	compatSrv := peer.NewServer(peer.ServerOptions{Secrets: secrets, Version: "test"})
+	compatRouter := chi.NewRouter()
+	compatSrv.MountRoutes(compatRouter)
+	compatTS := httptest.NewServer(compatRouter)
+	t.Cleanup(compatTS.Close)
+
+	// A bare stub answering only /api/peer/version, with a mismatched
+	// protocolVersion — the same technique internal/peer's own
+	// TestClient_CheckCompatible_VersionMismatch uses, since ProtocolVersion
+	// is a package constant a real peer.Server can't be told to override.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/peer/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"version":"old","protocolVersion":` + strconv.Itoa(peer.ProtocolVersion+1) + `}`))
+	})
+	incompatTS := httptest.NewServer(mux)
+	t.Cleanup(incompatTS.Close)
+
+	locator := change.StaticPeerLocator{
+		"pve-compat":   peer.Peer{Node: "pve-compat", Addr: compatTS.Listener.Addr().String()},
+		"pve-incompat": peer.Peer{Node: "pve-incompat", Addr: incompatTS.Listener.Addr().String()},
+	}
+	agent := change.NewClusterNodeAgent(func() string { return "pveX" }, local, client, locator)
+	ctx := context.Background()
+
+	if err := agent.CheckNodeCompatible(ctx, "pveX"); err != nil {
+		t.Errorf("CheckNodeCompatible(local node) = %v, want nil", err)
+	}
+	if err := agent.CheckNodeCompatible(ctx, "pve-compat"); err != nil {
+		t.Errorf("CheckNodeCompatible(matching-protocol peer) = %v, want nil", err)
+	}
+	if err := agent.CheckNodeCompatible(ctx, "pve-incompat"); !errors.Is(err, peer.ErrPeerIncompatible) {
+		t.Errorf("CheckNodeCompatible(mismatched-protocol peer) = %v, want it to wrap peer.ErrPeerIncompatible", err)
+	}
+	if _, err := (change.StaticPeerLocator{}).Peer(ctx, "pveUnknown"); !errors.Is(err, change.ErrUnknownPeerNode) {
+		t.Errorf("sanity: unknown-node lookup err = %v, want ErrUnknownPeerNode", err)
+	}
+	if err := agent.CheckNodeCompatible(ctx, "pveUnknown"); !errors.Is(err, change.ErrUnknownPeerNode) {
+		t.Errorf("CheckNodeCompatible(unknown node) = %v, want ErrUnknownPeerNode", err)
 	}
 }
 
