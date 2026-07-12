@@ -173,12 +173,12 @@ func TestOpen_CorrectsPreExistingLoosePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Open: %v", err)
 	}
-	if err := db.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
+	if closeErr := db.Close(); closeErr != nil {
+		t.Fatalf("Close: %v", closeErr)
 	}
 
-	if err := os.Chmod(path, 0o644); err != nil {
-		t.Fatalf("Chmod to simulate a loosely-permissioned pre-existing file: %v", err)
+	if chmodErr := os.Chmod(path, 0o644); chmodErr != nil {
+		t.Fatalf("Chmod to simulate a loosely-permissioned pre-existing file: %v", chmodErr)
 	}
 
 	db2, err := Open(context.Background(), path)

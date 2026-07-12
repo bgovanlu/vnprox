@@ -224,3 +224,27 @@ func TestSnapshotsRoute_ClusterMerge(t *testing.T) {
 		t.Error("partial = true, want false (both sources healthy)")
 	}
 }
+
+// TestAuditRoute_NoMutatingMethodMounted is T-604's automated check for
+// docs/security.md's "Audit" claim: "Audit entries are append-only at the
+// API layer; there is no delete endpoint." internal/api/audit.go mounts
+// only r.Get("/audit", ...) and store.AuditRepo (internal/store/audit.go)
+// exposes no Update/Delete method at all — this test closes the loop at
+// the HTTP layer, proving no other route registration anywhere in the
+// router answers a mutating method on this path (chi's default "method not
+// allowed"/"not found" behavior, not bespoke app logic, is exactly the
+// desired outcome here).
+func TestAuditRoute_NoMutatingMethodMounted(t *testing.T) {
+	svc := &fakeAuditListService{entries: []store.AuditEntry{
+		{ID: 1, At: 100, Username: "alice", Action: "changeset.apply", Result: "success"},
+	}}
+	r := auditTestRouter(svc, nil)
+
+	for _, method := range []string{http.MethodDelete, http.MethodPut, http.MethodPatch, http.MethodPost} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(method, "/api/v1/audit", nil))
+		if rec.Code == http.StatusOK {
+			t.Errorf("%s /api/v1/audit = %d, want anything but 200 (audit must be append-only, no mutating method)", method, rec.Code)
+		}
+	}
+}
