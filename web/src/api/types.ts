@@ -294,6 +294,12 @@ export interface IfaceUpdateParams {
   addresses?: string[];
   gateway?: string;
   autostart?: boolean;
+  /** T-703: explicitly clear the stanza's address/gateway (the
+   * dedicated-management-VLAN flow takes the address+route OFF the old
+   * carrier). Only honored when the value-setting sibling is absent, per
+   * internal/change/ifaces.mutateIfaceUpdate's precedence. */
+  removeAddress?: boolean;
+  removeGateway?: boolean;
 }
 
 /** T-208's raw editor save op: params = the node's full new file content,
@@ -366,6 +372,10 @@ export interface BridgePortRemoveParams {
 export interface VlanCreateParams {
   parent: string;
   addresses?: string[];
+  /** T-703: the sub-interface's default gateway (rendered as the stanza's
+   * `gateway` option) — a VLAN carrier taking over a node's management IP
+   * needs the node's default route too (internal/change.VlanCreateParams). */
+  gateway?: string;
   vid: number;
   mtu?: number;
   /** True for an OVS Int Port (ovs_type=OVSIntPort) instead of a plain
@@ -805,6 +815,11 @@ export interface Changeset {
   confirmDeadline?: number;
   createdAt: number;
   updatedAt: number;
+  /** T-703: server-computed — the ops intersect a node's resolved
+   * management path (change.TouchesMgmtPath). The review screen turns this
+   * into a mandatory acknowledgement block and the apply enforces a
+   * confirm-window floor. Absent on older responses (treated as false). */
+  touchesMgmtPath?: boolean;
 }
 
 /** POST /changesets body. */
@@ -823,6 +838,9 @@ export interface UpdateChangesetRequest {
 /** POST /changesets/{id}/apply body. */
 export interface ApplyChangesetRequest {
   confirmTimeoutSec: number;
+  /** T-703: the typed management-path acknowledgement, recorded to the
+   * audit log when the changeset touches a management path. */
+  mgmtAck?: { node: string };
 }
 
 /** One file's rendered diff for one node (internal/change/ifaces.FileDiff). */
@@ -1679,6 +1697,45 @@ export interface ProtectedInterfacesSuggestResponse {
 /** PUT `/protected-interfaces` request body. */
 export interface ProtectedInterfacesPutRequest {
   nodes: Record<string, string[]>;
+}
+
+// --- Management-path status (docs/api.md §"Protected interfaces"; T-702,
+// internal/api/protected.go's handleMgmtStatus) --------------------------
+
+/** One role a resolved management-path ref serves for its node — the exact
+ * strings GET /topology's node badges also use (docs/features/topology.md
+ * §3), so a badge value and a ManagementPathRef role are always the same
+ * vocabulary. */
+export type MgmtRole = "mgmt" | "corosync";
+
+/** One resolved protected ref: docs/features/topology.md §3's "each
+ * protected ref with roles..., the resolved physical path..., and a
+ * redundant bool". `path` is every entity ref physically carrying `ref`
+ * (bridge ports / bond slaves / the parent bridge for a VLAN carrier),
+ * excluding `ref` itself — these are exactly the refs GET /topology badges
+ * "mgmt-path". */
+export interface ManagementPathRef {
+  ref: string;
+  roles: MgmtRole[];
+  path: string[];
+  redundant: boolean;
+}
+
+/** GET `/protected-interfaces/status` response. `source` is "confirmed"
+ * when protected.json has at least one node entry (the onboarding-
+ * confirmed set), or "detected" when it's empty and this falls back to
+ * live detection — an unconfirmed cluster still gets a display answer,
+ * just an explicitly provisional one (docs/features/topology.md §3's
+ * "source: detected caveat with a link to the onboarding protected step"). */
+export interface ProtectedInterfacesStatusResponse {
+  source: "confirmed" | "detected";
+  nodes: Record<string, ManagementPathRef[]>;
+  badRefs?: string[];
+  /** T-703: the confirmed protected set no longer contains a carrier live
+   * detection currently finds — the management path moved since onboarding
+   * confirmed it (e.g. flow C committed, the refresh prompt declined).
+   * Absent while false. */
+  staleProtected?: boolean;
 }
 
 // --- LLDP (docs/api.md §"Inventory & topology"'s GET /lldp row, and

@@ -10,12 +10,24 @@ package change
 // value" — an absent field leaves the current value untouched, a present
 // field (even `null`, which decodes to a nil pointer of the *slice*
 // element, e.g. an explicit `"addresses": null`) means "set it".
+//
+// RemoveAddress/RemoveGateway (T-703) explicitly clear the stanza's
+// address/gateway options — the wire counterparts of internal/change/
+// ifaces.IfaceUpdate's same-named fields (which ifaces.DecodeOp has decoded
+// under exactly these JSON names since T-204; this package's strict Op
+// decoder just never admitted them until the dedicated-management-VLAN flow
+// needed "take the address and default route OFF the old carrier" as a
+// changeset op). Each is only honored when its value-setting sibling is
+// absent (Addresses/Gateway nil), mirroring ifaces.mutateIfaceUpdate's own
+// precedence.
 type IfaceUpdateParams struct {
-	MTU       *int      `json:"mtu,omitempty"`
-	Comments  *string   `json:"comments,omitempty"`
-	Addresses *[]string `json:"addresses,omitempty"`
-	Gateway   *string   `json:"gateway,omitempty"`
-	Autostart *bool     `json:"autostart,omitempty"`
+	MTU           *int      `json:"mtu,omitempty"`
+	Comments      *string   `json:"comments,omitempty"`
+	Addresses     *[]string `json:"addresses,omitempty"`
+	Gateway       *string   `json:"gateway,omitempty"`
+	Autostart     *bool     `json:"autostart,omitempty"`
+	RemoveAddress bool      `json:"removeAddress,omitempty"`
+	RemoveGateway bool      `json:"removeGateway,omitempty"`
 }
 
 func (IfaceUpdateParams) isChangeParams() {}

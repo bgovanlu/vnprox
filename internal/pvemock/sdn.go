@@ -2,6 +2,7 @@ package pvemock
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -357,6 +358,35 @@ func (srv *Server) handleSDNSubnetGet(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, s)
 }
 
+// subnetGatewayError returns a PVE-style 400 rejection message for s, or ""
+// if s is acceptable — T-701 pvemock fidelity: real PVE's SubnetPlugin
+// rejects both shapes at subnet create/update time (T-701 root-cause
+// analysis §4): SNAT enabled with no gateway, and a gateway that falls
+// outside the subnet's own CIDR. This mirrors this codebase's own
+// change.schemaGatewayInCIDR/codeSNATRequiresGateway checks so the same
+// two shapes vnprox's own validators block are also rejected server-side
+// (closing the "pvemock is more permissive than real PVE" gap raw/
+// non-wizard callers could otherwise slip through in CI) — exact PVE error
+// wording/version is unconfirmed against a live cluster, flagged in
+// planning/reports/needs-hardware-validation.md.
+func subnetGatewayError(s SDNSubnetSpec) string {
+	if s.SNAT && s.Gateway == "" {
+		return fmt.Sprintf("subnet %q: snat requires a gateway", s.ID)
+	}
+	if s.Gateway == "" || s.CIDR == "" {
+		return ""
+	}
+	_, ipnet, err := net.ParseCIDR(s.CIDR)
+	if err != nil {
+		return ""
+	}
+	ip := net.ParseIP(s.Gateway)
+	if ip == nil || !ipnet.Contains(ip) {
+		return fmt.Sprintf("subnet %q: gateway %q is not contained in subnet %q", s.ID, s.Gateway, s.CIDR)
+	}
+	return ""
+}
+
 func (srv *Server) handleSDNSubnetCreate(w http.ResponseWriter, r *http.Request) {
 	vnet := chi.URLParam(r, "vnet")
 	var s SDNSubnetSpec
@@ -369,18 +399,24 @@ func (srv *Server) handleSDNSubnetCreate(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "subnet id is required")
 		return
 	}
+	if msg := subnetGatewayError(s); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	srv.state.sdn.mu.Lock()
 	defer srv.state.sdn.mu.Unlock()
 	if _, exists := srv.state.sdn.subnets[s.ID]; exists {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("subnet %q already exists", s.ID))
 		return
 	}
-	if _, ok := srv.state.sdn.vnets[vnet]; !ok {
+	vnetSpec, ok := srv.state.sdn.vnets[vnet]
+	if !ok {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("vnet %q does not exist", vnet))
 		return
 	}
 	s.Pending = PendingNew
 	srv.state.sdn.subnets[s.ID] = s
+	srv.registerSubnetGateway(vnetSpec.Zone, vnet, s.CIDR, s.Gateway)
 	writeData(w, http.StatusOK, nil)
 }
 
@@ -393,6 +429,10 @@ func (srv *Server) handleSDNSubnetUpdate(w http.ResponseWriter, r *http.Request)
 	}
 	s.ID = id
 	s.Vnet = chi.URLParam(r, "vnet")
+	if msg := subnetGatewayError(s); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	srv.state.sdn.mu.Lock()
 	defer srv.state.sdn.mu.Unlock()
 	if _, ok := srv.state.sdn.subnets[id]; !ok {
@@ -401,6 +441,8 @@ func (srv *Server) handleSDNSubnetUpdate(w http.ResponseWriter, r *http.Request)
 	}
 	s.Pending = PendingChanged
 	srv.state.sdn.subnets[id] = s
+	vnetSpec := srv.state.sdn.vnets[s.Vnet]
+	srv.registerSubnetGateway(vnetSpec.Zone, s.Vnet, s.CIDR, s.Gateway)
 	writeData(w, http.StatusOK, nil)
 }
 

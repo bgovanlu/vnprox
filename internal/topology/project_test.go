@@ -53,6 +53,7 @@ func TestProject_SingleNode(t *testing.T) {
 
 	wantNodeIDs := []string{
 		"physnic:pve1:eno1",
+		"physnic:pve1:eno2",
 		"bridge:pve1:vmbr0",
 		"guest:pve1:100",
 		"guest:pve1:101",
@@ -145,8 +146,11 @@ func TestProject_SingleNode(t *testing.T) {
 	// T-302: switch merging adds one "switch:<chassisId>" node (the
 	// fixture's single neighbor's chassis) plus one lldp-port edge from
 	// eno1, additive over the lldp-neighbor node/lldp-adjacent edge above.
-	if len(topo.Nodes) != 8 {
-		t.Errorf("total nodes = %d, want 8 (got %v)", len(topo.Nodes), nodeIDs(topo.Nodes))
+	// T-702: eno2 (a spare, unconfigured NIC — see the fixture's own doc
+	// comment) adds one more physnic node and no edges (it's not a bridge
+	// port, not enslaved, and has no LLDP neighbor declared).
+	if len(topo.Nodes) != 9 {
+		t.Errorf("total nodes = %d, want 9 (got %v)", len(topo.Nodes), nodeIDs(topo.Nodes))
 	}
 	if len(topo.Edges) != 5 {
 		t.Errorf("total edges = %d, want 5 (got %+v)", len(topo.Edges), topo.Edges)
@@ -174,13 +178,14 @@ func TestProject_ThreeNodeVlan(t *testing.T) {
 	topo := topology.Project(graph.Snapshot(), topology.Filter{})
 
 	// 3 nodes x (2 physnic + bond + bridge + vlan) = 15
+	// + pve1's spare eno3 (T-703's flow-B candidate NIC) = 1
 	// + 2 lldp-neighbors (pve1 only - see doc comment above) = 2
 	// + 2 guests x (guest + guest-nic) = 4
 	// + SDN: zone + 2 vnets + 2 subnets = 5
 	// + T-302: 2 switch nodes (sw-core-01, sw-core-02), additive over the
 	//   2 lldp-neighbor nodes above (see switches.go)
-	if len(topo.Nodes) != 28 {
-		t.Fatalf("total nodes = %d, want 28 (got %v)", len(topo.Nodes), nodeIDs(topo.Nodes))
+	if len(topo.Nodes) != 29 {
+		t.Fatalf("total nodes = %d, want 29 (got %v)", len(topo.Nodes), nodeIDs(topo.Nodes))
 	}
 	// 6 enslaved-by (2 slaves x 3 nodes) + 3 port-of + 3 tagged-on
 	// + 2 lldp-adjacent (pve1 only) + 2 guest attached-to
@@ -315,10 +320,11 @@ func TestProject_LayersFilter(t *testing.T) {
 				t.Errorf("layers=phys leaked node %s on layer %q", n.ID, n.Layer)
 			}
 		}
-		// All 6 physnics (2 per node), pve1's 2 LLDP neighbors, and (T-302)
-		// the 2 switch nodes those neighbors merge into — nothing else.
-		if len(topo.Nodes) != 10 {
-			t.Errorf("layers=phys nodes = %d, want 10 (got %v)", len(topo.Nodes), nodeIDs(topo.Nodes))
+		// All 7 physnics (2 per node, plus pve1's spare eno3), pve1's 2
+		// LLDP neighbors, and (T-302) the 2 switch nodes those neighbors
+		// merge into — nothing else.
+		if len(topo.Nodes) != 11 {
+			t.Errorf("layers=phys nodes = %d, want 11 (got %v)", len(topo.Nodes), nodeIDs(topo.Nodes))
 		}
 		// enslaved-by edges (phys->bond) must be gone with their bond
 		// endpoint; lldp-adjacent (phys->phys layer) must survive.

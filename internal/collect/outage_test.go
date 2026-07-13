@@ -37,7 +37,7 @@ func TestOutageRecovery(t *testing.T) {
 	go func() { _ = c.RunHostLoop(ctx) }()
 	go func() { _ = c.RunLLDPLoop(ctx) }()
 
-	const wantTotal = 35
+	const wantTotal = 36
 	waitFor(t, 3*time.Second, "graph to converge before the outage", func() bool {
 		return graph.Snapshot().Len() == wantTotal
 	})

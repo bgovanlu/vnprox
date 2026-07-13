@@ -219,9 +219,14 @@ func (o BridgePortRemove) Ref() inventory.Ref { return o.Target }
 // distinction — see internal/change.VlanCreateParams' doc comment). Parent
 // is the OVS bridge name when OVS is true. VID is the OVS access "tag" (0 =
 // untagged/native); Trunks is an optional additional trunked VLAN range set.
+//
+// Gateway (T-703) renders a `gateway` option after the addresses, exactly
+// like BridgeCreate.Gateway — a VLAN sub-interface that takes over a node's
+// management address needs the node's default route too.
 type VlanCreate struct {
 	Target    inventory.Ref
 	Parent    string
+	Gateway   string
 	Comments  string
 	Addresses []string
 	Trunks    []inventory.VidRange
@@ -404,7 +409,8 @@ func DecodeOp(raw json.RawMessage) (Op, error) {
 	case OpVlanCreate:
 		return VlanCreate{
 			Target: target, Parent: p.Parent, VID: p.VID, Addresses: p.Addresses,
-			MTU: intOr(p.MTU), Comments: strOr(p.Comments), Autostart: boolOr(p.Autostart),
+			Gateway: strOr(p.Gateway),
+			MTU:     intOr(p.MTU), Comments: strOr(p.Comments), Autostart: boolOr(p.Autostart),
 			OVS: p.OVS, Trunks: p.Trunks,
 		}, nil
 	case OpVlanUpdate:

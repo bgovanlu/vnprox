@@ -7,6 +7,7 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildSimplePreview, type SimpleZoneParams } from "./previewEntities";
+import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
 import { wizardStrings } from "./strings";
 import { useClusterNodes } from "./useClusterNodes";
 import { useWizardCapability } from "./useWizardCapability";
@@ -33,9 +34,7 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
   const [memberNodes, setMemberNodes] = useState<string[]>([]);
   const [vnetId, setVnetId] = useState("");
   const [vnetAlias, setVnetAlias] = useState("");
-  const [subnetCidr, setSubnetCidr] = useState("");
-  const [subnetGateway, setSubnetGateway] = useState("");
-  const [snat, setSnat] = useState(false);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
   const [finishing, setFinishing] = useState(false);
 
   const params: SimpleZoneParams = useMemo(
@@ -45,12 +44,12 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
       memberNodes,
       vnetId,
       vnetAlias,
-      subnetCidr,
-      subnetGateway,
-      snat,
+      subnetCidr: subnet.cidr,
+      subnetGateway: subnet.gateway,
+      snat: subnet.snat,
       bridgeName,
     }),
-    [zoneId, memberNodes, vnetId, vnetAlias, subnetCidr, subnetGateway, snat, bridgeName],
+    [zoneId, memberNodes, vnetId, vnetAlias, subnet, bridgeName],
   );
 
   const graph = useMemo(() => buildSimplePreview(params), [params]);
@@ -117,27 +116,7 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
       id: "subnet",
       title: "Addresses",
       isValid: true,
-      content: (
-        <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.common.subnetSkipHelp}</p>
-          <Field label="Address range (CIDR)" help={S.common.cidrHelp}>
-            <input className={inputClass} value={subnetCidr} onChange={(e) => { setSubnetCidr(e.target.value); }} placeholder="10.50.0.0/24" />
-          </Field>
-          {subnetCidr && (
-            <>
-              <Field label="Gateway" help={S.common.gatewayHelp}>
-                <input className={inputClass} value={subnetGateway} onChange={(e) => { setSubnetGateway(e.target.value); }} placeholder="10.50.0.1" />
-              </Field>
-              <Field label="Internet access (SNAT)" help={S.common.snatHelp}>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={snat} onChange={(e) => { setSnat(e.target.checked); }} />
-                  Enable SNAT
-                </label>
-              </Field>
-            </>
-          )}
-        </div>
-      ),
+      content: <SubnetStep zoneType="simple" value={subnet} onChange={setSubnet} />,
     },
     {
       id: "review",
@@ -150,7 +129,12 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
           <ul className="list-inside list-disc space-y-1">
             <li>Zone &quot;{zoneId}&quot; on {memberNodes.join(", ") || "no nodes selected"}</li>
             <li>VNet &quot;{vnetId}&quot;{vnetAlias ? ` (${vnetAlias})` : ""}</li>
-            {subnetCidr && <li>Subnet {subnetCidr}{snat ? " with SNAT" : ""}</li>}
+            {subnet.cidr && (
+              <li>
+                Subnet {subnet.cidr}
+                {subnet.isolated ? " (isolated, no gateway)" : subnet.snat ? " with SNAT" : ""}
+              </li>
+            )}
           </ul>
         </div>
       ),

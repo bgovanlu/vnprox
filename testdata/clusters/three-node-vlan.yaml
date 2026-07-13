@@ -56,6 +56,15 @@ nodes:
         method: manual
         autostart: true
         mtu: 1500
+      # eno3 (T-703): a spare, unconfigured, link-up NIC on pve1 only — the
+      # candidate the "add/replace a slave in the mgmt-path bond" wizard flow
+      # (flow B) picks. pve2/pve3 deliberately have no spare, so per-node
+      # candidate selection is provably per-node, not cluster-blanket.
+      - iface: eno3
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
       - iface: bond0
         type: bond
         method: manual
@@ -86,6 +95,7 @@ nodes:
     links:
       eno1: {mac: "bc:24:11:01:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
       eno2: {mac: "bc:24:11:01:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
+      eno3: {mac: "bc:24:11:01:00:03", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.2"}
       bond0: {mac: "bc:24:11:01:00:01", link_up: true}
       # T-306 MAC/FDB browser fixtures: app01's own NIC (owner=guest, via a
       # tap device that is a dynamic bridge member, not a declared

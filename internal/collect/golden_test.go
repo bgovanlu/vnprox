@@ -27,6 +27,8 @@ func threeNodeVlanRefs() []string {
 		)
 	}
 	refs = append(refs,
+		// pve1's spare eno3 (T-703's flow-B candidate NIC) — pve1 only.
+		"physnic:pve1:eno3",
 		// cluster-scoped SDN + firewall
 		"sdn-zone::vlanz",
 		"sdn-vnet::vlanz/vnet100",
@@ -70,7 +72,8 @@ func snapshotRefs(snap inventory.Snapshot) []string {
 //   - Per node, from PVE's declared network view (FromPVENetwork skips the
 //     fixture's "lo" loopback stanza, which is not a modeled entity kind):
 //     eno1, eno2 (PhysNic), bond0 (Bond), vmbr0 (Bridge), vmbr0.20 (Vlan) —
-//     5 entities x 3 nodes = 15.
+//     5 entities x 3 nodes = 15, plus pve1's spare eno3 (T-703's flow-B
+//     redundancy candidate) = 1.
 //   - SDN: zone "vlanz", vnets "vlanz/vnet100" + "vlanz/vnet200", subnets
 //     "10.100.0.0/24" + "10.200.0.0/24" — 5 entities, cluster-scoped.
 //   - Guests: qemu 200 "app01" on pve1 (Guest + GuestNic net0), lxc 201
@@ -84,7 +87,7 @@ func snapshotRefs(snap inventory.Snapshot) []string {
 //     node" — reading a peer's host/LLDP state is a future peer-client
 //     task, not T-104's). 2 entities.
 //
-// Total: 3 + 15 + 5 + 4 + 6 + 2 = 35 entities.
+// Total: 3 + 15 + 1 + 5 + 4 + 6 + 2 = 36 entities.
 func TestGolden_ThreeNodeVLAN(t *testing.T) {
 	srv := loadFixtureServer(t, fixtureThreeNode)
 	c, graph, _ := newTestCollector(t, srv)

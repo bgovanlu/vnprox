@@ -89,6 +89,22 @@ const SIM_MARKER_LABEL: Record<SimPathRole, string> = {
   missing: "missing link",
 };
 
+// T-702: distinct treatment for the management-path badge vocabulary
+// (docs/features/topology.md §3) — "mgmt"/"corosync" mark the carrier
+// itself, "mgmt-path" marks every physical entity behind it. Amber (not the
+// plain grey every other badge renders as) so a glance at the map answers
+// "which interface carries this node's management/corosync traffic, and
+// what's physically behind it" without opening the inspector.
+const MGMT_BADGE_LABEL: Record<string, string> = {
+  mgmt: "management IP",
+  corosync: "corosync link",
+  "mgmt-path": "on the management path",
+};
+
+function isMgmtBadge(badge: string): boolean {
+  return badge in MGMT_BADGE_LABEL;
+}
+
 export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
   const isPill = data.isGuestGroup;
   const simVerdict = data.simVerdict;
@@ -147,7 +163,13 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
           {data.badges.map((b) => (
             <span
               key={b}
-              className="rounded bg-slate-200/70 px-1 py-0.5 text-[10px] text-slate-600 dark:bg-slate-700/70 dark:text-slate-300"
+              title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : undefined}
+              className={clsx(
+                "rounded px-1 py-0.5 text-[10px]",
+                isMgmtBadge(b)
+                  ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                  : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-300",
+              )}
             >
               {b}
             </span>

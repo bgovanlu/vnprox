@@ -23,10 +23,15 @@ const DefaultInterval = 30 * time.Second
 // internal/api's route-mounting convention of "nil dependency -> that
 // feature quietly doesn't exist" for a partially-wired daemon or test).
 type Config struct {
-	Drift           DriftProvider
-	LLDP            LLDPProvider
-	IPAM            IPAMProvider
-	Metrics         MetricsProvider
+	Drift   DriftProvider
+	LLDP    LLDPProvider
+	IPAM    IPAMProvider
+	Metrics MetricsProvider
+	// Mgmt is T-702's management-path status seam (change.Service.MgmtStatus
+	// adapted via MgmtProvider), backing the mgmt_single_path health check.
+	// Nil skips that check entirely, same degradation as every other
+	// optional Config field.
+	Mgmt            MgmtProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -48,6 +53,7 @@ type Engine struct {
 	lldpSvc    LLDPProvider
 	ipamSvc    IPAMProvider
 	metricsSvc MetricsProvider
+	mgmtSvc    MgmtProvider
 	serviceDB  *debouncer
 	services   *serviceStatusStore
 	onChange   func(int)
@@ -97,6 +103,7 @@ func New(cfg Config) *Engine {
 		lldpSvc:    cfg.LLDP,
 		ipamSvc:    cfg.IPAM,
 		metricsSvc: cfg.Metrics,
+		mgmtSvc:    cfg.Mgmt,
 		log:        logger,
 		now:        now,
 		onChange:   cfg.OnChange,
@@ -155,6 +162,7 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkStalePendingInterfaces(snap, e.pendingTr, now)...)
 	out = append(out, checkErrorDropRate(snap, e.metricsSvc, e.errDropDB, e.thresholds)...)
 	out = append(out, checkServiceDown(e.services, e.serviceDB)...)
+	out = append(out, checkMgmtSinglePath(e.mgmtSvc)...)
 	return out
 }
 

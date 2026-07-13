@@ -7,6 +7,7 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildVxlanPreview, type VxlanZoneParams } from "./previewEntities";
+import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
 import { wizardStrings } from "./strings";
 import { useClusterNodes } from "./useClusterNodes";
 import { useSuggestedPeers } from "./useSuggestedPeers";
@@ -37,9 +38,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
   const [vnetId, setVnetId] = useState("");
   const [vnetAlias, setVnetAlias] = useState("");
   const [vni, setVni] = useState(0);
-  const [subnetCidr, setSubnetCidr] = useState("");
-  const [subnetGateway, setSubnetGateway] = useState("");
-  const [snat, setSnat] = useState(false);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
   const [finishing, setFinishing] = useState(false);
 
   const suggested = useSuggestedPeers(memberNodes);
@@ -71,14 +70,14 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
       memberNodes,
       vnetId,
       vnetAlias,
-      subnetCidr,
-      subnetGateway,
-      snat,
+      subnetCidr: subnet.cidr,
+      subnetGateway: subnet.gateway,
+      snat: subnet.snat,
       mtu,
       vni,
       peers,
     }),
-    [zoneId, memberNodes, vnetId, vnetAlias, subnetCidr, subnetGateway, snat, mtu, vni, peers],
+    [zoneId, memberNodes, vnetId, vnetAlias, subnet, mtu, vni, peers],
   );
 
   const graph = useMemo(() => buildVxlanPreview(params), [params]);
@@ -190,27 +189,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
       id: "subnet",
       title: "Addresses",
       isValid: true,
-      content: (
-        <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.common.subnetSkipHelp}</p>
-          <Field label="Address range (CIDR)" help={S.common.cidrHelp}>
-            <input className={inputClass} value={subnetCidr} onChange={(e) => { setSubnetCidr(e.target.value); }} placeholder="10.90.0.0/24" />
-          </Field>
-          {subnetCidr && (
-            <>
-              <Field label="Gateway" help={S.common.gatewayHelp}>
-                <input className={inputClass} value={subnetGateway} onChange={(e) => { setSubnetGateway(e.target.value); }} placeholder="10.90.0.1" />
-              </Field>
-              <Field label="Internet access (SNAT)" help={S.common.snatHelp}>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={snat} onChange={(e) => { setSnat(e.target.checked); }} />
-                  Enable SNAT
-                </label>
-              </Field>
-            </>
-          )}
-        </div>
-      ),
+      content: <SubnetStep zoneType="vxlan" value={subnet} onChange={setSubnet} />,
     },
     {
       id: "review",
@@ -223,7 +202,12 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
           <ul className="list-inside list-disc space-y-1">
             <li>VXLAN zone &quot;{zoneId}&quot; on {memberNodes.join(", ") || "no nodes"}, MTU {mtu || derivation.safeMtu}</li>
             <li>VNet &quot;{vnetId}&quot;{vni ? ` (VNI ${String(vni)})` : ""}</li>
-            {subnetCidr && <li>Subnet {subnetCidr}{snat ? " with SNAT" : ""}</li>}
+            {subnet.cidr && (
+              <li>
+                Subnet {subnet.cidr}
+                {subnet.isolated ? " (isolated, no gateway)" : subnet.snat ? " with SNAT" : ""}
+              </li>
+            )}
           </ul>
         </div>
       ),

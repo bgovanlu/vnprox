@@ -99,5 +99,27 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 180_000,
     },
+    // T-703's own stack (mgmt-redundancy.spec.ts), additive: a fourth mock
+    // PVE + vnproxd pair on ports 38006/38007 serving the single-node
+    // fixture — the management-path SPOF case the guided redundancy wizard
+    // fixes (three-node-vlan, this suite's default fixture, is already
+    // redundant and raises no mgmt_single_path finding). Fresh DB + host
+    // sandbox per run so the applied bond doesn't leak into the next run.
+    {
+      command: "go run ./cmd/pvemock --addr 127.0.0.1:38006 --fixture testdata/clusters/single-node.yaml",
+      cwd: "..",
+      port: 38006,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command:
+        "sh -c 'rm -f var/dev-mgmt-vnprox.db && rm -rf var/dev-mgmt-host && exec go run ./cmd/vnproxd --config testdata/dev-mgmt.toml'",
+      cwd: "..",
+      url: "https://127.0.0.1:38007/api/v1/health",
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
 });

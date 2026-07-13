@@ -57,20 +57,28 @@ func sdnValidate(ops []Op, snap inventory.Snapshot) []Finding {
 	var out []Finding
 	out = append(out, zoneBridgeExistenceFindings(ops, snap, proj)...)
 	out = append(out, vnetTagUniquenessFindings(ops, snap)...)
+	out = append(out, snatRequiresGatewayFindings(ops, snap)...)
 	return out
 }
 
-// effectiveZone is one zone's (type, bridge, nodes) as of "now" — the base
-// snapshot with every zone.create/update/delete op in this changeset folded
-// in, in order. Only the fields zoneBridgeExistenceFindings needs.
+// effectiveZone is one zone's (type, bridge, nodes, exitNodes) as of "now"
+// — the base snapshot with every zone.create/update/delete op in this
+// changeset folded in, in order. exitNodes was added by T-701 for
+// validate_advisory.go's evpnSubnetAdvisoryFindings (codeSNATRequiresExitNode
+// needs an EVPN zone's *effective* exit-node list, cross-checked against
+// what the same changeset's own zone.update may have just changed — T-701
+// acceptance criterion 3's "cross-checked against the wizard's own
+// exitNodes selection live").
 type effectiveZone struct {
-	typ    string
-	bridge string
-	nodes  []string
+	typ       string
+	bridge    string
+	nodes     []string
+	exitNodes []string
 }
 
-// effectiveZones resolves every zone's effective (type, bridge, nodes),
-// starting from snap's existing SdnZone entities and folding ops forward.
+// effectiveZones resolves every zone's effective (type, bridge, nodes,
+// exitNodes), starting from snap's existing SdnZone entities and folding
+// ops forward.
 func effectiveZones(ops []Op, snap inventory.Snapshot) map[string]effectiveZone {
 	zones := map[string]effectiveZone{}
 	for _, e := range snap.All() {
@@ -78,12 +86,12 @@ func effectiveZones(ops []Op, snap inventory.Snapshot) map[string]effectiveZone 
 		if !ok {
 			continue
 		}
-		zones[z.ID] = effectiveZone{typ: z.Type, bridge: z.Bridge, nodes: z.Nodes}
+		zones[z.ID] = effectiveZone{typ: z.Type, bridge: z.Bridge, nodes: z.Nodes, exitNodes: z.ExitNodes}
 	}
 	for _, op := range ops {
 		switch p := op.Params.(type) {
 		case *SdnZoneCreateParams:
-			zones[op.Target.ID] = effectiveZone{typ: p.Type, bridge: p.Bridge, nodes: p.Nodes}
+			zones[op.Target.ID] = effectiveZone{typ: p.Type, bridge: p.Bridge, nodes: p.Nodes, exitNodes: p.ExitNodes}
 		case *SdnZoneUpdateParams:
 			z := zones[op.Target.ID]
 			if p.Bridge != nil {
@@ -92,12 +100,136 @@ func effectiveZones(ops []Op, snap inventory.Snapshot) map[string]effectiveZone 
 			if p.Nodes != nil {
 				z.nodes = *p.Nodes
 			}
+			if p.ExitNodes != nil {
+				z.exitNodes = *p.ExitNodes
+			}
 			zones[op.Target.ID] = z
 		case *SdnZoneDeleteParams:
 			delete(zones, op.Target.ID)
 		}
 	}
 	return zones
+}
+
+// effectiveVnetZones maps every known/folded sdn-vnet id to its owning
+// zone id, "as of now". A vnet's zone assignment is immutable after create
+// (SdnVnetUpdateParams carries no Zone field — params_sdn.go's doc
+// comment), so only create/delete ops need folding.
+func effectiveVnetZones(ops []Op, snap inventory.Snapshot) map[string]string {
+	vnets := map[string]string{}
+	for _, e := range snap.All() {
+		v, ok := e.(*inventory.SdnVnet)
+		if !ok {
+			continue
+		}
+		vnets[v.ID] = v.Zone
+	}
+	for _, op := range ops {
+		switch p := op.Params.(type) {
+		case *SdnVnetCreateParams:
+			vnets[op.Target.ID] = p.Zone
+		case *SdnVnetDeleteParams:
+			delete(vnets, op.Target.ID)
+		}
+	}
+	return vnets
+}
+
+// effectiveSubnet is one subnet's (vnet, gateway, snat) as of "now", plus
+// the most recent op that touched it in this changeset (lastOp, zero Op if
+// only the snapshot established it) — lastOp is what
+// snatRequiresGatewayFindings' fix patch replaces, so the fix always has
+// the same (Type, Target) pair as the op the finding is actually about
+// (validate_fix.go's documented property).
+type effectiveSubnet struct {
+	lastOp  Op
+	vnet    string
+	gateway string
+	snat    bool
+	touched bool
+}
+
+// effectiveSubnets resolves every subnet's effective (vnet, gateway, snat),
+// starting from snap's existing SdnSubnet entities (CIDR is always the map
+// key/Ref.ID — docs/data-model.md's SdnSubnet.ID doc comment) and folding
+// this changeset's own subnet.create/update/delete ops forward, in order.
+func effectiveSubnets(ops []Op, snap inventory.Snapshot) map[string]effectiveSubnet {
+	subnets := map[string]effectiveSubnet{}
+	for _, e := range snap.All() {
+		s, ok := e.(*inventory.SdnSubnet)
+		if !ok {
+			continue
+		}
+		subnets[s.ID] = effectiveSubnet{vnet: s.Vnet, gateway: s.Gateway, snat: s.SNAT}
+	}
+	for _, op := range ops {
+		switch p := op.Params.(type) {
+		case *SdnSubnetCreateParams:
+			subnets[op.Target.ID] = effectiveSubnet{vnet: p.Vnet, gateway: p.Gateway, snat: p.SNAT, lastOp: op, touched: true}
+		case *SdnSubnetUpdateParams:
+			s := subnets[op.Target.ID]
+			if p.Gateway != nil {
+				s.gateway = *p.Gateway
+			}
+			if p.SNAT != nil {
+				s.snat = *p.SNAT
+			}
+			s.lastOp = op
+			s.touched = true
+			subnets[op.Target.ID] = s
+		case *SdnSubnetDeleteParams:
+			delete(subnets, op.Target.ID)
+		}
+	}
+	return subnets
+}
+
+// touchedSubnetIDs returns, in first-appearance order and deduplicated,
+// every subnet id this changeset's own subnet.create/update ops name —
+// mirrors vnetTagUniquenessFindings' touchedOrder convention (only report a
+// finding for what the user actually touched this changeset, even though
+// the effective state a check evaluates may include untouched snapshot
+// data or a sibling op's contribution).
+func touchedSubnetIDs(ops []Op) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, op := range ops {
+		switch op.Type {
+		case OpSdnSubnetCreate, OpSdnSubnetUpdate:
+			if !seen[op.Target.ID] {
+				seen[op.Target.ID] = true
+				out = append(out, op.Target.ID)
+			}
+		}
+	}
+	return out
+}
+
+// snatRequiresGatewayFindings is T-701 acceptance criterion 2's blocking
+// check: a subnet whose effective state has snat=true but no effective
+// gateway (net-effect-aware — a subnet.create with no gateway followed by
+// a subnet.update that flips snat on in the same changeset is still
+// caught, and a subnet.update that supplies both in one op is too). Real
+// PVE's SubnetPlugin rejects this shape at subnet stage time (T-701
+// root-cause analysis §4), so — like zoneBridgeExistenceFindings/
+// vnetTagUniquenessFindings above — this is SeverityError, not advisory.
+// The fix patch is attached to the *last* op that touched the subnet (see
+// effectiveSubnet.lastOp's doc comment) so it always shares that op's
+// (Type, Target) pair, matching validate_fix.go's documented convention.
+func snatRequiresGatewayFindings(ops []Op, snap inventory.Snapshot) []Finding {
+	subnets := effectiveSubnets(ops, snap)
+	var out []Finding
+	for _, id := range touchedSubnetIDs(ops) {
+		s, ok := subnets[id]
+		if !ok || !s.touched || !s.snat || s.gateway != "" {
+			continue
+		}
+		ref := inventory.Ref{Kind: inventory.KindSDNSubnet, ID: id}.String()
+		f := errorf(codeSNATRequiresGateway, ref, "subnet %s has snat enabled but no gateway — PVE rejects SNAT without a gateway", id)
+		f.Fix = fixSetSubnetGateway(s.lastOp, id)
+		out = append(out, f)
+	}
+	return out
 }
 
 // zoneBridgeExistenceFindings flags a simple/vlan zone.create/update op

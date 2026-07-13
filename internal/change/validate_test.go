@@ -20,6 +20,7 @@ func mkOp(t OpType, target inventory.Ref, params Params) Op {
 func intPtr(v int) *int             { return &v }
 func strPtr(v string) *string       { return &v }
 func strsPtr(v ...string) *[]string { return &v }
+func boolPtr(v bool) *bool          { return &v }
 
 // buildSnapshot builds an inventory.Snapshot from a fixed set of entities in
 // one ApplyPoll call — sufficient for validate_test.go's purposes, which
@@ -251,6 +252,23 @@ func goldenCases() []goldenCase {
 			ops: []Op{mkOp(OpVlanCreate, testRef(inventory.KindVlan, "pve1", "vmbr0.20"),
 				&VlanCreateParams{Parent: "vmbr0", Vid: 20, Trunks: []VidRange{{Low: 10, High: 20}}})},
 			want: []wantFinding{{SeverityError, codeOVSTrunkNotAllowed, "vlan:pve1:vmbr0.20"}},
+		},
+		{
+			// T-701 acceptance criterion 2.
+			name: "schema: sdn.subnet.create gateway outside its own cidr",
+			ops: []Op{mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.0.0.0/24"),
+				&SdnSubnetCreateParams{Vnet: "zone1/vnet1", CIDR: "10.0.0.0/24", Gateway: "10.9.9.1"})},
+			want: []wantFinding{{SeverityError, codeGatewayNotInSubnet, "sdn-subnet::10.0.0.0/24"}},
+		},
+		{
+			// T-701 acceptance criterion 2: an update op's Gateway is
+			// checked against op.Target.ID (the subnet's immutable CIDR),
+			// not a params field.
+			name: "schema: sdn.subnet.update gateway outside its own cidr",
+			snap: buildSnapshot(&inventory.SdnSubnet{Ref: testRef(inventory.KindSDNSubnet, "", "10.0.0.0/24"), ID: "10.0.0.0/24", Vnet: "zone1/vnet1"}),
+			ops: []Op{mkOp(OpSdnSubnetUpdate, testRef(inventory.KindSDNSubnet, "", "10.0.0.0/24"),
+				&SdnSubnetUpdateParams{Gateway: strPtr("10.9.9.1")})},
+			want: []wantFinding{{SeverityError, codeGatewayNotInSubnet, "sdn-subnet::10.0.0.0/24"}},
 		},
 
 		// --- referential (class 2) --------------------------------------
@@ -507,8 +525,62 @@ func goldenCases() []goldenCase {
 			want: []wantFinding{{SeverityError, codeAddressOverlap, "sdn-subnet::10.0.0.0/24"}},
 		},
 
+		// --- sdn (T-701) -------------------------------------------------
+
+		{
+			name: "sdn: subnet.create snat=true with no gateway",
+			snap: buildSnapshot(
+				&inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "zone1"), ID: "zone1", Type: "vxlan"},
+				&inventory.SdnVnet{Ref: testRef(inventory.KindSDNVnet, "", "zone1/vnet1"), ID: "zone1/vnet1", Zone: "zone1"},
+			),
+			ops: []Op{mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.0.0.0/24"),
+				&SdnSubnetCreateParams{Vnet: "zone1/vnet1", CIDR: "10.0.0.0/24", SNAT: true})},
+			want: []wantFinding{{SeverityError, codeSNATRequiresGateway, "sdn-subnet::10.0.0.0/24"}},
+		},
+		{
+			// snat and gateway both established by earlier ops in the same
+			// changeset (net-effect-aware): a create with a gateway, then
+			// an update that flips snat on with no gateway of its own,
+			// still validates clean overall.
+			name: "sdn: subnet.create with gateway then subnet.update enabling snat is clean",
+			snap: buildSnapshot(
+				&inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "zone1"), ID: "zone1", Type: "vxlan"},
+				&inventory.SdnVnet{Ref: testRef(inventory.KindSDNVnet, "", "zone1/vnet1"), ID: "zone1/vnet1", Zone: "zone1"},
+			),
+			ops: []Op{
+				mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.0.0.0/24"),
+					&SdnSubnetCreateParams{Vnet: "zone1/vnet1", CIDR: "10.0.0.0/24", Gateway: "10.0.0.1"}),
+				mkOp(OpSdnSubnetUpdate, testRef(inventory.KindSDNSubnet, "", "10.0.0.0/24"),
+					&SdnSubnetUpdateParams{SNAT: boolPtr(true)}),
+			},
+			want: nil,
+		},
+
 		// --- advisory (class 5) -----------------------------------------
 
+		{
+			name: "advisory: evpn subnet with no gateway",
+			snap: buildSnapshot(
+				&inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "evpnz"), ID: "evpnz", Type: "evpn", ExitNodes: []string{"pve1"}},
+				&inventory.SdnVnet{Ref: testRef(inventory.KindSDNVnet, "", "evpnz/vnet1"), ID: "evpnz/vnet1", Zone: "evpnz"},
+			),
+			ops: []Op{mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.5.0.0/24"),
+				&SdnSubnetCreateParams{Vnet: "evpnz/vnet1", CIDR: "10.5.0.0/24"})},
+			want: []wantFinding{{SeverityWarning, codeEvpnGatewayMissing, "sdn-subnet::10.5.0.0/24"}},
+		},
+		{
+			name: "advisory: evpn subnet with snat but zone has no exit nodes",
+			snap: buildSnapshot(
+				&inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "evpnz"), ID: "evpnz", Type: "evpn", ExitNodes: []string{"pve1"}},
+				&inventory.SdnVnet{Ref: testRef(inventory.KindSDNVnet, "", "evpnz/vnet1"), ID: "evpnz/vnet1", Zone: "evpnz"},
+			),
+			ops: []Op{
+				mkOp(OpSdnZoneUpdate, testRef(inventory.KindSDNZone, "", "evpnz"), &SdnZoneUpdateParams{ExitNodes: strsPtr()}),
+				mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.5.0.0/24"),
+					&SdnSubnetCreateParams{Vnet: "evpnz/vnet1", CIDR: "10.5.0.0/24", Gateway: "10.5.0.1", SNAT: true}),
+			},
+			want: []wantFinding{{SeverityWarning, codeSNATRequiresExitNode, "sdn-subnet::10.5.0.0/24"}},
+		},
 		{
 			name: "advisory: 802.3ad bond without layer3+4 hash policy",
 			snap: buildSnapshot(pve1eno1, pve1eno2),
@@ -569,6 +641,31 @@ func goldenCases() []goldenCase {
 			name: "clean: fw.rule.create with no ruleset yet",
 			ops: []Op{mkOp(OpFwRuleCreate, testRef(inventory.KindFwRuleset, "", "cluster"),
 				&FwRuleCreateParams{Direction: "in", Action: "ACCEPT", Pos: 0})},
+			want: nil,
+		},
+		{
+			// T-701 acceptance criterion 3: mirrors evpn-lab.yaml's own
+			// 192.168.50.0/24 (gateway + snat + exit nodes) — neither EVPN
+			// advisory fires.
+			name: "clean: evpn subnet with gateway, snat, and an exit node",
+			snap: buildSnapshot(
+				&inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "evpnz"), ID: "evpnz", Type: "evpn", ExitNodes: []string{"pve1"}},
+				&inventory.SdnVnet{Ref: testRef(inventory.KindSDNVnet, "", "evpnz/vnet1"), ID: "evpnz/vnet1", Zone: "evpnz"},
+			),
+			ops: []Op{mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "192.168.50.0/24"),
+				&SdnSubnetCreateParams{Vnet: "evpnz/vnet1", CIDR: "192.168.50.0/24", Gateway: "192.168.50.1", SNAT: true})},
+			want: nil,
+		},
+		{
+			// T-701 acceptance criterion 1: "keep isolated" wizard output
+			// (no gateway, no snat) validates clean.
+			name: "clean: simple subnet with no gateway is a legitimately isolated network",
+			snap: buildSnapshot(
+				&inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "homelab"), ID: "homelab", Type: "simple"},
+				&inventory.SdnVnet{Ref: testRef(inventory.KindSDNVnet, "", "homelab/vnet1"), ID: "homelab/vnet1", Zone: "homelab"},
+			),
+			ops: []Op{mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24"),
+				&SdnSubnetCreateParams{Vnet: "homelab/vnet1", CIDR: "10.50.0.0/24"})},
 			want: nil,
 		},
 	}

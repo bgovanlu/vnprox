@@ -7,6 +7,7 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildVlanPreview, type VlanZoneParams } from "./previewEntities";
+import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
 import { wizardStrings } from "./strings";
 import { useClusterNodes } from "./useClusterNodes";
 import { useLldpTrunkCheck } from "./useLldpTrunkCheck";
@@ -35,9 +36,7 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
   const [vid, setVid] = useState(0);
   const [vnetId, setVnetId] = useState("");
   const [vnetAlias, setVnetAlias] = useState("");
-  const [subnetCidr, setSubnetCidr] = useState("");
-  const [subnetGateway, setSubnetGateway] = useState("");
-  const [snat, setSnat] = useState(false);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
   const [finishing, setFinishing] = useState(false);
 
   const trunkCheck = useLldpTrunkCheck(bridgeName, memberNodes, vid);
@@ -49,13 +48,13 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
       memberNodes,
       vnetId,
       vnetAlias,
-      subnetCidr,
-      subnetGateway,
-      snat,
+      subnetCidr: subnet.cidr,
+      subnetGateway: subnet.gateway,
+      snat: subnet.snat,
       bridgeName,
       vid,
     }),
-    [zoneId, memberNodes, vnetId, vnetAlias, subnetCidr, subnetGateway, snat, bridgeName, vid],
+    [zoneId, memberNodes, vnetId, vnetAlias, subnet, bridgeName, vid],
   );
 
   const graph = useMemo(() => buildVlanPreview(params), [params]);
@@ -157,27 +156,7 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
       id: "subnet",
       title: "Addresses",
       isValid: true,
-      content: (
-        <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.common.subnetSkipHelp}</p>
-          <Field label="Address range (CIDR)" help={S.common.cidrHelp}>
-            <input className={inputClass} value={subnetCidr} onChange={(e) => { setSubnetCidr(e.target.value); }} placeholder="10.30.0.0/24" />
-          </Field>
-          {subnetCidr && (
-            <>
-              <Field label="Gateway" help={S.common.gatewayHelp}>
-                <input className={inputClass} value={subnetGateway} onChange={(e) => { setSubnetGateway(e.target.value); }} placeholder="10.30.0.1" />
-              </Field>
-              <Field label="Internet access (SNAT)" help={S.common.snatHelp}>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={snat} onChange={(e) => { setSnat(e.target.checked); }} />
-                  Enable SNAT
-                </label>
-              </Field>
-            </>
-          )}
-        </div>
-      ),
+      content: <SubnetStep zoneType="vlan" value={subnet} onChange={setSubnet} />,
     },
     {
       id: "review",
@@ -190,7 +169,12 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
           <ul className="list-inside list-disc space-y-1">
             <li>VLAN zone &quot;{zoneId}&quot; on bridge {bridgeName || "?"}, nodes {memberNodes.join(", ") || "none"}</li>
             <li>VNet &quot;{vnetId}&quot; (VID {vid})</li>
-            {subnetCidr && <li>Subnet {subnetCidr}{snat ? " with SNAT" : ""}</li>}
+            {subnet.cidr && (
+              <li>
+                Subnet {subnet.cidr}
+                {subnet.isolated ? " (isolated, no gateway)" : subnet.snat ? " with SNAT" : ""}
+              </li>
+            )}
             {trunkCheck.hasData && trunkCheck.warnings.length > 0 && (
               <li className="text-amber-700 dark:text-amber-300">{trunkCheck.warnings.length} trunk-check warning(s) — see the previous step.</li>
             )}

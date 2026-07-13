@@ -29,6 +29,26 @@ export const wizardStrings = {
     gatewayHelp: "The address VMs use to reach anything outside this network — usually the first address in the range.",
     snatHelp:
       "Turn this on to let VMs on this private network reach the internet, disguised behind this node's own address (like a home router does for your devices). Turn it off if this network should stay fully isolated.",
+    // T-701 acceptance criterion 1: the gateway is no longer a silently-
+    // empty free-text field — an explicit choice between "has a gateway"
+    // (pre-filled, editable) and "keep isolated" (no gateway, no SNAT).
+    gatewayModeHasGateway: "This network has a gateway",
+    gatewayModeIsolated: "Keep this network isolated — no gateway",
+    gatewayModeIsolatedHelp:
+      "No address will be set aside for a gateway. VMs on this network can only talk to each other (and anything else on the same broadcast domain) — there's no way out, which is exactly right for a network that should never reach anything outside itself.",
+    snatDisabledNoGateway:
+      "Set a gateway above first — SNAT disguises traffic behind this network's gateway, so there's nothing for it to hide behind without one.",
+    // Zone-type-specific gateway framing, shown once a CIDR is entered
+    // (docs/features/sdn.md §2's per-zone-type gateway semantics note).
+    gatewayZoneCopy: {
+      simple: "Optional unless you turn on SNAT below — a private network with no gateway is a perfectly normal, fully isolated setup.",
+      vlan: "This gateway lives on your external router, not on anything vnprox or Proxmox creates here — vnprox just records it for DHCP and the IPAM grid.",
+      qinq: "This gateway lives on your external router, not on anything vnprox or Proxmox creates here — vnprox just records it for DHCP and the IPAM grid.",
+      vxlan: "This gateway lives on your external router, not on anything vnprox or Proxmox creates here — vnprox just records it for DHCP and the IPAM grid.",
+      evpn: "This becomes the anycast gateway address realized on every node in this zone — strongly recommended. Leaving it unset doesn't fail creation, but routed traffic through this network will silently never arrive anywhere.",
+    },
+    evpnSnatNeedsExitNode:
+      "SNAT on an EVPN network additionally needs at least one exit node (the previous step) — none are selected yet, so SNAT traffic would have nowhere to leave through.",
     finishButton: "Create draft",
     cancelButton: "Cancel",
     backButton: "Back",

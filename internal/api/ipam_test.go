@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -162,6 +163,77 @@ func TestIPAMRoute_Unauthenticated401(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+// TestIPAMRoute_Allocations_WizardCreatedGatewayIsVisible is T-701
+// acceptance criterion 4's full-stack check: a simple-zone wizard's drafted
+// ops (zone+vnet+subnet-with-gateway), realized directly against pvemock
+// exactly as the change engine's PVEStageOp would (internal/pve.Client's
+// own Create* calls — the same wire calls cmd/vnproxd/changeagent.go's
+// SDNStageOp makes), leave a `gateway: true` IPAM allocation readable
+// through the real /ipam/subnets/{cidr}/allocations route — proving
+// pvemock's new gateway-registration fidelity (ipam.go's
+// registerSubnetGateway) is actually wired all the way through
+// internal/ipam's merge, not just visible at the raw PVE API layer
+// (already covered by internal/pvemock's own sdn_test.go).
+func TestIPAMRoute_Allocations_WizardCreatedGatewayIsVisible(t *testing.T) {
+	fx, err := pvemock.LoadFixture("../../testdata/clusters/single-node.yaml")
+	if err != nil {
+		t.Fatalf("LoadFixture: %v", err)
+	}
+	srv := pvemock.NewServer(fx)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	c, err := pve.New(pve.Config{APIURL: ts.URL, Auth: pve.AuthTicket, Username: "root@pam", Password: "vnprox-mock"})
+	if err != nil {
+		t.Fatalf("pve.New: %v", err)
+	}
+	ctx := context.Background()
+	if err := c.CreateSDNZone(ctx, pve.SDNZone{ID: "homelab", Type: "simple", Nodes: []string{"pve1"}}); err != nil {
+		t.Fatalf("CreateSDNZone: %v", err)
+	}
+	if err := c.CreateSDNVnet(ctx, pve.SDNVnet{ID: "vnet1", Zone: "homelab"}); err != nil {
+		t.Fatalf("CreateSDNVnet: %v", err)
+	}
+	if err := c.CreateSDNSubnet(ctx, "vnet1", pve.SDNSubnet{ID: pve.SDNSubnetID("10.50.0.0/24"), Vnet: "vnet1", CIDR: "10.50.0.0/24", Gateway: "10.50.0.1"}); err != nil {
+		t.Fatalf("CreateSDNSubnet: %v", err)
+	}
+
+	g := inventory.NewGraph()
+	svc := ipam.NewService(ipam.Config{PVE: c, Inventory: fakeInv{g: g}})
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fakeAuth{authenticated: true}, IPAM: svc,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ipam/subnets/10.50.0.0/24/allocations", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET allocations status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Cells []struct {
+			IP    string `json:"ip"`
+			State string `json:"state"`
+		} `json:"cells"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	found := false
+	for _, c := range got.Cells {
+		if c.IP == "10.50.0.1" {
+			found = true
+			if c.State != "gateway" {
+				t.Errorf("10.50.0.1 state = %q, want %q", c.State, "gateway")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("10.50.0.1 missing from allocation grid: %+v", got.Cells)
 	}
 }
 

@@ -114,6 +114,24 @@ func fixCases() []fixCase {
 			snap: buildSnapshot(zone1, vnet1),
 			op:   mkOp(OpSdnVnetUpdate, testRef(inventory.KindSDNVnet, "", "zone1/vnet1"), &SdnVnetUpdateParams{Tag: intPtr(6000)}),
 		},
+		{
+			// T-701 acceptance criterion 2: schema.gateway_not_in_subnet's
+			// fix. snap carries zone1/vnet1 so the "after" revalidation's
+			// referential class (vnet must exist) stays clean too.
+			name: "sdn.subnet.create gateway outside cidr, set to first usable ip",
+			snap: buildSnapshot(zone1, vnet1),
+			op: mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24"),
+				&SdnSubnetCreateParams{Vnet: "zone1/vnet1", CIDR: "10.50.0.0/24", Gateway: "10.9.9.1"}),
+		},
+		{
+			// T-701 acceptance criterion 2: sdn.snat_requires_gateway's fix
+			// (sdn class, not schema — needs vnet to already exist for the
+			// class to even run, since referential short-circuits first).
+			name: "sdn.subnet.create snat with no gateway, set to first usable ip",
+			snap: buildSnapshot(zone1, vnet1),
+			op: mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24"),
+				&SdnSubnetCreateParams{Vnet: "zone1/vnet1", CIDR: "10.50.0.0/24", SNAT: true}),
+		},
 	}
 }
 

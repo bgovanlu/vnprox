@@ -15,6 +15,7 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildQinqPreview, type QinqZoneParams } from "./previewEntities";
+import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
 import { wizardStrings } from "./strings";
 import { useClusterNodes } from "./useClusterNodes";
 import { useWizardCapability } from "./useWizardCapability";
@@ -43,9 +44,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
   const [customerVid, setCustomerVid] = useState(0);
   const [vnetId, setVnetId] = useState("");
   const [vnetAlias, setVnetAlias] = useState("");
-  const [subnetCidr, setSubnetCidr] = useState("");
-  const [subnetGateway, setSubnetGateway] = useState("");
-  const [snat, setSnat] = useState(false);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
   const [finishing, setFinishing] = useState(false);
 
   const params: QinqZoneParams = useMemo(
@@ -55,14 +54,14 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
       memberNodes,
       vnetId,
       vnetAlias,
-      subnetCidr,
-      subnetGateway,
-      snat,
+      subnetCidr: subnet.cidr,
+      subnetGateway: subnet.gateway,
+      snat: subnet.snat,
       bridgeName,
       serviceVid,
       customerVid,
     }),
-    [zoneId, memberNodes, vnetId, vnetAlias, subnetCidr, subnetGateway, snat, bridgeName, serviceVid, customerVid],
+    [zoneId, memberNodes, vnetId, vnetAlias, subnet, bridgeName, serviceVid, customerVid],
   );
 
   const graph = useMemo(() => buildQinqPreview(params), [params]);
@@ -148,27 +147,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
       id: "subnet",
       title: "Addresses",
       isValid: true,
-      content: (
-        <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.common.subnetSkipHelp}</p>
-          <Field label="Address range (CIDR)" help={S.common.cidrHelp}>
-            <input className={inputClass} value={subnetCidr} onChange={(e) => { setSubnetCidr(e.target.value); }} placeholder="10.42.0.0/24" />
-          </Field>
-          {subnetCidr && (
-            <>
-              <Field label="Gateway" help={S.common.gatewayHelp}>
-                <input className={inputClass} value={subnetGateway} onChange={(e) => { setSubnetGateway(e.target.value); }} placeholder="10.42.0.1" />
-              </Field>
-              <Field label="Internet access (SNAT)" help={S.common.snatHelp}>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={snat} onChange={(e) => { setSnat(e.target.checked); }} />
-                  Enable SNAT
-                </label>
-              </Field>
-            </>
-          )}
-        </div>
-      ),
+      content: <SubnetStep zoneType="qinq" value={subnet} onChange={setSubnet} />,
     },
     {
       id: "review",
@@ -181,7 +160,12 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
           <ul className="list-inside list-disc space-y-1">
             <li>QinQ zone &quot;{zoneId}&quot; on bridge {bridgeName || "?"}, nodes {memberNodes.join(", ") || "none"}</li>
             <li>VNet &quot;{vnetId}&quot; (customer VID {customerVid})</li>
-            {subnetCidr && <li>Subnet {subnetCidr}{snat ? " with SNAT" : ""}</li>}
+            {subnet.cidr && (
+              <li>
+                Subnet {subnet.cidr}
+                {subnet.isolated ? " (isolated, no gateway)" : subnet.snat ? " with SNAT" : ""}
+              </li>
+            )}
           </ul>
           {serviceVid > 0 && (
             <p className="text-xs text-slate-400">

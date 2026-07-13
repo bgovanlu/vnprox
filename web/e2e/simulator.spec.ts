@@ -15,6 +15,7 @@
 //       pre-fills the simulator and covers guest->guest, guest->external,
 //       and IP->guest.
 import { expect, test, type Page } from "@playwright/test";
+import { switchToGraphView } from "./helpers";
 
 test.use({ baseURL: "https://127.0.0.1:18007" });
 
@@ -27,12 +28,16 @@ async function logIn(page: Page): Promise<void> {
   await page.waitForURL("**/topology");
 }
 
-/** Waits for the async elkjs layout to have spread the nodes out (see
+/** Switches to the Graph view (67fff26 landed Switch as the default — see
+ * helpers.ts; the main map's node-context-menu "Trace path" actions this
+ * file drives are only wired up in Graph view, not Switch) and waits for
+ * the async elkjs layout to have spread the nodes out (see
  * topology.spec.ts's identical wait) — only needed before interacting
  * with the *main* topology map (right-click); the simulator's own result
  * panel and its embedded map's "missing link" marker render independently
  * of layout settling, so those assertions don't need this. */
 async function waitForLayout(page: Page): Promise<void> {
+  await switchToGraphView(page);
   await page.waitForFunction(() => {
     const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
     const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
@@ -54,6 +59,26 @@ async function pickGuestNic(page: Page, side: "Source" | "Destination", query: s
 }
 
 const VERDICT_TEXT = /^(Allowed|Blocked|Unreachable|Could not determine)$/;
+
+/** Right-clicks a map node and picks one of its context-menu actions,
+ * retrying the whole gesture if the canvas re-layouts mid-way. Late in a
+ * full-suite run the shared vnproxd's collector churn (the fixture's peer
+ * nodes are unreachable from this machine, so their circuit breakers flap
+ * open/half-open forever) produces a steady stream of topology deltas;
+ * each refetch re-runs the elk layout, and a node that moves or remounts
+ * between actionability checks can make a single click() with no timeout
+ * wait for the rest of the test (observed once at full-suite scale: AC5's
+ * plain click({button:"right"}) on vm-b/net0 hung 112s until the test
+ * timeout, with the same gesture passing in ~0.3s standalone). Short
+ * per-action timeouts + a toPass retry make the gesture as a whole robust
+ * against a mid-gesture re-layout without hiding a real regression — a
+ * genuinely missing node/menu item still fails after the outer timeout. */
+async function traceFromContextMenu(page: Page, nodeName: string, action: string): Promise<void> {
+  await expect(async () => {
+    await page.getByRole("button", { name: nodeName }).click({ button: "right", timeout: 5_000 });
+    await page.getByRole("menuitem", { name: action }).click({ timeout: 5_000 });
+  }).toPass({ timeout: 60_000 });
+}
 
 test("T-504 AC1/AC3: guest deny verdict deep-links into the focused firewall rule", async ({ page }) => {
   await logIn(page);
@@ -108,8 +133,7 @@ test("T-504 AC5: Trace path from the map pre-fills and runs (guest->guest, guest
   await waitForLayout(page);
 
   // --- guest->guest: "Trace path from here" on vm-a, then pick vm-c -----
-  await page.getByRole("button", { name: "vm-a/net0" }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Trace path from here" }).click();
+  await traceFromContextMenu(page, "vm-a/net0", "Trace path from here");
   await page.waitForURL(/\/tools\?srcKind=guest-nic/);
   await expect(page.getByText(/guest-nic:pve1:300\/net0/)).toBeVisible();
 
@@ -119,16 +143,14 @@ test("T-504 AC5: Trace path from the map pre-fills and runs (guest->guest, guest
   // --- guest->external: single map action pre-fills AND runs -----------
   await page.goto("/topology");
   await waitForLayout(page);
-  await page.getByRole("button", { name: "vm-a/net0" }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Trace path to external" }).click();
+  await traceFromContextMenu(page, "vm-a/net0", "Trace path to external");
   await page.waitForURL(/\/tools\?srcKind=guest-nic.*dstKind=external/);
   await expect(page.getByText(VERDICT_TEXT).first()).toBeVisible();
 
   // --- IP->guest: "Trace path to here" on vm-b, then type a source IP ---
   await page.goto("/topology");
   await waitForLayout(page);
-  await page.getByRole("button", { name: "vm-b/net0" }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Trace path to here" }).click();
+  await traceFromContextMenu(page, "vm-b/net0", "Trace path to here");
   await page.waitForURL(/\/tools\?dstKind=guest-nic/);
   await expect(page.getByText(/guest-nic:pve2:302\/net0/)).toBeVisible();
 

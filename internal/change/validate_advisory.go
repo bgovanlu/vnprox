@@ -29,6 +29,50 @@ func advisoryValidate(ops []Op, snap inventory.Snapshot, allocations []DHCPRange
 	for _, op := range ops {
 		out = append(out, advisoryValidateOp(op, snap, allocations)...)
 	}
+	out = append(out, evpnSubnetAdvisoryFindings(ops, snap)...)
+	return out
+}
+
+// evpnSubnetAdvisoryFindings is T-701 acceptance criterion 3: the two EVPN-
+// specific subnet advisories real PVE accepts but ships broken traffic for
+// (codeEvpnGatewayMissing, codeSNATRequiresExitNode — see those codes' doc
+// comments in validate_codes.go). Like snatRequiresGatewayFindings, this
+// evaluates each touched subnet's *effective* state (net-effect-aware,
+// folded across this changeset's own subnet/vnet/zone ops), tracing
+// subnet -> vnet -> zone through effectiveSubnets/effectiveVnetZones/
+// effectiveZones (validate_sdn.go) so a subnet, its vnet, and its zone's
+// exit nodes can all be edited in the same changeset and still be
+// evaluated correctly (T-701 acceptance criterion 3's "removing the zone's
+// exit nodes in the same changeset").
+func evpnSubnetAdvisoryFindings(ops []Op, snap inventory.Snapshot) []Finding {
+	subnets := effectiveSubnets(ops, snap)
+	vnetZones := effectiveVnetZones(ops, snap)
+	zones := effectiveZones(ops, snap)
+
+	var out []Finding
+	for _, id := range touchedSubnetIDs(ops) {
+		s, ok := subnets[id]
+		if !ok {
+			continue
+		}
+		zoneID, ok := vnetZones[s.vnet]
+		if !ok {
+			continue
+		}
+		z, ok := zones[zoneID]
+		if !ok || z.typ != "evpn" {
+			continue
+		}
+		ref := inventory.Ref{Kind: inventory.KindSDNSubnet, ID: id}.String()
+		if s.gateway == "" {
+			out = append(out, warnf(codeEvpnGatewayMissing, ref,
+				"evpn subnet %s has no gateway — the anycast gateway will never be realized on any node, so routed traffic through this subnet is silently broken", id))
+		}
+		if s.snat && len(z.exitNodes) == 0 {
+			out = append(out, warnf(codeSNATRequiresExitNode, ref,
+				"subnet %s has snat enabled in evpn zone %q, which has no exit nodes — SNAT traffic has nowhere to leave through", id, zoneID))
+		}
+	}
 	return out
 }
 

@@ -19,6 +19,7 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildEvpnPreview, type EvpnZoneParams } from "./previewEntities";
+import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
 import { wizardStrings } from "./strings";
 import { useClusterNodes } from "./useClusterNodes";
 import { useWizardCapability } from "./useWizardCapability";
@@ -56,9 +57,7 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
   const [exitNodes, setExitNodes] = useState<string[]>([]);
   const [vnetId, setVnetId] = useState("");
   const [vnetAlias, setVnetAlias] = useState("");
-  const [subnetCidr, setSubnetCidr] = useState("");
-  const [subnetGateway, setSubnetGateway] = useState("");
-  const [snat, setSnat] = useState(false);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
   const [finishing, setFinishing] = useState(false);
 
   const peerAddresses = useMemo(() => parseAddressList(peerAddressesText), [peerAddressesText]);
@@ -70,16 +69,16 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
       memberNodes,
       vnetId,
       vnetAlias,
-      subnetCidr,
-      subnetGateway,
-      snat,
+      subnetCidr: subnet.cidr,
+      subnetGateway: subnet.gateway,
+      snat: subnet.snat,
       controller,
       asn,
       peerAddresses,
       exitNodes,
       vrfVxlan,
     }),
-    [zoneId, memberNodes, vnetId, vnetAlias, subnetCidr, subnetGateway, snat, controller, asn, peerAddresses, exitNodes, vrfVxlan],
+    [zoneId, memberNodes, vnetId, vnetAlias, subnet, controller, asn, peerAddresses, exitNodes, vrfVxlan],
   );
 
   const graph = useMemo(() => buildEvpnPreview(params), [params]);
@@ -175,22 +174,7 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
           <Field label="Alias" help={S.common.vnetAliasHelp}>
             <input className={inputClass} value={vnetAlias} onChange={(e) => { setVnetAlias(e.target.value); }} />
           </Field>
-          <Field label="Address range (CIDR, optional)" help={S.common.cidrHelp}>
-            <input className={inputClass} value={subnetCidr} onChange={(e) => { setSubnetCidr(e.target.value); }} placeholder="10.80.0.0/24" />
-          </Field>
-          {subnetCidr && (
-            <>
-              <Field label="Gateway" help={S.common.gatewayHelp}>
-                <input className={inputClass} value={subnetGateway} onChange={(e) => { setSubnetGateway(e.target.value); }} placeholder="10.80.0.1" />
-              </Field>
-              <Field label="Internet access (SNAT)" help={S.common.snatHelp}>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={snat} onChange={(e) => { setSnat(e.target.checked); }} />
-                  Enable SNAT
-                </label>
-              </Field>
-            </>
-          )}
+          <SubnetStep zoneType="evpn" value={subnet} onChange={setSubnet} evpnExitNodeCount={exitNodes.length} />
         </div>
       ),
     },
@@ -212,7 +196,12 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
             {exitNodes.length > 0 && <li>Exit nodes: {exitNodes.join(", ")} (primary: {exitNodes[0]})</li>}
             {peerAddresses.length > 0 && <li>Peers: {peerAddresses.join(", ")}</li>}
             <li>VNet &quot;{vnetId}&quot;</li>
-            {subnetCidr && <li>Subnet {subnetCidr}{snat ? " with SNAT" : ""}</li>}
+            {subnet.cidr && (
+              <li>
+                Subnet {subnet.cidr}
+                {subnet.isolated ? " (no gateway)" : subnet.snat ? " with SNAT" : ""}
+              </li>
+            )}
           </ul>
         </div>
       ),

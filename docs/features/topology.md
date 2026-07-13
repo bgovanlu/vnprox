@@ -33,6 +33,16 @@ The chosen view is a per-session preference (like traffic mode), not part of the
 
 `GET /api/v1/topology` returns `nodes[]` (id=Ref, kind, label, layer, nodeGroup, status, badges[]) and `edges[]` (from, to, kind, badges[], status). The frontend owns layout; the backend owns structure and status. Deltas over WS (`topology.delta`) trigger targeted refetch, not full reload.
 
+**Management-path visibility (T-702).** Each node's management path — which interface carries its PVE management IP and/or corosync links, the physical NICs that ultimately carry it, and whether that path has redundancy — is a first-class, visible thing, not just an internal safety-interlock input (`internal/change/protected.go`'s `DetectProtected`, docs/security.md's "Safety interlocks"). A shared classification/path resolver (`internal/topology.ResolveMgmtPaths`, called by both `internal/change`'s `GET /protected-interfaces/status` and, via the exact same computation, `internal/api`'s `GET /topology` badge painting) produces, per node, each protected ref's role(s), its resolved physical path, and a redundancy bool. `Project` itself stays a pure function of the inventory snapshot alone — this data is injected as a second, independent decoration at the `internal/api` handler level, the same seam the finding-badge overlay above already uses.
+
+Badge vocabulary, additive to every badge `badgesOf` already emits:
+
+- `mgmt` — this node/edge is the ref carrying the node's PVE management IP (`Node.IP`).
+- `corosync` — this ref carries one of the node's corosync ring addresses (`ring*_addr` in `/etc/pve/corosync.conf`). A ref can carry both `mgmt` and `corosync` at once (e.g. a homelab node running corosync over its only bridge).
+- `mgmt-path` — this entity is part of the physical path carrying a `mgmt`/`corosync` ref: the parent bridge of a VLAN sub-interface carrier, a carrier bridge's ports, a bond, and its slave NICs. A path member never carries `mgmt`/`corosync` itself — only the carrier does.
+
+Rendering: the graph view (`EntityNode`) gives this trio a distinct (amber) treatment, additive to the plain badge-chip look every other badge gets; the switch faceplate badges the chassis header (carrier) and the uplink-bay NIC/bond chips on the path (`mgmt-path`) the same way. The inspector's "Management path" tab (node-scoped entities only) shows every resolved ref for that node: carrier, physical path chain, a plain-English redundancy statement, and — when `GET /protected-interfaces/status`'s `source` is `"detected"` (protected.json never confirmed during onboarding) — a caveat plus a link back into the onboarding "protected interfaces" step. See docs/api.md's `GET /protected-interfaces/status` entry for the full response shape, and docs/features/monitoring.md §5 for the `mgmt_single_path` health check this same data also feeds.
+
 ## 4. Scale targets
 
 Smooth (≥30fps pan/zoom) at: 8 nodes × 6 NICs, 4 bridges/node, 300 guests, 40 VNets. Above that, progressive disclosure kicks in: guests collapse by default (server-side, `internal/topology/collapse.go`'s `DefaultCollapseThreshold`); hard render cap ~2,000 visible elements, beyond which the UI requires a filter (a banner names the exact count and points at the VLAN filter/layer toggles). Both measured and verified at the documented scale target in `docs/performance.md` (T-607).
