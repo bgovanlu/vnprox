@@ -26,6 +26,15 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      # Populate web/node_modules from the lockfile so `make check`'s lint
+      # step runs the *pinned* eslint via node_modules/.bin. Without this,
+      # `npx eslint` finds no local install and fetches the latest published
+      # eslint standalone (e.g. 10.7.0), which can't resolve @eslint/js and
+      # fails the whole job — unrelated to the code under test.
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
       - name: make check
         run: make check
 
