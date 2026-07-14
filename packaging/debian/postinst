@@ -12,13 +12,19 @@
 #      once at install, never overwritten on upgrade.
 #   3. Reload systemd's unit cache so `vnprox.service` is recognized.
 #
-# This script deliberately does NOT enable or start vnprox.service: the
-# shipped default config assumes a real Proxmox VE node (PVE certificate
-# reuse, PVE API on :8006) and has no PVE token yet, so an unconditional
-# auto-start would crash-loop on a fresh install. Enabling/starting is the
+# This script deliberately does NOT enable or start vnprox.service on a
+# fresh install: the shipped default config assumes a real Proxmox VE node
+# (PVE certificate reuse, PVE API on :8006) and has no PVE token yet, so an
+# unconditional auto-start would crash-loop. Enabling/starting is the
 # explicit, documented final step of `vnprox-setup` / the manual install
 # flow ("systemctl enable --now vnprox" in docs/deployment.md), and of
 # install.sh's per-node rollout.
+#
+# On an *upgrade*, though, a node that was already running vnprox must not be
+# silently left stopped by `apt install ./vnprox_*.deb` (or `apt install
+# vnprox`) — prerm records the running state, and this script restarts the
+# service only when that flag is present, so upgrades come back up while
+# fresh installs stay stopped.
 
 set -e
 
@@ -51,6 +57,13 @@ case "$1" in
     # failing the package install.
     if [ -d /run/systemd/system ]; then
       systemctl daemon-reload >/dev/null 2>&1 || true
+      # On an upgrade ($2 = previously-installed version) where prerm
+      # recorded that the service was running, bring it back up — see the
+      # header comment for why fresh installs (no $2, no flag) stay stopped.
+      if [ -n "${2:-}" ] && [ -e /run/vnprox/restart-after-upgrade ]; then
+        systemctl start vnprox.service >/dev/null 2>&1 || true
+      fi
+      rm -f /run/vnprox/restart-after-upgrade 2>/dev/null || true
     fi
     ;;
   abort-upgrade|abort-remove|abort-deconfigure)
