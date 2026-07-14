@@ -254,7 +254,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// comment (findings.go) for why.
 	mgmtAdapter := &mgmtStatusAdapter{}
 	findingsNotifier := setupFindingsNotifier(sdnPVEClient, logger)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, findingsNotifier, topoSvc, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, findingsNotifier, topoSvc, ipamConcrete, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read

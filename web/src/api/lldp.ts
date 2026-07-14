@@ -3,7 +3,14 @@
 // onboarding walkthrough's step 3 (docs/user-guide.md §1.3).
 import { apiFetch } from "./client";
 import { readCsrfCookie } from "./auth";
-import type { LldpInstallResponse, LldpResponse } from "./types";
+import type { LldpInstallResponse, LldpResponse, PortsResponse } from "./types";
+
+/** GET /ports — the flat ports table (every cluster NIC ↔ the switch/port
+ * LLDP reports for it). `?format=csv` is a separate download link, not this
+ * JSON call. */
+export function fetchPorts(): Promise<PortsResponse> {
+  return apiFetch<PortsResponse>("/ports");
+}
 
 /** GET /lldp — all LLDP neighbors this daemon knows about. An empty
  * `items` array is the walkthrough's signal that lldpd may not be running
