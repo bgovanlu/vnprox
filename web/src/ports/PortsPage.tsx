@@ -80,7 +80,7 @@ export function PortsPage() {
             <tbody>
               {rows.map((row, i) => (
                 <tr
-                  key={`${row.node}/${row.nic}/${i}`}
+                  key={`${row.node}/${row.nic}/${String(i)}`}
                   className={
                     "border-b border-slate-100 last:border-b-0 dark:border-slate-800 " +
                     (row.stale ? "text-slate-400 dark:text-slate-500" : "text-slate-700 dark:text-slate-200")
@@ -91,7 +91,7 @@ export function PortsPage() {
                   <td className={td}>{row.switch}</td>
                   <td className={td}>{row.port}</td>
                   <td className={td}>{speedLabel(row)}</td>
-                  <td className={td}>{row.pvid ? row.pvid : ""}</td>
+                  <td className={td}>{row.pvid ? String(row.pvid) : ""}</td>
                   <td className={td}>{row.taggedVlans && row.taggedVlans.length > 0 ? row.taggedVlans.join(", ") : ""}</td>
                   <td className={td}>
                     {lastSeenLabel(row.lastSeen)}
