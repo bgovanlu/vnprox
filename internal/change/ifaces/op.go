@@ -30,6 +30,17 @@ const (
 	OpVlanUpdate       OpType = "vlan.update"
 	OpVlanDelete       OpType = "vlan.delete"
 
+	// OpIfaceRename renames a logical iface stanza (bridge/bond/vlan) in
+	// place, rewriting the stanza header, its auto/allow-* references, and
+	// every in-file reference to the old name (bridge-ports/ovs_ports/
+	// bond-slaves/ovs_bonds/vlan-raw-device). Physical NIC (udev) renames
+	// are out of scope — those are a hardware-specific, reboot-realized
+	// procedure the change engine does not perform (see the editor's inline
+	// help). Guest bridge= bindings live in PVE guest config, not this file,
+	// so the change engine blocks renaming an interface with guests still
+	// attached (validate_safety.go) rather than silently orphaning them.
+	OpIfaceRename OpType = "iface.rename"
+
 	// OpIfaceRawReplace is T-208's power-user escape hatch (docs/features/
 	// change-management.md §7): the raw Monaco editor's save produces a
 	// changeset whose single op replaces a node's entire
@@ -219,9 +230,14 @@ func (o BridgePortRemove) Ref() inventory.Ref { return o.Target }
 // distinction — see internal/change.VlanCreateParams' doc comment). Parent
 // is the OVS bridge name when OVS is true. VID is the OVS access "tag" (0 =
 // untagged/native); Trunks is an optional additional trunked VLAN range set.
+//
+// Gateway (T-703) renders a `gateway` option after the addresses, exactly
+// like BridgeCreate.Gateway — a VLAN sub-interface that takes over a node's
+// management address needs the node's default route too.
 type VlanCreate struct {
 	Target    inventory.Ref
 	Parent    string
+	Gateway   string
 	Comments  string
 	Addresses []string
 	Trunks    []inventory.VidRange
@@ -304,6 +320,7 @@ type wireParams struct {
 	LacpRate             string               `json:"lacpRate"`
 	Mode                 string               `json:"mode"`
 	Content              string               `json:"content"`
+	NewName              string               `json:"newName"`
 	Slaves               []string             `json:"slaves"`
 	Addresses            []string             `json:"addresses"`
 	Ports                []string             `json:"ports"`
@@ -404,13 +421,16 @@ func DecodeOp(raw json.RawMessage) (Op, error) {
 	case OpVlanCreate:
 		return VlanCreate{
 			Target: target, Parent: p.Parent, VID: p.VID, Addresses: p.Addresses,
-			MTU: intOr(p.MTU), Comments: strOr(p.Comments), Autostart: boolOr(p.Autostart),
+			Gateway: strOr(p.Gateway),
+			MTU:     intOr(p.MTU), Comments: strOr(p.Comments), Autostart: boolOr(p.Autostart),
 			OVS: p.OVS, Trunks: p.Trunks,
 		}, nil
 	case OpVlanUpdate:
 		return VlanUpdate{Target: target, Addresses: p.Addresses, MTU: intOr(p.MTU), Comments: p.Comments}, nil
 	case OpVlanDelete:
 		return VlanDelete{Target: target}, nil
+	case OpIfaceRename:
+		return IfaceRename{Target: target, NewName: p.NewName}, nil
 	case OpIfaceRawReplace:
 		return IfaceRawReplace{Target: target, Content: p.Content}, nil
 	default:

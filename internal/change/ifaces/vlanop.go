@@ -26,6 +26,9 @@ func mutateVlanCreate(f *host.File, o VlanCreate, changesetID, nl string) error 
 	for _, a := range o.Addresses {
 		body = append(body, optionItem("address", a, nl))
 	}
+	if o.Gateway != "" {
+		body = append(body, optionItem("gateway", o.Gateway, nl))
+	}
 
 	if o.OVS {
 		body = append(body, optionItem("ovs_type", "OVSIntPort", nl))

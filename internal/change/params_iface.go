@@ -10,15 +10,40 @@ package change
 // value" — an absent field leaves the current value untouched, a present
 // field (even `null`, which decodes to a nil pointer of the *slice*
 // element, e.g. an explicit `"addresses": null`) means "set it".
+//
+// RemoveAddress/RemoveGateway (T-703) explicitly clear the stanza's
+// address/gateway options — the wire counterparts of internal/change/
+// ifaces.IfaceUpdate's same-named fields (which ifaces.DecodeOp has decoded
+// under exactly these JSON names since T-204; this package's strict Op
+// decoder just never admitted them until the dedicated-management-VLAN flow
+// needed "take the address and default route OFF the old carrier" as a
+// changeset op). Each is only honored when its value-setting sibling is
+// absent (Addresses/Gateway nil), mirroring ifaces.mutateIfaceUpdate's own
+// precedence.
 type IfaceUpdateParams struct {
-	MTU       *int      `json:"mtu,omitempty"`
-	Comments  *string   `json:"comments,omitempty"`
-	Addresses *[]string `json:"addresses,omitempty"`
-	Gateway   *string   `json:"gateway,omitempty"`
-	Autostart *bool     `json:"autostart,omitempty"`
+	MTU           *int      `json:"mtu,omitempty"`
+	Comments      *string   `json:"comments,omitempty"`
+	Addresses     *[]string `json:"addresses,omitempty"`
+	Gateway       *string   `json:"gateway,omitempty"`
+	Autostart     *bool     `json:"autostart,omitempty"`
+	RemoveAddress bool      `json:"removeAddress,omitempty"`
+	RemoveGateway bool      `json:"removeGateway,omitempty"`
 }
 
 func (IfaceUpdateParams) isChangeParams() {}
+
+// IfaceRenameParams is op "iface.rename" (issue #2): rename a logical iface
+// (bridge/bond/vlan) to NewName. Target is the interface being renamed; the
+// change engine rewrites the stanza header, its auto/allow-* references, and
+// every in-file reference to the old name (internal/change/ifaces'
+// mutateIfaceRename). Renaming is validated (charset, no collision) and
+// guarded (blocked when guests are attached, or the interface is a protected
+// management-path carrier). Physical NIC (udev) renames are out of scope.
+type IfaceRenameParams struct {
+	NewName string `json:"newName"`
+}
+
+func (IfaceRenameParams) isChangeParams() {}
 
 // IfaceRawReplaceParams is op "iface.raw.replace" (docs/features/
 // change-management.md §7): the raw editor's save. Content is the entire

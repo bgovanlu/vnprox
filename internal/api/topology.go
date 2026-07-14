@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -9,11 +10,23 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/drift"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/topology"
 )
+
+// MgmtStatusService is the read-only seam handleTopology needs to paint
+// T-702's mgmt/corosync/mgmt-path badges (docs/features/topology.md §3):
+// exactly ProtectedService's MgmtStatus method, declared standalone so this
+// file doesn't need the whole ProtectedService interface — any value
+// satisfying ProtectedService (i.e. Options.Protected, already wired for
+// the /protected-interfaces routes) satisfies this one too. nil-safe like
+// every other optional badge-painting input on this route (Drift/Findings).
+type MgmtStatusService interface {
+	MgmtStatus(ctx context.Context) (change.MgmtStatus, error)
+}
 
 // TopologyService is the subset of T-106's *topology.Service the router
 // needs: the projected topology, single-entity detail, search, and the WS
@@ -39,14 +52,14 @@ type TopologyService interface {
 // keep working unchanged. ch may be nil (no collector wired — tests, or the
 // collector failed to initialize): /topology then simply omits its
 // staleness section.
-func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService) {
+func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Get("/topology", handleTopology(svc, ch, driftSvc, findingsSvc))
+		r.Get("/topology", handleTopology(svc, ch, driftSvc, findingsSvc, mgmtSvc))
 		r.Get("/inventory/search", handleInventorySearch(svc))
 		// A trailing chi wildcard (not a "{ref}" single-segment param) is
 		// required here: docs/api.md's Ref triplet scheme allows literal
@@ -114,7 +127,7 @@ func parseTopologyFilter(r *http.Request) topology.Filter {
 	return f
 }
 
-func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService) http.HandlerFunc {
+func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t := svc.Topology(parseTopologyFilter(r))
 		if ch != nil {
@@ -133,8 +146,27 @@ func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftServi
 		case driftSvc != nil:
 			paintDrift(&t, driftSvc.Findings())
 		}
+		if mgmtSvc != nil {
+			paintMgmtStatus(r.Context(), &t, mgmtSvc)
+		}
 		writeJSON(w, http.StatusOK, t)
 	}
+}
+
+// paintMgmtStatus decorates t with T-702's mgmt/corosync/mgmt-path badges
+// (docs/features/topology.md §3), computed from the exact same
+// change.Service.MgmtStatus call GET /protected-interfaces/status answers
+// from (protected.go's handleMgmtStatus) — the two surfaces can never
+// disagree. A MgmtStatus computation error degrades to "no mgmt badges this
+// request" (logged nowhere, matching paintDrift/paintFindings' own
+// tolerance of an empty producer) rather than failing the whole /topology
+// request over a display-only decoration.
+func paintMgmtStatus(ctx context.Context, t *topology.Topology, mgmtSvc MgmtStatusService) {
+	status, err := mgmtSvc.MgmtStatus(ctx)
+	if err != nil {
+		return
+	}
+	topology.ApplyMgmtBadges(t, status.Nodes)
 }
 
 // findingBadge marks a topology node/edge as carrying an open finding from

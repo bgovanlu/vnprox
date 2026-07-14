@@ -2,11 +2,43 @@ package change
 
 import (
 	"net"
+	"regexp"
 	"strings"
 
 	"github.com/bgovanlu/vnprox/internal/fw"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
+
+// ifaceNameRe is a valid Linux interface name for a rename target: a
+// leading alphanumeric, then alphanumerics and `._-` (dots appear in VLAN
+// sub-interface names like "vmbr0.100"). Length is capped separately at 15
+// (IFNAMSIZ-1). See codeIfaceNameInvalid.
+var ifaceNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+const maxIfaceNameLen = 15
+
+// sdnIDRe is real PVE's SDN zone/vnet id charset (case-insensitively
+// `[a-z][a-z0-9]*`): a leading letter, then letters/digits only — no
+// hyphens, underscores, dots, or whitespace. See codeSDNNameInvalid.
+var sdnIDRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+
+// schemaSDNName flags an ill-formed SDN zone/vnet id (charset only — see
+// codeSDNNameInvalid on why length is not blocked here). A vnet's Ref.ID is
+// the "<zone>/<vnet>" form (params_sdn.go), so the leaf after the last "/"
+// is the actual PVE-facing id to validate; a zone id carries no "/".
+func schemaSDNName(kind, id, ref string, out *[]Finding) {
+	leaf := id
+	if i := strings.LastIndexByte(id, '/'); i >= 0 {
+		leaf = id[i+1:]
+	}
+	if leaf == "" {
+		return // emptiness is a referential/required-field concern, not charset
+	}
+	if !sdnIDRe.MatchString(leaf) {
+		*out = append(*out, errorf(codeSDNNameInvalid, ref,
+			"%s name %q is not valid — use only letters and digits, starting with a letter (Proxmox rejects other characters)", kind, leaf))
+	}
+}
 
 // Range/enum constants for the schema validator class (docs/features/
 // change-management.md §2 class 1: "types, ranges (VID 1–4094, MTU
@@ -142,6 +174,17 @@ func schemaValidateOp(op Op) []Finding {
 		schemaAddressesPtr(p.Addresses, ref, &out)
 		schemaIPPtr(p.Gateway, ref, &out)
 
+	case *IfaceRenameParams:
+		name := strings.TrimSpace(p.NewName)
+		switch {
+		case name == "":
+			out = append(out, errorf(codeIfaceNameInvalid, ref, "iface.rename requires a new name"))
+		case len(name) > maxIfaceNameLen:
+			out = append(out, errorf(codeIfaceNameInvalid, ref, "interface name %q is too long — the kernel allows at most %d characters", name, maxIfaceNameLen))
+		case !ifaceNameRe.MatchString(name):
+			out = append(out, errorf(codeIfaceNameInvalid, ref, "interface name %q is not valid — use letters, digits, and .-_ only, starting with a letter or digit", name))
+		}
+
 	case *IfaceRawReplaceParams:
 		// Content's syntax is checked by Service.expandRawReplaceOps
 		// (validate_raw.go) before this pipeline runs — a parse failure
@@ -256,6 +299,7 @@ func schemaValidateOp(op Op) []Finding {
 			}
 		}
 		schemaAddresses(p.Addresses, ref, &out)
+		schemaIP(p.Gateway, ref, &out)
 		schemaMTU(op, p.MTU, ref, &out)
 
 	case *VlanUpdateParams:
@@ -268,6 +312,7 @@ func schemaValidateOp(op Op) []Finding {
 		// no params to validate.
 
 	case *SdnZoneCreateParams:
+		schemaSDNName("sdn zone", op.Target.ID, ref, &out)
 		if !validSdnZoneTypes[p.Type] {
 			out = append(out, errorf(codeSDNZoneTypeInvalid, ref, "sdn zone type %q is not recognized", p.Type))
 		}
@@ -280,6 +325,7 @@ func schemaValidateOp(op Op) []Finding {
 		// no params to validate.
 
 	case *SdnVnetCreateParams:
+		schemaSDNName("sdn vnet", op.Target.ID, ref, &out)
 		if p.Zone == "" {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.vnet.create requires zone"))
 		}
@@ -313,6 +359,7 @@ func schemaValidateOp(op Op) []Finding {
 			out = append(out, errorf(codeCIDRInvalid, ref, "cidr %q is not a valid CIDR", p.CIDR))
 		}
 		schemaIP(p.Gateway, ref, &out)
+		schemaGatewayInCIDR(op, p.Gateway, p.CIDR, ref, &out)
 		for _, dr := range p.DHCPRanges {
 			if !validDHCPRange(dr) {
 				out = append(out, errorf(codeDHCPRangeInvalid, ref, "dhcp range %q is not a valid start-end pair", dr))
@@ -322,6 +369,13 @@ func schemaValidateOp(op Op) []Finding {
 	case *SdnSubnetUpdateParams:
 		if p.Gateway != nil {
 			schemaIP(*p.Gateway, ref, &out)
+			// An update op's params carry no CIDR field (immutable —
+			// params_sdn.go's SdnSubnetUpdateParams doc comment); the
+			// subnet's CIDR is always op.Target.ID instead (the subnet's
+			// id *is* its CIDR, docs/data-model.md's SdnSubnet.ID doc
+			// comment), so the same per-op check applies with no
+			// snapshot lookup needed.
+			schemaGatewayInCIDR(op, *p.Gateway, op.Target.ID, ref, &out)
 		}
 		if p.DHCPRanges != nil {
 			for _, dr := range *p.DHCPRanges {
@@ -634,6 +688,35 @@ func schemaIPPtr(ip *string, ref string, out *[]Finding) {
 		return
 	}
 	schemaIP(*ip, ref, out)
+}
+
+// schemaGatewayInCIDR is T-701 acceptance criterion 2's
+// codeGatewayNotInSubnet check: a gateway PVE would otherwise accept as a
+// syntactically valid IP (schemaIP's job) must actually fall inside the
+// subnet's own CIDR — real PVE's SubnetPlugin rejects a gateway outside
+// the CIDR at subnet stage time (T-701 root-cause analysis §4). Skipped
+// when gateway is empty ("no gateway" is a separate, SNAT-gated concern —
+// see validate_sdn.go's snatRequiresGatewayFindings) or when either
+// gateway or cidr fails to parse (codeIPInvalid/codeCIDRInvalid already
+// flag those independently; layering a second, confusing error on top of
+// an already-invalid value would be noise).
+func schemaGatewayInCIDR(op Op, gateway, cidr, ref string, out *[]Finding) {
+	if gateway == "" || cidr == "" {
+		return
+	}
+	ip := net.ParseIP(gateway)
+	if ip == nil {
+		return
+	}
+	_, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return
+	}
+	if !ipnet.Contains(ip) {
+		f := errorf(codeGatewayNotInSubnet, ref, "gateway %q is not within subnet %s", gateway, cidr)
+		f.Fix = fixSetSubnetGateway(op, cidr)
+		*out = append(*out, f)
+	}
 }
 
 // schemaDuplicateStrings flags any value repeated within ss.

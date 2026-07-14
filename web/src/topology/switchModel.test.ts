@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TopologyEdge, TopologyNode } from "../api/types";
-import { buildSwitchModel, switchCarriesVlan, type SwitchModel } from "./switchModel";
+import { buildSwitchModel, switchCarriesVlan, type SwitchModel, type SwitchUplink } from "./switchModel";
 import threeNodeVlan from "./__fixtures__/three-node-vlan-topology.json";
 import scaleLab from "./__fixtures__/scale-lab-topology.json";
 
@@ -81,6 +81,53 @@ describe("buildSwitchModel — three-node-vlan fixture", () => {
   });
 });
 
+describe("switchCarriesVlan — table cases (audit: bridge-own-badge parity + trunk ranges)", () => {
+  function baseModel(overrides: Partial<SwitchModel> = {}): SwitchModel {
+    return {
+      ref: "bridge:pve1:vmbrX",
+      node: "pve1",
+      name: "vmbrX",
+      kind: "bridge",
+      status: "ok",
+      badges: [],
+      uplinks: [],
+      vlans: [],
+      accessPorts: [],
+      vnets: [],
+      ...overrides,
+    };
+  }
+
+  const bondWithTrunkBadge: SwitchUplink = {
+    ref: "bond:pve1:bond0",
+    label: "bond0",
+    kind: "bond",
+    status: "ok",
+    badges: ["vlans=10-20"],
+    members: [],
+  };
+
+  const cases: [string, SwitchModel, number, boolean][] = [
+    // Fix #1: the graph view's computeVlanMatch (projection.ts) treats a
+    // bridge's OWN badge as a direct carrier via entityCarriesVlan — the
+    // switch view must match that instead of only inspecting vlans/
+    // accessPorts/vnets/uplink badges.
+    ["bridge's own vid= badge, single VID match", baseModel({ badges: ["vid=15"] }), 15, true],
+    ["bridge's own vid= badge, non-matching VID", baseModel({ badges: ["vid=15"] }), 16, false],
+    ["bridge's own vlans= trunk-range badge, VID inside range", baseModel({ badges: ["vlans=10-20"] }), 15, true],
+    ["bridge's own vlans= trunk-range badge, VID outside range", baseModel({ badges: ["vlans=10-20"] }), 25, false],
+    // Trunk-range branch of switchCarriesVlan itself (an uplink's badge, not
+    // the bridge's own) — now sourced from projection.ts's badgeCarriesVlan.
+    ["uplink trunk badge vlans=10-20, VID inside range", baseModel({ uplinks: [bondWithTrunkBadge] }), 12, true],
+    ["uplink trunk badge vlans=10-20, VID outside range", baseModel({ uplinks: [bondWithTrunkBadge] }), 99, false],
+    ["no VLAN-carrying badge anywhere on the model", baseModel(), 15, false],
+  ];
+
+  it.each(cases)("%s", (_desc, model, vid, expected) => {
+    expect(switchCarriesVlan(model, vid)).toBe(expected);
+  });
+});
+
 describe("buildSwitchModel — collapsed guests (scale-lab fixture)", () => {
   it("renders a guest-group pill as a single '+N' access port carrying its count", () => {
     const model = buildSwitchModel(scaleLab.nodes as TopologyNode[], scaleLab.edges as TopologyEdge[]);
@@ -123,6 +170,56 @@ describe("buildSwitchModel — synthetic edge cases", () => {
     expect(group.node).toBe("pve1");
     expect(group.switches).toEqual([]);
     expect(group.freePorts.map((p) => p.label).sort()).toEqual(["bond7", "eno7"]);
+  });
+
+  it("marks a bond member inactive (standby/backup) when its enslaved-by edge has no 'active' badge", () => {
+    const nodes = [
+      node({ id: "bridge:pve1:vmbr8", kind: "bridge", layer: "l2", label: "vmbr8" }),
+      node({ id: "bond:pve1:bond8", kind: "bond", layer: "l2", label: "bond8" }),
+      node({ id: "physnic:pve1:eno8a", kind: "physnic", layer: "phys", label: "eno8a" }),
+      node({ id: "physnic:pve1:eno8b", kind: "physnic", layer: "phys", label: "eno8b" }),
+    ];
+    const edges = [
+      edge("bond:pve1:bond8", "bridge:pve1:vmbr8", "port-of"),
+      edge("physnic:pve1:eno8a", "bond:pve1:bond8", "enslaved-by", ["active"]),
+      // No "active" badge on this member's edge — it's the standby/backup slave.
+      edge("physnic:pve1:eno8b", "bond:pve1:bond8", "enslaved-by"),
+    ];
+    const model = buildSwitchModel(nodes, edges);
+    const sw = switchFor(model, "pve1");
+    const bond = must(sw.uplinks[0], "bond uplink");
+    const active = must(
+      bond.members.find((m) => m.label === "eno8a"),
+      "active member",
+    );
+    const standby = must(
+      bond.members.find((m) => m.label === "eno8b"),
+      "standby member",
+    );
+    expect(active.active).toBe(true);
+    expect(standby.active).toBe(false);
+  });
+
+  it("falls back to the VNet's own vid/tag badge when its realizes edge carries no tag badge", () => {
+    const nodes = [
+      node({ id: "bridge:pve1:vmbr7", kind: "bridge", layer: "l2", label: "vmbr7" }),
+      node({
+        id: "sdn-vnet:cluster:vnet50",
+        kind: "sdn-vnet",
+        layer: "sdn",
+        nodeGroup: "",
+        label: "vnet50",
+        badges: ["tag=50"],
+      }),
+    ];
+    // Deliberately no tag/vid badge on the "realizes" edge itself, forcing
+    // realizeTagOf.get(...) to miss and fall back to the VNet node's own
+    // "tag=50" badge (switchModel.ts's `realizeTagOf.get(...) ?? vidFromBadges(n.badges)`).
+    const edges = [edge("sdn-vnet:cluster:vnet50", "bridge:pve1:vmbr7", "realizes")];
+    const model = buildSwitchModel(nodes, edges);
+    const sw = switchFor(model, "pve1");
+    expect(sw.vnets).toHaveLength(1);
+    expect(must(sw.vnets[0], "vnet").tag).toBe(50);
   });
 
   it("handles ovs-bridge/ovs-bond kinds the same as their linux counterparts", () => {

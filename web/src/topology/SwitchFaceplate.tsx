@@ -12,6 +12,25 @@ import type { SwitchAccessPort, SwitchModel, SwitchPortNic, SwitchUplink } from 
 
 const BOND_KINDS = new Set(["bond", "ovs-bond"]);
 
+// T-702: distinct treatment for the management-path badge vocabulary
+// (docs/features/topology.md §3), mirroring EntityNode's amber marker so
+// the same entity reads the same way in both views.
+const MGMT_BADGE_LABEL: Record<string, string> = {
+  mgmt: "management IP",
+  corosync: "corosync link",
+  "mgmt-path": "on the management path",
+};
+
+function isMgmtBadge(badge: string): boolean {
+  return badge in MGMT_BADGE_LABEL;
+}
+
+function mgmtBadgeClass(badge: string): string {
+  return isMgmtBadge(badge)
+    ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+    : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-300";
+}
+
 // Status LED colors, matching EntityNode's STATUS_CLASSES vocabulary so a
 // port reads the same here as the same entity does in the graph view.
 const LED_CLASS: Record<EntityStatus, string> = {
@@ -62,20 +81,30 @@ function NeighborTag({ neighbor }: { neighbor: SwitchPortNic["neighbor"] }) {
 }
 
 function NicPort({ nic, onSelect }: { nic: SwitchPortNic; onSelect: (ref: string) => void }) {
+  const onMgmtPath = nic.badges.includes("mgmt-path");
   return (
     <button
       type="button"
       aria-label={nic.label}
+      title={onMgmtPath ? MGMT_BADGE_LABEL["mgmt-path"] : undefined}
       onClick={() => {
         onSelect(nic.ref);
       }}
-      className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2 py-1 text-left text-xs hover:border-accent-500 dark:border-slate-600 dark:bg-slate-900"
+      className={clsx(
+        "flex items-center gap-1.5 rounded border bg-white px-2 py-1 text-left text-xs hover:border-accent-500 dark:bg-slate-900",
+        onMgmtPath ? "border-amber-400 dark:border-amber-700" : "border-slate-300 dark:border-slate-600",
+      )}
     >
       <Led status={nic.status} />
       <span className="font-mono font-medium text-slate-700 dark:text-slate-200">{nic.label}</span>
       {!nic.active && (
         <span className="rounded bg-amber-100 px-1 text-[9px] uppercase text-amber-700 dark:bg-amber-950 dark:text-amber-300">
           standby
+        </span>
+      )}
+      {onMgmtPath && (
+        <span className="rounded bg-amber-200/70 px-1 text-[9px] uppercase text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+          mgmt-path
         </span>
       )}
       <NeighborTag neighbor={nic.neighbor} />
@@ -103,7 +132,16 @@ function UplinkModule({ uplink, onSelect }: { uplink: SwitchUplink; onSelect: (r
         <Led status={uplink.status} />
         <span className="font-mono">{uplink.label}</span>
         {uplink.badges.map((b) => (
-          <span key={b} className="rounded bg-sky-200/70 px-1 text-[9px] text-sky-800 dark:bg-sky-900 dark:text-sky-200">
+          <span
+            key={b}
+            title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : undefined}
+            className={clsx(
+              "rounded px-1 text-[9px]",
+              isMgmtBadge(b)
+                ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                : "bg-sky-200/70 text-sky-800 dark:bg-sky-900 dark:text-sky-200",
+            )}
+          >
             {b}
           </span>
         ))}
@@ -229,7 +267,8 @@ export function SwitchFaceplate({
           {model.badges.map((b) => (
             <span
               key={b}
-              className="rounded bg-slate-200/70 px-1 py-0.5 text-[10px] text-slate-600 dark:bg-slate-700/70 dark:text-slate-300"
+              title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : undefined}
+              className={clsx("rounded px-1 py-0.5 text-[10px]", mgmtBadgeClass(b))}
             >
               {b}
             </span>

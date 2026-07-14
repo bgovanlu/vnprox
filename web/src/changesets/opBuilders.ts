@@ -69,6 +69,13 @@ export function buildBridgeDeleteOp(target: string): Op {
   return { op: "bridge.delete", target, params: {} };
 }
 
+/** iface.rename (issue #2): rename a logical interface (bridge/bond/vlan)
+ * in place. target is the interface's current ref; newName is the desired
+ * name. */
+export function buildIfaceRenameOp(target: string, newName: string): Op {
+  return { op: "iface.rename", target, params: { newName } };
+}
+
 export function buildBridgePortAddOp(target: string, port: string): Op {
   return { op: "bridge.port.add", target, params: { port } };
 }

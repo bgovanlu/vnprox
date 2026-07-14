@@ -24,6 +24,10 @@ import (
 const (
 	fixtureSingleNode    = "../../testdata/clusters/single-node.yaml"
 	fixtureThreeNodeVlan = "../../testdata/clusters/three-node-vlan.yaml"
+	// fixtureVlanMgmt is T-702's dedicated fixture: a single node whose
+	// management IP lives on a VLAN sub-interface rather than directly on a
+	// bridge (testdata/clusters/vlan-mgmt.yaml's own doc comment).
+	fixtureVlanMgmt = "../../testdata/clusters/vlan-mgmt.yaml"
 )
 
 // loadFixtureServer loads fixturePath and builds a fresh, unstarted

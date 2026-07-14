@@ -7,6 +7,7 @@ import { readCsrfCookie } from "./auth";
 import type {
   ProtectedInterfacesPutRequest,
   ProtectedInterfacesResponse,
+  ProtectedInterfacesStatusResponse,
   ProtectedInterfacesSuggestResponse,
 } from "./types";
 
@@ -32,4 +33,12 @@ export function saveProtectedInterfaces(req: ProtectedInterfacesPutRequest): Pro
     json: req,
     csrfToken: readCsrfCookie(),
   });
+}
+
+/** GET /protected-interfaces/status (T-702) — every node's resolved
+ * management path: roles, physical path, redundancy, and which source
+ * (confirmed onboarding set vs. live detection) fed it. Backs the
+ * topology inspector's "Management path" section. */
+export function fetchMgmtStatus(): Promise<ProtectedInterfacesStatusResponse> {
+  return apiFetch<ProtectedInterfacesStatusResponse>("/protected-interfaces/status");
 }

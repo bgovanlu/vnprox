@@ -17,18 +17,21 @@ If you'd rather look before you touch, an administrator can set `read_only = tru
 
 ## 2. Reading the map
 
-The **Topology** view is home. Each cluster node is a column; four layer bands stack within it:
+The **Topology** view is home, and it lands on **Switch view** — a faceplate rendering of your real gear, one appliance per Linux/OVS bridge, grouped per cluster node:
 
-- **Physical** (bottom): your switches (from LLDP) and NICs. Red = link down.
-- **L2**: bonds, bridges, VLAN interfaces. Amber on a bond = a slave is down.
-- **SDN**: zones and VNets spanning nodes.
-- **Guests** (top): VMs/containers, collapsible per bridge.
+- **Uplink bay**: the bridge's physical NICs/bonds, with LACP/MII state and the LLDP neighbor on the far end of each wire. Red = link down.
+- **VLAN strip**: the bridge's VLAN sub-interfaces.
+- **Guest access-port grid**: one port per guest NIC attached to the bridge (VMID as the port number, guest name, VLAN tag), collapsible per bridge.
+- **VNet strip**: any SDN VNets realized on that bridge.
+- **Unattached ports**: NICs/bonds not wired into any bridge surface in their own panel.
+
+A `Switch | Graph` toggle in the header switches to the classic **Graph view** — a pan/zoom node-link canvas with four layer bands (Physical/L2/SDN/Guests) stacked per cluster node. Reach for Graph view when you need its spatial features: drag-and-drop editing, the path-simulator map overlay, traffic paint mode, or hover-chain highlight. The toggle is a per-session preference, not saved layout.
 
 Things to try first:
 
-- **Hover** any VM — its whole path to the physical switch lights up.
+- **Hover** any VM — its whole path to the physical switch lights up (Graph view).
 - **Press `/`** and type a VM name, MAC, or IP — jump straight to it.
-- Enter a **VLAN ID** in the filter box — see exactly where that VLAN lives and where it's trunked.
+- Enter a **VLAN ID** in the filter box — see exactly where that VLAN lives and where it's trunked. Works in both views.
 - **Click** anything — the inspector shows every detail, live status, and the raw config behind it.
 
 ## 3. Making changes safely

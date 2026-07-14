@@ -65,6 +65,7 @@ const (
 // knows how to turn into file edits.
 var nodeFileOpTypes = map[OpType]bool{
 	OpIfaceUpdate:      true,
+	OpIfaceRename:      true,
 	OpIfaceRawReplace:  true,
 	OpBondCreate:       true,
 	OpBondUpdate:       true,

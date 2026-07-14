@@ -209,6 +209,9 @@ export interface EvpnZoneParams extends ZoneWizardBaseParams {
   exitNodes: string[];
   /** Only needed for inter-VNet routing; 0 = unset. */
   vrfVxlan: number;
+  /** The VNet's VNI. PVE requires a VNI for an EVPN vnet (issue #3); the
+   * wizard used to draft tag 0, which real PVE rejects. */
+  vni: number;
 }
 
 /** Adds the BGP session graph: a controller hub node connected to one node

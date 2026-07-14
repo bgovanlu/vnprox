@@ -1,0 +1,37 @@
+# T-703's own dev config: identical shape to testdata/dev.toml, on a
+# distinct port pair (38006/38007) and pointed at the single-node fixture —
+# the management-path SPOF case (vmbr0 <- eno1, spare eno2) the guided
+# redundancy wizard's E2E (web/e2e/mgmt-redundancy.spec.ts) drives:
+# mgmt_single_path finding -> bond the uplink -> apply -> confirm ->
+# committed, and the finding clears. Runs alongside the other e2e webServer
+# pairs without collision (see web/playwright.config.ts).
+
+[server]
+listen = "127.0.0.1:38007"
+tls_cert = "testdata/certs/dev-cert.pem"
+tls_key = "testdata/certs/dev-key.pem"
+read_only = false
+confirm_timeout_default = 120
+
+[pve]
+api_url = "http://127.0.0.1:38006"
+token_file = "/etc/vnprox/keys/pve-token"
+dev_ticket_username = "root@pam"
+dev_ticket_password = "vnprox-mock"
+
+[safety]
+allow_dangerous_ops = false
+protected_path = "var/dev-mgmt-protected.json"
+dev_interfaces_dir = "var/dev-mgmt-host"
+
+[storage]
+db_path = "var/dev-mgmt-vnprox.db"
+session_key_file = "var/dev-mgmt-session.key"
+
+[peer]
+secret_path = "var/dev-mgmt-cluster.secret"
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"

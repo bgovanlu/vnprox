@@ -13,6 +13,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/change/ifaces"
 	"github.com/bgovanlu/vnprox/internal/store"
+	"github.com/bgovanlu/vnprox/internal/topology"
 )
 
 // capNetWrite is docs/api.md's documented write-capability flag name
@@ -100,6 +101,15 @@ type changesetResponse struct {
 	Findings        []change.Finding `json:"findings"`
 	CreatedAt       int64            `json:"createdAt"`
 	UpdatedAt       int64            `json:"updatedAt"`
+	// TouchesMgmtPath is T-703's server-computed flag (docs/api.md's
+	// changesets section): the ops intersect a node's resolved management
+	// path (change.TouchesMgmtPath over the same MgmtStatus computation
+	// GET /protected-interfaces/status answers from). Decorated onto the
+	// response by the changesets routes' handlers (see mgmtPathsFor);
+	// auxiliary draft-creating routes (drift/findings fix, snapshot
+	// restore, blueprint instantiate) return it as false — the canonical
+	// GET /changesets/{id} read those flows all funnel into computes it.
+	TouchesMgmtPath bool `json:"touchesMgmtPath"`
 }
 
 func toChangesetResponse(c change.Changeset) changesetResponse {
@@ -131,7 +141,7 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 // mounted — same reasoning as mountLayoutsRoutes: there would be no safe
 // way to attribute a created/discarded changeset to a user for the
 // audit trail docs/security.md requires.
-func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService, gateways PVEGatewayProvider) {
+func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService, gateways PVEGatewayProvider, mgmt MgmtStatusService) {
 	if svc == nil || auth == nil {
 		return
 	}
@@ -143,8 +153,8 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Get("/changesets", handleListChangesets(svc))
-		r.Get("/changesets/{id}", handleGetChangeset(svc))
+		r.Get("/changesets", handleListChangesets(svc, mgmt))
+		r.Get("/changesets/{id}", handleGetChangeset(svc, mgmt))
 		r.Get("/changesets/{id}/diff", handleDiffChangeset(svc))
 
 		// T-208 raw editor: the "open" call and its live syntax-lint
@@ -162,23 +172,63 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 			r.Use(csrf.CSRFMiddleware)
 		}
 		r.Use(auth.RequireCap(capNetWrite))
-		r.Post("/changesets", handleCreateChangeset(svc, lookup))
-		r.Put("/changesets/{id}", handleUpdateChangeset(svc, lookup))
+		r.Post("/changesets", handleCreateChangeset(svc, lookup, mgmt))
+		r.Put("/changesets/{id}", handleUpdateChangeset(svc, lookup, mgmt))
 		r.Delete("/changesets/{id}", handleDiscardChangeset(svc, lookup))
-		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup))
-		r.Post("/changesets/{id}/apply", handleApplyChangeset(svc, lookup, gateways))
-		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup))
-		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup, gateways))
+		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup, mgmt))
+		r.Post("/changesets/{id}/apply", handleApplyChangeset(svc, lookup, gateways, mgmt))
+		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup, mgmt))
+		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup, gateways, mgmt))
 	})
 }
 
-// applyRequest is docs/api.md's POST /changesets/{id}/apply body:
-// `{confirmTimeoutSec: 120}`.
-type applyRequest struct {
-	ConfirmTimeoutSec int `json:"confirmTimeoutSec"`
+// mgmtPathsFor computes the resolved management-path set the
+// touchesMgmtPath response flag is evaluated against, once per request
+// (handlers reuse the returned map across a whole changeset list). Nil-safe
+// and degrade-quietly: a nil seam (tests, degraded wiring) or a failed
+// MgmtStatus read yields nil, so every flag computes false rather than the
+// route erroring — the same tolerance the topology badge painting applies
+// to the identical computation (topology.go's paintMgmtStatus).
+func mgmtPathsFor(ctx context.Context, mgmt MgmtStatusService) map[string][]topology.MgmtPath {
+	if mgmt == nil {
+		return nil
+	}
+	status, err := mgmt.MgmtStatus(ctx)
+	if err != nil {
+		return nil
+	}
+	return status.Nodes
 }
 
-func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider) http.HandlerFunc {
+// withMgmtFlag decorates a changesetResponse with the touchesMgmtPath flag.
+func withMgmtFlag(c change.Changeset, paths map[string][]topology.MgmtPath) changesetResponse {
+	resp := toChangesetResponse(c)
+	resp.TouchesMgmtPath = change.TouchesMgmtPath(paths, c.Ops)
+	return resp
+}
+
+// MgmtAckRecorder is the optional ChangesetService extension backing
+// T-703's acknowledgement audit trail (change.Service.RecordMgmtAck).
+// Checked with a type assertion, exactly like CSRFEnforcer above, so test
+// doubles that don't care about the ceremony don't have to grow a method.
+type MgmtAckRecorder interface {
+	RecordMgmtAck(ctx context.Context, id, author, node string)
+}
+
+// applyRequest is docs/api.md's POST /changesets/{id}/apply body:
+// `{confirmTimeoutSec: 120, mgmtAck?: {node}}`. MgmtAck (T-703) is the
+// review screen's typed management-path acknowledgement, recorded to the
+// audit log when the changeset touches a management path.
+type applyRequest struct {
+	MgmtAck           *mgmtAckRequest `json:"mgmtAck,omitempty"`
+	ConfirmTimeoutSec int             `json:"confirmTimeoutSec"`
+}
+
+type mgmtAckRequest struct {
+	Node string `json:"node"`
+}
+
+func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider, mgmt MgmtStatusService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -202,16 +252,68 @@ func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways 
 			gw, _ = gateways.GatewayFor(r.Context())
 		}
 
-		c, err := svc.Apply(r.Context(), id, username, gw, time.Duration(req.ConfirmTimeoutSec)*time.Second)
+		// Pre-apply checks that need the changeset's ops. Best-effort: if
+		// the changeset can't be loaded, fall through to svc.Apply, which
+		// reports the real error (not found / illegal transition) itself.
+		paths := mgmtPathsFor(r.Context(), mgmt)
+		touchesMgmt := false
+		if cs, getErr := svc.Get(r.Context(), id); getErr == nil {
+			touchesMgmt = change.TouchesMgmtPath(paths, cs.Ops)
+
+			// T-701 acceptance criterion 5: fail fast, before any snapshot/
+			// mutation, when the plan needs a PVEGateway (sdn/fw/ipam
+			// steps) and none resolved — previously this discarded
+			// GatewayFor's failure and let apply proceed, dying mid-apply
+			// at apply_exec.go's "no PVE gateway available ... (no user
+			// session)" with a failed changeset whose only user-visible
+			// explanation was that low-level string (T-701 root-cause
+			// analysis §5).
+			if gw == nil {
+				if plan, buildErr := change.BuildPlan(cs.Ops); buildErr == nil && planRequiresPVEGateway(plan) {
+					writeJSONError(w, http.StatusUnprocessableEntity, "pve_session_required",
+						"this changeset has sdn/firewall/ipam steps that require a live PVE session, but none is available — log in again and retry")
+					return
+				}
+			}
+		}
+
+		confirmTimeout := time.Duration(req.ConfirmTimeoutSec) * time.Second
+		if touchesMgmt {
+			// T-703's confirm-window floor: a management-path changeset's
+			// commit-confirm window defaults to, and can never be set
+			// below, change.MgmtConfirmTimeoutFloor — the rollback timer is
+			// the only safety net if this change severs connectivity, so
+			// it must not be shortened in the same breath as arming it.
+			floor := change.MgmtConfirmTimeoutFloor
+			switch {
+			case confirmTimeout == 0:
+				confirmTimeout = floor
+			case confirmTimeout < floor:
+				writeJSONError(w, http.StatusBadRequest, "confirm_window_too_short",
+					fmt.Sprintf("this changeset touches a management path; its confirm window cannot be below %d seconds", int(floor.Seconds())))
+				return
+			}
+			// The review screen's typed acknowledgement, audited (T-703:
+			// "an audit entry recording the acknowledgement").
+			if req.MgmtAck != nil && req.MgmtAck.Node != "" {
+				if recorder, ok := svc.(MgmtAckRecorder); ok {
+					recorder.RecordMgmtAck(r.Context(), id, username, req.MgmtAck.Node)
+				}
+			}
+		}
+
+		c, err := svc.Apply(r.Context(), id, username, gw, confirmTimeout)
 		if err != nil {
 			writeApplyError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusAccepted, toChangesetResponse(c))
+		resp := toChangesetResponse(c)
+		resp.TouchesMgmtPath = touchesMgmt
+		writeJSON(w, http.StatusAccepted, resp)
 	}
 }
 
-func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -223,11 +325,11 @@ func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup) http.Ha
 			writeApplyError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, toChangesetResponse(c))
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
 	}
 }
 
-func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider) http.HandlerFunc {
+func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider, mgmt MgmtStatusService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -243,7 +345,7 @@ func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gatewa
 			writeApplyError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, toChangesetResponse(c))
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
 	}
 }
 
@@ -314,6 +416,23 @@ func handleLintInterfaces() http.HandlerFunc {
 	}
 }
 
+// planRequiresPVEGateway reports whether plan carries any step that needs a
+// live change.PVEGateway to execute — the cluster-scope SDN steps
+// (sdn.zone/vnet/subnet.* realized via StepSDNStage, the trailing
+// sdn.apply via StepSDNApply), the firewall steps (StepFwApply/
+// StepFwVerify), and IPAM allocation steps (StepIpamAlloc) — mirroring
+// apply_exec.go's own "if e.pveGW == nil" guards on exactly those step
+// kinds (T-701's fail-fast pre-check for handleApplyChangeset).
+func planRequiresPVEGateway(plan change.Plan) bool {
+	for _, st := range plan.Steps {
+		switch st.Kind {
+		case change.StepSDNStage, change.StepSDNApply, change.StepFwApply, change.StepFwVerify, change.StepIpamAlloc:
+			return true
+		}
+	}
+	return false
+}
+
 // writeApplyError maps T-205 apply-engine errors to docs/api.md's error
 // envelope + stable codes.
 func writeApplyError(w http.ResponseWriter, err error) {
@@ -380,7 +499,7 @@ func writeApplyError(w http.ResponseWriter, err error) {
 	writeJSONError(w, http.StatusInternalServerError, "internal_error", "apply operation failed")
 }
 
-func handleListChangesets(svc ChangesetService) http.HandlerFunc {
+func handleListChangesets(svc ChangesetService, mgmt MgmtStatusService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		status := r.URL.Query().Get("status")
 		changesets, err := svc.List(r.Context(), status)
@@ -388,15 +507,16 @@ func handleListChangesets(svc ChangesetService) http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not list changesets")
 			return
 		}
+		paths := mgmtPathsFor(r.Context(), mgmt) // once for the whole list
 		out := make([]changesetResponse, len(changesets))
 		for i, c := range changesets {
-			out[i] = toChangesetResponse(c)
+			out[i] = withMgmtFlag(c, paths)
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
 }
 
-func handleGetChangeset(svc ChangesetService) http.HandlerFunc {
+func handleGetChangeset(svc ChangesetService, mgmt MgmtStatusService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		c, err := svc.Get(r.Context(), id)
@@ -408,7 +528,7 @@ func handleGetChangeset(svc ChangesetService) http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not load changeset")
 			return
 		}
-		writeJSON(w, http.StatusOK, toChangesetResponse(c))
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
 	}
 }
 
@@ -453,7 +573,7 @@ type createChangesetRequest struct {
 	Ops   opsField `json:"ops"`
 }
 
-func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -472,7 +592,7 @@ func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup) http.Han
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not create changeset")
 			return
 		}
-		writeJSON(w, http.StatusCreated, toChangesetResponse(c))
+		writeJSON(w, http.StatusCreated, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
 	}
 }
 
@@ -487,7 +607,7 @@ type updateChangesetRequest struct {
 	Ops   opsField `json:"ops"`
 }
 
-func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -514,7 +634,7 @@ func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup) http.Han
 			writeChangesetMutationError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, toChangesetResponse(c))
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
 	}
 }
 
@@ -538,7 +658,7 @@ func handleDiscardChangeset(svc ChangesetService, lookup UsernameLookup) http.Ha
 // handleValidateChangeset backs `POST /changesets/{id}/validate`
 // (docs/api.md: "re-run validation, returns findings") with T-202's real
 // pipeline.
-func handleValidateChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+func handleValidateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -552,7 +672,7 @@ func handleValidateChangeset(svc ChangesetService, lookup UsernameLookup) http.H
 			writeChangesetMutationError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, toChangesetResponse(c))
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
 	}
 }
 

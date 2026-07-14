@@ -25,6 +25,12 @@ export interface FindingItem {
   /** Optional grouping/category label shown as a small pill (T-305's
    * `check` field; a future source's own category concept). */
   category?: string;
+  /** An optional finding-specific secondary action (T-703: the
+   * mgmt_single_path finding launches the management-redundancy wizard —
+   * this is not a fixing-changeset action, so it's distinct from onFix).
+   * Rendered as a secondary button alongside (or instead of) the fix
+   * button. */
+  action?: { label: string; onClick: () => void };
 }
 
 export interface FindingsListProps {
@@ -106,20 +112,27 @@ export function FindingsList({
                 </p>
               )}
             </div>
-            {f.fixable && onFix && (
-              <Tooltip content={fixDisabledReason}>
-                <span>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={fixingId === f.id || fixDisabledReason !== undefined}
-                    onClick={() => { onFix(f.id); }}
-                  >
-                    {fixingId === f.id ? "Creating…" : "Create fixing changeset"}
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
+            <div className="flex shrink-0 items-center gap-2">
+              {f.action && (
+                <Button variant="secondary" size="sm" onClick={f.action.onClick}>
+                  {f.action.label}
+                </Button>
+              )}
+              {f.fixable && onFix && (
+                <Tooltip content={fixDisabledReason}>
+                  <span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={fixingId === f.id || fixDisabledReason !== undefined}
+                      onClick={() => { onFix(f.id); }}
+                    >
+                      {fixingId === f.id ? "Creating…" : "Create fixing changeset"}
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+            </div>
           </div>
         </li>
       ))}

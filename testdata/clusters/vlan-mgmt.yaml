@@ -1,0 +1,97 @@
+# vlan-mgmt.yaml — T-702 fixture: a single node whose management IP lives
+# on a VLAN sub-interface, not directly on a bridge. Proves the
+# management-path resolver's "carrier -> parent bridge for VLAN
+# sub-interfaces -> bridge ports -> ..." walk (docs/features/topology.md
+# §3): the mgmt badge lands on the VLAN sub-interface (vmbr0.30) itself,
+# and mgmt-path walks through its parent bridge (vmbr0) down to eno1.
+cluster:
+  name: pve-vlan-mgmt
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.20.30.11
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 8a3c5e91-2b6d-4f77-9c10-1e4a7d3f8b02
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: manual
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: true
+        comments: "trunk, no address of its own — mgmt lives on a VLAN sub-interface"
+      - iface: vmbr0.30
+        type: vlan
+        method: static
+        address: 10.20.30.11/24
+        gateway: 10.20.30.1
+        autostart: true
+        mtu: 1500
+        vlan_raw_device: vmbr0
+        vlan_id: 30
+        comments: "management VLAN"
+    links:
+      eno1:
+        mac: "bc:24:11:02:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:11:02:00:01"
+        link_up: true
+        mtu: 1500
+      vmbr0.30:
+        mac: "bc:24:11:02:00:01"
+        link_up: true
+        mtu: 1500
+    lldp: {}
+    stats:
+      eno1:
+        rx_bytes: 1048576
+        tx_bytes: 524288
+        rx_packets: 900
+        tx_packets: 450
+    qemu: {}
+    lxc: {}
+    firewall:
+      enabled: false
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []

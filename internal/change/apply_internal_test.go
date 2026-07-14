@@ -161,6 +161,7 @@ func TestParamsUnion_Membership(t *testing.T) {
 		&FwAliasCreateParams{}, &FwAliasUpdateParams{}, &FwAliasDeleteParams{},
 		&FwIpsetCreateParams{}, &FwIpsetUpdateParams{}, &FwIpsetDeleteParams{},
 		&FwGroupCreateParams{}, &FwGroupUpdateParams{}, &FwGroupDeleteParams{},
+		&IfaceRenameParams{},
 		&IpamAllocCreateParams{}, &IpamAllocDeleteParams{},
 	}
 	for _, m := range members {

@@ -11,15 +11,20 @@ import type { FDBRow } from "../api/types";
 import type { WsClient } from "../api/ws";
 import { useToast } from "../components/Toast";
 import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
-import { useEditorLauncherStore, type EditorKind } from "../changesets/editorLauncherStore";
+import { useEditorLauncherStore, editorKindForInventoryKind } from "../changesets/editorLauncherStore";
 import { buildBondDeleteOp, buildVlanDeleteOp } from "../changesets/opBuilders";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
+import { resumeOnboarding } from "../onboarding/onboardingMachine";
+import { useOnboardingProgressQuery, useSaveOnboardingProgressMutation } from "../onboarding/queries";
 import { fieldRows } from "./fields";
 import { METRICS_KINDS } from "./metricsKinds";
 import { MetricsTab } from "./MetricsTab";
-import { useInventoryDetailQuery } from "./queries";
+import { useInventoryDetailQuery, useMgmtStatusQuery } from "./queries";
 import { useTopologyStore } from "./store";
+import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
+import { describeMgmtPathRedundancy } from "../mgmt/mgmtPath";
+import { mgmtStrings } from "../mgmt/strings";
 
 /** Runtime narrowing for `data.fields.FDB` (typed `unknown` — EntityDetail's
  * fields map is generic JSON, see fields.ts): internal/topology's Detail()
@@ -32,18 +37,85 @@ function isFDBRows(v: unknown): v is FDBRow[] {
   );
 }
 
-/** Which editor kind (if any) opens for a given inventory kind — the
- * inspector's "Edit" button (T-207 acceptance criterion: "editors open
- * from the map or list views"). Kinds with no editor of their own
- * (guests, SDN objects, LLDP neighbors, ...) simply show no Edit button. */
-const EDITOR_KIND_BY_INVENTORY_KIND: Partial<Record<string, EditorKind>> = {
-  bridge: "bridge",
-  "ovs-bridge": "bridge",
-  bond: "bond",
-  "ovs-bond": "bond",
-  vlan: "vlan",
-  physnic: "iface",
-};
+/** T-702: renders docs/features/topology.md §3's "Management path" tab
+ * content — carrier, path chain, redundancy statement in plain English, and
+ * (when the status is only vnprox's live detection, never onboarding-
+ * confirmed) a caveat with a working link back to the onboarding
+ * "protected interfaces" step. `ref`/`carrierRef` are node.badges-shaped
+ * inventory ref strings; `label` resolves one to a friendlier display via
+ * the already-loaded topology query cache — falling back to the raw ref
+ * string when the entity isn't in cache (e.g. it scrolled out of view). */
+function ManagementPathSection({ node }: { node: string }) {
+  const { data: mgmtStatus } = useMgmtStatusQuery();
+  const { data: onboardingProgress } = useOnboardingProgressQuery();
+  const saveOnboarding = useSaveOnboardingProgressMutation();
+  const openMgmtWizard = useMgmtWizardStore((s) => s.open);
+  const { data: session } = useSession();
+  const nodePaths = mgmtStatus?.nodes[node] ?? [];
+
+  if (!mgmtStatus || nodePaths.length === 0) {
+    return <p className="text-xs text-slate-400">No management/corosync path resolved for this node yet.</p>;
+  }
+
+  // Whether any mgmt-role carrier for this node is non-redundant — the
+  // wizard's reason for being. Offered regardless (a redundant node can
+  // still add headroom), but only when the user can actually write.
+  const canWrite = capsForNode(session, node).netWrite;
+
+  return (
+    <div className="space-y-3 text-xs">
+      {mgmtStatus.staleProtected && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-2 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          The protected-interface list looks out of date — a management interface moved since it was last confirmed.
+          Re-confirm it in the onboarding &quot;protected interfaces&quot; step.
+        </div>
+      )}
+      {canWrite && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            openMgmtWizard({ node });
+          }}
+        >
+          {mgmtStrings.launch.button}
+        </Button>
+      )}
+      {mgmtStatus.source === "detected" && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-2 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <p>
+            This is vnprox&apos;s best-effort detection (Node.IP / corosync.conf) — no one has confirmed it during
+            onboarding yet.
+          </p>
+          {onboardingProgress && (
+            <button
+              type="button"
+              className="mt-1 font-medium underline hover:no-underline"
+              onClick={() => {
+                saveOnboarding.mutate({ ...resumeOnboarding(onboardingProgress), currentStep: "protected" });
+              }}
+            >
+              Review protected interfaces
+            </button>
+          )}
+        </div>
+      )}
+      {nodePaths.map((p) => (
+        <div key={p.ref} className="rounded border border-slate-200 p-2 dark:border-slate-700">
+          <div className="font-medium text-slate-700 dark:text-slate-200">
+            {p.ref} <span className="font-normal text-slate-400">({p.roles.join(", ")})</span>
+          </div>
+          <div className="mt-1 text-slate-500 dark:text-slate-400">
+            Path: {p.path.length > 0 ? p.path.join(" → ") : "(no physical interface resolved)"}
+          </div>
+          <div className="mt-1 text-slate-600 dark:text-slate-300">
+            {describeMgmtPathRedundancy(p.path, p.redundant)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Only bridges/bonds/VLANs are deletable entities with their own delete
  * op in this task's scope (physnic delete isn't a documented op — a NIC is
@@ -82,13 +154,17 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
   const { addOps } = useDrawerActions();
   const { toast } = useToast();
 
-  const editorKind = data ? EDITOR_KIND_BY_INVENTORY_KIND[data.kind] : undefined;
+  const editorKind = editorKindForInventoryKind(data?.kind);
   const deletable = data ? DELETABLE_KINDS.has(data.kind) : false;
   const editDisabledReason = data ? missingCapTooltip(session, data.node, "netWrite") : undefined;
   const canWrite = data ? capsForNode(session, data.node).netWrite : false;
   const isBridgeKind = data ? data.kind === "bridge" || data.kind === "ovs-bridge" : false;
   const fdbRows = isBridgeKind && data ? (isFDBRows(data.fields.FDB) ? data.fields.FDB : []) : [];
   const hasMetrics = data ? METRICS_KINDS.has(data.kind) : false;
+  // T-702: node-scoped entities only (bridge/bond/vlan/physnic/guest/...) —
+  // cluster-scoped SDN entities (data.node === "") never carry a management
+  // IP or corosync link of their own.
+  const showMgmtPath = data ? data.node !== "" : false;
   const navigate = useNavigate();
   const select = useTopologyStore((s) => s.select);
 
@@ -186,6 +262,22 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
                   </span>
                 </Tooltip>
               )}
+              {deletable && (
+                <Tooltip content={editDisabledReason}>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={!canWrite}
+                      onClick={() => {
+                        openEditor({ kind: "iface-rename", node: data.node, target: data.ref });
+                      }}
+                    >
+                      Rename
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
               {editorKind && deletable && (
                 <Tooltip content={editDisabledReason}>
                   <span>
@@ -219,6 +311,11 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
               <RadixTabs.Trigger value="related" className={tabTriggerClass}>
                 Related ({data.related.length})
               </RadixTabs.Trigger>
+              {showMgmtPath && (
+                <RadixTabs.Trigger value="mgmt-path" className={tabTriggerClass}>
+                  Management path
+                </RadixTabs.Trigger>
+              )}
               {isBridgeKind && (
                 <RadixTabs.Trigger value="fdb" className={tabTriggerClass}>
                   FDB ({fdbRows.length})
@@ -313,6 +410,12 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
                 {data.related.length === 0 && <li className="text-slate-400">No related entities.</li>}
               </ul>
             </RadixTabs.Content>
+
+            {showMgmtPath && (
+              <RadixTabs.Content value="mgmt-path" className="mt-3 flex-1 overflow-y-auto">
+                <ManagementPathSection node={data.node} />
+              </RadixTabs.Content>
+            )}
 
             {isBridgeKind && (
               <RadixTabs.Content value="fdb" className="mt-3 flex-1 overflow-y-auto">

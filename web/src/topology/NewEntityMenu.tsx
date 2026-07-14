@@ -8,6 +8,8 @@ import { useSession } from "../api/useSession";
 import { Button } from "../components/Button";
 import { capsForNode } from "../changesets/capabilities";
 import { useEditorLauncherStore, type EditorKind } from "../changesets/editorLauncherStore";
+import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
+import { mgmtStrings } from "../mgmt/strings";
 
 export interface NewEntityMenuProps {
   nodes: string[];
@@ -19,6 +21,7 @@ const KIND_LABEL: Record<EditorKind, string> = {
   bond: "Bond",
   vlan: "VLAN interface",
   iface: "Interface",
+  "iface-rename": "Rename",
 };
 
 const CREATABLE_KINDS: EditorKind[] = ["bridge", "bond", "vlan"];
@@ -26,6 +29,7 @@ const CREATABLE_KINDS: EditorKind[] = ["bridge", "bond", "vlan"];
 export function NewEntityMenu({ nodes }: NewEntityMenuProps) {
   const { data: session } = useSession();
   const open = useEditorLauncherStore((s) => s.open);
+  const openMgmtWizard = useMgmtWizardStore((s) => s.open);
   const writableNodes = nodes.filter((n) => capsForNode(session, n).netWrite);
 
   if (writableNodes.length === 0) return null;
@@ -65,6 +69,27 @@ export function NewEntityMenu({ nodes }: NewEntityMenuProps) {
               </RadixDropdown.Portal>
             </RadixDropdown.Sub>
           ))}
+          <RadixDropdown.Separator className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
+          <RadixDropdown.Sub>
+            <RadixDropdown.SubTrigger className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800">
+              {mgmtStrings.launch.button}
+            </RadixDropdown.SubTrigger>
+            <RadixDropdown.Portal>
+              <RadixDropdown.SubContent className="z-50 min-w-[8rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                {writableNodes.map((node) => (
+                  <RadixDropdown.Item
+                    key={node}
+                    className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800"
+                    onSelect={() => {
+                      openMgmtWizard({ node });
+                    }}
+                  >
+                    {node}
+                  </RadixDropdown.Item>
+                ))}
+              </RadixDropdown.SubContent>
+            </RadixDropdown.Portal>
+          </RadixDropdown.Sub>
         </RadixDropdown.Content>
       </RadixDropdown.Portal>
     </RadixDropdown.Root>

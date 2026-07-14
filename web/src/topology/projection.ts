@@ -189,8 +189,11 @@ export function computeHoverHighlight(
 /** Parses a "vid=20", "tag=20" (SDN VNet/realizes badges use "tag=" instead
  * of "vid=" — see internal/topology/project.go's badgesOf/EdgeRealizes),
  * or "vlans=10-20,30" (VLAN-aware bridge trunk ranges) badge token,
- * returning true if it carries `vlan`. */
-function badgeCarriesVlan(badge: string, vlan: number): boolean {
+ * returning true if it carries `vlan`. Exported so switchModel.ts's
+ * switchCarriesVlan (the switch-faceplate view's equivalent of
+ * computeVlanMatch below) reuses this exact parse instead of keeping its own
+ * copy — the two views must dim identically on the same badge shapes. */
+export function badgeCarriesVlan(badge: string, vlan: number): boolean {
   const [key, value] = badge.split("=", 2);
   if (value === undefined) return false;
   if (key === "vid" || key === "tag") {

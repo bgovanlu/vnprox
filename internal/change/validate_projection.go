@@ -406,6 +406,12 @@ func (p *projection) fold(op Op) {
 		if params.Addresses != nil {
 			p.removeAddrsOf(op.Target.Node, op.Target)
 			p.addAddrs(op.Target, *params.Addresses)
+		} else if params.RemoveAddress {
+			// T-703: an explicit "clear the address" (ifaces.IfaceUpdate's
+			// RemoveAddress semantics) must project the same way an empty
+			// replacement list does, or the safety class would keep seeing
+			// the removed address as surviving.
+			p.removeAddrsOf(op.Target.Node, op.Target)
 		}
 
 	case *BondCreateParams:

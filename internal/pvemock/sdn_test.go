@@ -147,6 +147,139 @@ func TestSDN_ReadOnlyUserCannotAllocate(t *testing.T) {
 	mustStatus(t, srv, req, http.StatusForbidden)
 }
 
+// --- T-701 acceptance criterion 4: pvemock stops being more permissive
+// than real PVE for the two subnet shapes real PVE rejects at stage time.
+
+func TestSDN_SubnetCreateRejectsSNATWithoutGateway(t *testing.T) {
+	srv := newTestServer(t, "three-node-vlan.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	body, _ := json.Marshal(SDNSubnetSpec{ID: "10.99.0.0-24", CIDR: "10.99.0.0/24", SNAT: true})
+	req := authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/vnets/vnet100/subnets", ticket, csrf, body)
+	mustStatus(t, srv, req, http.StatusBadRequest)
+}
+
+func TestSDN_SubnetCreateRejectsGatewayOutsideCIDR(t *testing.T) {
+	srv := newTestServer(t, "three-node-vlan.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	body, _ := json.Marshal(SDNSubnetSpec{ID: "10.99.0.0-24", CIDR: "10.99.0.0/24", Gateway: "10.1.2.3"})
+	req := authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/vnets/vnet100/subnets", ticket, csrf, body)
+	mustStatus(t, srv, req, http.StatusBadRequest)
+}
+
+func TestSDN_ZoneCreateRejectsInvalidName(t *testing.T) {
+	srv := newTestServer(t, "three-node-vlan.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	// A hyphenated zone id is outside PVE's SDN id charset — real PVE
+	// rejects it at create with "Parameter verification failed" (issue #3).
+	body, _ := json.Marshal(SDNZoneSpec{ID: "bad-zone", Type: "simple"})
+	req := authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/zones", ticket, csrf, body)
+	mustStatus(t, srv, req, http.StatusBadRequest)
+}
+
+func TestSDN_VnetCreateRejectsInvalidName(t *testing.T) {
+	srv := newTestServer(t, "three-node-vlan.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	// vlanz is an existing zone in three-node-vlan.yaml; the underscore in
+	// the vnet id is what PVE rejects.
+	body, _ := json.Marshal(SDNVnetSpec{ID: "bad_vnet", Zone: "vlanz"})
+	req := authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/vnets", ticket, csrf, body)
+	mustStatus(t, srv, req, http.StatusBadRequest)
+}
+
+func TestSDN_SubnetUpdateRejectsSNATWithoutGateway(t *testing.T) {
+	srv := newTestServer(t, "three-node-vlan.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	// vnet100's existing subnet (10.100.0.0/24, gateway 10.100.0.1 — see
+	// three-node-vlan.yaml) updated to drop its gateway while keeping snat
+	// on should be rejected exactly like a create would be.
+	body, _ := json.Marshal(SDNSubnetSpec{CIDR: "10.100.0.0/24", SNAT: true})
+	req := authedRequest(t, http.MethodPut, "/api2/json/cluster/sdn/vnets/vnet100/subnets/10.100.0.0-24", ticket, csrf, body)
+	mustStatus(t, srv, req, http.StatusBadRequest)
+}
+
+func TestSDN_SubnetCreateRegistersGatewayIPAMRecord(t *testing.T) {
+	srv := newTestServer(t, "three-node-vlan.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	body, _ := json.Marshal(SDNSubnetSpec{ID: "10.99.0.0-24", CIDR: "10.99.0.0/24", Gateway: "10.99.0.1"})
+	createSubnet := authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/vnets/vnet100/subnets", ticket, csrf, body)
+	mustStatus(t, srv, createSubnet, http.StatusOK)
+
+	statusReq := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/ipams/pve/status", ticket, "", nil)
+	statusBody := mustStatus(t, srv, statusReq, http.StatusOK)
+	entries, _ := statusBody["data"].([]any)
+	found := false
+	for _, raw := range entries {
+		e, _ := raw.(map[string]any)
+		if e["subnet"] == "10.99.0.0/24" && e["ip"] == "10.99.0.1" && e["gateway"] == float64(1) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no gateway:true ipam entry for 10.99.0.1 in %+v", entries)
+	}
+
+	// Updating the subnet to a different gateway refreshes (not
+	// duplicates) the record.
+	updateBody, _ := json.Marshal(SDNSubnetSpec{CIDR: "10.99.0.0/24", Gateway: "10.99.0.2"})
+	updateSubnet := authedRequest(t, http.MethodPut, "/api2/json/cluster/sdn/vnets/vnet100/subnets/10.99.0.0-24", ticket, csrf, updateBody)
+	mustStatus(t, srv, updateSubnet, http.StatusOK)
+
+	statusReq2 := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/ipams/pve/status", ticket, "", nil)
+	statusBody2 := mustStatus(t, srv, statusReq2, http.StatusOK)
+	entries2, _ := statusBody2["data"].([]any)
+	gatewayCount := 0
+	for _, raw := range entries2 {
+		e, _ := raw.(map[string]any)
+		if e["subnet"] == "10.99.0.0/24" && e["gateway"] == float64(1) {
+			gatewayCount++
+			if e["ip"] != "10.99.0.2" {
+				t.Errorf("gateway entry ip = %v, want refreshed 10.99.0.2", e["ip"])
+			}
+		}
+	}
+	if gatewayCount != 1 {
+		t.Fatalf("got %d gateway entries for 10.99.0.0/24 after update, want exactly 1: %+v", gatewayCount, entries2)
+	}
+}
+
+// TestSDN_SubnetCreateRegistersGatewayIPAMRecord_NoConfiguredIPAM proves the
+// synthesized default-"pve"-IPAM fallback (ipam.go's defaultIpamID doc
+// comment): single-node.yaml declares no sdn.ipams at all, yet a full
+// zone/vnet/subnet chain still ends up with a readable gateway record.
+func TestSDN_SubnetCreateRegistersGatewayIPAMRecord_NoConfiguredIPAM(t *testing.T) {
+	srv := newTestServer(t, "single-node.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	zoneBody, _ := json.Marshal(SDNZoneSpec{ID: "homelab", Type: "simple", Nodes: []string{"pve1"}})
+	mustStatus(t, srv, authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/zones", ticket, csrf, zoneBody), http.StatusOK)
+
+	vnetBody, _ := json.Marshal(SDNVnetSpec{ID: "vnet1", Zone: "homelab"})
+	mustStatus(t, srv, authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/vnets", ticket, csrf, vnetBody), http.StatusOK)
+
+	subnetBody, _ := json.Marshal(SDNSubnetSpec{ID: "10.50.0.0-24", CIDR: "10.50.0.0/24", Gateway: "10.50.0.1"})
+	mustStatus(t, srv, authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/vnets/vnet1/subnets", ticket, csrf, subnetBody), http.StatusOK)
+
+	statusReq := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/ipams/pve/status", ticket, "", nil)
+	statusBody := mustStatus(t, srv, statusReq, http.StatusOK)
+	entries, _ := statusBody["data"].([]any)
+	found := false
+	for _, raw := range entries {
+		e, _ := raw.(map[string]any)
+		if e["subnet"] == "10.50.0.0/24" && e["ip"] == "10.50.0.1" && e["gateway"] == float64(1) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no gateway:true ipam entry for 10.50.0.1 in %+v", entries)
+	}
+}
+
 // TestSDN_StatusListsAllObjects exercises GET /cluster/sdn (the flattened
 // pending-vs-applied tree).
 func TestSDN_StatusListsAllObjects(t *testing.T) {

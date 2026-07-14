@@ -18,6 +18,7 @@
 // exercising the (already covered elsewhere) apply/confirm machinery a
 // second time per task.
 import { expect, test, type Page } from "@playwright/test";
+import { switchToGraphView } from "./helpers";
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -50,6 +51,9 @@ async function logIn(page: Page): Promise<void> {
 }
 
 async function waitForLayout(page: Page): Promise<void> {
+  // 67fff26 landed Switch, not Graph, as /topology's default view (see
+  // helpers.ts) — .react-flow__node only exists once Graph is selected.
+  await switchToGraphView(page);
   await page.waitForFunction(() => {
     const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
     const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
@@ -112,8 +116,16 @@ test.describe("SDN zone wizards, IPAM reserve, firewall macro rule", () => {
     await page.getByRole("button", { name: "Next" }).click();
 
     await page.getByLabel("Address range (CIDR)").fill("10.50.0.0/24");
-    await page.getByLabel("Gateway").fill("10.50.0.1");
+    // T-701: "no gateway" is now an explicit radio choice (SubnetStep.tsx)
+    // instead of just leaving the gateway textbox empty.
+    await page.getByRole("radio", { name: /Keep this network isolated/ }).check();
     await page.getByRole("button", { name: "Next" }).click();
+
+    // The wizard's own Review step spells out "isolated, no gateway" for the
+    // drafted subnet (SimpleZoneWizard.tsx) — assert that before drafting,
+    // since the change drawer's op summary never included gateway/snat for
+    // sdn.subnet.create ops to begin with.
+    await expect(page.getByText("Subnet 10.50.0.0/24 (isolated, no gateway)")).toBeVisible();
 
     await page.getByRole("button", { name: "Create draft" }).click();
 
@@ -145,7 +157,12 @@ test.describe("SDN zone wizards, IPAM reserve, firewall macro rule", () => {
     await page.getByRole("button", { name: "Next" }).click();
 
     await page.getByLabel("Address range (CIDR)").fill("10.90.0.0/24");
-    await page.getByLabel("Gateway").fill("10.90.0.1");
+    // T-701: "Gateway" alone now strict-mode-collides with the gateway-mode
+    // radiogroup (aria-label "Gateway") and its two radios, so select the
+    // textbox specifically. The field also pre-fills from the CIDR's first
+    // usable address (10.90.0.1 here) — the explicit fill is a no-op given
+    // that prefill, kept for clarity/robustness rather than relying on it.
+    await page.getByRole("textbox", { name: /Gateway/ }).fill("10.90.0.1");
     await page.getByRole("button", { name: "Next" }).click();
 
     await page.getByRole("button", { name: "Create draft" }).click();

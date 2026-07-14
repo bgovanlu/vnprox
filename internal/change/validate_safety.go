@@ -23,7 +23,9 @@ func safetyValidate(ops []Op, snap inventory.Snapshot, safety SafetyOptions) []F
 	var out []Finding
 	out = append(out, protectedInterfaceFindings(ops, snap, safety.Protected)...)
 	out = append(out, guestBearingBridgeFindings(ops, snap)...)
+	out = append(out, ifaceRenameGuestFindings(ops, snap)...)
 	out = append(out, vnetDeletionGuardFindings(ops, snap)...)
+	out = append(out, subnetDeletionGuardFindings(ops, safety.Allocations)...)
 
 	if safety.AllowDangerousOps {
 		for i := range out {
@@ -292,6 +294,130 @@ func vnetDeletionGuardFindings(ops []Op, snap inventory.Snapshot) []Finding {
 	return out
 }
 
+// --- subnet-with-allocations deletion (T-402's other listed deletion guard,
+// closed out here once T-405 gave this package a live IPAM data feed to
+// check against) ------------------------------------------------------------
+
+// subnetDeletionGuardFindings flags every sdn.subnet.delete op whose target
+// subnet still has one or more active IPAM allocations, per T-402's task
+// card ("deletion guards: vnet with attached guests / subnet with
+// allocations" — vnetDeletionGuardFindings above is the sibling; this was
+// deferred at T-402 time, self-reported in that task's report, because
+// internal/inventory has no dedicated IpAllocation entity kind
+// (validate_projection.go's allocsBySubnet doc comment) so there was no
+// data to check against from inside this package.
+//
+// T-405 (Visual IPAM) added exactly the missing data source in a different
+// shape: AllocationsSource / SafetyOptions.Allocations, a live, cluster-wide
+// read of every PVE-IPAM allocation (internal/ipam.Service.AllAllocations,
+// adapted in cmd/vnproxd's dhcpAllocationsAdapter — the same production feed
+// T-406's checkDHCPRangeOverlap advisory check already consumes, threaded
+// into every s.validate call via Service.dhcpAllocations). "Cluster-wide"
+// matters here: IPAM allocations are carved from an SDN vnet/subnet, not
+// tied to any one node, and a VM holding one may be running on any peer —
+// internal/ipam's PVEReader reads the whole cluster's SDN/IPAM tree per
+// request, never a localhost-only view, so this guard sees allocations for
+// guests on any node.
+//
+// Net-effect based, exactly like vnetDeletionGuardFindings and
+// guestBearingBridgeFindings: an ipam.alloc.delete releasing an allocation
+// elsewhere in the same changeset clears it from the count, so "release the
+// last allocation, then delete the now-empty subnet" validates clean in one
+// changeset. Gateway addresses never count towards the guard — the shared
+// Allocations feed already excludes them (dhcpAllocationsAdapter's doc
+// comment: "excluding gateway entries... it isn't a reservation at all"),
+// so a subnet carrying only its configured gateway and no other
+// reservations is not blocked.
+//
+// This is a hard block (SeverityError, downgradable only via
+// AllowDangerousOps like every other finding in this class), matching
+// vnetDeletionGuardFindings' severity: deleting a subnet out from under live
+// allocations orphans them the same way deleting a vnet out from under
+// attached guest NICs does, and the task card gives no reason to treat the
+// two differently.
+func subnetDeletionGuardFindings(ops []Op, allocations []DHCPRangeAllocation) []Finding {
+	if len(allocations) == 0 {
+		return nil
+	}
+
+	// deleteOps: subnet CIDR -> index of its (last) sdn.subnet.delete op.
+	deleteOps := map[string]int{}
+	for i, op := range ops {
+		if op.Type == OpSdnSubnetDelete {
+			deleteOps[op.Target.ID] = i
+		}
+	}
+	if len(deleteOps) == 0 {
+		return nil
+	}
+
+	// released: per subnet CIDR, the host addresses this same changeset
+	// releases via ipam.alloc.delete — subtracted from the live allocation
+	// count so the changeset's net effect, not just the pre-changeset
+	// snapshot, decides whether the delete is blocked.
+	released := map[string]map[string]bool{}
+	for _, op := range ops {
+		if op.Type != OpIpamAllocDelete {
+			continue
+		}
+		params, ok := op.Params.(*IpamAllocDeleteParams)
+		if !ok {
+			continue
+		}
+		ip := hostAddrOf(params.CIDR)
+		if ip == "" {
+			continue
+		}
+		if released[op.Target.ID] == nil {
+			released[op.Target.ID] = map[string]bool{}
+		}
+		released[op.Target.ID][ip] = true
+	}
+
+	remaining := map[int][]DHCPRangeAllocation{}
+	for _, a := range allocations {
+		opIdx, ok := deleteOps[a.Subnet]
+		if !ok {
+			continue
+		}
+		if released[a.Subnet][a.IP] {
+			continue
+		}
+		remaining[opIdx] = append(remaining[opIdx], a)
+	}
+
+	var out []Finding
+	for i, op := range ops {
+		hits := remaining[i]
+		if len(hits) == 0 {
+			continue
+		}
+		sort.Slice(hits, func(a, b int) bool { return hits[a].IP < hits[b].IP })
+		examples := hits
+		if len(examples) > 3 {
+			examples = examples[:3]
+		}
+		out = append(out, errorf(codeSubnetHasAllocations, refOf(op),
+			"subnet %s still has %d active IPAM allocation(s), for example: %s — release them (ipam.alloc.delete) in this changeset before deleting the subnet",
+			op.Target.ID, len(hits), describeDHCPAllocations(examples)))
+	}
+	return out
+}
+
+// hostAddrOf returns cidr's host address (net.ParseCIDR's first return
+// value, stringified), or "" if cidr doesn't parse — IpamAllocDeleteParams.
+// CIDR is schema-validated elsewhere (validate_schema.go's validCIDR) before
+// this ever runs against a real changeset, so a parse failure here only
+// happens when this function is exercised directly (e.g. from a test) with
+// input schemaValidate would itself have already rejected.
+func hostAddrOf(cidr string) string {
+	ip, _, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return ""
+	}
+	return ip.String()
+}
+
 // --- guest-bearing bridge deletion -----------------------------------------
 
 // guestBearingBridgeFindings flags every bridge.delete op whose *net
@@ -302,6 +428,72 @@ func vnetDeletionGuardFindings(ops []Op, snap inventory.Snapshot) []Finding {
 // NIC's *final* attachment exists in the changeset's final projection —
 // "reattaching" to the doomed bridge itself, or to a bridge/vnet the same
 // changeset also deletes, does not.
+// ifaceRenameGuestFindings blocks renaming a bridge/vlan that still has
+// running guests attached to its old name in the changeset's net effect
+// (issue #2): a rename rewrites /etc/network/interfaces but not PVE guest
+// config, so guests bound by bridge=<oldName> would be orphaned. A
+// guest.nic.update reattaching the NIC elsewhere (including to the new name)
+// in the same changeset clears the finding — mirroring guestBearingBridge's
+// net-effect treatment. AllowDangerousOps downgrades it to a warning via the
+// safetyValidate wrapper, exactly like the sibling safety checks.
+func ifaceRenameGuestFindings(ops []Op, snap inventory.Snapshot) []Finding {
+	renames := map[ifaceKey]int{}
+	for i, op := range ops {
+		if op.Type == OpIfaceRename {
+			renames[ifaceKey{op.Target.Node, op.Target.ID}] = i
+		}
+	}
+	if len(renames) == 0 {
+		return nil
+	}
+
+	finalAttach := map[inventory.Ref]string{}
+	for _, op := range ops {
+		if op.Type == OpGuestNicUpdate {
+			if p, ok := op.Params.(*GuestNicUpdateParams); ok && p.BridgeOrVnet != nil {
+				finalAttach[op.Target] = *p.BridgeOrVnet
+			}
+		}
+	}
+
+	attached := map[int][]string{}
+	for _, e := range snap.All() {
+		nic, ok := e.(*inventory.GuestNic)
+		if !ok {
+			continue
+		}
+		opIdx, renamed := renames[ifaceKey{nic.BridgeOrVnet.Node, nic.BridgeOrVnet.ID}]
+		if !renamed {
+			continue
+		}
+		if newAttach, updated := finalAttach[nic.GetRef()]; updated && newAttach != nic.BridgeOrVnet.ID {
+			continue // reattached away (or to the new name) in this changeset
+		}
+		guestEntity, ok := snap.Get(nic.Guest)
+		if !ok {
+			continue
+		}
+		guest, ok := guestEntity.(*inventory.Guest)
+		if !ok || guest.Status != "running" {
+			continue
+		}
+		attached[opIdx] = append(attached[opIdx], fmt.Sprintf("%s (vmid %d, %s)", guest.Name, guest.VMID, nic.Key))
+	}
+
+	var out []Finding
+	for i, op := range ops {
+		list := attached[i]
+		if len(list) == 0 {
+			continue
+		}
+		sort.Strings(list)
+		out = append(out, errorf(codeRenameGuestsAttached, refOf(op),
+			"interface %s still has %d running guest(s) attached in this changeset's final state: %s — renaming it would orphan their network bindings (a rename does not rewrite guest bridge= config); reattach them to the new name (guest.nic.update) or detach/migrate them first",
+			op.Target.ID, len(list), strings.Join(list, "; ")))
+	}
+	return out
+}
+
 func guestBearingBridgeFindings(ops []Op, snap inventory.Snapshot) []Finding {
 	// deleteOps: (node, name) of every bridge this changeset deletes →
 	// index of its (last) bridge.delete op, for attributing findings.

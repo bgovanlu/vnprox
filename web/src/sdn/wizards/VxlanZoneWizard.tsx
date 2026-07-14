@@ -7,6 +7,9 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildVxlanPreview, type VxlanZoneParams } from "./previewEntities";
+import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { SdnNameField } from "./SdnNameField";
+import { ipError, sdnNameError, subnetStepValid, vniError } from "./validation";
 import { wizardStrings } from "./strings";
 import { useClusterNodes } from "./useClusterNodes";
 import { useSuggestedPeers } from "./useSuggestedPeers";
@@ -37,9 +40,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
   const [vnetId, setVnetId] = useState("");
   const [vnetAlias, setVnetAlias] = useState("");
   const [vni, setVni] = useState(0);
-  const [subnetCidr, setSubnetCidr] = useState("");
-  const [subnetGateway, setSubnetGateway] = useState("");
-  const [snat, setSnat] = useState(false);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
   const [finishing, setFinishing] = useState(false);
 
   const suggested = useSuggestedPeers(memberNodes);
@@ -63,6 +64,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
   }, [suggested.ready, suggested.byNode, memberNodes]);
 
   const derivation = computeVxlanMtuDerivation(mtu);
+  const vniErr = vniError(vni);
 
   const params: VxlanZoneParams = useMemo(
     () => ({
@@ -71,14 +73,14 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
       memberNodes,
       vnetId,
       vnetAlias,
-      subnetCidr,
-      subnetGateway,
-      snat,
+      subnetCidr: subnet.cidr,
+      subnetGateway: subnet.gateway,
+      snat: subnet.snat,
       mtu,
       vni,
       peers,
     }),
-    [zoneId, memberNodes, vnetId, vnetAlias, subnetCidr, subnetGateway, snat, mtu, vni, peers],
+    [zoneId, memberNodes, vnetId, vnetAlias, subnet, mtu, vni, peers],
   );
 
   const graph = useMemo(() => buildVxlanPreview(params), [params]);
@@ -103,13 +105,11 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
     {
       id: "zone",
       title: "Peers",
-      isValid: zoneId.trim().length > 0 && memberNodes.length > 0,
+      isValid: zoneId.trim().length > 0 && memberNodes.length > 0 && !sdnNameError(zoneId) && memberNodes.every((n) => !ipError(peers[n] ?? "")),
       content: (
         <div className="space-y-3">
           <p className="text-slate-600 dark:text-slate-300">{S.vxlan.intro}</p>
-          <Field label="Name" help="e.g. overlay1. Lowercase letters/digits, unique cluster-wide.">
-            <input className={inputClass} value={zoneId} onChange={(e) => { setZoneId(e.target.value); }} placeholder="overlay1" />
-          </Field>
+          <SdnNameField label="Name" help={S.common.zoneNameHelp} value={zoneId} onChange={setZoneId} placeholder="overlay1" />
           <NodeCheckboxList
             label="Member nodes"
             help={S.common.memberNodesHelp}
@@ -122,17 +122,23 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
               <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">{S.vxlan.peersStepHelp}</p>
               <p className="mb-1.5 text-[11px] text-slate-400">{S.vxlan.peersAutoSuggestNote}</p>
               <div className="space-y-1.5">
-                {memberNodes.map((node) => (
-                  <div key={node} className="flex items-center gap-2">
-                    <span className="w-16 shrink-0 text-xs text-slate-500 dark:text-slate-400">{node}</span>
-                    <input
-                      className={inputClass}
-                      value={peers[node] ?? ""}
-                      onChange={(e) => { setPeers((p) => ({ ...p, [node]: e.target.value })); }}
-                      placeholder={suggested.byNode[node] ?? "10.0.0.x"}
-                    />
-                  </div>
-                ))}
+                {memberNodes.map((node) => {
+                  const peerErr = ipError(peers[node] ?? "");
+                  return (
+                    <div key={node} className="flex items-start gap-2">
+                      <span className="mt-1.5 w-16 shrink-0 text-xs text-slate-500 dark:text-slate-400">{node}</span>
+                      <div className="flex-1">
+                        <input
+                          className={inputClass}
+                          value={peers[node] ?? ""}
+                          onChange={(e) => { setPeers((p) => ({ ...p, [node]: e.target.value })); }}
+                          placeholder={suggested.byNode[node] ?? "10.0.0.x"}
+                        />
+                        {peerErr && <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-400" role="alert">{peerErr}</p>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -142,17 +148,15 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
     {
       id: "vnet-mtu",
       title: "VNet + MTU",
-      isValid: vnetId.trim().length > 0,
+      isValid: vnetId.trim().length > 0 && !sdnNameError(vnetId) && !vniError(vni),
       content: (
         <div className="space-y-3">
-          <Field label="VNet name" help="e.g. vnet-overlay1. Unique cluster-wide.">
-            <input className={inputClass} value={vnetId} onChange={(e) => { setVnetId(e.target.value); }} placeholder="vnet-overlay1" />
-          </Field>
+          <SdnNameField label="VNet name" help={S.common.vnetNameHelp} value={vnetId} onChange={setVnetId} placeholder="vnetovl1" />
           <Field label="Alias" help={S.common.vnetAliasHelp}>
             <input className={inputClass} value={vnetAlias} onChange={(e) => { setVnetAlias(e.target.value); }} />
           </Field>
-          <Field label="VNI" help="The tunnel identifier for this VNet — like a VLAN ID, but for the overlay.">
-            <input type="number" className={inputClass} value={vni || ""} onChange={(e) => { setVni(Number(e.target.value)); }} />
+          <Field label="VNI" help={S.vxlan.vniHelp} errors={vniErr ? [vniErr] : undefined}>
+            <input type="number" className={inputClass} value={vni || ""} onChange={(e) => { setVni(Number(e.target.value)); }} min={1} max={4094} />
           </Field>
 
           <div>
@@ -189,28 +193,8 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
     {
       id: "subnet",
       title: "Addresses",
-      isValid: true,
-      content: (
-        <div className="space-y-3">
-          <p className="text-slate-600 dark:text-slate-300">{S.common.subnetSkipHelp}</p>
-          <Field label="Address range (CIDR)" help={S.common.cidrHelp}>
-            <input className={inputClass} value={subnetCidr} onChange={(e) => { setSubnetCidr(e.target.value); }} placeholder="10.90.0.0/24" />
-          </Field>
-          {subnetCidr && (
-            <>
-              <Field label="Gateway" help={S.common.gatewayHelp}>
-                <input className={inputClass} value={subnetGateway} onChange={(e) => { setSubnetGateway(e.target.value); }} placeholder="10.90.0.1" />
-              </Field>
-              <Field label="Internet access (SNAT)" help={S.common.snatHelp}>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={snat} onChange={(e) => { setSnat(e.target.checked); }} />
-                  Enable SNAT
-                </label>
-              </Field>
-            </>
-          )}
-        </div>
-      ),
+      isValid: subnetStepValid(subnet),
+      content: <SubnetStep zoneType="vxlan" value={subnet} onChange={setSubnet} />,
     },
     {
       id: "review",
@@ -223,7 +207,12 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
           <ul className="list-inside list-disc space-y-1">
             <li>VXLAN zone &quot;{zoneId}&quot; on {memberNodes.join(", ") || "no nodes"}, MTU {mtu || derivation.safeMtu}</li>
             <li>VNet &quot;{vnetId}&quot;{vni ? ` (VNI ${String(vni)})` : ""}</li>
-            {subnetCidr && <li>Subnet {subnetCidr}{snat ? " with SNAT" : ""}</li>}
+            {subnet.cidr && (
+              <li>
+                Subnet {subnet.cidr}
+                {subnet.isolated ? " (isolated, no gateway)" : subnet.snat ? " with SNAT" : ""}
+              </li>
+            )}
           </ul>
         </div>
       ),

@@ -10,6 +10,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/topology"
 )
 
 // DefaultProtectedPath is where the onboarding-confirmed protected-
@@ -136,24 +137,47 @@ func SaveProtectedConfig(path string, cfg ProtectedConfig) error {
 // corosync ring addresses. cor may be nil (a single, not-yet-clustered
 // node has no /etc/pve/corosync.conf at all) — DetectProtected then falls
 // back to management-IP-only detection.
+//
+// This is a thin wrapper around DetectProtectedRoles (T-702's role-aware
+// generalization, factored out so internal/topology's shared path resolver
+// can consume the same classification this function was already doing):
+// the flat ref set is exactly the union of every role-classified ref, which
+// reproduces this function's pre-T-702 output byte-for-byte (same address
+// matching, same per-node sort) — T-203's validator semantics (the only
+// consumer that reads this specific function) are unaffected by the
+// refactor.
 func DetectProtected(snap inventory.Snapshot, cor *host.CorosyncConfig) ProtectedSet {
+	roles := DetectProtectedRoles(snap, cor)
 	out := ProtectedSet{}
+	for node, refs := range roles {
+		for _, rr := range refs {
+			out[node] = append(out[node], rr.Ref)
+		}
+	}
+	for node := range out {
+		refs := out[node]
+		sort.Slice(refs, func(i, j int) bool { return refs[i].String() < refs[j].String() })
+		out[node] = refs
+	}
+	return out
+}
+
+// DetectProtectedRoles is DetectProtected's role-aware generalization
+// (T-702, docs/features/topology.md §3 / docs/api.md's `GET
+// /protected-interfaces/status`): same detection, but tags each protected
+// ref with which purpose(s) it serves — RoleMgmt when it carries the node's
+// management IP, RoleCorosync when it carries one of the node's corosync
+// ring addresses (both possible on one ref). The result is directly the
+// input shape internal/topology.ResolveMgmtPaths consumes.
+func DetectProtectedRoles(snap inventory.Snapshot, cor *host.CorosyncConfig) map[string][]topology.MgmtRoleRef {
+	out := map[string][]topology.MgmtRoleRef{}
 
 	for _, e := range snap.All() {
 		node, ok := e.(*inventory.Node)
 		if !ok {
 			continue
 		}
-
-		wanted := map[string]bool{}
-		if node.IP != "" {
-			wanted[node.IP] = true
-		}
-		if cn, ok := cor.NodeByName(node.Name); ok {
-			for _, addr := range cn.RingAddrs {
-				wanted[addr] = true
-			}
-		}
+		wanted := wantedRoleAddrs(node, cor)
 		if len(wanted) == 0 {
 			continue
 		}
@@ -163,45 +187,143 @@ func DetectProtected(snap inventory.Snapshot, cor *host.CorosyncConfig) Protecte
 			if ref.Node != node.Name {
 				continue
 			}
-			var addrs []string
-			switch v := e2.(type) {
-			case *inventory.Bridge:
-				addrs = v.Addresses
-			case *inventory.VlanIface:
-				addrs = v.Addresses
-			default:
+			addrs, ok := addressesOf(e2)
+			if !ok {
 				continue
 			}
-			if addrMatchesAny(addrs, wanted) {
-				out[node.Name] = append(out[node.Name], ref)
+			roles := matchRoles(addrs, wanted)
+			if len(roles) == 0 {
+				continue
 			}
+			out[node.Name] = append(out[node.Name], topology.MgmtRoleRef{Ref: ref, Roles: roles})
 		}
 	}
 
 	for node := range out {
 		refs := out[node]
-		sort.Slice(refs, func(i, j int) bool { return refs[i].String() < refs[j].String() })
+		sort.Slice(refs, func(i, j int) bool { return refs[i].Ref.String() < refs[j].Ref.String() })
 		out[node] = refs
 	}
 	return out
 }
 
-// addrMatchesAny reports whether any of addrs (declared CIDR strings)
-// names an IP present in wanted (a set of raw IP or CIDR strings — PVE's
-// GET /cluster/status and corosync.conf's ring*_addr both commonly report
-// a bare IP, while inventory.Bridge/VlanIface.Addresses are always
-// CIDRs, so this compares by parsed host IP first and falls back to a raw
-// string match for anything that doesn't parse as a CIDR).
-func addrMatchesAny(addrs []string, wanted map[string]bool) bool {
-	for _, a := range addrs {
-		if wanted[a] {
-			return true
-		}
-		if ip, _, err := net.ParseCIDR(a); err == nil && wanted[ip.String()] {
-			return true
+// classifyConfirmedRoles is DetectProtectedRoles' counterpart for an
+// onboarding-confirmed protected set (protected.json non-empty): the admin
+// already picked the refs, so this only computes which role(s) each one
+// currently serves (for display — docs/api.md's `GET
+// /protected-interfaces/status` roles field), via the exact same address
+// matching DetectProtectedRoles uses. A confirmed ref that currently
+// carries neither the node's management IP nor a corosync ring address
+// (stale confirmation, or a physnic/bond ref — see
+// protectedIPsForNode's doc comment on that known scope gap) simply gets an
+// empty Roles slice rather than being dropped: the admin explicitly
+// protected it, so the status endpoint still reports its (unresolved) path.
+func classifyConfirmedRoles(snap inventory.Snapshot, cor *host.CorosyncConfig, refs ProtectedSet) map[string][]topology.MgmtRoleRef {
+	nodesByName := map[string]*inventory.Node{}
+	for _, e := range snap.All() {
+		if n, ok := e.(*inventory.Node); ok {
+			nodesByName[n.Name] = n
 		}
 	}
-	return false
+
+	out := make(map[string][]topology.MgmtRoleRef, len(refs))
+	for nodeName, nodeRefs := range refs {
+		var wanted map[string][]topology.MgmtRole
+		if n := nodesByName[nodeName]; n != nil {
+			wanted = wantedRoleAddrs(n, cor)
+		}
+		list := make([]topology.MgmtRoleRef, 0, len(nodeRefs))
+		for _, r := range nodeRefs {
+			var roles []topology.MgmtRole
+			if e, ok := snap.Get(r); ok {
+				if addrs, ok := addressesOf(e); ok {
+					roles = matchRoles(addrs, wanted)
+				}
+			}
+			list = append(list, topology.MgmtRoleRef{Ref: r, Roles: roles})
+		}
+		sort.Slice(list, func(i, j int) bool { return list[i].Ref.String() < list[j].Ref.String() })
+		out[nodeName] = list
+	}
+	return out
+}
+
+// addressesOf returns e's declared CIDR addresses and whether e is a kind
+// that declares an Addresses field at all (Bridge/VlanIface — see
+// entity.go).
+func addressesOf(e inventory.Entity) ([]string, bool) {
+	switch v := e.(type) {
+	case *inventory.Bridge:
+		return v.Addresses, true
+	case *inventory.VlanIface:
+		return v.Addresses, true
+	default:
+		return nil, false
+	}
+}
+
+// wantedRoleAddrs builds node's role-tagged wanted-address set: its
+// management IP (RoleMgmt) plus every corosync ring address cor reports for
+// it (RoleCorosync) — the same two sources DetectProtected has always
+// matched against, just no longer flattened into a single boolean set.
+func wantedRoleAddrs(node *inventory.Node, cor *host.CorosyncConfig) map[string][]topology.MgmtRole {
+	if node == nil {
+		return nil
+	}
+	wanted := map[string][]topology.MgmtRole{}
+	addRole := func(addr string, role topology.MgmtRole) {
+		if addr == "" {
+			return
+		}
+		for _, r := range wanted[addr] {
+			if r == role {
+				return
+			}
+		}
+		wanted[addr] = append(wanted[addr], role)
+	}
+	if node.IP != "" {
+		addRole(node.IP, topology.MgmtRoleMgmt)
+	}
+	if cn, ok := cor.NodeByName(node.Name); ok {
+		for _, addr := range cn.RingAddrs {
+			addRole(addr, topology.MgmtRoleCorosync)
+		}
+	}
+	return wanted
+}
+
+// matchRoles reports which role(s) addrs (declared CIDR strings) satisfy
+// against wanted (addr -> roles, from wantedRoleAddrs) — the role-aware
+// generalization of the old addrMatchesAny boolean check, same dual
+// matching (raw string first, then parsed host IP, since PVE's `GET
+// /cluster/status` and corosync.conf's ring*_addr both commonly report a
+// bare IP while inventory.Bridge/VlanIface.Addresses are always CIDRs).
+// `len(matchRoles(addrs, wanted)) > 0` is exactly the predicate
+// addrMatchesAny used to compute, so DetectProtected's ref-inclusion set is
+// unchanged by this refactor.
+func matchRoles(addrs []string, wanted map[string][]topology.MgmtRole) []topology.MgmtRole {
+	if len(wanted) == 0 {
+		return nil
+	}
+	var roles []topology.MgmtRole
+	seen := map[topology.MgmtRole]bool{}
+	collect := func(key string) {
+		for _, r := range wanted[key] {
+			if !seen[r] {
+				seen[r] = true
+				roles = append(roles, r)
+			}
+		}
+	}
+	for _, a := range addrs {
+		collect(a)
+		if ip, _, err := net.ParseCIDR(a); err == nil {
+			collect(ip.String())
+		}
+	}
+	sort.Slice(roles, func(i, j int) bool { return roles[i] < roles[j] })
+	return roles
 }
 
 // ToConfig snapshots set into a ProtectedConfig.Nodes-shaped map
@@ -218,4 +340,30 @@ func (set ProtectedSet) ToConfig() map[string][]string {
 		out[node] = ids
 	}
 	return out
+}
+
+// MgmtStatus is docs/api.md's `GET /protected-interfaces/status` response
+// shape (T-702): per-node resolved management paths, plus which source fed
+// them. Source is "confirmed" when protected.json has at least one node
+// entry (the admin's onboarding-confirmed set, classified against current
+// roles), or "detected" when it's empty and this falls back to live
+// DetectProtectedRoles (docs/features/blueprints.md §3's "confirmation ...
+// stored in protected.json" — an unconfirmed cluster still gets a display
+// answer, just an explicitly provisional one). BadRefs carries any
+// protected.json ref strings that failed to parse (ProtectedConfig.Resolve
+// — surfaced so the caller can warn, mirroring SetProtected's existing
+// bad-ref handling).
+// StaleProtected (T-703) is true iff Source is "confirmed" but live
+// detection currently finds a management/corosync carrier the confirmed set
+// does not contain — the tell-tale of a management path that has *moved*
+// since onboarding confirmed it (e.g. the dedicated-management-VLAN flow
+// relocating the mgmt address to a new carrier, then the operator declining
+// the post-commit protected-set refresh). Deliberately one-directional:
+// confirmed refs that detection can't classify (an admin protecting a bond
+// or an extra interface on purpose) never flag staleness.
+type MgmtStatus struct {
+	Source         string
+	Nodes          map[string][]topology.MgmtPath
+	BadRefs        []string
+	StaleProtected bool
 }

@@ -9,9 +9,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { fetchInventoryDetail, fetchTopology, searchInventory } from "../api/topology";
 import { fetchLayout, saveLayout } from "../api/layouts";
+import { fetchMgmtStatus } from "../api/protectedInterfaces";
 import { ApiError } from "../api/client";
 import { createWsClient, defaultWsUrl, type WsClient, type WsServerEvent } from "../api/ws";
-import type { EntityDetail, SearchResult, TopologyDeltaEvent, TopologyLayoutPayload, TopologyResponse } from "../api/types";
+import type {
+  EntityDetail,
+  ProtectedInterfacesStatusResponse,
+  SearchResult,
+  TopologyDeltaEvent,
+  TopologyLayoutPayload,
+  TopologyResponse,
+} from "../api/types";
 import { expandGuestGroup } from "./expand";
 import { isGuestGroupId } from "./projection";
 
@@ -21,6 +29,19 @@ export const searchKey = (q: string) => ["inventory-search", q] as const;
 export const guestGroupExpandKey = (groupId: string) => ["guest-group-expand", groupId] as const;
 export const LAYOUT_NAME = "topology";
 export const layoutKey = (name: string) => ["layouts", name] as const;
+export const MGMT_STATUS_QUERY_KEY = ["protected-interfaces", "status"] as const;
+
+/** GET /protected-interfaces/status (T-702) — backs the inspector's
+ * "Management path" section. Cluster-wide (not scoped to one node), so it's
+ * fetched once per topology session, the same staleTime the full topology
+ * fetch uses. */
+export function useMgmtStatusQuery() {
+  return useQuery<ProtectedInterfacesStatusResponse>({
+    queryKey: MGMT_STATUS_QUERY_KEY,
+    queryFn: fetchMgmtStatus,
+    staleTime: 15_000,
+  });
+}
 
 /** Always fetches the complete, unfiltered topology (no `?layers=`/`?vlan=`
  * query params). Layer visibility and VLAN dimming are both client-side

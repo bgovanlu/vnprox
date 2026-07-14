@@ -15,6 +15,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/store"
+	"github.com/bgovanlu/vnprox/internal/topology"
 )
 
 // topicChangesets is the WS subscription topic name clients use for
@@ -519,6 +520,71 @@ func (s *Service) SuggestProtected(_ context.Context) ProtectedSet {
 		cor = nil
 	}
 	return DetectProtected(s.inventorySnapshot(), cor)
+}
+
+// MgmtStatus computes docs/api.md's `GET /protected-interfaces/status`
+// response (T-702): the onboarding-confirmed protected set (falling back to
+// live detection when protected.json is empty, per MgmtStatus's own doc
+// comment) classified into roles and resolved into physical paths via
+// internal/topology's shared resolver — the same computation `GET /topology`
+// paints its mgmt/corosync/mgmt-path badges from (internal/api's
+// handleTopology calls this exact method too), so the two surfaces can never
+// disagree. Never fails on a missing/unreadable corosync.conf (falls back to
+// management-IP-only classification, logged, same tolerance
+// SuggestProtected already has) — only a broken protected.json read is a
+// hard error.
+func (s *Service) MgmtStatus(_ context.Context) (MgmtStatus, error) {
+	cfg, err := LoadProtectedConfig(s.protectedPath)
+	if err != nil {
+		return MgmtStatus{}, fmt.Errorf("change: computing management-path status: %w", err)
+	}
+
+	cor, cerr := host.ReadCorosyncConf(s.corosyncPath)
+	if cerr != nil {
+		if !errors.Is(cerr, os.ErrNotExist) && !os.IsNotExist(errors.Unwrap(cerr)) {
+			s.log.Warn("change: reading corosync.conf for management-path status; falling back to management-IP-only detection", "error", cerr)
+		}
+		cor = nil
+	}
+
+	snap := s.inventorySnapshot()
+	resolved, bad := cfg.Resolve()
+
+	source := "detected"
+	stale := false
+	roleRefs := DetectProtectedRoles(snap, cor)
+	if len(resolved) > 0 {
+		source = "confirmed"
+		stale = protectedSetStale(roleRefs, resolved)
+		roleRefs = classifyConfirmedRoles(snap, cor, resolved)
+	}
+
+	return MgmtStatus{
+		Source:         source,
+		Nodes:          topology.ResolveMgmtPaths(snap, roleRefs),
+		BadRefs:        bad,
+		StaleProtected: stale,
+	}, nil
+}
+
+// protectedSetStale reports whether live detection (detected) names a
+// carrier ref the onboarding-confirmed set (confirmed) does not contain —
+// MgmtStatus.StaleProtected's definition (T-703: the post-commit
+// protected-set refresh prompt's trigger, and the "declined the refresh"
+// warning's condition).
+func protectedSetStale(detected map[string][]topology.MgmtRoleRef, confirmed ProtectedSet) bool {
+	for node, roleRefs := range detected {
+		have := map[inventory.Ref]bool{}
+		for _, ref := range confirmed[node] {
+			have[ref] = true
+		}
+		for _, rr := range roleRefs {
+			if !have[rr.Ref] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // SetProtected validates and persists a new protected-interface config

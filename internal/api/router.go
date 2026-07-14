@@ -94,7 +94,13 @@ type Options struct {
 	// simply omits both routes.
 	Metrics     MetricsService
 	PVEGateways PVEGatewayProvider
-	Protected   ProtectedService
+	// Protected backs GET/PUT /protected-interfaces + /suggest (T-203) and
+	// GET /protected-interfaces/status (T-702). Also passed into
+	// mountTopologyRoutes as the mgmt/corosync/mgmt-path badge-painting
+	// input on `GET /topology` (docs/features/topology.md §3) — the same
+	// "internal/api decorates the pure projection" seam Findings/Drift
+	// above already use for the finding-badge overlay; nil skips both.
+	Protected ProtectedService
 	// Firewall backs T-501's read routes (GET /firewall/rulesets,
 	// GET /firewall/objects) — typically the daemon's live *inventory.Graph
 	// (which satisfies FirewallGraph's one-method seam directly).
@@ -153,14 +159,14 @@ func NewRouter(opts Options) http.Handler {
 		if opts.Auth != nil {
 			opts.Auth.MountRoutes(r)
 		}
-		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings)
+		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected)
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
 		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
-		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways)
+		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)

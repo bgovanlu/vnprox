@@ -16,8 +16,15 @@ package change
 // vlan_mode use case) or Vid may be 0 with only Trunks set (a pure trunk
 // port). Trunks is rejected when OVS is false: a plain 802.1q sub-interface
 // always carries exactly one VID (Vid itself).
+// Gateway (T-703) is the sub-interface's default gateway, rendered as the
+// stanza's `gateway` option exactly like BridgeCreateParams.Gateway — added
+// for the dedicated-management-VLAN flow (docs/features/change-management.md
+// §5's VLAN editor never needed it, but a VLAN sub-interface *carrying the
+// node's management IP* must also carry the node's default route, or moving
+// management onto it silently strands off-subnet connectivity).
 type VlanCreateParams struct {
 	Parent    string     `json:"parent"`
+	Gateway   string     `json:"gateway,omitempty"`
 	Addresses []string   `json:"addresses,omitempty"`
 	Trunks    []VidRange `json:"trunks,omitempty"`
 	Vid       int        `json:"vid"`

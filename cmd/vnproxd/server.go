@@ -247,8 +247,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// shares (docs/architecture.md §2/§3). The notifier reuses sdnPVEClient
 	// (the collectors' read-only PVE identity) rather than building a
 	// third client.
+	//
+	// T-702: mgmtStatusAdapter is wired in now (findings.Engine is
+	// constructed before change.Service exists, below) and filled in with
+	// its real target once changeSvc is built — see the adapter's own doc
+	// comment (findings.go) for why.
+	mgmtAdapter := &mgmtStatusAdapter{}
 	findingsNotifier := setupFindingsNotifier(sdnPVEClient, logger)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, findingsNotifier, topoSvc, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, findingsNotifier, topoSvc, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -388,6 +394,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)
 	}
+	// T-702: point the findings engine's mgmt_single_path check at the now-
+	// real change.Service (see mgmtAdapter's construction/doc comment above).
+	mgmtAdapter.set(changeSvc)
 	// Re-arm commit-confirm rollback timers persisted across a restart, and
 	// recover any apply interrupted by a crash (docs/development.md: "Rollback
 	// timers must survive daemon restart ... re-armed on startup").
