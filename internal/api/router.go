@@ -137,6 +137,11 @@ type Options struct {
 	LocalNode         func() string
 	Logger            *slog.Logger
 	Version           string
+	// Instance is the non-secret operational config surfaced by GET
+	// /config (the Settings page's "Instance" section). Zero value is fine
+	// — the route still mounts and reports whatever's set (Version at
+	// minimum). Never populate it with a secret; see InstanceInfo.
+	Instance InstanceInfo
 }
 
 // NewRouter builds the vnproxd HTTP handler: the full middleware stack,
@@ -158,6 +163,14 @@ func NewRouter(opts Options) http.Handler {
 		r.Get("/health", healthHandler(opts.Version, opts.Collectors))
 		if opts.Auth != nil {
 			opts.Auth.MountRoutes(r)
+			// GET /config: non-secret instance config for the Settings page,
+			// gated behind a session + the same read capability every other
+			// read route uses.
+			r.Group(func(r chi.Router) {
+				r.Use(opts.Auth.SessionMiddleware)
+				r.Use(opts.Auth.RequireCap(capNetRead))
+				r.Get("/config", configHandler(opts.Instance))
+			})
 		}
 		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected)
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)

@@ -1728,6 +1728,25 @@ export interface ManagementPathRef {
  * live detection — an unconfirmed cluster still gets a display answer,
  * just an explicitly provisional one (docs/features/topology.md §3's
  * "source: detected caveat with a link to the onboarding protected step"). */
+/** GET `/config` (internal/api's InstanceInfo): the daemon's non-secret
+ * operational configuration, surfaced read-only in the Settings page's
+ * Instance section. Never carries a secret (token/key/password) — see
+ * internal/api/config.go. */
+export interface InstanceConfigResponse {
+  version: string;
+  listen: string;
+  pveApiUrl: string;
+  protectedPath: string;
+  pveInterval: string;
+  hostInterval: string;
+  lldpInterval: string;
+  confirmTimeoutDefaultSec: number;
+  snapshotKeepDays: number;
+  snapshotPinDays: number;
+  readOnly: boolean;
+  allowDangerousOps: boolean;
+}
+
 export interface ProtectedInterfacesStatusResponse {
   source: "confirmed" | "detected";
   nodes: Record<string, ManagementPathRef[]>;
