@@ -505,7 +505,24 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 
 	handler := api.NewRouter(api.Options{
-		Version:       version,
+		Version: version,
+		// Non-secret operational config for the Settings page's Instance
+		// section (GET /config). Deliberately excludes every secret/token/
+		// key/password — see api.InstanceInfo.
+		Instance: api.InstanceInfo{
+			Version:                  version,
+			Listen:                   cfg.Server.Listen,
+			PVEAPIURL:                cfg.PVE.APIURL,
+			ProtectedPath:            cfg.Safety.ProtectedPath,
+			PVEInterval:              cfg.Collect.PVEInterval.String(),
+			HostInterval:             cfg.Collect.HostInterval.String(),
+			LLDPInterval:             cfg.Collect.LLDPInterval.String(),
+			ConfirmTimeoutDefaultSec: cfg.Server.ConfirmTimeoutDefault,
+			SnapshotKeepDays:         cfg.Retention.SnapshotKeepDays,
+			SnapshotPinDays:          cfg.Retention.SnapshotPinDays,
+			ReadOnly:                 cfg.Server.ReadOnly,
+			AllowDangerousOps:        cfg.Safety.AllowDangerousOps,
+		},
 		DistFS:        distFS,
 		Logger:        logger,
 		Auth:          authServiceAdapter{authSvc},
