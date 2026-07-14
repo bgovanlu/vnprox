@@ -1,19 +1,16 @@
 package findings
 
-// IPAMProvider is the seam T-405's subnet/allocation conflict producer will
-// satisfy once that task lands. As of this task, internal/ipam is still a
-// stub package (only doc.go — see the T-602 completion report's note on
-// checking `git log -- internal/ipam` / planning/reports/T-405.md before
-// assuming otherwise), so there is nothing to adapt yet: Engine simply
-// contributes zero IPAM findings while Config.IPAM is nil.
+// IPAMProvider is the seam internal/ipam's subnet/allocation conflict
+// producer satisfies (via cmd/vnproxd's ipamFindingsAdapter, which converts
+// ipam.Conflict values into the unified Finding shape — the composition
+// root does the conversion so internal/ipam need not import this package).
+// Nil Config.IPAM still means "contribute zero IPAM findings" (degraded
+// mode with no PVE client), so the seam stays nil-safe.
 //
-// The seam already returns the unified Finding shape directly (Source:
-// SourceIPAM) rather than some IPAM-package-local type Engine would need to
-// adapt — T-405 can construct findings.Finding values straight away using
-// the same newHealthFinding-style helper this package's own health checks
-// use (or a small ipam-local equivalent), so wiring IPAM in later is a
-// one-line Config.IPAM assignment in cmd/vnproxd, not a redesign of this
-// package's producer contract.
+// The seam returns the unified Finding shape directly (Source: SourceIPAM),
+// so the producer/adapter constructs findings.Finding values straight away
+// rather than exposing an IPAM-package-local type Engine would have to
+// re-adapt.
 type IPAMProvider interface {
 	Findings() []Finding
 }
