@@ -9,6 +9,7 @@ import { SdnPage } from "./pages/SdnPage";
 import { FirewallPage } from "./pages/FirewallPage";
 import { IpamPage } from "./pages/IpamPage";
 import { ManagementPage } from "./pages/ManagementPage";
+import { PortsPage } from "./pages/PortsPage";
 import { BlueprintsPage } from "./pages/BlueprintsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { AuditPage } from "./pages/AuditPage";
@@ -36,6 +37,7 @@ export function App() {
             <Route path="/sdn" element={<SdnPage />} />
             <Route path="/firewall" element={<FirewallPage />} />
             <Route path="/ipam" element={<IpamPage />} />
+            <Route path="/ports" element={<PortsPage />} />
             <Route path="/blueprints" element={<BlueprintsPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/audit" element={<AuditPage />} />

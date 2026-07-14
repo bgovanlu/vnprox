@@ -1789,6 +1789,28 @@ export interface LldpResponse {
   items: LldpNeighbor[];
 }
 
+/** One row of GET /ports (internal/topology.PortRow) — the flat ports table
+ * (docs/features/lldp-discovery.md §2): each of this cluster's physical NICs
+ * paired with the switch/port LLDP says it connects to. `stale` is true once
+ * a neighbor has greyed (2×TTL) or aged past 10 minutes; stale rows are kept
+ * (unlike the map, which drops them) for troubleshooting unplugged links. */
+export interface PortRow {
+  node: string;
+  nic: string;
+  switch: string;
+  port: string;
+  speedDescr?: string;
+  taggedVlans?: number[];
+  speedMbps?: number;
+  pvid?: number;
+  lastSeen?: number;
+  stale: boolean;
+}
+
+export interface PortsResponse {
+  items: PortRow[];
+}
+
 /** POST /lldp/install request body — `confirm` must literally be `true` or
  * the server rejects with 400 `validation_failed`. */
 export interface LldpInstallRequest {
