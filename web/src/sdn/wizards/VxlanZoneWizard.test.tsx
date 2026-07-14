@@ -31,7 +31,7 @@ describe("VxlanZoneWizard — T-403 AC1 (golden ops) + peer auto-suggest", () =>
 
     // Step 2: vnet + mtu (leave mtu blank — the derivation shows 1450 as
     // the safe default without the field needing a value).
-    await user.type(screen.getByRole("textbox", { name: /^VNet name/ }), "vnet-overlay1");
+    await user.type(screen.getByRole("textbox", { name: /^VNet name/ }), "vnetovl1");
     fireEvent.change(screen.getByRole("spinbutton", { name: /^VNI/ }), { target: { value: "300" } });
     expect(screen.getByTestId("vxlan-mtu-math")).toHaveTextContent(
       "1500 (underlying network MTU) − 50 (VXLAN's wrapper overhead) = 1450",
@@ -54,7 +54,7 @@ describe("VxlanZoneWizard — T-403 AC1 (golden ops) + peer auto-suggest", () =>
       },
       {
         op: "sdn.vnet.create",
-        target: "sdn-vnet::overlay1/vnet-overlay1",
+        target: "sdn-vnet::overlay1/vnetovl1",
         params: { zone: "overlay1", tag: 300, vlanAware: false },
       },
       { op: "sdn.apply", params: {} },

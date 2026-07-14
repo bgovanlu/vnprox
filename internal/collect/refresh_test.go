@@ -42,8 +42,8 @@ func TestRefreshNow(t *testing.T) {
 	if got := atomic.LoadInt64(&deltaBatches); got != 1 {
 		t.Fatalf("delta batches after full refresh = %d, want exactly 1", got)
 	}
-	if got := graph.Snapshot().Len(); got != 35 {
-		t.Fatalf("entity count after full refresh = %d, want 35", got)
+	if got := graph.Snapshot().Len(); got != 36 {
+		t.Fatalf("entity count after full refresh = %d, want 36", got)
 	}
 
 	// --- targeted single-node refresh (no-op change, so its own delta is

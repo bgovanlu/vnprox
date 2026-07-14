@@ -11,6 +11,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
 import type { FindingSource, Severity } from "../api/types";
+import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
+import { mgmtStrings } from "../mgmt/strings";
 import { FindingsList } from "./FindingsList";
 import { EMPTY_FILTER, filterFindings, nodesIn, type FindingsFilterState } from "./filters";
 import { FINDINGS_QUERY_KEY, useFindingsQuery, useFindingsWsBridge, useFixFindingMutation } from "./queries";
@@ -31,6 +33,7 @@ const SEVERITY_LABELS: Record<Severity, string> = {
 export function FindingsStreamPanel() {
   const { data: findings, isLoading, error } = useFindingsQuery();
   const fixMutation = useFixFindingMutation();
+  const openMgmtWizard = useMgmtWizardStore((s) => s.open);
   const setActiveId = useChangesetDrawerStore((s) => s.setActiveId);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -135,15 +138,24 @@ export function FindingsStreamPanel() {
       </div>
 
       <FindingsList
-        findings={filtered.map((f) => ({
-          id: f.id,
-          severity: f.severity,
-          detail: f.detail,
-          nodes: f.nodes,
-          refs: f.refs,
-          fixable: f.fixable,
-          category: `${SOURCE_LABELS[f.source]} · ${f.check}`,
-        }))}
+        findings={filtered.map((f) => {
+          // T-703: the mgmt_single_path finding (detection-only, so never
+          // "fixable" via a computed changeset) launches the guided
+          // management-redundancy wizard for the named node instead.
+          const mgmtNode = f.check === "mgmt_single_path" ? f.nodes[0] : undefined;
+          return {
+            id: f.id,
+            severity: f.severity,
+            detail: f.detail,
+            nodes: f.nodes,
+            refs: f.refs,
+            fixable: f.fixable,
+            category: `${SOURCE_LABELS[f.source]} · ${f.check}`,
+            action: mgmtNode
+              ? { label: mgmtStrings.launch.button, onClick: () => { openMgmtWizard({ node: mgmtNode }); } }
+              : undefined,
+          };
+        })}
         onFix={(id) => {
           void handleFix(id);
         }}

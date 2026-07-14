@@ -19,6 +19,9 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildEvpnPreview, type EvpnZoneParams } from "./previewEntities";
+import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { SdnNameField } from "./SdnNameField";
+import { isValidIp, sdnNameError, subnetStepValid, vniError } from "./validation";
 import { wizardStrings } from "./strings";
 import { useClusterNodes } from "./useClusterNodes";
 import { useWizardCapability } from "./useWizardCapability";
@@ -56,12 +59,16 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
   const [exitNodes, setExitNodes] = useState<string[]>([]);
   const [vnetId, setVnetId] = useState("");
   const [vnetAlias, setVnetAlias] = useState("");
-  const [subnetCidr, setSubnetCidr] = useState("");
-  const [subnetGateway, setSubnetGateway] = useState("");
-  const [snat, setSnat] = useState(false);
+  const [vni, setVni] = useState(0);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
   const [finishing, setFinishing] = useState(false);
 
   const peerAddresses = useMemo(() => parseAddressList(peerAddressesText), [peerAddressesText]);
+  // Every entered peer must be a valid IP — a typo'd underlay address is a
+  // classic mid-apply PVE rejection (issue #3). An empty list is allowed
+  // (peers are optional in the wizard; the zone still validates).
+  const peerListError = peerAddresses.some((a) => !isValidIp(a)) ? "One or more peer addresses aren't valid IP addresses." : undefined;
+  const vniErr = vniError(vni);
 
   const params: EvpnZoneParams = useMemo(
     () => ({
@@ -70,16 +77,17 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
       memberNodes,
       vnetId,
       vnetAlias,
-      subnetCidr,
-      subnetGateway,
-      snat,
+      subnetCidr: subnet.cidr,
+      subnetGateway: subnet.gateway,
+      snat: subnet.snat,
       controller,
       asn,
       peerAddresses,
       exitNodes,
       vrfVxlan,
+      vni,
     }),
-    [zoneId, memberNodes, vnetId, vnetAlias, subnetCidr, subnetGateway, snat, controller, asn, peerAddresses, exitNodes, vrfVxlan],
+    [zoneId, memberNodes, vnetId, vnetAlias, subnet, controller, asn, peerAddresses, exitNodes, vrfVxlan, vni],
   );
 
   const graph = useMemo(() => buildEvpnPreview(params), [params]);
@@ -108,13 +116,11 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
     {
       id: "controller",
       title: "Controller",
-      isValid: zoneId.trim().length > 0 && memberNodes.length > 0,
+      isValid: zoneId.trim().length > 0 && memberNodes.length > 0 && !sdnNameError(zoneId) && !peerListError,
       content: (
         <div className="space-y-3">
           <p className="text-slate-600 dark:text-slate-300">{S.evpn.intro}</p>
-          <Field label="Name" help="e.g. dc-evpn. Lowercase letters/digits, unique cluster-wide.">
-            <input className={inputClass} value={zoneId} onChange={(e) => { setZoneId(e.target.value); }} placeholder="dc-evpn" />
-          </Field>
+          <SdnNameField label="Name" help={S.common.zoneNameHelp} value={zoneId} onChange={setZoneId} placeholder="dcevpn" />
           <NodeCheckboxList
             label="Member nodes"
             help={S.common.memberNodesHelp}
@@ -128,7 +134,11 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
           <Field label="ASN (preview only)" help={S.evpn.asnHelp}>
             <input type="number" className={inputClass} value={asn || ""} onChange={(e) => { setAsn(Number(e.target.value)); }} placeholder="65000" />
           </Field>
-          <Field label="Peer addresses" help="Comma-separated underlay IPs — draws the BGP session graph below.">
+          <Field
+            label="Peer addresses"
+            help="Comma-separated underlay IPs — draws the BGP session graph below."
+            errors={peerListError ? [peerListError] : undefined}
+          >
             <input
               className={inputClass}
               value={peerAddressesText}
@@ -166,31 +176,17 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
     {
       id: "vnet",
       title: "VMs attach here",
-      isValid: vnetId.trim().length > 0,
+      isValid: vnetId.trim().length > 0 && !sdnNameError(vnetId) && !vniError(vni) && subnetStepValid(subnet),
       content: (
         <div className="space-y-3">
-          <Field label="VNet name" help="e.g. vnet-dc1. Unique cluster-wide.">
-            <input className={inputClass} value={vnetId} onChange={(e) => { setVnetId(e.target.value); }} placeholder="vnet-dc1" />
-          </Field>
+          <SdnNameField label="VNet name" help={S.common.vnetNameHelp} value={vnetId} onChange={setVnetId} placeholder="vnetdc1" />
           <Field label="Alias" help={S.common.vnetAliasHelp}>
             <input className={inputClass} value={vnetAlias} onChange={(e) => { setVnetAlias(e.target.value); }} />
           </Field>
-          <Field label="Address range (CIDR, optional)" help={S.common.cidrHelp}>
-            <input className={inputClass} value={subnetCidr} onChange={(e) => { setSubnetCidr(e.target.value); }} placeholder="10.80.0.0/24" />
+          <Field label="VNI" help={S.vxlan.vniHelp} errors={vniErr ? [vniErr] : undefined}>
+            <input type="number" className={inputClass} value={vni || ""} onChange={(e) => { setVni(Number(e.target.value)); }} min={1} max={4094} />
           </Field>
-          {subnetCidr && (
-            <>
-              <Field label="Gateway" help={S.common.gatewayHelp}>
-                <input className={inputClass} value={subnetGateway} onChange={(e) => { setSubnetGateway(e.target.value); }} placeholder="10.80.0.1" />
-              </Field>
-              <Field label="Internet access (SNAT)" help={S.common.snatHelp}>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={snat} onChange={(e) => { setSnat(e.target.checked); }} />
-                  Enable SNAT
-                </label>
-              </Field>
-            </>
-          )}
+          <SubnetStep zoneType="evpn" value={subnet} onChange={setSubnet} evpnExitNodeCount={exitNodes.length} />
         </div>
       ),
     },
@@ -211,8 +207,13 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
             {controller && <li>Referencing controller &quot;{controller}&quot;</li>}
             {exitNodes.length > 0 && <li>Exit nodes: {exitNodes.join(", ")} (primary: {exitNodes[0]})</li>}
             {peerAddresses.length > 0 && <li>Peers: {peerAddresses.join(", ")}</li>}
-            <li>VNet &quot;{vnetId}&quot;</li>
-            {subnetCidr && <li>Subnet {subnetCidr}{snat ? " with SNAT" : ""}</li>}
+            <li>VNet &quot;{vnetId}&quot;{vni ? ` (VNI ${String(vni)})` : ""}</li>
+            {subnet.cidr && (
+              <li>
+                Subnet {subnet.cidr}
+                {subnet.isolated ? " (no gateway)" : subnet.snat ? " with SNAT" : ""}
+              </li>
+            )}
           </ul>
         </div>
       ),

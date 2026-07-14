@@ -13,6 +13,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { path: "/topology", label: "Topology", glyph: "T" },
+  { path: "/management", label: "Management", glyph: "M" },
   { path: "/guests", label: "Guests", glyph: "V" },
   { path: "/sdn", label: "SDN", glyph: "S" },
   { path: "/firewall", label: "Firewall", glyph: "F" },

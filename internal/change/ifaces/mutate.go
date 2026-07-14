@@ -41,6 +41,8 @@ func Mutate(f *host.File, op Op, changesetID string) error {
 		return mutateVlanUpdate(f, o, nl)
 	case VlanDelete:
 		return mutateVlanDelete(f, o, nl)
+	case IfaceRename:
+		return mutateIfaceRename(f, o, nl)
 	case IfaceRawReplace:
 		return mutateIfaceRawReplace(f, o)
 	default:

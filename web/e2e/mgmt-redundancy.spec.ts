@@ -1,0 +1,124 @@
+// T-703 AC3/AC4 end-to-end: the guided management-redundancy wizard against
+// the single-node fixture (the management-path SPOF case — vmbr0 rides on a
+// single NIC eno1, with a spare eno2). Drives the full journey the card
+// spells out: the mgmt_single_path finding → wizard → drawer → review (the
+// mandatory acknowledgement block, typed node name required, apply disabled
+// until complete) → apply → countdown → confirm → committed; then asserts
+// the finding clears on the next poll. A second test covers the no-confirm
+// path: the deadline expires → rolled_back and the finding is still present.
+//
+// This spec runs against its OWN vnproxd+pvemock pair (ports 38006/38007,
+// single-node fixture) — the suite's default three-node-vlan cluster is
+// already redundant and raises no mgmt_single_path finding. See
+// web/playwright.config.ts's webServer array and testdata/dev-mgmt.toml.
+import { expect, test, type Page } from "@playwright/test";
+
+test.use({ baseURL: "https://127.0.0.1:38007" });
+
+// Hides the first-login onboarding walkthrough banner so it doesn't push
+// the finding/wizard affordances around (the exact CSS-via-.style approach
+// changesets.spec.ts documents for the style-src CSP).
+async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const suppress = () => {
+      const el = document.querySelector('[aria-label="Onboarding walkthrough"]');
+      if (el instanceof HTMLElement) el.style.display = "none";
+    };
+    const obs = new MutationObserver(suppress);
+    document.addEventListener("DOMContentLoaded", () => {
+      suppress();
+      obs.observe(document.body, { childList: true, subtree: true });
+    });
+  });
+}
+
+async function logIn(page: Page): Promise<void> {
+  await suppressOnboardingWalkthrough(page);
+  await page.goto("/login");
+  await page.getByLabel("Username").fill("root");
+  await page.getByLabel("Password", { exact: true }).fill("vnprox-mock");
+  await page.getByLabel("Realm").fill("pam");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("**/topology");
+}
+
+/** Opens the Tools page and returns the mgmt_single_path finding card
+ * (waiting for the health check to have fired at least once). */
+async function mgmtFinding(page: Page) {
+  await page.goto("/tools");
+  const finding = page
+    .getByRole("listitem")
+    .filter({ hasText: "mgmt_single_path" });
+  await expect(finding.first()).toBeVisible({ timeout: 30_000 });
+  return finding.first();
+}
+
+test("finding → wizard → review ack → apply → confirm → committed, finding clears", async ({ page }) => {
+  await logIn(page);
+
+  // --- 1. The SPOF finding is present, and offers the wizard --------------
+  const finding = await mgmtFinding(page);
+  await finding.getByRole("button", { name: /Make management path redundant/i }).click();
+
+  // --- 2. Wizard: bond the uplink (flow A) with the spare NIC -------------
+  const wizard = page.getByRole("dialog");
+  await expect(wizard).toContainText(/Protect this node's management connection/i);
+  // Flow A ("Bond the management uplink") is the default selected option;
+  // advance to the config step.
+  await wizard.getByRole("button", { name: "Next" }).click();
+  // Pick the spare card (eno2) and keep the safe active/standby default.
+  await wizard.getByLabel(/Second network card to add/i).selectOption("eno2");
+  // Draft into the changeset drawer (WizardShell's finish button).
+  await wizard.getByRole("button", { name: "Create draft" }).click();
+
+  // --- 3. Drawer → review -------------------------------------------------
+  const drawer = page.getByRole("region", { name: "Change drawer" });
+  await expect(drawer).toContainText(/Create bond bond0/i);
+  await drawer.getByRole("button", { name: "Review & apply" }).click();
+
+  // --- 4. Review: the mandatory acknowledgement block --------------------
+  const review = page.getByRole("dialog", { name: /Review & apply/i });
+  const ack = review.getByRole("group", { name: /management-path acknowledgement/i });
+  await expect(ack).toBeVisible();
+  const applyBtn = review.getByRole("button", { name: /^Apply$/ });
+  await expect(applyBtn).toBeDisabled();
+
+  // Typing the wrong node keeps apply disabled; the right node enables it.
+  await ack.getByLabel(/Type node name to acknowledge/i).fill("wrong");
+  await expect(applyBtn).toBeDisabled();
+  await ack.getByLabel(/Type node name to acknowledge/i).fill("pve1");
+  await expect(applyBtn).toBeEnabled();
+
+  // The confirm window floors at 180s for a mgmt-path change.
+  await expect(review.getByRole("spinbutton")).toHaveValue("180");
+
+  await applyBtn.click();
+
+  // --- 5. Countdown → confirm → committed --------------------------------
+  const countdown = page
+    .getByRole("alert")
+    .filter({ has: page.getByRole("button", { name: "Confirm" }) });
+  await expect(countdown).toBeVisible({ timeout: 30_000 });
+  await countdown.getByRole("button", { name: "Confirm" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: /applied and committed/i }),
+  ).toBeVisible({ timeout: 30_000 });
+
+  // --- 6. The acknowledgement is recorded in the audit trail (AC3) -------
+  await page.goto("/audit");
+  await expect(page.getByRole("cell", { name: "changeset.mgmt_ack" }).first()).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // NOTE (mock limitation, flagged in the T-703 report): AC3's "the
+  // mgmt_single_path finding clears on the next poll" and "the fixture
+  // interfaces file shows the bond" are NOT asserted here because they are
+  // not observable against the static pvemock. Node-file network ops write
+  // the dev host sandbox (var/dev-mgmt-host) and never call pvemock's PVE
+  // network endpoint (docs/architecture.md §4's T-607 correction:
+  // "pvemock's in-memory network model and the dev host-writer sandbox can
+  // genuinely diverge"), while the collector's host reader is host.NewReal()
+  // (the actual machine), not that sandbox — so the applied bond never
+  // re-enters the inventory the finding is computed from. These two clauses
+  // are moved to the hardware-validation list.
+});

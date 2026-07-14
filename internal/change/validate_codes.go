@@ -24,12 +24,41 @@ const (
 	codeMACInvalid           = "schema.mac_invalid"
 	codeDHCPRangeInvalid     = "schema.dhcp_range_invalid"
 	codeSDNZoneTypeInvalid   = "schema.sdn_zone_type_invalid"
-	codeRateInvalid          = "schema.rate_invalid"
-	codeFwDirectionInvalid   = "schema.fw_direction_invalid"
-	codeFwActionInvalid      = "schema.fw_action_invalid"
-	codeFwPolicyInvalid      = "schema.fw_policy_invalid"
-	codeFwLogInvalid         = "schema.fw_log_invalid"
-	codeFwPosInvalid         = "schema.fw_pos_invalid"
+	// codeSDNNameInvalid flags an sdn.zone.create/vnet.create whose id
+	// contains characters real PVE's SDN id format rejects. Real PVE
+	// validates zone/vnet ids against (case-insensitively) `[a-z][a-z0-9]*`
+	// — a letter followed by letters/digits, no hyphens/underscores/dots/
+	// whitespace — before it will stage the config, so an ill-formed id is
+	// the classic mid-apply "Parameter verification failed" (issue #3). This
+	// is a context-free per-op charset check (schema class); the *length*
+	// limit PVE also enforces is deliberately NOT a blocking error here —
+	// the exact cap is version-dependent and unverified against live PVE
+	// (needs-hardware-validation), and existing golden fixtures/tests carry
+	// longer ids — so length is surfaced as a non-blocking wizard warning
+	// (web/src/sdn/wizards/validation.ts) instead.
+	codeSDNNameInvalid = "schema.sdn_name_invalid"
+	// codeGatewayNotInSubnet is T-701 acceptance criterion 2: a
+	// sdn.subnet.create/update whose gateway is a syntactically valid IP
+	// (codeIPInvalid already covers "not an IP at all") but does not fall
+	// inside the subnet's own CIDR — real PVE's SubnetPlugin rejects this
+	// at subnet stage time (T-701 root-cause analysis §4), so it is a
+	// schema-class error (pure, per-op: the subnet's CIDR is always known
+	// from the op itself — SdnSubnetCreateParams.CIDR, or op.Target.ID for
+	// an update, per that param type's own doc comment that Target.ID
+	// *is* the CIDR) rather than needing the sdn class's cross-op
+	// projection fold.
+	codeGatewayNotInSubnet = "schema.gateway_not_in_subnet"
+	// codeIfaceNameInvalid flags an iface.rename whose new name is empty or
+	// not a valid Linux interface name (issue #2): at most 15 characters
+	// (IFNAMSIZ-1), a leading alphanumeric, then alphanumerics and `._-`
+	// only — no whitespace or slash, which the kernel/ifupdown2 reject.
+	codeIfaceNameInvalid   = "schema.iface_name_invalid"
+	codeRateInvalid        = "schema.rate_invalid"
+	codeFwDirectionInvalid = "schema.fw_direction_invalid"
+	codeFwActionInvalid    = "schema.fw_action_invalid"
+	codeFwPolicyInvalid    = "schema.fw_policy_invalid"
+	codeFwLogInvalid       = "schema.fw_log_invalid"
+	codeFwPosInvalid       = "schema.fw_pos_invalid"
 	// codeOVSTrunkNotAllowed flags a vlan.create with a non-empty Trunks
 	// list but OVS false: trunks are an OVS Int Port concept (ovs-vsctl's
 	// Port "trunks" column) — a plain 802.1q sub-interface always carries
@@ -50,10 +79,13 @@ const (
 	codeVnetNotFound         = "referential.vnet_not_found"
 	codeNodeNotFound         = "referential.node_not_found"
 	codeBridgeOrVnetNotFound = "referential.bridge_or_vnet_not_found"
-	codeVIDOverlap           = "referential.vid_overlap"
-	codeAddressOverlap       = "referential.address_overlap"
-	codeAddressOutOfSubnet   = "referential.address_out_of_subnet"
-	codeFwPosOutOfRange      = "referential.fw_pos_out_of_range"
+	// codeRenameTargetExists flags an iface.rename whose new name already
+	// names another interface on the same node (issue #2).
+	codeRenameTargetExists = "referential.rename_target_exists"
+	codeVIDOverlap         = "referential.vid_overlap"
+	codeAddressOverlap     = "referential.address_overlap"
+	codeAddressOutOfSubnet = "referential.address_out_of_subnet"
+	codeFwPosOutOfRange    = "referential.fw_pos_out_of_range"
 	// codeOVSKindMismatch (T-407) flags mixing Linux-bridge/bond entities
 	// into an OVS bridge/bond's port/slave list or vice versa (docs/features/
 	// change-management.md §5's OVS kind-selector spec: "mixing Linux-bridge
@@ -80,6 +112,21 @@ const (
 
 	codeProtectedInterface = "safety.protected_interface"
 	codeGuestBearingBridge = "safety.guest_bearing_bridge"
+	// codeRenameGuestsAttached flags an iface.rename of a bridge/vlan with
+	// running guests still attached to its old name (issue #2): guest
+	// bridge= bindings live in PVE guest config, which this file-only op
+	// does not rewrite, so the rename would orphan them. Net-effect-aware
+	// (a same-changeset guest.nic.update reattaching them clears it) and
+	// AllowDangerousOps-downgradable, exactly like codeGuestBearingBridge.
+	codeRenameGuestsAttached = "safety.rename_guests_attached"
+	// codeSubnetHasAllocations is T-402's other listed deletion guard
+	// (validate_safety.go's subnetDeletionGuardFindings, closed out after
+	// T-405 gave this package a live cluster-wide IPAM read to check
+	// against): sdn.subnet.delete on a subnet that still has one or more
+	// active IPAM allocations (net-effect-aware — an ipam.alloc.delete in
+	// the same changeset clears the count, mirroring codeGuestBearingBridge's
+	// reattach-in-same-changeset pattern).
+	codeSubnetHasAllocations = "safety.subnet_has_allocations"
 
 	// --- sdn (T-402: docs/features/sdn.md §4's documented pre-apply
 	// validation — "zone node coverage, bridge existence on member nodes,
@@ -92,6 +139,35 @@ const (
 
 	codeSDNBridgeMissing = "sdn.bridge_missing_on_node"
 	codeSDNTagDuplicate  = "sdn.tag_duplicate"
+	// codeSDNVNIRequired flags a vnet in a vxlan/evpn zone whose effective
+	// tag (the VNI, for those zone types) is 0. Real PVE requires a VNI for
+	// a vxlan/evpn vnet and rejects one without at stage time — the guided
+	// EVPN/VXLAN wizards used to draft tag 0 silently (issue #3). Zone-type-
+	// aware and net-effect-folded like its sdn-class siblings, so a vnet and
+	// the zone that gives it its type created in the same changeset are
+	// resolved together.
+	codeSDNVNIRequired = "sdn.vni_required"
+	// codeSNATRequiresGateway is T-701 acceptance criterion 2: a subnet
+	// whose *effective* state (this changeset's own net effect, folded
+	// over the base snapshot — see effectiveSubnets) has snat=true but no
+	// gateway. Real PVE's SubnetPlugin rejects this shape at subnet stage
+	// time (T-701 root-cause analysis §4: "SNAT + no gateway"), so it is
+	// blocking like its sdn-class siblings above, not merely advisory.
+	codeSNATRequiresGateway = "sdn.snat_requires_gateway"
+	// codeEvpnGatewayMissing and codeSNATRequiresExitNode are T-701
+	// acceptance criterion 3: real PVE *accepts* both shapes (unlike
+	// codeSNATRequiresGateway's blocking case above), but traffic through
+	// the subnet is silently broken — an EVPN subnet's anycast gateway is
+	// never realized on any node with no gateway configured, and SNAT
+	// traffic has nowhere to leave through when its EVPN zone has no
+	// effective exit nodes (T-701 root-cause analysis §4). Both are
+	// SeverityWarning, emitted by advisoryValidate (validate_advisory.go's
+	// evpnSubnetAdvisoryFindings) rather than sdnValidate — the effective-
+	// state fold they need (subnet -> vnet -> zone) is SDN-shaped, so the
+	// code string stays in this "sdn." namespace even though the class
+	// that emits it does not.
+	codeEvpnGatewayMissing   = "sdn.evpn_gateway_missing"
+	codeSNATRequiresExitNode = "sdn.snat_requires_exit_node"
 
 	// --- advisory (class 5: style/health warnings) ----------------------
 

@@ -134,6 +134,124 @@ func TestSdnValidate_VnetTagUniqueness(t *testing.T) {
 	})
 }
 
+// --- SNAT requires gateway (T-701 acceptance criterion 2) ------------------
+
+func TestSdnValidate_SNATRequiresGateway(t *testing.T) {
+	zone1 := &inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "zone1"), ID: "zone1", Type: "vxlan"}
+	vnet1 := &inventory.SdnVnet{Ref: testRef(inventory.KindSDNVnet, "", "zone1/vnet1"), ID: "zone1/vnet1", Zone: "zone1"}
+
+	t.Run("snat true with no gateway on a single create errors with a fix", func(t *testing.T) {
+		snap := buildSnapshot(zone1, vnet1)
+		target := testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24")
+		ops := []Op{mkOp(OpSdnSubnetCreate, target, &SdnSubnetCreateParams{Vnet: "zone1/vnet1", CIDR: "10.50.0.0/24", SNAT: true})}
+		findings := sdnValidate(ops, snap)
+		if len(findings) != 1 {
+			t.Fatalf("got %d findings, want 1: %+v", len(findings), findings)
+		}
+		f := findings[0]
+		if f.Severity != SeverityError || f.Code != codeSNATRequiresGateway || f.Ref != target.String() {
+			t.Fatalf("finding = %+v", f)
+		}
+		if len(f.Fix) != 1 || f.Fix[0].Type != OpSdnSubnetCreate || f.Fix[0].Target != target {
+			t.Fatalf("fix = %+v, want a single sdn.subnet.create op for the same target", f.Fix)
+		}
+		fixed, ok := f.Fix[0].Params.(*SdnSubnetCreateParams)
+		if !ok || fixed.Gateway != "10.50.0.1" {
+			t.Fatalf("fix params = %+v, want gateway 10.50.0.1", f.Fix[0].Params)
+		}
+	})
+
+	t.Run("snat false with no gateway is clean (a legitimately isolated network)", func(t *testing.T) {
+		snap := buildSnapshot(zone1, vnet1)
+		ops := []Op{mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24"),
+			&SdnSubnetCreateParams{Vnet: "zone1/vnet1", CIDR: "10.50.0.0/24"})}
+		findings := sdnValidate(ops, snap)
+		assertFindings(t, findings, nil)
+	})
+
+	t.Run("snat true with a gateway is clean", func(t *testing.T) {
+		snap := buildSnapshot(zone1, vnet1)
+		ops := []Op{mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24"),
+			&SdnSubnetCreateParams{Vnet: "zone1/vnet1", CIDR: "10.50.0.0/24", Gateway: "10.50.0.1", SNAT: true})}
+		findings := sdnValidate(ops, snap)
+		assertFindings(t, findings, nil)
+	})
+
+	t.Run("existing subnet updated to snat=true with no effective gateway errors, fix targets the update op", func(t *testing.T) {
+		existing := &inventory.SdnSubnet{Ref: testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24"), ID: "10.50.0.0/24", Vnet: "zone1/vnet1"}
+		snap := buildSnapshot(zone1, vnet1, existing)
+		target := testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24")
+		ops := []Op{mkOp(OpSdnSubnetUpdate, target, &SdnSubnetUpdateParams{SNAT: boolPtr(true)})}
+		findings := sdnValidate(ops, snap)
+		if len(findings) != 1 {
+			t.Fatalf("got %d findings, want 1: %+v", len(findings), findings)
+		}
+		f := findings[0]
+		if f.Code != codeSNATRequiresGateway {
+			t.Fatalf("finding = %+v", f)
+		}
+		if len(f.Fix) != 1 || f.Fix[0].Type != OpSdnSubnetUpdate {
+			t.Fatalf("fix = %+v, want a single sdn.subnet.update op", f.Fix)
+		}
+	})
+
+	t.Run("gateway established by an earlier subnet.update in the same changeset clears the error", func(t *testing.T) {
+		existing := &inventory.SdnSubnet{Ref: testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24"), ID: "10.50.0.0/24", Vnet: "zone1/vnet1"}
+		snap := buildSnapshot(zone1, vnet1, existing)
+		target := testRef(inventory.KindSDNSubnet, "", "10.50.0.0/24")
+		ops := []Op{
+			mkOp(OpSdnSubnetUpdate, target, &SdnSubnetUpdateParams{Gateway: strPtr("10.50.0.1")}),
+			mkOp(OpSdnSubnetUpdate, target, &SdnSubnetUpdateParams{SNAT: boolPtr(true)}),
+		}
+		findings := sdnValidate(ops, snap)
+		assertFindings(t, findings, nil)
+	})
+}
+
+// --- EVPN subnet advisories (T-701 acceptance criterion 3) -----------------
+
+func TestAdvisoryValidate_EvpnSubnet(t *testing.T) {
+	evpnZone := &inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "evpnz"), ID: "evpnz", Type: "evpn", ExitNodes: []string{"pve1"}}
+	evpnVnet := &inventory.SdnVnet{Ref: testRef(inventory.KindSDNVnet, "", "evpnz/vnet1"), ID: "evpnz/vnet1", Zone: "evpnz"}
+	vlanZone := &inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "vlanz"), ID: "vlanz", Type: "vlan"}
+	vlanVnet := &inventory.SdnVnet{Ref: testRef(inventory.KindSDNVnet, "", "vlanz/vnet1"), ID: "vlanz/vnet1", Zone: "vlanz"}
+
+	t.Run("evpn subnet with no gateway warns", func(t *testing.T) {
+		snap := buildSnapshot(evpnZone, evpnVnet)
+		target := testRef(inventory.KindSDNSubnet, "", "10.5.0.0/24")
+		ops := []Op{mkOp(OpSdnSubnetCreate, target, &SdnSubnetCreateParams{Vnet: "evpnz/vnet1", CIDR: "10.5.0.0/24"})}
+		findings := advisoryValidate(ops, snap, nil)
+		assertFindings(t, findings, []wantFinding{{SeverityWarning, codeEvpnGatewayMissing, target.String()}})
+	})
+
+	t.Run("evpn subnet with snat but the zone's exit nodes were removed in the same changeset warns", func(t *testing.T) {
+		snap := buildSnapshot(evpnZone, evpnVnet)
+		target := testRef(inventory.KindSDNSubnet, "", "192.168.50.0/24")
+		ops := []Op{
+			mkOp(OpSdnZoneUpdate, evpnZone.Ref, &SdnZoneUpdateParams{ExitNodes: strsPtr()}),
+			mkOp(OpSdnSubnetCreate, target, &SdnSubnetCreateParams{Vnet: "evpnz/vnet1", CIDR: "192.168.50.0/24", Gateway: "192.168.50.1", SNAT: true}),
+		}
+		findings := advisoryValidate(ops, snap, nil)
+		assertFindings(t, findings, []wantFinding{{SeverityWarning, codeSNATRequiresExitNode, target.String()}})
+	})
+
+	t.Run("evpn subnet with gateway, snat, and an exit node is clean", func(t *testing.T) {
+		snap := buildSnapshot(evpnZone, evpnVnet)
+		ops := []Op{mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "192.168.50.0/24"),
+			&SdnSubnetCreateParams{Vnet: "evpnz/vnet1", CIDR: "192.168.50.0/24", Gateway: "192.168.50.1", SNAT: true})}
+		findings := advisoryValidate(ops, snap, nil)
+		assertFindings(t, findings, nil)
+	})
+
+	t.Run("a non-evpn zone's gatewayless subnet never warns", func(t *testing.T) {
+		snap := buildSnapshot(vlanZone, vlanVnet)
+		ops := []Op{mkOp(OpSdnSubnetCreate, testRef(inventory.KindSDNSubnet, "", "10.30.0.0/24"),
+			&SdnSubnetCreateParams{Vnet: "vlanz/vnet1", CIDR: "10.30.0.0/24"})}
+		findings := advisoryValidate(ops, snap, nil)
+		assertFindings(t, findings, nil)
+	})
+}
+
 // --- VXLAN MTU advisory (T-402 acceptance criterion 3) ---------------------
 
 func TestAdvisoryValidate_VxlanMTU(t *testing.T) {
@@ -322,6 +440,112 @@ func TestSafetyValidate_VnetDeletionGuard(t *testing.T) {
 	t.Run("deleting an unrelated vnet has no interlock finding", func(t *testing.T) {
 		unrelated := mkOp(OpSdnVnetDelete, vnet2, &SdnVnetDeleteParams{})
 		findings := safetyValidate([]Op{unrelated}, vnetGuestBearingSnapshot(), SafetyOptions{})
+		assertFindings(t, findings, nil)
+	})
+}
+
+// --- subnet-with-allocations deletion (T-402's deferred deliverable,
+// closed out by T-405's AllocationsSource feed) ------------------------------
+
+func TestSafetyValidate_SubnetDeletionGuard(t *testing.T) {
+	subnet1 := testRef(inventory.KindSDNSubnet, "", "10.0.0.0/24")
+	subnet2 := testRef(inventory.KindSDNSubnet, "", "10.0.1.0/24")
+	deleteOp := mkOp(OpSdnSubnetDelete, subnet1, &SdnSubnetDeleteParams{})
+
+	fourAllocs := []DHCPRangeAllocation{
+		{Subnet: "10.0.0.0/24", IP: "10.0.0.5", Hostname: "web01"},
+		{Subnet: "10.0.0.0/24", IP: "10.0.0.6", Hostname: "web02"},
+		{Subnet: "10.0.0.0/24", IP: "10.0.0.7", Hostname: "web03"},
+		{Subnet: "10.0.0.0/24", IP: "10.0.0.8", Hostname: "web04"},
+	}
+
+	t.Run("deleting a subnet with active allocations errors, naming the count and example IPs", func(t *testing.T) {
+		findings := safetyValidate([]Op{deleteOp}, buildSnapshot(), SafetyOptions{Allocations: fourAllocs})
+		if len(findings) != 1 {
+			t.Fatalf("got %d findings, want 1: %+v", len(findings), findings)
+		}
+		f := findings[0]
+		if f.Severity != SeverityError || f.Code != codeSubnetHasAllocations || f.Ref != subnet1.String() {
+			t.Errorf("finding = %+v", f)
+		}
+		if !strings.Contains(f.Message, "4") {
+			t.Errorf("message %q does not mention the allocation count", f.Message)
+		}
+		// Only a couple of example IPs are expected, not all four.
+		exampleCount := 0
+		for _, ip := range []string{"10.0.0.5", "10.0.0.6", "10.0.0.7", "10.0.0.8"} {
+			if strings.Contains(f.Message, ip) {
+				exampleCount++
+			}
+		}
+		if exampleCount == 0 || exampleCount >= 4 {
+			t.Errorf("message %q should list a couple of example IPs, not none or all four: got %d", f.Message, exampleCount)
+		}
+	})
+
+	t.Run("deleting a subnet with no allocations is clean", func(t *testing.T) {
+		findings := safetyValidate([]Op{deleteOp}, buildSnapshot(), SafetyOptions{})
+		assertFindings(t, findings, nil)
+	})
+
+	t.Run("allocations on a different subnet don't block this one", func(t *testing.T) {
+		other := []DHCPRangeAllocation{{Subnet: subnet2.ID, IP: "10.0.1.5", Hostname: "web01"}}
+		findings := safetyValidate([]Op{deleteOp}, buildSnapshot(), SafetyOptions{Allocations: other})
+		assertFindings(t, findings, nil)
+	})
+
+	t.Run("gateway addresses never count (excluded upstream from the Allocations feed, like a subnet with only a gateway configured)", func(t *testing.T) {
+		// dhcpAllocationsAdapter (cmd/vnproxd) excludes every gateway
+		// allocation before this data ever reaches internal/change — a
+		// subnet whose only reservation is its gateway therefore presents
+		// as zero allocations here, the same as the no-allocations case.
+		findings := safetyValidate([]Op{deleteOp}, buildSnapshot(), SafetyOptions{})
+		assertFindings(t, findings, nil)
+	})
+
+	t.Run("releasing every allocation in the same changeset (e.g. draining a DHCP-range's reservations before deleting) clears the error", func(t *testing.T) {
+		ops := []Op{
+			deleteOp,
+			mkOp(OpIpamAllocDelete, subnet1, &IpamAllocDeleteParams{CIDR: "10.0.0.5/32"}),
+			mkOp(OpIpamAllocDelete, subnet1, &IpamAllocDeleteParams{CIDR: "10.0.0.6/32"}),
+			mkOp(OpIpamAllocDelete, subnet1, &IpamAllocDeleteParams{CIDR: "10.0.0.7/32"}),
+			mkOp(OpIpamAllocDelete, subnet1, &IpamAllocDeleteParams{CIDR: "10.0.0.8/32"}),
+		}
+		findings := safetyValidate(ops, buildSnapshot(), SafetyOptions{Allocations: fourAllocs})
+		assertFindings(t, findings, nil)
+	})
+
+	t.Run("releasing only some allocations leaves the error naming the still-active ones", func(t *testing.T) {
+		ops := []Op{
+			deleteOp,
+			mkOp(OpIpamAllocDelete, subnet1, &IpamAllocDeleteParams{CIDR: "10.0.0.5/32"}),
+			mkOp(OpIpamAllocDelete, subnet1, &IpamAllocDeleteParams{CIDR: "10.0.0.6/32"}),
+		}
+		findings := safetyValidate(ops, buildSnapshot(), SafetyOptions{Allocations: fourAllocs})
+		if len(findings) != 1 {
+			t.Fatalf("got %d findings, want 1: %+v", len(findings), findings)
+		}
+		if !strings.Contains(findings[0].Message, "2") {
+			t.Errorf("message %q should say 2 remaining allocations", findings[0].Message)
+		}
+		if strings.Contains(findings[0].Message, "10.0.0.5") || strings.Contains(findings[0].Message, "10.0.0.6") {
+			t.Errorf("message %q must not mention the released addresses", findings[0].Message)
+		}
+	})
+
+	t.Run("allow_dangerous_ops downgrades to a warning", func(t *testing.T) {
+		findings := safetyValidate([]Op{deleteOp}, buildSnapshot(), SafetyOptions{Allocations: fourAllocs, AllowDangerousOps: true})
+		if len(findings) != 1 {
+			t.Fatalf("got %d findings, want 1: %+v", len(findings), findings)
+		}
+		if findings[0].Severity != SeverityWarning {
+			t.Errorf("severity = %s, want warning", findings[0].Severity)
+		}
+	})
+
+	t.Run("a subnet.update op is never mistaken for a delete", func(t *testing.T) {
+		update := mkOp(OpSdnSubnetUpdate, subnet1, &SdnSubnetUpdateParams{})
+		findings := safetyValidate([]Op{update}, buildSnapshot(), SafetyOptions{Allocations: fourAllocs})
 		assertFindings(t, findings, nil)
 	})
 }

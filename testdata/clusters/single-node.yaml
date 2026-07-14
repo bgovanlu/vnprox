@@ -45,6 +45,17 @@ nodes:
         method: manual
         autostart: true
         mtu: 1500
+      # eno2 (T-702): a spare, unconfigured NIC — not a bridge port, not
+      # enslaved to anything. Proves the management-path resolver only walks
+      # the actual mgmt carrier's path (vmbr0 -> eno1) and never sweeps in an
+      # unrelated NIC just because it's link-up on the same node; also the
+      # redundancy candidate T-703's "bond the management uplink" wizard
+      # picks from.
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
       - iface: vmbr0
         type: bridge
         method: static
@@ -63,6 +74,14 @@ nodes:
         duplex: full
         link_up: true
         pci_addr: "0000:01:00.0"
+        mtu: 1500
+      eno2:
+        mac: "bc:24:11:00:00:02"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.1"
         mtu: 1500
       vmbr0:
         mac: "bc:24:11:00:00:01"

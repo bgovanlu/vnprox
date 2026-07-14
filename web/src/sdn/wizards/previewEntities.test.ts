@@ -160,6 +160,7 @@ describe("buildEvpnPreview", () => {
     peerAddresses: ["10.10.0.11", "10.10.0.12", "10.10.0.13"],
     exitNodes: ["pve1"],
     vrfVxlan: 0,
+    vni: 100,
   };
 
   it("renders the correct BGP session graph for a 3-peer input — T-403 AC3", () => {

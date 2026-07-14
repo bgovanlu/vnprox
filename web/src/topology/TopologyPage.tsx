@@ -422,7 +422,7 @@ function TopologyPageContent() {
         </div>
       )}
 
-      {overCap && viewMode === "graph" && (
+      {overCap && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
           This cluster has {elements.nodes.length + elements.edges.length} visible elements — above the ~2,000
           render cap (docs/features/topology.md §4). Use the VLAN filter or a layer toggle to narrow the view.

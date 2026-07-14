@@ -32,16 +32,44 @@ func (srv *Server) mountIPAM(api chi.Router) {
 }
 
 func (srv *Server) handleIPAMList(w http.ResponseWriter, _ *http.Request) {
-	out := make([]SDNIpamSpec, 0, len(srv.state.fixture.SDN.Ipams))
-	out = append(out, srv.state.fixture.SDN.Ipams...)
+	ipams := srv.effectiveIpams()
+	out := make([]SDNIpamSpec, 0, len(ipams))
+	out = append(out, ipams...)
 	writeData(w, http.StatusOK, out)
 }
 
+// defaultIpamID is real PVE's built-in IPAM plugin id: every PVE cluster
+// has this one available for a zone's `ipam` field to reference even when
+// the operator has never explicitly configured any IPAM plugin instance
+// (unlike NetBox/phpIPAM, which do need /etc/pve/sdn/ipams.cfg entries) —
+// exact behavior **needs hardware validation** (does
+// `pvesh get /cluster/sdn/ipams` on a cluster with zero configured
+// instances actually list this built-in entry, or come back empty with
+// the gateway/allocation-record write path only reachable once a zone
+// explicitly names an ipam? — see needs-hardware-validation.md). This mock
+// takes the more useful position (writes always land somewhere findable)
+// rather than the more permissive one (silently dropping them), matching
+// this task's "pvemock stops being more permissive than real PVE" brief.
+const defaultIpamID = "pve"
+
+// effectiveIpams is srv.state.fixture.SDN.Ipams with defaultIpamID
+// synthesized in when the fixture declares none at all (see that
+// constant's doc comment) — every other read/write path in this file goes
+// through this instead of the raw fixture field so the synthesized default
+// is indistinguishable from a real one.
+func (srv *Server) effectiveIpams() []SDNIpamSpec {
+	if len(srv.state.fixture.SDN.Ipams) > 0 {
+		return srv.state.fixture.SDN.Ipams
+	}
+	return []SDNIpamSpec{{ID: defaultIpamID, Type: "pve"}}
+}
+
 // ipamSpec returns the ID/Type/URL metadata for one configured IPAM plugin
-// instance (from the immutable fixture — that part of an instance's
-// identity never changes at runtime, only its Entries do, in state.ipam).
+// instance (from the immutable fixture, or the synthesized default — see
+// effectiveIpams — that part of an instance's identity never changes at
+// runtime, only its Entries do, in state.ipam).
 func (srv *Server) ipamSpec(id string) (SDNIpamSpec, bool) {
-	for _, ip := range srv.state.fixture.SDN.Ipams {
+	for _, ip := range srv.effectiveIpams() {
 		if ip.ID == id {
 			return ip, true
 		}
@@ -103,10 +131,56 @@ func (srv *Server) ipamForVnet(vnet string) (string, bool) {
 			}
 		}
 	}
-	if len(srv.state.fixture.SDN.Ipams) == 1 {
-		return srv.state.fixture.SDN.Ipams[0].ID, true
+	ipams := srv.effectiveIpams()
+	if len(ipams) == 1 {
+		return ipams[0].ID, true
 	}
 	return "", false
+}
+
+// registerSubnetGateway keeps the mock's built-in IPAM gateway record in
+// sync with a subnet's current gateway — real PVE's SubnetPlugin writes a
+// `gateway: true` IPAM allocation for a subnet's gateway address whenever
+// one is configured (T-701 acceptance criterion 4), refreshed on create
+// and on every update (removed entirely if a later update clears the
+// gateway). Exact PVE-side create-vs-apply timing is unconfirmed against a
+// live cluster (see needs-hardware-validation.md); this mock takes the
+// simpler, testable position that the record exists as soon as the subnet
+// does — matching how three-node-vlan.yaml/evpn-lab.yaml/ipam-lab.yaml
+// already hand-model their own gateway records. Callers must not hold
+// state.sdn.mu when calling this — it only ever locks state.ipam.mu, but a
+// caller resolving zone from state.sdn first (as both subnet handlers do)
+// should read that field while it already holds state.sdn.mu and pass the
+// plain string in, rather than have this function re-acquire it.
+func (srv *Server) registerSubnetGateway(zone, vnet, cidr, gateway string) {
+	ipamID, ok := srv.ipamForVnet(vnet)
+	if !ok {
+		return
+	}
+
+	srv.state.ipam.mu.Lock()
+	defer srv.state.ipam.mu.Unlock()
+	entries := srv.state.ipam.entries[ipamID]
+	idx := -1
+	for i, e := range entries {
+		if e.Subnet == cidr && e.Gateway {
+			idx = i
+			break
+		}
+	}
+	if gateway == "" {
+		if idx >= 0 {
+			srv.state.ipam.entries[ipamID] = append(entries[:idx:idx], entries[idx+1:]...)
+		}
+		return
+	}
+	entry := IPAMEntrySpec{Zone: zone, Vnet: vnet, Subnet: cidr, IP: gateway, Gateway: true}
+	if idx >= 0 {
+		entries[idx] = entry
+		srv.state.ipam.entries[ipamID] = entries
+		return
+	}
+	srv.state.ipam.entries[ipamID] = append(entries, entry)
 }
 
 // ipamCreateIPRequest is POST /cluster/sdn/vnets/{vnet}/ips' body: reserve

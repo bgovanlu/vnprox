@@ -17,7 +17,7 @@
 // exhaustively Vitest-able without rendering — the same discipline
 // projection.ts follows. SwitchView.tsx is the only consumer.
 import type { EntityStatus, TopologyEdge, TopologyNode } from "../api/types";
-import { isGuestGroupId } from "./projection";
+import { badgeCarriesVlan, isGuestGroupId } from "./projection";
 
 // Edge/entity kind vocabularies mirror internal/inventory/link.go and the
 // Kind constants exactly (this module reads the strings the backend emits,
@@ -38,6 +38,11 @@ export interface SwitchPortNic {
    * lldpd has discovered one — undefined otherwise (docs/features/
    * topology.md §5's "no LLDP data → NICs only"). */
   neighbor?: { label: string; port?: string };
+  /** This NIC's own topology badges (T-702: carries "mgmt-path" when this
+   * NIC is behind the node's management/corosync carrier —
+   * docs/features/topology.md §3), so the faceplate can mark uplink-bay
+   * ports on the management path without a second data fetch. */
+  badges: string[];
 }
 
 /** One uplink module on the faceplate: a bond (with its member NICs) or a
@@ -224,6 +229,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
       status: n?.status ?? "unknown",
       active,
       neighbor: neighborOfNic.get(ref),
+      badges: n?.badges ?? [],
     };
   }
 
@@ -349,28 +355,23 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
 
 // (helpers below are exported for direct testing / reuse by SwitchView)
 
-/** Whether a switch model carries `vid` anywhere (uplink trunk badge, a
- * VLAN sub-if, an access port's tag, or a realized VNet's tag) — the switch
- * view's equivalent of projection.ts's computeVlanMatch, used to dim
- * whole faceplates that don't touch the filtered VLAN. Exported for reuse
- * and direct testing. */
+/** Whether a switch model carries `vid` anywhere (the bridge's own badges,
+ * an uplink trunk badge, a VLAN sub-if, an access port's tag, or a realized
+ * VNet's tag) — the switch view's equivalent of projection.ts's
+ * computeVlanMatch, used to dim whole faceplates that don't touch the
+ * filtered VLAN. The bridge's own badges must be checked here too: a
+ * VLAN-aware bridge can carry a "vlans=10-20" (or "vid=" / "tag=") badge of
+ * its own with no matching sub-if/port/vnet/uplink, and computeVlanMatch
+ * (projection.ts) treats that as a direct carrier via entityCarriesVlan —
+ * this must dim/light the same way the graph view does for the identical
+ * node. Exported for reuse and direct testing. */
 export function switchCarriesVlan(sw: SwitchModel, vid: number): boolean {
+  if (sw.badges.some((b) => badgeCarriesVlan(b, vid))) return true;
   if (sw.vlans.some((v) => v.vid === vid)) return true;
   if (sw.accessPorts.some((p) => p.vid === vid)) return true;
   if (sw.vnets.some((v) => v.tag === vid)) return true;
   // A trunk uplink whose badge names the VID (e.g. "vlans=10-20") — reuse
-  // the same token parse the graph view uses.
-  return sw.uplinks.some((u) => u.badges.some((b) => badgeTrunksVlan(b, vid)));
-}
-
-/** "vlans=10-20,30" trunk-range membership test (mirrors projection.ts). */
-function badgeTrunksVlan(badge: string, vid: number): boolean {
-  const [key, value] = badge.split("=", 2);
-  if (key !== "vlans" || value === undefined) return false;
-  return value.split(",").some((range) => {
-    const [loStr, hiStr] = range.split("-", 2);
-    const lo = Number(loStr);
-    const hi = hiStr === undefined ? lo : Number(hiStr);
-    return Number.isFinite(lo) && Number.isFinite(hi) && vid >= lo && vid <= hi;
-  });
+  // projection.ts's badgeCarriesVlan (the same parse the graph view uses)
+  // rather than keeping a private re-implementation.
+  return sw.uplinks.some((u) => u.badges.some((b) => badgeCarriesVlan(b, vid)));
 }

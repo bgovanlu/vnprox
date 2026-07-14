@@ -16,10 +16,29 @@ import { opKindLabel, refNode, summarizeOp } from "./opSummary";
 import { buildPlanPreview } from "./planPreview";
 import { useChangesetDiffQuery, useValidateChangesetMutation, useApplyChangesetMutation } from "./queries";
 import { useChangesetDrawerStore } from "./store";
+import { mgmtStrings } from "../mgmt/strings";
 
 export interface ReviewApplyScreenProps {
   changeset: Changeset;
   onClose: () => void;
+}
+
+/** T-703's server-side confirm-window floor (change.MgmtConfirmTimeoutFloor):
+ * a management-path changeset's window defaults to, and cannot be set below,
+ * 180s. Mirrored client-side so the UI never even offers a lower value; the
+ * server rejects a lower one with 400 confirm_window_too_short regardless. */
+const MGMT_CONFIRM_FLOOR_SEC = 180;
+
+/** The node a touchesMgmtPath changeset targets — for the typed
+ * acknowledgement. Every ops-touching-the-path op carries the node in its
+ * target ref; the first non-cluster op's node is the one to type. */
+function mgmtNodeOf(changeset: Changeset): string {
+  for (const op of changeset.ops) {
+    if (!op.target) continue;
+    const parts = op.target.split(":");
+    if (parts.length === 3 && parts[1]) return parts[1];
+  }
+  return "";
 }
 
 const tabTriggerClass =
@@ -34,7 +53,16 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   const warningsAcknowledged = useChangesetDrawerStore((s) => s.warningsAcknowledged);
   const setWarningsAcknowledged = useChangesetDrawerStore((s) => s.setWarningsAcknowledged);
   const { toast } = useToast();
-  const [confirmTimeoutSec, setConfirmTimeoutSec] = useState(DEFAULT_CONFIRM_TIMEOUT_SEC);
+
+  const touchesMgmt = changeset.touchesMgmtPath === true;
+  const mgmtNode = touchesMgmt ? mgmtNodeOf(changeset) : "";
+  const [confirmTimeoutSec, setConfirmTimeoutSec] = useState(
+    touchesMgmt ? MGMT_CONFIRM_FLOOR_SEC : DEFAULT_CONFIRM_TIMEOUT_SEC,
+  );
+  // The typed node-name acknowledgement (T-703): apply stays disabled until
+  // it matches for a management-path changeset.
+  const [ackText, setAckText] = useState("");
+  const ackSatisfied = !touchesMgmt || ackText.trim() === mgmtNode;
 
   // Re-run validation on open ("Runs on every draft change and again
   // immediately before apply — state may have moved", docs/features/
@@ -47,7 +75,8 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
 
   const errors = changeset.findings.filter((f) => f.severity === "error");
   const warnings = changeset.findings.filter((f) => f.severity === "warning");
-  const applyEnabled = canApply(changeset, warningsAcknowledged) && !applyMutation.isPending;
+  const applyEnabled =
+    canApply(changeset, warningsAcknowledged) && ackSatisfied && !applyMutation.isPending;
 
   // Pre-apply the server hasn't built a plan yet (plan_json is written at
   // apply time) — show the client-side preview mirroring BuildPlan so the
@@ -60,7 +89,11 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
 
   async function handleApply(): Promise<void> {
     try {
-      await applyMutation.mutateAsync({ id: changeset.id, confirmTimeoutSec });
+      await applyMutation.mutateAsync({
+        id: changeset.id,
+        confirmTimeoutSec,
+        ...(touchesMgmt && mgmtNode ? { mgmtAck: { node: mgmtNode } } : {}),
+      });
       onClose();
     } catch {
       toast({ title: "Apply failed to start", description: "See the drawer for details.", variant: "error" });
@@ -193,16 +226,46 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
           </div>
         )}
 
+        {touchesMgmt && (
+          <div
+            className="mt-3 rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200"
+            role="group"
+            aria-label="Management-path acknowledgement"
+          >
+            <p className="font-medium">{mgmtStrings.ack.heading}</p>
+            <p className="mt-1">{mgmtStrings.ack.body}</p>
+            <p className="mt-1">{mgmtStrings.ack.confirmWindowNote}</p>
+            <label className="mt-2 flex flex-col gap-1">
+              <span className="font-medium">{mgmtStrings.ack.typePrompt(mgmtNode)}</span>
+              <input
+                type="text"
+                value={ackText}
+                onChange={(e) => {
+                  setAckText(e.target.value);
+                }}
+                aria-label="Type node name to acknowledge"
+                className="w-48 rounded border border-red-300 px-1.5 py-0.5 text-xs dark:border-red-700 dark:bg-slate-900"
+              />
+              {ackText.trim().length > 0 && !ackSatisfied && (
+                <span className="text-[11px]">{mgmtStrings.ack.mismatch}</span>
+              )}
+            </label>
+          </div>
+        )}
+
         <div className="mt-4 flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             Confirm window (s)
             <input
               type="number"
-              min={30}
+              min={touchesMgmt ? MGMT_CONFIRM_FLOOR_SEC : 30}
               max={600}
               value={confirmTimeoutSec}
               onChange={(e) => {
-                setConfirmTimeoutSec(Number(e.target.value));
+                const v = Number(e.target.value);
+                // T-703: never allow a management-path window below the floor
+                // (the server rejects it anyway; the UI just never offers it).
+                setConfirmTimeoutSec(touchesMgmt ? Math.max(v, MGMT_CONFIRM_FLOOR_SEC) : v);
               }}
               className="w-16 rounded border border-slate-300 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800"
             />

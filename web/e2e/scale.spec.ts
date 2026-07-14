@@ -26,6 +26,7 @@
 // synthetic beyond-cap counterpart, which proves the prompt itself trips
 // correctly once the real 2,000-element arithmetic is exceeded).
 import { expect, request, test, type Page } from "@playwright/test";
+import { switchToGraphView } from "./helpers";
 
 declare global {
   interface Window {
@@ -138,6 +139,16 @@ test("scale-lab: initial render time and progressive disclosure at the documente
   await page.getByLabel("Password", { exact: true }).fill("vnprox-mock");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/topology");
+  // 67fff26 landed Switch, not Graph, as /topology's default view (see
+  // helpers.ts) — the exact "vmbr0" bridge buttons and "N guests" pills
+  // this measurement counts below are the Graph canvas's EntityNode
+  // renderings (Switch's faceplate labels the same bridge "vmbr0 switch"
+  // instead), so this test is inherently Graph-scoped. Switching happens
+  // as early as possible (right after the URL lands) to keep the extra
+  // click's cost out of most of the measured window, but the reported
+  // initialRenderMs below does now include that one click+render, unlike
+  // before this view toggle existed.
+  await switchToGraphView(page);
   // "Rendered" = at least one per-node bridge button has mounted for every
   // one of the 8 scale-lab nodes (vmbr0 is declared on every node).
   await expect(page.getByRole("button", { name: "vmbr0", exact: true })).toHaveCount(8, { timeout: 30_000 });
@@ -163,6 +174,9 @@ test("scale-lab: initial render time and progressive disclosure at the documente
 test("scale-lab: pan/zoom frame timings at the documented scale target", async ({ page }, testInfo) => {
   await waitForBackendConverged(150);
   await logIn(page);
+  // This measurement is specifically of the elk graph canvas's pan/zoom
+  // (67fff26 landed Switch, not Graph, as /topology's default view).
+  await switchToGraphView(page);
   await expect(page.getByRole("button", { name: "vmbr0", exact: true })).toHaveCount(8, { timeout: 30_000 });
 
   const pane = page.locator(".react-flow__pane");

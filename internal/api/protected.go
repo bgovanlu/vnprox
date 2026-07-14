@@ -32,6 +32,13 @@ type ProtectedService interface {
 	// onboarding "confirm or correct" flow — GET /protected-interfaces/
 	// suggest (T-203's detection deliverable, wired per audit-phase-2 F-14).
 	SuggestProtected(ctx context.Context) change.ProtectedSet
+
+	// MgmtStatus computes T-702's per-node management-path status: roles,
+	// resolved physical path, and redundancy — GET /protected-interfaces/
+	// status. Also consumed by handleTopology (topology.go) to paint the
+	// same data as mgmt/corosync/mgmt-path badges on GET /topology, so the
+	// two surfaces are always derived from one computation.
+	MgmtStatus(ctx context.Context) (change.MgmtStatus, error)
 }
 
 // protectedResponse is the wire shape of GET/PUT /api/v1/protected-interfaces
@@ -86,6 +93,7 @@ func mountProtectedRoutes(r chi.Router, svc ProtectedService, auth AuthService) 
 		r.Use(auth.RequireCap(capNetRead))
 		r.Get("/protected-interfaces", handleGetProtected(svc))
 		r.Get("/protected-interfaces/suggest", handleSuggestProtected(svc))
+		r.Get("/protected-interfaces/status", handleMgmtStatus(svc))
 	})
 
 	r.Group(func(r chi.Router) {
@@ -147,5 +155,70 @@ func handlePutProtected(svc ProtectedService, lookup UsernameLookup) http.Handle
 			return
 		}
 		writeJSON(w, http.StatusOK, toProtectedResponse(cfg))
+	}
+}
+
+// mgmtStatusResponse is the wire shape of GET /api/v1/protected-interfaces/
+// status (T-702, docs/api.md): per-node resolved management paths plus
+// which source fed them ("confirmed" | "detected" — change.MgmtStatus's own
+// doc comment).
+type mgmtStatusResponse struct {
+	Source  string                        `json:"source"`
+	Nodes   map[string][]mgmtPathResponse `json:"nodes"`
+	BadRefs []string                      `json:"badRefs,omitempty"`
+	// StaleProtected (T-703, docs/api.md): the confirmed protected set no
+	// longer contains a carrier live detection currently finds — the
+	// management path moved since onboarding confirmed it (e.g. the
+	// dedicated-management-VLAN flow committed and the protected-set
+	// refresh was declined). Omitted while false.
+	StaleProtected bool `json:"staleProtected,omitempty"`
+}
+
+// mgmtPathResponse is one resolved protected ref: docs/features/topology.md
+// §3's "each protected ref with roles..., the resolved physical path..., and
+// a redundant bool".
+type mgmtPathResponse struct {
+	Ref       string   `json:"ref"`
+	Roles     []string `json:"roles"`
+	Path      []string `json:"path"`
+	Redundant bool     `json:"redundant"`
+}
+
+func toMgmtStatusResponse(status change.MgmtStatus) mgmtStatusResponse {
+	nodes := make(map[string][]mgmtPathResponse, len(status.Nodes))
+	for node, paths := range status.Nodes {
+		list := make([]mgmtPathResponse, 0, len(paths))
+		for _, p := range paths {
+			roles := make([]string, len(p.Roles))
+			for i, r := range p.Roles {
+				roles[i] = string(r)
+			}
+			path := make([]string, len(p.Path))
+			for i, ref := range p.Path {
+				path[i] = ref.String()
+			}
+			list = append(list, mgmtPathResponse{
+				Ref: p.Ref.String(), Roles: roles, Path: path, Redundant: p.Redundant,
+			})
+		}
+		nodes[node] = list
+	}
+	return mgmtStatusResponse{Source: status.Source, Nodes: nodes, BadRefs: status.BadRefs, StaleProtected: status.StaleProtected}
+}
+
+// handleMgmtStatus backs GET /protected-interfaces/status: docs/features/
+// topology.md §3's management-path visibility, rendered as the same shape
+// GET /topology's mgmt/corosync/mgmt-path badges are painted from (see
+// topology.go's handleTopology -> paintMgmtStatus). Never a 404/empty-body
+// special case: an unconfirmed cluster still gets an answer, source
+// "detected" (change.Service.MgmtStatus's own fallback).
+func handleMgmtStatus(svc ProtectedService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status, err := svc.MgmtStatus(r.Context())
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not compute management-path status")
+			return
+		}
+		writeJSON(w, http.StatusOK, toMgmtStatusResponse(status))
 	}
 }

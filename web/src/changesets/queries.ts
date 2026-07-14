@@ -106,8 +106,8 @@ export function useValidateChangesetMutation() {
 export function useApplyChangesetMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, confirmTimeoutSec }: { id: string; confirmTimeoutSec: number }) =>
-      applyChangeset(id, { confirmTimeoutSec }),
+    mutationFn: ({ id, confirmTimeoutSec, mgmtAck }: { id: string; confirmTimeoutSec: number; mgmtAck?: { node: string } }) =>
+      applyChangeset(id, { confirmTimeoutSec, ...(mgmtAck ? { mgmtAck } : {}) }),
     onSuccess: (c) => {
       queryClient.setQueryData(changesetKey(c.id), c);
     },

@@ -6,8 +6,8 @@ Priorities: **P0** = must ship in v1.0, **P1** = v1.x, **P2** = later. Detailed 
 
 | Feature | Pri | Phase | Spec |
 |---|---|---|---|
-| Cluster-wide interactive topology map (physical → L2 → overlay → guests) | P0 | 1 | [topology.md](features/topology.md) |
-| Layer toggles, VLAN filter, search/spotlight, saved layouts | P0 | 1 | topology.md |
+| Cluster-wide interactive topology map (physical → L2 → overlay → guests), Switch (default) / Graph view toggle | P0 | 1 | [topology.md](features/topology.md) |
+| Layer toggles, VLAN filter, search/spotlight (both views); saved layouts, drag-edit, path-sim overlay, traffic paint (Graph view only) | P0 | 1 | topology.md |
 | Entity inspector (every object clickable → full detail + raw config) | P0 | 1 | topology.md |
 | LLDP/CDP physical discovery (switch name/port per NIC, shown on map) | P0 | 3 | [lldp-discovery.md](features/lldp-discovery.md) |
 | MAC/FDB table browser ("which port is this MAC behind") | P1 | 3 | lldp-discovery.md |

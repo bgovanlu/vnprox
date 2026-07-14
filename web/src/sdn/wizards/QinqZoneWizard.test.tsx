@@ -27,7 +27,7 @@ describe("QinqZoneWizard — T-403 AC1 (golden ops)", () => {
     renderWithProviders(<QinqZoneWizard open onOpenChange={() => undefined} />);
 
     // Step 1: trunk.
-    await user.type(screen.getByRole("textbox", { name: NAME_FIELD }), "tenant-net");
+    await user.type(screen.getByRole("textbox", { name: NAME_FIELD }), "tenants");
     await user.type(screen.getByRole("textbox", { name: /^VLAN-aware bridge/ }), "vmbr0");
     await user.click(await screen.findByRole("checkbox", { name: "pve1" }));
     await user.click(screen.getByRole("button", { name: "Next" }));
@@ -51,13 +51,13 @@ describe("QinqZoneWizard — T-403 AC1 (golden ops)", () => {
     expect(ops).toEqual([
       {
         op: "sdn.zone.create",
-        target: "sdn-zone::tenant-net",
+        target: "sdn-zone::tenants",
         params: { type: "qinq", bridge: "vmbr0", nodes: ["pve1"] },
       },
       {
         op: "sdn.vnet.create",
-        target: "sdn-vnet::tenant-net/vnet42",
-        params: { zone: "tenant-net", tag: 42, vlanAware: false },
+        target: "sdn-vnet::tenants/vnet42",
+        params: { zone: "tenants", tag: 42, vlanAware: false },
       },
       { op: "sdn.apply", params: {} },
     ]);

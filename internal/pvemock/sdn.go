@@ -2,10 +2,31 @@ package pvemock
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"regexp"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// sdnIDPattern is real PVE's SDN zone/vnet id charset (case-insensitively
+// `[a-z][a-z0-9]*`). A create with an id outside it is rejected with a
+// PVE-style "Parameter verification failed" 400 — the literal mid-apply
+// error issue #3 reported, kept here so a raw/non-wizard caller that slips
+// past change.schemaSDNName can't silently re-hide the gap in CI. Exact
+// real-PVE wording/length-cap is unconfirmed against live hardware
+// (planning/reports/needs-hardware-validation.md); this mirrors vnprox's
+// own charset check, not any length rule.
+var sdnIDPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+
+// sdnParamVerifyError returns a PVE-style rejection string if id is not a
+// valid SDN object id, or "" if it is acceptable.
+func sdnParamVerifyError(kind, id string) string {
+	if id != "" && !sdnIDPattern.MatchString(id) {
+		return fmt.Sprintf("Parameter verification failed. - %s: value '%s' does not match the regex pattern", kind, id)
+	}
+	return ""
+}
 
 // runningZone derives one zone's last-applied ("?running=1") value from its
 // fixture-loaded (staged) value, per SDNZoneSpec.Running's doc comment:
@@ -128,6 +149,10 @@ func (srv *Server) handleSDNZoneCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if z.ID == "" {
 		writeError(w, http.StatusBadRequest, "zone id (\"zone\") is required")
+		return
+	}
+	if msg := sdnParamVerifyError("zone", z.ID); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	z.Pending = PendingNew
@@ -276,6 +301,10 @@ func (srv *Server) handleSDNVnetCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "vnet id (\"vnet\") is required")
 		return
 	}
+	if msg := sdnParamVerifyError("vnet", v.ID); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	srv.state.sdn.mu.Lock()
 	defer srv.state.sdn.mu.Unlock()
 	if _, exists := srv.state.sdn.vnets[v.ID]; exists {
@@ -357,6 +386,35 @@ func (srv *Server) handleSDNSubnetGet(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, s)
 }
 
+// subnetGatewayError returns a PVE-style 400 rejection message for s, or ""
+// if s is acceptable — T-701 pvemock fidelity: real PVE's SubnetPlugin
+// rejects both shapes at subnet create/update time (T-701 root-cause
+// analysis §4): SNAT enabled with no gateway, and a gateway that falls
+// outside the subnet's own CIDR. This mirrors this codebase's own
+// change.schemaGatewayInCIDR/codeSNATRequiresGateway checks so the same
+// two shapes vnprox's own validators block are also rejected server-side
+// (closing the "pvemock is more permissive than real PVE" gap raw/
+// non-wizard callers could otherwise slip through in CI) — exact PVE error
+// wording/version is unconfirmed against a live cluster, flagged in
+// planning/reports/needs-hardware-validation.md.
+func subnetGatewayError(s SDNSubnetSpec) string {
+	if s.SNAT && s.Gateway == "" {
+		return fmt.Sprintf("subnet %q: snat requires a gateway", s.ID)
+	}
+	if s.Gateway == "" || s.CIDR == "" {
+		return ""
+	}
+	_, ipnet, err := net.ParseCIDR(s.CIDR)
+	if err != nil {
+		return ""
+	}
+	ip := net.ParseIP(s.Gateway)
+	if ip == nil || !ipnet.Contains(ip) {
+		return fmt.Sprintf("subnet %q: gateway %q is not contained in subnet %q", s.ID, s.Gateway, s.CIDR)
+	}
+	return ""
+}
+
 func (srv *Server) handleSDNSubnetCreate(w http.ResponseWriter, r *http.Request) {
 	vnet := chi.URLParam(r, "vnet")
 	var s SDNSubnetSpec
@@ -369,18 +427,24 @@ func (srv *Server) handleSDNSubnetCreate(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "subnet id is required")
 		return
 	}
+	if msg := subnetGatewayError(s); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	srv.state.sdn.mu.Lock()
 	defer srv.state.sdn.mu.Unlock()
 	if _, exists := srv.state.sdn.subnets[s.ID]; exists {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("subnet %q already exists", s.ID))
 		return
 	}
-	if _, ok := srv.state.sdn.vnets[vnet]; !ok {
+	vnetSpec, ok := srv.state.sdn.vnets[vnet]
+	if !ok {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("vnet %q does not exist", vnet))
 		return
 	}
 	s.Pending = PendingNew
 	srv.state.sdn.subnets[s.ID] = s
+	srv.registerSubnetGateway(vnetSpec.Zone, vnet, s.CIDR, s.Gateway)
 	writeData(w, http.StatusOK, nil)
 }
 
@@ -393,6 +457,10 @@ func (srv *Server) handleSDNSubnetUpdate(w http.ResponseWriter, r *http.Request)
 	}
 	s.ID = id
 	s.Vnet = chi.URLParam(r, "vnet")
+	if msg := subnetGatewayError(s); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	srv.state.sdn.mu.Lock()
 	defer srv.state.sdn.mu.Unlock()
 	if _, ok := srv.state.sdn.subnets[id]; !ok {
@@ -401,6 +469,8 @@ func (srv *Server) handleSDNSubnetUpdate(w http.ResponseWriter, r *http.Request)
 	}
 	s.Pending = PendingChanged
 	srv.state.sdn.subnets[id] = s
+	vnetSpec := srv.state.sdn.vnets[s.Vnet]
+	srv.registerSubnetGateway(vnetSpec.Zone, s.Vnet, s.CIDR, s.Gateway)
 	writeData(w, http.StatusOK, nil)
 }
 

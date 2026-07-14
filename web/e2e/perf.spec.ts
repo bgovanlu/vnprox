@@ -5,6 +5,7 @@
 // records the delta since the previous frame, so dropped/long frames show
 // up directly as deltas above ~16.7ms (60fps budget).
 import { expect, test, type Page } from "@playwright/test";
+import { switchToGraphView } from "./helpers";
 
 declare global {
   interface Window {
@@ -86,6 +87,9 @@ function stats(deltas: number[]): FrameStats {
 
 test("measure pan/zoom frame timings on the three-node-vlan topology", async ({ page }, testInfo) => {
   await logIn(page);
+  // This measurement is specifically of the elk graph canvas's pan/zoom
+  // (67fff26 landed Switch, not Graph, as /topology's default view).
+  await switchToGraphView(page);
   await expect(page.getByRole("button", { name: "vmbr0", exact: true })).toHaveCount(3);
   const pane = page.locator(".react-flow__pane");
   await expect(pane).toBeVisible();

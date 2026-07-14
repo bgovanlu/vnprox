@@ -11,6 +11,7 @@ import { BondEditor, type SlaveCandidate } from "./editors/BondEditor";
 import { BridgeDeleteDialog } from "./editors/BridgeDeleteDialog";
 import { BridgeEditor } from "./editors/BridgeEditor";
 import { InterfaceEditor } from "./editors/InterfaceEditor";
+import { RenameDialog } from "./editors/RenameDialog";
 import { VlanEditor } from "./editors/VlanEditor";
 import {
   attachedGuestNics,
@@ -114,6 +115,17 @@ export function EditorLauncher() {
     case "iface":
       if (!request.target) return null;
       return <InterfaceEditor open onOpenChange={onOpenChange} node={request.node} target={request.target} existing={existing} />;
+    case "iface-rename":
+      if (!request.target) return null;
+      return (
+        <RenameDialog
+          open
+          onOpenChange={onOpenChange}
+          node={request.node}
+          target={request.target}
+          currentName={existing?.label ?? refId(request.target)}
+        />
+      );
     default:
       return null;
   }

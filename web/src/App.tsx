@@ -8,6 +8,7 @@ import { GuestsPage } from "./pages/GuestsPage";
 import { SdnPage } from "./pages/SdnPage";
 import { FirewallPage } from "./pages/FirewallPage";
 import { IpamPage } from "./pages/IpamPage";
+import { ManagementPage } from "./pages/ManagementPage";
 import { BlueprintsPage } from "./pages/BlueprintsPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { AuditPage } from "./pages/AuditPage";
@@ -30,6 +31,7 @@ export function App() {
           <Route element={<AppShell />}>
             <Route index element={<Navigate to="/topology" replace />} />
             <Route path="/topology" element={<TopologyPage />} />
+            <Route path="/management" element={<ManagementPage />} />
             <Route path="/guests" element={<GuestsPage />} />
             <Route path="/sdn" element={<SdnPage />} />
             <Route path="/firewall" element={<FirewallPage />} />

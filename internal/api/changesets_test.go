@@ -540,3 +540,158 @@ func TestChangesetsValidate_NotFound(t *testing.T) {
 		t.Errorf("status = %d, want 404, body: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// --- T-701 acceptance criterion 5: pve_session_required fail-fast --------
+
+// panicNodeAgent implements change.NodeAgent with every method panicking —
+// wired into an apply-configured *change.Service purely so
+// applyConfigured() returns true (letting this test reach the new
+// pve_session_required pre-check instead of the unrelated
+// ErrApplyNotConfigured 503 path); an sdn-carrying changeset's plan never
+// has a per-node file step, so nothing should ever call it, and this test
+// asserts apply is rejected before any step — including a node-file one —
+// ever runs.
+type panicNodeAgent struct{}
+
+func (panicNodeAgent) ReadInterfaces(context.Context, string) (string, error) {
+	panic("panicNodeAgent: ReadInterfaces unexpectedly called — apply should have been rejected pre-flight")
+}
+func (panicNodeAgent) StageInterfaces(context.Context, string, string) error {
+	panic("panicNodeAgent: StageInterfaces unexpectedly called — apply should have been rejected pre-flight")
+}
+func (panicNodeAgent) ReloadInterfaces(context.Context, string) error {
+	panic("panicNodeAgent: ReloadInterfaces unexpectedly called — apply should have been rejected pre-flight")
+}
+func (panicNodeAgent) DiscardStaged(context.Context, string) error {
+	panic("panicNodeAgent: DiscardStaged unexpectedly called — apply should have been rejected pre-flight")
+}
+
+// noGatewayProvider always reports no PVE session available — models an
+// expired/unrenewable ticket (T-701 root-cause analysis §5).
+type noGatewayProvider struct{}
+
+func (noGatewayProvider) GatewayFor(context.Context) (change.PVEGateway, bool) { return nil, false }
+
+// newApplyConfiguredChangesetService is newChangesetTestService plus Nodes/
+// Snapshots/Blobs wired so change.Service.applyConfigured() is true — this
+// test needs Apply to get past the "not configured" 503 and reach the new
+// pre-flight gateway check.
+func newApplyConfiguredChangesetService(t *testing.T) *change.Service {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "vnprox.db")
+	db, err := store.Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Errorf("db.Close: %v", closeErr)
+		}
+	})
+	svc, err := change.NewService(change.Config{
+		Changesets: store.NewChangesetRepo(db),
+		Audit:      store.NewAuditRepo(db),
+		Snapshots:  store.NewSnapshotRepo(db),
+		Blobs:      store.NewBlobRepo(db),
+		Nodes:      panicNodeAgent{},
+		Now:        func() time.Time { return time.Unix(1_700_000_000, 0) },
+	})
+	if err != nil {
+		t.Fatalf("change.NewService: %v", err)
+	}
+	return svc
+}
+
+// TestChangesetsApply_PVESessionRequired is T-701 acceptance criterion 5:
+// applying an sdn-carrying changeset with no resolvable PVEGateway is
+// rejected up front with the stable code pve_session_required, and the
+// changeset is left exactly as it was (no "failed" row, no attempted
+// snapshot/mutation — panicNodeAgent above proves no step ever runs).
+func TestChangesetsApply_PVESessionRequired(t *testing.T) {
+	svc := newApplyConfiguredChangesetService(t)
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fullCapsAuth("alice"), Topology: fakeTopologyService{},
+		Changesets: svc, PVEGateways: noGatewayProvider{},
+	})
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/changesets", bytes.NewBufferString(
+		`{"title":"sdn draft","ops":[{"op":"sdn.zone.create","target":"sdn-zone::z1","params":{"type":"simple"}},{"op":"sdn.apply","params":{}}]}`))
+	createRec := httptest.NewRecorder()
+	r.ServeHTTP(createRec, createReq)
+	var created changesetResponse
+	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
+		t.Fatalf("decoding create response: %v", err)
+	}
+
+	applyReq := httptest.NewRequest(http.MethodPost, "/api/v1/changesets/"+created.ID+"/apply", nil)
+	applyRec := httptest.NewRecorder()
+	r.ServeHTTP(applyRec, applyReq)
+	if applyRec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("apply status = %d, want 422, body: %s", applyRec.Code, applyRec.Body.String())
+	}
+	var errResp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(applyRec.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decoding error response: %v", err)
+	}
+	if errResp.Error.Code != "pve_session_required" {
+		t.Errorf("error code = %q, want pve_session_required", errResp.Error.Code)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/changesets/"+created.ID, nil)
+	getRec := httptest.NewRecorder()
+	r.ServeHTTP(getRec, getReq)
+	var got changesetResponse
+	if err := json.NewDecoder(getRec.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding get response: %v", err)
+	}
+	if got.Status != "draft" {
+		t.Errorf("status after rejected apply = %q, want draft (unchanged — no failed row)", got.Status)
+	}
+}
+
+// TestChangesetsApply_NoGatewayButNoSDNSteps proves the pre-check is
+// narrowly scoped to plans that actually need a PVEGateway: a node-file-only
+// changeset with no live session still reaches svc.Apply and its real
+// pre-apply-snapshot step — panicNodeAgent's ReadInterfaces panics there,
+// which the router's own panic-recovery middleware turns into a 500
+// internal_error rather than propagating — proving apply proceeded past
+// the pre-check instead of being short-circuited with
+// pve_session_required, which this changeset (no sdn/fw/ipam ops) must
+// not be.
+func TestChangesetsApply_NoGatewayButNoSDNSteps(t *testing.T) {
+	svc := newApplyConfiguredChangesetService(t)
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fullCapsAuth("alice"), Topology: fakeTopologyService{},
+		Changesets: svc, PVEGateways: noGatewayProvider{},
+	})
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/changesets", bytes.NewBufferString(
+		`{"title":"iface draft","ops":[{"op":"bridge.create","target":"bridge:pve1:vmbr7","params":{"mtu":1500,"comments":"x"}}]}`))
+	createRec := httptest.NewRecorder()
+	r.ServeHTTP(createRec, createReq)
+	var created changesetResponse
+	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
+		t.Fatalf("decoding create response: %v", err)
+	}
+
+	applyReq := httptest.NewRequest(http.MethodPost, "/api/v1/changesets/"+created.ID+"/apply", nil)
+	applyRec := httptest.NewRecorder()
+	r.ServeHTTP(applyRec, applyReq)
+	if applyRec.Code == http.StatusUnprocessableEntity {
+		t.Fatalf("apply status = 422 (%s) — a node-file-only changeset must not be blocked by the sdn/fw/ipam-only pve_session_required pre-check", applyRec.Body.String())
+	}
+	var errResp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(applyRec.Body).Decode(&errResp); err == nil && errResp.Error.Code == "pve_session_required" {
+		t.Fatalf("apply returned pve_session_required for a node-file-only changeset")
+	}
+}
