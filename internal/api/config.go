@@ -1,0 +1,44 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+// InstanceInfo is the non-secret, operational configuration GET
+// /api/v1/config surfaces to authenticated users — the raw material for the
+// Settings page's "Instance" section (docs/features surfaced read-only,
+// since vnprox.toml is a per-node, restart-time file, not runtime-editable).
+//
+// It deliberately excludes every secret or secret-bearing value: the PVE
+// token/token file, the session encryption key, the peer cluster secret,
+// TLS private key material, and the dev-only ticket username/password. Only
+// values that are safe to show an operator who is already authenticated —
+// timers, retention policy, mode flags, and non-secret paths/URLs — appear
+// here.
+type InstanceInfo struct {
+	Version                  string `json:"version"`
+	Listen                   string `json:"listen"`
+	PVEAPIURL                string `json:"pveApiUrl"`
+	ProtectedPath            string `json:"protectedPath"`
+	PVEInterval              string `json:"pveInterval"`
+	HostInterval             string `json:"hostInterval"`
+	LLDPInterval             string `json:"lldpInterval"`
+	ConfirmTimeoutDefaultSec int    `json:"confirmTimeoutDefaultSec"`
+	SnapshotKeepDays         int    `json:"snapshotKeepDays"`
+	SnapshotPinDays          int    `json:"snapshotPinDays"`
+	ReadOnly                 bool   `json:"readOnly"`
+	AllowDangerousOps        bool   `json:"allowDangerousOps"`
+}
+
+// configHandler serves GET /api/v1/config -> InstanceInfo. It is a pure
+// snapshot of the daemon's own loaded config (captured once at router
+// construction), so it needs no service dependency and never touches a
+// secret.
+func configHandler(info InstanceInfo) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(info)
+	}
+}

@@ -22,9 +22,10 @@
 #
 # On an *upgrade*, though, a node that was already running vnprox must not be
 # silently left stopped by `apt install ./vnprox_*.deb` (or `apt install
-# vnprox`) — prerm records the running state, and this script restarts the
-# service only when that flag is present, so upgrades come back up while
-# fresh installs stay stopped.
+# vnprox`). This script restarts the service on upgrade when it was running —
+# detected via prerm's flag (precise) or, since prerm runs from the *old*
+# package and older versions' prerm never wrote that flag, via the unit being
+# enabled (the reliable fallback). Fresh installs stay stopped.
 
 set -e
 
@@ -57,11 +58,17 @@ case "$1" in
     # failing the package install.
     if [ -d /run/systemd/system ]; then
       systemctl daemon-reload >/dev/null 2>&1 || true
-      # On an upgrade ($2 = previously-installed version) where prerm
-      # recorded that the service was running, bring it back up — see the
-      # header comment for why fresh installs (no $2, no flag) stay stopped.
-      if [ -n "${2:-}" ] && [ -e /run/vnprox/restart-after-upgrade ]; then
-        systemctl start vnprox.service >/dev/null 2>&1 || true
+      # On an upgrade ($2 = previously-installed version), bring the service
+      # back up if it was running before — either because prerm recorded the
+      # flag (precise), or, failing that, because the unit is enabled. The
+      # enabled fallback matters because prerm runs from the *old* package:
+      # upgrading from a version whose prerm predates the flag would otherwise
+      # never restart. A fresh install has no $2 (and the unit isn't enabled
+      # until vnprox-setup does so), so it stays stopped — see the header.
+      if [ -n "${2:-}" ]; then
+        if [ -e /run/vnprox/restart-after-upgrade ] || systemctl is-enabled --quiet vnprox.service; then
+          systemctl start vnprox.service >/dev/null 2>&1 || true
+        fi
       fi
       rm -f /run/vnprox/restart-after-upgrade 2>/dev/null || true
     fi

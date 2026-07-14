@@ -17,6 +17,7 @@ Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contra
 | POST | `/auth/login` | `{username, password, realm, otp?}` → sets cookie, returns `{user, caps}` |
 | POST | `/auth/logout` | destroy session |
 | GET | `/auth/me` | current user + capability flags `{caps: {netRead, netWrite, sdnRead, sdnWrite, fwRead, fwWrite, guestNet, audit}}` per node |
+| GET | `/config` | (added by the Settings page; documented per docs/development.md's definition-of-done #4) the daemon's **non-secret** operational configuration for the Settings page's Instance section: `{version, listen, pveApiUrl, protectedPath, pveInterval, hostInterval, lldpInterval, confirmTimeoutDefaultSec, snapshotKeepDays, snapshotPinDays, readOnly, allowDangerousOps}` — a read-only snapshot of `/etc/vnprox/vnprox.toml` values captured at daemon start. Session-gated (`netRead`). Deliberately excludes every secret/secret-bearing value (PVE token, session key, peer secret, TLS private key, dev ticket credentials) — see `internal/api/config.go`. Not runtime-editable (vnprox.toml is a per-node, restart-time file). |
 
 ## Inventory & topology
 
