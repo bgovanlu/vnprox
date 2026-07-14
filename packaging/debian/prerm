@@ -14,6 +14,15 @@ case "$1" in
     ;;
   upgrade|failed-upgrade)
     if [ -d /run/systemd/system ]; then
+      # Record whether the service was running before we stop it, so
+      # postinst can bring it back up once the new files are in place. A
+      # fresh install writes no such flag, so it stays stopped (auto-starting
+      # an unconfigured node would crash-loop — see postinst). /run is tmpfs,
+      # so the flag is inherently scoped to this boot / this upgrade.
+      if systemctl is-active --quiet vnprox.service; then
+        mkdir -p /run/vnprox
+        : > /run/vnprox/restart-after-upgrade
+      fi
       systemctl stop vnprox.service >/dev/null 2>&1 || true
     fi
     ;;
