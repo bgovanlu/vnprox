@@ -233,6 +233,7 @@ export interface LayoutResponse {
  * values (still valid on the wire) don't need a cast. */
 export type OpType =
   | "iface.update"
+  | "iface.rename"
   | "iface.raw.replace"
   | "bond.create"
   | "bond.update"

@@ -189,3 +189,26 @@ from; and pvemock does not model an `ifreload` outage at all):
       widening the whole stack (schema range + the `fixClampVID` clamp target) to the full range
       is a scoped follow-up, deferred here to avoid destabilizing the well-tested tag-clamp
       machinery without a live cluster to validate the boundary against.
+
+## Interface renaming (issue #2)
+
+- [ ] **Physical NIC (udev) rename + reboot realization.** The change engine renames only
+      *logical* interfaces (bridge/bond/vlan) — an in-place rewrite of
+      `/etc/network/interfaces` (stanza header + auto/allow-* + bridge-ports/ovs_ports/
+      bond-slaves/ovs_bonds/ovs_bridge/vlan-raw-device references), applied via the normal
+      ifreload path. Renaming a *physical* NIC is a udev `.link`/rule change realized only at
+      the next boot, deliberately left out of the op vocabulary (the codebase's existing stance,
+      InterfaceEditor's inline help). The rename dialog's "temporary until reboot / red asterisk"
+      copy states this, but the exact ifupdown2 behavior when a *logical* rename targets an
+      interface that is currently UP (does ifreload rename it live, or is a reboot needed there
+      too?) is unconfirmed against a live PVE cluster — validate before promising "live on apply"
+      for the in-use-bridge case.
+- [ ] **Guest re-binding across the cluster on rename.** The engine blocks renaming an interface
+      with running guests attached (safety.rename_guests_attached) and offers same-changeset
+      reattach; it does not yet *auto-generate* the guest.nic.update ops. Whether PVE accepts a
+      guest NIC pointing at the new bridge name mid-changeset (before ifreload realizes it) needs
+      a live check.
+- [ ] **VLAN child cascade.** Renaming a parent (e.g. vmbr0 → vmbrX) rewrites children's
+      `vlan-raw-device` but intentionally does not rename the children themselves (vmbr0.100 stays
+      vmbr0.100 on raw-device vmbrX). Confirm ifupdown2/PVE is happy with that name/raw-device
+      mismatch on a real node.

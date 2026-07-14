@@ -32,6 +32,19 @@ type IfaceUpdateParams struct {
 
 func (IfaceUpdateParams) isChangeParams() {}
 
+// IfaceRenameParams is op "iface.rename" (issue #2): rename a logical iface
+// (bridge/bond/vlan) to NewName. Target is the interface being renamed; the
+// change engine rewrites the stanza header, its auto/allow-* references, and
+// every in-file reference to the old name (internal/change/ifaces'
+// mutateIfaceRename). Renaming is validated (charset, no collision) and
+// guarded (blocked when guests are attached, or the interface is a protected
+// management-path carrier). Physical NIC (udev) renames are out of scope.
+type IfaceRenameParams struct {
+	NewName string `json:"newName"`
+}
+
+func (IfaceRenameParams) isChangeParams() {}
+
 // IfaceRawReplaceParams is op "iface.raw.replace" (docs/features/
 // change-management.md §7): the raw editor's save. Content is the entire
 // new /etc/network/interfaces text for Target's node, applied wholesale

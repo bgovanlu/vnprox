@@ -37,6 +37,16 @@ const (
 	OpVlanUpdate OpType = "vlan.update"
 	OpVlanDelete OpType = "vlan.delete"
 
+	// OpIfaceRename renames a logical iface (bridge/bond/vlan) in place —
+	// the stanza header, its auto/allow-* references, and every in-file
+	// reference to the old name. Target is the interface being renamed;
+	// params carry the new name (IfaceRenameParams). Physical NIC (udev)
+	// renames are out of scope (a reboot-realized, hardware-specific
+	// procedure documented in the editor), and renaming an interface with
+	// guests attached is blocked (validate_safety.go) since guest bridge=
+	// bindings live in PVE config, not this file.
+	OpIfaceRename OpType = "iface.rename"
+
 	OpSdnZoneCreate   OpType = "sdn.zone.create"
 	OpSdnZoneUpdate   OpType = "sdn.zone.update"
 	OpSdnZoneDelete   OpType = "sdn.zone.delete"
@@ -93,6 +103,7 @@ type Params interface {
 // decode time in production.
 var paramFactories = map[OpType]func() Params{
 	OpIfaceUpdate:     func() Params { return &IfaceUpdateParams{} },
+	OpIfaceRename:     func() Params { return &IfaceRenameParams{} },
 	OpIfaceRawReplace: func() Params { return &IfaceRawReplaceParams{} },
 
 	OpBondCreate: func() Params { return &BondCreateParams{} },

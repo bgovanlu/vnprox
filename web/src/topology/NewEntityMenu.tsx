@@ -21,6 +21,7 @@ const KIND_LABEL: Record<EditorKind, string> = {
   bond: "Bond",
   vlan: "VLAN interface",
   iface: "Interface",
+  "iface-rename": "Rename",
 };
 
 const CREATABLE_KINDS: EditorKind[] = ["bridge", "bond", "vlan"];

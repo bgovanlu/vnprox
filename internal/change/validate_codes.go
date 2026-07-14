@@ -48,6 +48,11 @@ const (
 	// *is* the CIDR) rather than needing the sdn class's cross-op
 	// projection fold.
 	codeGatewayNotInSubnet = "schema.gateway_not_in_subnet"
+	// codeIfaceNameInvalid flags an iface.rename whose new name is empty or
+	// not a valid Linux interface name (issue #2): at most 15 characters
+	// (IFNAMSIZ-1), a leading alphanumeric, then alphanumerics and `._-`
+	// only — no whitespace or slash, which the kernel/ifupdown2 reject.
+	codeIfaceNameInvalid   = "schema.iface_name_invalid"
 	codeRateInvalid        = "schema.rate_invalid"
 	codeFwDirectionInvalid = "schema.fw_direction_invalid"
 	codeFwActionInvalid    = "schema.fw_action_invalid"
@@ -74,10 +79,13 @@ const (
 	codeVnetNotFound         = "referential.vnet_not_found"
 	codeNodeNotFound         = "referential.node_not_found"
 	codeBridgeOrVnetNotFound = "referential.bridge_or_vnet_not_found"
-	codeVIDOverlap           = "referential.vid_overlap"
-	codeAddressOverlap       = "referential.address_overlap"
-	codeAddressOutOfSubnet   = "referential.address_out_of_subnet"
-	codeFwPosOutOfRange      = "referential.fw_pos_out_of_range"
+	// codeRenameTargetExists flags an iface.rename whose new name already
+	// names another interface on the same node (issue #2).
+	codeRenameTargetExists = "referential.rename_target_exists"
+	codeVIDOverlap         = "referential.vid_overlap"
+	codeAddressOverlap     = "referential.address_overlap"
+	codeAddressOutOfSubnet = "referential.address_out_of_subnet"
+	codeFwPosOutOfRange    = "referential.fw_pos_out_of_range"
 	// codeOVSKindMismatch (T-407) flags mixing Linux-bridge/bond entities
 	// into an OVS bridge/bond's port/slave list or vice versa (docs/features/
 	// change-management.md §5's OVS kind-selector spec: "mixing Linux-bridge
@@ -104,6 +112,13 @@ const (
 
 	codeProtectedInterface = "safety.protected_interface"
 	codeGuestBearingBridge = "safety.guest_bearing_bridge"
+	// codeRenameGuestsAttached flags an iface.rename of a bridge/vlan with
+	// running guests still attached to its old name (issue #2): guest
+	// bridge= bindings live in PVE guest config, which this file-only op
+	// does not rewrite, so the rename would orphan them. Net-effect-aware
+	// (a same-changeset guest.nic.update reattaching them clears it) and
+	// AllowDangerousOps-downgradable, exactly like codeGuestBearingBridge.
+	codeRenameGuestsAttached = "safety.rename_guests_attached"
 	// codeSubnetHasAllocations is T-402's other listed deletion guard
 	// (validate_safety.go's subnetDeletionGuardFindings, closed out after
 	// T-405 gave this package a live cluster-wide IPAM read to check

@@ -23,6 +23,7 @@ func safetyValidate(ops []Op, snap inventory.Snapshot, safety SafetyOptions) []F
 	var out []Finding
 	out = append(out, protectedInterfaceFindings(ops, snap, safety.Protected)...)
 	out = append(out, guestBearingBridgeFindings(ops, snap)...)
+	out = append(out, ifaceRenameGuestFindings(ops, snap)...)
 	out = append(out, vnetDeletionGuardFindings(ops, snap)...)
 	out = append(out, subnetDeletionGuardFindings(ops, safety.Allocations)...)
 
@@ -427,6 +428,72 @@ func hostAddrOf(cidr string) string {
 // NIC's *final* attachment exists in the changeset's final projection —
 // "reattaching" to the doomed bridge itself, or to a bridge/vnet the same
 // changeset also deletes, does not.
+// ifaceRenameGuestFindings blocks renaming a bridge/vlan that still has
+// running guests attached to its old name in the changeset's net effect
+// (issue #2): a rename rewrites /etc/network/interfaces but not PVE guest
+// config, so guests bound by bridge=<oldName> would be orphaned. A
+// guest.nic.update reattaching the NIC elsewhere (including to the new name)
+// in the same changeset clears the finding — mirroring guestBearingBridge's
+// net-effect treatment. AllowDangerousOps downgrades it to a warning via the
+// safetyValidate wrapper, exactly like the sibling safety checks.
+func ifaceRenameGuestFindings(ops []Op, snap inventory.Snapshot) []Finding {
+	renames := map[ifaceKey]int{}
+	for i, op := range ops {
+		if op.Type == OpIfaceRename {
+			renames[ifaceKey{op.Target.Node, op.Target.ID}] = i
+		}
+	}
+	if len(renames) == 0 {
+		return nil
+	}
+
+	finalAttach := map[inventory.Ref]string{}
+	for _, op := range ops {
+		if op.Type == OpGuestNicUpdate {
+			if p, ok := op.Params.(*GuestNicUpdateParams); ok && p.BridgeOrVnet != nil {
+				finalAttach[op.Target] = *p.BridgeOrVnet
+			}
+		}
+	}
+
+	attached := map[int][]string{}
+	for _, e := range snap.All() {
+		nic, ok := e.(*inventory.GuestNic)
+		if !ok {
+			continue
+		}
+		opIdx, renamed := renames[ifaceKey{nic.BridgeOrVnet.Node, nic.BridgeOrVnet.ID}]
+		if !renamed {
+			continue
+		}
+		if newAttach, updated := finalAttach[nic.GetRef()]; updated && newAttach != nic.BridgeOrVnet.ID {
+			continue // reattached away (or to the new name) in this changeset
+		}
+		guestEntity, ok := snap.Get(nic.Guest)
+		if !ok {
+			continue
+		}
+		guest, ok := guestEntity.(*inventory.Guest)
+		if !ok || guest.Status != "running" {
+			continue
+		}
+		attached[opIdx] = append(attached[opIdx], fmt.Sprintf("%s (vmid %d, %s)", guest.Name, guest.VMID, nic.Key))
+	}
+
+	var out []Finding
+	for i, op := range ops {
+		list := attached[i]
+		if len(list) == 0 {
+			continue
+		}
+		sort.Strings(list)
+		out = append(out, errorf(codeRenameGuestsAttached, refOf(op),
+			"interface %s still has %d running guest(s) attached in this changeset's final state: %s — renaming it would orphan their network bindings (a rename does not rewrite guest bridge= config); reattach them to the new name (guest.nic.update) or detach/migrate them first",
+			op.Target.ID, len(list), strings.Join(list, "; ")))
+	}
+	return out
+}
+
 func guestBearingBridgeFindings(ops []Op, snap inventory.Snapshot) []Finding {
 	// deleteOps: (node, name) of every bridge this changeset deletes →
 	// index of its (last) bridge.delete op, for attributing findings.

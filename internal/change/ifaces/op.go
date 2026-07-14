@@ -30,6 +30,17 @@ const (
 	OpVlanUpdate       OpType = "vlan.update"
 	OpVlanDelete       OpType = "vlan.delete"
 
+	// OpIfaceRename renames a logical iface stanza (bridge/bond/vlan) in
+	// place, rewriting the stanza header, its auto/allow-* references, and
+	// every in-file reference to the old name (bridge-ports/ovs_ports/
+	// bond-slaves/ovs_bonds/vlan-raw-device). Physical NIC (udev) renames
+	// are out of scope — those are a hardware-specific, reboot-realized
+	// procedure the change engine does not perform (see the editor's inline
+	// help). Guest bridge= bindings live in PVE guest config, not this file,
+	// so the change engine blocks renaming an interface with guests still
+	// attached (validate_safety.go) rather than silently orphaning them.
+	OpIfaceRename OpType = "iface.rename"
+
 	// OpIfaceRawReplace is T-208's power-user escape hatch (docs/features/
 	// change-management.md §7): the raw Monaco editor's save produces a
 	// changeset whose single op replaces a node's entire
@@ -309,6 +320,7 @@ type wireParams struct {
 	LacpRate             string               `json:"lacpRate"`
 	Mode                 string               `json:"mode"`
 	Content              string               `json:"content"`
+	NewName              string               `json:"newName"`
 	Slaves               []string             `json:"slaves"`
 	Addresses            []string             `json:"addresses"`
 	Ports                []string             `json:"ports"`
@@ -417,6 +429,8 @@ func DecodeOp(raw json.RawMessage) (Op, error) {
 		return VlanUpdate{Target: target, Addresses: p.Addresses, MTU: intOr(p.MTU), Comments: p.Comments}, nil
 	case OpVlanDelete:
 		return VlanDelete{Target: target}, nil
+	case OpIfaceRename:
+		return IfaceRename{Target: target, NewName: p.NewName}, nil
 	case OpIfaceRawReplace:
 		return IfaceRawReplace{Target: target, Content: p.Content}, nil
 	default:

@@ -175,6 +175,49 @@ func guestBearingSnapshot() inventory.Snapshot {
 	)
 }
 
+func TestSafetyValidate_IfaceRenameWithGuestsAttached(t *testing.T) {
+	vmbr2 := testRef(inventory.KindBridge, "pve1", "vmbr2")
+	renameOp := mkOp(OpIfaceRename, vmbr2, &IfaceRenameParams{NewName: "vmbrmgmt"})
+
+	t.Run("renaming a bridge with running guests attached errors, stopped guests don't count", func(t *testing.T) {
+		findings := safetyValidate([]Op{renameOp}, guestBearingSnapshot(), SafetyOptions{})
+		if len(findings) != 1 {
+			t.Fatalf("got %d findings, want 1: %+v", len(findings), findings)
+		}
+		f := findings[0]
+		if f.Severity != SeverityError || f.Code != codeRenameGuestsAttached {
+			t.Errorf("finding = %+v, want severity=error code=%s", f, codeRenameGuestsAttached)
+		}
+		for _, guest := range []string{"web01", "web02"} {
+			if !strings.Contains(f.Message, guest) {
+				t.Errorf("message %q does not mention running guest %q", f.Message, guest)
+			}
+		}
+		if strings.Contains(f.Message, "stopped01") {
+			t.Errorf("message %q must not mention the stopped guest", f.Message)
+		}
+	})
+
+	t.Run("reattaching every running guest to the new name clears the error", func(t *testing.T) {
+		ops := []Op{
+			renameOp,
+			mkOp(OpGuestNicUpdate, testRef(inventory.KindGuestNic, "pve1", "100/net0"),
+				&GuestNicUpdateParams{BridgeOrVnet: strPtr("vmbrmgmt")}),
+			mkOp(OpGuestNicUpdate, testRef(inventory.KindGuestNic, "pve1", "101/net0"),
+				&GuestNicUpdateParams{BridgeOrVnet: strPtr("vmbrmgmt")}),
+		}
+		findings := safetyValidate(ops, guestBearingSnapshot(), SafetyOptions{})
+		assertFindings(t, findings, nil)
+	})
+
+	t.Run("AllowDangerousOps downgrades the block to a warning", func(t *testing.T) {
+		findings := safetyValidate([]Op{renameOp}, guestBearingSnapshot(), SafetyOptions{AllowDangerousOps: true})
+		if len(findings) != 1 || findings[0].Severity != SeverityWarning || findings[0].Code != codeRenameGuestsAttached {
+			t.Fatalf("want one warning-severity %s finding, got %+v", codeRenameGuestsAttached, findings)
+		}
+	})
+}
+
 func TestSafetyValidate_GuestBearingBridgeDeletion(t *testing.T) {
 	vmbr2 := testRef(inventory.KindBridge, "pve1", "vmbr2")
 	deleteOp := mkOp(OpBridgeDelete, vmbr2, &BridgeDeleteParams{})

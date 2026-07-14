@@ -5,7 +5,7 @@
 // time app-wide (matching the modal Dialog each editor renders).
 import { create } from "zustand";
 
-export type EditorKind = "bridge" | "bridge-delete" | "bond" | "vlan" | "iface";
+export type EditorKind = "bridge" | "bridge-delete" | "bond" | "vlan" | "iface" | "iface-rename";
 
 /** Which entity editor (if any) opens for a given inventory kind — shared by
  * the inspector's "Edit" button and the Management page's per-carrier "Edit"

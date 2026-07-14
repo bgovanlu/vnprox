@@ -2,6 +2,7 @@ package change
 
 import (
 	"net"
+	"strings"
 
 	"github.com/bgovanlu/vnprox/internal/fw"
 	"github.com/bgovanlu/vnprox/internal/inventory"
@@ -46,6 +47,16 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 		}
 		if params.Addresses != nil {
 			checkAddressOverlap(p, op.Target, ref, *params.Addresses, &out)
+		}
+
+	case *IfaceRenameParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "target %s does not exist", op.Target))
+		}
+		if newName := strings.TrimSpace(params.NewName); newName != "" && newName != op.Target.ID {
+			if _, taken := p.ifaceRef(op.Target.Node, newName); taken {
+				out = append(out, errorf(codeRenameTargetExists, ref, "an interface named %q already exists on node %s", newName, op.Target.Node))
+			}
 		}
 
 	case *BondCreateParams:

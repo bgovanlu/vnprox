@@ -556,6 +556,33 @@ func goldenCases() []goldenCase {
 			want: nil,
 		},
 
+		// --- iface.rename (issue #2) -------------------------------------
+
+		{
+			name: "schema: iface.rename to an invalid name",
+			snap: buildSnapshot(&inventory.Bridge{Ref: testRef(inventory.KindBridge, "pve1", "vmbr0"), Name: "vmbr0"}),
+			ops: []Op{mkOp(OpIfaceRename, testRef(inventory.KindBridge, "pve1", "vmbr0"),
+				&IfaceRenameParams{NewName: "bad name"})},
+			want: []wantFinding{{SeverityError, codeIfaceNameInvalid, "bridge:pve1:vmbr0"}},
+		},
+		{
+			name: "referential: iface.rename onto an existing interface name",
+			snap: buildSnapshot(
+				&inventory.Bridge{Ref: testRef(inventory.KindBridge, "pve1", "vmbr0"), Name: "vmbr0"},
+				&inventory.Bridge{Ref: testRef(inventory.KindBridge, "pve1", "vmbr1"), Name: "vmbr1"},
+			),
+			ops: []Op{mkOp(OpIfaceRename, testRef(inventory.KindBridge, "pve1", "vmbr0"),
+				&IfaceRenameParams{NewName: "vmbr1"})},
+			want: []wantFinding{{SeverityError, codeRenameTargetExists, "bridge:pve1:vmbr0"}},
+		},
+		{
+			name: "clean: iface.rename to a free, valid name with no guests attached",
+			snap: buildSnapshot(&inventory.Bridge{Ref: testRef(inventory.KindBridge, "pve1", "vmbr0"), Name: "vmbr0"}),
+			ops: []Op{mkOp(OpIfaceRename, testRef(inventory.KindBridge, "pve1", "vmbr0"),
+				&IfaceRenameParams{NewName: "vmbrmgmt"})},
+			want: nil,
+		},
+
 		// --- sdn/schema names + VNI (issue #3) ---------------------------
 
 		{

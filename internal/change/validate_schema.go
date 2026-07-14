@@ -9,6 +9,14 @@ import (
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
+// ifaceNameRe is a valid Linux interface name for a rename target: a
+// leading alphanumeric, then alphanumerics and `._-` (dots appear in VLAN
+// sub-interface names like "vmbr0.100"). Length is capped separately at 15
+// (IFNAMSIZ-1). See codeIfaceNameInvalid.
+var ifaceNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+const maxIfaceNameLen = 15
+
 // sdnIDRe is real PVE's SDN zone/vnet id charset (case-insensitively
 // `[a-z][a-z0-9]*`): a leading letter, then letters/digits only — no
 // hyphens, underscores, dots, or whitespace. See codeSDNNameInvalid.
@@ -165,6 +173,17 @@ func schemaValidateOp(op Op) []Finding {
 		schemaMTUPtr(op, p.MTU, ref, &out)
 		schemaAddressesPtr(p.Addresses, ref, &out)
 		schemaIPPtr(p.Gateway, ref, &out)
+
+	case *IfaceRenameParams:
+		name := strings.TrimSpace(p.NewName)
+		switch {
+		case name == "":
+			out = append(out, errorf(codeIfaceNameInvalid, ref, "iface.rename requires a new name"))
+		case len(name) > maxIfaceNameLen:
+			out = append(out, errorf(codeIfaceNameInvalid, ref, "interface name %q is too long — the kernel allows at most %d characters", name, maxIfaceNameLen))
+		case !ifaceNameRe.MatchString(name):
+			out = append(out, errorf(codeIfaceNameInvalid, ref, "interface name %q is not valid — use letters, digits, and .-_ only, starting with a letter or digit", name))
+		}
 
 	case *IfaceRawReplaceParams:
 		// Content's syntax is checked by Service.expandRawReplaceOps

@@ -262,6 +262,22 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
                   </span>
                 </Tooltip>
               )}
+              {deletable && (
+                <Tooltip content={editDisabledReason}>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={!canWrite}
+                      onClick={() => {
+                        openEditor({ kind: "iface-rename", node: data.node, target: data.ref });
+                      }}
+                    >
+                      Rename
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
               {editorKind && deletable && (
                 <Tooltip content={editDisabledReason}>
                   <span>
