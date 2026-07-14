@@ -6,7 +6,7 @@ import { Button } from "../components/Button";
 import { useSession, SESSION_QUERY_KEY } from "../api/useSession";
 import { useDemoSessionStore } from "../store/authStub";
 import { logout } from "../api/auth";
-import { useToast } from "../components/Toast";
+import { useTopologyStore } from "../topology/store";
 
 export interface TopBarProps {
   onOpenHelp: () => void;
@@ -18,12 +18,18 @@ export function TopBar({ onOpenHelp }: TopBarProps) {
   const exitDemoMode = useDemoSessionStore((s) => s.exitDemoMode);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const setSpotlightOpen = useTopologyStore((s) => s.setSpotlightOpen);
 
   const displayName = demoSession ? "demo" : (session?.user.username ?? "");
 
-  function handleSearchFocus(): void {
-    toast({ title: "Search — not yet implemented", description: 'Press "/" or click here — the topology search index lands in a later task.' });
+  // Open the real spotlight search (GET /inventory/search — fuzzy across
+  // names/MACs/IPs/VMIDs/comments). The search dialog lives on the topology
+  // page (where selecting a result reveals the entity on the map), so from
+  // any other page this navigates there first; the store flag is read on
+  // mount, so setting it before navigating is enough.
+  function openSearch(): void {
+    setSpotlightOpen(true);
+    void navigate("/topology");
   }
 
   async function handleLogout(): Promise<void> {
@@ -45,8 +51,9 @@ export function TopBar({ onOpenHelp }: TopBarProps) {
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-950">
       <button
         type="button"
-        onClick={handleSearchFocus}
-        className="flex h-9 w-full max-w-sm items-center gap-2 rounded-md border border-slate-300 px-3 text-left text-sm text-slate-400 dark:border-slate-700 dark:text-slate-500"
+        onClick={openSearch}
+        aria-label="Search"
+        className="flex h-9 w-full max-w-sm items-center gap-2 rounded-md border border-slate-300 px-3 text-left text-sm text-slate-400 hover:border-slate-400 dark:border-slate-700 dark:text-slate-500 dark:hover:border-slate-600"
       >
         <span aria-hidden>⌕</span>
         <span>Search VMs, MACs, IPs…</span>
