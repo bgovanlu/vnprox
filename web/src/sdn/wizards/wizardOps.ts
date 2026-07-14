@@ -148,7 +148,7 @@ export function buildEvpnZoneOps(p: EvpnZoneParams): Op[] {
   };
   return [
     buildSdnZoneCreateOp(zoneTarget(p.zoneId), zoneForm),
-    vnetOp(p.zoneId, p.vnetId, p.vnetAlias, 0),
+    vnetOp(p.zoneId, p.vnetId, p.vnetAlias, p.vni),
     ...subnetOps(p.zoneId, p.vnetId, p.subnetCidr, p.subnetGateway ?? "", p.snat ?? false),
     buildSdnApplyOp(),
   ];

@@ -16,6 +16,8 @@ import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildQinqPreview, type QinqZoneParams } from "./previewEntities";
 import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { SdnNameField } from "./SdnNameField";
+import { sdnNameError, subnetStepValid } from "./validation";
 import { wizardStrings } from "./strings";
 import { useClusterNodes } from "./useClusterNodes";
 import { useWizardCapability } from "./useWizardCapability";
@@ -86,13 +88,11 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
     {
       id: "zone",
       title: "Trunk",
-      isValid: zoneId.trim().length > 0 && bridgeName.trim().length > 0 && memberNodes.length > 0,
+      isValid: zoneId.trim().length > 0 && bridgeName.trim().length > 0 && memberNodes.length > 0 && !sdnNameError(zoneId),
       content: (
         <div className="space-y-3">
           <p className="text-slate-600 dark:text-slate-300">{S.qinq.intro}</p>
-          <Field label="Name" help="e.g. tenant-net. Lowercase letters/digits, unique cluster-wide.">
-            <input className={inputClass} value={zoneId} onChange={(e) => { setZoneId(e.target.value); }} placeholder="tenant-net" />
-          </Field>
+          <SdnNameField label="Name" help={S.common.zoneNameHelp} value={zoneId} onChange={setZoneId} placeholder="tenants" />
           <Field label="VLAN-aware bridge" help="Must exist, with this exact name, on every member node.">
             <input className={inputClass} value={bridgeName} onChange={(e) => { setBridgeName(e.target.value); }} placeholder="vmbr0" />
           </Field>
@@ -109,7 +109,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
     {
       id: "tags",
       title: "Double tag",
-      isValid: customerVid > 0 && customerVid < 4095 && vnetId.trim().length > 0,
+      isValid: customerVid > 0 && customerVid < 4095 && vnetId.trim().length > 0 && !sdnNameError(vnetId),
       content: (
         <div className="space-y-3">
           <h4 className="text-xs font-medium text-slate-600 dark:text-slate-300">{S.qinq.illustrationHeading}</h4>
@@ -134,9 +134,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
               max={4094}
             />
           </Field>
-          <Field label="VNet name" help="e.g. vnet42. Unique cluster-wide.">
-            <input className={inputClass} value={vnetId} onChange={(e) => { setVnetId(e.target.value); }} placeholder="vnet42" />
-          </Field>
+          <SdnNameField label="VNet name" help={S.common.vnetNameHelp} value={vnetId} onChange={setVnetId} placeholder="vnet42" />
           <Field label="Alias" help={S.common.vnetAliasHelp}>
             <input className={inputClass} value={vnetAlias} onChange={(e) => { setVnetAlias(e.target.value); }} />
           </Field>
@@ -146,7 +144,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
     {
       id: "subnet",
       title: "Addresses",
-      isValid: true,
+      isValid: subnetStepValid(subnet),
       content: <SubnetStep zoneType="qinq" value={subnet} onChange={setSubnet} />,
     },
     {

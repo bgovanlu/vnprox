@@ -21,6 +21,10 @@ export const wizardStrings = {
     previewEmpty: "Fill in the fields on the left to see a preview of the network you're about to create.",
     previewLoading: "Updating preview…",
     memberNodesHelp: "Which cluster nodes should have this network. Leave blank for every node.",
+    // issue #3: the name rules Proxmox actually enforces, stated up front so
+    // the inline check (validation.ts) never comes as a surprise.
+    zoneNameHelp: "Letters and digits only, starting with a letter — e.g. homelab. Keep it short (Proxmox limits SDN names to about 8 characters). Unique cluster-wide.",
+    vnetNameHelp: "Letters and digits only, starting with a letter — e.g. vnet1. Keep it short (about 8 characters). Unique cluster-wide.",
     vnetAliasHelp: "A friendly name shown in the map and lists — purely cosmetic, doesn't affect anything.",
     subnetHeading: "Give VMs addresses (optional)",
     subnetSkipHelp:
@@ -104,6 +108,7 @@ export const wizardStrings = {
     peersStepHelp:
       "Choose which nodes participate in the tunnel mesh. vnprox suggests each node's own address automatically — adjust these if your VXLAN traffic should use a different address than the node's main one (e.g. a dedicated storage/overlay network).",
     peersAutoSuggestNote: "Suggested from each node's own network address — check these before continuing.",
+    vniHelp: "The tunnel identifier for this VNet — like a VLAN ID, but for the overlay. Required, 1–4094.",
     mtuHeading: "MTU — why it needs to be smaller",
     mtuExplain:
       "VXLAN adds its own wrapper around every packet, which takes up space. If this network's MTU (maximum packet size) is set too close to the underlying network's own MTU, the wrapped packets won't fit and get silently dropped or fragmented.",

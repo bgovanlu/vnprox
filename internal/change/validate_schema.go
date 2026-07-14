@@ -2,11 +2,35 @@ package change
 
 import (
 	"net"
+	"regexp"
 	"strings"
 
 	"github.com/bgovanlu/vnprox/internal/fw"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
+
+// sdnIDRe is real PVE's SDN zone/vnet id charset (case-insensitively
+// `[a-z][a-z0-9]*`): a leading letter, then letters/digits only — no
+// hyphens, underscores, dots, or whitespace. See codeSDNNameInvalid.
+var sdnIDRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+
+// schemaSDNName flags an ill-formed SDN zone/vnet id (charset only — see
+// codeSDNNameInvalid on why length is not blocked here). A vnet's Ref.ID is
+// the "<zone>/<vnet>" form (params_sdn.go), so the leaf after the last "/"
+// is the actual PVE-facing id to validate; a zone id carries no "/".
+func schemaSDNName(kind, id, ref string, out *[]Finding) {
+	leaf := id
+	if i := strings.LastIndexByte(id, '/'); i >= 0 {
+		leaf = id[i+1:]
+	}
+	if leaf == "" {
+		return // emptiness is a referential/required-field concern, not charset
+	}
+	if !sdnIDRe.MatchString(leaf) {
+		*out = append(*out, errorf(codeSDNNameInvalid, ref,
+			"%s name %q is not valid — use only letters and digits, starting with a letter (Proxmox rejects other characters)", kind, leaf))
+	}
+}
 
 // Range/enum constants for the schema validator class (docs/features/
 // change-management.md §2 class 1: "types, ranges (VID 1–4094, MTU
@@ -269,6 +293,7 @@ func schemaValidateOp(op Op) []Finding {
 		// no params to validate.
 
 	case *SdnZoneCreateParams:
+		schemaSDNName("sdn zone", op.Target.ID, ref, &out)
 		if !validSdnZoneTypes[p.Type] {
 			out = append(out, errorf(codeSDNZoneTypeInvalid, ref, "sdn zone type %q is not recognized", p.Type))
 		}
@@ -281,6 +306,7 @@ func schemaValidateOp(op Op) []Finding {
 		// no params to validate.
 
 	case *SdnVnetCreateParams:
+		schemaSDNName("sdn vnet", op.Target.ID, ref, &out)
 		if p.Zone == "" {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.vnet.create requires zone"))
 		}

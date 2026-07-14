@@ -24,6 +24,19 @@ const (
 	codeMACInvalid           = "schema.mac_invalid"
 	codeDHCPRangeInvalid     = "schema.dhcp_range_invalid"
 	codeSDNZoneTypeInvalid   = "schema.sdn_zone_type_invalid"
+	// codeSDNNameInvalid flags an sdn.zone.create/vnet.create whose id
+	// contains characters real PVE's SDN id format rejects. Real PVE
+	// validates zone/vnet ids against (case-insensitively) `[a-z][a-z0-9]*`
+	// — a letter followed by letters/digits, no hyphens/underscores/dots/
+	// whitespace — before it will stage the config, so an ill-formed id is
+	// the classic mid-apply "Parameter verification failed" (issue #3). This
+	// is a context-free per-op charset check (schema class); the *length*
+	// limit PVE also enforces is deliberately NOT a blocking error here —
+	// the exact cap is version-dependent and unverified against live PVE
+	// (needs-hardware-validation), and existing golden fixtures/tests carry
+	// longer ids — so length is surfaced as a non-blocking wizard warning
+	// (web/src/sdn/wizards/validation.ts) instead.
+	codeSDNNameInvalid = "schema.sdn_name_invalid"
 	// codeGatewayNotInSubnet is T-701 acceptance criterion 2: a
 	// sdn.subnet.create/update whose gateway is a syntactically valid IP
 	// (codeIPInvalid already covers "not an IP at all") but does not fall
@@ -111,6 +124,14 @@ const (
 
 	codeSDNBridgeMissing = "sdn.bridge_missing_on_node"
 	codeSDNTagDuplicate  = "sdn.tag_duplicate"
+	// codeSDNVNIRequired flags a vnet in a vxlan/evpn zone whose effective
+	// tag (the VNI, for those zone types) is 0. Real PVE requires a VNI for
+	// a vxlan/evpn vnet and rejects one without at stage time — the guided
+	// EVPN/VXLAN wizards used to draft tag 0 silently (issue #3). Zone-type-
+	// aware and net-effect-folded like its sdn-class siblings, so a vnet and
+	// the zone that gives it its type created in the same changeset are
+	// resolved together.
+	codeSDNVNIRequired = "sdn.vni_required"
 	// codeSNATRequiresGateway is T-701 acceptance criterion 2: a subnet
 	// whose *effective* state (this changeset's own net effect, folded
 	// over the base snapshot — see effectiveSubnets) has snat=true but no

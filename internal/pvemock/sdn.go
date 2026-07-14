@@ -4,9 +4,29 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"regexp"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// sdnIDPattern is real PVE's SDN zone/vnet id charset (case-insensitively
+// `[a-z][a-z0-9]*`). A create with an id outside it is rejected with a
+// PVE-style "Parameter verification failed" 400 — the literal mid-apply
+// error issue #3 reported, kept here so a raw/non-wizard caller that slips
+// past change.schemaSDNName can't silently re-hide the gap in CI. Exact
+// real-PVE wording/length-cap is unconfirmed against live hardware
+// (planning/reports/needs-hardware-validation.md); this mirrors vnprox's
+// own charset check, not any length rule.
+var sdnIDPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+
+// sdnParamVerifyError returns a PVE-style rejection string if id is not a
+// valid SDN object id, or "" if it is acceptable.
+func sdnParamVerifyError(kind, id string) string {
+	if id != "" && !sdnIDPattern.MatchString(id) {
+		return fmt.Sprintf("Parameter verification failed. - %s: value '%s' does not match the regex pattern", kind, id)
+	}
+	return ""
+}
 
 // runningZone derives one zone's last-applied ("?running=1") value from its
 // fixture-loaded (staged) value, per SDNZoneSpec.Running's doc comment:
@@ -129,6 +149,10 @@ func (srv *Server) handleSDNZoneCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if z.ID == "" {
 		writeError(w, http.StatusBadRequest, "zone id (\"zone\") is required")
+		return
+	}
+	if msg := sdnParamVerifyError("zone", z.ID); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	z.Pending = PendingNew
@@ -275,6 +299,10 @@ func (srv *Server) handleSDNVnetCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if v.ID == "" {
 		writeError(w, http.StatusBadRequest, "vnet id (\"vnet\") is required")
+		return
+	}
+	if msg := sdnParamVerifyError("vnet", v.ID); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	srv.state.sdn.mu.Lock()

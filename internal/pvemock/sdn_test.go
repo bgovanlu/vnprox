@@ -168,6 +168,28 @@ func TestSDN_SubnetCreateRejectsGatewayOutsideCIDR(t *testing.T) {
 	mustStatus(t, srv, req, http.StatusBadRequest)
 }
 
+func TestSDN_ZoneCreateRejectsInvalidName(t *testing.T) {
+	srv := newTestServer(t, "three-node-vlan.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	// A hyphenated zone id is outside PVE's SDN id charset — real PVE
+	// rejects it at create with "Parameter verification failed" (issue #3).
+	body, _ := json.Marshal(SDNZoneSpec{ID: "bad-zone", Type: "simple"})
+	req := authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/zones", ticket, csrf, body)
+	mustStatus(t, srv, req, http.StatusBadRequest)
+}
+
+func TestSDN_VnetCreateRejectsInvalidName(t *testing.T) {
+	srv := newTestServer(t, "three-node-vlan.yaml")
+	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")
+
+	// vlanz is an existing zone in three-node-vlan.yaml; the underscore in
+	// the vnet id is what PVE rejects.
+	body, _ := json.Marshal(SDNVnetSpec{ID: "bad_vnet", Zone: "vlanz"})
+	req := authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/vnets", ticket, csrf, body)
+	mustStatus(t, srv, req, http.StatusBadRequest)
+}
+
 func TestSDN_SubnetUpdateRejectsSNATWithoutGateway(t *testing.T) {
 	srv := newTestServer(t, "three-node-vlan.yaml")
 	ticket, csrf := login(t, srv, "root@pam", "vnprox-mock")

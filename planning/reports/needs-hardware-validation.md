@@ -167,3 +167,25 @@ from; and pvemock does not model an `ifreload` outage at all):
       fixture's `pve-network` raw source is live-captured, but the interfaces(5) stanza half was
       hand-extended per the pinned shape (`web/src/topology/__fixtures__/inventory-detail-vmbr0.json`,
       noted in its test header).
+
+## SDN object naming and VNI (issue #3 — inline validation)
+
+- [ ] **Exact real-PVE SDN zone/vnet id charset and length cap.** vnprox now blocks
+      characters outside `[A-Za-z][A-Za-z0-9]*` (charset only) end to end — inline in the
+      guided wizards (`web/src/sdn/wizards/validation.ts`), in the change engine
+      (`internal/change.schemaSDNName` / `schema.sdn_name_invalid`), and in pvemock
+      (`internal/pvemock.sdnParamVerifyError`, returning a PVE-style "Parameter verification
+      failed" 400). The **length** limit is intentionally only a non-blocking wizard warning
+      (default 8 chars): existing golden fixtures/tests carry longer ids (`bypasszone`,
+      `ghostzone`) and hyphenated ones (`dc-evpn`, `vnet-tenant-a`), so the exact cap and
+      whether hyphens are ever accepted must be confirmed against a live PVE (8.x/9.x) before
+      the length rule can be tightened to a hard error or the charset relaxed.
+- [ ] **VNI required for vxlan/evpn vnets.** vnprox now errors on a vxlan/evpn vnet with tag 0
+      (`internal/change.vniRequiredFindings` / `sdn.vni_required`) and the wizards require a VNI.
+      Confirm real PVE rejects a tag-less vxlan/evpn vnet at stage time (expected) and the exact
+      message.
+- [ ] **Full VNI range.** The wizard and the change engine currently cap a vnet tag at 4094
+      (`maxVID`), matching the existing schema-class range. Real VXLAN/EVPN VNIs go to 16777215;
+      widening the whole stack (schema range + the `fixClampVID` clamp target) to the full range
+      is a scoped follow-up, deferred here to avoid destabilizing the well-tested tag-clamp
+      machinery without a live cluster to validate the boundary against.

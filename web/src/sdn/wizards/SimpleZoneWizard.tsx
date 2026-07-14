@@ -8,6 +8,8 @@ import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildSimplePreview, type SimpleZoneParams } from "./previewEntities";
 import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { SdnNameField } from "./SdnNameField";
+import { sdnNameError, subnetStepValid } from "./validation";
 import { wizardStrings } from "./strings";
 import { useClusterNodes } from "./useClusterNodes";
 import { useWizardCapability } from "./useWizardCapability";
@@ -74,13 +76,11 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
     {
       id: "zone",
       title: "Network",
-      isValid: zoneId.trim().length > 0 && memberNodes.length > 0,
+      isValid: zoneId.trim().length > 0 && memberNodes.length > 0 && !sdnNameError(zoneId),
       content: (
         <div className="space-y-3">
           <p className="text-slate-600 dark:text-slate-300">{S.simple.intro}</p>
-          <Field label="Name" help="e.g. homelab. Lowercase letters/digits, unique cluster-wide.">
-            <input className={inputClass} value={zoneId} onChange={(e) => { setZoneId(e.target.value); }} placeholder="homelab" />
-          </Field>
+          <SdnNameField label="Name" help={S.common.zoneNameHelp} value={zoneId} onChange={setZoneId} placeholder="homelab" />
           <NodeCheckboxList
             label="Member nodes"
             help={S.common.memberNodesHelp}
@@ -97,15 +97,13 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
     {
       id: "vnet",
       title: "VMs attach here",
-      isValid: vnetId.trim().length > 0,
+      isValid: vnetId.trim().length > 0 && !sdnNameError(vnetId),
       content: (
         <div className="space-y-3">
           <p className="text-slate-600 dark:text-slate-300">
             VMs plug into a VNet, not the zone directly — the zone is the mechanism, the VNet is what you actually attach a VM's network card to.
           </p>
-          <Field label="Name" help="e.g. vnet1. Unique cluster-wide.">
-            <input className={inputClass} value={vnetId} onChange={(e) => { setVnetId(e.target.value); }} placeholder="vnet1" />
-          </Field>
+          <SdnNameField label="Name" help={S.common.vnetNameHelp} value={vnetId} onChange={setVnetId} placeholder="vnet1" />
           <Field label="Alias" help={S.common.vnetAliasHelp}>
             <input className={inputClass} value={vnetAlias} onChange={(e) => { setVnetAlias(e.target.value); }} />
           </Field>
@@ -115,7 +113,7 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
     {
       id: "subnet",
       title: "Addresses",
-      isValid: true,
+      isValid: subnetStepValid(subnet),
       content: <SubnetStep zoneType="simple" value={subnet} onChange={setSubnet} />,
     },
     {

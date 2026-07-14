@@ -58,6 +58,86 @@ func sdnValidate(ops []Op, snap inventory.Snapshot) []Finding {
 	out = append(out, zoneBridgeExistenceFindings(ops, snap, proj)...)
 	out = append(out, vnetTagUniquenessFindings(ops, snap)...)
 	out = append(out, snatRequiresGatewayFindings(ops, snap)...)
+	out = append(out, vniRequiredFindings(ops, snap)...)
+	return out
+}
+
+// effectiveVnetTags resolves every known/folded vnet's effective tag (the
+// VNI, for vxlan/evpn zones), starting from snap's SdnVnet entities and
+// folding this changeset's vnet.create/update/delete ops forward.
+func effectiveVnetTags(ops []Op, snap inventory.Snapshot) map[string]int {
+	tags := map[string]int{}
+	for _, e := range snap.All() {
+		if v, ok := e.(*inventory.SdnVnet); ok {
+			tags[v.ID] = v.Tag
+		}
+	}
+	for _, op := range ops {
+		switch p := op.Params.(type) {
+		case *SdnVnetCreateParams:
+			tags[op.Target.ID] = p.Tag
+		case *SdnVnetUpdateParams:
+			if p.Tag != nil {
+				tags[op.Target.ID] = *p.Tag
+			}
+		case *SdnVnetDeleteParams:
+			delete(tags, op.Target.ID)
+		}
+	}
+	return tags
+}
+
+// vniRequiredFindings flags a vnet this changeset creates/updates that ends
+// up in a vxlan/evpn zone with an effective tag of 0 — real PVE requires a
+// VNI for those zone types (codeSDNVNIRequired). Only vnets the changeset
+// itself touches are reported (mirroring vnetTagUniquenessFindings), and
+// the zone type is resolved net-effect-aware so a vnet and the vxlan/evpn
+// zone that gives it its type, created in the same changeset, are honored.
+func vniRequiredFindings(ops []Op, snap inventory.Snapshot) []Finding {
+	zones := effectiveZones(ops, snap)
+	vnetZones := effectiveVnetZones(ops, snap)
+	tags := effectiveVnetTags(ops, snap)
+
+	seen := map[string]bool{}
+	var out []Finding
+	for _, op := range ops {
+		// Fire on a create, or on an update that *explicitly* sets the tag
+		// (to 0) — an update that leaves the tag alone must not surface a
+		// pre-existing missing VNI the user didn't touch this changeset.
+		switch op.Type {
+		case OpSdnVnetCreate:
+		case OpSdnVnetUpdate:
+			p, ok := op.Params.(*SdnVnetUpdateParams)
+			if !ok || p.Tag == nil {
+				continue
+			}
+		default:
+			continue
+		}
+		id := op.Target.ID
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+
+		zoneID, ok := vnetZones[id]
+		if !ok {
+			continue
+		}
+		z, ok := zones[zoneID]
+		if !ok {
+			continue // referential class flags the missing zone
+		}
+		if z.typ != "vxlan" && z.typ != "evpn" {
+			continue
+		}
+		if tags[id] != 0 {
+			continue
+		}
+		ref := inventory.Ref{Kind: inventory.KindSDNVnet, ID: id}.String()
+		out = append(out, errorf(codeSDNVNIRequired, ref,
+			"vnet %q is in a %s zone but has no VNI — PVE requires a VNI for a %s vnet", id, z.typ, z.typ))
+	}
 	return out
 }
 

@@ -556,6 +556,36 @@ func goldenCases() []goldenCase {
 			want: nil,
 		},
 
+		// --- sdn/schema names + VNI (issue #3) ---------------------------
+
+		{
+			name: "schema: sdn.zone.create with a hyphenated (invalid) name",
+			ops: []Op{mkOp(OpSdnZoneCreate, testRef(inventory.KindSDNZone, "", "bad-zone"),
+				&SdnZoneCreateParams{Type: "simple"})},
+			want: []wantFinding{{SeverityError, codeSDNNameInvalid, "sdn-zone::bad-zone"}},
+		},
+		{
+			name: "schema: sdn.vnet.create with an underscore (invalid) name",
+			snap: buildSnapshot(&inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "zone1"), ID: "zone1", Type: "vlan"}),
+			ops: []Op{mkOp(OpSdnVnetCreate, testRef(inventory.KindSDNVnet, "", "zone1/bad_vnet"),
+				&SdnVnetCreateParams{Zone: "zone1", Tag: 10})},
+			want: []wantFinding{{SeverityError, codeSDNNameInvalid, "sdn-vnet::zone1/bad_vnet"}},
+		},
+		{
+			name: "sdn: vnet.create in a vxlan zone with no VNI errors",
+			snap: buildSnapshot(&inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "zone1"), ID: "zone1", Type: "vxlan"}),
+			ops: []Op{mkOp(OpSdnVnetCreate, testRef(inventory.KindSDNVnet, "", "zone1/vnet1"),
+				&SdnVnetCreateParams{Zone: "zone1"})},
+			want: []wantFinding{{SeverityError, codeSDNVNIRequired, "sdn-vnet::zone1/vnet1"}},
+		},
+		{
+			name: "clean: vnet.create in a vxlan zone with a VNI",
+			snap: buildSnapshot(&inventory.SdnZone{Ref: testRef(inventory.KindSDNZone, "", "zone1"), ID: "zone1", Type: "vxlan"}),
+			ops: []Op{mkOp(OpSdnVnetCreate, testRef(inventory.KindSDNVnet, "", "zone1/vnet1"),
+				&SdnVnetCreateParams{Zone: "zone1", Tag: 100})},
+			want: nil,
+		},
+
 		// --- advisory (class 5) -----------------------------------------
 
 		{

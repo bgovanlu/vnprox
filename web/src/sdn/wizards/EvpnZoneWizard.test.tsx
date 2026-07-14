@@ -7,7 +7,7 @@ import { renderWithProviders, stubWizardFetch } from "./wizardTestUtils";
 const NAME_FIELD = /^Name/;
 
 async function fillControllerStep(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.type(screen.getByRole("textbox", { name: NAME_FIELD }), "dc-evpn");
+  await user.type(screen.getByRole("textbox", { name: NAME_FIELD }), "dcevpn");
   await user.click(await screen.findByRole("checkbox", { name: "pve1" }));
   await user.click(screen.getByRole("checkbox", { name: "pve2" }));
   await user.click(screen.getByRole("checkbox", { name: "pve3" }));
@@ -36,8 +36,9 @@ describe("EvpnZoneWizard — T-403 AC1 (golden ops)", () => {
     await user.click(screen.getByRole("checkbox", { name: "pve1" }));
     await user.click(screen.getByRole("button", { name: "Next" }));
 
-    // Step 3: vnet.
-    await user.type(screen.getByRole("textbox", { name: /^VNet name/ }), "vnet-dc1");
+    // Step 3: vnet — name + VNI (required for evpn, issue #3).
+    await user.type(screen.getByRole("textbox", { name: /^VNet name/ }), "vnetdc1");
+    fireEvent.change(screen.getByRole("spinbutton", { name: /^VNI/ }), { target: { value: "100" } });
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     // Step 4: review + finish.
@@ -48,7 +49,7 @@ describe("EvpnZoneWizard — T-403 AC1 (golden ops)", () => {
     expect(ops).toEqual([
       {
         op: "sdn.zone.create",
-        target: "sdn-zone::dc-evpn",
+        target: "sdn-zone::dcevpn",
         params: {
           type: "evpn",
           controller: "evpn1",
@@ -59,8 +60,8 @@ describe("EvpnZoneWizard — T-403 AC1 (golden ops)", () => {
       },
       {
         op: "sdn.vnet.create",
-        target: "sdn-vnet::dc-evpn/vnet-dc1",
-        params: { zone: "dc-evpn", vlanAware: false },
+        target: "sdn-vnet::dcevpn/vnetdc1",
+        params: { zone: "dcevpn", tag: 100, vlanAware: false },
       },
       { op: "sdn.apply", params: {} },
     ]);
@@ -79,7 +80,8 @@ describe("EvpnZoneWizard — T-403 AC3 (3-peer BGP session graph)", () => {
 
     await fillControllerStep(user);
     await user.click(screen.getByRole("button", { name: "Next" })); // exit nodes step, none picked
-    await user.type(screen.getByRole("textbox", { name: /^VNet name/ }), "vnet-dc1");
+    await user.type(screen.getByRole("textbox", { name: /^VNet name/ }), "vnetdc1");
+    fireEvent.change(screen.getByRole("spinbutton", { name: /^VNI/ }), { target: { value: "100" } });
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     // Review step names the controller and all three peers — the textual

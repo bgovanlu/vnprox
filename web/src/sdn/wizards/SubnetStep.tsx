@@ -22,6 +22,7 @@ import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { firstUsableIPv4, nextFreeAddress } from "../../ipam/nextFree";
 import { useIpamAllocationsQuery } from "../../ipam/queries";
 import { wizardStrings } from "./strings";
+import { cidrError, gatewayError } from "./validation";
 
 const S = wizardStrings;
 
@@ -124,11 +125,13 @@ export function SubnetStep({ zoneType, value, onChange, evpnExitNodeCount }: Sub
 
   const snatDisabled = gateway === "";
   const evpnSnatMissingExitNode = zoneType === "evpn" && snat && (evpnExitNodeCount ?? 0) === 0;
+  const cidrErr = cidrError(cidr);
+  const gatewayErr = isolated ? undefined : gatewayError(gateway, cidr);
 
   return (
     <div className="space-y-3">
       <p className="text-slate-600 dark:text-slate-300">{S.common.subnetSkipHelp}</p>
-      <Field label="Address range (CIDR)" help={S.common.cidrHelp}>
+      <Field label="Address range (CIDR)" help={S.common.cidrHelp} errors={cidrErr ? [cidrErr] : undefined}>
         <input
           className={inputClass}
           value={cidr}
@@ -169,7 +172,7 @@ export function SubnetStep({ zoneType, value, onChange, evpnExitNodeCount }: Sub
             <p className="text-xs text-slate-500 dark:text-slate-400">{S.common.gatewayModeIsolatedHelp}</p>
           ) : (
             <>
-              <Field label="Gateway" help={S.common.gatewayZoneCopy[zoneType]}>
+              <Field label="Gateway" help={S.common.gatewayZoneCopy[zoneType]} errors={gatewayErr ? [gatewayErr] : undefined}>
                 <input
                   className={inputClass}
                   value={gateway}
