@@ -4,15 +4,79 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/ipam"
 	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/pve"
 	"github.com/bgovanlu/vnprox/internal/topology"
 )
+
+// ipamFindingsAdapter adapts internal/ipam's conflict output into the
+// unified findings stream (findings.IPAMProvider). This composition-root
+// conversion is what keeps internal/ipam from importing internal/findings
+// (the same decoupling dhcpAllocationsAdapter provides for the change
+// engine). Nil-safe: a nil ipam service (degraded mode — no PVE client)
+// contributes no findings.
+type ipamFindingsAdapter struct {
+	ipam   *ipam.Service
+	logger *slog.Logger
+}
+
+// ipamConflictDocsLink is the remediation pointer for an IPAM conflict —
+// they carry no computed fix op, so (like the other non-fixable producers)
+// they link to the docs instead (docs/features/monitoring.md §5's
+// "remediation ... docs link otherwise").
+const ipamConflictDocsLink = "docs/features/ipam.md#2-conflicts"
+
+func (a ipamFindingsAdapter) Findings() []findings.Finding {
+	if a.ipam == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conflicts, err := a.ipam.Conflicts(ctx)
+	if err != nil {
+		a.logger.Warn("findings: computing IPAM conflicts", "error", err)
+		return nil
+	}
+	out := make([]findings.Finding, 0, len(conflicts))
+	for _, sc := range conflicts {
+		out = append(out, ipamConflictToFinding(sc))
+	}
+	return out
+}
+
+// ipamConflictToFinding maps one IPAM conflict to a unified Finding: source
+// ipam, check = the conflict type (duplicate_ip / observed_unallocated /
+// allocated_dark), the same error|warning|info severity vocabulary, and a
+// content-derived stable id (type, subnet, sorted addresses) so re-scanning
+// unchanged state reproduces byte-identical ids (Engine's change/notify
+// tracking depends on it). Not fixable (no computed op patch), so a docs
+// link is attached.
+func ipamConflictToFinding(sc ipam.SubnetConflict) findings.Finding {
+	c := sc.Conflict
+	ips := append([]string(nil), c.IPs...)
+	sort.Strings(ips)
+	detail := c.Message
+	if c.Suggestion != "" {
+		detail = c.Message + " — " + c.Suggestion
+	}
+	return findings.Finding{
+		ID:       "ipam:" + c.Type + "|" + sc.CIDR + "|" + strings.Join(ips, ","),
+		Source:   findings.SourceIPAM,
+		Check:    c.Type,
+		Severity: c.Severity,
+		Detail:   detail,
+		DocsLink: ipamConflictDocsLink,
+	}
+}
 
 // mgmtStatusAdapter adapts a lazily-set *change.Service into
 // findings.MgmtProvider (T-702's mgmt_single_path health check). server.go
@@ -70,22 +134,22 @@ type findingsBroadcaster interface {
 }
 
 // setupFindings builds T-602's *findings.Engine composing driftSvc (T-305,
-// unchanged), topoSvc's LLDP VLAN cross-check (T-302, unchanged), and this
+// unchanged), topoSvc's LLDP VLAN cross-check (T-302, unchanged), IPAM
+// subnet/allocation conflicts (internal/ipam, adapted here), and this
 // package's own health checks over the same live graph metricsSampler
-// already reads. IPAM is left nil: T-405 (internal/ipam) is still a stub
-// package as of this task (see internal/findings/adapt_ipam.go's doc
-// comment) — wiring it in later is a one-line addition to this Config
-// literal once T-405 lands.
+// already reads. ipamSvc is nil-safe (degraded mode with no PVE client
+// contributes no IPAM findings, via ipamFindingsAdapter).
 //
 // notifier is nil-safe (findings.Engine.Config.Notifier accepts nil,
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, notifier findings.Notifier, ws findingsBroadcaster, logger *slog.Logger) *findings.Engine {
+func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:    graph,
 		Drift:    driftSvc,
 		LLDP:     topoSvc,
+		IPAM:     ipamFindingsAdapter{ipam: ipamSvc, logger: logger},
 		Metrics:  metricsSampler,
 		Mgmt:     mgmtSvc,
 		Logger:   logger,
