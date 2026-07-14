@@ -11,7 +11,7 @@ import type { FDBRow } from "../api/types";
 import type { WsClient } from "../api/ws";
 import { useToast } from "../components/Toast";
 import { capsForNode, missingCapTooltip } from "../changesets/capabilities";
-import { useEditorLauncherStore, type EditorKind } from "../changesets/editorLauncherStore";
+import { useEditorLauncherStore, editorKindForInventoryKind } from "../changesets/editorLauncherStore";
 import { buildBondDeleteOp, buildVlanDeleteOp } from "../changesets/opBuilders";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
@@ -23,6 +23,7 @@ import { MetricsTab } from "./MetricsTab";
 import { useInventoryDetailQuery, useMgmtStatusQuery } from "./queries";
 import { useTopologyStore } from "./store";
 import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
+import { describeMgmtPathRedundancy } from "../mgmt/mgmtPath";
 import { mgmtStrings } from "../mgmt/strings";
 
 /** Runtime narrowing for `data.fields.FDB` (typed `unknown` — EntityDetail's
@@ -44,19 +45,6 @@ function isFDBRows(v: unknown): v is FDBRow[] {
  * inventory ref strings; `label` resolves one to a friendlier display via
  * the already-loaded topology query cache — falling back to the raw ref
  * string when the entity isn't in cache (e.g. it scrolled out of view). */
-function describeMgmtPathRedundancy(path: string[], redundant: boolean): string {
-  if (redundant) {
-    return `Redundant: this path has ${String(path.length)} physical interfaces behind it — losing any one still leaves connectivity.`;
-  }
-  if (path.length === 0) {
-    return "Not redundant: no physical interface is resolved behind this carrier yet.";
-  }
-  if (path.length === 1) {
-    return `Not redundant: ${path[0] ?? ""} is the only physical interface behind this carrier — if it fails, this path goes down with it.`;
-  }
-  return "Not redundant: fewer than two of the physical interfaces behind this carrier are confirmed link-up.";
-}
-
 function ManagementPathSection({ node }: { node: string }) {
   const { data: mgmtStatus } = useMgmtStatusQuery();
   const { data: onboardingProgress } = useOnboardingProgressQuery();
@@ -129,19 +117,6 @@ function ManagementPathSection({ node }: { node: string }) {
   );
 }
 
-/** Which editor kind (if any) opens for a given inventory kind — the
- * inspector's "Edit" button (T-207 acceptance criterion: "editors open
- * from the map or list views"). Kinds with no editor of their own
- * (guests, SDN objects, LLDP neighbors, ...) simply show no Edit button. */
-const EDITOR_KIND_BY_INVENTORY_KIND: Partial<Record<string, EditorKind>> = {
-  bridge: "bridge",
-  "ovs-bridge": "bridge",
-  bond: "bond",
-  "ovs-bond": "bond",
-  vlan: "vlan",
-  physnic: "iface",
-};
-
 /** Only bridges/bonds/VLANs are deletable entities with their own delete
  * op in this task's scope (physnic delete isn't a documented op — a NIC is
  * removed by unplugging it, not a changeset op). */
@@ -179,7 +154,7 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
   const { addOps } = useDrawerActions();
   const { toast } = useToast();
 
-  const editorKind = data ? EDITOR_KIND_BY_INVENTORY_KIND[data.kind] : undefined;
+  const editorKind = editorKindForInventoryKind(data?.kind);
   const deletable = data ? DELETABLE_KINDS.has(data.kind) : false;
   const editDisabledReason = data ? missingCapTooltip(session, data.node, "netWrite") : undefined;
   const canWrite = data ? capsForNode(session, data.node).netWrite : false;
