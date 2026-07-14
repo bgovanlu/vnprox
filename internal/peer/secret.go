@@ -53,7 +53,24 @@ type SecretStore struct {
 // loser's reload always sees either no file or the winner's *complete*
 // content, never a partially-written one, so every caller converges on the
 // exact same secret regardless of who "wins".
+// loadOrGenerateMu serializes LoadOrGenerateSecret across the whole process
+// so concurrent in-process callers converge on one secret. Generation is a
+// check-then-generate-then-publish sequence (os.Stat + os.Rename) with an
+// inherent TOCTOU window: without this, two goroutines could each see no
+// file, generate *different* secrets, and race their renames — last writer
+// wins, and readers diverge. In production this is a once-per-process
+// startup call so there is no contention; the lock just makes the
+// concurrent case (and its test) deterministic without changing the
+// filesystem semantics pmxcfs relies on (os.Rename, not a hardlink whose
+// pmxcfs support is unverified). Cross-*node* convergence is unchanged — it
+// still rides pmxcfs replication plus generateSecretFile's own "already
+// published, nothing to do" check.
+var loadOrGenerateMu sync.Mutex
+
 func LoadOrGenerateSecret(path string, logger *slog.Logger) (*SecretStore, error) {
+	loadOrGenerateMu.Lock()
+	defer loadOrGenerateMu.Unlock()
+
 	if logger == nil {
 		logger = slog.Default()
 	}
