@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { NavRail } from "./NavRail";
 import { TopBar } from "./TopBar";
 import { useKeyboardShortcuts } from "../keyboard/useKeyboardShortcuts";
@@ -14,6 +15,7 @@ import { MgmtProtectedRefreshPrompt } from "../mgmt/MgmtProtectedRefreshPrompt";
  * up app-wide (see docs/user-guide.md §6). */
 export function AppShell() {
   const [helpOpen, setHelpOpen] = useState(false);
+  const location = useLocation();
 
   useKeyboardShortcuts({ onOpenHelp: () => { setHelpOpen(true); } });
 
@@ -37,7 +39,30 @@ export function AppShell() {
          * reliably have one. */}
         <OnboardingWalkthrough />
         <main className="min-w-0 flex-1 overflow-auto p-6">
-          <Outlet />
+          {/* A page-level boundary so one view's render crash degrades to a
+              recoverable message instead of blanking the whole app. Keyed on
+              the path so navigating to another page resets it. */}
+          <ErrorBoundary
+            key={location.pathname}
+            label={`page:${location.pathname}`}
+            fallback={
+              <div className="mx-auto max-w-md py-16 text-center">
+                <h2 className="text-lg font-semibold">This page hit an error</h2>
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  Something went wrong rendering this view. Other pages in the nav still work; reload to try again.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { window.location.reload(); }}
+                  className="mt-4 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  Reload
+                </button>
+              </div>
+            }
+          >
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
       <ShortcutHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
