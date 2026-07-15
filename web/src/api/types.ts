@@ -764,7 +764,7 @@ export type ChangesetStatus =
 /** One apply-plan step (internal/change/apply_plan.go's Step) — the Plan
  * tab's row shape. `opIdx` indexes into the changeset's own `ops` array. */
 export interface PlanStep {
-  kind: "stage_file" | "reload" | "sdn_apply";
+  kind: "sdn_stage" | "ipam_alloc" | "stage_file" | "reload" | "fw_apply" | "fw_verify" | "sdn_apply";
   node?: string;
   summary: string;
   opIdx?: number[];
