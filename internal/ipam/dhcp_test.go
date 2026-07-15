@@ -175,7 +175,7 @@ func TestService_DHCP_ReservationIsOneRecordNotTwo(t *testing.T) {
 	const ip, mac, hostname = "10.50.0.222", "de:ad:be:ef:12:34", "new-reservation"
 
 	// Before: absent from both views.
-	beforeGrid, err := svc.Allocations(ctx, "10.50.0.0/24", ipam.GridOptions{})
+	beforeGrid, err := svc.Allocations(ctx, "10.50.0.0/24")
 	if err != nil {
 		t.Fatalf("Allocations (before): %v", err)
 	}
@@ -202,7 +202,7 @@ func TestService_DHCP_ReservationIsOneRecordNotTwo(t *testing.T) {
 
 	// After the single create: both views reflect it, with the same
 	// hostname/mac -- because both are reading the one record PVE now has.
-	afterGrid, err := svc.Allocations(ctx, "10.50.0.0/24", ipam.GridOptions{})
+	afterGrid, err := svc.Allocations(ctx, "10.50.0.0/24")
 	if err != nil {
 		t.Fatalf("Allocations (after create): %v", err)
 	}
@@ -234,7 +234,7 @@ func TestService_DHCP_ReservationIsOneRecordNotTwo(t *testing.T) {
 	// own separate copy of reservations, this delete (which only touches
 	// PVE's IPAM entries, the same store Allocations reads) would leave a
 	// stale reservation behind.
-	finalGrid, err := svc.Allocations(ctx, "10.50.0.0/24", ipam.GridOptions{})
+	finalGrid, err := svc.Allocations(ctx, "10.50.0.0/24")
 	if err != nil {
 		t.Fatalf("Allocations (after delete): %v", err)
 	}
@@ -250,17 +250,19 @@ func TestService_DHCP_ReservationIsOneRecordNotTwo(t *testing.T) {
 	}
 }
 
-func findCell(grid ipam.AllocationGrid, ip string) *ipam.Cell {
-	for i := range grid.Cells {
-		if grid.Cells[i].IP == ip {
-			return &grid.Cells[i]
+// findCell returns the address list's entry for ip, or nil if ip is
+// unoccupied (a free address has no entry — it lives in a FreeRange).
+func findCell(list ipam.AllocationList, ip string) *ipam.Cell {
+	for i := range list.Entries {
+		if list.Entries[i].IP == ip {
+			return &list.Entries[i]
 		}
 	}
 	return nil
 }
 
-func cellState(grid ipam.AllocationGrid, ip string) ipam.CellState {
-	c := findCell(grid, ip)
+func cellState(list ipam.AllocationList, ip string) ipam.CellState {
+	c := findCell(list, ip)
 	if c == nil {
 		return ""
 	}

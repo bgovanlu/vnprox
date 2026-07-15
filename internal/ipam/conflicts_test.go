@@ -3,8 +3,6 @@ package ipam_test
 import (
 	"context"
 	"testing"
-
-	"github.com/bgovanlu/vnprox/internal/ipam"
 )
 
 // TestService_Conflicts_TaggedAndConsistentWithGrid proves Conflicts()
@@ -36,12 +34,12 @@ func TestService_Conflicts_TaggedAndConsistentWithGrid(t *testing.T) {
 	}
 
 	// The conflicts reported for 10.50.0.0/24 must equal that subnet's own
-	// grid conflict count — same mergeSubnet under both paths.
-	grid, err := svc.Allocations(ctx, "10.50.0.0/24", ipam.GridOptions{})
+	// address-list conflict count — same mergeSubnet under both paths.
+	list, err := svc.Allocations(ctx, "10.50.0.0/24")
 	if err != nil {
 		t.Fatalf("Allocations: %v", err)
 	}
-	if byCIDR["10.50.0.0/24"] != len(grid.Conflicts) {
-		t.Errorf("Conflicts() for 10.50.0.0/24 = %d, grid = %d — they must agree", byCIDR["10.50.0.0/24"], len(grid.Conflicts))
+	if byCIDR["10.50.0.0/24"] != len(list.Conflicts) {
+		t.Errorf("Conflicts() for 10.50.0.0/24 = %d, list = %d — they must agree", byCIDR["10.50.0.0/24"], len(list.Conflicts))
 	}
 }

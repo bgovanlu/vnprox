@@ -1,12 +1,12 @@
 // IPAM cockpit (docs/features/ipam.md §2): subnet list with utilization,
-// the allocation grid for whichever subnet is selected, and CSV export.
+// the address list for whichever subnet is selected, and CSV export.
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
 import type { IpamSubnet } from "../api/types";
 import { ipamAllocationsCsvUrl } from "../api/ipam";
-import { AllocationGrid } from "./AllocationGrid";
+import { AddressList } from "./AddressList";
 import { useIpamSubnetsQuery } from "./queries";
 
 function UtilizationBar({ utilization, conflicts }: { utilization: number; conflicts: number }) {
@@ -59,6 +59,36 @@ function SubnetRow({ subnet, selected, onSelect }: { subnet: IpamSubnet; selecte
   );
 }
 
+/** The selected subnet's context row under its CIDR heading: zone/VNet (SDN)
+ * or owning node (bridge), gateway, and DHCP status. The live per-state
+ * counts live in AddressList's summary strip, not here. */
+function SubnetFacts({ subnet }: { subnet: IpamSubnet }) {
+  const facts: { label: string; value: string }[] = [];
+  if (subnet.source === "sdn") {
+    if (subnet.zone) facts.push({ label: "Zone", value: subnet.zone });
+    if (subnet.vnet) facts.push({ label: "VNet", value: subnet.vnet });
+  } else if (subnet.node) {
+    facts.push({ label: "Bridge on", value: subnet.node });
+  }
+  if (subnet.gateway) facts.push({ label: "Gateway", value: subnet.gateway });
+  facts.push({ label: "DHCP", value: subnet.dhcpEnabled ? "on" : "off" });
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+      {facts.map((f) => (
+        <span key={f.label}>
+          {f.label} <span className="font-medium text-slate-700 dark:text-slate-200">{f.value}</span>
+        </span>
+      ))}
+      {subnet.readOnly && (
+        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+          read-only
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function IpamPage() {
   const { data, isLoading, isError } = useIpamSubnetsQuery();
   const [selected, setSelected] = useState<string | undefined>(undefined);
@@ -99,14 +129,11 @@ export function IpamPage() {
           <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-800">
             {!selectedSubnet && <EmptyState title="Nothing selected" description="Pick a subnet from the list." />}
             {selectedSubnet && (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h2 className="text-lg font-semibold">{selectedSubnet.cidr}</h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {selectedSubnet.allocated} allocated · {selectedSubnet.observed} observed ·{" "}
-                      {selectedSubnet.conflicts} conflict{selectedSubnet.conflicts === 1 ? "" : "s"}
-                    </p>
+                    <h2 className="font-mono text-lg font-semibold">{selectedSubnet.cidr}</h2>
+                    <SubnetFacts subnet={selectedSubnet} />
                   </div>
                   <a href={ipamAllocationsCsvUrl(selectedSubnet.cidr)} download>
                     <Button variant="secondary" size="sm">
@@ -114,7 +141,7 @@ export function IpamPage() {
                     </Button>
                   </a>
                 </div>
-                <AllocationGrid subnetCidr={selectedSubnet.cidr} readOnly={selectedSubnet.readOnly} />
+                <AddressList subnetCidr={selectedSubnet.cidr} readOnly={selectedSubnet.readOnly} />
               </div>
             )}
           </div>

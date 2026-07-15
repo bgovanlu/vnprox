@@ -4,21 +4,13 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sort"
 )
 
 // ErrSubnetNotFound is returned by Allocations for a CIDR that names
 // neither a currently-configured SDN subnet nor a detected non-SDN
 // (bridge-derived) subnet.
 var ErrSubnetNotFound = errors.New("ipam: subnet not found")
-
-// GridOptions parameterizes Allocations' `?block=` paging query
-// (docs/features/ipam.md §2's "paged block summaries").
-type GridOptions struct {
-	// Block, when set, must be one of the CIDR values the same subnet's
-	// default (Block-less) paged response listed under Blocks — it drills
-	// into that one /24-sized (or /120 for IPv6) block's full Cells.
-	Block string
-}
 
 // resolvedSubnet bundles what Allocations/AllocationsCSV both need once a
 // requested CIDR has been matched against either the live SDN subnet list
@@ -90,129 +82,86 @@ func (s *Service) resolveSubnet(ctx context.Context, cidr string) (resolvedSubne
 }
 
 // Allocations builds docs/api.md's
-// `GET /ipam/subnets/{cidr}/allocations` response.
-func (s *Service) Allocations(ctx context.Context, cidr string, opts GridOptions) (AllocationGrid, error) {
+// `GET /ipam/subnets/{cidr}/allocations` response: the address list
+// (occupied Entries + collapsed FreeRanges) for the whole subnet, at any
+// size. The merged cell map is sparse (proportional to actual allocations
+// and observations, never to the address space), so the same single pass
+// serves a /30 and a /16 alike — the free space between occupied addresses
+// is emitted as ranges, not materialized address by address.
+func (s *Service) Allocations(ctx context.Context, cidr string) (AllocationList, error) {
 	rs, err := s.resolveSubnet(ctx, cidr)
 	if err != nil {
-		return AllocationGrid{}, err
+		return AllocationList{}, err
 	}
-	canonical, gateway, readOnly := rs.canonical, rs.gateway, rs.readOnly
-	allocs, subnetObs, known := rs.allocs, rs.obs, rs.known
-	total, prefix := rs.total, rs.prefix
-	paged := total > pagedThreshold
+	cellMap, conflicts := mergeSubnet(rs.allocs, rs.obs, rs.known, rs.gateway)
 
-	if !paged || opts.Block != "" {
-		target := canonical
-		if opts.Block != "" {
-			target = opts.Block
-		}
-		targetAllocs := filterAllocsForCIDR(allocs, target)
-		targetObs := observationsForCIDR(target, subnetObs)
-		cellMap, conflicts := mergeSubnet(targetAllocs, targetObs, known, gateway)
+	entries := sortCellsByIP(cellMap)
+	ranges := freeRanges(rs.canonical, cellMap)
+	counts := tallyCounts(cellMap, ranges)
 
-		addrs, ok := hostAddresses(target)
-		if !ok {
-			return AllocationGrid{}, ErrSubnetNotFound
-		}
-		cells := make([]Cell, 0, len(addrs))
-		for _, ip := range addrs {
-			c, ok := cellMap[ip]
-			if !ok {
-				c = Cell{IP: ip, State: CellFree}
-			}
-			cells = append(cells, c)
-		}
-		grid := AllocationGrid{
-			CIDR: canonical, Prefix: prefix, Total: total, Paged: paged,
-			Cells: cells, Conflicts: conflicts, ReadOnly: readOnly, GeneratedAt: s.now().Unix(),
-		}
-		if paged {
-			grid.Block = target
-		}
-		return grid, nil
+	// Marshal empty collections as [] rather than null, so every client can
+	// treat entries/freeRanges/conflicts as arrays unconditionally.
+	if ranges == nil {
+		ranges = []FreeRange{}
+	}
+	if conflicts == nil {
+		conflicts = []Conflict{}
 	}
 
-	// Paged, no specific block requested: one merge pass over the whole
-	// subnet's (sparse — proportional to actual allocations/observations,
-	// never to address space) allocs/obs, bucketed into per-block
-	// summaries in a single sweep (O(occupied cells), not
-	// O(blocks x occupied cells)) — see this task's report for the
-	// /16-without-jank perf note this is the backbone of.
-	cellMap, conflicts := mergeSubnet(allocs, subnetObs, known, gateway)
-	blocks, _ := blockCIDRs(canonical)
-	summaries := bucketIntoBlocks(blocks, cellMap)
-	return AllocationGrid{
-		CIDR: canonical, Prefix: prefix, Total: total, Paged: true,
-		Blocks: summaries, Conflicts: conflicts, ReadOnly: readOnly, GeneratedAt: s.now().Unix(),
+	return AllocationList{
+		CIDR:        rs.canonical,
+		Gateway:     rs.gateway,
+		Entries:     entries,
+		FreeRanges:  ranges,
+		Conflicts:   conflicts,
+		Counts:      counts,
+		Prefix:      rs.prefix,
+		Total:       rs.total,
+		ReadOnly:    rs.readOnly,
+		GeneratedAt: s.now().Unix(),
 	}, nil
 }
 
-// bucketIntoBlocks sums cellMap into one BlockSummary per entry in blocks
-// (canonical order preserved). Every block is the same fixed size (256
-// addresses), so which block a cell belongs to is found by masking the
-// cell's own address down to that same size and doing an O(1) map lookup
-// by the resulting network string, rather than scanning every block's
-// net.IPNet.Contains — O(occupied cells), not O(occupied cells x blocks),
-// the perf property this task's report's /16-paging note relies on.
-func bucketIntoBlocks(blocks []string, cellMap map[string]Cell) []BlockSummary {
-	summaries := make([]BlockSummary, len(blocks))
-	indexByNetwork := make(map[string]int, len(blocks))
-	var mask net.IPMask
-	for i, b := range blocks {
-		total, _, _ := subnetAddrCount(b)
-		summaries[i] = BlockSummary{CIDR: b, Total: total}
-		if _, ipnet, err := net.ParseCIDR(b); err == nil {
-			indexByNetwork[ipnet.String()] = i
-			mask = ipnet.Mask
-		}
+// sortCellsByIP returns cellMap's occupied cells sorted by ascending numeric
+// address (not lexical — so .10 sorts after .9, and IPv6 orders correctly).
+func sortCellsByIP(cellMap map[string]Cell) []Cell {
+	out := make([]Cell, 0, len(cellMap))
+	for _, c := range cellMap {
+		out = append(out, c)
 	}
-	if mask == nil {
-		return summaries
-	}
-
-	for ipStr, c := range cellMap {
-		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			continue
+	sort.Slice(out, func(i, j int) bool {
+		a, b := ipToBig(net.ParseIP(out[i].IP)), ipToBig(net.ParseIP(out[j].IP))
+		if a == nil || b == nil {
+			return out[i].IP < out[j].IP
 		}
-		network := (&net.IPNet{IP: ip.Mask(mask), Mask: mask}).String()
-		i, ok := indexByNetwork[network]
-		if !ok {
-			continue
-		}
-		for _, src := range c.Sources {
-			switch src {
-			case "pve-ipam":
-				summaries[i].Allocated++
-			case "guest-agent", "neighbor", "dhcp-lease":
-				summaries[i].Observed++
-			}
-		}
-		if c.State == CellConflict {
-			summaries[i].Conflicts++
-		}
-	}
-	for i := range summaries {
-		if summaries[i].Total > 0 {
-			summaries[i].Utilization = float64(summaries[i].Allocated) / float64(summaries[i].Total)
-		}
-	}
-	return summaries
+		return a.Cmp(b) < 0
+	})
+	return out
 }
 
-func filterAllocsForCIDR(allocs []Allocation, cidr string) []Allocation {
-	_, ipnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return nil
-	}
-	var out []Allocation
-	for _, a := range allocs {
-		ip := net.ParseIP(a.IP)
-		if ip != nil && ipnet.Contains(ip) {
-			out = append(out, a)
+// tallyCounts buckets the merged cells by render state and takes Free from
+// the sum of the free ranges, so the buckets partition the usable-host space
+// exactly (the summary strip's segments always add up).
+func tallyCounts(cellMap map[string]Cell, ranges []FreeRange) Counts {
+	var c Counts
+	for _, cell := range cellMap {
+		switch cell.State {
+		case CellAllocated:
+			c.Allocated++
+		case CellReserved:
+			c.Reserved++
+		case CellObserved:
+			c.Observed++
+		case CellGateway:
+			c.Gateway++
+		case CellConflict:
+			c.Conflict++
 		}
 	}
-	return out
+	for _, r := range ranges {
+		c.Free += r.Count
+	}
+	return c
 }
 
 // sameNetwork reports whether a and b name the same network (parsing both

@@ -1,7 +1,9 @@
 package ipam_test
 
 import (
+	"bytes"
 	"context"
+	"net"
 	"net/http/httptest"
 	"sort"
 	"strings"
@@ -12,6 +14,23 @@ import (
 	"github.com/bgovanlu/vnprox/internal/pve"
 	"github.com/bgovanlu/vnprox/internal/pvemock"
 )
+
+// ipCompare orders two IP strings numerically (via their canonical 16-byte
+// form), the same ordering the address list's Entries use.
+func ipCompare(a, b string) int {
+	return bytes.Compare(net.ParseIP(a).To16(), net.ParseIP(b).To16())
+}
+
+// ipInFreeRanges reports whether ip falls inside any [Start, End] FreeRange.
+func ipInFreeRanges(t *testing.T, ip string, ranges []ipam.FreeRange) bool {
+	t.Helper()
+	for _, r := range ranges {
+		if ipCompare(ip, r.Start) >= 0 && ipCompare(ip, r.End) <= 0 {
+			return true
+		}
+	}
+	return false
+}
 
 const ipamLabFixture = "../../testdata/clusters/ipam-lab.yaml"
 
@@ -89,22 +108,19 @@ func TestService_Allocations_GoldenCellStateMap(t *testing.T) {
 	svc := newIpamTestService(t)
 	ctx := context.Background()
 
-	grid, err := svc.Allocations(ctx, "10.50.0.0/24", ipam.GridOptions{})
+	list, err := svc.Allocations(ctx, "10.50.0.0/24")
 	if err != nil {
 		t.Fatalf("Allocations: %v", err)
 	}
-	if grid.Paged {
-		t.Fatal("a /24 must not be paged")
-	}
-	if len(grid.Cells) != 254 {
-		t.Fatalf("cell count = %d, want 254 (a /24 minus network+broadcast)", len(grid.Cells))
-	}
 
 	byIP := map[string]ipam.Cell{}
-	for _, c := range grid.Cells {
+	for _, c := range list.Entries {
 		byIP[c.IP] = c
 	}
 
+	// Every occupied address renders one Entry with the documented state and
+	// confidence label. Free addresses (10.50.0.99) never appear as an
+	// entry — they are covered by the collapsed FreeRanges instead.
 	golden := map[string]struct {
 		state ipam.CellState
 		conf  ipam.Confidence
@@ -115,34 +131,54 @@ func TestService_Allocations_GoldenCellStateMap(t *testing.T) {
 		"10.50.0.20": {ipam.CellAllocated, ipam.ConfidenceAllocated},
 		"10.50.0.77": {ipam.CellConflict, ipam.ConfidenceConflict},
 		"10.50.0.88": {ipam.CellObserved, ipam.ConfidenceObserved},
-		"10.50.0.99": {ipam.CellFree, ""},
 	}
 	for ip, want := range golden {
 		got, ok := byIP[ip]
 		if !ok {
-			t.Fatalf("%s missing from grid", ip)
+			t.Fatalf("%s missing from address list entries", ip)
 		}
 		if got.State != want.state || got.Confidence != want.conf {
 			t.Errorf("%s: got (state=%s, confidence=%s), want (state=%s, confidence=%s)", ip, got.State, got.Confidence, want.state, want.conf)
 		}
 	}
 
+	if _, ok := byIP["10.50.0.99"]; ok {
+		t.Error("free address 10.50.0.99 must not appear as an entry — it belongs in a FreeRange")
+	}
+	if !ipInFreeRanges(t, "10.50.0.99", list.FreeRanges) {
+		t.Error("free address 10.50.0.99 is not covered by any FreeRange")
+	}
+
+	// Entries are sorted ascending by numeric address.
+	for i := 1; i < len(list.Entries); i++ {
+		if ipCompare(list.Entries[i-1].IP, list.Entries[i].IP) >= 0 {
+			t.Fatalf("entries not sorted: %s !< %s", list.Entries[i-1].IP, list.Entries[i].IP)
+		}
+	}
+
+	// The state buckets plus the free ranges partition the /24's 254 usable
+	// hosts exactly, so the summary strip's segments always add up.
+	occupied := len(list.Entries)
+	if got := list.Counts.Free + occupied; got != 254 {
+		t.Errorf("free (%d) + occupied (%d) = %d, want 254 usable hosts", list.Counts.Free, occupied, got)
+	}
+
 	seen := map[ipam.Confidence]bool{}
-	for _, c := range grid.Cells {
+	for _, c := range list.Entries {
 		if c.Confidence != "" {
 			seen[c.Confidence] = true
 		}
 	}
 	for _, want := range []ipam.Confidence{ipam.ConfidenceAllocated, ipam.ConfidenceObserved, ipam.ConfidenceBoth, ipam.ConfidenceConflict} {
 		if !seen[want] {
-			t.Errorf("confidence label %q never appears in the live-rendered grid", want)
+			t.Errorf("confidence label %q never appears in the live-rendered list", want)
 		}
 	}
 
 	// Acceptance criterion 2: all three conflict types, each with a
 	// suggested resolution, on this brownfield fixture.
 	gotTypes := map[string]bool{}
-	for _, c := range grid.Conflicts {
+	for _, c := range list.Conflicts {
 		gotTypes[c.Type] = true
 		if c.Suggestion == "" {
 			t.Errorf("conflict %+v has no suggested resolution", c)
@@ -201,7 +237,7 @@ func TestService_Subnets_ListsSDNAndNonSDNSubnets(t *testing.T) {
 
 func TestService_Allocations_UnknownSubnet(t *testing.T) {
 	svc := newIpamTestService(t)
-	if _, err := svc.Allocations(context.Background(), "203.0.113.0/24", ipam.GridOptions{}); err != ipam.ErrSubnetNotFound {
+	if _, err := svc.Allocations(context.Background(), "203.0.113.0/24"); err != ipam.ErrSubnetNotFound {
 		t.Fatalf("err = %v, want ErrSubnetNotFound", err)
 	}
 }

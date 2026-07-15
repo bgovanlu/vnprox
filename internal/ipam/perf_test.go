@@ -2,16 +2,17 @@ package ipam
 
 import (
 	"fmt"
+	"net"
 	"testing"
 	"time"
 )
 
 // synthetic16 builds a /16's worth of sparse allocations/observations (2000
 // occupied addresses spread across the whole range — a generously busy
-// subnet, real deployments are far sparser) for the paging perf note in
-// this task's report: docs/features/ipam.md §2's "larger subnets render as
-// paged block summaries" must not force a per-request scan of the full
-// 65,536-address space.
+// subnet, real deployments are far sparser) for the address-list perf note:
+// the list view (occupied Entries + collapsed FreeRanges) must never force a
+// per-request scan of the full 65,536-address space, so a /16 renders as
+// cheaply as a /24.
 func synthetic16(n int) ([]Allocation, []Observation) {
 	allocs := make([]Allocation, 0, n)
 	obs := make([]Observation, 0, n/2)
@@ -31,61 +32,55 @@ func synthetic16(n int) ([]Allocation, []Observation) {
 	return allocs, obs
 }
 
-// TestPaged16_BlockSummaryIsFastAndBounded is T-405 acceptance criterion 5's
-// backend-side perf note: a /16's block-summary computation (the default,
-// no-`?block=` response for a subnet this large) touches work proportional
-// to the number of occupied addresses, not the 65,536-address space, and
-// completes well within a single request's budget even at a deliberately
-// busy 2000-allocation fixture.
-func TestPaged16_BlockSummaryIsFastAndBounded(t *testing.T) {
+// TestList16_IsFastAndBounded is the address-list perf note: computing a
+// /16's occupied entries plus its collapsed free ranges touches work
+// proportional to the number of occupied addresses (and the gaps between
+// them), not the 65,536-address space, and completes well within a single
+// request's budget even at a deliberately busy 2000-allocation fixture.
+func TestList16_IsFastAndBounded(t *testing.T) {
 	allocs, obs := synthetic16(2000)
-	known := knownGuests{}
 
 	start := time.Now()
-	cellMap, _ := mergeSubnet(allocs, obs, known, "10.60.0.1")
-	blocks, ok := blockCIDRs("10.60.0.0/16")
-	if !ok {
-		t.Fatal("blockCIDRs: not ok")
-	}
-	summaries := bucketIntoBlocks(blocks, cellMap)
+	cellMap, _ := mergeSubnet(allocs, obs, knownGuests{}, "10.60.0.1")
+	entries := sortCellsByIP(cellMap)
+	ranges := freeRanges("10.60.0.0/16", cellMap)
+	counts := tallyCounts(cellMap, ranges)
 	elapsed := time.Since(start)
 
-	if len(summaries) != 256 {
-		t.Fatalf("len(summaries) = %d, want 256", len(summaries))
+	// Every occupied address is exactly one entry (the gateway .1 is folded
+	// into the 2000 by mergeSubnet only if it collided with a synthetic
+	// address; it did not, so there are 2000 allocations + 1 gateway).
+	if len(entries) != 2001 {
+		t.Fatalf("len(entries) = %d, want 2001 (2000 allocations + gateway)", len(entries))
 	}
-	var totalAllocated int
-	for _, s := range summaries {
-		totalAllocated += s.Allocated
+	// Entries are sorted ascending by numeric address.
+	for i := 1; i < len(entries); i++ {
+		a := ipToBig(net.ParseIP(entries[i-1].IP))
+		b := ipToBig(net.ParseIP(entries[i].IP))
+		if a.Cmp(b) >= 0 {
+			t.Fatalf("entries not sorted: %s !< %s", entries[i-1].IP, entries[i].IP)
+		}
 	}
-	if totalAllocated != 2000 {
-		t.Errorf("sum of per-block Allocated = %d, want 2000 (every occupied address accounted for exactly once)", totalAllocated)
+	// Free ranges + occupied entries partition the usable-host space exactly.
+	// The synthetic set happens to include the network address 10.60.0.0
+	// (offset 0), which is outside the usable span — count only the entries
+	// that actually fall within it, exactly as freeRanges does.
+	lo, hi, _, _ := hostSpan("10.60.0.0/16")
+	occInSpan := 0
+	for _, e := range entries {
+		v := ipToBig(net.ParseIP(e.IP))
+		if v.Cmp(lo) >= 0 && v.Cmp(hi) <= 0 {
+			occInSpan++
+		}
 	}
-	// A generous ceiling for CI-noise tolerance, not a tight perf assertion:
-	// the point is "milliseconds, not seconds" — see this task's report for
-	// the measured wall-clock number on the dev machine this was authored
-	// on.
+	usable := 65536 - 2 // /16 minus network + broadcast
+	if got := counts.Free + occInSpan; got != usable {
+		t.Errorf("free (%d) + in-span occupied (%d) = %d, want %d usable hosts", counts.Free, occInSpan, got, usable)
+	}
+	// A generous ceiling for CI-noise tolerance: the point is "milliseconds,
+	// not seconds", proving the list never materializes the address space.
 	if elapsed > 200*time.Millisecond {
-		t.Errorf("block-summary computation took %s, want well under 200ms", elapsed)
+		t.Errorf("address-list computation took %s, want well under 200ms", elapsed)
 	}
-	t.Logf("mergeSubnet + bucketIntoBlocks over a /16 (2000 allocations): %s", elapsed)
-}
-
-// TestPaged16_OneBlockRenderIsBoundedTo256Cells confirms drilling into one
-// block of a /16 (the `?block=` path) always renders exactly one /24's
-// worth of cells, regardless of how busy the rest of the /16 is — the
-// frontend never receives more than 256 Cell objects in a single response,
-// whatever the parent subnet's size.
-func TestPaged16_OneBlockRenderIsBoundedTo256Cells(t *testing.T) {
-	allocs, obs := synthetic16(2000)
-	target := "10.60.7.0/24"
-	blockAllocs := filterAllocsForCIDR(allocs, target)
-	blockObs := observationsForCIDR(target, obs)
-	cellMap, _ := mergeSubnet(blockAllocs, blockObs, knownGuests{}, "")
-	addrs, ok := hostAddresses(target)
-	if !ok || len(addrs) != 254 {
-		t.Fatalf("hostAddresses(%s) = %v, %v", target, addrs, ok)
-	}
-	if len(cellMap) > len(addrs) {
-		t.Fatalf("block cell map has %d entries, more than the block's %d addresses", len(cellMap), len(addrs))
-	}
+	t.Logf("mergeSubnet + sort + freeRanges over a /16 (2000 allocations): %s", elapsed)
 }

@@ -79,16 +79,30 @@ type Cell struct {
 	VMID       int        `json:"vmid,omitempty"`
 }
 
-// BlockSummary is one /24-sized block's utilization rollup within a larger
-// (paged) subnet (docs/features/ipam.md §2: "larger subnets render as paged
-// block summaries").
-type BlockSummary struct {
-	CIDR        string  `json:"cidr"`
-	Total       int     `json:"total"`
-	Allocated   int     `json:"allocated"`
-	Observed    int     `json:"observed"`
-	Conflicts   int     `json:"conflicts"`
-	Utilization float64 `json:"utilization"`
+// FreeRange is a contiguous run of unallocated host addresses, collapsed
+// into a single row of the address list (docs/features/ipam.md §2). The list
+// carries occupied addresses one-per-row and every gap between them as one
+// FreeRange, so the response is proportional to actual usage — it renders
+// identically for a /30 or a /16, with no per-address materialization of
+// empty space. Start and End are inclusive; Count is the number of addresses
+// in the run (clamped to a display-safe maximum for very large IPv6 gaps).
+type FreeRange struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
+	Count int    `json:"count"`
+}
+
+// Counts is the address-list summary strip's per-state tally
+// (docs/features/ipam.md §2). The buckets are mutually exclusive and sum to
+// the subnet's usable-host count (Free included), so a segmented utilization
+// bar drawn from them is exact.
+type Counts struct {
+	Allocated int `json:"allocated"`
+	Reserved  int `json:"reserved"`
+	Observed  int `json:"observed"`
+	Gateway   int `json:"gateway"`
+	Conflict  int `json:"conflict"`
+	Free      int `json:"free"`
 }
 
 // Conflict is one health finding from conflict detection
@@ -102,23 +116,24 @@ type Conflict struct {
 	IPs        []string `json:"ips"`
 }
 
-// AllocationGrid is `GET /ipam/subnets/{cidr}/allocations`'s response
-// (docs/api.md: "allocation grid data"). For a subnet with <=256 addresses
-// (/24 and smaller), Cells carries the whole subnet and Paged is false. For
-// a larger subnet, the default (no `?block=`) response is Paged=true with
-// Blocks (one /24-sized summary per block, docs/features/ipam.md §2's
-// "paged block summaries") and no Cells; passing `?block=<cidr>` (one of
-// Blocks' own CIDRs) returns that one block's full Cells instead — see
-// this task's report for the paging/perf approach.
-type AllocationGrid struct {
-	CIDR        string         `json:"cidr"`
-	Block       string         `json:"block,omitempty"`
-	Blocks      []BlockSummary `json:"blocks,omitempty"`
-	Cells       []Cell         `json:"cells,omitempty"`
-	Conflicts   []Conflict     `json:"conflicts"`
-	Prefix      int            `json:"prefix"`
-	Total       int            `json:"total"`
-	GeneratedAt int64          `json:"generatedAt"`
-	Paged       bool           `json:"paged"`
-	ReadOnly    bool           `json:"readOnly,omitempty"`
+// AllocationList is `GET /ipam/subnets/{cidr}/allocations`'s response: the
+// NetBox-style address list (docs/features/ipam.md §2). Entries holds every
+// occupied address (allocated, reserved, observed, gateway, or in conflict),
+// sorted ascending; FreeRanges holds the contiguous unallocated gaps between
+// them. The representation is sparse — proportional to actual usage, never
+// to the address space — so a /16 and a /30 render through the same view
+// with no paging. Counts is the summary tally, and Gateway names the
+// subnet's gateway address (already present in Entries as a CellGateway row)
+// so the client can pin/label it without re-deriving it.
+type AllocationList struct {
+	CIDR        string      `json:"cidr"`
+	Gateway     string      `json:"gateway,omitempty"`
+	Entries     []Cell      `json:"entries"`
+	FreeRanges  []FreeRange `json:"freeRanges"`
+	Conflicts   []Conflict  `json:"conflicts"`
+	Counts      Counts      `json:"counts"`
+	Prefix      int         `json:"prefix"`
+	Total       int         `json:"total"`
+	GeneratedAt int64       `json:"generatedAt"`
+	ReadOnly    bool        `json:"readOnly,omitempty"`
 }

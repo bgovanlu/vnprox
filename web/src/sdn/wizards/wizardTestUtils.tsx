@@ -151,6 +151,17 @@ export function stubWizardFetch(): WizardFetchStub {
         if (detail) return Promise.resolve(jsonResponse(detail));
         return Promise.resolve(jsonResponse({ error: { code: "not_found", message: "not found" } }, 404));
       }
+      if (url.includes("/ipam/subnets/") && url.includes("/allocations")) {
+        // The SubnetStep gateway pre-fill reads this; a brand-new wizard CIDR
+        // has no known allocations, so return an empty (but well-formed)
+        // address list — arrays, never null, matching the real backend.
+        return Promise.resolve(
+          jsonResponse({
+            cidr: "", prefix: 24, total: 0, entries: [], freeRanges: [], conflicts: [],
+            counts: { allocated: 0, reserved: 0, observed: 0, gateway: 0, conflict: 0, free: 0 }, generatedAt: 1,
+          }),
+        );
+      }
       if (url.includes("/changesets") && method === "POST") {
         const rawBody = typeof init?.body === "string" ? init.body : "";
         const body = rawBody ? (JSON.parse(rawBody) as { title: string; ops: Op[] }) : { title: "", ops: [] };

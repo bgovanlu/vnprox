@@ -157,11 +157,11 @@ func fixClampBridgeVids(op Op) []Op {
 // firstUsableIP returns cidr's first usable host address (network address
 // + 1) as a plain-string IP, or ok=false if cidr does not parse. This is
 // deliberately the same "network + 1" convention
-// internal/ipam/addr.go's hostAddresses uses for its own start offset —
-// the fix this computes and the wizard's own live pre-fill (web/src/ipam/
+// internal/ipam/addr.go's hostSpan uses for its own low bound — the fix
+// this computes and the wizard's own live pre-fill (web/src/ipam/
 // nextFree.ts's firstUsableIPv4) always agree, and a /31 or /32 (no
 // meaningful network/broadcast pair to exclude) still gets *some* address
-// back rather than nothing, matching hostAddresses' own "include every
+// back rather than nothing, matching hostSpan's own "include every
 // address" fallback for those.
 func firstUsableIP(cidr string) (string, bool) {
 	_, ipnet, err := net.ParseCIDR(cidr)

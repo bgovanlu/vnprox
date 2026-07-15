@@ -3,7 +3,7 @@
 // components").
 import { useQuery } from "@tanstack/react-query";
 import { fetchIpamAllocations, fetchIpamSubnets } from "../api/ipam";
-import type { IpamAllocationGrid, IpamSubnetsResponse } from "../api/types";
+import type { IpamAllocationList, IpamSubnetsResponse } from "../api/types";
 
 export const IPAM_SUBNETS_QUERY_KEY = ["ipam", "subnets"] as const;
 
@@ -15,18 +15,18 @@ export function useIpamSubnetsQuery() {
   });
 }
 
-export function ipamAllocationsQueryKey(cidr: string, block?: string): readonly unknown[] {
-  return ["ipam", "allocations", cidr, block ?? null] as const;
+export function ipamAllocationsQueryKey(cidr: string): readonly unknown[] {
+  return ["ipam", "allocations", cidr] as const;
 }
 
-export function useIpamAllocationsQuery(cidr: string | undefined, block?: string) {
-  return useQuery<IpamAllocationGrid>({
-    queryKey: ipamAllocationsQueryKey(cidr ?? "", block),
+export function useIpamAllocationsQuery(cidr: string | undefined) {
+  return useQuery<IpamAllocationList>({
+    queryKey: ipamAllocationsQueryKey(cidr ?? ""),
     queryFn: () => {
       if (!cidr) {
         return Promise.reject(new Error("useIpamAllocationsQuery: cidr is required"));
       }
-      return fetchIpamAllocations(cidr, block);
+      return fetchIpamAllocations(cidr);
     },
     enabled: cidr !== undefined && cidr !== "",
     staleTime: 5_000,

@@ -20,7 +20,7 @@ import (
 // reviewable and test-doubleable.
 type IPAMService interface {
 	Subnets(ctx context.Context) (ipam.SubnetsResponse, error)
-	Allocations(ctx context.Context, cidr string, opts ipam.GridOptions) (ipam.AllocationGrid, error)
+	Allocations(ctx context.Context, cidr string) (ipam.AllocationList, error)
 	AllocationsCSV(ctx context.Context, cidr string) ([]byte, error)
 }
 
@@ -100,12 +100,12 @@ func handleIPAMAllocations(svc IPAMService) http.HandlerFunc {
 			return
 		}
 
-		grid, err := svc.Allocations(r.Context(), cidrPart, ipam.GridOptions{Block: r.URL.Query().Get("block")})
+		list, err := svc.Allocations(r.Context(), cidrPart)
 		if err != nil {
 			writeIPAMLookupError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, grid)
+		writeJSON(w, http.StatusOK, list)
 	}
 }
 

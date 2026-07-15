@@ -38,14 +38,30 @@ export function confidenceLabel(confidence: IpamConfidence): string {
   }
 }
 
-/** Grid cell color classes, keyed by state — the single source of truth
- * for T-405 acceptance criterion 1's per-cell color coding (light + dark
- * mode both handled, per docs/development.md's theme-aware convention). */
-export const cellStateClasses: Record<IpamCellState, string> = {
-  free: "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700",
-  allocated: "bg-accent-100 dark:bg-accent-900/50 border-accent-300 dark:border-accent-700",
-  reserved: "bg-sky-100 dark:bg-sky-900/50 border-sky-300 dark:border-sky-700",
-  observed: "bg-amber-100 dark:bg-amber-900/50 border-amber-300 dark:border-amber-700",
-  gateway: "bg-violet-100 dark:bg-violet-900/50 border-violet-300 dark:border-violet-700",
-  conflict: "bg-red-200 dark:bg-red-900/60 border-red-400 dark:border-red-600",
+/** Per-state color coding for the address list (docs/features/ipam.md §2),
+ * light + dark mode both handled per docs/development.md's theme-aware
+ * convention. The single source of truth shared by the row swatch, the state
+ * pill, and the summary strip's segments.
+ *
+ * `chip` styles the pill next to an address; `swatch` is the solid rail color
+ * on the left of each row and the segment/legend color in the summary strip.
+ */
+export const stateChipClasses: Record<IpamCellState, string> = {
+  free: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  allocated: "bg-accent-100 text-accent-800 dark:bg-accent-950/60 dark:text-accent-200",
+  reserved: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-200",
+  observed: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200",
+  gateway: "bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-200",
+  conflict: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-200",
+};
+
+/** Solid fill classes for the row rail swatch and the summary-strip segments,
+ * keyed by state. */
+export const stateSwatchClasses: Record<IpamCellState, string> = {
+  free: "bg-slate-300 dark:bg-slate-600",
+  allocated: "bg-accent-500",
+  reserved: "bg-sky-500",
+  observed: "bg-amber-500",
+  gateway: "bg-violet-500",
+  conflict: "bg-red-500",
 };
