@@ -82,7 +82,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             ) : null}
           </RadixToast.Root>
         ))}
-        <RadixToast.Viewport className="fixed bottom-4 right-4 z-50 flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none" />
+        {/* pointer-events-none on the whole toast layer: these toasts are
+            purely informational (no buttons to click) and auto-dismiss, so
+            they must never intercept clicks meant for the UI beneath them.
+            The viewport sits bottom-right, directly over a right-side
+            drawer's Apply/Back action bar — without this a visible toast
+            silently ate those clicks (the "Apply does nothing" bug). Children
+            inherit none, so the cards are click-through too. */}
+        <RadixToast.Viewport className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none" />
       </RadixToast.Provider>
     </ToastContext.Provider>
   );
