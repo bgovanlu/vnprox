@@ -7,7 +7,8 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildSimplePreview, type SimpleZoneParams } from "./previewEntities";
-import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { DEFAULT_VNET_ID, DEFAULT_ZONE_ID, defaultSubnetStepValue, useSelectAllNodesOnce } from "./wizardDefaults";
 import { SdnNameField } from "./SdnNameField";
 import { sdnNameError, subnetStepValid } from "./validation";
 import { wizardStrings } from "./strings";
@@ -31,13 +32,19 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
   const clusterNodes = useClusterNodes();
   const cap = useWizardCapability();
 
-  const [zoneId, setZoneId] = useState("");
+  // Seeded with click-through defaults (see wizardDefaults.ts): a user can
+  // accept every step and deploy a working SDN network without typing.
+  const [zoneId, setZoneId] = useState(DEFAULT_ZONE_ID);
   const [bridgeName, setBridgeName] = useState("");
   const [memberNodes, setMemberNodes] = useState<string[]>([]);
-  const [vnetId, setVnetId] = useState("");
+  const [vnetId, setVnetId] = useState(DEFAULT_VNET_ID);
   const [vnetAlias, setVnetAlias] = useState("");
-  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(defaultSubnetStepValue);
   const [finishing, setFinishing] = useState(false);
+
+  // Default to every cluster node selected (the sensible default for a
+  // cluster-wide simple zone), once, without fighting a manual change.
+  useSelectAllNodesOnce(clusterNodes, memberNodes, setMemberNodes);
 
   const params: SimpleZoneParams = useMemo(
     () => ({
