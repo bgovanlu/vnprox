@@ -4,7 +4,9 @@
 // undefined — no server-side state exists to clean up either way (see
 // WizardShell.tsx's doc comment on acceptance criterion 5).
 import { useState } from "react";
+import { Button } from "../../components/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/Dialog";
+import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { EvpnZoneWizard } from "./EvpnZoneWizard";
 import { QinqZoneWizard } from "./QinqZoneWizard";
 import { SimpleZoneWizard } from "./SimpleZoneWizard";
@@ -64,11 +66,35 @@ export function ZoneWizardPicker({ open, onOpenChange }: ZoneWizardPickerProps) 
         </DialogContent>
       </Dialog>
 
-      {active === "simple" && <SimpleZoneWizard open onOpenChange={closeAll} />}
-      {active === "vlan" && <VlanZoneWizard open onOpenChange={closeAll} />}
-      {active === "qinq" && <QinqZoneWizard open onOpenChange={closeAll} />}
-      {active === "vxlan" && <VxlanZoneWizard open onOpenChange={closeAll} />}
-      {active === "evpn" && <EvpnZoneWizard open onOpenChange={closeAll} />}
+      {/* Safety net: if a wizard crashes outright (not just its preview),
+          show a recoverable message instead of blanking the entire app. */}
+      {active !== undefined && (
+        <ErrorBoundary
+          label={`zone-wizard:${active}`}
+          fallback={
+            <Dialog open onOpenChange={(o) => { if (!o) closeAll(); }}>
+              <DialogContent aria-describedby="zone-wizard-error-description">
+                <DialogTitle>Something went wrong</DialogTitle>
+                <DialogDescription id="zone-wizard-error-description">
+                  This wizard hit an unexpected error and couldn&apos;t finish rendering. Close it and try again, or
+                  use a different zone type.
+                </DialogDescription>
+                <div className="mt-4 flex justify-end">
+                  <Button variant="secondary" size="sm" onClick={closeAll}>
+                    Close
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          }
+        >
+          {active === "simple" && <SimpleZoneWizard open onOpenChange={closeAll} />}
+          {active === "vlan" && <VlanZoneWizard open onOpenChange={closeAll} />}
+          {active === "qinq" && <QinqZoneWizard open onOpenChange={closeAll} />}
+          {active === "vxlan" && <VxlanZoneWizard open onOpenChange={closeAll} />}
+          {active === "evpn" && <EvpnZoneWizard open onOpenChange={closeAll} />}
+        </ErrorBoundary>
+      )}
     </>
   );
 }

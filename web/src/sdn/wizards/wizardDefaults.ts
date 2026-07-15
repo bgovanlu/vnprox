@@ -14,6 +14,26 @@ export const DEFAULT_ZONE_ID = "homelab";
 /** Default VNet name. */
 export const DEFAULT_VNET_ID = "vnet1";
 
+/** Default underlying bridge for VLAN/QinQ zones — Proxmox's conventional
+ * default bridge name. Editable; the wizard preview and validators flag it if
+ * it isn't VLAN-aware. */
+export const DEFAULT_BRIDGE = "vmbr0";
+
+/** Default VLAN tag for the VLAN wizard. */
+export const DEFAULT_VLAN_TAG = 100;
+
+/** Default QinQ service (outer, S-VLAN) and customer (inner, C-VLAN) tags. */
+export const DEFAULT_QINQ_SERVICE_VID = 100;
+export const DEFAULT_QINQ_CUSTOMER_VID = 200;
+
+/** Default VXLAN/EVPN VNI (also the L2 identifier the VNet advertises). */
+export const DEFAULT_VNI = 100;
+
+/** Default EVPN controller id + ASN (preview-only; the zone references an
+ * existing controller by id). */
+export const DEFAULT_EVPN_CONTROLLER = "evpn1";
+export const DEFAULT_EVPN_ASN = 65000;
+
 /** Default subnet: a private range unlikely to collide with a typical
  * home/lab LAN. An isolated SDN vnet lives on its own bridge, so accepting
  * this yields a self-contained network the user can attach guests to

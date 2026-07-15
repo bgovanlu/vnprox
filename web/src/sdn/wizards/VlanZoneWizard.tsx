@@ -7,7 +7,8 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildVlanPreview, type VlanZoneParams } from "./previewEntities";
-import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { DEFAULT_BRIDGE, DEFAULT_VLAN_TAG, DEFAULT_VNET_ID, DEFAULT_ZONE_ID, defaultSubnetStepValue, useSelectAllNodesOnce } from "./wizardDefaults";
 import { SdnNameField } from "./SdnNameField";
 import { sdnNameError, subnetStepValid } from "./validation";
 import { wizardStrings } from "./strings";
@@ -32,13 +33,15 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
   const clusterNodes = useClusterNodes();
   const cap = useWizardCapability();
 
-  const [zoneId, setZoneId] = useState("");
-  const [bridgeName, setBridgeName] = useState("");
+  // Seeded with click-through defaults (see wizardDefaults.ts).
+  const [zoneId, setZoneId] = useState(DEFAULT_ZONE_ID);
+  const [bridgeName, setBridgeName] = useState(DEFAULT_BRIDGE);
   const [memberNodes, setMemberNodes] = useState<string[]>([]);
-  const [vid, setVid] = useState(0);
-  const [vnetId, setVnetId] = useState("");
+  const [vid, setVid] = useState(DEFAULT_VLAN_TAG);
+  const [vnetId, setVnetId] = useState(DEFAULT_VNET_ID);
   const [vnetAlias, setVnetAlias] = useState("");
-  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(defaultSubnetStepValue);
+  useSelectAllNodesOnce(clusterNodes, memberNodes, setMemberNodes);
   const [finishing, setFinishing] = useState(false);
 
   const trunkCheck = useLldpTrunkCheck(bridgeName, memberNodes, vid);
