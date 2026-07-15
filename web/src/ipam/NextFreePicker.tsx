@@ -5,9 +5,7 @@
 // takes an address (e.g. BridgeEditor's Addresses field,
 // changesets/editors/BridgeEditor.tsx) can drop it in unchanged — it only
 // needs a subnet CIDR and an onPick callback, no IPAM-page-specific state.
-import { useMemo } from "react";
 import { Button } from "../components/Button";
-import { nextFreeAddress } from "./nextFree";
 import { useIpamAllocationsQuery } from "./queries";
 
 export interface NextFreePickerProps {
@@ -18,27 +16,16 @@ export interface NextFreePickerProps {
   className?: string;
 }
 
-/** A small button that looks up subnetCidr's allocation grid and suggests
- * its lowest free address — skipping every allocated/observed/reserved/
- * gateway address (T-405 acceptance criterion 4), via the exact same
- * confidence-merged grid data the IPAM page's own grid renders, so the
- * suggestion can never contradict what the grid shows. */
+/** A small button that suggests subnetCidr's lowest free address — the start
+ * of the first collapsed free range the backend computes for the address
+ * list, so the suggestion can never contradict what the list shows, and
+ * (unlike the old grid-scan) works at any subnet size. */
 export function NextFreePicker({ subnetCidr, onPick, className }: NextFreePickerProps) {
-  const { data: grid, isLoading } = useIpamAllocationsQuery(subnetCidr);
-  const suggestion = useMemo(() => nextFreeAddress(grid?.cells), [grid]);
+  const { data, isLoading } = useIpamAllocationsQuery(subnetCidr);
+  const suggestion = data?.freeRanges[0]?.start;
 
   if (!subnetCidr) {
     return null;
-  }
-
-  if (grid?.paged) {
-    return (
-      <span className={className} title="This subnet is too large to auto-suggest — browse its allocation grid instead.">
-        <Button variant="ghost" size="sm" disabled>
-          Subnet too large to suggest
-        </Button>
-      </span>
-    );
   }
 
   return (

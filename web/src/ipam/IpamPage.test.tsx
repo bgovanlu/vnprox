@@ -52,8 +52,10 @@ describe("IpamPage", () => {
           return Promise.resolve(
             new Response(
               JSON.stringify({
-                cidr: "10.50.0.0/24", prefix: 24, total: 254, paged: false, conflicts: [], generatedAt: 1_752_000_000,
-                cells: [{ ip: "10.50.0.1", state: "gateway" }],
+                cidr: "10.50.0.0/24", prefix: 24, total: 254, conflicts: [], generatedAt: 1_752_000_000,
+                entries: [{ ip: "10.50.0.1", state: "gateway", hostname: "labz-gw" }],
+                freeRanges: [{ start: "10.50.0.2", end: "10.50.0.254", count: 253 }],
+                counts: { allocated: 0, reserved: 0, observed: 0, gateway: 1, conflict: 0, free: 253 },
               }),
               { status: 200, headers: { "Content-Type": "application/json" } },
             ),

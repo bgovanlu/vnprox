@@ -1,80 +1,116 @@
 package ipam
 
 import (
+	"math"
+	"math/big"
 	"net"
-	"strconv"
+	"sort"
 )
 
-// hostAddresses returns every host address inside cidr, in ascending
-// order, as dotted-quad/colon-hex strings: for a IPv4 subnet with a /30 or
-// wider mask (>=4 addresses) the network and broadcast addresses are
-// excluded (matching how the grid's "usable range" reads in practice); a
-// /31 or /32 (or any IPv6 prefix) includes every address in the block,
-// since there is no meaningful network/broadcast pair to exclude there.
-// ok is false if cidr does not parse.
-func hostAddresses(cidr string) (addrs []string, ok bool) {
+// maxFreeCount clamps a FreeRange.Count so a very large IPv6 gap (a /64 has
+// 2^64 addresses, far beyond an int) still renders a sane, finite number.
+// IPv4 subnets never approach this, so the clamp only ever affects large
+// IPv6 prefixes, where an exact free-address count is meaningless anyway.
+const maxFreeCount = math.MaxInt32
+
+// ipToBig interprets ip as an unsigned big-endian integer of its own byte
+// length (4 for IPv4, 16 for IPv6). Returns nil if ip is not a valid IP.
+func ipToBig(ip net.IP) *big.Int {
+	if v4 := ip.To4(); v4 != nil {
+		return new(big.Int).SetBytes(v4)
+	}
+	if v16 := ip.To16(); v16 != nil {
+		return new(big.Int).SetBytes(v16)
+	}
+	return nil
+}
+
+// bigToIP renders v as an IP of byteLen bytes (4 for IPv4, 16 for IPv6),
+// left-padding with zeroes and truncating any overflow high bytes.
+func bigToIP(v *big.Int, byteLen int) net.IP {
+	b := v.Bytes()
+	if len(b) > byteLen {
+		b = b[len(b)-byteLen:]
+	}
+	out := make(net.IP, byteLen)
+	copy(out[byteLen-len(b):], b)
+	return out
+}
+
+// hostSpan returns the inclusive [lo, hi] integer bounds of cidr's usable
+// host addresses and the address byte length. For an IPv4 subnet /30 or
+// wider (>=4 addresses) the network and broadcast addresses are excluded
+// (matching how a "usable range" reads in practice); a /31 or /32, or any
+// IPv6 prefix, spans every address in the block. ok is false if cidr does
+// not parse.
+func hostSpan(cidr string) (lo, hi *big.Int, byteLen int, ok bool) {
 	_, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
-		return nil, false
+		return nil, nil, 0, false
 	}
 	ones, bits := ipnet.Mask.Size()
-	total := 1 << (bits - ones)
-	isIPv4 := ipnet.IP.To4() != nil
-
-	start := 0
-	end := total
-	if isIPv4 && total >= 4 {
-		start = 1
-		end = total - 1
+	byteLen = bits / 8
+	base := ipToBig(ipnet.IP.Mask(ipnet.Mask))
+	if base == nil {
+		return nil, nil, 0, false
 	}
-
-	base := ipnet.IP.Mask(ipnet.Mask)
-	out := make([]string, 0, end-start)
-	for i := start; i < end; i++ {
-		out = append(out, offsetIP(base, i).String())
+	total := new(big.Int).Lsh(big.NewInt(1), uint(bits-ones))
+	lo = new(big.Int).Set(base)
+	hi = new(big.Int).Add(base, new(big.Int).Sub(total, big.NewInt(1)))
+	if ipnet.IP.To4() != nil && total.Cmp(big.NewInt(4)) >= 0 {
+		lo.Add(lo, big.NewInt(1)) // skip network address
+		hi.Sub(hi, big.NewInt(1)) // skip broadcast address
 	}
-	return out, true
+	return lo, hi, byteLen, true
 }
 
-// offsetIP returns base + n, treating base as a big-endian integer of its
-// own byte length (4 for IPv4, 16 for IPv6).
-func offsetIP(base net.IP, n int) net.IP {
-	ip := append(net.IP(nil), base...)
-	for i := len(ip) - 1; i >= 0 && n > 0; i-- {
-		sum := int(ip[i]) + n
-		ip[i] = byte(sum & 0xff)
-		n = sum >> 8
+// freeRanges computes the contiguous runs of unallocated host addresses in
+// cidr, given the occupied set (any non-free Cell map, keyed by IP). It walks
+// only the occupied addresses (sorted), emitting the gap before each and the
+// trailing gap after the last — O(occupied log occupied), never proportional
+// to the address space, which is what lets the address list scale to a /16.
+func freeRanges(cidr string, occupied map[string]Cell) []FreeRange {
+	lo, hi, byteLen, ok := hostSpan(cidr)
+	if !ok {
+		return nil
 	}
-	return ip
+
+	occ := make([]*big.Int, 0, len(occupied))
+	for ipStr := range occupied {
+		v := ipToBig(net.ParseIP(ipStr))
+		if v == nil || v.Cmp(lo) < 0 || v.Cmp(hi) > 0 {
+			continue
+		}
+		occ = append(occ, v)
+	}
+	sort.Slice(occ, func(i, j int) bool { return occ[i].Cmp(occ[j]) < 0 })
+
+	one := big.NewInt(1)
+	var out []FreeRange
+	emit := func(start, end *big.Int) { // inclusive; no-op if start > end
+		if start.Cmp(end) > 0 {
+			return
+		}
+		count := new(big.Int).Add(new(big.Int).Sub(end, start), one)
+		out = append(out, FreeRange{
+			Start: bigToIP(start, byteLen).String(),
+			End:   bigToIP(end, byteLen).String(),
+			Count: clampCount(count),
+		})
+	}
+
+	cursor := new(big.Int).Set(lo)
+	for _, v := range occ {
+		emit(cursor, new(big.Int).Sub(v, one))
+		cursor = new(big.Int).Add(v, one)
+	}
+	emit(cursor, hi)
+	return out
 }
 
-// blockCIDRs splits cidr into contiguous /24-sized (or, for IPv6, /120 —
-// same 256-address block size) blocks for the paged large-subnet view
-// (docs/features/ipam.md §2: "larger subnets render as paged block
-// summaries"). Returns nil, false if cidr does not parse or is already
-// <=256 addresses (the caller's direct-render threshold — no paging
-// needed).
-func blockCIDRs(cidr string) (blocks []string, ok bool) {
-	_, ipnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return nil, false
+func clampCount(v *big.Int) int {
+	if v.Cmp(big.NewInt(int64(maxFreeCount))) > 0 {
+		return maxFreeCount
 	}
-	ones, bits := ipnet.Mask.Size()
-	blockOnes := bits - 8 // /24 for IPv4, /120 for IPv6
-	if ones >= blockOnes {
-		return nil, false
-	}
-	blockCount := 1 << (blockOnes - ones)
-	base := ipnet.IP.Mask(ipnet.Mask)
-	blockSize := 1 << 8
-	out := make([]string, 0, blockCount)
-	for i := 0; i < blockCount; i++ {
-		blockBase := offsetIP(base, i*blockSize)
-		out = append(out, blockBase.String()+cidrSuffix(blockOnes))
-	}
-	return out, true
-}
-
-func cidrSuffix(ones int) string {
-	return "/" + strconv.Itoa(ones)
+	return int(v.Int64())
 }

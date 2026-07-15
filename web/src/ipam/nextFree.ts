@@ -1,22 +1,9 @@
-// Pure "next free address" picker logic (docs/features/ipam.md §3:
-// "'Next free address' picker exposed everywhere an IP is entered elsewhere
-// in the UI"). Framework-free (no React import) so it's directly
-// Vitest-able and shareable with any consumer that already has a resolved
-// cell list, independent of how that consumer chose to fetch it.
-import type { IpamCell } from "../api/types";
-
-/** Returns the lowest-addressed free cell's IP, or undefined if none is
- * free (or `cells` is empty/undefined). `cells` is expected in ascending
- * address order — every backend response (internal/ipam's hostAddresses)
- * already is — so the first "free" match is the lowest free address,
- * skipping allocated/observed/reserved/gateway/conflict cells exactly as
- * T-405 acceptance criterion 4 requires. */
-export function nextFreeAddress(cells: IpamCell[] | undefined): string | undefined {
-  if (!cells) {
-    return undefined;
-  }
-  return cells.find((c) => c.state === "free")?.ip;
-}
+// Pure IPv4 gateway pre-fill helper for the SDN subnet wizard step
+// (docs/features/ipam.md §3). Framework-free (no React import) so it's
+// directly Vitest-able. The live "lowest free address" suggestion now comes
+// straight from the backend's collapsed free ranges (the address list's
+// freeRanges[0].start — see NextFreePicker), so this file only carries the
+// naive network+1 guess used before any live IPAM data is available.
 
 /** Parses a plain IPv4 CIDR (e.g. "10.50.0.0/24") into its 32-bit network
  * base and prefix length, or undefined if s isn't one — IPv6/malformed

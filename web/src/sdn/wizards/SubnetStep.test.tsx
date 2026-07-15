@@ -18,10 +18,13 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 /** Stubs GET /ipam/subnets/{cidr}/allocations: `cellsByCidr` maps a bare
- * (non-percent-encoded) CIDR to the grid it should resolve, standing in for
- * "vnprox already has IPAM data for this subnet" — any other CIDR 404s,
- * modeling "brand new, nothing known yet" (SubnetStep's own doc comment:
- * it then falls back to the pure firstUsableIPv4 guess). */
+ * (non-percent-encoded) CIDR to the addresses it should resolve, standing in
+ * for "vnprox already has IPAM data for this subnet" — any other CIDR 404s,
+ * modeling "brand new, nothing known yet" (SubnetStep's own doc comment: it
+ * then falls back to the pure firstUsableIPv4 guess). The fixture is written
+ * as a flat cell list (each with a state); this stub derives the address
+ * list's occupied `entries` and collapsed `freeRanges` from it, so the free
+ * cells become the free ranges SubnetStep now reads its suggestion from. */
 function stubIpamFetch(cellsByCidr: Record<string, { ip: string; state: string }[]>, delayMs = 0): void {
   vi.stubGlobal(
     "fetch",
@@ -33,7 +36,13 @@ function stubIpamFetch(cellsByCidr: Record<string, { ip: string; state: string }
       const cidr = decodeURIComponent(m[1] ?? "");
       const cells = cellsByCidr[cidr];
       if (!cells) return jsonResponse({ error: { code: "not_found", message: "not found" } }, 404);
-      return jsonResponse({ cidr, prefix: 24, total: cells.length, paged: false, cells, conflicts: [], generatedAt: 1 });
+      const entries = cells.filter((c) => c.state !== "free");
+      const freeRanges = cells.filter((c) => c.state === "free").map((c) => ({ start: c.ip, end: c.ip, count: 1 }));
+      return jsonResponse({
+        cidr, prefix: 24, total: cells.length, entries, freeRanges,
+        counts: { allocated: 0, reserved: 0, observed: 0, gateway: 0, conflict: 0, free: freeRanges.length },
+        conflicts: [], generatedAt: 1,
+      });
     }),
   );
 }
