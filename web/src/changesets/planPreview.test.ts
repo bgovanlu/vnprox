@@ -41,6 +41,44 @@ describe("buildPlanPreview (mirrors internal/change/apply_plan.go BuildPlan)", (
     expect(plan.steps.map((s) => s.kind)).toEqual(["stage_file", "reload"]);
   });
 
+  it("plans an SDN wizard changeset as executable sdn_stage steps (regression: was falsely flagged un-appliable)", () => {
+    const ops: Op[] = [
+      { op: "sdn.zone.create", target: "sdn-zone::homelab", params: { type: "simple", nodes: ["pvecube"] } },
+      { op: "sdn.vnet.create", target: "sdn-vnet::homelab/vnet1", params: { zone: "homelab", vlanAware: false } },
+      {
+        op: "sdn.subnet.create",
+        target: "sdn-subnet::10.10.10.0/24",
+        params: { vnet: "homelab/vnet1", cidr: "10.10.10.0/24", gateway: "10.10.10.1", snat: false },
+      },
+      { op: "sdn.apply", params: {} },
+    ];
+    const { plan, unsupportedOps } = buildPlanPreview(ops);
+    // No warning — these ops execute end to end (T-402).
+    expect(unsupportedOps).toEqual([]);
+    expect(plan.steps.map((s) => s.kind)).toEqual(["sdn_stage", "sdn_stage", "sdn_stage", "sdn_apply"]);
+  });
+
+  it("orders mixed families like BuildPlan: SDN-stage, IPAM, per-node stage/reload, firewall, sdn.apply last", () => {
+    const ops: Op[] = [
+      { op: "ipam.alloc.create", target: "sdn-subnet::10.10.10.0/24", params: { cidr: "10.10.10.10/32" } },
+      { op: "bridge.create", target: "bridge:pve1:vmbr1", params: {} },
+      { op: "sdn.zone.create", target: "sdn-zone::z", params: { type: "simple" } },
+      { op: "fw.rule.create", target: "fw:pve1:", params: { action: "ACCEPT", type: "in" } },
+      { op: "sdn.apply", params: {} },
+    ];
+    const { plan, unsupportedOps } = buildPlanPreview(ops);
+    expect(unsupportedOps).toEqual([]);
+    expect(plan.steps.map((s) => s.kind)).toEqual([
+      "sdn_stage",
+      "ipam_alloc",
+      "stage_file",
+      "reload",
+      "fw_apply",
+      "fw_verify",
+      "sdn_apply",
+    ]);
+  });
+
   it("returns an empty plan for an empty changeset", () => {
     expect(buildPlanPreview([]).plan.steps).toEqual([]);
   });
