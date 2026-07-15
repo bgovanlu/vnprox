@@ -17,9 +17,9 @@
 //  3. SNAT is disabled (with a plain-English reason) until a gateway is
 //     set, and gets zone-type-specific copy explaining what the gateway
 //     actually means for this zone type (docs/features/sdn.md §2).
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
-import { firstUsableIPv4, nextFreeAddress } from "../../ipam/nextFree";
+import { firstUsableIPv4 } from "../../ipam/nextFree";
 import { useIpamAllocationsQuery } from "../../ipam/queries";
 import { wizardStrings } from "./strings";
 import { cidrError, gatewayError } from "./validation";
@@ -64,15 +64,13 @@ export interface SubnetStepProps {
 export function SubnetStep({ zoneType, value, onChange, evpnExitNodeCount }: SubnetStepProps) {
   const { cidr, gateway, isolated, snat } = value;
 
-  // T-405's shared allocation-grid query (NextFreePicker's own data
-  // source): when the typed CIDR overlaps a subnet vnprox already has IPAM
-  // data for, its lowest free address (skipping every known allocation) is
-  // the right suggestion instead of the naive "network + 1" guess.
-  const { data: grid } = useIpamAllocationsQuery(cidr || undefined);
-  const gridSuggestion = useMemo(() => {
-    if (!grid || grid.paged) return undefined;
-    return nextFreeAddress(grid.cells);
-  }, [grid]);
+  // T-405's shared allocation query (NextFreePicker's own data source): when
+  // the typed CIDR overlaps a subnet vnprox already has IPAM data for, its
+  // lowest free address (the first collapsed free range's start, skipping
+  // every known allocation) is the right suggestion instead of the naive
+  // "network + 1" guess.
+  const { data: allocations } = useIpamAllocationsQuery(cidr || undefined);
+  const gridSuggestion = allocations?.freeRanges[0]?.start;
 
   // lastAutoFillRef tracks the last value this component itself wrote into
   // `gateway` (from either source below) — an update only overwrites the

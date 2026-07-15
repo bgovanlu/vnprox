@@ -11,7 +11,7 @@ Proxmox has IPAM plugins (built-in `pve`, NetBox, phpIPAM) but no usable view of
 ## 2. Views
 
 - **Subnet list**: all SDN subnets + (read-only) detected non-SDN subnets from bridge addresses; utilization bars, gateway, zone/VNet, DHCP on/off.
-- **Allocation grid**: /24-and-smaller render as a color grid (free / allocated / observed-unallocated / reserved / gateway / conflict); larger subnets render as paged block summaries. Click any cell → detail (who, what, since when, source).
+- **Address list** (NetBox-style): the selected subnet's occupied addresses as rows — IP, state (allocated / reserved / observed-unallocated / gateway / conflict), hostname, VMID, MAC, source — with the contiguous free space between them collapsed into "N addresses free" range rows. Because the response is sparse (proportional to actual usage, not the address space), the same view serves a /30 and a /16 with no paging. A segmented utilization strip and the conflict callouts sit above the list; a search box and per-state filter chips narrow it; clicking a row opens its detail + reserve/release. This replaced the earlier colored-square allocation grid (which didn't scale past a /24 and hid per-address detail behind a click).
 - **Conflict surfacing** (P0 value): duplicate IPs (two guests reporting the same address), observed-but-unallocated (squatters), allocated-but-dark (stale records). Each conflict is a health finding with suggested resolution.
 
 ## 3. Workflow

@@ -994,12 +994,10 @@ export interface SdnTree {
 // --- IPAM (docs/api.md's /ipam routes; internal/ipam's Go types) ----------
 // Mirrors internal/ipam/types.go exactly — see that file's doc comments for
 // the non-obvious bits (Cell.state vs. Cell.confidence are related but
-// distinct axes; AllocationGrid is either a direct Cells render or, for a
-// subnet bigger than 256 addresses, a Blocks summary with Cells populated
-// only once a specific `?block=` is requested). Added by T-405 (not in the
-// original docs/api.md contract beyond the bare routes + one-line purpose;
-// documented in docs/api.md in this same change per docs/development.md's
-// definition-of-done #4).
+// distinct axes; AllocationList carries the occupied addresses as entries
+// and the contiguous free gaps between them as freeRanges, sparse at any
+// subnet size). Added by T-405; the address-list shape supersedes the
+// original allocation-grid/paged-block response.
 
 /** One row of GET /ipam/subnets. */
 export interface IpamSubnet {
@@ -1045,13 +1043,24 @@ export interface IpamCell {
   sources?: string[];
 }
 
-export interface IpamBlockSummary {
-  cidr: string;
-  total: number;
+/** A contiguous run of unallocated host addresses, collapsed into one row of
+ * the address list (docs/features/ipam.md §2). Start/End inclusive; count is
+ * the number of addresses in the run. */
+export interface IpamFreeRange {
+  start: string;
+  end: string;
+  count: number;
+}
+
+/** The address-list summary strip's per-state tally. The buckets are
+ * mutually exclusive and sum to the subnet's usable-host count. */
+export interface IpamCounts {
   allocated: number;
+  reserved: number;
   observed: number;
-  conflicts: number;
-  utilization: number;
+  gateway: number;
+  conflict: number;
+  free: number;
 }
 
 /** One conflict-detection health finding
@@ -1065,16 +1074,19 @@ export interface IpamConflict {
   suggestion: string;
 }
 
-/** GET /ipam/subnets/{cidr}/allocations response. */
-export interface IpamAllocationGrid {
+/** GET /ipam/subnets/{cidr}/allocations response: the NetBox-style address
+ * list — every occupied address (entries, sorted ascending) plus the
+ * collapsed free gaps between them (freeRanges). Sparse by construction, so
+ * it renders identically for a /30 or a /16. */
+export interface IpamAllocationList {
   cidr: string;
+  gateway?: string;
+  entries: IpamCell[];
+  freeRanges: IpamFreeRange[];
+  conflicts: IpamConflict[];
+  counts: IpamCounts;
   prefix: number;
   total: number;
-  paged: boolean;
-  blocks?: IpamBlockSummary[];
-  block?: string;
-  cells?: IpamCell[];
-  conflicts: IpamConflict[];
   readOnly?: boolean;
   generatedAt: number;
 }
