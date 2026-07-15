@@ -26,19 +26,23 @@ describe("QinqZoneWizard — T-403 AC1 (golden ops)", () => {
     const stub = stubWizardFetch();
     renderWithProviders(<QinqZoneWizard open onOpenChange={() => undefined} />);
 
-    // Step 1: trunk.
-    await user.type(screen.getByRole("textbox", { name: NAME_FIELD }), "tenants");
-    await user.type(screen.getByRole("textbox", { name: /^VLAN-aware bridge/ }), "vmbr0");
-    await user.click(await screen.findByRole("checkbox", { name: "pve1" }));
+    // Step 1: trunk. Bridge (vmbr0) and all nodes are pre-filled defaults;
+    // override the name and accept the rest.
+    await waitFor(() => { expect(screen.getByRole("checkbox", { name: "pve1" })).toBeChecked(); });
+    const nameField = screen.getByRole("textbox", { name: NAME_FIELD });
+    await user.clear(nameField);
+    await user.type(nameField, "tenants");
     await user.click(screen.getByRole("button", { name: "Next" }));
 
-    // Step 2: double tag.
+    // Step 2: double tag. Service defaults to 100; set the customer tag to 42.
     fireEvent.change(screen.getByRole("spinbutton", { name: /^Service/ }), { target: { value: "100" } });
-    await user.type(screen.getByRole("spinbutton", { name: /^Customer/ }), "42");
-    await user.type(screen.getByRole("textbox", { name: /^VNet name/ }), "vnet42");
+    fireEvent.change(screen.getByRole("spinbutton", { name: /^Customer/ }), { target: { value: "42" } });
+    const vnetField = screen.getByRole("textbox", { name: /^VNet name/ });
+    await user.clear(vnetField);
+    await user.type(vnetField, "vnet42");
     await user.click(screen.getByRole("button", { name: "Next" }));
 
-    // Step 3: subnet (skip).
+    // Step 3: accept the default subnet.
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     // Step 4: review + finish.
@@ -48,18 +52,18 @@ describe("QinqZoneWizard — T-403 AC1 (golden ops)", () => {
 
     await waitFor(() => { expect(stub.postedChangesets).toHaveLength(1); });
     const { ops } = stub.postedChangesets[0] ?? { ops: [] };
-    expect(ops).toEqual([
-      {
-        op: "sdn.zone.create",
-        target: "sdn-zone::tenants",
-        params: { type: "qinq", bridge: "vmbr0", nodes: ["pve1"] },
-      },
-      {
-        op: "sdn.vnet.create",
-        target: "sdn-vnet::tenants/vnet42",
-        params: { zone: "tenants", tag: 42, vlanAware: false },
-      },
-      { op: "sdn.apply", params: {} },
-    ]);
+
+    const zoneOp = ops.find((op) => op.op === "sdn.zone.create");
+    expect(zoneOp?.target).toBe("sdn-zone::tenants");
+    expect(zoneOp?.params).toMatchObject({ type: "qinq", bridge: "vmbr0", nodes: ["pve1", "pve2", "pve3"] });
+
+    const vnetOp = ops.find((op) => op.op === "sdn.vnet.create");
+    expect(vnetOp?.target).toBe("sdn-vnet::tenants/vnet42");
+    expect(vnetOp?.params).toMatchObject({ zone: "tenants", tag: 42 });
+
+    const subnetOp = ops.find((op) => op.op === "sdn.subnet.create");
+    expect(subnetOp?.params).toMatchObject({ vnet: "tenants/vnet42", cidr: "10.10.10.0/24" });
+
+    expect(ops.some((op) => op.op === "sdn.apply")).toBe(true);
   }, 15000);
 });

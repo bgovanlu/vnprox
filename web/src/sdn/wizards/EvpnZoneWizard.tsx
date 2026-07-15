@@ -19,7 +19,8 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildEvpnPreview, type EvpnZoneParams } from "./previewEntities";
-import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { DEFAULT_EVPN_ASN, DEFAULT_EVPN_CONTROLLER, DEFAULT_VNET_ID, DEFAULT_VNI, DEFAULT_ZONE_ID, defaultSubnetStepValue, useSelectAllNodesOnce } from "./wizardDefaults";
 import { SdnNameField } from "./SdnNameField";
 import { isValidIp, sdnNameError, subnetStepValid, vniError } from "./validation";
 import { wizardStrings } from "./strings";
@@ -50,17 +51,21 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
   const clusterNodes = useClusterNodes();
   const cap = useWizardCapability();
 
-  const [zoneId, setZoneId] = useState("");
+  // Seeded with click-through defaults (see wizardDefaults.ts). Peers and
+  // exit nodes stay optional/empty — they're genuinely deployment-specific
+  // and the zone validates without them.
+  const [zoneId, setZoneId] = useState(DEFAULT_ZONE_ID);
   const [memberNodes, setMemberNodes] = useState<string[]>([]);
-  const [controller, setController] = useState("");
-  const [asn, setAsn] = useState(0);
+  const [controller, setController] = useState(DEFAULT_EVPN_CONTROLLER);
+  const [asn, setAsn] = useState(DEFAULT_EVPN_ASN);
   const [peerAddressesText, setPeerAddressesText] = useState("");
   const [vrfVxlan, setVrfVxlan] = useState(0);
   const [exitNodes, setExitNodes] = useState<string[]>([]);
-  const [vnetId, setVnetId] = useState("");
+  const [vnetId, setVnetId] = useState(DEFAULT_VNET_ID);
   const [vnetAlias, setVnetAlias] = useState("");
-  const [vni, setVni] = useState(0);
-  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
+  const [vni, setVni] = useState(DEFAULT_VNI);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(defaultSubnetStepValue);
+  useSelectAllNodesOnce(clusterNodes, memberNodes, setMemberNodes);
   const [finishing, setFinishing] = useState(false);
 
   const peerAddresses = useMemo(() => parseAddressList(peerAddressesText), [peerAddressesText]);
