@@ -7,7 +7,8 @@ import { useToast } from "../../components/Toast";
 import { useDrawerActions } from "../../changesets/useDrawerActions";
 import { Field, inputClass } from "../../changesets/editors/EditorDialog";
 import { buildVxlanPreview, type VxlanZoneParams } from "./previewEntities";
-import { emptySubnetStepValue, SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { SubnetStep, type SubnetStepValue } from "./SubnetStep";
+import { DEFAULT_VNET_ID, DEFAULT_VNI, DEFAULT_ZONE_ID, defaultSubnetStepValue, useSelectAllNodesOnce } from "./wizardDefaults";
 import { SdnNameField } from "./SdnNameField";
 import { ipError, sdnNameError, subnetStepValid, vniError } from "./validation";
 import { wizardStrings } from "./strings";
@@ -33,14 +34,16 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
   const clusterNodes = useClusterNodes();
   const cap = useWizardCapability();
 
-  const [zoneId, setZoneId] = useState("");
+  // Seeded with click-through defaults (see wizardDefaults.ts).
+  const [zoneId, setZoneId] = useState(DEFAULT_ZONE_ID);
   const [memberNodes, setMemberNodes] = useState<string[]>([]);
   const [peers, setPeers] = useState<Record<string, string | undefined>>({});
   const [mtu, setMtu] = useState(0);
-  const [vnetId, setVnetId] = useState("");
+  const [vnetId, setVnetId] = useState(DEFAULT_VNET_ID);
   const [vnetAlias, setVnetAlias] = useState("");
-  const [vni, setVni] = useState(0);
-  const [subnet, setSubnet] = useState<SubnetStepValue>(emptySubnetStepValue);
+  const [vni, setVni] = useState(DEFAULT_VNI);
+  const [subnet, setSubnet] = useState<SubnetStepValue>(defaultSubnetStepValue);
+  useSelectAllNodesOnce(clusterNodes, memberNodes, setMemberNodes);
   const [finishing, setFinishing] = useState(false);
 
   const suggested = useSuggestedPeers(memberNodes);

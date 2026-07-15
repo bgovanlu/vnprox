@@ -13,6 +13,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "../../components/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/Dialog";
+import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { wizardStrings } from "./strings";
 
 export interface WizardStep {
@@ -90,7 +91,20 @@ export function WizardShell({ open, onOpenChange, title, intro, steps, preview, 
             {step?.content}
           </div>
           <div className="min-w-0" style={{ height: "26rem" }}>
-            {preview}
+            {/* The preview drives the real React Flow canvas; if it throws
+                (a graph shape the headless tests never render), degrade to a
+                note rather than blanking the whole wizard — the form on the
+                left stays fully usable. */}
+            <ErrorBoundary
+              label="wizard-preview"
+              fallback={
+                <div className="flex h-full items-center justify-center rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-400 dark:border-slate-800">
+                  Preview unavailable for this configuration — the form still works; continue to draft your changes.
+                </div>
+              }
+            >
+              {preview}
+            </ErrorBoundary>
           </div>
         </div>
 

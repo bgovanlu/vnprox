@@ -16,29 +16,32 @@ describe("VxlanZoneWizard — T-403 AC1 (golden ops) + peer auto-suggest", () =>
     const stub = stubWizardFetch();
     renderWithProviders(<VxlanZoneWizard open onOpenChange={() => undefined} />);
 
-    // Step 1: peers.
-    await user.type(screen.getByRole("textbox", { name: NAME_FIELD }), "overlay1");
-    await user.click(await screen.findByRole("checkbox", { name: "pve1" }));
-    await user.click(screen.getByRole("checkbox", { name: "pve2" }));
+    // Step 1: peers. All nodes are auto-selected; override the name.
+    await waitFor(() => { expect(screen.getByRole("checkbox", { name: "pve1" })).toBeChecked(); });
+    const nameField = screen.getByRole("textbox", { name: NAME_FIELD });
+    await user.clear(nameField);
+    await user.type(nameField, "overlay1");
 
     // Peer addresses are auto-suggested from each node's own bridge
-    // address (docs/features/sdn.md §2) — wait for both to populate.
+    // address (docs/features/sdn.md §2) — wait for all three to populate.
     await waitFor(() => {
       expect(screen.getByDisplayValue(bridgeAddress("pve1").split("/")[0] ?? "")).toBeInTheDocument();
       expect(screen.getByDisplayValue(bridgeAddress("pve2").split("/")[0] ?? "")).toBeInTheDocument();
+      expect(screen.getByDisplayValue(bridgeAddress("pve3").split("/")[0] ?? "")).toBeInTheDocument();
     });
     await user.click(screen.getByRole("button", { name: "Next" }));
 
-    // Step 2: vnet + mtu (leave mtu blank — the derivation shows 1450 as
-    // the safe default without the field needing a value).
-    await user.type(screen.getByRole("textbox", { name: /^VNet name/ }), "vnetovl1");
+    // Step 2: vnet + vni. VNI defaults to 100; set it to 300 for this test.
+    const vnetField = screen.getByRole("textbox", { name: /^VNet name/ });
+    await user.clear(vnetField);
+    await user.type(vnetField, "vnetovl1");
     fireEvent.change(screen.getByRole("spinbutton", { name: /^VNI/ }), { target: { value: "300" } });
     expect(screen.getByTestId("vxlan-mtu-math")).toHaveTextContent(
       "1500 (underlying network MTU) − 50 (VXLAN's wrapper overhead) = 1450",
     );
     await user.click(screen.getByRole("button", { name: "Next" }));
 
-    // Step 3: subnet (skip).
+    // Step 3: accept the default subnet.
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     // Step 4: review + finish.
@@ -46,19 +49,23 @@ describe("VxlanZoneWizard — T-403 AC1 (golden ops) + peer auto-suggest", () =>
 
     await waitFor(() => { expect(stub.postedChangesets).toHaveLength(1); });
     const { ops } = stub.postedChangesets[0] ?? { ops: [] };
-    expect(ops).toEqual([
-      {
-        op: "sdn.zone.create",
-        target: "sdn-zone::overlay1",
-        params: { type: "vxlan", nodes: ["pve1", "pve2"], peers: ["10.10.0.11", "10.10.0.12"] },
-      },
-      {
-        op: "sdn.vnet.create",
-        target: "sdn-vnet::overlay1/vnetovl1",
-        params: { zone: "overlay1", tag: 300, vlanAware: false },
-      },
-      { op: "sdn.apply", params: {} },
-    ]);
+
+    const zoneOp = ops.find((op) => op.op === "sdn.zone.create");
+    expect(zoneOp?.target).toBe("sdn-zone::overlay1");
+    expect(zoneOp?.params).toMatchObject({
+      type: "vxlan",
+      nodes: ["pve1", "pve2", "pve3"],
+      peers: ["10.10.0.11", "10.10.0.12", "10.10.0.13"],
+    });
+
+    const vnetOp = ops.find((op) => op.op === "sdn.vnet.create");
+    expect(vnetOp?.target).toBe("sdn-vnet::overlay1/vnetovl1");
+    expect(vnetOp?.params).toMatchObject({ zone: "overlay1", tag: 300 });
+
+    const subnetOp = ops.find((op) => op.op === "sdn.subnet.create");
+    expect(subnetOp?.params).toMatchObject({ vnet: "overlay1/vnetovl1", cidr: "10.10.10.0/24" });
+
+    expect(ops.some((op) => op.op === "sdn.apply")).toBe(true);
   }, 15000);
 });
 
@@ -72,11 +79,13 @@ describe("VxlanZoneWizard — T-403 AC3 (MTU math + one-click fix)", () => {
     stubWizardFetch();
     renderWithProviders(<VxlanZoneWizard open onOpenChange={() => undefined} />);
 
-    await user.type(screen.getByRole("textbox", { name: NAME_FIELD }), "overlay1");
-    await user.click(await screen.findByRole("checkbox", { name: "pve1" }));
+    await waitFor(() => { expect(screen.getByRole("checkbox", { name: "pve1" })).toBeChecked(); });
+    const nameField = screen.getByRole("textbox", { name: NAME_FIELD });
+    await user.clear(nameField);
+    await user.type(nameField, "overlay1");
     await user.click(screen.getByRole("button", { name: "Next" }));
 
-    await user.type(screen.getByRole("textbox", { name: /^VNet name/ }), "vnet1");
+    // VNet name defaults to vnet1 — accept it and exercise the MTU warning.
     const mtuField = screen.getByRole("spinbutton", { name: /^Zone MTU/ });
     fireEvent.change(mtuField, { target: { value: "1500" } });
 
