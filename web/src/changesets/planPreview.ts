@@ -8,13 +8,20 @@
 // the steps *before* clicking Apply. Once the server has applied, the
 // review/drawer UI prefers the persisted plan; this preview is only shown
 // while `changeset.plan` is absent. Framework-free, directly Vitest-able.
+//
+// It MUST track BuildPlan's op-family classification: the executor gained the
+// SDN-write (sdn.zone/vnet/subnet.*, T-402), IPAM (ipam.alloc.*, T-405), and
+// firewall (fw.*, T-502) families after this preview was first written, so
+// they are executable — only the guest.* family is still refused at apply.
 import type { Op, Plan, PlanStep } from "../api/types";
-import { refNode } from "./opSummary";
+import { refNode, summarizeOp } from "./opSummary";
 
-/** The op families that mutate a node's /etc/network/interfaces — mirrors
+/** Ops that mutate a node's /etc/network/interfaces — mirrors
  * internal/change/apply_plan.go's nodeFileOpTypes exactly. */
 const NODE_FILE_OP_TYPES = new Set<Op["op"]>([
   "iface.update",
+  "iface.rename",
+  "iface.raw.replace",
   "bond.create",
   "bond.update",
   "bond.delete",
@@ -28,21 +35,60 @@ const NODE_FILE_OP_TYPES = new Set<Op["op"]>([
   "vlan.delete",
 ]);
 
+/** Cluster-scope SDN-write ops (executable since T-402) — mirrors
+ * apply_plan.go's sdnStageOpTypes. */
+const SDN_STAGE_OP_TYPES = new Set<Op["op"]>([
+  "sdn.zone.create",
+  "sdn.zone.update",
+  "sdn.zone.delete",
+  "sdn.vnet.create",
+  "sdn.vnet.update",
+  "sdn.vnet.delete",
+  "sdn.subnet.create",
+  "sdn.subnet.update",
+  "sdn.subnet.delete",
+]);
+
+/** Firewall ops (executable since T-502) — mirrors apply_plan.go's fwOpTypes. */
+const FW_OP_TYPES = new Set<Op["op"]>([
+  "fw.rule.create",
+  "fw.rule.update",
+  "fw.rule.delete",
+  "fw.rule.move",
+  "fw.options.update",
+  "fw.alias.create",
+  "fw.alias.update",
+  "fw.alias.delete",
+  "fw.ipset.create",
+  "fw.ipset.update",
+  "fw.ipset.delete",
+  "fw.group.create",
+  "fw.group.update",
+  "fw.group.delete",
+]);
+
 export interface PlanPreview {
   plan: Plan;
-  /** Op types in the changeset the apply engine cannot execute yet
-   * (T-205's documented executable-op scope: node-file ops + sdn.apply;
-   * guest/SDN-write/fw/ipam families are refused at apply with 422
-   * unsupported_op). Surfaced so the review screen can warn *before* the
-   * user clicks Apply, matching BuildPlan's own up-front rejection. */
+  /** Op types in the changeset the apply engine cannot execute yet. Only the
+   * guest.* family remains (its pve.Client write methods are a follow-up —
+   * see apply_seams.go's PVEGateway doc comment); it is refused at apply with
+   * 422 unsupported_op. Surfaced so the review screen can warn *before* the
+   * user clicks Apply, matching BuildPlan's own up-front rejection. Empty for
+   * an all-SDN/IPAM/firewall/node-file changeset (the common case). */
   unsupportedOps: string[];
 }
 
-/** Mirrors BuildPlan: node-file ops grouped by node in first-appearance
- * order, an adjacent stage->reload pair per node, sdn.apply last. */
+/** Mirrors BuildPlan's classification and ordering: cluster-scope SDN-stage
+ * steps first, then IPAM alloc steps, then an adjacent stage->reload pair per
+ * node (first-appearance order), then firewall apply(+verify) steps, then
+ * sdn.apply last. */
 export function buildPlanPreview(ops: Op[]): PlanPreview {
   const nodeOrder: string[] = [];
   const byNode = new Map<string, number[]>();
+  const sdnStageSteps: PlanStep[] = [];
+  const ipamSteps: PlanStep[] = [];
+  const fwTargetOrder: string[] = [];
+  const byFwTarget = new Map<string, number[]>();
   let sdnApply = false;
   const unsupported = new Set<string>();
 
@@ -56,14 +102,27 @@ export function buildPlanPreview(ops: Op[]): PlanPreview {
         nodeOrder.push(node);
         byNode.set(node, [i]);
       }
+    } else if (SDN_STAGE_OP_TYPES.has(op.op)) {
+      sdnStageSteps.push({ kind: "sdn_stage", opIdx: [i], summary: summarizeOp(op) });
+    } else if (op.op === "ipam.alloc.create" || op.op === "ipam.alloc.delete") {
+      ipamSteps.push({ kind: "ipam_alloc", opIdx: [i], summary: summarizeOp(op) });
     } else if (op.op === "sdn.apply") {
       sdnApply = true;
+    } else if (FW_OP_TYPES.has(op.op)) {
+      const key = op.target ?? "";
+      const existing = byFwTarget.get(key);
+      if (existing) {
+        existing.push(i);
+      } else {
+        fwTargetOrder.push(key);
+        byFwTarget.set(key, [i]);
+      }
     } else {
       unsupported.add(op.op);
     }
   }
 
-  const steps: PlanStep[] = [];
+  const steps: PlanStep[] = [...sdnStageSteps, ...ipamSteps];
   for (const node of nodeOrder) {
     const idxs = byNode.get(node) ?? [];
     steps.push(
@@ -75,6 +134,19 @@ export function buildPlanPreview(ops: Op[]): PlanPreview {
       },
       { kind: "reload", node, summary: `Reload network on ${node} (ifreload)` },
     );
+  }
+  for (const target of fwTargetOrder) {
+    const idxs = byFwTarget.get(target) ?? [];
+    const node = target ? refNode(target) : "";
+    steps.push({
+      kind: "fw_apply",
+      node: node || undefined,
+      opIdx: idxs,
+      summary: `Apply ${String(idxs.length)} firewall op(s) to ${target}`,
+    });
+    if (node) {
+      steps.push({ kind: "fw_verify", node, summary: `Verify firewall compiled cleanly on ${node}` });
+    }
   }
   if (sdnApply) {
     steps.push({ kind: "sdn_apply", summary: "Apply pending cluster SDN configuration" });
