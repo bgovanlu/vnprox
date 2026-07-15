@@ -11,11 +11,6 @@ import (
 	"github.com/bgovanlu/vnprox/internal/pve"
 )
 
-// pagedThreshold is the largest address count a subnet renders as a full
-// grid (docs/features/ipam.md §2: "/24-and-smaller render as a color
-// grid... larger subnets render as paged block summaries").
-const pagedThreshold = 256
-
 // PVEReader is the subset of *pve.Client this package needs: the SDN tree
 // (to enumerate subnets and their owning zone/vnet), every configured IPAM
 // plugin instance's allocation set (docs/features/ipam.md §1: "vnprox reads

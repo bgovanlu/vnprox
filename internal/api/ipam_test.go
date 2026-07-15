@@ -96,8 +96,9 @@ func TestIPAMRoute_Allocations_CIDRWithSlash(t *testing.T) {
 			t.Fatalf("GET %s status = %d, body = %s", path, rec.Code, rec.Body.String())
 		}
 		var got struct {
-			CIDR  string `json:"cidr"`
-			Cells []any  `json:"cells"`
+			CIDR       string `json:"cidr"`
+			Entries    []any  `json:"entries"`
+			FreeRanges []any  `json:"freeRanges"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 			t.Fatalf("decoding response for %s: %v", path, err)
@@ -105,8 +106,13 @@ func TestIPAMRoute_Allocations_CIDRWithSlash(t *testing.T) {
 		if got.CIDR != "10.50.0.0/24" {
 			t.Errorf("path %s: cidr = %q, want 10.50.0.0/24", path, got.CIDR)
 		}
-		if len(got.Cells) != 254 {
-			t.Errorf("path %s: cells = %d, want 254", path, len(got.Cells))
+		// The brownfield lab fixture has occupied addresses (entries) and
+		// free space between them (ranges) — both must survive the round trip.
+		if len(got.Entries) == 0 {
+			t.Errorf("path %s: got no occupied entries, want the fixture's allocations", path)
+		}
+		if len(got.FreeRanges) == 0 {
+			t.Errorf("path %s: got no free ranges, want the /24's unallocated gaps", path)
 		}
 	}
 }
@@ -215,16 +221,16 @@ func TestIPAMRoute_Allocations_WizardCreatedGatewayIsVisible(t *testing.T) {
 		t.Fatalf("GET allocations status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	var got struct {
-		Cells []struct {
+		Entries []struct {
 			IP    string `json:"ip"`
 			State string `json:"state"`
-		} `json:"cells"`
+		} `json:"entries"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decoding response: %v", err)
 	}
 	found := false
-	for _, c := range got.Cells {
+	for _, c := range got.Entries {
 		if c.IP == "10.50.0.1" {
 			found = true
 			if c.State != "gateway" {
@@ -233,7 +239,7 @@ func TestIPAMRoute_Allocations_WizardCreatedGatewayIsVisible(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("10.50.0.1 missing from allocation grid: %+v", got.Cells)
+		t.Fatalf("10.50.0.1 missing from address list entries: %+v", got.Entries)
 	}
 }
 
