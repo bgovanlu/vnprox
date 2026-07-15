@@ -1,7 +1,9 @@
 package evpn
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -167,6 +169,25 @@ func TestStatus_AbsentFRR_ReportsCleanNoEVPN(t *testing.T) {
 	}
 	if len(ns.Peers) != 0 {
 		t.Errorf("len(Peers) = %d, want 0", len(ns.Peers))
+	}
+	// Peers/VNIs must be non-nil even with no FRR: a nil slice marshals to
+	// JSON `null`, which the EVPN view iterates directly (buildEvpnMatrix's
+	// `for..of node.peers`, VniList's `node.vnis.map`) and blanks the whole
+	// page. They must serialize as `[]`.
+	if ns.Peers == nil {
+		t.Error("Peers is nil, want an empty (non-nil) slice so it marshals as [] not null")
+	}
+	if ns.VNIs == nil {
+		t.Error("VNIs is nil, want an empty (non-nil) slice so it marshals as [] not null")
+	}
+	// Prove it end to end at the JSON layer — the actual wire contract the
+	// frontend consumes.
+	blob, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("marshal status: %v", err)
+	}
+	if bytes.Contains(blob, []byte(`"peers":null`)) || bytes.Contains(blob, []byte(`"vnis":null`)) {
+		t.Errorf("status JSON contains a null peers/vnis array: %s", blob)
 	}
 }
 
