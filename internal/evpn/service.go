@@ -199,7 +199,13 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 // reports whether the fetch itself failed (as opposed to "FRR not
 // installed", which is a clean, non-failure NodeStatus per AC2).
 func (s *Service) fetchNode(ctx context.Context, node string, reader nodeFRRReader, now time.Time) (NodeStatus, bool) {
-	ns := NodeStatus{Node: node}
+	// Peers/VNIs are initialized to empty (never nil) so every early return
+	// below — no reader, FRR unavailable, a read/parse error — still carries
+	// arrays, not nil slices. A nil slice marshals to JSON `null`, and the
+	// EVPN view iterates node.peers / node.vnis directly (buildEvpnMatrix's
+	// `for..of ns.peers`, VniList's `n.vnis.map`); a `null` there is not
+	// iterable and blanked the whole EVPN/BGP page on any node without FRR.
+	ns := NodeStatus{Node: node, Peers: []Peer{}, VNIs: []VNI{}}
 	if reader == nil {
 		ns.Error = "no reader configured for this node"
 		return ns, true
