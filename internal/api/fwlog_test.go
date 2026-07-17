@@ -5,23 +5,35 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/fwlog"
 )
 
 // fakeFwLogService is a minimal FwLogService stand-in for router tests:
-// records the last filter/limit it was called with and returns a
-// pre-set page.
+// records the last filter/limit (or analytics window) it was called with
+// and returns a pre-set page/analytics value.
 type fakeFwLogService struct {
-	lastFilter fwlog.Filter
-	page       fwlog.Page
-	lastLimit  int
+	analytics     fwlog.Analytics
+	lastFilter    fwlog.Filter
+	page          fwlog.Page
+	lastLimit     int
+	lastWindow    time.Duration
+	lastTopN      int
+	analyticsCall bool
 }
 
 func (f *fakeFwLogService) TailPage(filter fwlog.Filter, limit int) fwlog.Page {
 	f.lastFilter = filter
 	f.lastLimit = limit
 	return f.page
+}
+
+func (f *fakeFwLogService) Analytics(_ time.Time, window time.Duration, topN int) fwlog.Analytics {
+	f.analyticsCall = true
+	f.lastWindow = window
+	f.lastTopN = topN
+	return f.analytics
 }
 
 func TestFwLogRoute_Unauthenticated401(t *testing.T) {
@@ -171,6 +183,163 @@ func TestFwLogRoute_InvalidLimitRejected(t *testing.T) {
 		Auth: fakeAuth{authenticated: true}, FwLog: &fakeFwLogService{},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/log?limit=-1", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// --- GET /firewall/analytics (T-1006) ---------------------------------------
+
+func TestFwAnalyticsRoute_NotMountedWhenServiceNil(t *testing.T) {
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fakeAuth{authenticated: true},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/analytics", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (route not mounted when FwLog is nil)", rec.Code)
+	}
+}
+
+func TestFwAnalyticsRoute_Unauthenticated401(t *testing.T) {
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fakeAuth{authenticated: false}, FwLog: &fakeFwLogService{},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/analytics", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestFwAnalyticsRoute_DefaultsAndShape(t *testing.T) {
+	lastSeen := time.Date(2026, 7, 17, 10, 0, 0, 0, time.UTC)
+	svc := &fakeFwLogService{
+		analytics: fwlog.Analytics{
+			HitCounts: []fwlog.RuleHitCount{
+				{Rule: fwlog.RuleRef{GuestRef: "guest:pve1:200", Origin: "guest", Pos: 0}, Hits: 3, LastSeenAt: lastSeen},
+			},
+			TopBlocked: fwlog.TopBlocked{
+				Sources:      []fwlog.EndpointCount{{Value: "1.1.1.1", Count: 2}},
+				Destinations: []fwlog.EndpointCount{{Value: "9.9.9.9", Count: 2}},
+			},
+			UnusedRules: []fwlog.UnusedRule{
+				{Rule: fwlog.RuleRef{GuestRef: "guest:pve1:200", Origin: "guest", Pos: 1}, DaysSinceLastHit: 40},
+			},
+		},
+	}
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fakeAuth{authenticated: true}, FwLog: svc,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/analytics", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if !svc.analyticsCall {
+		t.Fatal("Analytics was not called")
+	}
+	if svc.lastWindow != fwlog.DefaultAnalyticsWindow {
+		t.Errorf("lastWindow = %v, want default %v", svc.lastWindow, fwlog.DefaultAnalyticsWindow)
+	}
+
+	var body fwAnalyticsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(body.HitCounts) != 1 || body.HitCounts[0].Hits != 3 || body.HitCounts[0].Rule.GuestRef != "guest:pve1:200" {
+		t.Fatalf("hitCounts = %+v", body.HitCounts)
+	}
+	if body.HitCounts[0].LastSeenAt != lastSeen.Unix() {
+		t.Errorf("lastSeenAt = %d, want %d", body.HitCounts[0].LastSeenAt, lastSeen.Unix())
+	}
+	if len(body.TopBlocked.Sources) != 1 || body.TopBlocked.Sources[0].Value != "1.1.1.1" {
+		t.Fatalf("topBlocked.sources = %+v", body.TopBlocked.Sources)
+	}
+	if len(body.UnusedRules) != 1 || body.UnusedRules[0].DaysSinceLastHit != 40 {
+		t.Fatalf("unusedRules = %+v", body.UnusedRules)
+	}
+}
+
+func TestFwAnalyticsRoute_WindowHoursParsed(t *testing.T) {
+	svc := &fakeFwLogService{}
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fakeAuth{authenticated: true}, FwLog: svc,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/analytics?windowHours=48", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if svc.lastWindow != 48*time.Hour {
+		t.Errorf("lastWindow = %v, want 48h", svc.lastWindow)
+	}
+}
+
+func TestFwAnalyticsRoute_InvalidWindowHoursRejected(t *testing.T) {
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fakeAuth{authenticated: true}, FwLog: &fakeFwLogService{},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/analytics?windowHours=abc", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestFwAnalyticsRoute_ScopeGuestFiltersHitCountsAndUnusedRules(t *testing.T) {
+	svc := &fakeFwLogService{
+		analytics: fwlog.Analytics{
+			HitCounts: []fwlog.RuleHitCount{
+				{Rule: fwlog.RuleRef{GuestRef: "guest:pve1:200", Origin: "guest", Pos: 0}, Hits: 3},
+				{Rule: fwlog.RuleRef{GuestRef: "guest:pve1:201", Origin: "guest", Pos: 0}, Hits: 5},
+			},
+			UnusedRules: []fwlog.UnusedRule{
+				{Rule: fwlog.RuleRef{GuestRef: "guest:pve1:200", Origin: "guest", Pos: 1}, DaysSinceLastHit: 40},
+				{Rule: fwlog.RuleRef{GuestRef: "guest:pve1:201", Origin: "guest", Pos: 1}, DaysSinceLastHit: 40},
+			},
+		},
+	}
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fakeAuth{authenticated: true}, FwLog: svc,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/analytics?scope=guest&ref=guest:pve1:200", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var body fwAnalyticsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(body.HitCounts) != 1 || body.HitCounts[0].Rule.GuestRef != "guest:pve1:200" {
+		t.Fatalf("hitCounts = %+v, want only guest:pve1:200's rule", body.HitCounts)
+	}
+	if len(body.UnusedRules) != 1 || body.UnusedRules[0].Rule.GuestRef != "guest:pve1:200" {
+		t.Fatalf("unusedRules = %+v, want only guest:pve1:200's rule", body.UnusedRules)
+	}
+}
+
+func TestFwAnalyticsRoute_ScopeGuestRequiresRef(t *testing.T) {
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fakeAuth{authenticated: true}, FwLog: &fakeFwLogService{},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/analytics?scope=guest", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {

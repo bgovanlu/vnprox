@@ -282,12 +282,17 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// above for dhcpSvc/neighborSvc) — local-node-only for now, see its own
 	// doc comment (findings.go) for the documented cluster-fan-out gap.
 	corosyncAdapter := corosyncStatusAdapter{host: realHost, localNode: localNode, logger: logger}
+	// T-1006: fwAnalyticsAdapter is wired in now (findings.Engine is
+	// constructed before *fwlog.Service exists, below) and filled in with
+	// its real target once fwlogSvc is built — see the adapter's own doc
+	// comment (findings.go) for why, mirroring mgmtAdapter above.
+	fwAnalyticsAdapterVal := &fwAnalyticsAdapter{}
 	findingsNotifier := setupFindingsNotifier(sdnPVEClient, logger)
 	// T-806: the persisted sim_divergence finding store, created here (db
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
 	simDivergenceRepo := store.NewSimDivergenceRepo(db)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -452,6 +457,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if fwlogErr != nil {
 		logger.Error("fwlog: failed to initialize the firewall log viewer's local source; the feature will report empty/unavailable", "error", fwlogErr)
 	}
+	// T-1006: point the findings engine's fw_rule_unused check at the now-
+	// real *fwlog.Service (see fwAnalyticsAdapterVal's construction/doc
+	// comment above). Safe even when fwlogSvc is nil (setupFwlog's
+	// dev-fixture failure path) — fwAnalyticsAdapter.Analytics degrades to
+	// an empty Analytics value exactly like a never-set adapter.
+	fwAnalyticsAdapterVal.set(fwlogSvc)
 
 	// T-301/T-304: the peer server backs the documented /api/peer/host/* and
 	// /api/peer/timer/* routes with the real netlink/interfaces(5)/lldpd
