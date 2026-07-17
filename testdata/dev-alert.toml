@@ -1,0 +1,41 @@
+# T-1005's own dev config: identical shape to testdata/dev-sim.toml, but on
+# a distinct port pair, pointed at the same testdata/clusters/sim-lab.yaml
+# fixture (it already scripts a deterministic live-probe divergence for
+# vm-a -> vm-c tcp/2222 — see that fixture's doc comment and
+# simulator.spec.ts's T-806 test). web/e2e/alert-rules.spec.ts needs its own
+# fresh vnproxd instance (not sim-lab's shared T-504/T-806 stack) so the
+# divergence tuple it probes is guaranteed never-before-seen by this
+# specific daemon's findings engine — a stale/already-notified finding
+# would never re-fire a webhook notification (Engine's once-per-transition
+# contract, internal/findings/notify.go), which would make this test
+# flaky/order-dependent if it shared a stack with simulator.spec.ts.
+
+[server]
+listen = "127.0.0.1:48007"
+tls_cert = "testdata/certs/dev-cert.pem"
+tls_key = "testdata/certs/dev-key.pem"
+read_only = false
+confirm_timeout_default = 120
+
+[pve]
+api_url = "http://127.0.0.1:48006"
+token_file = "/etc/vnprox/keys/pve-token"
+dev_ticket_username = "root@pam"
+dev_ticket_password = "vnprox-mock"
+
+[safety]
+allow_dangerous_ops = false
+protected_path = "var/dev-alert-protected.json"
+dev_interfaces_dir = "var/dev-alert-host"
+
+[storage]
+db_path = "var/dev-alert-vnprox.db"
+session_key_file = "var/dev-alert-session.key"
+
+[peer]
+secret_path = "var/dev-alert-cluster.secret"
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"

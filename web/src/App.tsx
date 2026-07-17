@@ -17,6 +17,7 @@ import { HistoryPage } from "./pages/HistoryPage";
 import { AuditPage } from "./pages/AuditPage";
 import { ToolsPage } from "./pages/ToolsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { AlertRulesPage } from "./pages/AlertRulesPage";
 import { applyThemeClass, useThemeStore } from "./store/theme";
 
 export function App() {
@@ -131,6 +132,14 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Settings">
                   <SettingsPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/settings/alert-rules"
+              element={
+                <DesktopOnlyRoute pageLabel="Alert rules">
+                  <AlertRulesPage />
                 </DesktopOnlyRoute>
               }
             />

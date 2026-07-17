@@ -1956,6 +1956,79 @@ export interface OnboardingProgress {
   completedSteps: OnboardingStep[];
 }
 
+// --- Alert Rules (T-1005; docs/api.md's "Alert Rules" section) ------------
+
+/** `targetKind` vocabulary — internal/findings/webhook.go's `PayloadFor`
+ * shapes the outbound request differently per kind (docs/api.md's
+ * "Delivery shapes per targetKind" paragraph). */
+export type AlertTargetKind = "generic" | "gotify" | "ntfy" | "slack";
+
+/** `GET /findings`'s own `source` vocabulary — reused verbatim as
+ * AlertRule.sourceFilter's element type. */
+export type AlertSourceFilterValue = "drift" | "lldp" | "ipam" | "health" | "probe";
+
+/** One `AlertRule` (internal/api/alertrules.go's alertRuleResponse) — never
+ * carries the target secret, plaintext or encrypted; `hasSecret` is the
+ * only signal a client gets that one is configured (matching GET /config's
+ * "deliberately excludes every secret" contract). */
+export interface AlertRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  sourceFilter?: AlertSourceFilterValue[];
+  severityFilter?: Severity[];
+  targetKind: AlertTargetKind;
+  targetUrl: string;
+  hasSecret: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AlertRulesListResponse {
+  items: AlertRule[];
+}
+
+/** POST /alert-rules and PUT /alert-rules/{id}'s shared request body.
+ * `targetSecret` is a three-way-nullable field: omitted (PUT: leave the
+ * existing secret untouched; POST: no secret), `""` (clear it), non-empty
+ * (set/replace it) — see docs/api.md's "Create/update request body"
+ * paragraph. */
+export interface AlertRuleRequest {
+  name: string;
+  enabled: boolean;
+  sourceFilter?: AlertSourceFilterValue[];
+  severityFilter?: Severity[];
+  targetKind: AlertTargetKind;
+  targetUrl: string;
+  targetSecret?: string;
+}
+
+/** One row of the delivery log (internal/api/alertrules.go's
+ * alertDeliveryResponse) — one per HTTP delivery *attempt*, not one per
+ * logical delivery; see docs/api.md's "Delivery/retry" paragraph for the
+ * status vocabulary. */
+export interface AlertDelivery {
+  id: string;
+  ruleId: string;
+  findingId: string;
+  at: number;
+  attempt: number;
+  status: "retrying" | "delivered" | "failed";
+  error?: string;
+}
+
+export interface AlertDeliveriesListResponse {
+  items: AlertDelivery[];
+}
+
+/** POST /alert-rules/{id}/test's response — always HTTP 200 once the rule
+ * is found; a failed test delivery is a reportable outcome, not an API
+ * error. */
+export interface AlertRuleTestResponse {
+  status: "delivered" | "failed";
+  error?: string;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots and IPAM read views have routes defined in docs/api.md but no
 // frontend consumer yet — their request/response types land with the task

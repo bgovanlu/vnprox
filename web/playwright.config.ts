@@ -121,5 +121,29 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    // T-1005's own stack (alert-rules.spec.ts), additive: a fifth mock PVE +
+    // vnproxd pair on ports 48006/48007, reusing sim-lab.yaml's scripted
+    // vm-a -> vm-c tcp/2222 live-probe divergence (the same fixture
+    // simulator.spec.ts's T-806 test drives) on a dedicated daemon instance
+    // — see testdata/dev-alert.toml's doc comment for why this can't share
+    // simulator.spec.ts's own 18006/18007 stack (a stale/already-notified
+    // finding never re-fires Engine's once-per-transition webhook
+    // notification).
+    {
+      command: "go run ./cmd/pvemock --addr 127.0.0.1:48006 --fixture testdata/clusters/sim-lab.yaml",
+      cwd: "..",
+      port: 48006,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command:
+        "sh -c 'rm -f var/dev-alert-vnprox.db && rm -rf var/dev-alert-host && exec go run ./cmd/vnproxd --config testdata/dev-alert.toml'",
+      cwd: "..",
+      url: "https://127.0.0.1:48007/api/v1/health",
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
 });

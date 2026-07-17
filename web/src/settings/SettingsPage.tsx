@@ -220,6 +220,14 @@ export function SettingsPage() {
         </div>
       </Section>
 
+      <Section title="Alerting" description="Route findings/drift transitions to a webhook (Gotify, ntfy, Slack, or generic JSON).">
+        <Link to="/settings/alert-rules">
+          <Button size="sm" variant="secondary">
+            Manage alert rules
+          </Button>
+        </Link>
+      </Section>
+
       <Section title="About">
         <Row label="vnprox">{config?.version ? `v${config.version}` : "visual networking add-on for Proxmox VE"}</Row>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
