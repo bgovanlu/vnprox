@@ -726,7 +726,7 @@ export interface DriftChangedEvent {
 
 /** T-602's unified findings-stream source producer (docs/api.md's
  * `GET /findings`, internal/findings.Source). */
-export type FindingSource = "drift" | "lldp" | "ipam" | "health";
+export type FindingSource = "drift" | "lldp" | "ipam" | "health" | "probe";
 
 /** GET /findings item (docs/api.md's `GET /findings` section —
  * internal/findings.Finding): the superset of DriftFinding's shape plus a
@@ -1683,6 +1683,50 @@ export interface SimulateResult {
   blockingRule?: SimBlockingRule;
   missing?: SimMissing;
   caveats: SimCaveat[];
+}
+
+// --- Live path probe (docs/api.md §"Live path probe (T-802)"; T-806's
+// "Verify live" UI) ---------------------------------------------------
+
+/** `internal/probe.Outcome` (docs/api.md's `observed.outcome`).
+ * `reachable`/`unreachable` are a completed probe's genuine result;
+ * `timeout` means the probe did not complete within the bounded deadline;
+ * `error` means the probe could not be attempted/classified at all (guest
+ * agent unreachable, transport failure, unresolvable dst) — the
+ * honesty-contract "no claim" bucket, never conflated with a genuine
+ * `unreachable`. */
+export type VerifyOutcome = "reachable" | "unreachable" | "timeout" | "error";
+
+/** `POST /simulate/verify`'s `observed` field. `execError` is set iff
+ * `outcome === "error"`; `detail` is populated for every other outcome. */
+export interface VerifyObserved {
+  outcome: VerifyOutcome;
+  detail?: string;
+  execError?: string;
+}
+
+/** `POST /simulate/verify` response: the identical src->dst/proto/port
+ * tuple run through both the static simulator (`simulated`, byte-identical
+ * to `POST /simulate/path`'s own result) and a real live guest-agent probe
+ * (`observed`), plus whether the two disagree. */
+export interface VerifyResult {
+  simulated: SimulateResult;
+  observed: VerifyObserved;
+  diverges: boolean;
+}
+
+/** `GET /simulate/verify/eligibility`'s machine-readable `reason` values
+ * (internal/api/simulate.go's `eligibilityReason*` constants) — the
+ * frontend maps each to its own plain-English grey-out copy
+ * (verifyEligibility.ts) rather than rendering server text directly. */
+export type VerifyEligibilityReason = "not-qemu" | "agent-unreachable";
+
+/** `GET /simulate/verify/eligibility?ref=` response: whether the named
+ * guest-nic ref can currently host a live probe. `reason` is omitted when
+ * `eligible` is true. */
+export interface VerifyEligibility {
+  eligible: boolean;
+  reason?: VerifyEligibilityReason;
 }
 
 // --- Protected interfaces (docs/api.md §"Protected interfaces"; T-203,

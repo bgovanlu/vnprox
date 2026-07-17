@@ -120,6 +120,23 @@ nodes:
             port: 22
             outcome: reachable
             detail: "connected"
+          # T-806: a second scripted tuple whose live probe outcome
+          # disagrees with its simulated verdict, for the "Verify live" UI's
+          # own e2e coverage (web/e2e/simulator.spec.ts). vm-a -> vm-c
+          # tcp/2222 has no explicit rule (vm-c's own rules only cover
+          # tcp/80 DROP and tcp/22 ACCEPT above), so it falls through to
+          # the cluster's default policy_in DROP and the simulator reports
+          # a deny verdict; scripting a "reachable" live outcome for the
+          # identical tuple produces a genuine, fixture-driven divergence
+          # for the map overlay's divergence callout to render — distinct
+          # from the tcp/22 entry above (T-802's own Go-level convergence/
+          # divergence tests mutate that one in-process rather than relying
+          # on a second static table entry).
+          - proto: tcp
+            dst: "10.20.0.102"
+            port: 2222
+            outcome: reachable
+            detail: "connected (T-806 fixture: scripted divergence — default-policy deny vs. live reachable)"
       "301":
         name: vm-c
         status: running

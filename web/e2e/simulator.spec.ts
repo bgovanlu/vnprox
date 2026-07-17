@@ -14,6 +14,13 @@
 //  AC5: "Trace path" from the main topology map (right-click a guest NIC)
 //       pre-fills the simulator and covers guest->guest, guest->external,
 //       and IP->guest.
+//
+// T-806 (extends this suite, same sim-lab stack): "Verify live" — vm-a ->
+// vm-c on tcp/2222 is sim-lab.yaml's own scripted divergence fixture (no
+// explicit rule matches, so the simulator falls to the cluster's default
+// policy_in DROP; the fixture scripts vm-a's live probe toward that exact
+// tuple as "reachable"), clicking Verify live surfaces the divergence
+// callout both in the result panel and on the embedded map overlay.
 import { expect, test, type Page } from "@playwright/test";
 import { switchToGraphView } from "./helpers";
 
@@ -158,4 +165,55 @@ test("T-504 AC5: Trace path from the map pre-fills and runs (guest->guest, guest
   await page.getByLabel("Source IP address").fill("10.20.0.99");
   await page.getByLabel("Source IP address").blur();
   await expect(page.getByText(VERDICT_TEXT).first()).toBeVisible();
+});
+
+test("T-806: Verify live surfaces the divergence callout on the result panel and the map overlay", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/tools");
+
+  await page.getByRole("radio", { name: "Guest NIC" }).first().waitFor();
+  await pickGuestNic(page, "Source", "vm-a");
+  await pickGuestNic(page, "Destination", "vm-c");
+  await page.getByLabel("Protocol").selectOption("tcp");
+  await page.getByLabel("Port").fill("2222");
+
+  // Simulated verdict: deny (no explicit rule matches tcp/2222 — falls to
+  // the cluster's default policy_in DROP, per sim-lab.yaml's T-806 doc
+  // comment).
+  await expect(page.getByText("Blocked", { exact: true })).toBeVisible();
+
+  // "Verify live" is enabled for vm-a (a qemu guest with a reachable
+  // guest agent) and runs the scripted live probe.
+  const verifyButton = page.getByRole("button", { name: "Verify live" });
+  await expect(verifyButton).toBeEnabled();
+  await verifyButton.click();
+
+  // Side-by-side simulated/observed rendering, plus the divergence
+  // callout (the fixture's scripted "reachable" outcome disagrees with
+  // the deny verdict above). "Reachable" appears twice (the Observed
+  // summary and the callout's own restatement), so scope to the first.
+  await expect(page.getByText("Live result disagrees with the simulated verdict")).toBeVisible();
+  await expect(page.getByText("Reachable", { exact: true }).first()).toBeVisible();
+
+  // The map overlay marks the probed source with a distinct divergence
+  // indicator (EntityNode.tsx's "verify live diverges" marker), the same
+  // role="img" convention AC2's "missing link" marker above uses.
+  await expect(page.getByRole("img", { name: "verify live diverges" })).toBeVisible();
+});
+
+test("T-806: Verify live is disabled with plain-English copy for an external source", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/tools");
+
+  await page.getByRole("radio", { name: "Guest NIC" }).first().waitFor();
+  // Source: External (the first "External" tab in DOM order belongs to
+  // the Source picker — SimulatorPage.tsx renders Source before
+  // Destination in its two-column grid).
+  await page.getByRole("radio", { name: "External" }).first().click();
+  await pickGuestNic(page, "Destination", "vm-c");
+
+  await expect(page.getByText(VERDICT_TEXT).first()).toBeVisible();
+  const verifyButton = page.getByRole("button", { name: "Verify live" });
+  await expect(verifyButton).toBeDisabled();
+  await expect(page.getByText(/pick a guest NIC as the source/i)).toBeVisible();
 });

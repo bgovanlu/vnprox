@@ -6,6 +6,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../components/Toast";
 import type { Changeset, StreamFinding } from "../api/types";
@@ -39,11 +40,13 @@ vi.mock("../api/ws", () => ({
 function renderPanel(): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <FindingsStreamPanel />
-      </ToastProvider>
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <FindingsStreamPanel />
+        </ToastProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -111,5 +114,52 @@ describe("FindingsStreamPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("No findings")).toBeInTheDocument();
     });
+  });
+
+  // T-806: found via this task's own e2e run — a persisted sim_divergence
+  // finding with an empty `nodes` array (it names refs, not nodes) must
+  // render and filter cleanly, not crash filters.ts's nodesIn/
+  // filterFindings the way a nil/undefined `nodes` value did before that
+  // fix. This also covers AC2's "every source" premise now spanning five,
+  // not four, sources.
+  it("renders a probe-sourced (sim_divergence) finding with an empty nodes array, and offers a 'View in simulator' deep link", async () => {
+    const probeFinding: StreamFinding = {
+      id: "probe:sim_divergence|guest-nic:pve1:300/net0|guest-nic:guest-nic:pve1:301/net0|tcp|2222",
+      source: "probe", check: "sim_divergence", severity: "warning",
+      detail: "Simulated verdict: deny. Observed: reachable.", nodes: [],
+      refs: ["guest-nic:pve1:300/net0"], fixable: false,
+      docsLink: "/tools?srcKind=guest-nic&srcRef=guest-nic%3Apve1%3A300%2Fnet0&dstKind=guest-nic&dstRef=guest-nic%3Apve1%3A301%2Fnet0&proto=tcp&port=2222",
+    };
+    fetchFindings.mockResolvedValueOnce([...sample, probeFinding]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await waitFor(() => {
+      expect(screen.getByText("Simulated verdict: deny. Observed: reachable.")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Verify live · sim_divergence")).toBeInTheDocument();
+
+    const viewLink = screen.getByRole("button", { name: "View in simulator" });
+    await user.click(viewLink);
+    // Navigated (MemoryRouter has no visible URL bar to assert against
+    // directly here — the click not throwing, plus the button existing at
+    // all, is this test's own regression coverage; SimulatorPage.tsx's own
+    // urlState round-trip is covered by urlState.test.ts).
+    expect(viewLink).toBeInTheDocument();
+  });
+
+  it("includes probe in the source filter and filters a probe finding correctly", async () => {
+    const probeFinding: StreamFinding = {
+      id: "probe:1", source: "probe", check: "sim_divergence", severity: "warning",
+      detail: "probe finding", nodes: [], fixable: false,
+    };
+    fetchFindings.mockResolvedValueOnce([...sample, probeFinding]);
+    const user = userEvent.setup();
+    renderPanel();
+    await waitFor(() => screen.getByText("bridge diverges"));
+
+    await user.selectOptions(screen.getByLabelText("Filter by source"), "probe");
+    expect(screen.getByText("probe finding")).toBeInTheDocument();
+    expect(screen.queryByText("bridge diverges")).not.toBeInTheDocument();
   });
 });

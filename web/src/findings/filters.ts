@@ -32,7 +32,12 @@ export function filterFindings(findings: StreamFinding[], filter: FindingsFilter
 }
 
 /** Every distinct node named across findings, sorted — the candidate list
- * for the node filter's <select>. */
+ * for the node filter's <select>. `StreamFinding.nodes` is documented as
+ * always an array (docs/api.md); every producer must uphold that (T-806's
+ * own probeDivergenceToFinding — cmd/vnproxd/findings.go — explicitly
+ * guards against emitting a nil slice, which Go serializes as JSON `null`
+ * with no `omitempty` and would otherwise crash this loop, found via this
+ * task's own e2e run). */
 export function nodesIn(findings: StreamFinding[]): string[] {
   const set = new Set<string>();
   for (const f of findings) {

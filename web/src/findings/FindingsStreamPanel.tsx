@@ -8,6 +8,7 @@
 // supersedes on ToolsPage — see that page's own doc comment).
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
 import type { FindingSource, Severity } from "../api/types";
@@ -22,6 +23,9 @@ const SOURCE_LABELS: Record<FindingSource, string> = {
   lldp: "LLDP",
   ipam: "IPAM",
   health: "Health",
+  // T-806: sim_divergence findings from POST /simulate/verify's "Verify
+  // live" action.
+  probe: "Verify live",
 };
 
 const SEVERITY_LABELS: Record<Severity, string> = {
@@ -33,6 +37,7 @@ const SEVERITY_LABELS: Record<Severity, string> = {
 export function FindingsStreamPanel() {
   const { data: findings, isLoading, error } = useFindingsQuery();
   const fixMutation = useFixFindingMutation();
+  const navigate = useNavigate();
   const openMgmtWizard = useMgmtWizardStore((s) => s.open);
   const setActiveId = useChangesetDrawerStore((s) => s.setActiveId);
   const queryClient = useQueryClient();
@@ -143,6 +148,14 @@ export function FindingsStreamPanel() {
           // "fixable" via a computed changeset) launches the guided
           // management-redundancy wizard for the named node instead.
           const mgmtNode = f.check === "mgmt_single_path" ? f.nodes[0] : undefined;
+          // T-806: sim_divergence's DocsLink is deliberately the simulator
+          // deep link, not a docs page (see cmd/vnproxd's
+          // simDivergenceDeepLink doc comment) — surface it as a "View in
+          // simulator" action rather than the generic docs-link styling
+          // (which this component doesn't render anywhere today) so the
+          // deep link is actually reachable from the unified stream, not
+          // just from the simulator's own result panel.
+          const simDivergenceLink = f.check === "sim_divergence" && f.docsLink ? f.docsLink : undefined;
           return {
             id: f.id,
             severity: f.severity,
@@ -153,7 +166,9 @@ export function FindingsStreamPanel() {
             category: `${SOURCE_LABELS[f.source]} · ${f.check}`,
             action: mgmtNode
               ? { label: mgmtStrings.launch.button, onClick: () => { openMgmtWizard({ node: mgmtNode }); } }
-              : undefined,
+              : simDivergenceLink
+                ? { label: "View in simulator", onClick: () => { void navigate(simDivergenceLink); } }
+                : undefined,
           };
         })}
         onFix={(id) => {

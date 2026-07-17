@@ -183,6 +183,24 @@ func (c *Client) AgentExec(ctx context.Context, node string, vmid int, command [
 	return out.PID, nil
 }
 
+// AgentPing calls POST /nodes/{node}/qemu/{vmid}/agent/ping: the QEMU guest
+// agent's transport-level "guest-ping" liveness check — succeeds iff the
+// agent channel itself is up, independent of anything about the guest's
+// own network/OS state. This is the honest signal T-806's "Verify live"
+// button gating needs ("is there a guest agent to probe through at all")
+// that GetGuestAgentInterfaces cannot supply on its own: a guest can have a
+// perfectly reachable agent yet report zero interfaces (no network
+// configured inside the guest), so an empty interfaces result does not by
+// itself mean "agent unreachable" for this purpose. qemu-only, same
+// precedent as AgentExec/GetGuestAgentInterfaces; a non-nil error means
+// unreachable (mirrors AgentExec's own "500 -> the answer is no"
+// contract — real PVE returns the same failure mode for every agent/*
+// route when the guest agent isn't installed/running/reachable).
+func (c *Client) AgentPing(ctx context.Context, node string, vmid int) error {
+	path := fmt.Sprintf("/nodes/%s/qemu/%d/agent/ping", node, vmid)
+	return c.do(ctx, "POST", path, requestParams{}, nil)
+}
+
 // AgentExecStatus calls GET /nodes/{node}/qemu/{vmid}/agent/exec-status?pid=
 // once: the caller (internal/probe) is responsible for polling this to a
 // bounded deadline until Exited is true. qemu-only, same precedent as

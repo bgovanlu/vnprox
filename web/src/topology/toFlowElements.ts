@@ -50,7 +50,11 @@ export interface ToFlowElementsParams {
    * specific path with a status color" mechanism the hover chain-highlight
    * above already established, rather than a second overlay system —
    * see web/src/simulator/pathHighlight.ts for how hops become node/edge
-   * id sets. undefined (the default) leaves every node/edge unaffected. */
+   * id sets. undefined (the default) leaves every node/edge unaffected.
+   * T-806: `verifyNodeId`/`verifyOutcome`/`verifyDiverges` (set via
+   * pathHighlight.ts's `withVerifyHighlight`) additionally mark the probed
+   * source with a distinct observed-outcome/divergence indicator once a
+   * live "Verify live" result has come back. */
   pathHighlight?: PathHighlight;
 }
 
@@ -135,6 +139,8 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
         collapsedCount: n.collapsedCount,
         simVerdict: onPath || isMissing ? pathHighlight?.verdict : undefined,
         simRole: isMissing ? "missing" : isBlocking ? "blocking" : onPath ? "path" : undefined,
+        verifyOutcome: pathHighlight?.verifyNodeId === n.id ? pathHighlight.verifyOutcome : undefined,
+        verifyDiverges: pathHighlight?.verifyNodeId === n.id ? (pathHighlight.verifyDiverges ?? false) : false,
       },
     };
   });

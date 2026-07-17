@@ -113,6 +113,9 @@ func (srv *Server) buildRouter() chi.Router {
 		// package.
 		api.Post("/nodes/{node}/qemu/{vmid}/agent/exec", srv.requirePrivilege(PrivVMAudit, srv.handleGuestAgentExec))
 		api.Get("/nodes/{node}/qemu/{vmid}/agent/exec-status", srv.requirePrivilege(PrivVMAudit, srv.handleGuestAgentExecStatus))
+		// T-806: the guest-agent transport liveness check backing the
+		// "Verify live" button's eligibility gate.
+		api.Post("/nodes/{node}/qemu/{vmid}/agent/ping", srv.requirePrivilege(PrivVMAudit, srv.handleGuestAgentPing))
 
 		api.Get("/nodes/{node}/tasks/{upid}/status", srv.requirePrivilege(PrivSysAudit, srv.handleTaskStatus))
 		api.Get("/nodes/{node}/tasks/{upid}/log", srv.requirePrivilege(PrivSysAudit, srv.handleTaskLog))

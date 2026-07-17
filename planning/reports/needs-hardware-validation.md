@@ -238,6 +238,20 @@ from; and pvemock does not model an `ifreload` outage at all):
       existing precedent), not modeling real PVE's separate `VM.Monitor` privilege for guest-agent
       actions — confirm which privilege(s) real PVE actually requires for `agent/exec`.
 
+## Verify live UX + eligibility check (T-806)
+
+- [ ] **`POST /nodes/{node}/qemu/{vmid}/agent/ping` real response shape and failure mode.**
+      `internal/pve.Client.AgentPing` (backing `GET /simulate/verify/eligibility`'s
+      `agent-unreachable` gating) assumes this route mirrors `AgentExec`'s own confirmed
+      contract exactly — a 200 with an empty/ignored body on success, and the same failure
+      mode (a PVE-server-mapped error) as every other `agent/*` route when the guest agent
+      isn't installed/running/reachable — by analogy with `AgentExec`/`GetGuestAgentInterfaces`,
+      not from a captured real request. `internal/pvemock`'s `handleGuestAgentPing` mirrors
+      `handleGuestAgentExec`'s exact `AgentUnreachable` guard for the same reason. Unverified:
+      the exact response body shape, status code, and whether `agent/ping`'s failure mode is
+      genuinely identical to `agent/exec`'s (real PVE's guest-agent QMP proxy could plausibly
+      differ command-to-command) against a real PVE cluster and real QEMU guest agent.
+
 ## Interface renaming (issue #2)
 
 - [ ] **Physical NIC (udev) rename + reboot realization.** The change engine renames only

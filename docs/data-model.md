@@ -163,3 +163,26 @@ CREATE TABLE blueprints (
 ```
 
 Instantiation (`blueprint.Instantiate`) is a pure function of `(Blueprint, params, target nodes, inventory.Snapshot)` → `[]change.Op`: it expands each `EntityTemplate` across its node selector, substitutes `{{param}}` placeholders, then diffs each expanded entity against the snapshot — absent → a `*.create` op, present-and-matching → no op, present-and-divergent → a `*.update` op naming only the diverging fields (bridge port membership divergence is the one exception: it always becomes `bridge.port.add`/`bridge.port.remove` ops, since `BridgeUpdateParams` has no `ports` field — port membership changes go through those dedicated ops everywhere else in this codebase too). It never persists or applies anything itself; the caller (`internal/api`'s instantiate handler) hands the returned ops to `change.Service.Create`, the same "compute an op patch, let the normal changeset lifecycle own it" pattern `internal/drift`'s `FixOps` already established.
+
+## 5. Live path probe divergence findings (`internal/store`, T-806)
+
+Every other producer in the unified findings stream (docs/api.md's `GET /findings`) is recomputed fresh from continuously-polled state on every call — nothing needs to persist it. A `sim_divergence` finding is different: it records the outcome of a specific, user-triggered `POST /simulate/verify` call (docs/api.md's Live path probe section), and nothing re-runs that live guest-agent probe on its own, so there is no "continuously polled state" to recompute it from. It therefore gets a table of its own (`internal/store/migrations/0005_sim_divergence_findings.sql`):
+
+```sql
+CREATE TABLE sim_divergence_findings (
+  id                TEXT PRIMARY KEY,   -- content-derived: "probe:sim_divergence|<src>|<dstKind>:<dstRefOrIp>|<proto>|<port>"
+  src_ref           TEXT NOT NULL,      -- guest-nic Ref string (the probed src)
+  dst_kind          TEXT NOT NULL,      -- guest-nic|ip|external
+  dst_ref           TEXT NOT NULL DEFAULT '',  -- set iff dst_kind = guest-nic
+  dst_ip            TEXT NOT NULL DEFAULT '',  -- set iff dst_kind = ip
+  proto             TEXT NOT NULL,      -- tcp|icmp
+  port              INTEGER NOT NULL DEFAULT 0,
+  simulated_verdict TEXT NOT NULL,
+  observed_outcome  TEXT NOT NULL,
+  detail            TEXT NOT NULL DEFAULT '',
+  created_at        INTEGER NOT NULL,   -- unix seconds, first time this tuple diverged
+  updated_at        INTEGER NOT NULL    -- unix seconds, most recent divergence
+);
+```
+
+Row lifecycle, driven entirely by `internal/api`'s `POST /simulate/verify` handler (`internal/store.SimDivergenceRepo`): a `diverges: true` response upserts the row keyed by `id` (re-verifying the identical tuple refreshes `updated_at`/`observed_outcome`/`detail` in place rather than accumulating a duplicate row — `created_at` is preserved across an upsert); a `diverges: false` response for a tuple that previously had a row clears it (the finding should not keep claiming a divergence the most recent live check no longer shows). `cmd/vnproxd`'s `probeFindingsAdapter` reads this table fresh on every `GET /findings` call and maps each row to the unified `Finding` shape (`Source: "probe"`, `Check: "sim_divergence"`) — the table is this producer's *source of truth*, not a cache the in-memory engine also holds a separate copy of.

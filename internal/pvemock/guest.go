@@ -268,6 +268,39 @@ func (srv *Server) handleGuestAgentExec(w http.ResponseWriter, r *http.Request) 
 	writeData(w, http.StatusOK, map[string]int{"pid": pid})
 }
 
+// handleGuestAgentPing implements `POST /nodes/{node}/qemu/{vmid}/agent/ping`
+// (T-806): the QEMU guest agent's transport-level "guest-ping" liveness
+// check, backing the "Verify live" button's eligibility gate
+// (GET /simulate/verify/eligibility). Fails the same way
+// handleGuestAgentExec does when AgentUnreachable is set; otherwise always
+// succeeds — deliberately independent of AgentInterfaces/AgentExecOutcomes
+// (a guest can have a perfectly reachable agent with no declared
+// interfaces, e.g. sim-lab's vm-a, so this must not reuse
+// handleGuestAgentInterfaces' "empty result = no agent" convention, which
+// answers a different question). qemu-only, same precedent as
+// handleGuestAgentInterfaces/handleGuestAgentExec above.
+func (srv *Server) handleGuestAgentPing(w http.ResponseWriter, r *http.Request) {
+	node := chi.URLParam(r, "node")
+	vmid := chi.URLParam(r, "vmid")
+	ns, ok := srv.state.node(node)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", node))
+		return
+	}
+	ns.mu.RLock()
+	g, ok := ns.qemu[vmid]
+	ns.mu.RUnlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("qemu %s not found on node %q", vmid, node))
+		return
+	}
+	if g.AgentUnreachable {
+		writeError(w, http.StatusInternalServerError, "QEMU guest agent is not running")
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{})
+}
+
 // handleGuestAgentExecStatus implements
 // `GET /nodes/{node}/qemu/{vmid}/agent/exec-status?pid=`: reads back the
 // synthesized result handleGuestAgentExec stored for pid. The node/vmid
