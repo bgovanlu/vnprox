@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./layout/AppShell";
 import { RequireAuth } from "./routes/RequireAuth";
+import { DesktopOnlyRoute } from "./routes/DesktopOnlyRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { TopologyPage } from "./pages/TopologyPage";
@@ -31,19 +32,108 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
+            {/* T-909: the narrow-viewport reachable set is Dashboard,
+             * Findings (/tools, itself internally restricted to a read-only
+             * findings view at narrow width — see ToolsPage.tsx), and the
+             * changeset confirm/rollback overlay (mounted app-wide in
+             * AppShell, not routed). Every other route is wrapped in
+             * DesktopOnlyRoute so navigating to it at narrow width —
+             * including a direct/bookmarked link — renders an explicit
+             * "desktop only" affordance instead of a broken/cramped
+             * attempt at the full page. */}
             <Route index element={<DashboardPage />} />
-            <Route path="/topology" element={<TopologyPage />} />
-            <Route path="/management" element={<ManagementPage />} />
-            <Route path="/guests" element={<GuestsPage />} />
-            <Route path="/sdn" element={<SdnPage />} />
-            <Route path="/firewall" element={<FirewallPage />} />
-            <Route path="/ipam" element={<IpamPage />} />
-            <Route path="/ports" element={<PortsPage />} />
-            <Route path="/blueprints" element={<BlueprintsPage />} />
-            <Route path="/history" element={<HistoryPage />} />
-            <Route path="/audit" element={<AuditPage />} />
+            <Route
+              path="/topology"
+              element={
+                <DesktopOnlyRoute pageLabel="Topology">
+                  <TopologyPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/management"
+              element={
+                <DesktopOnlyRoute pageLabel="Management">
+                  <ManagementPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/guests"
+              element={
+                <DesktopOnlyRoute pageLabel="Guests">
+                  <GuestsPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/sdn"
+              element={
+                <DesktopOnlyRoute
+                  pageLabel="SDN"
+                  detail="SDN zone/vnet/subnet editing and wizards need a desktop-sized screen. Open vnprox on a desktop or a wider window to make changes here."
+                >
+                  <SdnPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/firewall"
+              element={
+                <DesktopOnlyRoute pageLabel="Firewall">
+                  <FirewallPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/ipam"
+              element={
+                <DesktopOnlyRoute pageLabel="IPAM">
+                  <IpamPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/ports"
+              element={
+                <DesktopOnlyRoute pageLabel="Ports">
+                  <PortsPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/blueprints"
+              element={
+                <DesktopOnlyRoute pageLabel="Blueprints">
+                  <BlueprintsPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/history"
+              element={
+                <DesktopOnlyRoute pageLabel="History">
+                  <HistoryPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/audit"
+              element={
+                <DesktopOnlyRoute pageLabel="Audit">
+                  <AuditPage />
+                </DesktopOnlyRoute>
+              }
+            />
             <Route path="/tools" element={<ToolsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route
+              path="/settings"
+              element={
+                <DesktopOnlyRoute pageLabel="Settings">
+                  <SettingsPage />
+                </DesktopOnlyRoute>
+              }
+            />
             <Route path="*" element={<Navigate to="/topology" replace />} />
           </Route>
         </Route>

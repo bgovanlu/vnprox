@@ -4,16 +4,31 @@
 // stream (T-305's drift-only panel is superseded here — the unified stream
 // already includes every drift finding, source-tagged, plus LLDP/health),
 // and T-505's firewall log viewer.
+//
+// T-909: this is one of the two routes (with Dashboard) reachable on a
+// narrow viewport — but only its "Findings" facet, per the task card
+// ("the reachable page set on narrow viewports is restricted to Dashboard,
+// Findings (/tools), and the changeset detail/confirm/rollback view"). The
+// simulator, raw editor, MAC/FDB browser, firewall log viewer, and doc
+// export are all desktop-only surfaces bundled onto this same route, so
+// narrow width renders a restricted view instead of gating the whole
+// route: the findings stream stays (read-only — see
+// FindingsStreamPanel.tsx's own narrow handling, which disables the
+// fix/wizard-launch actions rather than hiding the findings themselves),
+// and everything else is replaced by one DesktopOnlyNotice rather than
+// silently vanishing.
 import { useEffect, useMemo, useState } from "react";
 import { RawEditorPanel } from "../changesets/rawEditor/RawEditorPanel";
 import { EmptyState } from "../components/EmptyState";
 import { FindingsStreamPanel } from "../findings/FindingsStreamPanel";
 import { FwLogViewer } from "../fwlog/FwLogViewer";
+import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { SimulatorPage } from "../simulator/SimulatorPage";
 import { MacFdbBrowser } from "../tools/MacFdbBrowser";
 import { useTopologyQuery } from "../topology/queries";
 
 export function ToolsPage() {
+  const narrow = useNarrowViewport();
   const { data: topology } = useTopologyQuery();
   const nodes = useMemo(
     () => Array.from(new Set(topology?.nodes.map((n) => n.nodeGroup).filter(Boolean) ?? [])).sort(),
@@ -27,6 +42,30 @@ export function ToolsPage() {
       setNode(first);
     }
   }, [node, nodes]);
+
+  if (narrow) {
+    return (
+      <div className="flex h-full flex-col gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Findings</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Drift, LLDP VLAN mismatches, IPAM conflicts, and continuous health checks, read-only from here.
+          </p>
+        </div>
+        <FindingsStreamPanel />
+        {/* T-909: unlike DesktopOnlyRoute's full-page notice (which links
+         * back to Dashboard/Findings — useful when you've landed on a page
+         * you can't use at all), this is already the Findings page, so it
+         * just names what's hidden instead of dangling a redundant
+         * "go to Findings" link. */}
+        <EmptyState
+          title="The rest of Tools needs a larger screen"
+          description="The path simulator, raw interfaces editor, MAC/FDB search, firewall log viewer, and documentation export need a desktop-sized screen. Creating a fixing changeset or launching a redundancy wizard from a finding does too — a pending changeset's confirm/roll back controls still work from here."
+          density="compact"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col gap-4">

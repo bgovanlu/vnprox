@@ -7,10 +7,25 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../components/Toast";
 import type { Changeset, StreamFinding } from "../api/types";
+import { NARROW_VIEWPORT_QUERY } from "../lib/useNarrowViewport";
 import { FindingsStreamPanel } from "./FindingsStreamPanel";
+
+/** T-909: stubs matchMedia so useNarrowViewport() reports a phone-width
+ * viewport — mirrors ChangesetDrawer.test.tsx's identical fake. */
+function stubNarrowViewport(matches: boolean): void {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      media: NARROW_VIEWPORT_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }),
+  );
+}
 
 const sample: StreamFinding[] = [
   { id: "drift:1", source: "drift", check: "bridge_divergence", severity: "warning", detail: "bridge diverges", nodes: ["pve1"], fixable: false, docsLink: "docs/x" },
@@ -161,5 +176,60 @@ describe("FindingsStreamPanel", () => {
     await user.selectOptions(screen.getByLabelText("Filter by source"), "probe");
     expect(screen.getByText("probe finding")).toBeInTheDocument();
     expect(screen.queryByText("bridge diverges")).not.toBeInTheDocument();
+  });
+
+  describe("narrow viewport (T-909)", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("disables the fix button (no POST /findings/{id}/fix reachable) and redirects the wizard-launch action to an explanatory toast", async () => {
+      stubNarrowViewport(true);
+      const mgmtFinding: StreamFinding = {
+        id: "health:mgmt", source: "health", check: "mgmt_single_path", severity: "warning",
+        detail: "single management path", nodes: ["pve1"], fixable: false,
+      };
+      const fixableFinding: StreamFinding = {
+        id: "drift:fixable", source: "drift", check: "bridge_divergence", severity: "warning",
+        detail: "fixable drift", nodes: ["pve1"], fixable: true,
+      };
+      fetchFindings.mockResolvedValueOnce([mgmtFinding, fixableFinding]);
+      const user = userEvent.setup();
+      renderPanel();
+
+      await waitFor(() => screen.getByText("fixable drift"));
+
+      // The fix button still renders (an explicit affordance, not a hidden
+      // one) but is disabled — no fixing changeset can be created here.
+      const fixButton = screen.getByRole("button", { name: "Create fixing changeset" });
+      expect(fixButton).toBeDisabled();
+      await user.click(fixButton);
+      expect(fixFinding).not.toHaveBeenCalled();
+
+      // The mgmt-redundancy wizard launch button stays visible but no
+      // longer opens the wizard — it explains the device restriction
+      // instead (surfaced as a toast; the wizard dialog never mounts).
+      const wizardButton = screen.getByRole("button", { name: /Make management path redundant/ });
+      await user.click(wizardButton);
+      expect(screen.getByText("Desktop only")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("keeps the fix button enabled and the wizard launch working at desktop width", async () => {
+      stubNarrowViewport(false);
+      const mgmtFinding: StreamFinding = {
+        id: "health:mgmt", source: "health", check: "mgmt_single_path", severity: "warning",
+        detail: "single management path", nodes: ["pve1"], fixable: false,
+      };
+      const fixableFinding: StreamFinding = {
+        id: "drift:fixable", source: "drift", check: "bridge_divergence", severity: "warning",
+        detail: "fixable drift", nodes: ["pve1"], fixable: true,
+      };
+      fetchFindings.mockResolvedValueOnce([mgmtFinding, fixableFinding]);
+      renderPanel();
+
+      await waitFor(() => screen.getByText("fixable drift"));
+      expect(screen.getByRole("button", { name: "Create fixing changeset" })).not.toBeDisabled();
+    });
   });
 });

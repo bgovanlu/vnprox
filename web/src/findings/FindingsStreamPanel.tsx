@@ -6,17 +6,30 @@
 // drift/DriftFindingsPanel.tsx established, now built on FindingsList
 // directly rather than that drift-specific panel (which this component
 // supersedes on ToolsPage — see that page's own doc comment).
+//
+// T-909: on a narrow viewport this is the read-only "Findings" surface —
+// still shows the fix button (an explicit affordance beats silently hiding
+// it, per the task card), but disabled with a tooltip via the same
+// fixDisabledReason capability-gating pattern the read-only-session sweep
+// already uses. The per-finding secondary action (the mgmt-redundancy
+// wizard launch / "View in simulator" deep link) is redirected to an
+// explanatory toast instead of actually opening a wizard or navigating —
+// no new write capability (POST /findings/{id}/fix, opening the wizard) is
+// reachable at narrow width.
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
 import type { FindingSource, Severity } from "../api/types";
+import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
 import { mgmtStrings } from "../mgmt/strings";
 import { FindingsList } from "./FindingsList";
 import { EMPTY_FILTER, filterFindings, nodesIn, type FindingsFilterState } from "./filters";
 import { FINDINGS_QUERY_KEY, useFindingsQuery, useFindingsWsBridge, useFixFindingMutation } from "./queries";
+
+const NARROW_FIX_DISABLED_REASON = "Open on desktop to create a fixing changeset.";
 
 const SOURCE_LABELS: Record<FindingSource, string> = {
   drift: "Drift",
@@ -35,6 +48,7 @@ const SEVERITY_LABELS: Record<Severity, string> = {
 };
 
 export function FindingsStreamPanel() {
+  const narrow = useNarrowViewport();
   const { data: findings, isLoading, error } = useFindingsQuery();
   const fixMutation = useFixFindingMutation();
   const navigate = useNavigate();
@@ -63,6 +77,14 @@ export function FindingsStreamPanel() {
     } finally {
       setFixingId(undefined);
     }
+  }
+
+  /** T-909: at narrow width, a finding's secondary action (open the
+   * mgmt-redundancy wizard / jump to the simulator) would land on a
+   * desktop-only surface — rather than silently doing nothing or
+   * navigating into a half-rendered page, it explains why instead. */
+  function handleNarrowAction(): void {
+    toast({ title: "Desktop only", description: "Open vnprox on a desktop or a wider window to use this action." });
   }
 
   if (isLoading) {
@@ -165,15 +187,22 @@ export function FindingsStreamPanel() {
             fixable: f.fixable,
             category: `${SOURCE_LABELS[f.source]} · ${f.check}`,
             action: mgmtNode
-              ? { label: mgmtStrings.launch.button, onClick: () => { openMgmtWizard({ node: mgmtNode }); } }
+              ? {
+                  label: mgmtStrings.launch.button,
+                  onClick: narrow ? handleNarrowAction : () => { openMgmtWizard({ node: mgmtNode }); },
+                }
               : simDivergenceLink
-                ? { label: "View in simulator", onClick: () => { void navigate(simDivergenceLink); } }
+                ? {
+                    label: "View in simulator",
+                    onClick: narrow ? handleNarrowAction : () => { void navigate(simDivergenceLink); },
+                  }
                 : undefined,
           };
         })}
         onFix={(id) => {
           void handleFix(id);
         }}
+        fixDisabledReason={narrow ? NARROW_FIX_DISABLED_REASON : undefined}
         fixingId={fixingId}
         emptyTitle={all.length === 0 ? "No findings" : "No findings match this filter"}
         emptyDescription={

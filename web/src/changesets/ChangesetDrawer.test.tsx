@@ -11,9 +11,24 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../components/Toast";
 import type { Changeset } from "../api/types";
+import { NARROW_VIEWPORT_QUERY } from "../lib/useNarrowViewport";
 import { ChangesetDrawer } from "./ChangesetDrawer";
 import { changesetKey } from "./queries";
 import { useChangesetDrawerStore } from "./store";
+
+/** T-909: stubs matchMedia so useNarrowViewport() reports a phone-width
+ * viewport — mirrors lib/useReducedMotion.test.ts's fake. */
+function stubNarrowViewport(matches: boolean): void {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches,
+      media: NARROW_VIEWPORT_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }),
+  );
+}
 
 vi.mock("../api/changesets", () => ({
   listChangesets: vi.fn(() => Promise.resolve([])),
@@ -205,5 +220,46 @@ describe("ChangesetDrawer", () => {
 
     expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
     expect(screen.getByText("Discard")).toBeDisabled();
+  });
+
+  describe("narrow viewport (T-909)", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("hides reorder/remove but keeps Review & apply usable for an editable draft at phone width", async () => {
+      stubNarrowViewport(true);
+      const cs = baseChangeset();
+      const { queryClient } = renderDrawer();
+      act(() => {
+        queryClient.setQueryData(changesetKey(cs.id), cs);
+        useChangesetDrawerStore.getState().setActiveId(cs.id);
+      });
+      await screen.findByText(/Create bridge vmbr1/);
+
+      // "Editing entities" (staging new ops) stays desktop-only...
+      expect(screen.queryByRole("button", { name: "Move up" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Move down" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+      expect(screen.getByText("Discard")).toBeDisabled();
+
+      // ...but taking an already-drafted changeset through review/apply (the
+      // one write path this task must not degrade) stays reachable.
+      expect(screen.getByText("Review & apply")).not.toBeDisabled();
+    });
+
+    it("re-enables the drafting controls once the viewport is no longer narrow", async () => {
+      stubNarrowViewport(false);
+      const cs = baseChangeset();
+      const { queryClient } = renderDrawer();
+      act(() => {
+        queryClient.setQueryData(changesetKey(cs.id), cs);
+        useChangesetDrawerStore.getState().setActiveId(cs.id);
+      });
+      await screen.findByText(/Create bridge vmbr1/);
+
+      expect(screen.queryAllByRole("button", { name: "Remove" }).length).toBeGreaterThan(0);
+      expect(screen.getByText("Discard")).not.toBeDisabled();
+    });
   });
 });
