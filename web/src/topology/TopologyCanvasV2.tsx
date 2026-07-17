@@ -38,6 +38,8 @@ import {
 import { buildA11yProxies } from "./a11yBridge";
 import { TopologyA11yLayer } from "./TopologyA11yLayer";
 import { drawScene, type SceneTheme } from "./canvasDraw";
+import { applyLod, parseLodId, zoomBandFor } from "./lod";
+import { Minimap } from "./Minimap";
 
 export interface TopologyCanvasV2Props {
   elements: FlowElements;
@@ -131,14 +133,76 @@ export function TopologyCanvasV2({
   const fittedRef = useRef(false);
   const fitSignatureRef = useRef("");
 
-  // Scene nodes (id + graph position) for hit-testing — derived from the same
-  // FlowElements the canvas draws.
+  // T-902 level-of-detail: fit-to-view stays keyed off the *raw* elements
+  // (below) so the initial framing never depends on which band happens to be
+  // active — only the drawn/interactive scene (lodSceneNodes/lodElements)
+  // reflects the current zoom band's collapse/bundle state.
   const sceneNodes = useMemo<SceneNode[]>(
     () => elements.nodes.map((n) => ({ id: n.id, position: n.position })),
     [elements.nodes],
   );
 
-  const proxies = useMemo(() => buildA11yProxies(elements.nodes), [elements.nodes]);
+  const band = useMemo(() => zoomBandFor(viewport.zoom), [viewport.zoom]);
+  // Bundle/capsule groups the user clicked to force-expand, independent of
+  // the current band ("unbundles on zoom-in or click" — click here). Reset
+  // whenever the underlying element set changes (see the effect below).
+  const [unbundledGroups, setUnbundledGroups] = useState<ReadonlySet<string>>(new Set());
+  const [expandedCapsules, setExpandedCapsules] = useState<ReadonlySet<string>>(new Set());
+  const elementSignature = useMemo(
+    () => `${String(elements.nodes.length)}:${elements.nodes.map((n) => n.id).join(",")}`,
+    [elements.nodes],
+  );
+  const lodSignatureRef = useRef("");
+  useEffect(() => {
+    if (lodSignatureRef.current === elementSignature) return;
+    lodSignatureRef.current = elementSignature;
+    setUnbundledGroups(new Set());
+    setExpandedCapsules(new Set());
+  }, [elementSignature]);
+
+  const lodElements = useMemo(
+    () => applyLod(elements, band, { unbundledGroups, expandedCapsules }),
+    [elements, band, unbundledGroups, expandedCapsules],
+  );
+
+  // The scene the canvas actually draws/hit-tests/exposes via a11y — the
+  // LOD-transformed set, distinct from `sceneNodes` (fit-to-view only, above).
+  const lodSceneNodes = useMemo<SceneNode[]>(
+    () => lodElements.nodes.map((n) => ({ id: n.id, position: n.position })),
+    [lodElements.nodes],
+  );
+
+  const proxies = useMemo(() => buildA11yProxies(lodElements.nodes), [lodElements.nodes]);
+
+  // A click on a LOD-synthetic capsule/bundle toggles its manual-expand
+  // override instead of forwarding to the parent's onNodeClick (which
+  // expects a real inventory ref or guest-group id — capsule/bundle ids are
+  // neither, and have no inspector/expand-query counterpart).
+  const handleEntityActivate = useCallback(
+    (id: string) => {
+      const parsed = parseLodId(id);
+      if (!parsed) {
+        onNodeClick(id);
+        return;
+      }
+      if (parsed.kind === "capsule") {
+        setExpandedCapsules((prev) => {
+          const next = new Set(prev);
+          if (next.has(parsed.key)) next.delete(parsed.key);
+          else next.add(parsed.key);
+          return next;
+        });
+      } else {
+        setUnbundledGroups((prev) => {
+          const next = new Set(prev);
+          if (next.has(parsed.key)) next.delete(parsed.key);
+          else next.add(parsed.key);
+          return next;
+        });
+      }
+    },
+    [onNodeClick],
+  );
 
   // --- Container sizing (ResizeObserver, guarded for jsdom) ----------------
   useEffect(() => {
@@ -157,10 +221,9 @@ export function TopologyCanvasV2({
   }, []);
 
   // --- Fit-to-view once per distinct element set (mirrors v1's `fitView`) --
-  const elementSignature = useMemo(
-    () => `${String(elements.nodes.length)}:${elements.nodes.map((n) => n.id).join(",")}`,
-    [elements.nodes],
-  );
+  // (elementSignature is computed above, alongside the LOD manual-override
+  // reset, which shares the exact same "did the underlying data change"
+  // signature.)
   useEffect(() => {
     if (size.width <= 0 || size.height <= 0 || elements.nodes.length === 0) return;
     if (fittedRef.current && fitSignatureRef.current === elementSignature) return;
@@ -194,15 +257,15 @@ export function TopologyCanvasV2({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     drawScene(ctx, {
-      nodes: elements.nodes,
-      edges: elements.edges,
+      nodes: lodElements.nodes,
+      edges: lodElements.edges,
       viewport,
       view: size,
       theme: themeColors(effectiveTheme),
       dragTopLeft,
       nodeSize: DEFAULT_NODE_SIZE,
     });
-  }, [elements.nodes, elements.edges, viewport, size, effectiveTheme, dragTopLeft]);
+  }, [lodElements.nodes, lodElements.edges, viewport, size, effectiveTheme, dragTopLeft]);
 
   // --- Pointer helpers -----------------------------------------------------
   const localPoint = useCallback((evt: { clientX: number; clientY: number }): XYPosition => {
@@ -214,14 +277,14 @@ export function TopologyCanvasV2({
     (evt: React.PointerEvent<HTMLDivElement>) => {
       if (evt.button !== 0) return; // left button only; context menu handled separately
       const p = localPoint(evt);
-      const hitId = hitTest(sceneNodes, p, viewport);
+      const hitId = hitTest(lodSceneNodes, p, viewport);
       try {
         containerRef.current?.setPointerCapture(evt.pointerId);
       } catch {
         /* pointer capture may be unavailable (jsdom/tests); non-essential. */
       }
       if (hitId !== undefined) {
-        const node = elements.nodes.find((n) => n.id === hitId);
+        const node = lodElements.nodes.find((n) => n.id === hitId);
         const screenTL = node ? { x: node.position.x * viewport.zoom + viewport.x, y: node.position.y * viewport.zoom + viewport.y } : p;
         gesture.current = {
           kind: "node",
@@ -237,7 +300,7 @@ export function TopologyCanvasV2({
         gesture.current = { kind: "pan", startX: p.x, startY: p.y, startViewport: viewport, moved: false };
       }
     },
-    [localPoint, sceneNodes, viewport, elements.nodes],
+    [localPoint, lodSceneNodes, viewport, lodElements.nodes],
   );
 
   const handlePointerMove = useCallback(
@@ -246,7 +309,7 @@ export function TopologyCanvasV2({
       const p = localPoint(evt);
       if (!g) {
         // Plain hover: hit-test and report (drives the hover-chain highlight).
-        onNodeHover(hitTest(sceneNodes, p, viewport));
+        onNodeHover(hitTest(lodSceneNodes, p, viewport));
         return;
       }
       const dx = p.x - g.startX;
@@ -259,7 +322,7 @@ export function TopologyCanvasV2({
         setDragTopLeft({ id: g.id, x: p.x - (g.grabDX ?? 0), y: p.y - (g.grabDY ?? 0) });
       }
     },
-    [localPoint, sceneNodes, viewport, onNodeHover],
+    [localPoint, lodSceneNodes, viewport, onNodeHover],
   );
 
   const endGesture = useCallback(
@@ -275,11 +338,13 @@ export function TopologyCanvasV2({
       const p = localPoint(evt);
       if (g.kind === "node" && g.id !== undefined) {
         if (!g.moved) {
-          onNodeClick(g.id);
-        } else {
+          handleEntityActivate(g.id);
+        } else if (parseLodId(g.id) === undefined) {
           // Resolve the drop target by hit-testing under the pointer (not the
           // dragged node itself), and report the drop's graph-space top-left.
-          const targetId = hitTest(sceneNodes, p, viewport, DEFAULT_NODE_SIZE, g.id);
+          // LOD-synthetic capsule/bundle nodes (parseLodId defined) have no
+          // real drop semantics — they snap back instead (below).
+          const targetId = hitTest(lodSceneNodes, p, viewport, DEFAULT_NODE_SIZE, g.id);
           const topLeftScreen = { x: p.x - (g.grabDX ?? 0), y: p.y - (g.grabDY ?? 0) };
           const graphPos = screenToGraph(topLeftScreen, viewport);
           onNodeDrop(g.id, targetId, graphPos);
@@ -289,7 +354,7 @@ export function TopologyCanvasV2({
       }
       setDragTopLeft(undefined);
     },
-    [localPoint, sceneNodes, viewport, onNodeClick, onNodeDrop, onPaneClick],
+    [localPoint, lodSceneNodes, viewport, handleEntityActivate, onNodeDrop, onPaneClick],
   );
 
   const handleWheel = useCallback(
@@ -305,12 +370,14 @@ export function TopologyCanvasV2({
     (evt: React.MouseEvent<HTMLDivElement>) => {
       if (!onNodeContextMenu) return;
       const p = localPoint(evt);
-      const hitId = hitTest(sceneNodes, p, viewport);
-      if (hitId === undefined) return;
+      const hitId = hitTest(lodSceneNodes, p, viewport);
+      // LOD-synthetic capsule/bundle entities have no real inventory ref, so
+      // no trace/edit context-menu items apply to them.
+      if (hitId === undefined || parseLodId(hitId) !== undefined) return;
       evt.preventDefault();
       onNodeContextMenu(hitId, evt.clientX, evt.clientY);
     },
-    [onNodeContextMenu, localPoint, sceneNodes, viewport],
+    [onNodeContextMenu, localPoint, lodSceneNodes, viewport],
   );
 
   return (
@@ -334,8 +401,17 @@ export function TopologyCanvasV2({
         viewport={viewport}
         activeId={rovingId}
         onActiveChange={setRovingId}
-        onActivate={onNodeClick}
+        onActivate={handleEntityActivate}
       />
+      {size.width > 0 && size.height > 0 && lodSceneNodes.length > 0 && (
+        <Minimap
+          sceneNodes={lodSceneNodes}
+          mainViewport={viewport}
+          mainView={size}
+          onPan={setViewport}
+          dark={effectiveTheme === "dark"}
+        />
+      )}
     </div>
   );
 }
