@@ -83,6 +83,14 @@ export interface TopologyCanvasV2Props {
    * canvas becoming a fully controlled component (see initialViewport's
    * doc comment — the two together are the minimal seam T-907 needs). */
   onViewportChange?: (viewport: Viewport) => void;
+  /** T-906: fires whenever the LOD-transformed scene this canvas is actually
+   * drawing changes (zoom band crossing a threshold, a capsule/bundle
+   * expand/collapse) — lets the page-level "Export map" control export
+   * exactly what's on screen under the v2 renderer, not the pre-LOD
+   * FlowElements `elements` prop above. Pass a stable callback (e.g. a raw
+   * setState function) to avoid re-subscribing every render. undefined (the
+   * default) is a no-op. */
+  onSceneChange?: (elements: FlowElements) => void;
 }
 
 // Distance (screen px) a pointer must travel after press before a gesture
@@ -142,6 +150,7 @@ export function TopologyCanvasV2({
   theme,
   initialViewport,
   onViewportChange,
+  onSceneChange,
 }: TopologyCanvasV2Props) {
   const storeTheme = useThemeStore((s) => s.theme);
   const effectiveTheme = theme ?? storeTheme;
@@ -214,6 +223,13 @@ export function TopologyCanvasV2({
   );
 
   const proxies = useMemo(() => buildA11yProxies(lodElements.nodes), [lodElements.nodes]);
+
+  // T-906: report the LOD-transformed scene up to the page level on every
+  // change, so "Export map" (which lives outside this component, in the
+  // shared toolbar) can export what this canvas is actually drawing.
+  useEffect(() => {
+    onSceneChange?.(lodElements);
+  }, [lodElements, onSceneChange]);
 
   // A click on a LOD-synthetic capsule/bundle toggles its manual-expand
   // override instead of forwarding to the parent's onNodeClick (which
