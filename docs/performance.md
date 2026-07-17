@@ -42,15 +42,31 @@ Environment: this benchmark ran on a shared virtualized dev host (QEMU vCPU, no 
 
 **Method:** the *same* rAF frame-delta sampler as above (`web/e2e/scale.spec.ts`'s v2 case), same `scale-lab.yaml` stack, same production SPA build, but against the T-901 v2 canvas renderer (`TopologyCanvasV2`, selected via the `rendererVersion` localStorage feature flag) instead of the v1 React Flow renderer. Same headless-Chromium/software-rasterization/no-GPU caveat as every other number in this file — a pessimistic floor, not a hardware guarantee.
 
-| Metric | v1 (React Flow) | v2 (canvas) | v2 result |
+| Metric | v1 (React Flow) | v2 (canvas) | Notes |
 |---|---|---|---|
-| Pan/zoom p95 frame time | 50.0 ms | **16.7 ms** | **PASS** (T-901 AC6 budget: ≤ 20 ms) |
-| Pan/zoom mean fps | 38.3 | **58.1** | — |
-| Pan/zoom max frame time | 283.4 ms | 100.0 ms | — |
-| Frames over the 16.7 ms (60fps) budget | 34.5% | 1.4% | — |
-| Sampled frames | 898 | 420 | — |
+| Pan/zoom p95 frame time | ~50 ms | ~50 ms | equal in this GPU-less runner — see below |
+| Pan/zoom mean fps | ~35 | ~30 | both software-rasterized floors |
+| Pan/zoom max frame time | 283–417 ms | 83–100 ms | v2 has a lower worst-case tail |
+| Sampled frames | 898–975 | 304–420 | — |
 
-The v2 canvas engine renders the identical post-collapse scale-lab scene (203 nodes / 408 edges, the exact `toFlowElements` output the v1 renderer consumes — no projection change) at roughly **3× the v1 p95 frame budget headroom** in the same GPU-less environment: a p95 of 16.7 ms clears the 20 ms budget, and only 1.4% of frames exceed the 60fps line versus v1's 34.5%. This is the measured proxy AC6 requires; a genuine 60fps verdict on GPU-compositing hardware is still out of this environment's reach (same honesty note as §3). The number was captured by the committed `web/e2e/scale.spec.ts` v2 case; during this task it was run in an isolated port harness to avoid contending with concurrent sibling e2e runs on the shared 28006/28007 pair — the spec itself is identical either way.
+**Correction (Phase 9 close, orchestrator re-measurement).** An earlier draft of this
+section reported a v2 p95 of **16.7 ms** and a PASS against the 20 ms budget. That number
+came from a one-off "isolated port harness" run during T-901 and does **not** reproduce on
+the canonical `web/e2e/scale.spec.ts` v2 path: re-measured uncontended at Phase 9 close, the
+v2 renderer records **p95 ≈ 50 ms** — the *same* as the v1 React Flow renderer measured the
+same way (v1 ≈ 50.1 ms, v2 ≈ 50.1 ms). In other words v2 is **not** a regression, but neither
+renderer meets a 20 ms p95 in this **headless Chromium / software-rasterized / no-GPU**
+environment.
+
+The **20 ms figure is a hardware target**, not something this software-rasterized runner can
+verify — which is why the v1 perf test (§3) asserts only frame *count*, and why the v2 test's
+hard `expect(p95 ≤ 20)` assertion was corrected at Phase 9 close to a report-plus-regression-
+guard (a headless ceiling of 90 ms that still catches a real renderer regression) rather than
+a CI gate on GPU acceleration the runner lacks. The frame-stats artifact + the `[scale-v2]`
+log line carry the real per-run number. v2's one measured *improvement* over v1 that survives
+this environment is a materially lower worst-case frame time (max ~83–100 ms vs. v1's
+~283–417 ms). A genuine 60 fps / ≤20 ms verdict remains **needs-hardware-validation** on a
+real GPU-compositing browser (see `planning/reports/needs-hardware-validation.md`).
 
 ## 4. Progressive disclosure at scale
 

@@ -299,3 +299,16 @@ from; and pvemock does not model an `ifreload` outage at all):
       `vlan-raw-device` but intentionally does not rename the children themselves (vmbr0.100 stays
       vmbr0.100 on raw-device vmbrX). Confirm ifupdown2/PVE is happy with that name/raw-device
       mismatch on a real node.
+
+## Topology v2 renderer frame budget (T-901/T-902)
+
+- [ ] **v2 canvas renderer p95 ≤ 20ms at scale.** `docs/features/topology.md` §4's 30fps /
+      ≤20ms pan-zoom target is a hardware target. Re-measured uncontended at Phase 9 close, the
+      v2 canvas renderer records **p95 ≈ 50ms on the CI/dev host** (headless Chromium, software
+      rasterization, no GPU) — identical to the v1 React Flow renderer measured the same way, so
+      v2 is not a regression, but the 20ms budget is unverifiable in this GPU-less environment.
+      `web/e2e/scale.spec.ts`'s v2 case therefore report-and-guards (headless ceiling 90ms) rather
+      than asserting ≤20ms. Confirm the real p95 on a GPU-compositing browser (a normal desktop
+      Chrome/Firefox, hardware acceleration on) against the `scale-lab` fixture (8 nodes × 6 NICs,
+      300 guests, 40 VNets) to validate the ≤20ms hardware target, and re-tighten the assertion if
+      a representative CI runner with GPU ever becomes available.
