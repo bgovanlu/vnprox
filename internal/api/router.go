@@ -161,6 +161,13 @@ type Options struct {
 	// both routes exactly.
 	PeerAudit     PeerAuditSource
 	PeerSnapshots PeerSnapshotSource
+	// Flows is T-1002's local-node read seam for GET /flows (nil skips
+	// mounting the route, same degraded-mode treatment as every other
+	// optional Options field); PeerFlows is its cluster fan-out dependency,
+	// nil-safe like PeerAudit/PeerSnapshots above (falls back to
+	// node-local-only).
+	Flows     FlowLocalSource
+	PeerFlows PeerFlowSource
 	// DocExport backs T-605's GET /export/doc (config documentation
 	// export); nil skips mounting the route, matching every other optional
 	// Options field.
@@ -231,6 +238,7 @@ func NewRouter(opts Options) http.Handler {
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
+		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 	})

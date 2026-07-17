@@ -312,3 +312,27 @@ from; and pvemock does not model an `ifreload` outage at all):
       Chrome/Firefox, hardware acceleration on) against the `scale-lab` fixture (8 nodes × 6 NICs,
       300 guests, 40 VNets) to validate the ≤20ms hardware target, and re-tighten the assertion if
       a representative CI runner with GPU ever becomes available.
+
+## Flow ingestion engine (T-1002)
+
+- [ ] **IPFIX variable-length Information Elements.** RFC 7011 §7's `0xFFFF` template-field-length
+      sentinel (a length-prefixed value inline in the data record) is not decoded — a template
+      field declaring it is recorded with length 0, so any data set using that template is
+      silently undecodable (dropped, counted, never a panic). None of this task's hand-built
+      fixtures exercise it. Confirm whether real exporters vnprox is likely to see (pmacct,
+      nProbe, vendor hardware) commonly emit variable-length IEs before shipping IPFIX support as
+      "done" for those exporters specifically.
+- [ ] **sFlow IPv6 raw-packet-header extension header chains.** `internal/flow/sflow.go`'s IPv6
+      path decodes only the fixed 40-byte header; a `Record.Proto` on IPv6 traffic using extension
+      headers (hop-by-hop, routing, fragment, ...) reports the header chain's first NextHeader
+      value, not necessarily the true upper-layer protocol, and ports are read from whatever bytes
+      immediately follow the fixed header (wrong if an extension header is present). Confirm real
+      sFlow-sampled IPv6 traffic's extension-header prevalence before treating this as
+      production-accurate for IPv6-heavy networks.
+- [ ] **Real sFlow/NetFlow/IPFIX exporter interop.** Every `testdata/flows/*.bin` fixture is
+      hand-built directly to the published wire-format specs (sflow.org's sFlow v5 spec, Cisco's
+      NetFlow v9 spec, RFC 7011), never captured from a live exporter (no lab hardware/switch/
+      router available in this environment — the same "Real PVE access" gap CLAUDE.md documents,
+      extended here to flow exporters generally). Validate against at least one real exporter per
+      protocol (a physical switch's sFlow agent, a Cisco/Juniper NetFlow export, and pmacct/
+      nProbe/softflowd for IPFIX) before considering any of the three decoders field-proven.

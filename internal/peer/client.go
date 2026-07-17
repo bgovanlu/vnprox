@@ -469,6 +469,52 @@ func (c *Client) Audit(ctx context.Context, p Peer, filter AuditFilter, cursor s
 	return out.Items, out.NextCursor, nil
 }
 
+// Flows fetches one page of peer p's own local flow_samples ring (T-1002),
+// filtered exactly like docs/api.md's GET /flows, for internal/api's
+// cluster fan-out (fetchClusterFlows).
+func (c *Client) Flows(ctx context.Context, p Peer, filter FlowFilter, cursor string, limit int) ([]FlowRecord, string, error) {
+	q := url.Values{}
+	if filter.Guest != "" {
+		q.Set("guest", filter.Guest)
+	}
+	if filter.Subnet != "" {
+		q.Set("subnet", filter.Subnet)
+	}
+	if filter.Source != "" {
+		q.Set("source", filter.Source)
+	}
+	if filter.VLAN != 0 {
+		q.Set("vlan", strconv.Itoa(filter.VLAN))
+	}
+	if filter.Port != 0 {
+		q.Set("port", strconv.Itoa(filter.Port))
+	}
+	if filter.Proto != 0 {
+		q.Set("proto", strconv.Itoa(filter.Proto))
+	}
+	if filter.FromTs != 0 {
+		q.Set("fromTs", strconv.FormatInt(filter.FromTs, 10))
+	}
+	if filter.ToTs != 0 {
+		q.Set("toTs", strconv.FormatInt(filter.ToTs, 10))
+	}
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/flows?"+q.Encode(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	var out flowPageResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, "", err
+	}
+	return out.Items, out.NextCursor, nil
+}
+
 // Snapshots fetches one page of peer p's own local snapshot list (T-303).
 func (c *Client) Snapshots(ctx context.Context, p Peer, cursor string, limit int) ([]SnapshotRecord, string, error) {
 	q := url.Values{}

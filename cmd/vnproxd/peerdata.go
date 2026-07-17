@@ -44,6 +44,36 @@ func (a auditPeerAdapter) ListAuditPage(ctx context.Context, filter peer.AuditFi
 	return out, next, nil
 }
 
+// flowPeerAdapter adapts *store.FlowSampleRepo to peer.FlowReader (T-1002,
+// GET /api/peer/flows) — the same wiring-layer bridge shape as
+// auditPeerAdapter above, converting internal/store's flow.FlowFilter/
+// FlowSample to internal/peer's own duplicate wire types (peer.FlowFilter/
+// FlowRecord never import internal/store — see peer.FlowReader's doc
+// comment).
+type flowPeerAdapter struct {
+	repo *store.FlowSampleRepo
+}
+
+func (a flowPeerAdapter) ListFlowPage(ctx context.Context, filter peer.FlowFilter, cursor string, limit int) ([]peer.FlowRecord, string, error) {
+	samples, next, err := a.repo.Query(ctx, store.FlowFilter{
+		Guest: filter.Guest, Subnet: filter.Subnet, Source: filter.Source,
+		VLAN: filter.VLAN, Port: filter.Port, Proto: filter.Proto, FromTs: filter.FromTs, ToTs: filter.ToTs,
+	}, cursor, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]peer.FlowRecord, len(samples))
+	for i, s := range samples {
+		out[i] = peer.FlowRecord{
+			ID: s.ID, At: s.At, Node: s.Node, SrcIP: s.SrcIP, DstIP: s.DstIP,
+			SrcRef: s.SrcRef, DstRef: s.DstRef, Source: s.Source,
+			Bytes: s.Bytes, Packets: s.Packets, SrcPort: s.SrcPort, DstPort: s.DstPort,
+			Proto: s.Proto, VLAN: s.VLAN, IngressIfIndex: s.IngressIf, EgressIfIndex: s.EgressIf,
+		}
+	}
+	return out, next, nil
+}
+
 // snapshotPeerAdapter adapts *change.Service to peer.SnapshotReader.
 type snapshotPeerAdapter struct {
 	svc *change.Service
