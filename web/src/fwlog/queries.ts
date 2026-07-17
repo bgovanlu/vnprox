@@ -4,15 +4,27 @@
 // establish, reusing the one shared /api/ws connection (createWsClient).
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchFwLog, type FwLogFilter } from "../api/fwlog";
+import { fetchFwAnalytics, fetchFwLog, type FwAnalyticsFilter, type FwLogFilter } from "../api/fwlog";
 import { createWsClient, defaultWsUrl, type WsClient, type WsServerEvent } from "../api/ws";
-import type { FwLogBatchEvent, FwLogPage } from "../api/types";
+import type { FwAnalyticsResponse, FwLogBatchEvent, FwLogPage } from "../api/types";
 
 export function useFwLogQuery(filter: FwLogFilter) {
   return useQuery<FwLogPage>({
     queryKey: ["firewall-log", filter],
     queryFn: () => fetchFwLog(filter),
     staleTime: 0, // always a fresh tail on mount/filter change — this is a live view, not cacheable app state
+  });
+}
+
+/** T-1006's analytics tab query: GET /firewall/analytics, re-fetched
+ * whenever `filter` changes (window/scope selection). Unlike the log
+ * viewer's own useFwLogQuery, this has no WS-follow half — analytics is a
+ * point-in-time aggregate a user explicitly refreshes/re-windows, not a
+ * live-appending stream. */
+export function useFwAnalyticsQuery(filter: FwAnalyticsFilter) {
+  return useQuery<FwAnalyticsResponse>({
+    queryKey: ["firewall-analytics", filter],
+    queryFn: () => fetchFwAnalytics(filter),
   });
 }
 

@@ -52,6 +52,14 @@ type CorrelationView struct {
 	CandidatePositions []int        `json:"candidatePositions,omitempty"`
 }
 
+// ToRuleRefView converts a RuleRef to its wire shape — shared by
+// CorrelationView.Rule (log entries, below) and T-1006's
+// GET /firewall/analytics response (internal/api/fwlog.go), one contract
+// for both correlated-log producers.
+func ToRuleRefView(r RuleRef) RuleRefView {
+	return RuleRefView(r)
+}
+
 // ToEntryView converts one buffered StreamEntry to its wire shape.
 func ToEntryView(se StreamEntry) EntryView {
 	v := EntryView{
@@ -72,7 +80,8 @@ func ToEntryView(se StreamEntry) EntryView {
 func toCorrelationView(c Correlation) CorrelationView {
 	v := CorrelationView{Status: string(c.Status), Reason: c.Reason, CandidatePositions: c.CandidatePositions}
 	if c.Rule != nil {
-		v.Rule = &RuleRefView{GuestRef: c.Rule.GuestRef, Origin: c.Rule.Origin, GroupName: c.Rule.GroupName, Pos: c.Rule.Pos}
+		rv := ToRuleRefView(*c.Rule)
+		v.Rule = &rv
 	}
 	return v
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/findings"
+	"github.com/bgovanlu/vnprox/internal/fwlog"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
@@ -283,6 +284,42 @@ func (a corosyncStatusAdapter) CorosyncStatus() (map[string][]host.RingStatus, e
 	return map[string][]host.RingStatus{node: rings}, nil
 }
 
+// fwAnalyticsAdapter is T-1006's lazily-set findings.FwAnalyticsProvider
+// seam, the same pattern mgmtStatusAdapter above establishes: setupFindings
+// builds the findings.Engine before *fwlog.Service exists (fwlogSvc is
+// constructed later in server.go, after the change engine — see
+// setupFwlog's own call site doc comment), so this adapter is wired in
+// with its target unset and filled in via set() once fwlogSvc is built,
+// always before the daemon starts serving requests or the findings RunLoop
+// actually runs. Safe for concurrent use (the findings engine's own poll
+// loop and an in-flight HTTP request could both call Analytics around
+// startup).
+type fwAnalyticsAdapter struct {
+	svc *fwlog.Service
+	mu  sync.Mutex
+}
+
+func (a *fwAnalyticsAdapter) set(svc *fwlog.Service) {
+	a.mu.Lock()
+	a.svc = svc
+	a.mu.Unlock()
+}
+
+// Analytics implements findings.FwAnalyticsProvider. Returns a zero-value
+// Analytics (no findings, not an error) if called before set — that can
+// only happen if something evaluates findings before server.go finishes
+// its startup sequence, which doesn't occur in production; mirrors
+// mgmtStatusAdapter.MgmtStatus's identical degrade-before-ready contract.
+func (a *fwAnalyticsAdapter) Analytics(now time.Time, window time.Duration, topN int) fwlog.Analytics {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc == nil {
+		return fwlog.Analytics{}
+	}
+	return svc.Analytics(now, window, topN)
+}
+
 // topicFindings is the WS subscribe topic name for T-602's
 // `findings.changed` event — the unified-stream counterpart of
 // cmd/vnproxd/drift.go's topicDrift, added rather than replacing it (any
@@ -315,18 +352,19 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, logger *slog.Logger) *findings.Engine {
+func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
-		Graph:    graph,
-		Drift:    driftSvc,
-		LLDP:     topoSvc,
-		IPAM:     ipamFindingsAdapter{ipam: ipamSvc, logger: logger},
-		Probe:    probeFindingsAdapter{repo: probeRepo, logger: logger},
-		Metrics:  metricsSampler,
-		Mgmt:     mgmtSvc,
-		Corosync: corosyncSvc,
-		Logger:   logger,
-		Notifier: notifier,
+		Graph:       graph,
+		Drift:       driftSvc,
+		LLDP:        topoSvc,
+		IPAM:        ipamFindingsAdapter{ipam: ipamSvc, logger: logger},
+		Probe:       probeFindingsAdapter{repo: probeRepo, logger: logger},
+		Metrics:     metricsSampler,
+		Mgmt:        mgmtSvc,
+		Corosync:    corosyncSvc,
+		FwAnalytics: fwAnalyticsSvc,
+		Logger:      logger,
+		Notifier:    notifier,
 		OnChange: func(count int) {
 			data, err := json.Marshal(findingsChangedEvent{Event: "findings.changed", Count: count})
 			if err != nil {

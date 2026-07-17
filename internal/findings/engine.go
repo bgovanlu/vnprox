@@ -40,7 +40,12 @@ type Config struct {
 	// Corosync is T-803's corosync ring-status seam, backing the
 	// corosync_link_degraded health check. Nil skips that check entirely,
 	// same degradation as every other optional Config field.
-	Corosync        CorosyncProvider
+	Corosync CorosyncProvider
+	// FwAnalytics is T-1006's firewall log analytics seam
+	// (fwlog.Service.Analytics), backing the fw_rule_unused health check.
+	// Nil skips that check entirely, same degradation as every other
+	// optional Config field.
+	FwAnalytics     FwAnalyticsProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -64,6 +69,7 @@ type Engine struct {
 	metricsSvc  MetricsProvider
 	mgmtSvc     MgmtProvider
 	corosyncSvc CorosyncProvider
+	fwAnalytics FwAnalyticsProvider
 	probeSvc    ProbeProvider
 	serviceDB   *debouncer
 	services    *serviceStatusStore
@@ -119,6 +125,7 @@ func New(cfg Config) *Engine {
 		metricsSvc:  cfg.Metrics,
 		mgmtSvc:     cfg.Mgmt,
 		corosyncSvc: cfg.Corosync,
+		fwAnalytics: cfg.FwAnalytics,
 		probeSvc:    cfg.Probe,
 		log:         logger,
 		now:         now,
@@ -189,6 +196,7 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkEvpnGwInconsistency(snap)...)
 	out = append(out, checkTrunkUnusedVlans(snap)...)
 	out = append(out, checkCorosyncLinkDegraded(e.corosyncSvc, e.corosyncDB)...)
+	out = append(out, checkFwRuleUnused(e.fwAnalytics, now)...)
 	return out
 }
 

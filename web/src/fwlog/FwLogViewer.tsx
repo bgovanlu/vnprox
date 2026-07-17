@@ -1,13 +1,19 @@
 // Firewall log viewer (T-505, docs/features/firewall.md §4): a filterable,
 // pausable, cluster-wide stream of pve-firewall log lines with honest rule
 // correlation and a storm-safe follow mode (server rate cap + client
-// render cap, both surfaced as a drop indicator — AC3).
-import { useEffect, useMemo, useReducer } from "react";
+// render cap, both surfaced as a drop indicator — AC3). T-1006 adds a
+// second tab on this same page: read-only analytics (hit counts,
+// top-blocked charts, unused-rule report) aggregated over the same log
+// buffer — see AnalyticsTab.tsx. "Log" is the default tab so every
+// existing test/deep-link that lands on this page unchanged keeps seeing
+// exactly what it did before this task.
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import type { FwLogEntry } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
+import { AnalyticsTab } from "./AnalyticsTab";
 import { ruleDeepLinkPath } from "./deeplink";
 import { useFwLogQuery, useFwLogWsBridge } from "./queries";
 import {
@@ -17,6 +23,27 @@ import {
   selectVisibleEntries,
   type FwLogFilterState,
 } from "./reducer";
+
+type FwLogTab = "log" | "analytics";
+
+function FwLogTabButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={clsx(
+        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
 
 /** Renders a falsy value (0, "", undefined) as an em dash, otherwise the
  * value itself as a string — an explicit if/return rather than `x ? x :
@@ -112,6 +139,7 @@ function FilterBar({
 }
 
 export function FwLogViewer() {
+  const [tab, setTab] = useState<FwLogTab>("log");
   const [state, dispatch] = useReducer(fwLogReducer, initialFwLogViewState);
 
   const apiFilter = useMemo(
@@ -143,96 +171,112 @@ export function FwLogViewer() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-base font-semibold">Firewall log</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Cluster-wide pve-firewall log, live-following via WebSocket. Lines are correlated to the configured rule where
-          determinable; ambiguous or unrecognized lines are labeled honestly rather than guessed (real pve-firewall log
-          lines do not embed a rule position — see the completion report).
-        </p>
-      </div>
-
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <FilterBar filter={state.filter} onChange={(patch) => { dispatch({ type: "setFilter", filter: patch }); }} />
-        <div className="flex items-center gap-2">
-          {state.paused ? (
-            <button
-              type="button"
-              onClick={() => { dispatch({ type: "resume" }); }}
-              className="rounded-md bg-accent-600 px-3 py-1.5 text-sm font-medium text-white"
-            >
-              Resume{state.pending.length > 0 ? ` (${String(state.pending.length)} new)` : ""}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => { dispatch({ type: "pause" }); }}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium dark:border-slate-700"
-            >
-              Pause
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => { dispatch({ type: "clear" }); }}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium dark:border-slate-700"
-          >
-            Clear
-          </button>
+        <div>
+          <h2 className="text-base font-semibold">Firewall log</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Cluster-wide pve-firewall log, live-following via WebSocket. Lines are correlated to the configured rule where
+            determinable; ambiguous or unrecognized lines are labeled honestly rather than guessed (real pve-firewall log
+            lines do not embed a rule position — see the completion report).
+          </p>
+        </div>
+        <div role="tablist" aria-label="Firewall log views" className="flex items-center gap-1">
+          <FwLogTabButton active={tab === "log"} label="Log" onClick={() => { setTab("log"); }} />
+          <FwLogTabButton active={tab === "analytics"} label="Analytics" onClick={() => { setTab("analytics"); }} />
         </div>
       </div>
 
-      {totalDropped > 0 && (
-        <p role="status" className="rounded-md bg-amber-50 px-3 py-1.5 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-          {totalDropped.toLocaleString()} lines dropped to keep up with volume (rate cap engaged) — the stream is complete
-          again once the storm passes.
-        </p>
-      )}
-      {trimmedFromView > 0 && (
-        <p className="text-xs text-slate-400 dark:text-slate-500">
-          Showing the most recent {RENDER_CAP.toLocaleString()} of {visible.length.toLocaleString()} matching lines.
-        </p>
+      {tab === "log" && (
+        <div role="tabpanel" aria-label="Log" className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <FilterBar filter={state.filter} onChange={(patch) => { dispatch({ type: "setFilter", filter: patch }); }} />
+            <div className="flex items-center gap-2">
+              {state.paused ? (
+                <button
+                  type="button"
+                  onClick={() => { dispatch({ type: "resume" }); }}
+                  className="rounded-md bg-accent-600 px-3 py-1.5 text-sm font-medium text-white"
+                >
+                  Resume{state.pending.length > 0 ? ` (${String(state.pending.length)} new)` : ""}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { dispatch({ type: "pause" }); }}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium dark:border-slate-700"
+                >
+                  Pause
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => { dispatch({ type: "clear" }); }}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium dark:border-slate-700"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          {totalDropped > 0 && (
+            <p role="status" className="rounded-md bg-amber-50 px-3 py-1.5 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+              {totalDropped.toLocaleString()} lines dropped to keep up with volume (rate cap engaged) — the stream is
+              complete again once the storm passes.
+            </p>
+          )}
+          {trimmedFromView > 0 && (
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Showing the most recent {RENDER_CAP.toLocaleString()} of {visible.length.toLocaleString()} matching lines.
+            </p>
+          )}
+
+          {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
+          {error && <EmptyState title="Could not load the firewall log" description="Try again in a moment." />}
+          {!isLoading && !error && rendered.length === 0 && (
+            <EmptyState title="No log lines yet" description="Nothing matches the current filter, or no traffic has been logged." />
+          )}
+
+          {rendered.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Node</TableHead>
+                  <TableHead>Guest</TableHead>
+                  <TableHead>Dir</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Source → Dest</TableHead>
+                  <TableHead>Correlation</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rendered.map((e) => (
+                  <TableRow key={e.seq}>
+                    <TableCell className="whitespace-nowrap font-mono text-xs">
+                      {e.at ? new Date(e.at * 1000).toLocaleTimeString() : "—"}
+                    </TableCell>
+                    <TableCell>{e.node}</TableCell>
+                    <TableCell>{displayOrDash(e.vmid)}</TableCell>
+                    <TableCell>{displayOrDash(e.direction)}</TableCell>
+                    <TableCell className="font-mono text-xs">{displayOrDash(e.action)}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {e.source ?? "?"} → {e.dest ?? "?"}
+                    </TableCell>
+                    <TableCell>
+                      <CorrelationCell entry={e} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
       )}
 
-      {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
-      {error && <EmptyState title="Could not load the firewall log" description="Try again in a moment." />}
-      {!isLoading && !error && rendered.length === 0 && (
-        <EmptyState title="No log lines yet" description="Nothing matches the current filter, or no traffic has been logged." />
-      )}
-
-      {rendered.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Time</TableHead>
-              <TableHead>Node</TableHead>
-              <TableHead>Guest</TableHead>
-              <TableHead>Dir</TableHead>
-              <TableHead>Action</TableHead>
-              <TableHead>Source → Dest</TableHead>
-              <TableHead>Correlation</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rendered.map((e) => (
-              <TableRow key={e.seq}>
-                <TableCell className="whitespace-nowrap font-mono text-xs">
-                  {e.at ? new Date(e.at * 1000).toLocaleTimeString() : "—"}
-                </TableCell>
-                <TableCell>{e.node}</TableCell>
-                <TableCell>{displayOrDash(e.vmid)}</TableCell>
-                <TableCell>{displayOrDash(e.direction)}</TableCell>
-                <TableCell className="font-mono text-xs">{displayOrDash(e.action)}</TableCell>
-                <TableCell className="font-mono text-xs">
-                  {e.source ?? "?"} → {e.dest ?? "?"}
-                </TableCell>
-                <TableCell>
-                  <CorrelationCell entry={e} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      {tab === "analytics" && (
+        <div role="tabpanel" aria-label="Analytics">
+          <AnalyticsTab />
+        </div>
       )}
     </div>
   );

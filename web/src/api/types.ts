@@ -1612,6 +1612,48 @@ export interface FirewallEffectsResponse {
   guests: string[];
 }
 
+// --- Firewall log analytics (T-1006, docs/api.md's `GET
+// /firewall/analytics` section; internal/fwlog.Analyze) -----------------
+
+/** One rule's observed hit count within the query's window, plus its most
+ * recent hit's timestamp (unix seconds, omitted iff `hits` is 0). `rule`
+ * reuses `FwLogRuleRef` — the exact same deep-link identity `GET
+ * /firewall/log`'s correlated lines carry. */
+export interface FwRuleHitCount {
+  rule: FwLogRuleRef;
+  hits: number;
+  lastSeenAt?: number;
+}
+
+/** One source/destination address's occurrence count among DROP/REJECT
+ * lines within the window. */
+export interface FwEndpointCount {
+  value: string;
+  count: number;
+}
+
+export interface FwTopBlocked {
+  sources: FwEndpointCount[];
+  destinations: FwEndpointCount[];
+}
+
+/** One enabled rule with zero hits within the window. `daysSinceLastHit`
+ * is `-1` when the rule has no observed hit anywhere in the currently-
+ * retained log buffer at all — an honest "don't know" (its true history
+ * may simply have rotated out of the bounded ring), never fabricated as 0
+ * or the window length. */
+export interface FwUnusedRule {
+  rule: FwLogRuleRef;
+  daysSinceLastHit: number;
+}
+
+/** GET /firewall/analytics?scope=&ref=&windowHours= response. */
+export interface FwAnalyticsResponse {
+  hitCounts: FwRuleHitCount[];
+  topBlocked: FwTopBlocked;
+  unusedRules: FwUnusedRule[];
+}
+
 // --- Path simulator (docs/api.md §"Path simulator"; internal/sim + T-503's
 // `internal/api/simulate.go`) ------------------------------------------
 // Mirrors the server's `simulateRequest`/`simulateResponse` wire shapes
