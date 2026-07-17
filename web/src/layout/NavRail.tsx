@@ -12,6 +12,9 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  // "⌂" rather than "H" (already used by History below) to avoid two nav
+  // items sharing a glyph.
+  { path: "/", label: "Home", glyph: "⌂" },
   { path: "/topology", label: "Topology", glyph: "T" },
   { path: "/management", label: "Management", glyph: "M" },
   { path: "/guests", label: "Guests", glyph: "V" },
@@ -58,6 +61,10 @@ export function NavRail() {
         <NavLink
           key={item.path}
           to={item.path}
+          // "/" is a prefix of every route, so without `end` this item
+          // would render active on every page, not just the dashboard
+          // itself (react-router's NavLink `end` prop docs).
+          end={item.path === "/"}
           className={({ isActive }) =>
             clsx(
               "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",

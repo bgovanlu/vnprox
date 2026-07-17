@@ -30,7 +30,10 @@ export type DrawerView =
    * outcome banner, not the drafting UI. */
   | "done";
 
-const TERMINAL_STATUSES: ReadonlySet<ChangesetStatus> = new Set([
+// Exported (T-904) so the Home dashboard's pending-changesets tile can
+// compute "non-terminal" (draft/validated/applying/awaiting_confirm)
+// without re-declaring this list a second time.
+export const TERMINAL_STATUSES: ReadonlySet<ChangesetStatus> = new Set([
   "committed",
   "rolled_back",
   "failed",
