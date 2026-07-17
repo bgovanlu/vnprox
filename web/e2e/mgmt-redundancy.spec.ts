@@ -122,3 +122,90 @@ test("finding → wizard → review ack → apply → confirm → committed, fin
   // re-enters the inventory the finding is computed from. These two clauses
   // are moved to the hardware-validation list.
 });
+
+/** Every mutating request needs the double-submit `X-VNPROX-CSRF` header
+ * (docs/api.md §Auth; src/api/auth.ts's `readCsrfCookie`) — mirrors
+ * responsive-triage.spec.ts's identical helper. */
+async function readCsrfCookie(page: Page): Promise<string> {
+  const cookies = await page.context().cookies();
+  const csrf = cookies.find((c) => c.name === "vnprox_csrf");
+  if (!csrf) throw new Error("vnprox_csrf cookie not set — is the session logged in?");
+  return csrf.value;
+}
+
+// T-909 acceptance criterion 2: the same touchesMgmtPath ceremony (the
+// typed-acknowledgement block, apply, the commit-confirm countdown, and
+// confirm/rollback) must be fully usable at a narrow (phone-width)
+// viewport — "commit-confirm from a phone" is this task's target scenario,
+// and the mgmt-path ack ceremony is the one write path it must not
+// degrade.
+//
+// The draft is seeded directly via the API (a `bridge.update` touching
+// only `comments` on the node's own mgmt-path bridge — never `Ports`, per
+// opBuilders.ts's own doc comment that a bridge.update can never touch
+// port membership) rather than through the wizard this file's other test
+// drives: that test's Flow A already consumes this single-node fixture's
+// only two NICs into a bond, and this spec file's webServer/interfaces
+// sandbox is shared (not reset) between the two tests in this file, so a
+// second wizard-driven bond attempt fails applying against the
+// already-mutated sandbox regardless of viewport (confirmed by a first
+// draft of this test: "failed to apply at step 1"). A comments-only
+// bridge.update still targets the mgmt-path carrier ref directly, so the
+// server still computes `touchesMgmtPath: true` (docs/api.md: true for
+// *any* changeset touching the path, hand-built drafts included) — this
+// keeps the test focused on what this task card is actually about
+// (review/ack/apply/confirm at narrow width) without depending on a
+// carrier NIC being free. The draft is picked up through the drawer's
+// real "resume parked drafts" affordance, not injected client-side, so
+// this still exercises the real component tree.
+test("narrow viewport: mgmt-path ack block, apply, and confirm work end to end at phone width", async ({ page }) => {
+  await logIn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const csrf = await readCsrfCookie(page);
+  const create = await page.request.post("/api/v1/changesets", {
+    headers: { "X-VNPROX-CSRF": csrf },
+    data: {
+      title: "Management redundancy: pve1",
+      ops: [{ op: "bridge.update", target: "bridge:pve1:vmbr0", params: { comments: "on-call check" } }],
+    },
+  });
+  expect(create.ok(), `POST /changesets failed: ${String(create.status())} ${await create.text()}`).toBe(true);
+
+  // --- 1. Reach the seeded draft through the drawer's real "resume" UI ---
+  // Scoped to the drawer region throughout: the Dashboard's own "Pending
+  // changesets" tile (T-904) also renders a same-named deep-link button,
+  // so an unscoped lookup is ambiguous.
+  await page.goto("/");
+  const drawer = page.getByRole("region", { name: "Change drawer" });
+  await drawer.getByRole("button", { name: /Changes/ }).click();
+  await drawer.getByRole("button", { name: /Resume parked drafts/ }).click();
+  await drawer.getByRole("button", { name: /Management redundancy: pve1/ }).click();
+
+  await expect(drawer).toContainText(/Management redundancy: pve1/i);
+
+  // --- 2. Review -> apply -> confirm, all at phone width ------------------
+  await drawer.getByRole("button", { name: "Review & apply" }).click();
+
+  const review = page.getByRole("dialog", { name: /Review & apply/i });
+  const ack = review.getByRole("group", { name: /management-path acknowledgement/i });
+  await expect(ack).toBeVisible();
+  const applyBtn = review.getByRole("button", { name: /^Apply$/ });
+  await expect(applyBtn).toBeDisabled();
+
+  await ack.getByLabel(/Type node name to acknowledge/i).fill("pve1");
+  await expect(applyBtn).toBeEnabled();
+  await expect(review.getByRole("spinbutton")).toHaveValue("180");
+
+  await applyBtn.click();
+
+  // --- 4. Countdown -> confirm -> committed, all at phone width ----------
+  const countdown = page
+    .getByRole("alert")
+    .filter({ has: page.getByRole("button", { name: "Confirm" }) });
+  await expect(countdown).toBeVisible({ timeout: 30_000 });
+  await countdown.getByRole("button", { name: "Confirm" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: /applied and committed/i }),
+  ).toBeVisible({ timeout: 30_000 });
+});

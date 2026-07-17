@@ -14,6 +14,7 @@ import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
 import type { Finding, Op } from "../api/types";
 import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
+import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { canReview, computeDrawerView, isDraftEditable } from "./drawerMachine";
 import { opKindLabel, summarizeOp } from "./opSummary";
 import {
@@ -49,6 +50,7 @@ function severityBadgeClass(severity: Finding["severity"]): string {
 export function ChangesetDrawer() {
   useChangesetWsBridge();
 
+  const narrow = useNarrowViewport();
   const activeId = useChangesetDrawerStore((s) => s.activeId);
   const drawerOpen = useChangesetDrawerStore((s) => s.drawerOpen);
   const setDrawerOpen = useChangesetDrawerStore((s) => s.setDrawerOpen);
@@ -66,6 +68,13 @@ export function ChangesetDrawer() {
 
   const view = computeDrawerView(changeset, reviewRequested);
   const editable = isDraftEditable(changeset);
+  // T-909: reordering/removing ops and discarding a draft are "editing
+  // entities" per the task card's objective — desktop-only, even though
+  // the drawer itself (and "Review & apply", a pure UI-state transition
+  // with no server call) stays reachable at narrow width so an
+  // already-drafted changeset can still be taken through review, apply,
+  // and the confirm/rollback ceremony from a phone.
+  const editUiEnabled = editable && !narrow;
   const otherDrafts = (resumable ?? []).filter((c) => c.id !== activeId);
 
   // T-903 command-palette verb: "Open drafts" — this drawer is mounted once
@@ -131,7 +140,15 @@ export function ChangesetDrawer() {
         role="region"
         aria-label="Change drawer"
         className={clsx(
-          "fixed bottom-4 right-4 z-30 flex w-full max-w-sm flex-col overflow-hidden rounded-lg border shadow-xl",
+          // T-909: below `sm` (640px), anchoring via `right-4` alone while
+          // `w-full` resolves against the viewport pushes the box's left
+          // edge off-screen (right offset + full width > viewport width on
+          // a phone) — clipping the drawer's content. `inset-x-4` fixes the
+          // width from both sides instead, so the browser never needs to
+          // solve for an overflowing implicit width; `sm:` restores the
+          // original bottom-right-anchored max-w-sm box once there's room.
+          "fixed inset-x-4 bottom-4 z-30 flex flex-col overflow-hidden rounded-lg border shadow-xl",
+          "sm:inset-x-auto sm:left-auto sm:right-4 sm:w-full sm:max-w-sm",
           "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
         )}
       >
@@ -206,7 +223,7 @@ export function ChangesetDrawer() {
                           </span>
                           <span className="text-xs text-slate-700 dark:text-slate-200">{summarizeOp(op)}</span>
                         </div>
-                        {editable && (
+                        {editUiEnabled && (
                           <div className="flex shrink-0 gap-0.5">
                             <button
                               type="button"
@@ -251,7 +268,7 @@ export function ChangesetDrawer() {
                                 {f.severity}
                               </span>{" "}
                               <span className="text-[11px] text-slate-500 dark:text-slate-400">{f.message}</span>
-                              {f.fix && editable && <FixButton changeset={changeset} fix={f.fix} />}
+                              {f.fix && editUiEnabled && <FixButton changeset={changeset} fix={f.fix} />}
                             </li>
                           ))}
                         </ul>
@@ -260,6 +277,18 @@ export function ChangesetDrawer() {
                   );
                 })}
               </ul>
+            )}
+
+            {/* T-909: reordering, removing, and discarding ops is desktop-only
+             * "editing entities" — say so explicitly rather than just
+             * disabling the buttons below with no explanation. Reviewing and
+             * applying an already-drafted changeset stays available (it's
+             * part of the confirm/rollback ceremony this task must not
+             * degrade), so "Review & apply" is deliberately NOT gated here. */}
+            {narrow && changeset && changeset.ops.length > 0 && (
+              <p className="text-[11px] text-slate-400">
+                Reorder, remove, or discard ops on desktop — review and apply this draft as-is from here.
+              </p>
             )}
 
             {changeset && (
@@ -272,7 +301,13 @@ export function ChangesetDrawer() {
                 >
                   Review &amp; apply
                 </Button>
-                <Button size="sm" variant="destructive" disabled={!editable} onClick={() => void handleDiscard()}>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={!editable || narrow}
+                  title={narrow && editable ? "Discard this draft on desktop." : undefined}
+                  onClick={() => void handleDiscard()}
+                >
                   Discard
                 </Button>
               </div>

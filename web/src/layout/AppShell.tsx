@@ -43,7 +43,11 @@ export function AppShell() {
          * unoccupied floating corner, since this app's pages don't
          * reliably have one. */}
         <OnboardingWalkthrough />
-        <main className="min-w-0 flex-1 overflow-auto p-6">
+        {/* T-909: tighter padding below `sm` (640px) — p-6 (24px) eats
+         * noticeably into a 375-414px phone viewport's usable width; p-3
+         * keeps content from feeling cramped against the screen edge
+         * without changing anything at `sm` and up. */}
+        <main className="min-w-0 flex-1 overflow-auto p-3 sm:p-6">
           {/* A page-level boundary so one view's render crash degrades to a
               recoverable message instead of blanking the whole app. Keyed on
               the path so navigating to another page resets it. */}
