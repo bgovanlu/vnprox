@@ -23,6 +23,19 @@
 #                  confidence "conflict", conflict "duplicate_ip".
 #   - 10.50.0.88 — no IPAM allocation; only web3 agent-reports it ->
 #                  confidence "observed", conflict "observed_unallocated".
+#
+# T-805 additions (internal/host.Reader.Neighbors / internal/neighbor's
+# ipam.NeighborSource, fixture-declared via NodeSpec.Neighbors):
+#   - 10.50.0.20 — (see above) web2's own agent reports nothing, but pve1's
+#                  ARP table shows a REACHABLE neighbor at the same MAC
+#                  (AA:BB:CC:DD:EE:02) -> confidence "both", corroborated by
+#                  a second source rather than the guest agent.
+#   - 10.50.0.55 — no IPAM allocation, no guest-agent report; only a
+#                  neighbor-table sighting -> confidence "observed",
+#                  sources ["neighbor"], conflict "observed_unallocated".
+#   - 10.50.0.57 — a FAILED/INCOMPLETE neighbor entry, proving the
+#                  fixture-to-Reader filtering pipeline excludes it (never
+#                  appears in the address list at all).
 cluster:
   name: pve-ipam-lab
   quorate: true
@@ -150,6 +163,16 @@ nodes:
       1735689700 aa:bb:cc:dd:ee:09 10.50.0.160 * *
       -1 aa:bb:cc:dd:ee:10 10.50.0.161 bad-expiry *
       1735689800 not-a-mac 10.50.0.162 bad-mac *
+    # T-805: pve1's fixture-declared ARP/IPv6-neighbor table
+    # (host.Reader.Neighbors / internal/neighbor.Service's ipam.NeighborSource
+    # fan-out). 10.50.0.20 corroborates the existing web2 IPAM allocation by
+    # MAC (-> confidence "both"); 10.50.0.55 is a pure squatter with no IPAM
+    # record at all (-> confidence "observed", conflict "observed_unallocated");
+    # 10.50.0.57's FAILED state must never reach the merged address list.
+    neighbors:
+      - {ip: 10.50.0.20, mac: "AA:BB:CC:DD:EE:02", iface: vmbr0, state: REACHABLE}
+      - {ip: 10.50.0.55, mac: "dd:ee:ff:00:11:22", iface: vmbr0, state: REACHABLE}
+      - {ip: 10.50.0.57, mac: "00:00:00:00:00:00", iface: vmbr0, state: FAILED}
 
 sdn:
   zones:

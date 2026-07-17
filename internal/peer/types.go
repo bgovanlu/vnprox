@@ -48,6 +48,14 @@ type linksResponse struct {
 	Links []host.LinkState `json:"links"`
 }
 
+// neighborsResponse is GET /api/peer/host/neighbors's body (T-805: a node's
+// resolved ARP/IPv6-neighbor table — internal/ipam.NeighborSource's
+// peer-routed fan-out target, following the `links`/`fdb` additive-route
+// precedent this doc comment on linksResponse describes).
+type neighborsResponse struct {
+	Neighbors []host.Neighbor `json:"neighbors"`
+}
+
 // firewallLogResponse is GET /api/peer/firewall/log's body (T-505: one
 // node's own pve-firewall log tail/follow increment — internal/fwlog.
 // Service.fetch calls this for every non-local node in the cluster,

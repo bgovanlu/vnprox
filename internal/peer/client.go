@@ -333,6 +333,25 @@ func (c *Client) FDB(ctx context.Context, p Peer, node string) ([]host.FDBRow, e
 	return out.Entries, nil
 }
 
+// Neighbors fetches node's resolved ARP/IPv6-neighbor table from peer p
+// (T-805): the remote-node counterpart of a local host.Reader.Neighbors
+// call, so internal/ipam.NeighborSource's fan-out can treat "read this
+// node's neighbor table" uniformly regardless of whether node is local or
+// reached through a peer — the same shape Links/FDB above already
+// establish.
+func (c *Client) Neighbors(ctx context.Context, p Peer, node string) ([]host.Neighbor, error) {
+	path := "/api/peer/host/neighbors?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out neighborsResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Neighbors, nil
+}
+
 // FRRBGPSummary fetches node's raw `vtysh -c "show bgp summary json"`
 // output from peer p (T-404). available is false (raw is nil) when node
 // runs no FRR at all — the peer-routed counterpart of

@@ -45,6 +45,7 @@ type spyHostReader struct {
 	bgpSummary      map[string][]byte
 	evpnVNI         map[string][]byte
 	dhcpLeases      map[string][]byte
+	neighbors       map[string][]host.Neighbor
 	interfacesCalls int
 	lldpCalls       int
 	statsCalls      int
@@ -52,6 +53,7 @@ type spyHostReader struct {
 	bgpSummaryCalls int
 	evpnVNICalls    int
 	dhcpLeasesCalls int
+	neighborsCalls  int
 }
 
 func newSpyHostReader() *spyHostReader {
@@ -63,6 +65,7 @@ func newSpyHostReader() *spyHostReader {
 		bgpSummary: map[string][]byte{},
 		evpnVNI:    map[string][]byte{},
 		dhcpLeases: map[string][]byte{},
+		neighbors:  map[string][]host.Neighbor{},
 	}
 }
 
@@ -130,6 +133,15 @@ func (r *spyHostReader) DHCPLeases(_ context.Context, node string) ([]byte, erro
 
 func (r *spyHostReader) Services(_ context.Context, node string) (map[string]bool, error) {
 	return nil, nil
+}
+
+func (r *spyHostReader) Neighbors(_ context.Context, node string) ([]host.Neighbor, error) {
+	r.neighborsCalls++
+	n, ok := r.neighbors[node]
+	if !ok {
+		return nil, errors.Join(host.ErrNotFound, errors.New("node "+node))
+	}
+	return n, nil
 }
 
 // spyHostWriter records every call it receives and its arguments.

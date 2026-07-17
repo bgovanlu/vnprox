@@ -5,7 +5,7 @@ Proxmox has IPAM plugins (built-in `pve`, NetBox, phpIPAM) but no usable view of
 ## 1. Data sources
 
 - Primary: PVE IPAM API (allocations per SDN subnet).
-- Enrichment: guest agent-reported IPs, DHCP leases (dnsmasq zones) — merged with confidence labels (`allocated`, `observed`, `both`, `conflict`). **Known gap (flagged, T-607):** ARP/neighbor tables via peer API are not wired in — `internal/ipam/service.go`'s `NeighborSource` interface exists but has no implementation, and no `internal/host.Reader` method for it either, so today's merge is these two enrichment sources, not three. Not release-blocking (conflict detection already works off the two wired sources); follow-up: implement an ARP/neighbor collector when a task picks this up.
+- Enrichment: guest agent-reported IPs, DHCP leases (dnsmasq zones), and ARP/IPv6-neighbor tables via peer API (`internal/neighbor.Service`, T-805) — merged with confidence labels (`allocated`, `observed`, `both`, `conflict`). The neighbor source reads `internal/host.Reader.Neighbors` (real: `/proc/net/arp` for IPv4, the IPv6 neighbor table via netlink) locally and fans it out cluster-wide via `GET /api/peer/host/neighbors`, exactly like the guest-agent and DHCP-lease sources — never authoritative, filtered to resolved neighbor-cache states (`REACHABLE`/`STALE`/`PERMANENT`). All three enrichment sources are wired today; no known gap remains here.
 - External IPAM (NetBox/phpIPAM) is configured in PVE, not vnprox; vnprox reads through PVE's plugin transparently and deep-links to the external tool for records it doesn't own.
 
 ## 2. Views

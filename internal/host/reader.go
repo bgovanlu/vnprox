@@ -85,6 +85,18 @@ type Reader interface {
 	// frr) is simply absent from the returned map — callers must not treat
 	// a missing key as "down", only a present key mapped to false.
 	Services(ctx context.Context, node string) (map[string]bool, error)
+
+	// Neighbors returns node's resolved ARP (IPv4) and neighbor-discovery
+	// (IPv6) table entries — {ip, mac, iface, state} — filtered to resolved
+	// states (NeighborReachable/NeighborStale/NeighborPermanent);
+	// NeighborFailed/NeighborIncomplete entries are excluded (T-805,
+	// docs/features/ipam.md §1's ARP/neighbor enrichment source: "not
+	// authoritative", the same confidence-labeling contract guest-agent
+	// observations already follow). This is the host-level data source
+	// internal/ipam.NeighborSource fans out cluster-wide (locally via this
+	// method, peer nodes via GET /api/peer/host/neighbors) into
+	// Observation{Source: "neighbor"} values.
+	Neighbors(ctx context.Context, node string) ([]Neighbor, error)
 }
 
 // WatchedServices is the fixed set of systemd unit names Services reports
