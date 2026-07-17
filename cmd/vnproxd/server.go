@@ -266,8 +266,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// its real target once changeSvc is built — see the adapter's own doc
 	// comment (findings.go) for why.
 	mgmtAdapter := &mgmtStatusAdapter{}
+	// T-803: corosyncStatusAdapter reuses realHost/localNode (already built
+	// above for dhcpSvc/neighborSvc) — local-node-only for now, see its own
+	// doc comment (findings.go) for the documented cluster-fan-out gap.
+	corosyncAdapter := corosyncStatusAdapter{host: realHost, localNode: localNode, logger: logger}
 	findingsNotifier := setupFindingsNotifier(sdnPVEClient, logger)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, findingsNotifier, topoSvc, ipamConcrete, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, findingsNotifier, topoSvc, ipamConcrete, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read

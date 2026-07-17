@@ -122,9 +122,40 @@ type NodeSpec struct {
 	// resolved-states-only filter, exactly like the real Reader
 	// implementation does at its own layer — so a fixture can declare a
 	// FAILED/INCOMPLETE entry to exercise that filtering end-to-end.
-	Neighbors      []NeighborSpec `yaml:"neighbors,omitempty"`
-	Network        []NetIface     `yaml:"network"`
-	NetworkPending []NetIface     `yaml:"network_pending"`
+	Neighbors []NeighborSpec `yaml:"neighbors,omitempty"`
+	// Corosync is this node's fixture-declared corosync ring *status*
+	// (T-803, docs/features/monitoring.md §5's `corosync_link_degraded`
+	// check) — distinct from corosync.conf's static ring *addresses*
+	// (ClusterSpec/internal/host.ParseCorosyncConf): this models
+	// `corosync-cfgtool -s`'s live per-ring health as corosync's own
+	// knet/totem layer currently reports it. Nil models a node running no
+	// corosync at all (e.g. a single, not-yet-clustered node) — this
+	// package's HostReader.CorosyncStatus returns ErrCorosyncUnavailable
+	// for such a node, the same graceful-degradation convention FRR's
+	// FRRSpec already establishes.
+	Corosync       *CorosyncSpec `yaml:"corosync,omitempty"`
+	Network        []NetIface    `yaml:"network"`
+	NetworkPending []NetIface    `yaml:"network_pending"`
+}
+
+// CorosyncSpec is a node's fixture-declared `corosync-cfgtool -s` ring
+// status (T-803).
+type CorosyncSpec struct {
+	Rings []RingSpec `yaml:"rings"`
+}
+
+// RingSpec is one fixture-declared corosync ring's live status. Faulty
+// models corosync-cfgtool reporting anything other than "active with no
+// faults" for this ring (the exact wording varies by corosync
+// version/transport — see planning/reports/needs-hardware-validation.md);
+// StatusText, when set, overrides the rendered status line verbatim (so a
+// fixture can exercise a specific real-world wording), defaulting to a
+// representative healthy/faulty line derived from Faulty when empty.
+type RingSpec struct {
+	Addr       string `yaml:"addr"`
+	StatusText string `yaml:"status_text,omitempty"`
+	ID         int    `yaml:"id"`
+	Faulty     bool   `yaml:"faulty,omitempty"`
 }
 
 // NeighborSpec is one fixture-declared ARP/IPv6-neighbor-table entry

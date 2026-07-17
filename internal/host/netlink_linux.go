@@ -56,6 +56,10 @@ type Real struct {
 	// JSON; defaults to `vtysh -c "show evpn vni json"`. Overridable for
 	// tests.
 	EVPNVNICommand []string
+	// CorosyncStatusCommand is the argv used to fetch corosync's live ring
+	// status; defaults to `corosync-cfgtool -s` (T-803, docs/features/
+	// monitoring.md §5). Overridable for tests.
+	CorosyncStatusCommand []string
 }
 
 // NewReal constructs a Real reader with the standard Debian/Proxmox paths
@@ -67,6 +71,7 @@ func NewReal() *Real {
 		LLDPCommand:           []string{"lldpctl", "-f", "json"},
 		BGPSummaryCommand:     []string{"vtysh", "-c", "show bgp summary json"},
 		EVPNVNICommand:        []string{"vtysh", "-c", "show evpn vni json"},
+		CorosyncStatusCommand: []string{"corosync-cfgtool", "-s"},
 		OVSVSCtlPath:          "ovs-vsctl",
 		DHCPLeaseGlob:         "/var/lib/misc/dnsmasq.*.leases",
 	}
@@ -167,6 +172,30 @@ func (r *Real) runFRRCommand(ctx context.Context, argv []string) ([]byte, error)
 		var execErr *exec.Error
 		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
 			return nil, fmt.Errorf("host: %w: %v", ErrFRRUnavailable, err)
+		}
+		return nil, fmt.Errorf("host: running %v: %w", argv, err)
+	}
+	return out, nil
+}
+
+// CorosyncStatus implements Reader (T-803) by shelling out to
+// corosync-cfgtool in status mode. Like FRR/LLDP, there is no netlink/procfs
+// source for corosync's own live ring health — it is strictly corosync's own
+// userspace daemon state, reachable only via corosync-cfgtool — so this is
+// necessarily exec-based, and distinguishes "corosync-cfgtool is not
+// installed at all" (ErrCorosyncUnavailable) from any other failure exactly
+// like runFRRCommand's exec.ErrNotFound detection.
+func (r *Real) CorosyncStatus(ctx context.Context, _ string) ([]byte, error) {
+	argv := r.CorosyncStatusCommand
+	if len(argv) == 0 {
+		return nil, fmt.Errorf("host: corosync: no command configured")
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // fixed, config-supplied argv, not user input
+	out, err := cmd.Output()
+	if err != nil {
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return nil, fmt.Errorf("host: %w: %v", ErrCorosyncUnavailable, err)
 		}
 		return nil, fmt.Errorf("host: running %v: %w", argv, err)
 	}

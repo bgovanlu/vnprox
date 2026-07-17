@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/findings"
+	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
 	"github.com/bgovanlu/vnprox/internal/metrics"
@@ -115,6 +117,57 @@ func (a *mgmtStatusAdapter) MgmtStatus() (change.MgmtStatus, error) {
 	return svc.MgmtStatus(context.Background())
 }
 
+// corosyncStatusAdapter adapts a host.Reader + a localNode closure into
+// findings.CorosyncProvider (T-803's corosync_link_degraded health check).
+//
+// **Scope note for the next agent**: this reports only the *local* node's
+// ring status, via the same host.NewReal() instance realHost already is —
+// Real.CorosyncStatus, like every other Real method, only ever serves its
+// own node (see internal/host's Reader doc comment). Fanning this check out
+// to every cluster peer's own ring status would need a new peer API route
+// (mirroring Services/Links' own peer.Client + peer.Server methods) that
+// T-803's task card scope did not include; flagged here (and in this task's
+// completion report) as a deliberate, documented gap rather than a silent
+// one — a multi-node cluster today only ever sees *this* daemon's own
+// node's corosync health through this check, not every peer's.
+type corosyncStatusAdapter struct {
+	host      host.Reader
+	localNode func() string
+	logger    *slog.Logger
+}
+
+// CorosyncStatus implements findings.CorosyncProvider. Returns (nil, nil) —
+// not an error — before the local node is known yet, or when the node runs
+// no corosync at all (errors.Is(err, host.ErrCorosyncUnavailable): a
+// single, not-yet-clustered node has nothing to report, the same clean
+// degradation ErrFRRUnavailable already gets), so a fresh/single-node
+// daemon never spams a spurious health finding or notification at startup.
+func (a corosyncStatusAdapter) CorosyncStatus() (map[string][]host.RingStatus, error) {
+	node := a.localNode()
+	if node == "" || a.host == nil {
+		return nil, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	raw, err := a.host.CorosyncStatus(ctx, node)
+	if err != nil {
+		if errors.Is(err, host.ErrCorosyncUnavailable) {
+			return nil, nil
+		}
+		a.logger.Warn("findings: reading corosync ring status", "node", node, "error", err)
+		return nil, nil
+	}
+	rings, err := host.ParseCorosyncStatus(raw)
+	if err != nil {
+		a.logger.Warn("findings: parsing corosync ring status", "node", node, "error", err)
+		return nil, nil
+	}
+	if len(rings) == 0 {
+		return nil, nil
+	}
+	return map[string][]host.RingStatus{node: rings}, nil
+}
+
 // topicFindings is the WS subscribe topic name for T-602's
 // `findings.changed` event — the unified-stream counterpart of
 // cmd/vnproxd/drift.go's topicDrift, added rather than replacing it (any
@@ -144,7 +197,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, logger *slog.Logger) *findings.Engine {
+func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:    graph,
 		Drift:    driftSvc,
@@ -152,6 +205,7 @@ func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topo
 		IPAM:     ipamFindingsAdapter{ipam: ipamSvc, logger: logger},
 		Metrics:  metricsSampler,
 		Mgmt:     mgmtSvc,
+		Corosync: corosyncSvc,
 		Logger:   logger,
 		Notifier: notifier,
 		OnChange: func(count int) {

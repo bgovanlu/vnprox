@@ -162,6 +162,22 @@ func TestReal_FRREVPNVNI_Unavailable(t *testing.T) {
 	}
 }
 
+// TestReal_CorosyncStatus_Unavailable exercises the ErrCorosyncUnavailable
+// path (T-803): when CorosyncStatusCommand names a binary that doesn't
+// exist, Real.CorosyncStatus must return an error wrapping
+// ErrCorosyncUnavailable rather than a generic exec failure.
+func TestReal_CorosyncStatus_Unavailable(t *testing.T) {
+	r := NewReal()
+	r.CorosyncStatusCommand = []string{"vnprox-definitely-not-a-real-binary-xyz"}
+	_, err := r.CorosyncStatus(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected an error for a nonexistent corosync-cfgtool command")
+	}
+	if !errors.Is(err, ErrCorosyncUnavailable) {
+		t.Errorf("error = %v, want wrapped ErrCorosyncUnavailable", err)
+	}
+}
+
 // TestReal_FRRBGPSummary_Installed is a best-effort integration test: if
 // vtysh is actually installed on this sandbox, exercise the real exec
 // path end to end (skipped otherwise — CI runners never have FRR

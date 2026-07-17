@@ -238,6 +238,31 @@ from; and pvemock does not model an `ifreload` outage at all):
       existing precedent), not modeling real PVE's separate `VM.Monitor` privilege for guest-agent
       actions — confirm which privilege(s) real PVE actually requires for `agent/exec`.
 
+## Health-check pack 2 (T-803)
+
+- [ ] **Per-node EVPN anycast-gateway realization.** `evpn_gw_inconsistency`
+      (`internal/findings/health_evpngw.go`) infers whether an EVPN zone's anycast subnet gateway is
+      realized on a given member node by checking for that address on a `Bridge` entity named after
+      the VNet's own id (mirroring how guest NICs in `evpn-lab.yaml` attach to e.g. `vnet-tenant-a`
+      by name directly) — this codebase's own best inference from PVE's "the gateway becomes the
+      anycast address realized on every zone member node" documentation (docs/features/sdn.md §2),
+      not a confirmed mirror of what real PVE actually writes to `/etc/network/interfaces` (interface
+      name, exact address/prefix, whether it's carried on a distinct SVI rather than the VNet bridge
+      itself) on each node's EVPN VTEP. Confirm against a live PVE 8.x/9.x EVPN zone with an anycast
+      gateway configured, including the timing (is it present immediately post-apply, or only once
+      FRR converges?).
+- [ ] **Exact `corosync-cfgtool -s` output format/version.** `internal/host.ParseCorosyncStatus`
+      (backing `corosync_link_degraded`) parses one commonly-documented shape — a
+      "Printing ring status." header followed by "RING ID n" / "id\t=" / "status\t=" blocks, with a
+      ring classified faulty unless its status text contains "no faults" (case-insensitive). This is
+      unverified against a real cluster: corosync's knet transport (the PVE default since 6.x) may
+      report link status as "LINK ID"/"addr"/per-node "link enabled"/"link connected" fields instead
+      of the classic ring/udpu shape modeled here, and the exact FAULTY wording is known to vary
+      across corosync versions. Confirm the real output shape (and whether `-s` alone is sufficient,
+      or whether `corosync-cfgtool -n` or the `corosync-quorumtool` output is needed for a fuller
+      picture) against a live multi-node PVE cluster with a deliberately degraded ring, and widen
+      `ParseCorosyncStatus`/`RingSpec`'s fixture shape accordingly if it turns out to differ.
+
 ## Interface renaming (issue #2)
 
 - [ ] **Physical NIC (udev) rename + reboot realization.** The change engine renames only

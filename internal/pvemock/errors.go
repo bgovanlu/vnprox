@@ -34,4 +34,12 @@ var (
 	// this onto its own ErrFRRUnavailable sentinel (see that package's
 	// fixture.go doc comment).
 	ErrFRRUnavailable = errors.New("pvemock: frr not configured")
+
+	// ErrCorosyncUnavailable indicates a node's fixture declares no
+	// `corosync:` block at all (T-803): the mock's modeled equivalent of a
+	// real node running no corosync at all (e.g. a single, not-yet-
+	// clustered node) — internal/host's FixtureReader maps this onto its
+	// own ErrCorosyncUnavailable sentinel, mirroring ErrFRRUnavailable's
+	// exact convention.
+	ErrCorosyncUnavailable = errors.New("pvemock: corosync not configured")
 )

@@ -240,7 +240,21 @@ nodes:
       policy_out: ACCEPT
       rules: []
 
-sdn: {}
+# T-803: a vxlan zone whose configured MTU leaves no headroom over this
+# fixture's own NICs' MTU (1500) — a real `vxlan_underlay_mtu` firing case,
+# complementing evpn-lab.yaml's already-healthy vxlanz/evpnz (mtu 9166 over
+# a 9216-mtu underlay, an exact fit with no headroom to spare either way).
+sdn:
+  zones:
+    - id: vxlanz
+      type: vxlan
+      nodes: [pve1, pve2]
+      mtu: 1470 # 1470 + 50 (VXLAN overhead) = 1520 > this fixture's 1500-mtu NICs
+      peers: ["10.20.0.11", "10.20.0.12"]
+  vnets:
+    - id: vnet-vxlan1
+      zone: vxlanz
+      alias: "vxlan-net"
 
 firewall:
   cluster:

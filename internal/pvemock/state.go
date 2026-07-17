@@ -15,6 +15,7 @@ type nodeState struct {
 	qemu           map[string]*GuestSpec
 	lxc            map[string]*GuestSpec
 	frr            *FRRSpec
+	corosync       *CorosyncSpec
 	dhcpLeases     string
 	neighbors      []NeighborSpec
 	network        []NetIface
@@ -138,6 +139,7 @@ func NewState(f *Fixture) *State {
 			mock:       f.Mock.merge(ns.Mock),
 			network:    append([]NetIface(nil), ns.Network...),
 			frr:        ns.FRR,
+			corosync:   ns.Corosync,
 			dhcpLeases: ns.DHCPLeases,
 			neighbors:  append([]NeighborSpec(nil), ns.Neighbors...),
 		}

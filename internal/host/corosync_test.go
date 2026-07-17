@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -130,6 +131,101 @@ func TestReadCorosyncConf_MissingFile(t *testing.T) {
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("ReadCorosyncConf error = %v, want errors.Is(err, os.ErrNotExist)", err)
+	}
+}
+
+const sampleCorosyncStatusHealthy = `Printing ring status.
+Local node ID 1
+RING ID 0
+	id	= 10.10.0.1
+	status	= ring 0 active with no faults
+RING ID 1
+	id	= 10.10.1.1
+	status	= ring 1 active with no faults
+`
+
+const sampleCorosyncStatusFaulty = `Printing ring status.
+Local node ID 1
+RING ID 0
+	id	= 10.10.0.1
+	status	= ring 0 active with no faults
+RING ID 1
+	id	= 10.10.1.1
+	status	= Marking ringid 1 interface 10.10.1.1 FAULTY - administrative intervention required.
+`
+
+// TestParseCorosyncStatus_Healthy: every ring reporting "no faults" parses
+// with Faulty=false (T-803).
+func TestParseCorosyncStatus_Healthy(t *testing.T) {
+	rings, err := ParseCorosyncStatus([]byte(sampleCorosyncStatusHealthy))
+	if err != nil {
+		t.Fatalf("ParseCorosyncStatus: %v", err)
+	}
+	if len(rings) != 2 {
+		t.Fatalf("got %d rings, want 2: %+v", len(rings), rings)
+	}
+	for _, r := range rings {
+		if r.Faulty {
+			t.Errorf("ring %d (%s) reported Faulty=true, want false: %q", r.RingID, r.Addr, r.StatusText)
+		}
+	}
+	if rings[0].RingID != 0 || rings[0].Addr != "10.10.0.1" {
+		t.Errorf("ring[0] = %+v, want {RingID:0 Addr:10.10.0.1 ...}", rings[0])
+	}
+	if rings[1].RingID != 1 || rings[1].Addr != "10.10.1.1" {
+		t.Errorf("ring[1] = %+v, want {RingID:1 Addr:10.10.1.1 ...}", rings[1])
+	}
+}
+
+// TestParseCorosyncStatus_Faulty: a ring whose status text does not contain
+// "no faults" parses with Faulty=true, and its raw status text is preserved
+// verbatim for the health finding's detail text.
+func TestParseCorosyncStatus_Faulty(t *testing.T) {
+	rings, err := ParseCorosyncStatus([]byte(sampleCorosyncStatusFaulty))
+	if err != nil {
+		t.Fatalf("ParseCorosyncStatus: %v", err)
+	}
+	if len(rings) != 2 {
+		t.Fatalf("got %d rings, want 2: %+v", len(rings), rings)
+	}
+	if rings[0].Faulty {
+		t.Errorf("ring 0 reported Faulty=true, want false: %q", rings[0].StatusText)
+	}
+	if !rings[1].Faulty {
+		t.Errorf("ring 1 reported Faulty=false, want true: %q", rings[1].StatusText)
+	}
+	if !strings.Contains(rings[1].StatusText, "FAULTY") {
+		t.Errorf("ring 1 StatusText = %q, want it to preserve the raw FAULTY wording", rings[1].StatusText)
+	}
+}
+
+// TestParseCorosyncStatus_Empty: empty input is a clean (nil, nil), not an
+// error — matching ParseBGPSummary/ParseEVPNVNI's own "no output is not
+// itself an error" convention.
+func TestParseCorosyncStatus_Empty(t *testing.T) {
+	rings, err := ParseCorosyncStatus(nil)
+	if err != nil {
+		t.Fatalf("ParseCorosyncStatus(nil): %v", err)
+	}
+	if rings != nil {
+		t.Errorf("ParseCorosyncStatus(nil) = %+v, want nil", rings)
+	}
+}
+
+// TestParseCorosyncStatus_MalformedNeverPanics: garbage input never panics,
+// and unrecognized lines are silently skipped rather than failing the parse
+// (mirrors ParseCorosyncConf's own tolerant-parser convention).
+func TestParseCorosyncStatus_MalformedNeverPanics(t *testing.T) {
+	inputs := []string{
+		"garbage\nRING ID not-a-number\nmore garbage",
+		"RING ID 0\nno equals sign here\n",
+		"= = = =\n",
+		"RING ID 0\n\tid\t=\n\tstatus\t=\n",
+	}
+	for _, in := range inputs {
+		if _, err := ParseCorosyncStatus([]byte(in)); err != nil {
+			t.Errorf("ParseCorosyncStatus(%q) returned an error, want tolerant parsing: %v", in, err)
+		}
 	}
 }
 

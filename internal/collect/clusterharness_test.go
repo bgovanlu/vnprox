@@ -103,6 +103,13 @@ func (r nodeRestrictedReader) DHCPLeases(ctx context.Context, node string) ([]by
 	return r.inner.DHCPLeases(ctx, node)
 }
 
+func (r nodeRestrictedReader) CorosyncStatus(ctx context.Context, node string) ([]byte, error) {
+	if node != r.node {
+		return nil, host.ErrNotFound
+	}
+	return r.inner.CorosyncStatus(ctx, node)
+}
+
 func (r nodeRestrictedReader) Neighbors(ctx context.Context, node string) ([]host.Neighbor, error) {
 	if node != r.node {
 		return nil, host.ErrNotFound

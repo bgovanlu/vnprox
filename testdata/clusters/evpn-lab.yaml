@@ -46,10 +46,17 @@ nodes:
       # status=error there (T-401 AC4: a zone with a node reporting error
       # status paints amber/red consistently in the tree and the map).
       - {iface: vmbr1, type: bridge, method: manual, autostart: true, mtu: 1500}
+      # T-803: vnet-tenant-b's EVPN anycast gateway is realized here on
+      # pve1/pve2 but deliberately NOT on pve3 (below), even though pve3 is
+      # a member of evpnz — a real "evpn_gw_inconsistency" firing case
+      # (see needs-hardware-validation.md for the caveat on exactly how PVE
+      # itself realizes this).
+      - {iface: vnet-tenant-b, type: bridge, method: static, address: 192.168.60.1/24, autostart: true, mtu: 1450}
     links:
       eno1: {mac: "bc:24:11:04:00:01", driver: mlx5_core, speed_mbps: 25000, duplex: full, link_up: true, pci_addr: "0000:02:00.0"}
       vmbr0: {mac: "bc:24:11:04:00:01", link_up: true}
       vmbr1: {mac: "bc:24:11:04:00:02", link_up: true}
+      vnet-tenant-b: {mac: "bc:24:11:04:00:03", link_up: true}
     lldp:
       eno1: {chassis_name: sw-leaf-01, chassis_id: "ac:1f:6b:03:00:01", port_id: "Eth1/1", mgmt_ip: 10.20.0.254, vlan: 1, ttl: 120}
     stats:
@@ -95,10 +102,13 @@ nodes:
         mtu: 9216
         bridge_ports: eno1
       - {iface: vmbr1, type: bridge, method: manual, autostart: true, mtu: 1500}
+      # T-803: same anycast gateway as pve1 — consistent between these two.
+      - {iface: vnet-tenant-b, type: bridge, method: static, address: 192.168.60.1/24, autostart: true, mtu: 1450}
     links:
       eno1: {mac: "bc:24:11:05:00:01", driver: mlx5_core, speed_mbps: 25000, duplex: full, link_up: true, pci_addr: "0000:02:00.0"}
       vmbr0: {mac: "bc:24:11:05:00:01", link_up: true}
       vmbr1: {mac: "bc:24:11:05:00:02", link_up: true}
+      vnet-tenant-b: {mac: "bc:24:11:05:00:03", link_up: true}
     lldp:
       eno1: {chassis_name: sw-leaf-02, chassis_id: "ac:1f:6b:04:00:01", port_id: "Eth1/1", mgmt_ip: 10.20.0.253, vlan: 1, ttl: 120}
     stats:
@@ -231,6 +241,19 @@ sdn:
       zone: evpnz
       alias: "tenant-a"
       vlan_aware: false
+    # T-803: evpn_gw_inconsistency fixture — see the pve1/pve2/pve3 network
+    # stanzas above for which nodes realize this vnet's anycast gateway.
+    # (orphan_vnet's own scenario — a vnet whose zone was deleted out from
+    # under it — cannot be expressed as a loadable YAML fixture at all:
+    # pvemock.LoadFixture enforces zone-reference integrity at load time,
+    # the same referential check real PVE's SDN config effectively holds by
+    # construction; the check's own unit tests build that transient/raw-API
+    # shape directly against a synthetic graph instead, see
+    # internal/findings/health_orphanvnet_test.go.)
+    - id: vnet-tenant-b
+      zone: evpnz
+      alias: "tenant-b"
+      vlan_aware: false
   subnets:
     - id: 10.55.0.0-24
       vnet: vnet-simple1
@@ -256,6 +279,11 @@ sdn:
       snat: true
       dhcp_range_start: 192.168.50.100
       dhcp_range_end: 192.168.50.200
+    # T-803: evpn_gw_inconsistency fixture's gateway (see vnet-tenant-b above).
+    - id: "192.168.60.0-24"
+      vnet: vnet-tenant-b
+      cidr: 192.168.60.0/24
+      gateway: 192.168.60.1
   # PVE built-in IPAM for the DHCP-managed tenant subnet: the anycast
   # gateway record plus the two tester guests' DHCP allocations (both
   # attach to vnet-tenant-a above; evpn-tester-a's MAC matches its net0).
