@@ -5,10 +5,13 @@ import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
 import { useSession } from "../api/useSession";
+import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
 import { useTopologyShortcutTargetStore } from "../keyboard/topologyShortcutTarget";
+import { useRovingFocus } from "../keyboard/useRovingFocus";
 import type { Layer, TopologyEdge, TopologyNode } from "../api/types";
 import { capsForNode } from "../changesets/capabilities";
 import { computeDragOp } from "../changesets/dragDropOps";
+import { editorKindForInventoryKind, useEditorLauncherStore } from "../changesets/editorLauncherStore";
 import { EditorLauncher } from "../changesets/EditorLauncher";
 import { refNode, summarizeOp } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
@@ -109,6 +112,9 @@ function TopologyPageContent() {
   const hydrateFromLayout = useTopologyStore((s) => s.hydrateFromLayout);
 
   const vlanInputRef = useRef<HTMLInputElement>(null);
+  // T-903: the shared wrapper around whichever view (Switch/Graph) is
+  // currently mounted — see the roving-focus registration below.
+  const entityContainerRef = useRef<HTMLDivElement>(null);
 
   // --- Saved layout: load once on mount, save (debounced) on change ------
   const { data: savedLayout } = useLayoutQuery();
@@ -150,6 +156,45 @@ function TopologyPageContent() {
       setShortcutTarget(null);
     };
   }, [toggleLayer, setSpotlightOpen, setShortcutTarget]);
+
+  // --- T-903: command palette "Edit <entity>" verbs ----------------------
+  // One verb per entity this page's own inspector already offers an Edit
+  // button for (editorKindForInventoryKind — bridges, bonds, VLANs,
+  // physnics), gated on the same netWrite capability the inspector and the
+  // drag-drop handler below both check, so the palette never offers an
+  // edit a read-only session can't actually perform.
+  const openEditor = useEditorLauncherStore((s) => s.open);
+  const topologyPaletteActions = useMemo<PaletteAction[]>(() => {
+    if (!topology) return [];
+    const actions: PaletteAction[] = [];
+    for (const node of topology.nodes) {
+      const editorKind = editorKindForInventoryKind(node.kind);
+      if (!editorKind) continue;
+      if (!capsForNode(session, node.nodeGroup).netWrite) continue;
+      // Same-named entities are common across nodes (e.g. every node's own
+      // mgmt bridge is conventionally "vmbr0") — the node suffix keeps
+      // otherwise-identical "Edit vmbr0" rows disambiguated in the palette
+      // without changing the "Edit <bridge>" verb shape the task card names.
+      actions.push({
+        id: `edit-${node.id}`,
+        label: node.nodeGroup ? `Edit ${node.label} on ${node.nodeGroup}` : `Edit ${node.label}`,
+        hint: "Topology",
+        keywords: [node.kind, node.nodeGroup],
+        perform: () => {
+          openEditor({ kind: editorKind, node: node.nodeGroup, target: node.id });
+        },
+      });
+    }
+    return actions;
+  }, [topology, session, openEditor]);
+  usePaletteActions("topology", topologyPaletteActions);
+
+  // --- T-903: roving arrow-key focus across the currently-mounted view's
+  // DOM entities (Switch faceplate ports/uplinks/VLANs/VNets or Graph-view
+  // EntityNodes — both tag their focusable elements with data-entity-ref).
+  // Enter activates via the same handleNodeClick a pointer click uses, so
+  // keyboard selection always opens the identical inspector.
+  useRovingFocus({ containerRef: entityContainerRef, onActivate: handleNodeClick });
 
   // --- Auto-layout (elkjs) recomputed whenever the node/edge set changes -
   const [layoutPositions, setLayoutPositions] = useState<Map<string, XYPosition>>(new Map());
@@ -468,7 +513,7 @@ function TopologyPageContent() {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 rounded-lg border border-slate-200 dark:border-slate-800">
+      <div ref={entityContainerRef} className="min-h-0 flex-1 rounded-lg border border-slate-200 dark:border-slate-800">
         {isLoading && (
           <div className="flex h-full items-center justify-center">
             <EmptyState title="Loading the map…" description="Fetching the current cluster topology." />

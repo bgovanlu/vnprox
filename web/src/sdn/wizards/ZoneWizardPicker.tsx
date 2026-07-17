@@ -3,7 +3,7 @@
 // dialog; closing/cancelling either just clears `active` back to
 // undefined — no server-side state exists to clean up either way (see
 // WizardShell.tsx's doc comment on acceptance criterion 5).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../components/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/Dialog";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
@@ -14,7 +14,7 @@ import { wizardStrings } from "./strings";
 import { VlanZoneWizard } from "./VlanZoneWizard";
 import { VxlanZoneWizard } from "./VxlanZoneWizard";
 
-type WizardKind = "simple" | "vlan" | "qinq" | "vxlan" | "evpn";
+export type WizardKind = "simple" | "vlan" | "qinq" | "vxlan" | "evpn";
 
 const CARDS: { kind: WizardKind; title: string; blurb: string }[] = [
   { kind: "simple", title: wizardStrings.simple.title, blurb: wizardStrings.simple.intro },
@@ -27,10 +27,26 @@ const CARDS: { kind: WizardKind; title: string; blurb: string }[] = [
 export interface ZoneWizardPickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** T-903: when set, opening the picker jumps straight to that wizard
+   * instead of showing the type-picker grid — the command palette's "New
+   * VLAN zone" verb (SdnPage.tsx) uses this to skip a step a user who
+   * already named their intent via the palette shouldn't have to repeat.
+   * The toolbar's own "+ New zone (guided)" button leaves this undefined,
+   * so it's unaffected and still shows the grid. */
+  initialActive?: WizardKind;
 }
 
-export function ZoneWizardPicker({ open, onOpenChange }: ZoneWizardPickerProps) {
+export function ZoneWizardPicker({ open, onOpenChange, initialActive }: ZoneWizardPickerProps) {
   const [active, setActive] = useState<WizardKind | undefined>(undefined);
+
+  // Only re-applies `initialActive` on the open transition itself (not on
+  // every render) — once the user is inside a wizard, this component's own
+  // `active` state owns which one is showing, e.g. after "Close" clears it
+  // back to the grid.
+  useEffect(() => {
+    if (open) setActive(initialActive);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately excludes `initialActive` from re-triggering while already open
+  }, [open]);
 
   function closeAll(): void {
     setActive(undefined);

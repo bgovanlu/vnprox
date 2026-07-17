@@ -28,6 +28,8 @@ The chosen view is a per-session preference (like traffic mode), not part of the
 - **Search/spotlight** (`/` hotkey): fuzzy across names, MACs, IPs, VMIDs, comments; selecting focuses + highlights the entity.
 - **Drag-and-drop editing** (Phase 2+): dragging a free NIC onto a bond/bridge, or a guest NIC edge to a different bridge, creates the corresponding draft op in the changeset drawer. Drops that fail validation snap back with the finding shown inline.
 - **Status painting**: link down = red edge; degraded bond (missing slave) = amber; unconfirmed changeset entities = blue pulse; drift = dashed outline.
+- **Command palette** (`⌘K`/`Ctrl+K`, T-903): one app-wide dialog merging this section's spotlight entity search with every page's registered action verbs ("edit vmbr0", "new VLAN zone", "open drafts", "simulate path from `<entity>`", ...) — `web/src/keyboard/CommandPalette.tsx` + `actions.ts`'s `usePaletteActions` registry. Targets whichever renderer (Switch/Graph) is currently mounted; adopts T-901/T-905's canvas accessibility bridge automatically once that lands, with no rework here.
+- **Roving keyboard focus** (T-903): once a map entity has DOM focus, arrow keys move focus to the next entity in on-screen visual-adjacency order (top-to-bottom, then left-to-right) across whichever view is mounted; Enter activates the focused entity exactly like a click (`web/src/keyboard/useRovingFocus.ts`/`rovingFocus.ts`).
 
 ## 3. Rendering contract
 

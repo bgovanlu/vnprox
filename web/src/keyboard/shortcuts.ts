@@ -1,9 +1,9 @@
 // Single source of truth for the keyboard bindings documented in
 // docs/user-guide.md §6: "`/` search · `1–4` toggle layers · `f` VLAN
-// filter · `g` then `t/s/f/i` go to Topology/SDN/Firewall/IPAM · `?` full
-// list." Both useKeyboardShortcuts (the runtime handler) and
-// ShortcutHelpDialog (the `?` overlay) read from this list, so the two
-// can never drift out of sync.
+// filter · `g` then `t/s/f/i` go to Topology/SDN/Firewall/IPAM · `⌘K`/
+// `Ctrl+K` command palette · `?` full list." Both useKeyboardShortcuts (the
+// runtime handler) and ShortcutHelpDialog (the `?` overlay) read from this
+// list, so the two can never drift out of sync.
 //
 // T-005 wired everything except navigation and help to a "not yet
 // implemented" toast, since the features they'd control (search, layer
@@ -13,6 +13,13 @@
 // src/keyboard/topologyShortcutTarget.ts — useKeyboardShortcuts falls back
 // to a toast when nothing is registered (i.e. the user isn't on the
 // Topology view), since these shortcuts are meaningless anywhere else.
+//
+// T-903: "command-palette" is dispatched specially too, like "help" —
+// useKeyboardShortcuts intercepts ⌘K/Ctrl+K before the generic single-key
+// SHORTCUTS lookup below even runs (that lookup only ever compares against
+// `event.key`, which can't itself encode a modifier), so this entry exists
+// purely so ShortcutHelpDialog has one canonical place to read the binding
+// from — same "never drift out of sync" reasoning as every other row.
 import type { Layer } from "../api/types";
 
 export type ShortcutAction =
@@ -21,6 +28,7 @@ export type ShortcutAction =
   | { readonly type: "topology-toggle-layer"; readonly layer: Layer }
   | { readonly type: "topology-vlan-filter" }
   | { readonly type: "topology-search" }
+  | { readonly type: "command-palette" }
   | { readonly type: "help" };
 
 export interface ShortcutDef {
@@ -77,6 +85,12 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     action: { type: "navigate", path: "/firewall" },
   },
   { id: "goto-ipam", keys: "g i", description: "Go to IPAM", action: { type: "navigate", path: "/ipam" } },
+  {
+    id: "command-palette",
+    keys: "⌘K / Ctrl+K",
+    description: "Open command palette",
+    action: { type: "command-palette" },
+  },
   { id: "help", keys: "?", description: "Show this help", action: { type: "help" } },
 ] as const;
 
