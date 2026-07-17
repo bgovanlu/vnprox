@@ -133,6 +133,21 @@ export interface InspectorPanelProps {
   /** Injectable WS client for the Metrics tab (see MetricsTab's doc
    * comment) — tests only; production never passes this. */
   metricsWsClient?: WsClient;
+  /** T-908: renders as a plain non-modal region (a card in
+   * InspectorStack.tsx's side-by-side pane row) instead of the default
+   * Radix Dialog drawer. Multiple embedded panes can be mounted
+   * simultaneously without the focus-trap/overlay conflicts a second
+   * concurrent modal `<Drawer>` would cause — the stack's whole reason for
+   * threading this prop through rather than reusing `<Drawer>` unmodified.
+   * Bare/default usage (every existing call site and test) omits this and
+   * gets the original single-modal-drawer behavior unchanged. */
+  embedded?: boolean;
+  /** T-908 pin control, rendered in the header next to Trace/Edit/Delete
+   * when the caller (InspectorStack) supplies it. A bare InspectorPanel —
+   * every pre-T-908 call site — omits both and renders no pin button at
+   * all, so existing markup/snapshots are unaffected. */
+  pinned?: boolean;
+  onTogglePin?: () => void;
 }
 
 const tabTriggerClass =
@@ -147,7 +162,15 @@ const tabTriggerClass =
  * source won each resolved field) stays visible on its own tab alongside
  * it: rawSource shows what each source said, provenance shows who won.
  */
-export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsWsClient }: InspectorPanelProps) {
+export function InspectorPanel({
+  selectedRef,
+  onClose,
+  onSelectRelated,
+  metricsWsClient,
+  embedded = false,
+  pinned,
+  onTogglePin,
+}: InspectorPanelProps) {
   const { data, isLoading, isError } = useInventoryDetailQuery(selectedRef);
   const rawSourceEntries = Object.entries(data?.rawSource ?? {});
   const { data: session } = useSession();
@@ -195,18 +218,52 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
       });
   }
 
-  return (
-    <Drawer open={selectedRef !== undefined} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DrawerContent side="right" aria-describedby="inspector-description">
-        <div className="flex items-start justify-between gap-2">
+  const body = (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        {embedded ? (
+          // DrawerTitle/DrawerDescription are RadixDialog.Title/Description
+          // — they require a Dialog.Root context, which embedded panes
+          // (InspectorStack's side-by-side pane row) deliberately don't
+          // mount (see this component's embedded doc comment). Plain
+          // elements carry the same visible text; the surrounding region's
+          // own aria-label (set by the embedded branch below) supplies the
+          // accessible name instead of Radix's aria-labelledby wiring.
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              {data?.label ?? "Inspector"}
+            </h2>
+            <p id="inspector-description" className="text-sm text-slate-500 dark:text-slate-400">
+              {data ? `${data.kind} on ${data.node || "cluster"}` : "Entity detail"}
+            </p>
+          </div>
+        ) : (
           <div>
             <DrawerTitle>{data?.label ?? "Inspector"}</DrawerTitle>
             <DrawerDescription id="inspector-description">
               {data ? `${data.kind} on ${data.node || "cluster"}` : "Entity detail"}
             </DrawerDescription>
           </div>
-          {data && (editorKind !== undefined || isTraceableEntityKind(data.kind)) && (
-            <div className="flex shrink-0 gap-1.5">
+        )}
+        {data && (
+          <div className="flex shrink-0 gap-1.5">
+            {onTogglePin && (
+              <Button size="sm" variant={pinned ? "primary" : "secondary"} aria-pressed={pinned} onClick={onTogglePin}>
+                {pinned ? "Pinned" : "Pin"}
+              </Button>
+            )}
+            {embedded && (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={`Close ${data.label} (${data.node || "cluster"})`}
+                onClick={onClose}
+              >
+                Close
+              </Button>
+            )}
+            {(editorKind !== undefined || isTraceableEntityKind(data.kind)) && (
+              <>
               {isTraceableEntityKind(data.kind) && (
                 <RadixDropdown.Root>
                   <RadixDropdown.Trigger asChild>
@@ -292,14 +349,16 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
                   </span>
                 </Tooltip>
               )}
-            </div>
-          )}
-        </div>
-
-        {isLoading && <p className="mt-4 text-sm text-slate-400">Loading…</p>}
-        {isError && (
-          <EmptyState className="mt-4" title="Could not load this entity" description="It may have just been removed." />
+              </>
+            )}
+          </div>
         )}
+      </div>
+
+      {isLoading && <p className="mt-4 text-sm text-slate-400">Loading…</p>}
+      {isError && (
+        <EmptyState className="mt-4" title="Could not load this entity" description="It may have just been removed." />
+      )}
 
         {data && (
           <RadixTabs.Root defaultValue="fields" className="mt-4 flex flex-1 flex-col">
@@ -478,7 +537,26 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
               </RadixTabs.Content>
             )}
           </RadixTabs.Root>
-        )}
+      )}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div
+        role="region"
+        aria-label={data ? `${data.label} inspector` : "Inspector"}
+        className="flex h-full w-96 shrink-0 flex-col overflow-y-auto rounded-md border border-slate-200 bg-white p-4 shadow dark:border-slate-700 dark:bg-slate-900"
+      >
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Drawer open={selectedRef !== undefined} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DrawerContent side="right" aria-describedby="inspector-description">
+        {body}
       </DrawerContent>
     </Drawer>
   );
