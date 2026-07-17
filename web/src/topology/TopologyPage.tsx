@@ -14,7 +14,7 @@ import { refNode, summarizeOp } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
-import { InspectorPanel } from "./InspectorPanel";
+import { InspectorStack } from "./InspectorStack";
 import { NewEntityMenu } from "./NewEntityMenu";
 import { LayerToggleBar } from "./LayerToggleBar";
 import { METRICS_KINDS } from "./metricsKinds";
@@ -494,13 +494,10 @@ function TopologyPageContent() {
 
       <SpotlightSearch open={spotlightOpen} onOpenChange={setSpotlightOpen} onSelect={handleSearchSelect} />
       <EditorLauncher />
-      <InspectorPanel
+      <InspectorStack
         selectedRef={selectedId && !isGuestGroupId(selectedId) ? selectedId : undefined}
-        onClose={() => {
+        onAllClosed={() => {
           select(undefined);
-        }}
-        onSelectRelated={(ref) => {
-          select(ref);
         }}
       />
 
