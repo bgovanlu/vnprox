@@ -38,6 +38,20 @@ Environment: this benchmark ran on a shared virtualized dev host (QEMU vCPU, no 
 
 **Reading these honestly:** the three-node-vlan baseline (`docs/testing/topology-performance.md`) measured ~35fps mean in the same headless/no-GPU environment at a much smaller scale (~26 nodes). The scale-lab measurement (203 post-collapse nodes, ~8x more) shows **38.3fps mean — no material regression from the 26-node baseline**, which is itself the useful finding: progressive disclosure (collapse) is doing its job — rendering cost is dominated by the ~200-element post-collapse graph, not the underlying 300-guest/40-VNet raw entity count. As with the existing baseline, a genuine 60fps pass/fail verdict requires a GPU-compositing desktop browser, which this sandboxed environment does not have.
 
+### 3a. v2 canvas renderer (T-901)
+
+**Method:** the *same* rAF frame-delta sampler as above (`web/e2e/scale.spec.ts`'s v2 case), same `scale-lab.yaml` stack, same production SPA build, but against the T-901 v2 canvas renderer (`TopologyCanvasV2`, selected via the `rendererVersion` localStorage feature flag) instead of the v1 React Flow renderer. Same headless-Chromium/software-rasterization/no-GPU caveat as every other number in this file — a pessimistic floor, not a hardware guarantee.
+
+| Metric | v1 (React Flow) | v2 (canvas) | v2 result |
+|---|---|---|---|
+| Pan/zoom p95 frame time | 50.0 ms | **16.7 ms** | **PASS** (T-901 AC6 budget: ≤ 20 ms) |
+| Pan/zoom mean fps | 38.3 | **58.1** | — |
+| Pan/zoom max frame time | 283.4 ms | 100.0 ms | — |
+| Frames over the 16.7 ms (60fps) budget | 34.5% | 1.4% | — |
+| Sampled frames | 898 | 420 | — |
+
+The v2 canvas engine renders the identical post-collapse scale-lab scene (203 nodes / 408 edges, the exact `toFlowElements` output the v1 renderer consumes — no projection change) at roughly **3× the v1 p95 frame budget headroom** in the same GPU-less environment: a p95 of 16.7 ms clears the 20 ms budget, and only 1.4% of frames exceed the 60fps line versus v1's 34.5%. This is the measured proxy AC6 requires; a genuine 60fps verdict on GPU-compositing hardware is still out of this environment's reach (same honesty note as §3). The number was captured by the committed `web/e2e/scale.spec.ts` v2 case; during this task it was run in an isolated port harness to avoid contending with concurrent sibling e2e runs on the shared 28006/28007 pair — the spec itself is identical either way.
+
 ## 4. Progressive disclosure at scale
 
 Verified two ways:

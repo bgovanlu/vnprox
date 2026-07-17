@@ -23,6 +23,7 @@ import { SpotlightSearch } from "./SpotlightSearch";
 import { StalenessBanner } from "./StalenessBanner";
 import { summarizeStaleness } from "./staleness";
 import { TopologyCanvas } from "./TopologyCanvas";
+import { TopologyCanvasV2 } from "./TopologyCanvasV2";
 import { SwitchView } from "./SwitchView";
 import { buildSwitchModel } from "./switchModel";
 import { ViewModeToggle } from "./ViewModeToggle";
@@ -88,6 +89,8 @@ function TopologyPageContent() {
   const activeLayers = useTopologyStore((s) => s.activeLayers);
   const viewMode = useTopologyStore((s) => s.viewMode);
   const setViewMode = useTopologyStore((s) => s.setViewMode);
+  const rendererVersion = useTopologyStore((s) => s.rendererVersion);
+  const setRendererVersion = useTopologyStore((s) => s.setRendererVersion);
   const vlanFilter = useTopologyStore((s) => s.vlanFilter);
   const selectedId = useTopologyStore((s) => s.selectedId);
   const hoveredId = useTopologyStore((s) => s.hoveredId);
@@ -309,13 +312,64 @@ function TopologyPageContent() {
    * to carry an error-severity finding for its own target, it's removed
    * from the draft again and the user is told why.
    */
-  function handleNodeDragStop(id: string, pos: XYPosition): void {
+  /**
+   * The shared drop-to-op path both renderers feed. Given the dragged entity,
+   * the entity it was dropped onto (already resolved — v1 does it via React
+   * Flow's `getIntersectingNodes`, v2 via its own canvas hit-testing), and
+   * the drop position, it drafts the op `computeDragOp` computes for that
+   * pair (identical under both renderers — T-901 AC3, same function, same
+   * inputs), or falls through to a plain reposition when the pair isn't a
+   * recognized edit. Snap-back on validation-failure and the read-only guard
+   * behave exactly as before this refactor.
+   */
+  function applyDrop(draggedId: string, targetId: string | undefined, pos: XYPosition): void {
     if (!topology) {
-      setPosition(id, pos);
+      setPosition(draggedId, pos);
       return;
     }
-    const dragged = topology.nodes.find((n) => n.id === id);
+    const dragged = topology.nodes.find((n) => n.id === draggedId);
     if (!dragged) {
+      setPosition(draggedId, pos);
+      return;
+    }
+    const target = targetId ? topology.nodes.find((n) => n.id === targetId) : undefined;
+    const op = target ? computeDragOp(dragged, target, topology) : undefined;
+
+    if (!op) {
+      setPosition(draggedId, pos);
+      return;
+    }
+    const opNode = op.target ? refNode(op.target) : "";
+    if (!op.target || !capsForNode(session, opNode === "" ? dragged.nodeGroup : opNode).netWrite) {
+      toast({ title: "Read-only", description: "You don't have network-write on this node.", variant: "error" });
+      setPosition(draggedId, pos);
+      return;
+    }
+    void addOps([op], `Map edit: ${summarizeOp(op)}`)
+      .then((updated) => {
+        const errored = updated.findings.some((f) => f.severity === "error" && f.ref === op.target);
+        if (errored) {
+          // addOps appends — the just-drafted (invalid) op is always the
+          // last entry, so reverting it is a simple pop rather than a
+          // reference-equality filter (the op the server echoes back is a
+          // distinct, re-serialized object, not the same reference).
+          void replaceOps(updated.ops.slice(0, -1)).then(() => {
+            toast({ title: "Drag reverted", description: "That change would be invalid — see the drawer for details.", variant: "error" });
+          });
+          return;
+        }
+        toast({ title: "Added to changeset", description: summarizeOp(op) });
+      })
+      .catch(() => {
+        toast({ title: "Could not draft that change", variant: "error" });
+      });
+    // Deliberately do not call setPosition on a drafted op: the entity hasn't
+    // actually moved yet (nothing applies until Apply), so the node stays at
+    // its real, computed layout position rather than wherever it was dropped.
+  }
+
+  function handleNodeDragStop(id: string, pos: XYPosition): void {
+    if (!topology) {
       setPosition(id, pos);
       return;
     }
@@ -341,40 +395,7 @@ function TopologyPageContent() {
         const dist = (p: { x: number; y: number }) => (p.x - pos.x) ** 2 + (p.y - pos.y) ** 2;
         return dist(a.position) - dist(b.position);
       })[0];
-    const target = targetFlow ? topology.nodes.find((n) => n.id === targetFlow.id) : undefined;
-    const op = target ? computeDragOp(dragged, target, topology) : undefined;
-
-    if (!op) {
-      setPosition(id, pos);
-      return;
-    }
-    const opNode = op.target ? refNode(op.target) : "";
-    if (!op.target || !capsForNode(session, opNode === "" ? dragged.nodeGroup : opNode).netWrite) {
-      toast({ title: "Read-only", description: "You don't have network-write on this node.", variant: "error" });
-      setPosition(id, pos);
-      return;
-    }
-    void addOps([op], `Map edit: ${summarizeOp(op)}`)
-      .then((updated) => {
-        const errored = updated.findings.some((f) => f.severity === "error" && f.ref === op.target);
-        if (errored) {
-          // addOps appends — the just-drafted (invalid) op is always the
-          // last entry, so reverting it is a simple pop rather than a
-          // reference-equality filter (the op the server echoes back is a
-          // distinct, re-serialized object, not the same reference).
-          void replaceOps(updated.ops.slice(0, -1)).then(() => {
-            toast({ title: "Drag reverted", description: "That change would be invalid — see the drawer for details.", variant: "error" });
-          });
-          return;
-        }
-        toast({ title: "Added to changeset", description: summarizeOp(op) });
-      })
-      .catch(() => {
-        toast({ title: "Could not draft that change", variant: "error" });
-      });
-    // Deliberately do not call setPosition: the entity hasn't actually
-    // moved yet (nothing applies until Apply), so the node stays at its
-    // real, computed layout position rather than wherever it was dropped.
+    applyDrop(id, targetFlow?.id, pos);
   }
 
   const noLldpData = topology ? !topology.nodes.some((n) => n.kind === "lldp-neighbor") : false;
@@ -394,6 +415,24 @@ function TopologyPageContent() {
               onClick={toggleTrafficMode}
             >
               Traffic
+            </Button>
+          )}
+          {viewMode === "graph" && (
+            // T-901 experimental feature flag: switch the Graph renderer
+            // between v1 (React Flow) and v2 (canvas) at runtime. Both read
+            // the same GET /topology response — flipping this re-renders from
+            // the already-loaded `elements`, no refetch. Persisted per-browser
+            // in localStorage (store.ts).
+            <Button
+              size="sm"
+              variant={rendererVersion === "v2" ? "primary" : "secondary"}
+              aria-pressed={rendererVersion === "v2"}
+              title="Experimental canvas renderer (v2)"
+              onClick={() => {
+                setRendererVersion(rendererVersion === "v2" ? "v1" : "v2");
+              }}
+            >
+              Canvas v2
             </Button>
           )}
           <VlanFilterInput ref={vlanInputRef} value={vlanFilter} onChange={setVlanFilter} />
@@ -462,12 +501,26 @@ function TopologyPageContent() {
             onExpandGroup={toggleExpanded}
           />
         )}
-        {!isLoading && !isError && topology && topology.nodes.length > 0 && viewMode === "graph" && (
+        {!isLoading && !isError && topology && topology.nodes.length > 0 && viewMode === "graph" && rendererVersion === "v1" && (
           <TopologyCanvas
             elements={elements}
             onNodeClick={handleNodeClick}
             onNodeHover={hover}
             onNodeDragStop={handleNodeDragStop}
+            onNodeContextMenu={handleNodeContextMenu}
+            onPaneClick={() => {
+              select(undefined);
+              setContextMenu(undefined);
+            }}
+          />
+        )}
+        {!isLoading && !isError && topology && topology.nodes.length > 0 && viewMode === "graph" && rendererVersion === "v2" && (
+          <TopologyCanvasV2
+            elements={elements}
+            selectedId={selectedId}
+            onNodeClick={handleNodeClick}
+            onNodeHover={hover}
+            onNodeDrop={applyDrop}
             onNodeContextMenu={handleNodeContextMenu}
             onPaneClick={() => {
               select(undefined);

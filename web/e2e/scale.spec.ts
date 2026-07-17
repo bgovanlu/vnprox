@@ -230,3 +230,92 @@ test("scale-lab: pan/zoom frame timings at the documented scale target", async (
     `[scale] frames=${String(s.frames)} meanFps=${s.meanFps.toFixed(1)} p95=${s.p95FrameMs.toFixed(1)}ms max=${s.maxFrameMs.toFixed(1)}ms over-budget=${s.pctOver60fpsBudget.toFixed(1)}%`,
   );
 });
+
+// T-901: the same rAF frame-delta sampler above, but against the v2 canvas
+// renderer (TopologyCanvasV2) instead of the v1 React Flow one, on the same
+// scale-lab fixture. Proves T-901 AC6's frame budget (p95 <= 20ms) for the
+// new engine, with the identical headless/software-rasterized caveat this
+// file's other measurements carry (see perf.spec.ts's doc comment): these
+// numbers are a pessimistic floor on a GPU-less QEMU host, not a hardware
+// guarantee. Attached as its own `frame-stats` artifact and transcribed into
+// docs/performance.md §3.
+//
+// The v2 flag is set in localStorage *before* the app boots (store.ts reads
+// it on construction), so switching to the Graph view lands the v2 canvas
+// with no refetch. Readiness is asserted via the v2 accessibility bridge:
+// one focusable, aria-labeled proxy per entity (8 nodes each declare vmbr0),
+// which exists only once v2 has projected the full topology.
+async function enableV2Renderer(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("vnprox.topology.rendererV2", "v2");
+    } catch {
+      /* private-mode localStorage: the flag simply won't stick */
+    }
+  });
+}
+
+test("scale-lab (v2 canvas renderer): pan/zoom frame timings at the documented scale target", async ({ page }, testInfo) => {
+  await waitForBackendConverged(150);
+  await enableV2Renderer(page);
+  await logIn(page);
+  // Selecting Graph mounts the v2 canvas (the flag above chose the engine).
+  await page.getByRole("radio", { name: "Graph" }).click();
+  const v2 = page.getByTestId("topology-canvas-v2");
+  await expect(v2).toBeVisible();
+  // The v2 a11y bridge exposes one labeled proxy per entity — wait for all 8
+  // nodes' vmbr0 bridges to have projected before measuring.
+  const region = page.getByRole("application", { name: /Topology map/ });
+  await expect(region.getByRole("button", { name: /bridge vmbr0/ })).toHaveCount(8, { timeout: 30_000 });
+
+  const box = await v2.boundingBox();
+  if (!box) throw new Error("v2 canvas has no bounding box");
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  await page.evaluate(() => {
+    window.__vnproxFrameDeltas = [];
+    let last = performance.now();
+    let running = true;
+    const tick = (now: number) => {
+      window.__vnproxFrameDeltas?.push(now - last);
+      last = now;
+      if (running) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    window.__vnproxSamplerStop = () => {
+      running = false;
+    };
+  });
+
+  for (let pass = 0; pass < 4; pass++) {
+    const dir = pass % 2 === 0 ? 1 : -1;
+    await page.mouse.move(cx - dir * 200, cy - 100);
+    await page.mouse.down();
+    for (let step = 0; step <= 40; step++) {
+      await page.mouse.move(cx - dir * 200 + dir * step * 10, cy - 100 + step * 5, { steps: 1 });
+    }
+    await page.mouse.up();
+  }
+  await page.mouse.move(cx, cy);
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.wheel(0, -120);
+  }
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.wheel(0, 120);
+  }
+
+  const deltas = await page.evaluate(() => {
+    window.__vnproxSamplerStop?.();
+    return window.__vnproxFrameDeltas ?? [];
+  });
+  expect(deltas.length).toBeGreaterThan(30);
+
+  const s = stats(deltas);
+  await testInfo.attach("frame-stats", { body: JSON.stringify({ stats: s, deltas }, null, 2), contentType: "application/json" });
+  console.log(
+    `[scale-v2] frames=${String(s.frames)} meanFps=${s.meanFps.toFixed(1)} p95=${s.p95FrameMs.toFixed(1)}ms max=${s.maxFrameMs.toFixed(1)}ms over-budget=${s.pctOver60fpsBudget.toFixed(1)}%`,
+  );
+  // AC6: p95 frame time <= 20ms for the v2 renderer at the documented scale.
+  expect(s.p95FrameMs).toBeLessThanOrEqual(20);
+});
