@@ -3,13 +3,14 @@
 // (docs/features/sdn.md §1). Read-only for T-401 — T-402 added the plain
 // form editors (SdnZoneEditor et al.); T-403 added the guided per-type
 // wizards with live preview (wizards/ZoneWizardPicker).
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import type { SdnSubnet, SdnTree, SdnVnet, SdnZone } from "../api/types";
 import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
+import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
 import { SdnEditorLauncher } from "./SdnEditorLauncher";
 import { DhcpView } from "./DhcpView";
 import { EvpnView } from "./EvpnView";
@@ -19,7 +20,7 @@ import { StatusDot } from "./StatusDot";
 import { sdnNodeEntityStatus, sdnZoneEntityStatus } from "./status";
 import { firstSelection, resolveSdnSelection, type SdnSelection } from "./tree";
 import { useSdnQuery } from "./queries";
-import { ZoneWizardPicker } from "./wizards/ZoneWizardPicker";
+import { ZoneWizardPicker, type WizardKind } from "./wizards/ZoneWizardPicker";
 
 type SdnTab = "configuration" | "evpn" | "dhcp";
 
@@ -383,6 +384,7 @@ export function SdnPage() {
   const openEditor = useSdnEditorStore((s) => s.open);
   const [tab, setTab] = useState<SdnTab>("configuration");
   const [wizardPickerOpen, setWizardPickerOpen] = useState(false);
+  const [wizardInitialKind, setWizardInitialKind] = useState<WizardKind | undefined>(undefined);
   const gate = useSdnWriteGate();
 
   // Default-select the first zone once the tree first loads, so the detail
@@ -395,6 +397,30 @@ export function SdnPage() {
     // intentionally excluded so a user's manual click isn't overridden.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tree]);
+
+  // T-903 command-palette verb: "New VLAN zone" jumps straight past the
+  // zone-type picker grid into the VLAN wizard (ZoneWizardPicker's
+  // `initialActive`); gated on the same write capability the toolbar's own
+  // "+ New zone (guided)" button already checks, so the palette never
+  // offers a write a read-only session can't perform.
+  const sdnPaletteActions = useMemo<PaletteAction[]>(
+    () =>
+      gate.disabled
+        ? []
+        : [
+            {
+              id: "sdn-new-vlan-zone",
+              label: "New VLAN zone",
+              hint: "SDN",
+              perform: () => {
+                setWizardInitialKind("vlan");
+                setWizardPickerOpen(true);
+              },
+            },
+          ],
+    [gate.disabled],
+  );
+  usePaletteActions("sdn", sdnPaletteActions);
 
   const resolved = resolveSdnSelection(tree, selection);
 
@@ -416,6 +442,7 @@ export function SdnPage() {
                 disabled={gate.disabled}
                 title={gate.title}
                 onClick={() => {
+                  setWizardInitialKind(undefined);
                   setWizardPickerOpen(true);
                 }}
               >
@@ -435,7 +462,7 @@ export function SdnPage() {
         </div>
       </div>
       <SdnEditorLauncher />
-      <ZoneWizardPicker open={wizardPickerOpen} onOpenChange={setWizardPickerOpen} />
+      <ZoneWizardPicker open={wizardPickerOpen} onOpenChange={setWizardPickerOpen} initialActive={wizardInitialKind} />
 
       {tab === "configuration" && (
         <>

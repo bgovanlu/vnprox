@@ -16,14 +16,14 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * Wires up the global keyboard bindings from docs/user-guide.md §6.
  * Mount once, near the app root (see src/layout/AppShell.tsx).
  *
- * Navigation (`g` + t/s/f/i) and `?` (help) always do something real.
- * The topology-specific bindings (`/`, `1`-`4`, `f`) are dispatched to
- * whichever handlers the Topology page has registered via
- * src/keyboard/topologyShortcutTarget.ts; when nothing is registered
- * (any other route), they show a toast explaining the shortcut only works
- * on the Topology view, rather than silently doing nothing.
+ * Navigation (`g` + t/s/f/i), `?` (help), and `⌘K`/`Ctrl+K` (command
+ * palette) always do something real. The topology-specific bindings (`/`,
+ * `1`-`4`, `f`) are dispatched to whichever handlers the Topology page has
+ * registered via src/keyboard/topologyShortcutTarget.ts; when nothing is
+ * registered (any other route), they show a toast explaining the shortcut
+ * only works on the Topology view, rather than silently doing nothing.
  */
-export function useKeyboardShortcuts(options: { onOpenHelp: () => void }): void {
+export function useKeyboardShortcuts(options: { onOpenHelp: () => void; onOpenPalette: () => void }): void {
   const navigate = useNavigate();
   const { toast } = useToast();
   const pendingChord = useRef<string | undefined>(undefined);
@@ -49,6 +49,22 @@ export function useKeyboardShortcuts(options: { onOpenHelp: () => void }): void 
 
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.defaultPrevented) return;
+
+      // T-903: ⌘K (mac) / Ctrl+K (everywhere else) opens the command
+      // palette. Checked before the "ignore any modified keystroke" guard
+      // below (which exists for every *other* binding in this file, all of
+      // which are deliberately unmodified single keys/chords) since this
+      // is the one binding that's defined *by* its modifier. Fires
+      // regardless of focus (including inside a text field), matching the
+      // conventional cross-app meaning of this combo — a command palette
+      // is meant to be reachable from anywhere, including mid-edit.
+      const isPaletteChord = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k";
+      if (isPaletteChord) {
+        event.preventDefault();
+        optionsRef.current.onOpenPalette();
+        return;
+      }
+
       if (event.ctrlKey || event.altKey || event.metaKey) return;
       if (isEditableTarget(event.target)) return;
 

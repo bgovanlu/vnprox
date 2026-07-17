@@ -13,8 +13,10 @@ import { EmptyState } from "../components/EmptyState";
 import { useToast } from "../components/Toast";
 import type { SimEndpointSpec, VerifyResult } from "../api/types";
 import { useFirewallObjectsQuery } from "../firewall/queries";
+import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
 import { computeLayout, type XYPosition } from "../topology/layout";
 import { useTopologyQuery } from "../topology/queries";
+import { useTopologyStore } from "../topology/store";
 import { TopologyCanvas } from "../topology/TopologyCanvas";
 import { toFlowElements } from "../topology/toFlowElements";
 import { EndpointPicker } from "./EndpointPicker";
@@ -22,6 +24,7 @@ import { computePathHighlight, withVerifyHighlight } from "./pathHighlight";
 import { useSimulateQuery } from "./queries";
 import { ResultPanel } from "./ResultPanel";
 import { ANY_PRESET, servicePresetsFromMacros, type ServicePreset } from "./servicePresets";
+import { isTraceableEntityKind } from "./traceLink";
 import { decodeSimState, encodeSimState, simUrlStatePath, simUrlStateToRequest, type SimUrlState } from "./urlState";
 import { VerifyLiveButton } from "./VerifyLiveButton";
 import { VerifyPanel } from "./VerifyPanel";
@@ -77,6 +80,33 @@ export function SimulatorPage() {
     () => [ANY_PRESET, ...servicePresetsFromMacros(fwObjects?.macros ?? [])],
     [fwObjects],
   );
+
+  // T-903 command-palette verb: "Simulate path from <entity>" — pre-fills
+  // this page's own `src` endpoint from whatever's currently selected on
+  // the map (the shared topology store's selection, docs/features/
+  // topology.md §2), the same guest-nic-only traceability rule
+  // traceLink.ts's map "Trace path from here" action already enforces.
+  // Only registered while a traceable entity is actually selected, so the
+  // palette never offers a verb that would silently do nothing.
+  const selectedRef = useTopologyStore((s) => s.selectedId);
+  const selectedNode = useMemo(
+    () => topology?.nodes.find((n) => n.id === selectedRef),
+    [topology, selectedRef],
+  );
+  const simulatorPaletteActions = useMemo<PaletteAction[]>(() => {
+    if (!selectedNode || !isTraceableEntityKind(selectedNode.kind)) return [];
+    return [
+      {
+        id: `simulate-path-from-${selectedNode.id}`,
+        label: `Simulate path from ${selectedNode.label}`,
+        hint: "Simulator",
+        perform: () => {
+          setSrc({ kind: "guest-nic", ref: selectedNode.id });
+        },
+      },
+    ];
+  }, [selectedNode]);
+  usePaletteActions("simulator", simulatorPaletteActions);
 
   const [layoutPositions, setLayoutPositions] = useState<Map<string, XYPosition>>(new Map());
   const layoutSignature = topology ? `${String(topology.nodes.length)}:${String(topology.edges.length)}` : "";

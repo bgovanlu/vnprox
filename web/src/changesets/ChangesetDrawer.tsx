@@ -8,11 +8,12 @@
 // doing). It's a plain always-mounted floating panel instead; only the
 // Review & apply screen (ReviewApplyScreen.tsx) and the entity editors are
 // modal.
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
 import type { Finding, Op } from "../api/types";
+import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
 import { canReview, computeDrawerView, isDraftEditable } from "./drawerMachine";
 import { opKindLabel, summarizeOp } from "./opSummary";
 import {
@@ -66,6 +67,25 @@ export function ChangesetDrawer() {
   const view = computeDrawerView(changeset, reviewRequested);
   const editable = isDraftEditable(changeset);
   const otherDrafts = (resumable ?? []).filter((c) => c.id !== activeId);
+
+  // T-903 command-palette verb: "Open drafts" — this drawer is mounted once
+  // app-wide (not scoped to any one route, per this file's own doc comment
+  // above), so the verb is reachable from ⌘K on every page, not just
+  // wherever a draft happened to originate.
+  const changesetPaletteActions = useMemo<PaletteAction[]>(
+    () => [
+      {
+        id: "open-drafts",
+        label: "Open drafts",
+        hint: "Changesets",
+        perform: () => {
+          setDrawerOpen(true);
+        },
+      },
+    ],
+    [setDrawerOpen],
+  );
+  usePaletteActions("changesets", changesetPaletteActions);
 
   if (view === "empty" && otherDrafts.length === 0) {
     return null;

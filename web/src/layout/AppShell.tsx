@@ -5,6 +5,7 @@ import { NavRail } from "./NavRail";
 import { TopBar } from "./TopBar";
 import { useKeyboardShortcuts } from "../keyboard/useKeyboardShortcuts";
 import { ShortcutHelpDialog } from "../keyboard/ShortcutHelpDialog";
+import { CommandPalette } from "../keyboard/CommandPalette";
 import { ChangesetDrawer } from "../changesets/ChangesetDrawer";
 import { OnboardingWalkthrough } from "../onboarding/OnboardingWalkthrough";
 import { MgmtWizardHost } from "../mgmt/MgmtWizardHost";
@@ -15,9 +16,13 @@ import { MgmtProtectedRefreshPrompt } from "../mgmt/MgmtProtectedRefreshPrompt";
  * up app-wide (see docs/user-guide.md §6). */
 export function AppShell() {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const location = useLocation();
 
-  useKeyboardShortcuts({ onOpenHelp: () => { setHelpOpen(true); } });
+  useKeyboardShortcuts({
+    onOpenHelp: () => { setHelpOpen(true); },
+    onOpenPalette: () => { setPaletteOpen(true); },
+  });
 
   return (
     <div className="flex h-dvh w-full bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
@@ -66,6 +71,7 @@ export function AppShell() {
         </main>
       </div>
       <ShortcutHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <ChangesetDrawer />
       <MgmtWizardHost />
       <MgmtProtectedRefreshPrompt />

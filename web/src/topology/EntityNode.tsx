@@ -130,7 +130,7 @@ function isMgmtBadge(badge: string): boolean {
   return badge in MGMT_BADGE_LABEL;
 }
 
-export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
+export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
   const isPill = data.isGuestGroup;
   const simVerdict = data.simVerdict;
   const simRole = data.simRole;
@@ -138,6 +138,13 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
   return (
     <div
       role="button"
+      tabIndex={0}
+      // T-903: roving arrow-key focus (src/keyboard/useRovingFocus.ts)
+      // reads this attribute to find every focusable entity in the Graph
+      // view and to focus/activate them by id — the same id React Flow's
+      // own onNodeClick already reports, so keyboard activation (Enter)
+      // and a pointer click always resolve to the identical entity.
+      data-entity-ref={id}
       aria-label={data.label}
       className={clsx(
         "relative flex flex-col gap-1 border px-3 py-2 text-xs shadow-sm transition-opacity",

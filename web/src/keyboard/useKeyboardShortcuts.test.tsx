@@ -6,8 +6,14 @@ import { ToastProvider } from "../components/Toast";
 import { useTopologyShortcutTargetStore } from "./topologyShortcutTarget";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 
-function Harness({ onOpenHelp = vi.fn() }: { onOpenHelp?: () => void }) {
-  useKeyboardShortcuts({ onOpenHelp });
+function Harness({
+  onOpenHelp = vi.fn(),
+  onOpenPalette = vi.fn(),
+}: {
+  onOpenHelp?: () => void;
+  onOpenPalette?: () => void;
+}) {
+  useKeyboardShortcuts({ onOpenHelp, onOpenPalette });
   return <div>harness</div>;
 }
 
@@ -110,5 +116,71 @@ describe("useKeyboardShortcuts — topology bindings", () => {
     });
 
     expect(onOpenHelp).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the command palette on Ctrl+K", async () => {
+    const onOpenPalette = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <Harness onOpenPalette={onOpenPalette} />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+
+    await user.keyboard("{Control>}k{/Control}");
+
+    expect(onOpenPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the command palette on Cmd+K (metaKey)", async () => {
+    const onOpenPalette = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <Harness onOpenPalette={onOpenPalette} />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+
+    await user.keyboard("{Meta>}k{/Meta}");
+
+    expect(onOpenPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the command palette on Ctrl+K even while focus is in a text input", async () => {
+    const onOpenPalette = vi.fn();
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <input aria-label="some field" />
+          <Harness onOpenPalette={onOpenPalette} />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("some field"));
+
+    await user.keyboard("{Control>}k{/Control}");
+
+    expect(onOpenPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not treat plain 'k' (no modifier) as the palette binding", async () => {
+    const onOpenPalette = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <Harness onOpenPalette={onOpenPalette} />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+
+    await user.keyboard("k");
+
+    expect(onOpenPalette).not.toHaveBeenCalled();
   });
 });

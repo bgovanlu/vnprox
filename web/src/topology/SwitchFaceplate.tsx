@@ -87,6 +87,7 @@ function NicPort({ nic, onSelect }: { nic: SwitchPortNic; onSelect: (ref: string
       type="button"
       aria-label={nic.label}
       title={onMgmtPath ? MGMT_BADGE_LABEL["mgmt-path"] : undefined}
+      data-entity-ref={nic.ref}
       onClick={() => {
         onSelect(nic.ref);
       }}
@@ -124,6 +125,7 @@ function UplinkModule({ uplink, onSelect }: { uplink: SwitchUplink; onSelect: (r
       <button
         type="button"
         aria-label={uplink.label}
+        data-entity-ref={uplink.ref}
         onClick={() => {
           onSelect(uplink.ref);
         }}
@@ -173,6 +175,7 @@ function AccessPort({
       <button
         type="button"
         aria-label={`Expand ${String(port.count ?? "")} collapsed guests`}
+        data-entity-ref={port.ref}
         onClick={() => {
           onExpandGroup(port.ref);
         }}
@@ -193,6 +196,7 @@ function AccessPort({
     <button
       type="button"
       aria-label={port.label}
+      data-entity-ref={port.ref}
       onClick={() => {
         onSelect(port.ref);
       }}
@@ -255,6 +259,7 @@ export function SwitchFaceplate({
       <button
         type="button"
         aria-label={`${model.name} switch`}
+        data-entity-ref={model.ref}
         onClick={() => {
           onSelect(model.ref);
         }}
@@ -294,6 +299,7 @@ export function SwitchFaceplate({
                 key={v.ref}
                 type="button"
                 aria-label={v.label}
+                data-entity-ref={v.ref}
                 onClick={() => {
                   onSelect(v.ref);
                 }}
@@ -335,6 +341,7 @@ export function SwitchFaceplate({
                 key={v.ref}
                 type="button"
                 aria-label={v.label}
+                data-entity-ref={v.ref}
                 onClick={() => {
                   onSelect(v.ref);
                 }}

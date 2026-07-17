@@ -30,6 +30,7 @@ function FreePort({ port, onSelect }: { port: SwitchUplink; onSelect: (ref: stri
     <button
       type="button"
       aria-label={port.label}
+      data-entity-ref={port.ref}
       onClick={() => {
         onSelect(port.ref);
       }}
