@@ -17,9 +17,44 @@ import { ALL_LAYERS, type Layer, type TopologyLayoutPayload } from "../api/types
  * it without rewriting their saved arrangement. */
 export type TopologyViewMode = "switch" | "graph";
 
+/** Which Graph-view rendering engine draws the node-link canvas: the v1
+ * React Flow (DOM/SVG) renderer or T-901's v2 canvas engine. This is an
+ * *experimental feature flag*, not saved-layout or per-session view state —
+ * so, unlike everything else in this store (per-user server layout) or the
+ * view-mode/traffic toggles (per-session), it is persisted per-browser in
+ * localStorage, the same lifetime a "Settings > Experimental" opt-in wants.
+ * The Switch/Graph segmented control (viewMode) is unaffected either way:
+ * this only chooses *how* the Graph view renders, never whether it shows. */
+export type RendererVersion = "v1" | "v2";
+
+const RENDERER_FLAG_KEY = "vnprox.topology.rendererV2";
+
+/** Reads the persisted renderer flag, defaulting to the v1 fallback. Guarded
+ * against a throwing/absent localStorage (SSR, privacy modes, tests) so the
+ * store never fails to construct. */
+function readRendererFlag(): RendererVersion {
+  try {
+    return globalThis.localStorage.getItem(RENDERER_FLAG_KEY) === "v2" ? "v2" : "v1";
+  } catch {
+    return "v1";
+  }
+}
+
+function writeRendererFlag(version: RendererVersion): void {
+  try {
+    globalThis.localStorage.setItem(RENDERER_FLAG_KEY, version);
+  } catch {
+    /* best-effort: a blocked localStorage just means the flag isn't sticky. */
+  }
+}
+
 export interface TopologyUIState {
   activeLayers: Set<Layer>;
   viewMode: TopologyViewMode;
+  /** Graph-view renderer engine (v1 React Flow / v2 canvas). See
+   * RendererVersion — persisted per-browser in localStorage, not part of the
+   * server-saved layout. */
+  rendererVersion: RendererVersion;
   vlanFilter: number | undefined;
   selectedId: string | undefined;
   hoveredId: string | undefined;
@@ -34,6 +69,7 @@ export interface TopologyUIState {
 
   toggleLayer: (layer: Layer) => void;
   setViewMode: (mode: TopologyViewMode) => void;
+  setRendererVersion: (version: RendererVersion) => void;
   toggleTrafficMode: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
@@ -53,6 +89,7 @@ const DEFAULT_ACTIVE_LAYERS = new Set<Layer>(ALL_LAYERS);
 export const useTopologyStore = create<TopologyUIState>((set) => ({
   activeLayers: DEFAULT_ACTIVE_LAYERS,
   viewMode: "switch",
+  rendererVersion: readRendererFlag(),
   vlanFilter: undefined,
   selectedId: undefined,
   hoveredId: undefined,
@@ -71,6 +108,10 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   },
   setViewMode: (mode) => {
     set({ viewMode: mode });
+  },
+  setRendererVersion: (version) => {
+    writeRendererFlag(version);
+    set({ rendererVersion: version });
   },
   toggleTrafficMode: () => {
     set((state) => ({ trafficMode: !state.trafficMode }));
