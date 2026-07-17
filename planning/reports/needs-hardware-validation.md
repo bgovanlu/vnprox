@@ -190,6 +190,40 @@ from; and pvemock does not model an `ifreload` outage at all):
       is a scoped follow-up, deferred here to avoid destabilizing the well-tested tag-clamp
       machinery without a live cluster to validate the boundary against.
 
+## Guest-agent live path probes (T-802)
+
+- [ ] **Exact in-guest probe command per guest OS family.** `internal/probe`'s `buildCommand`
+      deliberately implements exactly one target profile — a Linux guest with iputils-ping
+      (`ping -c 1 -W <secs> <ip>`) and netcat-openbsd (`nc -z -w <secs> <ip> <port>`) — rather than
+      guessing a "portable" command across every guest OS/toolchain a real PVE cluster might run.
+      Unverified against a real QEMU guest agent and real guest images: (1) whether the target
+      Linux images vnprox actually needs to support (Debian/Ubuntu cloud images at minimum) ship
+      `nc` at all, and if so which variant (netcat-openbsd vs. netcat-traditional — flag handling
+      differs, notably `-w`'s "wait after EOF" vs. "connect timeout" semantics); (2) minimal/busybox
+      images' `ping`/`nc` flag support (busybox's `ping -W` is not guaranteed to mean the same
+      thing); (3) Windows guests need an entirely different command (`Test-NetConnection` /
+      `ping.exe` with different flag spelling) — **not implemented at all**, a probe sourced from a
+      Windows guest will simply fail with `execError` reporting the mock's/real agent's own
+      "command not found" (pvemock: `handleGuestAgentExec`'s unrecognized-command 400; real PVE:
+      whatever the guest agent reports for a missing binary — unverified); (4) whether PVE's guest
+      agent `exec` even permits running arbitrary binaries by default in every guest-agent version
+      vnprox needs to support, or whether an allowlist/policy can block it.
+- [ ] **`classify`'s exit-code assumptions.** `internal/probe.classify` assumes iputils-ping's exit
+      0/1/2 convention (0 = reply, 1 = no reply, 2 = other error) and netcat-openbsd's exit
+      0-on-connect / non-zero-otherwise convention with a best-effort `"refused"` substring sniff of
+      stderr to distinguish an active refusal from a generic failure — both assumptions are
+      standard for these tools' current Debian/Ubuntu packaging but unverified against the exact
+      package versions PVE's own guest images/templates ship.
+- [ ] **`AgentExec`/`AgentExecStatus` wire shapes against real PVE.** `internal/pve`'s
+      `execStatusWire` assumes `exited`/`out-data-trunc`/`err-data-trunc` are 0|1 ints (mirroring
+      this codebase's other confirmed PVE numeric-boolean quirks — `internal/pve/types.go`'s
+      `networkInterfaceWire`, `internal/pvemock/pvebool.go`) and that `pid` is a plain JSON number;
+      neither has been captured from a real `POST/GET .../agent/exec[-status]` response.
+- [ ] **Guest-agent exec privilege.** `internal/pvemock` gates `POST/GET .../agent/exec[-status]`
+      on the same `VM.Audit` privilege `GET .../agent/network-get-interfaces` uses (that route's own
+      existing precedent), not modeling real PVE's separate `VM.Monitor` privilege for guest-agent
+      actions — confirm which privilege(s) real PVE actually requires for `agent/exec`.
+
 ## Interface renaming (issue #2)
 
 - [ ] **Physical NIC (udev) rename + reboot realization.** The change engine renames only

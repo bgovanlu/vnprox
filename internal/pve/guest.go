@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -127,4 +128,75 @@ func (c *Client) GetGuestAgentInterfaces(ctx context.Context, node string, vmid 
 		return nil, err
 	}
 	return wrap.Result, nil
+}
+
+// ExecResult is one guest-agent exec-status poll's decoded state (T-802,
+// docs/features/firewall.md §5's "verify live" P2 item): whether the
+// in-guest command has exited yet and, once it has, its exit code and
+// captured stdout/stderr. Mirrors real PVE's
+// GET .../agent/exec-status response shape.
+type ExecResult struct {
+	OutData      string
+	ErrData      string
+	ExitCode     int
+	Signal       int
+	Exited       bool
+	OutTruncated bool
+	ErrTruncated bool
+}
+
+// execStatusWire is ExecResult's real wire shape: PVE reports exited/
+// out-data-trunc/err-data-trunc as 0|1 ints, not JSON booleans (the same
+// numeric-boolean convention netIfaceWire and internal/pvemock's pvebool.go
+// document elsewhere in this codebase — PVE's API is consistently
+// inconsistent about bool encoding across endpoints).
+type execStatusWire struct {
+	OutData      string `json:"out-data,omitempty"`
+	ErrData      string `json:"err-data,omitempty"`
+	ExitCode     int    `json:"exitcode,omitempty"`
+	Signal       int    `json:"signal,omitempty"`
+	Exited       int    `json:"exited"`
+	OutTruncated int    `json:"out-data-trunc,omitempty"`
+	ErrTruncated int    `json:"err-data-trunc,omitempty"`
+}
+
+// AgentExec calls POST /nodes/{node}/qemu/{vmid}/agent/exec: runs command
+// (argv form — PVE's guest agent exec accepts either a single string or an
+// array; this client always sends the array form, avoiding any in-guest
+// shell-quoting ambiguity) inside the guest via the QEMU guest agent,
+// returning the pid AgentExecStatus polls. qemu-only, matching
+// GetGuestAgentInterfaces' precedent above (no LXC guest-agent equivalent —
+// a container has no QEMU guest agent to exec through). Real PVE returns a
+// 500 (mapped to *ErrPVEServer by this client's do) when the target guest's
+// agent isn't installed/running/reachable — T-802's internal/probe engine
+// treats that as the probe's own answer ("could not run": docs/features/
+// firewall.md §5's honesty contract), not a transport fault to retry.
+func (c *Client) AgentExec(ctx context.Context, node string, vmid int, command []string) (int, error) {
+	var out struct {
+		PID int `json:"pid"`
+	}
+	path := fmt.Sprintf("/nodes/%s/qemu/%d/agent/exec", node, vmid)
+	body := map[string]any{"command": command}
+	if err := c.do(ctx, "POST", path, requestParams{body: body}, &out); err != nil {
+		return 0, err
+	}
+	return out.PID, nil
+}
+
+// AgentExecStatus calls GET /nodes/{node}/qemu/{vmid}/agent/exec-status?pid=
+// once: the caller (internal/probe) is responsible for polling this to a
+// bounded deadline until Exited is true. qemu-only, same precedent as
+// AgentExec/GetGuestAgentInterfaces.
+func (c *Client) AgentExecStatus(ctx context.Context, node string, vmid int, pid int) (ExecResult, error) {
+	var wire execStatusWire
+	path := fmt.Sprintf("/nodes/%s/qemu/%d/agent/exec-status", node, vmid)
+	params := requestParams{query: url.Values{"pid": {strconv.Itoa(pid)}}}
+	if err := c.do(ctx, "GET", path, params, &wire); err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{
+		Exited: wire.Exited != 0, ExitCode: wire.ExitCode, Signal: wire.Signal,
+		OutData: wire.OutData, ErrData: wire.ErrData,
+		OutTruncated: wire.OutTruncated != 0, ErrTruncated: wire.ErrTruncated != 0,
+	}, nil
 }

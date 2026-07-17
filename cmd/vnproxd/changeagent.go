@@ -21,6 +21,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
 	"github.com/bgovanlu/vnprox/internal/peer"
+	"github.com/bgovanlu/vnprox/internal/probe"
 	"github.com/bgovanlu/vnprox/internal/pve"
 )
 
@@ -225,6 +226,27 @@ func (p pveGatewayProvider) GatewayFor(ctx context.Context) (change.PVEGateway, 
 		return nil, false
 	}
 	return &pveGateway{client: client}, true
+}
+
+// probeClientProvider builds a probe.PVEExecer from the requesting
+// session's own PVE client (T-802: guest-agent live path probes reach into
+// a guest under the user's own ticket, the same docs/architecture.md §6
+// convention pveGatewayProvider above follows for changeset apply/rollback).
+// It satisfies api.ProbeClientProvider.
+type probeClientProvider struct {
+	auth *auth.Service
+}
+
+func (p probeClientProvider) ProbeClientFor(ctx context.Context) (probe.PVEExecer, bool) {
+	id, ok := auth.IdentityFromContext(ctx)
+	if !ok {
+		return nil, false
+	}
+	client, ok := p.auth.PVEClientFor(id.SessionID)
+	if !ok {
+		return nil, false
+	}
+	return client, true
 }
 
 // pveGateway realizes every change.PVEGateway method — the sdn.zone/vnet/

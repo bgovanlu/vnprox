@@ -109,6 +109,12 @@ type Options struct {
 	// Simulator backs T-503's `POST /simulate/path` — the same live
 	// *inventory.Graph (satisfies SimulatorGraph's one-method seam directly).
 	Simulator SimulatorGraph
+	// ProbeClients backs T-802's `POST /simulate/verify` live-probe route
+	// (nil skips mounting it, same degraded-mode treatment as every other
+	// optional Options field). ProbeAudit is its probe.verify audit-log
+	// seam, nil-safe on its own (see auditSimulateVerify's doc comment).
+	ProbeClients ProbeClientProvider
+	ProbeAudit   simulateVerifyAuditor
 	// FwLog backs T-505's GET /firewall/log (docs/features/firewall.md
 	// §4) — typically the daemon's *fwlog.Service, which also owns the
 	// `firewall.log.batch` WS push (fed directly from its own Run loop
@@ -189,7 +195,7 @@ func NewRouter(opts Options) http.Handler {
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
-		mountSimulateRoutes(r, opts.Simulator, opts.Auth)
+		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
