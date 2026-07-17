@@ -17,6 +17,7 @@ import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
 import { resumeOnboarding } from "../onboarding/onboardingMachine";
 import { useOnboardingProgressQuery, useSaveOnboardingProgressMutation } from "../onboarding/queries";
+import { BondLacpSection } from "./BondLacpSection";
 import { fieldRows } from "./fields";
 import { METRICS_KINDS } from "./metricsKinds";
 import { MetricsTab } from "./MetricsTab";
@@ -159,6 +160,10 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
   const editDisabledReason = data ? missingCapTooltip(session, data.node, "netWrite") : undefined;
   const canWrite = data ? capsForNode(session, data.node).netWrite : false;
   const isBridgeKind = data ? data.kind === "bridge" || data.kind === "ovs-bridge" : false;
+  // T-804: the live LACP section applies to bonds of either flavor — a
+  // plain Linux bond or an OVS bond declared 802.3ad — since both flow
+  // through the same host-netlink Bond/SlaveDetail substrate.
+  const isBondKind = data ? data.kind === "bond" || data.kind === "ovs-bond" : false;
   const fdbRows = isBridgeKind && data ? (isFDBRows(data.fields.FDB) ? data.fields.FDB : []) : [];
   const hasMetrics = data ? METRICS_KINDS.has(data.kind) : false;
   // T-702: node-scoped entities only (bridge/bond/vlan/physnic/guest/...) —
@@ -321,6 +326,11 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
                   FDB ({fdbRows.length})
                 </RadixTabs.Trigger>
               )}
+              {isBondKind && (
+                <RadixTabs.Trigger value="lacp" className={tabTriggerClass}>
+                  LACP
+                </RadixTabs.Trigger>
+              )}
               {hasMetrics && (
                 <RadixTabs.Trigger value="metrics" className={tabTriggerClass}>
                   Metrics
@@ -453,6 +463,12 @@ export function InspectorPanel({ selectedRef, onClose, onSelectRelated, metricsW
                   ))}
                   {fdbRows.length === 0 && <li className="text-slate-400">No FDB entries learned on this bridge.</li>}
                 </ul>
+              </RadixTabs.Content>
+            )}
+
+            {isBondKind && (
+              <RadixTabs.Content value="lacp" className="mt-3 flex-1 overflow-y-auto">
+                <BondLacpSection fields={data.fields} />
               </RadixTabs.Content>
             )}
 

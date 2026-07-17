@@ -26,11 +26,19 @@ func readBondDetail(name string) (*BondDetail, error) {
 // parseBondingProc parses the text format of /proc/net/bonding/<name>. It
 // is deliberately tolerant: unrecognized lines are ignored rather than
 // treated as errors, since the file carries plenty of driver/mode-specific
-// detail (802.3ad partner/actor state, ARP monitor config, ...) this
-// package does not need.
+// detail (ARP monitor config, ...) this package does not need.
+//
+// T-804: 802.3ad bonds additionally emit, per slave, a "details actor lacp
+// pdu:"/"details partner lacp pdu:" block (each followed by indented
+// "system priority"/"system mac address"/"port key" (actor) or "oper key"
+// (partner)/"port state" lines) — decoded into BondSlave's Actor*/Partner*
+// fields below. lacpBlock tracks which of those two blocks (if either) the
+// parser is currently inside, reset whenever a new "Slave Interface:" line
+// starts a fresh slave.
 func parseBondingProc(data []byte) *BondDetail {
 	bd := &BondDetail{}
 	var cur *BondSlave
+	var lacpBlock string // "", "actor", or "partner"
 
 	lines := strings.Split(string(data), "\n")
 	for _, raw := range lines {
@@ -43,6 +51,21 @@ func parseBondingProc(data []byte) *BondDetail {
 		if key == "Slave Interface" {
 			bd.Slaves = append(bd.Slaves, BondSlave{Name: val})
 			cur = &bd.Slaves[len(bd.Slaves)-1]
+			lacpBlock = ""
+			continue
+		}
+
+		switch key {
+		case "details actor lacp pdu":
+			lacpBlock = "actor"
+			continue
+		case "details partner lacp pdu":
+			lacpBlock = "partner"
+			continue
+		}
+
+		if cur != nil && lacpBlock != "" && isLACPField(key) {
+			applyLACPField(cur, lacpBlock, key, val)
 			continue
 		}
 
@@ -105,6 +128,91 @@ func applySlaveField(s *BondSlave, key, val string) {
 	case "Permanent HW addr":
 		s.PermHWAddr = val
 	}
+}
+
+// isLACPField reports whether key is a recognized field within a "details
+// actor/partner lacp pdu:" block. "port priority"/"port number" are part of
+// the real /proc format but not needed by this package (no Actor/Partner*
+// field carries them) — they're deliberately left unrecognized so the
+// tolerant-parser convention (unrecognized lines are ignored) applies to
+// them too, rather than adding dead fields nothing reads.
+func isLACPField(key string) bool {
+	switch key {
+	case "system priority", "system mac address", "port key", "oper key", "port state":
+		return true
+	default:
+		return false
+	}
+}
+
+// applyLACPField decodes one indented line within a "details actor/partner
+// lacp pdu:" block (see parseBondingProc's doc comment) into s's Actor*/
+// Partner* fields, per which block (actor or partner) the parser is
+// currently in. "port key" (actor) and "oper key" (partner) are /proc's own
+// asymmetric naming for the same concept — the LACP operational key — so
+// both feed ActorKey/PartnerKey respectively. "port state" is only ever
+// emitted in the actor block in practice; this package only needs the
+// actor's negotiated synchronized/collecting/distributing bits (the signal
+// that turns "bond is up" into "bond is negotiated correctly" —
+// docs/features/change-management.md §5) so the partner block's own port
+// state (redundant with the actor's from the local bond's point of view) is
+// intentionally not decoded into a separate field.
+func applyLACPField(s *BondSlave, block, key, val string) {
+	switch block {
+	case "actor":
+		switch key {
+		case "system mac address":
+			s.ActorSystemID = val
+		case "system priority":
+			s.ActorSystemPriority = atoiOr(val, 0)
+		case "port key":
+			s.ActorKey = atoiOr(val, 0)
+		case "port state":
+			n := atoiOr(val, 0)
+			s.ActorSynchronized, s.ActorCollecting, s.ActorDistributing = lacpPortStateBits(n)
+		}
+	case "partner":
+		switch key {
+		case "system mac address":
+			s.PartnerSystemID = val
+		case "system priority":
+			s.PartnerSystemPriority = atoiOr(val, 0)
+		case "oper key":
+			s.PartnerKey = atoiOr(val, 0)
+		}
+	default:
+		return
+	}
+	s.LACPDetailSet = true
+}
+
+// atoiOr parses s as a base-10 int, returning def on any parse error
+// (malformed/unexpected value in a tolerant-parser context — never worth
+// failing the whole read over).
+func atoiOr(s string, def int) int {
+	if n, err := strconv.Atoi(s); err == nil {
+		return n
+	}
+	return def
+}
+
+// lacpPortStateBits decodes an IEEE 802.1AX LACPDU actor_state/
+// partner_state octet into the synchronized/collecting/distributing bits
+// (bits 3/4/5, LSB-numbered from bit 0 = LACP_Activity) — the Linux bonding
+// driver's own AD_STATE_SYNCHRONIZATION/AD_STATE_COLLECTING/
+// AD_STATE_DISTRIBUTING bit positions (drivers/net/bonding/bond_3ad.h),
+// which /proc/net/bonding's "port state" line and netlink's
+// IFLA_BOND_SLAVE_AD_ACTOR_OPER_PORT_STATE attribute both report as the same
+// raw integer. Shared by parseBondingProc (the /proc path) and
+// netlink_linux.go's applyBondADState (the opportunistic netlink path) so
+// the two sources decode identically.
+func lacpPortStateBits(state int) (synchronized, collecting, distributing bool) {
+	const (
+		stateSynchronization = 0x08
+		stateCollecting      = 0x10
+		stateDistributing    = 0x20
+	)
+	return state&stateSynchronization != 0, state&stateCollecting != 0, state&stateDistributing != 0
 }
 
 // splitColon splits a "Key: value" line, trimming both sides. It reports

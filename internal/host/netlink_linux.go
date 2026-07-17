@@ -268,6 +268,7 @@ func buildLinkState(
 		ls.Kind = "bond"
 		ls.Members = membersOf(attrs.Index, links)
 		if bd, err := readBondDetail(attrs.Name); err == nil {
+			applyBondADState(bd, links)
 			ls.Bond = bd
 		}
 	case *netlink.Vlan:
@@ -304,6 +305,59 @@ func buildLinkState(
 	ls.Driver, ls.PCIAddr = driverInfo(attrs.Name)
 
 	return ls
+}
+
+// applyBondADState opportunistically overlays per-slave 802.3ad actor
+// port-state bits from netlink onto bd's already-/proc-parsed slaves, when
+// the running kernel exposes them: an enslaved link's own LinkAttrs.Slave
+// carries a *netlink.BondSlave with AdActorOperPortState/
+// AdPartnerOperPortState (IFLA_BOND_SLAVE_AD_ACTOR_OPER_PORT_STATE /
+// IFLA_BOND_SLAVE_AD_PARTNER_OPER_PORT_STATE) whenever the slave is part of
+// a live 802.3ad aggregator — genuinely parsed by
+// github.com/vishvananda/netlink v1.3.1 (parseBondSlaveData), unlike the
+// bond-level IFLA_BOND_AD_INFO nested attribute (Bond.AdInfo), which that
+// library version leaves an explicit "// TODO: implement" stub. That means
+// actor/partner system ID and key are NOT recoverable from netlink today —
+// only from /proc/net/bonding's "details actor/partner lacp pdu" block
+// (readBondDetail) — so this overlay covers just the synchronized/
+// collecting/distributing bits netlink can genuinely give us, preferring
+// them over whatever readBondDetail already decoded from /proc (T-804: "a
+// netlink-sourced read when the kernel exposes it, falling back to /proc
+// otherwise"). Best-effort: a bond mode other than 802.3ad, or a kernel/
+// driver that doesn't populate the attribute, leaves both fields zero, in
+// which case /proc's own decode (if any) is left untouched. Needs hardware
+// validation: exact AD-info attribute availability across the kernel
+// versions vnprox targets (see planning/reports/needs-hardware-validation.md).
+func applyBondADState(bd *BondDetail, links []netlink.Link) {
+	if bd == nil {
+		return
+	}
+	byName := make(map[string]netlink.Link, len(links))
+	for _, l := range links {
+		byName[l.Attrs().Name] = l
+	}
+	for i := range bd.Slaves {
+		l, ok := byName[bd.Slaves[i].Name]
+		if !ok {
+			continue
+		}
+		ns, ok := l.Attrs().Slave.(*netlink.BondSlave)
+		if !ok || ns == nil {
+			continue
+		}
+		if ns.AdActorOperPortState == 0 && ns.AdPartnerOperPortState == 0 {
+			// Both zero almost always means "the kernel never populated
+			// this attribute" (no 802.3ad aggregator on this slave) rather
+			// than a genuinely all-clear-bits negotiated state — leave
+			// whatever /proc already decoded (if anything) alone.
+			continue
+		}
+		sync, collecting, distributing := lacpPortStateBits(int(ns.AdActorOperPortState))
+		bd.Slaves[i].ActorSynchronized = sync
+		bd.Slaves[i].ActorCollecting = collecting
+		bd.Slaves[i].ActorDistributing = distributing
+		bd.Slaves[i].LACPDetailSet = true
+	}
 }
 
 // membersOf returns the names of every link enslaved to masterIndex

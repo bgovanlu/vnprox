@@ -1,0 +1,64 @@
+{
+  "ref": "bond:pve1:bond0",
+  "kind": "bond",
+  "node": "pve1",
+  "label": "bond0",
+  "fields": {
+    "ID": "bond0",
+    "Kind": "bond",
+    "Node": "pve1",
+    "Name": "bond0",
+    "Mode": "802.3ad",
+    "LACPRate": "fast",
+    "XmitHashPolicy": "layer3+4",
+    "MIIStatus": "up",
+    "ActiveSlave": "",
+    "Slaves": ["eno1", "eno2"],
+    "DeclaredSlaves": ["eno1", "eno2"],
+    "SlaveDetail": [
+      {
+        "Name": "eno1",
+        "MIIStatus": "up",
+        "PermHWAddr": "bc:24:11:00:00:01",
+        "LinkFailureCount": 0,
+        "Active": true,
+        "ActorSystemID": "bc:24:11:01:00:0a",
+        "ActorSystemPriority": 65535,
+        "ActorKey": 15,
+        "ActorSynchronized": true,
+        "ActorCollecting": true,
+        "ActorDistributing": true,
+        "PartnerSystemID": "3c:8c:40:aa:bb:cc",
+        "PartnerSystemPriority": 32768,
+        "PartnerKey": 15,
+        "LACPDetailSet": true
+      },
+      {
+        "Name": "eno2",
+        "MIIStatus": "up",
+        "PermHWAddr": "bc:24:11:00:00:02",
+        "LinkFailureCount": 0,
+        "Active": true,
+        "ActorSystemID": "bc:24:11:01:00:0a",
+        "ActorSystemPriority": 65535,
+        "ActorKey": 15,
+        "ActorSynchronized": true,
+        "ActorCollecting": true,
+        "ActorDistributing": true,
+        "PartnerSystemID": "3c:8c:40:aa:bb:cc",
+        "PartnerSystemPriority": 32768,
+        "PartnerKey": 15,
+        "LACPDetailSet": true
+      }
+    ],
+    "MTU": 1500,
+    "MTUDeclared": 1500,
+    "Pending": ""
+  },
+  "provenance": {
+    "slaveDetail": { "owner": "host-netlink" }
+  },
+  "rawSource": {},
+  "related": [],
+  "generatedAt": 1783659198
+}

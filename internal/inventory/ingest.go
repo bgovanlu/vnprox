@@ -99,6 +99,20 @@ func FromNetlinkLinks(node string, links []host.LinkState) []Entity {
 						PermHWAddr:       s.PermHWAddr,
 						LinkFailureCount: s.LinkFailureCount,
 						Active:           s.Active,
+
+						// T-804: LACP actor/partner detail, straight
+						// through from host.BondSlave's own fields (see
+						// that type's doc comment for source/precedence).
+						ActorSystemID:         s.ActorSystemID,
+						ActorSystemPriority:   s.ActorSystemPriority,
+						ActorKey:              s.ActorKey,
+						ActorSynchronized:     s.ActorSynchronized,
+						ActorCollecting:       s.ActorCollecting,
+						ActorDistributing:     s.ActorDistributing,
+						PartnerSystemID:       s.PartnerSystemID,
+						PartnerSystemPriority: s.PartnerSystemPriority,
+						PartnerKey:            s.PartnerKey,
+						LACPDetailSet:         s.LACPDetailSet,
 					})
 				}
 			}
