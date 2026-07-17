@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
@@ -16,12 +16,15 @@ import { EditorLauncher } from "../changesets/EditorLauncher";
 import { refNode, summarizeOp } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
+import type { Viewport } from "./canvasScene";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { InspectorStack } from "./InspectorStack";
 import { NewEntityMenu } from "./NewEntityMenu";
 import { LayerToggleBar } from "./LayerToggleBar";
 import { METRICS_KINDS } from "./metricsKinds";
 import { useLiveMetrics, utilizationMap } from "./metricsQueries";
+import { decodeViewFromSearch, type SavedViewState } from "./savedViews";
+import { SavedViewsMenu } from "./SavedViewsMenu";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { StalenessBanner } from "./StalenessBanner";
 import { summarizeStaleness } from "./staleness";
@@ -42,6 +45,8 @@ import {
 } from "./queries";
 import { currentLayoutPayload, useTopologyStore } from "./store";
 import { toFlowElements } from "./toFlowElements";
+
+const DEFAULT_VIEWPORT: Viewport = { x: 48, y: 48, zoom: 1 };
 
 const LAYER_ORDER: readonly Layer[] = ["phys", "l2", "sdn", "guest"];
 const SAVE_DEBOUNCE_MS = 1000;
@@ -103,6 +108,7 @@ function TopologyPageContent() {
   const trafficMode = useTopologyStore((s) => s.trafficMode);
   const toggleTrafficMode = useTopologyStore((s) => s.toggleTrafficMode);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
+  const setActiveLayers = useTopologyStore((s) => s.setActiveLayers);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
   const select = useTopologyStore((s) => s.select);
   const hover = useTopologyStore((s) => s.hover);
@@ -116,15 +122,104 @@ function TopologyPageContent() {
   // currently mounted — see the roving-focus registration below.
   const entityContainerRef = useRef<HTMLDivElement>(null);
 
+  // --- T-907 shareable URLs: a `?svLayers=...` link carries its own view
+  // state (docs/api.md's Saved views & annotations section: "state lives in
+  // the URL, not only server-side"). Read once, on mount, like
+  // SimulatorPage.tsx's identical `decodeSimState(searchParams)` idiom —
+  // this is the "paste a link and land on it" read, not a live subscription.
+  const [searchParams] = useSearchParams();
+  const urlView = useMemo(() => decodeViewFromSearch(searchParams), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // v2 canvas viewport: TopologyCanvasV2 owns pan/zoom internally (an
+  // uncontrolled seed/notify seam — see its initialViewport/onViewportChange
+  // doc comments), so this ref mirrors its live value for "Save view"/
+  // "Copy link" to read without forcing the canvas into a fully controlled
+  // component. pendingV2Viewport seeds a (re)mount (initial page load from a
+  // share link, or loading a different saved view mid-session — the latter
+  // needs v2RemountKey bumped since initialViewport is only read once per
+  // mount, React's own uncontrolled-input convention).
+  const viewportRef = useRef<Viewport>(
+    urlView ? { x: urlView.viewport.x, y: urlView.viewport.y, zoom: urlView.zoom } : DEFAULT_VIEWPORT,
+  );
+  const [pendingV2Viewport, setPendingV2Viewport] = useState<Viewport | undefined>(() =>
+    urlView ? { x: urlView.viewport.x, y: urlView.viewport.y, zoom: urlView.zoom } : undefined,
+  );
+  const [v2RemountKey, setV2RemountKey] = useState(0);
+  const handleViewportChange = useCallback((vp: Viewport) => {
+    viewportRef.current = vp;
+  }, []);
+
   // --- Saved layout: load once on mount, save (debounced) on change ------
+  // Skipped entirely when a share-link URL carries its own view state (see
+  // urlView above) — the URL is authoritative for a share link; the
+  // viewer's own auto-saved canvas layout (if any) would otherwise silently
+  // override the state the link was supposed to reproduce.
   const { data: savedLayout } = useLayoutQuery();
   const saveLayoutMutation = useSaveLayoutMutation();
   const hydratedRef = useRef(false);
   useEffect(() => {
-    if (hydratedRef.current || savedLayout === undefined) return;
+    if (hydratedRef.current || savedLayout === undefined || urlView !== undefined) return;
     hydratedRef.current = true;
     hydrateFromLayout(savedLayout);
-  }, [savedLayout, hydrateFromLayout]);
+  }, [savedLayout, hydrateFromLayout, urlView]);
+
+  // --- Apply the URL's saved-view state (if any) once, on mount ----------
+  const urlViewAppliedRef = useRef(false);
+  useEffect(() => {
+    if (urlViewAppliedRef.current || !urlView) return;
+    urlViewAppliedRef.current = true;
+    setActiveLayers(urlView.layers);
+    setVlanFilter(urlView.vlanFilter);
+    select(urlView.selection);
+    setViewMode(urlView.view);
+  }, [urlView, setActiveLayers, setVlanFilter, select, setViewMode]);
+
+  // v1 (React Flow) tracks its own viewport internally too; unlike v2's
+  // initialViewport seed, applying a target viewport to an already-mounted
+  // ReactFlow instance is a plain imperative call — but only once *that*
+  // renderer is actually the active one (Graph view + v1), since calling it
+  // earlier has nothing to apply to yet.
+  const v1ViewportAppliedRef = useRef(false);
+  useEffect(() => {
+    if (v1ViewportAppliedRef.current || !urlView) return;
+    if (viewMode !== "graph" || rendererVersion !== "v1") return;
+    v1ViewportAppliedRef.current = true;
+    void reactFlow.setViewport({ x: urlView.viewport.x, y: urlView.viewport.y, zoom: urlView.zoom });
+  }, [urlView, viewMode, rendererVersion, reactFlow]);
+
+  /** Reads "the current, capturable page state" fresh at call time (not a
+   * memoized value — see SavedViewsMenu's getCurrentState prop doc comment
+   * for why a plain prop would go stale across the two renderers' different
+   * viewport-tracking mechanisms). */
+  function getCurrentViewState(): SavedViewState {
+    const vp = viewMode === "graph" && rendererVersion === "v1" ? reactFlow.getViewport() : viewportRef.current;
+    return {
+      layers: Array.from(activeLayers),
+      vlanFilter,
+      zoom: vp.zoom,
+      viewport: { x: vp.x, y: vp.y },
+      selection: selectedId,
+      view: viewMode,
+    };
+  }
+
+  /** SavedViewsMenu's onLoad: applies a fetched/decoded saved view to the
+   * live page — the same field-by-field application the mount-time
+   * urlView effect above does, plus forcing a v2 remount (mid-session load,
+   * unlike the mount-time case, targets an *already-mounted* canvas whose
+   * uncontrolled viewport state initialViewport can't reach after mount). */
+  function handleLoadSavedView(state: SavedViewState): void {
+    setActiveLayers(state.layers);
+    setVlanFilter(state.vlanFilter);
+    select(state.selection);
+    setViewMode(state.view);
+    const vp: Viewport = { x: state.viewport.x, y: state.viewport.y, zoom: state.zoom };
+    setPendingV2Viewport(vp);
+    setV2RemountKey((k) => k + 1);
+    if (state.view === "graph" && rendererVersion === "v1") {
+      void reactFlow.setViewport(vp);
+    }
+  }
 
   useEffect(() => {
     if (!hydratedRef.current) return; // don't save back what we just loaded
@@ -491,6 +586,7 @@ function TopologyPageContent() {
             Search ( / )
           </Button>
           <NewEntityMenu nodes={Array.from(new Set(topology?.nodes.map((n) => n.nodeGroup).filter(Boolean) ?? []))} />
+          <SavedViewsMenu getCurrentState={getCurrentViewState} onLoad={handleLoadSavedView} />
         </div>
       </div>
 
@@ -561,6 +657,7 @@ function TopologyPageContent() {
         )}
         {!isLoading && !isError && topology && topology.nodes.length > 0 && viewMode === "graph" && rendererVersion === "v2" && (
           <TopologyCanvasV2
+            key={v2RemountKey}
             elements={elements}
             selectedId={selectedId}
             onNodeClick={handleNodeClick}
@@ -571,6 +668,8 @@ function TopologyPageContent() {
               select(undefined);
               setContextMenu(undefined);
             }}
+            initialViewport={pendingV2Viewport}
+            onViewportChange={handleViewportChange}
           />
         )}
       </div>

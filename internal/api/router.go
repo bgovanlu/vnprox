@@ -68,12 +68,16 @@ type Options struct {
 	// when set) the `GET /topology` finding-badge overlay. Nil simply
 	// omits the /findings routes and falls back to Drift-only badge
 	// painting — see handleTopology's doc comment.
-	Findings   FindingsService
-	FDB        FDBService
-	Layouts    LayoutStore
-	Changesets ChangesetService
-	Snapshots  SnapshotService
-	Audit      AuditService
+	Findings FindingsService
+	FDB      FDBService
+	Layouts  LayoutStore
+	// Annotations backs T-907's GET/POST /annotations and
+	// DELETE /annotations/{id} (entity-pinned sticky notes); nil-safe like
+	// Layouts above (routes simply aren't mounted).
+	Annotations AnnotationStore
+	Changesets  ChangesetService
+	Snapshots   SnapshotService
+	Audit       AuditService
 	// SDN is T-401's read view seam (docs/api.md's `GET /sdn`); nil (no
 	// PVE client — see cmd/vnproxd/collect.go's setupCollect doc comment)
 	// simply skips mounting the route, the same degraded-mode treatment
@@ -190,6 +194,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
+		mountAnnotationsRoutes(r, opts.Annotations, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)

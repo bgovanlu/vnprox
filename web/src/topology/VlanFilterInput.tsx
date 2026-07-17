@@ -1,4 +1,4 @@
-import { forwardRef, useState, type FormEvent } from "react";
+import { forwardRef, useEffect, useState, type FormEvent } from "react";
 import { Button } from "../components/Button";
 
 export interface VlanFilterInputProps {
@@ -15,6 +15,17 @@ export const VlanFilterInput = forwardRef<HTMLInputElement, VlanFilterInputProps
   ref,
 ) {
   const [draft, setDraft] = useState(value === undefined ? "" : String(value));
+
+  // T-907: keep the visible draft in sync when `value` changes from outside
+  // this component's own Apply/Clear handlers — e.g. loading a saved view
+  // or a shareable-URL view sets vlanFilter programmatically (store.ts's
+  // setVlanFilter), and the input must reflect that, not silently keep
+  // showing whatever the user last typed/cleared. A no-op for the Apply/
+  // Clear cases themselves (draft already matches by the time `value`
+  // updates), so this never fights the user mid-keystroke.
+  useEffect(() => {
+    setDraft(value === undefined ? "" : String(value));
+  }, [value]);
 
   function submit(e: FormEvent): void {
     e.preventDefault();

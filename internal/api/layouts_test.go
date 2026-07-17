@@ -51,6 +51,21 @@ func (f *fakeLayoutStore) Put(_ context.Context, l store.Layout) error {
 	return nil
 }
 
+func (f *fakeLayoutStore) List(_ context.Context, username string) ([]store.Layout, error) {
+	var out []store.Layout
+	for _, l := range f.data {
+		if l.Username == username {
+			out = append(out, l)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeLayoutStore) Delete(_ context.Context, username, name string) error {
+	delete(f.data, f.key(username, name))
+	return nil
+}
+
 // TestLayoutsRoutes_NotMountedWithoutUsernameLookup proves that an
 // AuthService that can't resolve a username (doesn't implement
 // UsernameLookup) leaves the layouts routes unmounted entirely — there
@@ -161,6 +176,97 @@ func TestLayoutsRoutes_PutThenGet_RoundTrips(t *testing.T) {
 	newRouter("bob").ServeHTTP(bobRec, bobReq)
 	if bobRec.Code != http.StatusNotFound {
 		t.Errorf("bob's GET status = %d, want 404 (no cross-user leakage), body: %s", bobRec.Code, bobRec.Body.String())
+	}
+}
+
+// TestLayoutsRoutes_List_ScopedToUser proves GET /layouts (T-907) returns
+// only the requesting user's saved layouts/views, not another user's.
+func TestLayoutsRoutes_List_ScopedToUser(t *testing.T) {
+	layouts := newFakeLayoutStore()
+	newRouter := func(username string) http.Handler {
+		return NewRouter(Options{
+			Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+			Auth:     fakeAuthWithUser{fakeAuth: fakeAuth{authenticated: true}, username: username},
+			Topology: fakeTopologyService{}, Layouts: layouts,
+		})
+	}
+
+	for _, put := range []struct{ user, name, body string }{
+		{"alice", "topology", `{"layout":{"positions":{}}}`},
+		{"alice", "my-view", `{"layout":{"kind":"view","layers":["phys"]}}`},
+		{"bob", "topology", `{"layout":{"positions":{}}}`},
+	} {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/layouts/"+put.name, bytes.NewBufferString(put.body))
+		rec := httptest.NewRecorder()
+		newRouter(put.user).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PUT %s/%s status = %d, want 200, body: %s", put.user, put.name, rec.Code, rec.Body.String())
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/layouts", nil)
+	rec := httptest.NewRecorder()
+	newRouter("alice").ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /layouts status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+	var got layoutsListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding body: %v", err)
+	}
+	if len(got.Items) != 2 {
+		t.Fatalf("Items len = %d, want 2 (alice's two layouts only), got: %+v", len(got.Items), got.Items)
+	}
+	names := map[string]bool{}
+	for _, it := range got.Items {
+		names[it.Name] = true
+	}
+	if !names["topology"] || !names["my-view"] {
+		t.Errorf("expected alice's items to include topology and my-view, got %+v", got.Items)
+	}
+}
+
+// TestLayoutsRoutes_Delete_RemovesOnlyThatUsersLayout proves DELETE
+// /layouts/{name} removes the requesting user's own row and leaves a
+// same-named layout belonging to another user untouched.
+func TestLayoutsRoutes_Delete_RemovesOnlyThatUsersLayout(t *testing.T) {
+	layouts := newFakeLayoutStore()
+	newRouter := func(username string) http.Handler {
+		return NewRouter(Options{
+			Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+			Auth:     fakeAuthWithUser{fakeAuth: fakeAuth{authenticated: true}, username: username},
+			Topology: fakeTopologyService{}, Layouts: layouts,
+		})
+	}
+
+	for _, user := range []string{"alice", "bob"} {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/layouts/my-view", bytes.NewBufferString(`{"layout":{"kind":"view"}}`))
+		rec := httptest.NewRecorder()
+		newRouter(user).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PUT (%s) status = %d, want 200", user, rec.Code)
+		}
+	}
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/layouts/my-view", nil)
+	delRec := httptest.NewRecorder()
+	newRouter("alice").ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE status = %d, want 204, body: %s", delRec.Code, delRec.Body.String())
+	}
+
+	aliceGet := httptest.NewRequest(http.MethodGet, "/api/v1/layouts/my-view", nil)
+	aliceRec := httptest.NewRecorder()
+	newRouter("alice").ServeHTTP(aliceRec, aliceGet)
+	if aliceRec.Code != http.StatusNotFound {
+		t.Errorf("alice's GET after delete status = %d, want 404", aliceRec.Code)
+	}
+
+	bobGet := httptest.NewRequest(http.MethodGet, "/api/v1/layouts/my-view", nil)
+	bobRec := httptest.NewRecorder()
+	newRouter("bob").ServeHTTP(bobRec, bobGet)
+	if bobRec.Code != http.StatusOK {
+		t.Errorf("bob's GET after alice's delete status = %d, want 200 (unaffected), body: %s", bobRec.Code, bobRec.Body.String())
 	}
 }
 

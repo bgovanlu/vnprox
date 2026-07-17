@@ -68,6 +68,13 @@ export interface TopologyUIState {
   trafficMode: boolean;
 
   toggleLayer: (layer: Layer) => void;
+  /** T-907: sets the whole active-layer set at once (as opposed to
+   * toggleLayer's single-layer flip) — used when applying a saved view or a
+   * shareable-URL view, whose captured `layers` is a complete replacement,
+   * not a delta. An empty array is treated as "every layer" (mirrors
+   * hydrateFromLayout's identical empty-array convention below), so a
+   * malformed/legacy saved view never silently blanks the map. */
+  setActiveLayers: (layers: Layer[]) => void;
   setViewMode: (mode: TopologyViewMode) => void;
   setRendererVersion: (version: RendererVersion) => void;
   toggleTrafficMode: () => void;
@@ -105,6 +112,9 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
       else next.add(layer);
       return { activeLayers: next };
     });
+  },
+  setActiveLayers: (layers) => {
+    set({ activeLayers: new Set(layers.length > 0 ? layers : ALL_LAYERS) });
   },
   setViewMode: (mode) => {
     set({ viewMode: mode });

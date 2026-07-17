@@ -555,6 +555,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		FDB:           topoSvc,
 		Metrics:       metricsSampler,
 		Layouts:       store.NewLayoutRepo(db),
+		Annotations:   store.NewAnnotationRepo(db),
 		Changesets:    changeSvc,
 		Snapshots:     changeSvc,
 		Audit:         auditRepo,

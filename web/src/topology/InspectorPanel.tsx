@@ -17,6 +17,8 @@ import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
 import { resumeOnboarding } from "../onboarding/onboardingMachine";
 import { useOnboardingProgressQuery, useSaveOnboardingProgressMutation } from "../onboarding/queries";
+import { AnnotationsSection } from "./AnnotationsSection";
+import { useAnnotationsForRef } from "./annotationsQueries";
 import { BondLacpSection } from "./BondLacpSection";
 import { fieldRows } from "./fields";
 import { METRICS_KINDS } from "./metricsKinds";
@@ -195,6 +197,7 @@ export function InspectorPanel({
   const showMgmtPath = data ? data.node !== "" : false;
   const navigate = useNavigate();
   const select = useTopologyStore((s) => s.select);
+  const notes = useAnnotationsForRef(data?.ref);
 
   function handleDelete(): void {
     if (!data) return;
@@ -375,6 +378,9 @@ export function InspectorPanel({
               <RadixTabs.Trigger value="related" className={tabTriggerClass}>
                 Related ({data.related.length})
               </RadixTabs.Trigger>
+              <RadixTabs.Trigger value="notes" className={tabTriggerClass}>
+                Notes ({notes.length})
+              </RadixTabs.Trigger>
               {showMgmtPath && (
                 <RadixTabs.Trigger value="mgmt-path" className={tabTriggerClass}>
                   Management path
@@ -478,6 +484,10 @@ export function InspectorPanel({
                 ))}
                 {data.related.length === 0 && <li className="text-slate-400">No related entities.</li>}
               </ul>
+            </RadixTabs.Content>
+
+            <RadixTabs.Content value="notes" className="mt-3 flex-1 overflow-y-auto">
+              <AnnotationsSection entityRef={data.ref} />
             </RadixTabs.Content>
 
             {showMgmtPath && (

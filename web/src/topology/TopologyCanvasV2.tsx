@@ -59,6 +59,19 @@ export interface TopologyCanvasV2Props {
   /** Override the canvas draw theme (defaults to the app theme store — the
    * seam T-905 drives dark/light map colors through). */
   theme?: Theme;
+  /** T-907: seeds the canvas's pan/zoom at mount (restoring a saved view or
+   * a shareable-URL view) instead of the default fit-to-view-on-load
+   * behavior. Read once, at mount, like React's own `defaultValue`
+   * convention — this is an *uncontrolled* seed, not a controlled prop
+   * (TopologyPage still owns which viewport to seed with, but the canvas
+   * owns pan/zoom gestures afterward exactly as before). Omitted (every
+   * pre-T-907 call site): unchanged fit-to-view-on-load behavior. */
+  initialViewport?: Viewport;
+  /** T-907: notified on every pan/zoom change, so a caller can capture
+   * "the current viewport" for a saved view or shareable link without the
+   * canvas becoming a fully controlled component (see initialViewport's
+   * doc comment — the two together are the minimal seam T-907 needs). */
+  onViewportChange?: (viewport: Viewport) => void;
 }
 
 // Distance (screen px) a pointer must travel after press before a gesture
@@ -116,6 +129,8 @@ export function TopologyCanvasV2({
   onNodeContextMenu,
   selectedId,
   theme,
+  initialViewport,
+  onViewportChange,
 }: TopologyCanvasV2Props) {
   const storeTheme = useThemeStore((s) => s.theme);
   const effectiveTheme = theme ?? storeTheme;
@@ -123,20 +138,34 @@ export function TopologyCanvasV2({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
-  const [viewport, setViewport] = useState<Viewport>({ x: 48, y: 48, zoom: 1 });
+  const [viewport, setViewport] = useState<Viewport>(() => initialViewport ?? { x: 48, y: 48, zoom: 1 });
   // Transient drag position (screen top-left of the dragged node) so the
   // canvas draws it following the cursor without committing to the store.
   const [dragTopLeft, setDragTopLeft] = useState<{ id: string; x: number; y: number } | undefined>(undefined);
   const [rovingId, setRovingId] = useState<string | undefined>(undefined);
 
   const gesture = useRef<PointerGesture | undefined>(undefined);
-  const fittedRef = useRef(false);
+  // A caller-supplied initialViewport (T-907: restoring a saved view or a
+  // shareable-URL view) means "don't auto-fit on load, I already know what
+  // viewport I want" — so the fit-to-view effect below is pre-satisfied
+  // rather than firing once more and clobbering the restored viewport.
+  const fittedRef = useRef(initialViewport !== undefined);
   const fitSignatureRef = useRef("");
 
   // T-902 level-of-detail: fit-to-view stays keyed off the *raw* elements
   // (below) so the initial framing never depends on which band happens to be
   // active — only the drawn/interactive scene (lodSceneNodes/lodElements)
   // reflects the current zoom band's collapse/bundle state.
+
+  // T-907: report every viewport change upward (see onViewportChange's doc
+  // comment) — an uncontrolled seed/notify seam, not a controlled prop.
+  useEffect(() => {
+    onViewportChange?.(viewport);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onViewportChange is expected to be a stable callback (a ref-writer); re-running only on viewport change is intentional.
+  }, [viewport]);
+
+  // Scene nodes (id + graph position) for hit-testing — derived from the same
+  // FlowElements the canvas draws.
   const sceneNodes = useMemo<SceneNode[]>(
     () => elements.nodes.map((n) => ({ id: n.id, position: n.position })),
     [elements.nodes],
