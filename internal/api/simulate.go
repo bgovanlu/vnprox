@@ -43,16 +43,42 @@ type simulateVerifyAuditor interface {
 	Append(ctx context.Context, e store.AuditEntry) (int64, error)
 }
 
+// simDivergenceRecorder is T-806's persistence seam for POST
+// /simulate/verify's `sim_divergence` finding — mirrors
+// simulateVerifyAuditor's one-purpose-seam pattern; *store.SimDivergenceRepo
+// satisfies it directly. Nil-safe (see recordDivergence): a router built
+// without one (e.g. a bare test router, or a daemon whose store failed to
+// open) simply skips persistence, the finding just never appears in
+// GET /findings?source=probe for that daemon — the same degraded-mode
+// treatment every other optional seam in this file gets.
+type simDivergenceRecorder interface {
+	Upsert(ctx context.Context, f store.SimDivergenceFinding) error
+	Clear(ctx context.Context, id string) error
+}
+
+// guestAgentPinger is the one-method seam GET /simulate/verify/eligibility
+// needs beyond probe.PVEExecer's own exec/exec-status methods (mirrors
+// guestAgentInterfaceReader's pattern below) — internal/pve.Client.AgentPing,
+// a transport-level liveness check independent of the guest's own network
+// state (see that method's doc comment for why GetGuestAgentInterfaces
+// alone can't answer this honestly). *pve.Client satisfies both this and
+// probe.PVEExecer, so a live ProbeClientProvider's value always also
+// satisfies this via a type assertion.
+type guestAgentPinger interface {
+	AgentPing(ctx context.Context, node string, vmid int) error
+}
+
 // mountSimulateRoutes registers docs/api.md's `POST /simulate/path`
 // (netRead-gated, read-only static analysis) and, when probeClients is
-// non-nil and auth exposes UsernameLookup, T-802's `POST /simulate/verify`
-// (same capability gate — a live guest-agent probe is still a diagnostic
-// read, not a network-config mutation, but it does reach into a guest, so
-// it is audited, unlike /simulate/path). graph nil-safe, like every other
-// mountXRoutes; probeClients/audit nil-safe on top of that (the route
-// simply isn't mounted without a live PVE-client provider — a live probe
-// makes no sense without one).
-func mountSimulateRoutes(r chi.Router, graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, auth AuthService) {
+// non-nil, T-802's `POST /simulate/verify` plus T-806's
+// `GET /simulate/verify/eligibility` (same capability gate — a live
+// guest-agent probe is still a diagnostic read, not a network-config
+// mutation, but it does reach into a guest, so /simulate/verify is
+// audited, unlike /simulate/path or the eligibility check). graph
+// nil-safe, like every other mountXRoutes; probeClients/audit/divergence
+// nil-safe on top of that (the routes simply aren't mounted without a live
+// PVE-client provider — a live probe makes no sense without one).
+func mountSimulateRoutes(r chi.Router, graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, auth AuthService) {
 	if graph == nil || auth == nil {
 		return
 	}
@@ -61,8 +87,9 @@ func mountSimulateRoutes(r chi.Router, graph SimulatorGraph, probeClients ProbeC
 		r.Use(auth.RequireCap(capNetRead))
 		r.Post("/simulate/path", handleSimulatePath(graph))
 		if probeClients != nil {
+			r.Get("/simulate/verify/eligibility", handleSimulateVerifyEligibility(graph, probeClients))
 			if lookup, ok := auth.(UsernameLookup); ok {
-				r.Post("/simulate/verify", handleSimulateVerify(graph, probeClients, audit, lookup))
+				r.Post("/simulate/verify", handleSimulateVerify(graph, probeClients, audit, divergence, lookup))
 			}
 		}
 	})
@@ -205,7 +232,7 @@ type verifyResponse struct {
 // (observed.outcome == "error", in which case result is "error") — a
 // malformed request never reaches the point of "an action was attempted",
 // so it is not audited, matching every other route in this package.
-func handleSimulateVerify(graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, lookup UsernameLookup) http.HandlerFunc {
+func handleSimulateVerify(graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, lookup UsernameLookup) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -272,6 +299,7 @@ func handleSimulateVerify(graph SimulatorGraph, probeClients ProbeClientProvider
 
 		diverges := divergesFrom(simRes.Verdict, observed.Outcome)
 		auditSimulateVerify(r.Context(), audit, username, src.NicRef.String(), proto, req.Port, simRes.Verdict, observed, diverges)
+		recordDivergence(r.Context(), divergence, src.NicRef.String(), req.Dst, proto, req.Port, simRes.Verdict, observed, diverges)
 
 		writeJSON(w, http.StatusOK, verifyResponse{
 			Simulated: toSimulateResponse(simRes),
@@ -445,4 +473,115 @@ func auditSimulateVerify(ctx context.Context, audit simulateVerifyAuditor, usern
 	entry.Target.String, entry.Target.Valid = srcRef, true
 	entry.DetailJSON.String, entry.DetailJSON.Valid = string(detail), true
 	_, _ = audit.Append(ctx, entry)
+}
+
+// verifyEligibilityResponse is T-806's `GET /simulate/verify/eligibility`
+// response: whether the named guest-nic ref can currently host a live
+// probe, and — when it cannot — a machine-readable reason code the
+// frontend maps to the plain-English grey-out copy docs/features/
+// firewall.md §5's "Verify live" gating calls for ("verify live requires a
+// QEMU guest source with the guest agent running" style). `reason` is
+// omitted when eligible.
+type verifyEligibilityResponse struct {
+	Reason   string `json:"reason,omitempty"`
+	Eligible bool   `json:"eligible"`
+}
+
+// Machine-readable verifyEligibilityResponse.Reason codes (docs/api.md).
+const (
+	eligibilityReasonNotQemu          = "not-qemu"
+	eligibilityReasonAgentUnreachable = "agent-unreachable"
+)
+
+// handleSimulateVerifyEligibility implements
+// `GET /simulate/verify/eligibility?ref=` (T-806): answers "can 'Verify
+// live' run for this src right now" without itself running a probe —
+// resolves ref to a qemu guest (no live call needed, purely an inventory
+// lookup reusing resolveQemuGuestNicOwner) and, only if that holds, pings
+// the guest agent's transport channel (guestAgentPinger.AgentPing) to
+// confirm it is actually reachable. Never runs the honesty-contract-laden
+// ICMP/TCP probe itself and is not audited — unlike POST /simulate/verify,
+// this route makes no claim about the guest's network reachability, only
+// about whether an actual probe attempt could be made at all.
+func handleSimulateVerifyEligibility(graph SimulatorGraph, probeClients ProbeClientProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		refStr := strings.TrimSpace(r.URL.Query().Get("ref"))
+		ref, err := inventory.ParseRef(refStr)
+		if err != nil || ref.Kind != inventory.KindGuestNic {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "ref must be a valid guest-nic ref (kind:node:id)")
+			return
+		}
+
+		node, vmid, errMsg := resolveQemuGuestNicOwner(graph.Snapshot(), ref)
+		if errMsg != "" {
+			writeJSON(w, http.StatusOK, verifyEligibilityResponse{Eligible: false, Reason: eligibilityReasonNotQemu})
+			return
+		}
+
+		client, ok := probeClients.ProbeClientFor(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnprocessableEntity, "pve_session_required",
+				"a live probe requires an active PVE session — log in again and retry")
+			return
+		}
+		pinger, ok := client.(guestAgentPinger)
+		if !ok {
+			writeJSON(w, http.StatusOK, verifyEligibilityResponse{Eligible: false, Reason: eligibilityReasonAgentUnreachable})
+			return
+		}
+		if err := pinger.AgentPing(r.Context(), node, vmid); err != nil {
+			writeJSON(w, http.StatusOK, verifyEligibilityResponse{Eligible: false, Reason: eligibilityReasonAgentUnreachable})
+			return
+		}
+		writeJSON(w, http.StatusOK, verifyEligibilityResponse{Eligible: true})
+	}
+}
+
+// simDivergenceTupleKey builds the stable, content-derived id T-806's
+// persisted sim_divergence finding uses — shared by recordDivergence
+// (write side) and cmd/vnproxd's probeFindingsAdapter (read side reads it
+// straight back off the stored row, so this function is the single place
+// the scheme is defined). Mirrors internal/findings' own
+// "<source>:<producer-id>" convention: source "probe", producer-id
+// "sim_divergence|<src>|<dst-kind>:<dst-ref-or-ip>|<proto>|<port>".
+func simDivergenceTupleKey(srcRef string, dst endpointSpec, proto string, port int) string {
+	dstPart := dst.Kind
+	switch dst.Kind {
+	case string(sim.EndpointGuestNic):
+		dstPart += ":" + dst.Ref
+	case string(sim.EndpointIP):
+		dstPart += ":" + dst.IP
+	}
+	return fmt.Sprintf("probe:sim_divergence|%s|%s|%s|%d", srcRef, dstPart, proto, port)
+}
+
+// recordDivergence persists (diverges: true) or clears (diverges: false)
+// T-806's sim_divergence finding for this exact tuple. divergence == nil
+// (no *store.SimDivergenceRepo wired, e.g. a bare test router or a daemon
+// whose store failed to open) simply skips persistence — the response the
+// caller already received is unaffected either way, matching
+// auditSimulateVerify's identical nil-safe degradation. Errors from the
+// repo itself are swallowed (best-effort persistence of a diagnostic
+// side-record, same tolerance auditSimulateVerify's own `_, _ =` gives the
+// audit write) rather than failing a request whose actual answer already
+// succeeded.
+func recordDivergence(ctx context.Context, divergence simDivergenceRecorder, srcRef string, dst endpointSpec, proto string, port int, verdict sim.Verdict, observed probe.Result, diverges bool) {
+	if divergence == nil {
+		return
+	}
+	id := simDivergenceTupleKey(srcRef, dst, proto, port)
+	if !diverges {
+		_ = divergence.Clear(ctx, id)
+		return
+	}
+	detail := fmt.Sprintf("Simulated verdict: %s. Observed: %s.", verdict, observed.Outcome)
+	if observed.Detail != "" {
+		detail += " " + observed.Detail
+	}
+	now := time.Now().Unix()
+	_ = divergence.Upsert(ctx, store.SimDivergenceFinding{
+		ID: id, SrcRef: srcRef, DstKind: dst.Kind, DstRef: dst.Ref, DstIP: dst.IP,
+		Proto: proto, Port: port, SimulatedVerdict: string(verdict), ObservedOutcome: string(observed.Outcome),
+		Detail: detail, CreatedAt: now, UpdatedAt: now,
+	})
 }

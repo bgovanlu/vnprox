@@ -15,6 +15,12 @@ const (
 	SourceLLDP   Source = "lldp"
 	SourceIPAM   Source = "ipam"
 	SourceHealth Source = "health"
+	// SourceProbe (T-806) marks a finding produced by a user-triggered live
+	// guest-agent probe (POST /simulate/verify) rather than a continuous
+	// background check — additive to the documented drift|lldp|ipam|health
+	// enum (docs/api.md's GET /findings finding shape). Currently the sole
+	// producer is the persisted sim_divergence check (adapt_probe.go).
+	SourceProbe Source = "probe"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

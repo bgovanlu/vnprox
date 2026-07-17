@@ -8,7 +8,7 @@
 // painting/dim/highlight/selection behavior (docs/features/topology.md §2).
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
-import type { EntityStatus, SimVerdict } from "../api/types";
+import type { EntityStatus, SimVerdict, VerifyOutcome } from "../api/types";
 
 /** This node's role along a path-simulator overlay (T-504): "path" is any
  * hop on the traced route, "blocking" is the enforcement-point endpoint a
@@ -33,6 +33,12 @@ export interface EntityNodeData extends Record<string, unknown> {
    * — undefined leaves this node's normal status/hover rendering alone. */
   simVerdict?: SimVerdict;
   simRole?: SimPathRole;
+  /** T-806 "Verify live": set only on the probed source's own node, once a
+   * live result has come back — a marker distinct from simVerdict/simRole
+   * above (docs/features/firewall.md §5's "an observed-outcome marker
+   * distinct from the simulated-verdict styling"). */
+  verifyOutcome?: VerifyOutcome;
+  verifyDiverges?: boolean;
 }
 
 export type EntityFlowNode = Node<EntityNodeData, "entity">;
@@ -89,6 +95,25 @@ const SIM_MARKER_LABEL: Record<SimPathRole, string> = {
   missing: "missing link",
 };
 
+// T-806 "Verify live": the observed-outcome marker is a *square* (the
+// simulated-verdict marker above is a circle) so the two read as visually
+// distinct styling even when they land on the same corner of the same
+// node, per docs/features/firewall.md §5's requirement — never letting the
+// live result's marker be mistaken for a restyled simulated one.
+const VERIFY_MARKER_CLASS: Record<VerifyOutcome, string> = {
+  reachable: "bg-emerald-500",
+  unreachable: "bg-red-500",
+  timeout: "bg-amber-500",
+  error: "bg-slate-400",
+};
+
+const VERIFY_OUTCOME_LABEL: Record<VerifyOutcome, string> = {
+  reachable: "reachable",
+  unreachable: "unreachable",
+  timeout: "timed out",
+  error: "could not be attempted",
+};
+
 // T-702: distinct treatment for the management-path badge vocabulary
 // (docs/features/topology.md §3) — "mgmt"/"corosync" mark the carrier
 // itself, "mgmt-path" marks every physical entity behind it. Amber (not the
@@ -109,6 +134,7 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
   const isPill = data.isGuestGroup;
   const simVerdict = data.simVerdict;
   const simRole = data.simRole;
+  const verifyOutcome = data.verifyOutcome;
   return (
     <div
       role="button"
@@ -149,6 +175,27 @@ export function EntityNode({ data, selected }: NodeProps<EntityFlowNode>) {
             SIM_MARKER_CLASS[simVerdict],
           )}
         />
+      )}
+      {verifyOutcome && (
+        <span
+          role="img"
+          aria-label={`observed: ${VERIFY_OUTCOME_LABEL[verifyOutcome]}`}
+          title={`Live probe observed: ${VERIFY_OUTCOME_LABEL[verifyOutcome]}`}
+          className={clsx(
+            "absolute -bottom-1.5 -left-1.5 h-3 w-3 rounded-sm border-2 border-white dark:border-slate-900",
+            VERIFY_MARKER_CLASS[verifyOutcome],
+          )}
+        />
+      )}
+      {data.verifyDiverges && (
+        <span
+          role="img"
+          aria-label="verify live diverges"
+          title="The live probe disagrees with the simulated verdict."
+          className="absolute -bottom-1.5 -right-1.5 rounded bg-fuchsia-600 px-1 py-0.5 text-[9px] font-semibold uppercase leading-none text-white"
+        >
+          Diverges
+        </span>
       )}
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-medium text-slate-800 dark:text-slate-100">{data.label}</span>

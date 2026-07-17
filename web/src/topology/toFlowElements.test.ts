@@ -144,4 +144,45 @@ describe("toFlowElements", () => {
     });
     expect(flowNodes.every((n) => n.data.stale === false)).toBe(true);
   });
+
+  // T-806 "Verify live": pathHighlight.verifyNodeId/verifyOutcome/
+  // verifyDiverges project onto exactly the probed source's own node, never
+  // onto any other node on the traced path.
+  it("projects the verify overlay onto exactly the probed source node", () => {
+    const { nodes: flowNodes } = toFlowElements({
+      nodes: baseNodes,
+      edges: baseEdges,
+      expandedGroups: new Set(),
+      activeLayers: allLayers,
+      layoutPositions: new Map(),
+      manualPositions: {},
+      pathHighlight: {
+        nodeIds: new Set(["bridge:pve1:vmbr0"]),
+        edgeIds: new Set(),
+        missingNodeIds: new Set(),
+        verdict: "deny",
+        verifyNodeId: "bridge:pve1:vmbr0",
+        verifyOutcome: "reachable",
+        verifyDiverges: true,
+      },
+    });
+    const byId = new Map(flowNodes.map((n) => [n.id, n.data]));
+    expect(byId.get("bridge:pve1:vmbr0")?.verifyOutcome).toBe("reachable");
+    expect(byId.get("bridge:pve1:vmbr0")?.verifyDiverges).toBe(true);
+    expect(byId.get("guest-group:pve1:bridge:pve1:vmbr0")?.verifyOutcome).toBeUndefined();
+    expect(byId.get("guest-group:pve1:bridge:pve1:vmbr0")?.verifyDiverges).toBe(false);
+  });
+
+  it("leaves verifyOutcome/verifyDiverges unset when pathHighlight has no verify data", () => {
+    const { nodes: flowNodes } = toFlowElements({
+      nodes: baseNodes,
+      edges: baseEdges,
+      expandedGroups: new Set(),
+      activeLayers: allLayers,
+      layoutPositions: new Map(),
+      manualPositions: {},
+      pathHighlight: { nodeIds: new Set(), edgeIds: new Set(), missingNodeIds: new Set(), verdict: "allow" },
+    });
+    expect(flowNodes.every((n) => n.data.verifyOutcome === undefined && n.data.verifyDiverges === false)).toBe(true);
+  });
 });

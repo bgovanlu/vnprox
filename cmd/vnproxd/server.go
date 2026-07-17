@@ -271,7 +271,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// doc comment (findings.go) for the documented cluster-fan-out gap.
 	corosyncAdapter := corosyncStatusAdapter{host: realHost, localNode: localNode, logger: logger}
 	findingsNotifier := setupFindingsNotifier(sdnPVEClient, logger)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, findingsNotifier, topoSvc, ipamConcrete, logger)
+	// T-806: the persisted sim_divergence finding store, created here (db
+	// is available; findingsEngine is built next) and reused verbatim as
+	// the router's api.Options.SimDivergence write-side seam below.
+	simDivergenceRepo := store.NewSimDivergenceRepo(db)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -565,6 +569,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Simulator:     graph,
 		ProbeClients:  probeClientProvider{authSvc},
 		ProbeAudit:    auditRepo,
+		SimDivergence: simDivergenceRepo,
 		FwLog:         fwLogAPI,
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,

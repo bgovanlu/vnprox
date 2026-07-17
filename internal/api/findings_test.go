@@ -35,6 +35,9 @@ func mixedSourceFindings() []findings.Finding {
 		{ID: "lldp:1", Source: findings.SourceLLDP, Check: "vlan_cross_check_missing_on_switch", Severity: findings.SeverityWarning, Detail: "l1", Nodes: []string{"pve2"}},
 		{ID: "health:1", Source: findings.SourceHealth, Check: "bond_slave_down", Severity: findings.SeverityError, Detail: "h1", Nodes: []string{"pve1"}},
 		{ID: "ipam:1", Source: findings.SourceIPAM, Check: "subnet_conflict", Severity: findings.SeverityInfo, Detail: "i1", Nodes: []string{"pve3"}},
+		// T-806: the new "probe" source (POST /simulate/verify's persisted
+		// sim_divergence finding) — additive to the four above.
+		{ID: "probe:1", Source: findings.SourceProbe, Check: "sim_divergence", Severity: findings.SeverityWarning, Detail: "p1", Refs: []string{"guest-nic:pve1:300/net0"}},
 	}
 }
 
@@ -71,8 +74,39 @@ func TestFindingsRoute_ReturnsAllSources(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decoding response: %v", err)
 	}
-	if len(body.Items) != 4 {
-		t.Fatalf("got %d items, want 4 (one per source)", len(body.Items))
+	if len(body.Items) != 5 {
+		t.Fatalf("got %d items, want 5 (one per source)", len(body.Items))
+	}
+}
+
+// TestFindingsRoute_SourceProbeFilter is T-806 AC5's golden test:
+// GET /findings?source=probe filters correctly (additive — never a 400 for
+// the new value), and every other source's own filtering behavior is
+// unchanged (mixedSourceFindings' other four entries are exercised by
+// TestFindingsRoute_FiltersBySourceSeverityNode above, unmodified).
+func TestFindingsRoute_SourceProbeFilter(t *testing.T) {
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: driftTestAuth(map[string]bool{"netRead": true}), Topology: fakeTopologyService{},
+		Findings: fakeFindingsService{findings: mixedSourceFindings()},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/findings?source=probe", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("source=probe status = %d, want 200 (never a 400 for a recognized value), body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []findings.Finding `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(body.Items) != 1 || body.Items[0].ID != "probe:1" {
+		t.Fatalf("source=probe items = %+v, want exactly [probe:1]", body.Items)
+	}
+	if body.Items[0].Source != findings.SourceProbe {
+		t.Errorf("source = %q, want %q", body.Items[0].Source, findings.SourceProbe)
 	}
 }
 
@@ -95,7 +129,7 @@ func TestFindingsRoute_FiltersBySourceSeverityNode(t *testing.T) {
 		{"by node", "?node=pve1", []string{"drift:1", "health:1"}},
 		{"combined source+node", "?source=health&node=pve1", []string{"health:1"}},
 		{"combined mismatched", "?source=drift&node=pve2", []string{}},
-		{"no filter", "", []string{"drift:1", "lldp:1", "health:1", "ipam:1"}},
+		{"no filter", "", []string{"drift:1", "lldp:1", "health:1", "ipam:1", "probe:1"}},
 	}
 
 	for _, tc := range cases {

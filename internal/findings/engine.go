@@ -27,6 +27,11 @@ type Config struct {
 	LLDP    LLDPProvider
 	IPAM    IPAMProvider
 	Metrics MetricsProvider
+	// Probe is T-806's persisted sim_divergence finding seam (a live
+	// POST /simulate/verify probe that disagreed with the static
+	// simulator's own verdict). Nil skips that producer entirely, same
+	// degradation as every other optional Config field.
+	Probe ProbeProvider
 	// Mgmt is T-702's management-path status seam (change.Service.MgmtStatus
 	// adapted via MgmtProvider), backing the mgmt_single_path health check.
 	// Nil skips that check entirely, same degradation as every other
@@ -59,6 +64,7 @@ type Engine struct {
 	metricsSvc  MetricsProvider
 	mgmtSvc     MgmtProvider
 	corosyncSvc CorosyncProvider
+	probeSvc    ProbeProvider
 	serviceDB   *debouncer
 	services    *serviceStatusStore
 	onChange    func(int)
@@ -113,6 +119,7 @@ func New(cfg Config) *Engine {
 		metricsSvc:  cfg.Metrics,
 		mgmtSvc:     cfg.Mgmt,
 		corosyncSvc: cfg.Corosync,
+		probeSvc:    cfg.Probe,
 		log:         logger,
 		now:         now,
 		onChange:    cfg.OnChange,
@@ -153,6 +160,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, driftFindings(e.driftSvc)...)
 	out = append(out, lldpFindings(e.lldpSvc)...)
 	out = append(out, ipamFindings(e.ipamSvc)...)
+	out = append(out, probeFindings(e.probeSvc)...)
 	out = append(out, e.healthFindings()...)
 	sortFindings(out)
 	return out

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SimHop, TopologyEdge } from "../api/types";
-import { computePathHighlight } from "./pathHighlight";
+import { computePathHighlight, withVerifyHighlight } from "./pathHighlight";
 
 function hop(ref: string | undefined, kind = "bridge"): SimHop {
   return { ref, kind, label: ref ?? kind };
@@ -61,5 +61,28 @@ describe("computePathHighlight", () => {
     expect(result.nodeIds.size).toBe(0);
     expect(result.edgeIds.size).toBe(0);
     expect(result.missingNodeIds.size).toBe(0);
+  });
+});
+
+describe("withVerifyHighlight", () => {
+  it("leaves the base highlight untouched when no src node id is given (no verify result yet)", () => {
+    const base = computePathHighlight([hop("guest-nic:pve1:100/net0")], [], "allow");
+    const merged = withVerifyHighlight(base, undefined, "reachable", false);
+    expect(merged).toBe(base);
+  });
+
+  it("adds the verify fields onto a copy of the base highlight without mutating it", () => {
+    const base = computePathHighlight([hop("guest-nic:pve1:100/net0")], [], "deny");
+    const merged = withVerifyHighlight(base, "guest-nic:pve1:100/net0", "reachable", true);
+    expect(merged.verifyNodeId).toBe("guest-nic:pve1:100/net0");
+    expect(merged.verifyOutcome).toBe("reachable");
+    expect(merged.verifyDiverges).toBe(true);
+    expect(base.verifyNodeId).toBeUndefined();
+  });
+
+  it("carries verifyDiverges: false through for a matching (non-divergent) result", () => {
+    const base = computePathHighlight([hop("guest-nic:pve1:100/net0")], [], "allow");
+    const merged = withVerifyHighlight(base, "guest-nic:pve1:100/net0", "reachable", false);
+    expect(merged.verifyDiverges).toBe(false);
   });
 });

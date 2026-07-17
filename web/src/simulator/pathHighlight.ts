@@ -8,7 +8,7 @@
 // topology map"; T-504 AC2's "missing link renders at the correct edge").
 // Deliberately framework-free (no React, no @xyflow/react) so it's
 // exhaustively Vitest-able on its own, same rationale as toFlowElements.ts.
-import type { SimHop, SimMissing, SimVerdict, TopologyEdge } from "../api/types";
+import type { SimHop, SimMissing, SimVerdict, TopologyEdge, VerifyOutcome } from "../api/types";
 import { edgeId } from "../topology/toFlowElements";
 
 export interface PathHighlight {
@@ -28,6 +28,36 @@ export interface PathHighlight {
    * with a distinct "missing link" marker (T-504 AC2). */
   missingNodeIds: Set<string>;
   verdict: SimVerdict;
+  /** T-806 "Verify live": the probed source's own ref, marked with an
+   * observed-outcome indicator distinct from the simulated-verdict marker
+   * above (docs/features/firewall.md §5) — undefined until a live probe
+   * result has actually been returned for this simulation. */
+  verifyNodeId?: string;
+  verifyOutcome?: VerifyOutcome;
+  /** True iff the live probe's outcome disagrees with the simulated
+   * verdict — renders a further distinct "diverges" marker (never a silent
+   * correction of the simulated verdict, per the honesty contract). */
+  verifyDiverges?: boolean;
+}
+
+/** Merges a T-806 verify result onto an already-computed PathHighlight
+ * (computePathHighlight's own contract stays exactly as it was for T-504's
+ * callers — the map overlay for a plain, unverified simulate result — so
+ * this is a separate, additive step rather than a new parameter growing
+ * that function's signature). `verifySrcNodeId` is the resolved src
+ * endpoint's own ref (result.src.ref from the *simulated* half of the
+ * verify response, which is byte-identical to a plain /simulate/path
+ * result's own src). */
+export function withVerifyHighlight(
+  base: PathHighlight,
+  verifySrcNodeId: string | undefined,
+  verifyOutcome: VerifyOutcome,
+  verifyDiverges: boolean,
+): PathHighlight {
+  if (!verifySrcNodeId) {
+    return base;
+  }
+  return { ...base, verifyNodeId: verifySrcNodeId, verifyOutcome, verifyDiverges };
 }
 
 /**

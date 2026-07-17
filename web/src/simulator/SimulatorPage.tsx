@@ -11,18 +11,20 @@ import { useSearchParams } from "react-router-dom";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { useToast } from "../components/Toast";
-import type { SimEndpointSpec } from "../api/types";
+import type { SimEndpointSpec, VerifyResult } from "../api/types";
 import { useFirewallObjectsQuery } from "../firewall/queries";
 import { computeLayout, type XYPosition } from "../topology/layout";
 import { useTopologyQuery } from "../topology/queries";
 import { TopologyCanvas } from "../topology/TopologyCanvas";
 import { toFlowElements } from "../topology/toFlowElements";
 import { EndpointPicker } from "./EndpointPicker";
-import { computePathHighlight } from "./pathHighlight";
+import { computePathHighlight, withVerifyHighlight } from "./pathHighlight";
 import { useSimulateQuery } from "./queries";
 import { ResultPanel } from "./ResultPanel";
 import { ANY_PRESET, servicePresetsFromMacros, type ServicePreset } from "./servicePresets";
 import { decodeSimState, encodeSimState, simUrlStatePath, simUrlStateToRequest, type SimUrlState } from "./urlState";
+import { VerifyLiveButton } from "./VerifyLiveButton";
+import { VerifyPanel } from "./VerifyPanel";
 
 const PROTO_OPTIONS = ["", "tcp", "udp", "icmp"] as const;
 
@@ -46,6 +48,11 @@ export function SimulatorPage() {
   const [dst, setDst] = useState<SimEndpointSpec | undefined>(initial.dst);
   const [proto, setProto] = useState<string | undefined>(initial.proto);
   const [port, setPort] = useState<number | undefined>(initial.port);
+  // T-806 "Verify live": the most recent live-probe result, if any. Cleared
+  // whenever the request tuple changes (a new src/dst/proto/port pick makes
+  // any prior live result stale/irrelevant — never show a live result next
+  // to a simulated result for a *different* tuple).
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | undefined>(undefined);
   const { toast } = useToast();
 
   // Keep the URL in sync with the in-progress request (replace, not push —
@@ -59,6 +66,10 @@ export function SimulatorPage() {
 
   const request = useMemo(() => simUrlStateToRequest({ src, dst, proto, port }), [src, dst, proto, port]);
   const { data: result, isFetching, error } = useSimulateQuery(request);
+
+  useEffect(() => {
+    setVerifyResult(undefined);
+  }, [request]);
 
   const { data: topology } = useTopologyQuery();
   const { data: fwObjects } = useFirewallObjectsQuery();
@@ -83,8 +94,14 @@ export function SimulatorPage() {
 
   const pathHighlight = useMemo(() => {
     if (!result) return undefined;
-    return computePathHighlight(result.hops, topology?.edges ?? [], result.verdict, result.missing, blockingPointRef(result));
-  }, [result, topology]);
+    const base = computePathHighlight(result.hops, topology?.edges ?? [], result.verdict, result.missing, blockingPointRef(result));
+    if (!verifyResult) return base;
+    // verifyResult.simulated is byte-identical to `result` for the same
+    // tuple (see this useEffect above resetting verifyResult on any
+    // request change) — its own `src.ref` is the probed source's ref, the
+    // node T-806's observed-outcome/divergence marker attaches to.
+    return withVerifyHighlight(base, verifyResult.simulated.src.ref, verifyResult.observed.outcome, verifyResult.diverges);
+  }, [result, topology, verifyResult]);
 
   const elements = useMemo(
     () =>
@@ -207,7 +224,13 @@ export function SimulatorPage() {
           description={error instanceof Error ? error.message : "Check the endpoints and try again."}
         />
       )}
-      {request && !isFetching && result && <ResultPanel result={result} />}
+      {request && !isFetching && result && (
+        <div className="flex flex-col gap-3">
+          <ResultPanel result={result} />
+          <VerifyLiveButton src={src} request={request} onResult={setVerifyResult} />
+          {verifyResult && <VerifyPanel verify={verifyResult} />}
+        </div>
+      )}
 
       <div>
         <h3 className="mb-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">Map</h3>

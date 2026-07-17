@@ -25,9 +25,14 @@ type fakeIPAM struct{ findings []findings.Finding }
 
 func (f fakeIPAM) Findings() []findings.Finding { return f.findings }
 
-// TestFindings_ComposesAllFourSources: AC2's premise — every producer's
-// findings show up in one stream, each correctly tagged with its Source.
-func TestFindings_ComposesAllFourSources(t *testing.T) {
+type fakeProbe struct{ findings []findings.Finding }
+
+func (f fakeProbe) Findings() []findings.Finding { return f.findings }
+
+// TestFindings_ComposesAllFiveSources: AC2's premise — every producer's
+// findings show up in one stream, each correctly tagged with its Source
+// (drift/lldp/ipam/health, plus T-806's probe producer).
+func TestFindings_ComposesAllFiveSources(t *testing.T) {
 	g := newGraphWithNodes("pve1")
 	netlinkBond(g, "pve1", "bond0", []inventory.BondSlaveState{
 		{Name: "eno1", MIIStatus: "up", Active: true},
@@ -37,12 +42,14 @@ func TestFindings_ComposesAllFourSources(t *testing.T) {
 	driftFinding := drift.Finding{ID: "bridge_divergence|bridge:pve1:vmbr0", Check: drift.CheckBridgeDivergence, Severity: drift.SeverityWarning, Detail: "bridge diverges", Nodes: []string{"pve1"}}
 	lldpFinding := topology.VlanFinding{BridgeRef: "bridge:pve1:vmbr0", NeighborRef: "lldp-neighbor:pve1:eno1", Code: topology.VlanCheckMissingOnSwitch, Severity: "warning", Message: "switch missing vlan 20"}
 	ipamFinding := findings.Finding{ID: "ipam:conflict|subnet1", Source: findings.SourceIPAM, Check: "subnet_conflict", Severity: findings.SeverityError, Detail: "two subnets overlap", Nodes: []string{"pve1"}}
+	probeFinding := findings.Finding{ID: "probe:sim_divergence|guest-nic:pve1:300/net0", Source: findings.SourceProbe, Check: "sim_divergence", Severity: findings.SeverityWarning, Detail: "simulated allow, observed unreachable", Refs: []string{"guest-nic:pve1:300/net0"}}
 
 	eng := findings.New(findings.Config{
 		Graph: g,
 		Drift: fakeDrift{findings: []drift.Finding{driftFinding}},
 		LLDP:  fakeLLDP{findings: []topology.VlanFinding{lldpFinding}},
 		IPAM:  fakeIPAM{findings: []findings.Finding{ipamFinding}},
+		Probe: fakeProbe{findings: []findings.Finding{probeFinding}},
 	})
 
 	// Run twice so the bond-slave-down hysteresis (2 cycles) has fired.
@@ -53,9 +60,22 @@ func TestFindings_ComposesAllFourSources(t *testing.T) {
 	for _, f := range all {
 		bySource[f.Source]++
 	}
-	for _, src := range []findings.Source{findings.SourceDrift, findings.SourceLLDP, findings.SourceIPAM, findings.SourceHealth} {
+	for _, src := range []findings.Source{findings.SourceDrift, findings.SourceLLDP, findings.SourceIPAM, findings.SourceHealth, findings.SourceProbe} {
 		if bySource[src] == 0 {
 			t.Errorf("no findings from source %q in the unified stream: %+v", src, all)
+		}
+	}
+}
+
+// TestFindings_ProbeProviderNil_ContributesNothing: a nil Config.Probe (no
+// PVE client wired, e.g. every pre-T-806 caller) degrades quietly like
+// every other optional producer — no panic, no probe-sourced findings.
+func TestFindings_ProbeProviderNil_ContributesNothing(t *testing.T) {
+	g := newGraphWithNodes("pve1")
+	eng := findings.New(findings.Config{Graph: g})
+	for _, f := range eng.Findings() {
+		if f.Source == findings.SourceProbe {
+			t.Fatalf("got a probe-sourced finding with a nil Config.Probe: %+v", f)
 		}
 	}
 }

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/ipam"
 	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/pve"
+	"github.com/bgovanlu/vnprox/internal/store"
 	"github.com/bgovanlu/vnprox/internal/topology"
 )
 
@@ -78,6 +81,111 @@ func ipamConflictToFinding(sc ipam.SubnetConflict) findings.Finding {
 		Detail:   detail,
 		DocsLink: ipamConflictDocsLink,
 	}
+}
+
+// probeFindingsAdapter adapts T-806's persisted *store.SimDivergenceRepo
+// into the unified findings stream (findings.ProbeProvider). This
+// composition-root conversion is what keeps internal/store from importing
+// internal/findings (the same decoupling ipamFindingsAdapter provides for
+// internal/ipam). Nil-safe: a nil repo (store failed to open — server.go
+// treats that as fatal today, but keeping this adapter nil-safe matches
+// every other producer seam's own defensive convention) contributes no
+// findings.
+type probeFindingsAdapter struct {
+	repo   *store.SimDivergenceRepo
+	logger *slog.Logger
+}
+
+// simDivergenceDeepLink builds T-806's DocsLink for a persisted
+// sim_divergence finding. Unlike every other producer, this finding's
+// DocsLink is deliberately not a docs page: it's the deep link back into
+// the path simulator (docs/features/topology.md §2's path overlay)
+// carrying the exact src/dst/proto/port tuple, per T-806's deliverable ("a
+// docsLink/deep-link carrying the exact src/dst/proto/port tuple back into
+// the simulator") — a documented deviation from docs/api.md's usual
+// DocsLink contract ("a relative path into this repo's docs"), flagged
+// here and in docs/api.md's findings section. Query param names mirror
+// web/src/simulator/urlState.ts's
+// encodeSimState exactly (srcKind/srcRef/srcIp, dstKind/dstRef/dstIp,
+// proto, port) so the frontend's existing decodeSimState reads it with no
+// new parsing logic — the same URL-state mechanism "Copy link" and
+// "Trace path" already share (SimulatorPage.tsx).
+func simDivergenceDeepLink(f store.SimDivergenceFinding) string {
+	q := url.Values{}
+	q.Set("srcKind", "guest-nic")
+	q.Set("srcRef", f.SrcRef)
+	q.Set("dstKind", f.DstKind)
+	switch f.DstKind {
+	case "guest-nic":
+		q.Set("dstRef", f.DstRef)
+	case "ip":
+		q.Set("dstIp", f.DstIP)
+	}
+	if f.Proto != "" {
+		q.Set("proto", f.Proto)
+	}
+	if f.Port > 0 {
+		q.Set("port", strconv.Itoa(f.Port))
+	}
+	return "/tools?" + q.Encode()
+}
+
+// probeDivergenceToFinding maps one persisted SimDivergenceFinding row to
+// the unified Finding shape: source probe, check sim_divergence, id reused
+// verbatim from the stored row (already the stable content-derived key
+// internal/api's simDivergenceTupleKey computed when it was written).
+// Never fixable — a live/simulated disagreement is a fact to investigate,
+// not something with a computable config patch (docs/features/firewall.md
+// §5/§6's honesty contract: a divergence is never presented as a silent
+// correction of the simulated verdict, which a "fix" affordance would
+// imply). Severity is warning uniformly: this producer can't know from the
+// tuple alone whether the disagreement is security-relevant (an allow
+// verdict that's actually unreachable) or merely a false negative (a deny
+// verdict that's actually reachable) — "worth a look", not an escalated
+// claim either way.
+func probeDivergenceToFinding(f store.SimDivergenceFinding) findings.Finding {
+	// Nodes is always a non-nil slice (empty when the src ref doesn't parse,
+	// which should never happen for a row this package itself wrote) —
+	// findings.Finding.Nodes has no `omitempty`, so a nil slice here would
+	// serialize as JSON `null` instead of `[]`; found the hard way via this
+	// task's own e2e run, which crashed web/src/findings/filters.ts's
+	// `for (const n of f.nodes)` on exactly that (also hardened
+	// defensively on the frontend side, but this producer shouldn't rely
+	// on that alone). The src's own node is a meaningful value here (lets
+	// the findings stream's node filter include probe findings too), not
+	// just a placeholder.
+	nodes := []string{}
+	if ref, err := inventory.ParseRef(f.SrcRef); err == nil && ref.Node != "" {
+		nodes = []string{ref.Node}
+	}
+	return findings.Finding{
+		ID:       f.ID,
+		Source:   findings.SourceProbe,
+		Check:    "sim_divergence",
+		Severity: findings.SeverityWarning,
+		Detail:   f.Detail,
+		Nodes:    nodes,
+		Refs:     []string{f.SrcRef},
+		DocsLink: simDivergenceDeepLink(f),
+	}
+}
+
+func (a probeFindingsAdapter) Findings() []findings.Finding {
+	if a.repo == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	rows, err := a.repo.List(ctx)
+	if err != nil {
+		a.logger.Warn("findings: listing persisted sim_divergence findings", "error", err)
+		return nil
+	}
+	out := make([]findings.Finding, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, probeDivergenceToFinding(row))
+	}
+	return out
 }
 
 // mgmtStatusAdapter adapts a lazily-set *change.Service into
@@ -188,21 +296,25 @@ type findingsBroadcaster interface {
 
 // setupFindings builds T-602's *findings.Engine composing driftSvc (T-305,
 // unchanged), topoSvc's LLDP VLAN cross-check (T-302, unchanged), IPAM
-// subnet/allocation conflicts (internal/ipam, adapted here), and this
+// subnet/allocation conflicts (internal/ipam, adapted here), T-806's
+// persisted sim_divergence findings (probeRepo, adapted here), and this
 // package's own health checks over the same live graph metricsSampler
-// already reads. ipamSvc is nil-safe (degraded mode with no PVE client
-// contributes no IPAM findings, via ipamFindingsAdapter).
+// already reads. ipamSvc/probeRepo are each nil-safe (degraded mode with no
+// PVE client contributes no IPAM findings via ipamFindingsAdapter; a store
+// that failed to open contributes no probe findings via
+// probeFindingsAdapter).
 //
 // notifier is nil-safe (findings.Engine.Config.Notifier accepts nil,
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, logger *slog.Logger) *findings.Engine {
+func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:    graph,
 		Drift:    driftSvc,
 		LLDP:     topoSvc,
 		IPAM:     ipamFindingsAdapter{ipam: ipamSvc, logger: logger},
+		Probe:    probeFindingsAdapter{repo: probeRepo, logger: logger},
 		Metrics:  metricsSampler,
 		Mgmt:     mgmtSvc,
 		Corosync: corosyncSvc,
