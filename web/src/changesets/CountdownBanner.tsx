@@ -14,6 +14,7 @@ import clsx from "clsx";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
 import type { Changeset } from "../api/types";
+import { useReducedMotion } from "../lib/useReducedMotion";
 import { useChangesetDrawerStore } from "./store";
 import { useConfirmChangesetMutation, useRollbackChangesetMutation } from "./queries";
 
@@ -32,6 +33,9 @@ export function CountdownBanner({ changeset }: CountdownBannerProps) {
   const rollbackMutation = useRollbackChangesetMutation();
   const reset = useChangesetDrawerStore((s) => s.reset);
   const { toast } = useToast();
+  // T-905: the "unconfirmed changeset" pulse this card names — a plain
+  // static amber dot when `prefers-reduced-motion: reduce` is set.
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     if (changeset.status !== "awaiting_confirm") return;
@@ -62,6 +66,14 @@ export function CountdownBanner({ changeset }: CountdownBannerProps) {
         role="alert"
         className="fixed inset-x-0 top-0 z-40 flex flex-wrap items-center justify-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
       >
+        <span
+          aria-hidden
+          data-testid="countdown-pulse-dot"
+          className={clsx(
+            "h-2 w-2 shrink-0 rounded-full bg-amber-500",
+            !reducedMotion && !expired && "animate-pulse",
+          )}
+        />
         <span className="font-medium">
           vnprox applied your change — confirm you still have connectivity{" "}
           {expired ? "(rolling back now…)" : `(${String(Math.ceil(remaining))}s remaining)`}.

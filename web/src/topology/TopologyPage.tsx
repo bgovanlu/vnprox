@@ -32,6 +32,7 @@ import { buildSwitchModel } from "./switchModel";
 import { ViewModeToggle } from "./ViewModeToggle";
 import { VlanFilterInput } from "./VlanFilterInput";
 import { computeLayout, type XYPosition } from "./layout";
+import { useReducedMotion, motionConfig } from "../lib/useReducedMotion";
 import { isGuestGroupId } from "./projection";
 import {
   useGuestGroupExpandQuery,
@@ -88,6 +89,9 @@ function TopologyPageContent() {
   const { data: session } = useSession();
   const { toast } = useToast();
   const { addOps, replaceOps } = useDrawerActions();
+  // T-905: `prefers-reduced-motion: reduce` collapses the search-select
+  // fit-view pan/zoom below to an instant jump instead of an eased pan.
+  const motion = motionConfig(useReducedMotion());
 
   const activeLayers = useTopologyStore((s) => s.activeLayers);
   const viewMode = useTopologyStore((s) => s.viewMode);
@@ -341,7 +345,7 @@ function TopologyPageContent() {
     select(ref);
     const flowNode = elements.nodes.find((n) => n.id === ref);
     if (flowNode) {
-      void reactFlow.fitView({ nodes: [{ id: ref }], duration: 500, maxZoom: 1.25 });
+      void reactFlow.fitView({ nodes: [{ id: ref }], duration: motion.fitDurationMs, maxZoom: 1.25 });
     }
   }
 

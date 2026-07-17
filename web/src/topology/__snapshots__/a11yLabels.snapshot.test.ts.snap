@@ -1,0 +1,306 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`a11y proxy labels: evpn-lab (SDN zone/vnet/subnet kinds, drift + mgmt-path badges) > matches the committed snapshot (id/kind/ariaLabel per entity) 1`] = `
+[
+  {
+    "ariaLabel": "bridge vmbr0, status ok, carries the management IP, has configuration drift",
+    "id": "bridge:pve1:vmbr0",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "bridge vmbr1, status unknown, has configuration drift",
+    "id": "bridge:pve1:vmbr1",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "bridge vnet-tenant-b, status unknown, has configuration drift",
+    "id": "bridge:pve1:vnet-tenant-b",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "bridge vmbr0, status ok, carries the management IP, has configuration drift",
+    "id": "bridge:pve2:vmbr0",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "bridge vmbr1, status unknown, has configuration drift",
+    "id": "bridge:pve2:vmbr1",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "bridge vnet-tenant-b, status unknown, has configuration drift",
+    "id": "bridge:pve2:vnet-tenant-b",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "bridge vmbr0, status ok, carries the management IP, has configuration drift",
+    "id": "bridge:pve3:vmbr0",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "guest-nic evpn-tester-a/net0, status ok, badges: mac=BC:24:11:AA:03:2C",
+    "id": "guest-nic:pve1:300/net0",
+    "kind": "guest-nic",
+  },
+  {
+    "ariaLabel": "guest-nic evpn-tester-b/net0, status ok",
+    "id": "guest-nic:pve2:301/net0",
+    "kind": "guest-nic",
+  },
+  {
+    "ariaLabel": "guest evpn-tester-a, status ok, badges: vmid=300",
+    "id": "guest:pve1:300",
+    "kind": "guest",
+  },
+  {
+    "ariaLabel": "guest evpn-tester-b, status ok, badges: vmid=301",
+    "id": "guest:pve2:301",
+    "kind": "guest",
+  },
+  {
+    "ariaLabel": "physnic eno1, status unknown, on the management path",
+    "id": "physnic:pve1:eno1",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "physnic ens18, status ok",
+    "id": "physnic:pve1:ens18",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "physnic lo, status ok",
+    "id": "physnic:pve1:lo",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "physnic eno1, status unknown, on the management path",
+    "id": "physnic:pve2:eno1",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "physnic eno1, status unknown, on the management path",
+    "id": "physnic:pve3:eno1",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "sdn-subnet 10.55.0.0/24, status ok",
+    "id": "sdn-subnet::10.55.0.0/24",
+    "kind": "sdn-subnet",
+  },
+  {
+    "ariaLabel": "sdn-subnet 10.60.0.0/24, status ok",
+    "id": "sdn-subnet::10.60.0.0/24",
+    "kind": "sdn-subnet",
+  },
+  {
+    "ariaLabel": "sdn-subnet 10.70.0.0/24, status ok, badges: pending=new",
+    "id": "sdn-subnet::10.70.0.0/24",
+    "kind": "sdn-subnet",
+  },
+  {
+    "ariaLabel": "sdn-subnet 10.80.0.0/24, status ok",
+    "id": "sdn-subnet::10.80.0.0/24",
+    "kind": "sdn-subnet",
+  },
+  {
+    "ariaLabel": "sdn-subnet 192.168.50.0/24, status ok",
+    "id": "sdn-subnet::192.168.50.0/24",
+    "kind": "sdn-subnet",
+  },
+  {
+    "ariaLabel": "sdn-subnet 192.168.60.0/24, status ok, has configuration drift",
+    "id": "sdn-subnet::192.168.60.0/24",
+    "kind": "sdn-subnet",
+  },
+  {
+    "ariaLabel": "sdn-vnet vnet-tenant-a (tenant-a), status ok",
+    "id": "sdn-vnet::evpnz/vnet-tenant-a",
+    "kind": "sdn-vnet",
+  },
+  {
+    "ariaLabel": "sdn-vnet vnet-tenant-b (tenant-b), status ok, has configuration drift",
+    "id": "sdn-vnet::evpnz/vnet-tenant-b",
+    "kind": "sdn-vnet",
+  },
+  {
+    "ariaLabel": "sdn-vnet vnet-qinq1 (qinq-net), status ok, badges: tag=200, pending=new",
+    "id": "sdn-vnet::qinqz/vnet-qinq1",
+    "kind": "sdn-vnet",
+  },
+  {
+    "ariaLabel": "sdn-vnet vnet-simple1 (simple-net), status ok",
+    "id": "sdn-vnet::simplez/vnet-simple1",
+    "kind": "sdn-vnet",
+  },
+  {
+    "ariaLabel": "sdn-vnet vnet-vlan1 (vlan-net), status ok, badges: tag=100",
+    "id": "sdn-vnet::vlanz/vnet-vlan1",
+    "kind": "sdn-vnet",
+  },
+  {
+    "ariaLabel": "sdn-vnet vnet-vxlan1 (vxlan-net), status ok",
+    "id": "sdn-vnet::vxlanz/vnet-vxlan1",
+    "kind": "sdn-vnet",
+  },
+  {
+    "ariaLabel": "sdn-zone evpnz, status ok, badges: type=evpn, has configuration drift",
+    "id": "sdn-zone::evpnz",
+    "kind": "sdn-zone",
+  },
+  {
+    "ariaLabel": "sdn-zone qinqz, status ok, badges: type=qinq",
+    "id": "sdn-zone::qinqz",
+    "kind": "sdn-zone",
+  },
+  {
+    "ariaLabel": "sdn-zone simplez, status down, badges: type=simple, has configuration drift",
+    "id": "sdn-zone::simplez",
+    "kind": "sdn-zone",
+  },
+  {
+    "ariaLabel": "sdn-zone vlanz, status degraded, badges: type=vlan, pending=changed",
+    "id": "sdn-zone::vlanz",
+    "kind": "sdn-zone",
+  },
+  {
+    "ariaLabel": "sdn-zone vxlanz, status ok, badges: type=vxlan, has configuration drift",
+    "id": "sdn-zone::vxlanz",
+    "kind": "sdn-zone",
+  },
+]
+`;
+
+exports[`a11y proxy labels: three-node-vlan > matches the committed snapshot (id/kind/ariaLabel per entity) 1`] = `
+[
+  {
+    "ariaLabel": "bond bond0, status ok, badges: mode=802.3ad",
+    "id": "bond:pve1:bond0",
+    "kind": "bond",
+  },
+  {
+    "ariaLabel": "bond bond0, status unknown, badges: mode=802.3ad",
+    "id": "bond:pve2:bond0",
+    "kind": "bond",
+  },
+  {
+    "ariaLabel": "bond bond0, status unknown, badges: mode=802.3ad",
+    "id": "bond:pve3:bond0",
+    "kind": "bond",
+  },
+  {
+    "ariaLabel": "bridge vmbr0, status ok",
+    "id": "bridge:pve1:vmbr0",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "bridge vmbr0, status ok",
+    "id": "bridge:pve2:vmbr0",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "bridge vmbr0, status ok",
+    "id": "bridge:pve3:vmbr0",
+    "kind": "bridge",
+  },
+  {
+    "ariaLabel": "guest-nic app01/net0, status ok, badges: vid=100",
+    "id": "guest-nic:pve1:200/net0",
+    "kind": "guest-nic",
+  },
+  {
+    "ariaLabel": "guest-nic cache01/net0, status ok, badges: vid=100",
+    "id": "guest-nic:pve2:201/net0",
+    "kind": "guest-nic",
+  },
+  {
+    "ariaLabel": "guest app01, status ok, badges: vmid=200",
+    "id": "guest:pve1:200",
+    "kind": "guest",
+  },
+  {
+    "ariaLabel": "guest cache01, status ok, badges: vmid=201",
+    "id": "guest:pve2:201",
+    "kind": "guest",
+  },
+  {
+    "ariaLabel": "lldp-neighbor sw-core-01, status ok, badges: port=Te1/0/1",
+    "id": "lldp-neighbor:pve1:eno1/ac:1f:6b:01:00:01/Te1/0/1",
+    "kind": "lldp-neighbor",
+  },
+  {
+    "ariaLabel": "lldp-neighbor sw-core-02, status ok, badges: port=Te1/0/1",
+    "id": "lldp-neighbor:pve1:eno2/ac:1f:6b:02:00:01/Te1/0/1",
+    "kind": "lldp-neighbor",
+  },
+  {
+    "ariaLabel": "physnic eno1, status ok",
+    "id": "physnic:pve1:eno1",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "physnic eno2, status ok",
+    "id": "physnic:pve1:eno2",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "physnic eno1, status unknown",
+    "id": "physnic:pve2:eno1",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "physnic eno2, status unknown",
+    "id": "physnic:pve2:eno2",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "physnic eno1, status unknown",
+    "id": "physnic:pve3:eno1",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "physnic eno2, status unknown",
+    "id": "physnic:pve3:eno2",
+    "kind": "physnic",
+  },
+  {
+    "ariaLabel": "sdn-subnet 10.100.0.0/24, status ok",
+    "id": "sdn-subnet::10.100.0.0/24",
+    "kind": "sdn-subnet",
+  },
+  {
+    "ariaLabel": "sdn-subnet 10.200.0.0/24, status ok",
+    "id": "sdn-subnet::10.200.0.0/24",
+    "kind": "sdn-subnet",
+  },
+  {
+    "ariaLabel": "sdn-vnet vnet100 (app-tier), status ok, badges: tag=100",
+    "id": "sdn-vnet::vlanz/vnet100",
+    "kind": "sdn-vnet",
+  },
+  {
+    "ariaLabel": "sdn-vnet vnet200 (db-tier), status ok, badges: tag=200",
+    "id": "sdn-vnet::vlanz/vnet200",
+    "kind": "sdn-vnet",
+  },
+  {
+    "ariaLabel": "sdn-zone vlanz, status ok, badges: type=vlan",
+    "id": "sdn-zone::vlanz",
+    "kind": "sdn-zone",
+  },
+  {
+    "ariaLabel": "vlan vmbr0.20, status ok, badges: vid=20",
+    "id": "vlan:pve1:vmbr0.20",
+    "kind": "vlan",
+  },
+  {
+    "ariaLabel": "vlan vmbr0.20, status ok, badges: vid=20",
+    "id": "vlan:pve2:vmbr0.20",
+    "kind": "vlan",
+  },
+  {
+    "ariaLabel": "vlan vmbr0.20, status ok, badges: vid=20",
+    "id": "vlan:pve3:vmbr0.20",
+    "kind": "vlan",
+  },
+]
+`;

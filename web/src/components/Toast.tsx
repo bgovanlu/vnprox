@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import type { ReactNode } from "react";
 import * as RadixToast from "@radix-ui/react-toast";
 import clsx from "clsx";
+import { DensityProvider, useDensity, type Density } from "./density";
+import { useReducedMotion } from "../lib/useReducedMotion";
 
 export type ToastVariant = "default" | "success" | "error";
 
@@ -30,12 +32,27 @@ const variantClasses: Record<ToastVariant, string> = {
   error: "border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-950",
 };
 
+const DENSITY_PADDING: Record<Density, string> = { comfortable: "p-3", compact: "p-2" };
+
+export interface ToastProviderProps {
+  children: ReactNode;
+  /** T-905: compact/comfortable padding (density.ts) for every toast card
+   * this provider renders — "comfortable" is this component's original
+   * `p-3`, so the prop is additive. Defaults to the ambient
+   * `<DensityProvider>` in scope. */
+  density?: Density;
+}
+
 /** App-wide toast host + `useToast()` API. Mount once near the app root
  * (see src/layout/AppShell.tsx); everything else calls `useToast().toast(...)`
  * without knowing Radix Toast exists underneath. */
-export function ToastProvider({ children }: { children: ReactNode }) {
+export function ToastProvider({ children, density }: ToastProviderProps) {
   const [toasts, setToasts] = useState<ToastRecord[]>([]);
   const nextId = useRef(0);
+  const resolvedDensity = useDensity(density);
+  // T-905: reduced motion drops the slide-in/fade-out animation classes —
+  // the toast still appears/dismisses, just without the transition.
+  const reducedMotion = useReducedMotion();
 
   const toast = useCallback((input: ToastInput) => {
     const id = nextId.current++;
@@ -57,40 +74,45 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   return (
     <ToastContext.Provider value={value}>
-      <RadixToast.Provider swipeDirection="right">
-        {children}
-        {toasts.map((t) => (
-          <RadixToast.Root
-            key={t.id}
-            duration={t.durationMs}
-            onOpenChange={(open) => {
-              if (!open) dismiss(t.id);
-            }}
-            className={clsx(
-              "rounded-md border p-3 shadow-lg data-[state=open]:animate-in data-[state=open]:slide-in-from-right",
-              "data-[state=closed]:animate-out data-[state=closed]:fade-out",
-              variantClasses[t.variant],
-            )}
-          >
-            <RadixToast.Title className="text-sm font-medium text-slate-900 dark:text-slate-100">
-              {t.title}
-            </RadixToast.Title>
-            {t.description ? (
-              <RadixToast.Description className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {t.description}
-              </RadixToast.Description>
-            ) : null}
-          </RadixToast.Root>
-        ))}
-        {/* pointer-events-none on the whole toast layer: these toasts are
-            purely informational (no buttons to click) and auto-dismiss, so
-            they must never intercept clicks meant for the UI beneath them.
-            The viewport sits bottom-right, directly over a right-side
-            drawer's Apply/Back action bar — without this a visible toast
-            silently ate those clicks (the "Apply does nothing" bug). Children
-            inherit none, so the cards are click-through too. */}
-        <RadixToast.Viewport className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none" />
-      </RadixToast.Provider>
+      <DensityProvider density={resolvedDensity}>
+        <RadixToast.Provider swipeDirection="right">
+          {children}
+          {toasts.map((t) => (
+            <RadixToast.Root
+              key={t.id}
+              data-density={resolvedDensity}
+              duration={t.durationMs}
+              onOpenChange={(open) => {
+                if (!open) dismiss(t.id);
+              }}
+              className={clsx(
+                "rounded-md border shadow-lg",
+                DENSITY_PADDING[resolvedDensity],
+                !reducedMotion &&
+                  "data-[state=open]:animate-in data-[state=open]:slide-in-from-right data-[state=closed]:animate-out data-[state=closed]:fade-out",
+                variantClasses[t.variant],
+              )}
+            >
+              <RadixToast.Title className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                {t.title}
+              </RadixToast.Title>
+              {t.description ? (
+                <RadixToast.Description className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  {t.description}
+                </RadixToast.Description>
+              ) : null}
+            </RadixToast.Root>
+          ))}
+          {/* pointer-events-none on the whole toast layer: these toasts are
+              purely informational (no buttons to click) and auto-dismiss, so
+              they must never intercept clicks meant for the UI beneath them.
+              The viewport sits bottom-right, directly over a right-side
+              drawer's Apply/Back action bar — without this a visible toast
+              silently ate those clicks (the "Apply does nothing" bug). Children
+              inherit none, so the cards are click-through too. */}
+          <RadixToast.Viewport className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none" />
+        </RadixToast.Provider>
+      </DensityProvider>
     </ToastContext.Provider>
   );
 }

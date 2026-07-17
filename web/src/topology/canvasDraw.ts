@@ -41,6 +41,29 @@ export interface DrawSceneParams {
   /** Screen-space top-left of the node currently being dragged, if any. */
   dragTopLeft?: { id: string; x: number; y: number };
   nodeSize: Size;
+  /** T-905's drift "pulse" alpha multiplier (1 = the plain static look every
+   * other node/edge always gets), applied only to drift-badged nodes/edges
+   * — the canvas's own equivalent of EntityNode.tsx's `animate-pulse` CSS
+   * class, since a `<canvas>` has no CSS animations to defer to. Callers
+   * (TopologyCanvasV2.tsx) compute this via `pulseAlphaForPhase` and drive
+   * it from a low-frequency interval that never runs at all when
+   * `prefers-reduced-motion: reduce` is set — the default `1` here is
+   * exactly that reduced-motion fallback (a plain static drift dash),
+   * so this parameter is optional and existing callers/tests are
+   * unaffected. */
+  pulseAlpha?: number;
+}
+
+// T-905: the drift/mgmt "pulse" — a slow, low-contrast breathing alpha
+// (0.55..1.0, never fully transparent so the entity stays legible) driven by
+// a wall-clock phase in milliseconds. Pure and deterministic (same phase in
+// => same alpha out) so it's directly Vitest-able without a canvas context,
+// unlike the rest of this module.
+const PULSE_PERIOD_MS = 1400;
+
+export function pulseAlphaForPhase(phaseMs: number, periodMs: number = PULSE_PERIOD_MS): number {
+  const t = ((phaseMs % periodMs) + periodMs) % periodMs / periodMs;
+  return 0.55 + 0.45 * Math.abs(Math.sin(t * Math.PI));
 }
 
 const STATUS_STROKE: Record<EntityStatus, string> = {
@@ -113,7 +136,7 @@ function nodeCenterScreen(
 }
 
 export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams): void {
-  const { nodes, edges, viewport: vp, view, theme, dragTopLeft, nodeSize } = params;
+  const { nodes, edges, viewport: vp, view, theme, dragTopLeft, nodeSize, pulseAlpha = 1 } = params;
   const size = nodeSize.width > 0 ? nodeSize : DEFAULT_NODE_SIZE;
 
   ctx.clearRect(0, 0, view.width, view.height);
@@ -150,8 +173,12 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
       stroke = STATUS_STROKE[status];
       dashed = status === "unknown" || (data?.badges.includes("drift") ?? false);
     }
+    const driftingEdge = data?.badges.includes("drift") ?? false;
     ctx.save();
-    ctx.globalAlpha = dimmed ? 0.15 : 1;
+    // T-905: the drift pulse (reduced-motion falls back to pulseAlpha's
+    // default of 1, i.e. the plain static dashed look) — never applied to
+    // an already-dimmed edge, so the two alpha treatments don't compound.
+    ctx.globalAlpha = dimmed ? 0.15 : driftingEdge ? pulseAlpha : 1;
     ctx.strokeStyle = stroke;
     ctx.lineWidth = width;
     ctx.setLineDash(dashed ? [4, 3] : []);
@@ -176,8 +203,12 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
 
     const d = n.data;
     const dimmed = d.dimmed && !d.highlighted;
+    const driftingNode = d.badges.includes("drift");
     ctx.save();
-    ctx.globalAlpha = dimmed ? 0.25 : d.stale ? 0.6 : 1;
+    // T-905: same drift-pulse treatment as the edge loop above — dim/stale
+    // both win over it (never compounded), and reduced motion collapses
+    // pulseAlpha to its default 1 (a plain static look).
+    ctx.globalAlpha = dimmed ? 0.25 : d.stale ? 0.6 : driftingNode ? pulseAlpha : 1;
 
     const isPill = d.isGuestGroup;
     const radius = isPill ? h / 2 : 6;

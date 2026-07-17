@@ -32,4 +32,21 @@ describe("Button", () => {
     await user.click(screen.getByRole("button", { name: "Apply" }));
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  describe("T-905 density", () => {
+    it("defaults to comfortable (unchanged from this component's original spacing)", () => {
+      render(<Button>Apply</Button>);
+      const button = screen.getByRole("button", { name: "Apply" });
+      expect(button).toHaveAttribute("data-density", "comfortable");
+      expect(button.className).toContain("h-9");
+    });
+
+    it("compact tightens height/padding distinctly from comfortable, at the same size", () => {
+      render(<Button density="compact">Apply</Button>);
+      const button = screen.getByRole("button", { name: "Apply" });
+      expect(button).toHaveAttribute("data-density", "compact");
+      expect(button.className).toContain("h-8");
+      expect(button.className).not.toContain("h-9");
+    });
+  });
 });

@@ -288,3 +288,66 @@ describe("v2 saved-layout round-trip: positions render identically (AC4)", () =>
     expect(moved?.graph).toMatchObject({ x: 777, y: 333 });
   });
 });
+
+describe("T-905: drift pulse respects prefers-reduced-motion", () => {
+  function stubPrefersReducedMotion(matches: boolean) {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({
+        matches,
+        media: "(prefers-reduced-motion: reduce)",
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    );
+  }
+
+  function elementsWithOneDriftNode(): FlowElements {
+    const first = full.nodes[0];
+    if (!first) throw new Error("fixture has no nodes");
+    const driftNode: TopologyNode = { ...first, badges: [...first.badges, "drift"] };
+    return toFlowElements({
+      nodes: [driftNode, ...full.nodes.slice(1)],
+      edges: full.edges,
+      expandedGroups: new Set(),
+      activeLayers: ALL_LAYERS,
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+  }
+
+  it("never starts the pulse interval when prefers-reduced-motion: reduce is set, even with a drift entity present", () => {
+    stubPrefersReducedMotion(true);
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    render(<TopologyCanvasV2 elements={elementsWithOneDriftNode()} theme="light" {...baseProps()} />);
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+    setIntervalSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("starts the pulse interval when motion is allowed and a drift entity is present", () => {
+    stubPrefersReducedMotion(false);
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    render(<TopologyCanvasV2 elements={elementsWithOneDriftNode()} theme="light" {...baseProps()} />);
+    expect(setIntervalSpy).toHaveBeenCalled();
+    setIntervalSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("never starts the pulse interval when no visible entity carries the drift badge, even with motion allowed", () => {
+    stubPrefersReducedMotion(false);
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    const elements = toFlowElements({
+      nodes: full.nodes,
+      edges: full.edges,
+      expandedGroups: new Set(),
+      activeLayers: ALL_LAYERS,
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+    render(<TopologyCanvasV2 elements={elements} theme="light" {...baseProps()} />);
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+    setIntervalSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+});
