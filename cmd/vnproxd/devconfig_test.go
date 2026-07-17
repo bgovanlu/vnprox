@@ -17,11 +17,11 @@ import (
 // rewriteDevConfig loads testdata/dev.toml and rewrites the values that are
 // host-specific for a test run — the listen port (to an ephemeral one), the
 // repo-root-relative TLS cert/key paths (to absolute), the [storage] paths,
-// and T-301's [peer] secret_path (into dir) — leaving everything else (PVE
-// mock settings, collect intervals, safety flags) exactly as the checked-in
-// file says. It fails the test if any expected key is missing, so a
-// reshaped dev.toml breaks this test loudly instead of silently testing
-// something else.
+// T-301's [peer] secret_path, and T-1001's [metrics] key_file (into dir) —
+// leaving everything else (PVE mock settings, collect intervals, safety
+// flags) exactly as the checked-in file says. It fails the test if any
+// expected key is missing, so a reshaped dev.toml breaks this test loudly
+// instead of silently testing something else.
 func rewriteDevConfig(t testing.TB, repoRoot, dir string, port int) string {
 	t.Helper()
 
@@ -42,6 +42,7 @@ func rewriteDevConfig(t testing.TB, repoRoot, dir string, port int) string {
 		"protected_path":     filepath.Join(dir, "protected.json"),
 		"dev_interfaces_dir": filepath.Join(dir, "dev-host"),
 		"secret_path":        filepath.Join(dir, "cluster.secret"),
+		"key_file":           filepath.Join(dir, "metrics.key"),
 	}
 	replaced := make(map[string]bool, len(replacements))
 

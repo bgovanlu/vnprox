@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -297,4 +298,41 @@ func (s *Sampler) History(ctx context.Context, ref string, fromTs, toTs int64) (
 		points = append(points, HistoryPoint{At: rows[i].At, Rates: rates})
 	}
 	return points, nil
+}
+
+// CounterSnapshot is one entity's most recently observed raw counters —
+// T-1001's Prometheus exporter needs the cumulative counters themselves
+// (Prometheus does its own rate()/increase() math over successive scrapes),
+// not the pre-computed Rates LiveMetric/Live carry.
+type CounterSnapshot struct {
+	Ref      inventory.Ref
+	Counters Counters
+	At       int64
+}
+
+// AllCounters returns the most recently observed raw counters for every ref
+// the sampler has ingested at least once. Unlike Live, this has no
+// "sampled at least twice" requirement — a scrape wants "what does this
+// node see right now" even for a ref observed only once, and Prometheus's
+// own rate() naturally produces no data point until it has two scrapes to
+// diff, so there is no equivalent need to hide a single-sample ref here.
+// Results are sorted by ref string for a deterministic scrape body (stable
+// diffs/golden tests, and friendlier to `diff` between two scrapes).
+func (s *Sampler) AllCounters() []CounterSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make([]CounterSnapshot, 0, len(s.live))
+	for refStr, e := range s.live {
+		ref, err := inventory.ParseRef(refStr)
+		if err != nil {
+			// Defensive only: refStr always came from Ref.String() in
+			// ingestOne, so this should be unreachable in practice.
+			s.log.Error("metrics: parsing live ref for counter export", "ref", refStr, "error", err)
+			continue
+		}
+		out = append(out, CounterSnapshot{Ref: ref, Counters: e.counters, At: e.at.Unix()})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Ref.String() < out[j].Ref.String() })
+	return out
 }

@@ -35,3 +35,6 @@ secret_path = "var/dev-mgmt-cluster.secret"
 pve_interval = "10s"
 host_interval = "5s"
 lldp_interval = "30s"
+
+[metrics]
+key_file = "var/dev-mgmt-metrics.key"

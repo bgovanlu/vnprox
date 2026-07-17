@@ -4,7 +4,7 @@ Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contra
 
 ## Conventions
 
-- Auth: session cookie `vnprox_session` (HttpOnly, Secure, SameSite=Strict) + `X-VNPROX-CSRF` header on mutating requests.
+- Auth: session cookie `vnprox_session` (HttpOnly, Secure, SameSite=Strict) + `X-VNPROX-CSRF` header on mutating requests. **Exception (T-1001):** `GET /metrics` (the Metrics-exporter subsection below) uses a separate bearer-token scheme instead — see that subsection and docs/security.md's Authentication section for the full auth story and why a Prometheus scraper can't carry a session cookie or CSRF header.
 - Errors: `{"error": {"code": "string", "message": "human readable", "details": {}}}` with proper HTTP status. Codes are stable identifiers (`validation_failed`, `pve_denied`, `changeset_locked`, `peer_unreachable`, `peer_incompatible`, ...).
 - IDs: entities use `Ref` triplets `kind:node:id` in URLs, URL-encoded (cluster-scoped: empty node, `sdn-vnet::zone1/vnet1`).
 - Pagination: `?limit=&cursor=` on list endpoints that can grow (audit, snapshots).
@@ -17,7 +17,7 @@ Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contra
 | POST | `/auth/login` | `{username, password, realm, otp?}` → sets cookie, returns `{user, caps}` |
 | POST | `/auth/logout` | destroy session |
 | GET | `/auth/me` | current user + capability flags `{caps: {netRead, netWrite, sdnRead, sdnWrite, fwRead, fwWrite, guestNet, audit}}` per node |
-| GET | `/config` | (added by the Settings page; documented per docs/development.md's definition-of-done #4) the daemon's **non-secret** operational configuration for the Settings page's Instance section: `{version, listen, pveApiUrl, protectedPath, pveInterval, hostInterval, lldpInterval, confirmTimeoutDefaultSec, snapshotKeepDays, snapshotPinDays, readOnly, allowDangerousOps}` — a read-only snapshot of `/etc/vnprox/vnprox.toml` values captured at daemon start. Session-gated (`netRead`). Deliberately excludes every secret/secret-bearing value (PVE token, session key, peer secret, TLS private key, dev ticket credentials) — see `internal/api/config.go`. Not runtime-editable (vnprox.toml is a per-node, restart-time file). |
+| GET | `/config` | (added by the Settings page; documented per docs/development.md's definition-of-done #4) the daemon's **non-secret** operational configuration for the Settings page's Instance section: `{version, listen, pveApiUrl, protectedPath, pveInterval, hostInterval, lldpInterval, confirmTimeoutDefaultSec, snapshotKeepDays, snapshotPinDays, readOnly, allowDangerousOps, metricsEnabled}` — a read-only snapshot of `/etc/vnprox/vnprox.toml` values captured at daemon start. Session-gated (`netRead`). Deliberately excludes every secret/secret-bearing value (PVE token, session key, peer secret, TLS private key, dev ticket credentials, metrics scrape token) — see `internal/api/config.go`. Not runtime-editable (vnprox.toml is a per-node, restart-time file). `metricsEnabled` is T-1001's addition: whether `GET /metrics` is mounted on this node (`[metrics] enabled`, default true). |
 
 ## Inventory & topology
 
@@ -310,6 +310,40 @@ Added by T-601 (documented here retroactively per docs/development.md's definiti
 **`GET /metrics/live`** response: `{items: [LiveMetric]}`. `refs` is a comma-separated list of `Ref` strings; a blank/omitted `refs` returns `{items: []}` without erroring. `LiveMetric`: `{ref, at, rates: Rates, speedMbps?, rxUtilPct?, txUtilPct?, utilizationPct?, slaves?: [SlaveRate]}` — `at` is unix seconds; `speedMbps`/`*UtilPct` are omitted when the entity's link speed isn't known (e.g. a bond with no active slave yet); `slaves` (per-slave balance, docs/features/monitoring.md §1) is present only for a Bond ref: `SlaveRate` is `{ref, active, rates: Rates}`. A ref the sampler hasn't observed at least twice yet (no rate computable) is simply absent from `items` — not an error.
 
 **`GET /metrics/history`** response: `{ref, items: [HistoryPoint]}`. `HistoryPoint`: `{at, rates: Rates}` — one entry per stored 30s-downsampled sample after the first (a rate needs a predecessor to diff against), `at` the later sample's unix-second timestamp. `fromTs`/`toTs` default to "no bound on that side" when omitted/unparsable.
+
+### Metrics exporter (T-1001)
+
+`GET /metrics` — a Prometheus/OpenMetrics-compatible **text exposition** endpoint (`Content-Type: text/plain; version=0.0.4; charset=utf-8`), promoted from docs/features/monitoring.md §4's P2 note. This is an export surface only: it renders data `internal/metrics.Sampler` and `internal/findings.Engine` already compute, with no new collection logic. Unlike `GET /metrics/live`/`GET /metrics/history` above, this route:
+
+- is **not** session/CSRF-gated — see "Auth" below, the one documented exception to this doc's Conventions section;
+- exports the sampler's **raw, cumulative per-ref counters**, not pre-computed rates (Prometheus does its own `rate()`/`increase()` across scrapes);
+- is node-local only (no peer fan-out) — a cluster-wide view is a Prometheus federation/multi-target-scrape concern, not something vnproxd computes itself.
+
+**Auth.** Two gates, both required, checked in this order (a request failing the first never reaches the second):
+
+1. **Source-CIDR allowlist** (optional): `[metrics] allow_from` in `vnprox.toml`, a list of CIDRs. Unset (default) allows any source. A source outside every listed CIDR gets `403 forbidden` — checked *before* the token, so a misconfigured-network case reads as "wrong network," not "bad token."
+2. **Scrape token**: `Authorization: Bearer <token>` compared against the daemon's own token file with `crypto/subtle.ConstantTimeCompare`. A missing or invalid token is `401 not_authenticated` with the standard `{"error":...}` envelope — the same envelope every other route in this doc uses, so a scraper's failure still parses like every other API error.
+
+See docs/security.md's Authentication section for where the token comes from and its on-disk format.
+
+**Metric table:**
+
+| Name | Type | Labels | Description |
+|---|---|---|---|
+| `vnprox_iface_rx_bytes_total` | counter | `ref`, `node`, `kind` | Cumulative bytes received, per interface |
+| `vnprox_iface_tx_bytes_total` | counter | `ref`, `node`, `kind` | Cumulative bytes transmitted, per interface |
+| `vnprox_iface_rx_packets_total` | counter | `ref`, `node`, `kind` | Cumulative packets received, per interface |
+| `vnprox_iface_tx_packets_total` | counter | `ref`, `node`, `kind` | Cumulative packets transmitted, per interface |
+| `vnprox_iface_rx_errors_total` | counter | `ref`, `node`, `kind` | Cumulative receive errors, per interface |
+| `vnprox_iface_tx_errors_total` | counter | `ref`, `node`, `kind` | Cumulative transmit errors, per interface |
+| `vnprox_iface_rx_dropped_total` | counter | `ref`, `node`, `kind` | Cumulative receive drops, per interface |
+| `vnprox_iface_tx_dropped_total` | counter | `ref`, `node`, `kind` | Cumulative transmit drops, per interface |
+| `vnprox_findings_open` | gauge | `severity` (`error`\|`warning`\|`info`) | Current open finding count from the unified `GET /findings` stream, by severity |
+| `vnprox_drift_open` | gauge | *(none)* | Current open `GET /drift` finding count |
+| `vnprox_changesets` | gauge | `status` (`draft`\|`applying`\|`awaiting_confirm`\|`committed`\|`rolled_back`\|`failed`) | Current changeset count by status |
+| `vnprox_build_info` | gauge | `version` | Always `1`; `version` carries the running `vnproxd` build version |
+
+The eight `vnprox_iface_*` families each carry one series per interface the sampler has observed at least once, labeled `ref` (the full `kind:node:id` `Ref` string, e.g. `physnic:pve1:eno1`), `node`, and `kind` (`physnic`\|`bond`\|`bridge`\|`vlan`). `vnprox_findings_open` and `vnprox_changesets` always emit every documented label value (even at zero), so a scraper's label set is stable across scrapes; `vnprox_changesets` deliberately does not label the transient `validated` state or `discarded` changesets (not in this table's closed status vocabulary).
 
 ## Blueprints
 

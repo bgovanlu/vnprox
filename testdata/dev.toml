@@ -74,3 +74,11 @@ lldp_interval = "30s"
 # file per node) — production configs never set this.
 [firewalllog]
 dev_fixture_dir = "testdata/firewall-logs"
+
+# T-1001: the Prometheus scrape token. Production default is
+# /etc/vnprox/keys/metrics.key (root-only, alongside the session key); this
+# dev-only override keeps `make dev`/the runDaemon integration tests working
+# without root or a pre-existing /etc/vnprox, mirroring [storage]'s own
+# var/ precedent above.
+[metrics]
+key_file = "var/dev-metrics.key"

@@ -29,6 +29,13 @@ type InstanceInfo struct {
 	SnapshotPinDays          int    `json:"snapshotPinDays"`
 	ReadOnly                 bool   `json:"readOnly"`
 	AllowDangerousOps        bool   `json:"allowDangerousOps"`
+	// MetricsEnabled is T-1001's addition: whether `GET /metrics` (the
+	// Prometheus exporter) is mounted on this node — [metrics] enabled from
+	// vnprox.toml, surfaced read-only like every other field here. Not a
+	// secret itself (unlike the scrape token it gates), just a mode flag,
+	// matching this struct's existing "safe to show an already-
+	// authenticated operator" bar.
+	MetricsEnabled bool `json:"metricsEnabled"`
 }
 
 // configHandler serves GET /api/v1/config -> InstanceInfo. It is a pure

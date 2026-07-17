@@ -16,9 +16,9 @@ Scope discipline: vnprox shows *network-shaped, short-horizon* operational data 
 
 Per-bridge approximation from guest NIC counters (PVE exposes per-guest netin/netout): rank guests by throughput on a selected bridge, 5m/1h windows. No packet capture, no flow sampling in v1.
 
-## 4. Prometheus exporter (P2)
+## 4. Prometheus exporter
 
-`GET /metrics` (OpenMetrics) gated to `Sys.Audit`, exporting per-entity counters + vnprox internals (changesets applied, rollbacks, drift count).
+**Shipped (T-1001)**, not just a "P2" aspiration as previously labeled here: `GET /metrics` (Prometheus/OpenMetrics-compatible text exposition, docs/api.md's Metrics-exporter subsection) exports the sampler's per-ref counters, `GET /findings`'s open count by severity, `GET /drift`'s open count, and changeset counts by status. **Correction:** this section previously said the route would be "gated to `Sys.Audit`" — a Prometheus scraper cannot carry a PVE-derived session at all, so it is instead gated on its own bearer scrape token (`crypto/subtle.ConstantTimeCompare`, generated alongside the session key) plus an optional source-CIDR allowlist; see docs/security.md's Authentication section for the full story. Node-local only (no peer fan-out) — a cluster-wide view is a Prometheus federation/multi-target-scrape concern, not something vnproxd computes itself.
 
 ## 5. Health checks
 

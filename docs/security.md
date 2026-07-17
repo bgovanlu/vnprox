@@ -10,6 +10,17 @@ vnprox runs as root on hypervisor hosts and can reconfigure the network of an en
 - CSRF: double-submit — mutating requests require `X-VNPROX-CSRF` matching the session record.
 - Login rate limiting: per-IP and per-username token bucket; lockout events audited.
 
+**Metrics scrape token (T-1001, addition).** `GET /metrics` (docs/api.md's Metrics-exporter subsection) is the **one documented exception** to this section's session-cookie model: a Prometheus scraper cannot carry a browser session cookie or a CSRF header, so it authenticates with its own bearer token instead of a PVE-derived session.
+
+- A random 256-bit token, hex-encoded, generated on first daemon start (the same "generate if absent" convention the session key above uses) and stored at `/etc/vnprox/keys/metrics.key`, `root:root 0600`.
+- Checked via `Authorization: Bearer <token>`, compared with `crypto/subtle.ConstantTimeCompare` — never a plain `==` (which would leak timing information about how much of the token matched).
+- No PVE ticket is involved anywhere in this path: the token identifies "an authorized scraper," not a PVE user, and this route performs no PVE API calls of its own.
+- A missing or invalid token is `401 not_authenticated`, using the same `{"error":...}` envelope every other route in this doc uses.
+- Additive, optional **source-CIDR allowlist**: `[metrics] allow_from` in `vnprox.toml` (a list of CIDRs, nginx-`allow`-directive-shaped), checked *before* the token — a request from outside every listed CIDR is `403 forbidden` regardless of whether it carries a valid token. Unset (the default) allows any source, matching this route's own scrape-token gate being the sole required control in that case.
+- `[metrics] enabled = false` disables the route entirely (not mounted; `cmd/vnproxd` never even loads/generates the token file) — surfaced read-only via `GET /config`'s `metricsEnabled` field.
+
+This does not weaken the model above: every other route in this document still requires the full session-cookie/CSRF/PVE-ACL chain. `GET /metrics` is read-only, exports no secret, and its own separate token is the *sole* new credential this addition introduces.
+
 ## Authorization
 
 Two enforcement layers, both required:
@@ -24,6 +35,7 @@ There is **one privileged internal identity**: a PVE API token `vnprox@pve!daemo
 - TLS everywhere; no plaintext listener. Reuses the node's PVE certificate by default (see architecture §9), so admins keep one cert story.
 - HSTS, `X-Content-Type-Options`, `X-Frame-Options: DENY`, and a strict CSP (self-only; no inline script; WS to self).
 - Peer API: TLS + HMAC-SHA256 over (method, path, body hash, timestamp) with the cluster secret; ±30s replay window; constant-time compare.
+- **Metrics exporter transport (T-1001, addition):** `GET /metrics` is served over the same TLS listener as every other route (no separate plaintext metrics port) — a Prometheus scrape target must be configured `scheme: https` and to trust the node's certificate (or `tls_config.insecure_skip_verify` for a lab/dev target), same as any other HTTPS scrape. The bearer token above travels only over this TLS connection, never in a query string or a redirect.
 
 ## Host footprint
 
@@ -52,3 +64,4 @@ Every mutation attempt (including denied and rolled-back) is written to the audi
 | Malicious/buggy change bricks cluster | validators + safety interlocks + commit-confirm rollback + time machine |
 | Supply chain | pinned deps, `make check` includes `govulncheck` + `npm audit` gates in CI |
 | XSS → config change | strict CSP, no inline script, CSRF header, framework-escaped rendering only |
+| Metrics scrape token theft (T-1001) | token is separate from the session cookie (theft of one doesn't grant the other), constant-time compare, optional source-CIDR allowlist, route is read-only and exports no secret |

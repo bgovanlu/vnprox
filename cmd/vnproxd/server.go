@@ -134,6 +134,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Logger: logger,
 	})
 
+	// T-1001: the Prometheus scrape token GET /metrics is gated on
+	// (docs/security.md's Authentication section) — loaded now, ahead of
+	// findingsEngine/driftSvc/changeSvc below, purely so it can sit next to
+	// metricsSampler's own construction; it isn't consumed until
+	// api.NewRouter is called far below. A nil/empty token (cfg.Metrics.Enabled
+	// == false) means api.Options.MetricsExporter simply never mounts
+	// GET /metrics.
+	metricsToken, err := setupMetricsExporterToken(cfg, logger)
+	if err != nil {
+		return fmt.Errorf("initializing metrics exporter: %w", err)
+	}
+
 	// T-602: the unified findings engine's IngestServices is wired in as
 	// collect.Config.OnServices below (the same "piggyback on the host
 	// loop's existing per-tick hook" pattern OnStats already established
@@ -543,17 +555,27 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 			SnapshotPinDays:          cfg.Retention.SnapshotPinDays,
 			ReadOnly:                 cfg.Server.ReadOnly,
 			AllowDangerousOps:        cfg.Safety.AllowDangerousOps,
+			MetricsEnabled:           cfg.Metrics.Enabled,
 		},
-		DistFS:        distFS,
-		Logger:        logger,
-		Auth:          authServiceAdapter{authSvc},
-		Collectors:    collectorHealthAdapter{collector},
-		Topology:      topoSvc,
-		LLDP:          topoSvc,
-		Drift:         driftSvc,
-		Findings:      findingsEngine,
-		FDB:           topoSvc,
-		Metrics:       metricsSampler,
+		DistFS:     distFS,
+		Logger:     logger,
+		Auth:       authServiceAdapter{authSvc},
+		Collectors: collectorHealthAdapter{collector},
+		Topology:   topoSvc,
+		LLDP:       topoSvc,
+		Drift:      driftSvc,
+		Findings:   findingsEngine,
+		FDB:        topoSvc,
+		Metrics:    metricsSampler,
+		// T-1001: metricsSampler also satisfies MetricsCounterService
+		// (AllCounters) — same underlying object as Metrics above, wired
+		// through the dedicated exporter seam GET /metrics uses.
+		MetricsCounters: metricsSampler,
+		MetricsExporter: api.MetricsExporterConfig{
+			Token:        metricsToken,
+			AllowFrom:    cfg.Metrics.AllowFrom,
+			BuildVersion: version,
+		},
 		Layouts:       store.NewLayoutRepo(db),
 		Annotations:   store.NewAnnotationRepo(db),
 		Changesets:    changeSvc,
