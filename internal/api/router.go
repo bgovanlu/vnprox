@@ -96,8 +96,21 @@ type Options struct {
 	// Metrics is T-601's *metrics.Sampler seam for GET /metrics/live and
 	// GET /metrics/history; nil (no daemon-side sampler wired, e.g. tests)
 	// simply omits both routes.
-	Metrics     MetricsService
-	PVEGateways PVEGatewayProvider
+	Metrics MetricsService
+	// MetricsCounters is T-1001's exporter seam over the same underlying
+	// *metrics.Sampler as Metrics above (the concrete type satisfies both
+	// interfaces) — kept as its own Options field rather than a type
+	// assertion on Metrics so a test can wire a MetricsCounterService
+	// double without also having to implement MetricsService's Live/
+	// History methods. Nil (together with a zero MetricsExporter.Token)
+	// skips mounting GET /metrics entirely.
+	MetricsCounters MetricsCounterService
+	// MetricsExporter carries GET /metrics' own auth config (scrape token +
+	// optional CIDR allowlist, docs/security.md's Authentication section) —
+	// deliberately not routed through AuthService, since this route is the
+	// one documented exception to the session-cookie/CSRF convention.
+	MetricsExporter MetricsExporterConfig
+	PVEGateways     PVEGatewayProvider
 	// Protected backs GET/PUT /protected-interfaces + /suggest (T-203) and
 	// GET /protected-interfaces/status (T-702). Also passed into
 	// mountTopologyRoutes as the mgmt/corosync/mgmt-path badge-painting
@@ -193,6 +206,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
+		mountMetricsExporterRoutes(r, opts.MetricsCounters, opts.Findings, opts.Drift, opts.Changesets, opts.MetricsExporter)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountAnnotationsRoutes(r, opts.Annotations, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected)

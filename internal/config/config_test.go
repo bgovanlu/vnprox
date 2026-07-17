@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -413,4 +414,96 @@ protected_path = "var/dev-protected.json"
 			t.Errorf("ProtectedPath = %q, want the overridden dev path", cfg.Safety.ProtectedPath)
 		}
 	})
+}
+
+// TestLoad_MetricsDefaults covers T-1001's [metrics] section left entirely
+// unset: Enabled defaults true (docs/security.md's exporter is opt-out, not
+// opt-in, unlike T-1002's flow listeners), KeyFile defaults to
+// DefaultMetricsKeyFile, AllowFrom defaults to nil ("allow any source").
+func TestLoad_MetricsDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "metrics-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if !cfg.Metrics.Enabled {
+		t.Error("Metrics.Enabled = false, want true (default) when [metrics] is omitted")
+	}
+	if cfg.Metrics.KeyFile != DefaultMetricsKeyFile {
+		t.Errorf("Metrics.KeyFile = %q, want default %q", cfg.Metrics.KeyFile, DefaultMetricsKeyFile)
+	}
+	if len(cfg.Metrics.AllowFrom) != 0 {
+		t.Errorf("Metrics.AllowFrom = %v, want empty (default: allow any source)", cfg.Metrics.AllowFrom)
+	}
+}
+
+// TestLoad_MetricsOverride covers explicit [metrics] values, including
+// disabling the exporter and a multi-entry allow_from CIDR list.
+func TestLoad_MetricsOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[metrics]
+enabled = false
+key_file = "/custom/metrics.key"
+allow_from = ["10.0.0.0/8", "192.168.1.5/32"]
+`
+	cfg, err := Load(writeTemp(t, "metrics-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Metrics.Enabled {
+		t.Error("Metrics.Enabled = true, want false (explicit override)")
+	}
+	if cfg.Metrics.KeyFile != "/custom/metrics.key" {
+		t.Errorf("Metrics.KeyFile = %q, want /custom/metrics.key", cfg.Metrics.KeyFile)
+	}
+	if len(cfg.Metrics.AllowFrom) != 2 {
+		t.Fatalf("Metrics.AllowFrom = %v, want 2 entries", cfg.Metrics.AllowFrom)
+	}
+	if !cfg.Metrics.AllowFrom[0].Contains(mustParseIP(t, "10.1.2.3")) {
+		t.Errorf("Metrics.AllowFrom[0] = %v, want it to contain 10.1.2.3", cfg.Metrics.AllowFrom[0])
+	}
+	if !cfg.Metrics.AllowFrom[1].Contains(mustParseIP(t, "192.168.1.5")) {
+		t.Errorf("Metrics.AllowFrom[1] = %v, want it to contain 192.168.1.5", cfg.Metrics.AllowFrom[1])
+	}
+	if cfg.Metrics.AllowFrom[1].Contains(mustParseIP(t, "192.168.1.6")) {
+		t.Errorf("Metrics.AllowFrom[1] = %v, want it to exclude 192.168.1.6 (/32)", cfg.Metrics.AllowFrom[1])
+	}
+}
+
+// TestLoad_MetricsInvalidCIDRFailsFast covers Load failing fast on a
+// malformed allow_from entry rather than starting the daemon with a
+// silently-ignored (or worse, silently-permissive) allowlist.
+func TestLoad_MetricsInvalidCIDRFailsFast(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[metrics]
+allow_from = ["not-a-cidr"]
+`
+	_, err := Load(writeTemp(t, "metrics-bad-cidr.toml", toml), discardLogger())
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("Load error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func mustParseIP(t *testing.T, s string) net.IP {
+	t.Helper()
+	ip := net.ParseIP(s)
+	if ip == nil {
+		t.Fatalf("net.ParseIP(%q) returned nil", s)
+	}
+	return ip
 }

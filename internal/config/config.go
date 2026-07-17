@@ -77,6 +77,14 @@ const (
 	// duplicate-and-pin-equal precedent DefaultProtectedPath's doc comment
 	// already establishes for internal/change).
 	DefaultFirewallLogPath = "/var/log/pve-firewall.log"
+
+	// DefaultMetricsKeyFile is where T-1001's Prometheus scrape token lives
+	// (docs/security.md's Authentication section: "generated at install
+	// alongside the session key"; docs/api.md's Metrics-exporter
+	// subsection) — same directory, same root:root 0600 convention as
+	// DefaultSessionKeyFile above, generated on first daemon start if
+	// absent (cmd/vnproxd/server.go).
+	DefaultMetricsKeyFile = "/etc/vnprox/keys/metrics.key"
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
@@ -85,6 +93,7 @@ type Config struct {
 	Storage     StorageConfig
 	FirewallLog FirewallLogConfig
 	Peer        PeerConfig
+	Metrics     MetricsConfig
 	Safety      SafetyConfig
 	Server      ServerConfig
 	Collect     CollectConfig
@@ -200,6 +209,19 @@ type CollectConfig struct {
 	LLDPInterval time.Duration
 }
 
+// MetricsConfig is the [metrics] section (T-1001, docs/api.md's
+// Metrics-exporter subsection): whether `GET /metrics` is mounted at all,
+// where its scrape-token file lives, and the optional CIDR source
+// allowlist checked before the token (docs/security.md's Authentication
+// section: "additive optional CIDR allowlist ... checked before the
+// token"). Added by T-1001 — no [metrics] section existed before it needed
+// somewhere to configure the exporter.
+type MetricsConfig struct {
+	KeyFile   string
+	AllowFrom []*net.IPNet
+	Enabled   bool
+}
+
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
@@ -208,6 +230,7 @@ type rawConfig struct {
 	Storage     rawStorage     `toml:"storage"`
 	FirewallLog rawFirewallLog `toml:"firewalllog"`
 	Peer        rawPeer        `toml:"peer"`
+	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
 	Server      rawServer      `toml:"server"`
 	Retention   rawRetention   `toml:"retention"`
@@ -260,6 +283,17 @@ type rawCollect struct {
 	LLDPInterval string `toml:"lldp_interval"`
 }
 
+// rawMetrics mirrors [metrics]. Enabled is a *bool (not a plain bool) so
+// Load can distinguish "not set in the file" (default true) from an
+// explicit "enabled = false" — a plain bool can't make that distinction,
+// since TOML decoding leaves an absent key at bool's zero value (false),
+// which would otherwise be indistinguishable from an explicit false.
+type rawMetrics struct {
+	Enabled   *bool    `toml:"enabled"`
+	KeyFile   string   `toml:"key_file"`
+	AllowFrom []string `toml:"allow_from"`
+}
+
 // Load reads, parses, defaults, and validates the config file at path.
 // Invalid values (bad listen address, missing explicitly-configured TLS
 // files, malformed durations, ...) fail fast with a wrapped, descriptive
@@ -287,6 +321,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 	}
 
 	collect, err := resolveCollectConfig(raw.Collect)
+	if err != nil {
+		return nil, err
+	}
+	metricsCfg, err := resolveMetricsConfig(raw.Metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -327,6 +365,7 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			DevFixtureDir: raw.FirewallLog.DevFixtureDir,
 		},
 		Collect: collect,
+		Metrics: metricsCfg,
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -483,6 +522,47 @@ func resolveCollectConfig(raw rawCollect) (CollectConfig, error) {
 		HostInterval: hostInterval,
 		LLDPInterval: lldpInterval,
 	}, nil
+}
+
+// resolveMetricsConfig defaults/parses [metrics]: Enabled defaults to true
+// (see rawMetrics.Enabled's doc comment for why it's a *bool), KeyFile
+// defaults to DefaultMetricsKeyFile, and every allow_from entry must be a
+// syntactically valid CIDR — an invalid one fails Load fast, the same
+// "no partial daemon startup on a bad config" treatment every other
+// section's parsing gets.
+func resolveMetricsConfig(raw rawMetrics) (MetricsConfig, error) {
+	enabled := true
+	if raw.Enabled != nil {
+		enabled = *raw.Enabled
+	}
+	allowFrom, err := parseCIDRList(raw.AllowFrom)
+	if err != nil {
+		return MetricsConfig{}, err
+	}
+	return MetricsConfig{
+		Enabled:   enabled,
+		KeyFile:   firstNonEmpty(raw.KeyFile, DefaultMetricsKeyFile),
+		AllowFrom: allowFrom,
+	}, nil
+}
+
+// parseCIDRList parses [metrics] allow_from's string entries into *net.IPNet
+// values. An empty/nil input returns a nil slice (docs/security.md: "unset
+// allow_from (default) allows any source"), which mountMetricsExporterRoutes'
+// allowlist check treats identically to "no restriction".
+func parseCIDRList(raw []string) ([]*net.IPNet, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	out := make([]*net.IPNet, 0, len(raw))
+	for _, s := range raw {
+		_, ipnet, err := net.ParseCIDR(strings.TrimSpace(s))
+		if err != nil {
+			return nil, fmt.Errorf("%w: metrics.allow_from entry %q: %v", ErrInvalidConfig, s, err)
+		}
+		out = append(out, ipnet)
+	}
+	return out, nil
 }
 
 func parseDurationOrDefault(raw string, def time.Duration, field string) (time.Duration, error) {

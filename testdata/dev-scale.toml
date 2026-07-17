@@ -42,3 +42,6 @@ secret_path = "var/dev-scale-cluster.secret"
 pve_interval = "10s"
 host_interval = "5s"
 lldp_interval = "30s"
+
+[metrics]
+key_file = "var/dev-scale-metrics.key"

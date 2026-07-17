@@ -73,6 +73,11 @@ lldp_interval = "30s"
 [retention]
 snapshot_keep_days = 90    # committed-changeset snapshots are pinned a minimum of snapshot_pin_days regardless
 snapshot_pin_days = 7
+
+[metrics]
+enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); token generated on first start
+# key_file = "/etc/vnprox/keys/metrics.key"   # default
+# allow_from = ["10.0.0.0/8"]                 # optional source-CIDR allowlist; default: allow any source
 ```
 
 ## Upgrade
