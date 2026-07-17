@@ -16,6 +16,8 @@ Scope discipline: vnprox shows *network-shaped, short-horizon* operational data 
 
 Per-bridge approximation from guest NIC counters (PVE exposes per-guest netin/netout): rank guests by throughput on a selected bridge, 5m/1h windows. No packet capture, no flow sampling in v1.
 
+**Updated by T-1002 (Phase 10):** "no flow sampling in v1" no longer holds — `internal/flow` adds opt-in (off by default, per node) sFlow v5/NetFlow v5/v9/IPFIX ingestion into a bounded ring (`GET /flows`, docs/api.md's Flows section; docs/data-model.md §2's `flow_samples`), which T-1003 (flow explorer + map flow painting) and T-1004 (host-local conntrack/eBPF sampling, closing the "no packet capture" half too) build on. The v1 scope note above is left as-is for its historical context; the roadmap-next carried-forward invariant it was protecting — vnprox never becomes a long-term flow/metric warehouse — is unchanged and is exactly what `internal/flow`'s bounded-ring design (window + hard row cap, whichever prunes first) still honors.
+
 ## 4. Prometheus exporter (P2)
 
 `GET /metrics` (OpenMetrics) gated to `Sys.Audit`, exporting per-entity counters + vnprox internals (changesets applied, rollbacks, drift count).

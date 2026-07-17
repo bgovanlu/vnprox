@@ -1,0 +1,162 @@
+# flow-lab.yaml — T-1002's flow ingestion fixture: a small two-node cluster
+# whose bridge addresses and SDN subnet CIDRs are deliberately chosen to
+# match the IPs baked into testdata/flows/*.bin's golden datagram fixtures,
+# so internal/flow's GraphResolver end-to-end tests can resolve a decoded
+# Record's srcIp/dstIp against a real (fixture-driven) inventory graph —
+# never guessed, per that package's resolution contract — and so
+# GET /flows' cluster fan-out has two distinct nodes to seed different
+# records on and merge across.
+#
+# IP-to-fixture mapping (see internal/flow/testdata_flowlab_test.go):
+#   - pve1's vmbr0 (10.0.0.0/24) covers netflow5_basic.bin's
+#     10.0.0.5/10.0.0.6/10.0.0.10.
+#   - pve2's vmbr0 (10.1.1.0/24) covers sflow5_basic.bin's 10.1.1.5/10.1.1.50.
+#   - the vlanz zone's vnet100/10.100.0.0-24 subnet: unrelated to any golden
+#     fixture IP directly, but exercises the SDN-subnet-resolves-to-vnet-ref
+#     path (see internal/flow.GraphResolver's doc comment) the same way
+#     three-node-vlan.yaml's identical shape already does for other tasks.
+
+cluster:
+  name: pve-flow-lab
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.0.0.1
+      online: true
+    - name: pve2
+      ip: 10.1.1.1
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 7c2e4b1a-9f3d-4a80-b6e1-2d5c8f7a30b1
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.0.0.1/24
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: false
+        comments: "flow-lab node 1 bridge — matches netflow5_basic.bin's 10.0.0.0/24"
+    links:
+      eno1:
+        mac: "bc:24:11:f1:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:11:f1:00:01"
+        link_up: true
+        mtu: 1500
+    qemu:
+      "300":
+        name: flowgen1
+        status: running
+        config:
+          name: flowgen1
+          cores: "1"
+          memory: "512"
+          net0: "virtio=BC:24:11:F1:03:00,bridge=vmbr0,firewall=1"
+          ostype: l26
+    firewall:
+      enabled: false
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+  pve2:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.1.1.1/24
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: false
+        comments: "flow-lab node 2 bridge — matches sflow5_basic.bin's 10.1.1.0/24"
+    links:
+      eno1:
+        mac: "bc:24:11:f1:00:02"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:11:f1:00:02"
+        link_up: true
+        mtu: 1500
+    qemu:
+      "301":
+        name: flowgen2
+        status: running
+        config:
+          name: flowgen2
+          cores: "1"
+          memory: "512"
+          net0: "virtio=BC:24:11:F1:03:01,bridge=vmbr0,firewall=1"
+          ostype: l26
+    firewall:
+      enabled: false
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+sdn:
+  zones:
+    - id: vlanz
+      type: vlan
+      bridge: vmbr0
+      nodes: [pve1, pve2]
+      mtu: 1500
+  vnets:
+    - id: vnet100
+      zone: vlanz
+      tag: 100
+      alias: "flow-lab overlay"
+  subnets:
+    - id: "10.100.0.0-24"
+      vnet: vnet100
+      cidr: 10.100.0.0/24
+      gateway: 10.100.0.1
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+
+mess: []

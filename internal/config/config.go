@@ -18,6 +18,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/peer"
 )
 
@@ -89,6 +90,7 @@ type Config struct {
 	Server      ServerConfig
 	Collect     CollectConfig
 	Retention   RetentionConfig
+	Flows       FlowsConfig
 }
 
 // ServerConfig is the [server] section.
@@ -200,6 +202,26 @@ type CollectConfig struct {
 	LLDPInterval time.Duration
 }
 
+// FlowsConfig is the [flows] section (T-1002): per-node, opt-in flow
+// ingestion — every listener defaults to *disabled* (docs/features/
+// monitoring.md §3's "no packet capture, no flow sampling in v1" carried
+// forward as "opt-in per node" for this phase, matching T-1004's own
+// opt-in convention). Ports default to each protocol's conventional
+// well-known port (internal/flow.Default{SFlow,NetFlow,IPFIX}Port);
+// RetentionMinutes/MaxRows default to internal/flow's own documented ring
+// bound (internal/flow.Default{RetentionMinutes,MaxRows}) — whichever
+// prunes first, see that package's doc comment.
+type FlowsConfig struct {
+	SFlowEnabled     bool
+	NetFlowEnabled   bool
+	IPFIXEnabled     bool
+	SFlowPort        int
+	NetFlowPort      int
+	IPFIXPort        int
+	RetentionMinutes int
+	MaxRows          int64
+}
+
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
@@ -211,6 +233,7 @@ type rawConfig struct {
 	Safety      rawSafety      `toml:"safety"`
 	Server      rawServer      `toml:"server"`
 	Retention   rawRetention   `toml:"retention"`
+	Flows       rawFlows       `toml:"flows"`
 }
 
 type rawServer struct {
@@ -258,6 +281,17 @@ type rawCollect struct {
 	PVEInterval  string `toml:"pve_interval"`
 	HostInterval string `toml:"host_interval"`
 	LLDPInterval string `toml:"lldp_interval"`
+}
+
+type rawFlows struct {
+	SFlowEnabled     bool  `toml:"sflow_enabled"`
+	NetFlowEnabled   bool  `toml:"netflow_enabled"`
+	IPFIXEnabled     bool  `toml:"ipfix_enabled"`
+	SFlowPort        int   `toml:"sflow_port"`
+	NetFlowPort      int   `toml:"netflow_port"`
+	IPFIXPort        int   `toml:"ipfix_port"`
+	RetentionMinutes int   `toml:"retention_minutes"`
+	MaxRows          int64 `toml:"max_rows"`
 }
 
 // Load reads, parses, defaults, and validates the config file at path.
@@ -327,6 +361,16 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			DevFixtureDir: raw.FirewallLog.DevFixtureDir,
 		},
 		Collect: collect,
+		Flows: FlowsConfig{
+			SFlowEnabled:     raw.Flows.SFlowEnabled,
+			NetFlowEnabled:   raw.Flows.NetFlowEnabled,
+			IPFIXEnabled:     raw.Flows.IPFIXEnabled,
+			SFlowPort:        firstNonZeroInt(raw.Flows.SFlowPort, flow.DefaultSFlowPort),
+			NetFlowPort:      firstNonZeroInt(raw.Flows.NetFlowPort, flow.DefaultNetFlowPort),
+			IPFIXPort:        firstNonZeroInt(raw.Flows.IPFIXPort, flow.DefaultIPFIXPort),
+			RetentionMinutes: firstNonZeroInt(raw.Flows.RetentionMinutes, flow.DefaultRetentionMinutes),
+			MaxRows:          firstNonZeroInt64(raw.Flows.MaxRows, flow.DefaultMaxRows),
+		},
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -507,6 +551,13 @@ func firstNonEmpty(v, def string) string {
 }
 
 func firstNonZeroInt(v, def int) int {
+	if v == 0 {
+		return def
+	}
+	return v
+}
+
+func firstNonZeroInt64(v, def int64) int64 {
 	if v == 0 {
 		return def
 	}

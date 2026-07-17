@@ -13,6 +13,65 @@ import (
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
+// --- Flow fan-out (T-1002) ---
+//
+// Mirrors fetchClusterAudit/fetchClusterSnapshots exactly (mergeClusterPage
+// is generic over the item type precisely so a third fan-out consumer is a
+// small addition, not a third hand-rolled merge). See flows.go for the
+// flowRecordResponse/toFlowRecordResponse/peerFlowRecordToResponse
+// conversions this uses.
+
+func toPeerFlowFilter(f store.FlowFilter) peer.FlowFilter {
+	return peer.FlowFilter{
+		Guest: f.Guest, Subnet: f.Subnet, Source: f.Source,
+		VLAN: f.VLAN, Port: f.Port, Proto: f.Proto, FromTs: f.FromTs, ToTs: f.ToTs,
+	}
+}
+
+// fetchClusterFlows merges the local node's flow_samples ring with every
+// reachable peer's (docs/architecture.md §7), for GET /flows.
+func fetchClusterFlows(ctx context.Context, local FlowLocalSource, peers PeerFlowSource, filter store.FlowFilter, cursor string, limit int) ([]flowRecordResponse, string, bool, []string, error) {
+	nodes, byNode, discoveryFailed := clusterSources(ctx, peers)
+	peerFilter := toPeerFlowFilter(filter)
+
+	fetch := func(ctx context.Context, node, cur string, lim int) ([]keyed[flowRecordResponse], string, error) {
+		if node == localSourceKey {
+			samples, next, err := local.Query(ctx, filter, cur, lim)
+			if err != nil {
+				return nil, "", err
+			}
+			out := make([]keyed[flowRecordResponse], len(samples))
+			for i, s := range samples {
+				out[i] = keyed[flowRecordResponse]{item: toFlowRecordResponse(s), at: s.At, tie: strconv.FormatInt(s.ID, 10)}
+			}
+			return out, next, nil
+		}
+		p, ok := byNode[node]
+		if !ok {
+			return nil, "", fmt.Errorf("api: peer %s: %w", node, peer.ErrPeerUnreachable)
+		}
+		recs, next, err := peers.Flows(ctx, p, peerFilter, cur, lim)
+		if err != nil {
+			return nil, "", err
+		}
+		out := make([]keyed[flowRecordResponse], len(recs))
+		for i, rec := range recs {
+			out[i] = keyed[flowRecordResponse]{item: peerFlowRecordToResponse(rec), at: rec.At, tie: strconv.FormatInt(rec.ID, 10)}
+		}
+		return out, next, nil
+	}
+
+	items, next, partial, failed, err := mergeClusterPage(ctx, nodes, fetch, cursor, limit)
+	if err != nil {
+		return nil, "", false, nil, err
+	}
+	if discoveryFailed {
+		partial = true
+		failed = append(failed, "<cluster peer discovery>")
+	}
+	return items, next, partial, failed, nil
+}
+
 // This file implements T-303's audit/snapshot list fan-out: docs/
 // architecture.md §7's "Audit/snapshot queries in the UI fan out to peers
 // and merge" — both tables are node-local app data (SQLite, one DB per

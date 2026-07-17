@@ -149,6 +149,59 @@ type snapshotPageResponse struct {
 	Items      []SnapshotRecord `json:"items"`
 }
 
+// FlowFilter narrows GET /api/peer/flows exactly like docs/api.md's GET
+// /flows query params. This is peer's own copy of that filter shape (rather
+// than importing internal/store's store.FlowFilter or internal/flow's
+// Filter) so this package never depends on either — see AuditFilter's doc
+// comment for the identical reasoning.
+type FlowFilter struct {
+	Guest  string `json:"guest,omitempty"`
+	Subnet string `json:"subnet,omitempty"`
+	Source string `json:"source,omitempty"`
+	VLAN   int    `json:"vlan,omitempty"`
+	Port   int    `json:"port,omitempty"`
+	Proto  int    `json:"proto,omitempty"`
+	FromTs int64  `json:"fromTs,omitempty"`
+	ToTs   int64  `json:"toTs,omitempty"`
+}
+
+// FlowRecord is one row of GET /api/peer/flows' page (T-1002): the fields
+// mirror docs/api.md's flow.Record shape field-for-field, plus ID — a
+// peer-wire-only field (never surfaced in the public GET /flows response;
+// internal/api strips it after using it as the cluster-merge sort tiebreak,
+// the same role AuditRecord.ID plays for GET /audit) since flow.Record
+// itself carries no stable identifier and unix-second timestamps alone
+// collide often at realistic ingestion rates.
+type FlowRecord struct {
+	Node    string `json:"node"`
+	SrcIP   string `json:"srcIp"`
+	DstIP   string `json:"dstIp"`
+	SrcRef  string `json:"srcRef,omitempty"`
+	DstRef  string `json:"dstRef,omitempty"`
+	Source  string `json:"source"`
+	ID      int64  `json:"id"`
+	At      int64  `json:"at"`
+	Bytes   int64  `json:"bytes"`
+	Packets int64  `json:"packets"`
+
+	SrcPort        int `json:"srcPort,omitempty"`
+	DstPort        int `json:"dstPort,omitempty"`
+	Proto          int `json:"proto"`
+	VLAN           int `json:"vlan,omitempty"`
+	IngressIfIndex int `json:"ingressIfIndex,omitempty"`
+	EgressIfIndex  int `json:"egressIfIndex,omitempty"`
+}
+
+// flowPageResponse is GET /api/peer/flows' body: one page of this node's
+// own local flow_samples ring, same envelope shape as
+// auditPageResponse/snapshotPageResponse — no partial/failedNodes (a peer
+// only ever reports its own node-local page; the fan-out/merge happens on
+// the calling daemon).
+type flowPageResponse struct {
+	NextCursor string       `json:"nextCursor,omitempty"`
+	Items      []FlowRecord `json:"items"`
+}
+
 // installLLDPRequest is POST /api/peer/host/lldp/install's body: an
 // explicit confirmation flag (docs/features/lldp-discovery.md §1's
 // "changeset-like confirmation" for the guided-install flow).

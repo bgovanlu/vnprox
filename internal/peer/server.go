@@ -151,6 +151,18 @@ type SnapshotReader interface {
 	ListSnapshotPage(ctx context.Context, cursor string, limit int) ([]SnapshotRecord, string, error)
 }
 
+// FlowReader is the peer-server-side dependency for GET /api/peer/flows
+// (T-1002): one node's own local flow_samples ring, filtered and
+// cursor-paginated exactly like docs/api.md's GET /flows. internal/api's
+// cluster fan-out (fetchClusterFlows) re-queries every peer with the same
+// filter+cursor and merges the returned pages with its own local page —
+// see internal/api's flow cluster-merge code. Declared against this
+// package's own FlowFilter/FlowRecord (not internal/store's or
+// internal/flow's) for the same import-direction reason as AuditReader.
+type FlowReader interface {
+	ListFlowPage(ctx context.Context, filter FlowFilter, cursor string, limit int) ([]FlowRecord, string, error)
+}
+
 // HostWriter is the write-side dependency for the documented
 // `/api/peer/host/{stage-interfaces,ifreload,restore}` routes: node-local
 // /etc/network/interfaces(5) staging, reload, and direct restore. It is a
@@ -198,10 +210,15 @@ type LLDPInstaller interface {
 
 // ServerOptions configures a Server.
 type ServerOptions struct {
-	Reader        HostReader
-	Writer        HostWriter
-	Audit         AuditReader
-	Snapshots     SnapshotReader
+	Reader    HostReader
+	Writer    HostWriter
+	Audit     AuditReader
+	Snapshots SnapshotReader
+	// Flows backs GET /api/peer/flows (T-1002). Optional (nil-safe, the same
+	// 503-not-panic treatment as every other optional ServerOptions
+	// dependency): a daemon that hasn't wired flow ingestion at all simply
+	// has nothing to serve peers here yet.
+	Flows         FlowReader
 	Timers        TimerAgent
 	LLDPInstaller LLDPInstaller
 	// FirewallLog backs GET /api/peer/firewall/log (T-505). Optional
@@ -272,6 +289,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 
 		r.Get("/audit", s.handleAudit)
 		r.Get("/snapshots", s.handleSnapshots)
+		r.Get("/flows", s.handleFlows)
 		r.Get("/firewall/log", s.handleFirewallLog)
 
 		r.Post("/timer/arm", s.handleTimerArm)
@@ -587,6 +605,73 @@ func (s *Server) handleSnapshots(w http.ResponseWriter, r *http.Request) {
 		items = []SnapshotRecord{}
 	}
 	writeJSON(w, http.StatusOK, snapshotPageResponse{Items: items, NextCursor: next})
+}
+
+// handleFlows implements GET /api/peer/flows (T-1002), the same filter
+// query params as docs/api.md's GET /flows (?guest=&vlan=&subnet=&port=
+// &protocol=&fromTs=&toTs=&limit=&cursor=, protocol already resolved to a
+// numeric proto by the caller — see internal/api/flows.go).
+func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Flows == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "flow reader not configured")
+		return
+	}
+	limit, ok := parsePeerPageLimit(w, r)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	filter := FlowFilter{Guest: q.Get("guest"), Subnet: q.Get("subnet"), Source: q.Get("source")}
+	if v := q.Get("vlan"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "vlan must be an integer")
+			return
+		}
+		filter.VLAN = n
+	}
+	if v := q.Get("port"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "port must be an integer")
+			return
+		}
+		filter.Port = n
+	}
+	if v := q.Get("proto"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "proto must be an integer")
+			return
+		}
+		filter.Proto = n
+	}
+	if v := q.Get("fromTs"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "fromTs must be a unix-seconds integer")
+			return
+		}
+		filter.FromTs = n
+	}
+	if v := q.Get("toTs"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "toTs must be a unix-seconds integer")
+			return
+		}
+		filter.ToTs = n
+	}
+
+	items, next, err := s.opts.Flows.ListFlowPage(r.Context(), filter, q.Get("cursor"), limit)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal_error", "listing flow page: "+err.Error())
+		return
+	}
+	if items == nil {
+		items = []FlowRecord{}
+	}
+	writeJSON(w, http.StatusOK, flowPageResponse{Items: items, NextCursor: next})
 }
 
 func (s *Server) handleStageInterfaces(w http.ResponseWriter, r *http.Request) {

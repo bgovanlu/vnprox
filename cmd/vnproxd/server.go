@@ -441,6 +441,22 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		logger.Error("fwlog: failed to initialize the firewall log viewer's local source; the feature will report empty/unavailable", "error", fwlogErr)
 	}
 
+	// T-1002: the flow ingestion engine — sFlow/NetFlow/IPFIX UDP listeners
+	// (off by default, opt-in per node via [flows] in vnprox.toml), the
+	// bounded flow_samples ring (store.FlowSampleRepo), inventory-resolved
+	// srcRef/dstRef (flow.GraphResolver, refreshed from the same live graph
+	// every other read path shares), and the `flow.batch` WS push over the
+	// same shared hub topoSvc already backs for metrics.sample/drift.changed/
+	// changeset.status. The returned *flow.Service itself needs no further
+	// wiring here (every listener already closes over it inside setupFlows);
+	// GET /flows and GET /api/peer/flows both read directly off flowRepo
+	// (store.FlowSampleRepo already satisfies both api.FlowLocalSource and,
+	// via flowPeerAdapter, peer.FlowReader — the same "small interface, real
+	// type satisfies it for free" shape AuditService/AuditReader use).
+	// flowActors are registered with the run group below, alongside every
+	// other supervised subsystem.
+	_, flowRepo, flowActors := setupFlows(cfg, db, graph, topoSvc, localNode, logger)
+
 	// T-301/T-304: the peer server backs the documented /api/peer/host/* and
 	// /api/peer/timer/* routes with the real netlink/interfaces(5)/lldpd
 	// reader (realHost, built earlier above) for reads and the same
@@ -462,6 +478,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Timers:        localTimers,
 		LLDPInstaller: realHost,
 		FirewallLog:   fwLogReader,
+		Flows:         flowPeerAdapter{repo: flowRepo},
 		Version:       version,
 		Logger:        logger,
 	})
@@ -474,10 +491,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	var peerAudit api.PeerAuditSource
 	var peerSnapshots api.PeerSnapshotSource
 	var lldpPeerInstaller api.PeerLLDPInstaller
+	var peerFlows api.PeerFlowSource
 	if peerClient != nil {
 		peerAudit = peerClient
 		peerSnapshots = peerClient
 		lldpPeerInstaller = peerClient
+		peerFlows = peerClient
 	}
 
 	// T-404: GET /sdn/evpn/status fans FRR/BGP state across the cluster
@@ -575,6 +594,8 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,
 		PeerSnapshots: peerSnapshots,
+		Flows:         flowRepo,
+		PeerFlows:     peerFlows,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
@@ -654,6 +675,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		g.add(fwlogSvc.Run)
 	}
 	g.add(findingsEngine.RunLoop)
+	// T-1002: the flow ring's prune loop, the resolver refresh loop, and
+	// (only when a given protocol's [flows] *_enabled key is true on this
+	// node) that protocol's UDP listener — see setupFlows' doc comment.
+	// Every actor here already degrades a bind failure to a logged error
+	// rather than a fatal one (flowListenerActor), so registering them
+	// unconditionally is safe even with every listener disabled (an empty
+	// flowActors slice in that case).
+	for _, actor := range flowActors {
+		g.add(actor)
+	}
 
 	logger.Info("vnproxd starting",
 		"version", version,
