@@ -58,6 +58,17 @@ dev: ## backend against pvemock + Vite dev server, hot reload
 
 # --- test --------------------------------------------------------------
 
+# T-1004: internal/flow/hostsample/ebpf.go (the real eBPF kernel-feature
+# probe + sampler) is gated behind the "ebpf" Go build tag and is
+# deliberately EXCLUDED from this default `go test ./...` matrix — no CI
+# environment is assumed to support real eBPF program attachment
+# (docs/development.md, internal/flow/hostsample's package doc comment).
+# Without -tags ebpf, ebpf_stub.go's build-tag-complementary EBPFSampler
+# compiles instead, whose Probe always fails "not compiled into this
+# binary" — that negative path (AC3) is exactly what this default matrix
+# exercises. To build/test the real probe on a Linux dev host, run
+# `go test -tags ebpf ./internal/flow/hostsample/...` explicitly; it is
+# not part of `make build`/`make test`/`make check`.
 test: ## go test ./... && vitest run
 	$(GO) test ./...
 	@if [ -n "$(WEB_READY)" ]; then \

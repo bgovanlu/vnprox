@@ -1,0 +1,4 @@
+ipv4     2 tcp      6 431999 ESTABLISHED src=192.168.1.10 dst=192.168.1.20 sport=54321 dport=443 packets=12 bytes=1500 src=192.168.1.20 dst=192.168.1.10 sport=443 dport=54321 packets=8 bytes=6400 [ASSURED] mark=0 zone=0 use=2
+ipv4     2 udp      17 29 src=192.168.1.11 dst=192.168.1.30 sport=51000 dport=53 packets=1 bytes=71 [UNREPLIED] src=192.168.1.30 dst=192.168.1.11 sport=53 dport=51000 packets=0 bytes=0 mark=0 zone=0 use=2
+ipv4     2 icmp     1 29 src=192.168.1.50 dst=192.168.1.60 type=8 code=0 id=1234 packets=1 bytes=84 src=192.168.1.60 dst=192.168.1.50 type=0 code=0 id=1234 packets=1 bytes=84 mark=0 zone=0 use=2
+ipv6     10 tcp      6 431999 ESTABLISHED src=fd00::1 dst=fd00::2 sport=1234 dport=22 packets=5 bytes=700 src=fd00::2 dst=fd00::1 sport=22 dport=1234 packets=4 bytes=600 [ASSURED] mark=0 zone=0 use=2

@@ -336,3 +336,66 @@ from; and pvemock does not model an `ifreload` outage at all):
       extended here to flow exporters generally). Validate against at least one real exporter per
       protocol (a physical switch's sFlow agent, a Cisco/Juniper NetFlow export, and pmacct/
       nProbe/softflowd for IPFIX) before considering any of the three decoders field-proven.
+
+## Host-local flow sampling (T-1004)
+
+- [ ] **Exact `/proc/net/nf_conntrack` table format across the target kernel range (PVE 8.2+/
+      9.x, docs/architecture.md D9).** `internal/flow/hostsample/conntrack.go`'s parser is built
+      against the documented/observed field layout (family, family name/number, proto name/
+      number, timeout, an optional tcp-only state word, then unordered `key=value` tokens twice —
+      original then reply direction — plus bare flag tokens like `[ASSURED]`/`[UNREPLIED]`), and
+      exercised only against hand-built fixtures (`internal/flow/hostsample/testdata/`), never a
+      real kernel's live table. Confirm field layout, key set, and `nf_conntrack_acct` (packets=/
+      bytes=) availability-by-default across PVE 8.2's and 9.x's shipped kernel versions —
+      specifically whether accounting is enabled by default (if not, this sampler produces valid
+      but always-zero-byte/-packet Records until an operator sets
+      `net.netfilter.nf_conntrack_acct=1`, which this task does not do automatically and does not
+      currently surface as a warning) and whether any conntrack helper (ftp, sip, ...) or IPv6
+      variant emits a line shape this parser's "first-occurrence key=value scan" mis-parses.
+      Measure the real poll cost of a full-table read at realistic connection-table sizes (a busy
+      node can have tens of thousands of entries) against `host_sample_interval_sec`'s default
+      (10s) — confirm it doesn't itself become a CPU/IO cost outweighing the feature's value on a
+      loaded node.
+- [ ] **Real CAP_BPF/CAP_PERFMON availability under the hardened systemd unit on a live node.**
+      `packaging/debian/postinst`'s `sync_ebpf_caps_dropin` writes a systemd drop-in unioning
+      `CAP_BPF`/`CAP_PERFMON` into `vnprox.service`'s `CapabilityBoundingSet` when `[flows]
+      ebpf_sampling_enabled = true`, and `internal/flow/hostsample/ebpf.go`'s kernel-feature probe
+      reads them back from `/proc/self/status`'s `CapEff` bitmask — neither has been exercised
+      against a real systemd instance (no systemd/root environment available here; this task's
+      tests run the probe logic directly as a library call, not inside an actual hardened unit).
+      Confirm on a real PVE node: (1) the drop-in is picked up after `systemctl daemon-reload` +
+      restart without any other hardening directive (`NoNewPrivileges=yes`,
+      `RestrictAddressFamilies=...`, `SystemCallFilter=@system-service` minus the denied groups)
+      silently stripping the grant or blocking the `bpf(2)`/`perf_event_open(2)` syscalls
+      themselves (`SystemCallFilter=~@resources` in particular is worth double-checking against
+      `bpf(2)`'s classification); (2) the actual numeric capability bit values this probe assumes
+      (`CAP_PERFMON = 38`, `CAP_BPF = 39`, Linux 5.8+) match the running kernel's
+      `linux/capability.h`; (3) `/sys/kernel/btf/vmlinux` is present on PVE's shipped kernel
+      builds (`CONFIG_DEBUG_INFO_BTF`) — if PVE's kernel does not ship BTF, the probe will always
+      fail there regardless of capabilities, and that would be worth calling out explicitly in
+      product docs rather than only in a probe error string.
+- [ ] **Measured CPU/memory overhead of each sampler at the Phase 9 scale target
+      (`docs/performance.md`).** Neither sampler's actual resource cost has been measured against
+      real traffic — only unit-level correctness (parsing, diffing, ring insertion). Concrete
+      measurement plan: on a `scale-lab`-equivalent node (8 nodes × 6 NICs, 300 guests, 40 VNets
+      per `docs/performance.md`'s existing scale target) or the closest available real hardware,
+      (a) enable `conntrack_sampling_enabled` alone at the default 10s interval, capture
+      `vnproxd`'s RSS and CPU-seconds/poll via `/proc/<pid>/status`+`getrusage`-equivalent
+      sampling (or `pidstat -p <pid> 10`) over a representative traffic run, and compare against
+      the same node's baseline (samplers disabled); (b) repeat with `ebpf_sampling_enabled` once
+      real per-packet attachment exists (see the dependency note below) at a few representative
+      packet rates; (c) record both at increasing `host_sample_interval_sec` values (5s/10s/30s/
+      60s) to characterize the poll-cost-vs-resolution tradeoff a real deployment would tune
+      against. Publish the resulting numbers in `docs/performance.md` once available — this task
+      only establishes the measurement plan, not the numbers themselves.
+- [ ] **eBPF program verifier acceptance across the supported kernel range.** Not yet applicable:
+      this task deliberately does not implement real per-bridge BPF program attachment (no
+      third-party eBPF loader dependency has been added — `internal/flow/hostsample/ebpf.go`'s
+      `Probe` is a real kernel-feature/capability check, but `Run` never loads or attaches a BPF
+      program even when the probe passes; see that file's and this package's doc comments, and
+      `planning/reports/T-1004.md`'s "deviations" section). Once a follow-up task adds a real
+      eBPF program (and the loader dependency decision that requires — e.g. `cilium/ebpf` — is
+      made explicitly, per CLAUDE.md's "no new major dependencies without a note"), verifier
+      acceptance must be confirmed across the full PVE 8.2+/9.x kernel range before shipping: a
+      BPF verifier rejection is a load-time failure, not a runtime one, so it needs to be caught
+      per-kernel-version, not just once.

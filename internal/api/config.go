@@ -17,25 +17,33 @@ import (
 // timers, retention policy, mode flags, and non-secret paths/URLs — appear
 // here.
 type InstanceInfo struct {
-	Version                  string `json:"version"`
-	Listen                   string `json:"listen"`
-	PVEAPIURL                string `json:"pveApiUrl"`
-	ProtectedPath            string `json:"protectedPath"`
-	PVEInterval              string `json:"pveInterval"`
-	HostInterval             string `json:"hostInterval"`
-	LLDPInterval             string `json:"lldpInterval"`
+	LLDPInterval  string `json:"lldpInterval"`
+	PVEAPIURL     string `json:"pveApiUrl"`
+	ProtectedPath string `json:"protectedPath"`
+	PVEInterval   string `json:"pveInterval"`
+	HostInterval  string `json:"hostInterval"`
+	Version       string `json:"version"`
+	Listen        string `json:"listen"`
+	// HostSampler is T-1004's addition: which host-local flow sampler (if
+	// any) is active on this node — "" (neither configured, or eBPF
+	// configured but its kernel-feature probe failed at startup with no
+	// conntrack fallback also enabled), "conntrack", or "ebpf". Mirrors
+	// MetricsEnabled's "safe mode flag, not a secret" bar; captured once at
+	// daemon start like every other field here (cmd/vnproxd/hostsample.go's
+	// setupHostSample runs the eBPF probe exactly once at startup).
+	HostSampler              string `json:"hostSampler,omitempty"`
 	ConfirmTimeoutDefaultSec int    `json:"confirmTimeoutDefaultSec"`
 	SnapshotKeepDays         int    `json:"snapshotKeepDays"`
 	SnapshotPinDays          int    `json:"snapshotPinDays"`
-	ReadOnly                 bool   `json:"readOnly"`
-	AllowDangerousOps        bool   `json:"allowDangerousOps"`
 	// MetricsEnabled is T-1001's addition: whether `GET /metrics` (the
 	// Prometheus exporter) is mounted on this node — [metrics] enabled from
 	// vnprox.toml, surfaced read-only like every other field here. Not a
 	// secret itself (unlike the scrape token it gates), just a mode flag,
 	// matching this struct's existing "safe to show an already-
 	// authenticated operator" bar.
-	MetricsEnabled bool `json:"metricsEnabled"`
+	MetricsEnabled    bool `json:"metricsEnabled"`
+	AllowDangerousOps bool `json:"allowDangerousOps"`
+	ReadOnly          bool `json:"readOnly"`
 }
 
 // configHandler serves GET /api/v1/config -> InstanceInfo. It is a pure

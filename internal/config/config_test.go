@@ -480,6 +480,62 @@ allow_from = ["10.0.0.0/8", "192.168.1.5/32"]
 	}
 }
 
+// TestLoad_FlowsHostSampleDefaults covers T-1004's [flows] additions:
+// both samplers default to disabled, and the shared poll interval defaults
+// to internal/flow/hostsample.DefaultHostSampleInterval (10s) when
+// host_sample_interval_sec is omitted.
+func TestLoad_FlowsHostSampleDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "flows-hostsample-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Flows.ConntrackSamplingEnabled {
+		t.Error("Flows.ConntrackSamplingEnabled = true, want false (default, opt-in)")
+	}
+	if cfg.Flows.EBPFSamplingEnabled {
+		t.Error("Flows.EBPFSamplingEnabled = true, want false (default, opt-in)")
+	}
+	if cfg.Flows.HostSampleIntervalSec != 10 {
+		t.Errorf("Flows.HostSampleIntervalSec = %d, want default 10", cfg.Flows.HostSampleIntervalSec)
+	}
+}
+
+// TestLoad_FlowsHostSampleOverride covers explicit [flows] host-sample
+// values: both samplers can be independently enabled, and the interval
+// overrides cleanly.
+func TestLoad_FlowsHostSampleOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[flows]
+conntrack_sampling_enabled = true
+ebpf_sampling_enabled = true
+host_sample_interval_sec = 30
+`
+	cfg, err := Load(writeTemp(t, "flows-hostsample-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if !cfg.Flows.ConntrackSamplingEnabled {
+		t.Error("Flows.ConntrackSamplingEnabled = false, want true (explicit override)")
+	}
+	if !cfg.Flows.EBPFSamplingEnabled {
+		t.Error("Flows.EBPFSamplingEnabled = false, want true (explicit override)")
+	}
+	if cfg.Flows.HostSampleIntervalSec != 30 {
+		t.Errorf("Flows.HostSampleIntervalSec = %d, want 30", cfg.Flows.HostSampleIntervalSec)
+	}
+}
+
 // TestLoad_MetricsInvalidCIDRFailsFast covers Load failing fast on a
 // malformed allow_from entry rather than starting the daemon with a
 // silently-ignored (or worse, silently-permissive) allowlist.

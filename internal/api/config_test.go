@@ -22,6 +22,7 @@ func TestConfigHandler_ReturnsNonSecretInstanceInfo(t *testing.T) {
 		SnapshotPinDays:          7,
 		ReadOnly:                 true,
 		AllowDangerousOps:        false,
+		HostSampler:              "conntrack",
 	}
 
 	rec := httptest.NewRecorder()

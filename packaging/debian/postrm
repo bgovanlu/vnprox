@@ -66,6 +66,12 @@ case "$1" in
     echo "vnprox: purge — removing /etc/vnprox and /var/lib/vnprox"
     rm -rf /etc/vnprox
     rm -rf /var/lib/vnprox
+    # T-1004: the postinst-managed eBPF capability drop-in (see
+    # sync_ebpf_caps_dropin there, docs/security.md's Host footprint
+    # section) — purge removes it along with everything else config-
+    # related rather than leaving a stray capability grant for a unit
+    # file that's about to be removed too.
+    rm -rf /etc/systemd/system/vnprox.service.d
     prompt_last_node_cleanup
 
     if [ -d /run/systemd/system ]; then
