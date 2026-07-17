@@ -179,3 +179,61 @@ export function zoomAt(vp: Viewport, screenPt: XYPosition, factor: number): View
 export function panBy(vp: Viewport, dx: number, dy: number): Viewport {
   return { ...vp, x: vp.x + dx, y: vp.y + dy };
 }
+
+/** A node's screen-space center point — the same anchor canvasDraw.ts's
+ * edge-drawing loop uses for both real topology edges and (T-1003) the
+ * Flows-layer overlay, so a flow edge's hit-test target always matches
+ * exactly where it's drawn. */
+export function nodeCenterScreen(position: XYPosition, vp: Viewport, size: Size = DEFAULT_NODE_SIZE): XYPosition {
+  const tl = graphToScreen(position, vp);
+  return { x: tl.x + (size.width * vp.zoom) / 2, y: tl.y + (size.height * vp.zoom) / 2 };
+}
+
+function distanceToSegment(p: XYPosition, a: XYPosition, b: XYPosition): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/** T-1003: the minimal shape hitTestFlowEdge needs from a flow overlay
+ * edge — just enough to resolve its two endpoints' on-screen centers. */
+export interface FlowEdgeEndpoints {
+  id: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * Resolves a screen point to the nearest Flows-layer overlay edge within
+ * `thresholdPx` of its (straight-line, node-center-to-node-center) path, or
+ * undefined if none is close enough — the overlay-edge counterpart of
+ * `hitTest`'s node resolution above. Both endpoints must currently be
+ * on-screen scene nodes (an edge whose endpoint isn't in `nodes` — e.g.
+ * collapsed under LOD or filtered out — never hit-tests, matching
+ * flowEdges.ts's own `nodeIds` restriction contract).
+ */
+export function hitTestFlowEdge(
+  edges: readonly FlowEdgeEndpoints[],
+  nodes: readonly SceneNode[],
+  screenPt: XYPosition,
+  vp: Viewport,
+  size: Size = DEFAULT_NODE_SIZE,
+  thresholdPx = 6,
+): string | undefined {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  let best: { id: string; dist: number } | undefined;
+  for (const e of edges) {
+    const from = byId.get(e.from);
+    const to = byId.get(e.to);
+    if (!from || !to) continue;
+    const a = nodeCenterScreen(from.position, vp, size);
+    const b = nodeCenterScreen(to.position, vp, size);
+    const dist = distanceToSegment(screenPt, a, b);
+    if (dist <= thresholdPx && (!best || dist < best.dist)) best = { id: e.id, dist };
+  }
+  return best?.id;
+}

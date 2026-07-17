@@ -2071,6 +2071,56 @@ export interface AlertRuleTestResponse {
   error?: string;
 }
 
+// --- Flows (T-1002 backend / T-1003 frontend; docs/api.md's "Flows"
+// section + `internal/api/flows.go`'s flowRecordResponse) -----------------
+
+/** One ingested flow sample — the shape both `GET /flows`'s `items` and the
+ * `flow.batch` WS event's `entries` carry, field-for-field per docs/api.md.
+ * `srcRef`/`dstRef` are inventory Ref strings, populated only when the IP
+ * resolved against a known bridge/SDN-subnet — **always a Bridge or
+ * SdnVnet ref, never a GuestNic ref** (internal/flow.GraphResolver's
+ * documented "never guessed" gap: the inventory graph carries no guest IP
+ * addresses at all). `proto` is the raw IP protocol number (6=tcp,
+ * 17=udp, 1=icmp, ...); `source` names which listener/sampler produced the
+ * record. */
+export interface FlowRecord {
+  at: number;
+  node: string;
+  srcIp: string;
+  dstIp: string;
+  srcPort?: number;
+  dstPort?: number;
+  proto: number;
+  bytes: number;
+  packets: number;
+  vlan?: number;
+  srcRef?: string;
+  dstRef?: string;
+  ingressIfIndex?: number;
+  egressIfIndex?: number;
+  source: "sflow" | "netflow5" | "netflow9" | "ipfix" | "conntrack";
+}
+
+/** GET /flows response envelope — the same cluster-fan-out shape GET
+ * /audit / GET /snapshots use (`partial`/`failedNodes` only present when at
+ * least one peer's page couldn't be fetched). */
+export interface FlowsPage {
+  items: FlowRecord[];
+  nextCursor?: string;
+  partial?: boolean;
+  failedNodes?: string[];
+}
+
+/** The `flow.batch` WS event (docs/api.md's WebSocket section): pushed by
+ * internal/flow.Service.Ingest whenever a listener decodes new records,
+ * already rate-capped per push — the same "keep the newest N, count the
+ * rest" convention as `firewall.log.batch`'s `droppedTotal`. */
+export interface FlowBatchEvent {
+  event: "flow.batch";
+  entries: FlowRecord[];
+  droppedTotal: number;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots and IPAM read views have routes defined in docs/api.md but no
 // frontend consumer yet — their request/response types land with the task

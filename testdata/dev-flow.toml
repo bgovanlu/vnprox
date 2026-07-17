@@ -1,0 +1,51 @@
+# T-1003's own dev config: identical shape to testdata/dev-sim.toml, but on
+# a distinct port pair, pointed at testdata/clusters/flow-lab.yaml (T-1002's
+# flow ingestion fixture — two nodes whose bridge/SDN-subnet addressing
+# matches testdata/flows/*.bin's golden datagram IPs) instead of
+# sim-lab.yaml, and with netflow_enabled = true on a non-default port so
+# web/e2e/flows.spec.ts can inject a real UDP NetFlow v5 datagram and
+# observe it flow all the way through internal/flow's listener -> resolver
+# -> flow_samples ring -> GET /flows -> the Flow Explorer / map painting —
+# see that spec file's doc comment and web/playwright.config.ts's webServer
+# array for how this stack runs alongside (not instead of) the other e2e
+# specs' own stacks.
+
+[server]
+listen = "127.0.0.1:58007"
+tls_cert = "testdata/certs/dev-cert.pem"
+tls_key = "testdata/certs/dev-key.pem"
+read_only = false
+confirm_timeout_default = 120
+
+[pve]
+api_url = "http://127.0.0.1:58006"
+token_file = "/etc/vnprox/keys/pve-token"
+dev_ticket_username = "root@pam"
+dev_ticket_password = "vnprox-mock"
+
+[safety]
+allow_dangerous_ops = false
+protected_path = "var/dev-flow-protected.json"
+dev_interfaces_dir = "var/dev-flow-host"
+
+[storage]
+db_path = "var/dev-flow-vnprox.db"
+session_key_file = "var/dev-flow-session.key"
+
+[peer]
+secret_path = "var/dev-flow-cluster.secret"
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"
+
+[metrics]
+key_file = "var/dev-flow-metrics.key"
+
+# T-1002: netflow_enabled on a non-default, non-privileged port distinct
+# from every other e2e stack's ports (127.0.0.1-only, so it never competes
+# with a real collector on the dev host bound to the conventional 2055).
+[flows]
+netflow_enabled = true
+netflow_port = 52055

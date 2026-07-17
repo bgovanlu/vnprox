@@ -21,6 +21,9 @@ import { useThemeStore } from "../store/theme";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { buildCaptionLines, sceneFromFlowElements, sceneFromSwitchTopology, type ExportScene } from "./export";
 import { ExportMapMenu } from "./ExportMapMenu";
+import { computeFlowEdges, flowEdgeStrokeWidth, type FlowEdge } from "./flowEdges";
+import { useLiveFlowRecords } from "../flows/flowsQueries";
+import { FlowPairPanel } from "./FlowPairPanel";
 import { InspectorStack } from "./InspectorStack";
 import { NewEntityMenu } from "./NewEntityMenu";
 import { LayerToggleBar } from "./LayerToggleBar";
@@ -114,6 +117,8 @@ function TopologyPageContent() {
   const positions = useTopologyStore((s) => s.positions);
   const trafficMode = useTopologyStore((s) => s.trafficMode);
   const toggleTrafficMode = useTopologyStore((s) => s.toggleTrafficMode);
+  const flowsLayerActive = useTopologyStore((s) => s.flowsLayerActive);
+  const toggleFlowsLayer = useTopologyStore((s) => s.toggleFlowsLayer);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
   const setActiveLayers = useTopologyStore((s) => s.setActiveLayers);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
@@ -381,6 +386,47 @@ function TopologyPageContent() {
     ],
   );
 
+  // T-1003 "Flows" layer: v2-canvas-only per this task's card (docs/
+  // features/topology.md doesn't extend the switch faceplate or the v1
+  // renderer with it). Only fetches/subscribes while genuinely paintable
+  // (mirrors trafficMode/useLiveMetrics' "only while the mode is on"
+  // convention above) — toggling it on outside Graph+v2 has nothing to
+  // paint, so no network activity is started for it.
+  const flowsPaintable = flowsLayerActive && viewMode === "graph" && rendererVersion === "v2";
+  const { records: liveFlowRecords, isLoading: flowsLoading } = useLiveFlowRecords(flowsPaintable);
+  const canvasNodeIds = useMemo(() => new Set(elements.nodes.map((n) => n.id)), [elements.nodes]);
+  const flowConversationEdges = useMemo<FlowEdge[]>(
+    () => (flowsPaintable ? computeFlowEdges({ records: liveFlowRecords, nodeIds: canvasNodeIds }) : []),
+    [flowsPaintable, liveFlowRecords, canvasNodeIds],
+  );
+  const flowOverlayEdges = useMemo(
+    () => flowConversationEdges.map((e) => ({ id: e.id, from: e.from, to: e.to, strokeWidth: flowEdgeStrokeWidth(e.bytesPerSec) })),
+    [flowConversationEdges],
+  );
+  // AC4: the empty-state hint is purely data-driven (zero records
+  // cluster-wide, once the initial fetch has actually completed — never
+  // flashed during the brief initial loading window) and disappears the
+  // moment a live record arrives via the WS bridge, no reload needed.
+  // Dismissible independent of the layer toggle itself (docs/features/
+  // topology.md §5's convention) — dismissing the hint doesn't turn the
+  // layer back off, it just stops nagging for this session; re-toggling
+  // the layer resets it so a genuinely still-empty state is shown again.
+  const [flowsHintDismissed, setFlowsHintDismissed] = useState(false);
+  useEffect(() => {
+    if (flowsLayerActive) setFlowsHintDismissed(false);
+  }, [flowsLayerActive]);
+  const flowsEmptyState = flowsPaintable && !flowsLoading && liveFlowRecords.length === 0 && !flowsHintDismissed;
+  const [selectedFlowEdgeId, setSelectedFlowEdgeId] = useState<string | undefined>(undefined);
+  const selectedFlowEdge = flowConversationEdges.find((e) => e.id === selectedFlowEdgeId);
+  useEffect(() => {
+    // Deselect if the edge disappears (conversation went quiet, layer
+    // toggled off, filter/view changed) rather than leaving a stale panel
+    // open referencing an edge no longer in the current set.
+    if (selectedFlowEdgeId !== undefined && !selectedFlowEdge) {
+      setSelectedFlowEdgeId(undefined);
+    }
+  }, [selectedFlowEdgeId, selectedFlowEdge]);
+
   // Switch faceplate model: built from the same merged node/edge set the
   // graph view uses (base minus expanded guest-group pills, plus each
   // expansion's synthesized members — mirroring toFlowElements) so guest-
@@ -582,7 +628,17 @@ function TopologyPageContent() {
         <h1 className="text-xl font-semibold">Topology</h1>
         <div className="flex flex-wrap items-center gap-2">
           <ViewModeToggle value={viewMode} onChange={setViewMode} />
-          <LayerToggleBar activeLayers={activeLayers} onToggle={toggleLayer} layerOrder={LAYER_ORDER} />
+          <LayerToggleBar
+            activeLayers={activeLayers}
+            onToggle={toggleLayer}
+            layerOrder={LAYER_ORDER}
+            // T-1003: v2-canvas-only per this task's card — the toggle
+            // itself stays visible outside Graph+v2 (so a user discovers
+            // it exists), it simply paints nothing until both conditions
+            // hold (flowsPaintable above).
+            flowsLayerActive={flowsLayerActive}
+            onToggleFlows={toggleFlowsLayer}
+          />
           {viewMode === "graph" && (
             <Button
               size="sm"
@@ -648,6 +704,27 @@ function TopologyPageContent() {
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 print:hidden">
           This cluster has {elements.nodes.length + elements.edges.length} visible elements — above the ~2,000
           render cap (docs/features/topology.md §4). Use the VLAN filter or a layer toggle to narrow the view.
+        </div>
+      )}
+
+      {flowsEmptyState && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-cyan-300 bg-cyan-50 px-3 py-2 text-xs text-cyan-900 dark:border-cyan-700 dark:bg-cyan-950 dark:text-cyan-200 print:hidden">
+          <span>
+            The Flows layer is on, but vnprox has no ingested flow records cluster-wide yet — configure an sFlow/
+            NetFlow/IPFIX exporter (or host-local sampling) on a node and enable it in that node&apos;s vnprox.toml{" "}
+            <code>[flows]</code> section.{" "}
+            <a href="https://sflow.org" target="_blank" rel="noreferrer" className="underline">
+              Flow source setup reference
+            </a>
+          </span>
+          <button
+            type="button"
+            aria-label="Dismiss flows setup hint"
+            onClick={() => { setFlowsHintDismissed(true); }}
+            className="shrink-0 rounded px-1.5 text-cyan-700 hover:bg-cyan-100 dark:text-cyan-200 dark:hover:bg-cyan-900"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -728,9 +805,23 @@ function TopologyPageContent() {
             }}
             initialViewport={pendingV2Viewport}
             onViewportChange={handleViewportChange}
+            flowEdges={flowOverlayEdges}
+            selectedFlowEdgeId={selectedFlowEdgeId}
+            onFlowEdgeClick={(id) => {
+              setSelectedFlowEdgeId(id);
+            }}
           />
         )}
       </div>
+
+      {selectedFlowEdge && (
+        <FlowPairPanel
+          edge={selectedFlowEdge}
+          onClose={() => {
+            setSelectedFlowEdgeId(undefined);
+          }}
+        />
+      )}
 
       {contextMenu && (
         <ContextMenu

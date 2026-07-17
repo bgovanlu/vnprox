@@ -66,6 +66,12 @@ export interface TopologyUIState {
    * unlike activeLayers/vlanFilter/positions, it's a live-data view toggle
    * a user flips per session, not a saved arrangement. */
   trafficMode: boolean;
+  /** T-1003 "Flows" layer: paints active guest-pair conversations as
+   * animated/weighted edges over the v2 canvas renderer (topology/
+   * flowEdges.ts) — visually distinct from trafficMode's per-entity heat
+   * so both can be on at once. Same per-session (not persisted-layout)
+   * lifetime as trafficMode. v2-renderer-only, per this task's card. */
+  flowsLayerActive: boolean;
 
   toggleLayer: (layer: Layer) => void;
   /** T-907: sets the whole active-layer set at once (as opposed to
@@ -78,6 +84,7 @@ export interface TopologyUIState {
   setViewMode: (mode: TopologyViewMode) => void;
   setRendererVersion: (version: RendererVersion) => void;
   toggleTrafficMode: () => void;
+  toggleFlowsLayer: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
   hover: (id: string | undefined) => void;
@@ -104,6 +111,7 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   expandedGroups: new Set(),
   positions: {},
   trafficMode: false,
+  flowsLayerActive: false,
 
   toggleLayer: (layer) => {
     set((state) => {
@@ -125,6 +133,9 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   },
   toggleTrafficMode: () => {
     set((state) => ({ trafficMode: !state.trafficMode }));
+  },
+  toggleFlowsLayer: () => {
+    set((state) => ({ flowsLayerActive: !state.flowsLayerActive }));
   },
   setVlanFilter: (vlan) => {
     set({ vlanFilter: vlan });

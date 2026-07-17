@@ -306,3 +306,71 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
     ctx.restore();
   }
 }
+
+// --- T-1003: the "Flows" layer overlay ------------------------------------
+// Drawn as a wholly separate pass, after drawScene's normal edges/nodes, so
+// it never participates in the base scene's status/traffic-mode styling —
+// the card's "visually distinct from trafficMode... so the two don't
+// collide" requirement is satisfied by construction: a flow edge always
+// renders in its own fixed cyan accent (never STATUS_STROKE or
+// trafficEdgeStyle's heat palette), animated via a dashed stroke whose
+// offset marches from source to destination.
+
+/** A flowEdges.ts FlowEdge, pre-resolved to a stroke width (flowEdges.ts's
+ * flowEdgeStrokeWidth) — canvasDraw.ts itself has no opinion on the
+ * bytes/sec -> width mapping, only on drawing the resulting line. */
+export interface FlowOverlayEdge {
+  id: string;
+  from: string;
+  to: string;
+  strokeWidth: number;
+}
+
+export interface DrawFlowOverlayParams {
+  nodes: FlowNode<EntityNodeData, "entity">[];
+  edges: readonly FlowOverlayEdge[];
+  viewport: Viewport;
+  nodeSize: Size;
+  dragTopLeft?: DrawSceneParams["dragTopLeft"];
+  /** Animation phase in px — the dash pattern's lineDashOffset, so a
+   * caller ticking this over time gets a "flowing toward the destination"
+   * look. 0 (reduced-motion callers) renders a static dashed line. */
+  dashOffset?: number;
+  /** The currently-selected flow edge (drill-down panel open for it), if
+   * any — rendered thicker/brighter than the rest. */
+  selectedId?: string;
+}
+
+const FLOW_EDGE_COLOR = "#06b6d4"; // cyan-500: distinct from every STATUS_STROKE/SIM_STROKE/heat-scale color already in use
+const FLOW_EDGE_SELECTED_COLOR = "#0e7490"; // cyan-700
+
+export function drawFlowOverlay(ctx: CanvasRenderingContext2D, params: DrawFlowOverlayParams): void {
+  const { nodes, edges, viewport: vp, nodeSize, dragTopLeft, dashOffset = 0, selectedId } = params;
+  if (edges.length === 0) return;
+  const size = nodeSize.width > 0 ? nodeSize : DEFAULT_NODE_SIZE;
+  const byId = new Map<string, FlowNode<EntityNodeData, "entity">>();
+  for (const n of nodes) byId.set(n.id, n);
+
+  ctx.save();
+  ctx.lineCap = "round";
+  for (const e of edges) {
+    const from = byId.get(e.from);
+    const to = byId.get(e.to);
+    if (!from || !to) continue;
+    const a = nodeCenterScreen(from, vp, size, dragTopLeft);
+    const b = nodeCenterScreen(to, vp, size, dragTopLeft);
+    const selected = e.id === selectedId;
+    ctx.save();
+    ctx.strokeStyle = selected ? FLOW_EDGE_SELECTED_COLOR : FLOW_EDGE_COLOR;
+    ctx.lineWidth = selected ? e.strokeWidth + 1.5 : e.strokeWidth;
+    ctx.setLineDash([8, 6]);
+    ctx.lineDashOffset = -dashOffset;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
