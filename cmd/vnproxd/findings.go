@@ -79,6 +79,13 @@ func ipamConflictToFinding(sc ipam.SubnetConflict) findings.Finding {
 		Check:    c.Type,
 		Severity: c.Severity,
 		Detail:   detail,
+		// Always a non-nil slice: findings.Finding.Nodes has no `omitempty`,
+		// so a nil here serializes as JSON `null`, which crashes the
+		// frontend's `for (const n of f.nodes)` in web/src/findings/filters.ts
+		// (found via T-806's e2e run on the probe producer, which had the same
+		// latent bug). IPAM conflicts are subnet-scoped, not node-scoped, so
+		// the array is legitimately empty — but it must be `[]`, never `null`.
+		Nodes:    []string{},
 		DocsLink: ipamConflictDocsLink,
 	}
 }
