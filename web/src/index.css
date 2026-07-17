@@ -32,3 +32,22 @@ body {
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
+
+/* T-906 print stylesheet: hides app-frame chrome that has no place on a
+ * printed page — the nav rail, the top bar, the always-mounted changeset
+ * drawer, and the topology inspector — via stable, already-existing
+ * accessibility selectors (no component file needed a class/attribute
+ * added just for this). The topology page's own toolbar/banners/inspector
+ * wrapper use Tailwind's `print:hidden` utility at their call sites
+ * instead (TopologyPage.tsx), since those are page-local, not global app
+ * chrome. Left as a real @media print rule (rather than more `print:`
+ * utility classes) specifically for elements this task must not touch the
+ * source of (NavRail.tsx/TopBar.tsx/ChangesetDrawer.tsx belong to other
+ * areas of the app, not the Topology feature this task owns). */
+@media print {
+  nav[aria-label="Primary"],
+  header,
+  [aria-label="Change drawer"] {
+    display: none !important;
+  }
+}

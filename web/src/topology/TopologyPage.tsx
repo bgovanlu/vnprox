@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
@@ -16,7 +16,10 @@ import { EditorLauncher } from "../changesets/EditorLauncher";
 import { refNode, summarizeOp } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
+import { useThemeStore } from "../store/theme";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { buildCaptionLines, sceneFromFlowElements, sceneFromSwitchTopology, type ExportScene } from "./export";
+import { ExportMapMenu } from "./ExportMapMenu";
 import { InspectorStack } from "./InspectorStack";
 import { NewEntityMenu } from "./NewEntityMenu";
 import { LayerToggleBar } from "./LayerToggleBar";
@@ -41,7 +44,7 @@ import {
   useTopologyWsBridge,
 } from "./queries";
 import { currentLayoutPayload, useTopologyStore } from "./store";
-import { toFlowElements } from "./toFlowElements";
+import { toFlowElements, type FlowElements } from "./toFlowElements";
 
 const LAYER_ORDER: readonly Layer[] = ["phys", "l2", "sdn", "guest"];
 const SAVE_DEBOUNCE_MS = 1000;
@@ -296,6 +299,29 @@ function TopologyPageContent() {
   const overCap = elements.nodes.length + elements.edges.length > RENDER_CAP;
   const navigate = useNavigate();
 
+  // --- T-906: map export (SVG/PNG) ----------------------------------------
+  // The v2 canvas renderer applies a further, zoom-driven LOD transform
+  // (T-902's capsule/bundle collapse) on top of `elements` that this
+  // top-level component never otherwise sees — TopologyCanvasV2 reports its
+  // current LOD-transformed scene back up via onSceneChange so an export
+  // triggered from this toolbar matches what the v2 canvas actually drew,
+  // not the pre-LOD element set. Only consulted while that renderer is
+  // mounted (viewMode === "graph" && rendererVersion === "v2"); stale values
+  // from a previous mount are harmless since they're ignored otherwise.
+  const [v2SceneElements, setV2SceneElements] = useState<FlowElements | undefined>(undefined);
+  const graphExportElements = rendererVersion === "v2" ? (v2SceneElements ?? elements) : elements;
+
+  const themeMode = useThemeStore((s) => s.theme);
+  const exportCaptionLines = useMemo(
+    () => buildCaptionLines({ viewMode, activeLayers, layerOrder: LAYER_ORDER, vlanFilter }),
+    [viewMode, activeLayers, vlanFilter],
+  );
+  const getExportScene = useCallback((): ExportScene => {
+    return viewMode === "switch"
+      ? sceneFromSwitchTopology(switchTopology, { activeLayers, vlanFilter })
+      : sceneFromFlowElements(graphExportElements);
+  }, [viewMode, switchTopology, activeLayers, vlanFilter, graphExportElements]);
+
   // --- "Trace path" (T-504 AC5): right-click on the canvas or the -------
   // inspector's own quick action, both build the same three items via
   // traceLink.ts (only guest-nic entities are traceable — see that
@@ -447,7 +473,13 @@ function TopologyPageContent() {
 
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* T-906 print stylesheet: this whole toolbar row is interactive chrome
+       * (view/renderer toggles, filters, search, New/Export menus) with no
+       * place in a printed map — hidden via Tailwind's print: variant
+       * (compiles to an @media print rule), not JS, so it's inert even if
+       * scripts are disabled/blocked during print. The map itself
+       * (entityContainerRef below) and the print-only caption stay visible. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <h1 className="text-xl font-semibold">Topology</h1>
         <div className="flex flex-wrap items-center gap-2">
           <ViewModeToggle value={viewMode} onChange={setViewMode} />
@@ -491,13 +523,19 @@ function TopologyPageContent() {
             Search ( / )
           </Button>
           <NewEntityMenu nodes={Array.from(new Set(topology?.nodes.map((n) => n.nodeGroup).filter(Boolean) ?? []))} />
+          {/* T-906: present on both Graph and Switch views (getExportScene
+           * switches on `viewMode` itself), unlike the Canvas v2/Traffic
+           * buttons above which are Graph-only. */}
+          <ExportMapMenu getScene={getExportScene} captionLines={exportCaptionLines} theme={themeMode} />
         </div>
       </div>
 
-      <StalenessBanner staleness={topology?.staleness} />
+      <div className="print:hidden">
+        <StalenessBanner staleness={topology?.staleness} />
+      </div>
 
       {noLldpData && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 print:hidden">
           No LLDP data yet — the physical layer shows NICs only.{" "}
           <a href="https://man7.org/linux/man-pages/man8/lldpd.8.html" className="underline" target="_blank" rel="noreferrer">
             Set up lldpd
@@ -507,13 +545,28 @@ function TopologyPageContent() {
       )}
 
       {overCap && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 print:hidden">
           This cluster has {elements.nodes.length + elements.edges.length} visible elements — above the ~2,000
           render cap (docs/features/topology.md §4). Use the VLAN filter or a layer toggle to narrow the view.
         </div>
       )}
 
-      <div ref={entityContainerRef} className="min-h-0 flex-1 rounded-lg border border-slate-200 dark:border-slate-800">
+      {/* T-906 print stylesheet: the current filter/legend state as a
+       * caption, visible only when printing (docs/features/topology.md §4's
+       * export-gap deliverable 2) — the same lines embedded in an SVG/PNG
+       * export's own caption block (see export.ts's buildCaptionLines). */}
+      <div className="hidden print:block print:text-black">
+        {exportCaptionLines.map((line) => (
+          <p key={line} className="text-xs">
+            {line}
+          </p>
+        ))}
+      </div>
+
+      <div
+        ref={entityContainerRef}
+        className="min-h-0 flex-1 rounded-lg border border-slate-200 dark:border-slate-800 print:border-none print:h-auto"
+      >
         {isLoading && (
           <div className="flex h-full items-center justify-center">
             <EmptyState title="Loading the map…" description="Fetching the current cluster topology." />
@@ -567,6 +620,7 @@ function TopologyPageContent() {
             onNodeHover={hover}
             onNodeDrop={applyDrop}
             onNodeContextMenu={handleNodeContextMenu}
+            onSceneChange={setV2SceneElements}
             onPaneClick={() => {
               select(undefined);
               setContextMenu(undefined);
@@ -592,12 +646,18 @@ function TopologyPageContent() {
 
       <SpotlightSearch open={spotlightOpen} onOpenChange={setSpotlightOpen} onSelect={handleSearchSelect} />
       <EditorLauncher />
-      <InspectorStack
-        selectedRef={selectedId && !isGuestGroupId(selectedId) ? selectedId : undefined}
-        onAllClosed={() => {
-          select(undefined);
-        }}
-      />
+      {/* T-906 print stylesheet: the inspector is a non-modal floating
+       * "drawer" (InspectorStack.tsx's own doc comment) that can be open
+       * alongside the map — hide it when printing along with the toolbar
+       * above (AC3: "toolbar/drawer chrome is hidden"). */}
+      <div className="print:hidden">
+        <InspectorStack
+          selectedRef={selectedId && !isGuestGroupId(selectedId) ? selectedId : undefined}
+          onAllClosed={() => {
+            select(undefined);
+          }}
+        />
+      </div>
 
       <p className="sr-only" aria-live="polite">
         Topology last updated {new Date(dataUpdatedAt).toLocaleTimeString()}
