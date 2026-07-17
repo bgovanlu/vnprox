@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { Node as FlowNode } from "@xyflow/react";
 import type { EntityNodeData } from "./EntityNode";
 import {
+  badgeAriaParts,
   buildA11yProxies,
   entityAriaLabel,
   nextRovingId,
@@ -70,6 +71,25 @@ describe("entityAriaLabel", () => {
         }).data,
       ),
     ).toBe("guest group, 23 guests, status ok");
+  });
+});
+
+describe("badgeAriaParts (T-905: reused verbatim by DOM entities outside EntityNodeData, e.g. SwitchFaceplate)", () => {
+  it("is exactly what entityAriaLabel appends after status — no drift", () => {
+    expect(badgeAriaParts(["mode=802.3ad"])).toEqual(["badges: mode=802.3ad"]);
+  });
+
+  it("spells out mgmt/corosync/mgmt-path and calls out drift as its own sentence", () => {
+    expect(badgeAriaParts(["mgmt", "corosync", "mgmt-path", "drift"])).toEqual([
+      "carries the management IP",
+      "carries a corosync link",
+      "on the management path",
+      "has configuration drift",
+    ]);
+  });
+
+  it("returns an empty array for no badges", () => {
+    expect(badgeAriaParts([])).toEqual([]);
   });
 });
 

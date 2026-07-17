@@ -1,6 +1,8 @@
 import type { ComponentPropsWithoutRef } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import clsx from "clsx";
+import { useDensity, type Density } from "./density";
+import { useReducedMotion } from "../lib/useReducedMotion";
 
 // react-refresh's only-export-components rule can't see that these are
 // components — they're re-exported references to Radix's, not functions
@@ -27,20 +29,40 @@ export interface DialogContentProps extends ComponentPropsWithoutRef<typeof Radi
    * without adding a class-merging dependency (`tailwind-merge`) beyond
    * docs/development.md's locked stack). */
   widthClassName?: string;
+  /** T-905: compact/comfortable padding (density.ts) — "comfortable" is
+   * this component's original `p-6`, so the prop is additive. Defaults to
+   * the ambient `<DensityProvider>` in scope. */
+  density?: Density;
 }
+
+const DENSITY_PADDING: Record<Density, string> = { comfortable: "p-6", compact: "p-4" };
 
 export function DialogContent({
   className,
   widthClassName = "max-w-lg",
+  density,
   children,
   ...props
 }: DialogContentProps) {
+  const resolvedDensity = useDensity(density);
+  // T-905: `prefers-reduced-motion: reduce` drops the open/close
+  // fade — the dialog still opens/closes instantly, just without the
+  // animation classes.
+  const reducedMotion = useReducedMotion();
   return (
     <RadixDialog.Portal>
-      <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/50 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out" />
-      <RadixDialog.Content
+      <RadixDialog.Overlay
         className={clsx(
-          "fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-lg border p-6 shadow-xl",
+          "fixed inset-0 z-40 bg-black/50",
+          !reducedMotion &&
+            "data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out",
+        )}
+      />
+      <RadixDialog.Content
+        data-density={resolvedDensity}
+        className={clsx(
+          "fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl",
+          DENSITY_PADDING[resolvedDensity],
           widthClassName,
           "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
           "focus:outline-none",

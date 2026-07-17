@@ -1,6 +1,7 @@
 import type { ComponentPropsWithoutRef } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import clsx from "clsx";
+import { useDensity, type Density } from "./density";
 
 // Radix has no dedicated "drawer/sheet" primitive; a drawer is a Dialog
 // anchored to an edge of the viewport instead of centered, so it's built
@@ -29,15 +30,24 @@ const sideClasses: Record<DrawerSide, string> = {
 
 export interface DrawerContentProps extends ComponentPropsWithoutRef<typeof RadixDialog.Content> {
   side?: DrawerSide;
+  /** T-905: compact/comfortable padding (density.ts) — "comfortable" is
+   * this component's original `p-6`, so the prop is additive. Defaults to
+   * the ambient `<DensityProvider>` in scope. */
+  density?: Density;
 }
 
-export function DrawerContent({ className, side = "right", children, ...props }: DrawerContentProps) {
+const DENSITY_PADDING: Record<Density, string> = { comfortable: "p-6", compact: "p-4" };
+
+export function DrawerContent({ className, side = "right", density, children, ...props }: DrawerContentProps) {
+  const resolvedDensity = useDensity(density);
   return (
     <RadixDialog.Portal>
       <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
       <RadixDialog.Content
+        data-density={resolvedDensity}
         className={clsx(
-          "fixed z-50 flex flex-col overflow-y-auto p-6 shadow-xl",
+          "fixed z-50 flex flex-col overflow-y-auto shadow-xl",
+          DENSITY_PADDING[resolvedDensity],
           "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
           "focus:outline-none",
           sideClasses[side],

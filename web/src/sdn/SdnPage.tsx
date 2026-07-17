@@ -42,6 +42,14 @@ function TreeRow({
   return (
     <button
       type="button"
+      // T-905 (axe aria-required-children): the enclosing role="tree" needs
+      // role="treeitem" children — each SDN zone/vnet/subnet row is one.
+      // `aria-selected` and `aria-level` (depth+1) give the treeitem its
+      // required state and position; the nested vnet/subnet lists are wrapped
+      // in role="group" by the tree renderer below.
+      role="treeitem"
+      aria-selected={selected}
+      aria-level={depth + 1}
       onClick={onClick}
       className={clsx(
         "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors",

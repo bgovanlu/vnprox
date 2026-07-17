@@ -85,7 +85,7 @@ export function SwitchView({
             <section key={group.node} aria-label={`node ${group.node}`}>
               <div className="mb-2 flex items-center gap-2">
                 <h2 className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-200">{group.node}</h2>
-                <span className="text-xs text-slate-400 dark:text-slate-500">
+                <span className="text-xs text-slate-400 dark:text-slate-400">
                   {group.switches.length} switch{group.switches.length === 1 ? "" : "es"}
                 </span>
                 {stale && (
@@ -114,7 +114,7 @@ export function SwitchView({
               </div>
               {activeLayers.has("phys") && group.freePorts.length > 0 && (
                 <div className="mt-2 rounded-lg border border-dashed border-slate-300 p-2 dark:border-slate-700">
-                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-400">
                     Unattached ports
                   </div>
                   <div className="flex flex-wrap gap-1.5">

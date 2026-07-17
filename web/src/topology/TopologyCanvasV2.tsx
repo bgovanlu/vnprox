@@ -23,6 +23,7 @@
 //    with no DOM a11y surface. This is the seam T-905/T-903 build on.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useThemeStore, type Theme } from "../store/theme";
+import { useReducedMotion } from "../lib/useReducedMotion";
 import type { FlowElements } from "./toFlowElements";
 import type { XYPosition } from "./layout";
 import {
@@ -37,9 +38,19 @@ import {
 } from "./canvasScene";
 import { buildA11yProxies } from "./a11yBridge";
 import { TopologyA11yLayer } from "./TopologyA11yLayer";
-import { drawScene, type SceneTheme } from "./canvasDraw";
+import { drawScene, pulseAlphaForPhase, type SceneTheme } from "./canvasDraw";
 import { applyLod, parseLodId, zoomBandFor } from "./lod";
 import { Minimap } from "./Minimap";
+
+// T-905: how often the drift "pulse" phase advances while motion is
+// allowed — a plain interval (not a 60fps rAF loop): the pulse is a slow,
+// low-contrast breathing effect, not something that needs frame-perfect
+// smoothness, and an interval this coarse keeps the redraw cost of
+// entities that never move or change bounded and cheap even on a
+// drift-heavy cluster (T-901's perf budget is about pan/zoom/hover
+// interaction frames, which this never blocks — it only ever *adds* an
+// occasional extra redraw when nothing else is happening).
+const PULSE_TICK_MS = 120;
 
 export interface TopologyCanvasV2Props {
   elements: FlowElements;
@@ -134,6 +145,7 @@ export function TopologyCanvasV2({
 }: TopologyCanvasV2Props) {
   const storeTheme = useThemeStore((s) => s.theme);
   const effectiveTheme = theme ?? storeTheme;
+  const reducedMotion = useReducedMotion();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -266,6 +278,30 @@ export function TopologyCanvasV2({
     if (selectedId !== undefined) setRovingId(selectedId);
   }, [selectedId]);
 
+  // --- T-905: drift "pulse" phase — only ticks when motion is allowed AND
+  // at least one visible entity would actually animate, so a cluster with
+  // no drift findings (the common case) never starts an interval at all.
+  const hasDriftEntity = useMemo(
+    () =>
+      elements.nodes.some((n) => n.data.badges.includes("drift")) ||
+      elements.edges.some((e) => e.data?.badges.includes("drift") ?? false),
+    [elements.nodes, elements.edges],
+  );
+  const [pulsePhase, setPulsePhase] = useState(0);
+  useEffect(() => {
+    if (reducedMotion || !hasDriftEntity) {
+      setPulsePhase(0);
+      return;
+    }
+    const start = Date.now();
+    const id = setInterval(() => {
+      setPulsePhase(Date.now() - start);
+    }, PULSE_TICK_MS);
+    return () => {
+      clearInterval(id);
+    };
+  }, [reducedMotion, hasDriftEntity]);
+
   // --- Draw ----------------------------------------------------------------
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -293,8 +329,14 @@ export function TopologyCanvasV2({
       theme: themeColors(effectiveTheme),
       dragTopLeft,
       nodeSize: DEFAULT_NODE_SIZE,
+      // Static (1, the plain look) unless motion is allowed AND something
+      // would actually animate — never runs the breathing formula only to
+      // immediately pin it back to a look-alike of 1 (pulseAlphaForPhase(0)
+      // is 0.55, not 1: reduced-motion must skip the formula entirely, not
+      // just freeze its phase at 0).
+      pulseAlpha: reducedMotion || !hasDriftEntity ? 1 : pulseAlphaForPhase(pulsePhase),
     });
-  }, [lodElements.nodes, lodElements.edges, viewport, size, effectiveTheme, dragTopLeft]);
+  }, [lodElements.nodes, lodElements.edges, viewport, size, effectiveTheme, dragTopLeft, pulsePhase, reducedMotion, hasDriftEntity]);
 
   // --- Pointer helpers -----------------------------------------------------
   const localPoint = useCallback((evt: { clientX: number; clientY: number }): XYPosition => {

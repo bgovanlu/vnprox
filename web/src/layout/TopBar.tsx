@@ -53,7 +53,15 @@ export function TopBar({ onOpenHelp }: TopBarProps) {
         type="button"
         onClick={openSearch}
         aria-label="Search"
-        className="flex h-9 w-full max-w-sm items-center gap-2 rounded-md border border-slate-300 px-3 text-left text-sm text-slate-400 hover:border-slate-400 dark:border-slate-700 dark:text-slate-500 dark:hover:border-slate-600"
+        // T-905: text-slate-400/dark:text-slate-500 (the original pairing)
+        // failed axe's color-contrast check in dark mode (4.23:1 measured
+        // against the header's dark:bg-slate-950, below WCAG AA's 4.5:1
+        // minimum for this ~14px text) — swapped so each mode gets the
+        // shade with adequate contrast against ITS background (slate-500
+        // reads clearly on the light header's white; slate-400 reads
+        // clearly on the dark header's near-black), rather than the same
+        // shade doing double duty across both.
+        className="flex h-9 w-full max-w-sm items-center gap-2 rounded-md border border-slate-300 px-3 text-left text-sm text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600"
       >
         <span aria-hidden>⌕</span>
         <span>Search VMs, MACs, IPs…</span>

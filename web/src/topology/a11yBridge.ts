@@ -42,6 +42,29 @@ const MGMT_BADGE_PHRASE: Record<string, string> = {
 };
 
 /**
+ * Turns a raw badge-token list into the screen-reader phrase parts
+ * `entityAriaLabel` appends after "status …" — pulled out on its own (T-905)
+ * so every DOM entity that carries this same badge vocabulary but isn't a
+ * canvas `EntityNodeData` (the switch faceplate's chassis/uplink/port
+ * buttons, `SwitchFaceplate.tsx`/`SwitchView.tsx`) can build an identically
+ * worded label without hand-rolling the mgmt/corosync/mgmt-path/drift
+ * phrasing a second time. The management-path trio is spelled out in
+ * words; "drift" gets its own sentence; every other badge is listed
+ * verbatim in one trailing "badges: …" part.
+ */
+export function badgeAriaParts(badges: readonly string[]): string[] {
+  const parts: string[] = [];
+  const otherBadges = badges.filter((b) => !(b in MGMT_BADGE_PHRASE) && b !== "drift");
+  for (const b of badges) {
+    const phrase = MGMT_BADGE_PHRASE[b];
+    if (phrase !== undefined) parts.push(phrase);
+  }
+  if (otherBadges.length > 0) parts.push(`badges: ${otherBadges.join(", ")}`);
+  if (badges.includes("drift")) parts.push("has configuration drift");
+  return parts;
+}
+
+/**
  * Builds the human/screen-reader label for one map entity, naming its kind,
  * identity, live status, and badge list (T-905 AC4's requirement, produced
  * here so every consumer — the a11y proxies, the command palette, snapshot
@@ -62,14 +85,7 @@ export function entityAriaLabel(data: EntityNodeData): string {
     parts.push(`${data.kind} ${data.label}`);
   }
   parts.push(`status ${data.status}`);
-
-  const otherBadges = data.badges.filter((b) => !(b in MGMT_BADGE_PHRASE) && b !== "drift");
-  for (const b of data.badges) {
-    const phrase = MGMT_BADGE_PHRASE[b];
-    if (phrase !== undefined) parts.push(phrase);
-  }
-  if (otherBadges.length > 0) parts.push(`badges: ${otherBadges.join(", ")}`);
-  if (data.badges.includes("drift")) parts.push("has configuration drift");
+  parts.push(...badgeAriaParts(data.badges));
   return parts.join(", ");
 }
 

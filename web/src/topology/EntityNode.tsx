@@ -9,6 +9,8 @@
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
 import type { EntityStatus, SimVerdict, VerifyOutcome } from "../api/types";
+import { entityAriaLabel } from "./a11yBridge";
+import { useReducedMotion } from "../lib/useReducedMotion";
 
 /** This node's role along a path-simulator overlay (T-504): "path" is any
  * hop on the traced route, "blocking" is the enforcement-point endpoint a
@@ -135,6 +137,11 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
   const simVerdict = data.simVerdict;
   const simRole = data.simRole;
   const verifyOutcome = data.verifyOutcome;
+  // T-905: `prefers-reduced-motion: reduce` disables the drift "pulse" and
+  // the plain opacity/color transition below, falling back to the same
+  // static dashed-border/badge treatment minus the animation.
+  const reducedMotion = useReducedMotion();
+  const drifting = data.badges.includes("drift");
   return (
     <div
       role="button"
@@ -145,9 +152,21 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
       // own onNodeClick already reports, so keyboard activation (Enter)
       // and a pointer click always resolve to the identical entity.
       data-entity-ref={id}
+      // Kept as the plain label (not the richer entityAriaLabel format
+      // T-905 gives canvas v2's a11y proxies): topology.spec.ts/scale.spec
+      // .ts/perf.spec.ts (T-607/T-901) all locate this node via
+      // `getByRole("button", { name: "vmbr0", exact: true })` — an exact
+      // match a richer label would break. The kind/status/badge detail is
+      // instead exposed via `aria-describedby` below (a real, standard
+      // accessible-description channel, additive to the name), so this
+      // stays both WCAG-improved and backward-compatible with the locked
+      // exact-name query every one of those specs already relies on.
       aria-label={data.label}
+      aria-describedby={`${id}-a11y-desc`}
       className={clsx(
-        "relative flex flex-col gap-1 border px-3 py-2 text-xs shadow-sm transition-opacity",
+        "relative flex flex-col gap-1 border px-3 py-2 text-xs shadow-sm",
+        reducedMotion ? "transition-none" : "transition-opacity",
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500",
         isPill ? "rounded-full text-center" : "rounded-md",
         KIND_ACCENT[data.kind] ?? "bg-white dark:bg-slate-900",
         STATUS_CLASSES[data.status],
@@ -160,7 +179,12 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
         // drift = dashed outline (docs/features/topology.md §2), additive
         // to (not replacing) the status-driven border color above — a
         // "down"/"degraded" node can also carry an open drift finding.
-        data.badges.includes("drift") && "border-dashed",
+        // T-905: pulses (via Tailwind's built-in `animate-pulse`) when
+        // motion is allowed, static dashed border otherwise — the
+        // "unconfirmed-changeset pulse, drift dash" reduced-motion case
+        // this task's card names explicitly.
+        drifting && "border-dashed",
+        drifting && !reducedMotion && "animate-pulse",
         // Path simulator overlay (T-504) wins visually over the plain hover
         // ring above (a simulated trace is a more deliberate, rarer action
         // than a passive hover) and marks the missing-link break with a
@@ -172,6 +196,17 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
     >
       <Handle type="target" position={Position.Top} className="opacity-0" />
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
+      {/* T-905 AC4: the full kind/status/badge description (mgmt/corosync/
+          mgmt-path spelled out, drift called out) — visually hidden,
+          wired via aria-describedby above so it's announced alongside the
+          plain-name aria-label without changing that name (see this
+          node's aria-label doc comment for why the name itself stays
+          plain). Reuses entityAriaLabel — the same text canvas v2's a11y
+          proxies expose as their own aria-label — so both renderers
+          describe the same entity identically to a screen reader. */}
+      <span id={`${id}-a11y-desc`} className="sr-only">
+        {entityAriaLabel(data)}
+      </span>
       {simVerdict && simRole && (
         <span
           role="img"

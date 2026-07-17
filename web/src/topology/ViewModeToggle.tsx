@@ -35,7 +35,8 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
             className={clsx(
               "rounded px-3 py-1 text-xs font-medium transition-colors",
               active
-                ? "bg-accent-600 text-white"
+                ? // T-905 (axe): accent-700 not -600 — white-on-accent-600 is 3.76:1, below AA.
+                  "bg-accent-700 text-white"
                 : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
             )}
           >
