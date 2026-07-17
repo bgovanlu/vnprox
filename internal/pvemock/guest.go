@@ -9,6 +9,78 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// probeExecRequest is the request body of `POST .../agent/exec`: PVE's
+// guest-agent exec accepts a `command` field, either a single string or an
+// argv array — internal/pve.Client.AgentExec always sends the array form
+// (see that method's doc comment), which is all this mock parses.
+type probeExecRequest struct {
+	Command []string `json:"command"`
+}
+
+// parseProbeCommand recovers (proto,dstIP,port) from an argv this mock
+// received at `POST .../agent/exec`. It intentionally understands only the
+// exact two shapes internal/probe's buildCommand emits (see that function's
+// doc comment for why a general-purpose command emulator is out of scope):
+//
+//	["ping", "-c", "1", "-W", "<secs>", "<ip>"]
+//	["nc", "-z", "-w", "<secs>", "<ip>", "<port>"]
+//
+// Any other argv (a real command a hand-written client might send) is
+// reported unrecognized rather than guessed at.
+func parseProbeCommand(cmd []string) (proto, dstIP string, port int, ok bool) {
+	if len(cmd) < 2 {
+		return "", "", 0, false
+	}
+	switch cmd[0] {
+	case "ping":
+		return "icmp", cmd[len(cmd)-1], 0, true
+	case "nc":
+		if len(cmd) < 3 {
+			return "", "", 0, false
+		}
+		p, err := strconv.Atoi(cmd[len(cmd)-1])
+		if err != nil {
+			return "", "", 0, false
+		}
+		return "tcp", cmd[len(cmd)-2], p, true
+	default:
+		return "", "", 0, false
+	}
+}
+
+// matchAgentExecOutcome finds g's scripted outcome for (proto,dstIP,port),
+// or the honest "no scripted outcome" error fallback documented on
+// GuestSpec.AgentExecOutcomes.
+func (g *GuestSpec) matchAgentExecOutcome(proto, dstIP string, port int) (outcome, detail string) {
+	for _, o := range g.AgentExecOutcomes {
+		if o.Proto == proto && o.DstIP == dstIP && o.Port == port {
+			return o.Outcome, o.Detail
+		}
+	}
+	return "error", fmt.Sprintf("pvemock: no agent_exec_outcomes entry declared for proto=%s dst=%s port=%d", proto, dstIP, port)
+}
+
+// outcomeToExecResult synthesizes the exec-status result classify (T-802's
+// internal/probe.classify) needs to reclassify back to outcome — this mock
+// never runs a real command, so it must speak the same exit-code/output
+// contract in reverse. exit code 0 = reachable (matches ping/nc's own
+// success code), 1 = unreachable (matches ping's "no reply"/nc's generic
+// failure code — "refused" is additionally sniffed from output text, hence
+// detail is passed through verbatim for exit code 1), anything else =
+// error. "timeout" never exits at all — see execResult's doc comment.
+func outcomeToExecResult(outcome, detail string) execResult {
+	switch outcome {
+	case "reachable":
+		return execResult{exited: true, exitCode: 0, outData: detail}
+	case "unreachable":
+		return execResult{exited: true, exitCode: 1, outData: detail, errData: detail}
+	case "timeout":
+		return execResult{exited: false}
+	default: // "error" or any unrecognized value
+		return execResult{exited: true, exitCode: 2, errData: detail}
+	}
+}
+
 // guestConfigNumericFields lists guest-config keys hardware validation
 // (T-608) found real PVE returns as JSON numbers rather than strings —
 // mirroring internal/pve's stringifyConfigValue, the client-side half of
@@ -148,4 +220,85 @@ func (srv *Server) handleGuestAgentInterfaces(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeData(w, http.StatusOK, agentInterfacesResult{Result: g.AgentInterfaces})
+}
+
+// handleGuestAgentExec implements `POST /nodes/{node}/qemu/{vmid}/agent/exec`
+// (T-802): starts a scripted probe run against the guest's
+// AgentExecOutcomes fixture table (or, if AgentUnreachable is set, fails the
+// same way real PVE does for a guest whose QEMU guest agent isn't running —
+// docs/features/firewall.md §5's "verify live" honesty contract needs this
+// exact failure mode distinguishable from a normal reachable/unreachable
+// result). This mock never runs a real command — see this file's
+// parseProbeCommand/outcomeToExecResult doc comments. qemu-only, same
+// precedent as handleGuestAgentInterfaces above.
+func (srv *Server) handleGuestAgentExec(w http.ResponseWriter, r *http.Request) {
+	node := chi.URLParam(r, "node")
+	vmid := chi.URLParam(r, "vmid")
+	ns, ok := srv.state.node(node)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", node))
+		return
+	}
+	ns.mu.RLock()
+	g, ok := ns.qemu[vmid]
+	ns.mu.RUnlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("qemu %s not found on node %q", vmid, node))
+		return
+	}
+	if g.AgentUnreachable {
+		writeError(w, http.StatusInternalServerError, "QEMU guest agent is not running")
+		return
+	}
+
+	var body probeExecRequest
+	if err := decodeRequest(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	proto, dstIP, port, ok := parseProbeCommand(body.Command)
+	if !ok {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("pvemock: unrecognized probe command %v (see internal/probe.buildCommand)", body.Command))
+		return
+	}
+
+	outcome, detail := g.matchAgentExecOutcome(proto, dstIP, port)
+	pid := srv.state.nextExecPID()
+	srv.state.storeExecResult(pid, outcomeToExecResult(outcome, detail))
+	writeData(w, http.StatusOK, map[string]int{"pid": pid})
+}
+
+// handleGuestAgentExecStatus implements
+// `GET /nodes/{node}/qemu/{vmid}/agent/exec-status?pid=`: reads back the
+// synthesized result handleGuestAgentExec stored for pid. The node/vmid
+// path segments are validated (so a bogus ref 404s cleanly) but the exec
+// table itself is keyed by pid alone — see State.execs' doc comment.
+func (srv *Server) handleGuestAgentExecStatus(w http.ResponseWriter, r *http.Request) {
+	node := chi.URLParam(r, "node")
+	vmid := chi.URLParam(r, "vmid")
+	ns, ok := srv.state.node(node)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", node))
+		return
+	}
+	ns.mu.RLock()
+	_, ok = ns.qemu[vmid]
+	ns.mu.RUnlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("qemu %s not found on node %q", vmid, node))
+		return
+	}
+
+	pid := atoiOr(r.URL.Query().Get("pid"), -1)
+	res, ok := srv.state.execResult(pid)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("no exec run with pid %d", pid))
+		return
+	}
+	writeData(w, http.StatusOK, map[string]any{
+		"exited":   boolToInt(res.exited),
+		"exitcode": res.exitCode,
+		"out-data": res.outData,
+		"err-data": res.errData,
+	})
 }

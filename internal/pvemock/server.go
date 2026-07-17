@@ -104,6 +104,15 @@ func (srv *Server) buildRouter() chi.Router {
 		api.Get("/nodes/{node}/lxc/{vmid}/config", srv.requirePrivilege(PrivVMAudit, srv.handleGuestConfigGet("lxc")))
 		api.Put("/nodes/{node}/lxc/{vmid}/config", srv.requirePrivilege(PrivVMConfigNet, srv.handleGuestConfigPut("lxc")))
 		api.Get("/nodes/{node}/qemu/{vmid}/agent/network-get-interfaces", srv.requirePrivilege(PrivVMAudit, srv.handleGuestAgentInterfaces))
+		// T-802: guest-agent exec + poll, backing the live path-probe
+		// engine (internal/probe). Gated on the same PrivVMAudit privilege
+		// handleGuestAgentInterfaces above uses — this mock does not model
+		// real PVE's separate VM.Monitor privilege for guest-agent exec,
+		// following that route's own existing precedent rather than
+		// inventing a new privilege name unused anywhere else in this
+		// package.
+		api.Post("/nodes/{node}/qemu/{vmid}/agent/exec", srv.requirePrivilege(PrivVMAudit, srv.handleGuestAgentExec))
+		api.Get("/nodes/{node}/qemu/{vmid}/agent/exec-status", srv.requirePrivilege(PrivVMAudit, srv.handleGuestAgentExecStatus))
 
 		api.Get("/nodes/{node}/tasks/{upid}/status", srv.requirePrivilege(PrivSysAudit, srv.handleTaskStatus))
 		api.Get("/nodes/{node}/tasks/{upid}/log", srv.requirePrivilege(PrivSysAudit, srv.handleTaskLog))

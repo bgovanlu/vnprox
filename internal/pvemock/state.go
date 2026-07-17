@@ -61,16 +61,27 @@ type ipamState struct {
 // an immutable Fixture. Server handlers read/write State; Fixture itself is
 // never mutated after load.
 type State struct {
-	sdn         sdnState
-	ipam        ipamState
-	fixture     *Fixture
-	nodes       map[string]*nodeState
-	sessions    *sessionStore
-	tasks       *taskManager
-	clock       func() time.Time
+	sdn      sdnState
+	ipam     ipamState
+	fixture  *Fixture
+	nodes    map[string]*nodeState
+	sessions *sessionStore
+	tasks    *taskManager
+	clock    func() time.Time
+	// execs is T-802's scripted guest-agent exec run table: pid ->
+	// synthesized exec-status result. handleGuestAgentExec assigns a pid
+	// (execSeq, monotonically increasing — real PVE pids aren't globally
+	// unique across guests, but a mock never needs to model that) and
+	// stores the outcome the guest's fixture-declared AgentExecOutcomes (or
+	// AgentUnreachable) table resolves to; handleGuestAgentExecStatus just
+	// reads it back. Never a real process — see internal/probe's package
+	// doc comment for why this mock intentionally never runs commands.
+	execs       map[int]execResult
 	clusterFW   FirewallScope
+	execSeq     int
 	nodesMu     sync.RWMutex
 	clusterFWMu sync.RWMutex
+	execMu      sync.Mutex
 }
 
 // NewState builds runtime State from a validated Fixture.
@@ -80,6 +91,7 @@ func NewState(f *Fixture) *State {
 		nodes:     make(map[string]*nodeState, len(f.Nodes)),
 		clusterFW: f.Firewall.Cluster,
 		clock:     time.Now,
+		execs:     make(map[int]execResult),
 	}
 	s.sessions = newSessionStore(s.clock)
 	if f.Mock.TicketTTLMS > 0 {
@@ -168,4 +180,40 @@ func (s *State) node(name string) (*nodeState, bool) {
 	defer s.nodesMu.RUnlock()
 	n, ok := s.nodes[name]
 	return n, ok
+}
+
+// execResult is one scripted guest-agent exec run's synthesized
+// exec-status answer (T-802). exited false models "never completes" —
+// handleGuestAgentExecStatus always reports it that way, so a fixture's
+// "timeout" outcome exercises the real caller's own bounded poll deadline
+// rather than the mock inventing a fake elapsed-time model.
+type execResult struct {
+	outData  string
+	errData  string
+	exitCode int
+	exited   bool
+}
+
+// nextExecPID assigns the next scripted exec run's pid (T-802). Global
+// (not per-node/guest) — real PVE pids are host-process-scoped, but nothing
+// in this mock or its callers relies on that; a single monotonically
+// increasing counter keeps the bookkeeping trivial.
+func (s *State) nextExecPID() int {
+	s.execMu.Lock()
+	defer s.execMu.Unlock()
+	s.execSeq++
+	return s.execSeq
+}
+
+func (s *State) storeExecResult(pid int, res execResult) {
+	s.execMu.Lock()
+	defer s.execMu.Unlock()
+	s.execs[pid] = res
+}
+
+func (s *State) execResult(pid int) (execResult, bool) {
+	s.execMu.Lock()
+	defer s.execMu.Unlock()
+	r, ok := s.execs[pid]
+	return r, ok
 }

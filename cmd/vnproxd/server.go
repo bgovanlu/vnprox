@@ -559,6 +559,8 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Firewall:      graph,
 		Blueprints:    blueprintSvc,
 		Simulator:     graph,
+		ProbeClients:  probeClientProvider{authSvc},
+		ProbeAudit:    auditRepo,
 		FwLog:         fwLogAPI,
 		Peer:          peerSrv,
 		PeerAudit:     peerAudit,

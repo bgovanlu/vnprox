@@ -319,6 +319,39 @@ type GuestSpec struct {
 	Name            string            `yaml:"name"`
 	Status          string            `yaml:"status"`
 	AgentInterfaces []AgentIfaceSpec  `yaml:"agent_interfaces,omitempty"`
+	// AgentExecOutcomes (T-802) is this qemu guest's fixture-scriptable
+	// guest-agent exec outcome table, backing
+	// `POST .../agent/exec` + `GET .../agent/exec-status`: a live probe
+	// exec'd *from* this guest (internal/probe's Run) toward
+	// (Proto,DstIP,Port) is matched against this list by exact tuple
+	// equality (no wildcards — avoids ambiguity) and synthesizes an
+	// exec-status result representative of Outcome, never running a real
+	// command (see internal/pvemock's handleGuestAgentExec doc comment).
+	// A tuple with no match resolves to Outcome "error" — unscripted is
+	// "we don't know", not a guessed default, mirroring
+	// internal/probe's own honesty contract.
+	AgentExecOutcomes []AgentExecOutcomeSpec `yaml:"agent_exec_outcomes,omitempty"`
+	// AgentUnreachable (T-802), when true, makes this guest's
+	// `POST .../agent/exec` return the same 500 real PVE returns when the
+	// QEMU guest agent isn't installed/running/reachable — the "could not
+	// even attempt the probe" case internal/probe.Run's honesty contract
+	// (OutcomeError) exists for. AgentExecOutcomes is not consulted when
+	// this is true.
+	AgentUnreachable bool `yaml:"agent_unreachable,omitempty"`
+}
+
+// AgentExecOutcomeSpec is one scripted (proto,dst,port) -> outcome entry in
+// a GuestSpec's AgentExecOutcomes table (T-802). Outcome is one of
+// internal/probe's Outcome values ("reachable"|"unreachable"|"timeout"|
+// "error"); Detail (optional) becomes the synthesized exec's stdout/stderr
+// text, matched back out by internal/probe's classify — mostly useful for
+// exercising classify's "refused" text-sniffing branch from a fixture.
+type AgentExecOutcomeSpec struct {
+	Proto   string `yaml:"proto"`
+	DstIP   string `yaml:"dst"`
+	Outcome string `yaml:"outcome"`
+	Detail  string `yaml:"detail,omitempty"`
+	Port    int    `yaml:"port,omitempty"`
 }
 
 // AgentIfaceSpec is one NIC's entry in a qemu guest's

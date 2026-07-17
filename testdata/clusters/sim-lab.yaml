@@ -103,6 +103,23 @@ nodes:
         firewall:
           enabled: true
           rules: []
+        # T-802: POST /simulate/verify's scripted live-probe table, exec'd
+        # *from* vm-a toward vm-c's own agent-reported IP (below) — matched
+        # directly against this fixture's tcp/22 "allow" Simulate case (see
+        # vm-c's own pos-1 ACCEPT rule below). internal/api's own
+        # POST /simulate/verify tests override this table at load time
+        # (pvemock.LoadFixture + a Go-level mutation, the same "mutate a
+        # freshly-loaded Fixture in Go" pattern
+        # TestNetworkStaging_FixtureDefaultFailureInjection uses) to probe
+        # the identical tuple with both a reachable and an unreachable
+        # scripted outcome; the entry below is this fixture's own
+        # declarative default/example.
+        agent_exec_outcomes:
+          - proto: tcp
+            dst: "10.20.0.102"
+            port: 22
+            outcome: reachable
+            detail: "connected"
       "301":
         name: vm-c
         status: running
@@ -122,6 +139,43 @@ nodes:
               proto: tcp
               dport: "80"
               comment: "override: block http on this guest specifically"
+            - pos: 1
+              enabled: true
+              type: in
+              action: ACCEPT
+              proto: tcp
+              dport: "22"
+              comment: "T-802: explicit allow case for the live-probe divergence test (tcp/80 above still denies first — rule order preserved)"
+        # T-802: vm-c's own live guest-agent-reported address — the probe
+        # engine resolves a guest-nic dst's target IP this way (live, never
+        # from the inventory graph — see internal/api's
+        # resolveProbeTargetIP doc comment), so a guest-nic dst in a
+        # POST /simulate/verify request against this fixture resolves to
+        # this address without the caller needing to know it up front.
+        agent_interfaces:
+          - name: eth0
+            hardware_address: "BC:24:11:AA:20:02"
+            ip_addresses:
+              - ip: "10.20.0.102"
+                type: ipv4
+                prefix: 24
+      "303":
+        name: vm-d
+        status: running
+        config:
+          name: vm-d
+          cores: "1"
+          memory: "512"
+          net0: "virtio=BC:24:11:AA:20:03,bridge=vmbr0,tag=100,firewall=1"
+          ostype: l26
+        firewall:
+          enabled: true
+          rules: []
+        # T-802 AC5: a qemu guest whose QEMU guest agent is unreachable —
+        # POST /simulate/verify sourced from vm-d must answer 200 with
+        # observed.outcome:"error" (the honest "could not attempt the
+        # probe" case), never a 5xx.
+        agent_unreachable: true
     lxc: {}
     firewall:
       enabled: true
