@@ -128,6 +128,8 @@ async function waitForTopologyLayout(page: Page): Promise<void> {
 }
 
 const ROUTES: { path: string; label: string; ready: (page: Page) => Promise<unknown> }[] = [
+  // T-904: the Home dashboard is now the index route.
+  { path: "/", label: "Home", ready: (p) => p.getByRole("heading", { name: "Home" }).waitFor() },
   { path: "/topology", label: "Topology", ready: (p) => waitForTopologyLayout(p) },
   { path: "/guests", label: "Guests", ready: (p) => p.getByRole("heading", { name: "Guests" }).waitFor() },
   { path: "/sdn", label: "SDN", ready: (p) => p.getByRole("main").waitFor() },

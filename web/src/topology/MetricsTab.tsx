@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { WsClient } from "../api/ws";
 import { useLiveMetrics, useMetricsHistoryQuery } from "./metricsQueries";
+import { formatBps } from "./metricsFormat";
 
 export interface MetricsTabProps {
   entityRef: string;
@@ -14,14 +15,6 @@ export interface MetricsTabProps {
    * production callers never pass this, so the shared browser singleton is
    * used. */
   wsClient?: WsClient;
-}
-
-function formatBps(bps: number): string {
-  const abs = Math.abs(bps);
-  if (abs >= 1e9) return `${(bps / 1e9).toFixed(2)} Gbps`;
-  if (abs >= 1e6) return `${(bps / 1e6).toFixed(2)} Mbps`;
-  if (abs >= 1e3) return `${(bps / 1e3).toFixed(1)} Kbps`;
-  return `${bps.toFixed(0)} bps`;
 }
 
 function formatPerSec(v: number): string {
