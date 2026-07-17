@@ -8,29 +8,30 @@
 //     uplink NIC silently fragment/drop, a classic misconfiguration this
 //     catches. Detection only (no computable fix: raising the port's MTU
 //     vs. lowering the bridge's MTU are both plausible intents, so which
-//     direction is "correct" cannot be inferred safely).
+//     direction is "correct" cannot be inferred safely). This half stays in
+//     this package — it is not a cross-node comparison and has no second
+//     consumer to share with.
 //   - cross-node consistency: the same-named bridge's MTU differing across
-//     cluster nodes (the same "same-named bridge" grouping bridge.go
-//     uses). This one *is* fixable — "MTU alignment", the second of the
-//     two computable-fix families the task card names explicitly — via a
-//     bridge.update op aligning every outlier node to the majority MTU.
+//     cluster nodes. This one *is* fixable ("MTU alignment") and is the
+//     comparison shared with internal/change's T-801 validator class via
+//     internal/xnode (CrossNodeMTU) — this file only adapts its result into
+//     a drift Finding.
 
 package drift
 
 import (
 	"fmt"
 	"sort"
-	"strings"
 
-	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/xnode"
 )
 
 // checkMTUConsistency is the CheckMTUConsistency family.
 func checkMTUConsistency(snap inventory.Snapshot) []Finding {
 	var out []Finding
 	out = append(out, mtuPathFindings(snap)...)
-	out = append(out, mtuCrossNodeFindings(snap)...)
+	out = append(out, driftFindings(xnode.CrossNodeMTU(snap))...)
 	return out
 }
 
@@ -45,7 +46,7 @@ func mtuPathFindings(snap inventory.Snapshot) []Finding {
 		if !ok {
 			continue
 		}
-		bridgeMTU, bridgeOK := effectiveMTU(br.MTU, br.MTUDeclared)
+		bridgeMTU, bridgeOK := xnode.EffectiveMTU(br.MTU, br.MTUDeclared)
 		if !bridgeOK {
 			continue
 		}
@@ -61,7 +62,7 @@ func mtuPathFindings(snap inventory.Snapshot) []Finding {
 // portRef is a bond, each of the bond's slaves' MTU in turn).
 func pathMismatches(snap inventory.Snapshot, br *inventory.Bridge, bridgeMTU int, portRef inventory.Ref) []Finding {
 	var out []Finding
-	if mtu, ok := portMTU(snap, portRef); ok && mtu != bridgeMTU {
+	if mtu, ok := xnode.PortMTU(snap, portRef); ok && mtu != bridgeMTU {
 		out = append(out, pathMismatchFinding(br, bridgeMTU, portRef, mtu))
 	}
 	bond, ok := snap.Get(portRef)
@@ -78,7 +79,7 @@ func pathMismatches(snap inventory.Snapshot, br *inventory.Bridge, bridgeMTU int
 	}
 	for _, sname := range slaves {
 		sref := inventory.Ref{Kind: inventory.KindPhysNic, Node: portRef.Node, ID: sname}
-		if mtu, ok := portMTU(snap, sref); ok && mtu != bridgeMTU {
+		if mtu, ok := xnode.PortMTU(snap, sref); ok && mtu != bridgeMTU {
 			out = append(out, pathMismatchFinding(br, bridgeMTU, sref, mtu))
 		}
 	}
@@ -90,79 +91,4 @@ func pathMismatchFinding(br *inventory.Bridge, bridgeMTU int, portRef inventory.
 		br.Name, br.GetRef().Node, bridgeMTU, portRef.ID, portMTU)
 	return newFinding(CheckMTUConsistency, SeverityWarning, detail,
 		[]string{br.GetRef().Node}, []string{br.GetRef().String(), portRef.String()})
-}
-
-// mtuCrossNodeFindings compares each same-named bridge's MTU across every
-// cluster node that has it, producing a fixable finding when they disagree
-// (docs/features/topology.md §6's "MTU alignment" fix family).
-func mtuCrossNodeFindings(snap inventory.Snapshot) []Finding {
-	var out []Finding
-	byName := bridgesByName(snap)
-	for _, name := range sortedBridgeNames(byName) {
-		byNode := byName[name]
-		if len(byNode) < 2 {
-			continue
-		}
-		present := make([]string, 0, len(byNode))
-		for node := range byNode {
-			present = append(present, node)
-		}
-		sort.Strings(present)
-
-		mtuByNode := map[string]int{}
-		votes := map[int]int{}
-		for _, n := range present {
-			mtu, ok := effectiveMTU(byNode[n].MTU, byNode[n].MTUDeclared)
-			if !ok {
-				continue
-			}
-			mtuByNode[n] = mtu
-			votes[mtu]++
-		}
-		if len(votes) < 2 {
-			continue
-		}
-		canonical := majorityInt(votes)
-
-		var refs, dissentNodes []string
-		var ops []change.Op
-		for _, n := range present {
-			refs = append(refs, byNode[n].GetRef().String())
-			mtu, ok := mtuByNode[n]
-			if !ok || mtu == canonical {
-				continue
-			}
-			dissentNodes = append(dissentNodes, fmt.Sprintf("%s=%d", n, mtu))
-			m := canonical
-			ops = append(ops, change.Op{
-				Type:   change.OpBridgeUpdate,
-				Target: byNode[n].GetRef(),
-				Params: &change.BridgeUpdateParams{MTU: &m},
-			})
-		}
-		if len(ops) == 0 {
-			continue
-		}
-		detail := fmt.Sprintf("bridge %s MTU has drifted across the cluster: %s (canonical %d)",
-			name, strings.Join(dissentNodes, ", "), canonical)
-		f := newFinding(CheckMTUConsistency, SeverityWarning, detail, present, refs)
-		f = f.withFix(fmt.Sprintf("drift: align bridge %s MTU to %d", name, canonical), ops)
-		out = append(out, f)
-	}
-	return out
-}
-
-func majorityInt(votes map[int]int) int {
-	bestVal, bestVotes := 0, -1
-	vals := make([]int, 0, len(votes))
-	for v := range votes {
-		vals = append(vals, v)
-	}
-	sort.Ints(vals)
-	for _, v := range vals {
-		if votes[v] > bestVotes {
-			bestVal, bestVotes = v, votes[v]
-		}
-	}
-	return bestVal
 }

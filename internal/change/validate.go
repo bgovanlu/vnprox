@@ -84,8 +84,8 @@ func Validate(ops []Op, snap inventory.Snapshot) []Finding {
 // safety checks over a referentially-broken graph) would themselves be
 // operating on nonsense.
 //
-// Cross-node consistency checks (spec item 4) are not assigned to any task
-// in the current plan and are left as a marked insertion point below.
+// Cross-node consistency checks (spec item 4) run as class 4 between safety
+// and advisory (T-801; see crossnodeValidate in validate_crossnode.go).
 func ValidateWithSafety(ops []Op, snap inventory.Snapshot, safety SafetyOptions) []Finding {
 	var findings []Finding
 
@@ -118,8 +118,17 @@ func ValidateWithSafety(ops []Op, snap inventory.Snapshot, safety SafetyOptions)
 		return findings
 	}
 
-	// --- a future task's cross-node consistency class (spec item 4) would
-	// insert here, after safety and before advisory.
+	// Cross-node consistency class (spec item 4, T-801): folds the
+	// changeset's projected effect across the whole cluster and compares
+	// same-named bridges/MTU/SDN-zone realization across nodes, via the
+	// comparison families internal/change shares with internal/drift through
+	// internal/xnode. Runs after safety and before advisory, short-circuiting
+	// advisory on any error exactly like the earlier classes.
+	crossnodeFindings := crossnodeValidate(ops, snap)
+	findings = append(findings, crossnodeFindings...)
+	if hasError(crossnodeFindings) {
+		return findings
+	}
 
 	advisoryFindings := advisoryValidate(ops, snap, safety.Allocations)
 	findings = append(findings, advisoryFindings...)

@@ -169,6 +169,39 @@ const (
 	codeEvpnGatewayMissing   = "sdn.evpn_gateway_missing"
 	codeSNATRequiresExitNode = "sdn.snat_requires_exit_node"
 
+	// --- cross-node consistency (class 4, T-801: docs/features/
+	// change-management.md §2's cross-node class — the same comparisons
+	// internal/drift runs against live state, run instead against this
+	// changeset's *projected* cluster state, so cross-node breakage a
+	// changeset introduces or leaves uncorrected is caught at review time
+	// rather than only by the next 30s drift cycle). All three are
+	// SeverityError (they block apply): a changeset that would leave the
+	// cluster inconsistent should not apply without the operator seeing it.
+	// The comparison logic is shared with drift via internal/xnode (one
+	// implementation, not two names for one problem); severity and the
+	// change.Op fix patch are this package's own.
+
+	// codeCrossnodeBridge flags a same-named bridge whose presence,
+	// VLAN-awareness, or VID set diverges across the projected cluster (a
+	// VLAN carried on one node's trunk but not a same-named bridge
+	// elsewhere — every cluster node is a potential migration target). The
+	// VLAN-awareness/VID-set forms carry a fix restoring parity; the
+	// presence form does not (creating a missing bridge needs a physical-
+	// port decision), mirroring drift's own fixable/not-fixable split.
+	codeCrossnodeBridge = "crossnode.bridge_divergence"
+	// codeCrossnodeMTU flags a same-named bridge whose MTU diverges across
+	// the projected cluster, with a fix aligning outliers to the majority
+	// MTU (the same alignment strategy drift's fixable MTU case uses).
+	codeCrossnodeMTU = "crossnode.mtu_consistency"
+	// codeCrossnodeSDN flags an SDN zone that, in the projected cluster,
+	// lists a member node whose realizing bridge does not exist there —
+	// closing the gap sdnValidate leaves, where a plain bridge.delete/
+	// iface.rename op (no sdn.* op) silently breaks an *untouched* zone's
+	// realization on one node. Detection-only, matching drift's own stance
+	// (creating the bridge needs a physical-port decision this validator
+	// cannot make safely).
+	codeCrossnodeSDN = "crossnode.sdn_realization"
+
 	// --- advisory (class 5: style/health warnings) ----------------------
 
 	codeAdvisoryBondHashPolicy = "advisory.bond_missing_layer34_hash"
