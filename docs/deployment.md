@@ -78,6 +78,15 @@ snapshot_pin_days = 7
 enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); token generated on first start
 # key_file = "/etc/vnprox/keys/metrics.key"   # default
 # allow_from = ["10.0.0.0/8"]                 # optional source-CIDR allowlist; default: allow any source
+
+# [flows]                          # T-1002/T-1004: every source below is off by default, opt-in per node
+# sflow_enabled = false            # UDP :6343
+# netflow_enabled = false          # UDP :2055 (v5 and v9 share one port)
+# ipfix_enabled = false            # UDP :4739
+# conntrack_sampling_enabled = false   # periodic /proc/net/nf_conntrack poll; no extra capability needed
+# ebpf_sampling_enabled = false        # needs CAP_BPF/CAP_PERFMON (docs/security.md Host footprint); setting
+#                                      # this true and reinstalling/upgrading grants the unit that capability
+# host_sample_interval_sec = 10        # shared poll interval for the two host-local samplers above
 ```
 
 ## Upgrade

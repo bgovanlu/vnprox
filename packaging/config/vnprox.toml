@@ -43,3 +43,15 @@ lldp_interval = "30s"
 [retention]
 snapshot_keep_days = 90
 snapshot_pin_days = 7
+
+# Flow ingestion/sampling (T-1002/T-1004) — every source below is off by
+# default and opt-in per node; uncomment to enable on this node only.
+# [flows]
+# sflow_enabled = false
+# netflow_enabled = false
+# ipfix_enabled = false
+# conntrack_sampling_enabled = false   # periodic /proc/net/nf_conntrack poll; no extra capability needed
+# ebpf_sampling_enabled = false        # needs CAP_BPF/CAP_PERFMON — see docs/security.md's Host footprint
+#                                       # section; setting this to true and reinstalling/upgrading is what
+#                                       # grants those capabilities to vnprox.service (never unconditional)
+# host_sample_interval_sec = 10        # shared poll interval for both host-local samplers above

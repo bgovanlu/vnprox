@@ -479,15 +479,24 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// srcRef/dstRef (flow.GraphResolver, refreshed from the same live graph
 	// every other read path shares), and the `flow.batch` WS push over the
 	// same shared hub topoSvc already backs for metrics.sample/drift.changed/
-	// changeset.status. The returned *flow.Service itself needs no further
-	// wiring here (every listener already closes over it inside setupFlows);
-	// GET /flows and GET /api/peer/flows both read directly off flowRepo
-	// (store.FlowSampleRepo already satisfies both api.FlowLocalSource and,
-	// via flowPeerAdapter, peer.FlowReader — the same "small interface, real
-	// type satisfies it for free" shape AuditService/AuditReader use).
-	// flowActors are registered with the run group below, alongside every
-	// other supervised subsystem.
-	_, flowRepo, flowActors := setupFlows(cfg, db, graph, topoSvc, localNode, logger)
+	// changeset.status. GET /flows and GET /api/peer/flows both read
+	// directly off flowRepo (store.FlowSampleRepo already satisfies both
+	// api.FlowLocalSource and, via flowPeerAdapter, peer.FlowReader — the
+	// same "small interface, real type satisfies it for free" shape
+	// AuditService/AuditReader use). flowActors are registered with the run
+	// group below, alongside every other supervised subsystem. flowSvc
+	// itself is reused by setupHostSample right below (T-1004) so its two
+	// host-local samplers feed the exact same *flow.Service/ring — no
+	// second storage path.
+	flowSvc, flowRepo, flowActors := setupFlows(cfg, db, graph, topoSvc, localNode, logger)
+
+	// T-1004: host-local flow sampling (conntrack/eBPF) — both strictly
+	// opt-in per node via [flows] conntrack_sampling_enabled/
+	// ebpf_sampling_enabled, off by default; see setupHostSample's doc
+	// comment (cmd/vnproxd/hostsample.go). activeHostSampler ("",
+	// "conntrack", or "ebpf") is surfaced read-only on GET /config's
+	// Settings payload below (api.InstanceInfo.HostSampler).
+	activeHostSampler, hostSampleActors := setupHostSample(cfg, flowSvc, localNode, logger)
 
 	// T-301/T-304: the peer server backs the documented /api/peer/host/* and
 	// /api/peer/timer/* routes with the real netlink/interfaces(5)/lldpd
@@ -595,6 +604,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 			ReadOnly:                 cfg.Server.ReadOnly,
 			AllowDangerousOps:        cfg.Safety.AllowDangerousOps,
 			MetricsEnabled:           cfg.Metrics.Enabled,
+			HostSampler:              activeHostSampler,
 		},
 		DistFS:     distFS,
 		Logger:     logger,
@@ -728,6 +738,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// unconditionally is safe even with every listener disabled (an empty
 	// flowActors slice in that case).
 	for _, actor := range flowActors {
+		g.add(actor)
+	}
+	// T-1004: host-local flow samplers — an empty hostSampleActors slice
+	// (both [flows] sampler flags unset) means this loop registers nothing,
+	// so no sampler goroutine ever starts (AC4).
+	for _, actor := range hostSampleActors {
 		g.add(actor)
 	}
 

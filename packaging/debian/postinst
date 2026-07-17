@@ -11,6 +11,11 @@
 #      "Authentication" and AES-256-GCM key-file convention) — generated
 #      once at install, never overwritten on upgrade.
 #   3. Reload systemd's unit cache so `vnprox.service` is recognized.
+#   4. (T-1004) Sync a systemd drop-in granting CAP_BPF/CAP_PERFMON to
+#      vnprox.service's CapabilityBoundingSet, but ONLY when
+#      /etc/vnprox/vnprox.toml has `[flows] ebpf_sampling_enabled = true` —
+#      see sync_ebpf_caps_dropin below and docs/security.md's Host
+#      footprint section. Never granted unconditionally.
 #
 # This script deliberately does NOT enable or start vnprox.service on a
 # fresh install: the shipped default config assumes a real Proxmox VE node
@@ -32,6 +37,56 @@ set -e
 VAR_LIB_DIR=/var/lib/vnprox
 KEYS_DIR=/etc/vnprox/keys
 SESSION_KEY_FILE="$KEYS_DIR/session.key"
+CONFIG_FILE=/etc/vnprox/vnprox.toml
+EBPF_DROPIN_DIR=/etc/systemd/system/vnprox.service.d
+EBPF_DROPIN_FILE="$EBPF_DROPIN_DIR/10-ebpf-caps.conf"
+
+# sync_ebpf_caps_dropin implements docs/security.md's Host footprint
+# section / T-1004's card: the shipped vnprox.service unit's
+# CapabilityBoundingSet never includes CAP_BPF/CAP_PERFMON (needed only by
+# internal/flow/hostsample's eBPF sampler) — this function is the ONLY
+# place that ever grants them, and only when this node's own
+# vnprox.toml explicitly opts in. Idempotent and safe to call on every
+# configure (fresh install or upgrade): it (re)writes the drop-in when
+# enabled, or removes it (and prunes the now-empty drop-in directory) when
+# disabled/absent, so toggling the config key off in vnprox.toml and
+# reinstalling/upgrading revokes the capability again — this is
+# deliberately not automatic on a plain `systemctl restart` (only on
+# package configure), matching every other "restart-time file" config
+# value in this project (docs/api.md's GET /config note).
+#
+# Matching is a plain grep for the exact `ebpf_sampling_enabled = true`
+# key/value pair, the same simplicity level packaging/bin/vnprox-setup's
+# own sed-based vnprox.toml edits already use — vnprox.toml has one
+# section per feature and no nested tables, so a bare key match is
+# unambiguous in practice; this does not attempt a real TOML parse.
+sync_ebpf_caps_dropin() {
+  ebpf_enabled=false
+  if [ -f "$CONFIG_FILE" ] && grep -Eq '^[[:space:]]*ebpf_sampling_enabled[[:space:]]*=[[:space:]]*true([[:space:]]|#|$)' "$CONFIG_FILE"; then
+    ebpf_enabled=true
+  fi
+
+  if [ "$ebpf_enabled" = true ]; then
+    echo "vnprox: [flows] ebpf_sampling_enabled = true — granting CAP_BPF/CAP_PERFMON to vnprox.service via $EBPF_DROPIN_FILE"
+    install -d -m 0755 -o root -g root "$EBPF_DROPIN_DIR"
+    cat > "$EBPF_DROPIN_FILE" <<'EOF'
+# Written by vnprox's postinst ONLY while /etc/vnprox/vnprox.toml has
+# [flows] ebpf_sampling_enabled = true (docs/security.md's Host footprint
+# section, T-1004). Removed automatically the next time the package is
+# configured with that key absent/false. Do not edit by hand — edit
+# vnprox.toml's [flows] section instead and reinstall/upgrade the package
+# (or run `dpkg-reconfigure vnprox` where supported) to regenerate this
+# file.
+[Service]
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON
+EOF
+    chmod 0644 "$EBPF_DROPIN_FILE"
+  elif [ -e "$EBPF_DROPIN_FILE" ]; then
+    echo "vnprox: [flows] ebpf_sampling_enabled is not true — revoking the CAP_BPF/CAP_PERFMON grant ($EBPF_DROPIN_FILE)"
+    rm -f "$EBPF_DROPIN_FILE"
+    rmdir "$EBPF_DROPIN_DIR" 2>/dev/null || true
+  fi
+}
 
 case "$1" in
   configure)
@@ -51,6 +106,8 @@ case "$1" in
       chmod 0600 "$SESSION_KEY_FILE"
       echo "vnprox: generated new session encryption key at $SESSION_KEY_FILE"
     fi
+
+    sync_ebpf_caps_dropin
 
     # /run/systemd/system only exists when systemd is the running init
     # system (not the case in most build/test containers) — guard every

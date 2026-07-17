@@ -19,6 +19,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/bgovanlu/vnprox/internal/flow"
+	"github.com/bgovanlu/vnprox/internal/flow/hostsample"
 	"github.com/bgovanlu/vnprox/internal/peer"
 )
 
@@ -233,15 +234,28 @@ type MetricsConfig struct {
 // RetentionMinutes/MaxRows default to internal/flow's own documented ring
 // bound (internal/flow.Default{RetentionMinutes,MaxRows}) — whichever
 // prunes first, see that package's doc comment.
+//
+// ConntrackSamplingEnabled/EBPFSamplingEnabled (T-1004): the two host-local
+// samplers in internal/flow/hostsample, each independently opt-in and off
+// by default, matching every listener flag above. HostSampleIntervalSec is
+// shared by both (internal/flow/hostsample.DefaultHostSampleInterval when
+// unset/non-positive) — conntrack sampling is inherently a periodic
+// snapshot/diff, coarser by design than T-1002's live UDP ingestion.
+// EBPFSamplingEnabled additionally gates a systemd unit capability grant at
+// install/upgrade time (packaging/debian/postinst; docs/security.md's Host
+// footprint section) — never granted unconditionally.
 type FlowsConfig struct {
-	SFlowEnabled     bool
-	NetFlowEnabled   bool
-	IPFIXEnabled     bool
-	SFlowPort        int
-	NetFlowPort      int
-	IPFIXPort        int
-	RetentionMinutes int
-	MaxRows          int64
+	SFlowPort                int
+	NetFlowPort              int
+	IPFIXPort                int
+	RetentionMinutes         int
+	MaxRows                  int64
+	HostSampleIntervalSec    int
+	SFlowEnabled             bool
+	NetFlowEnabled           bool
+	IPFIXEnabled             bool
+	ConntrackSamplingEnabled bool
+	EBPFSamplingEnabled      bool
 }
 
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
@@ -318,14 +332,17 @@ type rawMetrics struct {
 }
 
 type rawFlows struct {
-	SFlowEnabled     bool  `toml:"sflow_enabled"`
-	NetFlowEnabled   bool  `toml:"netflow_enabled"`
-	IPFIXEnabled     bool  `toml:"ipfix_enabled"`
-	SFlowPort        int   `toml:"sflow_port"`
-	NetFlowPort      int   `toml:"netflow_port"`
-	IPFIXPort        int   `toml:"ipfix_port"`
-	RetentionMinutes int   `toml:"retention_minutes"`
-	MaxRows          int64 `toml:"max_rows"`
+	SFlowPort                int   `toml:"sflow_port"`
+	NetFlowPort              int   `toml:"netflow_port"`
+	IPFIXPort                int   `toml:"ipfix_port"`
+	RetentionMinutes         int   `toml:"retention_minutes"`
+	MaxRows                  int64 `toml:"max_rows"`
+	HostSampleIntervalSec    int   `toml:"host_sample_interval_sec"`
+	SFlowEnabled             bool  `toml:"sflow_enabled"`
+	NetFlowEnabled           bool  `toml:"netflow_enabled"`
+	IPFIXEnabled             bool  `toml:"ipfix_enabled"`
+	ConntrackSamplingEnabled bool  `toml:"conntrack_sampling_enabled"`
+	EBPFSamplingEnabled      bool  `toml:"ebpf_sampling_enabled"`
 }
 
 // Load reads, parses, defaults, and validates the config file at path.
@@ -409,6 +426,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			IPFIXPort:        firstNonZeroInt(raw.Flows.IPFIXPort, flow.DefaultIPFIXPort),
 			RetentionMinutes: firstNonZeroInt(raw.Flows.RetentionMinutes, flow.DefaultRetentionMinutes),
 			MaxRows:          firstNonZeroInt64(raw.Flows.MaxRows, flow.DefaultMaxRows),
+
+			ConntrackSamplingEnabled: raw.Flows.ConntrackSamplingEnabled,
+			EBPFSamplingEnabled:      raw.Flows.EBPFSamplingEnabled,
+			HostSampleIntervalSec:    firstNonZeroInt(raw.Flows.HostSampleIntervalSec, int(hostsample.DefaultHostSampleInterval/time.Second)),
 		},
 	}
 
