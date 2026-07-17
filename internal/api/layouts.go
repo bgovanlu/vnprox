@@ -21,6 +21,14 @@ import (
 type LayoutStore interface {
 	Get(ctx context.Context, username, name string) (store.Layout, error)
 	Put(ctx context.Context, l store.Layout) error
+	// List and Delete back T-907's GET /layouts (the saved-views picker)
+	// and DELETE /layouts/{name} — additive to the original GET/PUT-only
+	// contract; *store.LayoutRepo already implemented both (List backed
+	// the never-mounted "list your saved layouts" case since T-003, Delete
+	// existed for symmetry with Put) so this is a route-layer addition
+	// only, not a store-layer one.
+	List(ctx context.Context, username string) ([]store.Layout, error)
+	Delete(ctx context.Context, username, name string) error
 }
 
 // UsernameLookup is implemented by AuthService backends that can resolve the
@@ -45,12 +53,25 @@ type layoutResponse struct {
 	UpdatedAt int64           `json:"updatedAt"`
 }
 
+// layoutsListResponse is the wire shape of GET /api/v1/layouts (T-907):
+// every layout/saved-view the requesting user has saved, ordered by name
+// ascending per store.LayoutRepo.List. Includes the auto-persisted
+// "topology" canvas-position layout (and "onboarding", if present)
+// alongside any named saved views — the frontend distinguishes a "saved
+// view" from the auto-saved canvas layout by its own JSON shape (a
+// `"kind": "view"` tag, see docs/api.md's Saved views & annotations
+// section), never by anything this package interprets.
+type layoutsListResponse struct {
+	Items []layoutResponse `json:"items"`
+}
+
 // layoutPutRequest is the PUT request body: {"layout": {...arbitrary...}}.
 type layoutPutRequest struct {
 	Layout json.RawMessage `json:"layout"`
 }
 
-// mountLayoutsRoutes registers GET/PUT /api/v1/layouts/{name}, gated by the
+// mountLayoutsRoutes registers GET /api/v1/layouts (T-907: list the caller's
+// saved layouts/views), GET/PUT/DELETE /api/v1/layouts/{name}, gated by the
 // same session + netRead capability as the topology routes (saving a canvas
 // layout is a personal UI preference, not a network-mutating action, so no
 // higher capability or CSRF requirement applies — see docs/security.md's
@@ -72,9 +93,47 @@ func mountLayoutsRoutes(r chi.Router, layouts LayoutStore, auth AuthService) {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
+		r.Get("/layouts", handleListLayouts(layouts, lookup))
 		r.Get("/layouts/{name}", handleGetLayout(layouts, lookup))
 		r.Put("/layouts/{name}", handlePutLayout(layouts, lookup))
+		r.Delete("/layouts/{name}", handleDeleteLayout(layouts, lookup))
 	})
+}
+
+func handleListLayouts(layouts LayoutStore, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		list, err := layouts.List(r.Context(), username)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not list layouts")
+			return
+		}
+		items := make([]layoutResponse, 0, len(list))
+		for _, l := range list {
+			items = append(items, layoutResponse{Name: l.Name, Layout: json.RawMessage(l.LayoutJSON), UpdatedAt: l.UpdatedAt})
+		}
+		writeJSON(w, http.StatusOK, layoutsListResponse{Items: items})
+	}
+}
+
+func handleDeleteLayout(layouts LayoutStore, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		name := chi.URLParam(r, "name")
+		if err := layouts.Delete(r.Context(), username, name); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not delete layout")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 func handleGetLayout(layouts LayoutStore, lookup UsernameLookup) http.HandlerFunc {

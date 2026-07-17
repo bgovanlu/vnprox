@@ -121,6 +121,13 @@ CREATE TABLE layouts (
   PRIMARY KEY (username, name)
 );
 
+CREATE TABLE annotations (           -- T-907: entity-pinned sticky notes
+  id TEXT PRIMARY KEY,               -- ULID
+  ref TEXT NOT NULL,                 -- pinned entity's Ref string
+  content TEXT NOT NULL,             -- free text; opaque to vnproxd
+  created_by TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE metric_samples (
   ref TEXT NOT NULL, at INTEGER NOT NULL,
   rx_bytes INTEGER, tx_bytes INTEGER, rx_pkts INTEGER, tx_pkts INTEGER,
@@ -130,6 +137,8 @@ CREATE TABLE metric_samples (
 
 CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 ```
+
+**`layouts` / `annotations` (T-907: saved views & annotations, docs/api.md's "Saved views & annotations" section).** Both are strictly app-owned UI state — never a shadow copy of any PVE-authoritative config, per this doc's top-level rule. `layouts` (T-107) already held the auto-persisted canvas-position/filter blob under the reserved name `"topology"` (and `"onboarding"`'s walkthrough progress); T-907 reuses the identical mechanism for **named saved views** — a user-chosen `name` whose `layout_json` is a frontend-owned, backend-opaque blob shaped `{kind: "view", layers, vlanFilter?, zoom, viewport: {x, y}, selection?, view}` (docs/api.md documents the exact shape). The `kind: "view"` tag is how the frontend tells a saved view apart from the reserved auto-layout blobs when listing — vnproxd itself never inspects `layout_json`'s contents either way. `annotations` is a **new** table rather than a further extension of `layouts`: an entity-pinned sticky note is naturally many-rows-per-user (indeed many-rows-per-entity, shared across every user, not one blob overwritten in place), so it doesn't fit `layouts`' per-`(username, name)` single-blob shape — see `internal/store/migrations/0006_annotations.sql`'s doc comment for the full reasoning. `ref` is the pinned entity's `Ref` string (kind:node:id); `content` is free text vnproxd never interprets; `created_by` is the authoring user, kept for display/audit only — annotations are a shared team scratchpad visible to every `netRead`-capable user, not private per-user data like `layouts`.
 
 ## 3. Changeset operations
 

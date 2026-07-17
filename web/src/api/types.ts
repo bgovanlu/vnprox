@@ -215,6 +215,57 @@ export interface LayoutResponse {
   updatedAt: number;
 }
 
+/** GET /layouts (T-907) — every layout/saved-view the requesting user has
+ * saved (docs/api.md's Saved views & annotations section), including the
+ * reserved "topology"/"onboarding" auto-layout blobs alongside any named
+ * saved views. `layout` is typed as `unknown` here (not
+ * TopologyLayoutPayload) because a list item may be either shape — callers
+ * narrow with isSavedViewPayload (savedViews.ts) to find the actual named
+ * views. */
+export interface LayoutListItem {
+  name: string;
+  layout: unknown;
+  updatedAt: number;
+}
+
+export interface LayoutListResponse {
+  items: LayoutListItem[];
+}
+
+/** T-907's named saved view: a preset of the topology page's own layer/
+ * filter/zoom/selection/view-mode state, stored as a `layouts` row's
+ * opaque `layout` blob under a user-chosen name (docs/api.md's Saved views
+ * & annotations section). `kind: "view"` is the discriminator that tells a
+ * saved view apart from the reserved "topology"/"onboarding" auto-layout
+ * blobs when listing — see LayoutListItem above. */
+export interface SavedViewPayload {
+  kind: "view";
+  layers: Layer[];
+  vlanFilter?: number;
+  zoom: number;
+  viewport: { x: number; y: number };
+  selection?: string;
+  view: "graph" | "switch";
+}
+
+// --- Annotations (internal/api/annotations.go, T-907) ---------------------
+
+/** GET/POST /annotations' Annotation shape (docs/api.md's Saved views &
+ * annotations section): a free-text sticky note pinned to a map entity's
+ * Ref, shared across every user (not private per-user data). */
+export interface Annotation {
+  id: string;
+  ref: string;
+  content: string;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AnnotationListResponse {
+  items: Annotation[];
+}
+
 // --- Changesets (docs/api.md §Changesets; internal/change's Go types) -----
 // Mirrors internal/change/{op,changeset}.go's wire shapes exactly (see
 // planning/reports/T-201.md/T-202.md/T-205.md for the contract this was

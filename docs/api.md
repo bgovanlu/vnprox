@@ -333,6 +333,51 @@ Additive routes (T-603, not in the original contract; documented here per docs/d
 
 Import/export is file-level, not a dedicated route: export is `GET /blueprints/{id}`'s JSON body saved to a file; import is that same JSON re-posted to `POST /blueprints` (with `id` cleared so a new blueprint is created, or set to overwrite an existing saved one — never a starter id).
 
+## Saved views & annotations
+
+Added by T-907 (Phase 9's only card permitted to touch the backend — docs/roadmap-next.md; `planning/tasks/phase-9.md`'s T-907 card). Both routes below are strictly app-owned UI state: named presets of the topology page's own layer/filter/zoom/selection state, and free-text sticky notes pinned to a map entity — **never** a shadow copy of any PVE-authoritative network config (CLAUDE.md's storage rule). Gated identically to the pre-existing `layouts` routes below: session + `netRead`, no CSRF requirement — the reasoning is unchanged from T-107's original layouts routes ("saving a canvas layout is a personal UI preference, not a network-mutating action"), extended here to naming/deleting a saved view and to pinning/unpinning a shared sticky note, neither of which mutates network state either.
+
+### Saved layouts / named views (`internal/api/layouts.go`, `internal/store/layouts.go`)
+
+The `GET/PUT /layouts/{name}` routes existed since T-107 (undocumented until this task — retroactively documented here per docs/development.md's definition-of-done #4) as the mechanism the topology page's auto-persisted canvas positions/filters (reserved name `"topology"`) and the onboarding walkthrough's progress (reserved name `"onboarding"`) both already used. T-907 adds `GET /layouts` (list) and `DELETE /layouts/{name}`, and reuses the exact same per-user `(username, name)` mechanism for **named saved views** — no new table, no forked mechanism (see docs/data-model.md §2's note on why `layouts` was reused for views but not for annotations).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/layouts` | list every layout/saved-view the requesting user has saved: `{items: [{name, layout, updatedAt}]}` — same per-item shape as `GET /layouts/{name}` below, ordered by name ascending. Includes the reserved `"topology"`/`"onboarding"` blobs alongside any named views; see the `kind` discriminator below for how a client tells them apart. |
+| GET | `/layouts/{name}` | `{name, layout, updatedAt}` — `layout` is caller-defined opaque JSON, stored and returned verbatim; `404 not_found` if `name` has never been saved by this user |
+| PUT | `/layouts/{name}` | upsert `{layout: {...}}` → the same shape GET returns, with a fresh `updatedAt` |
+| DELETE | `/layouts/{name}` | remove a saved layout/view; `204` whether or not it previously existed (idempotent, mirrors `store.LayoutRepo.Delete`) |
+
+**Named saved view shape** (frontend-owned; `internal/api` never inspects `layout`'s contents — it is opaque JSON on every route above, exactly as it always was for the `"topology"` auto-layout). A saved view's `layout` is:
+
+```json
+{
+  "kind": "view",
+  "layers": ["phys", "l2", "sdn", "guest"],
+  "vlanFilter": 100,
+  "zoom": 1.4,
+  "viewport": {"x": -120, "y": 40},
+  "selection": "bridge:pve1:vmbr0",
+  "view": "graph"
+}
+```
+
+`layers` is the active-layer subset (docs/features/topology.md §2's layer ids); `vlanFilter` (omitted when unset) is the active VLAN dim filter; `zoom`/`viewport` are the v2 canvas's pan/zoom transform (`web/src/topology/canvasScene.ts`'s `Viewport`, split into a bare `zoom` scalar plus an `{x, y}` pan offset here for readability — same transform, different field grouping); `selection` (omitted when nothing is selected) is the selected entity's Ref; `view` is `"graph"` or `"switch"` (`store.ts`'s `TopologyViewMode`). The `"kind": "view"` tag is what lets the frontend's saved-views picker filter `GET /layouts`' items down to actual named views, excluding the reserved `"topology"`/`"onboarding"` auto-layout blobs (whose shape has no `kind` field at all) — a purely client-side distinction; the backend treats every name identically.
+
+**Shareable URLs.** A saved view's state additionally round-trips through the topology page's own URL query string, independent of any server-side row — flat per-field params (not an opaque blob), the same "state lives in the URL" convention `web/src/simulator/urlState.ts` already established for the path simulator's shareable links (see the `sim_divergence` finding's `docsLink` note above): `/topology?svLayers=phys,l2&svVlan=100&svZoom=1.4&svX=-120&svY=40&svSel=bridge:pve1:vmbr0&svView=graph`. `svLayers` is comma-separated layer ids; `svVlan`/`svSel` are omitted when unset (mirroring `layout`'s optional `vlanFilter`/`selection` above); `svZoom`/`svX`/`svY` are the canvas pan/zoom transform; `svView` is `graph`\|`switch`. This is what makes a saved view's "Share link" work for a viewer with no `layouts` row of their own — opening the link applies the URL's state directly (`web/src/topology/savedViews.ts`'s `decodeViewFromSearch`) without ever calling `GET /layouts/{name}`; saving the view under a name (so it also appears in the viewer's own `GET /layouts` list) is a separate, optional action. No new route: this is pure client-side URL state.
+
+### Annotations (`internal/api/annotations.go`, `internal/store/annotations.go`)
+
+Entity-pinned sticky notes, persisted additively in a **new** table (`annotations`, docs/data-model.md §2) rather than folded into `layouts`: an annotation is naturally many-rows-per-entity and shared across every user (a team scratchpad, not private per-user state), which doesn't fit `layouts`' single-opaque-blob-per-`(username, name)` shape — see docs/data-model.md §2's note and `internal/store/migrations/0006_annotations.sql`'s doc comment for the full reasoning this task's card asked to be flagged explicitly.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/annotations` | list every pinned note, cluster/topology-wide (not scoped to the requesting user — see below): `{items: [Annotation]}`, ordered oldest-first |
+| POST | `/annotations` | pin a new note: `{ref, content}` → `201` with the created `Annotation`; `400 validation_failed` if `ref` or `content` is empty, or `content` exceeds 4000 characters |
+| DELETE | `/annotations/{id}` | unpin a note; `204` whether or not it previously existed (idempotent) |
+
+`Annotation` is `{id, ref, content, createdBy, createdAt, updatedAt}` — `id` is a server-assigned ULID; `ref` is the pinned entity's `Ref` string; `content` is free text, never interpreted by vnproxd; `createdBy` is the authenticated username that pinned it (server-stamped from the session, never client-supplied) and `createdAt`/`updatedAt` are unix seconds. Unlike `layouts`, annotations carry **no per-note ownership ACL** — any authenticated `netRead`-capable user can list, create, or delete any annotation (a deliberate product choice: a sticky note on the shared map is visible and manageable by the whole team, the same way the map itself is; `createdBy` is display/audit metadata only, not an access-control field). The frontend renders an entity's pinned notes wherever that entity's own detail is shown (the inspector panel), keyed by matching `ref` — there is no separate per-entity route; a client filters the one `GET /annotations` list.
+
 ## WebSocket `/api/ws`
 
 One connection multiplexes all topics; every frame (both directions) is a JSON text message.

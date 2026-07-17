@@ -4,7 +4,7 @@
 // had no HTTP surface until now).
 import { apiFetch } from "./client";
 import { readCsrfCookie } from "./auth";
-import type { LayoutResponse, TopologyLayoutPayload } from "./types";
+import type { LayoutListResponse, LayoutResponse } from "./types";
 
 /** GET /layouts/{name}. Rejects with a 404 ApiError (`code === "not_found"`)
  * when the user has never saved a layout under this name — callers should
@@ -13,11 +13,34 @@ export function fetchLayout(name: string): Promise<LayoutResponse> {
   return apiFetch<LayoutResponse>(`/layouts/${encodeURIComponent(name)}`);
 }
 
-/** PUT /layouts/{name} — upserts the named layout. */
-export function saveLayout(name: string, layout: TopologyLayoutPayload): Promise<LayoutResponse> {
+/** PUT /layouts/{name} — upserts the named layout. `layout` is typed
+ * `unknown` here (not TopologyLayoutPayload) so this same function backs
+ * both the auto-persisted canvas layout (TopologyLayoutPayload) and T-907's
+ * named saved views (SavedViewPayload) — the backend stores either shape
+ * verbatim, opaque JSON either way (docs/api.md's Saved views &
+ * annotations section). */
+export function saveLayout(name: string, layout: unknown): Promise<LayoutResponse> {
   return apiFetch<LayoutResponse>(`/layouts/${encodeURIComponent(name)}`, {
     method: "PUT",
     json: { layout },
+    csrfToken: readCsrfCookie(),
+  });
+}
+
+/** GET /layouts (T-907) — every layout/saved-view the requesting user has
+ * saved, including the reserved "topology"/"onboarding" auto-layout blobs.
+ * Callers narrow to actual named views via isSavedViewPayload
+ * (savedViews.ts). */
+export function listLayouts(): Promise<LayoutListResponse> {
+  return apiFetch<LayoutListResponse>("/layouts");
+}
+
+/** DELETE /layouts/{name} (T-907) — removes a saved layout/view; resolves
+ * whether or not it previously existed (the backend's delete is
+ * idempotent). */
+export async function deleteLayout(name: string): Promise<void> {
+  await apiFetch(`/layouts/${encodeURIComponent(name)}`, {
+    method: "DELETE",
     csrfToken: readCsrfCookie(),
   });
 }
