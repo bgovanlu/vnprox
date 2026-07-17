@@ -3,13 +3,15 @@
 // candidates, LACP options (rate, hash policy), MII monitor interval.
 //
 // "Post-apply, the inspector shows live LACP partner state (actor/partner
-// system, port state flags) parsed from /proc/net/bonding/*" is a
+// system, port state flags) parsed from /proc/net/bonding/*" was a
 // *read-side* requirement satisfied without any change here: InspectorPanel
 // (T-107) already renders every key in an entity's `fields` generically
-// (fieldRows) — once a Bond entity's fields carry that data (a host
-// collector concern, not this editor's), it appears in the existing Fields
-// tab automatically. Flagged in this task's report as a backend data
-// dependency, not a frontend gap.
+// (fieldRows), and once a Bond entity's fields carried that data (a host
+// collector concern, not this editor's) it would appear automatically. T-804
+// supplied that data (internal/host/bonding.go's actor/partner parser) and
+// additionally gave it a dedicated, purpose-built rendering — the bond
+// inspector's LACP tab (web/src/topology/BondLacpSection.tsx) — rather than
+// relying solely on the generic Fields tab's raw JSON dump of SlaveDetail.
 import { useState } from "react";
 import { useSession } from "../../api/useSession";
 import { useToast } from "../../components/Toast";

@@ -62,6 +62,7 @@ type Engine struct {
 	lastIDs    map[string]bool
 	now        func() time.Time
 	bondDB     *debouncer
+	lacpDB     *debouncer
 	carrierDB  *debouncer
 	errDropDB  *debouncer
 	graph      *inventory.Graph
@@ -112,6 +113,7 @@ func New(cfg Config) *Engine {
 		interval:   interval,
 		thresholds: th,
 		bondDB:     newDebouncer(),
+		lacpDB:     newDebouncer(),
 		carrierDB:  newDebouncer(),
 		errDropDB:  newDebouncer(),
 		serviceDB:  newDebouncer(),
@@ -157,6 +159,7 @@ func (e *Engine) healthFindings() []Finding {
 
 	var out []Finding
 	out = append(out, checkBondSlaveDown(snap, e.bondDB)...)
+	out = append(out, checkLACPPartnerMismatch(snap, e.lacpDB)...)
 	out = append(out, checkBridgeNoCarrier(snap, e.carrierDB)...)
 	out = append(out, checkSTPTopologyBurst(snap, e.stpTracker, now)...)
 	out = append(out, checkStalePendingInterfaces(snap, e.pendingTr, now)...)

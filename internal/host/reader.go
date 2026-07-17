@@ -144,12 +144,49 @@ type BondDetail struct {
 }
 
 // BondSlave is one slave interface's status within a bond.
+//
+// LACP actor/partner detail (T-804): decoded from /proc/net/bonding/<name>'s
+// per-slave "details actor lacp pdu"/"details partner lacp pdu" block
+// (802.3ad bonds only), opportunistically refined by netlink's
+// IFLA_BOND_SLAVE_AD_ACTOR_OPER_PORT_STATE /
+// IFLA_BOND_SLAVE_AD_PARTNER_OPER_PORT_STATE attributes where the running
+// kernel exposes them (see netlink_linux.go's applyBondADState — best-
+// effort, never a hard requirement: a bond not running 802.3ad, or an older
+// kernel/driver that omits the /proc detail block, simply leaves
+// LACPDetailSet false and every LACP field below at its zero value).
+//
+// ActorSystemID/PartnerSystemID are the negotiating system's MAC ("system
+// mac address" in /proc); System*Priority is the LACP system priority;
+// *Key is the operational aggregation key ("port key" for the actor, "oper
+// key" for the partner in /proc's own field naming). Synchronized/
+// Collecting/Distributing decode the actor's LACPDU port-state bitmask
+// (IEEE 802.1AX bits 3/4/5) — "bond is up" vs. "bond is negotiated
+// correctly" is exactly this: an up bond whose actor state isn't all three
+// is not actually passing traffic through LACP the way it looks like it
+// should be. LACPDetailSet reports whether any actor/partner LACP PDU
+// detail was decoded for this slave at all — callers (health checks, the
+// inspector) must check it before treating the LACP fields' zero values as
+// "desynced".
+//
+// Field order below is size-grouped (strings, then ints, then bools) to
+// satisfy golangci-lint's fieldalignment check rather than by topic —
+// see the doc comment above for the conceptual grouping.
 type BondSlave struct {
-	Name             string
-	MIIStatus        string
-	PermHWAddr       string
-	LinkFailureCount int
-	Active           bool
+	Name                  string
+	MIIStatus             string
+	PermHWAddr            string
+	ActorSystemID         string
+	PartnerSystemID       string
+	LinkFailureCount      int
+	ActorSystemPriority   int
+	ActorKey              int
+	PartnerSystemPriority int
+	PartnerKey            int
+	Active                bool
+	ActorSynchronized     bool
+	ActorCollecting       bool
+	ActorDistributing     bool
+	LACPDetailSet         bool
 }
 
 // BridgeDetail is bridge-specific state: whether it is VLAN-aware, its

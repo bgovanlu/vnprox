@@ -91,6 +91,20 @@ Check items off with the PVE version tested.
       lldpd running (`internal/host` integration tests skip without privileges/peers;
       `TestReal_LLDP` and bond-detail tests have never run against real hardware).
 - [ ] **PVE-cert reuse + hot-reload** against a real pveproxy certificate rotation.
+- [ ] **LACP actor/partner detail parsing (T-804)** against a real 802.3ad bond on a live switch:
+      the exact `/proc/net/bonding/<name>` "details actor lacp pdu:"/"details partner lacp pdu:"
+      block format (field names/indentation/presence) has only been checked against this task's
+      own hand-written golden fixtures (`internal/host/bonding_test.go`), not a real kernel's
+      output, and may vary across bonding driver/kernel versions vnprox targets (docs/architecture.md
+      §10 D9: PVE 8.2+/9.x). Also unverified: netlink's per-slave
+      `IFLA_BOND_SLAVE_AD_ACTOR_OPER_PORT_STATE`/`IFLA_BOND_SLAVE_AD_PARTNER_OPER_PORT_STATE`
+      attribute availability/behavior on a real running 802.3ad aggregator
+      (`internal/host/netlink_linux.go`'s `applyBondADState` — best-effort, /proc remains the
+      primary source since `github.com/vishvananda/netlink` v1.3.1's bond-level `IFLA_BOND_AD_INFO`
+      parsing is an explicit upstream TODO stub, so actor/partner system ID/key are /proc-only
+      regardless). A genuine split-brain/desynced-slave scenario (this task's fixtures simulate
+      both) should also be reproduced against a real switch to confirm `lacp_partner_mismatch`
+      fires as designed.
 
 ## Management-redundancy wizard (T-703)
 

@@ -150,12 +150,35 @@ func (p *PhysNic) fieldMap() map[string]string {
 }
 
 // BondSlaveState is one slave's runtime status inside a bond.
+//
+// T-804: the Actor*/Partner* fields (and LACPDetailSet) mirror
+// host.BondSlave's own LACP actor/partner detail one-for-one — decoded
+// from /proc/net/bonding's "details actor/partner lacp pdu" block,
+// opportunistically refined by netlink AD-info where the kernel exposes it
+// (see internal/host/bonding.go, internal/host/netlink_linux.go). Best-
+// effort: LACPDetailSet is false (every other field below its zero value)
+// for a bond not running 802.3ad, or on a kernel/driver that never emits
+// the /proc detail block at all.
+//
+// Field order below is size-grouped (strings, then ints, then bools) to
+// satisfy golangci-lint's fieldalignment check, exactly mirroring
+// host.BondSlave's own layout.
 type BondSlaveState struct {
-	Name             string
-	MIIStatus        string
-	PermHWAddr       string
-	LinkFailureCount int
-	Active           bool
+	Name                  string
+	MIIStatus             string
+	PermHWAddr            string
+	ActorSystemID         string
+	PartnerSystemID       string
+	LinkFailureCount      int
+	ActorSystemPriority   int
+	ActorKey              int
+	PartnerSystemPriority int
+	PartnerKey            int
+	Active                bool
+	ActorSynchronized     bool
+	ActorCollecting       bool
+	ActorDistributing     bool
+	LACPDetailSet         bool
 }
 
 // Bond is a Linux bond (or OVS bond when Ref.Kind == KindOVSBond). Mode /
@@ -190,7 +213,18 @@ func (b *Bond) clone() Entity {
 func (b *Bond) fieldMap() map[string]string {
 	sd := make([]string, len(b.SlaveDetail))
 	for i, s := range b.SlaveDetail {
-		sd[i] = fmt.Sprintf("%s/%s/%v", s.Name, s.MIIStatus, s.Active)
+		// T-804: fold the LACP actor/partner detail into the same summary
+		// key so a change to it (e.g. a slave losing sync, or the partner
+		// system changing) registers as a delta exactly like MIIStatus/
+		// Active already do — see slaveDetailKey (resolve.go), which calls
+		// through to this same rendering.
+		sd[i] = fmt.Sprintf("%s/%s/%v/%s/%d/%d/%v/%v/%v/%s/%d/%d/%v",
+			s.Name, s.MIIStatus, s.Active,
+			s.ActorSystemID, s.ActorSystemPriority, s.ActorKey,
+			s.ActorSynchronized, s.ActorCollecting, s.ActorDistributing,
+			s.PartnerSystemID, s.PartnerSystemPriority, s.PartnerKey,
+			s.LACPDetailSet,
+		)
 	}
 	sort.Strings(sd)
 	return map[string]string{
