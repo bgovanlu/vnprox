@@ -105,7 +105,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return err
 	}
 
-	authSvc, db, err := setupAuth(ctx, cfg, logger)
+	authSvc, db, sessionCipher, err := setupAuth(ctx, cfg, logger)
 	if err != nil {
 		return fmt.Errorf("initializing auth: %w", err)
 	}
@@ -287,7 +287,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// its real target once fwlogSvc is built — see the adapter's own doc
 	// comment (findings.go) for why, mirroring mgmtAdapter above.
 	fwAnalyticsAdapterVal := &fwAnalyticsAdapter{}
-	findingsNotifier := setupFindingsNotifier(sdnPVEClient, logger)
+	// T-1005: alert_rules/alert_deliveries repos + the webhook Notifier,
+	// composed alongside PVE's own notification-target hook via
+	// multiNotifier — independent delivery paths, per that task's card, not
+	// a replacement for pvenotify.go. AlertSecretCipher is the same
+	// session-secret cipher sessions.pve_ticket_enc uses (setupAuth's doc
+	// comment).
+	alertRuleRepo := store.NewAlertRuleRepo(db)
+	alertDeliveryRepo := store.NewAlertDeliveryRepo(db)
+	webhookNotifier := setupAlertWebhookNotifier(alertRuleRepo, alertDeliveryRepo, sessionCipher, logger)
+	findingsNotifier := newMultiNotifier(setupFindingsNotifier(sdnPVEClient, logger), webhookNotifier)
 	// T-806: the persisted sim_divergence finding store, created here (db
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
@@ -587,27 +596,30 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 			AllowFrom:    cfg.Metrics.AllowFrom,
 			BuildVersion: version,
 		},
-		Layouts:       store.NewLayoutRepo(db),
-		Annotations:   store.NewAnnotationRepo(db),
-		Changesets:    changeSvc,
-		Snapshots:     changeSvc,
-		Audit:         auditRepo,
-		SDN:           sdnSvc,
-		IPAM:          ipamSvc,
-		EVPN:          evpnSvc,
-		DHCP:          dhcpAPISvc,
-		PVEGateways:   pveGatewayProvider{authSvc},
-		Protected:     changeSvc,
-		Firewall:      graph,
-		Blueprints:    blueprintSvc,
-		Simulator:     graph,
-		ProbeClients:  probeClientProvider{authSvc},
-		ProbeAudit:    auditRepo,
-		SimDivergence: simDivergenceRepo,
-		FwLog:         fwLogAPI,
-		Peer:          peerSrv,
-		PeerAudit:     peerAudit,
-		PeerSnapshots: peerSnapshots,
+		Layouts:           store.NewLayoutRepo(db),
+		Annotations:       store.NewAnnotationRepo(db),
+		AlertRules:        alertRuleRepo,
+		AlertDeliveries:   alertDeliveryRepo,
+		AlertSecretCipher: sessionCipher,
+		Changesets:        changeSvc,
+		Snapshots:         changeSvc,
+		Audit:             auditRepo,
+		SDN:               sdnSvc,
+		IPAM:              ipamSvc,
+		EVPN:              evpnSvc,
+		DHCP:              dhcpAPISvc,
+		PVEGateways:       pveGatewayProvider{authSvc},
+		Protected:         changeSvc,
+		Firewall:          graph,
+		Blueprints:        blueprintSvc,
+		Simulator:         graph,
+		ProbeClients:      probeClientProvider{authSvc},
+		ProbeAudit:        auditRepo,
+		SimDivergence:     simDivergenceRepo,
+		FwLog:             fwLogAPI,
+		Peer:              peerSrv,
+		PeerAudit:         peerAudit,
+		PeerSnapshots:     peerSnapshots,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see

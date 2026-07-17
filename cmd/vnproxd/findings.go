@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"sort"
@@ -387,4 +388,142 @@ func setupFindingsNotifier(pveClient *pve.Client, logger *slog.Logger) findings.
 		return nil
 	}
 	return findings.NewPVENotifier(pveClient, logger)
+}
+
+// multiNotifier fans one finding transition out to every wrapped Notifier
+// (T-1005: PVE's notification-target system alongside vnprox's own webhook
+// routing, independent of each other per that task's card). It is a
+// composition-root-only concern — a plain implementation of the existing
+// findings.Notifier interface, added here rather than in
+// internal/findings/notify.go, so Engine's own notification-firing/
+// once-per-transition logic (notify.go's evaluateNotifications) is
+// untouched by this task: Engine still calls exactly one Notifier, this
+// type is just what that one Notifier fans out to. Every wrapped
+// notifier's error is logged by its own Notify implementation already
+// (PVENotifier/WebhookNotifier both do); this type additionally collects
+// the first one so Engine.fireNotification's own log line still fires.
+type multiNotifier struct {
+	notifiers []findings.Notifier
+}
+
+// newMultiNotifier drops any nil entries, so a caller can pass every
+// candidate notifier unconditionally (mirrors setupFindings' own "nil
+// dependency -> that producer contributes nothing" convention). Returns
+// nil (not an empty multiNotifier) if every candidate was nil, so
+// findings.Config's own "Notifier == nil disables the hook entirely" check
+// still short-circuits cleanly instead of looping over zero notifiers on
+// every cycle.
+func newMultiNotifier(notifiers ...findings.Notifier) findings.Notifier {
+	var live []findings.Notifier
+	for _, n := range notifiers {
+		if n != nil {
+			live = append(live, n)
+		}
+	}
+	if len(live) == 0 {
+		return nil
+	}
+	if len(live) == 1 {
+		return live[0]
+	}
+	return multiNotifier{notifiers: live}
+}
+
+func (m multiNotifier) Notify(ctx context.Context, f findings.Finding, kind findings.TransitionKind) error {
+	var firstErr error
+	for _, n := range m.notifiers {
+		if err := n.Notify(ctx, f, kind); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// alertSecretCipher is the subset of *store.SessionCipher
+// alertRuleProviderAdapter needs — declared as an interface (the same seam
+// pattern every other cross-package dependency in this file uses) so tests
+// can substitute a fake cipher.
+type alertSecretCipher interface {
+	Decrypt(sealed []byte) ([]byte, error)
+}
+
+// alertRuleStore is the subset of *store.AlertRuleRepo
+// alertRuleProviderAdapter needs.
+type alertRuleStore interface {
+	List(ctx context.Context) ([]store.AlertRule, error)
+}
+
+// alertRuleProviderAdapter adapts *store.AlertRuleRepo (plus the session
+// cipher) into findings.AlertRuleProvider (T-1005's webhook.go seam) —
+// this is the decoupling conversion internal/findings/webhook.go's own doc
+// comment describes: internal/findings never imports internal/store, this
+// package's composition root does the decrypt-and-adapt. A rule whose
+// secret fails to decrypt (a corrupt row, or a key rotated out from under
+// an existing rule) is logged and skipped for this cycle rather than
+// failing the whole notification fan-out.
+type alertRuleProviderAdapter struct {
+	repo   alertRuleStore
+	cipher alertSecretCipher
+	logger *slog.Logger
+}
+
+func (a alertRuleProviderAdapter) AlertRules(ctx context.Context) ([]findings.AlertRule, error) {
+	rows, err := a.repo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("findings: listing alert rules: %w", err)
+	}
+	out := make([]findings.AlertRule, 0, len(rows))
+	for _, row := range rows {
+		secret := ""
+		if len(row.TargetSecretEnc) > 0 {
+			plaintext, decErr := a.cipher.Decrypt(row.TargetSecretEnc)
+			if decErr != nil {
+				a.logger.Warn("findings: decrypting alert rule secret, skipping rule this cycle", "rule_id", row.ID, "error", decErr)
+				continue
+			}
+			secret = string(plaintext)
+		}
+		out = append(out, findings.AlertRule{
+			ID: row.ID, Name: row.Name, Enabled: row.Enabled,
+			SourceFilter: row.SourceFilter, SeverityFilter: row.SeverityFilter,
+			TargetKind: row.TargetKind, TargetURL: row.TargetURL, TargetSecret: secret,
+		})
+	}
+	return out, nil
+}
+
+// alertDeliveryStore is the subset of *store.AlertDeliveryRepo
+// alertDeliveryRecorderAdapter needs.
+type alertDeliveryStore interface {
+	Insert(ctx context.Context, d store.AlertDelivery) error
+}
+
+// alertDeliveryRecorderAdapter adapts *store.AlertDeliveryRepo into
+// findings.DeliveryRecorder, assigning the storage-layer ID
+// (store.NewULID()) that findings.AlertDelivery deliberately doesn't carry
+// (see that type's doc comment).
+type alertDeliveryRecorderAdapter struct {
+	repo alertDeliveryStore
+}
+
+func (a alertDeliveryRecorderAdapter) RecordDelivery(ctx context.Context, d findings.AlertDelivery) error {
+	return a.repo.Insert(ctx, store.AlertDelivery{
+		ID: store.NewULID(), RuleID: d.RuleID, FindingID: d.FindingID,
+		At: d.At.Unix(), Attempt: d.Attempt, Status: d.Status, Error: d.Error,
+	})
+}
+
+// setupAlertWebhookNotifier builds T-1005's webhook Notifier from the app
+// store's alert_rules/alert_deliveries repos and the session-secret cipher
+// (docs/security.md's AES-256-GCM pattern, reused verbatim rather than a
+// second cipher — see setupAuth's doc comment). Never nil: even with zero
+// configured rules, WebhookNotifier.Notify is a correct, harmless no-op
+// each cycle (matches PVENotifier's own "always constructed, does nothing
+// if nothing is configured" shape when there are no enabled targets).
+func setupAlertWebhookNotifier(alertRules *store.AlertRuleRepo, alertDeliveries *store.AlertDeliveryRepo, cipher *store.SessionCipher, logger *slog.Logger) findings.Notifier {
+	return findings.NewWebhookNotifier(findings.WebhookNotifierConfig{
+		Rules:    alertRuleProviderAdapter{repo: alertRules, cipher: cipher, logger: logger},
+		Recorder: alertDeliveryRecorderAdapter{repo: alertDeliveries},
+		Logger:   logger,
+	})
 }

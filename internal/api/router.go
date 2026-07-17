@@ -75,9 +75,18 @@ type Options struct {
 	// DELETE /annotations/{id} (entity-pinned sticky notes); nil-safe like
 	// Layouts above (routes simply aren't mounted).
 	Annotations AnnotationStore
-	Changesets  ChangesetService
-	Snapshots   SnapshotService
-	Audit       AuditService
+	// AlertRules/AlertDeliveries/AlertSecretCipher back T-1005's alert
+	// routing CRUD + delivery log (GET/POST /alert-rules,
+	// GET/PUT/DELETE /alert-rules/{id}, POST /alert-rules/{id}/test,
+	// GET /alert-deliveries); all three (plus Auth) are required together —
+	// any one nil skips mounting every route in this family, matching
+	// Layouts/Annotations' own degraded-mode convention.
+	AlertRules        AlertRuleStore
+	AlertDeliveries   AlertDeliveryStore
+	AlertSecretCipher SecretCipher
+	Changesets        ChangesetService
+	Snapshots         SnapshotService
+	Audit             AuditService
 	// SDN is T-401's read view seam (docs/api.md's `GET /sdn`); nil (no
 	// PVE client — see cmd/vnproxd/collect.go's setupCollect doc comment)
 	// simply skips mounting the route, the same degraded-mode treatment
@@ -209,6 +218,7 @@ func NewRouter(opts Options) http.Handler {
 		mountMetricsExporterRoutes(r, opts.MetricsCounters, opts.Findings, opts.Drift, opts.Changesets, opts.MetricsExporter)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountAnnotationsRoutes(r, opts.Annotations, opts.Auth)
+		mountAlertRulesRoutes(r, opts.AlertRules, opts.AlertDeliveries, opts.AlertSecretCipher, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)

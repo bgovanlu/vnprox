@@ -1,0 +1,471 @@
+// T-1005's alert routing Settings page: CRUD over `alert_rules` (route
+// findings/drift transitions to a webhook target) plus the delivery log
+// (`GET /alert-deliveries`). Mirrors web/src/blueprints/BlueprintsPage.tsx's
+// list+detail-panel layout — a list of rules on the left, the
+// create/edit form for the selected rule on the right, the delivery log
+// (optionally filtered to the selected rule) below.
+import { useState } from "react";
+import clsx from "clsx";
+import type { AlertRule, AlertSourceFilterValue, AlertTargetKind, Severity } from "../api/types";
+import { useSession } from "../api/useSession";
+import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
+import { useToast } from "../components/Toast";
+import { EmptyState } from "../components/EmptyState";
+import { Tooltip } from "../components/Tooltip";
+import { Button } from "../components/Button";
+import {
+  useAlertDeliveriesQuery,
+  useAlertRulesQuery,
+  useCreateAlertRuleMutation,
+  useDeleteAlertRuleMutation,
+  useTestAlertRuleMutation,
+  useUpdateAlertRuleMutation,
+} from "./alertRulesQueries";
+
+const TARGET_KINDS: AlertTargetKind[] = ["generic", "gotify", "ntfy", "slack"];
+const SOURCE_VALUES: AlertSourceFilterValue[] = ["drift", "lldp", "ipam", "health", "probe"];
+const SEVERITY_VALUES: Severity[] = ["error", "warning", "info"];
+
+interface FormState {
+  name: string;
+  enabled: boolean;
+  sourceFilter: AlertSourceFilterValue[];
+  severityFilter: Severity[];
+  targetKind: AlertTargetKind;
+  targetUrl: string;
+  targetSecret: string;
+  /** Whether the user touched the secret field this session — controls
+   * whether an empty value means "leave unchanged" (untouched, editing an
+   * existing rule) or "no secret" (touched-and-cleared, or a brand-new
+   * rule). */
+  secretTouched: boolean;
+}
+
+const EMPTY_FORM: FormState = {
+  name: "",
+  enabled: true,
+  sourceFilter: [],
+  severityFilter: [],
+  targetKind: "generic",
+  targetUrl: "",
+  targetSecret: "",
+  secretTouched: false,
+};
+
+function toFormState(rule: AlertRule): FormState {
+  return {
+    name: rule.name,
+    enabled: rule.enabled,
+    sourceFilter: rule.sourceFilter ?? [],
+    severityFilter: rule.severityFilter ?? [],
+    targetKind: rule.targetKind,
+    targetUrl: rule.targetUrl,
+    targetSecret: "",
+    secretTouched: false,
+  };
+}
+
+/** Client-side mirror of internal/api/alertrules.go's validateAlertRuleRequest
+ * — the server is the source of truth, this just avoids a round trip for
+ * the obvious cases and gives the form's Save button something to disable
+ * on. */
+function validate(form: FormState): string | undefined {
+  if (!form.name.trim()) return "Name is required.";
+  try {
+    const u = new URL(form.targetUrl);
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      return "Target URL must be http:// or https://.";
+    }
+  } catch {
+    return "Target URL must be an absolute http(s) URL.";
+  }
+  return undefined;
+}
+
+function toggleValue<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+}
+
+function FilterCheckboxGroup<T extends string>({
+  label,
+  options,
+  selected,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  options: T[];
+  selected: T[];
+  onChange: (next: T[]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-1">
+      <legend className="text-xs font-medium text-slate-600 dark:text-slate-300">{label}</legend>
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <label key={opt} className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              disabled={disabled}
+              checked={selected.includes(opt)}
+              onChange={() => {
+                onChange(toggleValue(selected, opt));
+              }}
+            />
+            {opt}
+          </label>
+        ))}
+      </div>
+      <p className="text-[11px] text-slate-400 dark:text-slate-500">None selected matches every value.</p>
+    </fieldset>
+  );
+}
+
+export function AlertRules() {
+  const { data: rulesData, isLoading, error } = useAlertRulesQuery();
+  const { data: session } = useSession();
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const { toast } = useToast();
+
+  const createMutation = useCreateAlertRuleMutation();
+  const updateMutation = useUpdateAlertRuleMutation();
+  const deleteMutation = useDeleteAlertRuleMutation();
+  const testMutation = useTestAlertRuleMutation();
+  const { data: deliveriesData } = useAlertDeliveriesQuery({ ruleId: selectedId });
+
+  const canWrite = hasAnyCap(session, "netWrite");
+  const writeDisabledReason = canWrite ? undefined : missingCapTooltip(session, "", "netWrite");
+
+  const items = rulesData?.items ?? [];
+  const selected = items.find((r) => r.id === selectedId);
+  const editing = creating || selected !== undefined;
+
+  function startCreate(): void {
+    setCreating(true);
+    setSelectedId(undefined);
+    setForm(EMPTY_FORM);
+  }
+
+  function selectRule(rule: AlertRule): void {
+    setCreating(false);
+    setSelectedId(rule.id);
+    setForm(toFormState(rule));
+  }
+
+  function cancelEdit(): void {
+    setCreating(false);
+    setForm(EMPTY_FORM);
+  }
+
+  const validationError = editing ? validate(form) : undefined;
+
+  async function handleSave(): Promise<void> {
+    if (validationError) return;
+    const req = {
+      name: form.name.trim(),
+      enabled: form.enabled,
+      sourceFilter: form.sourceFilter.length > 0 ? form.sourceFilter : undefined,
+      severityFilter: form.severityFilter.length > 0 ? form.severityFilter : undefined,
+      targetKind: form.targetKind,
+      targetUrl: form.targetUrl.trim(),
+      ...(form.secretTouched ? { targetSecret: form.targetSecret } : {}),
+    };
+    try {
+      if (creating) {
+        const created = await createMutation.mutateAsync(req);
+        setCreating(false);
+        setSelectedId(created.id);
+        setForm(toFormState(created));
+        toast({ title: "Alert rule created", description: created.name, variant: "success" });
+      } else if (selected) {
+        const updated = await updateMutation.mutateAsync({ id: selected.id, req });
+        setForm(toFormState(updated));
+        toast({ title: "Alert rule saved", description: updated.name, variant: "success" });
+      }
+    } catch {
+      toast({ title: "Could not save alert rule", variant: "error" });
+    }
+  }
+
+  async function handleDelete(rule: AlertRule): Promise<void> {
+    try {
+      await deleteMutation.mutateAsync(rule.id);
+      if (selectedId === rule.id) {
+        setSelectedId(undefined);
+        setForm(EMPTY_FORM);
+      }
+      toast({ title: "Alert rule deleted", variant: "success" });
+    } catch {
+      toast({ title: "Could not delete alert rule", variant: "error" });
+    }
+  }
+
+  async function handleTest(rule: AlertRule): Promise<void> {
+    try {
+      const result = await testMutation.mutateAsync(rule.id);
+      if (result.status === "delivered") {
+        toast({ title: "Test delivered", description: rule.name, variant: "success" });
+      } else {
+        toast({ title: "Test delivery failed", description: result.error ?? rule.name, variant: "error" });
+      }
+    } catch {
+      toast({ title: "Could not send test alert", variant: "error" });
+    }
+  }
+
+  if (isLoading) {
+    return <EmptyState title="Loading…" description="Fetching alert rules." />;
+  }
+  if (error) {
+    return <EmptyState title="Could not load alert rules" description="Check your connection and try again." />;
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-4 overflow-hidden p-4">
+      <header>
+        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Alert rules</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          Route findings and drift transitions to a webhook (generic JSON, Gotify, ntfy, or Slack), independent of PVE's
+          own notification targets.
+        </p>
+      </header>
+
+      <div className="flex flex-1 gap-4 overflow-hidden">
+        <div className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Rules</h2>
+            <Tooltip content={writeDisabledReason}>
+              <span>
+                <Button size="sm" variant="secondary" disabled={!canWrite} onClick={startCreate}>
+                  New rule
+                </Button>
+              </span>
+            </Tooltip>
+          </div>
+
+          {items.length === 0 ? (
+            <p className="text-sm text-slate-400">No alert rules configured yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-1" data-testid="alert-rule-list">
+              {items.map((rule) => (
+                <li key={rule.id}>
+                  <button
+                    type="button"
+                    className={clsx(
+                      "flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left text-sm",
+                      rule.id === selectedId
+                        ? "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+                        : "hover:bg-slate-100 dark:hover:bg-slate-800",
+                    )}
+                    onClick={() => {
+                      selectRule(rule);
+                    }}
+                  >
+                    <span className="font-medium">{rule.name}</span>
+                    <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                      {rule.targetKind} · {rule.enabled ? "enabled" : "disabled"}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {!editing ? (
+            <EmptyState title="Select a rule" description="Pick one from the list, or create a new one." />
+          ) : (
+            <form
+              className="flex max-w-xl flex-col gap-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleSave();
+              }}
+            >
+              <div>
+                <label htmlFor="alert-rule-name" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Name
+                </label>
+                <input
+                  id="alert-rule-name"
+                  type="text"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  value={form.name}
+                  onChange={(e) => {
+                    setForm({ ...form, name: e.target.value });
+                  }}
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={form.enabled}
+                  onChange={(e) => {
+                    setForm({ ...form, enabled: e.target.checked });
+                  }}
+                />
+                Enabled
+              </label>
+
+              <FilterCheckboxGroup
+                label="Source filter"
+                options={SOURCE_VALUES}
+                selected={form.sourceFilter}
+                onChange={(next) => {
+                  setForm({ ...form, sourceFilter: next });
+                }}
+              />
+              <FilterCheckboxGroup
+                label="Severity filter"
+                options={SEVERITY_VALUES}
+                selected={form.severityFilter}
+                onChange={(next) => {
+                  setForm({ ...form, severityFilter: next });
+                }}
+              />
+
+              <div>
+                <label htmlFor="alert-rule-target-kind" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Target kind
+                </label>
+                <select
+                  id="alert-rule-target-kind"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  value={form.targetKind}
+                  onChange={(e) => {
+                    setForm({ ...form, targetKind: e.target.value as AlertTargetKind });
+                  }}
+                >
+                  {TARGET_KINDS.map((k) => (
+                    <option key={k} value={k}>
+                      {k}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="alert-rule-target-url" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Target URL
+                </label>
+                <input
+                  id="alert-rule-target-url"
+                  type="text"
+                  placeholder="https://…"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                  value={form.targetUrl}
+                  onChange={(e) => {
+                    setForm({ ...form, targetUrl: e.target.value });
+                  }}
+                />
+              </div>
+
+              {form.targetKind !== "slack" && (
+                <div>
+                  <label htmlFor="alert-rule-target-secret" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Target secret {selected?.hasSecret && !form.secretTouched ? "(configured — leave blank to keep)" : ""}
+                  </label>
+                  <input
+                    id="alert-rule-target-secret"
+                    type="password"
+                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                    value={form.targetSecret}
+                    onChange={(e) => {
+                      setForm({ ...form, targetSecret: e.target.value, secretTouched: true });
+                    }}
+                  />
+                </div>
+              )}
+
+              {validationError && <p className="text-xs text-red-600 dark:text-red-400">{validationError}</p>}
+
+              <div className="flex flex-wrap gap-2">
+                <Tooltip content={writeDisabledReason}>
+                  <span>
+                    <Button type="submit" variant="primary" disabled={!canWrite || !!validationError}>
+                      {creating ? "Create" : "Save"}
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Button type="button" variant="secondary" onClick={cancelEdit}>
+                  Cancel
+                </Button>
+                {selected && (
+                  <>
+                    <Tooltip content={writeDisabledReason}>
+                      <span>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={!canWrite || testMutation.isPending}
+                          onClick={() => {
+                            void handleTest(selected);
+                          }}
+                        >
+                          Test
+                        </Button>
+                      </span>
+                    </Tooltip>
+                    <Tooltip content={writeDisabledReason}>
+                      <span>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          disabled={!canWrite}
+                          onClick={() => {
+                            void handleDelete(selected);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  </>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+
+      <section className="shrink-0 border-t border-slate-200 pt-3 dark:border-slate-800">
+        <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          Delivery log{selected ? ` — ${selected.name}` : ""}
+        </h2>
+        {!deliveriesData || deliveriesData.items.length === 0 ? (
+          <p className="text-sm text-slate-400">No deliveries logged yet.</p>
+        ) : (
+          <div className="max-h-48 overflow-y-auto">
+            <table className="w-full text-left text-xs" data-testid="delivery-log">
+              <thead className="text-slate-500 dark:text-slate-400">
+                <tr>
+                  <th className="py-1 pr-2">At</th>
+                  <th className="py-1 pr-2">Rule</th>
+                  <th className="py-1 pr-2">Attempt</th>
+                  <th className="py-1 pr-2">Status</th>
+                  <th className="py-1 pr-2">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveriesData.items.map((d) => (
+                  <tr key={d.id} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="py-1 pr-2">{new Date(d.at * 1000).toLocaleString()}</td>
+                    <td className="py-1 pr-2">{d.ruleId}</td>
+                    <td className="py-1 pr-2">{d.attempt}</td>
+                    <td className="py-1 pr-2">{d.status}</td>
+                    <td className="py-1 pr-2 text-red-600 dark:text-red-400">{d.error ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}

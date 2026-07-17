@@ -19,7 +19,12 @@ import (
 // (cfg.Storage.SessionKeyFile), and constructs the T-105 auth.Service that
 // internal/api's router mounts docs/api.md's /auth/* routes through.
 //
-// The returned *store.DB must be closed by the caller on shutdown.
+// The returned *store.DB must be closed by the caller on shutdown. The
+// returned *store.SessionCipher is the same session-secret AES-256-GCM
+// cipher sessions.pve_ticket_enc/csrf_token_enc use; T-1005 reuses it
+// verbatim (rather than a second cipher/key pair) to encrypt
+// alert_rules.target_secret_enc — docs/security.md's "secrets encrypted at
+// rest" pattern is documented as one mechanism, not one per feature.
 //
 // **Correction (T-608, hardware validation):** the PVE-facing client this
 // constructs (identityFactory below) used to be left at its zero-value TLS
@@ -35,35 +40,35 @@ import (
 // already trusted the node's own certificate. Every real deployment's
 // login flow was completely broken until this was caught by actually
 // logging in against a real node.
-func setupAuth(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*auth.Service, *store.DB, error) {
+func setupAuth(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*auth.Service, *store.DB, *store.SessionCipher, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.Storage.DBPath), 0o750); err != nil {
-		return nil, nil, fmt.Errorf("creating storage directory for %s: %w", cfg.Storage.DBPath, err)
+		return nil, nil, nil, fmt.Errorf("creating storage directory for %s: %w", cfg.Storage.DBPath, err)
 	}
 	db, err := store.Open(ctx, cfg.Storage.DBPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if _, statErr := os.Stat(cfg.Storage.SessionKeyFile); errors.Is(statErr, os.ErrNotExist) {
 		logger.Info("auth: generating session key", "path", cfg.Storage.SessionKeyFile)
 		if genErr := store.GenerateKeyFile(cfg.Storage.SessionKeyFile); genErr != nil {
 			_ = db.Close()
-			return nil, nil, genErr
+			return nil, nil, nil, genErr
 		}
 	} else if statErr != nil {
 		_ = db.Close()
-		return nil, nil, fmt.Errorf("checking session key file %s: %w", cfg.Storage.SessionKeyFile, statErr)
+		return nil, nil, nil, fmt.Errorf("checking session key file %s: %w", cfg.Storage.SessionKeyFile, statErr)
 	}
 
 	key, err := store.LoadKeyFile(cfg.Storage.SessionKeyFile)
 	if err != nil {
 		_ = db.Close()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	cipher, err := store.NewSessionCipher(key)
 	if err != nil {
 		_ = db.Close()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	sessions := store.NewSessionRepo(db, cipher)
@@ -96,7 +101,7 @@ func setupAuth(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*a
 	})
 	if err != nil {
 		_ = db.Close()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return authSvc, db, nil
+	return authSvc, db, cipher, nil
 }
