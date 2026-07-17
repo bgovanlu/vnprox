@@ -26,6 +26,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
 	"github.com/bgovanlu/vnprox/internal/metrics"
+	"github.com/bgovanlu/vnprox/internal/neighbor"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
@@ -195,6 +196,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	dhcpSvc := dhcp.NewService(dhcp.Config{Host: realHost, Peers: dhcpPeers, LocalNode: localNode, Logger: logger})
 
+	// T-805: internal/neighbor.Service fans ARP/IPv6-neighbor reads across
+	// the cluster (local node via realHost, every peer via peerClient) into
+	// ipam.Observation{Source: "neighbor"} values — the same
+	// always-construct, tolerate-nil-Peers shape dhcpSvc above uses, wired
+	// into ipam.Config.Neighbors below (the interface point T-405 reserved
+	// for it, docs/features/ipam.md §1's "known gap" this task closes).
+	var neighborPeers neighbor.PeerSource
+	if peerClient != nil {
+		neighborPeers = peerClient
+	}
+	neighborSvc := neighbor.NewService(neighbor.Config{Host: realHost, Peers: neighborPeers, LocalNode: localNode, Logger: logger})
+
 	// T-405/T-406: GET /ipam/subnets(/{cidr}/allocations) and GET /sdn/dhcp
 	// read PVE's IPAM plugin(s) directly and live, for the same "never
 	// stale relative to what a reserve/release apply just changed" reason
@@ -227,7 +240,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// itself.
 	var dhcpAPISvc api.DHCPService
 	if sdnPVEClient != nil {
-		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc})
+		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc})
 		ipamSvc = ipamConcrete
 		dhcpAPISvc = ipamConcrete
 	}

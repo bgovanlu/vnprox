@@ -250,6 +250,37 @@ func TestTwoDaemonHarness_DHCPLeases(t *testing.T) {
 	}
 }
 
+// TestTwoDaemonHarness_Neighbors is T-805 acceptance criterion 2:
+// GET /api/peer/host/neighbors serves a node's fixture-declared resolved
+// ARP/IPv6-neighbor table, routed through the same HMAC-authenticated
+// mount (authMiddleware wraps the entire /api/peer subtree in MountRoutes)
+// every other peer route uses — h.client signs the request exactly like it
+// does for Links/FDB/DHCPLeases above, so a request that reached this
+// handler at all already passed signature verification.
+func TestTwoDaemonHarness_Neighbors(t *testing.T) {
+	h := newTwoDaemonHarness(t)
+
+	h.readerA.neighbors["pve1"] = []host.Neighbor{
+		{IP: "10.50.0.55", MAC: "aa:bb:cc:dd:ee:01", Iface: "vmbr0", State: host.NeighborReachable},
+		{IP: "fe80::1", MAC: "aa:bb:cc:dd:ee:02", Iface: "vmbr0", State: host.NeighborStale},
+	}
+
+	got, err := h.client.Neighbors(t.Context(), h.nodeA, "pve1")
+	if err != nil {
+		t.Fatalf("Neighbors(nodeA): %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("Neighbors(nodeA) = %+v, want 2 entries", got)
+	}
+	if h.readerA.neighborsCalls != 1 {
+		t.Errorf("readerA.neighborsCalls = %d, want 1", h.readerA.neighborsCalls)
+	}
+
+	if _, err := h.client.Neighbors(t.Context(), h.nodeA, "nosuch"); err == nil {
+		t.Fatal("expected an error for an unknown node")
+	}
+}
+
 // TestPeerAudit_FetchesFilteredPage is T-303: GET /api/peer/audit parses
 // every documented GET /audit query param into peer.AuditFilter and
 // forwards it, and decodes the served page back into []AuditRecord/

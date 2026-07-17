@@ -683,3 +683,7 @@ func (r nodeAgentReader) DHCPLeases(context.Context, string) ([]byte, error) {
 func (r nodeAgentReader) Services(context.Context, string) (map[string]bool, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.Services not supported")
 }
+
+func (r nodeAgentReader) Neighbors(context.Context, string) ([]host.Neighbor, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.Neighbors not supported")
+}

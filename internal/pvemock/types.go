@@ -107,9 +107,39 @@ type NodeSpec struct {
 	// host.ParseDHCPLeases' defensive skip-and-count behavior. Empty
 	// string (the default) models a node with no DHCP-managed SDN zone at
 	// all — a clean "no leases" result, not an error.
-	DHCPLeases     string     `yaml:"dhcp_leases,omitempty"`
-	Network        []NetIface `yaml:"network"`
-	NetworkPending []NetIface `yaml:"network_pending"`
+	DHCPLeases string `yaml:"dhcp_leases,omitempty"`
+	// Neighbors is this node's fixture-declared ARP/IPv6-neighbor table
+	// (T-805, docs/features/ipam.md §1's ARP/neighbor enrichment source)
+	// for this node's FixtureHostReader.Neighbors. Declared as already
+	// structured {ip, mac, iface, state} entries (unlike DHCPLeases' raw
+	// text blob above) since there is no single stable raw-text format
+	// spanning both /proc/net/arp (IPv4) and the IPv6 neighbor table the
+	// way dnsmasq's .leases format covers every lease — see
+	// internal/host.ParseProcNetARP for the real IPv4 parser this
+	// structured shape deliberately bypasses. Every declared entry is
+	// returned unfiltered by FixtureHostReader.Neighbors below;
+	// internal/host.FixtureReader.Neighbors applies the
+	// resolved-states-only filter, exactly like the real Reader
+	// implementation does at its own layer — so a fixture can declare a
+	// FAILED/INCOMPLETE entry to exercise that filtering end-to-end.
+	Neighbors      []NeighborSpec `yaml:"neighbors,omitempty"`
+	Network        []NetIface     `yaml:"network"`
+	NetworkPending []NetIface     `yaml:"network_pending"`
+}
+
+// NeighborSpec is one fixture-declared ARP/IPv6-neighbor-table entry
+// (T-805). State is one of "REACHABLE"/"STALE"/"PERMANENT"/"FAILED"/
+// "INCOMPLETE" (internal/host's NeighborReachable/.../NeighborIncomplete
+// constants, duplicated here as plain strings for the same
+// host-package-free reason FRRSpec.Peers' State field is a raw string —
+// see BGPPeerSpec's doc comment); empty defaults to "REACHABLE" (the
+// "unremarkable unless declared otherwise" default every other optional
+// NodeSpec field already follows).
+type NeighborSpec struct {
+	IP    string `yaml:"ip" json:"ip"`
+	Mac   string `yaml:"mac,omitempty" json:"mac,omitempty"`
+	Iface string `yaml:"iface,omitempty" json:"iface,omitempty"`
+	State string `yaml:"state,omitempty" json:"state,omitempty"`
 }
 
 // FRRSpec is a node's fixture-declared FRR daemon state: its own BGP

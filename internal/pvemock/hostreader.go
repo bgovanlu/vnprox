@@ -54,6 +54,11 @@ type HostReader interface {
 
 	// Services returns fixture-declared systemd unit status for node (T-602).
 	Services(ctx context.Context, node string) (map[string]bool, error)
+
+	// Neighbors returns node's fixture-declared ARP/IPv6-neighbor table
+	// (T-805), unfiltered (see neighbors.go's doc comment for why state
+	// filtering is internal/host's job, not this package's).
+	Neighbors(ctx context.Context, node string) ([]Neighbor, error)
 }
 
 // LinkState is one netlink-equivalent link (physical NIC, bond, bridge, or

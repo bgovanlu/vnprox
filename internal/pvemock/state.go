@@ -16,6 +16,7 @@ type nodeState struct {
 	lxc            map[string]*GuestSpec
 	frr            *FRRSpec
 	dhcpLeases     string
+	neighbors      []NeighborSpec
 	network        []NetIface
 	networkPending []NetIface
 	firewall       FirewallScope
@@ -126,6 +127,7 @@ func NewState(f *Fixture) *State {
 			network:    append([]NetIface(nil), ns.Network...),
 			frr:        ns.FRR,
 			dhcpLeases: ns.DHCPLeases,
+			neighbors:  append([]NeighborSpec(nil), ns.Neighbors...),
 		}
 		if ns.Firewall != nil {
 			rt.firewall = *ns.Firewall

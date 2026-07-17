@@ -108,6 +108,12 @@ type HostReader interface {
 	// convention — a node with no DHCP-managed SDN zone simply has no
 	// leases, the common case.
 	DHCPLeases(ctx context.Context, node string) ([]byte, error)
+
+	// Neighbors returns node's resolved ARP (IPv4) / IPv6-neighbor table
+	// (T-805, docs/features/ipam.md §1's ARP/neighbor enrichment source),
+	// already filtered to resolved states by host.Reader.Neighbors — see
+	// that method's doc comment.
+	Neighbors(ctx context.Context, node string) ([]host.Neighbor, error)
 }
 
 // FirewallLogReader is the peer-server-side dependency for
@@ -254,6 +260,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/services", s.handleServices)
 		r.Get("/host/links", s.handleLinks)
 		r.Get("/host/fdb", s.handleFDB)
+		r.Get("/host/neighbors", s.handleNeighbors)
 		r.Get("/host/frr/bgp-summary", s.handleFRRBGPSummary)
 		r.Get("/host/frr/evpn-vni", s.handleFRREVPNVNI)
 		r.Get("/host/dhcp-leases", s.handleDHCPLeases)
@@ -369,6 +376,25 @@ func (s *Server) handleFDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, fdbResponse{Entries: host.FlattenFDB(links)})
+}
+
+// handleNeighbors implements GET /api/peer/host/neighbors (T-805): node's
+// resolved ARP/IPv6-neighbor table, the peer-routed counterpart of a local
+// host.Reader.Neighbors call — internal/ipam.NeighborSource's fan-out
+// dependency, following handleLinks/handleFDB's precedent exactly (a plain
+// read, no {available} envelope needed).
+func (s *Server) handleNeighbors(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	neighbors, err := s.opts.Reader.Neighbors(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading neighbor table", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, neighborsResponse{Neighbors: neighbors})
 }
 
 // handleFRRBGPSummary implements GET /api/peer/host/frr/bgp-summary
