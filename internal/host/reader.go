@@ -86,6 +86,20 @@ type Reader interface {
 	// a missing key as "down", only a present key mapped to false.
 	Services(ctx context.Context, node string) (map[string]bool, error)
 
+	// CorosyncStatus returns raw `corosync-cfgtool -s` output for node
+	// (T-803's corosync_link_degraded health check, docs/features/
+	// monitoring.md §5): per-ring link status as corosync's own
+	// knet/totem layer currently observes it, distinct from
+	// corosync.conf's static ring *addresses* (ParseCorosyncConf/
+	// ReadCorosyncConf above, corosync.go) — a ring can be correctly
+	// configured yet reporting faulty right now. Returns an error
+	// wrapping ErrCorosyncUnavailable when corosync is not installed or
+	// not running on node at all (e.g. a single, not-yet-clustered node),
+	// the same documented graceful-degradation convention
+	// FRRBGPSummary/FRREVPNVNI use for FRR. Use ParseCorosyncStatus to
+	// obtain a structured view.
+	CorosyncStatus(ctx context.Context, node string) ([]byte, error)
+
 	// Neighbors returns node's resolved ARP (IPv4) and neighbor-discovery
 	// (IPv6) table entries — {ip, mac, iface, state} — filtered to resolved
 	// states (NeighborReachable/NeighborStale/NeighborPermanent);

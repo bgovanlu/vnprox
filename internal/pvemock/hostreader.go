@@ -47,6 +47,11 @@ type HostReader interface {
 	// node. Same ErrFRRUnavailable convention as FRRBGPSummary.
 	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
 
+	// CorosyncStatus returns raw `corosync-cfgtool -s` output for node
+	// (T-803), or an error wrapping ErrCorosyncUnavailable when node's
+	// fixture declares no `corosync:` block at all.
+	CorosyncStatus(ctx context.Context, node string) ([]byte, error)
+
 	// DHCPLeases returns node's fixture-declared raw dnsmasq lease-file
 	// content (T-406), or empty bytes for a node with none declared — see
 	// NodeSpec.DHCPLeases' doc comment.
@@ -232,6 +237,23 @@ func (h *FixtureHostReader) FRREVPNVNI(_ context.Context, node string) ([]byte, 
 		return nil, fmt.Errorf("pvemock: host reader: %w: node %q", ErrFRRUnavailable, node)
 	}
 	return marshalEVPNVNI(ns.frr)
+}
+
+// CorosyncStatus implements HostReader (T-803): renders node's
+// fixture-declared CorosyncSpec into `corosync-cfgtool -s`'s wire shape, or
+// ErrCorosyncUnavailable when node's fixture declares no `corosync:` block
+// at all (modeling a node running no corosync — e.g. not yet clustered).
+func (h *FixtureHostReader) CorosyncStatus(_ context.Context, node string) ([]byte, error) {
+	ns, ok := h.state.node(node)
+	if !ok {
+		return nil, fmt.Errorf("pvemock: host reader: %w: node %q", ErrNotFound, node)
+	}
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	if ns.corosync == nil {
+		return nil, fmt.Errorf("pvemock: host reader: %w: node %q", ErrCorosyncUnavailable, node)
+	}
+	return marshalCorosyncStatus(ns.corosync), nil
 }
 
 // DHCPLeases implements HostReader (T-406): node's fixture-declared raw

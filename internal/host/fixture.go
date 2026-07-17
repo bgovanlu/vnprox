@@ -11,12 +11,14 @@ import (
 )
 
 // wrapFixtureErr maps pvemock.ErrNotFound (returned for an unknown node)
-// onto this package's own ErrNotFound sentinel, and pvemock.ErrFRRUnavailable
+// onto this package's own ErrNotFound sentinel, pvemock.ErrFRRUnavailable
 // (returned for a node whose fixture declares no FRR state at all) onto
-// this package's own ErrFRRUnavailable sentinel, so callers can use
-// errors.Is(err, host.ErrNotFound)/errors.Is(err, host.ErrFRRUnavailable)
-// without depending on pvemock's error values directly; any other error is
-// wrapped with context as-is.
+// this package's own ErrFRRUnavailable sentinel, and pvemock.
+// ErrCorosyncUnavailable onto this package's own ErrCorosyncUnavailable
+// sentinel (T-803), so callers can use errors.Is(err, host.ErrNotFound)/
+// errors.Is(err, host.ErrFRRUnavailable)/errors.Is(err,
+// host.ErrCorosyncUnavailable) without depending on pvemock's error values
+// directly; any other error is wrapped with context as-is.
 func wrapFixtureErr(err error) error {
 	if err == nil {
 		return nil
@@ -26,6 +28,9 @@ func wrapFixtureErr(err error) error {
 	}
 	if errors.Is(err, pvemock.ErrFRRUnavailable) {
 		return fmt.Errorf("host: fixture: %w: %w", ErrFRRUnavailable, err)
+	}
+	if errors.Is(err, pvemock.ErrCorosyncUnavailable) {
+		return fmt.Errorf("host: fixture: %w: %w", ErrCorosyncUnavailable, err)
 	}
 	return fmt.Errorf("host: fixture: %w", err)
 }
@@ -44,6 +49,7 @@ type pvemockReader interface {
 	FRREVPNVNI(ctx context.Context, node string) ([]byte, error)
 	DHCPLeases(ctx context.Context, node string) ([]byte, error)
 	Services(ctx context.Context, node string) (map[string]bool, error)
+	CorosyncStatus(ctx context.Context, node string) ([]byte, error)
 }
 
 // FixtureReader adapts a *pvemock.FixtureHostReader (T-004's YAML
@@ -150,6 +156,18 @@ func (f *FixtureReader) Stats(ctx context.Context, node string) (map[string]Ifac
 		}
 	}
 	return out, nil
+}
+
+// CorosyncStatus implements Reader by delegating directly; wrapFixtureErr
+// maps pvemock.ErrCorosyncUnavailable (a node whose fixture declares no
+// `corosync:` block at all) onto this package's ErrCorosyncUnavailable
+// (T-803).
+func (f *FixtureReader) CorosyncStatus(ctx context.Context, node string) ([]byte, error) {
+	b, err := f.r.CorosyncStatus(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	return b, nil
 }
 
 // Services implements Reader by delegating directly.

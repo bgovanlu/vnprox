@@ -117,6 +117,11 @@ nodes:
       eno2: {rx_bytes: 4800000000, tx_bytes: 1900000000, rx_packets: 3900000, tx_packets: 1750000}
       bond0: {rx_bytes: 9800000000, tx_bytes: 3900000000, rx_packets: 7900000, tx_packets: 3550000}
       vmbr0: {rx_bytes: 9800000000, tx_bytes: 3900000000, rx_packets: 7900000, tx_packets: 3550000}
+    # T-803: corosync-cfgtool -s ring status — both rings healthy on pve1.
+    corosync:
+      rings:
+        - {id: 0, addr: 10.10.0.11}
+        - {id: 1, addr: 10.10.1.11}
     qemu:
       "200":
         name: app01
@@ -197,6 +202,11 @@ nodes:
       eno2: {rx_bytes: 4600000000, tx_bytes: 1900000000, rx_packets: 3750000, tx_packets: 1680000}
       bond0: {rx_bytes: 9300000000, tx_bytes: 3850000000, rx_packets: 7550000, tx_packets: 3380000}
       vmbr0: {rx_bytes: 9300000000, tx_bytes: 3850000000, rx_packets: 7550000, tx_packets: 3380000}
+    # T-803: both rings healthy on pve2 too.
+    corosync:
+      rings:
+        - {id: 0, addr: 10.10.0.12}
+        - {id: 1, addr: 10.10.1.12}
     qemu: {}
     lxc:
       "201":
@@ -277,6 +287,14 @@ nodes:
       eno2: {rx_bytes: 4400000000, tx_bytes: 1800000000, rx_packets: 3650000, tx_packets: 1620000}
       bond0: {rx_bytes: 8900000000, tx_bytes: 3650000000, rx_packets: 7350000, tx_packets: 3270000}
       vmbr0: {rx_bytes: 8900000000, tx_bytes: 3650000000, rx_packets: 7350000, tx_packets: 3270000}
+    # T-803: pve3's second corosync ring is deliberately reporting faulty
+    # (a cable/switch-port issue on the redundant ring, ring 0 unaffected)
+    # so `corosync_link_degraded` has a real firing case to test against,
+    # not just an all-healthy fixture.
+    corosync:
+      rings:
+        - {id: 0, addr: 10.10.0.13}
+        - {id: 1, addr: 10.10.1.13, faulty: true}
     qemu: {}
     lxc: {}
     firewall:

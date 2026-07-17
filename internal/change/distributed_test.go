@@ -79,6 +79,9 @@ func (r fakeHostReader) Services(context.Context, string) (map[string]bool, erro
 func (r fakeHostReader) Neighbors(context.Context, string) ([]host.Neighbor, error) {
 	return nil, nil
 }
+func (r fakeHostReader) CorosyncStatus(context.Context, string) ([]byte, error) {
+	return nil, host.ErrCorosyncUnavailable
+}
 
 // partitionableTransport is an http.RoundTripper that fails every request to
 // a "cut" host (address, as in req.URL.Host) with a network-shaped error —

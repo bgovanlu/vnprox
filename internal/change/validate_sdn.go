@@ -23,6 +23,16 @@ const underlayMTU = 1500
 // §2: "MTU math shown explicitly (underlay MTU − 50)").
 const vxlanOverhead = 50
 
+// VxlanOverhead exports vxlanOverhead for internal/findings' `vxlan_underlay_mtu`
+// continuous health check (T-803), which promotes this exact encapsulation-
+// overhead sanity math to a continuous check against the *observed* underlay
+// path MTU (real PhysNic/Bond MTU from inventory) rather than only running it
+// against the assumed default (underlayMTU above) at changeset-validate time
+// — see checkVxlanMTU's doc comment for why an assumed default is used here
+// at all. Reusing this constant (rather than internal/findings duplicating
+// the literal 50) keeps the two checks' math from silently drifting apart.
+const VxlanOverhead = vxlanOverhead
+
 // sdnValidate is T-402's pre-apply validator class (docs/features/sdn.md
 // §4: "vnprox wraps the SDN apply ... with: pre-apply validation (zone node
 // coverage, bridge existence on member nodes, MTU sanity)"). "Zone node

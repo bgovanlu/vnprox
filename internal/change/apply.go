@@ -687,3 +687,7 @@ func (r nodeAgentReader) Services(context.Context, string) (map[string]bool, err
 func (r nodeAgentReader) Neighbors(context.Context, string) ([]host.Neighbor, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.Neighbors not supported")
 }
+
+func (r nodeAgentReader) CorosyncStatus(context.Context, string) ([]byte, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.CorosyncStatus not supported")
+}

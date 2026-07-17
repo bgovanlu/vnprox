@@ -47,6 +47,10 @@ func (r *Real) DHCPLeases(_ context.Context, _ string) ([]byte, error) {
 	return nil, fmt.Errorf("host: DHCPLeases: %w", ErrUnsupportedPlatform)
 }
 
+func (r *Real) CorosyncStatus(_ context.Context, _ string) ([]byte, error) {
+	return nil, fmt.Errorf("host: CorosyncStatus: %w", ErrUnsupportedPlatform)
+}
+
 var _ OVSReader = (*Real)(nil)
 
 func (r *Real) OVSStatus(_ context.Context, _ string) ([]OVSBridgeStatus, error) {

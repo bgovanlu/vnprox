@@ -144,6 +144,10 @@ func (r *spyHostReader) Neighbors(_ context.Context, node string) ([]host.Neighb
 	return n, nil
 }
 
+func (r *spyHostReader) CorosyncStatus(_ context.Context, node string) ([]byte, error) {
+	return nil, host.ErrCorosyncUnavailable
+}
+
 // spyHostWriter records every call it receives and its arguments.
 type spyHostWriter struct {
 	failNext  error
