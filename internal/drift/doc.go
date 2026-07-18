@@ -27,4 +27,14 @@
 // acceptance criterion 5 — "no finding flapping" — falls straight out of
 // that purity plus Finding.ID being a stable hash of the check's own
 // identity, never a random/time-based value).
+//
+// T-1102 adds a sixth, additional family — spec_drift (specdrift.go): live
+// state vs. a *pinned* declarative spec (internal/spec, T-1101), the GitOps
+// reconciler's own reference. Unlike the five above it is not a pure
+// func(Snapshot) — it also depends on the current pin (Service.pins, a
+// PinProvider), so it lives as a Service method combined into Findings'
+// output rather than a checkFuncs entry. Detection-only, exactly like every
+// other family: a "create fixing changeset" action (POST /drift/{id}/fix)
+// exists where the reconcile ops are safely computable (spec.Import,
+// reused verbatim, never reimplemented), never auto-applied.
 package drift

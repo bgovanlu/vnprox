@@ -277,3 +277,18 @@ sdn:                          # omitted entirely when the cluster has no SDN obj
 ```
 
 `vids` are the inventory `VidRange` string forms (`"100"`, `"2-4094"`), sorted. `Parse` rejects any `specVersion` other than `1` (an absent field is `0` and is rejected too), so an operator never reconciles against a schema this daemon can't fully honor.
+
+## 7. Pinned spec drift reconciliation (`internal/store`, T-1102)
+
+The GitOps reconciler's declared desired state: an operator pins one Spec document (§6) as the reference `internal/drift`'s `spec_drift` check family (docs/features/topology.md §6, `GET /drift`'s sixth `check` value, docs/api.md's Spec pin section) diffs live state against every drift cycle, via T-1101's `spec.Import` unchanged — no second reconcile implementation. App-owned data per this doc's top-level rule: the pin is vnprox's own record of what an operator asked to reconcile toward, never a shadow copy of PVE-authoritative config — the same status docs/features/blueprints.md §2's "pin nodes to blueprint" P1 note already flagged for a related, still-unimplemented idea. A singleton row (`internal/store/migrations/0012_pinned_spec.sql`):
+
+```sql
+CREATE TABLE pinned_spec (
+  id        INTEGER PRIMARY KEY CHECK (id = 1),  -- exactly one pin, cluster-wide
+  content   TEXT NOT NULL,      -- the pinned YAML document, byte-for-byte
+  pinned_by TEXT NOT NULL,      -- acting user at pin time
+  pinned_at INTEGER NOT NULL    -- unix seconds
+);
+```
+
+`POST /spec/pin` validates `content` through the same `spec.Parse` `POST /spec/import` uses (rejecting an unparseable document or a `specVersion` other than `1` before anything is stored) and upserts this one row in place — re-pinning replaces the previous pin outright, there is no history of past pins. `DELETE /spec/pin` removes the row; `internal/drift`'s spec_drift check treats "no row" identically to "never pinned" (zero findings, never an error) so unpinning cleanly clears every `spec_drift` finding on the next drift cycle. Note for the next agent: migration numbering skips `0010`/`0011`, reserved for in-flight sibling tasks (T-1103 scheduled changesets, T-1104 event stream/tokens) landing independently — the same "reserved gap" precedent `0007`'s own note above documents.
