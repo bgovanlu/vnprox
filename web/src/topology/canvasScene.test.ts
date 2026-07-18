@@ -8,6 +8,8 @@ import {
   fitViewport,
   graphToScreen,
   hitTest,
+  hitTestFlowEdge,
+  nodeCenterScreen,
   nodeScreenRect,
   panBy,
   screenToGraph,
@@ -15,6 +17,7 @@ import {
   clampZoom,
   MAX_ZOOM,
   MIN_ZOOM,
+  type FlowEdgeEndpoints,
   type SceneNode,
   type Viewport,
 } from "./canvasScene";
@@ -122,5 +125,40 @@ describe("panBy", () => {
     const vp: Viewport = { x: 10, y: 20, zoom: 1.3 };
     const p = panBy(vp, 5, -7);
     expect(p).toEqual({ x: 15, y: 13, zoom: 1.3 });
+  });
+});
+
+describe("hitTestFlowEdge (T-1003)", () => {
+  const vp: Viewport = { x: 0, y: 0, zoom: 1 };
+  const edges: FlowEdgeEndpoints[] = [{ id: "a=>b::flow", from: "a", to: "b" }];
+  const [nodeA, nodeB, nodeC] = NODES as [SceneNode, SceneNode, SceneNode];
+
+  it("hits a point on the a->b segment", () => {
+    const a = nodeCenterScreen(nodeA.position, vp);
+    const b = nodeCenterScreen(nodeB.position, vp);
+    const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    expect(hitTestFlowEdge(edges, NODES, midpoint, vp)).toBe("a=>b::flow");
+  });
+
+  it("misses a point far from any overlay edge", () => {
+    expect(hitTestFlowEdge(edges, NODES, { x: 5000, y: 5000 }, vp)).toBeUndefined();
+  });
+
+  it("never hits an edge whose endpoint isn't in the current scene-node set (e.g. collapsed under LOD)", () => {
+    const onlyA: SceneNode[] = [nodeA];
+    const a = nodeCenterScreen(nodeA.position, vp);
+    expect(hitTestFlowEdge(edges, onlyA, a, vp)).toBeUndefined();
+  });
+
+  it("picks the nearest edge when multiple are within threshold", () => {
+    const a = nodeCenterScreen(nodeA.position, vp);
+    const c = nodeCenterScreen(nodeC.position, vp);
+    const twoEdges: FlowEdgeEndpoints[] = [
+      { id: "a=>b::flow", from: "a", to: "b" },
+      { id: "a=>c::flow", from: "a", to: "c" },
+    ];
+    // A point essentially on the a->c segment should resolve to a->c, not a->b.
+    const nearC = { x: a.x + (c.x - a.x) * 0.9, y: a.y + (c.y - a.y) * 0.9 };
+    expect(hitTestFlowEdge(twoEdges, NODES, nearC, vp)).toBe("a=>c::flow");
   });
 });

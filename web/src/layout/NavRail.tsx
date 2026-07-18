@@ -22,6 +22,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/sdn", label: "SDN", glyph: "S" },
   { path: "/firewall", label: "Firewall", glyph: "F" },
   { path: "/ipam", label: "IPAM", glyph: "I" },
+  { path: "/flows", label: "Flows", glyph: "W" },
   { path: "/ports", label: "Ports", glyph: "P" },
   { path: "/blueprints", label: "Blueprints", glyph: "B" },
   { path: "/history", label: "History", glyph: "H" },

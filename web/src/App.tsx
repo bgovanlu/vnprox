@@ -9,6 +9,7 @@ import { TopologyPage } from "./pages/TopologyPage";
 import { GuestsPage } from "./pages/GuestsPage";
 import { SdnPage } from "./pages/SdnPage";
 import { FirewallPage } from "./pages/FirewallPage";
+import { FlowExplorerPage } from "./pages/FlowExplorerPage";
 import { IpamPage } from "./pages/IpamPage";
 import { ManagementPage } from "./pages/ManagementPage";
 import { PortsPage } from "./pages/PortsPage";
@@ -91,6 +92,14 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="IPAM">
                   <IpamPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/flows"
+              element={
+                <DesktopOnlyRoute pageLabel="Flows">
+                  <FlowExplorerPage />
                 </DesktopOnlyRoute>
               }
             />

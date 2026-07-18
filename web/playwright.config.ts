@@ -145,5 +145,28 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    // T-1003's own stack (flows.spec.ts), additive: a sixth mock PVE +
+    // vnproxd pair on ports 58006/58007 serving testdata/clusters/
+    // flow-lab.yaml (T-1002's flow ingestion fixture) with netflow_enabled
+    // on a dedicated port (testdata/dev-flow.toml) — flows.spec.ts injects
+    // a real UDP NetFlow v5 datagram at that port and drives the Flow
+    // Explorer / map-painting UI end to end against the resulting ingested
+    // record.
+    {
+      command: "go run ./cmd/pvemock --addr 127.0.0.1:58006 --fixture testdata/clusters/flow-lab.yaml",
+      cwd: "..",
+      port: 58006,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command:
+        "sh -c 'rm -f var/dev-flow-vnprox.db && rm -rf var/dev-flow-host && exec go run ./cmd/vnproxd --config testdata/dev-flow.toml'",
+      cwd: "..",
+      url: "https://127.0.0.1:58007/api/v1/health",
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
 });

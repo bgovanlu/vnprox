@@ -30,6 +30,7 @@ import {
   DEFAULT_NODE_SIZE,
   fitViewport,
   hitTest,
+  hitTestFlowEdge,
   panBy,
   screenToGraph,
   zoomAt,
@@ -38,7 +39,7 @@ import {
 } from "./canvasScene";
 import { buildA11yProxies } from "./a11yBridge";
 import { TopologyA11yLayer } from "./TopologyA11yLayer";
-import { drawScene, pulseAlphaForPhase, type SceneTheme } from "./canvasDraw";
+import { drawScene, drawFlowOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
 import { applyLod, parseLodId, zoomBandFor } from "./lod";
 import { Minimap } from "./Minimap";
 
@@ -91,6 +92,18 @@ export interface TopologyCanvasV2Props {
    * setState function) to avoid re-subscribing every render. undefined (the
    * default) is a no-op. */
   onSceneChange?: (elements: FlowElements) => void;
+  /** T-1003 "Flows" layer overlay edges (topology/flowEdges.ts, resolved to
+   * a stroke width by the caller) — drawn as a distinct animated overlay
+   * after the normal scene. undefined/empty (the default) draws nothing
+   * extra, so every pre-T-1003 call site is unaffected. */
+  flowEdges?: readonly FlowOverlayEdge[];
+  /** The currently-selected flow edge (drill-down panel open for it). */
+  selectedFlowEdgeId?: string;
+  /** Fires when a Flows-layer overlay edge is clicked — takes priority
+   * over the plain-pane click (onPaneClick) when both could apply, so a
+   * click that lands on a flow edge always opens its drill-down rather
+   * than deselecting. */
+  onFlowEdgeClick?: (edgeId: string) => void;
 }
 
 // Distance (screen px) a pointer must travel after press before a gesture
@@ -151,6 +164,9 @@ export function TopologyCanvasV2({
   initialViewport,
   onViewportChange,
   onSceneChange,
+  flowEdges,
+  selectedFlowEdgeId,
+  onFlowEdgeClick,
 }: TopologyCanvasV2Props) {
   const storeTheme = useThemeStore((s) => s.theme);
   const effectiveTheme = theme ?? storeTheme;
@@ -318,6 +334,26 @@ export function TopologyCanvasV2({
     };
   }, [reducedMotion, hasDriftEntity]);
 
+  // T-1003: the Flows-layer overlay's "animated dash-flow direction by
+  // src->dst" — a marching lineDashOffset, ticking only while there's at
+  // least one overlay edge to animate and motion is allowed (mirrors the
+  // drift pulse above: reduced-motion collapses to a static dashed line,
+  // offset 0, rather than skipping the dash pattern entirely).
+  const hasFlowEdges = (flowEdges?.length ?? 0) > 0;
+  const [flowDashOffset, setFlowDashOffset] = useState(0);
+  useEffect(() => {
+    if (reducedMotion || !hasFlowEdges) {
+      setFlowDashOffset(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setFlowDashOffset((prev) => (prev + 1.5) % 14); // 14 = the [8,6] dash pattern's period
+    }, PULSE_TICK_MS / 4);
+    return () => {
+      clearInterval(id);
+    };
+  }, [reducedMotion, hasFlowEdges]);
+
   // --- Draw ----------------------------------------------------------------
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -352,7 +388,36 @@ export function TopologyCanvasV2({
       // just freeze its phase at 0).
       pulseAlpha: reducedMotion || !hasDriftEntity ? 1 : pulseAlphaForPhase(pulsePhase),
     });
-  }, [lodElements.nodes, lodElements.edges, viewport, size, effectiveTheme, dragTopLeft, pulsePhase, reducedMotion, hasDriftEntity]);
+
+    // T-1003: the Flows layer overlay, drawn as its own pass on top of the
+    // normal scene — see drawFlowOverlay's doc comment for why this is
+    // never merged into drawScene's own edge loop.
+    if (hasFlowEdges && flowEdges) {
+      drawFlowOverlay(ctx, {
+        nodes: lodElements.nodes,
+        edges: flowEdges,
+        viewport,
+        nodeSize: DEFAULT_NODE_SIZE,
+        dragTopLeft,
+        dashOffset: flowDashOffset,
+        selectedId: selectedFlowEdgeId,
+      });
+    }
+  }, [
+    lodElements.nodes,
+    lodElements.edges,
+    viewport,
+    size,
+    effectiveTheme,
+    dragTopLeft,
+    pulsePhase,
+    reducedMotion,
+    hasDriftEntity,
+    hasFlowEdges,
+    flowEdges,
+    flowDashOffset,
+    selectedFlowEdgeId,
+  ]);
 
   // --- Pointer helpers -----------------------------------------------------
   const localPoint = useCallback((evt: { clientX: number; clientY: number }): XYPosition => {
@@ -437,11 +502,24 @@ export function TopologyCanvasV2({
           onNodeDrop(g.id, targetId, graphPos);
         }
       } else if (g.kind === "pan" && !g.moved) {
-        onPaneClick();
+        // T-1003: a click that lands on nothing (no node hit — that's how
+        // this branch is reached in the first place) may still land on a
+        // Flows-layer overlay edge, which is invisible to hitTest (it only
+        // knows about scene *nodes*). Check that before falling through to
+        // a plain deselecting pane click.
+        const hitEdge =
+          hasFlowEdges && flowEdges && onFlowEdgeClick
+            ? hitTestFlowEdge(flowEdges, lodSceneNodes, p, viewport)
+            : undefined;
+        if (hitEdge !== undefined) {
+          onFlowEdgeClick?.(hitEdge);
+        } else {
+          onPaneClick();
+        }
       }
       setDragTopLeft(undefined);
     },
-    [localPoint, lodSceneNodes, viewport, handleEntityActivate, onNodeDrop, onPaneClick],
+    [localPoint, lodSceneNodes, viewport, handleEntityActivate, onNodeDrop, onPaneClick, hasFlowEdges, flowEdges, onFlowEdgeClick],
   );
 
   const handleWheel = useCallback(
