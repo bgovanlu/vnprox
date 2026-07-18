@@ -245,9 +245,15 @@ func (c *Coordinator) StartLocalSpec(ctx context.Context, spec Spec) (Result, er
 		return Result{Status: StatusError}, err
 	}
 	spec.Caps = c.clampCaps(spec.Caps.MaxDurationSec, spec.Caps.MaxBytes, spec.Caps.MaxPackets)
-	if spec.FilePath == "" {
-		spec.FilePath = c.filePath(spec.SessionID)
-	}
+	// Never trust a caller-supplied file path or node: the file always lands
+	// under THIS node's own [capture] root (bounded-file invariant,
+	// docs/security.md), and the row is always tagged with THIS node so this
+	// node's retention sweep owns it. An HMAC-authenticated peer request that
+	// carried an absolute/traversal FilePath or a foreign Node would otherwise
+	// escape both guarantees — the un-overridable-cap discipline applied to
+	// path and ownership, not just the numeric caps.
+	spec.FilePath = c.filePath(spec.SessionID)
+	spec.Node = c.cfg.LocalNode()
 	res, err := c.startLocal(ctx, spec)
 
 	s := sessionFromSpec(spec)

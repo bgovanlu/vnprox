@@ -47,9 +47,9 @@ func TestClient_Capture_RoundTrip(t *testing.T) {
 	spec := CaptureSpec{
 		SessionID: "s1", GroupID: "g1", TargetRef: "bridge:pve2:vmbr0", Node: "pve2",
 		Iface: "vmbr0", Filter: "tcp port 443",
-		Caps:     CaptureCaps{MaxDurationSec: 60, MaxBytes: 4096, MaxPackets: 100, RetentionHours: 24},
-		FilePath: "/var/lib/vnprox/captures/s1.pcap", StartedBy: "root@pam", StartedAt: 100,
-		Nodes: []string{"pve1", "pve2"},
+		Caps:      CaptureCaps{MaxDurationSec: 60, MaxBytes: 4096, MaxPackets: 100, RetentionHours: 24},
+		StartedBy: "root@pam", StartedAt: 100,
+		Nodes:     []string{"pve1", "pve2"},
 	}
 	res, err := client.CaptureStart(t.Context(), p, spec)
 	if err != nil {

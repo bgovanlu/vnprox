@@ -3,6 +3,7 @@ package capture_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -178,6 +179,39 @@ func newHarness(t *testing.T, ceilings capture.Caps, resolver capture.TargetReso
 var bridgeRefs = mapResolver{
 	"bridge:pve1:vmbr0": {Ref: "bridge:pve1:vmbr0", Node: "pve1", Iface: "vmbr0"},
 	"bridge:pve2:vmbr0": {Ref: "bridge:pve2:vmbr0", Node: "pve2", Iface: "vmbr0"},
+}
+
+// --- Peer entry point re-derives path & node (review-T-1301 MAJOR-1) -------
+
+// A peer-routed StartLocalSpec must never honor a caller-supplied FilePath or
+// Node: the .pcap always lands under THIS node's own [capture] root and the
+// row is tagged with THIS node, so an HMAC-authenticated peer can't steer the
+// write to a traversal path or make another node's sweep own (and delete) the
+// file.
+func TestStartLocalSpecIgnoresCallerFilePathAndNode(t *testing.T) {
+	ceil := capture.Caps{MaxDurationSec: 60, MaxBytes: 1 << 20, MaxPackets: 1 << 20, RetentionHours: 24}
+	h := newHarness(t, ceil, bridgeRefs)
+
+	_, err := h.coord.StartLocalSpec(context.Background(), capture.Spec{
+		SessionID: "evil1", GroupID: "g1", TargetRef: "bridge:pve1:vmbr0",
+		Node:  "attacker-controlled",
+		Iface: "vmbr0", Filter: "tcp", StartedBy: "root@pam",
+		FilePath: "/etc/vnprox/keys/session.key", // traversal/overwrite attempt
+		Caps:     ceil,
+	})
+	if err != nil {
+		t.Fatalf("StartLocalSpec: %v", err)
+	}
+	row, err := h.store.Get(context.Background(), "evil1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if row.Node != "pve1" {
+		t.Errorf("row.Node = %q, want the local node pve1 (caller value must be ignored)", row.Node)
+	}
+	if got := row.FilePath; got == "/etc/vnprox/keys/session.key" || filepath.Dir(got) != h.root {
+		t.Errorf("row.FilePath = %q, want a file under the local capture root %q (caller path must be ignored)", got, h.root)
+	}
 }
 
 // --- AC2: server-side, un-overridable caps ---------------------------------

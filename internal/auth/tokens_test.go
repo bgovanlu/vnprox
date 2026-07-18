@@ -92,6 +92,16 @@ func TestCapabilitiesFromScopes(t *testing.T) {
 	}
 }
 
+// A "capture"-scoped token must actually carry the Capture capability —
+// otherwise ParseScopes/ValidateScopeGrant accept the scope but every
+// /captures call 403s (review-T-1301 MAJOR-2: vocabulary-vs-enforcement gap).
+func TestCapabilitiesFromScopes_Capture(t *testing.T) {
+	got := CapabilitiesFromScopes([]Cap{CapCapture})
+	if !got.Has(CapCapture) {
+		t.Errorf("a capture-scoped token must grant the capture capability; got %+v", got)
+	}
+}
+
 func TestScopeStrings(t *testing.T) {
 	got := ScopeStrings([]Cap{CapNetRead, CapAutomation})
 	want := []string{"netRead", "automation"}

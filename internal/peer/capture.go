@@ -25,7 +25,9 @@ type CaptureCaps struct {
 
 // CaptureSpec is POST /api/peer/capture/start's body: everything the
 // receiving node needs to run one node-local capture and persist its own
-// capture_sessions row.
+// capture_sessions row. It deliberately carries no on-disk file path — the
+// receiving node always derives that from its own [capture] root
+// (StartLocalSpec), so a caller can never steer where the .pcap is written.
 type CaptureSpec struct {
 	SessionID string      `json:"sessionId"`
 	GroupID   string      `json:"groupId"`
@@ -33,7 +35,6 @@ type CaptureSpec struct {
 	Node      string      `json:"node"`
 	Iface     string      `json:"iface"`
 	Filter    string      `json:"filter"`
-	FilePath  string      `json:"filePath"`
 	StartedBy string      `json:"startedBy"`
 	Nodes     []string    `json:"nodes,omitempty"`
 	Caps      CaptureCaps `json:"caps"`

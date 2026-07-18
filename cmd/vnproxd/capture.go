@@ -218,17 +218,21 @@ func (a capturePeerAdapter) StatusLocal(ctx context.Context, sessionID string) (
 }
 
 func toPeerSpec(s capture.Spec) peer.CaptureSpec {
+	// FilePath is intentionally not sent: the receiving node derives it from
+	// its own [capture] root (StartLocalSpec), so it never travels the wire.
 	return peer.CaptureSpec{
 		SessionID: s.SessionID, GroupID: s.GroupID, TargetRef: s.TargetRef, Node: s.Node,
-		Iface: s.Iface, Filter: s.Filter, Caps: peer.CaptureCaps(s.Caps), FilePath: s.FilePath,
+		Iface: s.Iface, Filter: s.Filter, Caps: peer.CaptureCaps(s.Caps),
 		StartedBy: s.StartedBy, StartedAt: s.StartedAt, Nodes: s.Nodes,
 	}
 }
 
 func fromPeerSpec(s peer.CaptureSpec) capture.Spec {
+	// FilePath and Node are (re-)derived locally by StartLocalSpec, never
+	// taken from the caller — see that method's doc comment.
 	return capture.Spec{
 		SessionID: s.SessionID, GroupID: s.GroupID, TargetRef: s.TargetRef, Node: s.Node,
-		Iface: s.Iface, Filter: s.Filter, Caps: capture.Caps(s.Caps), FilePath: s.FilePath,
+		Iface: s.Iface, Filter: s.Filter, Caps: capture.Caps(s.Caps),
 		StartedBy: s.StartedBy, StartedAt: s.StartedAt, Nodes: s.Nodes,
 	}
 }

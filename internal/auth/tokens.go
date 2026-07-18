@@ -165,6 +165,8 @@ func CapabilitiesFromScopes(scopes []Cap) Capabilities {
 			c.Audit = true
 		case CapAutomation:
 			c.Automation = true
+		case CapCapture:
+			c.Capture = true
 		}
 	}
 	return c
