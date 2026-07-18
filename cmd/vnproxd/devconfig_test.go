@@ -17,11 +17,12 @@ import (
 // rewriteDevConfig loads testdata/dev.toml and rewrites the values that are
 // host-specific for a test run — the listen port (to an ephemeral one), the
 // repo-root-relative TLS cert/key paths (to absolute), the [storage] paths,
-// T-301's [peer] secret_path, and T-1001's [metrics] key_file (into dir) —
-// leaving everything else (PVE mock settings, collect intervals, safety
-// flags) exactly as the checked-in file says. It fails the test if any
-// expected key is missing, so a reshaped dev.toml breaks this test loudly
-// instead of silently testing something else.
+// T-301's [peer] secret_path, T-1001's [metrics] key_file, and T-1107's
+// [blueprint] signing_key_file/trusted_signers_dir (into dir) — leaving
+// everything else (PVE mock settings, collect intervals, safety flags)
+// exactly as the checked-in file says. It fails the test if any expected
+// key is missing, so a reshaped dev.toml breaks this test loudly instead of
+// silently testing something else.
 func rewriteDevConfig(t testing.TB, repoRoot, dir string, port int) string {
 	t.Helper()
 
@@ -39,10 +40,12 @@ func rewriteDevConfig(t testing.TB, repoRoot, dir string, port int) string {
 		// The [safety] dev paths are repo-root-relative in dev.toml; left
 		// unrewritten they'd resolve against this test's cwd and leak a
 		// cmd/vnproxd/var/ directory into the tree.
-		"protected_path":     filepath.Join(dir, "protected.json"),
-		"dev_interfaces_dir": filepath.Join(dir, "dev-host"),
-		"secret_path":        filepath.Join(dir, "cluster.secret"),
-		"key_file":           filepath.Join(dir, "metrics.key"),
+		"protected_path":      filepath.Join(dir, "protected.json"),
+		"dev_interfaces_dir":  filepath.Join(dir, "dev-host"),
+		"secret_path":         filepath.Join(dir, "cluster.secret"),
+		"key_file":            filepath.Join(dir, "metrics.key"),
+		"signing_key_file":    filepath.Join(dir, "blueprint-signing.key"),
+		"trusted_signers_dir": filepath.Join(dir, "trusted-signers"),
 	}
 	replaced := make(map[string]bool, len(replacements))
 

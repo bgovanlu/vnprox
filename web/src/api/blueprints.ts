@@ -4,9 +4,15 @@ import { apiFetch } from "./client";
 import { readCsrfCookie } from "./auth";
 import type {
   Blueprint,
+  BlueprintBundle,
+  BlueprintSigner,
+  BlueprintSignersListResponse,
+  BlueprintSigningKeyResponse,
   BlueprintsListResponse,
   CaptureBlueprintRequest,
   Changeset,
+  ImportBundleRequest,
+  ImportBundleResponse,
   InstantiateBlueprintRequest,
   SuggestAddressResponse,
 } from "./types";
@@ -57,4 +63,50 @@ export function instantiateBlueprint(id: string, req: InstantiateBlueprintReques
     json: req,
     csrfToken: readCsrfCookie(),
   });
+}
+
+// --- Blueprint sharing bundles (T-1107, docs/features/blueprints.md §5) --
+
+/** GET /blueprints/{id}/bundle?sign= — the (optionally signed) sharable
+ * bundle for download. `sign` defaults to unsigned (matching the route's
+ * own `?sign=` default). */
+export function fetchBlueprintBundle(id: string, sign: boolean): Promise<BlueprintBundle> {
+  const query = sign ? "?sign=true" : "";
+  return apiFetch<BlueprintBundle>(`/blueprints/${encodeURIComponent(id)}/bundle${query}`);
+}
+
+/** GET /blueprints/signing-key — this installation's own bundle-signing
+ * public key, for sharing out-of-band with a receiving admin. */
+export function fetchBlueprintSigningKey(): Promise<BlueprintSigningKeyResponse> {
+  return apiFetch<BlueprintSigningKeyResponse>("/blueprints/signing-key");
+}
+
+/** POST /blueprints/import — verify a bundle's signature (if any) against
+ * the trust store and, per the response's `status`, either save it as a
+ * new blueprint or report why it didn't (docs/api.md's Blueprint bundles
+ * section: unsigned/untrustedSignature/invalidSignature are none of them
+ * errors — each is a normal response the import dialog inspects `status`
+ * on). Passing `trustUnsigned`/`trustNewKey` is the caller's explicit
+ * trust decision, never implied by this function itself. */
+export function importBlueprintBundle(req: ImportBundleRequest): Promise<ImportBundleResponse> {
+  return apiFetch<ImportBundleResponse>("/blueprints/import", { method: "POST", json: req, csrfToken: readCsrfCookie() });
+}
+
+/** GET /blueprint-signers — every pinned (trusted) signer. */
+export function fetchBlueprintSigners(): Promise<BlueprintSignersListResponse> {
+  return apiFetch<BlueprintSignersListResponse>("/blueprint-signers");
+}
+
+/** POST /blueprint-signers — pin a new trusted signer. */
+export function addBlueprintSigner(publicKey: string, label?: string): Promise<BlueprintSigner> {
+  return apiFetch<BlueprintSigner>("/blueprint-signers", {
+    method: "POST",
+    json: { publicKey, label },
+    csrfToken: readCsrfCookie(),
+  });
+}
+
+/** DELETE /blueprint-signers/{fingerprint} — un-pin a trusted signer. */
+export async function deleteBlueprintSigner(fingerprint: string): Promise<void> {
+  await apiFetch(`/blueprint-signers/${encodeURIComponent(fingerprint)}`, { method: "DELETE", csrfToken: readCsrfCookie() });
 }

@@ -82,3 +82,13 @@ dev_fixture_dir = "testdata/firewall-logs"
 # var/ precedent above.
 [metrics]
 key_file = "var/dev-metrics.key"
+
+# T-1107: the blueprint bundle-signing Ed25519 identity + admin-managed
+# trusted-signers directory. Production defaults are /etc/vnprox/keys/
+# blueprint-signing.key and /etc/vnprox/keys/trusted-signers/ (root-only,
+# alongside the session/metrics keys); these dev-only overrides keep
+# `make dev`/the runDaemon integration tests working without root or a
+# pre-existing /etc/vnprox, mirroring [metrics]' own var/ precedent above.
+[blueprint]
+signing_key_file = "var/dev-blueprint-signing.key"
+trusted_signers_dir = "var/dev-trusted-signers"

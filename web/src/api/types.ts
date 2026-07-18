@@ -1545,6 +1545,72 @@ export interface SuggestAddressResponse {
   address: string;
 }
 
+// --- Blueprint sharing bundles (T-1107, docs/features/blueprints.md §5;
+// GET /blueprints/{id}/bundle, GET /blueprints/signing-key,
+// POST /blueprints/import, GET/POST/DELETE /blueprint-signers) -----------
+
+/** An Ed25519 signature over a bundle's `blueprint` field
+ * (internal/blueprint.BundleSignature). `publicKey` (base64) travels
+ * alongside the fingerprint so a receiving install can verify the
+ * signature standalone, before deciding whether it trusts the signer. */
+export interface BundleSignature {
+  alg: string;
+  publicKeyFingerprint: string;
+  publicKey: string;
+  sig: string;
+}
+
+/** The sharable envelope `{bundleVersion, blueprint, signature?}`
+ * (docs/features/blueprints.md §5). `signature` is absent for an unsigned
+ * bundle. */
+export interface BlueprintBundle {
+  bundleVersion: number;
+  blueprint: Blueprint;
+  signature?: BundleSignature;
+}
+
+/** POST /blueprints/import's body: the bundle plus the two explicit-trust
+ * flags — at most one is ever meaningfully set for a given bundle (an
+ * unsigned bundle only reads trustUnsigned; a signed one only reads
+ * trustNewKey). */
+export interface ImportBundleRequest extends BlueprintBundle {
+  trustUnsigned?: boolean;
+  trustNewKey?: boolean;
+}
+
+/** The four distinct outcomes POST /blueprints/import can report
+ * (docs/api.md's Blueprint bundles section). */
+export type BundleImportStatus = "imported" | "unsigned" | "untrustedSignature" | "invalidSignature";
+
+/** A signer identified in an import response (untrusted case) or returned
+ * from the trust-store CRUD routes. */
+export interface BlueprintSigner {
+  fingerprint: string;
+  publicKey: string;
+  label?: string;
+  addedBy?: string;
+  addedAt?: number;
+}
+
+export interface ImportBundleResponse {
+  status: BundleImportStatus;
+  blueprint?: Blueprint;
+  signer?: BlueprintSigner;
+}
+
+export interface BlueprintSignersListResponse {
+  items: BlueprintSigner[];
+}
+
+/** GET /blueprints/signing-key response: this installation's own bundle-
+ * signing public key, for a receiving admin to share out-of-band and pin
+ * via POST /blueprint-signers. */
+export interface BlueprintSigningKeyResponse {
+  alg: string;
+  publicKey: string;
+  fingerprint: string;
+}
+
 // --- Firewall log viewer (GET /firewall/log; `firewall.log.batch` WS
 // event; docs/features/firewall.md §4, internal/fwlog) -------------------
 

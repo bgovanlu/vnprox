@@ -8,6 +8,7 @@ package api
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -141,6 +142,20 @@ type Options struct {
 	// (which satisfies FirewallGraph's one-method seam directly).
 	Firewall   FirewallGraph
 	Blueprints BlueprintService
+	// BlueprintSigningKey/BlueprintTrust/BlueprintSignersAudit back T-1107's
+	// signed blueprint sharing bundles (docs/features/blueprints.md §5):
+	// GET /blueprints/{id}/bundle, GET /blueprints/signing-key,
+	// POST /blueprints/import, and GET/POST/DELETE /blueprint-signers.
+	// BlueprintSigningKey is this daemon's own Ed25519 identity (generated
+	// at first use, cmd/vnproxd); a zero-length key skips mounting
+	// GET /blueprints/signing-key and produces only unsigned bundles from
+	// GET /blueprints/{id}/bundle. BlueprintTrust is the admin-managed
+	// trust store (nil skips mounting every /blueprint-signers route and
+	// POST /blueprints/import — there would be nothing to check trust
+	// against).
+	BlueprintSigningKey   ed25519.PrivateKey
+	BlueprintTrust        BlueprintTrustStore
+	BlueprintSignersAudit blueprintBundleAuditor
 	// Spec backs T-1101's `GET /spec` + `POST /spec/import` (the declarative
 	// cluster network spec, internal/spec): the same live *inventory.Graph,
 	// which satisfies SpecInventory's one-method Snapshot seam directly. Nil
@@ -259,6 +274,7 @@ func NewRouter(opts Options) http.Handler {
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
+		mountBlueprintBundleRoutes(r, opts.Blueprints, opts.BlueprintSigningKey, opts.BlueprintTrust, opts.BlueprintSignersAudit, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
 		mountSpecPinRoutes(r, opts.SpecPin, opts.SpecPinAudit, opts.Auth)
 		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
