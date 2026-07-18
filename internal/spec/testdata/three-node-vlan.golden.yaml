@@ -1,0 +1,101 @@
+specVersion: 1
+nodes:
+    - name: pve1
+      bonds:
+        - name: bond0
+          mode: 802.3ad
+          slaves:
+            - eno1
+            - eno2
+          mtu: 1500
+      bridges:
+        - name: vmbr0
+          ports:
+            - bond0
+          vlanAware: true
+          addresses:
+            - 10.10.0.11/24
+          gateway: 10.10.0.1
+          mtu: 1500
+          comments: cluster/mgmt trunk, VLAN-aware
+      vlans:
+        - name: vmbr0.20
+          parent: vmbr0
+          vid: 20
+          addresses:
+            - 10.10.20.11/24
+          mtu: 1500
+    - name: pve2
+      bonds:
+        - name: bond0
+          mode: 802.3ad
+          slaves:
+            - eno1
+            - eno2
+          mtu: 1500
+      bridges:
+        - name: vmbr0
+          ports:
+            - bond0
+          vlanAware: true
+          addresses:
+            - 10.10.0.12/24
+          gateway: 10.10.0.1
+          mtu: 1500
+      vlans:
+        - name: vmbr0.20
+          parent: vmbr0
+          vid: 20
+          addresses:
+            - 10.10.20.12/24
+          mtu: 1500
+    - name: pve3
+      bonds:
+        - name: bond0
+          mode: 802.3ad
+          slaves:
+            - eno1
+            - eno2
+          mtu: 1500
+      bridges:
+        - name: vmbr0
+          ports:
+            - bond0
+          vlanAware: true
+          addresses:
+            - 10.10.0.13/24
+          gateway: 10.10.0.1
+          mtu: 1500
+      vlans:
+        - name: vmbr0.20
+          parent: vmbr0
+          vid: 20
+          addresses:
+            - 10.10.20.13/24
+          mtu: 1500
+sdn:
+    zones:
+        - id: vlanz
+          type: vlan
+          bridge: vmbr0
+          nodes:
+            - pve1
+            - pve2
+            - pve3
+          mtu: 1500
+    vnets:
+        - id: vlanz/vnet100
+          zone: vlanz
+          alias: app-tier
+          tag: 100
+        - id: vlanz/vnet200
+          zone: vlanz
+          alias: db-tier
+          tag: 200
+    subnets:
+        - id: 10.100.0.0/24
+          vnet: vnet100
+          gateway: 10.100.0.1
+        - id: 10.200.0.0/24
+          vnet: vnet200
+          gateway: 10.200.0.1

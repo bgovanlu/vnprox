@@ -1,0 +1,12 @@
+specVersion: 1
+nodes:
+    - name: pve1
+      bridges:
+        - name: vmbr0
+          ports:
+            - eno1
+          addresses:
+            - 192.168.1.10/24
+          gateway: 192.168.1.1
+          mtu: 1500
+          comments: management bridge

@@ -141,6 +141,11 @@ type Options struct {
 	// (which satisfies FirewallGraph's one-method seam directly).
 	Firewall   FirewallGraph
 	Blueprints BlueprintService
+	// Spec backs T-1101's `GET /spec` + `POST /spec/import` (the declarative
+	// cluster network spec, internal/spec): the same live *inventory.Graph,
+	// which satisfies SpecInventory's one-method Snapshot seam directly. Nil
+	// simply omits the spec routes.
+	Spec SpecInventory
 	// Simulator backs T-503's `POST /simulate/path` — the same live
 	// *inventory.Graph (satisfies SimulatorGraph's one-method seam directly).
 	Simulator SimulatorGraph
@@ -246,6 +251,7 @@ func NewRouter(opts Options) http.Handler {
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
+		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
 		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)

@@ -652,6 +652,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Protected:            changeSvc,
 		Firewall:             graph,
 		Blueprints:           blueprintSvc,
+		Spec:                 graph,
 		Simulator:            graph,
 		ProbeClients:         probeClientProvider{authSvc},
 		ProbeAudit:           auditRepo,

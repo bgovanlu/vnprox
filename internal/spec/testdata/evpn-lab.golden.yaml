@@ -1,0 +1,136 @@
+specVersion: 1
+nodes:
+    - name: pve1
+      bridges:
+        - name: vmbr0
+          ports:
+            - eno1
+          addresses:
+            - 10.20.0.11/24
+          gateway: 10.20.0.1
+          mtu: 9216
+          comments: underlay + mgmt
+        - name: vmbr1
+          mtu: 1500
+        - name: vnet-tenant-b
+          addresses:
+            - 192.168.60.1/24
+          mtu: 1450
+    - name: pve2
+      bridges:
+        - name: vmbr0
+          ports:
+            - eno1
+          addresses:
+            - 10.20.0.12/24
+          gateway: 10.20.0.1
+          mtu: 9216
+        - name: vmbr1
+          mtu: 1500
+        - name: vnet-tenant-b
+          addresses:
+            - 192.168.60.1/24
+          mtu: 1450
+    - name: pve3
+      bridges:
+        - name: vmbr0
+          ports:
+            - eno1
+          addresses:
+            - 10.20.0.13/24
+          gateway: 10.20.0.1
+          mtu: 9216
+          comments: underlay + EVPN exit-node uplink
+sdn:
+    zones:
+        - id: evpnz
+          type: evpn
+          controller: evpn-ctl0
+          nodes:
+            - pve1
+            - pve2
+            - pve3
+          exitNodes:
+            - pve3
+          peers:
+            - 10.20.0.11
+            - 10.20.0.12
+            - 10.20.0.13
+          vrfVxlan: 10000
+          mtu: 9166
+        - id: qinqz
+          type: qinq
+          bridge: vmbr0
+          nodes:
+            - pve1
+            - pve2
+            - pve3
+        - id: simplez
+          type: simple
+          bridge: vmbr1
+          nodes:
+            - pve1
+            - pve2
+            - pve3
+        - id: vlanz
+          type: vlan
+          bridge: vmbr0
+          nodes:
+            - pve1
+            - pve2
+            - pve3
+          mtu: 1600
+        - id: vxlanz
+          type: vxlan
+          nodes:
+            - pve1
+            - pve2
+            - pve3
+          peers:
+            - 10.20.0.11
+            - 10.20.0.12
+            - 10.20.0.13
+          mtu: 9166
+    vnets:
+        - id: evpnz/vnet-tenant-a
+          zone: evpnz
+          alias: tenant-a
+        - id: evpnz/vnet-tenant-b
+          zone: evpnz
+          alias: tenant-b
+        - id: qinqz/vnet-qinq1
+          zone: qinqz
+          alias: qinq-net
+          tag: 200
+        - id: simplez/vnet-simple1
+          zone: simplez
+          alias: simple-net
+        - id: vlanz/vnet-vlan1
+          zone: vlanz
+          alias: vlan-net
+          tag: 100
+        - id: vxlanz/vnet-vxlan1
+          zone: vxlanz
+          alias: vxlan-net
+    subnets:
+        - id: 10.55.0.0/24
+          vnet: vnet-simple1
+          gateway: 10.55.0.1
+        - id: 10.60.0.0/24
+          vnet: vnet-vlan1
+          gateway: 10.60.0.1
+        - id: 10.70.0.0/24
+          vnet: vnet-qinq1
+          gateway: 10.70.0.1
+        - id: 10.80.0.0/24
+          vnet: vnet-vxlan1
+          gateway: 10.80.0.1
+        - id: 192.168.50.0/24
+          vnet: vnet-tenant-a
+          gateway: 192.168.50.1
+          dhcpRanges:
+            - 192.168.50.100-192.168.50.200
+          snat: true
+        - id: 192.168.60.0/24
+          vnet: vnet-tenant-b
+          gateway: 192.168.60.1
