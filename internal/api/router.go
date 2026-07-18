@@ -182,6 +182,11 @@ type Options struct {
 	// node-local-only).
 	Flows     FlowLocalSource
 	PeerFlows PeerFlowSource
+	// LatMesh backs T-1303's GET /latmesh/heatmap and GET /latmesh/history
+	// (docs/api.md's Latency mesh section); nil skips mounting both
+	// routes, matching every other optional Options field. Typically the
+	// daemon's own *latmesh.Service.
+	LatMesh LatMeshService
 	// DocExport backs T-605's GET /export/doc (config documentation
 	// export); nil skips mounting the route, matching every other optional
 	// Options field.
@@ -255,6 +260,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
+		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 	})
