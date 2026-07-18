@@ -234,6 +234,35 @@ func (a *mgmtStatusAdapter) MgmtStatus() (change.MgmtStatus, error) {
 	return svc.MgmtStatus(context.Background())
 }
 
+// scheduleMissedAdapter adapts a lazily-set *change.Service into
+// findings.ScheduleMissedProvider (T-1103's schedule_missed health check),
+// the exact same lazily-set pattern mgmtStatusAdapter above establishes and
+// for the identical reason: server.go builds the findings.Engine (via
+// setupFindings) before change.Service exists.
+type scheduleMissedAdapter struct {
+	svc *change.Service
+	mu  sync.Mutex
+}
+
+func (a *scheduleMissedAdapter) set(svc *change.Service) {
+	a.mu.Lock()
+	a.svc = svc
+	a.mu.Unlock()
+}
+
+// MissedSchedules implements findings.ScheduleMissedProvider. Returns nil
+// (no findings, not an error) if called before set — mirrors
+// mgmtStatusAdapter.MgmtStatus's identical degrade-before-ready contract.
+func (a *scheduleMissedAdapter) MissedSchedules() []change.MissedSchedule {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc == nil {
+		return nil
+	}
+	return svc.MissedSchedules(context.Background())
+}
+
 // corosyncStatusAdapter adapts a host.Reader + a localNode closure into
 // findings.CorosyncProvider (T-803's corosync_link_degraded health check).
 //
@@ -353,7 +382,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, logger *slog.Logger) *findings.Engine {
+func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
@@ -364,6 +393,7 @@ func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topo
 		Mgmt:        mgmtSvc,
 		Corosync:    corosyncSvc,
 		FwAnalytics: fwAnalyticsSvc,
+		Schedule:    scheduleSvc,
 		Logger:      logger,
 		Notifier:    notifier,
 		OnChange: func(count int) {

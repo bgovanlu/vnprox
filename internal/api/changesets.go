@@ -180,6 +180,12 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup, mgmt))
 		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup, gateways, mgmt))
 	})
+
+	// T-1103: scheduled changesets & maintenance windows. Mounted alongside
+	// (not inside) the two route groups above since the ack route
+	// deliberately carries no session/CSRF requirement — see
+	// mountScheduleRoutes' own doc comment.
+	mountScheduleRoutes(r, svc, auth, lookup)
 }
 
 // mgmtPathsFor computes the resolved management-path set the
