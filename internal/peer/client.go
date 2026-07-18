@@ -645,6 +645,57 @@ func mapTimerNotFound(err error) error {
 	return err
 }
 
+// CaptureStart asks peer p to run one node-local capture (T-1301). The peer
+// re-validates the filter and re-clamps the caps against its own config
+// before running — this call never overrides the peer's own ceilings.
+func (c *Client) CaptureStart(ctx context.Context, p Peer, spec CaptureSpec) (CaptureResult, error) {
+	body, err := json.Marshal(spec)
+	if err != nil {
+		return CaptureResult{}, fmt.Errorf("peer: encoding capture start request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/capture/start", body)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	var out CaptureResult
+	if err := decodeInto(resp, &out); err != nil {
+		return CaptureResult{}, err
+	}
+	return out, nil
+}
+
+// CaptureStop asks peer p to stop node-local capture sessionID.
+func (c *Client) CaptureStop(ctx context.Context, p Peer, sessionID string) (CaptureResult, error) {
+	body, err := json.Marshal(captureStopRequest{SessionID: sessionID})
+	if err != nil {
+		return CaptureResult{}, fmt.Errorf("peer: encoding capture stop request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/capture/stop", body)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	var out CaptureResult
+	if err := decodeInto(resp, &out); err != nil {
+		return CaptureResult{}, err
+	}
+	return out, nil
+}
+
+// CaptureStatus fetches peer p's current accounting for node-local capture
+// sessionID.
+func (c *Client) CaptureStatus(ctx context.Context, p Peer, sessionID string) (CaptureResult, error) {
+	path := "/api/peer/capture/status?sessionId=" + url.QueryEscape(sessionID)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	var out CaptureResult
+	if err := decodeInto(resp, &out); err != nil {
+		return CaptureResult{}, err
+	}
+	return out, nil
+}
+
 // Health checks peer p's /api/peer/health.
 func (c *Client) Health(ctx context.Context, p Peer) error {
 	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/health", nil)

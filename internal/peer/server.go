@@ -225,7 +225,12 @@ type ServerOptions struct {
 	// (nil-safe, the same 503-not-panic treatment as every other optional
 	// ServerOptions dependency): a daemon that hasn't wired a firewall log
 	// source simply can't serve its own log to peers yet.
-	FirewallLog  FirewallLogReader
+	FirewallLog FirewallLogReader
+	// Capture backs the /api/peer/capture/* routes (T-1301). Optional
+	// (nil-safe, the same 503-not-panic treatment as every other optional
+	// dependency): a daemon with no capture agent wired can't capture on
+	// behalf of a coordinating peer.
+	Capture      CaptureAgent
 	Secrets      *SecretStore
 	Logger       *slog.Logger
 	Now          func() time.Time
@@ -295,7 +300,81 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Post("/timer/arm", s.handleTimerArm)
 		r.Post("/timer/cancel", s.handleTimerCancel)
 		r.Get("/timer/status", s.handleTimerStatus)
+
+		r.Post("/capture/start", s.handleCaptureStart)
+		r.Post("/capture/stop", s.handleCaptureStop)
+		r.Get("/capture/status", s.handleCaptureStatus)
 	})
+}
+
+// handleCaptureStart implements POST /api/peer/capture/start (T-1301): a
+// coordinating daemon asks this node to run one node-local capture. The
+// receiving coordinator (opts.Capture) re-validates the filter and re-clamps
+// the caps against this node's own config before running — the caller's
+// arithmetic is never trusted.
+func (s *Server) handleCaptureStart(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Capture == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "capture agent not configured")
+		return
+	}
+	var spec CaptureSpec
+	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil || spec.SessionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "sessionId and a capture spec are required")
+		return
+	}
+	res, err := s.opts.Capture.StartLocal(r.Context(), spec)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "capture_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleCaptureStop implements POST /api/peer/capture/stop (T-1301).
+func (s *Server) handleCaptureStop(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Capture == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "capture agent not configured")
+		return
+	}
+	var req captureStopRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SessionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "sessionId is required")
+		return
+	}
+	res, err := s.opts.Capture.StopLocal(r.Context(), req.SessionID)
+	if err != nil {
+		s.writeCaptureError(w, "stopping capture", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleCaptureStatus implements GET /api/peer/capture/status?sessionId=
+// (T-1301).
+func (s *Server) handleCaptureStatus(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Capture == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "capture agent not configured")
+		return
+	}
+	sessionID := r.URL.Query().Get("sessionId")
+	if sessionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "sessionId is required")
+		return
+	}
+	res, err := s.opts.Capture.StatusLocal(r.Context(), sessionID)
+	if err != nil {
+		s.writeCaptureError(w, "reading capture status", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) writeCaptureError(w http.ResponseWriter, op string, err error) {
+	if errors.Is(err, host.ErrNotFound) {
+		writeJSONError(w, http.StatusNotFound, "not_found", op+": "+err.Error())
+		return
+	}
+	writeJSONError(w, http.StatusInternalServerError, "internal_error", op+": "+err.Error())
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
