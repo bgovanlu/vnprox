@@ -23,9 +23,9 @@ describe.
 
 Every item below is net-new unless marked *(extends …)*. Same contract as prior arcs: phases
 end in a demoable increment, releases cut where marked, **P0** = must ship in the phase's
-release, **P1** = ships in that release line as capacity allows. Task decomposition lands in
-`planning/implementation-plan-universal.md` (Phases 13–17, `T-13NN` … `T-17NN`) when this
-roadmap is accepted.
+release, **P1** = ships in that release line as capacity allows. The arc is decomposed into
+task cards — see `planning/implementation-plan-universal.md` for the dependency graph, model
+assignments, and the per-phase card files (`planning/tasks/phase-13.md` … `phase-17.md`).
 
 ```mermaid
 gantt
