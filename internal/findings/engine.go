@@ -45,7 +45,12 @@ type Config struct {
 	// (fwlog.Service.Analytics), backing the fw_rule_unused health check.
 	// Nil skips that check entirely, same degradation as every other
 	// optional Config field.
-	FwAnalytics     FwAnalyticsProvider
+	FwAnalytics FwAnalyticsProvider
+	// Schedule is T-1103's scheduled-changeset seam (change.Service.
+	// MissedSchedules), backing the schedule_missed health check. Nil skips
+	// that check entirely, same degradation as every other optional Config
+	// field.
+	Schedule        ScheduleMissedProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -70,6 +75,7 @@ type Engine struct {
 	mgmtSvc     MgmtProvider
 	corosyncSvc CorosyncProvider
 	fwAnalytics FwAnalyticsProvider
+	scheduleSvc ScheduleMissedProvider
 	probeSvc    ProbeProvider
 	serviceDB   *debouncer
 	services    *serviceStatusStore
@@ -126,6 +132,7 @@ func New(cfg Config) *Engine {
 		mgmtSvc:     cfg.Mgmt,
 		corosyncSvc: cfg.Corosync,
 		fwAnalytics: cfg.FwAnalytics,
+		scheduleSvc: cfg.Schedule,
 		probeSvc:    cfg.Probe,
 		log:         logger,
 		now:         now,
@@ -197,6 +204,7 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkTrunkUnusedVlans(snap)...)
 	out = append(out, checkCorosyncLinkDegraded(e.corosyncSvc, e.corosyncDB)...)
 	out = append(out, checkFwRuleUnused(e.fwAnalytics, now)...)
+	out = append(out, checkScheduleMissed(e.scheduleSvc)...)
 	return out
 }
 

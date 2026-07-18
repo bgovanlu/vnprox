@@ -287,6 +287,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// its real target once fwlogSvc is built — see the adapter's own doc
 	// comment (findings.go) for why, mirroring mgmtAdapter above.
 	fwAnalyticsAdapterVal := &fwAnalyticsAdapter{}
+	// T-1103: scheduleAdapter is wired in now (findings.Engine is
+	// constructed before change.Service exists, below) and filled in with
+	// its real target once changeSvc is built — mirrors mgmtAdapter above.
+	scheduleAdapter := &scheduleMissedAdapter{}
 	// T-1005: alert_rules/alert_deliveries repos + the webhook Notifier,
 	// composed alongside PVE's own notification-target hook via
 	// multiNotifier — independent delivery paths, per that task's card, not
@@ -308,7 +312,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
 	simDivergenceRepo := store.NewSimDivergenceRepo(db)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -444,6 +448,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// still-offered rollback always has its pre-apply snapshot (audit
 		// phase-2 F-10).
 		RollbackWindowDays: cfg.Retention.SnapshotPinDays,
+		// T-1103: changeset_schedules — Config.Clock is left nil (defaults to
+		// wrapping the real time.Now() Config.Now itself falls back to, since
+		// this daemon has no reason to inject a fake one in production).
+		Schedules: store.NewChangeScheduleRepo(db),
 	})
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)
@@ -451,6 +459,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// T-702: point the findings engine's mgmt_single_path check at the now-
 	// real change.Service (see mgmtAdapter's construction/doc comment above).
 	mgmtAdapter.set(changeSvc)
+	// T-1103: point the findings engine's schedule_missed check at the
+	// now-real change.Service (see scheduleAdapter's construction/doc
+	// comment above).
+	scheduleAdapter.set(changeSvc)
 	// Re-arm commit-confirm rollback timers persisted across a restart, and
 	// recover any apply interrupted by a crash (docs/development.md: "Rollback
 	// timers must survive daemon restart ... re-armed on startup").
@@ -458,6 +470,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		logger.Error("change: re-arming pending rollbacks on startup", "error", armErr)
 	}
 	defer changeSvc.StopTimers()
+	// T-1103: an eager tick right at startup — mirrors ArmPendingRollbacks
+	// above — so a schedule whose window (or, for missedWindowPolicy "skip",
+	// whose windowEnd) already passed while this daemon was down is resolved
+	// immediately rather than waiting for RunScheduler's first real tick
+	// (safety-analysis scenario 1, "daemon down mid-window").
+	changeSvc.TickSchedules(ctx)
 
 	// T-505: the firewall log viewer's cluster-wide tailer/correlator.
 	// Built before peerSrv below so the same local log source
@@ -742,6 +760,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		g.add(collector.RunLLDPLoop)
 	}
 	g.add(driftSvc.RunLoop)
+	// T-1103: the maintenance-window scheduler's own supervised, periodic
+	// tick (change.Service.RunScheduler/TickSchedules' doc comments) — owned
+	// and shut down here exactly like every other actor in this group.
+	g.add(func(ctx context.Context) error {
+		return changeSvc.RunScheduler(ctx, change.DefaultScheduleCheckInterval)
+	})
 	if fwlogSvc != nil {
 		// T-505: continuously merges the local + every peer's pve-firewall
 		// log into the shared, rate-capped buffer GET /firewall/log and the

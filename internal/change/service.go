@@ -64,37 +64,23 @@ type AllocationsSource interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Nodes NodeAgent
-	// Timers is T-304's per-node local-timer protocol seam (apply_seams.go's
-	// NodeTimerAgent doc comment). Nil disables it: Apply falls back to
-	// T-205's single coordinator-side commit-confirm timer only.
-	Timers    NodeTimerAgent
-	Refresher InventoryRefresher
-	WS        Broadcaster
-	Inventory InventorySource
-	// Allocations is T-406's optional DHCP-range-overlap advisory data
-	// source — see AllocationsSource's doc comment. Nil disables the
-	// check.
-	Allocations   AllocationsSource
-	Snapshots     *store.SnapshotRepo
-	Blobs         *store.BlobRepo
-	Logger        *slog.Logger
-	Now           func() time.Time
-	Changesets    *store.ChangesetRepo
-	Audit         *store.AuditRepo
-	TimerFunc     TimerFunc
-	ProtectedPath string
-	// CorosyncPath is where SuggestProtected reads corosync.conf from;
-	// empty means host.DefaultCorosyncConfPath. Overridable so tests (and
-	// a dev daemon outside a PVE node) can point it at a fixture.
-	CorosyncPath string
-	// RollbackWindowDays bounds how long after commit a committed changeset
-	// may still be manually rolled back (docs/features/change-management.md
-	// §4's "offered for 7 days"; audit phase-2 F-10). 0 uses
-	// DefaultRollbackWindowDays. cmd/vnproxd wires it to the same value as
-	// the snapshot-retention pin ([retention].snapshot_pin_days) so the
-	// window never outlives the pre-apply snapshot the restoring draft is
-	// built from.
+	Nodes              NodeAgent
+	Timers             NodeTimerAgent
+	Refresher          InventoryRefresher
+	WS                 Broadcaster
+	Inventory          InventorySource
+	Allocations        AllocationsSource
+	Clock              Clock
+	Changesets         *store.ChangesetRepo
+	Logger             *slog.Logger
+	Now                func() time.Time
+	Blobs              *store.BlobRepo
+	Audit              *store.AuditRepo
+	TimerFunc          TimerFunc
+	Schedules          *store.ChangeScheduleRepo
+	Snapshots          *store.SnapshotRepo
+	ProtectedPath      string
+	CorosyncPath       string
 	RollbackWindowDays int
 	ConfirmTimeout     time.Duration
 	AllowDangerousOps  bool
@@ -121,22 +107,25 @@ type Stopper interface {
 // T-205's responsibility — see doc.go.
 type Service struct {
 	nodes              NodeAgent
-	nodeTimers         NodeTimerAgent // T-304 per-node local timers; nil = T-205 single-timer fallback
+	nodeTimers         NodeTimerAgent
 	refresher          InventoryRefresher
 	ws                 Broadcaster
 	inv                InventorySource
 	allocations        AllocationsSource
-	now                func() time.Time
-	log                *slog.Logger
+	clock              Clock
+	timers             map[string]Stopper
 	repo               *store.ChangesetRepo
 	snapshots          *store.SnapshotRepo
 	blobs              *store.BlobRepo
 	audit              *store.AuditRepo
-	timers             map[string]Stopper
+	log                *slog.Logger
 	newTimer           TimerFunc
-	protectedPath      string
-	corosyncPath       string
+	now                func() time.Time
+	schedules          *store.ChangeScheduleRepo
 	lockHeldBy         string
+	corosyncPath       string
+	protectedPath      string
+	scheduleSecret     []byte
 	confirmTimeout     time.Duration
 	rollbackWindowDays int
 	applyMu            sync.Mutex
@@ -189,6 +178,10 @@ func NewService(cfg Config) (*Service, error) {
 	if rollbackWindowDays <= 0 {
 		rollbackWindowDays = DefaultRollbackWindowDays
 	}
+	clock := cfg.Clock
+	if clock == nil {
+		clock = clockFunc(now)
+	}
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
@@ -197,6 +190,9 @@ func NewService(cfg Config) (*Service, error) {
 		rollbackWindowDays: rollbackWindowDays,
 		timers:             map[string]Stopper{},
 		newTimer:           timerFunc,
+		schedules:          cfg.Schedules,
+		clock:              clock,
+		scheduleSecret:     newScheduleSecret(logger),
 	}, nil
 }
 

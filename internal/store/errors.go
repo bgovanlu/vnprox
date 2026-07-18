@@ -18,4 +18,11 @@ var (
 	// ErrInvalidKey marks a malformed or wrong-length encryption key passed
 	// to the session-secret cipher helpers.
 	ErrInvalidKey = errors.New("store: invalid encryption key")
+
+	// ErrIllegalState is returned by a repository mutation that requires the
+	// existing row to be in a particular state (e.g. ChangeScheduleRepo.
+	// Cancel requiring status = pending) when it is not — the row exists
+	// (ErrNotFound does not apply) but is no longer eligible for the
+	// requested transition.
+	ErrIllegalState = errors.New("store: row is not in a state that allows this operation")
 )
