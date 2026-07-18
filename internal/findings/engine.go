@@ -55,7 +55,12 @@ type Config struct {
 	// webhook_unhealthy finding (source health) — N consecutive delivery
 	// failures on a registered webhook. Nil skips that check entirely,
 	// same degradation as every other optional Config field.
-	Webhooks        WebhookProvider
+	Webhooks WebhookProvider
+	// LatMesh is T-1303's latency & loss mesh seam (*latmesh.Service via
+	// its LatMeshHeatmap method), backing the path_latency_degraded/
+	// path_loss health checks. Nil skips both checks entirely, same
+	// degradation as every other optional Config field.
+	LatMesh         LatMeshProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -83,6 +88,7 @@ type Engine struct {
 	scheduleSvc ScheduleMissedProvider
 	webhooksSvc WebhookProvider
 	probeSvc    ProbeProvider
+	latMeshSvc  LatMeshProvider
 	serviceDB   *debouncer
 	services    *serviceStatusStore
 	onChange    func(int)
@@ -96,6 +102,8 @@ type Engine struct {
 	errDropDB   *debouncer
 	corosyncDB  *debouncer
 	vxlanMTUDB  *debouncer
+	latRttDB    *debouncer
+	latLossDB   *debouncer
 	graph       *inventory.Graph
 	stpTracker  *stpBurstTracker
 	pendingTr   *pendingTracker
@@ -141,6 +149,7 @@ func New(cfg Config) *Engine {
 		scheduleSvc: cfg.Schedule,
 		webhooksSvc: cfg.Webhooks,
 		probeSvc:    cfg.Probe,
+		latMeshSvc:  cfg.LatMesh,
 		log:         logger,
 		now:         now,
 		onChange:    cfg.OnChange,
@@ -155,6 +164,8 @@ func New(cfg Config) *Engine {
 		serviceDB:   newDebouncer(),
 		corosyncDB:  newDebouncer(),
 		vxlanMTUDB:  newDebouncer(),
+		latRttDB:    newDebouncer(),
+		latLossDB:   newDebouncer(),
 		stpTracker:  newStpBurstTracker(),
 		pendingTr:   newPendingTracker(),
 		services:    newServiceStatusStore(),
@@ -213,6 +224,8 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkCorosyncLinkDegraded(e.corosyncSvc, e.corosyncDB)...)
 	out = append(out, checkFwRuleUnused(e.fwAnalytics, now)...)
 	out = append(out, checkScheduleMissed(e.scheduleSvc)...)
+	out = append(out, checkPathLatencyDegraded(e.latMeshSvc, e.latRttDB, e.thresholds)...)
+	out = append(out, checkPathLoss(e.latMeshSvc, e.latLossDB, e.thresholds)...)
 	return out
 }
 

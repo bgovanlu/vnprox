@@ -72,6 +72,14 @@ export interface TopologyUIState {
    * so both can be on at once. Same per-session (not persisted-layout)
    * lifetime as trafficMode. v2-renderer-only, per this task's card. */
   flowsLayerActive: boolean;
+  /** T-1303 "Latency" heatmap layer: color-scales every node-to-node link
+   * this node's own latmesh scheduler probes by rolling RTT/loss
+   * (topology/latencyMode.ts) — a second, independent overlay from
+   * trafficMode (per-entity utilization heat) and flowsLayerActive
+   * (guest-pair conversation edges); any/all three can be on at once. Same
+   * per-session (not persisted-layout) lifetime as the other two.
+   * v2-renderer-only, mirroring flowsLayerActive's own scope. */
+  latencyLayerActive: boolean;
 
   toggleLayer: (layer: Layer) => void;
   /** T-907: sets the whole active-layer set at once (as opposed to
@@ -85,6 +93,7 @@ export interface TopologyUIState {
   setRendererVersion: (version: RendererVersion) => void;
   toggleTrafficMode: () => void;
   toggleFlowsLayer: () => void;
+  toggleLatencyLayer: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
   hover: (id: string | undefined) => void;
@@ -112,6 +121,7 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   positions: {},
   trafficMode: false,
   flowsLayerActive: false,
+  latencyLayerActive: false,
 
   toggleLayer: (layer) => {
     set((state) => {
@@ -136,6 +146,9 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   },
   toggleFlowsLayer: () => {
     set((state) => ({ flowsLayerActive: !state.flowsLayerActive }));
+  },
+  toggleLatencyLayer: () => {
+    set((state) => ({ latencyLayerActive: !state.latencyLayerActive }));
   },
   setVlanFilter: (vlan) => {
     set({ vlanFilter: vlan });

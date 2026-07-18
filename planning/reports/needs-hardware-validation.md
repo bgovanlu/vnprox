@@ -399,3 +399,42 @@ from; and pvemock does not model an `ifreload` outage at all):
       acceptance must be confirmed across the full PVE 8.2+/9.x kernel range before shipping: a
       BPF verifier rejection is a load-time failure, not a runtime one, so it needs to be caught
       per-kernel-version, not just once.
+
+## Latency & loss mesh (T-1303)
+
+- [ ] **`ping` summary-line wording/format across real PVE node builds.** `internal/latmesh.
+      RealProber`/`parsePingSummary` assumes iputils-ping's documented summary shape (`"N%
+      packet loss"` and `"= min/avg/max/mdev"` lines) — the same PVE-node-is-Debian assumption
+      T-802's guest-exec probing makes for a *guest* OS, applied here to the *host* OS vnproxd
+      itself ships on. No live PVE cluster was available to confirm the exact wording/decimal
+      precision/locale (`LANG`/`LC_ALL`) iputils-ping emits on a real PVE 8.x/9.x node — a decimal
+      comma instead of a decimal point under a non-C locale, or a future iputils-ping version
+      reformatting the summary line, would silently degrade every reading to 100% loss
+      (`parsePingSummary`'s defensive "can't confirm healthy -> treat as worth flagging" fallback,
+      the same stance `internal/host.ParseCorosyncStatus` already takes for a comparable
+      exact-wording caveat) rather than crashing, but that's still a wrong reading, not a safe
+      no-op. Confirm the daemon always execs with `LANG=C`/`LC_ALL=C` (or equivalent) and that a
+      real PVE node's `ping -c 5 -W 3 <addr>` output matches the two regexes
+      (`packetLossRe`/`rttAvgRe`) byte-for-byte before treating any produced latency/loss reading
+      as trustworthy in production.
+- [ ] **Real corosync-ring / shared-bridge latency characteristics at cluster scale.** This task's
+      fixtures are synthetic time series (`testdata/latmesh/*.json`), not observed real-cluster
+      RTT/loss distributions — the default thresholds (`internal/findings.HealthThresholds`'s
+      `LatRttWarnMs`/`LatLossWarnPct`, 80ms/2%) are this task's own reasoned defaults (see that
+      struct's doc comment), never tuned against a real corosync ring or guest-bridge fabric's
+      actual jitter under load. Confirm against a real multi-node PVE cluster (ideally under a
+      representative migration/backup-storm load) whether 80ms/2% is the right line between
+      "genuinely degraded" and "ordinary LAN jitter" before relying on `path_latency_degraded`/
+      `path_loss` findings operationally.
+- [ ] **Migration/storage network fabric discovery is not implemented (scoping deviation, not a
+      bug to fix blindly).** `internal/latmesh`'s Discoverer identifies exactly two fabrics —
+      corosync (from `internal/host.CorosyncConfig`) and guest (shared bridge names,
+      `internal/xnode.BridgesByName`) — because neither a PVE migration network
+      (`datacenter.cfg`'s `migration: network=...`) nor a distinct storage network is modeled
+      anywhere in `internal/inventory`/`internal/pve` today; see `internal/latmesh`'s package doc
+      comment. Before implementing readers for either, confirm the exact `datacenter.cfg` key
+      names/formats and how a storage network is conventionally declared (PVE has no single
+      dedicated "storage network" config key the way it does for migration — it's usually implied
+      by which bridge a storage-class VLAN/bond is attached to) against a real cluster, since
+      guessing the shape risks the same "two names, one problem" duplication T-801 exists to
+      prevent.

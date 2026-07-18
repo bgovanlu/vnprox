@@ -43,6 +43,16 @@ type HealthThresholds struct {
 	// hysteresis. Defaults: 3 rise / 2 fall.
 	RiseCycles int
 	FallCycles int
+	// LatRttWarnMs/LatLossWarnPct (T-1303) are the latency-mesh thresholds
+	// health_latmesh.go's path_latency_degraded/path_loss checks compare a
+	// link's *rolling* (not single-sample) RTT/loss against — see that
+	// file's doc comment for why the rolling figure, not the raw per-tick
+	// reading, is what's compared. Defaults: 80ms, 2% — loose enough that
+	// ordinary jitter on a healthy LAN/corosync ring never trips either
+	// one, tight enough to catch a real degrading path before an operator
+	// notices from application-level symptoms.
+	LatRttWarnMs   float64
+	LatLossWarnPct float64
 }
 
 // DefaultThresholds is applied by Engine's constructor when Config.Thresholds
@@ -52,6 +62,8 @@ var DefaultThresholds = HealthThresholds{
 	DropRatePerSec:  1,
 	RiseCycles:      3,
 	FallCycles:      2,
+	LatRttWarnMs:    80,
+	LatLossWarnPct:  2,
 }
 
 // sampleableKinds is the same Kind set internal/metrics samples (see its

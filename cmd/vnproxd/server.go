@@ -359,7 +359,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
 	simDivergenceRepo := store.NewSimDivergenceRepo(db)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	// T-1303: the latency & loss mesh — constructed here (db/graph/
+	// localNode are all available) so its *latmesh.Service satisfies
+	// findings.Config.LatMesh directly below and api.Options.LatMesh
+	// further down (setupLatMesh's own doc comment); latMeshActors is
+	// registered with the run group alongside every other owned goroutine,
+	// below.
+	latMeshSvc, latMeshActors := setupLatMesh(cfg, db, graph, localNode, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -740,6 +747,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		PeerSnapshots:         peerSnapshots,
 		Flows:                 flowRepo,
 		PeerFlows:             peerFlows,
+		LatMesh:               latMeshSvc,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
@@ -856,6 +864,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// (both [flows] sampler flags unset) means this loop registers nothing,
 	// so no sampler goroutine ever starts (AC4).
 	for _, actor := range hostSampleActors {
+		g.add(actor)
+	}
+	// T-1303: the latency & loss mesh's own probe loop and prune loop
+	// (setupLatMesh's doc comment) — always on, the same "always registered,
+	// each actor degrades independently" treatment flowActors/
+	// hostSampleActors above get.
+	for _, actor := range latMeshActors {
 		g.add(actor)
 	}
 

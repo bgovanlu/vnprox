@@ -555,6 +555,59 @@ allow_from = ["not-a-cidr"]
 	}
 }
 
+// TestLoad_LatmeshDefaults covers T-1303's [latmesh] section: every
+// tunable defaults to internal/latmesh's own documented constants when
+// omitted.
+func TestLoad_LatmeshDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "latmesh-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Latmesh.ProbeIntervalSec != 10 {
+		t.Errorf("Latmesh.ProbeIntervalSec = %d, want default 10", cfg.Latmesh.ProbeIntervalSec)
+	}
+	if cfg.Latmesh.RetentionMinutes != 60 {
+		t.Errorf("Latmesh.RetentionMinutes = %d, want default 60", cfg.Latmesh.RetentionMinutes)
+	}
+	if cfg.Latmesh.MaxRows != 500_000 {
+		t.Errorf("Latmesh.MaxRows = %d, want default 500000", cfg.Latmesh.MaxRows)
+	}
+}
+
+// TestLoad_LatmeshOverride covers explicit [latmesh] values.
+func TestLoad_LatmeshOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[latmesh]
+probe_interval_sec = 30
+retention_minutes = 120
+max_rows = 1000000
+`
+	cfg, err := Load(writeTemp(t, "latmesh-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Latmesh.ProbeIntervalSec != 30 {
+		t.Errorf("Latmesh.ProbeIntervalSec = %d, want 30", cfg.Latmesh.ProbeIntervalSec)
+	}
+	if cfg.Latmesh.RetentionMinutes != 120 {
+		t.Errorf("Latmesh.RetentionMinutes = %d, want 120", cfg.Latmesh.RetentionMinutes)
+	}
+	if cfg.Latmesh.MaxRows != 1_000_000 {
+		t.Errorf("Latmesh.MaxRows = %d, want 1000000", cfg.Latmesh.MaxRows)
+	}
+}
+
 func mustParseIP(t *testing.T, s string) net.IP {
 	t.Helper()
 	ip := net.ParseIP(s)

@@ -2187,6 +2187,48 @@ export interface FlowBatchEvent {
   droppedTotal: number;
 }
 
+// --- Latency mesh (GET /latmesh/*; internal/api/latmesh.go, T-1303) -------
+
+/** GET /latmesh/heatmap's per-item shape (docs/api.md's Latency mesh
+ * section). `linkId` is `internal/latmesh.Pair.LinkID`'s stable,
+ * content-derived key (`"<fabric>[:<label>]|<fromNode>-><toNode>"`),
+ * globally unique per directed link. `at`/`rttMs`/`lossPct` are the most
+ * recent probe tick's own values; `rollingRttMs`/`rollingLossPct` are the
+ * mean over the server's rolling window — what the map's latency heatmap
+ * paint mode and the path_latency_degraded/path_loss findings both key on,
+ * never the single noisy `rttMs`/`lossPct` reading. Node-local only (no
+ * cluster fan-out yet — see docs/api.md's Latency mesh section). */
+export interface LatMeshLink {
+  linkId: string;
+  fabric: "corosync" | "guest";
+  fromNode: string;
+  toNode: string;
+  at: number;
+  rttMs: number;
+  lossPct: number;
+  rollingRttMs: number;
+  rollingLossPct: number;
+  sampleCount: number;
+}
+
+/** GET /latmesh/heatmap response envelope. */
+export interface LatMeshHeatmap {
+  items: LatMeshLink[];
+}
+
+/** GET /latmesh/history's per-item shape. */
+export interface LatMeshSample {
+  at: number;
+  rttMs: number;
+  lossPct: number;
+}
+
+/** GET /latmesh/history response envelope. */
+export interface LatMeshHistory {
+  linkId: string;
+  items: LatMeshSample[];
+}
+
 // --- History (GET /history/events; internal/api/history.go, T-1007) -------
 
 /** One merged timeline-marker item — docs/api.md's `HistoryEvent` shape,

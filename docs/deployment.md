@@ -87,6 +87,12 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 # ebpf_sampling_enabled = false        # needs CAP_BPF/CAP_PERFMON (docs/security.md Host footprint); setting
 #                                      # this true and reinstalling/upgrading grants the unit that capability
 # host_sample_interval_sec = 10        # shared poll interval for the two host-local samplers above
+
+# [latmesh]                        # T-1303: always-on latency & loss mesh (no opt-in flag — a low-rate
+#                                   # outbound probe carries no listening-port attack surface)
+# probe_interval_sec = 10          # deliberately coarse: a mesh, not a flood
+# retention_minutes = 60           # latency_samples ring: retention window AND max_rows, whichever prunes first
+# max_rows = 500000
 ```
 
 ## Upgrade
