@@ -81,6 +81,35 @@ func TestLatencySampleRepo_LatestPerLink(t *testing.T) {
 	}
 }
 
+// A same-second `at` collision on one link (possible per the migration's
+// doc comment) must still yield exactly one row per link — a duplicate
+// would double-increment the findings engine's hysteresis counters (the
+// review-T-1303 MINOR-1 regression). The higher rowid wins the tie.
+func TestLatencySampleRepo_LatestPerLink_SameSecondTie(t *testing.T) {
+	db := openTestDB(t)
+	repo := NewLatencySampleRepo(db)
+	ctx := context.Background()
+
+	samples := []LatencySample{
+		sampleLatency(100, "corosync:ring0|pve1->pve2", "pve1", "pve2", 10, 0),
+		sampleLatency(100, "corosync:ring0|pve1->pve2", "pve1", "pve2", 15, 0),
+	}
+	if err := repo.InsertBatch(ctx, samples); err != nil {
+		t.Fatalf("InsertBatch: %v", err)
+	}
+
+	latest, err := repo.LatestPerLink(ctx)
+	if err != nil {
+		t.Fatalf("LatestPerLink: %v", err)
+	}
+	if len(latest) != 1 {
+		t.Fatalf("got %d rows for one link, want exactly 1 (same-second tie must not duplicate)", len(latest))
+	}
+	if latest[0].RttMs != 15 {
+		t.Fatalf("tie-break should pick the later insert (rtt 15), got %+v", latest[0])
+	}
+}
+
 // TestLatencySampleRepo_PruneOlderThan / TestLatencySampleRepo_PruneToCap:
 // AC2's "same assertion shape as T-1002's flow_samples test" — mirrors
 // TestFlowSampleRepo_PruneOlderThan/TestFlowSampleRepo_PruneToCap exactly.

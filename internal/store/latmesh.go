@@ -80,14 +80,22 @@ func (r *LatencySampleRepo) QueryRange(ctx context.Context, linkID string, fromT
 // LatestPerLink returns the single most recent sample for every distinct
 // link_id currently in the table — GET /latmesh/heatmap's "current value"
 // half (Service.Heatmap pairs this with a rolling-window QueryRange call
-// per link for the "rolling" half).
+// per link for the "rolling" half). The tie-break on MAX(id) guarantees
+// exactly one row per link even when two samples for the same link share a
+// same-second `at` (possible per the migration's own doc comment) — a
+// duplicate here would double-increment the findings engine's hysteresis
+// counters and emit duplicate same-ID findings.
 func (r *LatencySampleRepo) LatestPerLink(ctx context.Context) ([]LatencySample, error) {
 	rows, err := r.db.sqlDB.QueryContext(ctx, `
 		SELECT s.id, s.link_id, s.fabric, s.from_node, s.to_node, s.at, s.rtt_ms, s.loss_pct
 		FROM latency_samples s
 		INNER JOIN (
-			SELECT link_id, MAX(at) AS max_at FROM latency_samples GROUP BY link_id
-		) latest ON s.link_id = latest.link_id AND s.at = latest.max_at
+			SELECT link_id, MAX(id) AS max_id FROM latency_samples
+			WHERE (link_id, at) IN (
+				SELECT link_id, MAX(at) FROM latency_samples GROUP BY link_id
+			)
+			GROUP BY link_id
+		) latest ON s.id = latest.max_id
 		ORDER BY s.link_id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: querying latest-per-link latency samples: %w", err)
