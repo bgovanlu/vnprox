@@ -23,6 +23,8 @@ import { buildCaptionLines, sceneFromFlowElements, sceneFromSwitchTopology, type
 import { ExportMapMenu } from "./ExportMapMenu";
 import { computeFlowEdges, flowEdgeStrokeWidth, type FlowEdge } from "./flowEdges";
 import { useLiveFlowRecords } from "../flows/flowsQueries";
+import { computeLatencyOverlayEdges } from "./latencyMode";
+import { useLatMeshHeatmapQuery } from "./latMeshQueries";
 import { FlowPairPanel } from "./FlowPairPanel";
 import { HistoryTimeline, type HistoryPlaybackState } from "./history/HistoryTimeline";
 import { InspectorStack } from "./InspectorStack";
@@ -120,6 +122,8 @@ function TopologyPageContent() {
   const toggleTrafficMode = useTopologyStore((s) => s.toggleTrafficMode);
   const flowsLayerActive = useTopologyStore((s) => s.flowsLayerActive);
   const toggleFlowsLayer = useTopologyStore((s) => s.toggleFlowsLayer);
+  const latencyLayerActive = useTopologyStore((s) => s.latencyLayerActive);
+  const toggleLatencyLayer = useTopologyStore((s) => s.toggleLatencyLayer);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
   const setActiveLayers = useTopologyStore((s) => s.setActiveLayers);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
@@ -425,6 +429,26 @@ function TopologyPageContent() {
     () => flowConversationEdges.map((e) => ({ id: e.id, from: e.from, to: e.to, strokeWidth: flowEdgeStrokeWidth(e.bytesPerSec) })),
     [flowConversationEdges],
   );
+
+  // T-1303 "Latency" heatmap layer: same v2-canvas-only, "only fetch while
+  // genuinely paintable" scope as the Flows layer above (docs/features/
+  // monitoring.md §1's new paint mode has no v1/switch-faceplate rendering
+  // either).
+  const latencyPaintable = latencyLayerActive && viewMode === "graph" && rendererVersion === "v2";
+  const { data: latMeshLinks } = useLatMeshHeatmapQuery(latencyPaintable);
+  // GET /latmesh/heatmap's fromNode/toNode are plain PVE node names, not
+  // Refs — a physical cluster Node entity's own Ref is always
+  // "node:<name>:<name>" (inventory.Ref.String() for KindNode, Node==ID==
+  // the node name), so this is a pure string-format lookup, not a network
+  // call or a graph walk.
+  const nodeIdForName = useCallback((name: string) => {
+    const id = `node:${name}:${name}`;
+    return canvasNodeIds.has(id) ? id : undefined;
+  }, [canvasNodeIds]);
+  const latencyOverlayEdges = useMemo(
+    () => (latencyPaintable && latMeshLinks ? computeLatencyOverlayEdges(latMeshLinks, nodeIdForName) : []),
+    [latencyPaintable, latMeshLinks, nodeIdForName],
+  );
   // AC4: the empty-state hint is purely data-driven (zero records
   // cluster-wide, once the initial fetch has actually completed — never
   // flashed during the brief initial loading window) and disappears the
@@ -666,6 +690,10 @@ function TopologyPageContent() {
             // hold (flowsPaintable above).
             flowsLayerActive={flowsLayerActive}
             onToggleFlows={toggleFlowsLayer}
+            // T-1303: same v2-canvas-only scope note as Flows above
+            // (latencyPaintable).
+            latencyLayerActive={latencyLayerActive}
+            onToggleLatency={toggleLatencyLayer}
           />
           {viewMode === "graph" && (
             <Button
@@ -851,6 +879,7 @@ function TopologyPageContent() {
             onViewportChange={handleViewportChange}
             flowEdges={flowOverlayEdges}
             selectedFlowEdgeId={selectedFlowEdgeId}
+            latencyEdges={latencyOverlayEdges}
             onFlowEdgeClick={(id) => {
               setSelectedFlowEdgeId(id);
             }}

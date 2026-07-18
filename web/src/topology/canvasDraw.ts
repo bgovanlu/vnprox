@@ -17,6 +17,7 @@ import type { EntityEdgeData } from "./EntityEdge";
 import type { EntityNodeData } from "./EntityNode";
 import type { Size, Viewport } from "./canvasScene";
 import { DEFAULT_NODE_SIZE, graphToScreen } from "./canvasScene";
+import type { LatencyOverlayEdge } from "./latencyMode";
 import { trafficEdgeStyle } from "./trafficMode";
 
 export interface SceneTheme {
@@ -365,6 +366,51 @@ export function drawFlowOverlay(ctx: CanvasRenderingContext2D, params: DrawFlowO
     ctx.lineWidth = selected ? e.strokeWidth + 1.5 : e.strokeWidth;
     ctx.setLineDash([8, 6]);
     ctx.lineDashOffset = -dashOffset;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// --- T-1303: the "Latency" heatmap layer overlay ---------------------------
+// A second, independent overlay pass, drawn after drawScene (and after
+// drawFlowOverlay, when both happen to be active) — a solid, color-scaled
+// line per link (latencyMode.ts's own doc comment explains why its palette
+// never collides with drawFlowOverlay's fixed cyan or drawScene's own
+// status/traffic-mode colors). Unlike drawFlowOverlay this has no dash
+// animation: a heatmap communicates "current condition of this path", not
+// "traffic flowing in this direction".
+
+export interface DrawLatencyOverlayParams {
+  nodes: FlowNode<EntityNodeData, "entity">[];
+  edges: readonly LatencyOverlayEdge[];
+  viewport: Viewport;
+  nodeSize: Size;
+  dragTopLeft?: DrawSceneParams["dragTopLeft"];
+}
+
+export function drawLatencyOverlay(ctx: CanvasRenderingContext2D, params: DrawLatencyOverlayParams): void {
+  const { nodes, edges, viewport: vp, nodeSize, dragTopLeft } = params;
+  if (edges.length === 0) return;
+  const size = nodeSize.width > 0 ? nodeSize : DEFAULT_NODE_SIZE;
+  const byId = new Map<string, FlowNode<EntityNodeData, "entity">>();
+  for (const n of nodes) byId.set(n.id, n);
+
+  ctx.save();
+  ctx.lineCap = "round";
+  for (const e of edges) {
+    const from = byId.get(e.from);
+    const to = byId.get(e.to);
+    if (!from || !to) continue;
+    const a = nodeCenterScreen(from, vp, size, dragTopLeft);
+    const b = nodeCenterScreen(to, vp, size, dragTopLeft);
+    ctx.save();
+    ctx.strokeStyle = e.color;
+    ctx.lineWidth = e.strokeWidth;
     ctx.globalAlpha = 0.9;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);

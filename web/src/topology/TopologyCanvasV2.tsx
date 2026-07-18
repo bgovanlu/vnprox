@@ -39,7 +39,8 @@ import {
 } from "./canvasScene";
 import { buildA11yProxies } from "./a11yBridge";
 import { TopologyA11yLayer } from "./TopologyA11yLayer";
-import { drawScene, drawFlowOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
+import { drawScene, drawFlowOverlay, drawLatencyOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
+import type { LatencyOverlayEdge } from "./latencyMode";
 import { applyLod, parseLodId, zoomBandFor } from "./lod";
 import { Minimap } from "./Minimap";
 
@@ -99,6 +100,12 @@ export interface TopologyCanvasV2Props {
   flowEdges?: readonly FlowOverlayEdge[];
   /** The currently-selected flow edge (drill-down panel open for it). */
   selectedFlowEdgeId?: string;
+  /** T-1303 "Latency" heatmap layer overlay edges (topology/latencyMode.ts,
+   * pre-resolved to a color/stroke width by the caller) — drawn as a
+   * distinct, static (non-animated) color-scaled overlay after the normal
+   * scene and the Flows overlay. undefined/empty (the default) draws
+   * nothing extra, so every pre-T-1303 call site is unaffected. */
+  latencyEdges?: readonly LatencyOverlayEdge[];
   /** Fires when a Flows-layer overlay edge is clicked — takes priority
    * over the plain-pane click (onPaneClick) when both could apply, so a
    * click that lands on a flow edge always opens its drill-down rather
@@ -166,6 +173,7 @@ export function TopologyCanvasV2({
   onSceneChange,
   flowEdges,
   selectedFlowEdgeId,
+  latencyEdges,
   onFlowEdgeClick,
 }: TopologyCanvasV2Props) {
   const storeTheme = useThemeStore((s) => s.theme);
@@ -340,6 +348,7 @@ export function TopologyCanvasV2({
   // drift pulse above: reduced-motion collapses to a static dashed line,
   // offset 0, rather than skipping the dash pattern entirely).
   const hasFlowEdges = (flowEdges?.length ?? 0) > 0;
+  const hasLatencyEdges = (latencyEdges?.length ?? 0) > 0;
   const [flowDashOffset, setFlowDashOffset] = useState(0);
   useEffect(() => {
     if (reducedMotion || !hasFlowEdges) {
@@ -403,6 +412,19 @@ export function TopologyCanvasV2({
         selectedId: selectedFlowEdgeId,
       });
     }
+
+    // T-1303: the Latency heatmap layer overlay, drawn last so an active
+    // Flows overlay's animated edges stay visually on top of the static
+    // latency color-scale (see drawLatencyOverlay's doc comment).
+    if (hasLatencyEdges && latencyEdges) {
+      drawLatencyOverlay(ctx, {
+        nodes: lodElements.nodes,
+        edges: latencyEdges,
+        viewport,
+        nodeSize: DEFAULT_NODE_SIZE,
+        dragTopLeft,
+      });
+    }
   }, [
     lodElements.nodes,
     lodElements.edges,
@@ -417,6 +439,8 @@ export function TopologyCanvasV2({
     flowEdges,
     flowDashOffset,
     selectedFlowEdgeId,
+    hasLatencyEdges,
+    latencyEdges,
   ]);
 
   // --- Pointer helpers -----------------------------------------------------
