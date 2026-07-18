@@ -24,6 +24,7 @@ import { ExportMapMenu } from "./ExportMapMenu";
 import { computeFlowEdges, flowEdgeStrokeWidth, type FlowEdge } from "./flowEdges";
 import { useLiveFlowRecords } from "../flows/flowsQueries";
 import { FlowPairPanel } from "./FlowPairPanel";
+import { HistoryTimeline, type HistoryPlaybackState } from "./history/HistoryTimeline";
 import { InspectorStack } from "./InspectorStack";
 import { NewEntityMenu } from "./NewEntityMenu";
 import { LayerToggleBar } from "./LayerToggleBar";
@@ -351,6 +352,17 @@ function TopologyPageContent() {
   const liveMetrics = useLiveMetrics(metricsCandidateRefs, trafficMode);
   const utilizationByRef = useMemo(() => utilizationMap(liveMetrics), [liveMetrics]);
 
+  // T-1007 history playback: HistoryTimeline re-queries GET /metrics/history
+  // and GET /flows for a scrubbed instant and hands back data shaped exactly
+  // like the two live inputs above — utilizationByRef/liveFlowRecords below
+  // are overridden with the historical snapshot while scrubbing (`playback
+  // .scrubbing`), and left untouched (this component's own live values,
+  // unchanged) otherwise. No new rendering path: toFlowElements and
+  // computeFlowEdges are the exact same calls as before this task, just fed
+  // a different data source and (for flows) an explicit `now`.
+  const [playback, setPlayback] = useState<HistoryPlaybackState | undefined>(undefined);
+  const effectiveUtilizationByRef = playback?.scrubbing ? playback.utilizationByRef : utilizationByRef;
+
   const elements = useMemo(
     () =>
       toFlowElements({
@@ -367,7 +379,7 @@ function TopologyPageContent() {
         layoutPositions,
         manualPositions: positions,
         trafficMode,
-        utilizationByRef,
+        utilizationByRef: effectiveUtilizationByRef,
       }),
     [
       topology,
@@ -382,7 +394,7 @@ function TopologyPageContent() {
       layoutPositions,
       positions,
       trafficMode,
-      utilizationByRef,
+      effectiveUtilizationByRef,
     ],
   );
 
@@ -395,9 +407,19 @@ function TopologyPageContent() {
   const flowsPaintable = flowsLayerActive && viewMode === "graph" && rendererVersion === "v2";
   const { records: liveFlowRecords, isLoading: flowsLoading } = useLiveFlowRecords(flowsPaintable);
   const canvasNodeIds = useMemo(() => new Set(elements.nodes.map((n) => n.id)), [elements.nodes]);
+  // T-1007: while scrubbed, paint from the historical record page/instant
+  // HistoryTimeline fetched instead of the live WS-fed buffer — same
+  // computeFlowEdges call as always, just a different `records` source and
+  // an explicit `now` anchored at the scrubbed instant (computeFlowEdges
+  // defaults `now` to the real wall clock, which would be wrong for a
+  // historical window).
+  const effectiveFlowRecords = playback?.scrubbing ? playback.flowRecords : liveFlowRecords;
   const flowConversationEdges = useMemo<FlowEdge[]>(
-    () => (flowsPaintable ? computeFlowEdges({ records: liveFlowRecords, nodeIds: canvasNodeIds }) : []),
-    [flowsPaintable, liveFlowRecords, canvasNodeIds],
+    () =>
+      flowsPaintable
+        ? computeFlowEdges({ records: effectiveFlowRecords, nodeIds: canvasNodeIds, now: playback?.scrubbing ? playback.at : undefined })
+        : [],
+    [flowsPaintable, effectiveFlowRecords, canvasNodeIds, playback],
   );
   const flowOverlayEdges = useMemo(
     () => flowConversationEdges.map((e) => ({ id: e.id, from: e.from, to: e.to, strokeWidth: flowEdgeStrokeWidth(e.bytesPerSec) })),
@@ -415,7 +437,13 @@ function TopologyPageContent() {
   useEffect(() => {
     if (flowsLayerActive) setFlowsHintDismissed(false);
   }, [flowsLayerActive]);
-  const flowsEmptyState = flowsPaintable && !flowsLoading && liveFlowRecords.length === 0 && !flowsHintDismissed;
+  // T-1007: while scrubbed, HistoryTimeline's own "flow history available
+  // for the last N minutes only" disclosure is the relevant empty-state
+  // message (a scrub can legitimately land on a quiet instant even with a
+  // flow source fully configured) — this hint is specifically about "no
+  // flow source configured at all", so it's suppressed while scrubbing to
+  // avoid showing both at once.
+  const flowsEmptyState = flowsPaintable && !playback?.scrubbing && !flowsLoading && liveFlowRecords.length === 0 && !flowsHintDismissed;
   const [selectedFlowEdgeId, setSelectedFlowEdgeId] = useState<string | undefined>(undefined);
   const selectedFlowEdge = flowConversationEdges.find((e) => e.id === selectedFlowEdgeId);
   useEffect(() => {
@@ -685,6 +713,22 @@ function TopologyPageContent() {
           <ExportMapMenu getScene={getExportScene} captionLines={exportCaptionLines} theme={themeMode} />
         </div>
       </div>
+
+      {/* T-1007: history playback scrubber — only meaningful in Graph view
+       * (the traffic-paint/flows layers it scrubs render there), and, like
+       * every other toolbar control, absent from print output. Read-only:
+       * see HistoryTimeline.tsx's own doc comment — no apply/confirm/
+       * rollback affordance anywhere in it. */}
+      {viewMode === "graph" && (
+        <div className="print:hidden">
+          <HistoryTimeline
+            metricsRefs={metricsCandidateRefs}
+            liveUtilizationByRef={utilizationByRef}
+            liveFlowRecords={liveFlowRecords}
+            onPlaybackChange={setPlayback}
+          />
+        </div>
+      )}
 
       <div className="print:hidden">
         <StalenessBanner staleness={topology?.staleness} />

@@ -513,6 +513,35 @@ func (a alertDeliveryRecorderAdapter) RecordDelivery(ctx context.Context, d find
 	})
 }
 
+// findingEventStore is the subset of *store.FindingEventRepo
+// findingEventRecorderAdapter needs.
+type findingEventStore interface {
+	Insert(ctx context.Context, e store.FindingEvent) error
+}
+
+// findingEventRecorderAdapter adapts *store.FindingEventRepo into
+// findings.FindingEventRecorder (T-1007's finding_events writer seam) —
+// the same decoupling conversion alertDeliveryRecorderAdapter provides for
+// *store.AlertDeliveryRepo: internal/findings never imports internal/store,
+// this package's composition root does the conversion.
+type findingEventRecorderAdapter struct {
+	repo findingEventStore
+}
+
+func (a findingEventRecorderAdapter) RecordFindingEvent(ctx context.Context, findingID string, at int64, transition string) error {
+	return a.repo.Insert(ctx, store.FindingEvent{FindingID: findingID, At: at, Transition: transition})
+}
+
+// setupFindingEventsNotifier builds T-1007's finding_events Notifier over
+// the app store's finding_events repo — composed alongside PVENotifier/
+// WebhookNotifier via newMultiNotifier below, not a replacement for either.
+// Never nil, mirroring setupAlertWebhookNotifier's own "always constructed"
+// convention: an empty finding_events table is a correct, harmless
+// starting state, not a reason to skip wiring the writer.
+func setupFindingEventsNotifier(repo *store.FindingEventRepo, logger *slog.Logger) findings.Notifier {
+	return findings.NewFindingEventsNotifier(findingEventRecorderAdapter{repo: repo}, logger)
+}
+
 // setupAlertWebhookNotifier builds T-1005's webhook Notifier from the app
 // store's alert_rules/alert_deliveries repos and the session-secret cipher
 // (docs/security.md's AES-256-GCM pattern, reused verbatim rather than a
