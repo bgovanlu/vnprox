@@ -87,6 +87,15 @@ const (
 	// DefaultSessionKeyFile above, generated on first daemon start if
 	// absent (cmd/vnproxd/server.go).
 	DefaultMetricsKeyFile = "/etc/vnprox/keys/metrics.key"
+
+	// DefaultBlueprintSigningKeyFile and DefaultBlueprintTrustedSignersDir
+	// are T-1107's blueprint sharing bundle paths (docs/features/
+	// blueprints.md §5): the daemon's own Ed25519 signing identity
+	// (generated at first use, same root:root 0600 convention as
+	// DefaultSessionKeyFile/DefaultMetricsKeyFile above) and the
+	// admin-managed directory of pinned trusted signers.
+	DefaultBlueprintSigningKeyFile    = "/etc/vnprox/keys/blueprint-signing.key"
+	DefaultBlueprintTrustedSignersDir = "/etc/vnprox/keys/trusted-signers"
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
@@ -94,13 +103,14 @@ type Config struct {
 	PVE         PVEConfig
 	Storage     StorageConfig
 	FirewallLog FirewallLogConfig
+	Blueprint   BlueprintConfig
 	Peer        PeerConfig
-	Metrics     MetricsConfig
 	Safety      SafetyConfig
 	Server      ServerConfig
+	Metrics     MetricsConfig
+	Flows       FlowsConfig
 	Collect     CollectConfig
 	Retention   RetentionConfig
-	Flows       FlowsConfig
 }
 
 // ServerConfig is the [server] section.
@@ -225,6 +235,15 @@ type MetricsConfig struct {
 	Enabled   bool
 }
 
+// BlueprintConfig is the [blueprint] section (T-1107): where the daemon's
+// own bundle-signing Ed25519 identity and the admin-managed trusted-signers
+// directory live (docs/features/blueprints.md §5). Added by T-1107 — no
+// [blueprint] section existed before it needed either path.
+type BlueprintConfig struct {
+	SigningKeyFile    string
+	TrustedSignersDir string
+}
+
 // FlowsConfig is the [flows] section (T-1002): per-node, opt-in flow
 // ingestion — every listener defaults to *disabled* (docs/features/
 // monitoring.md §3's "no packet capture, no flow sampling in v1" carried
@@ -265,12 +284,13 @@ type rawConfig struct {
 	Collect     rawCollect     `toml:"collect"`
 	Storage     rawStorage     `toml:"storage"`
 	FirewallLog rawFirewallLog `toml:"firewalllog"`
+	Blueprint   rawBlueprint   `toml:"blueprint"`
 	Peer        rawPeer        `toml:"peer"`
 	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
 	Server      rawServer      `toml:"server"`
-	Retention   rawRetention   `toml:"retention"`
 	Flows       rawFlows       `toml:"flows"`
+	Retention   rawRetention   `toml:"retention"`
 }
 
 type rawServer struct {
@@ -329,6 +349,11 @@ type rawMetrics struct {
 	Enabled   *bool    `toml:"enabled"`
 	KeyFile   string   `toml:"key_file"`
 	AllowFrom []string `toml:"allow_from"`
+}
+
+type rawBlueprint struct {
+	SigningKeyFile    string `toml:"signing_key_file"`
+	TrustedSignersDir string `toml:"trusted_signers_dir"`
 }
 
 type rawFlows struct {
@@ -417,6 +442,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		},
 		Collect: collect,
 		Metrics: metricsCfg,
+		Blueprint: BlueprintConfig{
+			SigningKeyFile:    firstNonEmpty(raw.Blueprint.SigningKeyFile, DefaultBlueprintSigningKeyFile),
+			TrustedSignersDir: firstNonEmpty(raw.Blueprint.TrustedSignersDir, DefaultBlueprintTrustedSignersDir),
+		},
 		Flows: FlowsConfig{
 			SFlowEnabled:     raw.Flows.SFlowEnabled,
 			NetFlowEnabled:   raw.Flows.NetFlowEnabled,

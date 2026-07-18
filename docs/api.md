@@ -409,6 +409,28 @@ Additive routes (T-603, not in the original contract; documented here per docs/d
 
 Import/export is file-level, not a dedicated route: export is `GET /blueprints/{id}`'s JSON body saved to a file; import is that same JSON re-posted to `POST /blueprints` (with `id` cleared so a new blueprint is created, or set to overwrite an existing saved one — never a starter id).
 
+### Blueprint sharing bundles (T-1107)
+
+Signed, cross-installation bundles on top of the plain-file import/export above — full schema/trust-model writeup: `docs/features/blueprints.md` §5.
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| GET | `/blueprints/{id}/bundle?sign=` | `netRead` | export a Bundle; signed iff `?sign=` is present and not `""`/`"0"`/`"false"` |
+| GET | `/blueprints/signing-key` | `netRead` | this installation's own bundle-signing public key (for a receiving admin to pin) |
+| POST | `/blueprints/import` | `netWrite` + CSRF | verify a Bundle's signature, apply the trust decision, save |
+| GET/POST | `/blueprint-signers` | `netRead` / `netWrite` + CSRF | list / pin a trusted signer |
+| DELETE | `/blueprint-signers/{fingerprint}` | `netWrite` + CSRF | un-pin a trusted signer |
+
+**Bundle shape**: `{bundleVersion: 1, blueprint: Blueprint, signature?: {alg: "ed25519", publicKeyFingerprint, publicKey, sig}}` — `publicKey`/`sig`/`publicKeyFingerprint` are all base64/hex strings; see `docs/features/blueprints.md` §5 for exactly what bytes `sig` covers and why `publicKey` travels alongside the fingerprint.
+
+**`GET /blueprints/{id}/bundle?sign=`** response is the Bundle itself (not wrapped in a `content` envelope the way `GET /spec` is) — `application/json`, suitable for saving straight to a file. Omitting `?sign=` (or `?sign=false`/`?sign=0`) produces an unsigned bundle (no `signature` field at all).
+
+**`GET /blueprints/signing-key`** response: `{alg: "ed25519", publicKey, fingerprint}` — not mounted at all if this daemon has no signing key configured.
+
+**`POST /blueprints/import`** body: the Bundle plus two optional trust flags: `{...bundle fields, trustUnsigned?: boolean, trustNewKey?: boolean}`. Response: `{status: "imported"|"unsigned"|"untrustedSignature"|"invalidSignature", blueprint?, signer?}` — `blueprint` is set only when `status: "imported"` (the newly saved blueprint, always a fresh `id`); `signer` (`{fingerprint, publicKey}`) is set only for `"untrustedSignature"`, so a caller can offer "trust this signer" without a second fetch. None of the three non-`"imported"` statuses is an HTTP error — each is a normal `200` the caller inspects `status` on; only a malformed request body or an unsupported `bundleVersion` is `400 validation_failed`. Every import attempt (both explicit-trust paths and every rejection) is audited as `blueprint.import` with the trust decision recorded.
+
+**`GET/POST/DELETE /blueprint-signers`**: `TrustedSigner` shape `{fingerprint, publicKey, label?, addedBy?, addedAt}`. `POST` body: `{publicKey: "<base64>", label?: string}` (the fingerprint is derived server-side, never client-supplied). Both write routes are audited as `blueprint.signer.add`/`blueprint.signer.delete`.
+
 ## Declarative cluster network spec (T-1101)
 
 Blueprints v2: one versionable YAML document capturing cluster-wide L2/SDN intent (bonds, bridges, VLANs, SDN zones/vnets/subnets), rendered from live state and reconciled back against it. Full schema and semantics: `docs/data-model.md` §6 (`internal/spec`).

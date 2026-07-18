@@ -146,6 +146,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return fmt.Errorf("initializing metrics exporter: %w", err)
 	}
 
+	// T-1107: the daemon's own Ed25519 bundle-signing identity (generated at
+	// first use, docs/features/blueprints.md §5) — loaded here alongside the
+	// metrics token above for the same reason, not consumed until
+	// api.NewRouter/blueprintSvc are constructed far below.
+	blueprintSigningKey, err := setupBlueprintSigningKey(cfg, logger)
+	if err != nil {
+		return fmt.Errorf("initializing blueprint signing key: %w", err)
+	}
+	blueprintTrust := blueprint.NewTrustStore(cfg.Blueprint.TrustedSignersDir)
+
 	// T-602: the unified findings engine's IngestServices is wired in as
 	// collect.Config.OnServices below (the same "piggyback on the host
 	// loop's existing per-tick hook" pattern OnStats already established
@@ -652,17 +662,24 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Protected:            changeSvc,
 		Firewall:             graph,
 		Blueprints:           blueprintSvc,
-		Spec:                 graph,
-		Simulator:            graph,
-		ProbeClients:         probeClientProvider{authSvc},
-		ProbeAudit:           auditRepo,
-		SimDivergence:        simDivergenceRepo,
-		FwLog:                fwLogAPI,
-		Peer:                 peerSrv,
-		PeerAudit:            peerAudit,
-		PeerSnapshots:        peerSnapshots,
-		Flows:                flowRepo,
-		PeerFlows:            peerFlows,
+		// T-1107: blueprint sharing bundles (docs/features/blueprints.md §5) —
+		// BlueprintSignersAudit reuses the same *store.AuditRepo every other
+		// audited route family in this Options literal (LLDPAudit, ProbeAudit)
+		// already shares.
+		BlueprintSigningKey:   blueprintSigningKey,
+		BlueprintTrust:        blueprintTrust,
+		BlueprintSignersAudit: auditRepo,
+		Spec:                  graph,
+		Simulator:             graph,
+		ProbeClients:          probeClientProvider{authSvc},
+		ProbeAudit:            auditRepo,
+		SimDivergence:         simDivergenceRepo,
+		FwLog:                 fwLogAPI,
+		Peer:                  peerSrv,
+		PeerAudit:             peerAudit,
+		PeerSnapshots:         peerSnapshots,
+		Flows:                 flowRepo,
+		PeerFlows:             peerFlows,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
