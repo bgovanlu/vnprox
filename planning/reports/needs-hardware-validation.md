@@ -399,3 +399,32 @@ from; and pvemock does not model an `ifreload` outage at all):
       acceptance must be confirmed across the full PVE 8.2+/9.x kernel range before shipping: a
       BPF verifier rejection is a load-time failure, not a runtime one, so it needs to be caught
       per-kernel-version, not just once.
+
+## T-1301 — distributed packet capture engine
+
+- [ ] **Real on-hardware capture backend (AF_PACKET/libpcap/`tcpdump`).** `internal/capture` is
+      fully wired — capability gate, server-enforced un-overridable caps, BPF-filter validation,
+      peer fan-out, audit, and retention sweep are all real and agent-agnostic — but the actual
+      packet source is `internal/capturemock`'s scripted agent (`cmd/vnproxd/capture.go`'s
+      `setupCapture` wires `capturemock.NewAgent()`), since there is no live Proxmox host to
+      capture from and CLAUDE.md's stdlib-first rule bars adding a libpcap/eBPF binding here. The
+      production agent (a real `tcpdump -i <iface> -w <file>` subprocess with a fixed argv, or an
+      AF_PACKET reader) drops in at exactly that one wiring line — every surrounding safety
+      property is already exercised by tests. Needs: confirmation that `CAP_NET_RAW` (already in
+      the shipped unit's `CapabilityBoundingSet`) suffices for the chosen backend on a real PVE
+      9.x node, and that the on-disk `.pcap` the real backend writes is byte-compatible with
+      T-1302's decoder (the mock's classic-pcap output already is).
+- [ ] **libpcap-level BPF filter compilation.** `internal/capture.ValidateFilter` is a
+      conservative *syntactic* gate (shell-unsafe characters, instruction-count ceiling, known
+      keywords/operators/IPs/CIDRs only) — a stdlib-only proxy for a real `pcap_compile`. The
+      on-hardware agent should additionally compile the filter with libpcap before use and reject
+      a compile failure; confirm on real hardware that every filter the syntactic gate accepts
+      also compiles (and that the instruction-count ceiling maps sensibly to real compiled-program
+      size).
+- [ ] **Guest-NIC / SDN-VNet target → capture-interface resolution.** `capture.RefResolver`
+      resolves bridge/bond/VLAN refs to their device name directly, but a guest NIC's live tap
+      device and an SDN vnet's realized Linux device are runtime facts not derivable from the Ref
+      alone — the default resolver returns `ErrUnresolvableTarget` for those (a conservative,
+      safe rejection). A graph-backed resolver that maps a guest NIC to its live tap/veth on a
+      real node is a follow-up (T-1302/T-1307 consume this) and needs a real cluster to validate
+      the exact per-guest device naming.
