@@ -124,4 +124,20 @@ func TestCapabilities_Has(t *testing.T) {
 	if c.Has(Cap("bogus")) {
 		t.Error("Has(unknown cap) = true, want false")
 	}
+
+	c2 := Capabilities{Automation: true}
+	if !c2.Has(CapAutomation) {
+		t.Error("Has(CapAutomation) = false, want true")
+	}
+}
+
+func TestDeriveCapabilities_NeverGrantsAutomation(t *testing.T) {
+	// Automation is not derived from any PVE privilege (Capabilities.
+	// Automation's doc comment) — even a full-wildcard "*" privilege set
+	// must not set it, since the only way a request context ever carries
+	// Automation: true is a bearer token's own minted scopes.
+	caps := DeriveCapabilities(newPrivilegeSet([]string{"*"}))
+	if caps.Automation {
+		t.Error("DeriveCapabilities with wildcard privilege set Automation = true, want false (never PVE-derived)")
+	}
 }

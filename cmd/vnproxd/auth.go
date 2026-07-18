@@ -1,12 +1,10 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 
 	"github.com/bgovanlu/vnprox/internal/auth"
 	"github.com/bgovanlu/vnprox/internal/config"
@@ -14,13 +12,27 @@ import (
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
-// setupAuth opens vnprox's own SQLite store (cfg.Storage.DBPath), loads —
-// generating on first run if absent — the session-secret encryption key
-// (cfg.Storage.SessionKeyFile), and constructs the T-105 auth.Service that
-// internal/api's router mounts docs/api.md's /auth/* routes through.
+// setupAuth loads — generating on first run if absent — the session-secret
+// encryption key (cfg.Storage.SessionKeyFile), and constructs the T-105
+// auth.Service that internal/api's router mounts docs/api.md's /auth/*
+// routes through.
 //
-// The returned *store.DB must be closed by the caller on shutdown. The
-// returned *store.SessionCipher is the same session-secret AES-256-GCM
+// db/auditRepo/tokens are constructed once by the caller (server.go) and
+// passed in, rather than this function opening its own store.DB/AuditRepo
+// the way earlier versions of this function did: auditRepo in particular
+// must be the exact same instance every other audit-writing call site in
+// this binary uses (router.Options.Audit, ProbeAudit, LLDPAudit, ...) —
+// T-1104's `audit.appended` WS/webhook event is wired via a single
+// SetOnAppend hook on one shared *store.AuditRepo (see events.go's
+// wireAuditAppendedEvents doc comment); a second, independent AuditRepo
+// wrapping the same table would silently miss every append that went
+// through it, which is exactly the bug a from-scratch review of this
+// function's original "open my own db/auditRepo" shape would have shipped
+// silently. tokens (T-1104's api_tokens repo) is optional — nil disables
+// bearer-token auth entirely, matching auth.Config.Tokens' own nil-safe
+// convention.
+//
+// The returned *store.SessionCipher is the same session-secret AES-256-GCM
 // cipher sessions.pve_ticket_enc/csrf_token_enc use; T-1005 reuses it
 // verbatim (rather than a second cipher/key pair) to encrypt
 // alert_rules.target_secret_enc — docs/security.md's "secrets encrypted at
@@ -40,39 +52,26 @@ import (
 // already trusted the node's own certificate. Every real deployment's
 // login flow was completely broken until this was caught by actually
 // logging in against a real node.
-func setupAuth(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*auth.Service, *store.DB, *store.SessionCipher, error) {
-	if err := os.MkdirAll(filepath.Dir(cfg.Storage.DBPath), 0o750); err != nil {
-		return nil, nil, nil, fmt.Errorf("creating storage directory for %s: %w", cfg.Storage.DBPath, err)
-	}
-	db, err := store.Open(ctx, cfg.Storage.DBPath)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
+func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo *store.AuditRepo, tokens *store.APITokenRepo) (*auth.Service, *store.SessionCipher, error) {
 	if _, statErr := os.Stat(cfg.Storage.SessionKeyFile); errors.Is(statErr, os.ErrNotExist) {
 		logger.Info("auth: generating session key", "path", cfg.Storage.SessionKeyFile)
 		if genErr := store.GenerateKeyFile(cfg.Storage.SessionKeyFile); genErr != nil {
-			_ = db.Close()
-			return nil, nil, nil, genErr
+			return nil, nil, genErr
 		}
 	} else if statErr != nil {
-		_ = db.Close()
-		return nil, nil, nil, fmt.Errorf("checking session key file %s: %w", cfg.Storage.SessionKeyFile, statErr)
+		return nil, nil, fmt.Errorf("checking session key file %s: %w", cfg.Storage.SessionKeyFile, statErr)
 	}
 
 	key, err := store.LoadKeyFile(cfg.Storage.SessionKeyFile)
 	if err != nil {
-		_ = db.Close()
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	cipher, err := store.NewSessionCipher(key)
 	if err != nil {
-		_ = db.Close()
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	sessions := store.NewSessionRepo(db, cipher)
-	auditRepo := store.NewAuditRepo(db)
 
 	// TLS trust mirrors buildCollectorPVEClient's own branching
 	// (cmd/vnproxd/collect.go) exactly: dev/test harnesses set
@@ -92,6 +91,7 @@ func setupAuth(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*a
 	authSvc, err := auth.NewService(auth.Config{
 		Sessions:    sessions,
 		Audit:       auditRepo,
+		Tokens:      tokens,
 		NewIdentity: identityFactory,
 		Logger:      logger,
 		// T-605: `[server] read_only = true` (docs/features/blueprints.md
@@ -100,8 +100,7 @@ func setupAuth(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*a
 		ReadOnly: cfg.Server.ReadOnly,
 	})
 	if err != nil {
-		_ = db.Close()
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
-	return authSvc, db, cipher, nil
+	return authSvc, cipher, nil
 }

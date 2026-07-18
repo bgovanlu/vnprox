@@ -7,6 +7,36 @@ import (
 	"testing"
 )
 
+func TestAuditRepo_OnAppendHookFiresWithAssignedID(t *testing.T) {
+	db := openTestDB(t)
+	repo := NewAuditRepo(db)
+	ctx := context.Background()
+
+	var got []AuditEntry
+	repo.SetOnAppend(func(e AuditEntry) { got = append(got, e) })
+
+	e := AuditEntry{At: 100, Username: "root@pam", Action: "token.use", Result: "allowed"}
+	id, err := repo.Append(ctx, e)
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("onAppend called %d times, want 1", len(got))
+	}
+	if got[0].ID != id {
+		t.Errorf("onAppend entry.ID = %d, want the assigned id %d", got[0].ID, id)
+	}
+	if got[0].Action != "token.use" || got[0].Username != "root@pam" {
+		t.Errorf("onAppend entry = %+v, want the appended fields", got[0])
+	}
+
+	// A nil hook (the default — no SetOnAppend call) must not panic.
+	repo2 := NewAuditRepo(db)
+	if _, err := repo2.Append(ctx, e); err != nil {
+		t.Fatalf("Append with no hook registered: %v", err)
+	}
+}
+
 func TestAuditRepo_RoundTrip(t *testing.T) {
 	db := openTestDB(t)
 	repo := NewAuditRepo(db)

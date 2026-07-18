@@ -26,11 +26,26 @@ type AuditEntry struct {
 
 // AuditRepo is the audit_log table repository.
 type AuditRepo struct {
-	db *DB
+	db       *DB
+	onAppend func(AuditEntry)
 }
 
 // NewAuditRepo constructs an AuditRepo.
 func NewAuditRepo(db *DB) *AuditRepo { return &AuditRepo{db: db} }
+
+// SetOnAppend registers fn to be called (synchronously, after the insert
+// commits) with every entry Append writes, id included — T-1104's
+// `audit.appended` WS/webhook event producer hook. cmd/vnproxd wires this
+// once at composition root to marshal and broadcast the event; it is the
+// single place that watches every mutation attempt this daemon's audit log
+// records (append-only, docs/security.md's Audit section — "every
+// mutation attempt, including denied and rolled-back"), so no call site
+// that already calls Append needs to separately know about the events
+// stream. fn is invoked from whichever goroutine called Append — it must
+// not block or panic; a nil fn (the default) means "no hook", matching
+// every other optional-callback convention in this codebase (e.g.
+// internal/drift.Config.OnChange).
+func (r *AuditRepo) SetOnAppend(fn func(AuditEntry)) { r.onAppend = fn }
 
 // Append inserts a new audit entry and returns its assigned id.
 func (r *AuditRepo) Append(ctx context.Context, e AuditEntry) (int64, error) {
@@ -45,6 +60,10 @@ func (r *AuditRepo) Append(ctx context.Context, e AuditEntry) (int64, error) {
 	id, err := res.LastInsertId()
 	if err != nil {
 		return 0, fmt.Errorf("store: reading audit entry id: %w", err)
+	}
+	if r.onAppend != nil {
+		e.ID = id
+		r.onAppend(e)
 	}
 	return id, nil
 }

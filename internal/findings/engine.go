@@ -50,7 +50,12 @@ type Config struct {
 	// MissedSchedules), backing the schedule_missed health check. Nil skips
 	// that check entirely, same degradation as every other optional Config
 	// field.
-	Schedule        ScheduleMissedProvider
+	Schedule ScheduleMissedProvider
+	// Webhooks is T-1104's webhook-health seam, backing the
+	// webhook_unhealthy finding (source health) — N consecutive delivery
+	// failures on a registered webhook. Nil skips that check entirely,
+	// same degradation as every other optional Config field.
+	Webhooks        WebhookProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -76,6 +81,7 @@ type Engine struct {
 	corosyncSvc CorosyncProvider
 	fwAnalytics FwAnalyticsProvider
 	scheduleSvc ScheduleMissedProvider
+	webhooksSvc WebhookProvider
 	probeSvc    ProbeProvider
 	serviceDB   *debouncer
 	services    *serviceStatusStore
@@ -133,6 +139,7 @@ func New(cfg Config) *Engine {
 		corosyncSvc: cfg.Corosync,
 		fwAnalytics: cfg.FwAnalytics,
 		scheduleSvc: cfg.Schedule,
+		webhooksSvc: cfg.Webhooks,
 		probeSvc:    cfg.Probe,
 		log:         logger,
 		now:         now,
@@ -175,6 +182,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, lldpFindings(e.lldpSvc)...)
 	out = append(out, ipamFindings(e.ipamSvc)...)
 	out = append(out, probeFindings(e.probeSvc)...)
+	out = append(out, webhookFindings(e.webhooksSvc)...)
 	out = append(out, e.healthFindings()...)
 	sortFindings(out)
 	return out
