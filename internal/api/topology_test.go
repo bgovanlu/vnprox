@@ -69,6 +69,8 @@ func (f fakeTopologyService) ServeWS(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (f fakeTopologyService) CloseByTokenID(string) int { return 0 }
+
 // TestTopologyRoutes_Unauthenticated401 is T-106 acceptance criterion 5:
 // GET /api/v1/topology (and, in the next test, a WS upgrade) with no
 // session -> 401.

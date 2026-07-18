@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -105,14 +106,43 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return err
 	}
 
-	authSvc, db, sessionCipher, err := setupAuth(ctx, cfg, logger)
+	// The store.DB, its AuditRepo, and its APITokenRepo are constructed
+	// once, here, and reused everywhere below (router.Options.Audit,
+	// ProbeAudit, LLDPAudit, TokenAudit, setupAuth's own login/logout/
+	// token.use audit writes, ...) — T-1104's `audit.appended` event is
+	// wired via a single SetOnAppend hook on this one auditRepo instance
+	// (events.go's wireAuditAppendedEvents doc comment), so every audit
+	// write in this daemon must go through it, not a second AuditRepo
+	// wrapping the same table.
+	if err = os.MkdirAll(filepath.Dir(cfg.Storage.DBPath), 0o750); err != nil {
+		return fmt.Errorf("creating storage directory for %s: %w", cfg.Storage.DBPath, err)
+	}
+	db, err := store.Open(ctx, cfg.Storage.DBPath)
+	if err != nil {
+		return fmt.Errorf("opening store: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+	auditRepo := store.NewAuditRepo(db)
+	apiTokenRepo := store.NewAPITokenRepo(db)
+	webhookRepo := store.NewWebhookRepo(db)
+
+	authSvc, sessionCipher, err := setupAuth(cfg, logger, db, auditRepo, apiTokenRepo)
 	if err != nil {
 		return fmt.Errorf("initializing auth: %w", err)
 	}
-	defer func() { _ = db.Close() }()
 
 	graph := inventory.NewGraph()
 	topoSvc := topology.NewService(graph, logger)
+	// T-1104: audit.appended broadcasts over the same shared WS hub
+	// topoSvc's Broadcast already backs for topology.delta/changeset.status/
+	// drift.changed/findings.changed — wired against the one shared
+	// auditRepo instance (see this file's construction-order doc comment
+	// above). The webhook Dispatcher is wired as that hub's event sink
+	// right alongside, so both the WS "events" topic and registered
+	// webhook targets are fed from the exact same fan-in point (hub.go's
+	// eventsSourceTopics doc comment).
+	wireAuditAppendedEvents(auditRepo, topoSvc, logger)
+	setupAutomation(webhookRepo, sessionCipher, topoSvc, logger)
 	// T-305: the drift detector runs its own 30s cycle over the same live
 	// graph the collectors populate, independent of any one poll loop
 	// (docs/features/topology.md §6); its findings changing broadcasts
@@ -308,7 +338,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
 	simDivergenceRepo := store.NewSimDivergenceRepo(db)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -365,7 +395,8 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	snapshotRepo := store.NewSnapshotRepo(db)
 	blobRepo := store.NewBlobRepo(db)
-	auditRepo := store.NewAuditRepo(db)
+	// auditRepo/apiTokenRepo/webhookRepo were constructed once, up above
+	// (alongside setupAuth), and are reused here.
 
 	// T-304: the local-timer protocol's node-side agent — every daemon runs
 	// one, independent of whether it ends up coordinating anything, so it
@@ -671,6 +702,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LLDPPeerInstaller: lldpPeerInstaller,
 		LLDPAudit:         auditRepo,
 		LocalNode:         localNode,
+		// T-1104: automation tokens + webhook registrations, both audited
+		// via the same shared auditRepo every other route in this daemon
+		// uses.
+		Tokens:              apiTokenRepo,
+		TokenAudit:          auditRepo,
+		Webhooks:            webhookRepo,
+		WebhookSecretCipher: sessionCipher,
 	})
 
 	srv := &http.Server{

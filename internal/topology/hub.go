@@ -10,6 +10,7 @@ import (
 
 	"nhooyr.io/websocket"
 
+	"github.com/bgovanlu/vnprox/internal/auth"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
@@ -18,6 +19,47 @@ import (
 // "tasks") without error — the hub just never has anything to send them,
 // since those events are later tasks' responsibility.
 const topicTopology = "topology"
+
+// topicEvents is T-1104's automation firehose topic (docs/api.md's
+// WebSocket section): a superset envelope reusing the existing
+// changeset.status/drift.changed/findings.changed producers verbatim (see
+// eventsSourceTopics below) plus the new audit.appended event, gated on the
+// "automation" scope rather than plain netRead. Unlike every other topic
+// this hub knows about, subscribing to it is itself an authorization
+// decision (setTopics below), not merely "nothing to send yet".
+const topicEvents = "events"
+
+// eventsSourceTopics names the existing WS topics whose broadcasts are
+// additionally fanned into topicEvents verbatim — the literal
+// implementation of docs/api.md's "a SUPERSET envelope REUSING the
+// existing changeset.status/drift.changed/findings.changed producers (do
+// not duplicate them)": Broadcast below sends the exact same encoded
+// payload a "changesets"/"drift"/"findings" subscriber would get to any
+// "events" subscriber too, rather than a second producer re-deriving the
+// same event. audit.appended (cmd/vnproxd's audit-repo hook) is not listed
+// here because it has no topic of its own to reuse — it is broadcast
+// directly to topicEvents.
+var eventsSourceTopics = map[string]bool{
+	topicChangesets: true,
+	topicDrift:      true,
+	topicFindings:   true,
+}
+
+// topicChangesets/topicDrift/topicFindings mirror the topic name string
+// constants internal/change.Service, cmd/vnproxd/drift.go, and
+// cmd/vnproxd/findings.go each already define privately in their own
+// packages (this package has no import of any of them, by design — see
+// Broadcaster's doc comment on internal/change.Service — so it cannot
+// reference those constants directly and instead re-declares the same
+// wire-documented strings here). Keeping them as named constants (rather
+// than bare string literals in eventsSourceTopics above) documents that
+// this is not an arbitrary topic list — docs/api.md's WebSocket section is
+// the single source of truth for all four spellings.
+const (
+	topicChangesets = "changesets"
+	topicDrift      = "drift"
+	topicFindings   = "findings"
+)
 
 const (
 	// wsSendQueueSize bounds each connection's outbound buffer. A client
@@ -36,9 +78,10 @@ const (
 // topics and fans out topology.delta events from the collector's
 // inventory.Delta callback (docs/api.md's WebSocket section).
 type Hub struct {
-	log   *slog.Logger
-	conns map[*wsConn]struct{}
-	mu    sync.Mutex
+	log       *slog.Logger
+	conns     map[*wsConn]struct{}
+	eventSink func([]byte)
+	mu        sync.Mutex
 }
 
 // NewHub constructs an empty Hub. log defaults to slog.Default() if nil.
@@ -49,21 +92,53 @@ func NewHub(log *slog.Logger) *Hub {
 	return &Hub{log: log, conns: map[*wsConn]struct{}{}}
 }
 
+// SetEventSink registers fn to be invoked with the exact encoded payload of
+// every event that lands on topicEvents — whether fanned in from
+// eventsSourceTopics (changeset.status/drift.changed/findings.changed) or
+// broadcast directly to "events" (audit.appended) — regardless of whether
+// any WS client is currently subscribed. cmd/vnproxd wires this to
+// internal/automation's webhook dispatcher (T-1104): webhook targets
+// receive the identical envelope an "events"-subscribed WS client would,
+// from this single fan-in point, so there is exactly one place that
+// decides "what counts as an automation event" for both delivery
+// mechanisms. fn must not block (called from whichever goroutine invoked
+// Broadcast) and a nil fn (the default) simply means no webhook dispatcher
+// is wired, matching every other optional-hook convention in this
+// codebase.
+func (h *Hub) SetEventSink(fn func([]byte)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.eventSink = fn
+}
+
 // wsConn is one accepted WebSocket client: its own bounded outbound queue
 // and current subscription set.
 type wsConn struct {
-	ws       *websocket.Conn
-	send     chan []byte
-	topics   map[string]bool
-	dropped  int64
-	topicsMu sync.Mutex
+	ws        *websocket.Conn
+	send      chan []byte
+	topics    map[string]bool
+	tokenID   string
+	dropped   int64
+	topicsMu  sync.Mutex
+	canEvents bool
 }
 
+// setTopics replaces c's subscription set with topics, per docs/api.md's
+// "each subscribe message replaces the connection's entire topic set"
+// contract. topicEvents is silently dropped from the requested set unless
+// c.canEvents — a connection whose session/token lacks the "automation"
+// scope simply never receives anything on "events", the same fail-closed
+// treatment a malformed subscribe message already gets (this package's
+// readLoop doc comment), rather than a distinct rejection the client would
+// have to parse out of an otherwise ack-less protocol.
 func (c *wsConn) setTopics(topics []string) {
 	c.topicsMu.Lock()
 	defer c.topicsMu.Unlock()
 	c.topics = make(map[string]bool, len(topics))
 	for _, t := range topics {
+		if t == topicEvents && !c.canEvents {
+			continue
+		}
 		c.topics[t] = true
 	}
 }
@@ -80,6 +155,18 @@ func (c *wsConn) subscribed(topic string) bool {
 // with the same read capability as GET /topology) — callers must ensure
 // authentication happened before this is invoked, since the WS handshake
 // itself carries no further auth step.
+//
+// T-1104: it additionally reads the resolved auth.Identity already
+// attached to r's context by that middleware chain (whichever of the
+// cookie-session/bearer-token paths authenticated the request) to decide,
+// once, at accept time, whether this connection may ever subscribe to
+// topicEvents (auth.CapAutomation) and — for a bearer-token connection —
+// which token's id it should be force-closed alongside on revocation
+// (CloseByTokenID). A request with no Identity in context (any pre-T-1104
+// caller, or a test that hits ServeWS directly without the auth
+// middleware) simply gets canEvents=false/tokenID="", the same fail-closed
+// default every other optional-context lookup in this codebase falls back
+// to.
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	ws, err := websocket.Accept(w, r, nil)
 	if err != nil {
@@ -87,7 +174,14 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := &wsConn{ws: ws, send: make(chan []byte, wsSendQueueSize), topics: map[string]bool{}}
+	var tokenID string
+	var canEvents bool
+	if id, ok := auth.IdentityFromContext(r.Context()); ok {
+		tokenID = id.TokenID
+		canEvents = id.HasCap("", auth.CapAutomation)
+	}
+
+	conn := &wsConn{ws: ws, send: make(chan []byte, wsSendQueueSize), topics: map[string]bool{}, tokenID: tokenID, canEvents: canEvents}
 	h.add(conn)
 	defer h.remove(conn)
 
@@ -226,19 +320,78 @@ func (h *Hub) BroadcastDelta(d inventory.Delta) {
 // Broadcaster seam and this package's Service.Broadcast passthrough. Like
 // BroadcastDelta, it never blocks: enqueue always drops rather than
 // waiting on a slow client.
+//
+// T-1104: when topic is one of eventsSourceTopics (or topicEvents itself,
+// e.g. a direct audit.appended push), the identical payload is additionally
+// delivered to every "events"-subscribed connection that isn't already
+// getting it via its own topic subscription (so a connection subscribed to
+// both "changesets" and "events" is never sent the same message twice),
+// and handed to h.eventSink once per call if one is registered — the
+// single fan-in point backing both the WS "events" topic and T-1104's
+// webhook dispatcher.
 func (h *Hub) Broadcast(topic string, payload []byte) {
 	h.mu.Lock()
 	targets := make([]*wsConn, 0, len(h.conns))
 	for c := range h.conns {
 		targets = append(targets, c)
 	}
+	sink := h.eventSink
 	h.mu.Unlock()
 
+	feedsEvents := topic == topicEvents || eventsSourceTopics[topic]
+
 	for _, c := range targets {
-		if c.subscribed(topic) {
+		sentDirect := c.subscribed(topic)
+		if sentDirect {
+			c.enqueue(payload, h.log)
+		}
+		if feedsEvents && topic != topicEvents && !sentDirect && c.subscribed(topicEvents) {
 			c.enqueue(payload, h.log)
 		}
 	}
+
+	if feedsEvents && sink != nil {
+		sink(payload)
+	}
+}
+
+// CloseByTokenID force-closes every live WS connection whose tokenID
+// matches id (T-1104 acceptance criterion 5: "revoking a token ... force-
+// closes its open WS subscriptions within one server tick") and returns
+// how many it closed. internal/api's DELETE /tokens/{id} handler calls
+// this synchronously right after persisting the revocation, so the close
+// happens within the same request tick that revoked the token — no
+// separate poller is needed.
+//
+// It uses CloseNow, not Close: Close performs a graceful close handshake
+// that blocks the caller for up to 5s waiting for the peer to ack (this
+// package's doc comment on the method, nhooyr.io/websocket's own
+// documented behavior) — acceptable for a client-initiated disconnect, but
+// exactly wrong here, since a revoked/compromised token's connection is
+// the one case where the peer might never ack at all, and this method must
+// not make DELETE /tokens/{id} itself hang on that. CloseNow tears down
+// the underlying connection immediately (the same call ServeWS's own
+// deferred cleanup already uses), unblocking the connection's readLoop
+// (and its own deferred h.remove) right away. Safe to call concurrently
+// with the connection's own read/write loops, per nhooyr.io/websocket's
+// documented concurrency guarantees.
+func (h *Hub) CloseByTokenID(id string) int {
+	if id == "" {
+		return 0
+	}
+	h.mu.Lock()
+	var targets []*wsConn
+	for c := range h.conns {
+		if c.tokenID == id {
+			targets = append(targets, c)
+		}
+	}
+	h.mu.Unlock()
+
+	for _, c := range targets {
+		_ = c.ws.CloseNow()
+	}
+	return len(targets)
 }
 
 func refStrings(refs []inventory.Ref) []string {

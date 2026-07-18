@@ -24,6 +24,19 @@ type Capabilities struct {
 	FWWrite  bool `json:"fwWrite"`
 	GuestNet bool `json:"guestNet"`
 	Audit    bool `json:"audit"`
+	// Automation (T-1104) gates the WS "events" topic and the webhook
+	// registration routes (POST/GET/DELETE /webhooks). Unlike every other
+	// flag above, it is never derived from a PVE privilege —
+	// DeriveCapabilities below never sets it, so a PVE-session-derived
+	// Capabilities value (the map GET /auth/me reports) always has this
+	// false. It exists purely as an api_tokens scope: minting (and then
+	// presenting) a token whose scopes include "automation" is the only
+	// way a request context ever carries Automation: true (see
+	// internal/auth's bearer-token middleware). This is docs/api.md's "no
+	// new privilege surface beyond that one addition" from T-1104's task
+	// card — logging in with a browser session never grants automation
+	// access on its own.
+	Automation bool `json:"automation"`
 }
 
 // Cap names a single capability flag by its JSON field name, for use with
@@ -41,7 +54,22 @@ const (
 	CapFWWrite  Cap = "fwWrite"
 	CapGuestNet Cap = "guestNet"
 	CapAudit    Cap = "audit"
+	// CapAutomation is T-1104's addition — see Capabilities.Automation's
+	// doc comment for why it is not part of the PVE-privilege-derived
+	// mapping table below.
+	CapAutomation Cap = "automation"
 )
+
+// AllCaps is every capability name recognized by Has/RequireCap, in the
+// canonical order docs/api.md's GET /auth/me `caps` object documents them
+// plus CapAutomation appended — internal/auth/tokens.go's scope validation
+// (T-1104) iterates this rather than hardcoding a second copy of the
+// vocabulary, so a future capability addition only needs updating in one
+// place (this slice, Capabilities, and Has's switch).
+var AllCaps = []Cap{
+	CapNetRead, CapNetWrite, CapSDNRead, CapSDNWrite,
+	CapFWRead, CapFWWrite, CapGuestNet, CapAudit, CapAutomation,
+}
 
 // Has reports whether c grants the named capability. Unknown names return
 // false rather than panicking, since a name only ever originates from this
@@ -64,6 +92,8 @@ func (c Capabilities) Has(name Cap) bool {
 		return c.GuestNet
 	case CapAudit:
 		return c.Audit
+	case CapAutomation:
+		return c.Automation
 	default:
 		return false
 	}

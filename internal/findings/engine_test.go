@@ -80,6 +80,45 @@ func TestFindings_ProbeProviderNil_ContributesNothing(t *testing.T) {
 	}
 }
 
+type fakeWebhooks struct{ findings []findings.Finding }
+
+func (f fakeWebhooks) Findings() []findings.Finding { return f.findings }
+
+// TestFindings_WebhookProvider_ContributesHealthFindings (T-1104): a
+// wired Config.Webhooks producer's findings show up in the unified
+// stream, tagged source health (webhook_unhealthy is a health check, not a
+// distinct producer family — see adapt_webhook.go's doc comment).
+func TestFindings_WebhookProvider_ContributesHealthFindings(t *testing.T) {
+	g := newGraphWithNodes("pve1")
+	wf := findings.Finding{
+		ID: "health:webhook_unhealthy|wh1", Source: findings.SourceHealth,
+		Check: "webhook_unhealthy", Severity: findings.SeverityWarning,
+		Detail: "5 consecutive delivery failures", Nodes: []string{},
+	}
+	eng := findings.New(findings.Config{Graph: g, Webhooks: fakeWebhooks{findings: []findings.Finding{wf}}})
+
+	found := findByCheck(t, eng.Findings(), "webhook_unhealthy")
+	if len(found) != 1 {
+		t.Fatalf("expected 1 webhook_unhealthy finding, got %d: %+v", len(found), eng.Findings())
+	}
+	if found[0].Source != findings.SourceHealth {
+		t.Errorf("webhook_unhealthy finding Source = %q, want health", found[0].Source)
+	}
+}
+
+// TestFindings_WebhookProviderNil_ContributesNothing: nil Config.Webhooks
+// (no webhook registrations wired) degrades quietly, same as every other
+// optional producer.
+func TestFindings_WebhookProviderNil_ContributesNothing(t *testing.T) {
+	g := newGraphWithNodes("pve1")
+	eng := findings.New(findings.Config{Graph: g})
+	for _, f := range eng.Findings() {
+		if f.Check == "webhook_unhealthy" {
+			t.Fatalf("got a webhook_unhealthy finding with a nil Config.Webhooks: %+v", f)
+		}
+	}
+}
+
 // TestFixOps_DispatchesToDrift: Engine.FixOps strips the "drift:" id prefix
 // and forwards to the DriftProvider unchanged.
 func TestFixOps_DispatchesToDrift(t *testing.T) {

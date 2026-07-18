@@ -188,8 +188,21 @@ type Options struct {
 	LLDPPeerInstaller PeerLLDPInstaller
 	LLDPAudit         lldpInstallAuditor
 	LocalNode         func() string
-	Logger            *slog.Logger
-	Version           string
+	// Tokens/TokenAudit back T-1104's POST/GET/DELETE /tokens (automation
+	// bearer tokens); Tokens nil skips mounting the whole family. Auth must
+	// additionally implement TokenMinter (cmd/vnproxd's authServiceAdapter
+	// does) or the routes still aren't mounted, matching UsernameLookup's
+	// own precedent for layouts.
+	Tokens     APITokenStore
+	TokenAudit tokenAuditor
+	// Webhooks/WebhookSecretCipher back T-1104's POST/GET/DELETE /webhooks
+	// (automation event delivery targets); Webhooks nil skips mounting the
+	// whole family. Reuses TokenAudit for its own audit entries (webhook.
+	// create/webhook.delete) rather than a second audit-seam field.
+	Webhooks            WebhookStore
+	WebhookSecretCipher SecretCipher
+	Logger              *slog.Logger
+	Version             string
 	// Instance is the non-secret operational config surfaced by GET
 	// /config (the Settings page's "Instance" section). Zero value is fine
 	// — the route still mounts and reports whatever's set (Version at
@@ -251,6 +264,8 @@ func NewRouter(opts Options) http.Handler {
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
+		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
+		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket
