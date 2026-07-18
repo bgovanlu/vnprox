@@ -24,6 +24,16 @@ type Capabilities struct {
 	FWWrite  bool `json:"fwWrite"`
 	GuestNet bool `json:"guestNet"`
 	Audit    bool `json:"audit"`
+	// Capture (T-1301) gates the distributed packet-capture surface
+	// (POST /captures + the /api/peer/capture/* routes it fans out to).
+	// Unlike NetWrite/FWWrite it is deliberately NOT derived from Sys.Modify
+	// alone: packet capture exposes raw payload bytes — a materially
+	// stronger read than any config counter — so a session must hold BOTH
+	// Sys.Modify AND Sys.Console (root-shell-equivalent on the node) for it
+	// (DeriveCapabilities below). Holding netRead/netWrite alone therefore
+	// never grants capture; docs/security.md's Authorization section
+	// documents this pairing as at least as strict as netWrite's own gate.
+	Capture bool `json:"capture"`
 }
 
 // Cap names a single capability flag by its JSON field name, for use with
@@ -41,6 +51,10 @@ const (
 	CapFWWrite  Cap = "fwWrite"
 	CapGuestNet Cap = "guestNet"
 	CapAudit    Cap = "audit"
+	// CapCapture is T-1301's dedicated packet-capture gate — see
+	// Capabilities.Capture's doc comment for why it is a Sys.Modify +
+	// Sys.Console pairing rather than a reuse of the netWrite mapping.
+	CapCapture Cap = "capture"
 )
 
 // Has reports whether c grants the named capability. Unknown names return
@@ -64,6 +78,8 @@ func (c Capabilities) Has(name Cap) bool {
 		return c.GuestNet
 	case CapAudit:
 		return c.Audit
+	case CapCapture:
+		return c.Capture
 	default:
 		return false
 	}
@@ -82,6 +98,12 @@ const (
 	privSDNAudit    = "SDN.Audit"
 	privSDNAllocate = "SDN.Allocate"
 	privVMConfigNet = "VM.Config.Network"
+	// privSysConsole is the second half of T-1301's capture pairing: PVE's
+	// node-scope root-shell privilege. Requiring it on top of Sys.Modify is
+	// what keeps `capture` strictly stronger than `netWrite` (Sys.Modify
+	// alone) — the same access class needed to run tcpdump on the host by
+	// hand.
+	privSysConsole = "Sys.Console"
 )
 
 // DeriveCapabilities maps one node's effective PVE privilege set to vnprox
@@ -94,6 +116,7 @@ const (
 //   - SDN.Audit                   -> sdnRead
 //   - SDN.Allocate                -> sdnWrite
 //   - VM.Config.Network           -> guestNet
+//   - Sys.Modify AND Sys.Console  -> capture (T-1301)
 //
 // fwRead/fwWrite reuse Sys.Audit/Sys.Modify rather than a dedicated
 // firewall privilege because that is exactly how PVE itself (and
@@ -114,6 +137,7 @@ func DeriveCapabilities(privs privilegeSet) Capabilities {
 		FWWrite:  privs.has(privSysModify),
 		GuestNet: privs.has(privVMConfigNet),
 		Audit:    privs.has(privSysAudit),
+		Capture:  privs.has(privSysModify) && privs.has(privSysConsole),
 	}
 }
 

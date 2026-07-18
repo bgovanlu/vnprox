@@ -74,7 +74,7 @@ func TestIntegration_LoginLogoutMeAgainstMock(t *testing.T) {
 	if !ok {
 		t.Fatalf("caps map missing pve1 entry: %+v", loginBody.Caps)
 	}
-	want := auth.Capabilities{NetRead: true, NetWrite: true, SDNRead: true, SDNWrite: true, FWRead: true, FWWrite: true, GuestNet: true, Audit: true}
+	want := auth.Capabilities{NetRead: true, NetWrite: true, SDNRead: true, SDNWrite: true, FWRead: true, FWWrite: true, GuestNet: true, Audit: true, Capture: true}
 	if pve1Caps != want {
 		t.Errorf("caps[pve1] = %+v, want %+v (root@pam wildcard)", pve1Caps, want)
 	}
@@ -165,7 +165,7 @@ func TestIntegration_CapabilityMatrixAgainstMock(t *testing.T) {
 			wantKeys: allNodes,
 			want: auth.Capabilities{
 				NetRead: true, NetWrite: true, SDNRead: true, SDNWrite: true,
-				FWRead: true, FWWrite: true, GuestNet: true, Audit: true,
+				FWRead: true, FWWrite: true, GuestNet: true, Audit: true, Capture: true,
 			},
 		},
 		{

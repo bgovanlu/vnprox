@@ -29,7 +29,7 @@ func TestDeriveCapabilities_MappingTable(t *testing.T) {
 				NetRead: true, NetWrite: true,
 				SDNRead: true, SDNWrite: true,
 				FWRead: true, FWWrite: true,
-				GuestNet: true, Audit: true,
+				GuestNet: true, Audit: true, Capture: true,
 			},
 		},
 		{
@@ -64,6 +64,41 @@ func TestDeriveCapabilities_MappingTable(t *testing.T) {
 			privs: []string{"VM.Audit", "VM.Config.Network"},
 			want: Capabilities{
 				GuestNet: true,
+			},
+		},
+		{
+			// T-1301 AC1: holding netWrite's own privilege (Sys.Modify) —
+			// even alongside every read/write privilege short of Sys.Console —
+			// never grants capture. This is the "wrong permission decision is
+			// a data-exposure incident" guard the card calls out.
+			name:  "captureNeverFromNetWriteAlone: netops-plus (no Sys.Console)",
+			privs: []string{"Sys.Audit", "Sys.Modify", "SDN.Audit", "SDN.Allocate", "VM.Config.Network"},
+			want: Capabilities{
+				NetRead: true, NetWrite: true,
+				SDNRead: true, SDNWrite: true,
+				FWRead: true, FWWrite: true,
+				GuestNet: true, Audit: true, Capture: false,
+			},
+		},
+		{
+			// T-1301 AC1: the capture pairing (Sys.Modify AND Sys.Console)
+			// grants capture; it also brings netWrite/fwWrite along, since it
+			// is a strict superset of netWrite's own Sys.Modify.
+			name:  "captureRequiresSysModifyAndSysConsole: capture operator",
+			privs: []string{"Sys.Audit", "Sys.Modify", "Sys.Console"},
+			want: Capabilities{
+				NetRead: true, NetWrite: true,
+				FWRead: true, FWWrite: true,
+				Audit: true, Capture: true,
+			},
+		},
+		{
+			// Sys.Console without Sys.Modify is not enough either — the
+			// pairing is an AND, not an OR.
+			name:  "captureRequiresBoth: Sys.Console alone",
+			privs: []string{"Sys.Audit", "Sys.Console"},
+			want: Capabilities{
+				NetRead: true, FWRead: true, Audit: true, Capture: false,
 			},
 		},
 		{
