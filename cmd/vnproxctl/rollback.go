@@ -39,7 +39,13 @@ func runRollbackNowEnv(env *cliEnv, args []string, stdout, stderr io.Writer) int
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", defaultConfigPath, "path to vnprox.toml (for storage.db_path)")
 	nodeFlag := fs.String("node", "", "which captured node's file to restore (default: this host's name)")
+	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	jsonOut, ofErr := parseOutputFormat(*output)
+	if ofErr != nil {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl rollback-now: %v\n", ofErr)
 		return 2
 	}
 	if fs.NArg() != 1 {
@@ -116,6 +122,18 @@ func runRollbackNowEnv(env *cliEnv, args []string, stdout, stderr io.Writer) int
 	}
 	appendCLIAudit(ctx, db, env, "changeset.rollback.cli", target, changesetID,
 		map[string]any{"snapshotId": pre.ID, "node": node})
+
+	if jsonOut {
+		out := map[string]any{
+			"changesetId": changesetID, "status": target, "snapshotId": pre.ID, "node": node,
+			"interfacesPath": env.interfacesPath, "otherNodes": otherNodes,
+		}
+		if err := writeJSONOut(stdout, out); err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl rollback-now: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 
 	_, _ = fmt.Fprintf(stdout, "Rolled back changeset %s: restored %s from its pre-apply snapshot %s (node %s), reloaded the network, and marked it %s.\n",
 		changesetID, env.interfacesPath, pre.ID, node, target)

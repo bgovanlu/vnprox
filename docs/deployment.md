@@ -122,3 +122,36 @@ Restrict 8007 to management networks like you (should) restrict 8006. Peer traff
 - `vnproxctl status` — local daemon, peer reachability, PVE API health, collector ages.
 - `vnproxctl rollback-now <changeset-id>` — CLI escape hatch to trigger rollback when the UI is unreachable.
 - UI unreachable after a bad change *you confirmed*: SSH in and restore the pre-snapshot: `vnproxctl snapshots list` / `vnproxctl snapshots restore <id>` (applies locally with ifreload, bypassing confirm — it *is* the recovery path).
+
+## `vnproxctl remote`/`apply` — HTTP-backed CLI parity (T-1105)
+
+`status`/`snapshots`/`rollback-now` above are deliberately daemon-INDEPENDENT
+(direct SQLite reads, local `ifreload`) — the documented disaster-recovery
+path when the daemon or UI is down. T-1105 adds a second, opposite family:
+HTTP-backed commands that require the daemon up and talk exclusively to its
+`/api/v1` surface with a T-1104 bearer token (`--token <token>` or
+`VNPROX_TOKEN`; never a PVE username/password from this CLI). **Naming-
+collision resolution:** rather than overload any of the three existing
+top-level names (e.g. a second meaning for `vnproxctl snapshots list`), every
+new command lives under its own `vnproxctl remote <subcommand>` namespace,
+plus a standalone `vnproxctl apply` for the GitOps spec flow — the existing
+three commands' names, flags, and output are unchanged.
+
+```
+vnproxctl remote topology|findings|drift|audit
+vnproxctl remote changesets list|get|diff|create|validate|apply|confirm|rollback|discard
+vnproxctl apply <spec.yaml> --plan     # POST /spec/import, print diff, exit 3 if changes pending
+vnproxctl apply <spec.yaml> --apply    # ...then apply + poll to committed + auto-confirm
+```
+
+Every command in the binary (including the pre-existing three) supports
+`-o table` (default) or `-o json`. Stable exit codes (see
+`cmd/vnproxctl/exitcodes.go`): `0` success, `1` generic error, `2` usage,
+`3` validation-failed/plan-pending, `4` auth (401/403 — missing/invalid/
+revoked token or insufficient scope), `5` network (daemon unreachable),
+`6` apply-timeout (`--apply`'s changeset never reached `committed` within
+`--apply-timeout`). CI can branch on these directly, e.g. the exit-demo flow
+from `planning/tasks/phase-11.md`'s Phase 11 intro: a PR to a spec repo →
+`vnproxctl apply spec.yaml --plan` in CI → merge schedules/applies during a
+maintenance window → `vnproxctl remote changesets get`/`remote drift`
+confirms a clean result the next morning.
