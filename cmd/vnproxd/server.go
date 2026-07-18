@@ -590,6 +590,17 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if fwlogSource != nil {
 		fwLogReader = fwLogPeerReaderAdapter{src: fwlogSource}
 	}
+	// T-1301: the packet-capture coordinator — validates filters, clamps
+	// caps to the configured (un-overridable) ceilings, runs node-local
+	// captures via the scripted agent, fans multi-point captures out to peers
+	// via coordPeerClient, persists app-owned intent to capture_sessions, and
+	// audits start/stop. Its retention sweep (RunSweepLoop) and shutdown
+	// StopAll are registered/deferred below. peerCaptureClient is nil-safe:
+	// with no peer client the coordinator serves only its own node (the
+	// documented single-node case).
+	captureCoord := setupCapture(cfg, db, auditRepo, coordPeerClient, localNode, logger)
+	defer captureCoord.StopAll(context.Background())
+
 	peerSrv := peer.NewServer(peer.ServerOptions{
 		Secrets:       peerSecrets,
 		Reader:        realHost,
@@ -600,6 +611,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LLDPInstaller: realHost,
 		FirewallLog:   fwLogReader,
 		Flows:         flowPeerAdapter{repo: flowRepo},
+		Capture:       capturePeerAdapter{coord: captureCoord},
 		Version:       version,
 		Logger:        logger,
 	})
@@ -748,6 +760,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Flows:                 flowRepo,
 		PeerFlows:             peerFlows,
 		LatMesh:               latMeshSvc,
+		Captures:              captureCoord,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
@@ -873,6 +886,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	for _, actor := range latMeshActors {
 		g.add(actor)
 	}
+	// T-1301: the capture retention sweep — deletes per-session .pcap files
+	// past their retention_hours (including files orphaned by a daemon
+	// restart mid-capture), on the same owned-goroutine/shutdown-path pattern
+	// every other prune loop above follows.
+	g.add(func(ctx context.Context) error {
+		return captureCoord.RunSweepLoop(ctx, captureSweepInterval)
+	})
 
 	logger.Info("vnproxd starting",
 		"version", version,
