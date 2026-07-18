@@ -51,7 +51,11 @@ export interface ComputeFlowEdgesParams {
   nodeIds?: ReadonlySet<string>;
 }
 
-const DEFAULT_WINDOW_SECONDS = 60;
+// Exported (T-1007) so HistoryTimeline.tsx's historical flow query window
+// can mirror this exact "active conversation" window when anchored at a
+// scrubbed instant instead of real now — the same constant, not a second
+// one that could drift out of sync with it.
+export const DEFAULT_WINDOW_SECONDS = 60;
 
 export function flowEdgeId(from: string, to: string): string {
   return `${from}=>${to}::flow`;

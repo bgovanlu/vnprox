@@ -87,6 +87,15 @@ type Options struct {
 	Changesets        ChangesetService
 	Snapshots         SnapshotService
 	Audit             AuditService
+	// History/HistoryFindingEvents back T-1007's `GET /history/events`
+	// (web/src/topology/history/HistoryTimeline.tsx's event-marker feed):
+	// History is the same *store.AuditRepo Audit above wires in, narrowed
+	// to the T-205 changeset-lifecycle action set; HistoryFindingEvents is
+	// *store.FindingEventRepo (the finding_events table this task added).
+	// Either alone is enough to mount the route; both nil skips it, same
+	// degraded-mode treatment as every other optional Options field.
+	History              HistoryAuditSource
+	HistoryFindingEvents HistoryFindingEventsSource
 	// SDN is T-401's read view seam (docs/api.md's `GET /sdn`); nil (no
 	// PVE client — see cmd/vnproxd/collect.go's setupCollect doc comment)
 	// simply skips mounting the route, the same degraded-mode treatment
@@ -229,6 +238,7 @@ func NewRouter(opts Options) http.Handler {
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
+		mountHistoryRoutes(r, opts.History, opts.HistoryFindingEvents, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountIPAMRoutes(r, opts.IPAM, opts.Auth)

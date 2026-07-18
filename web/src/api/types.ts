@@ -2121,6 +2121,31 @@ export interface FlowBatchEvent {
   droppedTotal: number;
 }
 
+// --- History (GET /history/events; internal/api/history.go, T-1007) -------
+
+/** One merged timeline-marker item — docs/api.md's `HistoryEvent` shape,
+ * field-for-field. `kind: "changeset"` mirrors the relevant subset of
+ * `GET /audit`'s own row for a T-205 lifecycle action (apply/confirm/
+ * rollback/timer_rearm/recover/safety_override); `kind: "finding"` mirrors
+ * one `finding_events` row. Exactly one of the two field groups is
+ * populated, keyed on `kind` — never both, since a merged row is always
+ * one or the other. */
+export interface HistoryEvent {
+  at: number;
+  kind: "changeset" | "finding";
+  action?: string;
+  target?: string;
+  changesetId?: string;
+  result?: string;
+  findingId?: string;
+  transition?: "new" | "escalated" | "resolved";
+}
+
+/** GET /history/events response envelope. */
+export interface HistoryEventsResponse {
+  items: HistoryEvent[];
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots and IPAM read views have routes defined in docs/api.md but no
 // frontend consumer yet — their request/response types land with the task

@@ -296,7 +296,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	alertRuleRepo := store.NewAlertRuleRepo(db)
 	alertDeliveryRepo := store.NewAlertDeliveryRepo(db)
 	webhookNotifier := setupAlertWebhookNotifier(alertRuleRepo, alertDeliveryRepo, sessionCipher, logger)
-	findingsNotifier := newMultiNotifier(setupFindingsNotifier(sdnPVEClient, logger), webhookNotifier)
+	// T-1007: finding_events, populated from this exact Notifier fan-out
+	// (evaluateNotifications' existing transition detection, reused rather
+	// than duplicated) — see findings.go's setupFindingEventsNotifier doc
+	// comment. Constructed here (not down by auditRepo below) so it can
+	// join the same multiNotifier call.
+	findingEventRepo := store.NewFindingEventRepo(db)
+	findingEventsNotifier := setupFindingEventsNotifier(findingEventRepo, logger)
+	findingsNotifier := newMultiNotifier(setupFindingsNotifier(sdnPVEClient, logger), webhookNotifier, findingEventsNotifier)
 	// T-806: the persisted sim_divergence finding store, created here (db
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
@@ -633,24 +640,28 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Changesets:        changeSvc,
 		Snapshots:         changeSvc,
 		Audit:             auditRepo,
-		SDN:               sdnSvc,
-		IPAM:              ipamSvc,
-		EVPN:              evpnSvc,
-		DHCP:              dhcpAPISvc,
-		PVEGateways:       pveGatewayProvider{authSvc},
-		Protected:         changeSvc,
-		Firewall:          graph,
-		Blueprints:        blueprintSvc,
-		Simulator:         graph,
-		ProbeClients:      probeClientProvider{authSvc},
-		ProbeAudit:        auditRepo,
-		SimDivergence:     simDivergenceRepo,
-		FwLog:             fwLogAPI,
-		Peer:              peerSrv,
-		PeerAudit:         peerAudit,
-		PeerSnapshots:     peerSnapshots,
-		Flows:             flowRepo,
-		PeerFlows:         peerFlows,
+		// T-1007: GET /history/events merges the same audit_log (narrowed to
+		// the changeset-lifecycle action set) with finding_events.
+		History:              auditRepo,
+		HistoryFindingEvents: findingEventRepo,
+		SDN:                  sdnSvc,
+		IPAM:                 ipamSvc,
+		EVPN:                 evpnSvc,
+		DHCP:                 dhcpAPISvc,
+		PVEGateways:          pveGatewayProvider{authSvc},
+		Protected:            changeSvc,
+		Firewall:             graph,
+		Blueprints:           blueprintSvc,
+		Simulator:            graph,
+		ProbeClients:         probeClientProvider{authSvc},
+		ProbeAudit:           auditRepo,
+		SimDivergence:        simDivergenceRepo,
+		FwLog:                fwLogAPI,
+		Peer:                 peerSrv,
+		PeerAudit:            peerAudit,
+		PeerSnapshots:        peerSnapshots,
+		Flows:                flowRepo,
+		PeerFlows:            peerFlows,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
@@ -702,6 +713,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	g.add(func(ctx context.Context) error {
 		return metricSamples.RunPruneLoop(ctx, metricPruneInterval, func(err error) {
 			logger.Error("store: metric_samples prune failed", "error", err)
+		})
+	})
+	// T-1007: finding_events is bounded to the same window as metric_samples
+	// (store.MetricRetention) and pruned alongside it — same interval, same
+	// "log and keep going" failure contract, its own repo instance/loop
+	// (not a second responsibility bolted onto metricSamples.RunPruneLoop)
+	// so either table's prune cadence can be retuned independently later.
+	g.add(func(ctx context.Context) error {
+		return findingEventRepo.RunPruneLoop(ctx, metricPruneInterval, func(err error) {
+			logger.Error("store: finding_events prune failed", "error", err)
 		})
 	})
 	// Snapshot retention (T-206, docs/features/change-management.md §4):

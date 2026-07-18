@@ -189,6 +189,71 @@ func (r *AuditRepo) ListPage(ctx context.Context, filter AuditFilter, cursor str
 	return out, next, nil
 }
 
+// ChangesetLifecycleActions is the T-205 apply-engine lifecycle action set
+// docs/api.md's Audit section documents (changeset.apply/confirm/rollback/
+// timer_rearm/recover/safety_override) — the exact filter GET
+// /history/events (internal/api/history.go, T-1007) narrows audit_log to
+// for its changeset-marker half of the merged timeline feed.
+var ChangesetLifecycleActions = []string{
+	"changeset.apply",
+	"changeset.confirm",
+	"changeset.rollback",
+	"changeset.timer_rearm",
+	"changeset.recover",
+	"changeset.safety_override",
+}
+
+// ListActionsInRange returns audit_log rows whose action is one of actions
+// and whose at falls within [from, to] (0 on either side means "unbounded
+// on that side"), ordered by at ascending — GET /history/events' (T-1007)
+// changeset-lifecycle input. Unlike ListPage's newest-first cursor
+// pagination, this route has no pagination contract of its own (its task
+// card only names fromTs/toTs), so this method returns the whole matching
+// set for the requested range. An empty actions slice returns (nil, nil)
+// rather than every row — a caller should never rely on that as "no
+// filter", it is simply the "nothing was asked for" case.
+func (r *AuditRepo) ListActionsInRange(ctx context.Context, actions []string, from, to int64) ([]AuditEntry, error) {
+	if len(actions) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(actions))
+	args := make([]any, 0, len(actions)+2)
+	for i, a := range actions {
+		placeholders[i] = "?"
+		args = append(args, a)
+	}
+	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json FROM audit_log WHERE action IN (` +
+		strings.Join(placeholders, ",") + `)`
+	if from > 0 {
+		query += ` AND at >= ?`
+		args = append(args, from)
+	}
+	if to > 0 {
+		query += ` AND at <= ?`
+		args = append(args, to)
+	}
+	query += ` ORDER BY at ASC, id ASC`
+
+	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: listing audit entries by action in range: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []AuditEntry
+	for rows.Next() {
+		e, err := scanAuditEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: listing audit entries by action in range: %w", err)
+	}
+	return out, nil
+}
+
 func encodeAuditCursor(at, id int64) string {
 	return strconv.FormatInt(at, 10) + ":" + strconv.FormatInt(id, 10)
 }

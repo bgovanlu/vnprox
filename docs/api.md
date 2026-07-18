@@ -368,6 +368,25 @@ Every filter param is optional and ANDed together, mirroring `GET /audit`'s conv
 
 `GET /flows` fans out to every reachable cluster peer via `GET /api/peer/flows` (below) and merges, following the `GET /audit`/`GET /snapshots` `partial`/`failedNodes` pagination envelope exactly (docs/architecture.md §7: `flow_samples` is node-local app data, so a cluster-wide view re-queries every peer and merges the pages) — response: `{items: [flow.Record], nextCursor?, partial?, failedNodes?}`.
 
+## History
+
+Added by T-1007 ("History playback", docs/features/topology.md §2 §3, docs/features/monitoring.md §2): a single merged event-marker feed for `web/src/topology/history/HistoryTimeline.tsx`'s scrubber, which replays the map's traffic-paint (`GET /metrics/history` above) and flow-painted edges (`GET /flows` above) back through their already-retained windows. This route adds no new retention — it is strictly read-only over data those two routes and `GET /audit` already serve, plus one small new table (`finding_events`, docs/data-model.md §2) that closes the one real gap: `GET /findings` has no history of its own.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/history/events?fromTs=&toTs=` | merged changeset-lifecycle + finding-transition timeline markers |
+
+Requires the `audit` capability (the same gate `GET /audit` uses — this route's changeset half re-exposes real `audit_log` rows, so it is never gated more loosely than the route that already serves them).
+
+**Response**: `{items: [HistoryEvent]}`, ascending by `at` (oldest first — a scrubbable timeline reads left-to-right in time order, unlike `GET /audit`'s own newest-first activity-feed convention). `HistoryEvent` is `{at, kind, action?, target?, changesetId?, result?, findingId?, transition?}`:
+
+- `kind: "changeset"` — one entry per `audit_log` row whose `action` is in the T-205 apply-engine lifecycle set `GET /audit` already documents (`changeset.apply`, `changeset.confirm`, `changeset.rollback`, `changeset.timer_rearm`, `changeset.recover`, `changeset.safety_override`); `action`/`target`/`changesetId`/`result` mirror `GET /audit`'s own fields for the same row (username/detail are omitted — this is a timeline-marker feed, not a second audit browser). Clicking this marker in the UI deep-links to that `changesetId`'s existing changeset detail/diff view (`useChangesetDrawerStore.setActiveId`) — it never re-triggers apply/confirm/rollback; the timeline has no mutation affordance anywhere.
+- `kind: "finding"` — one entry per `finding_events` row (`findingId`, `transition`: `"new"`\|`"escalated"`\|`"resolved"`), populated from `internal/findings.Notifier`'s existing transition detection (`notify.go`'s `evaluateNotifications`/`fireNotification`) via a new `Notifier` implementation (`internal/findings/findingevents.go`'s `FindingEventsNotifier`) composed alongside `PVENotifier`/`WebhookNotifier` at the `cmd/vnproxd` composition root — the exact same "once per transition" firing `docs/features/monitoring.md` §5's AC5 already guarantees, reused rather than re-derived from polled `GET /findings` snapshots.
+
+`fromTs`/`toTs` are unix seconds, inclusive; both default to "no bound on that side" when omitted/unparsable, matching `GET /metrics/history`'s convention. Node-local only (no peer fan-out): `finding_events` is app-owned, per-node data like `metric_samples`, and the changeset-lifecycle half already comes from this node's own `audit_log` (a cluster-wide *changeset* audit view is `GET /audit`'s own job, with its documented peer fan-out — this route deliberately does not duplicate that fan-out for a timeline-marker feed).
+
+**Bounds** (docs/features/topology.md §2's scrubber, per this task's card): the UI clamps its playback range to the shorter of the metrics window (24h, `store.MetricRetention`) and the flows window (`[flows] retention_minutes`, default 60m, T-1002) — scrubbing earlier than the flow window's own retention disables/greys the Flows layer with an explicit disclosure ("flow history available for the last N minutes only") rather than silently showing an empty overlay. `finding_events` is bounded and pruned to the same `store.MetricRetention` window as `metric_samples` (`internal/store/migrations/0009_finding_events.sql`'s doc comment) — never a longer horizon, matching every other bounded ring this codebase keeps.
+
 ## Blueprints
 
 | Method | Path | Purpose |
