@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bgovanlu/vnprox/internal/capture"
 )
 
 func discardLogger() *slog.Logger {
@@ -124,6 +126,43 @@ tls_key = "` + keyPath + `"
 	}
 	if cfg.FirewallLog.DevFixtureDir != "" {
 		t.Errorf("FirewallLog.DevFixtureDir = %q, want empty (dev-only override) when unset", cfg.FirewallLog.DevFixtureDir)
+	}
+	// T-1301 [capture] defaults (internal/capture's own conservative caps).
+	if cfg.Capture.Root != DefaultCaptureRoot {
+		t.Errorf("Capture.Root = %q, want default %q", cfg.Capture.Root, DefaultCaptureRoot)
+	}
+	if cfg.Capture.MaxPackets != capture.DefaultCaps.MaxPackets || cfg.Capture.MaxBytes != capture.DefaultCaps.MaxBytes {
+		t.Errorf("Capture caps = %+v, want capture.DefaultCaps %+v", cfg.Capture, capture.DefaultCaps)
+	}
+	if cfg.Capture.MaxFilterInstructions != capture.DefaultMaxFilterInstructions {
+		t.Errorf("Capture.MaxFilterInstructions = %d, want default %d", cfg.Capture.MaxFilterInstructions, capture.DefaultMaxFilterInstructions)
+	}
+}
+
+// TestLoad_CaptureOverride covers T-1301's [capture] section: the
+// server-enforced cap ceilings and file root all override cleanly.
+func TestLoad_CaptureOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+[capture]
+root = "/data/caps"
+max_duration_sec = 30
+max_bytes = 1048576
+max_packets = 500
+retention_hours = 6
+max_filter_instructions = 16
+`
+	cfg, err := Load(writeTemp(t, "capture.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Capture.Root != "/data/caps" || cfg.Capture.MaxDurationSec != 30 ||
+		cfg.Capture.MaxBytes != 1048576 || cfg.Capture.MaxPackets != 500 ||
+		cfg.Capture.RetentionHours != 6 || cfg.Capture.MaxFilterInstructions != 16 {
+		t.Errorf("Capture section did not override cleanly: %+v", cfg.Capture)
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/bgovanlu/vnprox/internal/capture"
 	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/flow/hostsample"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -87,6 +88,12 @@ const (
 	// DefaultSessionKeyFile above, generated on first daemon start if
 	// absent (cmd/vnproxd/server.go).
 	DefaultMetricsKeyFile = "/etc/vnprox/keys/metrics.key"
+
+	// DefaultCaptureRoot is where T-1301's per-session .pcap files live
+	// (docs/data-model.md / docs/security.md's Host footprint note) — under
+	// /var/lib/vnprox (already an app-owned, root:root ReadWritePath in the
+	// systemd unit), auto-purged past retention_hours.
+	DefaultCaptureRoot = "/var/lib/vnprox/captures"
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
@@ -95,12 +102,30 @@ type Config struct {
 	Storage     StorageConfig
 	FirewallLog FirewallLogConfig
 	Peer        PeerConfig
-	Metrics     MetricsConfig
 	Safety      SafetyConfig
 	Server      ServerConfig
+	Metrics     MetricsConfig
+	Capture     CaptureConfig
+	Flows       FlowsConfig
 	Collect     CollectConfig
 	Retention   RetentionConfig
-	Flows       FlowsConfig
+}
+
+// CaptureConfig is the [capture] section (T-1301): the server-enforced,
+// un-overridable cap ceilings every capture session is bounded by, the root
+// directory per-session .pcap files live in, and the BPF-filter
+// instruction-count ceiling. These ceilings can never be raised by an API
+// request, admin flag, or filter construction — a request may only ask for
+// values at or below them (internal/capture.Coordinator.clampCaps). Unset
+// fields fall back to internal/capture's own conservative defaults
+// (capture.DefaultCaps / capture.DefaultMaxFilterInstructions).
+type CaptureConfig struct {
+	Root                  string
+	MaxDurationSec        int
+	MaxBytes              int64
+	MaxPackets            int64
+	RetentionHours        int
+	MaxFilterInstructions int
 }
 
 // ServerConfig is the [server] section.
@@ -269,8 +294,18 @@ type rawConfig struct {
 	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
 	Server      rawServer      `toml:"server"`
-	Retention   rawRetention   `toml:"retention"`
+	Capture     rawCapture     `toml:"capture"`
 	Flows       rawFlows       `toml:"flows"`
+	Retention   rawRetention   `toml:"retention"`
+}
+
+type rawCapture struct {
+	Root                  string `toml:"root"`
+	MaxDurationSec        int    `toml:"max_duration_sec"`
+	MaxBytes              int64  `toml:"max_bytes"`
+	MaxPackets            int64  `toml:"max_packets"`
+	RetentionHours        int    `toml:"retention_hours"`
+	MaxFilterInstructions int    `toml:"max_filter_instructions"`
 }
 
 type rawServer struct {
@@ -430,6 +465,14 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			ConntrackSamplingEnabled: raw.Flows.ConntrackSamplingEnabled,
 			EBPFSamplingEnabled:      raw.Flows.EBPFSamplingEnabled,
 			HostSampleIntervalSec:    firstNonZeroInt(raw.Flows.HostSampleIntervalSec, int(hostsample.DefaultHostSampleInterval/time.Second)),
+		},
+		Capture: CaptureConfig{
+			Root:                  firstNonEmpty(raw.Capture.Root, DefaultCaptureRoot),
+			MaxDurationSec:        firstNonZeroInt(raw.Capture.MaxDurationSec, capture.DefaultCaps.MaxDurationSec),
+			MaxBytes:              firstNonZeroInt64(raw.Capture.MaxBytes, capture.DefaultCaps.MaxBytes),
+			MaxPackets:            firstNonZeroInt64(raw.Capture.MaxPackets, capture.DefaultCaps.MaxPackets),
+			RetentionHours:        firstNonZeroInt(raw.Capture.RetentionHours, capture.DefaultCaps.RetentionHours),
+			MaxFilterInstructions: firstNonZeroInt(raw.Capture.MaxFilterInstructions, capture.DefaultMaxFilterInstructions),
 		},
 	}
 

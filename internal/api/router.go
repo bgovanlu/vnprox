@@ -182,6 +182,11 @@ type Options struct {
 	// node-local-only).
 	Flows     FlowLocalSource
 	PeerFlows PeerFlowSource
+	// Captures is T-1301's packet-capture coordinator seam (POST /captures,
+	// POST /captures/{id}/stop, GET /captures/{id}, GET /captures). Nil skips
+	// mounting every /captures route, same degraded-mode treatment as every
+	// other optional Options field.
+	Captures CaptureService
 	// DocExport backs T-605's GET /export/doc (config documentation
 	// export); nil skips mounting the route, matching every other optional
 	// Options field.
@@ -255,6 +260,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
+		mountCaptureRoutes(r, opts.Captures, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 	})
