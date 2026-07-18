@@ -6,6 +6,9 @@ network manager for a PVE cluster" into **the all-in-one visual networking tool 
 one pane of glass where you *see*, *understand*, *change*, *verify*, and *automate* every layer
 of a Proxmox network, across any number of clusters.
 
+The arc after this one — Phases 13–17, v2.1 → v3.0, the *universal* networking tool — lives in
+[`roadmap-universal.md`](roadmap-universal.md).
+
 Inputs: the Post-1.0 (P2) backlog in `docs/roadmap.md`, the gaps flagged at T-607, and field
 feedback since v1.0 (Phase 7's origin). Every item below either extends a feature already in
 production or promotes a backlog/flagged item; net-new capabilities are marked **(new)**.
