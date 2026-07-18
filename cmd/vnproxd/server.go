@@ -113,12 +113,19 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 
 	graph := inventory.NewGraph()
 	topoSvc := topology.NewService(graph, logger)
+	// T-1102: the pinned-spec table (the GitOps reconciler's declared
+	// desired state) — constructed here, ahead of driftSvc below, so its
+	// spec_drift check family can read it every cycle via specPinAdapter.
+	// Also reused verbatim as the router's api.Options.SpecPin seam below
+	// (GET/POST/DELETE /spec/pin), the same "one repo, two seams" pattern
+	// simDivergenceRepo/auditRepo already establish elsewhere in this file.
+	pinnedSpecRepo := store.NewPinnedSpecRepo(db)
 	// T-305: the drift detector runs its own 30s cycle over the same live
 	// graph the collectors populate, independent of any one poll loop
 	// (docs/features/topology.md §6); its findings changing broadcasts
 	// `drift.changed` over the same shared WS hub topoSvc's Broadcast
 	// already backs for internal/change's `changeset.status` events.
-	driftSvc := setupDrift(graph, topoSvc, logger)
+	driftSvc := setupDrift(graph, topoSvc, specPinAdapter{repo: pinnedSpecRepo, logger: logger}, logger)
 
 	// T-601: the metrics sampler is constructed before setupCollect so its
 	// Ingest method can be wired in as collect.Config.OnStats (the host
@@ -671,16 +678,20 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Firewall:             graph,
 		Blueprints:           blueprintSvc,
 		Spec:                 graph,
-		Simulator:            graph,
-		ProbeClients:         probeClientProvider{authSvc},
-		ProbeAudit:           auditRepo,
-		SimDivergence:        simDivergenceRepo,
-		FwLog:                fwLogAPI,
-		Peer:                 peerSrv,
-		PeerAudit:            peerAudit,
-		PeerSnapshots:        peerSnapshots,
-		Flows:                flowRepo,
-		PeerFlows:            peerFlows,
+		// T-1102: pinned-spec pin/unpin, backed by the same repo driftSvc's
+		// spec_drift check reads (see pinnedSpecRepo's construction above).
+		SpecPin:       pinnedSpecRepo,
+		SpecPinAudit:  auditRepo,
+		Simulator:     graph,
+		ProbeClients:  probeClientProvider{authSvc},
+		ProbeAudit:    auditRepo,
+		SimDivergence: simDivergenceRepo,
+		FwLog:         fwLogAPI,
+		Peer:          peerSrv,
+		PeerAudit:     peerAudit,
+		PeerSnapshots: peerSnapshots,
+		Flows:         flowRepo,
+		PeerFlows:     peerFlows,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see

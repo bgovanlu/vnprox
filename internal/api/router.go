@@ -146,6 +146,14 @@ type Options struct {
 	// which satisfies SpecInventory's one-method Snapshot seam directly. Nil
 	// simply omits the spec routes.
 	Spec SpecInventory
+	// SpecPin/SpecPinAudit back T-1102's `GET/POST/DELETE /spec/pin` (the
+	// GitOps reconciler's pinned desired state) — typically the daemon's own
+	// *store.PinnedSpecRepo (satisfies PinnedSpecStore directly) and
+	// *store.AuditRepo, the same repo LLDPAudit/ProbeAudit below reuse for
+	// their own one-method audit seam. Nil-safe like every other optional
+	// Options field (SpecPin nil skips mounting the route family).
+	SpecPin      PinnedSpecStore
+	SpecPinAudit specPinAuditor
 	// Simulator backs T-503's `POST /simulate/path` — the same live
 	// *inventory.Graph (satisfies SimulatorGraph's one-method seam directly).
 	Simulator SimulatorGraph
@@ -252,6 +260,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
+		mountSpecPinRoutes(r, opts.SpecPin, opts.SpecPinAudit, opts.Auth)
 		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)

@@ -15,6 +15,13 @@ const (
 	CheckSDNRealization        = "sdn_realization"
 	CheckPendingInterfaces     = "pending_interfaces"
 	CheckFileRuntimeDivergence = "file_runtime_divergence"
+
+	// CheckSpecDrift is T-1102's sixth, additional check family: live state
+	// diverging from the pinned declarative spec (internal/spec, T-1101) —
+	// the GitOps reconciler's own reference, distinct from and additional to
+	// the five cross-node-consistency families above (docs/features/
+	// topology.md §6). See specdrift.go.
+	CheckSpecDrift = "spec_drift"
 )
 
 // Severity mirrors docs/api.md's changeset finding vocabulary
