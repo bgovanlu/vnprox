@@ -39,3 +39,12 @@ secret_path = "var/dev-alert-cluster.secret"
 pve_interval = "10s"
 host_interval = "5s"
 lldp_interval = "30s"
+
+# T-1001 (Prometheus exporter, landed after this file): the default scrape
+# token path (/etc/vnprox/keys/metrics.key) needs root — every other
+# dev-*.toml overrides this under var/ for exactly that reason. Missing
+# here until this task's e2e run surfaced it (any web/e2e spec boots every
+# webServer entry in playwright.config.ts, so a missing override here
+# broke the whole suite locally, not just alert-rules.spec.ts's own stack).
+[metrics]
+key_file = "var/dev-alert-metrics.key"

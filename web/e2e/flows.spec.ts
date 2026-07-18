@@ -15,12 +15,18 @@
 // internal/flow.DecodeNetFlow5 already golden-tests
 // (internal/flow/decode_test.go): a 24-byte header + one 48-byte flow
 // record, big-endian, with srcaddr inside pve1's vmbr0 (10.0.0.0/24) and
-// dstaddr inside the vlanz zone's vnet100 SDN subnet (10.100.0.0/24) —
-// two DIFFERENT resolved refs (bridge:pve1:vmbr0 and
-// sdn-vnet::vlanz/vnet100, per internal/flow/flowlab_integration_test.go's
-// own resolution table), sent as a real UDP datagram at the daemon's real
-// listener port. This is genuine ingestion through the real decoder/
-// resolver/store/WS path — not a mocked/seeded shortcut.
+// dstaddr inside pve2's vmbr0 (10.1.1.0/24) — two DIFFERENT resolved refs
+// (bridge:pve1:vmbr0 and bridge:pve2:vmbr0, per internal/flow/
+// flowlab_integration_test.go's own resolution table), sent as a real UDP
+// datagram at the daemon's real listener port. This is genuine ingestion
+// through the real decoder/resolver/store/WS path — not a mocked/seeded
+// shortcut. (A bridge<->SdnVnet pair was tried first but rejected: the
+// vlanz zone's own SDN entity elk-lays-out directly between the vnet and
+// its realizing bridge — the same intermediate hop the real topology graph
+// has — so a straight line between THOSE two endpoints' centers reliably
+// passes straight through that third node's box, hit-testing it instead of
+// the flow overlay edge. Two same-layer bridges on different cluster nodes
+// sit in separate columns with clear space between them.)
 import dgram from "node:dgram";
 import { expect, request, test, type Page } from "@playwright/test";
 
@@ -29,7 +35,7 @@ const NETFLOW_HOST = "127.0.0.1";
 const NETFLOW_PORT = 52055;
 
 const SRC_REF = "bridge:pve1:vmbr0";
-const DST_REF = "sdn-vnet::vlanz/vnet100";
+const DST_REF = "bridge:pve2:vmbr0";
 
 function ipToBytes(ip: string): number[] {
   return ip.split(".").map((p) => Number(p));
@@ -87,11 +93,11 @@ function buildNetFlow5Datagram(records: { srcIp: string; dstIp: string; srcPort:
 }
 
 /** Sends one hand-built NetFlow v5 datagram carrying a single cross-entity
- * flow (pve1's vmbr0 -> the vlanz zone's vnet100 SDN subnet) to the real
+ * flow (pve1's vmbr0 -> pve2's vmbr0) to the real
  * daemon's real UDP listener. */
 async function sendCrossEntityFlow(): Promise<void> {
   const datagram = buildNetFlow5Datagram([
-    { srcIp: "10.0.0.5", dstIp: "10.100.0.42", srcPort: 51000, dstPort: 443, proto: 6, bytes: 150_000, packets: 100 },
+    { srcIp: "10.0.0.5", dstIp: "10.1.1.50", srcPort: 51000, dstPort: 443, proto: 6, bytes: 150_000, packets: 100 },
   ]);
   const socket = dgram.createSocket("udp4");
   await new Promise<void>((resolve, reject) => {
@@ -183,10 +189,27 @@ test("Flows layer: toggling it paints a real ingested cross-entity flow as an ed
   const region = page.getByRole("application", { name: /Topology map/ });
   await expect(region.getByRole("button", { name: /bridge vmbr0/ }).first()).toBeVisible({ timeout: 15_000 });
 
+  // The v2 canvas's fit-to-view only ever runs once per distinct element
+  // *set* (topology/TopologyCanvasV2.tsx's fittedRef/fitSignatureRef —
+  // keyed on node count/ids, not position), and can fire before elkjs's
+  // async computeLayout has resolved real positions (every node still at
+  // its {x:0,y:0} placeholder at that instant), fitting to a degenerate
+  // single-point bounding box and leaving the *real* layout scattered
+  // outside the viewport once positions do arrive. Toggling a real layer
+  // off/on changes the element set's signature (filterByLayers drops/
+  // restores nodes), forcing a fresh fit against whatever positions are
+  // current by then — by this point in the test (well after the initial
+  // page load), elk has long since resolved, so this reliably re-centers
+  // on the real, final layout before this test reads any node's on-screen
+  // position.
+  const guestsToggle = page.getByRole("button", { name: /Guests/ });
+  await guestsToggle.click();
+  await guestsToggle.click();
+
   // Toggle the Flows layer on *before* the record arrives, so the
   // dismissible empty-state hint (AC4) is observed transitioning away
   // live via the WS bridge in this same session — no reload.
-  const flowsToggle = page.getByRole("button", { name: "Flows" });
+  const flowsToggle = page.getByRole("button", { name: "Flows", exact: true });
   await expect(flowsToggle).toBeVisible();
   await flowsToggle.click();
   await expect(flowsToggle).toHaveAttribute("aria-pressed", "true");
@@ -228,7 +251,7 @@ test("Flows layer: toggling it paints a real ingested cross-entity flow as an ed
   // actually painted there (the cyan overlay stroke), independent of the
   // click-driven assertions below (which only prove the *geometry*
   // resolves, not that pixels were drawn).
-  const canvas = page.getByTestId("topology-canvas-v2").locator("canvas");
+  const canvas = page.getByTestId("topology-canvas-v2").locator("canvas").first();
   const canvasBox = await canvas.boundingBox();
   expect(canvasBox).not.toBeNull();
   if (canvasBox) {
@@ -275,7 +298,7 @@ test("Flows layer and Traffic paint mode coexist without colliding controls", as
   await waitForBackendConverged();
   await logIn(page);
 
-  const flowsToggle = page.getByRole("button", { name: "Flows" });
+  const flowsToggle = page.getByRole("button", { name: "Flows", exact: true });
   const trafficToggle = page.getByRole("button", { name: "Traffic" });
   await expect(flowsToggle).toBeVisible();
   await expect(trafficToggle).toBeVisible();

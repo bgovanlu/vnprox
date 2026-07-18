@@ -30,7 +30,11 @@ export function FlowPairPanel({ edge, onClose }: FlowPairPanelProps) {
     <div
       role="region"
       aria-label="Flow conversation"
-      className="fixed bottom-4 left-4 z-30 w-80 max-w-full rounded-lg border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
+      // top-right (below the page toolbar): NavRail owns the full left
+      // edge (z-50, docs/features/topology.md's map toolbar sits above the
+      // canvas) and InspectorStack anchors bottom-right — this is the one
+      // fixed-position corner neither of those already claims.
+      className="fixed right-4 top-20 z-30 w-80 max-w-full rounded-lg border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold">Conversation</h3>
