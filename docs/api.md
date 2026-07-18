@@ -409,6 +409,26 @@ Additive routes (T-603, not in the original contract; documented here per docs/d
 
 Import/export is file-level, not a dedicated route: export is `GET /blueprints/{id}`'s JSON body saved to a file; import is that same JSON re-posted to `POST /blueprints` (with `id` cleared so a new blueprint is created, or set to overwrite an existing saved one — never a starter id).
 
+## Declarative cluster network spec (T-1101)
+
+Blueprints v2: one versionable YAML document capturing cluster-wide L2/SDN intent (bonds, bridges, VLANs, SDN zones/vnets/subnets), rendered from live state and reconciled back against it. Full schema and semantics: `docs/data-model.md` §6 (`internal/spec`).
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| GET | `/spec` | `netRead` | export the live cluster network as `specVersion: 1` YAML |
+| POST | `/spec/import` | `netWrite` + CSRF | diff a spec against live → **draft** changeset + `notInSpec` |
+
+**`GET /spec`** response: `{specVersion: 1, content: "<yaml>"}` — `content` is the exact YAML document (byte-stable: two exports of an unchanged cluster are byte-identical, the property that makes a GitOps `git diff` empty). `specVersion` is surfaced as a first-class field so a caller need not parse the body to branch on it.
+
+**`POST /spec/import`** body: `{content: "<yaml>"}`. The handler parses the document (rejecting any `specVersion` ≠ 1 with `400 validation_failed`), diffs it against the live inventory snapshot, and calls the same `change.Service.Create` every programmatic op-drafting path uses. The response is the **draft changeset** — the same shape `POST /changesets` returns (`{id, title, status, ops, findings, …}`, `status` is always `draft`/`validated`, never `applying`/`committed`) — with one added field:
+
+```jsonc
+{ ...changeset fields...,
+  "notInSpec": ["bridge:pve1:vmbr0", "sdn-zone::evpnz"] }  // Ref strings
+```
+
+`notInSpec` lists managed-kind entities present **live** but absent from the document. They are **reported, never deleted** — `POST /spec/import` has no prune path and emits no delete ops (docs/data-model.md §6). Apply/confirm the returned draft through the normal `POST /changesets/{id}/apply` + `.../confirm` lifecycle; import itself never applies.
+
 ## Saved views & annotations
 
 Added by T-907 (Phase 9's only card permitted to touch the backend — docs/roadmap-next.md; `planning/tasks/phase-9.md`'s T-907 card). Both routes below are strictly app-owned UI state: named presets of the topology page's own layer/filter/zoom/selection state, and free-text sticky notes pinned to a map entity — **never** a shadow copy of any PVE-authoritative network config (CLAUDE.md's storage rule). Gated identically to the pre-existing `layouts` routes below: session + `netRead`, no CSRF requirement — the reasoning is unchanged from T-107's original layouts routes ("saving a canvas layout is a personal UI preference, not a network-mutating action"), extended here to naming/deleting a saved view and to pinning/unpinning a shared sticky note, neither of which mutates network state either.
