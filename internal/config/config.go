@@ -20,6 +20,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/flow/hostsample"
+	"github.com/bgovanlu/vnprox/internal/latmesh"
 	"github.com/bgovanlu/vnprox/internal/peer"
 )
 
@@ -101,6 +102,7 @@ type Config struct {
 	Collect     CollectConfig
 	Retention   RetentionConfig
 	Flows       FlowsConfig
+	Latmesh     LatmeshConfig
 }
 
 // ServerConfig is the [server] section.
@@ -258,6 +260,18 @@ type FlowsConfig struct {
 	EBPFSamplingEnabled      bool
 }
 
+// LatmeshConfig is the [latmesh] section (T-1303): the continuous latency &
+// loss mesh's own scheduling/retention knobs, always-on (unlike [flows]'
+// per-protocol opt-in listeners — a low-rate node-to-node probe mesh has no
+// external attack surface a listener does, so there's no "opt-in" gate to
+// carry here). ProbeIntervalSec/RetentionMinutes/MaxRows default to
+// internal/latmesh's own documented constants when unset/non-positive.
+type LatmeshConfig struct {
+	ProbeIntervalSec int
+	RetentionMinutes int
+	MaxRows          int64
+}
+
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
@@ -271,6 +285,7 @@ type rawConfig struct {
 	Server      rawServer      `toml:"server"`
 	Retention   rawRetention   `toml:"retention"`
 	Flows       rawFlows       `toml:"flows"`
+	Latmesh     rawLatmesh     `toml:"latmesh"`
 }
 
 type rawServer struct {
@@ -343,6 +358,12 @@ type rawFlows struct {
 	IPFIXEnabled             bool  `toml:"ipfix_enabled"`
 	ConntrackSamplingEnabled bool  `toml:"conntrack_sampling_enabled"`
 	EBPFSamplingEnabled      bool  `toml:"ebpf_sampling_enabled"`
+}
+
+type rawLatmesh struct {
+	ProbeIntervalSec int   `toml:"probe_interval_sec"`
+	RetentionMinutes int   `toml:"retention_minutes"`
+	MaxRows          int64 `toml:"max_rows"`
 }
 
 // Load reads, parses, defaults, and validates the config file at path.
@@ -430,6 +451,11 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			ConntrackSamplingEnabled: raw.Flows.ConntrackSamplingEnabled,
 			EBPFSamplingEnabled:      raw.Flows.EBPFSamplingEnabled,
 			HostSampleIntervalSec:    firstNonZeroInt(raw.Flows.HostSampleIntervalSec, int(hostsample.DefaultHostSampleInterval/time.Second)),
+		},
+		Latmesh: LatmeshConfig{
+			ProbeIntervalSec: firstNonZeroInt(raw.Latmesh.ProbeIntervalSec, latmesh.DefaultProbeIntervalSec),
+			RetentionMinutes: firstNonZeroInt(raw.Latmesh.RetentionMinutes, latmesh.DefaultRetentionMinutes),
+			MaxRows:          firstNonZeroInt64(raw.Latmesh.MaxRows, latmesh.DefaultMaxRows),
 		},
 	}
 
