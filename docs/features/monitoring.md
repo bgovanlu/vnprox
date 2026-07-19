@@ -10,6 +10,8 @@ Scope discipline: vnprox shows *network-shaped, short-horizon* operational data 
 
 **Added by T-1303:** a second, independent map overlay — a "latency" heatmap paint mode, distinct from "traffic" above (edge color/legend never shares a value with traffic mode's own scale, so the two read as clearly separate layers when either is active) — color-scales every node-to-node link this node's own `internal/latmesh` scheduler probes by its current rolling RTT/loss (`GET /latmesh/heatmap`, docs/api.md's Latency mesh section). Continuous, low-rate ICMP probes (`[latmesh] probe_interval_sec`, default 10 — "a mesh, not a flood") across every shared corosync/guest fabric this node can identify; see that section for the exact fabric-discovery scope.
 
+**Extended by T-1404:** on the guest fabric, a bridge shared by two nodes that carries both an IPv4 and an IPv6 address gets probed on **each family independently** — two distinct links, two distinct rolling RTT/loss series, painted as two distinct heatmap edges — rather than one merged reading that could hide a v6-only degradation behind a healthy v4 number. A single-family bridge is unaffected. See docs/api.md's Latency mesh section for the exact link-id scheme.
+
 ## 2. History
 
 24h ring in SQLite (`metric_samples`, 30s resolution after downsampling). Inspector charts: rate over time, errors/drops over time. Nothing longer — export to real observability instead.

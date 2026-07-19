@@ -129,6 +129,9 @@ type Options struct {
 	// DHCP is T-406's read view seam (docs/api.md's `GET /sdn/dhcp`:
 	// static reservations + live leases); nil-safe like SDN/EVPN above.
 	DHCP DHCPService
+	// IPv6 is T-1404's read view seam (docs/api.md's `GET /ipv6/segments`:
+	// cluster-wide RA/SLAAC/DHCPv6 visibility); nil-safe like EVPN above.
+	IPv6 IPv6Service
 	// Metrics is T-601's *metrics.Sampler seam for GET /metrics/live and
 	// GET /metrics/history; nil (no daemon-side sampler wired, e.g. tests)
 	// simply omits both routes.
@@ -353,13 +356,14 @@ func NewRouter(opts Options) http.Handler {
 		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
 		mountEdgeRoutes(r, opts.EdgeInterfaces, opts.SDN, opts.EdgeGraph, opts.EdgeIPAM, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
+		mountIPv6Routes(r, opts.IPv6, opts.Auth)
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 		mountBlueprintBundleRoutes(r, opts.Blueprints, opts.BlueprintSigningKey, opts.BlueprintTrust, opts.BlueprintSignersAudit, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
 		mountSpecPinRoutes(r, opts.SpecPin, opts.SpecPinAudit, opts.Auth)
-		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
+		mountSimulateRoutes(r, opts.Simulator, opts.GuestInteriorIPAM, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountGuestInteriorRoutes(r, opts.GuestInteriorToggles, opts.GuestInteriorGraph, opts.ProbeClients, opts.GuestInteriorHost, opts.GuestInteriorPeers, opts.GuestInteriorIPAM, opts.LocalNode, opts.ProbeAudit, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)

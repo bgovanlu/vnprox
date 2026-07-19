@@ -26,6 +26,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
+	"github.com/bgovanlu/vnprox/internal/ipv6"
 	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/neighbor"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -711,6 +712,21 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		SDN:       evpnSDN,
 	})
 
+	// T-1404: GET /ipv6/segments fans IPv6 RA/DHCPv6 observations across
+	// the cluster the same way evpnSvc above fans FRR/BGP state — same
+	// realHost/peerClient/localNode dependencies, same typed-nil-safety
+	// reasoning for ipv6Peers.
+	var ipv6Peers ipv6.PeerSource
+	if peerClient != nil {
+		ipv6Peers = peerClient
+	}
+	ipv6Svc := ipv6.NewService(ipv6.Config{
+		Host:      realHost,
+		Peers:     ipv6Peers,
+		LocalNode: localNode,
+		Graph:     graph,
+	})
+
 	// T-603: blueprints diff/instantiate against the same live inventory
 	// graph every other read path (topology, drift, sim) shares — never a
 	// separate copy (docs/architecture.md §2/§3).
@@ -786,6 +802,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		SDN:                  sdnSvc,
 		IPAM:                 ipamSvc,
 		EVPN:                 evpnSvc,
+		IPv6:                 ipv6Svc,
 		DHCP:                 dhcpAPISvc,
 		PVEGateways:          pveGatewayProvider{authSvc},
 		Protected:            changeSvc,

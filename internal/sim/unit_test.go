@@ -214,12 +214,15 @@ func TestBestGuestIPPrefersStatic(t *testing.T) {
 		{IP: "10.0.0.9", Source: IPSourceAgent},  // parseable, low rank
 		{IP: "10.0.0.5", Source: IPSourceStatic}, // wins on rank
 	}}}
-	ip, src, ok := e.bestGuestIP(ref)
+	ip, src, ok := e.bestGuestIP(ref, FamilyV4)
 	if !ok || src != IPSourceStatic || ip.String() != "10.0.0.5" {
 		t.Errorf("bestGuestIP = %v %v %v", ip, src, ok)
 	}
-	if _, _, ok := e.bestGuestIP(inventory.Ref{Kind: inventory.KindGuestNic}); ok {
+	if _, _, ok := e.bestGuestIP(inventory.Ref{Kind: inventory.KindGuestNic}, FamilyV4); ok {
 		t.Error("no IPs should return not-ok")
+	}
+	if _, _, ok := e.bestGuestIP(ref, FamilyV6); ok {
+		t.Error("no v6 address present should return not-ok when v6 is requested")
 	}
 }
 

@@ -22,6 +22,10 @@ type IPAMService interface {
 	Subnets(ctx context.Context) (ipam.SubnetsResponse, error)
 	Allocations(ctx context.Context, cidr string) (ipam.AllocationList, error)
 	AllocationsCSV(ctx context.Context, cidr string) ([]byte, error)
+	// V6Plan backs T-1404's `GET /ipam/subnets/{prefix}/v6-plan` (the
+	// IPv6 planning grid: given a delegated prefix, propose /64-aligned
+	// subnets against existing VLANs/VNets).
+	V6Plan(ctx context.Context, prefix string) (ipam.V6PlanResponse, error)
 }
 
 // capIPAMRead reuses the sdnRead capability (docs/api.md's documented
@@ -36,6 +40,12 @@ const capIPAMRead = capSDNRead
 // allocationsSuffix is the literal trailing path segment after a subnet
 // CIDR in docs/api.md's `GET /ipam/subnets/{cidr}/allocations` route.
 const allocationsSuffix = "/allocations"
+
+// v6PlanSuffix is the literal trailing path segment after a delegated
+// prefix in docs/api.md's `GET /ipam/subnets/{prefix}/v6-plan` route
+// (T-1404) — same trailing-wildcard reasoning as allocationsSuffix above
+// (a CIDR/prefix contains a literal '/', which a chi {param} can't span).
+const v6PlanSuffix = "/v6-plan"
 
 // mountIPAMRoutes registers docs/api.md's `GET /ipam/subnets` and
 // `GET /ipam/subnets/{cidr}/allocations`. svc == nil (no PVE client — see
@@ -74,6 +84,10 @@ func handleIPAMSubnets(svc IPAMService) http.HandlerFunc {
 func handleIPAMAllocations(svc IPAMService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		raw := chi.URLParam(r, "*")
+		if strings.HasSuffix(raw, v6PlanSuffix) {
+			handleIPAMV6Plan(svc, w, r, strings.TrimSuffix(raw, v6PlanSuffix))
+			return
+		}
 		if !strings.HasSuffix(raw, allocationsSuffix) {
 			writeJSONError(w, http.StatusNotFound, "not_found", "unknown /ipam/subnets route")
 			return
@@ -107,6 +121,30 @@ func handleIPAMAllocations(svc IPAMService) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, list)
 	}
+}
+
+// handleIPAMV6Plan implements `GET /ipam/subnets/{prefix}/v6-plan`
+// (T-1404), dispatched from handleIPAMAllocations' shared wildcard route.
+// prefixPart is raw's "{prefix}" segment with the "/v6-plan" suffix
+// already stripped.
+func handleIPAMV6Plan(svc IPAMService, w http.ResponseWriter, r *http.Request, prefixPart string) {
+	if unescaped, uerr := url.PathUnescape(prefixPart); uerr == nil {
+		prefixPart = unescaped
+	}
+	if prefixPart == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "delegated prefix is required")
+		return
+	}
+	resp, err := svc.V6Plan(r.Context(), prefixPart)
+	if err != nil {
+		if errors.Is(err, ipam.ErrInvalidPrefix) || errors.Is(err, ipam.ErrPrefixTooLarge) {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
+		writeJSONError(w, http.StatusServiceUnavailable, "pve_unreachable", "could not build IPv6 planning grid")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func writeIPAMLookupError(w http.ResponseWriter, err error) {

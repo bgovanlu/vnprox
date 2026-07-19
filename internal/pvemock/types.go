@@ -142,9 +142,35 @@ type NodeSpec struct {
 	// internal/host.ParseConntrackTable's own procfs-text parsing (that
 	// parser has its own golden-fixture table tests, internal/host/
 	// conntrack_test.go).
-	Conntrack      []ConntrackEntrySpec `yaml:"conntrack,omitempty"`
-	Network        []NetIface           `yaml:"network"`
-	NetworkPending []NetIface           `yaml:"network_pending"`
+	Conntrack []ConntrackEntrySpec `yaml:"conntrack,omitempty"`
+	// IPv6RA is this node's fixture-declared per-interface IPv6 Router
+	// Advertisement / DHCPv6 observation (T-1404, docs/features/sdn.md §6)
+	// for this node's FixtureHostReader.IPv6RA — already-structured
+	// entries (like ConntrackEntrySpec/NeighborSpec above), since a
+	// fixture only needs to express the observed shape the API/UI
+	// consume, not exercise internal/host's own rdisc6-text parsing (that
+	// parser has its own table tests). An interface absent from this list
+	// models "no RA observed on this segment" — the common, unremarkable
+	// case, not an error.
+	IPv6RA         []IPv6RASpec `yaml:"ipv6_ra,omitempty"`
+	Network        []NetIface   `yaml:"network"`
+	NetworkPending []NetIface   `yaml:"network_pending"`
+}
+
+// IPv6RASpec is one fixture-declared interface's IPv6 RA/DHCPv6 observation
+// (T-1404). DHCPv6ServerPresent, when true, always implies "inferred from
+// the M-flag" in the rendered host.IPv6RAObservation (mirroring Real's own
+// documented inference limitation — see host.IPv6RAObservation's doc
+// comment) unless a fixture wants to model a directly-confirmed DHCPv6
+// server instead, which this task does not need: no fixture scenario in
+// this codebase's testdata distinguishes the two.
+type IPv6RASpec struct {
+	Iface               string   `yaml:"iface"`
+	Prefixes            []string `yaml:"prefixes,omitempty"`
+	RouterLifetimeSec   int      `yaml:"router_lifetime_sec,omitempty"`
+	ManagedFlag         bool     `yaml:"managed_flag,omitempty"`
+	OtherFlag           bool     `yaml:"other_flag,omitempty"`
+	DHCPv6ServerPresent bool     `yaml:"dhcpv6_server_present,omitempty"`
 }
 
 // ConntrackEntrySpec is one fixture-declared live conntrack table entry

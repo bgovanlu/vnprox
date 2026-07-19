@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -16,6 +17,17 @@ import (
 	"github.com/bgovanlu/vnprox/internal/sim"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
+
+// POST /simulate/path and POST /simulate/verify reuse GuestInteriorIPAMSource
+// (guestinterior.go) as their own guest-nic IP resolution seam for
+// per-family simulation (T-1404: "a dual-stack check is two calls, one per
+// family") — the identical *ipam.Service.AllAllocations method
+// computeIPAMDiff already calls, so cmd/vnproxd wires one *ipam.Service
+// instance to both routes' seams, not a second adapter. nil simply means a
+// guest-nic endpoint's IP resolves unknown, the same honesty-contract
+// degradation docs/api.md's Path simulator section already documents
+// ("guest IPs ... not currently carried in the inventory graph") for a
+// daemon with no wired IPAM read.
 
 // SimulatorGraph is the subset of *inventory.Graph the path simulator route
 // needs: a snapshot to run the pure sim.Engine over. Same one-method seam as
@@ -78,18 +90,18 @@ type guestAgentPinger interface {
 // nil-safe, like every other mountXRoutes; probeClients/audit/divergence
 // nil-safe on top of that (the routes simply aren't mounted without a live
 // PVE-client provider — a live probe makes no sense without one).
-func mountSimulateRoutes(r chi.Router, graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, auth AuthService) {
+func mountSimulateRoutes(r chi.Router, graph SimulatorGraph, guestIPs GuestInteriorIPAMSource, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, auth AuthService) {
 	if graph == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Post("/simulate/path", handleSimulatePath(graph))
+		r.Post("/simulate/path", handleSimulatePath(graph, guestIPs))
 		if probeClients != nil {
 			r.Get("/simulate/verify/eligibility", handleSimulateVerifyEligibility(graph, probeClients))
 			if lookup, ok := auth.(UsernameLookup); ok {
-				r.Post("/simulate/verify", handleSimulateVerify(graph, probeClients, audit, divergence, lookup))
+				r.Post("/simulate/verify", handleSimulateVerify(graph, guestIPs, probeClients, audit, divergence, lookup))
 			}
 		}
 	})
@@ -104,11 +116,76 @@ type endpointSpec struct {
 	IP   string `json:"ip,omitempty"`
 }
 
+// simulateRequest is docs/api.md's shared POST /simulate/{path,verify}
+// request shape. Family (T-1404, added to both routes) is optional and
+// defaults to "v4" — the same "default v4, backward compatible" contract
+// sim.Family.orDefault implements; an unrecognized non-empty value is
+// 400 validation_failed (see validateFamily).
 type simulateRequest struct {
-	Src   endpointSpec `json:"src"`
-	Dst   endpointSpec `json:"dst"`
-	Proto string       `json:"proto,omitempty"`
-	Port  int          `json:"port,omitempty"`
+	Src    endpointSpec `json:"src"`
+	Dst    endpointSpec `json:"dst"`
+	Proto  string       `json:"proto,omitempty"`
+	Family string       `json:"family,omitempty"`
+	Port   int          `json:"port,omitempty"`
+}
+
+// validateFamily parses req's optional family field into a sim.Family,
+// rejecting anything other than "", "v4", or "v6".
+func validateFamily(raw string) (sim.Family, string) {
+	switch raw {
+	case "", string(sim.FamilyV4):
+		return sim.FamilyV4, ""
+	case string(sim.FamilyV6):
+		return sim.FamilyV6, ""
+	default:
+		return "", "family must be \"v4\" or \"v6\""
+	}
+}
+
+// guestIPsFromAllocations builds the sim.Input.GuestIPs side-table for one
+// simulation call: every currently-configured SDN subnet's raw PVE-IPAM
+// allocation set (guestIPs.AllAllocations — the same live read
+// computeIPAMDiff already performs for T-1304's guest-interior IPAM
+// cross-check), correlated to snap's own GuestNic entities by MAC. A
+// guest-nic whose MAC matches no allocation simply has no entry (IP
+// resolves unknown, the pre-T-1404 behavior). Both v4 and v6 addresses for
+// the same NIC are carried in one slice — sim.Engine's own family
+// filtering (bestGuestIP) picks the one the request's family actually
+// asked for, so this function does not need to know which family the
+// caller wants. guestIPs == nil returns nil (no IPAM read wired — the
+// pre-existing degraded behavior, unchanged).
+func guestIPsFromAllocations(ctx context.Context, guestIPs GuestInteriorIPAMSource, snap inventory.Snapshot) map[inventory.Ref][]sim.GuestIP {
+	if guestIPs == nil {
+		return nil
+	}
+	byCIDR, err := guestIPs.AllAllocations(ctx)
+	if err != nil {
+		return nil
+	}
+	byMAC := map[string][]sim.GuestIP{}
+	for _, allocs := range byCIDR {
+		for _, a := range allocs {
+			if a.MAC == "" || a.IP == "" || a.Gateway {
+				continue
+			}
+			mac := strings.ToLower(a.MAC)
+			byMAC[mac] = append(byMAC[mac], sim.GuestIP{IP: a.IP, Source: sim.IPSourceIPAM})
+		}
+	}
+	if len(byMAC) == 0 {
+		return nil
+	}
+	out := map[inventory.Ref][]sim.GuestIP{}
+	for _, e := range snap.All() {
+		nic, ok := e.(*inventory.GuestNic)
+		if !ok || nic.Mac == "" {
+			continue
+		}
+		if ips, ok := byMAC[strings.ToLower(nic.Mac)]; ok {
+			out[nic.GetRef()] = ips
+		}
+	}
+	return out
 }
 
 func (s endpointSpec) toEndpoint() (sim.Endpoint, string) {
@@ -177,7 +254,7 @@ func toSimulateResponse(res sim.Result) simulateResponse {
 }
 
 // handleSimulatePath implements `POST /simulate/path`.
-func handleSimulatePath(graph SimulatorGraph) http.HandlerFunc {
+func handleSimulatePath(graph SimulatorGraph, guestIPs GuestInteriorIPAMSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req simulateRequest
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxSimulateBodyBytes))
@@ -196,9 +273,15 @@ func handleSimulatePath(graph SimulatorGraph) http.HandlerFunc {
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", "dst: "+derr)
 			return
 		}
+		family, ferr := validateFamily(req.Family)
+		if ferr != "" {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", ferr)
+			return
+		}
 
-		res := sim.Simulate(sim.Input{Inventory: graph.Snapshot()},
-			sim.Request{Src: src, Dst: dst, Proto: req.Proto, Port: req.Port})
+		snap := graph.Snapshot()
+		res := sim.Simulate(sim.Input{Inventory: snap, GuestIPs: guestIPsFromAllocations(r.Context(), guestIPs, snap)},
+			sim.Request{Src: src, Dst: dst, Proto: req.Proto, Port: req.Port, Family: family})
 		writeJSON(w, http.StatusOK, toSimulateResponse(res))
 	}
 }
@@ -232,7 +315,7 @@ type verifyResponse struct {
 // (observed.outcome == "error", in which case result is "error") — a
 // malformed request never reaches the point of "an action was attempted",
 // so it is not audited, matching every other route in this package.
-func handleSimulateVerify(graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, lookup UsernameLookup) http.HandlerFunc {
+func handleSimulateVerify(graph SimulatorGraph, guestIPs GuestInteriorIPAMSource, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, lookup UsernameLookup) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -271,6 +354,11 @@ func handleSimulateVerify(graph SimulatorGraph, probeClients ProbeClientProvider
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", "port is required for a tcp probe")
 			return
 		}
+		family, ferr := validateFamily(req.Family)
+		if ferr != "" {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", ferr)
+			return
+		}
 
 		client, ok := probeClients.ProbeClientFor(r.Context())
 		if !ok {
@@ -286,10 +374,11 @@ func handleSimulateVerify(graph SimulatorGraph, probeClients ProbeClientProvider
 			return
 		}
 
-		simRes := sim.Simulate(sim.Input{Inventory: snap}, sim.Request{Src: src, Dst: dst, Proto: req.Proto, Port: req.Port})
+		simRes := sim.Simulate(sim.Input{Inventory: snap, GuestIPs: guestIPsFromAllocations(r.Context(), guestIPs, snap)},
+			sim.Request{Src: src, Dst: dst, Proto: req.Proto, Port: req.Port, Family: family})
 
 		var observed probe.Result
-		if dstIP, dstErr := resolveProbeTargetIP(r.Context(), client, snap, req.Dst); dstErr != "" {
+		if dstIP, dstErr := resolveProbeTargetIP(r.Context(), client, snap, req.Dst, family); dstErr != "" {
 			observed = probe.Result{Outcome: probe.OutcomeError, ExecError: dstErr}
 		} else {
 			observed = probe.Run(r.Context(), client, probe.Request{
@@ -365,7 +454,7 @@ func resolveQemuGuestNicOwner(snap inventory.Snapshot, ref inventory.Ref) (node 
 // diagnostic route, so resolving live rather than reusing the simulator's
 // (deliberately unpopulated) GuestIPs side-table is the honest choice here.
 // external has no concrete host to probe at all.
-func resolveProbeTargetIP(ctx context.Context, client probe.PVEExecer, snap inventory.Snapshot, ep endpointSpec) (ip, errMsg string) {
+func resolveProbeTargetIP(ctx context.Context, client probe.PVEExecer, snap inventory.Snapshot, ep endpointSpec, family sim.Family) (ip, errMsg string) {
 	switch ep.Kind {
 	case string(sim.EndpointIP):
 		if ep.IP == "" {
@@ -403,10 +492,10 @@ func resolveProbeTargetIP(ctx context.Context, client probe.PVEExecer, snap inve
 		if err != nil || len(ifaces) == 0 {
 			return "", fmt.Sprintf("could not resolve destination guest %s's IP via its guest agent", nic.Guest)
 		}
-		if addr := bestAgentIPv4(ifaces, nic.Mac); addr != "" {
+		if addr := bestAgentIP(ifaces, nic.Mac, family); addr != "" {
 			return addr, ""
 		}
-		return "", fmt.Sprintf("destination guest %s's guest agent reported no usable IPv4 address", nic.Guest)
+		return "", fmt.Sprintf("destination guest %s's guest agent reported no usable %s address", nic.Guest, family)
 	default:
 		return "", fmt.Sprintf("destination endpoint kind %q is not supported for a live probe", ep.Kind)
 	}
@@ -425,30 +514,58 @@ type guestAgentInterfaceReader interface {
 	GetGuestAgentInterfaces(ctx context.Context, node string, vmid int) ([]pve.AgentIface, error)
 }
 
-// bestAgentIPv4 prefers the address on the interface whose hardware address
+// agentAddrTypeForFamily maps sim.Family onto pve.AgentIface's own
+// IPAddressType vocabulary ("ipv4"/"ipv6", QEMU guest-agent's wire terms).
+func agentAddrTypeForFamily(family sim.Family) string {
+	if family == sim.FamilyV6 {
+		return "ipv6"
+	}
+	return "ipv4"
+}
+
+// bestAgentIP prefers the address on the interface whose hardware address
 // matches nicMac (the specific NIC the caller asked about), falling back to
-// the first non-loopback IPv4 address any interface reports — a guest's
-// agent-reported interface naming isn't guaranteed to line up with its PVE
-// NIC key (docs/features/ipam.md §1's own guest-agent caveat).
-func bestAgentIPv4(ifaces []pve.AgentIface, nicMac string) string {
+// the first non-loopback address of the requested family any interface
+// reports — a guest's agent-reported interface naming isn't guaranteed to
+// line up with its PVE NIC key (docs/features/ipam.md §1's own guest-agent
+// caveat). For family v6 (T-1404), a link-local address (fe80::/10) is
+// skipped as a fallback candidate — not a useful default live-probe
+// target — but still returned if it's the one on the MAC-matched
+// interface specifically (the caller asked for that interface's own
+// address, link-local or not).
+func bestAgentIP(ifaces []pve.AgentIface, nicMac string, family sim.Family) string {
+	wantType := agentAddrTypeForFamily(family)
 	var fallback string
 	for _, iface := range ifaces {
 		if strings.EqualFold(iface.Name, "lo") {
 			continue
 		}
 		for _, addr := range iface.IPAddresses {
-			if addr.IPAddressType != "" && addr.IPAddressType != "ipv4" {
+			if addr.IPAddressType != "" && addr.IPAddressType != wantType {
 				continue
 			}
-			if fallback == "" {
-				fallback = addr.IPAddress
-			}
-			if nicMac != "" && strings.EqualFold(iface.HardwareAddr, nicMac) {
+			macMatch := nicMac != "" && strings.EqualFold(iface.HardwareAddr, nicMac)
+			if macMatch {
 				return addr.IPAddress
+			}
+			if fallback == "" && (family != sim.FamilyV6 || !isLinkLocalV6(addr.IPAddress)) {
+				fallback = addr.IPAddress
 			}
 		}
 	}
 	return fallback
+}
+
+// isLinkLocalV6 reports whether addr is an IPv6 link-local address
+// (fe80::/10) — never a useful default live-probe fallback target (it's
+// only reachable from the exact same L2 segment with a zone id this route
+// has no way to supply).
+func isLinkLocalV6(addr string) bool {
+	parsed, err := netip.ParseAddr(addr)
+	if err != nil {
+		return false
+	}
+	return parsed.Is6() && parsed.IsLinkLocalUnicast()
 }
 
 // auditSimulateVerify appends one probe.verify audit_log row per attempted

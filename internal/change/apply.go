@@ -720,3 +720,7 @@ func (r nodeAgentReader) ContainerPing(context.Context, string, int, string) (bo
 func (r nodeAgentReader) Conntrack(context.Context, string) ([]host.ConntrackEntry, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.Conntrack not supported")
 }
+
+func (r nodeAgentReader) IPv6RA(context.Context, string) ([]host.IPv6RAObservation, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.IPv6RA not supported")
+}

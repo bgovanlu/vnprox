@@ -168,6 +168,10 @@ func (r *spyHostReader) Conntrack(_ context.Context, node string) ([]host.Conntr
 	return e, nil
 }
 
+func (r *spyHostReader) IPv6RA(_ context.Context, _ string) ([]host.IPv6RAObservation, error) {
+	return nil, nil
+}
+
 // spyHostWriter records every call it receives and its arguments.
 type spyHostWriter struct {
 	failNext  error

@@ -11,8 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
@@ -54,6 +57,14 @@ type Real struct {
 	// (T-1305); defaults to "conntrack" (resolved via PATH). Overridable
 	// for tests.
 	ConntrackPath string
+	// RDisc6Path is the rdisc6 (ndisc6 package) binary name/path IPv6RA
+	// invokes (T-1404); defaults to "rdisc6" (resolved via PATH).
+	// Overridable for tests/environments where it is installed under a
+	// different name or path. **Needs hardware validation**
+	// (planning/reports/needs-hardware-validation.md): ndisc6 is not
+	// installed on a stock Debian/PVE host by default — see IPv6RA's doc
+	// comment for the exact fallback behavior when it is absent.
+	RDisc6Path string
 	// LLDPCommand is the argv used to fetch LLDP neighbor data as JSON;
 	// defaults to `lldpctl -f json`. Overridable for tests/environments
 	// where lldpd is installed under a different name or path.
@@ -70,6 +81,9 @@ type Real struct {
 	// status; defaults to `corosync-cfgtool -s` (T-803, docs/features/
 	// monitoring.md §5). Overridable for tests.
 	CorosyncStatusCommand []string
+	// RDisc6TimeoutMs bounds each per-interface rdisc6 solicit-and-wait
+	// call; defaults to RDisc6DefaultTimeoutMs. Overridable for tests.
+	RDisc6TimeoutMs int
 }
 
 // NewReal constructs a Real reader with the standard Debian/Proxmox paths
@@ -215,6 +229,111 @@ func (r *Real) CorosyncStatus(ctx context.Context, _ string) ([]byte, error) {
 		return nil, fmt.Errorf("host: running %v: %w", argv, err)
 	}
 	return out, nil
+}
+
+// RDisc6DefaultTimeoutMs is IPv6RA's default per-interface solicit-and-wait
+// bound.
+const RDisc6DefaultTimeoutMs = 1000
+
+// IPv6RA implements Reader (T-1404) by soliciting a Router Advertisement on
+// every bridge/VLAN interface this node has (via r.Links, the same
+// interface enumeration every other per-interface Real method reuses) with
+// `rdisc6 -1 -w <timeoutMs> <iface>` — a single solicit-and-wait request,
+// fixed argv, never shell-interpolated (docs/security.md's Host footprint
+// convention). rdisc6 (the ndisc6 package) not being installed at all is
+// not treated as an error: it returns (nil, nil), the same "this daemon
+// simply has nothing to report" degradation FRRBGPSummary's sibling
+// ErrFRRUnavailable case gives a node with no FRR — most nodes' bridges
+// legitimately have no RA to observe, and a missing optional diagnostic
+// tool is not itself a fault worth surfacing to every caller. A single
+// interface's solicit failing (no reply within the timeout — the common,
+// unremarkable "no RA on this segment" case, or a genuine transient error)
+// is skipped rather than failing the whole read, mirroring DHCPLeases'
+// per-source tolerance above.
+func (r *Real) IPv6RA(ctx context.Context, node string) ([]IPv6RAObservation, error) {
+	links, err := r.Links(ctx, node)
+	if err != nil {
+		return nil, fmt.Errorf("host: ipv6ra: listing links: %w", err)
+	}
+	rdisc6 := r.RDisc6Path
+	if rdisc6 == "" {
+		rdisc6 = "rdisc6"
+	}
+	timeoutMs := r.RDisc6TimeoutMs
+	if timeoutMs <= 0 {
+		timeoutMs = RDisc6DefaultTimeoutMs
+	}
+
+	var out []IPv6RAObservation
+	for _, l := range links {
+		if l.Kind != "bridge" && l.Kind != "vlan" {
+			continue
+		}
+		cctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs+500)*time.Millisecond)
+		//nolint:gosec // fixed argv shape, iface is this node's own known interface name, not user input
+		cmd := exec.CommandContext(cctx, rdisc6, "-1", "-w", strconv.Itoa(timeoutMs), l.Name)
+		raw, runErr := cmd.CombinedOutput()
+		cancel()
+		if runErr != nil {
+			var execErr *exec.Error
+			if errors.As(runErr, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+				// rdisc6 isn't installed on this node at all — nothing
+				// further to try for any other interface either.
+				return nil, nil
+			}
+			// No RA observed (rdisc6 exits non-zero on timeout) or another
+			// per-interface failure: skip, not fatal.
+			continue
+		}
+		obs, ok := parseRdisc6Output(l.Name, raw)
+		if !ok {
+			continue
+		}
+		out = append(out, obs)
+	}
+	return out, nil
+}
+
+var (
+	rdisc6ManagedRe  = regexp.MustCompile(`Stateful address conf\.\s*:\s*(Yes|No)`)
+	rdisc6OtherRe    = regexp.MustCompile(`Stateful other conf\.\s*:\s*(Yes|No)`)
+	rdisc6LifetimeRe = regexp.MustCompile(`Router lifetime\s*:\s*(\d+)`)
+	rdisc6PrefixRe   = regexp.MustCompile(`Prefix\s*:\s*(\S+)`)
+)
+
+// parseRdisc6Output defensively parses rdisc6's plain-text one-shot report
+// (the `-1` flag's output shape: one "Soliciting ... on <iface>" header
+// followed by "Hop limit", "Stateful address conf.", "Stateful other
+// conf.", "Router lifetime", and zero or more "Prefix" lines) into an
+// IPv6RAObservation. ok is false when raw carries no recognizable RA
+// content at all (the common "no router advertisement received" case,
+// rdisc6's own timeout message) — never guessed into a false-positive
+// RAPresent.
+func parseRdisc6Output(iface string, raw []byte) (IPv6RAObservation, bool) {
+	text := string(raw)
+	if !strings.Contains(text, "Hop limit") && !strings.Contains(text, "Prefix") {
+		return IPv6RAObservation{}, false
+	}
+	obs := IPv6RAObservation{Iface: iface, RAPresent: true}
+	if m := rdisc6ManagedRe.FindStringSubmatch(text); m != nil {
+		obs.ManagedFlag = m[1] == "Yes"
+	}
+	if m := rdisc6OtherRe.FindStringSubmatch(text); m != nil {
+		obs.OtherFlag = m[1] == "Yes"
+	}
+	if m := rdisc6LifetimeRe.FindStringSubmatch(text); m != nil {
+		if v, err := strconv.Atoi(m[1]); err == nil {
+			obs.RouterLifetimeSec = v
+		}
+	}
+	for _, m := range rdisc6PrefixRe.FindAllStringSubmatch(text, -1) {
+		obs.Prefixes = append(obs.Prefixes, m[1])
+	}
+	if obs.ManagedFlag {
+		obs.DHCPv6ServerPresent = true
+		obs.DHCPv6InferredFromRA = true
+	}
+	return obs, true
 }
 
 // DHCPLeases implements Reader (T-406) by globbing DHCPLeaseGlob and

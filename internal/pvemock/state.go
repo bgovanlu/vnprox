@@ -19,6 +19,7 @@ type nodeState struct {
 	dhcpLeases     string
 	neighbors      []NeighborSpec
 	conntrack      []ConntrackEntrySpec
+	ipv6RA         []IPv6RASpec
 	network        []NetIface
 	networkPending []NetIface
 	firewall       FirewallScope
@@ -144,6 +145,7 @@ func NewState(f *Fixture) *State {
 			dhcpLeases: ns.DHCPLeases,
 			neighbors:  append([]NeighborSpec(nil), ns.Neighbors...),
 			conntrack:  append([]ConntrackEntrySpec(nil), ns.Conntrack...),
+			ipv6RA:     append([]IPv6RASpec(nil), ns.IPv6RA...),
 		}
 		if ns.Firewall != nil {
 			rt.firewall = *ns.Firewall

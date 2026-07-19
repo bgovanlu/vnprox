@@ -41,6 +41,30 @@ describe("validateParamInput", () => {
     expect(bad.valid).toBe(false);
   });
 
+  it("accepts a valid IPv6 CIDR (T-1404: cidr/ip params must accept v6 too)", () => {
+    const def: BlueprintParamDef = { name: "addr", type: "cidr", required: true };
+    const result = validateParamInput(def, "2001:db8:20::/64");
+    expect(result.valid).toBe(true);
+    expect(result.value).toBe("2001:db8:20::/64");
+  });
+
+  it("rejects a malformed IPv6 CIDR", () => {
+    const def: BlueprintParamDef = { name: "addr", type: "cidr", required: true };
+    expect(validateParamInput(def, "2001:db8:::20::/64").valid).toBe(false);
+    expect(validateParamInput(def, "2001:db8:20::/200").valid).toBe(false);
+    expect(validateParamInput(def, "2001:zzzz::/64").valid).toBe(false);
+  });
+
+  it("accepts a valid IPv6 address for an ip param", () => {
+    const def: BlueprintParamDef = { name: "gw", type: "ip" };
+    const compressed = validateParamInput(def, "2001:db8:20::1");
+    expect(compressed.valid).toBe(true);
+    expect(compressed.value).toBe("2001:db8:20::1");
+
+    const full = validateParamInput(def, "fe80:0000:0000:0000:0000:0000:0000:0001");
+    expect(full.valid).toBe(true);
+  });
+
   it("rejects a bare IP for a cidr param and a CIDR for an ip param", () => {
     const cidrDef: BlueprintParamDef = { name: "addr", type: "cidr" };
     expect(validateParamInput(cidrDef, "10.0.0.1").valid).toBe(false);
