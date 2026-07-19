@@ -1,0 +1,35 @@
+# T-1502 e2e fixture (web/e2e/k8s-overlay.spec.ts): a single-node cluster
+# whose node's InternalIP (10.100.0.50) deliberately matches
+# testdata/clusters/three-node-vlan.yaml's own PVE IPAM allocation for
+# guest vmid 200 (app01, pve1) — see that fixture's `ipams:` block. This
+# gives the e2e spec a genuinely MATCHED node<->guest correlation (not just
+# an "unmatched" fallback), so PodDrilldown's full pod -> node-guest ->
+# bridge -> bond chain has a real chain to render end to end against the
+# real stack (real IPAM engine, real topology graph), not a synthetic
+# stand-in.
+nodes:
+  - name: k8s-node-1
+    internalIP: 10.100.0.50
+    podCIDR: 10.244.0.0/24
+
+pods:
+  - namespace: default
+    name: web-abc123
+    node: k8s-node-1
+    podIP: 10.244.0.6
+    phase: Running
+
+services:
+  - namespace: default
+    name: web
+    type: ClusterIP
+    clusterIP: 10.96.0.10
+    ports:
+      - port: 80
+        protocol: TCP
+
+daemonsets:
+  - namespace: kube-system
+    name: calico-node
+  - namespace: kube-system
+    name: calico-kube-controllers
