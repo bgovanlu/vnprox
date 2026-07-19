@@ -88,6 +88,13 @@ export interface TopologyUIState {
    * (not persisted-layout) lifetime and v2-renderer-only scope as
    * latencyLayerActive. */
   mtuLayerActive: boolean;
+  /** T-1402 "WireGuard" layer: renders every tunnel this node can see as a
+   * map edge to its far-side endpoint (topology/../wireguard/
+   * wgTunnelEdges.ts), painted from T-1401's live per-peer status — a
+   * second, independent overlay from mtuLayerActive/latencyLayerActive.
+   * Same per-session (not persisted-layout) lifetime and v2-renderer-only
+   * scope as those two. */
+  wgLayerActive: boolean;
 
   toggleLayer: (layer: Layer) => void;
   /** T-907: sets the whole active-layer set at once (as opposed to
@@ -103,6 +110,7 @@ export interface TopologyUIState {
   toggleFlowsLayer: () => void;
   toggleLatencyLayer: () => void;
   toggleMTULayer: () => void;
+  toggleWGLayer: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
   hover: (id: string | undefined) => void;
@@ -132,6 +140,7 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   flowsLayerActive: false,
   latencyLayerActive: false,
   mtuLayerActive: false,
+  wgLayerActive: false,
 
   toggleLayer: (layer) => {
     set((state) => {
@@ -162,6 +171,9 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   },
   toggleMTULayer: () => {
     set((state) => ({ mtuLayerActive: !state.mtuLayerActive }));
+  },
+  toggleWGLayer: () => {
+    set((state) => ({ wgLayerActive: !state.wgLayerActive }));
   },
   setVlanFilter: (vlan) => {
     set({ vlanFilter: vlan });

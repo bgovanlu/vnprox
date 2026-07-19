@@ -10,9 +10,10 @@
 // while `changeset.plan` is absent. Framework-free, directly Vitest-able.
 //
 // It MUST track BuildPlan's op-family classification: the executor gained the
-// SDN-write (sdn.zone/vnet/subnet.*, T-402), IPAM (ipam.alloc.*, T-405), and
-// firewall (fw.*, T-502) families after this preview was first written, so
-// they are executable — only the guest.* family is still refused at apply.
+// SDN-write (sdn.zone/vnet/subnet.*, T-402), IPAM (ipam.alloc.*, T-405),
+// firewall (fw.*, T-502), and WireGuard (wg.*, T-1401) families after this
+// preview was first written, so they are executable — only the guest.*
+// family is still refused at apply.
 import type { Op, Plan, PlanStep } from "../api/types";
 import { refNode, summarizeOp } from "./opSummary";
 
@@ -48,6 +49,12 @@ const SDN_STAGE_OP_TYPES = new Set<Op["op"]>([
   "sdn.subnet.update",
   "sdn.subnet.delete",
 ]);
+
+/** WireGuard ops (executable since T-1401) — mirrors apply_plan.go's
+ * wgOpTypes. Each becomes its own wg_apply step (one op per step, unlike
+ * the grouped node-file/firewall steps), matching BuildPlan's own
+ * one-Step-per-op wgSteps construction. */
+const WG_OP_TYPES = new Set<Op["op"]>(["wg.tunnel.create", "wg.tunnel.update", "wg.tunnel.delete", "wg.peer.add", "wg.peer.remove"]);
 
 /** Firewall ops (executable since T-502) — mirrors apply_plan.go's fwOpTypes. */
 const FW_OP_TYPES = new Set<Op["op"]>([
@@ -87,6 +94,7 @@ export function buildPlanPreview(ops: Op[]): PlanPreview {
   const byNode = new Map<string, number[]>();
   const sdnStageSteps: PlanStep[] = [];
   const ipamSteps: PlanStep[] = [];
+  const wgSteps: PlanStep[] = [];
   const fwTargetOrder: string[] = [];
   const byFwTarget = new Map<string, number[]>();
   let sdnApply = false;
@@ -108,6 +116,8 @@ export function buildPlanPreview(ops: Op[]): PlanPreview {
       ipamSteps.push({ kind: "ipam_alloc", opIdx: [i], summary: summarizeOp(op) });
     } else if (op.op === "sdn.apply") {
       sdnApply = true;
+    } else if (WG_OP_TYPES.has(op.op)) {
+      wgSteps.push({ kind: "wg_apply", node: op.target ? refNode(op.target) : undefined, opIdx: [i], summary: summarizeOp(op) });
     } else if (FW_OP_TYPES.has(op.op)) {
       const key = op.target ?? "";
       const existing = byFwTarget.get(key);
@@ -135,6 +145,10 @@ export function buildPlanPreview(ops: Op[]): PlanPreview {
       { kind: "reload", node, summary: `Reload network on ${node} (ifreload)` },
     );
   }
+  // WireGuard steps come after the per-node interface stage/reload pairs
+  // (the carrier interface must exist first) and before firewall/sdn.apply
+  // — mirrors BuildPlan's exact placement.
+  steps.push(...wgSteps);
   for (const target of fwTargetOrder) {
     const idxs = byFwTarget.get(target) ?? [];
     const node = target ? refNode(target) : "";

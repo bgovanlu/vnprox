@@ -10,6 +10,7 @@ import { ChangesetDrawer } from "../changesets/ChangesetDrawer";
 import { OnboardingWalkthrough } from "../onboarding/OnboardingWalkthrough";
 import { MgmtWizardHost } from "../mgmt/MgmtWizardHost";
 import { MgmtProtectedRefreshPrompt } from "../mgmt/MgmtProtectedRefreshPrompt";
+import { ConnectClustersWizardHost } from "../wireguard/ConnectClustersWizardHost";
 
 /** Top-level layout for every authenticated route: nav rail + top bar
  * around a routed <Outlet/>, with the keyboard-shortcut framework wired
@@ -78,6 +79,7 @@ export function AppShell() {
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <ChangesetDrawer />
       <MgmtWizardHost />
+      <ConnectClustersWizardHost />
       <MgmtProtectedRefreshPrompt />
     </div>
   );

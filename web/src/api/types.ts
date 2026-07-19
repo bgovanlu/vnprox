@@ -200,6 +200,50 @@ export interface TopologyDeltaEvent {
   removed: string[];
 }
 
+// --- WireGuard tunnels (T-1401 backend, T-1402 map edges + wizard) --------
+// Mirrors internal/api/wireguard.go's WireGuardTunnelView/WireGuardPeerView/
+// WireGuardTunnelStatus exactly. Read-only — every mutation goes through the
+// wg.* changeset op family below, never a dedicated write route.
+
+export interface WireGuardPeer {
+  publicKey: string;
+  endpoint?: string;
+  observedEndpoint?: string;
+  allowedIps: string[];
+  keepaliveSec?: number;
+  /** Unix seconds; absent/0 means "never handshaked" — per T-1401's own
+   * findings semantics (health_wireguard.go's checkWgHandshakeStale doc
+   * comment), a peer with no handshake age at all is NOT stale — a
+   * freshly-created tunnel must not immediately paint amber. */
+  lastHandshakeUnix?: number;
+  rxBytes: number;
+  txBytes: number;
+  external: boolean;
+  endpointDrifted: boolean;
+}
+
+export interface WireGuardTunnelStatus {
+  interfaceUp: boolean;
+  peerCount: number;
+}
+
+export interface WireGuardTunnel {
+  id: string;
+  node: string;
+  ifName: string;
+  publicKey: string;
+  carrier?: string;
+  addresses: string[];
+  peers: WireGuardPeer[];
+  status: WireGuardTunnelStatus;
+  listenPort: number;
+  mtu: number;
+}
+
+export interface WireGuardTunnelsResponse {
+  items: WireGuardTunnel[];
+}
+
 // --- Saved layouts (internal/api/layouts.go, additive — no docs/api.md
 // entry existed before this task; see that file's doc comment) -----------
 
@@ -327,7 +371,12 @@ export type OpType =
   | "fw.group.update"
   | "fw.group.delete"
   | "ipam.alloc.create"
-  | "ipam.alloc.delete";
+  | "ipam.alloc.delete"
+  | "wg.tunnel.create"
+  | "wg.tunnel.update"
+  | "wg.tunnel.delete"
+  | "wg.peer.add"
+  | "wg.peer.remove";
 
 /** internal/change's VidRange: an inclusive VLAN ID range (Low === High for
  * a single VID). */
@@ -473,6 +522,55 @@ export interface IpamAllocCreateParams {
 /** internal/change.IpamAllocDeleteParams (T-405's ipam.alloc.delete op). */
 export interface IpamAllocDeleteParams {
   cidr: string;
+}
+
+// --- Params for the wg.* op family (T-1401's internal/change/params_wg.go,
+// T-1402's frontend consumer). Target Ref conventions (not encoded in these
+// param shapes themselves — see internal/change/params_wg.go's own doc
+// comment, mirrored by web/src/wireguard/wizardOps.ts's target builders):
+//   - wg.tunnel.* target "wg-tunnel:<node>:<tunnelId>".
+//   - wg.peer.*   target "wg-peer:<node>:<tunnelId>/<peer public key>".
+// A tunnel's keypair is never a param field — it is generated on the owning
+// node at apply time and never rides an op, a response, or a log line.
+
+export interface WgTunnelCreateParams {
+  ifName: string;
+  carrier?: string;
+  addresses?: string[];
+  listenPort?: number;
+  mtu?: number;
+}
+
+/** internal/change.WgTunnelUpdateParams: every field is "leave unchanged if
+ * omitted" on the wire (Go's pointer-field tri-state) — the frontend never
+ * needs the explicit-null form (no editor here clears a field), so these
+ * stay plain optionals like every other *UpdateParams in this file. */
+export interface WgTunnelUpdateParams {
+  listenPort?: number;
+  addresses?: string[];
+  mtu?: number;
+  carrier?: string;
+}
+
+export type WgTunnelDeleteParams = Record<string, never>;
+
+/** internal/change.WgPeerAddParams. `presharedKey` is a WRITE-ONLY ingest
+ * field — the change service seals it into `presharedKeyEnc` at stage time
+ * and strips the plaintext from every read response (T-1401's review fix
+ * pass); this wizard only ever sets `presharedKey` (plaintext, at draft
+ * time), never `presharedKeyEnc` directly. */
+export interface WgPeerAddParams {
+  publicKey: string;
+  endpoint?: string;
+  presharedKey?: string;
+  clusterId?: string;
+  allowedIps?: string[];
+  keepaliveSec?: number;
+  external?: boolean;
+}
+
+export interface WgPeerRemoveParams {
+  publicKey: string;
 }
 
 // --- Params for the sdn.zone/vnet/subnet.* op family (T-402's editors,
@@ -734,6 +832,11 @@ export type OpParams =
   | FwGroupCreateParams
   | FwGroupUpdateParams
   | FwGroupDeleteParams
+  | WgTunnelCreateParams
+  | WgTunnelUpdateParams
+  | WgTunnelDeleteParams
+  | WgPeerAddParams
+  | WgPeerRemoveParams
   | Record<string, unknown>;
 
 /** One changeset operation, the wire shape internal/change/op.go's Op
@@ -819,7 +922,7 @@ export type ChangesetStatus =
 /** One apply-plan step (internal/change/apply_plan.go's Step) — the Plan
  * tab's row shape. `opIdx` indexes into the changeset's own `ops` array. */
 export interface PlanStep {
-  kind: "sdn_stage" | "ipam_alloc" | "stage_file" | "reload" | "fw_apply" | "fw_verify" | "sdn_apply";
+  kind: "sdn_stage" | "ipam_alloc" | "stage_file" | "reload" | "wg_apply" | "fw_apply" | "fw_verify" | "sdn_apply";
   node?: string;
   summary: string;
   opIdx?: number[];

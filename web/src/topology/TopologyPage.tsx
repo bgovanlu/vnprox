@@ -31,6 +31,9 @@ import { computeLatencyOverlayEdges } from "./latencyMode";
 import { useLatMeshHeatmapQuery } from "./latMeshQueries";
 import { computeMTUOverlayEdges } from "./mtuOverlay";
 import { useMTUProbeResultsQuery } from "./mtuProbeQueries";
+import { useWireGuardTunnelsQuery } from "../wireguard/wgTunnelsQuery";
+import { computeWgTunnelOverlay } from "../wireguard/wgTunnelEdges";
+import { buildNodeAnchorResolver } from "./nodeAnchor";
 import { FlowPairPanel } from "./FlowPairPanel";
 import { HistoryTimeline, type HistoryPlaybackState } from "./history/HistoryTimeline";
 import { InspectorStack } from "./InspectorStack";
@@ -143,6 +146,8 @@ function TopologyPageContent() {
   const toggleLatencyLayer = useTopologyStore((s) => s.toggleLatencyLayer);
   const mtuLayerActive = useTopologyStore((s) => s.mtuLayerActive);
   const toggleMTULayer = useTopologyStore((s) => s.toggleMTULayer);
+  const wgLayerActive = useTopologyStore((s) => s.wgLayerActive);
+  const toggleWGLayer = useTopologyStore((s) => s.toggleWGLayer);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
   const setActiveLayers = useTopologyStore((s) => s.setActiveLayers);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
@@ -352,13 +357,44 @@ function TopologyPageContent() {
   const handleExpandedData = (groupId: string, nodes: TopologyNode[], edges: TopologyEdge[]) => {
     setExpandedData((prev) => ({ ...prev, [groupId]: { nodes, edges } }));
   };
+
+  // Shared "whole node" anchor resolver for every node-to-node overlay
+  // layer (Latency/T-1303, MTU/T-1306, WireGuard/T-1402): internal/
+  // topology.Project never renders a KindNode entity of its own (see
+  // nodeAnchor.ts's doc comment for the bug this fixes — the previous
+  // per-overlay `nodeIdForName` below resolved against a
+  // "node:<name>:<name>" id that no real GET /topology response ever
+  // contains), so this resolves to the first rendered entity in that
+  // node's own band instead. Computed from `topology.nodes` directly (not
+  // the later `canvasNodeIds`, which is itself derived from `elements` —
+  // using it here would be circular) since a node's set of rendered
+  // entities is unaffected by guest-group expansion or these very
+  // overlays.
+  const nodeIdForName = useMemo(() => buildNodeAnchorResolver(topology?.nodes ?? []), [topology]);
+
+  // T-1402 "WireGuard" layer: renders every tunnel this node can see as a
+  // map edge to its far-side endpoint, painted from T-1401's live per-peer
+  // status — same v2-canvas-only, "only fetch while genuinely paintable"
+  // scope as Latency/MTU below. Unlike those two (which only annotate
+  // existing edges via a badge overlay drawn after `elements` exists), this
+  // overlay also introduces synthetic far-side endpoint nodes
+  // (wgTunnelEdges.ts) that must be part of `elements` itself — merged into
+  // extraNodes/extraEdges below, the same seam T-1003's expanded
+  // guest-group pills already use.
+  const wgPaintable = wgLayerActive && viewMode === "graph" && rendererVersion === "v2";
+  const { data: wgTunnels } = useWireGuardTunnelsQuery(wgPaintable);
+  const wgOverlay = useMemo(
+    () => (wgPaintable && wgTunnels ? computeWgTunnelOverlay(wgTunnels, nodeIdForName) : { nodes: [], edges: [] }),
+    [wgPaintable, wgTunnels, nodeIdForName],
+  );
+
   const extraNodes = useMemo(
-    () => Array.from(expandedGroups).flatMap((id) => expandedData[id]?.nodes ?? []),
-    [expandedGroups, expandedData],
+    () => [...Array.from(expandedGroups).flatMap((id) => expandedData[id]?.nodes ?? []), ...wgOverlay.nodes],
+    [expandedGroups, expandedData, wgOverlay.nodes],
   );
   const extraEdges = useMemo(
-    () => Array.from(expandedGroups).flatMap((id) => expandedData[id]?.edges ?? []),
-    [expandedGroups, expandedData],
+    () => [...Array.from(expandedGroups).flatMap((id) => expandedData[id]?.edges ?? []), ...wgOverlay.edges],
+    [expandedGroups, expandedData, wgOverlay.edges],
   );
 
   // §5 staleness: grey the bands whose node-scoped collector data is stale
@@ -457,14 +493,10 @@ function TopologyPageContent() {
   const latencyPaintable = latencyLayerActive && viewMode === "graph" && rendererVersion === "v2";
   const { data: latMeshLinks } = useLatMeshHeatmapQuery(latencyPaintable);
   // GET /latmesh/heatmap's fromNode/toNode are plain PVE node names, not
-  // Refs — a physical cluster Node entity's own Ref is always
-  // "node:<name>:<name>" (inventory.Ref.String() for KindNode, Node==ID==
-  // the node name), so this is a pure string-format lookup, not a network
-  // call or a graph walk.
-  const nodeIdForName = useCallback((name: string) => {
-    const id = `node:${name}:${name}`;
-    return canvasNodeIds.has(id) ? id : undefined;
-  }, [canvasNodeIds]);
+  // Refs — resolved to a rendered map entity via the shared
+  // `nodeIdForName` anchor resolver above (nodeAnchor.ts; T-1402 fixed this
+  // to no longer resolve against the never-rendered "node:<name>:<name>"
+  // id — see that file's doc comment).
   const latencyOverlayEdges = useMemo(
     () => (latencyPaintable && latMeshLinks ? computeLatencyOverlayEdges(latMeshLinks, nodeIdForName) : []),
     [latencyPaintable, latMeshLinks, nodeIdForName],
@@ -758,6 +790,10 @@ function TopologyPageContent() {
             // (mtuPaintable).
             mtuLayerActive={mtuLayerActive}
             onToggleMTU={toggleMTULayer}
+            // T-1402: same v2-canvas-only scope note as MTU above
+            // (wgPaintable).
+            wgLayerActive={wgLayerActive}
+            onToggleWG={toggleWGLayer}
           />
           {viewMode === "graph" && (
             <Button
