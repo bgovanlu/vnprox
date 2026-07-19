@@ -59,6 +59,22 @@ func summaryText(op Op) string {
 		return fmt.Sprintf("Delete VLAN %s", o.Target.ID)
 	case IfaceRawReplace:
 		return fmt.Sprintf("Replace /etc/network/interfaces on %s (raw edit, %d bytes)", o.Target.Node, len(o.Content))
+	case NatMasqueradeCreate:
+		return fmt.Sprintf("Masquerade %s via %s", o.SourceCIDR, o.Iface)
+	case NatMasqueradeDelete:
+		return fmt.Sprintf("Remove masquerade rule %s", o.Target.ID)
+	case NatPortForwardCreate:
+		return fmt.Sprintf("Forward %s/%d on %s to %s:%d", o.Proto, o.ExtPort, o.Iface, o.IntIP, o.IntPort)
+	case NatPortForwardUpdate:
+		return fmt.Sprintf("Update port forward %s", o.Target.ID)
+	case NatPortForwardDelete:
+		return fmt.Sprintf("Remove port forward %s", o.Target.ID)
+	case RouteStaticCreate:
+		return fmt.Sprintf("Route %s via %s dev %s", o.DestCIDR, o.Gateway, o.Iface)
+	case RouteStaticUpdate:
+		return fmt.Sprintf("Update static route %s", o.Target.ID)
+	case RouteStaticDelete:
+		return fmt.Sprintf("Remove static route %s", o.Target.ID)
 	default:
 		return fmt.Sprintf("%s %s", op.Kind(), op.Ref().ID)
 	}

@@ -18,6 +18,12 @@ const DefaultInterval = 30 * time.Second
 // Config configures a Service. Graph is required; the rest have defaults.
 type Config struct {
 	Graph *inventory.Graph
+	// Pins is T-1102's pinned-spec seam (specdrift.go's CheckSpecDrift
+	// family): nil (the pre-T-1102 default) simply means no spec is ever
+	// pinned, so that check family always contributes zero findings — every
+	// existing caller of drift.New (and every pre-T-1102 test) keeps working
+	// unchanged with no pin wired in.
+	Pins PinProvider
 	// Logger defaults to slog.Default() if nil.
 	Logger *slog.Logger
 	// OnChange, if set, is invoked from RunLoop whenever the finding set
@@ -39,6 +45,7 @@ type Service struct {
 	graph    *inventory.Graph
 	log      *slog.Logger
 	onChange func(int)
+	pins     PinProvider
 	lastIDs  map[string]bool
 	interval time.Duration
 	mu       sync.Mutex
@@ -59,6 +66,7 @@ func New(cfg Config) *Service {
 		graph:    cfg.Graph,
 		log:      logger,
 		onChange: cfg.OnChange,
+		pins:     cfg.Pins,
 		interval: interval,
 	}
 }
@@ -72,19 +80,24 @@ var checkFuncs = []func(inventory.Snapshot) []Finding{
 	checkSDNRealization,
 	checkPendingInterfaces,
 	checkFileRuntimeDivergence,
+	checkVFSpoofcheckMismatch,
 }
 
 // Findings runs every check family fresh against the graph's current
 // snapshot and returns the combined, deterministically-ordered result.
-// Pure with respect to the snapshot: calling it twice against an unchanged
-// graph returns identical findings (same IDs, same order, same content —
-// T-305 acceptance criterion 5's "stable-key dedup").
+// Pure with respect to the snapshot for the five original families: calling
+// it twice against an unchanged graph returns identical findings (same IDs,
+// same order, same content — T-305 acceptance criterion 5's "stable-key
+// dedup"). The T-1102 spec_drift family additionally depends on s.pins'
+// current pin (specdrift.go), so Findings as a whole is pure with respect to
+// (snapshot, pin state) together, not the snapshot alone.
 func (s *Service) Findings() []Finding {
 	snap := s.graph.Snapshot()
 	var out []Finding
 	for _, fn := range checkFuncs {
 		out = append(out, fn(snap)...)
 	}
+	out = append(out, s.specDriftFindings(snap)...)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }

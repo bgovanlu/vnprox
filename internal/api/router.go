@@ -8,6 +8,7 @@ package api
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -17,6 +18,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/flow"
+	"github.com/bgovanlu/vnprox/internal/ingress"
 )
 
 // AuthService is the subset of *auth.Service the router needs: route
@@ -104,6 +109,39 @@ type Options struct {
 	// IPAM is T-405's read view seam (docs/api.md's `GET /ipam/subnets` and
 	// `GET /ipam/subnets/{cidr}/allocations`); nil-safe like SDN above.
 	IPAM IPAMService
+	// EdgeInterfaces/EdgeGraph/EdgeIPAM back T-1403's Edge & NAT cockpit
+	// (docs/api.md's `GET /edge/routes`/`GET /edge/nat`). EdgeInterfaces is
+	// typically the same *change.Service changeSvc wires in as Changesets
+	// above — its ReadRawInterfaces is the identical per-node interfaces-
+	// file read T-208's raw editor uses (docs/api.md's `GET /nodes/{node}/
+	// interfaces/raw`), reused rather than duplicated; a dedicated field
+	// (rather than reusing Changesets directly) keeps this route's
+	// dependency to the one method it needs, testable without a full
+	// ChangesetService fake. EdgeGraph is typically the same live
+	// *inventory.Graph GuestInteriorGraph above already wires in (node
+	// enumeration + guest status); EdgeIPAM is typically the same
+	// *ipam.Service ipamSvc wires in elsewhere (port-forward -> guest IP
+	// correlation), nil-safe — it only narrows the response, see
+	// mountEdgeRoutes' doc comment.
+	EdgeInterfaces EdgeInterfacesSource
+	EdgeGraph      EdgeGraph
+	EdgeIPAM       EdgeIPAMSource
+	// IngressTargets/IngressSecretCipher/IngressDiscoverers back T-1406's
+	// ingress visibility routes (docs/api.md's Ingress visibility
+	// section): GET/POST/DELETE /ingress/targets + GET /ingress/status.
+	// IngressTargets nil skips mounting the whole family, matching every
+	// other optional Options field; IngressSecretCipher is typically the
+	// same sessionCipher AlertSecretCipher/WebhookSecretCipher above
+	// already wire in (docs/security.md's one shared AES-256-GCM
+	// primitive); IngressDiscoverers is typically
+	// ingress.NewDefaultRegistry(nil) — the seam T-1702's plugin SDK
+	// extends by registering additional ingress.Kind values into the same
+	// Registry. GET /ingress/status's port-forward -> proxy guest
+	// correlation reuses EdgeInterfaces/EdgeGraph/EdgeIPAM above verbatim
+	// (T-1403's own projection, not a second interfaces-file read path).
+	IngressTargets      IngressTargetStore
+	IngressSecretCipher SecretCipher
+	IngressDiscoverers  ingress.IngressDiscoverer
 	// EVPN is T-404's read view seam (docs/api.md's `GET /sdn/evpn/status`);
 	// nil (no PVE/peer clients wired) simply skips mounting the route,
 	// same degraded-mode treatment as SDN above.
@@ -111,6 +149,9 @@ type Options struct {
 	// DHCP is T-406's read view seam (docs/api.md's `GET /sdn/dhcp`:
 	// static reservations + live leases); nil-safe like SDN/EVPN above.
 	DHCP DHCPService
+	// IPv6 is T-1404's read view seam (docs/api.md's `GET /ipv6/segments`:
+	// cluster-wide RA/SLAAC/DHCPv6 visibility); nil-safe like EVPN above.
+	IPv6 IPv6Service
 	// Metrics is T-601's *metrics.Sampler seam for GET /metrics/live and
 	// GET /metrics/history; nil (no daemon-side sampler wired, e.g. tests)
 	// simply omits both routes.
@@ -141,11 +182,33 @@ type Options struct {
 	// (which satisfies FirewallGraph's one-method seam directly).
 	Firewall   FirewallGraph
 	Blueprints BlueprintService
+	// BlueprintSigningKey/BlueprintTrust/BlueprintSignersAudit back T-1107's
+	// signed blueprint sharing bundles (docs/features/blueprints.md §5):
+	// GET /blueprints/{id}/bundle, GET /blueprints/signing-key,
+	// POST /blueprints/import, and GET/POST/DELETE /blueprint-signers.
+	// BlueprintSigningKey is this daemon's own Ed25519 identity (generated
+	// at first use, cmd/vnproxd); a zero-length key skips mounting
+	// GET /blueprints/signing-key and produces only unsigned bundles from
+	// GET /blueprints/{id}/bundle. BlueprintTrust is the admin-managed
+	// trust store (nil skips mounting every /blueprint-signers route and
+	// POST /blueprints/import — there would be nothing to check trust
+	// against).
+	BlueprintSigningKey   ed25519.PrivateKey
+	BlueprintTrust        BlueprintTrustStore
+	BlueprintSignersAudit blueprintBundleAuditor
 	// Spec backs T-1101's `GET /spec` + `POST /spec/import` (the declarative
 	// cluster network spec, internal/spec): the same live *inventory.Graph,
 	// which satisfies SpecInventory's one-method Snapshot seam directly. Nil
 	// simply omits the spec routes.
 	Spec SpecInventory
+	// SpecPin/SpecPinAudit back T-1102's `GET/POST/DELETE /spec/pin` (the
+	// GitOps reconciler's pinned desired state) — typically the daemon's own
+	// *store.PinnedSpecRepo (satisfies PinnedSpecStore directly) and
+	// *store.AuditRepo, the same repo LLDPAudit/ProbeAudit below reuse for
+	// their own one-method audit seam. Nil-safe like every other optional
+	// Options field (SpecPin nil skips mounting the route family).
+	SpecPin      PinnedSpecStore
+	SpecPinAudit specPinAuditor
 	// Simulator backs T-503's `POST /simulate/path` — the same live
 	// *inventory.Graph (satisfies SimulatorGraph's one-method seam directly).
 	Simulator SimulatorGraph
@@ -169,6 +232,28 @@ type Options struct {
 	// Qos backs `GET /qos/shapes` (T-1505); nil skips mounting the route,
 	// same degraded-mode treatment as every other optional Options field.
 	Qos QosShapeListService
+	// GuestInteriorToggles/GuestInteriorGraph/GuestInteriorHost/
+	// GuestInteriorPeers/GuestInteriorIPAM back T-1304's guest network
+	// interior inspector: GET/PUT /guests/{ref}/interior-toggle and
+	// GET /guests/{ref}/interior. GuestInteriorToggles nil skips mounting
+	// the whole family (matching Layouts/Annotations' degraded-mode
+	// convention); GuestInteriorGraph is typically the same live
+	// *inventory.Graph Simulator/Firewall above already wire in.
+	// GuestInteriorHost (typically realHost, host.NewReal()) backs the lxc
+	// host-side read path for a guest on this daemon's own node;
+	// GuestInteriorPeers (typically *peer.Client) backs it for a guest on
+	// a peer node — the qemu path needs neither (it reuses ProbeClients
+	// above, since PVE's own REST API is already cluster-transparent).
+	// GuestInteriorIPAM (typically the same *ipam.Service ipamSvc wires in
+	// elsewhere) backs the IPAM cross-check annotation; nil simply omits
+	// it. The interior read route reuses ProbeAudit above for its own
+	// guest.interior_read audit row (same shared-seam pattern TokenAudit
+	// already establishes across the Tokens/Webhooks route families).
+	GuestInteriorToggles GuestInteriorToggleStore
+	GuestInteriorGraph   GuestInteriorGraph
+	GuestInteriorHost    GuestInteriorHostReader
+	GuestInteriorPeers   PeerContainerSource
+	GuestInteriorIPAM    GuestInteriorIPAMSource
 	// FwLog backs T-505's GET /firewall/log (docs/features/firewall.md
 	// §4) — typically the daemon's *fwlog.Service, which also owns the
 	// `firewall.log.batch` WS push (fed directly from its own Run loop
@@ -191,6 +276,60 @@ type Options struct {
 	// node-local-only).
 	Flows     FlowLocalSource
 	PeerFlows PeerFlowSource
+	// LatMesh backs T-1303's GET /latmesh/heatmap and GET /latmesh/history
+	// (docs/api.md's Latency mesh section); nil skips mounting both
+	// routes, matching every other optional Options field. Typically the
+	// daemon's own *latmesh.Service.
+	LatMesh LatMeshService
+	// MTUProbe backs T-1306's GET /mtuprobe/results (docs/api.md's Path MTU
+	// prober section); nil skips mounting the route, matching every other
+	// optional Options field. Typically the daemon's own *mtuprobe.Service.
+	MTUProbe MTUProbeService
+	// WireGuard backs T-1401's GET /wireguard/tunnels + /{id}/pubkey +
+	// /{id}/peer-config (docs/api.md's WireGuard section); nil skips mounting
+	// every /wireguard route. Read-only — WireGuard is mutated only through
+	// the wg.* changeset op family, never a route here.
+	WireGuard WireGuardService
+	// WgCarriers supplies the changesets routes' touchesMgmtPath computation
+	// with each existing WireGuard tunnel's stored carrier, so a wg op that
+	// references a management-path tunnel WITHOUT the carrier in its params
+	// (wg.peer.*, wg.tunnel.delete, carrier-less wg.tunnel.update) is still
+	// flagged (Finding 2 / the mgmt-path interlock). Typically the same
+	// WireGuard read service WireGuard is wired from. Nil degrades those ops
+	// to params-only coverage (a create still names its own carrier).
+	WgCarriers change.WgCarrierSource
+	// Wan backs T-1405's GET /wan/status and GET/PUT /wan/targets
+	// (docs/api.md's WAN & upstream health section); nil skips mounting
+	// every /wan route, matching every other optional Options field.
+	// Typically the daemon's own *wan.Service. WanAudit backs the PUT
+	// route's wan.targets_update audit row (typically the same *store.
+	// AuditRepo every other write route's audit seam already wires in);
+	// nil (or an Auth backend with no UsernameLookup) skips mounting only
+	// the PUT route, leaving the two GET routes mounted.
+	Wan      WanService
+	WanAudit wanAuditor
+	// Captures is T-1301's packet-capture coordinator seam (POST /captures,
+	// POST /captures/{id}/stop, GET /captures/{id}, GET /captures). Nil skips
+	// mounting every /captures route, same degraded-mode treatment as every
+	// other optional Options field.
+	Captures CaptureService
+	// Conntrack is T-1305's local-node read seam for GET /conntrack (nil
+	// skips mounting the route, same degraded-mode treatment as every other
+	// optional Options field); PeerConntrack is its cluster fan-out
+	// dependency (nil-safe, falls back to node-local-only); ConntrackGuests
+	// resolves the `guest=` filter (nil-safe, that filter then matches
+	// nothing rather than 500ing). Reuses LocalNode (T-605's own field,
+	// below) to tag local entries with this node's own name.
+	Conntrack       ConntrackLocalSource
+	PeerConntrack   PeerConntrackSource
+	ConntrackGuests ConntrackGuestResolver
+	// FlowClassifier is T-1504's optional service-network attribution
+	// (internal/flow.Classifier): when set, every GET /flows item carries
+	// an additive serviceClass field. Nil (no NetworkSource registered/no
+	// classifier wired, e.g. most tests) simply omits the field on every
+	// item — the same degraded-mode treatment every other optional Options
+	// field gets.
+	FlowClassifier *flow.Classifier
 	// DocExport backs T-605's GET /export/doc (config documentation
 	// export); nil skips mounting the route, matching every other optional
 	// Options field.
@@ -202,8 +341,37 @@ type Options struct {
 	LLDPPeerInstaller PeerLLDPInstaller
 	LLDPAudit         lldpInstallAuditor
 	LocalNode         func() string
-	Logger            *slog.Logger
-	Version           string
+	// Tokens/TokenAudit back T-1104's POST/GET/DELETE /tokens (automation
+	// bearer tokens); Tokens nil skips mounting the whole family. Auth must
+	// additionally implement TokenMinter (cmd/vnproxd's authServiceAdapter
+	// does) or the routes still aren't mounted, matching UsernameLookup's
+	// own precedent for layouts.
+	Tokens     APITokenStore
+	TokenAudit tokenAuditor
+	// Webhooks/WebhookSecretCipher back T-1104's POST/GET/DELETE /webhooks
+	// (automation event delivery targets); Webhooks nil skips mounting the
+	// whole family. Reuses TokenAudit for its own audit entries (webhook.
+	// create/webhook.delete) rather than a second audit-seam field.
+	Webhooks            WebhookStore
+	WebhookSecretCipher SecretCipher
+	// K8sClusters/K8sSecretCipher/K8sPoller/K8sGraph/K8sIPAM/K8sAudit back
+	// T-1501's Kubernetes overlay mapping engine routes (docs/api.md's
+	// Kubernetes section): GET/POST /k8s/clusters, DELETE
+	// /k8s/clusters/{id}, GET /k8s/{clusterId}/overlay. K8sClusters/
+	// K8sSecretCipher/K8sPoller/K8sGraph/K8sAudit are required together
+	// (any one nil skips mounting the whole family, matching every other
+	// optional Options field's degraded-mode convention); K8sIPAM is
+	// optional (nil narrows node<->guest correlation rather than failing
+	// the whole read, same as every other optional IPAM-based lookup in
+	// this package).
+	K8sClusters     K8sClusterStore
+	K8sSecretCipher SecretCipher
+	K8sPoller       K8sPoller
+	K8sGraph        K8sGraph
+	K8sIPAM         K8sIPAMSource
+	K8sAudit        k8sAuditWriter
+	Logger          *slog.Logger
+	Version         string
 	// Instance is the non-secret operational config surfaced by GET
 	// /config (the Settings page's "Instance" section). Zero value is fine
 	// — the route still mounts and reports whatever's set (Version at
@@ -249,24 +417,40 @@ func NewRouter(opts Options) http.Handler {
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountAnnotationsRoutes(r, opts.Annotations, opts.Auth)
 		mountAlertRulesRoutes(r, opts.AlertRules, opts.AlertDeliveries, opts.AlertSecretCipher, opts.Auth)
-		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected)
+		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountHistoryRoutes(r, opts.History, opts.HistoryFindingEvents, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
+		mountEdgeRoutes(r, opts.EdgeInterfaces, opts.SDN, opts.EdgeGraph, opts.EdgeIPAM, opts.Auth)
+		mountIngressRoutes(r, opts.IngressTargets, opts.IngressSecretCipher, opts.IngressDiscoverers, opts.EdgeInterfaces, opts.EdgeGraph, opts.EdgeIPAM, opts.TokenAudit, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
+		mountIPv6Routes(r, opts.IPv6, opts.Auth)
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
+		mountBlueprintBundleRoutes(r, opts.Blueprints, opts.BlueprintSigningKey, opts.BlueprintTrust, opts.BlueprintSignersAudit, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
-		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.QosShapes, opts.Auth)
+		mountSpecPinRoutes(r, opts.SpecPin, opts.SpecPinAudit, opts.Auth)
+		mountSimulateRoutes(r, opts.Simulator, opts.GuestInteriorIPAM, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.QosShapes, opts.Auth)
 		mountQosRoutes(r, opts.Qos, opts.Auth)
+		mountGuestInteriorRoutes(r, opts.GuestInteriorToggles, opts.GuestInteriorGraph, opts.ProbeClients, opts.GuestInteriorHost, opts.GuestInteriorPeers, opts.GuestInteriorIPAM, opts.LocalNode, opts.ProbeAudit, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
-		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
+		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
+		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
+		mountWireGuardRoutes(r, opts.WireGuard, opts.Auth)
+		mountWanRoutes(r, opts.Wan, opts.Findings, opts.LocalNode, opts.WanAudit, opts.Auth)
+		mountCaptureRoutes(r, opts.Captures, opts.Auth)
+		mountConntrackRoutes(r, opts.Conntrack, opts.PeerConntrack, opts.ConntrackGuests, opts.LocalNode, opts.Auth)
+		mountDiagnoseRoutes(r, opts, opts.Auth)
+		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows, opts.FlowClassifier)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
+		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
+		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
+		mountK8sRoutes(r, opts.K8sClusters, opts.K8sSecretCipher, opts.K8sPoller, opts.K8sGraph, opts.K8sIPAM, opts.K8sAudit, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

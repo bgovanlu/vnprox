@@ -150,6 +150,23 @@ linters:
         linters:
           - staticcheck
         text: "SA1019"
+      # T-1104's WS "events" topic tests dial real nhooyr.io/websocket
+      # clients against internal/topology.Hub.ServeWS directly (automation-
+      # scope gating, CloseByTokenID force-close) — same locked dependency,
+      # same unavoidable module-wide deprecation notice as the hub.go
+      # exclusion above.
+      - path: internal/topology/hub_events_test\.go
+        linters:
+          - staticcheck
+        text: "SA1019"
+      # T-1104's events-topic integration test drives a real WS client
+      # against internal/change.Service + internal/topology.Service wired
+      # together (changeset.status then audit.appended ordering) — same
+      # locked dependency, same unavoidable notice.
+      - path: internal/change/events_integration_test\.go
+        linters:
+          - staticcheck
+        text: "SA1019"
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

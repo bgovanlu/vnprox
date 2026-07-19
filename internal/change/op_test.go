@@ -30,12 +30,18 @@ var allOpTypeConstants = []OpType{
 	OpFwGroupCreate, OpFwGroupUpdate, OpFwGroupDelete,
 	OpIpamAllocCreate, OpIpamAllocDelete,
 	OpQosShapeCreate, OpQosShapeUpdate, OpQosShapeDelete,
+	OpWgTunnelCreate, OpWgTunnelUpdate, OpWgTunnelDelete, OpWgPeerAdd, OpWgPeerRemove,
+	OpNatMasqueradeCreate, OpNatMasqueradeDelete,
+	OpNatPortForwardCreate, OpNatPortForwardUpdate, OpNatPortForwardDelete,
+	OpRouteStaticCreate, OpRouteStaticUpdate, OpRouteStaticDelete,
+	OpVFProvision,
 }
 
-// docs/data-model.md §3's table lists exactly these groups: iface(2, incl.
+// docs/data-model.md §3's table lists exactly these groups: iface(3, incl.
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
-// fw(14), ipam(2), qos(3, T-1505) = 44.
-const wantOpVocabularySize = 44
+// fw(14), ipam(2), qos(3, T-1505), wg(5, T-1401), nat(5, T-1403),
+// route(3, T-1403), vf(1, T-1506) = 58.
+const wantOpVocabularySize = 58
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -310,6 +316,76 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "qos.shape.delete", opType: OpQosShapeDelete,
 			target: ref(inventory.KindQosShape, "pve1", "shape1"),
 			params: &QosShapeDeleteParams{},
+		},
+		{
+			name: "wg.tunnel.create", opType: OpWgTunnelCreate,
+			target: ref(inventory.KindWgTunnel, "pve1", "01HWGTUN000000000000000001"),
+			params: &WgTunnelCreateParams{IfName: "wg0", ListenPort: 51820, Addresses: []string{"10.10.0.1/24"}, MTU: 1420, Carrier: "vmbr0"},
+		},
+		{
+			name: "wg.tunnel.update", opType: OpWgTunnelUpdate,
+			target: ref(inventory.KindWgTunnel, "pve1", "01HWGTUN000000000000000001"),
+			params: &WgTunnelUpdateParams{ListenPort: i(51821), MTU: i(1380)},
+		},
+		{
+			name: "wg.tunnel.delete", opType: OpWgTunnelDelete,
+			target: ref(inventory.KindWgTunnel, "pve1", "01HWGTUN000000000000000001"),
+			params: &WgTunnelDeleteParams{},
+		},
+		{
+			name: "wg.peer.add", opType: OpWgPeerAdd,
+			target: ref(inventory.KindWgPeer, "pve1", "01HWGTUN000000000000000001/PEERkey000000000000000000000000000000000000="),
+			params: &WgPeerAddParams{PublicKey: "PEERkey000000000000000000000000000000000000=", Endpoint: "203.0.113.10:51820", AllowedIPs: []string{"10.10.0.2/32"}, KeepaliveSec: 25, External: true},
+		},
+		{
+			name: "wg.peer.remove", opType: OpWgPeerRemove,
+			target: ref(inventory.KindWgPeer, "pve1", "01HWGTUN000000000000000001/PEERkey000000000000000000000000000000000000="),
+			params: &WgPeerRemoveParams{PublicKey: "PEERkey000000000000000000000000000000000000="},
+		},
+		{
+			name: "nat.masquerade.create", opType: OpNatMasqueradeCreate,
+			target: ref(inventory.KindNatRule, "pve1", "masq1"),
+			params: &NatMasqueradeCreateParams{Iface: "vmbr0", SourceCIDR: "192.168.1.0/24"},
+		},
+		{
+			name: "nat.masquerade.delete", opType: OpNatMasqueradeDelete,
+			target: ref(inventory.KindNatRule, "pve1", "masq1"),
+			params: &NatMasqueradeDeleteParams{},
+		},
+		{
+			name: "nat.portforward.create", opType: OpNatPortForwardCreate,
+			target: ref(inventory.KindNatRule, "pve1", "pf1"),
+			params: &NatPortForwardCreateParams{Iface: "vmbr0", Proto: "tcp", ExtPort: 8080, IntIP: "192.168.1.50", IntPort: 80},
+		},
+		{
+			name: "nat.portforward.update", opType: OpNatPortForwardUpdate,
+			target: ref(inventory.KindNatRule, "pve1", "pf1"),
+			params: &NatPortForwardUpdateParams{ExtPort: intPtr(9090)},
+		},
+		{
+			name: "nat.portforward.delete", opType: OpNatPortForwardDelete,
+			target: ref(inventory.KindNatRule, "pve1", "pf1"),
+			params: &NatPortForwardDeleteParams{},
+		},
+		{
+			name: "route.static.create", opType: OpRouteStaticCreate,
+			target: ref(inventory.KindStaticRoute, "pve1", "lab-route"),
+			params: &RouteStaticCreateParams{Iface: "vmbr0", DestCIDR: "10.10.0.0/24", Gateway: "203.0.113.1"},
+		},
+		{
+			name: "route.static.update", opType: OpRouteStaticUpdate,
+			target: ref(inventory.KindStaticRoute, "pve1", "lab-route"),
+			params: &RouteStaticUpdateParams{Gateway: strPtr("203.0.113.2")},
+		},
+		{
+			name: "route.static.delete", opType: OpRouteStaticDelete,
+			target: ref(inventory.KindStaticRoute, "pve1", "lab-route"),
+			params: &RouteStaticDeleteParams{},
+		},
+		{
+			name: "vf.provision", opType: OpVFProvision,
+			target: ref(inventory.KindPhysNic, "pve1", "eno1"),
+			params: &VFProvisionParams{Count: 2, VLAN: 100, SpoofCheck: boolPtr(true), Trust: boolPtr(false)},
 		},
 	}
 }

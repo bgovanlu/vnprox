@@ -110,3 +110,18 @@ func (s *Service) ConnCount() int {
 func (s *Service) Broadcast(topic string, payload []byte) {
 	s.hub.Broadcast(topic, payload)
 }
+
+// CloseByTokenID force-closes every live WS connection authenticated by
+// the given api_tokens.id, over this Service's shared Hub (T-1104's
+// revoke-forces-WS-disconnect acceptance criterion). See Hub.CloseByTokenID's
+// doc comment for the CloseNow-not-Close reasoning.
+func (s *Service) CloseByTokenID(id string) int {
+	return s.hub.CloseByTokenID(id)
+}
+
+// SetEventSink registers fn as the Hub's T-1104 automation-event fan-in
+// hook (see Hub.SetEventSink's doc comment) — cmd/vnproxd wires this to
+// internal/automation's webhook Dispatcher.Publish.
+func (s *Service) SetEventSink(fn func([]byte)) {
+	s.hub.SetEventSink(fn)
+}

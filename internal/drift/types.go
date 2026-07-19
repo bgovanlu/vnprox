@@ -15,6 +15,20 @@ const (
 	CheckSDNRealization        = "sdn_realization"
 	CheckPendingInterfaces     = "pending_interfaces"
 	CheckFileRuntimeDivergence = "file_runtime_divergence"
+
+	// CheckSpecDrift is T-1102's sixth, additional check family: live state
+	// diverging from the pinned declarative spec (internal/spec, T-1101) —
+	// the GitOps reconciler's own reference, distinct from and additional to
+	// the five cross-node-consistency families above (docs/features/
+	// topology.md §6). See specdrift.go.
+	CheckSpecDrift = "spec_drift"
+	// CheckVFSpoofcheckMismatch (T-1506) is the standing-drift half of
+	// vf_spoofcheck_mismatch: an already-diverged live VF (host-netlink
+	// observed) whose VLAN/spoof-check setting no longer matches its PF's
+	// bridge's own VLAN-awareness/VID-set policy — see sriov.go. The
+	// identical comparison also runs at changeset-validate time, for a
+	// *staged* vf.provision op, in internal/change/validate_referential.go.
+	CheckVFSpoofcheckMismatch = "vf_spoofcheck_mismatch"
 )
 
 // Severity mirrors docs/api.md's changeset finding vocabulary

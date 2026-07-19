@@ -12,7 +12,7 @@ Proxmox SDN (zones → VNets → subnets, applied cluster-wide via `/etc/pve/sdn
 
 One wizard per zone type. Each step explains *what this actually does* in plain English, with a live preview pane drawing the resulting topology before anything is created:
 
-- **Simple** — isolated bridge per node, optional SNAT. ("A private network that exists on every node; VMs on it can talk to each other on the same node.")
+- **Simple** — isolated bridge per node, optional SNAT. ("A private network that exists on every node; VMs on it can talk to each other on the same node.") A simple zone's SNAT flag (`Subnet.snat`, already read-only here) is also the source of one row on T-1403's Edge layer (`GET /edge/nat`'s `sdnSimpleZoneNat` — see docs/api.md's Edge & NAT cockpit section): that layer never re-derives or shadows this data, it only re-shapes the identical read into "what does this cluster expose/mask outbound" terms alongside PVE-host masquerade/port-forward rules and static routes, which are edited via the ordinary `nat.*`/`route.static.*` changeset ops.
 - **VLAN** — picks the VLAN-aware bridge, validates the physical path actually trunks the chosen VIDs (cross-checks LLDP VLAN info when available).
 - **QinQ** — service VLAN + inner range with double-tag illustration.
 - **VXLAN** — peer address list auto-suggested from cluster node IPs; MTU math shown explicitly (underlay MTU − 50) with a one-click "set VNet MTU accordingly".
@@ -41,4 +41,4 @@ For zones with PVE-managed DHCP (dnsmasq): range editor on subnets, static reser
 
 ## 6. Out of scope v1
 
-Custom FRR config beyond what PVE's EVPN controller writes; BGP to external fabrics beyond PVE's controller/exit-node model (view-only where present); IPv6 SLAAC management (display yes, config P1).
+Custom FRR config beyond what PVE's EVPN controller writes; BGP to external fabrics beyond PVE's controller/exit-node model (view-only where present); IPv6 SLAAC management — **display now real** (T-1404: `GET /ipv6/segments` surfaces per-segment RA presence, M/O flags, advertised prefixes, and DHCPv6-server presence, cluster-wide — `docs/api.md`'s IPv6 section, `docs/features/ipam.md` §4-§5), **basic addressing config now real** (a v6 subnet is an ordinary `sdn.subnet.create` op, staged directly or via the dual-stack rollout wizard); full RA/DHCPv6 *parameter* control (M/O flags, DHCPv6 ranges) beyond addressing remains P1 — PVE SDN's own subnet model has no such fields to set yet.

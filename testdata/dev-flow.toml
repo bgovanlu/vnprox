@@ -43,6 +43,16 @@ lldp_interval = "30s"
 [metrics]
 key_file = "var/dev-flow-metrics.key"
 
+# T-1307: blueprint signing (T-1107, landed after this file) needs the same
+# var/ override every other key/token path above already has — missing
+# here broke vnproxd startup for this stack (and so the whole shared
+# web/e2e run) on any host/sandbox without a pre-existing, writable
+# /etc/vnprox, the same class of gap dev-alert.toml's own comment
+# documents for T-1001's metrics token.
+[blueprint]
+signing_key_file = "var/dev-flow-blueprint-signing.key"
+trusted_signers_dir = "var/dev-flow-trusted-signers"
+
 # T-1002: netflow_enabled on a non-default, non-privileged port distinct
 # from every other e2e stack's ports (127.0.0.1-only, so it never competes
 # with a real collector on the dev host bound to the conventional 2055).

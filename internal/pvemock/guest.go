@@ -48,6 +48,43 @@ func parseProbeCommand(cmd []string) (proto, dstIP string, port int, ok bool) {
 	}
 }
 
+// parseInteriorCommand recognizes T-1304's guest-interior read set's three
+// non-probe `POST .../agent/exec` command shapes (internal/guestinterior's
+// qemu.go emits exactly these — see that file's doc comment), returning
+// which interior field they correspond to. Deliberately as closed/
+// enumerable as parseProbeCommand above — no generic argv-matching table —
+// so an unrecognized command still 400s the same honest way it always has.
+func parseInteriorCommand(cmd []string) (kind string, ok bool) {
+	switch {
+	case len(cmd) == 4 && cmd[0] == "ip" && cmd[1] == "-j" && cmd[2] == "route" && cmd[3] == "show":
+		return "routes", true
+	case len(cmd) == 2 && cmd[0] == "cat" && cmd[1] == "/etc/resolv.conf":
+		return "resolvconf", true
+	case len(cmd) == 3 && cmd[0] == "ss" && cmd[1] == "-H" && cmd[2] == "-tuln":
+		return "sockets", true
+	default:
+		return "", false
+	}
+}
+
+// interiorCommandOutput returns g's fixture-declared output for kind (one
+// of parseInteriorCommand's return values), or "" if nothing was declared
+// — matching AgentInterfaces' own "unscripted is silence" tolerance rather
+// than a synthesized error (a real guest with no in-guest data for one of
+// these reads simply reports nothing for it, not a fault).
+func (g *GuestSpec) interiorCommandOutput(kind string) string {
+	switch kind {
+	case "routes":
+		return g.InteriorRoutesJSON
+	case "resolvconf":
+		return g.InteriorResolvConf
+	case "sockets":
+		return g.InteriorSockets
+	default:
+		return ""
+	}
+}
+
 // matchAgentExecOutcome finds g's scripted outcome for (proto,dstIP,port),
 // or the honest "no scripted outcome" error fallback documented on
 // GuestSpec.AgentExecOutcomes.
@@ -256,9 +293,16 @@ func (srv *Server) handleGuestAgentExec(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if kind, isInterior := parseInteriorCommand(body.Command); isInterior {
+		pid := srv.state.nextExecPID()
+		srv.state.storeExecResult(pid, execResult{exited: true, exitCode: 0, outData: g.interiorCommandOutput(kind)})
+		writeData(w, http.StatusOK, map[string]int{"pid": pid})
+		return
+	}
+
 	proto, dstIP, port, ok := parseProbeCommand(body.Command)
 	if !ok {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("pvemock: unrecognized probe command %v (see internal/probe.buildCommand)", body.Command))
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("pvemock: unrecognized probe command %v (see internal/probe.buildCommand, internal/guestinterior's qemu.go)", body.Command))
 		return
 	}
 

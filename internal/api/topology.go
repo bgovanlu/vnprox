@@ -38,6 +38,12 @@ type TopologyService interface {
 	InventoryDetail(ref inventory.Ref) (topology.EntityDetail, bool)
 	Search(q string) []topology.SearchResult
 	ServeWS(w http.ResponseWriter, r *http.Request)
+	// CloseByTokenID is T-1104's revoke-forces-disconnect seam: DELETE
+	// /tokens/{id} calls this right after persisting the revocation so any
+	// WS connection that token authenticated is torn down within the same
+	// request tick (see internal/topology.Hub.CloseByTokenID's doc
+	// comment).
+	CloseByTokenID(id string) int
 }
 
 // mountTopologyRoutes registers docs/api.md's topology/inventory routes and

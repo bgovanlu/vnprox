@@ -40,6 +40,17 @@ const (
 // would collide.
 const qosStateSnapshotPath = "/var/lib/vnprox/qos.state"
 
+// wgStateSnapshotPath is the synthetic, cluster-scoped (Node="") snapshotFile
+// path holding T-1401's WireGuard pre-apply state: a JSON object mapping each
+// affected node to the opaque WGGateway.SnapshotWg string for that node. It is
+// cluster-scoped (Node="") deliberately — a per-node interfaces file already
+// occupies that node's snapshotFile slot, and restoreAll keys those by node,
+// so a second per-node file would collide; the SDN snapshot files use the
+// same cluster-scoped stand-in for the same reason. The private keys inside
+// stay sealed (SnapshotWg never emits plaintext), so this snapshot blob is no
+// more sensitive than the sealed store rows it mirrors.
+const wgStateSnapshotPath = "/var/lib/vnprox/wireguard.state"
+
 // Snapshot kinds (store.Snapshot.Kind, docs/data-model.md §2: pre|post|
 // manual|scheduled).
 const (
@@ -138,6 +149,14 @@ func (s *Service) captureSnapshotFull(ctx context.Context, changesetID, kind str
 		files = append(files, qosFile)
 	}
 
+	if plan.hasWg() && s.wg != nil {
+		wgFile, err := s.wgStateSnapshotFile(ctx, plan.wgNodes())
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, wgFile)
+	}
+
 	if _, err := s.persistSnapshot(ctx, changesetID, kind, "", files); err != nil {
 		return nil, err
 	}
@@ -209,6 +228,44 @@ func sdnConfigSnapshotFiles(ctx context.Context, s *Service, cfg SDNConfig) ([]s
 		out = append(out, snapshotFile{Path: e.path, SHA256: hash, Content: content})
 	}
 	return out, nil
+}
+
+// wgStateSnapshotFile captures each wg node's WireGuard state (WGGateway.
+// SnapshotWg) into one cluster-scoped snapshotFile (wgStateSnapshotPath),
+// stored in the blob store like every other snapshot file.
+func (s *Service) wgStateSnapshotFile(ctx context.Context, nodes []string) (snapshotFile, error) {
+	state := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		snap, err := s.wg.SnapshotWg(ctx, node)
+		if err != nil {
+			return snapshotFile{}, fmt.Errorf("change: snapshotting WireGuard state on node %s: %w", node, err)
+		}
+		state[node] = snap
+	}
+	b, err := json.Marshal(state)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: encoding WireGuard state snapshot: %w", err)
+	}
+	content := string(b)
+	hash, err := s.blobs.Put(ctx, content)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: storing WireGuard state snapshot blob: %w", err)
+	}
+	return snapshotFile{Path: wgStateSnapshotPath, SHA256: hash, Content: content}, nil
+}
+
+// wgStateFromSnapshot decodes the per-node WireGuard state map out of a loaded
+// pre-snapshot's file list. ok is false if the snapshot carries no WireGuard
+// state file (a changeset with no wg.* ops).
+func wgStateFromSnapshot(files []snapshotFile) (state map[string]string, ok bool) {
+	for _, f := range files {
+		if f.Path == wgStateSnapshotPath {
+			if json.Unmarshal([]byte(f.Content), &state) == nil {
+				return state, true
+			}
+		}
+	}
+	return nil, false
 }
 
 // sdnConfigFromSnapshot decodes an SDNConfig back out of a loaded pre-

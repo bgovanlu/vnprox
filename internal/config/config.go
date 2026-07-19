@@ -18,9 +18,13 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/bgovanlu/vnprox/internal/capture"
 	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/flow/hostsample"
+	"github.com/bgovanlu/vnprox/internal/latmesh"
+	"github.com/bgovanlu/vnprox/internal/mtuprobe"
 	"github.com/bgovanlu/vnprox/internal/peer"
+	"github.com/bgovanlu/vnprox/internal/wan"
 )
 
 // Defaults mirror the example config in docs/deployment.md.
@@ -87,6 +91,21 @@ const (
 	// DefaultSessionKeyFile above, generated on first daemon start if
 	// absent (cmd/vnproxd/server.go).
 	DefaultMetricsKeyFile = "/etc/vnprox/keys/metrics.key"
+
+	// DefaultBlueprintSigningKeyFile and DefaultBlueprintTrustedSignersDir
+	// are T-1107's blueprint sharing bundle paths (docs/features/
+	// blueprints.md §5): the daemon's own Ed25519 signing identity
+	// (generated at first use, same root:root 0600 convention as
+	// DefaultSessionKeyFile/DefaultMetricsKeyFile above) and the
+	// admin-managed directory of pinned trusted signers.
+	DefaultBlueprintSigningKeyFile    = "/etc/vnprox/keys/blueprint-signing.key"
+	DefaultBlueprintTrustedSignersDir = "/etc/vnprox/keys/trusted-signers"
+
+	// DefaultCaptureRoot is where T-1301's per-session .pcap files live
+	// (docs/data-model.md / docs/security.md's Host footprint note) — under
+	// /var/lib/vnprox (already an app-owned, root:root ReadWritePath in the
+	// systemd unit), auto-purged past retention_hours.
+	DefaultCaptureRoot = "/var/lib/vnprox/captures"
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
@@ -94,13 +113,35 @@ type Config struct {
 	PVE         PVEConfig
 	Storage     StorageConfig
 	FirewallLog FirewallLogConfig
+	Blueprint   BlueprintConfig
 	Peer        PeerConfig
-	Metrics     MetricsConfig
 	Safety      SafetyConfig
 	Server      ServerConfig
+	Metrics     MetricsConfig
+	Capture     CaptureConfig
+	Flows       FlowsConfig
 	Collect     CollectConfig
 	Retention   RetentionConfig
-	Flows       FlowsConfig
+	Latmesh     LatmeshConfig
+	MTUProbe    MTUProbeConfig
+	Wan         WanConfig
+}
+
+// CaptureConfig is the [capture] section (T-1301): the server-enforced,
+// un-overridable cap ceilings every capture session is bounded by, the root
+// directory per-session .pcap files live in, and the BPF-filter
+// instruction-count ceiling. These ceilings can never be raised by an API
+// request, admin flag, or filter construction — a request may only ask for
+// values at or below them (internal/capture.Coordinator.clampCaps). Unset
+// fields fall back to internal/capture's own conservative defaults
+// (capture.DefaultCaps / capture.DefaultMaxFilterInstructions).
+type CaptureConfig struct {
+	Root                  string
+	MaxDurationSec        int
+	MaxBytes              int64
+	MaxPackets            int64
+	RetentionHours        int
+	MaxFilterInstructions int
 }
 
 // ServerConfig is the [server] section.
@@ -225,6 +266,15 @@ type MetricsConfig struct {
 	Enabled   bool
 }
 
+// BlueprintConfig is the [blueprint] section (T-1107): where the daemon's
+// own bundle-signing Ed25519 identity and the admin-managed trusted-signers
+// directory live (docs/features/blueprints.md §5). Added by T-1107 — no
+// [blueprint] section existed before it needed either path.
+type BlueprintConfig struct {
+	SigningKeyFile    string
+	TrustedSignersDir string
+}
+
 // FlowsConfig is the [flows] section (T-1002): per-node, opt-in flow
 // ingestion — every listener defaults to *disabled* (docs/features/
 // monitoring.md §3's "no packet capture, no flow sampling in v1" carried
@@ -258,6 +308,47 @@ type FlowsConfig struct {
 	EBPFSamplingEnabled      bool
 }
 
+// LatmeshConfig is the [latmesh] section (T-1303): the continuous latency &
+// loss mesh's own scheduling/retention knobs, always-on (unlike [flows]'
+// per-protocol opt-in listeners — a low-rate node-to-node probe mesh has no
+// external attack surface a listener does, so there's no "opt-in" gate to
+// carry here). ProbeIntervalSec/RetentionMinutes/MaxRows default to
+// internal/latmesh's own documented constants when unset/non-positive.
+type LatmeshConfig struct {
+	ProbeIntervalSec int
+	RetentionMinutes int
+	MaxRows          int64
+}
+
+// MTUProbeConfig is the [mtuprobe] section (T-1306): the path MTU prober's
+// own scheduling knob. Always on, same as [latmesh] (a low-rate outbound
+// DF-probe carries no listening-port attack surface to gate behind an
+// opt-in flag). ProbeIntervalSec defaults to internal/mtuprobe's own
+// documented constant (300s — deliberately coarser than [latmesh]'s 10s
+// default, since MTU rarely changes) when unset/non-positive.
+type MTUProbeConfig struct {
+	ProbeIntervalSec int
+}
+
+// WanConfig is the [wan] section (T-1405): the WAN health probe's own
+// scheduling/retention knobs, independent of [latmesh]'s (see internal/wan's
+// package doc comment for why a WAN link's own ring gets its own bound
+// rather than sharing latency_samples'). Always on, same reasoning as
+// [latmesh]/[mtuprobe] — a low-rate outbound probe toward an operator-
+// configured reference target carries no listening-port attack surface to
+// gate behind an opt-in flag; a node with no configured targets simply has
+// nothing to probe (internal/wan.TargetDiscoverer.Pairs returns empty).
+// ProbeIntervalSec/RetentionMinutes/MaxRows default to internal/wan's own
+// documented constants when unset/non-positive.
+type WanConfig struct {
+	ProbeIntervalSec int
+	RetentionMinutes int
+	MaxRows          int64
+	// LossWarnPct is findings.HealthThresholds.WanLossWarnPct's config-file
+	// override (0/unset keeps internal/wan.DefaultLossWarnPct, 20%).
+	LossWarnPct float64
+}
+
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
@@ -265,12 +356,26 @@ type rawConfig struct {
 	Collect     rawCollect     `toml:"collect"`
 	Storage     rawStorage     `toml:"storage"`
 	FirewallLog rawFirewallLog `toml:"firewalllog"`
+	Blueprint   rawBlueprint   `toml:"blueprint"`
 	Peer        rawPeer        `toml:"peer"`
 	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
 	Server      rawServer      `toml:"server"`
-	Retention   rawRetention   `toml:"retention"`
+	Capture     rawCapture     `toml:"capture"`
 	Flows       rawFlows       `toml:"flows"`
+	Retention   rawRetention   `toml:"retention"`
+	Latmesh     rawLatmesh     `toml:"latmesh"`
+	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
+	Wan         rawWan         `toml:"wan"`
+}
+
+type rawCapture struct {
+	Root                  string `toml:"root"`
+	MaxDurationSec        int    `toml:"max_duration_sec"`
+	MaxBytes              int64  `toml:"max_bytes"`
+	MaxPackets            int64  `toml:"max_packets"`
+	RetentionHours        int    `toml:"retention_hours"`
+	MaxFilterInstructions int    `toml:"max_filter_instructions"`
 }
 
 type rawServer struct {
@@ -331,6 +436,11 @@ type rawMetrics struct {
 	AllowFrom []string `toml:"allow_from"`
 }
 
+type rawBlueprint struct {
+	SigningKeyFile    string `toml:"signing_key_file"`
+	TrustedSignersDir string `toml:"trusted_signers_dir"`
+}
+
 type rawFlows struct {
 	SFlowPort                int   `toml:"sflow_port"`
 	NetFlowPort              int   `toml:"netflow_port"`
@@ -343,6 +453,23 @@ type rawFlows struct {
 	IPFIXEnabled             bool  `toml:"ipfix_enabled"`
 	ConntrackSamplingEnabled bool  `toml:"conntrack_sampling_enabled"`
 	EBPFSamplingEnabled      bool  `toml:"ebpf_sampling_enabled"`
+}
+
+type rawLatmesh struct {
+	ProbeIntervalSec int   `toml:"probe_interval_sec"`
+	RetentionMinutes int   `toml:"retention_minutes"`
+	MaxRows          int64 `toml:"max_rows"`
+}
+
+type rawMTUProbe struct {
+	ProbeIntervalSec int `toml:"probe_interval_sec"`
+}
+
+type rawWan struct {
+	ProbeIntervalSec int     `toml:"probe_interval_sec"`
+	RetentionMinutes int     `toml:"retention_minutes"`
+	MaxRows          int64   `toml:"max_rows"`
+	LossWarnPct      float64 `toml:"loss_warn_pct"`
 }
 
 // Load reads, parses, defaults, and validates the config file at path.
@@ -417,6 +544,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		},
 		Collect: collect,
 		Metrics: metricsCfg,
+		Blueprint: BlueprintConfig{
+			SigningKeyFile:    firstNonEmpty(raw.Blueprint.SigningKeyFile, DefaultBlueprintSigningKeyFile),
+			TrustedSignersDir: firstNonEmpty(raw.Blueprint.TrustedSignersDir, DefaultBlueprintTrustedSignersDir),
+		},
 		Flows: FlowsConfig{
 			SFlowEnabled:     raw.Flows.SFlowEnabled,
 			NetFlowEnabled:   raw.Flows.NetFlowEnabled,
@@ -430,6 +561,28 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			ConntrackSamplingEnabled: raw.Flows.ConntrackSamplingEnabled,
 			EBPFSamplingEnabled:      raw.Flows.EBPFSamplingEnabled,
 			HostSampleIntervalSec:    firstNonZeroInt(raw.Flows.HostSampleIntervalSec, int(hostsample.DefaultHostSampleInterval/time.Second)),
+		},
+		Latmesh: LatmeshConfig{
+			ProbeIntervalSec: firstNonZeroInt(raw.Latmesh.ProbeIntervalSec, latmesh.DefaultProbeIntervalSec),
+			RetentionMinutes: firstNonZeroInt(raw.Latmesh.RetentionMinutes, latmesh.DefaultRetentionMinutes),
+			MaxRows:          firstNonZeroInt64(raw.Latmesh.MaxRows, latmesh.DefaultMaxRows),
+		},
+		MTUProbe: MTUProbeConfig{
+			ProbeIntervalSec: firstNonZeroInt(raw.MTUProbe.ProbeIntervalSec, mtuprobe.DefaultProbeIntervalSec),
+		},
+		Wan: WanConfig{
+			ProbeIntervalSec: firstNonZeroInt(raw.Wan.ProbeIntervalSec, wan.DefaultProbeIntervalSec),
+			RetentionMinutes: firstNonZeroInt(raw.Wan.RetentionMinutes, wan.DefaultRetentionMinutes),
+			MaxRows:          firstNonZeroInt64(raw.Wan.MaxRows, wan.DefaultMaxRows),
+			LossWarnPct:      raw.Wan.LossWarnPct,
+		},
+		Capture: CaptureConfig{
+			Root:                  firstNonEmpty(raw.Capture.Root, DefaultCaptureRoot),
+			MaxDurationSec:        firstNonZeroInt(raw.Capture.MaxDurationSec, capture.DefaultCaps.MaxDurationSec),
+			MaxBytes:              firstNonZeroInt64(raw.Capture.MaxBytes, capture.DefaultCaps.MaxBytes),
+			MaxPackets:            firstNonZeroInt64(raw.Capture.MaxPackets, capture.DefaultCaps.MaxPackets),
+			RetentionHours:        firstNonZeroInt(raw.Capture.RetentionHours, capture.DefaultCaps.RetentionHours),
+			MaxFilterInstructions: firstNonZeroInt(raw.Capture.MaxFilterInstructions, capture.DefaultMaxFilterInstructions),
 		},
 	}
 

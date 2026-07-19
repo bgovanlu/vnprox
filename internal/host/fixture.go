@@ -50,6 +50,17 @@ type pvemockReader interface {
 	DHCPLeases(ctx context.Context, node string) ([]byte, error)
 	Services(ctx context.Context, node string) (map[string]bool, error)
 	CorosyncStatus(ctx context.Context, node string) ([]byte, error)
+	ContainerInterior(ctx context.Context, node string, vmid int) (pvemock.ContainerInteriorRaw, error)
+	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+	// Conntrack returns node's fixture-declared live conntrack/NAT table
+	// (T-1305). Declared here (rather than via the optional-method
+	// type-assertion pattern Neighbors below uses, added incrementally by
+	// an earlier task before pvemockReader itself existed) since this
+	// interface was still open for a direct addition when T-1305 landed.
+	Conntrack(ctx context.Context, node string) ([]pvemock.ConntrackEntry, error)
+	// IPv6RA returns node's fixture-declared per-interface IPv6 RA/DHCPv6
+	// observation (T-1404).
+	IPv6RA(ctx context.Context, node string) ([]pvemock.IPv6RAObservation, error)
 }
 
 // FixtureReader adapts a *pvemock.FixtureHostReader (T-004's YAML
@@ -170,6 +181,30 @@ func (f *FixtureReader) CorosyncStatus(ctx context.Context, node string) ([]byte
 	return b, nil
 }
 
+// ContainerInterior implements Reader by delegating directly and
+// converting pvemock's own ContainerInteriorRaw to this package's
+// identically-shaped type (T-1304 — same "two interfaces, one adapter"
+// reasoning as the rest of this file).
+func (f *FixtureReader) ContainerInterior(ctx context.Context, node string, vmid int) (ContainerInteriorRaw, error) {
+	raw, err := f.r.ContainerInterior(ctx, node, vmid)
+	if err != nil {
+		return ContainerInteriorRaw{}, wrapFixtureErr(err)
+	}
+	return ContainerInteriorRaw{
+		AddrJSON: raw.AddrJSON, RouteJSON: raw.RouteJSON,
+		ResolvConf: raw.ResolvConf, Sockets: raw.Sockets,
+	}, nil
+}
+
+// ContainerPing implements Reader by delegating directly.
+func (f *FixtureReader) ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error) {
+	reachable, err := f.r.ContainerPing(ctx, node, vmid, targetIP)
+	if err != nil {
+		return false, wrapFixtureErr(err)
+	}
+	return reachable, nil
+}
+
 // Services implements Reader by delegating directly.
 func (f *FixtureReader) Services(ctx context.Context, node string) (map[string]bool, error) {
 	s, err := f.r.Services(ctx, node)
@@ -177,6 +212,54 @@ func (f *FixtureReader) Services(ctx context.Context, node string) (map[string]b
 		return nil, wrapFixtureErr(err)
 	}
 	return s, nil
+}
+
+// Conntrack implements Reader (T-1305): node's fixture-declared conntrack
+// table, converting pvemock.ConntrackEntry to host.ConntrackEntry
+// field-for-field (see the Reader doc comment on why the two packages keep
+// distinct-but-structurally-identical types).
+func (f *FixtureReader) Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error) {
+	in, err := f.r.Conntrack(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	out := make([]ConntrackEntry, len(in))
+	for i, e := range in {
+		out[i] = ConntrackEntry{
+			Proto: e.Proto, SrcIP: e.SrcIP, DstIP: e.DstIP, SrcPort: e.SrcPort, DstPort: e.DstPort,
+			State: e.State, TimeoutSec: e.TimeoutSec,
+			NatSrc: convertFixtureNatAddr(e.NatSrc), NatDst: convertFixtureNatAddr(e.NatDst),
+		}
+	}
+	return out, nil
+}
+
+// IPv6RA implements Reader (T-1404): node's fixture-declared per-interface
+// RA/DHCPv6 observation, converting pvemock.IPv6RAObservation to
+// host.IPv6RAObservation field-for-field (same "two interfaces,
+// one adapter" reasoning as the rest of this file).
+func (f *FixtureReader) IPv6RA(ctx context.Context, node string) ([]IPv6RAObservation, error) {
+	in, err := f.r.IPv6RA(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	out := make([]IPv6RAObservation, len(in))
+	for i, e := range in {
+		out[i] = IPv6RAObservation{
+			Iface: e.Iface, Prefixes: append([]string(nil), e.Prefixes...),
+			RouterLifetimeSec: e.RouterLifetimeSec, RAPresent: e.RAPresent,
+			ManagedFlag: e.ManagedFlag, OtherFlag: e.OtherFlag,
+			DHCPv6ServerPresent: e.DHCPv6ServerPresent, DHCPv6InferredFromRA: e.DHCPv6InferredFromRA,
+		}
+	}
+	return out, nil
+}
+
+func convertFixtureNatAddr(a *pvemock.NatAddr) *NatAddr {
+	if a == nil {
+		return nil
+	}
+	return &NatAddr{IP: a.IP, Port: a.Port}
 }
 
 // Links implements Reader: it fetches pvemock's minimal LinkState list,
@@ -234,8 +317,26 @@ func convertFixtureLink(l pvemock.LinkState, parsed *File) LinkState {
 		ls.Bridge = fixtureBridgeDetail(opts, l.FDB)
 	case "vlan":
 		ls.VlanID, ls.VlanParent = fixtureVlanInfo(l.Name, opts)
+	case "physical":
+		ls.VFs = convertFixtureVFs(l.VFs)
 	}
 	return ls
+}
+
+// convertFixtureVFs converts a fixture's declared SR-IOV VFs (T-1506,
+// pvemock.LinkState.VFs) to this package's own VF shape.
+func convertFixtureVFs(vfs []pvemock.VF) []VF {
+	if len(vfs) == 0 {
+		return nil
+	}
+	out := make([]VF, len(vfs))
+	for i, v := range vfs {
+		out[i] = VF{
+			ID: v.ID, MacAddr: v.Mac, VLAN: v.Vlan,
+			SpoofCheck: v.SpoofCheck, Trust: v.Trust, PCIAddr: v.PCIAddr,
+		}
+	}
+	return out
 }
 
 // normalizeFixtureKind maps pvemock's NetIface.Type strings (which mirror

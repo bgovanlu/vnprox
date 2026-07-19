@@ -179,6 +179,13 @@ Restating the roadmap's invariants as orchestration rules, because every card in
    NAT/route ops, QoS shapes, VF provisioning, microseg policy, tenant request-changesets, and
    AI-proposed changesets from MCP all flow stage→validate→diff→apply→confirm/rollback. No card
    introduces a second mutation path; plugins may *stage*, never bypass.
+   **Any card adding a new mutating op group MUST extend `internal/change.TouchesMgmtPath` so an
+   op targeting (or, via an `iface`/carrier param, attached to) a node's resolved management path
+   inherits T-703's mandatory-ack + confirm-window ceremony — with a `mgmttouch_test.go`
+   regression case.** Both T-1401 (`wg.*`) and T-1403 (`nat.*`/`route.*`) shipped this gap and it
+   was caught only in adversarial review; it is now a required deliverable, not an afterthought.
+   (Delete-by-ref ops that don't carry the iface/carrier in params need rule-id→iface resolution
+   from live state — a shared follow-up first threaded by the T-1401 fix.)
 2. **Read-only, forever, for carried-payload domains.** Kubernetes, Ceph, and ingress/
    reverse-proxy integrations carry no write scope; regression tests assert zero write surface.
 3. **New domains store intent + audit only.** WireGuard on-node state, capture sessions, QoS

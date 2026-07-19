@@ -192,6 +192,19 @@ export function summarizeOp(op: Op): string {
       return `Update QoS shape ${id ?? "?"} (${updateFieldList(op.params)})`;
     case "qos.shape.delete":
       return `Delete QoS shape ${id ?? "?"}`;
+    // T-1402: mirrors internal/change/apply_plan.go's wgStepSummary wording
+    // exactly (op.Target.ID then op.Target.Node for wg.tunnel.*; the whole
+    // "<tunnelId>/<publicKey>" target id for wg.peer.*).
+    case "wg.tunnel.create":
+      return `Create WireGuard tunnel ${id ?? "?"} on ${op.target ? refNode(op.target) : "?"}`;
+    case "wg.tunnel.update":
+      return `Update WireGuard tunnel ${id ?? "?"} on ${op.target ? refNode(op.target) : "?"}`;
+    case "wg.tunnel.delete":
+      return `Delete WireGuard tunnel ${id ?? "?"} on ${op.target ? refNode(op.target) : "?"}`;
+    case "wg.peer.add":
+      return `Add WireGuard peer to ${id ?? "?"}`;
+    case "wg.peer.remove":
+      return `Remove WireGuard peer from ${id ?? "?"}`;
     default:
       return `${op.op} ${id ?? ""}`.trim();
   }

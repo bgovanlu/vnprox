@@ -111,6 +111,72 @@ type Reader interface {
 	// method, peer nodes via GET /api/peer/host/neighbors) into
 	// Observation{Source: "neighbor"} values.
 	Neighbors(ctx context.Context, node string) ([]Neighbor, error)
+
+	// ContainerInterior returns an lxc guest's raw host-side
+	// network-namespace read set (T-1304's guest-interior inspector): a
+	// container has no QEMU guest agent, so unlike the qemu path (which
+	// execs inside the guest via internal/pve.Client.AgentExec) this reads
+	// the container's netns directly from the host side. See
+	// ContainerInteriorRaw's doc comment for exactly what each field holds
+	// and how Real obtains it. Returns an error wrapping ErrNotFound if
+	// vmid does not name a currently known lxc guest on node.
+	ContainerInterior(ctx context.Context, node string, vmid int) (ContainerInteriorRaw, error)
+
+	// ContainerPing reports whether targetIP answered a single best-effort
+	// ping issued from inside vmid's network namespace (T-1304's
+	// default-gateway reachability check — the lxc counterpart of the qemu
+	// path's internal/probe.Run icmp probe). false covers both "no reply"
+	// and "the ping itself could not be attempted" — see Real's doc
+	// comment for why this method does not distinguish those the way
+	// internal/probe.Outcome does for the qemu path.
+	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+
+	// Conntrack returns node's live conntrack/NAT table (T-1305, docs/api.md
+	// Conntrack section): one ConntrackEntry per active connection the
+	// kernel's netfilter conntrack subsystem currently tracks, including
+	// state, remaining timeout, and (when the connection is NAT'd) the
+	// translated source/destination. This is a live, ephemeral read — never
+	// persisted (docs/architecture.md §7's "app-owned data only" rule does
+	// not apply: nothing here is written to vnprox's store). Read-only:
+	// there is no corresponding write method anywhere in this package or
+	// docs/api.md's Conntrack section — conntrack entries are never
+	// flushed/mutated by vnprox.
+	Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error)
+
+	// IPv6RA returns node's own bounded, host-local observation of IPv6
+	// Router Advertisements and DHCPv6 activity on each of its bridge/VLAN
+	// interfaces (T-1404, docs/features/sdn.md §6's "IPv6 SLAAC management
+	// — display yes" now backed by a real read): RA presence, the M
+	// (Managed) and O (Other) flags, advertised prefixes, and router
+	// lifetime — the same per-node, fanned-out-via-peer-API shape LLDP
+	// uses (GET /api/peer/host/ipv6-ra). Returns already-structured
+	// observations (like Neighbors/Conntrack above), not a raw external
+	// tool's byte format to parse — there is no one external tool whose
+	// wire format is worth preserving verbatim the way vtysh's JSON is for
+	// FRRBGPSummary/FRREVPNVNI. See IPv6RAObservation's doc comment for the
+	// DHCPv6-server-presence field's documented inference limitation.
+	IPv6RA(ctx context.Context, node string) ([]IPv6RAObservation, error)
+}
+
+// ContainerInteriorRaw is one lxc guest's raw host-side
+// network-namespace-inspection read set (T-1304): the container
+// counterpart of the qemu path's AgentIface/exec reads. Each field is one
+// command's raw output, parsed by internal/guestinterior's own parsers —
+// the same ip -j/cat/ss parsers the qemu path's guest-agent exec reads
+// also feed, so both sources share one parsing implementation. Real (see
+// containerexec_linux.go) obtains these by resolving vmid's init process
+// pid and running each command inside that process's network namespace
+// (nsenter --net=/proc/<pid>/ns/net); ResolvConf is read directly from the
+// container's rootfs (/proc/<pid>/root/etc/resolv.conf) rather than
+// exec'd, since it's a plain file read. **Needs hardware validation**: the
+// exact pid-resolution mechanism (cgroup path) is this package's own best
+// inference from PVE's pve-container conventions, not verified against a
+// live cluster — see planning/reports/needs-hardware-validation.md.
+type ContainerInteriorRaw struct {
+	AddrJSON   []byte
+	RouteJSON  []byte
+	ResolvConf []byte
+	Sockets    []byte
 }
 
 // WatchedServices is the fixed set of systemd unit names Services reports
@@ -135,25 +201,43 @@ var ErrNotFound = errors.New("host: not found")
 // LinkState is one netlink-equivalent link (physical NIC, bond, bridge,
 // VLAN sub-interface, veth, OVS bridge/bond, ...) as observed on a node.
 type LinkState struct {
-	Bond        *BondDetail
-	Bridge      *BridgeDetail
-	OperState   string
-	VlanParent  string
-	Driver      string
-	PCIAddr     string
-	Kind        string
-	Mac         string
-	Name        string
-	Master      string
-	Duplex      string
-	Members     []string
-	Addresses   []string
-	SpeedMbps   int
-	VlanID      int
-	SRIOVNumVFs int
-	MTU         int
-	Index       int
-	LinkUp      bool
+	Bond       *BondDetail
+	Bridge     *BridgeDetail
+	Name       string
+	VlanParent string
+	Driver     string
+	PCIAddr    string
+	Kind       string
+	Mac        string
+	OperState  string
+	Master     string
+	Duplex     string
+	Members    []string
+	Addresses  []string
+	VFs        []VF
+	SpeedMbps  int
+	VlanID     int
+	MTU        int
+	Index      int
+	LinkUp     bool
+}
+
+// VF is one SR-IOV virtual function on a PF link, as internal/host reports
+// it (real.go's netlink read, or a fixture's declared VFSpec list —
+// fixture.go/pvemock.VF). ID is the VF's index on its PF (netlink's
+// IFLA_VF_INFO id / `ip link show <pf>`'s "vf N"). PCIAddr is best-effort:
+// real.go resolves it from the PF's /sys/class/net/<pf>/device/virtfnN
+// symlink (needs-hardware-validation — see
+// planning/reports/needs-hardware-validation.md), empty when that read
+// fails or the platform doesn't support it; a fixture always declares it
+// directly.
+type VF struct {
+	MacAddr    string
+	PCIAddr    string
+	ID         int
+	VLAN       int
+	SpoofCheck bool
+	Trust      bool
 }
 
 // BondDetail is bond runtime state as reported by

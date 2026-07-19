@@ -13,9 +13,13 @@ import { capsForNode } from "../changesets/capabilities";
 import { computeDragOp } from "../changesets/dragDropOps";
 import { editorKindForInventoryKind, useEditorLauncherStore } from "../changesets/editorLauncherStore";
 import { EditorLauncher } from "../changesets/EditorLauncher";
+import { CaptureDialog } from "../capture/CaptureDialog";
+import { isCapturableEntityKind, useCaptureLauncherStore } from "../capture/captureLauncherStore";
 import { refNode, summarizeOp } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
+import { conntrackNodeLinkPath } from "../conntrack/urlState";
+import { diagnosePath } from "../diagnose/diagnosePath";
 import type { Viewport } from "./canvasScene";
 import { useThemeStore } from "../store/theme";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -23,6 +27,13 @@ import { buildCaptionLines, sceneFromFlowElements, sceneFromSwitchTopology, type
 import { ExportMapMenu } from "./ExportMapMenu";
 import { computeFlowEdges, flowEdgeStrokeWidth, type FlowEdge } from "./flowEdges";
 import { useLiveFlowRecords } from "../flows/flowsQueries";
+import { computeLatencyOverlayEdges } from "./latencyMode";
+import { useLatMeshHeatmapQuery } from "./latMeshQueries";
+import { computeMTUOverlayEdges } from "./mtuOverlay";
+import { useMTUProbeResultsQuery } from "./mtuProbeQueries";
+import { useWireGuardTunnelsQuery } from "../wireguard/wgTunnelsQuery";
+import { computeWgTunnelOverlay } from "../wireguard/wgTunnelEdges";
+import { buildNodeAnchorResolver } from "./nodeAnchor";
 import { FlowPairPanel } from "./FlowPairPanel";
 import { HistoryTimeline, type HistoryPlaybackState } from "./history/HistoryTimeline";
 import { InspectorStack } from "./InspectorStack";
@@ -58,6 +69,17 @@ const DEFAULT_VIEWPORT: Viewport = { x: 48, y: 48, zoom: 1 };
 
 const LAYER_ORDER: readonly Layer[] = ["phys", "l2", "sdn", "guest"];
 const SAVE_DEBOUNCE_MS = 1000;
+
+// T-1305: "view live connections" (the map's right-click entry into the
+// Conntrack explorer) is offered on any entity a conntrack read is
+// meaningfully scoped to — the physical/L2 kinds a connection actually
+// traverses, plus guest-nic (a guest's own attachment point) and sdn-vnet
+// (cluster-scoped: the link falls back to the unscoped explorer, still a
+// legitimate way in). A ref's node segment (empty for a cluster-scoped
+// sdn-vnet ref) is all this page has cheaply available to scope by — see
+// conntrack/urlState.ts's own doc comment on why this is node-scoping, not
+// exact IP/guest matching.
+const CONNTRACK_ENTITY_KINDS = new Set(["bridge", "bond", "ovs-bridge", "ovs-bond", "guest-nic", "sdn-vnet"]);
 // docs/features/topology.md §4: "Hard render cap ~2,000 visible elements;
 // beyond, require a filter (UI prompts)."
 // Exported (T-607) so scaleLab.render.test.tsx can assert the filter-prompt
@@ -120,6 +142,12 @@ function TopologyPageContent() {
   const toggleTrafficMode = useTopologyStore((s) => s.toggleTrafficMode);
   const flowsLayerActive = useTopologyStore((s) => s.flowsLayerActive);
   const toggleFlowsLayer = useTopologyStore((s) => s.toggleFlowsLayer);
+  const latencyLayerActive = useTopologyStore((s) => s.latencyLayerActive);
+  const toggleLatencyLayer = useTopologyStore((s) => s.toggleLatencyLayer);
+  const mtuLayerActive = useTopologyStore((s) => s.mtuLayerActive);
+  const toggleMTULayer = useTopologyStore((s) => s.toggleMTULayer);
+  const wgLayerActive = useTopologyStore((s) => s.wgLayerActive);
+  const toggleWGLayer = useTopologyStore((s) => s.toggleWGLayer);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
   const setActiveLayers = useTopologyStore((s) => s.setActiveLayers);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
@@ -272,6 +300,7 @@ function TopologyPageContent() {
   // drag-drop handler below both check, so the palette never offers an
   // edit a read-only session can't actually perform.
   const openEditor = useEditorLauncherStore((s) => s.open);
+  const openCapture = useCaptureLauncherStore((s) => s.open);
   const topologyPaletteActions = useMemo<PaletteAction[]>(() => {
     if (!topology) return [];
     const actions: PaletteAction[] = [];
@@ -328,13 +357,44 @@ function TopologyPageContent() {
   const handleExpandedData = (groupId: string, nodes: TopologyNode[], edges: TopologyEdge[]) => {
     setExpandedData((prev) => ({ ...prev, [groupId]: { nodes, edges } }));
   };
+
+  // Shared "whole node" anchor resolver for every node-to-node overlay
+  // layer (Latency/T-1303, MTU/T-1306, WireGuard/T-1402): internal/
+  // topology.Project never renders a KindNode entity of its own (see
+  // nodeAnchor.ts's doc comment for the bug this fixes — the previous
+  // per-overlay `nodeIdForName` below resolved against a
+  // "node:<name>:<name>" id that no real GET /topology response ever
+  // contains), so this resolves to the first rendered entity in that
+  // node's own band instead. Computed from `topology.nodes` directly (not
+  // the later `canvasNodeIds`, which is itself derived from `elements` —
+  // using it here would be circular) since a node's set of rendered
+  // entities is unaffected by guest-group expansion or these very
+  // overlays.
+  const nodeIdForName = useMemo(() => buildNodeAnchorResolver(topology?.nodes ?? []), [topology]);
+
+  // T-1402 "WireGuard" layer: renders every tunnel this node can see as a
+  // map edge to its far-side endpoint, painted from T-1401's live per-peer
+  // status — same v2-canvas-only, "only fetch while genuinely paintable"
+  // scope as Latency/MTU below. Unlike those two (which only annotate
+  // existing edges via a badge overlay drawn after `elements` exists), this
+  // overlay also introduces synthetic far-side endpoint nodes
+  // (wgTunnelEdges.ts) that must be part of `elements` itself — merged into
+  // extraNodes/extraEdges below, the same seam T-1003's expanded
+  // guest-group pills already use.
+  const wgPaintable = wgLayerActive && viewMode === "graph" && rendererVersion === "v2";
+  const { data: wgTunnels } = useWireGuardTunnelsQuery(wgPaintable);
+  const wgOverlay = useMemo(
+    () => (wgPaintable && wgTunnels ? computeWgTunnelOverlay(wgTunnels, nodeIdForName) : { nodes: [], edges: [] }),
+    [wgPaintable, wgTunnels, nodeIdForName],
+  );
+
   const extraNodes = useMemo(
-    () => Array.from(expandedGroups).flatMap((id) => expandedData[id]?.nodes ?? []),
-    [expandedGroups, expandedData],
+    () => [...Array.from(expandedGroups).flatMap((id) => expandedData[id]?.nodes ?? []), ...wgOverlay.nodes],
+    [expandedGroups, expandedData, wgOverlay.nodes],
   );
   const extraEdges = useMemo(
-    () => Array.from(expandedGroups).flatMap((id) => expandedData[id]?.edges ?? []),
-    [expandedGroups, expandedData],
+    () => [...Array.from(expandedGroups).flatMap((id) => expandedData[id]?.edges ?? []), ...wgOverlay.edges],
+    [expandedGroups, expandedData, wgOverlay.edges],
   );
 
   // §5 staleness: grey the bands whose node-scoped collector data is stale
@@ -424,6 +484,31 @@ function TopologyPageContent() {
   const flowOverlayEdges = useMemo(
     () => flowConversationEdges.map((e) => ({ id: e.id, from: e.from, to: e.to, strokeWidth: flowEdgeStrokeWidth(e.bytesPerSec) })),
     [flowConversationEdges],
+  );
+
+  // T-1303 "Latency" heatmap layer: same v2-canvas-only, "only fetch while
+  // genuinely paintable" scope as the Flows layer above (docs/features/
+  // monitoring.md §1's new paint mode has no v1/switch-faceplate rendering
+  // either).
+  const latencyPaintable = latencyLayerActive && viewMode === "graph" && rendererVersion === "v2";
+  const { data: latMeshLinks } = useLatMeshHeatmapQuery(latencyPaintable);
+  // GET /latmesh/heatmap's fromNode/toNode are plain PVE node names, not
+  // Refs — resolved to a rendered map entity via the shared
+  // `nodeIdForName` anchor resolver above (nodeAnchor.ts; T-1402 fixed this
+  // to no longer resolve against the never-rendered "node:<name>:<name>"
+  // id — see that file's doc comment).
+  const latencyOverlayEdges = useMemo(
+    () => (latencyPaintable && latMeshLinks ? computeLatencyOverlayEdges(latMeshLinks, nodeIdForName) : []),
+    [latencyPaintable, latMeshLinks, nodeIdForName],
+  );
+
+  // T-1306 "Verified MTU" badge layer: same v2-canvas-only, "only fetch
+  // while genuinely paintable" scope as the Latency layer above.
+  const mtuPaintable = mtuLayerActive && viewMode === "graph" && rendererVersion === "v2";
+  const { data: mtuProbeResults } = useMTUProbeResultsQuery(mtuPaintable);
+  const mtuOverlayBadges = useMemo(
+    () => (mtuPaintable && mtuProbeResults ? computeMTUOverlayEdges(mtuProbeResults, nodeIdForName) : []),
+    [mtuPaintable, mtuProbeResults, nodeIdForName],
   );
   // AC4: the empty-state hint is purely data-driven (zero records
   // cluster-wide, once the initial fetch has actually completed — never
@@ -519,9 +604,40 @@ function TopologyPageContent() {
     return items;
   }
 
+  function conntrackItemFor(kind: string, ref: string): ContextMenuItem[] {
+    if (!CONNTRACK_ENTITY_KINDS.has(kind)) return [];
+    const path = conntrackNodeLinkPath("/conntrack", refNode(ref));
+    return [{ label: "View live connections", onSelect: () => { void navigate(path); } }];
+  }
+
+  // T-1302: "Start capture" — the map right-click entry into the capture
+  // dialog, offered on the same bridge/bond/guest-NIC/SDN-VNet kinds
+  // docs/api.md's Captures section documents as valid targetRefs. Node is
+  // read off nodeGroup (the column this map node renders in — "" for a
+  // cluster-scoped sdn-vnet, matching CaptureDialog's own node display).
+  function captureItemFor(kind: string, ref: string, nodeGroup: string, label: string): ContextMenuItem[] {
+    if (!isCapturableEntityKind(kind)) return [];
+    return [{ label: "Start capture", onSelect: () => { openCapture({ targetRef: ref, node: nodeGroup, label }); } }];
+  }
+
+  // T-1307: "Diagnose" — the guided diagnosis ladder's map entry point.
+  // Broader than CONNTRACK_ENTITY_KINDS (also accepts a bare guest and a
+  // vlan entity) since POST /diagnose's own target resolution handles
+  // those, unlike GET /conntrack's own node/guest-only scoping — see
+  // diagnose/diagnosePath.ts's doc comment.
+  function diagnoseItemFor(kind: string, ref: string): ContextMenuItem[] {
+    const path = diagnosePath(kind, ref);
+    if (!path) return [];
+    return [{ label: "Diagnose", onSelect: () => { void navigate(path); } }];
+  }
+
+  function contextMenuItemsFor(kind: string, ref: string, nodeGroup: string, label: string): ContextMenuItem[] {
+    return [...traceItemsFor(kind, ref), ...conntrackItemFor(kind, ref), ...captureItemFor(kind, ref, nodeGroup, label), ...diagnoseItemFor(kind, ref)];
+  }
+
   function handleNodeContextMenu(id: string, clientX: number, clientY: number): void {
     const node = topology?.nodes.find((n) => n.id === id);
-    if (!node || traceItemsFor(node.kind, id).length === 0) {
+    if (!node || contextMenuItemsFor(node.kind, id, node.nodeGroup, node.label).length === 0) {
       setContextMenu(undefined);
       return;
     }
@@ -666,6 +782,18 @@ function TopologyPageContent() {
             // hold (flowsPaintable above).
             flowsLayerActive={flowsLayerActive}
             onToggleFlows={toggleFlowsLayer}
+            // T-1303: same v2-canvas-only scope note as Flows above
+            // (latencyPaintable).
+            latencyLayerActive={latencyLayerActive}
+            onToggleLatency={toggleLatencyLayer}
+            // T-1306: same v2-canvas-only scope note as Latency above
+            // (mtuPaintable).
+            mtuLayerActive={mtuLayerActive}
+            onToggleMTU={toggleMTULayer}
+            // T-1402: same v2-canvas-only scope note as MTU above
+            // (wgPaintable).
+            wgLayerActive={wgLayerActive}
+            onToggleWG={toggleWGLayer}
           />
           {viewMode === "graph" && (
             <Button
@@ -851,6 +979,8 @@ function TopologyPageContent() {
             onViewportChange={handleViewportChange}
             flowEdges={flowOverlayEdges}
             selectedFlowEdgeId={selectedFlowEdgeId}
+            latencyEdges={latencyOverlayEdges}
+            mtuBadges={mtuOverlayBadges}
             onFlowEdgeClick={(id) => {
               setSelectedFlowEdgeId(id);
             }}
@@ -871,12 +1001,16 @@ function TopologyPageContent() {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={traceItemsFor(topology?.nodes.find((n) => n.id === contextMenu.id)?.kind ?? "", contextMenu.id)}
+          items={(() => {
+            const n = topology?.nodes.find((nd) => nd.id === contextMenu.id);
+            return contextMenuItemsFor(n?.kind ?? "", contextMenu.id, n?.nodeGroup ?? "", n?.label ?? contextMenu.id);
+          })()}
           onClose={() => {
             setContextMenu(undefined);
           }}
         />
       )}
+      <CaptureDialog />
 
       {Array.from(expandedGroups).map((id) => (
         <GuestGroupExpansion key={id} groupId={id} onData={handleExpandedData} />

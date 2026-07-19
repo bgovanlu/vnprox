@@ -18,11 +18,45 @@ export interface LayerToggleBarProps {
    * this bar's exact previous 4-button-only output. */
   flowsLayerActive?: boolean;
   onToggleFlows?: () => void;
+  /** T-1303: a 6th "Latency" toggle, same optional-pair convention as
+   * flowsLayerActive/onToggleFlows above — a client-only heatmap-painting
+   * overlay (topology/latencyMode.ts), not one of the server-emitted
+   * entity layers either. Both props must be provided together to render
+   * the button; omitted keeps this bar's exact prior output. */
+  latencyLayerActive?: boolean;
+  onToggleLatency?: () => void;
+  /** T-1306: a 7th "MTU" toggle, same optional-pair convention as
+   * latencyLayerActive/onToggleLatency above — a client-only verified-MTU
+   * badge overlay (topology/mtuOverlay.ts), not one of the server-emitted
+   * entity layers either. Both props must be provided together to render
+   * the button; omitted keeps this bar's exact prior output. */
+  mtuLayerActive?: boolean;
+  onToggleMTU?: () => void;
+  /** T-1402: an 8th "WireGuard" toggle, same optional-pair convention as
+   * mtuLayerActive/onToggleMTU above — a client-only overlay rendering
+   * every visible tunnel as a map edge (topology/../wireguard/
+   * wgTunnelEdges.ts), not one of the server-emitted entity layers either.
+   * Both props must be provided together to render the button; omitted
+   * keeps this bar's exact prior output. */
+  wgLayerActive?: boolean;
+  onToggleWG?: () => void;
 }
 
 /** The `1`-`4` layer toggle rail (docs/features/topology.md §1), plus an
  * optional 5th "Flows" overlay toggle (T-1003) appended after it. */
-export function LayerToggleBar({ activeLayers, onToggle, layerOrder, flowsLayerActive, onToggleFlows }: LayerToggleBarProps) {
+export function LayerToggleBar({
+  activeLayers,
+  onToggle,
+  layerOrder,
+  flowsLayerActive,
+  onToggleFlows,
+  latencyLayerActive,
+  onToggleLatency,
+  mtuLayerActive,
+  onToggleMTU,
+  wgLayerActive,
+  onToggleWG,
+}: LayerToggleBarProps) {
   return (
     <div className="flex gap-1 rounded-md border border-slate-200 bg-white/90 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/90">
       {layerOrder.map((layer) => {
@@ -60,6 +94,51 @@ export function LayerToggleBar({ activeLayers, onToggle, layerOrder, flowsLayerA
           )}
         >
           Flows
+        </button>
+      )}
+      {onToggleLatency && (
+        <button
+          type="button"
+          aria-pressed={latencyLayerActive ?? false}
+          onClick={onToggleLatency}
+          className={clsx(
+            "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
+            latencyLayerActive
+              ? "bg-fuchsia-600 text-white"
+              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+          )}
+        >
+          Latency
+        </button>
+      )}
+      {onToggleMTU && (
+        <button
+          type="button"
+          aria-pressed={mtuLayerActive ?? false}
+          onClick={onToggleMTU}
+          className={clsx(
+            "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
+            mtuLayerActive
+              ? "bg-teal-600 text-white"
+              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+          )}
+        >
+          MTU
+        </button>
+      )}
+      {onToggleWG && (
+        <button
+          type="button"
+          aria-pressed={wgLayerActive ?? false}
+          onClick={onToggleWG}
+          className={clsx(
+            "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
+            wgLayerActive
+              ? "bg-indigo-600 text-white"
+              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+          )}
+        >
+          WireGuard
         </button>
       )}
     </div>

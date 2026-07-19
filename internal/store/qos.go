@@ -1,5 +1,5 @@
 // qos.go implements T-1505's qos_shapes storage (docs/data-model.md §2,
-// migration 0011_qos.sql). App-owned intent only per CLAUDE.md's storage
+// migration 0020_qos.sql). App-owned intent only per CLAUDE.md's storage
 // rule — the live tc/HTB state on the node stays authoritative and is
 // never shadow-copied here; internal/qos.RenderTC re-derives the on-node
 // invocation from this row's own fields every time it is (re)applied.

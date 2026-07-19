@@ -41,14 +41,32 @@ const (
 	vxlanUnderlayMTUFallCycles = 2
 )
 
+// MTUProvider is the subset of *mtuprobe.Service Engine needs (T-1306): a
+// live, measured (DF-probe-verified) underlay path MTU per node, when the
+// prober has reached it. *mtuprobe.Service satisfies this directly via its
+// MeasuredUnderlayMTU method (no adapter needed — the same "small
+// interface, real type satisfies it for free" seam LatMeshProvider/
+// CorosyncProvider already establish). Nil (or a node with no fresh
+// reading) falls back to checkVxlanUnderlayMTU's original T-803 behavior
+// (observedUnderlayMTU's local NIC read) — never a regression, matching
+// every other optional Config field's degraded-mode convention.
+type MTUProvider interface {
+	MeasuredUnderlayMTU(node string) (mtu int, ok bool)
+}
+
 // checkVxlanUnderlayMTU evaluates every vxlan/evpn SdnZone with an explicit
 // MTU (mtu == 0 is not flagged, mirroring checkVxlanMTU's own skip — PVE
-// applies its own sane default) against each member node's observed
-// underlay path MTU: the minimum effective MTU among that node's physical
-// NICs, the strictest real constraint on what can actually traverse the
-// wire off that node (a routing-table walk to the zone's specific peer
-// addresses is out of scope — see this task's completion report).
-func checkVxlanUnderlayMTU(snap inventory.Snapshot, db *debouncer) []Finding {
+// applies its own sane default) against each member node's underlay path
+// MTU. mtuProv (T-1306's internal/mtuprobe.Service, via the MTUProvider
+// seam) supplies a *measured* reading — a live, end-to-end DF-probe result
+// for a path this node has actually verified — when one exists; that is
+// strictly tighter/more trustworthy than observedUnderlayMTU's local NIC
+// MTU read, since a NIC can report a healthy MTU while some hop along the
+// actual path still clamps it lower. A nil mtuProv or a node mtuProv has no
+// fresh reading for falls back to observedUnderlayMTU exactly as before —
+// never a regression for paths the prober hasn't reached yet (this task's
+// card, AC3).
+func checkVxlanUnderlayMTU(snap inventory.Snapshot, db *debouncer, mtuProv MTUProvider) []Finding {
 	var out []Finding
 	live := map[string]bool{}
 
@@ -65,9 +83,9 @@ func checkVxlanUnderlayMTU(snap inventory.Snapshot, db *debouncer) []Finding {
 		}
 
 		for _, node := range sortedUnique(zone.Nodes) {
-			underlay, ok := observedUnderlayMTU(snap, node)
+			underlay, source, ok := underlayMTUFor(mtuProv, snap, node)
 			if !ok {
-				continue // no NIC MTU data observed for this node yet
+				continue // no NIC MTU data observed and no probe reading for this node yet
 			}
 
 			key := zone.GetRef().String() + "|" + node
@@ -79,8 +97,8 @@ func checkVxlanUnderlayMTU(snap inventory.Snapshot, db *debouncer) []Finding {
 			}
 
 			detail := fmt.Sprintf(
-				"SDN zone %s (%s) on node %s: configured mtu %d leaves no headroom for VXLAN's %d-byte encapsulation overhead over the observed %d-byte underlay path MTU — encapsulated traffic may be fragmented or dropped",
-				zone.ID, zone.Type, node, zone.MTU, change.VxlanOverhead, underlay)
+				"SDN zone %s (%s) on node %s: configured mtu %d leaves no headroom for VXLAN's %d-byte encapsulation overhead over the %s %d-byte underlay path MTU — encapsulated traffic may be fragmented or dropped",
+				zone.ID, zone.Type, node, zone.MTU, change.VxlanOverhead, source, underlay)
 			f := newHealthFinding(CheckVxlanUnderlayMTU, SeverityWarning, detail, []string{node}, []string{zone.GetRef().String()})
 			f.DocsLink = vxlanUnderlayMTUDocsLink
 			out = append(out, f)
@@ -90,6 +108,21 @@ func checkVxlanUnderlayMTU(snap inventory.Snapshot, db *debouncer) []Finding {
 	db.Prune(live)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+// underlayMTUFor resolves node's underlay path MTU: a fresh T-1306 measured
+// reading when mtuProv has one (source "measured", the tightened branch),
+// else observedUnderlayMTU's local-NIC-read fallback (source "observed",
+// this check's original T-803 behavior) — the config-only evaluation stays
+// the fallback exactly where no probe result exists yet.
+func underlayMTUFor(mtuProv MTUProvider, snap inventory.Snapshot, node string) (mtu int, source string, ok bool) {
+	if mtuProv != nil {
+		if m, mok := mtuProv.MeasuredUnderlayMTU(node); mok {
+			return m, "measured", true
+		}
+	}
+	m, ok := observedUnderlayMTU(snap, node)
+	return m, "observed", ok
 }
 
 // observedUnderlayMTU returns the minimum effective MTU (xnode.EffectiveMTU:

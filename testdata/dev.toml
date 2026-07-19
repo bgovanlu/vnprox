@@ -82,3 +82,23 @@ dev_fixture_dir = "testdata/firewall-logs"
 # var/ precedent above.
 [metrics]
 key_file = "var/dev-metrics.key"
+
+# T-1107: the blueprint bundle-signing Ed25519 identity + admin-managed
+# trusted-signers directory. Production defaults are /etc/vnprox/keys/
+# blueprint-signing.key and /etc/vnprox/keys/trusted-signers/ (root-only,
+# alongside the session/metrics keys); these dev-only overrides keep
+# `make dev`/the runDaemon integration tests working without root or a
+# pre-existing /etc/vnprox, mirroring [metrics]' own var/ precedent above.
+[blueprint]
+signing_key_file = "var/dev-blueprint-signing.key"
+trusted_signers_dir = "var/dev-trusted-signers"
+
+# T-1301: per-session .pcap files. Production default is
+# /var/lib/vnprox/captures (root-only outside a real install); this dev-only
+# override keeps `make dev`/T-1302's Playwright coverage working without
+# root, mirroring [blueprint]'s own var/ precedent above (found while
+# proving T-1302's capture.spec.ts end to end — without this, every capture
+# fails "mkdir /var/lib/vnprox: permission denied" on any unprivileged dev
+# host).
+[capture]
+root = "var/dev-captures"

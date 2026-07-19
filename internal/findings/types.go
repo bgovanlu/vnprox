@@ -21,6 +21,25 @@ const (
 	// enum (docs/api.md's GET /findings finding shape). Currently the sole
 	// producer is the persisted sim_divergence check (adapt_probe.go).
 	SourceProbe Source = "probe"
+	// SourceWireguard (T-1401) marks a finding computed fresh from a live
+	// `wg show <if> dump`-equivalent poll of WireGuard's own on-node state
+	// (never persisted as truth) — wg_handshake_stale / wg_endpoint_drift.
+	SourceWireguard Source = "wireguard"
+	// SourceWan (T-1405) marks a finding computed from internal/wan's
+	// continuous probe of operator-configured external reference targets —
+	// wan_degraded, the "it's the ISP, not the cluster" signal.
+	SourceWan Source = "wan"
+	// SourceFlow (T-1504) marks a finding computed from internal/flow's
+	// service-network attribution (internal/flow.Classifier) — its own
+	// top-level source (like SourceProbe), not "health", since it is fed
+	// by flow-sample metadata rather than the inventory graph or a polled
+	// host/PVE seam. Currently the sole producer is
+	// service_traffic_on_wrong_network (health_serviceclass.go).
+	SourceFlow Source = "flow"
+	// SourceK8s (T-1501) marks a finding produced by internal/k8s's
+	// read-only Kubernetes overlay mapping engine — currently the sole
+	// producer is k8s_nodeport_exposed_without_fw_rule (adapt_k8s.go).
+	SourceK8s Source = "k8s"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

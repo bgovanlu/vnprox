@@ -85,6 +85,47 @@ const (
 	OpQosShapeCreate OpType = "qos.shape.create"
 	OpQosShapeUpdate OpType = "qos.shape.update"
 	OpQosShapeDelete OpType = "qos.shape.delete"
+
+	// WireGuard op group (T-1401, docs/data-model.md §3 addition). Every
+	// wg.* op is an ordinary changeset op — there is no second mutation path
+	// for WireGuard (CLAUDE.md's change-engine invariant).
+	OpWgTunnelCreate OpType = "wg.tunnel.create"
+	OpWgTunnelUpdate OpType = "wg.tunnel.update"
+	OpWgTunnelDelete OpType = "wg.tunnel.delete"
+	OpWgPeerAdd      OpType = "wg.peer.add"
+	OpWgPeerRemove   OpType = "wg.peer.remove"
+	// T-1403's "nat"/"route" op groups (docs/data-model.md §3 addition): a
+	// PVE-host SNAT/masquerade or DNAT/port-forward rule, and an
+	// additional/policy static route, respectively — each applied via
+	// NodeAgent's existing interfaces-file write path as a post-up/post-down
+	// stanza pair (internal/change/ifaces/edgeop.go), exactly like every
+	// other node-file op (see nodeFileOpTypes in apply_plan.go). A node's
+	// *default* gateway stays owned by iface.update's own gateway field;
+	// route.static.* never sets it.
+	OpNatMasqueradeCreate  OpType = "nat.masquerade.create"
+	OpNatMasqueradeDelete  OpType = "nat.masquerade.delete"
+	OpNatPortForwardCreate OpType = "nat.portforward.create"
+	OpNatPortForwardUpdate OpType = "nat.portforward.update"
+	OpNatPortForwardDelete OpType = "nat.portforward.delete"
+	OpRouteStaticCreate    OpType = "route.static.create"
+	OpRouteStaticUpdate    OpType = "route.static.update"
+	OpRouteStaticDelete    OpType = "route.static.delete"
+	// OpVFProvision is T-1506's "vf" op group (docs/data-model.md §3
+	// addition): configures Target's (a PhysNic acting as an SR-IOV PF)
+	// virtual-function pool. Target is the PF's own Ref (KindPhysNic) —
+	// the entity whose VF pool is being (re)configured, the same "target
+	// is the entity the op principally concerns" convention every op in
+	// this vocabulary follows — not a synthetic per-VF id, since a single
+	// op can provision an entire batch of VFs on one PF in one shot (see
+	// VFProvisionParams' doc comment). There is no vf.update/vf.delete op:
+	// re-provisioning (a new count, a changed VLAN/MAC/policy) is always a
+	// fresh vf.provision — like nat.masquerade's own "no update" rule, this
+	// keeps every VF pool change a visible, individually auditable
+	// changeset op rather than a silent overwrite. Applied via the ordinary
+	// node-file path (internal/change/ifaces), a post-up/post-down stanza
+	// pair appended to the PF's own existing iface stanza — never a second
+	// mutation mechanism.
+	OpVFProvision OpType = "vf.provision"
 )
 
 // noTargetOps is the (deliberately tiny) set of ops with no natural target
@@ -162,6 +203,21 @@ var paramFactories = map[OpType]func() Params{
 	OpQosShapeCreate: func() Params { return &QosShapeCreateParams{} },
 	OpQosShapeUpdate: func() Params { return &QosShapeUpdateParams{} },
 	OpQosShapeDelete: func() Params { return &QosShapeDeleteParams{} },
+
+	OpWgTunnelCreate:       func() Params { return &WgTunnelCreateParams{} },
+	OpWgTunnelUpdate:       func() Params { return &WgTunnelUpdateParams{} },
+	OpWgTunnelDelete:       func() Params { return &WgTunnelDeleteParams{} },
+	OpWgPeerAdd:            func() Params { return &WgPeerAddParams{} },
+	OpWgPeerRemove:         func() Params { return &WgPeerRemoveParams{} },
+	OpNatMasqueradeCreate:  func() Params { return &NatMasqueradeCreateParams{} },
+	OpNatMasqueradeDelete:  func() Params { return &NatMasqueradeDeleteParams{} },
+	OpNatPortForwardCreate: func() Params { return &NatPortForwardCreateParams{} },
+	OpNatPortForwardUpdate: func() Params { return &NatPortForwardUpdateParams{} },
+	OpNatPortForwardDelete: func() Params { return &NatPortForwardDeleteParams{} },
+	OpRouteStaticCreate:    func() Params { return &RouteStaticCreateParams{} },
+	OpRouteStaticUpdate:    func() Params { return &RouteStaticUpdateParams{} },
+	OpRouteStaticDelete:    func() Params { return &RouteStaticDeleteParams{} },
+	OpVFProvision:          func() Params { return &VFProvisionParams{} },
 }
 
 // KnownOpTypes returns every OpType this package can decode, for tests

@@ -116,7 +116,13 @@ func runSnapshotsList(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", defaultConfigPath, "path to vnprox.toml (for storage.db_path)")
 	limit := fs.Int("limit", 50, "maximum snapshots to list (newest first)")
+	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	jsonOut, ofErr := parseOutputFormat(*output)
+	if ofErr != nil {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl snapshots list: %v\n", ofErr)
 		return 2
 	}
 
@@ -133,6 +139,34 @@ func runSnapshotsList(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl snapshots list: %v\n", err)
 		return 1
 	}
+
+	if jsonOut {
+		//nolint:govet // fieldalignment: wire DTO; field order documents the JSON shape, not memory packing.
+		type snapshotJSON struct {
+			ID          string   `json:"id"`
+			Kind        string   `json:"kind"`
+			TakenAt     int64    `json:"takenAt"`
+			ChangesetID string   `json:"changesetId,omitempty"`
+			Note        string   `json:"note,omitempty"`
+			Nodes       []string `json:"nodes"`
+		}
+		out := make([]snapshotJSON, 0, len(rows))
+		for _, row := range rows {
+			var files []snapshotFileEntry
+			_ = json.Unmarshal([]byte(row.FilesJSON), &files)
+			nodes := snapshotNodeList(files)
+			out = append(out, snapshotJSON{
+				ID: row.ID, Kind: row.Kind, TakenAt: row.TakenAt,
+				ChangesetID: row.ChangesetID.String, Note: row.Note.String, Nodes: nodes,
+			})
+		}
+		if err := writeJSONOut(stdout, out); err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl snapshots list: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+
 	if len(rows) == 0 {
 		_, _ = fmt.Fprintln(stdout, "No snapshots.")
 		return 0
@@ -142,14 +176,7 @@ func runSnapshotsList(args []string, stdout, stderr io.Writer) int {
 	for _, row := range rows {
 		var files []snapshotFileEntry
 		_ = json.Unmarshal([]byte(row.FilesJSON), &files)
-		nodes := make([]string, 0, len(files))
-		seen := map[string]bool{}
-		for _, f := range files {
-			if !seen[f.Node] {
-				seen[f.Node] = true
-				nodes = append(nodes, f.Node)
-			}
-		}
+		nodes := snapshotNodeList(files)
 		_, _ = fmt.Fprintf(stdout, "%-26s  %-9s  %-19s  %-26s  %-20s  %s\n",
 			row.ID, row.Kind,
 			time.Unix(row.TakenAt, 0).UTC().Format("2006-01-02 15:04:05"),
@@ -159,12 +186,33 @@ func runSnapshotsList(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// snapshotNodeList extracts the distinct, first-seen-order node list from a
+// snapshot's decoded file entries — shared by the table and JSON renderers
+// above so both list the same nodes the same way.
+func snapshotNodeList(files []snapshotFileEntry) []string {
+	nodes := make([]string, 0, len(files))
+	seen := map[string]bool{}
+	for _, f := range files {
+		if !seen[f.Node] {
+			seen[f.Node] = true
+			nodes = append(nodes, f.Node)
+		}
+	}
+	return nodes
+}
+
 func runSnapshotsRestore(env *cliEnv, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("vnproxctl snapshots restore", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", defaultConfigPath, "path to vnprox.toml (for storage.db_path)")
 	nodeFlag := fs.String("node", "", "which captured node's file to restore (default: this host's name)")
+	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	jsonOut, ofErr := parseOutputFormat(*output)
+	if ofErr != nil {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl snapshots restore: %v\n", ofErr)
 		return 2
 	}
 	if fs.NArg() != 1 {
@@ -205,6 +253,18 @@ func runSnapshotsRestore(env *cliEnv, args []string, stdout, stderr io.Writer) i
 	}
 	appendCLIAudit(ctx, db, env, "snapshot.restore.cli", "success", row.ChangesetID.String,
 		map[string]any{"snapshotId": snapshotID, "node": node})
+
+	if jsonOut {
+		out := map[string]any{
+			"restored": true, "snapshotId": snapshotID, "node": node,
+			"interfacesPath": env.interfacesPath, "otherNodes": otherNodes,
+		}
+		if err := writeJSONOut(stdout, out); err != nil {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl snapshots restore: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 
 	_, _ = fmt.Fprintf(stdout, "Restored %s from snapshot %s (node %s) and reloaded the network.\n", env.interfacesPath, snapshotID, node)
 	if len(otherNodes) > 0 {

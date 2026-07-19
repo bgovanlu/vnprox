@@ -5,7 +5,9 @@ import (
 	"strings"
 
 	"github.com/bgovanlu/vnprox/internal/fw"
+	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/topology"
 )
 
 // referentialValidate is validator class 2 (docs/features/
@@ -345,6 +347,45 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 		// existence against — its state lives only in the app-owned
 		// qos_shapes store row this package never reads; the apply-time
 		// QosGateway still errors cleanly on a truly nonexistent id.
+
+	case *NatMasqueradeCreateParams:
+		checkEdgeRuleIface(p, op.Target.Node, params.Iface, ref, &out)
+
+	case *NatMasqueradeDeleteParams:
+		// A T-1403 nat/route rule has no snapshot-backed existence check
+		// (it lives only inside its own generated marker lines, which this
+		// pure, snapshot-driven validator class never reads — see
+		// edgeop.go's package doc comment); the apply-time mutator itself
+		// still errors on a truly nonexistent id (ErrNotFound), it just
+		// isn't a *validation finding* the way a missing bond/bridge is.
+
+	case *NatPortForwardCreateParams:
+		checkEdgeRuleIface(p, op.Target.Node, params.Iface, ref, &out)
+
+	case *NatPortForwardUpdateParams:
+		if params.Iface != nil {
+			checkEdgeRuleIface(p, op.Target.Node, *params.Iface, ref, &out)
+		}
+
+	case *NatPortForwardDeleteParams:
+		// see NatMasqueradeDeleteParams above.
+
+	case *RouteStaticCreateParams:
+		checkEdgeRuleIface(p, op.Target.Node, params.Iface, ref, &out)
+		checkRouteGatewayReachable(p, op.Target.Node, params.Gateway, ref, &out)
+
+	case *RouteStaticUpdateParams:
+		if params.Iface != nil {
+			checkEdgeRuleIface(p, op.Target.Node, *params.Iface, ref, &out)
+		}
+		if params.Gateway != nil && *params.Gateway != "" {
+			checkRouteGatewayReachable(p, op.Target.Node, *params.Gateway, ref, &out)
+		}
+
+	case *RouteStaticDeleteParams:
+		// see NatMasqueradeDeleteParams above.
+	case *VFProvisionParams:
+		checkVFProvision(p, op, params, ref, &out)
 	}
 
 	return out
@@ -365,6 +406,77 @@ func checkQosBridge(p *projection, node, bridge, ref string, out *[]Finding) {
 	if bridgeRef.Kind != inventory.KindBridge && bridgeRef.Kind != inventory.KindOVSBridge {
 		*out = append(*out, errorf(codeQosBridgeNotFound, ref, "%q on node %s is not a bridge", bridge, node))
 	}
+}
+
+// checkEdgeRuleIface flags a T-1403 nat.*/route.static.* op whose Iface
+// does not name a currently known interface(5) stanza on node — the
+// generated post-up/post-down lines would have nowhere to attach.
+func checkEdgeRuleIface(p *projection, node, iface, ref string, out *[]Finding) {
+	if iface == "" {
+		return // schema class already flagged the missing-iface case
+	}
+	if _, ok := p.ifaceRef(node, iface); !ok {
+		*out = append(*out, errorf(codeIfaceNotFound, ref, "interface %q does not exist on node %s", iface, node))
+	}
+}
+
+// checkRouteGatewayReachable flags a route.static.create/update whose
+// Gateway does not fall inside any of node's currently-configured address
+// CIDRs — real `ip route add ... via <gw>` fails identically when no
+// directly-connected interface can reach the nexthop.
+func checkRouteGatewayReachable(p *projection, node, gateway, ref string, out *[]Finding) {
+	ip := net.ParseIP(gateway)
+	if ip == nil {
+		return // schema class already flagged the malformed-IP case
+	}
+	for _, a := range p.addrs[node] {
+		if a.ipnet != nil && a.ipnet.Contains(ip) {
+			return
+		}
+	}
+	*out = append(*out, errorf(codeRouteGatewayUnreachable, ref, "gateway %s is not reachable via any known interface on node %s", gateway, node))
+}
+
+// checkVFProvision is T-1506's vf.provision referential check: the target
+// PF must exist (codePFNotFound, this op family's flavor of the standard
+// "target must exist" check every other op gets), and every VF the op would
+// resolve to (host.ResolveVFPlan — the single plan-resolution function this
+// package and internal/change/ifaces' file mutator both call, so validation
+// and apply can never disagree about what a vf.provision op actually
+// configures) must not diverge from its PF's own bridge policy
+// (topology.VFPolicyMismatch — the identical comparison internal/drift's
+// standing vf_spoofcheck_mismatch finding reuses for already-diverged live
+// state, codeVFSpoofcheckMismatch here for a *staged* divergence).
+func checkVFProvision(p *projection, op Op, params *VFProvisionParams, ref string, out *[]Finding) {
+	if !p.exists(op.Target) {
+		*out = append(*out, errorf(codePFNotFound, ref, "PF %s does not exist", op.Target))
+		return
+	}
+	bridge := topology.BridgeFor(p.snap, op.Target)
+	if bridge == nil {
+		return
+	}
+	plan := host.ResolveVFPlan(params.Count, toHostVFSpecs(params.VFs), params.VLAN, params.MacAddr, params.SpoofCheck, params.Trust)
+	for _, e := range plan {
+		vf := inventory.VirtualFunction{VLAN: e.VLAN, SpoofCheck: e.SpoofCheck}
+		if topology.VFPolicyMismatch(vf, bridge) {
+			*out = append(*out, errorf(codeVFSpoofcheckMismatch, ref,
+				"vf %d's vlan/spoof-check policy diverges from %s's VLAN-awareness/VID-set policy", e.ID, bridge.Name))
+		}
+	}
+}
+
+// toHostVFSpecs adapts this package's own VFSpec wire type to
+// internal/host's identically-shaped VFSpec, field for field.
+func toHostVFSpecs(vfs []VFSpec) []host.VFSpec {
+	if len(vfs) == 0 {
+		return nil
+	}
+	out := make([]host.VFSpec, len(vfs))
+	for i, v := range vfs {
+		out[i] = host.VFSpec{ID: v.ID, MacAddr: v.MacAddr, VLAN: v.VLAN, SpoofCheck: v.SpoofCheck, Trust: v.Trust}
+	}
+	return out
 }
 
 // checkSlaves validates a bond's slave list: every named iface must exist

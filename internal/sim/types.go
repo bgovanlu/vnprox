@@ -1,6 +1,10 @@
 package sim
 
-import "github.com/bgovanlu/vnprox/internal/inventory"
+import (
+	"net/netip"
+
+	"github.com/bgovanlu/vnprox/internal/inventory"
+)
 
 // Verdict is the top-level answer of a simulation.
 //
@@ -51,12 +55,55 @@ type Endpoint struct {
 	IP string
 }
 
+// Family selects which IP address family a simulation resolves guest-nic
+// endpoints against (T-1404, docs/api.md's Path simulator section: "gain
+// an optional family field"). A literal ip endpoint's family is already
+// self-evident from the address itself and is not filtered by this field;
+// Family matters for a guest-nic endpoint that may have more than one
+// known address (Input.GuestIPs) and for disambiguating which of a
+// dual-stack VNet's subnets a still-IP-unknown guest-nic's L3/hop
+// reasoning should anchor to.
+type Family string
+
+const (
+	FamilyV4 Family = "v4"
+	FamilyV6 Family = "v6"
+)
+
+// orDefault returns f, or FamilyV4 when f is empty — every caller
+// (Engine.Simulate, bestGuestIP, subnet disambiguation) normalizes through
+// this once rather than re-checking emptiness at each use, matching
+// docs/api.md's "default v4, backward compatible" contract.
+func (f Family) orDefault() Family {
+	if f == "" {
+		return FamilyV4
+	}
+	return f
+}
+
+// matches reports whether addr's own family agrees with f (already
+// defaulted via orDefault — an empty f matches nothing on purpose, callers
+// must default first).
+func (f Family) matches(addr netip.Addr) bool {
+	switch f {
+	case FamilyV4:
+		return addr.Is4() || addr.Is4In6()
+	case FamilyV6:
+		return addr.Is6() && !addr.Is4In6()
+	default:
+		return false
+	}
+}
+
 // Request is one simulation question: can Src reach Dst on Proto/Port.
 type Request struct {
-	Src   Endpoint
-	Dst   Endpoint
-	Proto string // "tcp" | "udp" | "icmp" | "" (any)
-	Port  int    // destination port; 0 = unspecified/any
+	Src Endpoint
+	Dst Endpoint
+	// Family selects v4 or v6 guest-nic address resolution; "" defaults to
+	// FamilyV4 (docs/api.md: "default v4, backward compatible").
+	Family Family
+	Proto  string // "tcp" | "udp" | "icmp" | "" (any)
+	Port   int    // destination port; 0 = unspecified/any
 }
 
 // GuestIP is a resolved address for a guest NIC, with the source it came

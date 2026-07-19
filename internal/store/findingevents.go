@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -114,7 +115,13 @@ func (r *FindingEventRepo) RunPruneLoop(ctx context.Context, interval time.Durat
 		case <-ctx.Done():
 			return nil
 		case now := <-ticker.C:
-			if _, err := r.PruneRetention(ctx, now); err != nil && logFn != nil {
+			// A prune already in flight when ctx is cancelled (daemon
+			// shutdown) surfaces as context.Canceled/DeadlineExceeded — that
+			// is expected teardown, not a failure worth logging. Surfaced by
+			// T-1301's added migration shifting SQLite timing enough to make
+			// this shutdown race deterministic in TestFindingEventRepo_RunPruneLoop.
+			if _, err := r.PruneRetention(ctx, now); err != nil && logFn != nil &&
+				!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				logFn(fmt.Errorf("store: pruning finding events: %w", err))
 			}
 		}

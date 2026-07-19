@@ -8,11 +8,12 @@ import {
   deleteBlueprint,
   fetchBlueprint,
   fetchBlueprints,
+  importBlueprintBundle,
   instantiateBlueprint,
   saveBlueprint,
   suggestBlueprintAddress,
 } from "../api/blueprints";
-import type { Blueprint, CaptureBlueprintRequest, InstantiateBlueprintRequest } from "../api/types";
+import type { Blueprint, CaptureBlueprintRequest, ImportBundleRequest, InstantiateBlueprintRequest } from "../api/types";
 
 export const BLUEPRINTS_QUERY_KEY = ["blueprints"] as const;
 export const blueprintQueryKey = (id: string) => ["blueprints", id] as const;
@@ -65,5 +66,23 @@ export function useInstantiateBlueprintMutation() {
 export function useSuggestAddressMutation() {
   return useMutation({
     mutationFn: ({ id, param }: { id: string; param: string }) => suggestBlueprintAddress(id, param),
+  });
+}
+
+/** T-1107's bundle import (BlueprintImportDialog): a plain probe call (no
+ * trust flags) and a trust-confirmed retry both go through this same
+ * mutation — the response's `status` is what distinguishes them, not a
+ * separate hook. A successful ("imported") response invalidates the list
+ * query the same way useSaveBlueprintMutation does, since it saves a new
+ * blueprint under the hood. */
+export function useImportBundleMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (req: ImportBundleRequest) => importBlueprintBundle(req),
+    onSuccess: (resp) => {
+      if (resp.status === "imported") {
+        void queryClient.invalidateQueries({ queryKey: BLUEPRINTS_QUERY_KEY });
+      }
+    },
   });
 }

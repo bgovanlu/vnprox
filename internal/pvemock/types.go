@@ -133,9 +133,69 @@ type NodeSpec struct {
 	// package's HostReader.CorosyncStatus returns ErrCorosyncUnavailable
 	// for such a node, the same graceful-degradation convention FRR's
 	// FRRSpec already establishes.
-	Corosync       *CorosyncSpec `yaml:"corosync,omitempty"`
-	Network        []NetIface    `yaml:"network"`
-	NetworkPending []NetIface    `yaml:"network_pending"`
+	Corosync *CorosyncSpec `yaml:"corosync,omitempty"`
+	// Conntrack is this node's fixture-declared live conntrack/NAT table
+	// (T-1305, docs/api.md's Conntrack section) for this node's
+	// FixtureHostReader.Conntrack — already-structured entries (like
+	// NeighborSpec above, not a raw-text blob) since a fixture only needs
+	// to express the parsed shape the API/UI actually consume, not exercise
+	// internal/host.ParseConntrackTable's own procfs-text parsing (that
+	// parser has its own golden-fixture table tests, internal/host/
+	// conntrack_test.go).
+	Conntrack []ConntrackEntrySpec `yaml:"conntrack,omitempty"`
+	// IPv6RA is this node's fixture-declared per-interface IPv6 Router
+	// Advertisement / DHCPv6 observation (T-1404, docs/features/sdn.md §6)
+	// for this node's FixtureHostReader.IPv6RA — already-structured
+	// entries (like ConntrackEntrySpec/NeighborSpec above), since a
+	// fixture only needs to express the observed shape the API/UI
+	// consume, not exercise internal/host's own rdisc6-text parsing (that
+	// parser has its own table tests). An interface absent from this list
+	// models "no RA observed on this segment" — the common, unremarkable
+	// case, not an error.
+	IPv6RA         []IPv6RASpec `yaml:"ipv6_ra,omitempty"`
+	Network        []NetIface   `yaml:"network"`
+	NetworkPending []NetIface   `yaml:"network_pending"`
+}
+
+// IPv6RASpec is one fixture-declared interface's IPv6 RA/DHCPv6 observation
+// (T-1404). DHCPv6ServerPresent, when true, always implies "inferred from
+// the M-flag" in the rendered host.IPv6RAObservation (mirroring Real's own
+// documented inference limitation — see host.IPv6RAObservation's doc
+// comment) unless a fixture wants to model a directly-confirmed DHCPv6
+// server instead, which this task does not need: no fixture scenario in
+// this codebase's testdata distinguishes the two.
+type IPv6RASpec struct {
+	Iface               string   `yaml:"iface"`
+	Prefixes            []string `yaml:"prefixes,omitempty"`
+	RouterLifetimeSec   int      `yaml:"router_lifetime_sec,omitempty"`
+	ManagedFlag         bool     `yaml:"managed_flag,omitempty"`
+	OtherFlag           bool     `yaml:"other_flag,omitempty"`
+	DHCPv6ServerPresent bool     `yaml:"dhcpv6_server_present,omitempty"`
+}
+
+// ConntrackEntrySpec is one fixture-declared live conntrack table entry
+// (T-1305). NatSrc/NatDst are nil for an untranslated connection; State
+// empty defaults to "" (unlike NeighborSpec's "REACHABLE" default, a
+// conntrack entry genuinely can have no textual state — e.g. a
+// once-replied UDP/ICMP flow the real kernel format also reports with no
+// state word, see internal/host.ParseConntrackTable's doc comment) — a
+// fixture author states exactly the state it wants shown, including empty.
+type ConntrackEntrySpec struct {
+	NatSrc     *NatAddrSpec `yaml:"nat_src,omitempty" json:"natSrc,omitempty"`
+	NatDst     *NatAddrSpec `yaml:"nat_dst,omitempty" json:"natDst,omitempty"`
+	SrcIP      string       `yaml:"src_ip" json:"srcIp"`
+	DstIP      string       `yaml:"dst_ip" json:"dstIp"`
+	State      string       `yaml:"state,omitempty" json:"state,omitempty"`
+	Proto      int          `yaml:"proto" json:"proto"`
+	SrcPort    int          `yaml:"src_port,omitempty" json:"srcPort,omitempty"`
+	DstPort    int          `yaml:"dst_port,omitempty" json:"dstPort,omitempty"`
+	TimeoutSec int          `yaml:"timeout_sec,omitempty" json:"timeoutSec,omitempty"`
+}
+
+// NatAddrSpec is one fixture-declared NAT-translated endpoint.
+type NatAddrSpec struct {
+	IP   string `yaml:"ip" json:"ip"`
+	Port int    `yaml:"port,omitempty" json:"port,omitempty"`
 }
 
 // CorosyncSpec is a node's fixture-declared `corosync-cfgtool -s` ring
@@ -276,15 +336,19 @@ func (i NetIface) MarshalJSON() ([]byte, error) {
 
 // LinkInfo is netlink-equivalent physical/virtual link state for one iface.
 type LinkInfo struct {
-	Mac       string         `yaml:"mac" json:"mac"`
-	Driver    string         `yaml:"driver,omitempty" json:"driver,omitempty"`
-	Duplex    string         `yaml:"duplex,omitempty" json:"duplex,omitempty"`
-	PCIAddr   string         `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
-	Members   []string       `yaml:"members,omitempty" json:"members,omitempty"`
-	FDB       []FDBEntrySpec `yaml:"fdb,omitempty" json:"fdb,omitempty"`
-	SpeedMbps int            `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
-	MTU       int            `yaml:"mtu,omitempty" json:"mtu,omitempty"`
-	LinkUp    bool           `yaml:"link_up" json:"link_up"`
+	Mac     string         `yaml:"mac" json:"mac"`
+	Driver  string         `yaml:"driver,omitempty" json:"driver,omitempty"`
+	Duplex  string         `yaml:"duplex,omitempty" json:"duplex,omitempty"`
+	PCIAddr string         `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
+	Members []string       `yaml:"members,omitempty" json:"members,omitempty"`
+	FDB     []FDBEntrySpec `yaml:"fdb,omitempty" json:"fdb,omitempty"`
+	// VFs (T-1506) is this (physical-kind) link's fixture-declared SR-IOV
+	// virtual functions — nil for every non-physical link, same convention
+	// as FDB above (bridge-only).
+	VFs       []VFEntrySpec `yaml:"vfs,omitempty" json:"vfs,omitempty"`
+	SpeedMbps int           `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
+	MTU       int           `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	LinkUp    bool          `yaml:"link_up" json:"link_up"`
 }
 
 // FDBEntrySpec is one fixture-declared bridge forwarding-database entry: a
@@ -298,6 +362,20 @@ type FDBEntrySpec struct {
 	Master    bool   `yaml:"master,omitempty" json:"master,omitempty"`
 	Permanent bool   `yaml:"permanent,omitempty" json:"permanent,omitempty"`
 	Stale     bool   `yaml:"stale,omitempty" json:"stale,omitempty"`
+}
+
+// VFEntrySpec is one fixture-declared SR-IOV virtual function on a PF link
+// (T-1506): id (the VF's index on its PF, "vf N" in `ip link show`), an
+// optionally-assigned MAC/VLAN, and its spoof-check/trust bits — the same
+// fields internal/host.VF (a real netlink read) and internal/inventory.
+// VirtualFunction (the resolved inventory projection) carry.
+type VFEntrySpec struct {
+	Mac        string `yaml:"mac,omitempty" json:"mac,omitempty"`
+	PCIAddr    string `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
+	ID         int    `yaml:"id" json:"id"`
+	Vlan       int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
+	SpoofCheck bool   `yaml:"spoof_check,omitempty" json:"spoof_check,omitempty"`
+	Trust      bool   `yaml:"trust,omitempty" json:"trust,omitempty"`
 }
 
 // LLDPNeighbor is one LLDP-discovered neighbor on a local iface.
@@ -345,11 +423,54 @@ type IfaceStats struct {
 // PVE's behavior for an unreachable/absent agent on a stopped or
 // agent-less guest, a normal state rather than a fixture bug.
 type GuestSpec struct {
-	Config          map[string]string `yaml:"config"`
-	Firewall        *FirewallScope    `yaml:"firewall"`
-	Name            string            `yaml:"name"`
-	Status          string            `yaml:"status"`
-	AgentInterfaces []AgentIfaceSpec  `yaml:"agent_interfaces,omitempty"`
+	Config   map[string]string `yaml:"config"`
+	Firewall *FirewallScope    `yaml:"firewall"`
+	Name     string            `yaml:"name"`
+	Status   string            `yaml:"status"`
+
+	// --- T-1304 guest-interior inspector fixture data -------------------
+	//
+	// Qemu guests: InteriorRoutesJSON/InteriorResolvConf/InteriorSockets
+	// back three additional `POST .../agent/exec` command shapes
+	// (parseInteriorCommand) beyond the ping/nc probe shapes
+	// parseProbeCommand already recognizes — `ip -j route show`,
+	// `cat /etc/resolv.conf`, `ss -H -tuln` — reusing the same guest-agent
+	// exec/exec-status round trip AgentExecOutcomes mocks, rather than a
+	// second generic command-matching table. Default-gateway reachability
+	// for a qemu guest reuses AgentExecOutcomes itself (an icmp probe
+	// tuple toward the claimed gateway IP): no separate field needed.
+	//
+	// Lxc guests (no QEMU guest agent — the interior view is read directly
+	// from the host side instead): InteriorAddrJSON/InteriorRoutesJSON/
+	// InteriorResolvConf/InteriorSockets back
+	// FixtureHostReader.ContainerInterior directly (T-1304's LXC path);
+	// InteriorPingOutcomes backs FixtureHostReader.ContainerPing's
+	// default-gateway reachability check. Field names are shared between
+	// the qemu and lxc cases (both are ultimately "this guest's own
+	// interior read set"), scoped by which map (Qemu vs Lxc) the guest
+	// lives in; InteriorAddrJSON/InteriorPingOutcomes are meaningful only
+	// for an lxc guest (a qemu guest's addresses/gateway-reachability come
+	// from AgentInterfaces/AgentExecOutcomes below instead).
+	//
+	// An unset (empty-string) field simply produces an empty parse result
+	// for that piece — matching AgentInterfaces' own "unscripted is
+	// silence, not failure" tolerance — never a synthesized error.
+	InteriorAddrJSON   string `yaml:"interior_addr_json,omitempty"`
+	InteriorRoutesJSON string `yaml:"interior_routes_json,omitempty"`
+	InteriorResolvConf string `yaml:"interior_resolv_conf,omitempty"`
+	InteriorSockets    string `yaml:"interior_sockets,omitempty"`
+
+	// AgentInterfaces (T-405) is the fixture-declared response for
+	// GET .../agent/network-get-interfaces — a qemu guest with the QEMU
+	// guest agent installed and running reports its live in-guest network
+	// state this way, the enrichment source docs/features/ipam.md §1 calls
+	// "guest agent-reported IPs". A guest with no AgentInterfaces entries
+	// (no agent, or agent not running) simply returns an empty result —
+	// matching real PVE's behavior for an unreachable/absent agent on a
+	// stopped or agent-less guest, a normal state rather than a fixture
+	// bug.
+	AgentInterfaces []AgentIfaceSpec `yaml:"agent_interfaces,omitempty"`
+
 	// AgentExecOutcomes (T-802) is this qemu guest's fixture-scriptable
 	// guest-agent exec outcome table, backing
 	// `POST .../agent/exec` + `GET .../agent/exec-status`: a live probe
@@ -362,6 +483,12 @@ type GuestSpec struct {
 	// "we don't know", not a guessed default, mirroring
 	// internal/probe's own honesty contract.
 	AgentExecOutcomes []AgentExecOutcomeSpec `yaml:"agent_exec_outcomes,omitempty"`
+
+	// InteriorPingOutcomes (T-1304) is an lxc guest's fixture-scriptable
+	// ContainerPing outcome table — see InteriorPingOutcomeSpec's own doc
+	// comment.
+	InteriorPingOutcomes []InteriorPingOutcomeSpec `yaml:"interior_ping_outcomes,omitempty"`
+
 	// AgentUnreachable (T-802), when true, makes this guest's
 	// `POST .../agent/exec` return the same 500 real PVE returns when the
 	// QEMU guest agent isn't installed/running/reachable — the "could not
@@ -369,6 +496,17 @@ type GuestSpec struct {
 	// (OutcomeError) exists for. AgentExecOutcomes is not consulted when
 	// this is true.
 	AgentUnreachable bool `yaml:"agent_unreachable,omitempty"`
+}
+
+// InteriorPingOutcomeSpec is one scripted target-IP -> reachable entry in
+// an lxc GuestSpec's InteriorPingOutcomes table (T-1304), backing
+// FixtureHostReader.ContainerPing: matched by exact IP equality (same
+// no-wildcards convention as AgentExecOutcomes). An IP with no match
+// resolves to Reachable false — unscripted is "no reply", not a guessed
+// default.
+type InteriorPingOutcomeSpec struct {
+	IP        string `yaml:"ip"`
+	Reachable bool   `yaml:"reachable,omitempty"`
 }
 
 // AgentExecOutcomeSpec is one scripted (proto,dst,port) -> outcome entry in

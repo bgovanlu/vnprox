@@ -164,6 +164,12 @@ func TestParamsUnion_Membership(t *testing.T) {
 		&IfaceRenameParams{},
 		&IpamAllocCreateParams{}, &IpamAllocDeleteParams{},
 		&QosShapeCreateParams{}, &QosShapeUpdateParams{}, &QosShapeDeleteParams{},
+		&WgTunnelCreateParams{}, &WgTunnelUpdateParams{}, &WgTunnelDeleteParams{},
+		&WgPeerAddParams{}, &WgPeerRemoveParams{},
+		&NatMasqueradeCreateParams{}, &NatMasqueradeDeleteParams{},
+		&NatPortForwardCreateParams{}, &NatPortForwardUpdateParams{}, &NatPortForwardDeleteParams{},
+		&RouteStaticCreateParams{}, &RouteStaticUpdateParams{}, &RouteStaticDeleteParams{},
+		&VFProvisionParams{},
 	}
 	for _, m := range members {
 		m.isChangeParams() // marker; asserts union membership at runtime too

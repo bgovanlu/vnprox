@@ -91,6 +91,45 @@ type QosGateway interface {
 	RestoreQos(ctx context.Context, node, snapshot string) error
 }
 
+// WGGateway performs node-local WireGuard mutations for T-1401's wg.* op
+// family. Like NodeAgent (and unlike the ticket-scoped PVEGateway), it is a
+// daemon-level (root) dependency injected once at Service construction: the
+// keypair is generated on and never leaves the owning node, the private key is
+// sealed with the same SessionCipher session tickets use, and — crucially —
+// because it needs no user ticket, its rollback works on the unattended
+// commit-confirm-timeout / crash-recovery paths too, so a wg.tunnel.create
+// that times out un-confirmed reverts fully (tunnel + generated keypair
+// removed, no orphaned key material — T-1401 AC6), unlike the PVEGateway
+// families' same-request-only rollback.
+//
+// A nil WGGateway makes wg.* ops unexecutable (execStep errors), the same
+// "nil dependency -> that op family isn't wired" degradation the other seams
+// use — a daemon that never wires WireGuard simply can't apply a wg.* op.
+type WGGateway interface {
+	// ApplyWgOp applies one wg.* op on op.Target.Node. For wg.tunnel.create it
+	// generates the keypair on-node, seals+stores it, writes the on-node
+	// config, and brings the interface up (fixed-argv wg/wg-quick exec); for
+	// the other ops it reconciles config + store accordingly. External peers
+	// (WgPeerAddParams.External) are stored and rendered into this tunnel's own
+	// config, but this method never issues a call against the external peer's
+	// own side (T-1401 AC5).
+	ApplyWgOp(ctx context.Context, op Op) error
+
+	// SnapshotWg captures node's full WireGuard state (every tunnel + its
+	// peers, private keys kept sealed/verbatim, plus the on-node config) as an
+	// opaque string, for the pre-apply snapshot. Never exposes a plaintext
+	// private key.
+	SnapshotWg(ctx context.Context, node string) (string, error)
+
+	// RestoreWg reconciles node's WireGuard state back to a SnapshotWg output:
+	// tunnels present live but absent from the snapshot are torn down (config
+	// removed, interface brought down, store row + sealed key deleted); tunnels
+	// in the snapshot but missing live are re-created from their exact sealed
+	// key bytes (so a rolled-back delete restores the identical keypair, never
+	// a freshly generated one). Callable unattended — no user ticket needed.
+	RestoreWg(ctx context.Context, node, snapshot string) error
+}
+
 // PVEGateway performs cluster-scope PVE API mutations under the *user's own*
 // ticket (docs/architecture.md §6, D3: "PVE ACLs enforced by PVE; no
 // privilege escalation through vnprox"). It is passed per Apply/Rollback

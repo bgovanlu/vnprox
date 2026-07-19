@@ -62,8 +62,9 @@ func FromNetlinkLinks(node string, links []host.LinkState) []Entity {
 		var ent Entity
 		switch l.Kind {
 		case "physical":
+			pfRef := Ref{Kind: KindPhysNic, Node: node, ID: l.Name}
 			ent = &PhysNic{
-				Ref:       Ref{Kind: KindPhysNic, Node: node, ID: l.Name},
+				Ref:       pfRef,
 				Name:      l.Name,
 				Mac:       l.Mac,
 				Driver:    l.Driver,
@@ -72,7 +73,7 @@ func FromNetlinkLinks(node string, links []host.LinkState) []Entity {
 				OperState: l.OperState,
 				SpeedMbps: l.SpeedMbps,
 				MTU:       l.MTU,
-				SRIOVVFs:  l.SRIOVNumVFs,
+				SRIOVVFs:  convertVFs(node, pfRef, l.VFs),
 				LinkUp:    l.LinkUp,
 				// The kernel always knows a link's carrier state, so a
 				// netlink observation genuinely reports linkUp even when
@@ -188,6 +189,37 @@ func convertFDB(fdb []host.FDBEntry) []FDBEntry {
 		}
 	}
 	return out
+}
+
+// convertVFs converts host.VF (T-1506's netlink SR-IOV VF reader,
+// internal/host.LinkState.VFs) to this package's own VirtualFunction, nil
+// for an empty/nil input, mirroring convertFDB's identical convention.
+// AssignedGuest is deliberately left the zero Ref: host-netlink has no way
+// to know which guest owns a passthrough VF (that correlation is resolved
+// live, from guest hostpci config, by internal/topology.
+// ResolveVFAssignments — never guessed here at ingest time).
+func convertVFs(node string, pf Ref, vfs []host.VF) []VirtualFunction {
+	if len(vfs) == 0 {
+		return nil
+	}
+	out := make([]VirtualFunction, len(vfs))
+	for i, v := range vfs {
+		out[i] = VirtualFunction{
+			Ref:        Ref{Kind: KindVF, Node: node, ID: vfRefID(pf.ID, v.ID)},
+			PF:         pf,
+			MacAddr:    v.MacAddr,
+			VLAN:       v.VLAN,
+			SpoofCheck: v.SpoofCheck,
+			Trust:      v.Trust,
+			PCIAddr:    v.PCIAddr,
+		}
+	}
+	return out
+}
+
+// vfRefID renders a VF's stable ID within its owning node: "<pfName>/vf<n>".
+func vfRefID(pfName string, vfID int) string {
+	return pfName + "/vf" + strconv.Itoa(vfID)
 }
 
 // FromPVENetwork maps PVE's node network view (GET /nodes/{node}/network) to
@@ -412,6 +444,15 @@ func FromPVEGuests(resources []pve.ClusterResource, configs map[int]map[string]s
 			Node:   r.Node,
 			Status: r.Status,
 		}
+		for key, val := range configs[r.VMID] {
+			if !isHostPCIKey(key) {
+				continue
+			}
+			if g.HostPCI == nil {
+				g.HostPCI = map[string]string{}
+			}
+			g.HostPCI[key] = val
+		}
 		setRaw(g, prettyJSON(r))
 		out = append(out, g)
 		for key, val := range configs[r.VMID] {
@@ -432,6 +473,17 @@ func isNetKey(k string) bool {
 		return false
 	}
 	_, err := strconv.Atoi(k[len("net"):])
+	return err == nil
+}
+
+// isHostPCIKey reports whether k is a PVE guest config PCI-passthrough key
+// ("hostpci0", "hostpci1", ...), mirroring isNetKey's identical
+// prefix+index-suffix convention.
+func isHostPCIKey(k string) bool {
+	if !strings.HasPrefix(k, "hostpci") {
+		return false
+	}
+	_, err := strconv.Atoi(k[len("hostpci"):])
 	return err == nil
 }
 

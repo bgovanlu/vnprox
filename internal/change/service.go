@@ -58,6 +58,19 @@ type AllocationsSource interface {
 	DHCPRangeAllocations(ctx context.Context) ([]DHCPRangeAllocation, error)
 }
 
+// SecretSealer seals a plaintext op-embedded secret at rest with AES-256-GCM
+// (internal/store.SessionCipher — the same primitive sessions.pve_ticket_enc
+// and the wireguard_* sealed columns use). It is the seam Service uses to seal
+// a wg.peer.add op's preshared key into WgPeerAddParams.PresharedKeyEnc at
+// stage/create time, so the plaintext PSK never lands in changesets.ops_json
+// or on a changeset read response (docs/security.md's WireGuard
+// credential-storage note). A nil Sealer means this deployment stages no
+// secret-bearing op; if one arrives anyway, Create/UpdateDraft fail closed
+// rather than persist it in the clear.
+type SecretSealer interface {
+	Encrypt(plaintext []byte) ([]byte, error)
+}
+
 // Config configures a Service. Changesets and Audit are required; WS and
 // Inventory are optional (nil disables WS broadcasting / validates against
 // an empty snapshot, respectively — e.g. in tests that don't need them) and
@@ -70,6 +83,9 @@ type Config struct {
 	// nil makes qos.shape.* ops unexecutable (execStep errors), mirroring
 	// every other optional gateway seam on this Config.
 	Qos                QosGateway
+	WG                 WGGateway
+	Sealer             SecretSealer
+	WgCarriers         WgCarrierSource
 	Refresher          InventoryRefresher
 	WS                 Broadcaster
 	Inventory          InventorySource
@@ -113,6 +129,9 @@ type Service struct {
 	nodes              NodeAgent
 	nodeTimers         NodeTimerAgent
 	qos                QosGateway
+	wg                 WGGateway
+	sealer             SecretSealer
+	wgCarriers         WgCarrierSource
 	refresher          InventoryRefresher
 	ws                 Broadcaster
 	inv                InventorySource
@@ -190,7 +209,7 @@ func NewService(cfg Config) (*Service, error) {
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
-		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
+		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
 		rollbackWindowDays: rollbackWindowDays,
 		timers:             map[string]Stopper{},
@@ -336,6 +355,9 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 	if ops == nil {
 		ops = []Op{}
 	}
+	if err := s.sealOpSecrets(ops); err != nil {
+		return Changeset{}, err
+	}
 	nowUnix := s.now().Unix()
 	findings := s.validate(ctx, ops)
 	c := Changeset{
@@ -382,6 +404,9 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 
 	if ops == nil {
 		ops = []Op{}
+	}
+	if err = s.sealOpSecrets(ops); err != nil {
+		return Changeset{}, err
 	}
 	c.Ops = ops
 	findings := s.validate(ctx, ops)
@@ -630,6 +655,56 @@ func (s *Service) SetProtected(ctx context.Context, author string, cfg Protected
 	}
 	s.appendAudit(ctx, author, "protected.update", "success", "", map[string]any{"nodeCount": nodeCount, "refCount": refCount})
 	return cfg, nil
+}
+
+// sealOpSecrets seals any plaintext secret embedded in ops (today only a
+// wg.peer.add preshared key) into its sealed at-rest field and clears the
+// plaintext, so it never reaches toStoreRow's ops_json or a read response
+// (Finding 1 / docs/security.md's WireGuard credential-storage note). Called
+// at stage/create time from Create and UpdateDraft, before persistence and
+// validation, mutating the caller's op params in place (Op.Params holds a
+// *WgPeerAddParams pointer).
+//
+// Idempotent: an op already carrying only the sealed form — a GET->PUT
+// round-trip re-submitting it, or an internally-built op — has an empty
+// PresharedKey and is left untouched. Fails closed: a plaintext secret with no
+// configured Sealer is an error, so a misconfigured daemon can never silently
+// persist a peer secret in the clear.
+func (s *Service) sealOpSecrets(ops []Op) error {
+	for _, op := range ops {
+		p, ok := op.Params.(*WgPeerAddParams)
+		if !ok || p.PresharedKey == "" {
+			continue
+		}
+		if s.sealer == nil {
+			return fmt.Errorf("change: refusing to persist a plaintext WireGuard preshared key for op %s with no configured secret cipher", op.Type)
+		}
+		sealed, err := s.sealer.Encrypt([]byte(p.PresharedKey))
+		if err != nil {
+			return fmt.Errorf("change: sealing preshared key for op %s: %w", op.Type, err)
+		}
+		p.PresharedKeyEnc = sealed
+		p.PresharedKey = ""
+	}
+	return nil
+}
+
+// wgTunnelCarriers resolves the tunnelID->carrier map TouchesMgmtPath needs to
+// flag carrier-less wg ops (wg.peer.*, wg.tunnel.delete, carrier-less update)
+// on an existing management-path tunnel — used by the scheduling gate so an
+// unattended scheduled such op is caught the same way the API interlock is.
+// Nil-safe and soft-fail: no WgCarrierSource, or a failed read, yields nil (no
+// carrier resolution), never blocking the gate on a transient store hiccup.
+func (s *Service) wgTunnelCarriers(ctx context.Context) map[string]WgTunnelCarrier {
+	if s.wgCarriers == nil {
+		return nil
+	}
+	carriers, err := s.wgCarriers.TunnelCarriers(ctx)
+	if err != nil {
+		s.log.Warn("change: resolving WireGuard tunnel carriers for mgmt-path gate; treating as none", "error", err)
+		return nil
+	}
+	return carriers
 }
 
 func (s *Service) appendAudit(ctx context.Context, username, action, result, changesetID string, detail map[string]any) {

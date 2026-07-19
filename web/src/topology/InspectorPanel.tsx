@@ -15,12 +15,15 @@ import { useEditorLauncherStore, editorKindForInventoryKind } from "../changeset
 import { buildBondDeleteOp, buildVlanDeleteOp } from "../changesets/opBuilders";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
+import { isCapturableEntityKind, useCaptureLauncherStore } from "../capture/captureLauncherStore";
+import { diagnosePath, isDiagnosableEntityKind } from "../diagnose/diagnosePath";
 import { resumeOnboarding } from "../onboarding/onboardingMachine";
 import { useOnboardingProgressQuery, useSaveOnboardingProgressMutation } from "../onboarding/queries";
 import { AnnotationsSection } from "./AnnotationsSection";
 import { useAnnotationsForRef } from "./annotationsQueries";
 import { BondLacpSection } from "./BondLacpSection";
 import { fieldRows } from "./fields";
+import { InteriorTab } from "./InteriorTab";
 import { METRICS_KINDS } from "./metricsKinds";
 import { MetricsTab } from "./MetricsTab";
 import { useInventoryDetailQuery, useMgmtStatusQuery } from "./queries";
@@ -177,12 +180,18 @@ export function InspectorPanel({
   const rawSourceEntries = Object.entries(data?.rawSource ?? {});
   const { data: session } = useSession();
   const openEditor = useEditorLauncherStore((s) => s.open);
+  const openCapture = useCaptureLauncherStore((s) => s.open);
   const { addOps } = useDrawerActions();
   const { toast } = useToast();
 
   const editorKind = editorKindForInventoryKind(data?.kind);
   const deletable = data ? DELETABLE_KINDS.has(data.kind) : false;
   const editDisabledReason = data ? missingCapTooltip(session, data.node, "netWrite") : undefined;
+  // T-1302: the "Capture" button — offered on the same bridge/bond/guest-NIC/
+  // SDN-VNet kinds the map's right-click entry point uses (captureLauncherStore's
+  // own gate), disabled with the missing-privilege tooltip's usual convention
+  // when the session lacks the dedicated `capture` capability.
+  const captureDisabledReason = data ? missingCapTooltip(session, data.node, "capture") : undefined;
   const canWrite = data ? capsForNode(session, data.node).netWrite : false;
   const isBridgeKind = data ? data.kind === "bridge" || data.kind === "ovs-bridge" : false;
   // T-804: the live LACP section applies to bonds of either flavor — a
@@ -191,6 +200,10 @@ export function InspectorPanel({
   const isBondKind = data ? data.kind === "bond" || data.kind === "ovs-bond" : false;
   const fdbRows = isBridgeKind && data ? (isFDBRows(data.fields.FDB) ? data.fields.FDB : []) : [];
   const hasMetrics = data ? METRICS_KINDS.has(data.kind) : false;
+  // T-1304: the guest network interior inspector applies to guest
+  // entities only (qemu/lxc) — a bare bridge/bond/etc. has no "inside" to
+  // read.
+  const isGuestKind = data ? data.kind === "guest" : false;
   // T-702: node-scoped entities only (bridge/bond/vlan/physnic/guest/...) —
   // cluster-scoped SDN entities (data.node === "") never carry a management
   // IP or corosync link of their own.
@@ -265,8 +278,36 @@ export function InspectorPanel({
                 Close
               </Button>
             )}
-            {(editorKind !== undefined || isTraceableEntityKind(data.kind)) && (
+            {(editorKind !== undefined || isTraceableEntityKind(data.kind) || isCapturableEntityKind(data.kind) || isDiagnosableEntityKind(data.kind)) && (
               <>
+              {isCapturableEntityKind(data.kind) && (
+                <Tooltip content={captureDisabledReason}>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={captureDisabledReason !== undefined}
+                      onClick={() => {
+                        openCapture({ targetRef: data.ref, node: data.node, label: data.label });
+                      }}
+                    >
+                      Capture
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+              {isDiagnosableEntityKind(data.kind) && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    const path = diagnosePath(data.kind, data.ref);
+                    if (path) void navigate(path);
+                  }}
+                >
+                  Diagnose
+                </Button>
+              )}
               {isTraceableEntityKind(data.kind) && (
                 <RadixDropdown.Root>
                   <RadixDropdown.Trigger asChild>
@@ -399,6 +440,11 @@ export function InspectorPanel({
               {hasMetrics && (
                 <RadixTabs.Trigger value="metrics" className={tabTriggerClass}>
                   Metrics
+                </RadixTabs.Trigger>
+              )}
+              {isGuestKind && (
+                <RadixTabs.Trigger value="interior" className={tabTriggerClass}>
+                  Interior
                 </RadixTabs.Trigger>
               )}
             </RadixTabs.List>
@@ -544,6 +590,11 @@ export function InspectorPanel({
             {hasMetrics && (
               <RadixTabs.Content value="metrics" className="mt-3 flex-1 overflow-y-auto">
                 <MetricsTab entityRef={data.ref} kind={data.kind} wsClient={metricsWsClient} />
+              </RadixTabs.Content>
+            )}
+            {isGuestKind && (
+              <RadixTabs.Content value="interior" className="mt-3 flex-1 overflow-y-auto">
+                <InteriorTab entityRef={data.ref} />
               </RadixTabs.Content>
             )}
           </RadixTabs.Root>

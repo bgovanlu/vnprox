@@ -5,13 +5,14 @@
 // files (docs/features/blueprints.md §1).
 import { useRef, useState } from "react";
 import clsx from "clsx";
-import type { Blueprint, BlueprintParamValue } from "../api/types";
+import type { Blueprint, BlueprintBundle, BlueprintParamValue } from "../api/types";
 import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
 import { EmptyState } from "../components/EmptyState";
 import { Tooltip } from "../components/Tooltip";
+import { BlueprintImportDialog } from "./BlueprintImportDialog";
 import { BlueprintPreviewDiagram } from "./BlueprintPreviewDiagram";
 import { ParamForm } from "./ParamForm";
 import {
@@ -21,6 +22,24 @@ import {
   useInstantiateBlueprintMutation,
   useSaveBlueprintMutation,
 } from "./queries";
+
+/** A file the user picked may be either T-1107's bundle envelope
+ * (`{bundleVersion, blueprint, signature?}`) or a legacy plain-Blueprint
+ * export (docs/api.md's pre-T-1107 "file-level import" convention: just
+ * `GET /blueprints/{id}`'s JSON body). Both are normalized to a
+ * BlueprintBundle here so BlueprintImportDialog only ever has one shape to
+ * handle — a legacy file is treated exactly like an unsigned bundle. */
+function toBundle(parsed: unknown): BlueprintBundle | null {
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const obj = parsed as Record<string, unknown>;
+  if ("bundleVersion" in obj && "blueprint" in obj) {
+    return obj as unknown as BlueprintBundle;
+  }
+  if ("blueprintVersion" in obj && "entities" in obj) {
+    return { bundleVersion: 1, blueprint: obj as unknown as Blueprint };
+  }
+  return null;
+}
 
 function parseNodes(raw: string): string[] | undefined {
   const parts = raw
@@ -36,6 +55,8 @@ export function BlueprintsPage() {
   const [nodesValue, setNodesValue] = useState("");
   const [captureNode, setCaptureNode] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importBundle, setImportBundle] = useState<BlueprintBundle | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   const saveMutation = useSaveBlueprintMutation();
   const deleteMutation = useDeleteBlueprintMutation();
@@ -107,18 +128,24 @@ export function BlueprintsPage() {
     URL.revokeObjectURL(url);
   }
 
+  // T-1107: import now always goes through BlueprintImportDialog's
+  // signature-verification/trust-decision flow (POST /blueprints/import),
+  // never straight to POST /blueprints — even a legacy plain-Blueprint file
+  // (no bundleVersion/signature) is normalized to an unsigned bundle and
+  // gated behind that dialog's "I trust this file" step, so there is one
+  // import path, not two.
   async function handleImportFile(file: File): Promise<void> {
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text) as Blueprint;
-      // Import always creates a *new* saved blueprint (never silently
-      // overwrites an existing one, and never a starter id).
-      const toSave: Blueprint = { ...parsed, id: "", readOnly: false };
-      const saved = await saveMutation.mutateAsync(toSave);
-      setSelectedId(saved.id);
-      toast({ title: "Imported", description: saved.name, variant: "success" });
+      const parsed: unknown = JSON.parse(text);
+      const bundle = toBundle(parsed);
+      if (!bundle) {
+        throw new Error("not a blueprint bundle or blueprint file");
+      }
+      setImportBundle(bundle);
+      setImportDialogOpen(true);
     } catch {
-      toast({ title: "Could not import file", description: "Not a valid blueprint JSON file.", variant: "error" });
+      toast({ title: "Could not import file", description: "Not a valid blueprint bundle file.", variant: "error" });
     }
   }
 
@@ -280,6 +307,15 @@ export function BlueprintsPage() {
           </div>
         )}
       </div>
+
+      <BlueprintImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        bundle={importBundle}
+        onImported={(bp) => {
+          setSelectedId(bp.id);
+        }}
+      />
     </div>
   );
 }

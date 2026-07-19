@@ -1,0 +1,33 @@
+# T-1501 fixture: a 2-node cluster running Calico (calico-node DaemonSet in
+# kube-system — no Flannel-style node annotation at all, so CNI detection
+# must come from the DaemonSet marker, not a node annotation).
+nodes:
+  - name: k8s-node-1
+    internalIP: 10.10.0.21
+    podCIDR: 10.245.0.0/24
+  - name: k8s-node-2
+    internalIP: 10.10.0.22
+    podCIDR: 10.245.1.0/24
+
+pods:
+  - namespace: default
+    name: api-7c8d9-fghij
+    node: k8s-node-1
+    podIP: 10.245.0.6
+    phase: Running
+
+services:
+  - namespace: default
+    name: api
+    type: LoadBalancer
+    clusterIP: 10.96.1.10
+    ports:
+      - port: 8080
+        nodePort: 31080
+        protocol: TCP
+
+daemonsets:
+  - namespace: kube-system
+    name: calico-node
+  - namespace: kube-system
+    name: calico-kube-controllers

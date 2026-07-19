@@ -53,7 +53,7 @@ func VlanFindings(snap inventory.Snapshot) []VlanFinding {
 		if !ok || n.LocalNic.IsZero() {
 			continue
 		}
-		bridge := bridgeFor(snap, n.LocalNic)
+		bridge := BridgeFor(snap, n.LocalNic)
 		if bridge == nil || !bridge.VlanAware {
 			continue
 		}
@@ -68,10 +68,14 @@ func VlanFindings(snap inventory.Snapshot) []VlanFinding {
 	return out
 }
 
-// bridgeFor resolves nicRef's Bridge, either directly (the NIC is a bridge
+// BridgeFor resolves nicRef's Bridge, either directly (the NIC is a bridge
 // port itself) or transitively through an enslaving Bond (the common
 // bonded-uplink case: PhysNic -enslaved-by-> Bond -port-of-> Bridge).
-func bridgeFor(snap inventory.Snapshot, nicRef inventory.Ref) *inventory.Bridge {
+// Exported (T-1506) so other packages needing "which bridge does this NIC's
+// traffic ultimately ride" — internal/drift's vf_spoofcheck_mismatch check,
+// internal/change's matching vf.provision validation — share this one
+// resolver rather than re-implementing the bond-transitive walk.
+func BridgeFor(snap inventory.Snapshot, nicRef inventory.Ref) *inventory.Bridge {
 	for _, edge := range snap.EdgesOf(nicRef) {
 		if edge.From != nicRef {
 			continue
@@ -86,7 +90,7 @@ func bridgeFor(snap inventory.Snapshot, nicRef inventory.Ref) *inventory.Bridge 
 		case inventory.EdgeEnslavedBy:
 			if bond, ok := snap.Get(edge.To); ok {
 				if _, ok := bond.(*inventory.Bond); ok {
-					if br := bridgeFor(snap, edge.To); br != nil {
+					if br := BridgeFor(snap, edge.To); br != nil {
 						return br
 					}
 				}

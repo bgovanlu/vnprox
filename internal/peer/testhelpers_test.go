@@ -46,6 +46,7 @@ type spyHostReader struct {
 	evpnVNI         map[string][]byte
 	dhcpLeases      map[string][]byte
 	neighbors       map[string][]host.Neighbor
+	conntrack       map[string][]host.ConntrackEntry
 	interfacesCalls int
 	lldpCalls       int
 	statsCalls      int
@@ -54,6 +55,7 @@ type spyHostReader struct {
 	evpnVNICalls    int
 	dhcpLeasesCalls int
 	neighborsCalls  int
+	conntrackCalls  int
 }
 
 func newSpyHostReader() *spyHostReader {
@@ -66,6 +68,7 @@ func newSpyHostReader() *spyHostReader {
 		evpnVNI:    map[string][]byte{},
 		dhcpLeases: map[string][]byte{},
 		neighbors:  map[string][]host.Neighbor{},
+		conntrack:  map[string][]host.ConntrackEntry{},
 	}
 }
 
@@ -146,6 +149,27 @@ func (r *spyHostReader) Neighbors(_ context.Context, node string) ([]host.Neighb
 
 func (r *spyHostReader) CorosyncStatus(_ context.Context, node string) ([]byte, error) {
 	return nil, host.ErrCorosyncUnavailable
+}
+
+func (r *spyHostReader) ContainerInterior(_ context.Context, _ string, _ int) (host.ContainerInteriorRaw, error) {
+	return host.ContainerInteriorRaw{}, host.ErrNotFound
+}
+
+func (r *spyHostReader) ContainerPing(_ context.Context, _ string, _ int, _ string) (bool, error) {
+	return false, nil
+}
+
+func (r *spyHostReader) Conntrack(_ context.Context, node string) ([]host.ConntrackEntry, error) {
+	r.conntrackCalls++
+	e, ok := r.conntrack[node]
+	if !ok {
+		return nil, errors.Join(host.ErrNotFound, errors.New("node "+node))
+	}
+	return e, nil
+}
+
+func (r *spyHostReader) IPv6RA(_ context.Context, _ string) ([]host.IPv6RAObservation, error) {
+	return nil, nil
 }
 
 // spyHostWriter records every call it receives and its arguments.

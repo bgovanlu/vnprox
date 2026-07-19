@@ -10,6 +10,9 @@ import { GuestsPage } from "./pages/GuestsPage";
 import { SdnPage } from "./pages/SdnPage";
 import { FirewallPage } from "./pages/FirewallPage";
 import { FlowExplorerPage } from "./pages/FlowExplorerPage";
+import { ConntrackPage } from "./pages/ConntrackPage";
+import { EdgePage } from "./pages/EdgePage";
+import { DiagnosePage } from "./pages/DiagnosePage";
 import { IpamPage } from "./pages/IpamPage";
 import { ManagementPage } from "./pages/ManagementPage";
 import { PortsPage } from "./pages/PortsPage";
@@ -100,6 +103,30 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Flows">
                   <FlowExplorerPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/conntrack"
+              element={
+                <DesktopOnlyRoute pageLabel="Conntrack">
+                  <ConntrackPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/edge"
+              element={
+                <DesktopOnlyRoute pageLabel="Edge">
+                  <EdgePage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/diagnose"
+              element={
+                <DesktopOnlyRoute pageLabel="Diagnose">
+                  <DiagnosePage />
                 </DesktopOnlyRoute>
               }
             />

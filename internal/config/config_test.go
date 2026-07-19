@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bgovanlu/vnprox/internal/capture"
 )
 
 func discardLogger() *slog.Logger {
@@ -124,6 +126,43 @@ tls_key = "` + keyPath + `"
 	}
 	if cfg.FirewallLog.DevFixtureDir != "" {
 		t.Errorf("FirewallLog.DevFixtureDir = %q, want empty (dev-only override) when unset", cfg.FirewallLog.DevFixtureDir)
+	}
+	// T-1301 [capture] defaults (internal/capture's own conservative caps).
+	if cfg.Capture.Root != DefaultCaptureRoot {
+		t.Errorf("Capture.Root = %q, want default %q", cfg.Capture.Root, DefaultCaptureRoot)
+	}
+	if cfg.Capture.MaxPackets != capture.DefaultCaps.MaxPackets || cfg.Capture.MaxBytes != capture.DefaultCaps.MaxBytes {
+		t.Errorf("Capture caps = %+v, want capture.DefaultCaps %+v", cfg.Capture, capture.DefaultCaps)
+	}
+	if cfg.Capture.MaxFilterInstructions != capture.DefaultMaxFilterInstructions {
+		t.Errorf("Capture.MaxFilterInstructions = %d, want default %d", cfg.Capture.MaxFilterInstructions, capture.DefaultMaxFilterInstructions)
+	}
+}
+
+// TestLoad_CaptureOverride covers T-1301's [capture] section: the
+// server-enforced cap ceilings and file root all override cleanly.
+func TestLoad_CaptureOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+[capture]
+root = "/data/caps"
+max_duration_sec = 30
+max_bytes = 1048576
+max_packets = 500
+retention_hours = 6
+max_filter_instructions = 16
+`
+	cfg, err := Load(writeTemp(t, "capture.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Capture.Root != "/data/caps" || cfg.Capture.MaxDurationSec != 30 ||
+		cfg.Capture.MaxBytes != 1048576 || cfg.Capture.MaxPackets != 500 ||
+		cfg.Capture.RetentionHours != 6 || cfg.Capture.MaxFilterInstructions != 16 {
+		t.Errorf("Capture section did not override cleanly: %+v", cfg.Capture)
 	}
 }
 
@@ -552,6 +591,157 @@ allow_from = ["not-a-cidr"]
 	_, err := Load(writeTemp(t, "metrics-bad-cidr.toml", toml), discardLogger())
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("Load error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+// TestLoad_LatmeshDefaults covers T-1303's [latmesh] section: every
+// tunable defaults to internal/latmesh's own documented constants when
+// omitted.
+func TestLoad_LatmeshDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "latmesh-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Latmesh.ProbeIntervalSec != 10 {
+		t.Errorf("Latmesh.ProbeIntervalSec = %d, want default 10", cfg.Latmesh.ProbeIntervalSec)
+	}
+	if cfg.Latmesh.RetentionMinutes != 60 {
+		t.Errorf("Latmesh.RetentionMinutes = %d, want default 60", cfg.Latmesh.RetentionMinutes)
+	}
+	if cfg.Latmesh.MaxRows != 500_000 {
+		t.Errorf("Latmesh.MaxRows = %d, want default 500000", cfg.Latmesh.MaxRows)
+	}
+}
+
+// TestLoad_LatmeshOverride covers explicit [latmesh] values.
+func TestLoad_LatmeshOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[latmesh]
+probe_interval_sec = 30
+retention_minutes = 120
+max_rows = 1000000
+`
+	cfg, err := Load(writeTemp(t, "latmesh-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Latmesh.ProbeIntervalSec != 30 {
+		t.Errorf("Latmesh.ProbeIntervalSec = %d, want 30", cfg.Latmesh.ProbeIntervalSec)
+	}
+	if cfg.Latmesh.RetentionMinutes != 120 {
+		t.Errorf("Latmesh.RetentionMinutes = %d, want 120", cfg.Latmesh.RetentionMinutes)
+	}
+	if cfg.Latmesh.MaxRows != 1_000_000 {
+		t.Errorf("Latmesh.MaxRows = %d, want 1000000", cfg.Latmesh.MaxRows)
+	}
+}
+
+// TestLoad_MTUProbeDefaults covers T-1306's [mtuprobe] section: the probe
+// interval defaults to internal/mtuprobe's own documented constant (300s,
+// deliberately coarser than [latmesh]'s 10s default) when omitted.
+func TestLoad_MTUProbeDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "mtuprobe-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.MTUProbe.ProbeIntervalSec != 300 {
+		t.Errorf("MTUProbe.ProbeIntervalSec = %d, want default 300", cfg.MTUProbe.ProbeIntervalSec)
+	}
+}
+
+// TestLoad_MTUProbeOverride covers an explicit [mtuprobe] value.
+func TestLoad_MTUProbeOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[mtuprobe]
+probe_interval_sec = 600
+`
+	cfg, err := Load(writeTemp(t, "mtuprobe-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.MTUProbe.ProbeIntervalSec != 600 {
+		t.Errorf("MTUProbe.ProbeIntervalSec = %d, want 600", cfg.MTUProbe.ProbeIntervalSec)
+	}
+}
+
+// TestLoad_WanDefaults covers T-1405's [wan] section: every tunable
+// defaults to internal/wan's own documented constants when omitted.
+func TestLoad_WanDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "wan-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Wan.ProbeIntervalSec != 10 {
+		t.Errorf("Wan.ProbeIntervalSec = %d, want default 10", cfg.Wan.ProbeIntervalSec)
+	}
+	if cfg.Wan.RetentionMinutes != 60 {
+		t.Errorf("Wan.RetentionMinutes = %d, want default 60", cfg.Wan.RetentionMinutes)
+	}
+	if cfg.Wan.MaxRows != 500_000 {
+		t.Errorf("Wan.MaxRows = %d, want default 500000", cfg.Wan.MaxRows)
+	}
+	if cfg.Wan.LossWarnPct != 0 {
+		t.Errorf("Wan.LossWarnPct = %v, want 0 (unset -> internal/wan.DefaultLossWarnPct applies downstream)", cfg.Wan.LossWarnPct)
+	}
+}
+
+// TestLoad_WanOverride covers explicit [wan] values.
+func TestLoad_WanOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[wan]
+probe_interval_sec = 30
+retention_minutes = 120
+max_rows = 1000000
+loss_warn_pct = 15
+`
+	cfg, err := Load(writeTemp(t, "wan-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Wan.ProbeIntervalSec != 30 {
+		t.Errorf("Wan.ProbeIntervalSec = %d, want 30", cfg.Wan.ProbeIntervalSec)
+	}
+	if cfg.Wan.RetentionMinutes != 120 {
+		t.Errorf("Wan.RetentionMinutes = %d, want 120", cfg.Wan.RetentionMinutes)
+	}
+	if cfg.Wan.MaxRows != 1_000_000 {
+		t.Errorf("Wan.MaxRows = %d, want 1000000", cfg.Wan.MaxRows)
+	}
+	if cfg.Wan.LossWarnPct != 15 {
+		t.Errorf("Wan.LossWarnPct = %v, want 15", cfg.Wan.LossWarnPct)
 	}
 }
 

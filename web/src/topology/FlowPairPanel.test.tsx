@@ -41,6 +41,17 @@ describe("FlowPairPanel", () => {
     expect(href).toContain("pairDst=");
   });
 
+  it("the 'view live connections' link scopes to the source ref's node", () => {
+    render(
+      <MemoryRouter>
+        <FlowPairPanel edge={edge} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", { name: "View live connections" });
+    const href = link.getAttribute("href") ?? "";
+    expect(href).toBe("/conntrack?node=pve1");
+  });
+
   it("calls onClose when the close button is clicked", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

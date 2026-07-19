@@ -84,12 +84,18 @@ func resolvePhysNic(ref Ref, parts map[Source]*PhysNic) resolved {
 	out.Duplex, _ = pick(prov, "duplex", ruleFor(ref.Kind, "duplex"), parts, func(p *PhysNic) string { return p.Duplex }, nonEmptyStr, keyStr)
 	out.OperState, _ = pick(prov, "operState", ruleFor(ref.Kind, "operState"), parts, func(p *PhysNic) string { return p.OperState }, nonEmptyStr, keyStr)
 	out.SpeedMbps, _ = pick(prov, "speedMbps", ruleFor(ref.Kind, "speedMbps"), parts, func(p *PhysNic) int { return p.SpeedMbps }, nonZeroInt, keyInt)
-	out.SRIOVVFs, _ = pick(prov, "sriovVFs", ruleFor(ref.Kind, "sriovVFs"), parts, func(p *PhysNic) int { return p.SRIOVVFs }, nonZeroInt, keyInt)
 	out.MTU, _ = pick(prov, "mtu", ruleFor(ref.Kind, "mtu"), parts, func(p *PhysNic) int { return p.MTU }, nonZeroInt, keyInt)
 	out.MTUDeclared, _ = pick(prov, "mtuDeclared", ruleFor(ref.Kind, "mtuDeclared"), parts, func(p *PhysNic) int { return p.MTUDeclared }, nonZeroInt, keyInt)
 	linkUp, linkUpOK := pick(prov, "linkUp", ruleFor(ref.Kind, "linkUp"), parts, func(p *PhysNic) boolOpt { return boolOpt{p.LinkUp, p.LinkUpSet} }, boolOptSet, boolOptKey)
 	out.LinkUp, out.LinkUpSet = linkUp.v, linkUpOK
 	out.Pending, _ = pick(prov, "pending", ruleFor(ref.Kind, "pending"), parts, func(p *PhysNic) string { return p.Pending }, nonEmptyStr, keyStr)
+	// SRIOVVFs (T-1506) is host-netlink-only and deliberately not part of
+	// ownershipRules/fieldMap (see PhysNic's doc comment): copy it straight
+	// through from that source's partial rather than going through pick,
+	// mirroring resolveBridge's identical FDB handling.
+	if p, ok := parts[SourceHostNetlink]; ok {
+		out.SRIOVVFs = append([]VirtualFunction(nil), p.SRIOVVFs...)
+	}
 	return resolved{entity: out, prov: *prov}
 }
 

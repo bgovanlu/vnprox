@@ -10,6 +10,7 @@ import { capsForNode } from "../changesets/capabilities";
 import { useEditorLauncherStore, type EditorKind } from "../changesets/editorLauncherStore";
 import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
 import { mgmtStrings } from "../mgmt/strings";
+import { useWgWizardStore } from "../wireguard/wgWizardStore";
 
 export interface NewEntityMenuProps {
   nodes: string[];
@@ -30,6 +31,7 @@ export function NewEntityMenu({ nodes }: NewEntityMenuProps) {
   const { data: session } = useSession();
   const open = useEditorLauncherStore((s) => s.open);
   const openMgmtWizard = useMgmtWizardStore((s) => s.open);
+  const openWgWizard = useWgWizardStore((s) => s.open);
   const writableNodes = nodes.filter((n) => capsForNode(session, n).netWrite);
 
   if (writableNodes.length === 0) return null;
@@ -82,6 +84,26 @@ export function NewEntityMenu({ nodes }: NewEntityMenuProps) {
                     className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800"
                     onSelect={() => {
                       openMgmtWizard({ node });
+                    }}
+                  >
+                    {node}
+                  </RadixDropdown.Item>
+                ))}
+              </RadixDropdown.SubContent>
+            </RadixDropdown.Portal>
+          </RadixDropdown.Sub>
+          <RadixDropdown.Sub>
+            <RadixDropdown.SubTrigger className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800">
+              Connect two clusters (WireGuard)
+            </RadixDropdown.SubTrigger>
+            <RadixDropdown.Portal>
+              <RadixDropdown.SubContent className="z-50 min-w-[8rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                {writableNodes.map((node) => (
+                  <RadixDropdown.Item
+                    key={node}
+                    className="cursor-pointer rounded px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800"
+                    onSelect={() => {
+                      openWgWizard({ sourceNode: node });
                     }}
                   >
                     {node}

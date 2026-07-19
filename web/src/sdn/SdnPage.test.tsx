@@ -15,7 +15,7 @@ import { SdnPage } from "./SdnPage";
 // and SdnPage's own new "read-only" test below cover that).
 const fullCapsMe: MeResponse = {
   user: { username: "root", realm: "pam" },
-  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true } },
+  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true, capture: false } },
 };
 
 // A small tree covering both of T-401's headline behaviors: a zone with a

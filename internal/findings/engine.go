@@ -50,7 +50,42 @@ type Config struct {
 	// MissedSchedules), backing the schedule_missed health check. Nil skips
 	// that check entirely, same degradation as every other optional Config
 	// field.
-	Schedule        ScheduleMissedProvider
+	Schedule ScheduleMissedProvider
+	// Webhooks is T-1104's webhook-health seam, backing the
+	// webhook_unhealthy finding (source health) — N consecutive delivery
+	// failures on a registered webhook. Nil skips that check entirely,
+	// same degradation as every other optional Config field.
+	Webhooks WebhookProvider
+	// LatMesh is T-1303's latency & loss mesh seam (*latmesh.Service via
+	// its LatMeshHeatmap method), backing the path_latency_degraded/
+	// path_loss health checks. Nil skips both checks entirely, same
+	// degradation as every other optional Config field.
+	LatMesh LatMeshProvider
+	// MTU is T-1306's path MTU prober seam (*mtuprobe.Service via its
+	// MeasuredUnderlayMTU method), tightening vxlan_underlay_mtu's
+	// evaluation with a measured reading when one exists. Nil falls back to
+	// that check's original T-803 observed-MTU behavior, same degradation
+	// as every other optional Config field.
+	MTU MTUProvider
+	// WG is T-1401's WireGuard live-state seam, backing the
+	// wg_handshake_stale / wg_endpoint_drift findings (source "wireguard").
+	// Nil skips both checks entirely, same degradation as every other
+	// optional Config field.
+	WG WGProvider
+	// Wan is T-1405's WAN health seam (*wan.Service via its WanHeatmap
+	// method), backing the wan_degraded health check (source "wan"). Nil
+	// skips that check entirely, same degradation as every other optional
+	// Config field.
+	Wan WanProvider
+	// Flow is T-1504's classified-flow seam (internal/flow.Classifier via a
+	// cmd/vnproxd adapter over recent flow_samples), backing the
+	// service_traffic_on_wrong_network finding (source "flow", not
+	// "health" — see SourceFlow's doc comment). Nil skips that check
+	// entirely, same degradation as every other optional Config field.
+	Flow FlowProvider
+	// K8s is T-1501's read-only Kubernetes overlay seam (adapt_k8s.go),
+	// backing k8s_nodeport_exposed_without_fw_rule. Nil skips that producer.
+	K8s             K8sProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -67,37 +102,50 @@ type Config struct {
 // WS change notification and the notification-hook transition detection
 // (AC5).
 type Engine struct {
-	notifier    Notifier
-	driftSvc    DriftProvider
-	lldpSvc     LLDPProvider
-	ipamSvc     IPAMProvider
-	metricsSvc  MetricsProvider
-	mgmtSvc     MgmtProvider
-	corosyncSvc CorosyncProvider
-	fwAnalytics FwAnalyticsProvider
-	scheduleSvc ScheduleMissedProvider
-	probeSvc    ProbeProvider
-	serviceDB   *debouncer
-	services    *serviceStatusStore
-	onChange    func(int)
-	log         *slog.Logger
-	notified    map[string]string
-	lastIDs     map[string]bool
-	now         func() time.Time
-	bondDB      *debouncer
-	lacpDB      *debouncer
-	carrierDB   *debouncer
-	errDropDB   *debouncer
-	corosyncDB  *debouncer
-	vxlanMTUDB  *debouncer
-	graph       *inventory.Graph
-	stpTracker  *stpBurstTracker
-	pendingTr   *pendingTracker
-	notifyMin   string
-	thresholds  HealthThresholds
-	interval    time.Duration
-	mu          sync.Mutex
-	lastEval    bool
+	notifier         Notifier
+	driftSvc         DriftProvider
+	lldpSvc          LLDPProvider
+	ipamSvc          IPAMProvider
+	metricsSvc       MetricsProvider
+	mgmtSvc          MgmtProvider
+	corosyncSvc      CorosyncProvider
+	fwAnalytics      FwAnalyticsProvider
+	scheduleSvc      ScheduleMissedProvider
+	webhooksSvc      WebhookProvider
+	probeSvc         ProbeProvider
+	latMeshSvc       LatMeshProvider
+	mtuSvc           MTUProvider
+	wgSvc            WGProvider
+	wanSvc           WanProvider
+	flowSvc          FlowProvider
+	k8sSvc           K8sProvider
+	bondDB           *debouncer
+	wgStaleDB        *debouncer
+	notified         map[string]string
+	services         *serviceStatusStore
+	now              func() time.Time
+	latLossDB        *debouncer
+	lacpDB           *debouncer
+	carrierDB        *debouncer
+	errDropDB        *debouncer
+	corosyncDB       *debouncer
+	vxlanMTUDB       *debouncer
+	latRttDB         *debouncer
+	onChange         func(int)
+	log              *slog.Logger
+	wgDriftDB        *debouncer
+	wanDB            *debouncer
+	graph            *inventory.Graph
+	stpTracker       *stpBurstTracker
+	pendingTr        *pendingTracker
+	serviceTrafficDB *debouncer
+	serviceDB        *debouncer
+	lastIDs          map[string]bool
+	notifyMin        string
+	thresholds       HealthThresholds
+	interval         time.Duration
+	mu               sync.Mutex
+	lastEval         bool
 }
 
 // New builds an Engine from cfg.
@@ -124,34 +172,47 @@ func New(cfg Config) *Engine {
 	}
 
 	return &Engine{
-		graph:       cfg.Graph,
-		driftSvc:    cfg.Drift,
-		lldpSvc:     cfg.LLDP,
-		ipamSvc:     cfg.IPAM,
-		metricsSvc:  cfg.Metrics,
-		mgmtSvc:     cfg.Mgmt,
-		corosyncSvc: cfg.Corosync,
-		fwAnalytics: cfg.FwAnalytics,
-		scheduleSvc: cfg.Schedule,
-		probeSvc:    cfg.Probe,
-		log:         logger,
-		now:         now,
-		onChange:    cfg.OnChange,
-		notifier:    cfg.Notifier,
-		notifyMin:   notifyMin,
-		interval:    interval,
-		thresholds:  th,
-		bondDB:      newDebouncer(),
-		lacpDB:      newDebouncer(),
-		carrierDB:   newDebouncer(),
-		errDropDB:   newDebouncer(),
-		serviceDB:   newDebouncer(),
-		corosyncDB:  newDebouncer(),
-		vxlanMTUDB:  newDebouncer(),
-		stpTracker:  newStpBurstTracker(),
-		pendingTr:   newPendingTracker(),
-		services:    newServiceStatusStore(),
-		notified:    map[string]string{},
+		graph:            cfg.Graph,
+		driftSvc:         cfg.Drift,
+		lldpSvc:          cfg.LLDP,
+		ipamSvc:          cfg.IPAM,
+		metricsSvc:       cfg.Metrics,
+		mgmtSvc:          cfg.Mgmt,
+		corosyncSvc:      cfg.Corosync,
+		fwAnalytics:      cfg.FwAnalytics,
+		scheduleSvc:      cfg.Schedule,
+		webhooksSvc:      cfg.Webhooks,
+		probeSvc:         cfg.Probe,
+		latMeshSvc:       cfg.LatMesh,
+		mtuSvc:           cfg.MTU,
+		wgSvc:            cfg.WG,
+		wanSvc:           cfg.Wan,
+		log:              logger,
+		now:              now,
+		onChange:         cfg.OnChange,
+		notifier:         cfg.Notifier,
+		notifyMin:        notifyMin,
+		interval:         interval,
+		thresholds:       th,
+		bondDB:           newDebouncer(),
+		lacpDB:           newDebouncer(),
+		carrierDB:        newDebouncer(),
+		errDropDB:        newDebouncer(),
+		serviceDB:        newDebouncer(),
+		corosyncDB:       newDebouncer(),
+		vxlanMTUDB:       newDebouncer(),
+		latRttDB:         newDebouncer(),
+		latLossDB:        newDebouncer(),
+		wgStaleDB:        newDebouncer(),
+		wgDriftDB:        newDebouncer(),
+		wanDB:            newDebouncer(),
+		stpTracker:       newStpBurstTracker(),
+		pendingTr:        newPendingTracker(),
+		services:         newServiceStatusStore(),
+		notified:         map[string]string{},
+		flowSvc:          cfg.Flow,
+		serviceTrafficDB: newDebouncer(),
+		k8sSvc:           cfg.K8s,
 	}
 }
 
@@ -174,7 +235,12 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, driftFindings(e.driftSvc)...)
 	out = append(out, lldpFindings(e.lldpSvc)...)
 	out = append(out, ipamFindings(e.ipamSvc)...)
+	out = append(out, k8sFindings(e.k8sSvc)...)
 	out = append(out, probeFindings(e.probeSvc)...)
+	out = append(out, webhookFindings(e.webhooksSvc)...)
+	out = append(out, wgFindings(e.wgSvc, e.wgStaleDB, e.wgDriftDB, e.now())...)
+	out = append(out, checkWanDegraded(e.wanSvc, e.wanDB, e.thresholds)...)
+	out = append(out, checkServiceTrafficOnWrongNetwork(e.flowSvc, e.serviceTrafficDB)...)
 	out = append(out, e.healthFindings()...)
 	sortFindings(out)
 	return out
@@ -198,13 +264,16 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkErrorDropRate(snap, e.metricsSvc, e.errDropDB, e.thresholds)...)
 	out = append(out, checkServiceDown(e.services, e.serviceDB)...)
 	out = append(out, checkMgmtSinglePath(e.mgmtSvc)...)
-	out = append(out, checkVxlanUnderlayMTU(snap, e.vxlanMTUDB)...)
+	out = append(out, checkVxlanUnderlayMTU(snap, e.vxlanMTUDB, e.mtuSvc)...)
 	out = append(out, checkOrphanVnet(snap)...)
 	out = append(out, checkEvpnGwInconsistency(snap)...)
 	out = append(out, checkTrunkUnusedVlans(snap)...)
 	out = append(out, checkCorosyncLinkDegraded(e.corosyncSvc, e.corosyncDB)...)
 	out = append(out, checkFwRuleUnused(e.fwAnalytics, now)...)
 	out = append(out, checkScheduleMissed(e.scheduleSvc)...)
+	out = append(out, checkPathLatencyDegraded(e.latMeshSvc, e.latRttDB, e.thresholds)...)
+	out = append(out, checkPathLoss(e.latMeshSvc, e.latLossDB, e.thresholds)...)
+	out = append(out, checkDualstackDrift(snap)...)
 	return out
 }
 

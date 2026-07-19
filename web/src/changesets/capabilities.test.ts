@@ -11,6 +11,7 @@ const fullCaps: Capabilities = {
   fwWrite: true,
   guestNet: true,
   audit: true,
+  capture: true,
 };
 
 const readOnlyCaps: Capabilities = { ...fullCaps, netWrite: false, sdnWrite: false, fwWrite: false, guestNet: false };

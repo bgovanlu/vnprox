@@ -24,6 +24,15 @@ const (
 	// are re-derived from PVE, per docs/security.md "re-derived hourly".
 	DefaultCapRefreshInterval = time.Hour
 
+	// DefaultBearerRateLimitCapacity/DefaultBearerRateLimitRefill are
+	// T-1104's per-token rate limit defaults: a burst of 60 requests, then
+	// one token refilled per second (steady-state 1 req/s) — generous
+	// enough for CI/automation polling loops while still bounding a
+	// misbehaving or compromised token's blast radius, distinct from (and
+	// independent of) DefaultRateLimitConfig's login-attempt limiter.
+	DefaultBearerRateLimitCapacity = 60
+	DefaultBearerRateLimitRefill   = 1 * time.Second
+
 	// SessionCookieName and CSRFCookieName are docs/api.md's documented
 	// cookie names ("session cookie vnprox_session ... + X-VNPROX-CSRF
 	// header") and the double-submit cookie name web/src/api/auth.ts (T-005)
@@ -41,31 +50,19 @@ const (
 // zero; tests override them to exercise renewal/expiry/rate-limiting on a
 // short, fast timescale (T-105 acceptance criteria 4 and 5).
 type Config struct {
-	Sessions                 *store.SessionRepo
+	Tokens                   *store.APITokenRepo
 	Audit                    *store.AuditRepo
 	NewIdentity              IdentityFactory
 	Now                      func() time.Time
 	Logger                   *slog.Logger
+	Sessions                 *store.SessionRepo
 	RateLimit                RateLimitConfig
+	BearerRateLimit          RateLimitConfig
 	IdleTimeout              time.Duration
-	HardTimeout              time.Duration
-	CapRefreshInterval       time.Duration
 	TicketRenewCheckInterval time.Duration
-	// ReadOnly mirrors `[server].read_only` (docs/features/blueprints.md §3:
-	// "Read-only mode toggle — admins can run vnprox observe-only ... until
-	// they trust it; all write UI renders disabled with explanatory
-	// tooltips"). When true, every Capabilities value this package derives
-	// (at login and at each hourly refresh — see deriveCapabilities) has
-	// every write flag forced false regardless of the user's actual PVE
-	// privileges. Capabilities is both what GET /auth/me reports to the UI
-	// *and* what every mutating route's RequireCap middleware gates on
-	// (docs/api.md's routes all check these same flags), so this makes the
-	// config flag a real, server-enforced observe-only mode rather than a
-	// UI-only cosmetic — PVE's own ACL check on the user's ticket remains
-	// the underlying, authoritative enforcement either way (docs/
-	// security.md's "Authorization" section: this package's flags are
-	// always a secondary, vnprox-enforced UX/safety layer, never primary).
-	ReadOnly bool
+	CapRefreshInterval       time.Duration
+	HardTimeout              time.Duration
+	ReadOnly                 bool
 }
 
 // Service implements the login/session/CSRF/capability machinery described
@@ -78,6 +75,8 @@ type Service struct {
 	audit         *store.AuditRepo
 	newIdentity   IdentityFactory
 	limiter       *loginLimiter
+	tokens        *store.APITokenRepo
+	bearerLimiter *tokenBucket
 	now           func() time.Time
 	log           *slog.Logger
 	live          map[string]*liveSession
@@ -138,6 +137,13 @@ func NewService(cfg Config) (*Service, error) {
 	if renewInterval <= 0 {
 		renewInterval = time.Minute
 	}
+	bearerLimit := cfg.BearerRateLimit
+	if bearerLimit.Capacity <= 0 {
+		bearerLimit.Capacity = DefaultBearerRateLimitCapacity
+	}
+	if bearerLimit.RefillEvery <= 0 {
+		bearerLimit.RefillEvery = DefaultBearerRateLimitRefill
+	}
 
 	return &Service{
 		sessions:      cfg.Sessions,
@@ -148,6 +154,8 @@ func NewService(cfg Config) (*Service, error) {
 		capRefresh:    capRefresh,
 		renewInterval: renewInterval,
 		limiter:       newLoginLimiter(cfg.RateLimit, now),
+		tokens:        cfg.Tokens,
+		bearerLimiter: newTokenBucket(bearerLimit, now),
 		now:           now,
 		log:           logger,
 		live:          make(map[string]*liveSession),
@@ -201,6 +209,13 @@ type Identity struct {
 	SessionID string
 	Username  string
 	Realm     string
+	// TokenID is set (to the minting api_tokens.id) only for a bearer-
+	// token-authenticated request's Identity; empty for a cookie-session
+	// Identity. Consumers (WS "events" subscription gating, force-close on
+	// revoke — internal/topology.Hub) use it to correlate a live
+	// connection back to the token that authenticated it, without needing
+	// the whole Identity/Capabilities machinery threaded through.
+	TokenID string
 }
 
 // HasCap reports whether node (or, if node has no specific entry, any node
@@ -240,6 +255,13 @@ const (
 type sessionRecord struct {
 	Identity  Identity
 	CSRFToken string
+	// Bearer marks this request as authenticated via T-1104's bearer-token
+	// middleware rather than the cookie-session path — CSRFMiddleware uses
+	// it to skip the double-submit check (docs/api.md's Tokens section:
+	// "bearer skips CSRF (not cookie-based)"), the same precedent
+	// docs/security.md's metrics scrape token already sets for a
+	// non-cookie credential.
+	Bearer bool
 }
 
 func contextWithSession(ctx context.Context, rec sessionRecord) context.Context {
@@ -260,6 +282,19 @@ func IdentityFromContext(ctx context.Context) (Identity, bool) {
 		return Identity{}, false
 	}
 	return rec.Identity, true
+}
+
+// ContextWithIdentity attaches id to ctx in the same place SessionMiddleware
+// does (IdentityFromContext(ContextWithIdentity(ctx, id)) always round-
+// trips id back out). Exported for the rare composition-root/test need to
+// simulate an authenticated request context without a full HTTP round
+// trip through this package's own middleware — e.g.
+// internal/topology.Hub's ServeWS (T-1104's WS "events" automation-scope
+// gating) needs a real auth.Identity in r.Context() ahead of the upgrade,
+// and its own tests construct one directly via this function rather than
+// standing up a whole login flow.
+func ContextWithIdentity(ctx context.Context, id Identity) context.Context {
+	return contextWithSession(ctx, sessionRecord{Identity: id})
 }
 
 // PVEClientFor returns the live *pve.Client backing sessionID, for

@@ -32,6 +32,10 @@ export interface Capabilities {
   fwWrite: boolean;
   guestNet: boolean;
   audit: boolean;
+  /** T-1301: the dedicated packet-capture gate (internal/auth.CapCapture) —
+   * strictly stronger than netWrite (Sys.Modify AND Sys.Console); holding
+   * netRead/netWrite alone never implies this. */
+  capture: boolean;
 }
 
 export interface AuthUser {
@@ -196,6 +200,50 @@ export interface TopologyDeltaEvent {
   removed: string[];
 }
 
+// --- WireGuard tunnels (T-1401 backend, T-1402 map edges + wizard) --------
+// Mirrors internal/api/wireguard.go's WireGuardTunnelView/WireGuardPeerView/
+// WireGuardTunnelStatus exactly. Read-only — every mutation goes through the
+// wg.* changeset op family below, never a dedicated write route.
+
+export interface WireGuardPeer {
+  publicKey: string;
+  endpoint?: string;
+  observedEndpoint?: string;
+  allowedIps: string[];
+  keepaliveSec?: number;
+  /** Unix seconds; absent/0 means "never handshaked" — per T-1401's own
+   * findings semantics (health_wireguard.go's checkWgHandshakeStale doc
+   * comment), a peer with no handshake age at all is NOT stale — a
+   * freshly-created tunnel must not immediately paint amber. */
+  lastHandshakeUnix?: number;
+  rxBytes: number;
+  txBytes: number;
+  external: boolean;
+  endpointDrifted: boolean;
+}
+
+export interface WireGuardTunnelStatus {
+  interfaceUp: boolean;
+  peerCount: number;
+}
+
+export interface WireGuardTunnel {
+  id: string;
+  node: string;
+  ifName: string;
+  publicKey: string;
+  carrier?: string;
+  addresses: string[];
+  peers: WireGuardPeer[];
+  status: WireGuardTunnelStatus;
+  listenPort: number;
+  mtu: number;
+}
+
+export interface WireGuardTunnelsResponse {
+  items: WireGuardTunnel[];
+}
+
 // --- Saved layouts (internal/api/layouts.go, additive — no docs/api.md
 // entry existed before this task; see that file's doc comment) -----------
 
@@ -326,7 +374,12 @@ export type OpType =
   | "ipam.alloc.delete"
   | "qos.shape.create"
   | "qos.shape.update"
-  | "qos.shape.delete";
+  | "qos.shape.delete"
+  | "wg.tunnel.create"
+  | "wg.tunnel.update"
+  | "wg.tunnel.delete"
+  | "wg.peer.add"
+  | "wg.peer.remove";
 
 /** internal/change's VidRange: an inclusive VLAN ID range (Low === High for
  * a single VID). */
@@ -472,6 +525,55 @@ export interface IpamAllocCreateParams {
 /** internal/change.IpamAllocDeleteParams (T-405's ipam.alloc.delete op). */
 export interface IpamAllocDeleteParams {
   cidr: string;
+}
+
+// --- Params for the wg.* op family (T-1401's internal/change/params_wg.go,
+// T-1402's frontend consumer). Target Ref conventions (not encoded in these
+// param shapes themselves — see internal/change/params_wg.go's own doc
+// comment, mirrored by web/src/wireguard/wizardOps.ts's target builders):
+//   - wg.tunnel.* target "wg-tunnel:<node>:<tunnelId>".
+//   - wg.peer.*   target "wg-peer:<node>:<tunnelId>/<peer public key>".
+// A tunnel's keypair is never a param field — it is generated on the owning
+// node at apply time and never rides an op, a response, or a log line.
+
+export interface WgTunnelCreateParams {
+  ifName: string;
+  carrier?: string;
+  addresses?: string[];
+  listenPort?: number;
+  mtu?: number;
+}
+
+/** internal/change.WgTunnelUpdateParams: every field is "leave unchanged if
+ * omitted" on the wire (Go's pointer-field tri-state) — the frontend never
+ * needs the explicit-null form (no editor here clears a field), so these
+ * stay plain optionals like every other *UpdateParams in this file. */
+export interface WgTunnelUpdateParams {
+  listenPort?: number;
+  addresses?: string[];
+  mtu?: number;
+  carrier?: string;
+}
+
+export type WgTunnelDeleteParams = Record<string, never>;
+
+/** internal/change.WgPeerAddParams. `presharedKey` is a WRITE-ONLY ingest
+ * field — the change service seals it into `presharedKeyEnc` at stage time
+ * and strips the plaintext from every read response (T-1401's review fix
+ * pass); this wizard only ever sets `presharedKey` (plaintext, at draft
+ * time), never `presharedKeyEnc` directly. */
+export interface WgPeerAddParams {
+  publicKey: string;
+  endpoint?: string;
+  presharedKey?: string;
+  clusterId?: string;
+  allowedIps?: string[];
+  keepaliveSec?: number;
+  external?: boolean;
+}
+
+export interface WgPeerRemoveParams {
+  publicKey: string;
 }
 
 // --- Params for the sdn.zone/vnet/subnet.* op family (T-402's editors,
@@ -733,6 +835,11 @@ export type OpParams =
   | FwGroupCreateParams
   | FwGroupUpdateParams
   | FwGroupDeleteParams
+  | WgTunnelCreateParams
+  | WgTunnelUpdateParams
+  | WgTunnelDeleteParams
+  | WgPeerAddParams
+  | WgPeerRemoveParams
   | Record<string, unknown>;
 
 /** One changeset operation, the wire shape internal/change/op.go's Op
@@ -818,7 +925,7 @@ export type ChangesetStatus =
 /** One apply-plan step (internal/change/apply_plan.go's Step) — the Plan
  * tab's row shape. `opIdx` indexes into the changeset's own `ops` array. */
 export interface PlanStep {
-  kind: "sdn_stage" | "ipam_alloc" | "stage_file" | "reload" | "fw_apply" | "fw_verify" | "sdn_apply";
+  kind: "sdn_stage" | "ipam_alloc" | "stage_file" | "reload" | "wg_apply" | "fw_apply" | "fw_verify" | "sdn_apply";
   node?: string;
   summary: string;
   opIdx?: number[];
@@ -1548,6 +1655,72 @@ export interface SuggestAddressResponse {
   address: string;
 }
 
+// --- Blueprint sharing bundles (T-1107, docs/features/blueprints.md §5;
+// GET /blueprints/{id}/bundle, GET /blueprints/signing-key,
+// POST /blueprints/import, GET/POST/DELETE /blueprint-signers) -----------
+
+/** An Ed25519 signature over a bundle's `blueprint` field
+ * (internal/blueprint.BundleSignature). `publicKey` (base64) travels
+ * alongside the fingerprint so a receiving install can verify the
+ * signature standalone, before deciding whether it trusts the signer. */
+export interface BundleSignature {
+  alg: string;
+  publicKeyFingerprint: string;
+  publicKey: string;
+  sig: string;
+}
+
+/** The sharable envelope `{bundleVersion, blueprint, signature?}`
+ * (docs/features/blueprints.md §5). `signature` is absent for an unsigned
+ * bundle. */
+export interface BlueprintBundle {
+  bundleVersion: number;
+  blueprint: Blueprint;
+  signature?: BundleSignature;
+}
+
+/** POST /blueprints/import's body: the bundle plus the two explicit-trust
+ * flags — at most one is ever meaningfully set for a given bundle (an
+ * unsigned bundle only reads trustUnsigned; a signed one only reads
+ * trustNewKey). */
+export interface ImportBundleRequest extends BlueprintBundle {
+  trustUnsigned?: boolean;
+  trustNewKey?: boolean;
+}
+
+/** The four distinct outcomes POST /blueprints/import can report
+ * (docs/api.md's Blueprint bundles section). */
+export type BundleImportStatus = "imported" | "unsigned" | "untrustedSignature" | "invalidSignature";
+
+/** A signer identified in an import response (untrusted case) or returned
+ * from the trust-store CRUD routes. */
+export interface BlueprintSigner {
+  fingerprint: string;
+  publicKey: string;
+  label?: string;
+  addedBy?: string;
+  addedAt?: number;
+}
+
+export interface ImportBundleResponse {
+  status: BundleImportStatus;
+  blueprint?: Blueprint;
+  signer?: BlueprintSigner;
+}
+
+export interface BlueprintSignersListResponse {
+  items: BlueprintSigner[];
+}
+
+/** GET /blueprints/signing-key response: this installation's own bundle-
+ * signing public key, for a receiving admin to share out-of-band and pin
+ * via POST /blueprint-signers. */
+export interface BlueprintSigningKeyResponse {
+  alg: string;
+  publicKey: string;
+  fingerprint: string;
+}
+
 // --- Firewall log viewer (GET /firewall/log; `firewall.log.batch` WS
 // event; docs/features/firewall.md §4, internal/fwlog) -------------------
 
@@ -1825,6 +1998,85 @@ export interface VerifyEligibility {
   reason?: VerifyEligibilityReason;
 }
 
+// --- Guest network interior inspector (docs/api.md §"Guest interior",
+// T-1304) ---------------------------------------------------------------
+
+/** `GET/PUT /guests/{ref}/interior-toggle` response: whether the
+ * interior-inspector opt-in is currently enabled for this guest (off by
+ * default). */
+export interface GuestInteriorToggle {
+  ref: string;
+  enabled: boolean;
+}
+
+/** One network interface reported inside the guest. */
+export interface GuestInteriorInterface {
+  name: string;
+  mac?: string;
+  mtu?: number;
+  up: boolean;
+}
+
+/** One address claimed on one of the guest's interfaces. */
+export interface GuestInteriorAddress {
+  interface: string;
+  ip: string;
+  family: "ipv4" | "ipv6";
+  prefix?: number;
+}
+
+/** One routing-table entry reported inside the guest. `destination` is
+ * `"default"` or a CIDR. */
+export interface GuestInteriorRoute {
+  destination: string;
+  gateway?: string;
+  dev?: string;
+  metric?: number;
+}
+
+/** The guest's resolver configuration. */
+export interface GuestInteriorDNS {
+  nameservers?: string[];
+  searchDomains?: string[];
+}
+
+/** One listening TCP/UDP socket reported inside the guest. */
+export interface GuestInteriorListeningSocket {
+  proto: "tcp" | "udp";
+  localAddr: string;
+  localPort: number;
+}
+
+/** `GET /guests/{ref}/interior`'s per-address IPAM cross-check annotation
+ * — `claimed` is always true (this list only ever holds addresses the
+ * guest itself claimed); `allocated` reports whether IPAM has a matching
+ * allocation record; `matches` is `claimed && allocated`. Never a write to
+ * IPAM — this is an observed-vs-allocated comparison only
+ * (docs/features/ipam.md §1's "observed, never authoritative" confidence
+ * labeling applied to the guest's own self-report). */
+export interface GuestInteriorIPAMDiffEntry {
+  ip: string;
+  claimed: boolean;
+  allocated: boolean;
+  matches: boolean;
+}
+
+/** Which read path produced a `GuestInterior` view. */
+export type GuestInteriorSource = "qemu-ga" | "lxc-host";
+
+/** `GET /guests/{ref}/interior` response: the guest's own inside view of
+ * its network, plus the IPAM cross-check annotation. */
+export interface GuestInterior {
+  interfaces: GuestInteriorInterface[];
+  addresses: GuestInteriorAddress[];
+  routes: GuestInteriorRoute[];
+  dns: GuestInteriorDNS;
+  listeningSockets: GuestInteriorListeningSocket[];
+  defaultGatewayReachable: boolean;
+  source: GuestInteriorSource;
+  ipamDiff: GuestInteriorIPAMDiffEntry[];
+}
+
 // --- Protected interfaces (docs/api.md §"Protected interfaces"; T-203,
 // consumed by T-605's onboarding walkthrough step 2) -----------------------
 
@@ -2077,6 +2329,13 @@ export interface AlertRuleTestResponse {
 // --- Flows (T-1002 backend / T-1003 frontend; docs/api.md's "Flows"
 // section + `internal/api/flows.go`'s flowRecordResponse) -----------------
 
+/** T-1504's flow-metadata service-network attribution
+ * (internal/flow.Classifier) — never payload inspection, see that
+ * package's doc comment. `"unclassified"` means no registered NetworkSource
+ * matched; `serviceClass` is omitted entirely (not `"unclassified"`) when
+ * the daemon has no FlowClassifier wired at all. */
+export type ServiceClass = "migration" | "backup" | "ceph-public" | "ceph-cluster" | "corosync" | "unclassified";
+
 /** One ingested flow sample — the shape both `GET /flows`'s `items` and the
  * `flow.batch` WS event's `entries` carry, field-for-field per docs/api.md.
  * `srcRef`/`dstRef` are inventory Ref strings, populated only when the IP
@@ -2102,6 +2361,7 @@ export interface FlowRecord {
   ingressIfIndex?: number;
   egressIfIndex?: number;
   source: "sflow" | "netflow5" | "netflow9" | "ipfix" | "conntrack";
+  serviceClass?: ServiceClass;
 }
 
 /** GET /flows response envelope — the same cluster-fan-out shape GET
@@ -2124,6 +2384,165 @@ export interface FlowBatchEvent {
   droppedTotal: number;
 }
 
+// --- Latency mesh (GET /latmesh/*; internal/api/latmesh.go, T-1303) -------
+
+/** GET /latmesh/heatmap's per-item shape (docs/api.md's Latency mesh
+ * section). `linkId` is `internal/latmesh.Pair.LinkID`'s stable,
+ * content-derived key (`"<fabric>[:<label>]|<fromNode>-><toNode>"`),
+ * globally unique per directed link. `at`/`rttMs`/`lossPct` are the most
+ * recent probe tick's own values; `rollingRttMs`/`rollingLossPct` are the
+ * mean over the server's rolling window — what the map's latency heatmap
+ * paint mode and the path_latency_degraded/path_loss findings both key on,
+ * never the single noisy `rttMs`/`lossPct` reading. Node-local only (no
+ * cluster fan-out yet — see docs/api.md's Latency mesh section). */
+export interface LatMeshLink {
+  linkId: string;
+  fabric: "corosync" | "guest";
+  fromNode: string;
+  toNode: string;
+  at: number;
+  rttMs: number;
+  lossPct: number;
+  rollingRttMs: number;
+  rollingLossPct: number;
+  sampleCount: number;
+}
+
+/** GET /latmesh/heatmap response envelope. */
+export interface LatMeshHeatmap {
+  items: LatMeshLink[];
+}
+
+/** GET /latmesh/history's per-item shape. */
+export interface LatMeshSample {
+  at: number;
+  rttMs: number;
+  lossPct: number;
+}
+
+/** GET /latmesh/history response envelope. */
+export interface LatMeshHistory {
+  linkId: string;
+  items: LatMeshSample[];
+}
+
+// --- Path MTU prober (GET /mtuprobe/results; internal/api/mtuprobe.go, T-1306) --
+
+/** One GET /mtuprobe/results item — docs/api.md's `MTUProbeResult` shape
+ * (internal/mtuprobe.Result). `linkId`/`fabric`/`fromNode`/`toNode` are the
+ * exact same internal/latmesh.Pair.LinkID-keyed identity `LatMeshLink` uses
+ * for the same path, so a link's latency reading and its verified MTU
+ * reading correlate by `linkId`. `mtu` is the binary search's converged
+ * path MTU; `at` is the unix-seconds timestamp of the probe that produced
+ * it; `probeCount` is how many DF-probes that convergence took. A link the
+ * prober hasn't reached yet simply has no item — never a stale/zero entry. */
+export interface MTUProbeResult {
+  linkId: string;
+  fabric: "corosync" | "guest";
+  fromNode: string;
+  toNode: string;
+  mtu: number;
+  at: number;
+  probeCount: number;
+}
+
+/** GET /mtuprobe/results response envelope. */
+export interface MTUProbeResults {
+  items: MTUProbeResult[];
+}
+
+// --- Conntrack (T-1305 backend / frontend; docs/api.md's "Conntrack"
+// section + internal/api/conntrack.go's conntrackEntryResponse) -----------
+
+/** One NAT-translated endpoint — docs/api.md's Conntrack section's
+ * `natSrc`/`natDst` shape. */
+export interface NatAddr {
+  ip: string;
+  port?: number;
+}
+
+/** One live conntrack table entry — the shape `GET /conntrack`'s `items`
+ * carries, field-for-field per docs/api.md. `node` is which cluster node
+ * this connection was observed on (a live, per-node kernel read, never
+ * cached/merged server-side beyond this one response). `natSrc`/`natDst`
+ * are present only when that side of the connection is NAT'd (SNAT/DNAT
+ * respectively) — absent for a plain, untranslated connection. */
+export interface ConntrackEntry {
+  node: string;
+  srcIp: string;
+  dstIp: string;
+  state?: string;
+  natSrc?: NatAddr;
+  natDst?: NatAddr;
+  proto: number;
+  srcPort?: number;
+  dstPort?: number;
+  timeoutSec?: number;
+}
+
+/** GET /conntrack response envelope — the same cluster-fan-out shape GET
+ * /audit / GET /flows use, minus pagination (a live table snapshot has no
+ * cursor to resume — every request re-reads current state fresh). */
+export interface ConntrackPage {
+  items: ConntrackEntry[];
+  partial?: boolean;
+  failedNodes?: string[];
+}
+
+// --- Diagnosis (docs/api.md's "Diagnosis" section; internal/diagnose,
+// internal/api/diagnose.go, T-1307) ----------------------------------------
+
+/** One ladder step's outcome classification (docs/api.md's Diagnosis
+ * section). `"ran"` covers both a genuine result AND an honest "could not
+ * attempt this" outcome (e.g. a live probe against an unreachable guest
+ * agent) — never conflated with `"skipped"` (the step does not apply to
+ * this target at all) or `"error"` (a genuine ladder-level failure). */
+export type DiagnoseStepStatus = "ran" | "skipped" | "error";
+
+/** One entry of `DiagnoseResult.steps`. `name` is always one of the five
+ * registered steps, in this fixed order: `"config-check"`, `"live-probe"`,
+ * `"guest-interior"`, `"conntrack"`, `"capture"`. `detail` (absent for a
+ * skipped/errored step) is that step's own underlying response shape
+ * verbatim — deliberately typed `unknown` here rather than a discriminated
+ * union of every possible step response: this page renders it as
+ * read-only formatted JSON, never destructures it, so a stricter type
+ * would buy nothing and would drift the moment a composed route's own
+ * response shape changes. */
+export interface DiagnoseStep {
+  name: string;
+  status: DiagnoseStepStatus;
+  summary: string;
+  detail?: unknown;
+  ranAt: number;
+}
+
+/** How much the ladder's overall run actually established about the
+ * target — a one-line orientation, not a scored diagnosis (see each
+ * step's own `summary`/`detail` for the real content). */
+export type DiagnoseConfidence = "high" | "medium" | "low" | "none";
+
+/** The ladder's single readable, advisory-only conclusion.
+ * `suggestedFixRef` (omitted when none applies), when present, is an
+ * existing fixable finding's own id — resolved through the same
+ * `POST /findings/{id}/fix` route `GET /findings` already uses, never a
+ * new auto-apply mechanism. */
+export interface DiagnoseVerdict {
+  summary: string;
+  confidence: DiagnoseConfidence;
+  linkedFindingIds: string[];
+  suggestedFixRef?: string;
+}
+
+/** `POST /diagnose` response — the stable, machine-consumable ladder
+ * result T-1701's MCP AI operator drives next arc (docs/api.md's Diagnosis
+ * section: "treat field names/the status vocabulary as a versioned
+ * contract, not an internal detail"). */
+export interface DiagnoseResult {
+  target: string;
+  steps: DiagnoseStep[];
+  verdict: DiagnoseVerdict;
+}
+
 // --- History (GET /history/events; internal/api/history.go, T-1007) -------
 
 /** One merged timeline-marker item — docs/api.md's `HistoryEvent` shape,
@@ -2132,7 +2551,10 @@ export interface FlowBatchEvent {
  * rollback/timer_rearm/recover/safety_override); `kind: "finding"` mirrors
  * one `finding_events` row. Exactly one of the two field groups is
  * populated, keyed on `kind` — never both, since a merged row is always
- * one or the other. */
+ * one or the other. `serviceClass` (T-1504) is additionally present on a
+ * `kind: "finding"` entry only when that finding is a
+ * `service_traffic_on_wrong_network` finding — parsed server-side from the
+ * finding's own content-derived id, never present on any other finding. */
 export interface HistoryEvent {
   at: number;
   kind: "changeset" | "finding";
@@ -2142,11 +2564,227 @@ export interface HistoryEvent {
   result?: string;
   findingId?: string;
   transition?: "new" | "escalated" | "resolved";
+  serviceClass?: ServiceClass;
 }
 
 /** GET /history/events response envelope. */
 export interface HistoryEventsResponse {
   items: HistoryEvent[];
+}
+
+// --- Captures (docs/api.md's Captures section; T-1301, T-1302) ------------
+
+/** The server-enforced, un-overridable cap set effective for a capture
+ * session/group — docs/api.md: "a request may ask for a lower value, never
+ * a higher one". The UI only ever renders these (server-reported) values,
+ * never the request it sent (T-1302 AC1's "server's actual (lower) value,
+ * never the requested one"). */
+export interface CaptureCaps {
+  maxDurationSec: number;
+  maxBytes: number;
+  maxPackets: number;
+  retentionHours: number;
+}
+
+export type CaptureStatus = "running" | "completed" | "stopped" | "error" | "purged";
+
+/** One node-local capture session — docs/api.md's `captureSession` shape.
+ * There is deliberately no `filePath` field: the on-disk path is never
+ * serialized to API clients. */
+export interface CaptureSession {
+  id: string;
+  groupId: string;
+  targetRef: string;
+  node: string;
+  filter: string;
+  caps: CaptureCaps;
+  status: CaptureStatus;
+  startedBy: string;
+  startedAt: number;
+  stoppedAt: number;
+  fileBytes: number;
+  packets: number;
+  nodes?: string[];
+}
+
+/** POST /captures' response, and GET /captures/{id}'s shape — a "capture
+ * group": one session for a single-point capture, ≥2 correlated sessions
+ * (sharing this `id`) for a multi-point one. */
+export interface CaptureGroup {
+  id: string;
+  status: CaptureStatus;
+  startedBy: string;
+  startedAt: number;
+  caps: CaptureCaps;
+  sessions: CaptureSession[];
+}
+
+/** GET /captures response envelope. */
+export interface CaptureListResponse {
+  items: CaptureGroup[];
+}
+
+/** POST /captures' body. durationSec/maxBytes/maxPackets are *requests*
+ * only — see CaptureCaps' doc comment. */
+export interface CaptureStartRequest {
+  targetRef: string;
+  filter?: string;
+  durationSec?: number;
+  maxBytes?: number;
+  maxPackets?: number;
+  peerTargets?: string[];
+}
+
+// --- Edge & NAT cockpit (T-1403; docs/api.md's "Edge & NAT cockpit"
+// section, internal/api/edge.go) ------------------------------------------
+// Read-only: no request body on either route, no mutation type here on
+// purpose — every nat.*/route.static.* write is an ordinary changeset op
+// (see the ChangesetOp union below), never a dedicated call from this page.
+
+/** One node's default gateway — the same field iface.update's `gateway`
+ * param writes; GET /edge/routes never invents a second representation. */
+export interface EdgeDefaultRoute {
+  node: string;
+  iface: string;
+  gateway: string;
+}
+
+/** One route.static.* rule. */
+export interface EdgeStaticRoute {
+  id: string;
+  node: string;
+  iface: string;
+  destCidr: string;
+  gateway: string;
+  metric?: number;
+  comment?: string;
+}
+
+/** GET /edge/routes response. */
+export interface EdgeRoutesView {
+  defaultRoutes: EdgeDefaultRoute[];
+  staticRoutes: EdgeStaticRoute[];
+  generatedAt: number;
+}
+
+/** One nat.masquerade.* rule. */
+export interface EdgeMasquerade {
+  id: string;
+  node: string;
+  iface: string;
+  sourceCidr: string;
+  comment?: string;
+}
+
+/** One nat.portforward.* rule. `targetGuestRef`/`targetGuestPoweredOff` are
+ * populated only when `intIp` correlates to a currently-known guest (live
+ * PVE-IPAM data) — absent/false otherwise, never guessed.
+ * `targetGuestPoweredOff: true` is this card's own exit-demo scenario: a
+ * port-forward exposing a guest that is not actually running. */
+export interface EdgePortForward {
+  id: string;
+  node: string;
+  iface: string;
+  proto: string;
+  extPort: number;
+  intIp: string;
+  intPort: number;
+  comment?: string;
+  targetGuestRef?: string;
+  targetGuestPoweredOff?: boolean;
+}
+
+/** One PVE SDN simple-zone subnet with SNAT enabled — already read-only via
+ * GET /sdn's own Subnet.snat (docs/features/sdn.md §2); this shape only
+ * re-presents it in the Edge layer's own terms. */
+export interface EdgeSDNSimpleZoneNAT {
+  zone: string;
+  vnet: string;
+  subnet: string;
+  gateway?: string;
+}
+
+/** GET /edge/nat response. */
+export interface EdgeNATView {
+  masquerade: EdgeMasquerade[];
+  portForwards: EdgePortForward[];
+  sdnSimpleZoneNat: EdgeSDNSimpleZoneNAT[];
+  generatedAt: number;
+}
+
+// --- Ingress visibility (T-1406; docs/api.md's "Ingress visibility"
+// section, internal/api/ingress.go) ----------------------------------------
+// Read-only discovery of the reverse-proxy layer, only for operator-added
+// targets. GET /ingress/status issues no mutation of its own; the only
+// writes here are POST/DELETE /ingress/targets, which never touch the
+// discovered proxy itself — they only add/remove a row this daemon polls.
+
+/** `kind` vocabulary for an ingress discovery target — the four vendors
+ * internal/ingress ships a discoverer for. */
+export type IngressTargetKind = "haproxy" | "nginx" | "caddy" | "traefik";
+
+/** One configured reverse-proxy discovery target. `hasCredential` is the
+ * only signal a client gets that one is set (never returned itself). */
+export interface IngressTarget {
+  id: string;
+  kind: IngressTargetKind;
+  address: string;
+  addedBy: string;
+  addedAt: number;
+  hasCredential: boolean;
+}
+
+/** GET /ingress/targets response. */
+export interface IngressTargetsListResponse {
+  items: IngressTarget[];
+}
+
+/** POST /ingress/targets request body. */
+export interface IngressTargetCreateRequest {
+  kind: IngressTargetKind;
+  address: string;
+  credential?: string;
+}
+
+/** One backend/upstream server a target reported, with guest correlation
+ * applied where resolvable (never guessed). */
+export interface IngressBackend {
+  route?: string;
+  address: string;
+  guestRef?: string;
+  healthy: boolean;
+}
+
+/** One target's freshly discovered state. `reachable: false` with an
+ * `error` is a normal, expected outcome (a down/misconfigured proxy). */
+export interface IngressTargetStatus {
+  id: string;
+  kind: IngressTargetKind;
+  address: string;
+  reachable: boolean;
+  error?: string;
+  backends: IngressBackend[];
+}
+
+/** One WAN -> port-forward -> proxy guest -> backend guest chain — drawn
+ * only when a GET /edge/nat port-forward's `intIp` matches a configured
+ * ingress target's own address (never an inferred/guessed chain). */
+export interface IngressChain {
+  portForwardId: string;
+  node: string;
+  proto: string;
+  extPort: number;
+  proxyGuestRef?: string;
+  targetId: string;
+  targetKind: IngressTargetKind;
+  backends: IngressBackend[];
+}
+
+/** GET /ingress/status response. */
+export interface IngressStatusView {
+  targets: IngressTargetStatus[];
+  chains: IngressChain[];
+  generatedAt: number;
 }
 
 // --- Everything else in docs/api.md ---------------------------------------

@@ -23,6 +23,7 @@ const NO_CAPS: Capabilities = {
   fwWrite: false,
   guestNet: false,
   audit: false,
+  capture: false,
 };
 
 /** Resolves the effective Capabilities for one node from a session's caps
@@ -46,6 +47,7 @@ export const CAP_LABELS: Record<keyof Capabilities, string> = {
   fwWrite: "firewall write (Sys.Modify)",
   guestNet: "guest network (VM.Config.Network)",
   audit: "audit log (Sys.Audit)",
+  capture: "packet capture (Sys.Modify + Sys.Console)",
 };
 
 /** The one message every disabled editing affordance's tooltip shows: which

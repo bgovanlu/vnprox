@@ -1,0 +1,188 @@
+# ipv6-dualstack.yaml — single-node fixture purpose-built for T-1404's IPv6
+# enablement suite: RA/SLAAC/DHCPv6 visibility (GET /ipv6/segments), the
+# dualstack_drift finding, and per-family path simulation.
+#
+# Three deliberate scenarios, one SDN zone ("dsz", type simple — SNAT is a
+# simple-zone concept, docs/features/sdn.md §1):
+#
+#   - vnet20 ("healthy dual-stack"): both the v4 subnet (10.70.0.0/24) and
+#     the v6 subnet (2001:db8:70::/64) have snat: true, so both families
+#     reach external — no dualstack_drift finding. Its bridge interface
+#     (named "vnet20", PVE's own realized-bridge-name-equals-vnet-ID
+#     convention) has a full RA observation: present, M=1 (managed —
+#     DHCPv6 expected), O=0, one advertised prefix, a 1800s lifetime.
+#   - vnet21 ("v6-broken", the silent-failure case): the v4 subnet has
+#     snat: true (reaches external) but the v6 subnet has snat: false and
+#     the zone has no exit node — v6 has no path to external at all. This
+#     is the exact "v4 path works, v6 path broken" case dualstack_drift
+#     exists to catch. Its bridge interface has *no* ipv6_ra entry at all
+#     (no RA observed on this segment) — GET /ipv6/segments must show
+#     raPresent: false here, corroborating the drift finding.
+#   - vnet22 ("DHCPv6-PD from an upstream device vnprox doesn't manage"):
+#     RA present with M=1 like vnet20, but modeling a segment where the
+#     DHCPv6 server answering M=1's request lives on an upstream router
+#     outside vnprox's control (docs/features/sdn.md §6's "IPv6 SLAAC
+#     management — display yes" contract: this is visibility only, vnprox
+#     never configures or requests a PD delegation itself — see T-1404's
+#     completion report for how this scenario is exercised).
+
+cluster:
+  name: pve-ipv6-dualstack
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.70.10.11
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 9c2e5a1f-3b6d-4e8a-9f2c-1a4b6d8e0f77
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.70.10.11/24
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        comments: "management, dsz zone bridge"
+      - iface: vnet20
+        type: bridge
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vnet21
+        type: bridge
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vnet22
+        type: bridge
+        method: manual
+        autostart: true
+        mtu: 1500
+    links:
+      eno1:
+        mac: "bc:24:11:70:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:11:70:00:01"
+        link_up: true
+        mtu: 1500
+      vnet20:
+        mac: "bc:24:11:70:00:20"
+        link_up: true
+        mtu: 1500
+      vnet21:
+        mac: "bc:24:11:70:00:21"
+        link_up: true
+        mtu: 1500
+      vnet22:
+        mac: "bc:24:11:70:00:22"
+        link_up: true
+        mtu: 1500
+    lldp: {}
+    stats: {}
+    qemu: {}
+    lxc: {}
+    firewall:
+      enabled: false
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+    # T-1404: pve1's bounded, host-local IPv6 RA observation per segment
+    # (internal/host.Reader.IPv6RA, GET /ipv6/segments). vnet21 is
+    # deliberately absent — "no RA observed on this segment" is the
+    # v6-broken scenario's own visible symptom.
+    ipv6_ra:
+      - iface: vnet20
+        prefixes: ["2001:db8:70::/64"]
+        router_lifetime_sec: 1800
+        managed_flag: true
+        other_flag: false
+      - iface: vnet22
+        prefixes: ["2001:db8:72::/64"]
+        router_lifetime_sec: 1800
+        managed_flag: true
+        other_flag: false
+
+sdn:
+  zones:
+    - id: dsz
+      type: simple
+      nodes: [pve1]
+      mtu: 1500
+  vnets:
+    - id: vnet20
+      zone: dsz
+      alias: "healthy-dualstack"
+    - id: vnet21
+      zone: dsz
+      alias: "v6-broken"
+    - id: vnet22
+      zone: dsz
+      alias: "upstream-pd"
+  subnets:
+    - id: "10.70.0.0/24"
+      vnet: vnet20
+      cidr: 10.70.0.0/24
+      gateway: 10.70.0.1
+      snat: true
+    - id: "2001:db8:70::/64"
+      vnet: vnet20
+      cidr: "2001:db8:70::/64"
+      gateway: "2001:db8:70::1"
+      snat: true
+    - id: "10.71.0.0/24"
+      vnet: vnet21
+      cidr: 10.71.0.0/24
+      gateway: 10.71.0.1
+      snat: true
+    - id: "2001:db8:71::/64"
+      vnet: vnet21
+      cidr: "2001:db8:71::/64"
+      gateway: "2001:db8:71::1"
+      snat: false
+    - id: "10.72.0.0/24"
+      vnet: vnet22
+      cidr: 10.72.0.0/24
+      gateway: 10.72.0.1
+      snat: true
+    - id: "2001:db8:72::/64"
+      vnet: vnet22
+      cidr: "2001:db8:72::/64"
+      gateway: "2001:db8:72::1"
+      snat: true
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []

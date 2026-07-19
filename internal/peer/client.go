@@ -352,6 +352,74 @@ func (c *Client) Neighbors(ctx context.Context, p Peer, node string) ([]host.Nei
 	return out.Neighbors, nil
 }
 
+// ContainerInterior fetches an lxc guest's raw host-side
+// network-namespace read set from peer p (T-1304), the remote-node
+// counterpart of a local host.Reader.ContainerInterior call.
+func (c *Client) ContainerInterior(ctx context.Context, p Peer, node string, vmid int) (host.ContainerInteriorRaw, error) {
+	path := fmt.Sprintf("/api/peer/host/container-interior?node=%s&vmid=%d", url.QueryEscape(node), vmid)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return host.ContainerInteriorRaw{}, err
+	}
+	var out containerInteriorResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return host.ContainerInteriorRaw{}, err
+	}
+	return host.ContainerInteriorRaw{
+		AddrJSON: []byte(out.AddrJSON), RouteJSON: []byte(out.RouteJSON),
+		ResolvConf: []byte(out.ResolvConf), Sockets: []byte(out.Sockets),
+	}, nil
+}
+
+// ContainerPing fetches whether targetIP answered a single best-effort
+// ping issued from inside vmid's network namespace on node, via peer p
+// (T-1304), the remote-node counterpart of a local host.Reader.
+// ContainerPing call.
+func (c *Client) ContainerPing(ctx context.Context, p Peer, node string, vmid int, targetIP string) (bool, error) {
+	path := fmt.Sprintf("/api/peer/host/container-ping?node=%s&vmid=%d&ip=%s", url.QueryEscape(node), vmid, url.QueryEscape(targetIP))
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return false, err
+	}
+	var out containerPingResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return false, err
+	}
+	return out.Reachable, nil
+}
+
+// Conntrack fetches node's live conntrack/NAT table from peer p (T-1305):
+// the remote-node counterpart of a local host.Reader.Conntrack call, used
+// by GET /conntrack's cluster fan-out.
+func (c *Client) Conntrack(ctx context.Context, p Peer, node string) ([]host.ConntrackEntry, error) {
+	path := "/api/peer/host/conntrack?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out conntrackResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Entries, nil
+}
+
+// IPv6RA fetches node's bounded, host-local IPv6 RA/DHCPv6 observation from
+// peer p (T-1404): the remote-node counterpart of a local
+// host.Reader.IPv6RA call, used by GET /ipv6/segments' cluster fan-out.
+func (c *Client) IPv6RA(ctx context.Context, p Peer, node string) ([]host.IPv6RAObservation, error) {
+	path := "/api/peer/host/ipv6-ra?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out ipv6RAResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Items, nil
+}
+
 // FRRBGPSummary fetches node's raw `vtysh -c "show bgp summary json"`
 // output from peer p (T-404). available is false (raw is nil) when node
 // runs no FRR at all — the peer-routed counterpart of
@@ -643,6 +711,73 @@ func mapTimerNotFound(err error) error {
 		return fmt.Errorf("peer: %w: %s", ErrTimerNotFound, respErr.Message)
 	}
 	return err
+}
+
+// CaptureStart asks peer p to run one node-local capture (T-1301). The peer
+// re-validates the filter and re-clamps the caps against its own config
+// before running — this call never overrides the peer's own ceilings.
+func (c *Client) CaptureStart(ctx context.Context, p Peer, spec CaptureSpec) (CaptureResult, error) {
+	body, err := json.Marshal(spec)
+	if err != nil {
+		return CaptureResult{}, fmt.Errorf("peer: encoding capture start request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/capture/start", body)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	var out CaptureResult
+	if err := decodeInto(resp, &out); err != nil {
+		return CaptureResult{}, err
+	}
+	return out, nil
+}
+
+// CaptureStop asks peer p to stop node-local capture sessionID.
+func (c *Client) CaptureStop(ctx context.Context, p Peer, sessionID string) (CaptureResult, error) {
+	body, err := json.Marshal(captureStopRequest{SessionID: sessionID})
+	if err != nil {
+		return CaptureResult{}, fmt.Errorf("peer: encoding capture stop request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/capture/stop", body)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	var out CaptureResult
+	if err := decodeInto(resp, &out); err != nil {
+		return CaptureResult{}, err
+	}
+	return out, nil
+}
+
+// CaptureStatus fetches peer p's current accounting for node-local capture
+// sessionID.
+func (c *Client) CaptureStatus(ctx context.Context, p Peer, sessionID string) (CaptureResult, error) {
+	path := "/api/peer/capture/status?sessionId=" + url.QueryEscape(sessionID)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return CaptureResult{}, err
+	}
+	var out CaptureResult
+	if err := decodeInto(resp, &out); err != nil {
+		return CaptureResult{}, err
+	}
+	return out, nil
+}
+
+// CaptureDownload fetches the raw pcap bytes of node-local capture
+// sessionID from peer p (T-1302) — the whole file, buffered (sessions are
+// already byte-capped by [capture] max_bytes).
+func (c *Client) CaptureDownload(ctx context.Context, p Peer, sessionID string) ([]byte, error) {
+	path := "/api/peer/capture/download?sessionId=" + url.QueryEscape(sessionID)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out captureDownloadResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Content, nil
 }
 
 // Health checks peer p's /api/peer/health.

@@ -114,6 +114,29 @@ type HostReader interface {
 	// already filtered to resolved states by host.Reader.Neighbors — see
 	// that method's doc comment.
 	Neighbors(ctx context.Context, node string) ([]host.Neighbor, error)
+
+	// ContainerInterior returns an lxc guest's raw host-side
+	// network-namespace read set (T-1304's guest-interior inspector — see
+	// host.ContainerInteriorRaw's doc comment). The lxc counterpart of the
+	// qemu path's guest-agent exec, which reaches PVE's own
+	// cluster-transparent REST API directly and so needs no peer route of
+	// its own.
+	ContainerInterior(ctx context.Context, node string, vmid int) (host.ContainerInteriorRaw, error)
+
+	// ContainerPing returns whether targetIP answered a single best-effort
+	// ping issued from inside vmid's network namespace on node (T-1304's
+	// default-gateway reachability check).
+	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+	// Conntrack returns node's live conntrack/NAT table (T-1305, docs/api.md
+	// Conntrack section) — the remote-node counterpart of a local
+	// host.Reader.Conntrack call, GET /conntrack's cluster fan-out
+	// dependency.
+	Conntrack(ctx context.Context, node string) ([]host.ConntrackEntry, error)
+	// IPv6RA returns node's own bounded, host-local IPv6 RA/DHCPv6
+	// observation (T-1404) — the remote-node counterpart of a local
+	// host.Reader.IPv6RA call, GET /ipv6/segments' cluster fan-out
+	// dependency.
+	IPv6RA(ctx context.Context, node string) ([]host.IPv6RAObservation, error)
 }
 
 // FirewallLogReader is the peer-server-side dependency for
@@ -225,7 +248,12 @@ type ServerOptions struct {
 	// (nil-safe, the same 503-not-panic treatment as every other optional
 	// ServerOptions dependency): a daemon that hasn't wired a firewall log
 	// source simply can't serve its own log to peers yet.
-	FirewallLog  FirewallLogReader
+	FirewallLog FirewallLogReader
+	// Capture backs the /api/peer/capture/* routes (T-1301). Optional
+	// (nil-safe, the same 503-not-panic treatment as every other optional
+	// dependency): a daemon with no capture agent wired can't capture on
+	// behalf of a coordinating peer.
+	Capture      CaptureAgent
 	Secrets      *SecretStore
 	Logger       *slog.Logger
 	Now          func() time.Time
@@ -278,6 +306,10 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/links", s.handleLinks)
 		r.Get("/host/fdb", s.handleFDB)
 		r.Get("/host/neighbors", s.handleNeighbors)
+		r.Get("/host/container-interior", s.handleContainerInterior)
+		r.Get("/host/container-ping", s.handleContainerPing)
+		r.Get("/host/conntrack", s.handleConntrack)
+		r.Get("/host/ipv6-ra", s.handleIPv6RA)
 		r.Get("/host/frr/bgp-summary", s.handleFRRBGPSummary)
 		r.Get("/host/frr/evpn-vni", s.handleFRREVPNVNI)
 		r.Get("/host/dhcp-leases", s.handleDHCPLeases)
@@ -295,7 +327,105 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Post("/timer/arm", s.handleTimerArm)
 		r.Post("/timer/cancel", s.handleTimerCancel)
 		r.Get("/timer/status", s.handleTimerStatus)
+
+		r.Post("/capture/start", s.handleCaptureStart)
+		r.Post("/capture/stop", s.handleCaptureStop)
+		r.Get("/capture/status", s.handleCaptureStatus)
+		r.Get("/capture/download", s.handleCaptureDownload)
 	})
+}
+
+// handleCaptureStart implements POST /api/peer/capture/start (T-1301): a
+// coordinating daemon asks this node to run one node-local capture. The
+// receiving coordinator (opts.Capture) re-validates the filter and re-clamps
+// the caps against this node's own config before running — the caller's
+// arithmetic is never trusted.
+func (s *Server) handleCaptureStart(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Capture == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "capture agent not configured")
+		return
+	}
+	var spec CaptureSpec
+	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil || spec.SessionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "sessionId and a capture spec are required")
+		return
+	}
+	res, err := s.opts.Capture.StartLocal(r.Context(), spec)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "capture_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleCaptureStop implements POST /api/peer/capture/stop (T-1301).
+func (s *Server) handleCaptureStop(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Capture == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "capture agent not configured")
+		return
+	}
+	var req captureStopRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SessionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "sessionId is required")
+		return
+	}
+	res, err := s.opts.Capture.StopLocal(r.Context(), req.SessionID)
+	if err != nil {
+		s.writeCaptureError(w, "stopping capture", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleCaptureStatus implements GET /api/peer/capture/status?sessionId=
+// (T-1301).
+func (s *Server) handleCaptureStatus(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Capture == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "capture agent not configured")
+		return
+	}
+	sessionID := r.URL.Query().Get("sessionId")
+	if sessionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "sessionId is required")
+		return
+	}
+	res, err := s.opts.Capture.StatusLocal(r.Context(), sessionID)
+	if err != nil {
+		s.writeCaptureError(w, "reading capture status", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleCaptureDownload implements GET /api/peer/capture/download?sessionId=
+// (T-1302): a coordinating daemon fetching one session's raw pcap bytes from
+// the node that actually captured it. Payload bytes cross the wire exactly
+// once here, HMAC-authenticated like every other peer route — never logged,
+// never persisted by this handler.
+func (s *Server) handleCaptureDownload(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Capture == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "capture agent not configured")
+		return
+	}
+	sessionID := r.URL.Query().Get("sessionId")
+	if sessionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "sessionId is required")
+		return
+	}
+	data, err := s.opts.Capture.DownloadLocal(r.Context(), sessionID)
+	if err != nil {
+		s.writeCaptureError(w, "downloading capture", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, captureDownloadResponse{Content: data})
+}
+
+func (s *Server) writeCaptureError(w http.ResponseWriter, op string, err error) {
+	if errors.Is(err, host.ErrNotFound) {
+		writeJSONError(w, http.StatusNotFound, "not_found", op+": "+err.Error())
+		return
+	}
+	writeJSONError(w, http.StatusInternalServerError, "internal_error", op+": "+err.Error())
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -413,6 +543,102 @@ func (s *Server) handleNeighbors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, neighborsResponse{Neighbors: neighbors})
+}
+
+// handleContainerInterior implements GET /api/peer/host/container-interior
+// (T-1304): an lxc guest's raw host-side network-namespace read set, the
+// peer-routed counterpart of a local host.Reader.ContainerInterior call —
+// following handleNeighbors' precedent exactly (a plain read, no
+// {available} envelope). ?vmid= must parse as a positive int; a malformed
+// value is 400, not silently coerced to 0.
+func (s *Server) handleContainerInterior(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	vmid, err := strconv.Atoi(r.URL.Query().Get("vmid"))
+	if err != nil || vmid <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "vmid must be a positive integer")
+		return
+	}
+	raw, err := s.opts.Reader.ContainerInterior(r.Context(), node, vmid)
+	if err != nil {
+		s.writeHostError(w, "reading container interior", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, containerInteriorResponse{
+		AddrJSON: string(raw.AddrJSON), RouteJSON: string(raw.RouteJSON),
+		ResolvConf: string(raw.ResolvConf), Sockets: string(raw.Sockets),
+	})
+}
+
+// handleContainerPing implements GET /api/peer/host/container-ping
+// (T-1304): the peer-routed counterpart of a local
+// host.Reader.ContainerPing call. ?ip= is required (the target address to
+// ping from inside the container's netns).
+func (s *Server) handleContainerPing(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	targetIP := r.URL.Query().Get("ip")
+	vmid, err := strconv.Atoi(r.URL.Query().Get("vmid"))
+	if err != nil || vmid <= 0 || targetIP == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "vmid must be a positive integer and ip must be set")
+		return
+	}
+	reachable, err := s.opts.Reader.ContainerPing(r.Context(), node, vmid, targetIP)
+	if err != nil {
+		s.writeHostError(w, "pinging from container", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, containerPingResponse{Reachable: reachable})
+}
+
+// handleConntrack implements GET /api/peer/host/conntrack (T-1305): node's
+// live conntrack/NAT table, the peer-routed counterpart of a local
+// host.Reader.Conntrack call — following handleNeighbors' precedent
+// exactly (a plain read, no {available} envelope needed: an empty table is
+// itself a clean, unremarkable answer).
+func (s *Server) handleConntrack(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	entries, err := s.opts.Reader.Conntrack(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading conntrack table", err)
+		return
+	}
+	if entries == nil {
+		entries = []host.ConntrackEntry{}
+	}
+	writeJSON(w, http.StatusOK, conntrackResponse{Entries: entries})
+}
+
+// handleIPv6RA implements GET /api/peer/host/ipv6-ra (T-1404): node's
+// bounded, host-local IPv6 RA/DHCPv6 observation, the peer-routed
+// counterpart of a local host.Reader.IPv6RA call — following
+// handleConntrack's precedent exactly (a plain read, no {available}
+// envelope needed).
+func (s *Server) handleIPv6RA(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	items, err := s.opts.Reader.IPv6RA(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading ipv6 RA observations", err)
+		return
+	}
+	if items == nil {
+		items = []host.IPv6RAObservation{}
+	}
+	writeJSON(w, http.StatusOK, ipv6RAResponse{Items: items})
 }
 
 // handleFRRBGPSummary implements GET /api/peer/host/frr/bgp-summary

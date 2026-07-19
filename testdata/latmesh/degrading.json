@@ -1,0 +1,11 @@
+[
+  {"at": 0, "rttMs": 20, "lossPct": 0},
+  {"at": 10, "rttMs": 20, "lossPct": 0},
+  {"at": 20, "rttMs": 20, "lossPct": 0},
+  {"at": 30, "rttMs": 150, "lossPct": 0},
+  {"at": 40, "rttMs": 150, "lossPct": 0},
+  {"at": 50, "rttMs": 150, "lossPct": 0},
+  {"at": 60, "rttMs": 150, "lossPct": 0},
+  {"at": 70, "rttMs": 20, "lossPct": 0},
+  {"at": 80, "rttMs": 20, "lossPct": 0}
+]

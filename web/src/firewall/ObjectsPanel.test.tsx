@@ -23,7 +23,7 @@ vi.mock("../api/changesets", () => ({
 // testing the read-only case (readonly-crawl.spec.ts covers that).
 const fullCapsMe: MeResponse = {
   user: { username: "root", realm: "pam" },
-  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true } },
+  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true, capture: false } },
 };
 vi.mock("../api/useSession", () => ({
   useSession: () => ({ data: fullCapsMe, isLoading: false, isError: false }),

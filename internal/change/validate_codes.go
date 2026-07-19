@@ -22,8 +22,13 @@ const (
 	codeCIDRInvalid          = "schema.cidr_invalid"
 	codeIPInvalid            = "schema.ip_invalid"
 	codeMACInvalid           = "schema.mac_invalid"
-	codeDHCPRangeInvalid     = "schema.dhcp_range_invalid"
-	codeSDNZoneTypeInvalid   = "schema.sdn_zone_type_invalid"
+	// WireGuard schema codes (T-1401): a peer public key that isn't a valid
+	// base64 32-byte Curve25519 key, and a listen/endpoint port out of the
+	// 1–65535 range.
+	codeWgKeyInvalid       = "schema.wg_key_invalid"
+	codeWgPortInvalid      = "schema.wg_port_out_of_range"
+	codeDHCPRangeInvalid   = "schema.dhcp_range_invalid"
+	codeSDNZoneTypeInvalid = "schema.sdn_zone_type_invalid"
 	// codeSDNNameInvalid flags an sdn.zone.create/vnet.create whose id
 	// contains characters real PVE's SDN id format rejects. Real PVE
 	// validates zone/vnet ids against (case-insensitively) `[a-z][a-z0-9]*`
@@ -65,6 +70,26 @@ const (
 	// exactly one VID (Vid itself), so a Trunks list there is meaningless.
 	codeOVSTrunkNotAllowed = "schema.ovs_trunk_not_allowed"
 	codeFwMacroUnknown     = "schema.fw_macro_unknown"
+	// codeVFPlanInvalid (T-1506) flags a vf.provision op whose Count/VFs
+	// shape is malformed: neither set, both set, a non-positive Count, a
+	// negative/duplicate VFSpec.ID, or a MacAddr set alongside Count > 1
+	// (a MAC shared across more than one freshly-numbered VF).
+	codeVFPlanInvalid = "schema.vf_plan_invalid"
+
+	// --- T-1403's nat.*/route.static.* schema codes ---------------------
+
+	// codeEdgeRuleIDInvalid flags a nat.*/route.static.* create op whose
+	// target id is empty, too long, or outside the safe charset (the id is
+	// round-tripped through the rule's own generated marker comment —
+	// host.EncodeNat*Marker — so a predictable, printable charset keeps
+	// that comment readable in a raw-editor view, even though the
+	// underlying url.Values encoding would tolerate more).
+	codeEdgeRuleIDInvalid = "schema.edge_rule_id_invalid"
+	// codeNatProtoInvalid flags a nat.portforward.* proto outside tcp|udp.
+	codeNatProtoInvalid = "schema.nat_proto_invalid"
+	// codePortNumberInvalid flags a nat.portforward.* ext/int port outside
+	// [1,65535].
+	codePortNumberInvalid = "schema.port_number_invalid"
 
 	// --- T-1505's qos.shape.* schema codes -------------------------------
 
@@ -109,12 +134,35 @@ const (
 	// does not name a currently known bridge on the target's node — the
 	// tc/HTB shape would have nothing to attach to.
 	codeQosBridgeNotFound = "referential.qos_bridge_not_found"
+	// codeIfaceNotFound (T-1403) flags a nat.*/route.static.* op whose Iface
+	// does not name a currently known interface(5) stanza on the target's
+	// node — the post-up/post-down lines have nowhere to attach.
+	codeIfaceNotFound = "referential.iface_not_found"
+	// codeRouteGatewayUnreachable (T-1403) flags a route.static.create/
+	// update whose Gateway does not fall inside any currently-configured
+	// address's subnet on the target's node — real `ip route add ... via
+	// <gw>` fails identically ("Nexthop has invalid gateway") when no
+	// directly-connected interface can reach it.
+	codeRouteGatewayUnreachable = "referential.route_gateway_unreachable"
 	// codeFwObjectInUse is T-502 acceptance criterion 2: deleting an
 	// alias/ipset/security-group still referenced by at least one rule is
 	// blocked. internal/fw.UsageCounts already gives the exact reference
 	// list (scope, ruleset ref, position) the editor UI's deep-links need
 	// — see checkFwObjectDeletable's doc comment.
 	codeFwObjectInUse = "referential.fw_object_in_use"
+	// codePFNotFound (T-1506) flags a vf.provision op whose Target does not
+	// resolve to an existing physnic — the standard "target must exist"
+	// referential check every op family already gets, named for this one
+	// since VFProvisionParams carries no separate PF field to check
+	// (Target itself is the PF, per op.go's OpVFProvision doc comment).
+	codePFNotFound = "referential.pf_not_found"
+	// codeVFSpoofcheckMismatch (T-1506) is the changeset-validate-time half
+	// of the vf_spoofcheck_mismatch check (the drift-finding half lives in
+	// internal/drift/sriov.go): a staged vf.provision op would configure a
+	// VF whose VLAN/spoof-check setting diverges from its PF's own
+	// bridge's VLAN-awareness/VID-set policy (internal/topology.BridgeFor
+	// + the same policy comparison drift's standing check reuses).
+	codeVFSpoofcheckMismatch = "referential.vf_spoofcheck_mismatch"
 
 	// --- safety (class 3: protected interfaces, guest-bearing bridges) --
 	// T-203, docs/security.md "Safety interlocks" / docs/features/

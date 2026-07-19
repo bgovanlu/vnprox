@@ -1,0 +1,26 @@
+{
+  "id": "\u003cid\u003e",
+  "title": "apicontract: duplicate bridge name",
+  "author": "root@pam",
+  "status": "draft",
+  "ops": [
+    {
+      "op": "bridge.create",
+      "target": "bridge:pve1:vmbr0",
+      "params": {
+        "comments": "should fail: vmbr0 already exists"
+      }
+    }
+  ],
+  "findings": [
+    {
+      "severity": "error",
+      "code": "referential.already_exists",
+      "message": "a bridge named \"vmbr0\" already exists",
+      "ref": "bridge:pve1:vmbr0"
+    }
+  ],
+  "createdAt": 0,
+  "updatedAt": 0,
+  "touchesMgmtPath": false
+}

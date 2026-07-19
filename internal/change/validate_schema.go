@@ -7,6 +7,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/fw"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/wireguard"
 )
 
 // ifaceNameRe is a valid Linux interface name for a rename target: a
@@ -16,6 +17,44 @@ import (
 var ifaceNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 const maxIfaceNameLen = 15
+
+// edgeRuleIDRe is the safe charset for a T-1403 nat-rule/static-route
+// target id (schemaEdgeRuleID): letters, digits, dots, dashes, underscores
+// — a printable, predictable id keeps the rule's generated marker comment
+// (host.EncodeNat*Marker) readable in a raw-editor view.
+var edgeRuleIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+const maxEdgeRuleIDLen = 64
+
+// schemaEdgeRuleID flags an empty, too-long, or out-of-charset nat.*/
+// route.static.* create op target id.
+func schemaEdgeRuleID(id, ref string, out *[]Finding) {
+	switch {
+	case id == "":
+		*out = append(*out, errorf(codeEdgeRuleIDInvalid, ref, "a nat/route rule requires a non-empty target id"))
+	case len(id) > maxEdgeRuleIDLen:
+		*out = append(*out, errorf(codeEdgeRuleIDInvalid, ref, "rule id %q is too long (max %d characters)", id, maxEdgeRuleIDLen))
+	case !edgeRuleIDRe.MatchString(id):
+		*out = append(*out, errorf(codeEdgeRuleIDInvalid, ref, "rule id %q is not valid — use letters, digits, and .-_ only, starting with a letter or digit", id))
+	}
+}
+
+var validNatProtos = map[string]bool{"tcp": true, "udp": true}
+
+// schemaNatProto flags a nat.portforward.* proto outside tcp|udp.
+func schemaNatProto(proto, ref string, out *[]Finding) {
+	if !validNatProtos[proto] {
+		*out = append(*out, errorf(codeNatProtoInvalid, ref, "proto %q must be one of tcp, udp", proto))
+	}
+}
+
+// schemaPortNumber flags a nat.portforward.* ext/int port outside
+// [1,65535].
+func schemaPortNumber(port int, ref string, out *[]Finding) {
+	if port < 1 || port > 65535 {
+		*out = append(*out, errorf(codePortNumberInvalid, ref, "port %d out of range [1,65535]", port))
+	}
+}
 
 // sdnIDRe is real PVE's SDN zone/vnet id charset (case-insensitively
 // `[a-z][a-z0-9]*`): a leading letter, then letters/digits only — no
@@ -526,6 +565,9 @@ func schemaValidateOp(op Op) []Finding {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "fw.group.delete requires name"))
 		}
 
+	case *VFProvisionParams:
+		schemaVFProvision(p, ref, &out)
+
 	case *IpamAllocCreateParams:
 		if p.CIDR == "" {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "ipam.alloc.create requires cidr"))
@@ -566,6 +608,111 @@ func schemaValidateOp(op Op) []Finding {
 
 	case *QosShapeDeleteParams:
 		// no params to validate.
+
+	case *WgTunnelCreateParams:
+		if strings.TrimSpace(p.IfName) == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "wg.tunnel.create requires ifName"))
+		} else if len(p.IfName) > maxIfaceNameLen || !ifaceNameRe.MatchString(p.IfName) {
+			out = append(out, errorf(codeIfaceNameInvalid, ref, "interface name %q is not valid — use letters, digits, and .-_ only, at most %d characters", p.IfName, maxIfaceNameLen))
+		}
+		schemaWgPort(p.ListenPort, ref, &out)
+		schemaMTU(op, p.MTU, ref, &out)
+		schemaAddresses(p.Addresses, ref, &out)
+
+	case *WgTunnelUpdateParams:
+		if p.ListenPort != nil {
+			schemaWgPort(*p.ListenPort, ref, &out)
+		}
+		schemaMTUPtr(op, p.MTU, ref, &out)
+		if p.Addresses != nil {
+			schemaAddresses(*p.Addresses, ref, &out)
+		}
+
+	case *WgTunnelDeleteParams:
+		// Nothing structural to check — target identity is validated at decode.
+
+	case *WgPeerAddParams:
+		schemaWgKey(p.PublicKey, ref, &out)
+		schemaAddresses(p.AllowedIPs, ref, &out)
+
+	case *WgPeerRemoveParams:
+		schemaWgKey(p.PublicKey, ref, &out)
+	case *NatMasqueradeCreateParams:
+		schemaEdgeRuleID(op.Target.ID, ref, &out)
+		if p.Iface == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "nat.masquerade.create requires iface"))
+		}
+		if p.SourceCIDR == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "nat.masquerade.create requires sourceCidr"))
+		} else if !validCIDR(p.SourceCIDR) {
+			out = append(out, errorf(codeCIDRInvalid, ref, "sourceCidr %q is not a valid CIDR", p.SourceCIDR))
+		}
+
+	case *NatMasqueradeDeleteParams:
+		// no params to validate.
+
+	case *NatPortForwardCreateParams:
+		schemaEdgeRuleID(op.Target.ID, ref, &out)
+		if p.Iface == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "nat.portforward.create requires iface"))
+		}
+		schemaNatProto(p.Proto, ref, &out)
+		schemaIP(p.IntIP, ref, &out)
+		if p.IntIP == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "nat.portforward.create requires intIp"))
+		}
+		schemaPortNumber(p.ExtPort, ref, &out)
+		schemaPortNumber(p.IntPort, ref, &out)
+
+	case *NatPortForwardUpdateParams:
+		if p.Proto != nil {
+			schemaNatProto(*p.Proto, ref, &out)
+		}
+		if p.IntIP != nil && *p.IntIP != "" {
+			schemaIP(*p.IntIP, ref, &out)
+		}
+		if p.ExtPort != nil {
+			schemaPortNumber(*p.ExtPort, ref, &out)
+		}
+		if p.IntPort != nil {
+			schemaPortNumber(*p.IntPort, ref, &out)
+		}
+
+	case *NatPortForwardDeleteParams:
+		// no params to validate.
+
+	case *RouteStaticCreateParams:
+		schemaEdgeRuleID(op.Target.ID, ref, &out)
+		if p.Iface == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "route.static.create requires iface"))
+		}
+		if p.DestCIDR == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "route.static.create requires destCidr"))
+		} else if !validCIDR(p.DestCIDR) {
+			out = append(out, errorf(codeCIDRInvalid, ref, "destCidr %q is not a valid CIDR", p.DestCIDR))
+		}
+		if p.Gateway == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "route.static.create requires gateway"))
+		} else {
+			schemaIP(p.Gateway, ref, &out)
+		}
+		if p.Metric < 0 {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "metric %d must not be negative", p.Metric))
+		}
+
+	case *RouteStaticUpdateParams:
+		if p.DestCIDR != nil && *p.DestCIDR != "" && !validCIDR(*p.DestCIDR) {
+			out = append(out, errorf(codeCIDRInvalid, ref, "destCidr %q is not a valid CIDR", *p.DestCIDR))
+		}
+		if p.Gateway != nil && *p.Gateway != "" {
+			schemaIP(*p.Gateway, ref, &out)
+		}
+		if p.Metric != nil && *p.Metric < 0 {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "metric %d must not be negative", *p.Metric))
+		}
+
+	case *RouteStaticDeleteParams:
+		// no params to validate.
 	}
 
 	return out
@@ -596,6 +743,70 @@ func schemaQosVlan(vlan *int, ref string, out *[]Finding) {
 	}
 	if *vlan < minVID || *vlan > maxVID {
 		*out = append(*out, errorf(codeQosVlanOutOfRange, ref, "matchVlan %d out of range [%d,%d]", *vlan, minVID, maxVID))
+	}
+}
+
+// schemaWgKey flags a WireGuard peer public key that isn't a valid base64
+// 32-byte Curve25519 key (T-1401 schema class).
+func schemaWgKey(key, ref string, out *[]Finding) {
+	if strings.TrimSpace(key) == "" {
+		*out = append(*out, errorf(codeRequiredFieldMissing, ref, "a WireGuard peer requires a publicKey"))
+		return
+	}
+	if _, err := wireguard.DecodeKey(key); err != nil {
+		*out = append(*out, errorf(codeWgKeyInvalid, ref, "publicKey %q is not a valid base64 WireGuard key", key))
+	}
+}
+
+// schemaWgPort flags a WireGuard listen port outside 1–65535 (0 == "not set",
+// skipped — WireGuard picks a random port when none is configured).
+func schemaWgPort(port int, ref string, out *[]Finding) {
+	if port == 0 {
+		return
+	}
+	if port < 1 || port > 65535 {
+		*out = append(*out, errorf(codeWgPortInvalid, ref, "listenPort %d is out of range (1–65535)", port))
+	}
+}
+
+// schemaVFProvision validates a vf.provision op's Count/VFs shape (T-1506):
+// exactly one of Count/VFs set, Count positive when set, no MacAddr with
+// Count > 1 (see VFProvisionParams' doc comment), every VFSpec.ID
+// non-negative and not repeated, and every VLAN/MacAddr (top-level and
+// per-VFSpec) individually well-formed.
+func schemaVFProvision(p *VFProvisionParams, ref string, out *[]Finding) {
+	switch {
+	case p.Count > 0 && len(p.VFs) > 0:
+		*out = append(*out, errorf(codeVFPlanInvalid, ref, "vf.provision must set exactly one of count or vfs, not both"))
+	case p.Count <= 0 && len(p.VFs) == 0:
+		*out = append(*out, errorf(codeVFPlanInvalid, ref, "vf.provision requires count or vfs"))
+	case p.Count < 0:
+		*out = append(*out, errorf(codeVFPlanInvalid, ref, "count %d must be positive", p.Count))
+	}
+	if p.Count > 1 && p.MacAddr != "" {
+		*out = append(*out, errorf(codeVFPlanInvalid, ref, "macAddr cannot be set with count > 1 (would duplicate it across every VF)"))
+	}
+	if f := checkVIDRangeAllowZero(p.VLAN, ref); f != nil {
+		*out = append(*out, *f)
+	}
+	if p.MacAddr != "" && !validMAC(p.MacAddr) {
+		*out = append(*out, errorf(codeMACInvalid, ref, "macAddr %q is not a valid MAC address", p.MacAddr))
+	}
+
+	seenIDs := map[int]bool{}
+	for _, v := range p.VFs {
+		if v.ID < 0 {
+			*out = append(*out, errorf(codeVFPlanInvalid, ref, "vf id %d must not be negative", v.ID))
+		} else if seenIDs[v.ID] {
+			*out = append(*out, errorf(codeVFPlanInvalid, ref, "vf id %d listed twice", v.ID))
+		}
+		seenIDs[v.ID] = true
+		if f := checkVIDRangeAllowZero(v.VLAN, ref); f != nil {
+			*out = append(*out, *f)
+		}
+		if v.MacAddr != "" && !validMAC(v.MacAddr) {
+			*out = append(*out, errorf(codeMACInvalid, ref, "vf %d macAddr %q is not a valid MAC address", v.ID, v.MacAddr))
+		}
 	}
 }
 

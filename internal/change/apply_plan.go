@@ -50,6 +50,17 @@ const (
 	// doc comment — so they get no StepFwVerify.
 	StepFwVerify StepKind = "fw_verify"
 
+	// StepWgApply realizes one wg.* op (T-1401): a node-local WireGuard
+	// mutation — generate the keypair on the owning node and seal it, write
+	// the on-node wg config, and exec wg/wg-quick with a fixed argv array —
+	// executed by the daemon-level WGGateway (like the interfaces-file steps,
+	// and unlike the ticket-scoped PVEGateway steps, so its rollback works on
+	// the unattended commit-confirm-timeout path too). One step per op, in the
+	// changeset's own op order, placed after the per-node interface stage/
+	// reload pairs (the carrier interface must exist before the tunnel rides
+	// on it) and before any trailing sdn.apply.
+	StepWgApply StepKind = "wg_apply"
+
 	// StepIpamAlloc realizes one ipam.alloc.create/delete op (T-405): a
 	// cluster-scope PVE IPAM plugin write, category (1) in
 	// docs/data-model.md §3's ordering — emitted before any per-node file
@@ -90,6 +101,25 @@ var nodeFileOpTypes = map[OpType]bool{
 	OpVlanCreate:       true,
 	OpVlanUpdate:       true,
 	OpVlanDelete:       true,
+
+	// T-1403's nat.*/route.static.* ops (docs/data-model.md §3): applied via
+	// the same interfaces-file post-up/post-down write path as every op
+	// above, never a second mutation mechanism.
+	OpNatMasqueradeCreate:  true,
+	OpNatMasqueradeDelete:  true,
+	OpNatPortForwardCreate: true,
+	OpNatPortForwardUpdate: true,
+	OpNatPortForwardDelete: true,
+	OpRouteStaticCreate:    true,
+	OpRouteStaticUpdate:    true,
+	OpRouteStaticDelete:    true,
+	// OpVFProvision (T-1506): applied via the same interfaces-file
+	// post-up/post-down write path as every op above — internal/change/
+	// ifaces/vfop.go appends a stanza pair to the PF's own existing iface
+	// stanza (Target). No new StepKind is needed: the executor's
+	// StepStageFile/StepReload machinery already renders+reloads the
+	// whole node file for every node-file op targeting that node.
+	OpVFProvision: true,
 }
 
 // sdnStageOpTypes is the subset of the v1 op vocabulary T-402 realizes as a
@@ -106,6 +136,16 @@ var sdnStageOpTypes = map[OpType]bool{
 	OpSdnSubnetCreate: true,
 	OpSdnSubnetUpdate: true,
 	OpSdnSubnetDelete: true,
+}
+
+// wgOpTypes is T-1401's WireGuard op vocabulary: each becomes a StepWgApply
+// step executed by the node-local WGGateway.
+var wgOpTypes = map[OpType]bool{
+	OpWgTunnelCreate: true,
+	OpWgTunnelUpdate: true,
+	OpWgTunnelDelete: true,
+	OpWgPeerAdd:      true,
+	OpWgPeerRemove:   true,
 }
 
 // fwOpTypes is the full T-502 firewall op vocabulary: every one of these
@@ -206,6 +246,7 @@ func BuildPlan(ops []Op) (Plan, error) {
 	var fwTargetOrder []inventory.Ref
 	byFwTarget := map[string][]int{}
 	var qosSteps []Step
+	var wgSteps []Step
 
 	for i, op := range ops {
 		switch {
@@ -216,6 +257,14 @@ func BuildPlan(ops []Op) (Plan, error) {
 				Target:  op.Target.String(),
 				OpIdx:   []int{i},
 				Summary: qosStepSummary(op),
+			})
+		case wgOpTypes[op.Type]:
+			wgSteps = append(wgSteps, Step{
+				Kind:    StepWgApply,
+				Node:    op.Target.Node,
+				Target:  op.Target.String(),
+				OpIdx:   []int{i},
+				Summary: wgStepSummary(op),
 			})
 		case nodeFileOpTypes[op.Type]:
 			node := op.Target.Node
@@ -284,6 +333,9 @@ func BuildPlan(ops []Op) (Plan, error) {
 	// shape's bridge must already exist) and before firewall/sdn.apply —
 	// see StepQosApply's doc comment.
 	steps = append(steps, qosSteps...)
+	// WireGuard steps come after the per-node interface stage/reload pairs
+	// (the carrier interface must exist first) and before firewall/sdn.apply.
+	steps = append(steps, wgSteps...)
 	for _, target := range fwTargetOrder {
 		idxs := byFwTarget[target.String()]
 		steps = append(steps, Step{
@@ -382,6 +434,37 @@ func (p Plan) hasQos() bool {
 	return false
 }
 
+// wgStepSummary renders one StepWgApply's Plan-tab summary (T-1401).
+func wgStepSummary(op Op) string {
+	switch op.Type {
+	case OpWgTunnelCreate:
+		return fmt.Sprintf("Create WireGuard tunnel %s on %s", op.Target.ID, op.Target.Node)
+	case OpWgTunnelUpdate:
+		return fmt.Sprintf("Update WireGuard tunnel %s on %s", op.Target.ID, op.Target.Node)
+	case OpWgTunnelDelete:
+		return fmt.Sprintf("Delete WireGuard tunnel %s on %s", op.Target.ID, op.Target.Node)
+	case OpWgPeerAdd:
+		return fmt.Sprintf("Add WireGuard peer to %s", op.Target.ID)
+	case OpWgPeerRemove:
+		return fmt.Sprintf("Remove WireGuard peer from %s", op.Target.ID)
+	default:
+		return "WireGuard operation"
+	}
+}
+
+// hasWg reports whether the plan carries any WireGuard step — the gate for
+// whether the apply/rollback engine snapshots and restores WireGuard state
+// alongside node interface files (apply_snapshot.go's captureSnapshotFull,
+// apply.go's doRollbackLocked).
+func (p Plan) hasWg() bool {
+	for _, s := range p.Steps {
+		if s.Kind == StepWgApply {
+			return true
+		}
+	}
+	return false
+}
+
 // qosNodes returns, in first-appearance order, every node this plan's
 // StepQosApply steps touch — the set whose shape state the pre-apply
 // snapshot must capture and restore.
@@ -390,6 +473,21 @@ func (p Plan) qosNodes() []string {
 	seen := map[string]bool{}
 	for _, s := range p.Steps {
 		if s.Kind == StepQosApply && s.Node != "" && !seen[s.Node] {
+			seen[s.Node] = true
+			out = append(out, s.Node)
+		}
+	}
+	return out
+}
+
+// wgNodes returns, in first-appearance order, every node this plan's
+// StepWgApply steps touch — the set whose WireGuard state the pre-apply
+// snapshot must capture and restore.
+func (p Plan) wgNodes() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range p.Steps {
+		if s.Kind == StepWgApply && s.Node != "" && !seen[s.Node] {
 			seen[s.Node] = true
 			out = append(out, s.Node)
 		}

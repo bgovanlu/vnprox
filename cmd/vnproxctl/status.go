@@ -61,7 +61,13 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	url := fs.String("url", "", "override the health endpoint URL (skips --config lookup for the local-daemon check only)")
 	timeout := fs.Duration("timeout", 5*time.Second, "request timeout (applies to every check: local daemon, PVE API, each peer)")
 	insecure := fs.Bool("insecure", true, "skip TLS certificate verification")
+	output := fs.String("o", defaultOutputFormat, outputFlagUsage)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	jsonOut, ofErr := parseOutputFormat(*output)
+	if ofErr != nil {
+		_, _ = fmt.Fprintf(stderr, "vnproxctl status: %v\n", ofErr)
 		return 2
 	}
 
@@ -96,6 +102,10 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 			// host as the daemon and reading its own config file.
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: *insecure}, //nolint:gosec // see comment above; local operator health check, not a network client
 		},
+	}
+
+	if jsonOut {
+		return runStatusJSON(stdout, endpoint, client, cfg, cfgErr, *timeout)
 	}
 
 	exitCode := 0

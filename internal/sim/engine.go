@@ -95,9 +95,10 @@ func Simulate(in Input, req Request) Result {
 // engine's evaluation limits (AC5).
 func (e *Engine) Simulate(req Request) Result {
 	res := Result{Proto: req.Proto, Port: req.Port, Hops: []Hop{}}
+	family := req.Family.orDefault()
 
-	src := e.resolveEndpoint(req.Src, &res)
-	dst := e.resolveEndpoint(req.Dst, &res)
+	src := e.resolveEndpoint(req.Src, family, &res)
+	dst := e.resolveEndpoint(req.Dst, family, &res)
 	res.Src = src.public
 	res.Dst = dst.public
 

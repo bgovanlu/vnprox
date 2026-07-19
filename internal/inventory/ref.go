@@ -33,6 +33,38 @@ const (
 	// (internal/store/migrations, docs/data-model.md §3), never a shadow
 	// copy of live tc state.
 	KindQosShape Kind = "qos-shape"
+
+	// KindWgTunnel / KindWgPeer are T-1401's WireGuard op-target kinds. They
+	// are app-owned intent (docs/data-model.md §2's wireguard_tunnels/
+	// wireguard_peers tables), not live-polled inventory entities the way
+	// every kind above is — no collector ever emits one into the graph. They
+	// exist here only so a wg.* changeset op's target Ref (docs/data-model.md
+	// §3) can be a first-class, parseable Ref like every other op target,
+	// keyed by the tunnel's app-store id (KindWgTunnel) or "<tunnelID>/<peer
+	// public key hash>" (KindWgPeer). The tunnel/peer lives on its owning
+	// node, so Node is the owning PVE node, never empty.
+	KindWgTunnel Kind = "wg-tunnel"
+	KindWgPeer   Kind = "wg-peer"
+	// KindNatRule and KindStaticRoute (T-1403: Edge & NAT cockpit) name a
+	// nat.masquerade/nat.portforward rule and a route.static route,
+	// respectively — node-scoped, caller-chosen ids (docs/data-model.md §3),
+	// with no interfaces(5) stanza of their own (they live inside an
+	// *existing* iface's post-up/post-down lines — see
+	// internal/change/ifaces/edgeop.go).
+	KindNatRule     Kind = "nat-rule"
+	KindStaticRoute Kind = "static-route"
+	// KindVF names an SR-IOV virtual function (T-1506): a PhysNic acting as
+	// a PF carries zero or more VFs (PhysNic.SRIOVVFs), each identified by
+	// "<pfName>/vf<index>" within its owning node. A VF *is*
+	// collector-observed (host-netlink), like PhysNic itself, but — like
+	// Bridge.FDB/Bond.SlaveDetail — is not merge/provenance-tracked as a
+	// top-level graph entity (see entity.go's PhysNic.SRIOVVFs doc
+	// comment); this Kind exists purely so a VF has a first-class,
+	// parseable Ref for changeset op targets (vf.provision targets its PF,
+	// but a VF's own Ref is exposed in findings/inspector output),
+	// mirroring the role KindLldpNeighbor plays for another
+	// host-netlink-sourced, per-NIC observation.
+	KindVF Kind = "vf"
 )
 
 // knownKinds is the closed set of valid Kind values. ParseRef rejects any
@@ -43,6 +75,8 @@ var knownKinds = map[Kind]bool{
 	KindVlan: true, KindOVSBridge: true, KindOVSBond: true, KindSDNZone: true,
 	KindSDNVnet: true, KindSDNSubnet: true, KindGuest: true, KindGuestNic: true,
 	KindLldpNeighbor: true, KindFwRuleset: true, KindQosShape: true,
+	KindWgTunnel: true, KindWgPeer: true,
+	KindNatRule: true, KindStaticRoute: true, KindVF: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)

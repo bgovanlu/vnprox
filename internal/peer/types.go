@@ -56,6 +56,41 @@ type neighborsResponse struct {
 	Neighbors []host.Neighbor `json:"neighbors"`
 }
 
+// containerInteriorResponse is GET /api/peer/host/container-interior's
+// body (T-1304: an lxc guest's raw host-side network-namespace read set —
+// the string fields are host.ContainerInteriorRaw's []byte fields
+// rendered as plain text, following dhcpLeasesResponse's own
+// []byte-as-string precedent below rather than base64, since every field
+// here is textual command output).
+type containerInteriorResponse struct {
+	AddrJSON   string `json:"addrJson"`
+	RouteJSON  string `json:"routeJson"`
+	ResolvConf string `json:"resolvConf"`
+	Sockets    string `json:"sockets"`
+}
+
+// containerPingResponse is GET /api/peer/host/container-ping's body
+// (T-1304).
+type containerPingResponse struct {
+	Reachable bool `json:"reachable"`
+}
+
+// conntrackResponse is GET /api/peer/host/conntrack's body (T-1305: a
+// node's own live conntrack/NAT table — GET /conntrack's cluster fan-out
+// dependency, following the `links`/`neighbors` additive-route precedent
+// linksResponse's doc comment describes).
+type conntrackResponse struct {
+	Entries []host.ConntrackEntry `json:"entries"`
+}
+
+// ipv6RAResponse is GET /api/peer/host/ipv6-ra's body (T-1404): a plain
+// read, no {available} envelope needed — an interface with no observed RA
+// is itself a clean, unremarkable answer, the same convention
+// conntrackResponse/neighbors above follow.
+type ipv6RAResponse struct {
+	Items []host.IPv6RAObservation `json:"items"`
+}
+
 // firewallLogResponse is GET /api/peer/firewall/log's body (T-505: one
 // node's own pve-firewall log tail/follow increment — internal/fwlog.
 // Service.fetch calls this for every non-local node in the cluster,

@@ -64,6 +64,44 @@ type HostReader interface {
 	// (T-805), unfiltered (see neighbors.go's doc comment for why state
 	// filtering is internal/host's job, not this package's).
 	Neighbors(ctx context.Context, node string) ([]Neighbor, error)
+
+	// ContainerInterior returns an lxc guest's fixture-declared host-side
+	// network-namespace read set (T-1304's guest-interior inspector — a
+	// container has no QEMU guest agent, so this is the lxc counterpart of
+	// the qemu path's `agent/exec`-based reads). Returns ErrNotFound if
+	// node or vmid is unknown, or vmid does not name an lxc guest on node.
+	ContainerInterior(ctx context.Context, node string, vmid int) (ContainerInteriorRaw, error)
+
+	// ContainerPing returns an lxc guest's fixture-scripted reachability
+	// for targetIP (T-1304's default-gateway reachability check), matched
+	// against that guest's InteriorPingOutcomes table. Same not-found
+	// contract as ContainerInterior.
+	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+
+	// Conntrack returns node's fixture-declared live conntrack/NAT table
+	// (T-1305), verbatim — see conntrack.go's doc comment.
+	Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error)
+
+	// IPv6RA returns node's fixture-declared per-interface IPv6 RA/DHCPv6
+	// observation (T-1404), verbatim — see ipv6ra.go's doc comment.
+	IPv6RA(ctx context.Context, node string) ([]IPv6RAObservation, error)
+}
+
+// ContainerInteriorRaw is one lxc guest's raw host-side network-namespace
+// read set (T-1304), mirroring internal/host.ContainerInteriorRaw's field
+// set (kept as this package's own type for the same reason the rest of
+// this file's types are — see the HostReader doc comment above: Go's
+// structural typing requires identical result types, not just
+// structurally similar ones). Each field is one command's raw stdout
+// (`ip -j addr show` / `ip -j route show` / `cat /etc/resolv.conf` /
+// `ss -H -tuln`), parsed by internal/guestinterior's own parsers — kept
+// raw here, not pre-parsed, so this package stays free of that parsing
+// logic.
+type ContainerInteriorRaw struct {
+	AddrJSON   []byte
+	RouteJSON  []byte
+	ResolvConf []byte
+	Sockets    []byte
 }
 
 // LinkState is one netlink-equivalent link (physical NIC, bond, bridge, or
@@ -78,7 +116,11 @@ type LinkState struct {
 	Members []string
 	// FDB is this (bridge-kind) link's fixture-declared forwarding
 	// database (T-306's MAC/FDB browser) — nil for every non-bridge Kind.
-	FDB       []FDBEntry
+	FDB []FDBEntry
+	// VFs (T-1506) is this (physical-kind) link's fixture-declared SR-IOV
+	// virtual functions — nil for every non-physical Kind, same convention
+	// as FDB above.
+	VFs       []VF
 	SpeedMbps int
 	MTU       int
 	LinkUp    bool
@@ -96,6 +138,19 @@ type FDBEntry struct {
 	Master    bool
 	Permanent bool
 	Stale     bool
+}
+
+// VF is one SR-IOV virtual function on a (physical-kind) link, as
+// internal/host would report it (mirrors internal/host.VF's field set;
+// kept as this package's own type for the same reason the rest of
+// LinkState is — see internal/host's Reader doc comment).
+type VF struct {
+	Mac        string
+	PCIAddr    string
+	ID         int
+	Vlan       int
+	SpoofCheck bool
+	Trust      bool
 }
 
 // FixtureHostReader implements HostReader by reading a mock server's
@@ -167,6 +222,11 @@ func (h *FixtureHostReader) Links(_ context.Context, node string) ([]LinkState, 
 				ls.FDB = convertFDBSpecs(link.FDB)
 			}
 		}
+		if iface.Type == "eth" {
+			if link, ok := ns.links[iface.Iface]; ok {
+				ls.VFs = convertVFSpecs(link.VFs)
+			}
+		}
 		out = append(out, ls)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -182,6 +242,19 @@ func convertFDBSpecs(specs []FDBEntrySpec) []FDBEntry {
 	out := make([]FDBEntry, len(specs))
 	for i, s := range specs {
 		out[i] = FDBEntry(s)
+	}
+	return out
+}
+
+// convertVFSpecs converts a fixture's declared VFs (LinkInfo.VFs,
+// YAML-tagged) to this file's plain LinkState.VFs shape (T-1506).
+func convertVFSpecs(specs []VFEntrySpec) []VF {
+	if len(specs) == 0 {
+		return nil
+	}
+	out := make([]VF, len(specs))
+	for i, s := range specs {
+		out[i] = VF(s)
 	}
 	return out
 }

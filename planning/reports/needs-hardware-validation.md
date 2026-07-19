@@ -399,3 +399,259 @@ from; and pvemock does not model an `ifreload` outage at all):
       acceptance must be confirmed across the full PVE 8.2+/9.x kernel range before shipping: a
       BPF verifier rejection is a load-time failure, not a runtime one, so it needs to be caught
       per-kernel-version, not just once.
+
+## Latency & loss mesh (T-1303)
+
+- [ ] **`ping` summary-line wording/format across real PVE node builds.** `internal/latmesh.
+      RealProber`/`parsePingSummary` assumes iputils-ping's documented summary shape (`"N%
+      packet loss"` and `"= min/avg/max/mdev"` lines) — the same PVE-node-is-Debian assumption
+      T-802's guest-exec probing makes for a *guest* OS, applied here to the *host* OS vnproxd
+      itself ships on. No live PVE cluster was available to confirm the exact wording/decimal
+      precision/locale (`LANG`/`LC_ALL`) iputils-ping emits on a real PVE 8.x/9.x node — a decimal
+      comma instead of a decimal point under a non-C locale, or a future iputils-ping version
+      reformatting the summary line, would silently degrade every reading to 100% loss
+      (`parsePingSummary`'s defensive "can't confirm healthy -> treat as worth flagging" fallback,
+      the same stance `internal/host.ParseCorosyncStatus` already takes for a comparable
+      exact-wording caveat) rather than crashing, but that's still a wrong reading, not a safe
+      no-op. Confirm the daemon always execs with `LANG=C`/`LC_ALL=C` (or equivalent) and that a
+      real PVE node's `ping -c 5 -W 3 <addr>` output matches the two regexes
+      (`packetLossRe`/`rttAvgRe`) byte-for-byte before treating any produced latency/loss reading
+      as trustworthy in production.
+- [ ] **Real corosync-ring / shared-bridge latency characteristics at cluster scale.** This task's
+      fixtures are synthetic time series (`testdata/latmesh/*.json`), not observed real-cluster
+      RTT/loss distributions — the default thresholds (`internal/findings.HealthThresholds`'s
+      `LatRttWarnMs`/`LatLossWarnPct`, 80ms/2%) are this task's own reasoned defaults (see that
+      struct's doc comment), never tuned against a real corosync ring or guest-bridge fabric's
+      actual jitter under load. Confirm against a real multi-node PVE cluster (ideally under a
+      representative migration/backup-storm load) whether 80ms/2% is the right line between
+      "genuinely degraded" and "ordinary LAN jitter" before relying on `path_latency_degraded`/
+      `path_loss` findings operationally.
+- [ ] **Migration/storage network fabric discovery is not implemented (scoping deviation, not a
+      bug to fix blindly).** `internal/latmesh`'s Discoverer identifies exactly two fabrics —
+      corosync (from `internal/host.CorosyncConfig`) and guest (shared bridge names,
+      `internal/xnode.BridgesByName`) — because neither a PVE migration network
+      (`datacenter.cfg`'s `migration: network=...`) nor a distinct storage network is modeled
+      anywhere in `internal/inventory`/`internal/pve` today; see `internal/latmesh`'s package doc
+      comment. Before implementing readers for either, confirm the exact `datacenter.cfg` key
+      names/formats and how a storage network is conventionally declared (PVE has no single
+      dedicated "storage network" config key the way it does for migration — it's usually implied
+      by which bridge a storage-class VLAN/bond is attached to) against a real cluster, since
+      guessing the shape risks the same "two names, one problem" duplication T-801 exists to
+      prevent.
+
+## Path MTU prober (T-1306)
+
+- [ ] **`ping -M do -s <size>` DF-probe behavior across real PVE node builds.** `internal/mtuprobe.
+      RealProber`/`dfProbe` assumes iputils-ping's `-M do` (Don't Fragment) flag is available and
+      that a dropped DF-probe surfaces as either a `"Frag needed"`/`"Message too long"` line or a
+      non-zero exit with `"100% packet loss"` — the same PVE-node-is-Debian/iputils-ping-format
+      assumption `internal/latmesh.RealProber` already carries (and needs its own hardware
+      validation entry above), extended here to a flag/output shape this task had no live cluster
+      to confirm. Confirm on a real PVE 8.x/9.x node that `ping -M do -c 1 -s <n> -W <t> <addr>`
+      behaves as `dfProbe` expects for both a size that fits and one that doesn't, across at least
+      one path with a real, non-default MTU (a VXLAN/EVPN underlay is the most useful case, since
+      that's exactly what `vxlan_underlay_mtu`'s measured-MTU upgrade consumes).
+- [ ] **Binary-search convergence against a real, non-synthetic path.** `TestBinarySearchMTU_*`
+      (`internal/mtuprobe/binarysearch_test.go`) exercises the search algorithm itself against
+      scripted mock responses, not a real network path with real DF-drop latency/occasional packet
+      loss unrelated to fragmentation (a lossy-but-not-MTU-limited path could in principle cause a
+      false "too big" read on an unlucky probe). Confirm on real hardware whether a single-probe-
+      per-size binary search is robust enough in practice, or whether production should retry a
+      failed probe once before concluding "too big" (a documented, not-yet-implemented follow-up if
+      real-world flakiness shows up).
+- [ ] **Bond/VXLAN-EVPN path coverage scoping deviation (not a bug to fix blindly).** This task's
+      card asked for probing "along each bridge/bond/VXLAN-EVPN path" but `internal/mtuprobe`
+      reuses `internal/latmesh`'s existing Discoverer verbatim (corosync + shared-bridge-name
+      "guest" fabric pairs only — see that package's own needs-hardware-validation entry above for
+      why) rather than inventing a third, bond-specific pair-discovery mechanism this codebase has
+      no substrate for (see `internal/mtuprobe`'s package doc comment for the full reasoning: a
+      bond is node-local link aggregation with no node-to-node IP path of its own to path-MTU
+      discover in isolation). Confirm against a real cluster whether this is a genuine, actionable
+      gap (e.g. an operator wants a *specific* bond slave's own MTU verified, not just the bridge
+      path riding over it) before building a third discovery mechanism.
+
+## T-1301 — distributed packet capture engine
+
+- [ ] **Real on-hardware capture backend (AF_PACKET/libpcap/`tcpdump`).** `internal/capture` is
+      fully wired — capability gate, server-enforced un-overridable caps, BPF-filter validation,
+      peer fan-out, audit, and retention sweep are all real and agent-agnostic — but the actual
+      packet source is `internal/capturemock`'s scripted agent (`cmd/vnproxd/capture.go`'s
+      `setupCapture` wires `capturemock.NewAgent()`), since there is no live Proxmox host to
+      capture from and CLAUDE.md's stdlib-first rule bars adding a libpcap/eBPF binding here. The
+      production agent (a real `tcpdump -i <iface> -w <file>` subprocess with a fixed argv, or an
+      AF_PACKET reader) drops in at exactly that one wiring line — every surrounding safety
+      property is already exercised by tests. Needs: confirmation that `CAP_NET_RAW` (already in
+      the shipped unit's `CapabilityBoundingSet`) suffices for the chosen backend on a real PVE
+      9.x node, and that the on-disk `.pcap` the real backend writes is byte-compatible with
+      T-1302's decoder (the mock's classic-pcap output already is).
+- [ ] **libpcap-level BPF filter compilation.** `internal/capture.ValidateFilter` is a
+      conservative *syntactic* gate (shell-unsafe characters, instruction-count ceiling, known
+      keywords/operators/IPs/CIDRs only) — a stdlib-only proxy for a real `pcap_compile`. The
+      on-hardware agent should additionally compile the filter with libpcap before use and reject
+      a compile failure; confirm on real hardware that every filter the syntactic gate accepts
+      also compiles (and that the instruction-count ceiling maps sensibly to real compiled-program
+      size).
+- [ ] **Guest-NIC / SDN-VNet target → capture-interface resolution.** `capture.RefResolver`
+      resolves bridge/bond/VLAN refs to their device name directly, but a guest NIC's live tap
+      device and an SDN vnet's realized Linux device are runtime facts not derivable from the Ref
+      alone — the default resolver returns `ErrUnresolvableTarget` for those (a conservative,
+      safe rejection). A graph-backed resolver that maps a guest NIC to its live tap/veth on a
+      real node is a follow-up (T-1302/T-1307 consume this) and needs a real cluster to validate
+      the exact per-guest device naming.
+## Guest network interior inspector (T-1304)
+
+- [ ] **Exact in-guest/in-container command set per guest OS family.** `internal/guestinterior`
+      (both the qemu path, `qemu.go`, and the parsers `lxc.go` shares with it) deliberately
+      implements exactly one target profile — a Linux guest/container with iproute2's `ip -j addr
+      show`/`ip -j route show` (JSON output support, iproute2 ~4.x+), a POSIX-ish `/etc/resolv.conf`,
+      and `ss` supporting `-H -tuln` — rather than guessing a "portable" command across every guest
+      OS/toolchain, mirroring `internal/probe/command.go`'s own precedent (T-802's entry above).
+      Unverified against real guest images: (1) whether `ip -j` JSON output is actually present and
+      stably shaped across the iproute2 versions PVE's own common guest templates (Debian/Ubuntu
+      cloud images) ship; (2) minimal/busybox/Alpine images' `ip`/`ss` flag support (busybox `ip`
+      has no `-j`; Alpine's `ss` comes from `iproute2-minimal` and may lack `-H`); (3) Windows
+      guests and non-Linux containers need an entirely different command set — **not implemented at
+      all**, a qemu guest-agent read against one will fail the same "unrecognized command" way an
+      unsupported `internal/probe` target does; (4) whether `POST/GET .../agent/exec[-status]`'s
+      real guest-agent exec privilege/allowlist policy (see T-802's own entry above) permits these
+      three additional read-only commands the same way it permits `ping`/`nc`.
+- [ ] **LXC pid-resolution mechanism** (`internal/host/containerinterior_linux.go`'s `containerPID`).
+      Assumes PVE 8.x's default cgroupv2-unified layout places a running container's processes
+      under `/sys/fs/cgroup/lxc/<vmid>/cgroup.procs` — this codebase's own best inference from
+      pve-container's conventions, not verified against a live cluster. No cgroupv1 fallback is
+      attempted (this codebase has no fixture or hardware to verify one against). Confirm against a
+      real PVE node: (1) the exact cgroup path on both a fresh PVE 8.x install and an
+      upgraded-from-PVE-7 node (which may still run cgroupv1 hybrid mode); (2) whether the first pid
+      listed in `cgroup.procs` is always a suitable target for `nsenter --net=` (vs. a transient
+      short-lived process that has already exited by the time `nsenter` runs — a race this
+      implementation does not currently guard against with a retry).
+- [ ] **`nsenter`/`ip`/`ss`/`ping` availability and required capabilities on the vnproxd host.**
+      `Real.ContainerInterior`/`ContainerPing` shell out to these binaries via `os/exec` assuming
+      they're on `PATH` and that vnproxd's own process has `CAP_SYS_ADMIN` (or runs as root) to
+      enter another process's network namespace — neither is guaranteed by this task's own
+      development/CI sandbox (no `/sys/fs/cgroup/lxc` exists there at all, so
+      `TestReal_ContainerInterior_LiveLXC`, `internal/host/containerinterior_linux_test.go`, skips
+      cleanly rather than asserting anything). Confirm vnproxd's packaged systemd unit
+      (`packaging/systemd/`) grants the needed capability/runs with sufficient privilege on a real
+      PVE node.
+- [ ] **`defaultGatewayReachable`'s ping semantics for the lxc path.** Unlike the qemu path (which
+      reuses `internal/probe.Run`'s full `Outcome` classification), the lxc path's `ContainerPing`
+      collapses "no reply" and "could not attempt the ping at all" into a single `false` — a
+      deliberate scope simplification (see docs/api.md's Guest interior section) this task's report
+      flags rather than a verified real-hardware behavior; confirm this reads honestly enough in
+      practice, or whether a follow-up should give it the same three-way `Outcome` the qemu path has.
+## Conntrack & NAT table explorer (T-1305)
+
+- [ ] **`/proc/net/nf_conntrack` field layout for state/timeout/NAT across the target kernel
+      range (PVE 8.2+/9.x), independent of T-1004's own conntrack-format validation entry
+      above.** `internal/host/conntrack.go`'s parser reads a superset of what T-1004's
+      diff-only sampler needs — the tcp-only state word, the numeric timeout field, and (new
+      here) both the original *and* reply direction tuples, diffed against each other to detect
+      SNAT/DNAT (see that file's `parseConntrackLine` doc comment for the exact detection
+      logic). Built and table-tested only against hand-built golden fixtures
+      (`internal/host/testdata/conntrack_golden.txt`) matching the documented/observed wire
+      format — never a real kernel's live table, and never a real NAT'd connection's actual
+      tuple pair. Confirm: (1) the state word's exact position/vocabulary for every protocol
+      family (this parser only special-cases tcp's state word; SCTP also has textual states in
+      real conntrack output and is currently treated the same as UDP/ICMP — no state parsed,
+      falling back to the `[ASSURED]`/`[UNREPLIED]` bracket flag if present); (2) that a real
+      masquerade (SNAT) and a real DNAT/port-forward rule's conntrack entries actually produce
+      the original/reply tuple divergence this parser's detection logic assumes (derived from
+      documented netfilter conntrack semantics, not observed against a live NAT setup); (3)
+      whether any IPv6 NAT66/NPTv6 variant, or a conntrack helper (ftp, sip, ...) with its own
+      expectation entries, produces a line shape this parser mis-reads.
+- [ ] **Non-root read permission on a real PVE node.** `docs/security.md` documents vnprox
+      running as root with a scoped `CapabilityBoundingSet` in production, so
+      `/proc/net/nf_conntrack`'s real-world `0440 root:root` permission bits (confirmed against
+      *this* development sandbox, not a PVE node) should not block the read there — but this was
+      never confirmed against an actual systemd-hardened `vnprox.service` unit (this task's own
+      dev/e2e harness runs vnproxd unprivileged, where the read legitimately fails with EPERM;
+      `web/e2e/conntrack.spec.ts`'s own header comment documents this and asserts the resulting
+      `partial`/`failedNodes` degradation instead of fixture data). Confirm on a real node that
+      the six capabilities `docs/security.md`'s Host footprint section lists
+      (`CAP_NET_ADMIN`/`CAP_NET_RAW`/`CAP_NET_BIND_SERVICE`/`CAP_DAC_OVERRIDE`/
+      `CAP_DAC_READ_SEARCH`/`CAP_CHOWN`/`CAP_FOWNER`) plus running as root are sufficient — root
+      bypasses standard DAC permission checks regardless of capability set, so this is expected
+      to already work, but has not been observed against a live node's actual file mode/SELinux-
+      or AppArmor-equivalent MAC policy (PVE ships neither by default, but worth a one-line
+      confirmation rather than an assumption).
+## Kubernetes overlay mapping engine (T-1501)
+
+- [ ] **Real CNI variance beyond the three named defaults.** `internal/k8s.DetectCNI` is verified
+      against fixture markers only (Flannel's `flannel.alpha.coreos.com/backend-type` node
+      annotation, Calico's `calico-node` kube-system DaemonSet, Cilium's `cilium` kube-system
+      DaemonSet) — a real cluster running a non-default install (custom Helm release names,
+      Cilium in "kube-proxy replacement" mode with a differently-named DaemonSet, Calico installed
+      via the Tigera operator rather than the classic manifest, or any fourth CNI such as
+      Weave/Antrea/OVN-Kubernetes) has not been exercised against a live cluster and may report
+      `unknown` where a human would recognize the CNI — the documented, intentional "never guess"
+      behavior, but its real-world hit rate against non-default installs is unverified.
+- [ ] **Node pod-CIDR advertisement across CNI/IPAM modes.** `Overlay.PodCIDRs` reads
+      `Node.spec.podCIDR`/`podCIDRs` — real for Flannel and Calico's default per-node IPAM, and for
+      Cilium's default cluster-scope IPAM, but unverified against Cilium configured for per-node
+      IPAM extensions (ENI/Azure IPAM modes) or any CNI that manages pod addressing without ever
+      populating `NodeSpec.PodCIDR` at all; such nodes simply carry no `PodCIDR` entry today
+      (documented gap, `internal/k8s/overlay.go`'s doc comment), not a hardware-validation crash,
+      but real coverage is unmeasured.
+- [ ] **kubeconfig credential-form coverage.** `internal/k8s.ResolveContext` supports exactly two
+      credential forms (bearer `token`, or `client-certificate-data`+`client-key-data`) read from
+      the kubeconfig's inlined base64 `*-data` fields — real-world kubeconfigs generated by managed
+      k8s providers (EKS `aws eks get-token` exec plugins, GKE's `gke-gcloud-auth-plugin`, OIDC
+      `exec`-credential plugins) are explicitly unsupported and rejected with `ErrNoCredential`
+      rather than guessed at; unverified whether operators actually hit this in practice (a
+      long-lived service-account token kubeconfig, the form this task targets, is the common
+      case for a dedicated read-only integration, but real deployment surveying would confirm).
+- [ ] **Firewall-rule visibility precision for `k8s_nodeport_exposed_without_fw_rule`.**
+      `internal/k8s.rulesetCovers` checks for an explicit, enabled, inbound `ACCEPT` rule matching
+      proto+port on the guest's own ruleset or the cluster-scope ruleset — it does not expand
+      macros, aliases, ipsets, or security groups (a documented scope limitation, `nodeport.go`'s
+      doc comment), and does not evaluate PVE's default-policy fallback. A real cluster whose
+      NodePort coverage comes entirely through a macro (e.g. a `Kubernetes` macro alias, if an
+      operator defined one) or a security-group reference would show as uncovered here even
+      though real `pve-firewall` would allow the traffic — unverified how often this pattern
+      appears in practice; internal/sim's own richer match engine (`internal/sim/match.go`) already
+      handles macro/alias/ipset expansion and would be the natural place to extend this check into
+      if false positives turn out to be common.
+## SR-IOV virtual function lifecycle (T-1506)
+
+Named in the task card from day one, per the arc's standing "mock-first / needs-hardware-validation"
+constraint — no acceptance criterion for this task required real SR-IOV hardware; both items below
+are genuinely unverifiable against `internal/pvemock`.
+
+- [ ] **Real VF creation and kernel/driver behavior.** `internal/host.VFProvisionCommands`
+      (`internal/host/vfmarker.go`) renders a `vf.provision` op into `echo <N> >
+      /sys/class/net/<pf>/device/sriov_numvfs` followed by per-VF `ip link set <pf> vf <id> ...`
+      lines, applied via the ordinary node-file post-up/post-down path
+      (`internal/change/ifaces/vfop.go`) — this task only proves those commands are *rendered*
+      correctly (golden ops + apply/rollback against the fixture `host.Reader`,
+      `internal/change/apply_vf_test.go`); it has no way to execute them against a real NIC.
+      Real hardware/driver behavior this needs to confirm: (1) rewriting `sriov_numvfs` while VFs
+      already exist and one is attached to a running guest — real Linux SR-IOV drivers commonly
+      require `sriov_numvfs` to be reset to `0` before it can be increased again, which
+      `VFProvisionCommands` does not currently sequence (it always writes the target count
+      directly); (2) whether a VF actively passed through to a running guest can be reconfigured
+      (`ip link set ... vlan/mac/spoofchk/trust`) live from the PF's host side without first
+      detaching it, or whether the command silently no-ops/errors; (3) driver-specific quirks
+      (ixgbevf/i40e/mlx5 etc. are known to differ on exactly which `ip link set vf` sub-options
+      they honor) that could make a rendered command a no-op on some real NICs.
+- [ ] **PCI address resolution via the `virtfnN` sysfs symlink
+      (`internal/host.sysfsVFPCIAddr`, `internal/host/ethtool.go`).** The real (non-fixture)
+      reader resolves a VF's PCI bus address by reading
+      `/sys/class/net/<pf>/device/virtfn<vfID>`'s symlink target — this package's own inference
+      from the kernel's documented SR-IOV sysfs convention, exercised in this task only via a
+      fixture that declares `pci_addr` directly (`internal/pvemock`'s `VFEntrySpec`). Confirm
+      against real hardware that `virtfnN`'s index `N` always matches netlink's own `IFLA_VF_INFO`
+      VF `id` field one-for-one (an off-by-one or reordering here would silently mis-attribute a
+      VF's PCI address, which the guest<->VF correlation
+      — `internal/topology.ResolveVFAssignments` — depends on to match against a guest's `hostpci`
+      config).
+- [ ] **Firmware-level spoof-check enforcement.** `vf_spoofcheck_mismatch`
+      (`internal/topology.VFPolicyMismatch`, `internal/drift/sriov.go`,
+      `internal/change/validate_referential.go`'s `checkVFProvision`) treats a VF's
+      `spoofchk`/`trust` bits as reported by netlink as authoritative — it has no way to confirm
+      those bits are actually *enforced* by the NIC's firmware for a given driver/firmware
+      combination (some SR-IOV NICs are documented to accept the `ip link set ... spoofchk on`
+      call without fully enforcing it in all traffic paths, e.g. certain VLAN-tag-strip
+      configurations). Confirm on real hardware that a VF configured `spoofchk on` genuinely
+      cannot forge its source MAC/VLAN before treating this finding's absence as a security
+      guarantee rather than a configuration-intent check.

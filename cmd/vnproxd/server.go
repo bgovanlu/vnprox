@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -23,8 +24,11 @@ import (
 	"github.com/bgovanlu/vnprox/internal/evpn"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/host"
+	"github.com/bgovanlu/vnprox/internal/ingress"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
+	"github.com/bgovanlu/vnprox/internal/ipv6"
+	"github.com/bgovanlu/vnprox/internal/k8s"
 	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/neighbor"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -105,20 +109,56 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return err
 	}
 
-	authSvc, db, sessionCipher, err := setupAuth(ctx, cfg, logger)
+	// The store.DB, its AuditRepo, and its APITokenRepo are constructed
+	// once, here, and reused everywhere below (router.Options.Audit,
+	// ProbeAudit, LLDPAudit, TokenAudit, setupAuth's own login/logout/
+	// token.use audit writes, ...) — T-1104's `audit.appended` event is
+	// wired via a single SetOnAppend hook on this one auditRepo instance
+	// (events.go's wireAuditAppendedEvents doc comment), so every audit
+	// write in this daemon must go through it, not a second AuditRepo
+	// wrapping the same table.
+	if err = os.MkdirAll(filepath.Dir(cfg.Storage.DBPath), 0o750); err != nil {
+		return fmt.Errorf("creating storage directory for %s: %w", cfg.Storage.DBPath, err)
+	}
+	db, err := store.Open(ctx, cfg.Storage.DBPath)
+	if err != nil {
+		return fmt.Errorf("opening store: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+	auditRepo := store.NewAuditRepo(db)
+	apiTokenRepo := store.NewAPITokenRepo(db)
+	webhookRepo := store.NewWebhookRepo(db)
+
+	authSvc, sessionCipher, err := setupAuth(cfg, logger, db, auditRepo, apiTokenRepo)
 	if err != nil {
 		return fmt.Errorf("initializing auth: %w", err)
 	}
-	defer func() { _ = db.Close() }()
 
 	graph := inventory.NewGraph()
 	topoSvc := topology.NewService(graph, logger)
+	// T-1102: the pinned-spec table (the GitOps reconciler's declared
+	// desired state) — constructed here, ahead of driftSvc below, so its
+	// spec_drift check family can read it every cycle via specPinAdapter.
+	// Also reused verbatim as the router's api.Options.SpecPin seam below
+	// (GET/POST/DELETE /spec/pin), the same "one repo, two seams" pattern
+	// simDivergenceRepo/auditRepo already establish elsewhere in this file.
+	pinnedSpecRepo := store.NewPinnedSpecRepo(db)
+	// T-1104: audit.appended broadcasts over the same shared WS hub
+	// topoSvc's Broadcast already backs for topology.delta/changeset.status/
+	// drift.changed/findings.changed — wired against the one shared
+	// auditRepo instance (see this file's construction-order doc comment
+	// above). The webhook Dispatcher is wired as that hub's event sink
+	// right alongside, so both the WS "events" topic and registered
+	// webhook targets are fed from the exact same fan-in point (hub.go's
+	// eventsSourceTopics doc comment).
+	wireAuditAppendedEvents(auditRepo, topoSvc, logger)
+	setupAutomation(webhookRepo, sessionCipher, topoSvc, logger)
 	// T-305: the drift detector runs its own 30s cycle over the same live
 	// graph the collectors populate, independent of any one poll loop
 	// (docs/features/topology.md §6); its findings changing broadcasts
 	// `drift.changed` over the same shared WS hub topoSvc's Broadcast
 	// already backs for internal/change's `changeset.status` events.
-	driftSvc := setupDrift(graph, topoSvc, logger)
+	driftSvc := setupDrift(graph, topoSvc, specPinAdapter{repo: pinnedSpecRepo, logger: logger}, logger)
 
 	// T-601: the metrics sampler is constructed before setupCollect so its
 	// Ingest method can be wired in as collect.Config.OnStats (the host
@@ -145,6 +185,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if err != nil {
 		return fmt.Errorf("initializing metrics exporter: %w", err)
 	}
+
+	// T-1107: the daemon's own Ed25519 bundle-signing identity (generated at
+	// first use, docs/features/blueprints.md §5) — loaded here alongside the
+	// metrics token above for the same reason, not consumed until
+	// api.NewRouter/blueprintSvc are constructed far below.
+	blueprintSigningKey, err := setupBlueprintSigningKey(cfg, logger)
+	if err != nil {
+		return fmt.Errorf("initializing blueprint signing key: %w", err)
+	}
+	blueprintTrust := blueprint.NewTrustStore(cfg.Blueprint.TrustedSignersDir)
 
 	// T-602: the unified findings engine's IngestServices is wired in as
 	// collect.Config.OnServices below (the same "piggyback on the host
@@ -251,10 +301,36 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// the same "true nil interface until assigned" pattern as ipamSvc
 	// itself.
 	var dhcpAPISvc api.DHCPService
+	// guestInteriorIPAM is the same concrete *ipam.Service value as ipamSvc,
+	// typed as api.GuestInteriorIPAMSource (T-1304's IPAM cross-check
+	// annotation) — same true-nil-interface-until-assigned pattern as
+	// dhcpAPISvc above.
+	var guestInteriorIPAM api.GuestInteriorIPAMSource
+	// conntrackGuests backs GET /conntrack's `guest=` filter (T-1305):
+	// ipamConcrete.GuestIPs resolves a guest ref to the IPs vnprox has
+	// evidence for, the same enrichment-observation source ipamSvc's own
+	// subnet merge reads. Same true-nil-interface-until-assigned pattern as
+	// ipamSvc/dhcpAPISvc above — api.IPAMService doesn't declare GuestIPs,
+	// so this needs its own interface-typed variable.
+	var conntrackGuests api.ConntrackGuestResolver
+	// edgeIPAM (T-1403) is the same concrete *ipam.Service value as
+	// ipamSvc, typed as api.EdgeIPAMSource (the Edge & NAT cockpit's
+	// port-forward -> guest correlation) — same true-nil-interface-until-
+	// assigned pattern as guestInteriorIPAM/conntrackGuests above.
+	var edgeIPAM api.EdgeIPAMSource
+	// k8sIPAMSrc is the same concrete *ipam.Service value as ipamSvc, typed
+	// as api.K8sIPAMSource (T-1501's node<->guest correlation seam,
+	// AllAllocations) — the identical "true nil interface until assigned"
+	// pattern as ipamSvc/dhcpAPISvc above, assigned in the same branch.
+	var k8sIPAMSrc api.K8sIPAMSource
 	if sdnPVEClient != nil {
 		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc})
 		ipamSvc = ipamConcrete
 		dhcpAPISvc = ipamConcrete
+		guestInteriorIPAM = ipamConcrete
+		conntrackGuests = ipamConcrete
+		edgeIPAM = ipamConcrete
+		k8sIPAMSrc = ipamConcrete
 	}
 	// changeAllocations adapts ipamConcrete into change.AllocationsSource
 	// for T-406's DHCP-range-overlap advisory check — see
@@ -281,7 +357,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// T-803: corosyncStatusAdapter reuses realHost/localNode (already built
 	// above for dhcpSvc/neighborSvc) — local-node-only for now, see its own
 	// doc comment (findings.go) for the documented cluster-fan-out gap.
-	corosyncAdapter := corosyncStatusAdapter{host: realHost, localNode: localNode, logger: logger}
+	corosyncAdapter := corosyncStatusAdapter{baseCtx: ctx, host: realHost, localNode: localNode, logger: logger}
 	// T-1006: fwAnalyticsAdapter is wired in now (findings.Engine is
 	// constructed before *fwlog.Service exists, below) and filled in with
 	// its real target once fwlogSvc is built — see the adapter's own doc
@@ -291,6 +367,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// constructed before change.Service exists, below) and filled in with
 	// its real target once changeSvc is built — mirrors mgmtAdapter above.
 	scheduleAdapter := &scheduleMissedAdapter{}
+	// T-1504: flowClassifier is built now (it only needs corosync.conf,
+	// already readable) and registered into api.Options.FlowClassifier
+	// below; flowClassifyAdapterVal is wired in now (findings.Engine is
+	// constructed before setupFlows builds flowRepo, below) and filled in
+	// with both once setupFlows returns — mirrors scheduleAdapter above.
+	// See serviceclassify.go's doc comment for the full picture.
+	flowClassifier := setupFlowClassifier(logger)
+	flowClassifyAdapterVal := &flowClassifyAdapter{}
 	// T-1005: alert_rules/alert_deliveries repos + the webhook Notifier,
 	// composed alongside PVE's own notification-target hook via
 	// multiNotifier — independent delivery paths, per that task's card, not
@@ -312,7 +396,51 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
 	simDivergenceRepo := store.NewSimDivergenceRepo(db)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	// T-1303: the latency & loss mesh — constructed here (db/graph/
+	// localNode are all available) so its *latmesh.Service satisfies
+	// findings.Config.LatMesh directly below and api.Options.LatMesh
+	// further down (setupLatMesh's own doc comment); latMeshActors is
+	// registered with the run group alongside every other owned goroutine,
+	// below. latMeshDiscoverer is the same *latmesh.GraphDiscoverer instance
+	// T-1306's setupMTUProbe reuses just below, rather than building a
+	// second, functionally-identical one.
+	latMeshSvc, latMeshDiscoverer, latMeshActors := setupLatMesh(cfg, db, graph, localNode, logger)
+	// T-1306: the path MTU prober — built on latMeshDiscoverer directly
+	// (internal/mtuprobe's own package doc comment: "reuses T-1303's
+	// infrastructure, does not duplicate it"), on its own coarser interval.
+	// Its Service satisfies findings.Config.MTU (vxlan_underlay_mtu's
+	// measured upgrade) directly below and api.Options.MTUProbe further
+	// down; mtuProbeActors joins the same run group.
+	mtuProbeSvc, mtuProbeActors := setupMTUProbe(cfg, latMeshDiscoverer, logger)
+	// T-1401: WireGuard. The read service (store config + live wg-show-dump
+	// status) backs both the findings engine's wg_handshake_stale/
+	// wg_endpoint_drift checks and the api.Options.WireGuard read routes; the
+	// on-node gateway (built near the change engine below) executes the wg.*
+	// changeset ops.
+	wgRepo := store.NewWireGuardRepo(db)
+	wgReadSvc := newWireGuardReadService(wgRepo, localNode, logger)
+	// T-1406: ingress visibility — the operator-configured reverse-proxy
+	// target list, read by api.Options.IngressTargets/GET /ingress/status
+	// below.
+	ingressTargetRepo := store.NewIngressTargetRepo(db)
+	// T-1405: WAN & upstream health — a node-local scheduler reusing
+	// *latmesh.Service itself (setupWan's own doc comment), probing this
+	// node's own operator-configured reference targets. Its Service
+	// satisfies findings.Config.Wan (wan_degraded) directly below and
+	// api.Options.Wan (GET /wan/status, GET/PUT /wan/targets) further down;
+	// wanActors joins the same run group. wanLossWarnPct keeps the
+	// findings check's own threshold in sync with the Service's per-uplink
+	// "degraded" verdict rather than letting the two silently drift apart.
+	wanSvc, wanLossWarnPct, wanActors := setupWan(cfg, db, localNode, logger)
+	wanThresholds := findings.DefaultThresholds
+	wanThresholds.WanLossWarnPct = wanLossWarnPct
+	// T-1501: the read-only Kubernetes overlay engine — the cluster registry
+	// (app-owned kubeconfig targets) and the poller whose cached
+	// NodePort-exposure findings feed the findings engine below and whose
+	// overlay reads back the api.Options.K8sPoller routes further down.
+	k8sClusterRepo := store.NewK8sClusterRepo(db)
+	k8sPoller := k8s.NewPoller()
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -369,7 +497,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	snapshotRepo := store.NewSnapshotRepo(db)
 	blobRepo := store.NewBlobRepo(db)
-	auditRepo := store.NewAuditRepo(db)
+	// auditRepo/apiTokenRepo/webhookRepo were constructed once, up above
+	// (alongside setupAuth), and are reused here.
+	// T-1304: the per-guest guest-interior-inspector opt-in preference
+	// (app-owned UI state, off by default per guest).
+	guestInteriorToggleRepo := store.NewGuestInteriorToggleRepo(db)
 
 	// T-1505: QoS shape storage + the node-local tc/HTB gateway, mirroring
 	// nodeAgent's own real-vs-dev-sandbox split immediately above (a
@@ -457,7 +589,21 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Timers:            clusterTimers,
 		// T-1505: node-local QoS gateway (qos.shape.* ops) — daemon-level,
 		// no user ticket needed, exactly like Nodes above.
-		Qos:            qosGateway,
+		Qos: qosGateway,
+		// T-1401: the node-local WireGuard gateway (keygen on-node, sealed
+		// private key via the same session cipher, fixed-argv wg/wg-quick
+		// exec). Daemon-level, so wg rollback works on the unattended
+		// commit-confirm-timeout path too.
+		WG: newHostWGGateway(wgRepo, sessionCipher, localNode, logger),
+		// T-1401 Finding 1: seal a wg.peer.add op's preshared key at
+		// stage/create time with the same session cipher, so the plaintext PSK
+		// never lands in changesets.ops_json or a read response.
+		Sealer: sessionCipher,
+		// T-1401 Finding 2: resolve an existing tunnel's stored carrier so a
+		// carrier-less wg op (peer add/remove, delete, MTU-only update) on a
+		// mgmt-path tunnel is caught by the scheduling gate the same way the
+		// API interlock catches it.
+		WgCarriers:     wgReadSvc,
 		Snapshots:      snapshotRepo,
 		Blobs:          blobRepo,
 		Refresher:      refresher,
@@ -532,6 +678,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// host-local samplers feed the exact same *flow.Service/ring — no
 	// second storage path.
 	flowSvc, flowRepo, flowActors := setupFlows(cfg, db, graph, topoSvc, localNode, logger)
+	// T-1504: now that flowRepo exists, point the findings engine's
+	// service_traffic_on_wrong_network check at the real recent-samples
+	// source (see flowClassifyAdapter's own doc comment above).
+	flowClassifyAdapterVal.set(flowRepo, flowClassifier)
 
 	// T-1004: host-local flow sampling (conntrack/eBPF) — both strictly
 	// opt-in per node via [flows] conntrack_sampling_enabled/
@@ -553,6 +703,17 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if fwlogSource != nil {
 		fwLogReader = fwLogPeerReaderAdapter{src: fwlogSource}
 	}
+	// T-1301: the packet-capture coordinator — validates filters, clamps
+	// caps to the configured (un-overridable) ceilings, runs node-local
+	// captures via the scripted agent, fans multi-point captures out to peers
+	// via coordPeerClient, persists app-owned intent to capture_sessions, and
+	// audits start/stop. Its retention sweep (RunSweepLoop) and shutdown
+	// StopAll are registered/deferred below. peerCaptureClient is nil-safe:
+	// with no peer client the coordinator serves only its own node (the
+	// documented single-node case).
+	captureCoord := setupCapture(cfg, db, auditRepo, coordPeerClient, localNode, logger)
+	defer captureCoord.StopAll(context.Background())
+
 	peerSrv := peer.NewServer(peer.ServerOptions{
 		Secrets:       peerSecrets,
 		Reader:        realHost,
@@ -563,6 +724,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LLDPInstaller: realHost,
 		FirewallLog:   fwLogReader,
 		Flows:         flowPeerAdapter{repo: flowRepo},
+		Capture:       capturePeerAdapter{coord: captureCoord},
 		Version:       version,
 		Logger:        logger,
 	})
@@ -576,11 +738,21 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	var peerSnapshots api.PeerSnapshotSource
 	var lldpPeerInstaller api.PeerLLDPInstaller
 	var peerFlows api.PeerFlowSource
+	// T-1304: guestInteriorPeers backs GET /guests/{ref}/interior's lxc
+	// path for a guest whose node is a peer, not this daemon's own — the
+	// same nil-safe typed-interface pattern every other peerClient-backed
+	// Options field above uses.
+	var guestInteriorPeers api.PeerContainerSource
+	// peerConntrack backs GET /conntrack's cluster fan-out (T-1305), the
+	// same peerClient every other cluster-wide read route above uses.
+	var peerConntrack api.PeerConntrackSource
 	if peerClient != nil {
 		peerAudit = peerClient
 		peerSnapshots = peerClient
 		lldpPeerInstaller = peerClient
 		peerFlows = peerClient
+		guestInteriorPeers = peerClient
+		peerConntrack = peerClient
 	}
 
 	// T-404: GET /sdn/evpn/status fans FRR/BGP state across the cluster
@@ -606,6 +778,21 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Peers:     evpnPeers,
 		LocalNode: localNode,
 		SDN:       evpnSDN,
+	})
+
+	// T-1404: GET /ipv6/segments fans IPv6 RA/DHCPv6 observations across
+	// the cluster the same way evpnSvc above fans FRR/BGP state — same
+	// realHost/peerClient/localNode dependencies, same typed-nil-safety
+	// reasoning for ipv6Peers.
+	var ipv6Peers ipv6.PeerSource
+	if peerClient != nil {
+		ipv6Peers = peerClient
+	}
+	ipv6Svc := ipv6.NewService(ipv6.Config{
+		Host:      realHost,
+		Peers:     ipv6Peers,
+		LocalNode: localNode,
+		Graph:     graph,
 	})
 
 	// T-603: blueprints diff/instantiate against the same live inventory
@@ -683,28 +870,80 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		SDN:                  sdnSvc,
 		IPAM:                 ipamSvc,
 		EVPN:                 evpnSvc,
+		IPv6:                 ipv6Svc,
 		DHCP:                 dhcpAPISvc,
 		PVEGateways:          pveGatewayProvider{authSvc},
 		Protected:            changeSvc,
 		Firewall:             graph,
 		Blueprints:           blueprintSvc,
 		Spec:                 graph,
-		Simulator:            graph,
-		ProbeClients:         probeClientProvider{authSvc},
-		ProbeAudit:           auditRepo,
-		SimDivergence:        simDivergenceRepo,
+		// T-1102: pinned-spec pin/unpin, backed by the same repo driftSvc's
+		// spec_drift check reads (see pinnedSpecRepo's construction above).
+		SpecPin:      pinnedSpecRepo,
+		SpecPinAudit: auditRepo,
+		// T-1107: blueprint sharing bundles (docs/features/blueprints.md §5) —
+		// BlueprintSignersAudit reuses the same *store.AuditRepo every other
+		// audited route family in this Options literal (LLDPAudit, ProbeAudit)
+		// already shares.
+		BlueprintSigningKey:   blueprintSigningKey,
+		BlueprintTrust:        blueprintTrust,
+		BlueprintSignersAudit: auditRepo,
+		Simulator:             graph,
+		ProbeClients:          probeClientProvider{authSvc},
+		ProbeAudit:            auditRepo,
+		SimDivergence:         simDivergenceRepo,
 		// T-1505: shape-awareness for both simulate routes (a shaped-hop
 		// caveat) and GET /topology's shaping-active badge, plus the
 		// read-only GET /qos/shapes route — all backed by the same
 		// node-local store the qos.shape.* apply/rollback executor writes.
-		QosShapes:     qosReadSvc,
-		Qos:           qosReadSvc,
-		FwLog:         fwLogAPI,
-		Peer:          peerSrv,
-		PeerAudit:     peerAudit,
-		PeerSnapshots: peerSnapshots,
-		Flows:         flowRepo,
-		PeerFlows:     peerFlows,
+		QosShapes: qosReadSvc,
+		Qos:       qosReadSvc,
+		// T-1304: guest network interior inspector — GuestInteriorGraph
+		// reuses the same live graph Simulator/Firewall above already
+		// wire in; GuestInteriorHost reuses realHost (local lxc reads);
+		// GuestInteriorPeers reuses peerClient (peer lxc reads, nil-safe
+		// per guestInteriorPeers' own construction above); GuestInteriorIPAM
+		// reuses ipamConcrete (nil-safe — the same true-nil-interface-
+		// until-assigned pattern ipamSvc itself uses, since ipamConcrete
+		// may be a nil *ipam.Service).
+		GuestInteriorToggles: guestInteriorToggleRepo,
+		GuestInteriorGraph:   graph,
+		GuestInteriorHost:    realHost,
+		GuestInteriorPeers:   guestInteriorPeers,
+		GuestInteriorIPAM:    guestInteriorIPAM,
+		// T-1403: Edge & NAT cockpit — EdgeInterfaces reuses changeSvc
+		// (Changesets' own ReadRawInterfaces), EdgeGraph reuses the same
+		// live graph, EdgeIPAM reuses ipamConcrete (nil-safe, same pattern
+		// as GuestInteriorIPAM above).
+		EdgeInterfaces: changeSvc,
+		EdgeGraph:      graph,
+		EdgeIPAM:       edgeIPAM,
+		// T-1406: ingress visibility — IngressTargets is the app-owned
+		// operator-configured target list, IngressSecretCipher reuses the
+		// identical session-secret cipher AlertSecretCipher/
+		// WebhookSecretCipher above already wire in, and
+		// IngressDiscoverers is the default HAProxy/nginx/Caddy/Traefik
+		// registry (the seam T-1702's plugin SDK later extends).
+		IngressTargets:      ingressTargetRepo,
+		IngressSecretCipher: sessionCipher,
+		IngressDiscoverers:  ingress.NewDefaultRegistry(nil),
+		FwLog:               fwLogAPI,
+		Peer:                peerSrv,
+		PeerAudit:           peerAudit,
+		PeerSnapshots:       peerSnapshots,
+		Flows:               flowRepo,
+		PeerFlows:           peerFlows,
+		FlowClassifier:      flowClassifier,
+		LatMesh:             latMeshSvc,
+		MTUProbe:            mtuProbeSvc,
+		WireGuard:           wgReadSvc,
+		WgCarriers:          wgReadSvc,
+		Wan:                 wanSvc,
+		WanAudit:            auditRepo,
+		Captures:            captureCoord,
+		Conntrack:           realHost,
+		PeerConntrack:       peerConntrack,
+		ConntrackGuests:     conntrackGuests,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
@@ -714,6 +953,27 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LLDPPeerInstaller: lldpPeerInstaller,
 		LLDPAudit:         auditRepo,
 		LocalNode:         localNode,
+		// T-1104: automation tokens + webhook registrations, both audited
+		// via the same shared auditRepo every other route in this daemon
+		// uses.
+		Tokens:              apiTokenRepo,
+		TokenAudit:          auditRepo,
+		Webhooks:            webhookRepo,
+		WebhookSecretCipher: sessionCipher,
+		// T-1501: Kubernetes overlay mapping engine (read-only forever).
+		// K8sClusters/K8sAudit reuse the same *store.AuditRepo/db
+		// everything else in this file wires in; K8sSecretCipher reuses
+		// the identical session-secret cipher AlertSecretCipher/
+		// IngressSecretCipher-shaped fields elsewhere use;
+		// K8sGraph is the same live *inventory.Graph every other read
+		// path shares; K8sIPAM is nil-safe (k8sIPAMSrc above), only
+		// narrowing node<->guest correlation, never failing the route.
+		K8sClusters:     k8sClusterRepo,
+		K8sSecretCipher: sessionCipher,
+		K8sPoller:       k8sPoller,
+		K8sGraph:        graph,
+		K8sIPAM:         k8sIPAMSrc,
+		K8sAudit:        auditRepo,
 	})
 
 	srv := &http.Server{
@@ -816,6 +1076,33 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	for _, actor := range hostSampleActors {
 		g.add(actor)
 	}
+	// T-1303: the latency & loss mesh's own probe loop and prune loop
+	// (setupLatMesh's doc comment) — always on, the same "always registered,
+	// each actor degrades independently" treatment flowActors/
+	// hostSampleActors above get.
+	for _, actor := range latMeshActors {
+		g.add(actor)
+	}
+	// T-1306: the path MTU prober's own probe loop (setupMTUProbe's doc
+	// comment) — always on, its own coarser interval; no prune-loop actor
+	// (current-state only, no SQLite ring — internal/mtuprobe's doc.go).
+	for _, actor := range mtuProbeActors {
+		g.add(actor)
+	}
+	// T-1405: the WAN health probe loop and prune loop (setupWan's doc
+	// comment) — always on, same "always registered, each actor degrades
+	// independently" treatment every other probe-loop actor above gets; a
+	// node with no configured WAN targets simply has nothing to probe.
+	for _, actor := range wanActors {
+		g.add(actor)
+	}
+	// T-1301: the capture retention sweep — deletes per-session .pcap files
+	// past their retention_hours (including files orphaned by a daemon
+	// restart mid-capture), on the same owned-goroutine/shutdown-path pattern
+	// every other prune loop above follows.
+	g.add(func(ctx context.Context) error {
+		return captureCoord.RunSweepLoop(ctx, captureSweepInterval)
+	})
 
 	logger.Info("vnproxd starting",
 		"version", version,

@@ -1,4 +1,4 @@
--- 0011_qos.sql — T-1505 "QoS & traffic shaping": app-owned intent for a
+-- 0020_qos.sql — T-1505 "QoS & traffic shaping": app-owned intent for a
 -- bridge-level tc/HTB shape. Per CLAUDE.md's storage rule / docs/
 -- architecture.md §7's new-domain invariant, vnprox persists intent +
 -- audit only here — the live tc/HTB state on the node itself stays

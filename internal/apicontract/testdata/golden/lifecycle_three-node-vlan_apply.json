@@ -1,0 +1,20 @@
+{
+  "confirmDeadline": 0,
+  "id": "\u003cid\u003e",
+  "title": "apicontract: add vmbr50",
+  "author": "root@pam",
+  "status": "awaiting_confirm",
+  "ops": [
+    {
+      "op": "bridge.create",
+      "target": "bridge:pve1:vmbr50",
+      "params": {
+        "comments": "created by internal/apicontract"
+      }
+    }
+  ],
+  "findings": [],
+  "createdAt": 0,
+  "updatedAt": 0,
+  "touchesMgmtPath": false
+}
