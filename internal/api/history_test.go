@@ -115,6 +115,41 @@ func TestHistoryEventsRoute_MergesAndSortsBothKinds(t *testing.T) {
 	}
 }
 
+// TestHistoryEventsRoute_ServiceClassOnFindingEntries covers T-1504 AC2's
+// GET /history/events half: a service_traffic_on_wrong_network finding's
+// timeline entry carries its serviceClass (parsed from the finding's own
+// id); every other finding's entry omits the field.
+func TestHistoryEventsRoute_ServiceClassOnFindingEntries(t *testing.T) {
+	findingEvents := &fakeHistoryFindingEventsSource{rows: []store.FindingEvent{
+		{At: 1000, FindingID: "flow:service_traffic_on_wrong_network|ceph-public|vlan20", Transition: "new"},
+		{At: 2000, FindingID: "health:corosync_link_degraded|pve1|ring0", Transition: "new"},
+	}}
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fakeAuth{authenticated: true}, Topology: fakeTopologyService{},
+		HistoryFindingEvents: findingEvents,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/history/events", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var body historyEventsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(body.Items) != 2 {
+		t.Fatalf("items = %+v, want 2", body.Items)
+	}
+	if body.Items[0].ServiceClass != "ceph-public" {
+		t.Errorf("items[0].ServiceClass = %q, want ceph-public", body.Items[0].ServiceClass)
+	}
+	if body.Items[1].ServiceClass != "" {
+		t.Errorf("items[1].ServiceClass = %q, want empty (not a service_traffic_on_wrong_network finding)", body.Items[1].ServiceClass)
+	}
+}
+
 func TestHistoryEventsRoute_OneSourceNilStillWorks(t *testing.T) {
 	findingEvents := &fakeHistoryFindingEventsSource{rows: []store.FindingEvent{
 		{At: 1000, FindingID: "f1", Transition: "new"},

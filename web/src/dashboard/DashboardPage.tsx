@@ -7,11 +7,17 @@
 // tile deep-links to its owning page/surface (AC3), and every tile has an
 // explicit "all clear"/empty state rather than ever rendering blank
 // (AC4) — see DashboardTile.tsx's shared shell for that contract.
+//
+// ServiceClassTile (T-1504) extends this set: per-serviceClass bytes/sec
+// breakdown over GET /flows' retained window (migration/backup/Ceph/
+// corosync attribution) — same "existing route, client-side computation"
+// convention every other tile here follows.
 import { FindingsSeverityTile } from "./FindingsSeverityTile";
 import { DriftStatusTile } from "./DriftStatusTile";
 import { PendingChangesetsTile } from "./PendingChangesetsTile";
 import { MgmtRedundancyTile } from "./MgmtRedundancyTile";
 import { TopTalkersTile } from "./TopTalkersTile";
+import { ServiceClassTile } from "./ServiceClassTile";
 import { RecentAuditTile } from "./RecentAuditTile";
 
 export function DashboardPage() {
@@ -21,7 +27,8 @@ export function DashboardPage() {
         <h1 className="text-xl font-semibold">Home</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Network at a glance: open findings, drift, pending changesets, management-path redundancy, the busiest
-          bridge&apos;s top talkers, and recent audit activity. Every tile is read-only — click through to act.
+          bridge&apos;s top talkers, service-network traffic, and recent audit activity. Every tile is read-only —
+          click through to act.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -30,6 +37,7 @@ export function DashboardPage() {
         <PendingChangesetsTile />
         <MgmtRedundancyTile />
         <TopTalkersTile />
+        <ServiceClassTile />
         <RecentAuditTile />
       </div>
     </div>

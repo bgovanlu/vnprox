@@ -20,6 +20,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/ingress"
 )
 
@@ -313,6 +314,13 @@ type Options struct {
 	Conntrack       ConntrackLocalSource
 	PeerConntrack   PeerConntrackSource
 	ConntrackGuests ConntrackGuestResolver
+	// FlowClassifier is T-1504's optional service-network attribution
+	// (internal/flow.Classifier): when set, every GET /flows item carries
+	// an additive serviceClass field. Nil (no NetworkSource registered/no
+	// classifier wired, e.g. most tests) simply omits the field on every
+	// item — the same degraded-mode treatment every other optional Options
+	// field gets.
+	FlowClassifier *flow.Classifier
 	// DocExport backs T-605's GET /export/doc (config documentation
 	// export); nil skips mounting the route, matching every other optional
 	// Options field.
@@ -404,7 +412,6 @@ func NewRouter(opts Options) http.Handler {
 		mountSimulateRoutes(r, opts.Simulator, opts.GuestInteriorIPAM, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountGuestInteriorRoutes(r, opts.GuestInteriorToggles, opts.GuestInteriorGraph, opts.ProbeClients, opts.GuestInteriorHost, opts.GuestInteriorPeers, opts.GuestInteriorIPAM, opts.LocalNode, opts.ProbeAudit, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
-		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
 		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
 		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
 		mountWireGuardRoutes(r, opts.WireGuard, opts.Auth)
@@ -412,6 +419,7 @@ func NewRouter(opts Options) http.Handler {
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)
 		mountConntrackRoutes(r, opts.Conntrack, opts.PeerConntrack, opts.ConntrackGuests, opts.LocalNode, opts.Auth)
 		mountDiagnoseRoutes(r, opts, opts.Auth)
+		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows, opts.FlowClassifier)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)

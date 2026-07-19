@@ -29,6 +29,13 @@ const (
 	// continuous probe of operator-configured external reference targets —
 	// wan_degraded, the "it's the ISP, not the cluster" signal.
 	SourceWan Source = "wan"
+	// SourceFlow (T-1504) marks a finding computed from internal/flow's
+	// service-network attribution (internal/flow.Classifier) — its own
+	// top-level source (like SourceProbe), not "health", since it is fed
+	// by flow-sample metadata rather than the inventory graph or a polled
+	// host/PVE seam. Currently the sole producer is
+	// service_traffic_on_wrong_network (health_serviceclass.go).
+	SourceFlow Source = "flow"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

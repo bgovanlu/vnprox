@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
@@ -29,8 +30,11 @@ func toPeerFlowFilter(f store.FlowFilter) peer.FlowFilter {
 }
 
 // fetchClusterFlows merges the local node's flow_samples ring with every
-// reachable peer's (docs/architecture.md §7), for GET /flows.
-func fetchClusterFlows(ctx context.Context, local FlowLocalSource, peers PeerFlowSource, filter store.FlowFilter, cursor string, limit int) ([]flowRecordResponse, string, bool, []string, error) {
+// reachable peer's (docs/architecture.md §7), for GET /flows. classifier is
+// T-1504's optional serviceClass attribution, threaded through to every
+// item exactly like toFlowRecordResponse/peerFlowRecordToResponse's own nil-
+// safe convention.
+func fetchClusterFlows(ctx context.Context, local FlowLocalSource, peers PeerFlowSource, filter store.FlowFilter, cursor string, limit int, classifier *flow.Classifier) ([]flowRecordResponse, string, bool, []string, error) {
 	nodes, byNode, discoveryFailed := clusterSources(ctx, peers)
 	peerFilter := toPeerFlowFilter(filter)
 
@@ -42,7 +46,7 @@ func fetchClusterFlows(ctx context.Context, local FlowLocalSource, peers PeerFlo
 			}
 			out := make([]keyed[flowRecordResponse], len(samples))
 			for i, s := range samples {
-				out[i] = keyed[flowRecordResponse]{item: toFlowRecordResponse(s), at: s.At, tie: strconv.FormatInt(s.ID, 10)}
+				out[i] = keyed[flowRecordResponse]{item: toFlowRecordResponse(s, classifier), at: s.At, tie: strconv.FormatInt(s.ID, 10)}
 			}
 			return out, next, nil
 		}
@@ -56,7 +60,7 @@ func fetchClusterFlows(ctx context.Context, local FlowLocalSource, peers PeerFlo
 		}
 		out := make([]keyed[flowRecordResponse], len(recs))
 		for i, rec := range recs {
-			out[i] = keyed[flowRecordResponse]{item: peerFlowRecordToResponse(rec), at: rec.At, tie: strconv.FormatInt(rec.ID, 10)}
+			out[i] = keyed[flowRecordResponse]{item: peerFlowRecordToResponse(rec, classifier), at: rec.At, tie: strconv.FormatInt(rec.ID, 10)}
 		}
 		return out, next, nil
 	}
