@@ -60,7 +60,13 @@ type Config struct {
 	// its LatMeshHeatmap method), backing the path_latency_degraded/
 	// path_loss health checks. Nil skips both checks entirely, same
 	// degradation as every other optional Config field.
-	LatMesh         LatMeshProvider
+	LatMesh LatMeshProvider
+	// MTU is T-1306's path MTU prober seam (*mtuprobe.Service via its
+	// MeasuredUnderlayMTU method), tightening vxlan_underlay_mtu's
+	// evaluation with a measured reading when one exists. Nil falls back to
+	// that check's original T-803 observed-MTU behavior, same degradation
+	// as every other optional Config field.
+	MTU             MTUProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -89,6 +95,7 @@ type Engine struct {
 	webhooksSvc WebhookProvider
 	probeSvc    ProbeProvider
 	latMeshSvc  LatMeshProvider
+	mtuSvc      MTUProvider
 	serviceDB   *debouncer
 	services    *serviceStatusStore
 	onChange    func(int)
@@ -150,6 +157,7 @@ func New(cfg Config) *Engine {
 		webhooksSvc: cfg.Webhooks,
 		probeSvc:    cfg.Probe,
 		latMeshSvc:  cfg.LatMesh,
+		mtuSvc:      cfg.MTU,
 		log:         logger,
 		now:         now,
 		onChange:    cfg.OnChange,
@@ -217,7 +225,7 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkErrorDropRate(snap, e.metricsSvc, e.errDropDB, e.thresholds)...)
 	out = append(out, checkServiceDown(e.services, e.serviceDB)...)
 	out = append(out, checkMgmtSinglePath(e.mgmtSvc)...)
-	out = append(out, checkVxlanUnderlayMTU(snap, e.vxlanMTUDB)...)
+	out = append(out, checkVxlanUnderlayMTU(snap, e.vxlanMTUDB, e.mtuSvc)...)
 	out = append(out, checkOrphanVnet(snap)...)
 	out = append(out, checkEvpnGwInconsistency(snap)...)
 	out = append(out, checkTrunkUnusedVlans(snap)...)
