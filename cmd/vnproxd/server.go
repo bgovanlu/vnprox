@@ -375,6 +375,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// See serviceclassify.go's doc comment for the full picture.
 	flowClassifier := setupFlowClassifier(logger)
 	flowClassifyAdapterVal := &flowClassifyAdapter{}
+	// T-1503: Ceph network awareness — reads PVE's own Ceph public/cluster
+	// network declaration + OSD placement once (sdnPVEClient, already
+	// available above), registers the two CIDRs with flowClassifier
+	// (T-1503 supplies T-1504's classifier, per classify.go's doc comment),
+	// and returns the CephProvider findings.Config.Ceph wires in below —
+	// see cephwire.go's own doc comment for the full picture.
+	cephAdapter := setupCeph(ctx, sdnPVEClient, graph, flowClassifier, logger)
 	// T-1005: alert_rules/alert_deliveries repos + the webhook Notifier,
 	// composed alongside PVE's own notification-target hook via
 	// multiNotifier — independent delivery paths, per that task's card, not
@@ -447,7 +454,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// overlay reads back the api.Options.K8sPoller routes further down.
 	k8sClusterRepo := store.NewK8sClusterRepo(db)
 	k8sPoller := k8s.NewPoller()
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -947,6 +954,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		FlowClassifier:      flowClassifier,
 		LatMesh:             latMeshSvc,
 		MTUProbe:            mtuProbeSvc,
+		Ceph:                cephAdapter,
 		WireGuard:           wgReadSvc,
 		WgCarriers:          wgReadSvc,
 		Wan:                 wanSvc,

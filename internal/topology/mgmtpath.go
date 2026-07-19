@@ -83,7 +83,7 @@ func ResolveMgmtPaths(snap inventory.Snapshot, refs map[string][]MgmtRoleRef) ma
 	for node, roleRefs := range refs {
 		list := make([]MgmtPath, 0, len(roleRefs))
 		for _, rr := range roleRefs {
-			path, nics := walkMgmtPath(snap, rr.Ref)
+			path, nics := ResolvePhysicalPath(snap, rr.Ref)
 			list = append(list, MgmtPath{
 				Ref:       rr.Ref,
 				Roles:     append([]MgmtRole(nil), rr.Roles...),
@@ -97,13 +97,18 @@ func ResolveMgmtPaths(snap inventory.Snapshot, refs map[string][]MgmtRoleRef) ma
 	return out
 }
 
-// walkMgmtPath resolves carrier's physical path: a VLAN sub-interface walks
-// to its parent link (then continues from there); a bridge walks to each of
-// its resolved Ports (bond or bare PhysNic); a bond walks to each of its
-// declared/runtime slaves. path is every entity ref traversed (the
-// "mgmt-path" badge targets); nics is the subset that are terminal PhysNics
-// (redundancy is counted over exactly these).
-func walkMgmtPath(snap inventory.Snapshot, carrier inventory.Ref) (path []inventory.Ref, nics []inventory.Ref) {
+// ResolvePhysicalPath resolves carrier's physical path: a VLAN sub-interface
+// walks to its parent link (then continues from there); a bridge walks to
+// each of its resolved Ports (bond or bare PhysNic); a bond walks to each of
+// its declared/runtime slaves. path is every entity ref traversed (the
+// "mgmt-path" badge targets, ResolveMgmtPaths' own Path field); nics is the
+// subset that are terminal PhysNics (redundancy is counted over exactly
+// these). Exported (T-1503) so other packages needing "which bond/PhysNic
+// does this carrier's traffic ultimately ride" — internal/ceph's OSD↔bond
+// attribution — share this one resolver rather than re-implementing the
+// bond/VLAN-transitive walk a second time; ResolveMgmtPaths below is its
+// original (and, until T-1503, only) caller.
+func ResolvePhysicalPath(snap inventory.Snapshot, carrier inventory.Ref) (path []inventory.Ref, nics []inventory.Ref) {
 	visited := map[inventory.Ref]bool{carrier: true}
 
 	var walk func(ref inventory.Ref)

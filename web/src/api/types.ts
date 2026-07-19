@@ -2451,6 +2451,51 @@ export interface MTUProbeResults {
   items: MTUProbeResult[];
 }
 
+// --- Ceph network awareness (GET /ceph/status; internal/api/ceph.go, T-1503) --
+
+/** One OSD-hosting node's resolved physical path for Ceph's public/cluster
+ * networks — docs/api.md's Ceph section, `internal/ceph.NodeAttribution`.
+ * `*Carrier`/`*RidingOn`/`*Path` entries are `inventory.Ref` strings,
+ * omitted (never a guess) when that network's CIDR isn't declared or no
+ * interface on this node carries a matching address. `*RidingOn` is the
+ * single bond ref this network's traffic rides if bonded, or the sole bare
+ * terminal NIC ref if not — the badge target the Ceph map overlay paints. */
+export interface CephNodeAttribution {
+  node: string;
+  publicCarrier?: string;
+  publicPath?: string[];
+  publicRidingOn?: string;
+  publicMtu?: number;
+  clusterCarrier?: string;
+  clusterPath?: string[];
+  clusterRidingOn?: string;
+  clusterMtu?: number;
+}
+
+/** One Ceph OSD plus the bond/NIC ref its node's public/cluster traffic
+ * rides (denormalized from the owning `CephNodeAttribution`, "which OSDs
+ * ride which bonds") — `internal/ceph.OSDAttribution`. */
+export interface CephOSD {
+  ref: string;
+  id: number;
+  node: string;
+  device?: string;
+  up: boolean;
+  in: boolean;
+  publicBond?: string;
+  clusterBond?: string;
+}
+
+/** GET /ceph/status response — `internal/ceph.Overlay`. Both network CIDRs
+ * are omitted on a cluster with no Ceph installed at all (never an error;
+ * `nodes`/`osds` are then both empty). */
+export interface CephOverlay {
+  publicNetwork?: string;
+  clusterNetwork?: string;
+  nodes: CephNodeAttribution[];
+  osds: CephOSD[];
+}
+
 // --- Conntrack (T-1305 backend / frontend; docs/api.md's "Conntrack"
 // section + internal/api/conntrack.go's conntrackEntryResponse) -----------
 

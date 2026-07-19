@@ -1,0 +1,146 @@
+# corosync-shared-link.yaml (T-1503) — the "ceph_corosync_shared_link"
+# footgun: Ceph's cluster network was never given its own dedicated bond —
+# its address lives on the same mgmt bridge (vmbr0/bond0) that carries the
+# node's corosync ring address, so replication traffic and the cluster's
+# quorum heartbeat contend for the same physical link. Ceph public traffic
+# still rides its own dedicated bond (bond1/vmbr1), isolating this fixture
+# to exactly the one footgun under test — internal/ceph's own tests supply
+# the corosync ring address (10.10.0.1x, vmbr0's own mgmt address) the same
+# way cmd/vnproxd's setupFlowClassifier sources it in production: from
+# host.CorosyncConfig (corosync.conf), not from this fixture's `corosync:`
+# block (which models corosync-cfgtool's live *ring status*, a different
+# T-803 concern — see internal/pvemock/corosync_render.go's doc comment).
+cluster:
+  name: pve-ceph-corosync-shared
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.10.0.11
+      online: true
+    - name: pve2
+      ip: 10.10.0.12
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42
+
+ceph:
+  public_network: 10.20.0.0/24
+  cluster_network: 10.30.0.0/24
+
+nodes:
+  pve1:
+    ceph_osds:
+      - {id: 0, device: /dev/sdb, up: true, in: true}
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno2, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno3, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: eno4, type: eth, method: manual, autostart: true, mtu: 9000}
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+        comments: "mgmt/corosync + Ceph cluster, sharing one link"
+      - iface: bond1
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 9000
+        slaves: "eno3 eno4"
+        bond_mode: 802.3ad
+        comments: "Ceph public, dedicated"
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.10.0.11/24
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        comments: "mgmt/corosync AND Ceph cluster (10.30.0.0/24) share this bridge"
+      - iface: vmbr0.30
+        type: vlan
+        method: static
+        address: 10.30.0.11/24
+        autostart: true
+        mtu: 1500
+        vlan_raw_device: vmbr0
+        vlan_id: 30
+        comments: "Ceph cluster network, riding the mgmt/corosync bond"
+      - iface: vmbr1
+        type: bridge
+        method: static
+        address: 10.20.0.11/24
+        autostart: true
+        mtu: 9000
+        bridge_ports: bond1
+        comments: "Ceph public"
+    links:
+      eno1: {mac: "bc:24:11:01:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno2: {mac: "bc:24:11:01:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno3: {mac: "bc:24:11:01:00:03", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}
+      eno4: {mac: "bc:24:11:01:00:04", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}
+  pve2:
+    ceph_osds:
+      - {id: 1, device: /dev/sdb, up: true, in: true}
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno2, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno3, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: eno4, type: eth, method: manual, autostart: true, mtu: 9000}
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+        comments: "mgmt/corosync + Ceph cluster, sharing one link"
+      - iface: bond1
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 9000
+        slaves: "eno3 eno4"
+        bond_mode: 802.3ad
+        comments: "Ceph public, dedicated"
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.10.0.12/24
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        comments: "mgmt/corosync AND Ceph cluster (10.30.0.0/24) share this bridge"
+      - iface: vmbr0.30
+        type: vlan
+        method: static
+        address: 10.30.0.12/24
+        autostart: true
+        mtu: 1500
+        vlan_raw_device: vmbr0
+        vlan_id: 30
+        comments: "Ceph cluster network, riding the mgmt/corosync bond"
+      - iface: vmbr1
+        type: bridge
+        method: static
+        address: 10.20.0.12/24
+        autostart: true
+        mtu: 9000
+        bridge_ports: bond1
+        comments: "Ceph public"
+    links:
+      eno1: {mac: "bc:24:11:02:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno2: {mac: "bc:24:11:02:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno3: {mac: "bc:24:11:02:00:03", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}
+      eno4: {mac: "bc:24:11:02:00:04", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}

@@ -90,6 +90,15 @@ func (srv *Server) buildRouter() chi.Router {
 
 		api.Get("/cluster/status", srv.requirePrivilege(PrivSysAudit, srv.handleClusterStatus))
 		api.Get("/cluster/resources", srv.requirePrivilege(PrivSysAudit, srv.handleClusterResources))
+		// T-1503: Ceph read-only awareness — cluster-wide public/cluster
+		// network config plus per-node OSD placement, gated on the same
+		// PrivSysAudit read privilege every other read-only cluster/node
+		// route above uses (no Ceph-specific privilege exists in real PVE
+		// either; Ceph's own admin surface uses Sys.Modify, which this mock
+		// deliberately never grants a route for — see ceph.go's doc
+		// comment: PVE's own Ceph tooling keeps ownership).
+		api.Get("/cluster/ceph/config", srv.requirePrivilege(PrivSysAudit, srv.handleCephConfig))
+		api.Get("/nodes/{node}/ceph/osd", srv.requirePrivilege(PrivSysAudit, srv.handleCephOSDs))
 
 		api.Get("/nodes/{node}/network", srv.requirePrivilege(PrivSysAudit, srv.handleNetworkList))
 		api.Post("/nodes/{node}/network", srv.requirePrivilege(PrivSysModify, srv.handleNetworkCreate))

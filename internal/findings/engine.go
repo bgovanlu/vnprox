@@ -85,7 +85,12 @@ type Config struct {
 	Flow FlowProvider
 	// K8s is T-1501's read-only Kubernetes overlay seam (adapt_k8s.go),
 	// backing k8s_nodeport_exposed_without_fw_rule. Nil skips that producer.
-	K8s             K8sProvider
+	K8s K8sProvider
+	// Ceph is T-1503's read-only Ceph network-awareness seam
+	// (health_ceph.go), backing ceph_corosync_shared_link/
+	// ceph_cluster_mtu_mismatch/ceph_single_nic. Nil skips all three checks,
+	// same degradation as every other optional Config field.
+	Ceph            CephProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -119,6 +124,8 @@ type Engine struct {
 	wanSvc           WanProvider
 	flowSvc          FlowProvider
 	k8sSvc           K8sProvider
+	cephSvc          CephProvider
+	cephDB           *debouncer
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
 	notified         map[string]string
@@ -213,6 +220,8 @@ func New(cfg Config) *Engine {
 		flowSvc:          cfg.Flow,
 		serviceTrafficDB: newDebouncer(),
 		k8sSvc:           cfg.K8s,
+		cephSvc:          cfg.Ceph,
+		cephDB:           newDebouncer(),
 	}
 }
 
@@ -269,6 +278,7 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkEvpnGwInconsistency(snap)...)
 	out = append(out, checkTrunkUnusedVlans(snap)...)
 	out = append(out, checkCorosyncLinkDegraded(e.corosyncSvc, e.corosyncDB)...)
+	out = append(out, checkCephFootguns(e.cephSvc, snap, e.cephDB)...)
 	out = append(out, checkFwRuleUnused(e.fwAnalytics, now)...)
 	out = append(out, checkScheduleMissed(e.scheduleSvc)...)
 	out = append(out, checkPathLatencyDegraded(e.latMeshSvc, e.latRttDB, e.thresholds)...)

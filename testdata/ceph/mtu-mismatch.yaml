@@ -1,0 +1,78 @@
+# mtu-mismatch.yaml (T-1503) — the "ceph_cluster_mtu_mismatch" footgun:
+# both OSD-hosting nodes have a dedicated, bonded Ceph cluster network
+# (isolated from mgmt/corosync and from Ceph public, exactly like
+# clean.yaml), but pve1's cluster-network bond is jumbo (mtu 9000) while
+# pve2's identically-named bond was never raised past the default (mtu
+# 1500) — a common "we jumbo'd one node and forgot the other" drift.
+cluster:
+  name: pve-ceph-mtu-mismatch
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.10.0.11
+      online: true
+    - name: pve2
+      ip: 10.10.0.12
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42
+
+ceph:
+  public_network: 10.20.0.0/24
+  cluster_network: 10.30.0.0/24
+
+nodes:
+  pve1:
+    ceph_osds:
+      - {id: 0, device: /dev/sdb, up: true, in: true}
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno2, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno3, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: eno4, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: eno5, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: eno6, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: bond0, type: bond, method: manual, autostart: true, mtu: 1500, slaves: "eno1 eno2", bond_mode: 802.3ad, comments: "mgmt/corosync"}
+      - {iface: bond1, type: bond, method: manual, autostart: true, mtu: 9000, slaves: "eno3 eno4", bond_mode: 802.3ad, comments: "Ceph public"}
+      - {iface: bond2, type: bond, method: manual, autostart: true, mtu: 9000, slaves: "eno5 eno6", bond_mode: 802.3ad, comments: "Ceph cluster, jumbo"}
+      - {iface: vmbr0, type: bridge, method: static, address: 10.10.0.11/24, autostart: true, mtu: 1500, bridge_ports: bond0}
+      - {iface: vmbr1, type: bridge, method: static, address: 10.20.0.11/24, autostart: true, mtu: 9000, bridge_ports: bond1}
+      - {iface: vmbr2, type: bridge, method: static, address: 10.30.0.11/24, autostart: true, mtu: 9000, bridge_ports: bond2, comments: "Ceph cluster, jumbo on pve1"}
+    links:
+      eno1: {mac: "bc:24:11:01:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno2: {mac: "bc:24:11:01:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno3: {mac: "bc:24:11:01:00:03", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}
+      eno4: {mac: "bc:24:11:01:00:04", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}
+      eno5: {mac: "bc:24:11:01:00:05", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}
+      eno6: {mac: "bc:24:11:01:00:06", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}
+  pve2:
+    ceph_osds:
+      - {id: 1, device: /dev/sdb, up: true, in: true}
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno2, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno3, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: eno4, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: eno5, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: eno6, type: eth, method: manual, autostart: true, mtu: 1500}
+      - {iface: bond0, type: bond, method: manual, autostart: true, mtu: 1500, slaves: "eno1 eno2", bond_mode: 802.3ad, comments: "mgmt/corosync"}
+      - {iface: bond1, type: bond, method: manual, autostart: true, mtu: 9000, slaves: "eno3 eno4", bond_mode: 802.3ad, comments: "Ceph public"}
+      - {iface: bond2, type: bond, method: manual, autostart: true, mtu: 1500, slaves: "eno5 eno6", bond_mode: 802.3ad, comments: "Ceph cluster, never jumbo'd"}
+      - {iface: vmbr0, type: bridge, method: static, address: 10.10.0.12/24, autostart: true, mtu: 1500, bridge_ports: bond0}
+      - {iface: vmbr1, type: bridge, method: static, address: 10.20.0.12/24, autostart: true, mtu: 9000, bridge_ports: bond1}
+      - {iface: vmbr2, type: bridge, method: static, address: 10.30.0.12/24, autostart: true, mtu: 1500, bridge_ports: bond2, comments: "Ceph cluster, still default MTU on pve2"}
+    links:
+      eno1: {mac: "bc:24:11:02:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno2: {mac: "bc:24:11:02:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno3: {mac: "bc:24:11:02:00:03", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}
+      eno4: {mac: "bc:24:11:02:00:04", driver: igb, speed_mbps: 25000, duplex: full, link_up: true}
+      eno5: {mac: "bc:24:11:02:00:05", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}
+      eno6: {mac: "bc:24:11:02:00:06", driver: igb, speed_mbps: 10000, duplex: full, link_up: true}

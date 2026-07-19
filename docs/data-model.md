@@ -45,6 +45,11 @@ type Ref struct {
                 // "vf" (T-1506: an SR-IOV virtual function's own identity —
                 // "<pfName>/vf<index>" — not a merge/provenance-tracked
                 // graph entity itself, see PhysNic.sriovVFs below)
+                // "ceph-osd" (T-1503: a Ceph OSD's own identity — "osd<id>"
+                // scoped to its hosting node — same "has a Ref, never
+                // itself graph-tracked" pattern as "vf" above; internal/ceph
+                // computes its bond attribution live against the graph
+                // rather than ingesting OSDs as a collector-owned entity)
     Node string // "" for cluster-scoped entities (SDN, cluster firewall)
     ID   string // stable within (Kind,Node), e.g. "vmbr0", "eno1", "zone1/vnet1"
 }
@@ -459,3 +464,35 @@ Keyed by `ref` (one row per guest, following `annotations`' ref-keyed shape rath
 `ingress_targets` (`internal/store/migrations/0017_ingress_targets.sql`) holds **app-owned intent only** — which reverse-proxy status endpoints to poll, and how to authenticate to them — per this doc's top-level rule and `docs/architecture.md` §7's new-domain invariant. A target's own discovered state (its currently configured routes/backends) is never shadow-copied here: `GET /ingress/status` (docs/api.md's Ingress visibility section) calls `internal/ingress.IngressDiscoverer.Discover` fresh against every row on every request. There is no changeset op group for this table — adding/removing a discovery target doesn't change any network config, so it is an ordinary CRUD route (`GET/POST/DELETE /ingress/targets`) audited as `ingress.target_add`/`ingress.target_remove`, the same non-changeset-managed shape `alert_rules`/`webhooks` already use for their own operator-configured, non-network-mutating settings.
 
 `credential_enc` is the same **AES-256-GCM** sealed form `sessions.pve_ticket_enc` / `alert_rules.target_secret_enc` / `wireguard_tunnels.private_key_enc` all use (`internal/store.SessionCipher`, not a second cipher), `NULL` when a target's status endpoint needs no credential. `kind` selects which registered `internal/ingress.IngressDiscoverer` implementation (`haproxy`\|`nginx`\|`caddy`\|`traefik`) polls that row — the seam Phase 17's plugin SDK (T-1702) is expected to extend with additional `kind` values with no schema change here. Discovery iterates exactly this table: a target the operator never added is never contacted, and there is no network-range scan anywhere in `internal/ingress`.
+
+## 11. Ceph network awareness (`internal/ceph`, T-1503)
+
+Not app-owned data at all — **no new SQLite table**. Ceph's public/cluster network CIDRs and OSD placement are PVE's own knowledge (`GET /cluster/ceph/config`, `GET /nodes/{node}/ceph/osd`, read live via the existing `internal/pve.Client` — no new credentials), re-projected fresh against the live inventory graph on every `GET /ceph/status` call (`internal/ceph.Project`, pure and cheap — nothing here is cached as authoritative, per `docs/architecture.md` §7's new-domain invariant). **Read-only forever**: no `ceph.*` changeset op exists anywhere in `internal/change` (§3's op-group table), and no write-scoped Ceph API client exists anywhere in this codebase — PVE's own Ceph tooling (`pveceph`, the GUI's Ceph panel) keeps sole ownership of Ceph configuration.
+
+```go
+type OSD struct {
+    Ref            inventory.Ref // Kind "ceph-osd", "osd<id>" — see §1's Ref.Kind enum
+    Device         string
+    Node           string
+    ID             int
+    Up, In         bool
+}
+
+type NodeAttribution struct { // one entry per node hosting >=1 OSD
+    Node                                                 string
+    PublicCarrier, ClusterCarrier                        inventory.Ref // the Bridge/VlanIface whose address falls in the declared CIDR — zero if unresolved
+    PublicPath, ClusterPath                               []inventory.Ref // carrier -> ... -> terminal PhysNics (internal/topology.ResolvePhysicalPath, reused not re-implemented)
+    PublicRidingOn, ClusterRidingOn                        inventory.Ref // the bond (if bonded) or sole bare NIC (if not) — zero if ambiguous
+    PublicMTU, ClusterMTU                                  int
+}
+
+type OSDAttribution struct { OSD OSD; PublicBond, ClusterBond inventory.Ref } // denormalized per OSD, "which OSDs ride which bonds"
+
+type Overlay struct {
+    PublicNetwork, ClusterNetwork string
+    Nodes                         []NodeAttribution
+    OSDs                          []OSDAttribution
+}
+```
+
+`Status` (`internal/ceph.Discover`'s output — `PublicNetwork`, `ClusterNetwork`, `[]OSD`) is read once at daemon startup (a Ceph network declaration changes on the order of a cluster's lifetime, the same rationale `cmd/vnproxd/serviceclassify.go` already documents for corosync's ring addresses); `Overlay` (`Project`'s output, above) is recomputed against the graph's *current* snapshot on every read — "continuously computed" means re-projecting fresh topology, not re-polling PVE's Ceph config every cycle. `PublicNetwork`/`ClusterNetwork` are registered with T-1504's `internal/flow.Classifier` (`flow.NewCIDRSource`, `NetworkSourceKindCeph`) so `GET /flows`'s `serviceClass` tags `ceph-public`/`ceph-cluster` traffic — T-1503 supplies network declarations, it implements no classification logic of its own (§ "Flows" in `docs/api.md`).
