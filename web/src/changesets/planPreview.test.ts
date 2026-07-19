@@ -82,4 +82,31 @@ describe("buildPlanPreview (mirrors internal/change/apply_plan.go BuildPlan)", (
   it("returns an empty plan for an empty changeset", () => {
     expect(buildPlanPreview([]).plan.steps).toEqual([]);
   });
+
+  // T-1402: wg.* (T-1401) is executable — regression against the same
+  // "falsely flagged un-appliable" class of bug the SDN wizard test above
+  // guards (this preview lagged BuildPlan's own wgOpTypes support until
+  // this task added it).
+  it("plans wg.* ops as executable wg_apply steps (regression: was falsely flagged un-appliable)", () => {
+    const ops: Op[] = [
+      { op: "wg.tunnel.create", target: "wg-tunnel:pve1:t1", params: { ifName: "wg0" } },
+      { op: "wg.peer.add", target: "wg-peer:pve1:t1/PEERkey=", params: { publicKey: "PEERkey=", external: true } },
+    ];
+    const { plan, unsupportedOps } = buildPlanPreview(ops);
+    expect(unsupportedOps).toEqual([]);
+    expect(plan.steps.map((s) => s.kind)).toEqual(["wg_apply", "wg_apply"]);
+    expect(plan.steps.map((s) => s.node)).toEqual(["pve1", "pve1"]);
+  });
+
+  it("orders WireGuard steps like BuildPlan: after per-node stage/reload, before firewall/sdn.apply", () => {
+    const ops: Op[] = [
+      { op: "bridge.create", target: "bridge:pve1:vmbr1", params: {} },
+      { op: "wg.tunnel.create", target: "wg-tunnel:pve1:t1", params: { ifName: "wg0", carrier: "vmbr1" } },
+      { op: "fw.rule.create", target: "fw-ruleset:pve1:node", params: { action: "ACCEPT", direction: "in" } },
+      { op: "sdn.apply", params: {} },
+    ];
+    const { plan, unsupportedOps } = buildPlanPreview(ops);
+    expect(unsupportedOps).toEqual([]);
+    expect(plan.steps.map((s) => s.kind)).toEqual(["stage_file", "reload", "wg_apply", "fw_apply", "fw_verify", "sdn_apply"]);
+  });
 });

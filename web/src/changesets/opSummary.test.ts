@@ -171,4 +171,24 @@ describe("summarizeOp", () => {
       summarizeOp({ op: "ipam.alloc.delete", target: "sdn-subnet::10.100.0.0/24", params: { cidr: "10.100.0.51/32" } }),
     ).toBe("Release 10.100.0.51/32 in subnet 10.100.0.0/24");
   });
+
+  // T-1402: wg.* (T-1401) summaries, mirroring internal/change/apply_plan
+  // .go's wgStepSummary wording exactly.
+  it("renders wg.tunnel.*/wg.peer.* with the tunnel id and owning node", () => {
+    expect(summarizeOp({ op: "wg.tunnel.create", target: "wg-tunnel:pve1:t1", params: { ifName: "wg0" } })).toBe(
+      "Create WireGuard tunnel t1 on pve1",
+    );
+    expect(summarizeOp({ op: "wg.tunnel.update", target: "wg-tunnel:pve1:t1", params: { mtu: 1420 } })).toBe(
+      "Update WireGuard tunnel t1 on pve1",
+    );
+    expect(summarizeOp({ op: "wg.tunnel.delete", target: "wg-tunnel:pve1:t1", params: {} })).toBe(
+      "Delete WireGuard tunnel t1 on pve1",
+    );
+    expect(
+      summarizeOp({ op: "wg.peer.add", target: "wg-peer:pve1:t1/PEERkey=", params: { publicKey: "PEERkey=", external: true } }),
+    ).toBe("Add WireGuard peer to t1/PEERkey=");
+    expect(summarizeOp({ op: "wg.peer.remove", target: "wg-peer:pve1:t1/PEERkey=", params: { publicKey: "PEERkey=" } })).toBe(
+      "Remove WireGuard peer from t1/PEERkey=",
+    );
+  });
 });
