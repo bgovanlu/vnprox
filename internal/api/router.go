@@ -241,6 +241,16 @@ type Options struct {
 	// mounting every /captures route, same degraded-mode treatment as every
 	// other optional Options field.
 	Captures CaptureService
+	// Conntrack is T-1305's local-node read seam for GET /conntrack (nil
+	// skips mounting the route, same degraded-mode treatment as every other
+	// optional Options field); PeerConntrack is its cluster fan-out
+	// dependency (nil-safe, falls back to node-local-only); ConntrackGuests
+	// resolves the `guest=` filter (nil-safe, that filter then matches
+	// nothing rather than 500ing). Reuses LocalNode (T-605's own field,
+	// below) to tag local entries with this node's own name.
+	Conntrack       ConntrackLocalSource
+	PeerConntrack   PeerConntrackSource
+	ConntrackGuests ConntrackGuestResolver
 	// DocExport backs T-605's GET /export/doc (config documentation
 	// export); nil skips mounting the route, matching every other optional
 	// Options field.
@@ -333,6 +343,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
 		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)
+		mountConntrackRoutes(r, opts.Conntrack, opts.PeerConntrack, opts.ConntrackGuests, opts.LocalNode, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)

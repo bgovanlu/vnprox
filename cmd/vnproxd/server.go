@@ -303,11 +303,19 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// annotation) — same true-nil-interface-until-assigned pattern as
 	// dhcpAPISvc above.
 	var guestInteriorIPAM api.GuestInteriorIPAMSource
+	// conntrackGuests backs GET /conntrack's `guest=` filter (T-1305):
+	// ipamConcrete.GuestIPs resolves a guest ref to the IPs vnprox has
+	// evidence for, the same enrichment-observation source ipamSvc's own
+	// subnet merge reads. Same true-nil-interface-until-assigned pattern as
+	// ipamSvc/dhcpAPISvc above — api.IPAMService doesn't declare GuestIPs,
+	// so this needs its own interface-typed variable.
+	var conntrackGuests api.ConntrackGuestResolver
 	if sdnPVEClient != nil {
 		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc})
 		ipamSvc = ipamConcrete
 		dhcpAPISvc = ipamConcrete
 		guestInteriorIPAM = ipamConcrete
+		conntrackGuests = ipamConcrete
 	}
 	// changeAllocations adapts ipamConcrete into change.AllocationsSource
 	// for T-406's DHCP-range-overlap advisory check — see
@@ -648,12 +656,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// same nil-safe typed-interface pattern every other peerClient-backed
 	// Options field above uses.
 	var guestInteriorPeers api.PeerContainerSource
+	// peerConntrack backs GET /conntrack's cluster fan-out (T-1305), the
+	// same peerClient every other cluster-wide read route above uses.
+	var peerConntrack api.PeerConntrackSource
 	if peerClient != nil {
 		peerAudit = peerClient
 		peerSnapshots = peerClient
 		lldpPeerInstaller = peerClient
 		peerFlows = peerClient
 		guestInteriorPeers = peerClient
+		peerConntrack = peerClient
 	}
 
 	// T-404: GET /sdn/evpn/status fans FRR/BGP state across the cluster
@@ -799,6 +811,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LatMesh:              latMeshSvc,
 		MTUProbe:             mtuProbeSvc,
 		Captures:             captureCoord,
+		Conntrack:            realHost,
+		PeerConntrack:        peerConntrack,
+		ConntrackGuests:      conntrackGuests,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see

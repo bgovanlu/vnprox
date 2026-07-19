@@ -68,3 +68,7 @@ func (r *Real) ContainerInterior(_ context.Context, _ string, _ int) (ContainerI
 func (r *Real) ContainerPing(_ context.Context, _ string, _ int, _ string) (bool, error) {
 	return false, fmt.Errorf("host: ContainerPing: %w", ErrUnsupportedPlatform)
 }
+
+func (r *Real) Conntrack(_ context.Context, _ string) ([]ConntrackEntry, error) {
+	return nil, fmt.Errorf("host: Conntrack: %w", ErrUnsupportedPlatform)
+}

@@ -52,6 +52,12 @@ type pvemockReader interface {
 	CorosyncStatus(ctx context.Context, node string) ([]byte, error)
 	ContainerInterior(ctx context.Context, node string, vmid int) (pvemock.ContainerInteriorRaw, error)
 	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+	// Conntrack returns node's fixture-declared live conntrack/NAT table
+	// (T-1305). Declared here (rather than via the optional-method
+	// type-assertion pattern Neighbors below uses, added incrementally by
+	// an earlier task before pvemockReader itself existed) since this
+	// interface was still open for a direct addition when T-1305 landed.
+	Conntrack(ctx context.Context, node string) ([]pvemock.ConntrackEntry, error)
 }
 
 // FixtureReader adapts a *pvemock.FixtureHostReader (T-004's YAML
@@ -203,6 +209,33 @@ func (f *FixtureReader) Services(ctx context.Context, node string) (map[string]b
 		return nil, wrapFixtureErr(err)
 	}
 	return s, nil
+}
+
+// Conntrack implements Reader (T-1305): node's fixture-declared conntrack
+// table, converting pvemock.ConntrackEntry to host.ConntrackEntry
+// field-for-field (see the Reader doc comment on why the two packages keep
+// distinct-but-structurally-identical types).
+func (f *FixtureReader) Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error) {
+	in, err := f.r.Conntrack(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	out := make([]ConntrackEntry, len(in))
+	for i, e := range in {
+		out[i] = ConntrackEntry{
+			Proto: e.Proto, SrcIP: e.SrcIP, DstIP: e.DstIP, SrcPort: e.SrcPort, DstPort: e.DstPort,
+			State: e.State, TimeoutSec: e.TimeoutSec,
+			NatSrc: convertFixtureNatAddr(e.NatSrc), NatDst: convertFixtureNatAddr(e.NatDst),
+		}
+	}
+	return out, nil
+}
+
+func convertFixtureNatAddr(a *pvemock.NatAddr) *NatAddr {
+	if a == nil {
+		return nil
+	}
+	return &NatAddr{IP: a.IP, Port: a.Port}
 }
 
 // Links implements Reader: it fetches pvemock's minimal LinkState list,

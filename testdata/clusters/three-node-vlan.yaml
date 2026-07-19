@@ -122,6 +122,31 @@ nodes:
       rings:
         - {id: 0, addr: 10.10.0.11}
         - {id: 1, addr: 10.10.1.11}
+    # T-1305's conntrack/NAT explorer fixture: a plain established TCP
+    # connection, an assured UDP (DNS) connection, an outbound SNAT'd TCP
+    # connection (app01's own address masqueraded to a public IP), and an
+    # inbound DNAT'd TCP connection (a public-facing port forwarded to
+    # app01) — covers every state/NAT combination the explorer's columns
+    # render.
+    conntrack:
+      - {proto: 6, src_ip: 10.10.0.50, dst_ip: 10.10.0.11, src_port: 54321, dst_port: 443, state: ESTABLISHED, timeout_sec: 431999}
+      - {proto: 17, src_ip: 10.10.0.51, dst_ip: 10.10.20.11, src_port: 51000, dst_port: 53, state: ASSURED, timeout_sec: 29}
+      - proto: 6
+        src_ip: 10.10.0.11
+        dst_ip: 8.8.8.8
+        src_port: 44444
+        dst_port: 443
+        state: ESTABLISHED
+        timeout_sec: 431999
+        nat_src: {ip: 203.0.113.10, port: 44444}
+      - proto: 6
+        src_ip: 203.0.113.5
+        dst_ip: 203.0.113.10
+        src_port: 51000
+        dst_port: 8080
+        state: ESTABLISHED
+        timeout_sec: 431999
+        nat_dst: {ip: 10.10.0.11, port: 80}
     qemu:
       "200":
         name: app01
@@ -232,6 +257,11 @@ nodes:
       rings:
         - {id: 0, addr: 10.10.0.12}
         - {id: 1, addr: 10.10.1.12}
+    # T-1305: a second node's own connections, so the conntrack explorer's
+    # cluster fan-out has more than one node's worth of live entries to
+    # merge.
+    conntrack:
+      - {proto: 6, src_ip: 10.10.0.60, dst_ip: 10.10.0.12, src_port: 33000, dst_port: 22, state: ESTABLISHED, timeout_sec: 431999}
     qemu: {}
     lxc:
       "201":

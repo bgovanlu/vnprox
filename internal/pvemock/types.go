@@ -133,9 +133,43 @@ type NodeSpec struct {
 	// package's HostReader.CorosyncStatus returns ErrCorosyncUnavailable
 	// for such a node, the same graceful-degradation convention FRR's
 	// FRRSpec already establishes.
-	Corosync       *CorosyncSpec `yaml:"corosync,omitempty"`
-	Network        []NetIface    `yaml:"network"`
-	NetworkPending []NetIface    `yaml:"network_pending"`
+	Corosync *CorosyncSpec `yaml:"corosync,omitempty"`
+	// Conntrack is this node's fixture-declared live conntrack/NAT table
+	// (T-1305, docs/api.md's Conntrack section) for this node's
+	// FixtureHostReader.Conntrack — already-structured entries (like
+	// NeighborSpec above, not a raw-text blob) since a fixture only needs
+	// to express the parsed shape the API/UI actually consume, not exercise
+	// internal/host.ParseConntrackTable's own procfs-text parsing (that
+	// parser has its own golden-fixture table tests, internal/host/
+	// conntrack_test.go).
+	Conntrack      []ConntrackEntrySpec `yaml:"conntrack,omitempty"`
+	Network        []NetIface           `yaml:"network"`
+	NetworkPending []NetIface           `yaml:"network_pending"`
+}
+
+// ConntrackEntrySpec is one fixture-declared live conntrack table entry
+// (T-1305). NatSrc/NatDst are nil for an untranslated connection; State
+// empty defaults to "" (unlike NeighborSpec's "REACHABLE" default, a
+// conntrack entry genuinely can have no textual state — e.g. a
+// once-replied UDP/ICMP flow the real kernel format also reports with no
+// state word, see internal/host.ParseConntrackTable's doc comment) — a
+// fixture author states exactly the state it wants shown, including empty.
+type ConntrackEntrySpec struct {
+	NatSrc     *NatAddrSpec `yaml:"nat_src,omitempty" json:"natSrc,omitempty"`
+	NatDst     *NatAddrSpec `yaml:"nat_dst,omitempty" json:"natDst,omitempty"`
+	SrcIP      string       `yaml:"src_ip" json:"srcIp"`
+	DstIP      string       `yaml:"dst_ip" json:"dstIp"`
+	State      string       `yaml:"state,omitempty" json:"state,omitempty"`
+	Proto      int          `yaml:"proto" json:"proto"`
+	SrcPort    int          `yaml:"src_port,omitempty" json:"srcPort,omitempty"`
+	DstPort    int          `yaml:"dst_port,omitempty" json:"dstPort,omitempty"`
+	TimeoutSec int          `yaml:"timeout_sec,omitempty" json:"timeoutSec,omitempty"`
+}
+
+// NatAddrSpec is one fixture-declared NAT-translated endpoint.
+type NatAddrSpec struct {
+	IP   string `yaml:"ip" json:"ip"`
+	Port int    `yaml:"port,omitempty" json:"port,omitempty"`
 }
 
 // CorosyncSpec is a node's fixture-declared `corosync-cfgtool -s` ring

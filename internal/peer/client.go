@@ -388,6 +388,22 @@ func (c *Client) ContainerPing(ctx context.Context, p Peer, node string, vmid in
 	return out.Reachable, nil
 }
 
+// Conntrack fetches node's live conntrack/NAT table from peer p (T-1305):
+// the remote-node counterpart of a local host.Reader.Conntrack call, used
+// by GET /conntrack's cluster fan-out.
+func (c *Client) Conntrack(ctx context.Context, p Peer, node string) ([]host.ConntrackEntry, error) {
+	path := "/api/peer/host/conntrack?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out conntrackResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Entries, nil
+}
+
 // FRRBGPSummary fetches node's raw `vtysh -c "show bgp summary json"`
 // output from peer p (T-404). available is false (raw is nil) when node
 // runs no FRR at all — the peer-routed counterpart of

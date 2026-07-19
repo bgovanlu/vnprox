@@ -26,10 +26,7 @@ import (
 // read to a cluster peer is the caller's responsibility (see the Reader
 // doc comment in reader.go).
 type Real struct {
-	// InterfacesPath is /etc/network/interfaces, overridable for tests.
-	InterfacesPath string
-	// InterfacesPendingPath is the ifupdown2 staged-config file
-	// (/etc/network/interfaces.new), overridable for tests.
+	InterfacesPath        string
 	InterfacesPendingPath string
 	// OVSVSCtlPath is the ovs-vsctl binary name/path OVSStatus invokes;
 	// defaults to "ovs-vsctl" (resolved via PATH). Overridable for tests.
@@ -53,6 +50,10 @@ type Real struct {
 	IPPath      string
 	SSPath      string
 	PingPath    string
+	// ConntrackPath is the conntrack binary name/path Conntrack invokes
+	// (T-1305); defaults to "conntrack" (resolved via PATH). Overridable
+	// for tests.
+	ConntrackPath string
 	// LLDPCommand is the argv used to fetch LLDP neighbor data as JSON;
 	// defaults to `lldpctl -f json`. Overridable for tests/environments
 	// where lldpd is installed under a different name or path.
@@ -87,6 +88,7 @@ func NewReal() *Real {
 		SSPath:                "ss",
 		PingPath:              "ping",
 		DHCPLeaseGlob:         "/var/lib/misc/dnsmasq.*.leases",
+		ConntrackPath:         DefaultConntrackPath,
 	}
 }
 
@@ -244,6 +246,24 @@ func (r *Real) DHCPLeases(_ context.Context, _ string) ([]byte, error) {
 		}
 	}
 	return buf.Bytes(), nil
+}
+
+// Conntrack implements Reader (T-1305) by reading and parsing ConntrackPath
+// (/proc/net/nf_conntrack) — present whenever the nf_conntrack kernel
+// module is loaded. A malformed line is skipped defensively (see
+// ParseConntrackTable's doc comment); only a read failure (module not
+// loaded, permission denied) is surfaced as an error.
+func (r *Real) Conntrack(_ context.Context, _ string) ([]ConntrackEntry, error) {
+	path := r.ConntrackPath
+	if path == "" {
+		path = DefaultConntrackPath
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("host: reading conntrack table %s: %w", path, err)
+	}
+	entries, _ := ParseConntrackTable(data)
+	return entries, nil
 }
 
 // Links implements Reader using github.com/vishvananda/netlink for link,

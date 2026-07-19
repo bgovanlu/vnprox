@@ -699,3 +699,7 @@ func (r nodeAgentReader) ContainerInterior(context.Context, string, int) (host.C
 func (r nodeAgentReader) ContainerPing(context.Context, string, int, string) (bool, error) {
 	return false, fmt.Errorf("change: nodeAgentReader.ContainerPing not supported")
 }
+
+func (r nodeAgentReader) Conntrack(context.Context, string) ([]host.ConntrackEntry, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.Conntrack not supported")
+}

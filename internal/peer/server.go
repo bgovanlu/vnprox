@@ -127,6 +127,11 @@ type HostReader interface {
 	// ping issued from inside vmid's network namespace on node (T-1304's
 	// default-gateway reachability check).
 	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+	// Conntrack returns node's live conntrack/NAT table (T-1305, docs/api.md
+	// Conntrack section) — the remote-node counterpart of a local
+	// host.Reader.Conntrack call, GET /conntrack's cluster fan-out
+	// dependency.
+	Conntrack(ctx context.Context, node string) ([]host.ConntrackEntry, error)
 }
 
 // FirewallLogReader is the peer-server-side dependency for
@@ -298,6 +303,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/neighbors", s.handleNeighbors)
 		r.Get("/host/container-interior", s.handleContainerInterior)
 		r.Get("/host/container-ping", s.handleContainerPing)
+		r.Get("/host/conntrack", s.handleConntrack)
 		r.Get("/host/frr/bgp-summary", s.handleFRRBGPSummary)
 		r.Get("/host/frr/evpn-vni", s.handleFRREVPNVNI)
 		r.Get("/host/dhcp-leases", s.handleDHCPLeases)
@@ -559,6 +565,28 @@ func (s *Server) handleContainerPing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, containerPingResponse{Reachable: reachable})
+}
+
+// handleConntrack implements GET /api/peer/host/conntrack (T-1305): node's
+// live conntrack/NAT table, the peer-routed counterpart of a local
+// host.Reader.Conntrack call — following handleNeighbors' precedent
+// exactly (a plain read, no {available} envelope needed: an empty table is
+// itself a clean, unremarkable answer).
+func (s *Server) handleConntrack(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	entries, err := s.opts.Reader.Conntrack(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading conntrack table", err)
+		return
+	}
+	if entries == nil {
+		entries = []host.ConntrackEntry{}
+	}
+	writeJSON(w, http.StatusOK, conntrackResponse{Entries: entries})
 }
 
 // handleFRRBGPSummary implements GET /api/peer/host/frr/bgp-summary

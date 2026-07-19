@@ -77,6 +77,10 @@ type HostReader interface {
 	// against that guest's InteriorPingOutcomes table. Same not-found
 	// contract as ContainerInterior.
 	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+
+	// Conntrack returns node's fixture-declared live conntrack/NAT table
+	// (T-1305), verbatim — see conntrack.go's doc comment.
+	Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error)
 }
 
 // ContainerInteriorRaw is one lxc guest's raw host-side network-namespace

@@ -1,0 +1,7 @@
+garbage line with too few tokens
+ipv4 2 tcp
+
+ipv4     2 tcp      6 431999 ESTABLISHED dst=192.168.1.20 sport=54321 dport=443 dst=192.168.1.10 sport=443 dport=54321 mark=0
+ipv4     2 tcp      6 notanumber ESTABLISHED src=192.168.1.10 dst=192.168.1.20 sport=54321 dport=443
+ipv4     2 tcp      6 431999 ESTABLISHED src=192.168.1.10 dst=192.168.1.20 sport=notaport dport=443
+ipv4     2 udp      17 29 src=192.168.1.99 dst=192.168.1.100 sport=1000 dport=2000 packets=1 bytes=64 src=192.168.1.100 dst=192.168.1.99 sport=2000 dport=1000 packets=1 bytes=64 mark=0

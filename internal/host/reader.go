@@ -130,6 +130,18 @@ type Reader interface {
 	// comment for why this method does not distinguish those the way
 	// internal/probe.Outcome does for the qemu path.
 	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+
+	// Conntrack returns node's live conntrack/NAT table (T-1305, docs/api.md
+	// Conntrack section): one ConntrackEntry per active connection the
+	// kernel's netfilter conntrack subsystem currently tracks, including
+	// state, remaining timeout, and (when the connection is NAT'd) the
+	// translated source/destination. This is a live, ephemeral read — never
+	// persisted (docs/architecture.md §7's "app-owned data only" rule does
+	// not apply: nothing here is written to vnprox's store). Read-only:
+	// there is no corresponding write method anywhere in this package or
+	// docs/api.md's Conntrack section — conntrack entries are never
+	// flushed/mutated by vnprox.
+	Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error)
 }
 
 // ContainerInteriorRaw is one lxc guest's raw host-side

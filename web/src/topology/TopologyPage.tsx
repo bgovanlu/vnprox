@@ -16,6 +16,7 @@ import { EditorLauncher } from "../changesets/EditorLauncher";
 import { refNode, summarizeOp } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
+import { conntrackNodeLinkPath } from "../conntrack/urlState";
 import type { Viewport } from "./canvasScene";
 import { useThemeStore } from "../store/theme";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -62,6 +63,17 @@ const DEFAULT_VIEWPORT: Viewport = { x: 48, y: 48, zoom: 1 };
 
 const LAYER_ORDER: readonly Layer[] = ["phys", "l2", "sdn", "guest"];
 const SAVE_DEBOUNCE_MS = 1000;
+
+// T-1305: "view live connections" (the map's right-click entry into the
+// Conntrack explorer) is offered on any entity a conntrack read is
+// meaningfully scoped to — the physical/L2 kinds a connection actually
+// traverses, plus guest-nic (a guest's own attachment point) and sdn-vnet
+// (cluster-scoped: the link falls back to the unscoped explorer, still a
+// legitimate way in). A ref's node segment (empty for a cluster-scoped
+// sdn-vnet ref) is all this page has cheaply available to scope by — see
+// conntrack/urlState.ts's own doc comment on why this is node-scoping, not
+// exact IP/guest matching.
+const CONNTRACK_ENTITY_KINDS = new Set(["bridge", "bond", "ovs-bridge", "ovs-bond", "guest-nic", "sdn-vnet"]);
 // docs/features/topology.md §4: "Hard render cap ~2,000 visible elements;
 // beyond, require a filter (UI prompts)."
 // Exported (T-607) so scaleLab.render.test.tsx can assert the filter-prompt
@@ -556,9 +568,19 @@ function TopologyPageContent() {
     return items;
   }
 
+  function conntrackItemFor(kind: string, ref: string): ContextMenuItem[] {
+    if (!CONNTRACK_ENTITY_KINDS.has(kind)) return [];
+    const path = conntrackNodeLinkPath("/conntrack", refNode(ref));
+    return [{ label: "View live connections", onSelect: () => { void navigate(path); } }];
+  }
+
+  function contextMenuItemsFor(kind: string, ref: string): ContextMenuItem[] {
+    return [...traceItemsFor(kind, ref), ...conntrackItemFor(kind, ref)];
+  }
+
   function handleNodeContextMenu(id: string, clientX: number, clientY: number): void {
     const node = topology?.nodes.find((n) => n.id === id);
-    if (!node || traceItemsFor(node.kind, id).length === 0) {
+    if (!node || contextMenuItemsFor(node.kind, id).length === 0) {
       setContextMenu(undefined);
       return;
     }
@@ -918,7 +940,7 @@ function TopologyPageContent() {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={traceItemsFor(topology?.nodes.find((n) => n.id === contextMenu.id)?.kind ?? "", contextMenu.id)}
+          items={contextMenuItemsFor(topology?.nodes.find((n) => n.id === contextMenu.id)?.kind ?? "", contextMenu.id)}
           onClose={() => {
             setContextMenu(undefined);
           }}

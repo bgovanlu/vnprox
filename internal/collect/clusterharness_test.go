@@ -131,6 +131,13 @@ func (r nodeRestrictedReader) ContainerPing(ctx context.Context, node string, vm
 	return r.inner.ContainerPing(ctx, node, vmid, targetIP)
 }
 
+func (r nodeRestrictedReader) Conntrack(ctx context.Context, node string) ([]host.ConntrackEntry, error) {
+	if node != r.node {
+		return nil, host.ErrNotFound
+	}
+	return r.inner.Conntrack(ctx, node)
+}
+
 // reorderLocalFirst returns a copy of nodes with local moved to index 0 —
 // pvemock's GET /cluster/status marks index 0 "local" unconditionally
 // (internal/pvemock/cluster.go), so this is how each simulated daemon gets
