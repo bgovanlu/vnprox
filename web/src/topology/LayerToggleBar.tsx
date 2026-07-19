@@ -32,6 +32,14 @@ export interface LayerToggleBarProps {
    * the button; omitted keeps this bar's exact prior output. */
   mtuLayerActive?: boolean;
   onToggleMTU?: () => void;
+  /** T-1402: an 8th "WireGuard" toggle, same optional-pair convention as
+   * mtuLayerActive/onToggleMTU above — a client-only overlay rendering
+   * every visible tunnel as a map edge (topology/../wireguard/
+   * wgTunnelEdges.ts), not one of the server-emitted entity layers either.
+   * Both props must be provided together to render the button; omitted
+   * keeps this bar's exact prior output. */
+  wgLayerActive?: boolean;
+  onToggleWG?: () => void;
 }
 
 /** The `1`-`4` layer toggle rail (docs/features/topology.md §1), plus an
@@ -46,6 +54,8 @@ export function LayerToggleBar({
   onToggleLatency,
   mtuLayerActive,
   onToggleMTU,
+  wgLayerActive,
+  onToggleWG,
 }: LayerToggleBarProps) {
   return (
     <div className="flex gap-1 rounded-md border border-slate-200 bg-white/90 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/90">
@@ -114,6 +124,21 @@ export function LayerToggleBar({
           )}
         >
           MTU
+        </button>
+      )}
+      {onToggleWG && (
+        <button
+          type="button"
+          aria-pressed={wgLayerActive ?? false}
+          onClick={onToggleWG}
+          className={clsx(
+            "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
+            wgLayerActive
+              ? "bg-indigo-600 text-white"
+              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+          )}
+        >
+          WireGuard
         </button>
       )}
     </div>
