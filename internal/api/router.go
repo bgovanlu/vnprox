@@ -344,6 +344,7 @@ func NewRouter(opts Options) http.Handler {
 		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)
 		mountConntrackRoutes(r, opts.Conntrack, opts.PeerConntrack, opts.ConntrackGuests, opts.LocalNode, opts.Auth)
+		mountDiagnoseRoutes(r, opts, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
