@@ -78,6 +78,14 @@ var nodeFileOpTypes = map[OpType]bool{
 	OpVlanCreate:       true,
 	OpVlanUpdate:       true,
 	OpVlanDelete:       true,
+
+	// OpVFProvision (T-1506): applied via the same interfaces-file
+	// post-up/post-down write path as every op above — internal/change/
+	// ifaces/vfop.go appends a stanza pair to the PF's own existing iface
+	// stanza (Target). No new StepKind is needed: the executor's
+	// StepStageFile/StepReload machinery already renders+reloads the
+	// whole node file for every node-file op targeting that node.
+	OpVFProvision: true,
 }
 
 // sdnStageOpTypes is the subset of the v1 op vocabulary T-402 realizes as a

@@ -526,6 +526,9 @@ func schemaValidateOp(op Op) []Finding {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "fw.group.delete requires name"))
 		}
 
+	case *VFProvisionParams:
+		schemaVFProvision(p, ref, &out)
+
 	case *IpamAllocCreateParams:
 		if p.CIDR == "" {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "ipam.alloc.create requires cidr"))
@@ -545,6 +548,47 @@ func schemaValidateOp(op Op) []Finding {
 	}
 
 	return out
+}
+
+// schemaVFProvision validates a vf.provision op's Count/VFs shape (T-1506):
+// exactly one of Count/VFs set, Count positive when set, no MacAddr with
+// Count > 1 (see VFProvisionParams' doc comment), every VFSpec.ID
+// non-negative and not repeated, and every VLAN/MacAddr (top-level and
+// per-VFSpec) individually well-formed.
+func schemaVFProvision(p *VFProvisionParams, ref string, out *[]Finding) {
+	switch {
+	case p.Count > 0 && len(p.VFs) > 0:
+		*out = append(*out, errorf(codeVFPlanInvalid, ref, "vf.provision must set exactly one of count or vfs, not both"))
+	case p.Count <= 0 && len(p.VFs) == 0:
+		*out = append(*out, errorf(codeVFPlanInvalid, ref, "vf.provision requires count or vfs"))
+	case p.Count < 0:
+		*out = append(*out, errorf(codeVFPlanInvalid, ref, "count %d must be positive", p.Count))
+	}
+	if p.Count > 1 && p.MacAddr != "" {
+		*out = append(*out, errorf(codeVFPlanInvalid, ref, "macAddr cannot be set with count > 1 (would duplicate it across every VF)"))
+	}
+	if f := checkVIDRangeAllowZero(p.VLAN, ref); f != nil {
+		*out = append(*out, *f)
+	}
+	if p.MacAddr != "" && !validMAC(p.MacAddr) {
+		*out = append(*out, errorf(codeMACInvalid, ref, "macAddr %q is not a valid MAC address", p.MacAddr))
+	}
+
+	seenIDs := map[int]bool{}
+	for _, v := range p.VFs {
+		if v.ID < 0 {
+			*out = append(*out, errorf(codeVFPlanInvalid, ref, "vf id %d must not be negative", v.ID))
+		} else if seenIDs[v.ID] {
+			*out = append(*out, errorf(codeVFPlanInvalid, ref, "vf id %d listed twice", v.ID))
+		}
+		seenIDs[v.ID] = true
+		if f := checkVIDRangeAllowZero(v.VLAN, ref); f != nil {
+			*out = append(*out, *f)
+		}
+		if v.MacAddr != "" && !validMAC(v.MacAddr) {
+			*out = append(*out, errorf(codeMACInvalid, ref, "vf %d macAddr %q is not a valid MAC address", v.ID, v.MacAddr))
+		}
+	}
 }
 
 func schemaFwDirection(v, ref string, out *[]Finding) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
@@ -47,6 +48,15 @@ const (
 	// /etc/network/interfaces content wholesale, rather than an AST-level
 	// patch. See IfaceRawReplace's doc comment for the mutation semantics.
 	OpIfaceRawReplace OpType = "iface.raw.replace"
+
+	// OpVFProvision is T-1506's "vf" op group: configures Target's (a
+	// PhysNic acting as an SR-IOV PF) virtual-function pool. Applied as a
+	// post-up/post-down stanza pair appended to Target's own existing iface
+	// stanza — the same interfaces-file write path iface.raw.replace and
+	// the nat/route families (once they land) already establish. See
+	// vfop.go for the mutation semantics and host.VFProvisionCommands for
+	// how a resolved VF plan is rendered into shell commands.
+	OpVFProvision OpType = "vf.provision"
 )
 
 // Op is the common interface every concrete op type in this package
@@ -292,6 +302,29 @@ type IfaceRawReplace struct {
 func (o IfaceRawReplace) Kind() OpType       { return OpIfaceRawReplace }
 func (o IfaceRawReplace) Ref() inventory.Ref { return o.Target }
 
+// --- vf.provision (T-1506) -------------------------------------------------
+
+// VFProvision is op "vf.provision": configures Target's (a PhysNic acting
+// as an SR-IOV PF) virtual-function pool. Exactly one of Count/VFs is set
+// (internal/change's schema validation enforces this before an op ever
+// reaches here) — see host.ResolveVFPlan, the single shared function this
+// package's mutator and internal/change's validators both call to expand
+// Count/VFs + the top-level MacAddr/VLAN/SpoofCheck/Trust defaults into a
+// concrete per-VF plan, so validation and apply can never disagree about
+// what a vf.provision op actually configures.
+type VFProvision struct {
+	SpoofCheck *bool
+	Trust      *bool
+	Target     inventory.Ref
+	MacAddr    string
+	VFs        []host.VFSpec
+	VLAN       int
+	Count      int
+}
+
+func (o VFProvision) Kind() OpType       { return OpVFProvision }
+func (o VFProvision) Ref() inventory.Ref { return o.Target }
+
 // --- wire decode ---------------------------------------------------------
 
 // envelope is the docs/api.md wire shape: {"op": "<type>", "target": Ref,
@@ -307,33 +340,39 @@ type envelope struct {
 // Field names are the camelCase wire names implied by
 // docs/data-model.md §3's field lists.
 type wireParams struct {
-	VlanAware            *bool                `json:"vlanAware"`
+	VLAN                 *int                 `json:"vlan"`
 	Comments             *string              `json:"comments"`
 	Gateway              *string              `json:"gateway"`
 	Autostart            *bool                `json:"autostart"`
 	STP                  *bool                `json:"stp"`
 	MTU                  *int                 `json:"mtu"`
-	Bridge               string               `json:"bridge"`
-	Port                 string               `json:"port"`
+	SpoofCheck           *bool                `json:"spoofCheck"`
+	VlanAware            *bool                `json:"vlanAware"`
+	MacAddr              *string              `json:"macAddr"`
+	Trust                *bool                `json:"trust"`
 	Parent               string               `json:"parent"`
-	XmitHashPolicy       string               `json:"xmitHashPolicy"`
-	LacpRate             string               `json:"lacpRate"`
 	Mode                 string               `json:"mode"`
 	Content              string               `json:"content"`
 	NewName              string               `json:"newName"`
+	LacpRate             string               `json:"lacpRate"`
+	XmitHashPolicy       string               `json:"xmitHashPolicy"`
+	Port                 string               `json:"port"`
+	Bridge               string               `json:"bridge"`
+	Ports                []string             `json:"ports"`
+	Trunks               []inventory.VidRange `json:"trunks"`
+	VFs                  []host.VFSpec        `json:"vfs"`
 	Slaves               []string             `json:"slaves"`
 	Addresses            []string             `json:"addresses"`
-	Ports                []string             `json:"ports"`
 	Vids                 []inventory.VidRange `json:"vids"`
-	Trunks               []inventory.VidRange `json:"trunks"`
-	MIIMon               int                  `json:"miimon"`
 	VID                  int                  `json:"vid"`
-	RemoveAddress        bool                 `json:"removeAddress"`
+	MIIMon               int                  `json:"miimon"`
+	Count                int                  `json:"count"`
 	RemoveGateway        bool                 `json:"removeGateway"`
-	RemoveVids           bool                 `json:"removeVids"`
-	RemoveLacpRate       bool                 `json:"removeLacpRate"`
-	RemoveXmitHashPolicy bool                 `json:"removeXmitHashPolicy"`
 	OVS                  bool                 `json:"ovs"`
+	RemoveXmitHashPolicy bool                 `json:"removeXmitHashPolicy"`
+	RemoveLacpRate       bool                 `json:"removeLacpRate"`
+	RemoveVids           bool                 `json:"removeVids"`
+	RemoveAddress        bool                 `json:"removeAddress"`
 }
 
 func intOr(p *int) int {
@@ -433,6 +472,11 @@ func DecodeOp(raw json.RawMessage) (Op, error) {
 		return IfaceRename{Target: target, NewName: p.NewName}, nil
 	case OpIfaceRawReplace:
 		return IfaceRawReplace{Target: target, Content: p.Content}, nil
+	case OpVFProvision:
+		return VFProvision{
+			Target: target, MacAddr: strOr(p.MacAddr), VFs: p.VFs,
+			VLAN: intOr(p.VLAN), Count: p.Count, SpoofCheck: p.SpoofCheck, Trust: p.Trust,
+		}, nil
 	default:
 		return nil, fmt.Errorf("ifaces: unsupported op type %q", env.Op)
 	}

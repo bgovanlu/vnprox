@@ -29,12 +29,13 @@ var allOpTypeConstants = []OpType{
 	OpFwIpsetCreate, OpFwIpsetUpdate, OpFwIpsetDelete,
 	OpFwGroupCreate, OpFwGroupUpdate, OpFwGroupDelete,
 	OpIpamAllocCreate, OpIpamAllocDelete,
+	OpVFProvision,
 }
 
 // docs/data-model.md §3's table lists exactly these groups: iface(2, incl.
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
-// fw(14), ipam(2) = 40.
-const wantOpVocabularySize = 41
+// fw(14), ipam(2), vf(1, T-1506) = 41.
+const wantOpVocabularySize = 42
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -294,6 +295,11 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "ipam.alloc.delete", opType: OpIpamAllocDelete,
 			target: ref(inventory.KindSDNSubnet, "", "10.10.0.0/24"),
 			params: &IpamAllocDeleteParams{CIDR: "10.10.0.50/32"},
+		},
+		{
+			name: "vf.provision", opType: OpVFProvision,
+			target: ref(inventory.KindPhysNic, "pve1", "eno1"),
+			params: &VFProvisionParams{Count: 2, VLAN: 100, SpoofCheck: boolPtr(true), Trust: boolPtr(false)},
 		},
 	}
 }

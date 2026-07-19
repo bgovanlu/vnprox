@@ -110,6 +110,25 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
 			if touched(op.Target.ID) || touched(params.Parent) {
 				return true
 			}
+		case *VFProvisionParams:
+			// T-1506: a vf.provision op's Target is the PF (a physnic Ref)
+			// whose VF pool is being (re)configured. A VF whose PF sits on a
+			// node's resolved management/corosync path — directly, or via
+			// an enslaving bond/bridge already walked into paths by
+			// topology.ResolveMgmtPaths — is touchesMgmtPath: provisioning
+			// VFs rewrites the PF's own sriov_numvfs and per-VF state via a
+			// post-up/post-down stanza on the PF's iface (internal/change/
+			// ifaces/vfop.go), which can disrupt the PF's link exactly like
+			// a bond/bridge edit can. Given as an explicit case (mirroring
+			// the standing rule every new mutating op group follows —
+			// planning/implementation-plan-universal.md's Standing
+			// constraints item 1) even though op.Target.Kind (KindPhysNic)
+			// is already covered by the default branch below; a future
+			// vf.release/vf.update, if ever added, gets its own case here
+			// too rather than silently relying on that fallthrough.
+			if touched(op.Target.ID) {
+				return true
+			}
 		default:
 			// Every remaining iface-namespace op (iface.update,
 			// bond/bridge/vlan update+delete) touches exactly its target;

@@ -82,6 +82,21 @@ func TestTouchesMgmtPath(t *testing.T) {
 			want: false,
 		},
 		{
+			// T-1506: vf.provision targets its PF directly (physnic:pve1:eno1,
+			// a mgmt-path member NIC via bond0).
+			name: "vf.provision on the mgmt-path PF",
+			ops:  `[{"op":"vf.provision","target":"physnic:pve1:eno1","params":{"count":2}}]`,
+			want: true,
+		},
+		{
+			// eno9 is not a member of pve1's resolved management path
+			// (mgmtPathsPve1 only walks bond0 -> eno1/eno2) — an
+			// off-path PF's vf.provision must not be flagged.
+			name: "vf.provision on an off-path PF",
+			ops:  `[{"op":"vf.provision","target":"physnic:pve1:eno9","params":{"count":2}}]`,
+			want: false,
+		},
+		{
 			name: "same interface name on a different node",
 			ops:  `[{"op":"bond.update","target":"bond:pve2:bond0","params":{"slaves":["eno1"]}}]`,
 			want: false,

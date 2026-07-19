@@ -45,6 +45,8 @@ func Mutate(f *host.File, op Op, changesetID string) error {
 		return mutateIfaceRename(f, o, nl)
 	case IfaceRawReplace:
 		return mutateIfaceRawReplace(f, o)
+	case VFProvision:
+		return mutateVFProvision(f, o, nl)
 	default:
 		return fmt.Errorf("ifaces: mutate: unsupported op %T", op)
 	}
