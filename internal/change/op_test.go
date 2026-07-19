@@ -30,12 +30,15 @@ var allOpTypeConstants = []OpType{
 	OpFwGroupCreate, OpFwGroupUpdate, OpFwGroupDelete,
 	OpIpamAllocCreate, OpIpamAllocDelete,
 	OpWgTunnelCreate, OpWgTunnelUpdate, OpWgTunnelDelete, OpWgPeerAdd, OpWgPeerRemove,
+	OpNatMasqueradeCreate, OpNatMasqueradeDelete,
+	OpNatPortForwardCreate, OpNatPortForwardUpdate, OpNatPortForwardDelete,
+	OpRouteStaticCreate, OpRouteStaticUpdate, OpRouteStaticDelete,
 }
 
 // docs/data-model.md §3's table lists exactly these groups: iface(3, incl.
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
-// fw(14), ipam(2), wg(5, T-1401) = 46.
-const wantOpVocabularySize = 46
+// fw(14), ipam(2), wg(5, T-1401), nat(5, T-1403), route(3, T-1403) = 54.
+const wantOpVocabularySize = 54
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -320,6 +323,46 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "wg.peer.remove", opType: OpWgPeerRemove,
 			target: ref(inventory.KindWgPeer, "pve1", "01HWGTUN000000000000000001/PEERkey000000000000000000000000000000000000="),
 			params: &WgPeerRemoveParams{PublicKey: "PEERkey000000000000000000000000000000000000="},
+		},
+		{
+			name: "nat.masquerade.create", opType: OpNatMasqueradeCreate,
+			target: ref(inventory.KindNatRule, "pve1", "masq1"),
+			params: &NatMasqueradeCreateParams{Iface: "vmbr0", SourceCIDR: "192.168.1.0/24"},
+		},
+		{
+			name: "nat.masquerade.delete", opType: OpNatMasqueradeDelete,
+			target: ref(inventory.KindNatRule, "pve1", "masq1"),
+			params: &NatMasqueradeDeleteParams{},
+		},
+		{
+			name: "nat.portforward.create", opType: OpNatPortForwardCreate,
+			target: ref(inventory.KindNatRule, "pve1", "pf1"),
+			params: &NatPortForwardCreateParams{Iface: "vmbr0", Proto: "tcp", ExtPort: 8080, IntIP: "192.168.1.50", IntPort: 80},
+		},
+		{
+			name: "nat.portforward.update", opType: OpNatPortForwardUpdate,
+			target: ref(inventory.KindNatRule, "pve1", "pf1"),
+			params: &NatPortForwardUpdateParams{ExtPort: intPtr(9090)},
+		},
+		{
+			name: "nat.portforward.delete", opType: OpNatPortForwardDelete,
+			target: ref(inventory.KindNatRule, "pve1", "pf1"),
+			params: &NatPortForwardDeleteParams{},
+		},
+		{
+			name: "route.static.create", opType: OpRouteStaticCreate,
+			target: ref(inventory.KindStaticRoute, "pve1", "lab-route"),
+			params: &RouteStaticCreateParams{Iface: "vmbr0", DestCIDR: "10.10.0.0/24", Gateway: "203.0.113.1"},
+		},
+		{
+			name: "route.static.update", opType: OpRouteStaticUpdate,
+			target: ref(inventory.KindStaticRoute, "pve1", "lab-route"),
+			params: &RouteStaticUpdateParams{Gateway: strPtr("203.0.113.2")},
+		},
+		{
+			name: "route.static.delete", opType: OpRouteStaticDelete,
+			target: ref(inventory.KindStaticRoute, "pve1", "lab-route"),
+			params: &RouteStaticDeleteParams{},
 		},
 	}
 }

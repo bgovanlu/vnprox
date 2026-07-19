@@ -2517,6 +2517,83 @@ export interface CaptureStartRequest {
   peerTargets?: string[];
 }
 
+// --- Edge & NAT cockpit (T-1403; docs/api.md's "Edge & NAT cockpit"
+// section, internal/api/edge.go) ------------------------------------------
+// Read-only: no request body on either route, no mutation type here on
+// purpose — every nat.*/route.static.* write is an ordinary changeset op
+// (see the ChangesetOp union below), never a dedicated call from this page.
+
+/** One node's default gateway — the same field iface.update's `gateway`
+ * param writes; GET /edge/routes never invents a second representation. */
+export interface EdgeDefaultRoute {
+  node: string;
+  iface: string;
+  gateway: string;
+}
+
+/** One route.static.* rule. */
+export interface EdgeStaticRoute {
+  id: string;
+  node: string;
+  iface: string;
+  destCidr: string;
+  gateway: string;
+  metric?: number;
+  comment?: string;
+}
+
+/** GET /edge/routes response. */
+export interface EdgeRoutesView {
+  defaultRoutes: EdgeDefaultRoute[];
+  staticRoutes: EdgeStaticRoute[];
+  generatedAt: number;
+}
+
+/** One nat.masquerade.* rule. */
+export interface EdgeMasquerade {
+  id: string;
+  node: string;
+  iface: string;
+  sourceCidr: string;
+  comment?: string;
+}
+
+/** One nat.portforward.* rule. `targetGuestRef`/`targetGuestPoweredOff` are
+ * populated only when `intIp` correlates to a currently-known guest (live
+ * PVE-IPAM data) — absent/false otherwise, never guessed.
+ * `targetGuestPoweredOff: true` is this card's own exit-demo scenario: a
+ * port-forward exposing a guest that is not actually running. */
+export interface EdgePortForward {
+  id: string;
+  node: string;
+  iface: string;
+  proto: string;
+  extPort: number;
+  intIp: string;
+  intPort: number;
+  comment?: string;
+  targetGuestRef?: string;
+  targetGuestPoweredOff?: boolean;
+}
+
+/** One PVE SDN simple-zone subnet with SNAT enabled — already read-only via
+ * GET /sdn's own Subnet.snat (docs/features/sdn.md §2); this shape only
+ * re-presents it in the Edge layer's own terms. */
+export interface EdgeSDNSimpleZoneNAT {
+  zone: string;
+  vnet: string;
+  subnet: string;
+  gateway?: string;
+}
+
+/** GET /edge/nat response. */
+export interface EdgeNATView {
+  masquerade: EdgeMasquerade[];
+  portForwards: EdgePortForward[];
+  sdnSimpleZoneNat: EdgeSDNSimpleZoneNAT[];
+  generatedAt: number;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots and IPAM read views have routes defined in docs/api.md but no
 // frontend consumer yet — their request/response types land with the task

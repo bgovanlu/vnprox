@@ -45,6 +45,22 @@ func Mutate(f *host.File, op Op, changesetID string) error {
 		return mutateIfaceRename(f, o, nl)
 	case IfaceRawReplace:
 		return mutateIfaceRawReplace(f, o)
+	case NatMasqueradeCreate:
+		return mutateNatMasqueradeCreate(f, o, nl)
+	case NatMasqueradeDelete:
+		return mutateNatMasqueradeDelete(f, o)
+	case NatPortForwardCreate:
+		return mutateNatPortForwardCreate(f, o, nl)
+	case NatPortForwardUpdate:
+		return mutateNatPortForwardUpdate(f, o, nl)
+	case NatPortForwardDelete:
+		return mutateNatPortForwardDelete(f, o)
+	case RouteStaticCreate:
+		return mutateRouteStaticCreate(f, o, nl)
+	case RouteStaticUpdate:
+		return mutateRouteStaticUpdate(f, o, nl)
+	case RouteStaticDelete:
+		return mutateRouteStaticDelete(f, o)
 	default:
 		return fmt.Errorf("ifaces: mutate: unsupported op %T", op)
 	}

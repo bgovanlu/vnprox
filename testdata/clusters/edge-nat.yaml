@@ -1,0 +1,157 @@
+# edge-nat.yaml — T-1403's Edge & NAT cockpit fixture family: the cluster
+# *shape* the phase's own exit-demo scenario needs (docs/roadmap-universal.md:
+# "the Edge layer showing exactly which ports the lab exposes to the
+# internet — with one of them flagged as forwarding to a powered-off
+# guest").
+#
+# What this fixture seeds declaratively:
+#   - vmbr0: the WAN-facing uplink bridge (203.0.113.10/24, gateway
+#     203.0.113.1) — GET /edge/routes' default-route row.
+#   - An SDN *simple* zone (simplez) whose subnet has snat: true — GET
+#     /edge/nat's PVE-simple-zone-NAT row (docs/features/sdn.md §2: "Simple
+#     — isolated bridge per node, optional SNAT").
+#   - Two guests on that zone's private LAN, one running (web1, .50) and one
+#     stopped (sshbox, .99) — the powered-off-guest port-forward target.
+#
+# What this fixture deliberately does NOT seed: any nat.masquerade/
+# nat.portforward/route.static rule itself. There is no YAML schema for one
+# (internal/pvemock's NetIface mirrors PVE's own network API fields, which
+# has no post-up/post-down concept) — and there must not be one: per this
+# card's own safety note, a nat/route rule's *only* legitimate origin is an
+# applied nat.*/route.static.* changeset op (internal/change/ifaces/
+# edgeop.go), never a declarative pre-seed. internal/edge/project_test.go
+# and internal/api/edge_test.go build the actual rule content by applying
+# those ops against a minimal interfaces file (dogfooding the real write
+# path); internal/change/apply_edge_e2e_test.go does the same against this
+# package's own harness. A future e2e/Playwright session exercising the
+# full "connect a port-forward, see it on the map, see the powered-off
+# flag" flow should load *this* fixture and then stage the demo changeset
+# itself — exactly what an operator would actually do.
+cluster:
+  name: pve-edge-nat
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 203.0.113.10
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 203.0.113.10/24
+        gateway: 203.0.113.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: false
+        comments: "WAN uplink"
+      # vmbr1 is simplez's own realized bridge (no OS-level address here —
+      # the zone's subnet gateway, 192.168.1.1, lives at the SDN layer per
+      # docs/features/sdn.md §2, not as a plain iface.update gateway).
+      - iface: vmbr1
+        type: bridge
+        method: manual
+        autostart: true
+        mtu: 1500
+        bridge_vlan_aware: false
+        comments: "private LAN (simplez)"
+    links:
+      eno1:
+        mac: "bc:24:11:05:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:11:05:00:01"
+        link_up: true
+        mtu: 1500
+      vmbr1:
+        mac: "bc:24:11:05:00:02"
+        link_up: true
+        mtu: 1500
+    qemu:
+      "500":
+        name: web1
+        status: running
+        config:
+          name: web1
+          cores: "1"
+          memory: "1024"
+          net0: "virtio=BC:24:11:AA:05:32,bridge=vnet-lan,firewall=1"
+          ostype: l26
+      # T-1403's own exit-demo guest: powered off, still named by a
+      # port-forward a demo changeset would stage against 192.168.1.99.
+      "501":
+        name: sshbox
+        status: stopped
+        config:
+          name: sshbox
+          cores: "1"
+          memory: "512"
+          net0: "virtio=BC:24:11:AA:05:63,bridge=vnet-lan,firewall=1"
+          ostype: l26
+    lxc: {}
+    firewall:
+      enabled: false
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+sdn:
+  zones:
+    - id: simplez
+      type: simple
+      bridge: vmbr1
+      nodes: [pve1]
+  vnets:
+    - id: vnet-lan
+      zone: simplez
+      alias: "private-lan"
+  subnets:
+    - id: 192.168.1.0-24
+      vnet: vnet-lan
+      cidr: 192.168.1.0/24
+      gateway: 192.168.1.1
+      snat: true
+  ipams:
+    - id: pve
+      type: pve
+      entries:
+        - {zone: simplez, vnet: vnet-lan, subnet: 192.168.1.0/24, ip: 192.168.1.1, gateway: true}
+        - {zone: simplez, vnet: vnet-lan, subnet: 192.168.1.0/24, ip: 192.168.1.50, mac: "BC:24:11:AA:05:32", hostname: web1, vmid: 500}
+        - {zone: simplez, vnet: vnet-lan, subnet: 192.168.1.0/24, ip: 192.168.1.99, mac: "BC:24:11:AA:05:63", hostname: sshbox, vmid: 501}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []

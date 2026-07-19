@@ -310,12 +310,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// ipamSvc/dhcpAPISvc above — api.IPAMService doesn't declare GuestIPs,
 	// so this needs its own interface-typed variable.
 	var conntrackGuests api.ConntrackGuestResolver
+	// edgeIPAM (T-1403) is the same concrete *ipam.Service value as
+	// ipamSvc, typed as api.EdgeIPAMSource (the Edge & NAT cockpit's
+	// port-forward -> guest correlation) — same true-nil-interface-until-
+	// assigned pattern as guestInteriorIPAM/conntrackGuests above.
+	var edgeIPAM api.EdgeIPAMSource
 	if sdnPVEClient != nil {
 		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc})
 		ipamSvc = ipamConcrete
 		dhcpAPISvc = ipamConcrete
 		guestInteriorIPAM = ipamConcrete
 		conntrackGuests = ipamConcrete
+		edgeIPAM = ipamConcrete
 	}
 	// changeAllocations adapts ipamConcrete into change.AllocationsSource
 	// for T-406's DHCP-range-overlap advisory check — see
@@ -814,19 +820,26 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		GuestInteriorHost:    realHost,
 		GuestInteriorPeers:   guestInteriorPeers,
 		GuestInteriorIPAM:    guestInteriorIPAM,
-		FwLog:                fwLogAPI,
-		Peer:                 peerSrv,
-		PeerAudit:            peerAudit,
-		PeerSnapshots:        peerSnapshots,
-		Flows:                flowRepo,
-		PeerFlows:            peerFlows,
-		LatMesh:              latMeshSvc,
-		MTUProbe:             mtuProbeSvc,
-		WireGuard:            wgReadSvc,
-		Captures:             captureCoord,
-		Conntrack:            realHost,
-		PeerConntrack:        peerConntrack,
-		ConntrackGuests:      conntrackGuests,
+		// T-1403: Edge & NAT cockpit — EdgeInterfaces reuses changeSvc
+		// (Changesets' own ReadRawInterfaces), EdgeGraph reuses the same
+		// live graph, EdgeIPAM reuses ipamConcrete (nil-safe, same pattern
+		// as GuestInteriorIPAM above).
+		EdgeInterfaces:  changeSvc,
+		EdgeGraph:       graph,
+		EdgeIPAM:        edgeIPAM,
+		FwLog:           fwLogAPI,
+		Peer:            peerSrv,
+		PeerAudit:       peerAudit,
+		PeerSnapshots:   peerSnapshots,
+		Flows:           flowRepo,
+		PeerFlows:       peerFlows,
+		LatMesh:         latMeshSvc,
+		MTUProbe:        mtuProbeSvc,
+		WireGuard:       wgReadSvc,
+		Captures:        captureCoord,
+		Conntrack:       realHost,
+		PeerConntrack:   peerConntrack,
+		ConntrackGuests: conntrackGuests,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see

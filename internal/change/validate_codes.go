@@ -71,6 +71,21 @@ const (
 	codeOVSTrunkNotAllowed = "schema.ovs_trunk_not_allowed"
 	codeFwMacroUnknown     = "schema.fw_macro_unknown"
 
+	// --- T-1403's nat.*/route.static.* schema codes ---------------------
+
+	// codeEdgeRuleIDInvalid flags a nat.*/route.static.* create op whose
+	// target id is empty, too long, or outside the safe charset (the id is
+	// round-tripped through the rule's own generated marker comment —
+	// host.EncodeNat*Marker — so a predictable, printable charset keeps
+	// that comment readable in a raw-editor view, even though the
+	// underlying url.Values encoding would tolerate more).
+	codeEdgeRuleIDInvalid = "schema.edge_rule_id_invalid"
+	// codeNatProtoInvalid flags a nat.portforward.* proto outside tcp|udp.
+	codeNatProtoInvalid = "schema.nat_proto_invalid"
+	// codePortNumberInvalid flags a nat.portforward.* ext/int port outside
+	// [1,65535].
+	codePortNumberInvalid = "schema.port_number_invalid"
+
 	// --- referential (class 2: existence, collisions, overlaps) --------
 
 	codeTargetNotFound       = "referential.target_not_found"
@@ -99,6 +114,16 @@ const (
 	// VLAN sub-interface's parent (must not be one).
 	codeOVSKindMismatch  = "referential.ovs_kind_mismatch"
 	codeFwObjectNotFound = "referential.fw_object_not_found"
+	// codeIfaceNotFound (T-1403) flags a nat.*/route.static.* op whose Iface
+	// does not name a currently known interface(5) stanza on the target's
+	// node — the post-up/post-down lines have nowhere to attach.
+	codeIfaceNotFound = "referential.iface_not_found"
+	// codeRouteGatewayUnreachable (T-1403) flags a route.static.create/
+	// update whose Gateway does not fall inside any currently-configured
+	// address's subnet on the target's node — real `ip route add ... via
+	// <gw>` fails identically ("Nexthop has invalid gateway") when no
+	// directly-connected interface can reach it.
+	codeRouteGatewayUnreachable = "referential.route_gateway_unreachable"
 	// codeFwObjectInUse is T-502 acceptance criterion 2: deleting an
 	// alias/ipset/security-group still referenced by at least one rule is
 	// blocked. internal/fw.UsageCounts already gives the exact reference

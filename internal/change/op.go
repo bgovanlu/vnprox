@@ -86,6 +86,22 @@ const (
 	OpWgTunnelDelete OpType = "wg.tunnel.delete"
 	OpWgPeerAdd      OpType = "wg.peer.add"
 	OpWgPeerRemove   OpType = "wg.peer.remove"
+	// T-1403's "nat"/"route" op groups (docs/data-model.md §3 addition): a
+	// PVE-host SNAT/masquerade or DNAT/port-forward rule, and an
+	// additional/policy static route, respectively — each applied via
+	// NodeAgent's existing interfaces-file write path as a post-up/post-down
+	// stanza pair (internal/change/ifaces/edgeop.go), exactly like every
+	// other node-file op (see nodeFileOpTypes in apply_plan.go). A node's
+	// *default* gateway stays owned by iface.update's own gateway field;
+	// route.static.* never sets it.
+	OpNatMasqueradeCreate  OpType = "nat.masquerade.create"
+	OpNatMasqueradeDelete  OpType = "nat.masquerade.delete"
+	OpNatPortForwardCreate OpType = "nat.portforward.create"
+	OpNatPortForwardUpdate OpType = "nat.portforward.update"
+	OpNatPortForwardDelete OpType = "nat.portforward.delete"
+	OpRouteStaticCreate    OpType = "route.static.create"
+	OpRouteStaticUpdate    OpType = "route.static.update"
+	OpRouteStaticDelete    OpType = "route.static.delete"
 )
 
 // noTargetOps is the (deliberately tiny) set of ops with no natural target
@@ -160,11 +176,19 @@ var paramFactories = map[OpType]func() Params{
 	OpIpamAllocCreate: func() Params { return &IpamAllocCreateParams{} },
 	OpIpamAllocDelete: func() Params { return &IpamAllocDeleteParams{} },
 
-	OpWgTunnelCreate: func() Params { return &WgTunnelCreateParams{} },
-	OpWgTunnelUpdate: func() Params { return &WgTunnelUpdateParams{} },
-	OpWgTunnelDelete: func() Params { return &WgTunnelDeleteParams{} },
-	OpWgPeerAdd:      func() Params { return &WgPeerAddParams{} },
-	OpWgPeerRemove:   func() Params { return &WgPeerRemoveParams{} },
+	OpWgTunnelCreate:       func() Params { return &WgTunnelCreateParams{} },
+	OpWgTunnelUpdate:       func() Params { return &WgTunnelUpdateParams{} },
+	OpWgTunnelDelete:       func() Params { return &WgTunnelDeleteParams{} },
+	OpWgPeerAdd:            func() Params { return &WgPeerAddParams{} },
+	OpWgPeerRemove:         func() Params { return &WgPeerRemoveParams{} },
+	OpNatMasqueradeCreate:  func() Params { return &NatMasqueradeCreateParams{} },
+	OpNatMasqueradeDelete:  func() Params { return &NatMasqueradeDeleteParams{} },
+	OpNatPortForwardCreate: func() Params { return &NatPortForwardCreateParams{} },
+	OpNatPortForwardUpdate: func() Params { return &NatPortForwardUpdateParams{} },
+	OpNatPortForwardDelete: func() Params { return &NatPortForwardDeleteParams{} },
+	OpRouteStaticCreate:    func() Params { return &RouteStaticCreateParams{} },
+	OpRouteStaticUpdate:    func() Params { return &RouteStaticUpdateParams{} },
+	OpRouteStaticDelete:    func() Params { return &RouteStaticDeleteParams{} },
 }
 
 // KnownOpTypes returns every OpType this package can decode, for tests

@@ -24,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/ipam", label: "IPAM", glyph: "I" },
   { path: "/flows", label: "Flows", glyph: "W" },
   { path: "/conntrack", label: "Conntrack", glyph: "N" },
+  { path: "/edge", label: "Edge", glyph: "E" },
   { path: "/ports", label: "Ports", glyph: "P" },
   { path: "/blueprints", label: "Blueprints", glyph: "B" },
   { path: "/history", label: "History", glyph: "H" },
