@@ -78,6 +78,14 @@ const (
 	OpIpamAllocCreate OpType = "ipam.alloc.create"
 	OpIpamAllocDelete OpType = "ipam.alloc.delete"
 
+	// QoS op group (T-1505, docs/data-model.md §3 addition): a bridge-level
+	// tc/HTB traffic shape. Per-guest-NIC rate limiting is deliberately NOT
+	// a new op here — it already exists as guest.nic.update's RateMbps
+	// field (see internal/qos's package doc comment).
+	OpQosShapeCreate OpType = "qos.shape.create"
+	OpQosShapeUpdate OpType = "qos.shape.update"
+	OpQosShapeDelete OpType = "qos.shape.delete"
+
 	// WireGuard op group (T-1401, docs/data-model.md §3 addition). Every
 	// wg.* op is an ordinary changeset op — there is no second mutation path
 	// for WireGuard (CLAUDE.md's change-engine invariant).
@@ -191,6 +199,10 @@ var paramFactories = map[OpType]func() Params{
 
 	OpIpamAllocCreate: func() Params { return &IpamAllocCreateParams{} },
 	OpIpamAllocDelete: func() Params { return &IpamAllocDeleteParams{} },
+
+	OpQosShapeCreate: func() Params { return &QosShapeCreateParams{} },
+	OpQosShapeUpdate: func() Params { return &QosShapeUpdateParams{} },
+	OpQosShapeDelete: func() Params { return &QosShapeDeleteParams{} },
 
 	OpWgTunnelCreate:       func() Params { return &WgTunnelCreateParams{} },
 	OpWgTunnelUpdate:       func() Params { return &WgTunnelUpdateParams{} },

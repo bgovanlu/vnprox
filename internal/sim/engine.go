@@ -13,6 +13,11 @@ type Engine struct {
 	inv      inventory.Snapshot
 	fw       fw.Snapshot
 	guestIPs map[inventory.Ref][]GuestIP
+	// shapedRefs is Input.ShapedRefs re-keyed by Ref.String() — Hop.Ref is
+	// already that same string encoding, so addHop can test membership
+	// directly without re-parsing every hop's ref back into an
+	// inventory.Ref.
+	shapedRefs map[string]bool
 
 	guestNics    map[inventory.Ref]*inventory.GuestNic
 	guests       map[inventory.Ref]*inventory.Guest
@@ -31,10 +36,17 @@ type Engine struct {
 // NewEngine builds an Engine from in. The inventory Snapshot is required;
 // GuestIPs is optional.
 func NewEngine(in Input) *Engine {
+	shapedRefs := make(map[string]bool, len(in.ShapedRefs))
+	for ref, shaped := range in.ShapedRefs {
+		if shaped {
+			shapedRefs[ref.String()] = true
+		}
+	}
 	e := &Engine{
 		inv:              in.Inventory,
 		fw:               fw.BuildSnapshot(in.Inventory.All()),
 		guestIPs:         in.GuestIPs,
+		shapedRefs:       shapedRefs,
 		guestNics:        map[inventory.Ref]*inventory.GuestNic{},
 		guests:           map[inventory.Ref]*inventory.Guest{},
 		bridgesByRef:     map[inventory.Ref]*inventory.Bridge{},

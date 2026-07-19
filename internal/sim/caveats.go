@@ -48,6 +48,15 @@ const (
 	// CodeOVS notes an Open vSwitch bridge/bond is on the path; the engine's
 	// L2 VLAN reasoning is validated against Linux-bridge semantics only.
 	CodeOVS = "ovs-l2"
+	// CodeQosShaped notes a hop crosses a bridge currently carrying an
+	// applied qos.shape (T-1505): the simulator does not model tc/HTB's
+	// actual queueing/dropping behavior (it is a reachability/firewall
+	// engine, not a bandwidth/latency simulator), so a shaped hop is
+	// disclosed rather than silently ignored — a confident "allow" verdict
+	// through a rate-limited link may still stall or drop under load.
+	// Info, not a blocker: the shape doesn't change whether the flow is
+	// reachable, only how it performs.
+	CodeQosShaped = "qos-shaped"
 )
 
 // Feature names for the not-evaluated / honesty inventory. Kept as
@@ -73,6 +82,15 @@ func warnCaveat(code, msg string) Caveat {
 
 func blockerCaveat(code, msg string) Caveat {
 	return Caveat{Code: code, Severity: CaveatBlocker, Message: msg}
+}
+
+// qosShapedCaveat builds the T-1505 CodeQosShaped info caveat naming the
+// specific shaped hop (label is that hop's own Hop.Label, e.g. "bridge
+// vmbr0") — addHop's caller in hops.go dedupes via Result.addCaveat, so a
+// path crossing the same shaped bridge twice (src and dst attachment hops
+// on the same bridge) still surfaces exactly one caveat for it.
+func qosShapedCaveat(label string) Caveat {
+	return infoCaveat(CodeQosShaped, fmt.Sprintf("%s carries an applied QoS shape — this path's throughput may be rate-limited (not evaluated by this simulator).", label))
 }
 
 // notEvaluated builds the AC5 blocker caveat naming an un-evaluated feature.

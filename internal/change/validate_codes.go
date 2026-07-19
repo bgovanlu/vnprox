@@ -91,6 +91,17 @@ const (
 	// [1,65535].
 	codePortNumberInvalid = "schema.port_number_invalid"
 
+	// --- T-1505's qos.shape.* schema codes -------------------------------
+
+	// codeQosRateInvalid flags a qos.shape.* op whose rateMbit is
+	// non-positive, or whose ceilMbit (when set) is below rateMbit — real
+	// tc/HTB rejects an HTB class whose ceil is lower than its own
+	// guaranteed rate (AC2).
+	codeQosRateInvalid = "schema.qos_rate_invalid"
+	// codeQosVlanOutOfRange flags a qos.shape.* matchVlan outside the
+	// 1-4094 802.1Q VID range (0 and 4095 are reserved).
+	codeQosVlanOutOfRange = "schema.qos_vlan_out_of_range"
+
 	// --- referential (class 2: existence, collisions, overlaps) --------
 
 	codeTargetNotFound       = "referential.target_not_found"
@@ -119,6 +130,10 @@ const (
 	// VLAN sub-interface's parent (must not be one).
 	codeOVSKindMismatch  = "referential.ovs_kind_mismatch"
 	codeFwObjectNotFound = "referential.fw_object_not_found"
+	// codeQosBridgeNotFound (T-1505) flags a qos.shape.* op whose Bridge
+	// does not name a currently known bridge on the target's node — the
+	// tc/HTB shape would have nothing to attach to.
+	codeQosBridgeNotFound = "referential.qos_bridge_not_found"
 	// codeIfaceNotFound (T-1403) flags a nat.*/route.static.* op whose Iface
 	// does not name a currently known interface(5) stanza on the target's
 	// node — the post-up/post-down lines have nowhere to attach.

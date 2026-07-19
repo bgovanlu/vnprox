@@ -33,6 +33,12 @@ type executor struct {
 	// the step's *first* op, so a step that errored partway through still
 	// needs the same restore as one that ran to completion.
 	fwPre map[string]string
+	// qosPre is the per-node QoS pre-apply state (QosGateway.SnapshotQos),
+	// the restore target for a mid-apply failure that had already run a
+	// qos step (T-1505). Populated from the pre-snapshot's
+	// qosStateSnapshotPath file; hasQosPre is false for a changeset with no
+	// qos.* ops.
+	qosPre map[string]string
 	// wgPre is the per-node WireGuard pre-apply state (WGGateway.SnapshotWg),
 	// the restore target for a mid-apply failure that had already run a wg
 	// step (T-1401). Populated from the pre-snapshot's wgStateSnapshotPath
@@ -42,6 +48,7 @@ type executor struct {
 	cs        Changeset
 	deadline  int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
 	hasSDNPre bool
+	hasQosPre bool
 	hasWgPre  bool
 }
 
@@ -62,6 +69,7 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		}
 	}
 	sdnPre, hasSDNPre := sdnConfigFromSnapshot(pre)
+	qosPre, hasQosPre := qosStateFromSnapshot(pre)
 	wgPre, hasWgPre := wgStateFromSnapshot(pre)
 	steps := make([]StepLog, len(plan.Steps))
 	stageIx := map[string]int{}
@@ -76,7 +84,8 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		}
 	}
 	return &executor{
-		svc: s, cs: cs, plan: plan, pre: preByNode, sdnPre: sdnPre, hasSDNPre: hasSDNPre, wgPre: wgPre, hasWgPre: hasWgPre, pveGW: pveGW, deadline: deadline,
+		svc: s, cs: cs, plan: plan, pre: preByNode, sdnPre: sdnPre, hasSDNPre: hasSDNPre,
+		qosPre: qosPre, hasQosPre: hasQosPre, wgPre: wgPre, hasWgPre: hasWgPre, pveGW: pveGW, deadline: deadline,
 		log:     &ApplyLog{Steps: steps},
 		stageIx: stageIx, loadIx: loadIx, fwPre: map[string]string{},
 	}
@@ -203,6 +212,15 @@ func (e *executor) execStep(ctx context.Context, i int) error {
 		return e.execFwApply(ctx, st)
 	case StepFwVerify:
 		return e.execFwVerify(ctx, st)
+
+	case StepQosApply:
+		if e.svc.qos == nil {
+			return fmt.Errorf("no QoS gateway available for qos op (QoS not wired on this daemon)")
+		}
+		if len(st.OpIdx) != 1 {
+			return fmt.Errorf("qos_apply step must reference exactly one op, got %d", len(st.OpIdx))
+		}
+		return e.svc.qos.ApplyQosOp(ctx, e.cs.Ops[st.OpIdx[0]])
 	default:
 		return fmt.Errorf("unknown step kind %q", st.Kind)
 	}
@@ -337,9 +355,25 @@ func (e *executor) rollbackAfterFailure(ctx context.Context) {
 	}
 	e.rollbackIpamSteps(ctx)
 	e.undoFwTargets(ctx)
+	if e.hasQosPre && e.anyQosStepSucceeded() {
+		e.log.Rollback = append(e.log.Rollback, e.svc.restoreQosState(ctx, e.qosPre)...)
+	}
 	if e.hasWgPre && e.anyWgStepSucceeded() {
 		e.log.Rollback = append(e.log.Rollback, e.svc.restoreWgState(ctx, e.wgPre)...)
 	}
+}
+
+// anyQosStepSucceeded reports whether any StepQosApply step in this apply
+// attempt reached StepOK — the gate for whether restoreQosState has
+// anything to undo (if every qos step failed before mutating anything,
+// live already matches the pre-state).
+func (e *executor) anyQosStepSucceeded() bool {
+	for _, s := range e.log.Steps {
+		if s.Kind == StepQosApply && s.Status == StepOK {
+			return true
+		}
+	}
+	return false
 }
 
 // anyWgStepSucceeded reports whether any StepWgApply step in this apply
@@ -353,6 +387,36 @@ func (e *executor) anyWgStepSucceeded() bool {
 		}
 	}
 	return false
+}
+
+// restoreQosState reconciles every node in state back to its captured QoS
+// pre-apply state via the daemon-level QosGateway (callable unattended — no
+// user ticket). Best-effort per node: an error restoring one is recorded
+// but does not abort the rest (T-1505).
+func (s *Service) restoreQosState(ctx context.Context, state map[string]string) []RollbackLog {
+	if s.qos == nil {
+		return nil
+	}
+	nodes := make([]string, 0, len(state))
+	for node := range state {
+		nodes = append(nodes, node)
+	}
+	sort.Strings(nodes)
+	logs := make([]RollbackLog, 0, len(nodes))
+	for _, node := range nodes {
+		rb := RollbackLog{
+			Node:    node,
+			At:      s.now().Unix(),
+			Status:  StepOK,
+			Summary: fmt.Sprintf("Restore QoS shape state on %s from pre-apply snapshot", node),
+		}
+		if err := s.qos.RestoreQos(ctx, node, state[node]); err != nil {
+			rb.Status = StepFailed
+			rb.Error = err.Error()
+		}
+		logs = append(logs, rb)
+	}
+	return logs
 }
 
 // restoreWgState reconciles every node in state back to its captured

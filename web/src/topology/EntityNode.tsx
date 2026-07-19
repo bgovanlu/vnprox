@@ -132,6 +132,19 @@ function isMgmtBadge(badge: string): boolean {
   return badge in MGMT_BADGE_LABEL;
 }
 
+// T-1505: the shaping-active badge (docs/api.md's GET /topology badge
+// vocabulary — reuses T-901's plain badges[] convention, additive to
+// whatever mgmt/drift badges are already present) gets its own distinct
+// (blue) treatment, the same "a glance at the map answers the question"
+// rationale MGMT_BADGE_LABEL's amber treatment above documents — here,
+// "which bridge is currently rate-limited."
+const QOS_SHAPED_BADGE = "qos-shaped";
+const QOS_SHAPED_LABEL = "carries an applied QoS shape";
+
+function isQosShapedBadge(badge: string): boolean {
+  return badge === QOS_SHAPED_BADGE;
+}
+
 export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
   const isPill = data.isGuestGroup;
   const simVerdict = data.simVerdict;
@@ -252,12 +265,14 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
           {data.badges.map((b) => (
             <span
               key={b}
-              title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : undefined}
+              title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : isQosShapedBadge(b) ? QOS_SHAPED_LABEL : undefined}
               className={clsx(
                 "rounded px-1 py-0.5 text-[10px]",
                 isMgmtBadge(b)
                   ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
-                  : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-300",
+                  : isQosShapedBadge(b)
+                    ? "bg-blue-200/70 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
+                    : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-300",
               )}
             >
               {b}

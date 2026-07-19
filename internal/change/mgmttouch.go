@@ -148,6 +148,43 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, tunnelCarriers map[st
 			if touched(op.Target.ID) || touched(params.Parent) {
 				return true
 			}
+		case *QosShapeCreateParams:
+			// T-1505: a qos.shape.* op whose Bridge param names a node's
+			// resolved management/corosync path is touchesMgmtPath — a tc/
+			// HTB shape on the management/uplink bridge can starve or
+			// deprioritize management/corosync traffic exactly as
+			// disruptively as an iface.update, so it inherits T-703's
+			// ceremony with no override, mirroring BridgePortAddParams'
+			// dual (target OR named-param) check above. A create names its
+			// own bridge in its params.
+			if touched(params.Bridge) {
+				return true
+			}
+		case *QosShapeUpdateParams:
+			// An update that (re)sets Bridge names it directly; an update
+			// that leaves Bridge unset (rate/ceil/priority only) still
+			// mutates an existing shape whose bridge this package cannot
+			// resolve from the op alone (the target id carries no bridge
+			// name — see QosShapeDeleteParams below for the identical,
+			// currently-unresolved gap on delete). Flagged, not silently
+			// assumed safe: a future pass can close it with a
+			// tunnelID->carrier-style lookup (mirrors T-1401's
+			// WgCarrierSource) once a QoS read seam exists for it.
+			if params.Bridge != nil && touched(*params.Bridge) {
+				return true
+			}
+		case *QosShapeDeleteParams:
+			// No params at all: this op names only the shape's own id, and
+			// this package has no store-backed id->bridge lookup to
+			// resolve it from here (unlike, say, T-1401's WgCarrierSource
+			// pattern for a carrier-less wg op). A delete on a mgmt-path
+			// shape therefore does not currently set touchesMgmtPath — a
+			// documented, flagged gap (mirrors the identical limitation a
+			// delete-by-id op with no named iface/bridge param always has
+			// in this function without such a lookup), left for a
+			// follow-up that threads a QoS read seam through the same way
+			// WgCarrierSource does for WireGuard.
+
 		case *WgTunnelCreateParams:
 			// T-1401: a wg.* op on a tunnel whose carrier interface is itself
 			// part of a node's resolved management/corosync path is
@@ -234,7 +271,9 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, tunnelCarriers map[st
 			// never touch a node's interfaces file at all, and their
 			// targets' kinds can never collide with an iface-namespace name
 			// set entry because the name set is keyed by (node, name) and
-			// cluster-scoped refs have an empty node.
+			// cluster-scoped refs have an empty node. qos.shape.* targets
+			// (KindQosShape, handled by the explicit cases above) are
+			// node-scoped but likewise never collide with that name set.
 			if isIfaceNamespaceKind(op.Target.Kind) && touched(op.Target.ID) {
 				return true
 			}

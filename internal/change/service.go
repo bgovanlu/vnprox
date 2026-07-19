@@ -77,8 +77,12 @@ type SecretSealer interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Nodes              NodeAgent
-	Timers             NodeTimerAgent
+	Nodes  NodeAgent
+	Timers NodeTimerAgent
+	// Qos is T-1505's node-local QoS gateway (qos.shape.* ops). Optional:
+	// nil makes qos.shape.* ops unexecutable (execStep errors), mirroring
+	// every other optional gateway seam on this Config.
+	Qos                QosGateway
 	WG                 WGGateway
 	Sealer             SecretSealer
 	WgCarriers         WgCarrierSource
@@ -124,6 +128,7 @@ type Stopper interface {
 type Service struct {
 	nodes              NodeAgent
 	nodeTimers         NodeTimerAgent
+	qos                QosGateway
 	wg                 WGGateway
 	sealer             SecretSealer
 	wgCarriers         WgCarrierSource
@@ -204,7 +209,7 @@ func NewService(cfg Config) (*Service, error) {
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
-		nodes: cfg.Nodes, nodeTimers: cfg.Timers, wg: cfg.WG, sealer: cfg.Sealer, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
+		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
 		rollbackWindowDays: rollbackWindowDays,
 		timers:             map[string]Stopper{},

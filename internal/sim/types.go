@@ -141,6 +141,15 @@ type Input struct {
 	// GuestIPs is an optional side-table of resolved guest NIC IPs keyed by
 	// the guest NIC's inventory Ref. Optional (nil == none known).
 	GuestIPs map[inventory.Ref][]GuestIP
+	// ShapedRefs is T-1505's shape-awareness input: the set of inventory
+	// Refs (today, always a bridge) currently carrying an applied qos.shape
+	// — sourced from the app-owned qos_shapes store table (internal/qos),
+	// never guessed or re-derived from live tc state. Optional (nil == no
+	// QoS gateway wired, or no shapes currently applied): a hop crossing a
+	// ref in this set gets CodeQosShaped disclosed rather than the shape
+	// being silently ignored (docs/features/change-management.md's honesty-
+	// contract precedent T-503 already set for firewall/conntrack).
+	ShapedRefs map[inventory.Ref]bool
 }
 
 // ResolvedEndpoint echoes how the engine understood one endpoint, for the

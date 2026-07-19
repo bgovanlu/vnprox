@@ -25,6 +25,14 @@ const (
 	KindGuestNic     Kind = "guest-nic"
 	KindLldpNeighbor Kind = "lldp-neighbor"
 	KindFwRuleset    Kind = "fw-ruleset"
+	// KindQosShape (T-1505: QoS & traffic shaping) names a qos.shape.*
+	// changeset op's target: a bridge-level tc/HTB shape, node-scoped with a
+	// caller-chosen id. It has no dedicated live-polled inventory entity of
+	// its own (like KindFwRuleset's fw.alias/ipset/group members) — its
+	// entire state lives in the app-owned qos_shapes store table
+	// (internal/store/migrations, docs/data-model.md §3), never a shadow
+	// copy of live tc state.
+	KindQosShape Kind = "qos-shape"
 
 	// KindWgTunnel / KindWgPeer are T-1401's WireGuard op-target kinds. They
 	// are app-owned intent (docs/data-model.md §2's wireguard_tunnels/
@@ -66,7 +74,8 @@ var knownKinds = map[Kind]bool{
 	KindNode: true, KindPhysNic: true, KindBond: true, KindBridge: true,
 	KindVlan: true, KindOVSBridge: true, KindOVSBond: true, KindSDNZone: true,
 	KindSDNVnet: true, KindSDNSubnet: true, KindGuest: true, KindGuestNic: true,
-	KindLldpNeighbor: true, KindFwRuleset: true, KindWgTunnel: true, KindWgPeer: true,
+	KindLldpNeighbor: true, KindFwRuleset: true, KindQosShape: true,
+	KindWgTunnel: true, KindWgPeer: true,
 	KindNatRule: true, KindStaticRoute: true, KindVF: true,
 }
 

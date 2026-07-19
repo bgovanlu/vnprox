@@ -223,6 +223,15 @@ type Options struct {
 	ProbeClients  ProbeClientProvider
 	ProbeAudit    simulateVerifyAuditor
 	SimDivergence simDivergenceRecorder
+	// QosShapes is T-1505's shape-awareness seam for both simulate routes
+	// (a shaped-hop caveat, never a blocker) and GET /topology's
+	// shaping-active badge (paintQosBadges); nil-safe like every other
+	// optional Options field (both degrade to "no shape awareness this
+	// request" rather than failing).
+	QosShapes QosShapeSource
+	// Qos backs `GET /qos/shapes` (T-1505); nil skips mounting the route,
+	// same degraded-mode treatment as every other optional Options field.
+	Qos QosShapeListService
 	// GuestInteriorToggles/GuestInteriorGraph/GuestInteriorHost/
 	// GuestInteriorPeers/GuestInteriorIPAM back T-1304's guest network
 	// interior inspector: GET/PUT /guests/{ref}/interior-toggle and
@@ -398,7 +407,7 @@ func NewRouter(opts Options) http.Handler {
 				r.Get("/config", configHandler(opts.Instance))
 			})
 		}
-		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected)
+		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected, opts.QosShapes)
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
 		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth)
@@ -425,7 +434,8 @@ func NewRouter(opts Options) http.Handler {
 		mountBlueprintBundleRoutes(r, opts.Blueprints, opts.BlueprintSigningKey, opts.BlueprintTrust, opts.BlueprintSignersAudit, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
 		mountSpecPinRoutes(r, opts.SpecPin, opts.SpecPinAudit, opts.Auth)
-		mountSimulateRoutes(r, opts.Simulator, opts.GuestInteriorIPAM, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
+		mountSimulateRoutes(r, opts.Simulator, opts.GuestInteriorIPAM, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.QosShapes, opts.Auth)
+		mountQosRoutes(r, opts.Qos, opts.Auth)
 		mountGuestInteriorRoutes(r, opts.GuestInteriorToggles, opts.GuestInteriorGraph, opts.ProbeClients, opts.GuestInteriorHost, opts.GuestInteriorPeers, opts.GuestInteriorIPAM, opts.LocalNode, opts.ProbeAudit, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)

@@ -503,6 +503,21 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// (app-owned UI state, off by default per guest).
 	guestInteriorToggleRepo := store.NewGuestInteriorToggleRepo(db)
 
+	// T-1505: QoS shape storage + the node-local tc/HTB gateway, mirroring
+	// nodeAgent's own real-vs-dev-sandbox split immediately above (a
+	// `make dev` daemon must never exec real tc any more than it may
+	// rewrite /etc/network/interfaces). localNode is the same closure
+	// every other node-scoped gateway below reuses (see its own doc
+	// comment further down this function).
+	qosShapeRepo := store.NewQosShapeRepo(db)
+	var qosGateway *hostQosGateway
+	if cfg.Safety.DevInterfacesDir != "" {
+		qosGateway = newDevQosGateway(qosShapeRepo, localNode, logger)
+	} else {
+		qosGateway = newHostQosGateway(qosShapeRepo, localNode, logger)
+	}
+	qosReadSvc := newQosReadService(qosShapeRepo)
+
 	// T-304: the local-timer protocol's node-side agent — every daemon runs
 	// one, independent of whether it ends up coordinating anything, so it
 	// can answer a coordinator's arm/cancel/status calls for its own node
@@ -572,6 +587,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
 		Nodes:             clusterNodes,
 		Timers:            clusterTimers,
+		// T-1505: node-local QoS gateway (qos.shape.* ops) — daemon-level,
+		// no user ticket needed, exactly like Nodes above.
+		Qos: qosGateway,
 		// T-1401: the node-local WireGuard gateway (keygen on-node, sealed
 		// private key via the same session cipher, fixed-argv wg/wg-quick
 		// exec). Daemon-level, so wg rollback works on the unattended
@@ -874,6 +892,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		ProbeClients:          probeClientProvider{authSvc},
 		ProbeAudit:            auditRepo,
 		SimDivergence:         simDivergenceRepo,
+		// T-1505: shape-awareness for both simulate routes (a shaped-hop
+		// caveat) and GET /topology's shaping-active badge, plus the
+		// read-only GET /qos/shapes route — all backed by the same
+		// node-local store the qos.shape.* apply/rollback executor writes.
+		QosShapes: qosReadSvc,
+		Qos:       qosReadSvc,
 		// T-1304: guest network interior inspector — GuestInteriorGraph
 		// reuses the same live graph Simulator/Firewall above already
 		// wire in; GuestInteriorHost reuses realHost (local lxc reads);

@@ -163,6 +163,7 @@ func TestParamsUnion_Membership(t *testing.T) {
 		&FwGroupCreateParams{}, &FwGroupUpdateParams{}, &FwGroupDeleteParams{},
 		&IfaceRenameParams{},
 		&IpamAllocCreateParams{}, &IpamAllocDeleteParams{},
+		&QosShapeCreateParams{}, &QosShapeUpdateParams{}, &QosShapeDeleteParams{},
 		&WgTunnelCreateParams{}, &WgTunnelUpdateParams{}, &WgTunnelDeleteParams{},
 		&WgPeerAddParams{}, &WgPeerRemoveParams{},
 		&NatMasqueradeCreateParams{}, &NatMasqueradeDeleteParams{},

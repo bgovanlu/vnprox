@@ -333,6 +333,21 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 			out = append(out, errorf(codeTargetNotFound, ref, "subnet %s does not exist", op.Target))
 		}
 
+	case *QosShapeCreateParams:
+		checkQosBridge(p, op.Target.Node, params.Bridge, ref, &out)
+
+	case *QosShapeUpdateParams:
+		if params.Bridge != nil {
+			checkQosBridge(p, op.Target.Node, *params.Bridge, ref, &out)
+		}
+
+	case *QosShapeDeleteParams:
+		// A shape has no dedicated inventory entity (like a nat/edge rule
+		// would) for this pure, snapshot-driven validator class to check
+		// existence against — its state lives only in the app-owned
+		// qos_shapes store row this package never reads; the apply-time
+		// QosGateway still errors cleanly on a truly nonexistent id.
+
 	case *NatMasqueradeCreateParams:
 		checkEdgeRuleIface(p, op.Target.Node, params.Iface, ref, &out)
 
@@ -374,6 +389,23 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 	}
 
 	return out
+}
+
+// checkQosBridge flags a T-1505 qos.shape.* op whose Bridge does not name a
+// currently known bridge on node — the tc/HTB shape would have nothing to
+// attach to.
+func checkQosBridge(p *projection, node, bridge, ref string, out *[]Finding) {
+	if bridge == "" {
+		return // schema class already flagged the missing-bridge case
+	}
+	bridgeRef, ok := p.ifaceRef(node, bridge)
+	if !ok {
+		*out = append(*out, errorf(codeQosBridgeNotFound, ref, "bridge %q does not exist on node %s", bridge, node))
+		return
+	}
+	if bridgeRef.Kind != inventory.KindBridge && bridgeRef.Kind != inventory.KindOVSBridge {
+		*out = append(*out, errorf(codeQosBridgeNotFound, ref, "%q on node %s is not a bridge", bridge, node))
+	}
 }
 
 // checkEdgeRuleIface flags a T-1403 nat.*/route.static.* op whose Iface

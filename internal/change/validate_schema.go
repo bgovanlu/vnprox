@@ -585,6 +585,30 @@ func schemaValidateOp(op Op) []Finding {
 			out = append(out, errorf(codeCIDRInvalid, ref, "cidr %q is not a valid CIDR", p.CIDR))
 		}
 
+	case *QosShapeCreateParams:
+		if p.Bridge == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "qos.shape.create requires bridge"))
+		}
+		if p.MatchCIDR != "" && !validCIDR(p.MatchCIDR) {
+			out = append(out, errorf(codeCIDRInvalid, ref, "matchCidr %q is not a valid CIDR", p.MatchCIDR))
+		}
+		schemaQosVlan(p.MatchVlan, ref, &out)
+		schemaQosRate(p.RateMbit, p.CeilMbit, ref, &out)
+
+	case *QosShapeUpdateParams:
+		if p.MatchCIDR != nil && *p.MatchCIDR != "" && !validCIDR(*p.MatchCIDR) {
+			out = append(out, errorf(codeCIDRInvalid, ref, "matchCidr %q is not a valid CIDR", *p.MatchCIDR))
+		}
+		schemaQosVlan(p.MatchVlan, ref, &out)
+		if p.RateMbit != nil {
+			schemaQosRate(*p.RateMbit, p.CeilMbit, ref, &out)
+		} else if p.CeilMbit != nil && *p.CeilMbit <= 0 {
+			out = append(out, errorf(codeQosRateInvalid, ref, "ceilMbit %d must be positive", *p.CeilMbit))
+		}
+
+	case *QosShapeDeleteParams:
+		// no params to validate.
+
 	case *WgTunnelCreateParams:
 		if strings.TrimSpace(p.IfName) == "" {
 			out = append(out, errorf(codeRequiredFieldMissing, ref, "wg.tunnel.create requires ifName"))
@@ -692,6 +716,34 @@ func schemaValidateOp(op Op) []Finding {
 	}
 
 	return out
+}
+
+// schemaQosRate is T-1505 acceptance criterion 2: rateMbit must be
+// positive, and ceilMbit (when set) must be >= rateMbit — real tc/HTB
+// rejects a class whose ceil is below its own guaranteed rate.
+func schemaQosRate(rateMbit int, ceilMbit *int, ref string, out *[]Finding) {
+	if rateMbit <= 0 {
+		*out = append(*out, errorf(codeQosRateInvalid, ref, "rateMbit %d must be positive", rateMbit))
+	}
+	if ceilMbit != nil {
+		if *ceilMbit <= 0 {
+			*out = append(*out, errorf(codeQosRateInvalid, ref, "ceilMbit %d must be positive", *ceilMbit))
+		} else if *ceilMbit < rateMbit {
+			*out = append(*out, errorf(codeQosRateInvalid, ref, "ceilMbit %d must be >= rateMbit %d", *ceilMbit, rateMbit))
+		}
+	}
+}
+
+// schemaQosVlan flags a qos.shape.* matchVlan outside the 802.1Q VID range
+// [1,4094] (0/4095 are reserved) — a nil vlan (no VLAN match) is always
+// valid.
+func schemaQosVlan(vlan *int, ref string, out *[]Finding) {
+	if vlan == nil {
+		return
+	}
+	if *vlan < minVID || *vlan > maxVID {
+		*out = append(*out, errorf(codeQosVlanOutOfRange, ref, "matchVlan %d out of range [%d,%d]", *vlan, minVID, maxVID))
+	}
 }
 
 // schemaWgKey flags a WireGuard peer public key that isn't a valid base64

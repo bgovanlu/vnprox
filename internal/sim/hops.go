@@ -3,12 +3,20 @@ package sim
 import "fmt"
 
 // addHop appends h to the result's hop list unless it is a no-op (empty
-// label).
+// label), and — T-1505 — discloses the CodeQosShaped caveat when h names a
+// ref (Kind:Node:ID) carrying an applied qos.shape, so a shaped hop is
+// surfaced rather than silently ignored. res.addCaveat dedupes by (code,
+// message), so a path that crosses the same shaped ref at more than one
+// hop (e.g. a bridge that is both src's and dst's attachment) still
+// produces exactly one caveat.
 func (e *Engine) addHop(res *Result, h Hop) {
 	if h.Label == "" {
 		return
 	}
 	res.Hops = append(res.Hops, h)
+	if h.Ref != "" && e.shapedRefs[h.Ref] {
+		res.addCaveat(qosShapedCaveat(h.Label))
+	}
 }
 
 // hopForEndpoint renders the endpoint itself as a hop.
