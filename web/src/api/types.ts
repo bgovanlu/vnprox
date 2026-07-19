@@ -2308,6 +2308,31 @@ export interface LatMeshHistory {
   items: LatMeshSample[];
 }
 
+// --- Path MTU prober (GET /mtuprobe/results; internal/api/mtuprobe.go, T-1306) --
+
+/** One GET /mtuprobe/results item — docs/api.md's `MTUProbeResult` shape
+ * (internal/mtuprobe.Result). `linkId`/`fabric`/`fromNode`/`toNode` are the
+ * exact same internal/latmesh.Pair.LinkID-keyed identity `LatMeshLink` uses
+ * for the same path, so a link's latency reading and its verified MTU
+ * reading correlate by `linkId`. `mtu` is the binary search's converged
+ * path MTU; `at` is the unix-seconds timestamp of the probe that produced
+ * it; `probeCount` is how many DF-probes that convergence took. A link the
+ * prober hasn't reached yet simply has no item — never a stale/zero entry. */
+export interface MTUProbeResult {
+  linkId: string;
+  fabric: "corosync" | "guest";
+  fromNode: string;
+  toNode: string;
+  mtu: number;
+  at: number;
+  probeCount: number;
+}
+
+/** GET /mtuprobe/results response envelope. */
+export interface MTUProbeResults {
+  items: MTUProbeResult[];
+}
+
 // --- History (GET /history/events; internal/api/history.go, T-1007) -------
 
 /** One merged timeline-marker item — docs/api.md's `HistoryEvent` shape,

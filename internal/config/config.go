@@ -22,6 +22,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/flow/hostsample"
 	"github.com/bgovanlu/vnprox/internal/latmesh"
+	"github.com/bgovanlu/vnprox/internal/mtuprobe"
 	"github.com/bgovanlu/vnprox/internal/peer"
 )
 
@@ -121,6 +122,7 @@ type Config struct {
 	Collect     CollectConfig
 	Retention   RetentionConfig
 	Latmesh     LatmeshConfig
+	MTUProbe    MTUProbeConfig
 }
 
 // CaptureConfig is the [capture] section (T-1301): the server-enforced,
@@ -316,6 +318,16 @@ type LatmeshConfig struct {
 	MaxRows          int64
 }
 
+// MTUProbeConfig is the [mtuprobe] section (T-1306): the path MTU prober's
+// own scheduling knob. Always on, same as [latmesh] (a low-rate outbound
+// DF-probe carries no listening-port attack surface to gate behind an
+// opt-in flag). ProbeIntervalSec defaults to internal/mtuprobe's own
+// documented constant (300s — deliberately coarser than [latmesh]'s 10s
+// default, since MTU rarely changes) when unset/non-positive.
+type MTUProbeConfig struct {
+	ProbeIntervalSec int
+}
+
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
@@ -332,6 +344,7 @@ type rawConfig struct {
 	Flows       rawFlows       `toml:"flows"`
 	Retention   rawRetention   `toml:"retention"`
 	Latmesh     rawLatmesh     `toml:"latmesh"`
+	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
 }
 
 type rawCapture struct {
@@ -424,6 +437,10 @@ type rawLatmesh struct {
 	ProbeIntervalSec int   `toml:"probe_interval_sec"`
 	RetentionMinutes int   `toml:"retention_minutes"`
 	MaxRows          int64 `toml:"max_rows"`
+}
+
+type rawMTUProbe struct {
+	ProbeIntervalSec int `toml:"probe_interval_sec"`
 }
 
 // Load reads, parses, defaults, and validates the config file at path.
@@ -520,6 +537,9 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			ProbeIntervalSec: firstNonZeroInt(raw.Latmesh.ProbeIntervalSec, latmesh.DefaultProbeIntervalSec),
 			RetentionMinutes: firstNonZeroInt(raw.Latmesh.RetentionMinutes, latmesh.DefaultRetentionMinutes),
 			MaxRows:          firstNonZeroInt64(raw.Latmesh.MaxRows, latmesh.DefaultMaxRows),
+		},
+		MTUProbe: MTUProbeConfig{
+			ProbeIntervalSec: firstNonZeroInt(raw.MTUProbe.ProbeIntervalSec, mtuprobe.DefaultProbeIntervalSec),
 		},
 		Capture: CaptureConfig{
 			Root:                  firstNonEmpty(raw.Capture.Root, DefaultCaptureRoot),

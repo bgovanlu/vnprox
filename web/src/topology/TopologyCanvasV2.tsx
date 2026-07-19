@@ -39,8 +39,9 @@ import {
 } from "./canvasScene";
 import { buildA11yProxies } from "./a11yBridge";
 import { TopologyA11yLayer } from "./TopologyA11yLayer";
-import { drawScene, drawFlowOverlay, drawLatencyOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
+import { drawScene, drawFlowOverlay, drawLatencyOverlay, drawMTUOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
 import type { LatencyOverlayEdge } from "./latencyMode";
+import type { MTUOverlayBadge } from "./mtuOverlay";
 import { applyLod, parseLodId, zoomBandFor } from "./lod";
 import { Minimap } from "./Minimap";
 
@@ -106,6 +107,11 @@ export interface TopologyCanvasV2Props {
    * scene and the Flows overlay. undefined/empty (the default) draws
    * nothing extra, so every pre-T-1303 call site is unaffected. */
   latencyEdges?: readonly LatencyOverlayEdge[];
+  /** T-1306 "Verified MTU" badge layer (topology/mtuOverlay.ts) — drawn as a
+   * distinct, static text-badge overlay after the Latency overlay.
+   * undefined/empty (the default) draws nothing extra, so every pre-T-1306
+   * call site is unaffected. */
+  mtuBadges?: readonly MTUOverlayBadge[];
   /** Fires when a Flows-layer overlay edge is clicked — takes priority
    * over the plain-pane click (onPaneClick) when both could apply, so a
    * click that lands on a flow edge always opens its drill-down rather
@@ -174,6 +180,7 @@ export function TopologyCanvasV2({
   flowEdges,
   selectedFlowEdgeId,
   latencyEdges,
+  mtuBadges,
   onFlowEdgeClick,
 }: TopologyCanvasV2Props) {
   const storeTheme = useThemeStore((s) => s.theme);
@@ -349,6 +356,7 @@ export function TopologyCanvasV2({
   // offset 0, rather than skipping the dash pattern entirely).
   const hasFlowEdges = (flowEdges?.length ?? 0) > 0;
   const hasLatencyEdges = (latencyEdges?.length ?? 0) > 0;
+  const hasMTUBadges = (mtuBadges?.length ?? 0) > 0;
   const [flowDashOffset, setFlowDashOffset] = useState(0);
   useEffect(() => {
     if (reducedMotion || !hasFlowEdges) {
@@ -425,6 +433,19 @@ export function TopologyCanvasV2({
         dragTopLeft,
       });
     }
+
+    // T-1306: the Verified MTU badge layer, drawn last of all so its
+    // per-link text badges stay legible on top of every other overlay.
+    if (hasMTUBadges && mtuBadges) {
+      drawMTUOverlay(ctx, {
+        nodes: lodElements.nodes,
+        badges: mtuBadges,
+        viewport,
+        nodeSize: DEFAULT_NODE_SIZE,
+        theme: themeColors(effectiveTheme),
+        dragTopLeft,
+      });
+    }
   }, [
     lodElements.nodes,
     lodElements.edges,
@@ -441,6 +462,8 @@ export function TopologyCanvasV2({
     selectedFlowEdgeId,
     hasLatencyEdges,
     latencyEdges,
+    hasMTUBadges,
+    mtuBadges,
   ]);
 
   // --- Pointer helpers -----------------------------------------------------

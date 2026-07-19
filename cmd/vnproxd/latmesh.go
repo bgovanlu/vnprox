@@ -17,12 +17,16 @@ import (
 // supervised actors (probe loop, prune loop) cmd/vnproxd's run group
 // registers alongside every other owned goroutine (docs/development.md's
 // "every goroutine has an owner and a shutdown path"). Returns the Service
-// itself: wired directly into api.Options.LatMesh (GET /latmesh/*) and
+// itself (wired directly into api.Options.LatMesh (GET /latmesh/*) and
 // findings.Config.LatMesh (path_latency_degraded/path_loss) — the same
 // "one concrete type satisfies two small interfaces structurally, no
 // adapter needed" shape *metrics.Sampler already establishes for
-// MetricsProvider/MetricsService.
-func setupLatMesh(cfg *config.Config, db *store.DB, graph *inventory.Graph, localNode func() string, logger *slog.Logger) (*latmesh.Service, []func(context.Context) error) {
+// MetricsProvider/MetricsService) and the GraphDiscoverer instance itself,
+// so setupMTUProbe (T-1306) can share the exact same discoverer rather than
+// building a second, functionally-identical one — internal/mtuprobe's own
+// package doc comment documents this as literal instance reuse, not just
+// "the same algorithm called twice".
+func setupLatMesh(cfg *config.Config, db *store.DB, graph *inventory.Graph, localNode func() string, logger *slog.Logger) (*latmesh.Service, *latmesh.GraphDiscoverer, []func(context.Context) error) {
 	repo := store.NewLatencySampleRepo(db)
 	discoverer := &latmesh.GraphDiscoverer{Graph: graph, LocalNode: localNode, Logger: logger}
 
@@ -42,5 +46,5 @@ func setupLatMesh(cfg *config.Config, db *store.DB, graph *inventory.Graph, loca
 			return svc.RunPruneLoop(ctx, latmesh.DefaultPruneInterval)
 		},
 	}
-	return svc, actors
+	return svc, discoverer, actors
 }

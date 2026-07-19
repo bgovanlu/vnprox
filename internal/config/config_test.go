@@ -647,6 +647,45 @@ max_rows = 1000000
 	}
 }
 
+// TestLoad_MTUProbeDefaults covers T-1306's [mtuprobe] section: the probe
+// interval defaults to internal/mtuprobe's own documented constant (300s,
+// deliberately coarser than [latmesh]'s 10s default) when omitted.
+func TestLoad_MTUProbeDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "mtuprobe-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.MTUProbe.ProbeIntervalSec != 300 {
+		t.Errorf("MTUProbe.ProbeIntervalSec = %d, want default 300", cfg.MTUProbe.ProbeIntervalSec)
+	}
+}
+
+// TestLoad_MTUProbeOverride covers an explicit [mtuprobe] value.
+func TestLoad_MTUProbeOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[mtuprobe]
+probe_interval_sec = 600
+`
+	cfg, err := Load(writeTemp(t, "mtuprobe-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.MTUProbe.ProbeIntervalSec != 600 {
+		t.Errorf("MTUProbe.ProbeIntervalSec = %d, want 600", cfg.MTUProbe.ProbeIntervalSec)
+	}
+}
+
 func mustParseIP(t *testing.T, s string) net.IP {
 	t.Helper()
 	ip := net.ParseIP(s)
