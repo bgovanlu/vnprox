@@ -345,11 +345,54 @@ type IfaceStats struct {
 // PVE's behavior for an unreachable/absent agent on a stopped or
 // agent-less guest, a normal state rather than a fixture bug.
 type GuestSpec struct {
-	Config          map[string]string `yaml:"config"`
-	Firewall        *FirewallScope    `yaml:"firewall"`
-	Name            string            `yaml:"name"`
-	Status          string            `yaml:"status"`
-	AgentInterfaces []AgentIfaceSpec  `yaml:"agent_interfaces,omitempty"`
+	Config   map[string]string `yaml:"config"`
+	Firewall *FirewallScope    `yaml:"firewall"`
+	Name     string            `yaml:"name"`
+	Status   string            `yaml:"status"`
+
+	// --- T-1304 guest-interior inspector fixture data -------------------
+	//
+	// Qemu guests: InteriorRoutesJSON/InteriorResolvConf/InteriorSockets
+	// back three additional `POST .../agent/exec` command shapes
+	// (parseInteriorCommand) beyond the ping/nc probe shapes
+	// parseProbeCommand already recognizes — `ip -j route show`,
+	// `cat /etc/resolv.conf`, `ss -H -tuln` — reusing the same guest-agent
+	// exec/exec-status round trip AgentExecOutcomes mocks, rather than a
+	// second generic command-matching table. Default-gateway reachability
+	// for a qemu guest reuses AgentExecOutcomes itself (an icmp probe
+	// tuple toward the claimed gateway IP): no separate field needed.
+	//
+	// Lxc guests (no QEMU guest agent — the interior view is read directly
+	// from the host side instead): InteriorAddrJSON/InteriorRoutesJSON/
+	// InteriorResolvConf/InteriorSockets back
+	// FixtureHostReader.ContainerInterior directly (T-1304's LXC path);
+	// InteriorPingOutcomes backs FixtureHostReader.ContainerPing's
+	// default-gateway reachability check. Field names are shared between
+	// the qemu and lxc cases (both are ultimately "this guest's own
+	// interior read set"), scoped by which map (Qemu vs Lxc) the guest
+	// lives in; InteriorAddrJSON/InteriorPingOutcomes are meaningful only
+	// for an lxc guest (a qemu guest's addresses/gateway-reachability come
+	// from AgentInterfaces/AgentExecOutcomes below instead).
+	//
+	// An unset (empty-string) field simply produces an empty parse result
+	// for that piece — matching AgentInterfaces' own "unscripted is
+	// silence, not failure" tolerance — never a synthesized error.
+	InteriorAddrJSON   string `yaml:"interior_addr_json,omitempty"`
+	InteriorRoutesJSON string `yaml:"interior_routes_json,omitempty"`
+	InteriorResolvConf string `yaml:"interior_resolv_conf,omitempty"`
+	InteriorSockets    string `yaml:"interior_sockets,omitempty"`
+
+	// AgentInterfaces (T-405) is the fixture-declared response for
+	// GET .../agent/network-get-interfaces — a qemu guest with the QEMU
+	// guest agent installed and running reports its live in-guest network
+	// state this way, the enrichment source docs/features/ipam.md §1 calls
+	// "guest agent-reported IPs". A guest with no AgentInterfaces entries
+	// (no agent, or agent not running) simply returns an empty result —
+	// matching real PVE's behavior for an unreachable/absent agent on a
+	// stopped or agent-less guest, a normal state rather than a fixture
+	// bug.
+	AgentInterfaces []AgentIfaceSpec `yaml:"agent_interfaces,omitempty"`
+
 	// AgentExecOutcomes (T-802) is this qemu guest's fixture-scriptable
 	// guest-agent exec outcome table, backing
 	// `POST .../agent/exec` + `GET .../agent/exec-status`: a live probe
@@ -362,6 +405,12 @@ type GuestSpec struct {
 	// "we don't know", not a guessed default, mirroring
 	// internal/probe's own honesty contract.
 	AgentExecOutcomes []AgentExecOutcomeSpec `yaml:"agent_exec_outcomes,omitempty"`
+
+	// InteriorPingOutcomes (T-1304) is an lxc guest's fixture-scriptable
+	// ContainerPing outcome table — see InteriorPingOutcomeSpec's own doc
+	// comment.
+	InteriorPingOutcomes []InteriorPingOutcomeSpec `yaml:"interior_ping_outcomes,omitempty"`
+
 	// AgentUnreachable (T-802), when true, makes this guest's
 	// `POST .../agent/exec` return the same 500 real PVE returns when the
 	// QEMU guest agent isn't installed/running/reachable — the "could not
@@ -369,6 +418,17 @@ type GuestSpec struct {
 	// (OutcomeError) exists for. AgentExecOutcomes is not consulted when
 	// this is true.
 	AgentUnreachable bool `yaml:"agent_unreachable,omitempty"`
+}
+
+// InteriorPingOutcomeSpec is one scripted target-IP -> reachable entry in
+// an lxc GuestSpec's InteriorPingOutcomes table (T-1304), backing
+// FixtureHostReader.ContainerPing: matched by exact IP equality (same
+// no-wildcards convention as AgentExecOutcomes). An IP with no match
+// resolves to Reachable false — unscripted is "no reply", not a guessed
+// default.
+type InteriorPingOutcomeSpec struct {
+	IP        string `yaml:"ip"`
+	Reachable bool   `yaml:"reachable,omitempty"`
 }
 
 // AgentExecOutcomeSpec is one scripted (proto,dst,port) -> outcome entry in

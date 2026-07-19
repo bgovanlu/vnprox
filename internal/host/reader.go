@@ -111,6 +111,46 @@ type Reader interface {
 	// method, peer nodes via GET /api/peer/host/neighbors) into
 	// Observation{Source: "neighbor"} values.
 	Neighbors(ctx context.Context, node string) ([]Neighbor, error)
+
+	// ContainerInterior returns an lxc guest's raw host-side
+	// network-namespace read set (T-1304's guest-interior inspector): a
+	// container has no QEMU guest agent, so unlike the qemu path (which
+	// execs inside the guest via internal/pve.Client.AgentExec) this reads
+	// the container's netns directly from the host side. See
+	// ContainerInteriorRaw's doc comment for exactly what each field holds
+	// and how Real obtains it. Returns an error wrapping ErrNotFound if
+	// vmid does not name a currently known lxc guest on node.
+	ContainerInterior(ctx context.Context, node string, vmid int) (ContainerInteriorRaw, error)
+
+	// ContainerPing reports whether targetIP answered a single best-effort
+	// ping issued from inside vmid's network namespace (T-1304's
+	// default-gateway reachability check — the lxc counterpart of the qemu
+	// path's internal/probe.Run icmp probe). false covers both "no reply"
+	// and "the ping itself could not be attempted" — see Real's doc
+	// comment for why this method does not distinguish those the way
+	// internal/probe.Outcome does for the qemu path.
+	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+}
+
+// ContainerInteriorRaw is one lxc guest's raw host-side
+// network-namespace-inspection read set (T-1304): the container
+// counterpart of the qemu path's AgentIface/exec reads. Each field is one
+// command's raw output, parsed by internal/guestinterior's own parsers —
+// the same ip -j/cat/ss parsers the qemu path's guest-agent exec reads
+// also feed, so both sources share one parsing implementation. Real (see
+// containerexec_linux.go) obtains these by resolving vmid's init process
+// pid and running each command inside that process's network namespace
+// (nsenter --net=/proc/<pid>/ns/net); ResolvConf is read directly from the
+// container's rootfs (/proc/<pid>/root/etc/resolv.conf) rather than
+// exec'd, since it's a plain file read. **Needs hardware validation**: the
+// exact pid-resolution mechanism (cgroup path) is this package's own best
+// inference from PVE's pve-container conventions, not verified against a
+// live cluster — see planning/reports/needs-hardware-validation.md.
+type ContainerInteriorRaw struct {
+	AddrJSON   []byte
+	RouteJSON  []byte
+	ResolvConf []byte
+	Sockets    []byte
 }
 
 // WatchedServices is the fixed set of systemd unit names Services reports

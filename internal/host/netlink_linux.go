@@ -44,6 +44,15 @@ type Real struct {
 	// verified against a live PVE cluster — see this task's completion
 	// report.
 	DHCPLeaseGlob string
+	// NsenterPath/IPPath/SSPath/PingPath name the binaries
+	// ContainerInterior/ContainerPing (containerinterior_linux.go, T-1304)
+	// invoke inside an lxc guest's network namespace; default to resolving
+	// via PATH. Overridable for tests/environments where these live under
+	// a different name or path.
+	NsenterPath string
+	IPPath      string
+	SSPath      string
+	PingPath    string
 	// LLDPCommand is the argv used to fetch LLDP neighbor data as JSON;
 	// defaults to `lldpctl -f json`. Overridable for tests/environments
 	// where lldpd is installed under a different name or path.
@@ -73,6 +82,10 @@ func NewReal() *Real {
 		EVPNVNICommand:        []string{"vtysh", "-c", "show evpn vni json"},
 		CorosyncStatusCommand: []string{"corosync-cfgtool", "-s"},
 		OVSVSCtlPath:          "ovs-vsctl",
+		NsenterPath:           "nsenter",
+		IPPath:                "ip",
+		SSPath:                "ss",
+		PingPath:              "ping",
 		DHCPLeaseGlob:         "/var/lib/misc/dnsmasq.*.leases",
 	}
 }

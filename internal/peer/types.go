@@ -56,6 +56,25 @@ type neighborsResponse struct {
 	Neighbors []host.Neighbor `json:"neighbors"`
 }
 
+// containerInteriorResponse is GET /api/peer/host/container-interior's
+// body (T-1304: an lxc guest's raw host-side network-namespace read set —
+// the string fields are host.ContainerInteriorRaw's []byte fields
+// rendered as plain text, following dhcpLeasesResponse's own
+// []byte-as-string precedent below rather than base64, since every field
+// here is textual command output).
+type containerInteriorResponse struct {
+	AddrJSON   string `json:"addrJson"`
+	RouteJSON  string `json:"routeJson"`
+	ResolvConf string `json:"resolvConf"`
+	Sockets    string `json:"sockets"`
+}
+
+// containerPingResponse is GET /api/peer/host/container-ping's body
+// (T-1304).
+type containerPingResponse struct {
+	Reachable bool `json:"reachable"`
+}
+
 // firewallLogResponse is GET /api/peer/firewall/log's body (T-505: one
 // node's own pve-firewall log tail/follow increment — internal/fwlog.
 // Service.fetch calls this for every non-local node in the cluster,

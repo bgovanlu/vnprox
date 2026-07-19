@@ -64,6 +64,36 @@ type HostReader interface {
 	// (T-805), unfiltered (see neighbors.go's doc comment for why state
 	// filtering is internal/host's job, not this package's).
 	Neighbors(ctx context.Context, node string) ([]Neighbor, error)
+
+	// ContainerInterior returns an lxc guest's fixture-declared host-side
+	// network-namespace read set (T-1304's guest-interior inspector — a
+	// container has no QEMU guest agent, so this is the lxc counterpart of
+	// the qemu path's `agent/exec`-based reads). Returns ErrNotFound if
+	// node or vmid is unknown, or vmid does not name an lxc guest on node.
+	ContainerInterior(ctx context.Context, node string, vmid int) (ContainerInteriorRaw, error)
+
+	// ContainerPing returns an lxc guest's fixture-scripted reachability
+	// for targetIP (T-1304's default-gateway reachability check), matched
+	// against that guest's InteriorPingOutcomes table. Same not-found
+	// contract as ContainerInterior.
+	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
+}
+
+// ContainerInteriorRaw is one lxc guest's raw host-side network-namespace
+// read set (T-1304), mirroring internal/host.ContainerInteriorRaw's field
+// set (kept as this package's own type for the same reason the rest of
+// this file's types are — see the HostReader doc comment above: Go's
+// structural typing requires identical result types, not just
+// structurally similar ones). Each field is one command's raw stdout
+// (`ip -j addr show` / `ip -j route show` / `cat /etc/resolv.conf` /
+// `ss -H -tuln`), parsed by internal/guestinterior's own parsers — kept
+// raw here, not pre-parsed, so this package stays free of that parsing
+// logic.
+type ContainerInteriorRaw struct {
+	AddrJSON   []byte
+	RouteJSON  []byte
+	ResolvConf []byte
+	Sockets    []byte
 }
 
 // LinkState is one netlink-equivalent link (physical NIC, bond, bridge, or

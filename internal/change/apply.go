@@ -691,3 +691,11 @@ func (r nodeAgentReader) Neighbors(context.Context, string) ([]host.Neighbor, er
 func (r nodeAgentReader) CorosyncStatus(context.Context, string) ([]byte, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.CorosyncStatus not supported")
 }
+
+func (r nodeAgentReader) ContainerInterior(context.Context, string, int) (host.ContainerInteriorRaw, error) {
+	return host.ContainerInteriorRaw{}, fmt.Errorf("change: nodeAgentReader.ContainerInterior not supported")
+}
+
+func (r nodeAgentReader) ContainerPing(context.Context, string, int, string) (bool, error) {
+	return false, fmt.Errorf("change: nodeAgentReader.ContainerPing not supported")
+}
