@@ -93,6 +93,9 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 # probe_interval_sec = 10          # deliberately coarse: a mesh, not a flood
 # retention_minutes = 60           # latency_samples ring: retention window AND max_rows, whichever prunes first
 # max_rows = 500000
+
+# [mtuprobe]                       # T-1306: always-on path MTU prober, built on [latmesh]'s own scheduler
+# probe_interval_sec = 300         # far coarser than [latmesh] — MTU rarely changes
 ```
 
 ## Upgrade
