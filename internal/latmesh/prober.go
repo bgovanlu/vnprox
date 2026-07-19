@@ -82,7 +82,11 @@ func (p RealProber) Probe(ctx context.Context, pair Pair) (Reading, error) {
 		secs = 1
 	}
 
-	cmd := exec.CommandContext(ctx, "ping", "-c", strconv.Itoa(count), "-W", strconv.Itoa(secs), target) //nolint:gosec // fixed argv shape, target is a cluster-known node address/name, not external user input
+	// `--` terminates option parsing so an operator-configured WAN target
+	// (T-1405 reuse) that happens to start with a dash — e.g. "-f" — is
+	// treated as the destination host, never as a ping flag (review-T-1405
+	// hardening). Still a single fixed-shape argv, no shell.
+	cmd := exec.CommandContext(ctx, "ping", "-c", strconv.Itoa(count), "-W", strconv.Itoa(secs), "--", target) //nolint:gosec // fixed argv shape with -- end-of-options; target is a cluster-known node address or operator-configured WAN host, never shell-interpolated
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// ping's own exit code for "some/all packets lost" is non-zero —
