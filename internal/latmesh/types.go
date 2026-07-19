@@ -39,7 +39,30 @@ type Pair struct {
 	// "dial ToNode by name", not as an error.
 	FromAddr string
 	ToAddr   string
+	// Family is this pair's own IP address family, "v4" or "v6" (T-1404:
+	// "v4 and v6 probes run independently on any dual-stack-capable
+	// segment"). Derived once at discovery time. Not itself part of
+	// ComputeLinkID's inputs or persisted on Sample/LinkHeat — a
+	// dual-stack guest-fabric link already gets two distinct LinkIDs (one
+	// per family, discoverGuestPairs' Label suffix below), which is what
+	// actually makes the two families' history independent, bounded-ring
+	// rows rather than one merged series; Family here is a convenience for
+	// Discoverer/Prober callers that need to know which family a given
+	// Pair targets before any sample exists at all (e.g. choosing an ICMP
+	// vs ICMPv6-capable prober).
+	Family Family
 }
+
+// Family is one pair's own IP address family (T-1404) — a distinct type
+// from internal/sim.Family (this package does not import internal/sim,
+// and the two enums serve unrelated concerns) but the identical two-value
+// "v4"/"v6" vocabulary.
+type Family string
+
+const (
+	FamilyV4 Family = "v4"
+	FamilyV6 Family = "v6"
+)
 
 // ComputeLinkID derives p's LinkID from its Fabric/Label/FromNode/ToNode —
 // exported so tests and Discoverer implementations share exactly one
