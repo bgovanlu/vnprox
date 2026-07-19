@@ -36,6 +36,10 @@ const (
 	// host/PVE seam. Currently the sole producer is
 	// service_traffic_on_wrong_network (health_serviceclass.go).
 	SourceFlow Source = "flow"
+	// SourceK8s (T-1501) marks a finding produced by internal/k8s's
+	// read-only Kubernetes overlay mapping engine — currently the sole
+	// producer is k8s_nodeport_exposed_without_fw_rule (adapt_k8s.go).
+	SourceK8s Source = "k8s"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

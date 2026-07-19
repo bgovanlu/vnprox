@@ -1,0 +1,22 @@
+# T-1501 fixture: a cluster with no recognizable CNI marker of any kind —
+# no kube-system calico-node/cilium DaemonSet, no Flannel backend-type
+# node annotation. DetectCNI must return CNIUnknown, never guess.
+nodes:
+  - name: k8s-node-1
+    internalIP: 10.10.0.41
+    podCIDR: 10.247.0.0/24
+
+pods: []
+
+services:
+  - namespace: default
+    name: mystery
+    type: ClusterIP
+    clusterIP: 10.96.3.10
+    ports:
+      - port: 9000
+        protocol: TCP
+
+daemonsets:
+  - namespace: kube-system
+    name: some-other-cni-agent

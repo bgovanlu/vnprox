@@ -345,8 +345,24 @@ type Options struct {
 	// create/webhook.delete) rather than a second audit-seam field.
 	Webhooks            WebhookStore
 	WebhookSecretCipher SecretCipher
-	Logger              *slog.Logger
-	Version             string
+	// K8sClusters/K8sSecretCipher/K8sPoller/K8sGraph/K8sIPAM/K8sAudit back
+	// T-1501's Kubernetes overlay mapping engine routes (docs/api.md's
+	// Kubernetes section): GET/POST /k8s/clusters, DELETE
+	// /k8s/clusters/{id}, GET /k8s/{clusterId}/overlay. K8sClusters/
+	// K8sSecretCipher/K8sPoller/K8sGraph/K8sAudit are required together
+	// (any one nil skips mounting the whole family, matching every other
+	// optional Options field's degraded-mode convention); K8sIPAM is
+	// optional (nil narrows node<->guest correlation rather than failing
+	// the whole read, same as every other optional IPAM-based lookup in
+	// this package).
+	K8sClusters     K8sClusterStore
+	K8sSecretCipher SecretCipher
+	K8sPoller       K8sPoller
+	K8sGraph        K8sGraph
+	K8sIPAM         K8sIPAMSource
+	K8sAudit        k8sAuditWriter
+	Logger          *slog.Logger
+	Version         string
 	// Instance is the non-secret operational config surfaced by GET
 	// /config (the Settings page's "Instance" section). Zero value is fine
 	// — the route still mounts and reports whatever's set (Version at
@@ -424,6 +440,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
+		mountK8sRoutes(r, opts.K8sClusters, opts.K8sSecretCipher, opts.K8sPoller, opts.K8sGraph, opts.K8sIPAM, opts.K8sAudit, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

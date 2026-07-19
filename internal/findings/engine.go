@@ -82,7 +82,10 @@ type Config struct {
 	// service_traffic_on_wrong_network finding (source "flow", not
 	// "health" — see SourceFlow's doc comment). Nil skips that check
 	// entirely, same degradation as every other optional Config field.
-	Flow            FlowProvider
+	Flow FlowProvider
+	// K8s is T-1501's read-only Kubernetes overlay seam (adapt_k8s.go),
+	// backing k8s_nodeport_exposed_without_fw_rule. Nil skips that producer.
+	K8s             K8sProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -142,6 +145,7 @@ type Engine struct {
 	interval         time.Duration
 	mu               sync.Mutex
 	lastEval         bool
+	k8sSvc           K8sProvider
 }
 
 // New builds an Engine from cfg.
@@ -208,6 +212,7 @@ func New(cfg Config) *Engine {
 		notified:         map[string]string{},
 		flowSvc:          cfg.Flow,
 		serviceTrafficDB: newDebouncer(),
+		k8sSvc:           cfg.K8s,
 	}
 }
 
@@ -230,6 +235,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, driftFindings(e.driftSvc)...)
 	out = append(out, lldpFindings(e.lldpSvc)...)
 	out = append(out, ipamFindings(e.ipamSvc)...)
+	out = append(out, k8sFindings(e.k8sSvc)...)
 	out = append(out, probeFindings(e.probeSvc)...)
 	out = append(out, webhookFindings(e.webhooksSvc)...)
 	out = append(out, wgFindings(e.wgSvc, e.wgStaleDB, e.wgDriftDB, e.now())...)

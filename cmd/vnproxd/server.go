@@ -28,6 +28,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
 	"github.com/bgovanlu/vnprox/internal/ipv6"
+	"github.com/bgovanlu/vnprox/internal/k8s"
 	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/neighbor"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -317,6 +318,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// port-forward -> guest correlation) — same true-nil-interface-until-
 	// assigned pattern as guestInteriorIPAM/conntrackGuests above.
 	var edgeIPAM api.EdgeIPAMSource
+	// k8sIPAMSrc is the same concrete *ipam.Service value as ipamSvc, typed
+	// as api.K8sIPAMSource (T-1501's node<->guest correlation seam,
+	// AllAllocations) — the identical "true nil interface until assigned"
+	// pattern as ipamSvc/dhcpAPISvc above, assigned in the same branch.
+	var k8sIPAMSrc api.K8sIPAMSource
 	if sdnPVEClient != nil {
 		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc})
 		ipamSvc = ipamConcrete
@@ -324,6 +330,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		guestInteriorIPAM = ipamConcrete
 		conntrackGuests = ipamConcrete
 		edgeIPAM = ipamConcrete
+		k8sIPAMSrc = ipamConcrete
 	}
 	// changeAllocations adapts ipamConcrete into change.AllocationsSource
 	// for T-406's DHCP-range-overlap advisory check — see
@@ -427,7 +434,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	wanSvc, wanLossWarnPct, wanActors := setupWan(cfg, db, localNode, logger)
 	wanThresholds := findings.DefaultThresholds
 	wanThresholds.WanLossWarnPct = wanLossWarnPct
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
+	// T-1501: the read-only Kubernetes overlay engine — the cluster registry
+	// (app-owned kubeconfig targets) and the poller whose cached
+	// NodePort-exposure findings feed the findings engine below and whose
+	// overlay reads back the api.Options.K8sPoller routes further down.
+	k8sClusterRepo := store.NewK8sClusterRepo(db)
+	k8sPoller := k8s.NewPoller()
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -923,6 +936,20 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		TokenAudit:          auditRepo,
 		Webhooks:            webhookRepo,
 		WebhookSecretCipher: sessionCipher,
+		// T-1501: Kubernetes overlay mapping engine (read-only forever).
+		// K8sClusters/K8sAudit reuse the same *store.AuditRepo/db
+		// everything else in this file wires in; K8sSecretCipher reuses
+		// the identical session-secret cipher AlertSecretCipher/
+		// IngressSecretCipher-shaped fields elsewhere use;
+		// K8sGraph is the same live *inventory.Graph every other read
+		// path shares; K8sIPAM is nil-safe (k8sIPAMSrc above), only
+		// narrowing node<->guest correlation, never failing the route.
+		K8sClusters:     k8sClusterRepo,
+		K8sSecretCipher: sessionCipher,
+		K8sPoller:       k8sPoller,
+		K8sGraph:        graph,
+		K8sIPAM:         k8sIPAMSrc,
+		K8sAudit:        auditRepo,
 	})
 
 	srv := &http.Server{
