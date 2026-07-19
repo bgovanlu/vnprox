@@ -856,6 +856,31 @@ Added by T-1501 (`internal/k8s`, `internal/api/k8s.go`, `internal/store/k8sclust
 
 **CNI detection** (`internal/k8s.DetectCNI`, best-effort): Calico (`calico-node` DaemonSet in `kube-system`) and Cilium (`cilium` DaemonSet in `kube-system`) are recognized from their default install's own DaemonSet name; Flannel is recognized from the `flannel.alpha.coreos.com/backend-type` node annotation its kube-subnet-manager writes. Anything else — a different CNI, a non-default install, or no recognizable marker at all — reports `"unknown"` rather than guessing.
 
+## Migration planner (T-1507)
+
+Added by T-1507 (`internal/migration`, `internal/api/migration.go`). A **purely advisory, read-only** pre-flight bandwidth-headroom check for a live migration/evacuation an operator is about to trigger *in PVE itself*: bandwidth headroom on the migration network versus a guest's configured RAM size and a best-effort dirty-page-rate estimate, warning before a Friday-night evacuation saturates a shared link. It never triggers, blocks, or otherwise participates in an actual migration — there is no code path anywhere in `internal/migration` that calls a PVE migration-start/evacuate endpoint (a mechanical regression test asserts this: the package's only PVE-facing interface, `GuestConfigReader`, exposes exactly one read-only method).
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/migration/preflight` | pre-flight assessment: `{guest, targetNode}` -> `Assessment` |
+
+`POST /migration/preflight` is `netRead`-gated (a live-network-state read, not a mutation — the same class of route `POST /simulate/path` already is). Request body: `{guest: string, targetNode: string}` — `guest` is a guest `Ref` string (`"guest:<node>:<vmid>"`); `400 validation_failed` if `targetNode` is empty or `guest` doesn't parse to a `guest`-kind `Ref`.
+
+**`Assessment`** (the pinned response shape both this route and `internal/migration.Planner.Plan` return — the stable interface Phase 16's `T-1604` failure-impact simulator, and through it the already-shipped `T-1103` maintenance scheduler, depend on): `{headroomMbps, estimatedTransferSec, verdict, bestEffort, caveats}`. Every field is always present; `caveats` is an empty array (never omitted, never `null`) when nothing needs flagging.
+
+- `headroomMbps` (number): estimated spare bandwidth on the resolved migration-network proxy (see below) after subtracting current `serviceClass: "migration"` traffic volume (T-1504's classifier) — never negative, floored at 0.
+- `estimatedTransferSec` (number): guest RAM size (bits) divided by `headroomMbps` — the documented sentinel **`-1`** when `headroomMbps` is `0` (no finite estimate is possible).
+- `verdict` (string): `"ok"`\|`"tight"`\|`"insufficient"` — advisory only, never causes or blocks any action. `"insufficient"`: no headroom remains, the estimated dirty-page rate would exceed it (migration may not converge), or the resolved link is severely degraded. `"tight"`: headroom is thin relative to the estimated dirty-page rate, or the link shows mild latency/loss degradation. `"ok"`: ample headroom.
+- `bestEffort` (bool): **unconditionally `true`** on every response — this arc has no live guest instrumentation (no dirty-bitmap read, no QMP `query-migrate` telemetry); the dirty-page-rate figure is a fixed, documented fraction of the guest's configured RAM, a heuristic proxy, never a measurement.
+- `caveats` (`[string]`): human-readable notes on which inputs were estimated, substituted, or unavailable (e.g. "no shared bridge with resolvable NIC speed found ... assuming a conservative 1000 Mbps link", "the corosync link between pve1 and pve2 shows elevated latency/loss ...", "the dirty-page rate ... is a best-effort estimate ... derived only from PVE's own guest config").
+
+**"The migration network" — a proxy, not a live PVE reader.** No live reader of PVE's own `datacenter.cfg` `migration: network=...` exists anywhere in this codebase (the same documented gap `internal/flow/classify.go`'s `NewMigrationNetworkSource` doc comment and `internal/latmesh`'s package doc comment both already carry — see `planning/reports/needs-hardware-validation.md`'s T-1303 entry). Absent that reader, `Plan` resolves two proxies instead, both flagged in `caveats` whenever used:
+
+- **Capacity**: the highest-capacity bridge the source and target node carry in common (`internal/xnode.BridgesByName`, the identical shared-bridge grouping T-1303's own guest-fabric `Discoverer` already uses), summing that bridge's member `PhysNic`/`Bond` `speedMbps` on each node and taking the lesser of the two nodes' figures — the same bridge migration traffic actually rides when (the common case) no dedicated migration network is configured. Falls back to a conservative 1000 Mbps assumption when no such shared bridge resolves.
+- **Congestion**: T-1303's latency mesh has no distinct migration fabric either (only `"corosync"` and `"guest"` — see the Latency mesh section above), so `Plan` reads the corosync fabric's rolling loss/RTT first — the literal risk this task exists to warn about, "a Friday-night evacuation saturates the corosync link" — falling back to the guest fabric otherwise, and derates the resolved capacity by the observed loss percentage.
+
+**Guest inspector integration**: the guest inspector's migration action surfaces this pre-flight check before the operator confirms a migration in PVE itself — vnprox never triggers or manages the migration; this stays a read-only advisory call, consistent with `docs/architecture.md`'s "Proxmox is the source of truth" invariant.
+
 ## WebSocket `/api/ws`
 
 One connection multiplexes all topics; every frame (both directions) is a JSON text message.

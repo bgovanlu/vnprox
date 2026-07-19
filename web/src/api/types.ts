@@ -2787,6 +2787,29 @@ export interface IngressStatusView {
   generatedAt: number;
 }
 
+// --- Migration planner (docs/api.md's "Migration planner" section;
+// internal/migration, internal/api/migration.go, T-1507) -------------------
+
+/** `POST /migration/preflight`'s advisory verdict — never anything but a
+ * warning: this route never triggers or blocks a migration itself
+ * (docs/api.md's Migration planner section). */
+export type MigrationVerdict = "ok" | "tight" | "insufficient";
+
+/** `POST /migration/preflight` response — the pinned shape
+ * docs/api.md documents (also Phase 16's failure-impact simulator's own
+ * input contract). `estimatedTransferSec` is `-1` when `headroomMbps` is
+ * `0` (no finite estimate is possible) — render that as "unknown", not a
+ * literal "-1 seconds". `bestEffort` is always `true` this arc (no live
+ * guest instrumentation) but is still rendered from the response, not
+ * assumed, in case a future arc narrows it. */
+export interface MigrationAssessment {
+  headroomMbps: number;
+  estimatedTransferSec: number;
+  verdict: MigrationVerdict;
+  bestEffort: boolean;
+  caveats: string[];
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots and IPAM read views have routes defined in docs/api.md but no
 // frontend consumer yet — their request/response types land with the task

@@ -575,6 +575,31 @@ from; and pvemock does not model an `ifreload` outage at all):
       to already work, but has not been observed against a live node's actual file mode/SELinux-
       or AppArmor-equivalent MAC policy (PVE ships neither by default, but worth a one-line
       confirmation rather than an assumption).
+## Migration network planner (T-1507)
+
+Flagged from day one per this arc's "advisory, mock-first" constraint — no acceptance criterion for
+this task required real PVE migration behavior, and the planner never triggers or blocks a
+migration, but its two proxy assumptions below are unverified against a real cluster:
+
+- [ ] **Whether migration traffic actually rides the shared guest-fabric bridge this package
+      assumes.** `internal/migration.resolveLinkCapacityMbps` proxies "the migration network"'s
+      physical capacity with the highest-capacity bridge the source/target node carry in common
+      (`internal/xnode.BridgesByName`) — a reasoned inference from PVE's documented behavior
+      ("absent a configured `migration: network=...`, migration traffic uses the node's default
+      route"), not a confirmed observation. No live reader of `datacenter.cfg`'s `migration:
+      network=...` exists anywhere in this codebase (the same gap `internal/latmesh`'s own
+      needs-hardware-validation entry above already names for T-1303's identical fabric-discovery
+      scope); once a real reader lands, confirm on a live cluster whether a configured migration
+      network ever diverges from the guest-fabric bridge this proxy assumes, and how large the
+      resulting headroom-estimate error is in practice.
+- [ ] **Dirty-page-rate heuristic accuracy.** `Planner.Config.DirtyRateFraction` (default 1% of
+      guest RAM/sec) is a reasoned, conservative constant, not a measurement — this arc has no live
+      guest instrumentation (no dirty-bitmap read, no QMP `query-migrate` telemetry) to derive one
+      from. `Assessment.BestEffort` is unconditionally `true` for exactly this reason. Confirm
+      against real guest workloads (idle, moderately busy, and write-heavy database/cache
+      profiles) how far this constant is from observed dirty rates before treating a `"tight"`/
+      `"insufficient"` verdict's dirty-rate-driven caveat as more than a rough guide.
+
 ## Kubernetes overlay mapping engine (T-1501)
 
 - [ ] **Real CNI variance beyond the three named defaults.** `internal/k8s.DetectCNI` is verified

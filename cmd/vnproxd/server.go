@@ -405,6 +405,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// T-1306's setupMTUProbe reuses just below, rather than building a
 	// second, functionally-identical one.
 	latMeshSvc, latMeshDiscoverer, latMeshActors := setupLatMesh(cfg, db, graph, localNode, logger)
+	// T-1507: the migration network planner (purely advisory — see
+	// internal/migration's own doc.go). Constructed here since graph/
+	// sdnPVEClient/latMeshSvc are all already available; migrationTrafficVal
+	// is filled in with its real flow_samples target once setupFlows
+	// returns, below — mirrors flowClassifyAdapterVal's identical
+	// two-step wiring just above.
+	migrationPlanner, migrationTrafficVal := setupMigrationPlanner(graph, sdnPVEClient, latMeshSvc)
 	// T-1306: the path MTU prober — built on latMeshDiscoverer directly
 	// (internal/mtuprobe's own package doc comment: "reuses T-1303's
 	// infrastructure, does not duplicate it"), on its own coarser interval.
@@ -682,6 +689,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// service_traffic_on_wrong_network check at the real recent-samples
 	// source (see flowClassifyAdapter's own doc comment above).
 	flowClassifyAdapterVal.set(flowRepo, flowClassifier)
+	// T-1507: same real target, for the migration planner's current-
+	// migration-traffic-volume input (migrationTrafficAdapter's own doc
+	// comment, cmd/vnproxd/migration.go).
+	migrationTrafficVal.set(flowRepo, flowClassifier)
 
 	// T-1004: host-local flow sampling (conntrack/eBPF) — both strictly
 	// opt-in per node via [flows] conntrack_sampling_enabled/
@@ -974,6 +985,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		K8sGraph:        graph,
 		K8sIPAM:         k8sIPAMSrc,
 		K8sAudit:        auditRepo,
+		// T-1507: the migration network planner (purely advisory, read-only
+		// — see internal/migration's own doc.go).
+		Migration: migrationPlanner,
 	})
 
 	srv := &http.Server{
