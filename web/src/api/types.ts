@@ -2371,6 +2371,60 @@ export interface ConntrackPage {
   failedNodes?: string[];
 }
 
+// --- Diagnosis (docs/api.md's "Diagnosis" section; internal/diagnose,
+// internal/api/diagnose.go, T-1307) ----------------------------------------
+
+/** One ladder step's outcome classification (docs/api.md's Diagnosis
+ * section). `"ran"` covers both a genuine result AND an honest "could not
+ * attempt this" outcome (e.g. a live probe against an unreachable guest
+ * agent) — never conflated with `"skipped"` (the step does not apply to
+ * this target at all) or `"error"` (a genuine ladder-level failure). */
+export type DiagnoseStepStatus = "ran" | "skipped" | "error";
+
+/** One entry of `DiagnoseResult.steps`. `name` is always one of the five
+ * registered steps, in this fixed order: `"config-check"`, `"live-probe"`,
+ * `"guest-interior"`, `"conntrack"`, `"capture"`. `detail` (absent for a
+ * skipped/errored step) is that step's own underlying response shape
+ * verbatim — deliberately typed `unknown` here rather than a discriminated
+ * union of every possible step response: this page renders it as
+ * read-only formatted JSON, never destructures it, so a stricter type
+ * would buy nothing and would drift the moment a composed route's own
+ * response shape changes. */
+export interface DiagnoseStep {
+  name: string;
+  status: DiagnoseStepStatus;
+  summary: string;
+  detail?: unknown;
+  ranAt: number;
+}
+
+/** How much the ladder's overall run actually established about the
+ * target — a one-line orientation, not a scored diagnosis (see each
+ * step's own `summary`/`detail` for the real content). */
+export type DiagnoseConfidence = "high" | "medium" | "low" | "none";
+
+/** The ladder's single readable, advisory-only conclusion.
+ * `suggestedFixRef` (omitted when none applies), when present, is an
+ * existing fixable finding's own id — resolved through the same
+ * `POST /findings/{id}/fix` route `GET /findings` already uses, never a
+ * new auto-apply mechanism. */
+export interface DiagnoseVerdict {
+  summary: string;
+  confidence: DiagnoseConfidence;
+  linkedFindingIds: string[];
+  suggestedFixRef?: string;
+}
+
+/** `POST /diagnose` response — the stable, machine-consumable ladder
+ * result T-1701's MCP AI operator drives next arc (docs/api.md's Diagnosis
+ * section: "treat field names/the status vocabulary as a versioned
+ * contract, not an internal detail"). */
+export interface DiagnoseResult {
+  target: string;
+  steps: DiagnoseStep[];
+  verdict: DiagnoseVerdict;
+}
+
 // --- History (GET /history/events; internal/api/history.go, T-1007) -------
 
 /** One merged timeline-marker item — docs/api.md's `HistoryEvent` shape,

@@ -15,6 +15,7 @@ import { useEditorLauncherStore, editorKindForInventoryKind } from "../changeset
 import { buildBondDeleteOp, buildVlanDeleteOp } from "../changesets/opBuilders";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
+import { diagnosePath, isDiagnosableEntityKind } from "../diagnose/diagnosePath";
 import { resumeOnboarding } from "../onboarding/onboardingMachine";
 import { useOnboardingProgressQuery, useSaveOnboardingProgressMutation } from "../onboarding/queries";
 import { AnnotationsSection } from "./AnnotationsSection";
@@ -270,8 +271,20 @@ export function InspectorPanel({
                 Close
               </Button>
             )}
-            {(editorKind !== undefined || isTraceableEntityKind(data.kind)) && (
+            {(editorKind !== undefined || isTraceableEntityKind(data.kind) || isDiagnosableEntityKind(data.kind)) && (
               <>
+              {isDiagnosableEntityKind(data.kind) && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    const path = diagnosePath(data.kind, data.ref);
+                    if (path) void navigate(path);
+                  }}
+                >
+                  Diagnose
+                </Button>
+              )}
               {isTraceableEntityKind(data.kind) && (
                 <RadixDropdown.Root>
                   <RadixDropdown.Trigger asChild>

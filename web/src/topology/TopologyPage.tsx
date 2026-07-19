@@ -17,6 +17,7 @@ import { refNode, summarizeOp } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
 import { conntrackNodeLinkPath } from "../conntrack/urlState";
+import { diagnosePath } from "../diagnose/diagnosePath";
 import type { Viewport } from "./canvasScene";
 import { useThemeStore } from "../store/theme";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -574,8 +575,19 @@ function TopologyPageContent() {
     return [{ label: "View live connections", onSelect: () => { void navigate(path); } }];
   }
 
+  // T-1307: "Diagnose" — the guided diagnosis ladder's map entry point.
+  // Broader than CONNTRACK_ENTITY_KINDS (also accepts a bare guest and a
+  // vlan entity) since POST /diagnose's own target resolution handles
+  // those, unlike GET /conntrack's own node/guest-only scoping — see
+  // diagnose/diagnosePath.ts's doc comment.
+  function diagnoseItemFor(kind: string, ref: string): ContextMenuItem[] {
+    const path = diagnosePath(kind, ref);
+    if (!path) return [];
+    return [{ label: "Diagnose", onSelect: () => { void navigate(path); } }];
+  }
+
   function contextMenuItemsFor(kind: string, ref: string): ContextMenuItem[] {
-    return [...traceItemsFor(kind, ref), ...conntrackItemFor(kind, ref)];
+    return [...traceItemsFor(kind, ref), ...conntrackItemFor(kind, ref), ...diagnoseItemFor(kind, ref)];
   }
 
   function handleNodeContextMenu(id: string, clientX: number, clientY: number): void {
