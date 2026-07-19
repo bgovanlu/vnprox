@@ -112,6 +112,9 @@ type Options struct {
 	// DHCP is T-406's read view seam (docs/api.md's `GET /sdn/dhcp`:
 	// static reservations + live leases); nil-safe like SDN/EVPN above.
 	DHCP DHCPService
+	// IPv6 is T-1404's read view seam (docs/api.md's `GET /ipv6/segments`:
+	// cluster-wide RA/SLAAC/DHCPv6 visibility); nil-safe like EVPN above.
+	IPv6 IPv6Service
 	// Metrics is T-601's *metrics.Sampler seam for GET /metrics/live and
 	// GET /metrics/history; nil (no daemon-side sampler wired, e.g. tests)
 	// simply omits both routes.
@@ -330,6 +333,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
+		mountIPv6Routes(r, opts.IPv6, opts.Auth)
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
