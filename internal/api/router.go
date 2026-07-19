@@ -276,6 +276,13 @@ type Options struct {
 	// prober section); nil skips mounting the route, matching every other
 	// optional Options field. Typically the daemon's own *mtuprobe.Service.
 	MTUProbe MTUProbeService
+	// Ceph backs T-1503's GET /ceph/status (docs/api.md's Ceph section):
+	// public/cluster network CIDRs plus per-node/per-OSD bond attribution,
+	// the map-layer projection this task's card names. Nil skips mounting
+	// the route, matching every other optional Options field. Typically
+	// cmd/vnproxd's *cephProviderAdapter (cephwire.go) — read-only, exactly
+	// like every other field in this list.
+	Ceph CephService
 	// WireGuard backs T-1401's GET /wireguard/tunnels + /{id}/pubkey +
 	// /{id}/peer-config (docs/api.md's WireGuard section); nil skips mounting
 	// every /wireguard route. Read-only — WireGuard is mutated only through
@@ -430,6 +437,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
 		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
+		mountCephRoutes(r, opts.Ceph, opts.Auth)
 		mountWireGuardRoutes(r, opts.WireGuard, opts.Auth)
 		mountWanRoutes(r, opts.Wan, opts.Findings, opts.LocalNode, opts.WanAudit, opts.Auth)
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)
