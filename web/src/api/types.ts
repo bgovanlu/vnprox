@@ -2594,6 +2594,81 @@ export interface EdgeNATView {
   generatedAt: number;
 }
 
+// --- Ingress visibility (T-1406; docs/api.md's "Ingress visibility"
+// section, internal/api/ingress.go) ----------------------------------------
+// Read-only discovery of the reverse-proxy layer, only for operator-added
+// targets. GET /ingress/status issues no mutation of its own; the only
+// writes here are POST/DELETE /ingress/targets, which never touch the
+// discovered proxy itself — they only add/remove a row this daemon polls.
+
+/** `kind` vocabulary for an ingress discovery target — the four vendors
+ * internal/ingress ships a discoverer for. */
+export type IngressTargetKind = "haproxy" | "nginx" | "caddy" | "traefik";
+
+/** One configured reverse-proxy discovery target. `hasCredential` is the
+ * only signal a client gets that one is set (never returned itself). */
+export interface IngressTarget {
+  id: string;
+  kind: IngressTargetKind;
+  address: string;
+  addedBy: string;
+  addedAt: number;
+  hasCredential: boolean;
+}
+
+/** GET /ingress/targets response. */
+export interface IngressTargetsListResponse {
+  items: IngressTarget[];
+}
+
+/** POST /ingress/targets request body. */
+export interface IngressTargetCreateRequest {
+  kind: IngressTargetKind;
+  address: string;
+  credential?: string;
+}
+
+/** One backend/upstream server a target reported, with guest correlation
+ * applied where resolvable (never guessed). */
+export interface IngressBackend {
+  route?: string;
+  address: string;
+  guestRef?: string;
+  healthy: boolean;
+}
+
+/** One target's freshly discovered state. `reachable: false` with an
+ * `error` is a normal, expected outcome (a down/misconfigured proxy). */
+export interface IngressTargetStatus {
+  id: string;
+  kind: IngressTargetKind;
+  address: string;
+  reachable: boolean;
+  error?: string;
+  backends: IngressBackend[];
+}
+
+/** One WAN -> port-forward -> proxy guest -> backend guest chain — drawn
+ * only when a GET /edge/nat port-forward's `intIp` matches a configured
+ * ingress target's own address (never an inferred/guessed chain). */
+export interface IngressChain {
+  portForwardId: string;
+  node: string;
+  proto: string;
+  extPort: number;
+  proxyGuestRef?: string;
+  targetId: string;
+  targetKind: IngressTargetKind;
+  backends: IngressBackend[];
+}
+
+/** GET /ingress/status response. */
+export interface IngressStatusView {
+  targets: IngressTargetStatus[];
+  chains: IngressChain[];
+  generatedAt: number;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots and IPAM read views have routes defined in docs/api.md but no
 // frontend consumer yet — their request/response types land with the task

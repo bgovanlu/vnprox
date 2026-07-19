@@ -3,10 +3,24 @@
 // Network is mocked at the ./edgeQueries seam (mirrors
 // conntrack/ConntrackExplorer.test.tsx's identical pattern) so these tests
 // never touch fetch.
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { EdgeNATView, EdgeRoutesView } from "../api/types";
+import type { EdgeNATView, EdgeRoutesView, IngressStatusView, IngressTargetsListResponse, MeResponse } from "../api/types";
+import { ToastProvider } from "../components/Toast";
 import { EdgeCockpit } from "./EdgeCockpit";
+
+function renderCockpit() {
+  return render(
+    <ToastProvider>
+      <EdgeCockpit />
+    </ToastProvider>,
+  );
+}
+
+const fullSession: MeResponse = {
+  user: { username: "root", realm: "pam" },
+  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true, capture: false } },
+};
 
 let routesResult: { data: EdgeRoutesView | undefined; isLoading: boolean; error: Error | null } = {
   data: { defaultRoutes: [], staticRoutes: [], generatedAt: 0 },
@@ -18,10 +32,28 @@ let natResult: { data: EdgeNATView | undefined; isLoading: boolean; error: Error
   isLoading: false,
   error: null,
 };
+let ingressTargetsResult: { data: IngressTargetsListResponse | undefined; isLoading: boolean; error: Error | null } = {
+  data: { items: [] },
+  isLoading: false,
+  error: null,
+};
+let ingressStatusResult: { data: IngressStatusView | undefined; isLoading: boolean; error: Error | null } = {
+  data: { targets: [], chains: [], generatedAt: 0 },
+  isLoading: false,
+  error: null,
+};
 
 vi.mock("./edgeQueries", () => ({
   useEdgeRoutesQuery: () => routesResult,
   useEdgeNATQuery: () => natResult,
+  useIngressTargetsQuery: () => ingressTargetsResult,
+  useIngressStatusQuery: () => ingressStatusResult,
+  useCreateIngressTargetMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteIngressTargetMutation: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+vi.mock("../api/useSession", () => ({
+  useSession: () => ({ data: fullSession }),
 }));
 
 describe("EdgeCockpit", () => {
@@ -35,7 +67,7 @@ describe("EdgeCockpit", () => {
       isLoading: false,
       error: null,
     };
-    render(<EdgeCockpit />);
+    renderCockpit();
     expect(screen.getByText("203.0.113.1")).toBeInTheDocument();
     expect(screen.getByText("10.10.0.0/24")).toBeInTheDocument();
   });
@@ -61,7 +93,7 @@ describe("EdgeCockpit", () => {
       isLoading: false,
       error: null,
     };
-    render(<EdgeCockpit />);
+    renderCockpit();
 
     // The powered-off target is flagged distinctly (a labeled status pill),
     // not just listed the same way as the healthy one.
@@ -92,19 +124,66 @@ describe("EdgeCockpit", () => {
       isLoading: false,
       error: null,
     };
-    render(<EdgeCockpit />);
+    renderCockpit();
     expect(screen.getByText("unresolved")).toBeInTheDocument();
   });
 
   it("shows a loading state and an error state", () => {
     routesResult = { data: undefined, isLoading: true, error: null };
     natResult = { data: undefined, isLoading: true, error: null };
-    const { rerender } = render(<EdgeCockpit />);
+    const { rerender } = renderCockpit();
     expect(screen.getByText("Loading…")).toBeInTheDocument();
 
     routesResult = { data: undefined, isLoading: false, error: new Error("boom") };
     natResult = { data: undefined, isLoading: false, error: null };
-    rerender(<EdgeCockpit />);
+    rerender(
+      <ToastProvider>
+        <EdgeCockpit />
+      </ToastProvider>,
+    );
     expect(screen.getByText("Could not load edge data")).toBeInTheDocument();
+  });
+
+  it("renders the WAN -> port-forward -> proxy guest -> backend guest chain when a port-forward and an ingress target line up (T-1406 AC3)", () => {
+    routesResult = { data: { defaultRoutes: [], staticRoutes: [], generatedAt: 1 }, isLoading: false, error: null };
+    natResult = { data: { masquerade: [], portForwards: [], sdnSimpleZoneNat: [], generatedAt: 1 }, isLoading: false, error: null };
+    ingressTargetsResult = {
+      data: { items: [{ id: "ing1", kind: "haproxy", address: "http://10.0.0.20:8404", addedBy: "alice", addedAt: 1, hasCredential: false }] },
+      isLoading: false,
+      error: null,
+    };
+    ingressStatusResult = {
+      data: {
+        targets: [{ id: "ing1", kind: "haproxy", address: "http://10.0.0.20:8404", reachable: true, backends: [{ address: "10.0.0.5:8080", guestRef: "guest:pve1:201", healthy: true }] }],
+        chains: [
+          {
+            portForwardId: "pf-proxy", node: "pve1", proto: "tcp", extPort: 443,
+            proxyGuestRef: "guest:pve1:200", targetId: "ing1", targetKind: "haproxy",
+            backends: [{ address: "10.0.0.5:8080", guestRef: "guest:pve1:201", healthy: true }],
+          },
+        ],
+        generatedAt: 1,
+      },
+      isLoading: false,
+      error: null,
+    };
+    renderCockpit();
+
+    const chain = screen.getByRole("group", { name: "Ingress chain for port forward pf-proxy" });
+    expect(chain).toBeInTheDocument();
+    expect(within(chain).getByText("WAN")).toBeInTheDocument();
+    expect(within(chain).getByText("tcp/443")).toBeInTheDocument();
+    expect(within(chain).getByText("guest:pve1:200")).toBeInTheDocument();
+    expect(within(chain).getByText("haproxy (ing1)")).toBeInTheDocument();
+    expect(within(chain).getByText("guest:pve1:201")).toBeInTheDocument();
+  });
+
+  it("shows no connected chains when no port-forward and ingress target line up", () => {
+    routesResult = { data: { defaultRoutes: [], staticRoutes: [], generatedAt: 1 }, isLoading: false, error: null };
+    natResult = { data: { masquerade: [], portForwards: [], sdnSimpleZoneNat: [], generatedAt: 1 }, isLoading: false, error: null };
+    ingressTargetsResult = { data: { items: [] }, isLoading: false, error: null };
+    ingressStatusResult = { data: { targets: [], chains: [], generatedAt: 1 }, isLoading: false, error: null };
+    renderCockpit();
+    expect(screen.getByText("No connected ingress chains")).toBeInTheDocument();
   });
 });
