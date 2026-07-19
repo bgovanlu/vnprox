@@ -38,6 +38,22 @@ func (a authServiceAdapter) Username(ctx context.Context) (string, bool) {
 	return id.Username, true
 }
 
+// HasCap satisfies internal/api's DiagnoseCapabilityChecker interface
+// (T-1307's POST /diagnose capture-escalation step): reports whether ctx's
+// authenticated session holds the named capability, without 403ing when it
+// doesn't — unlike RequireCap above, this is a check, not an enforcement
+// gate, so the diagnose ladder can mark its capture step "skipped" rather
+// than fail the whole request. Mirrors RequireCap's own "any node" scoping
+// (id.HasCap("", cap)): POST /diagnose carries no chi "node" URL param to
+// scope a check to.
+func (a authServiceAdapter) HasCap(ctx context.Context, cap string) bool {
+	id, ok := auth.IdentityFromContext(ctx)
+	if !ok {
+		return false
+	}
+	return id.HasCap("", auth.Cap(cap))
+}
+
 // ValidateTokenScopes satisfies internal/api's TokenMinter interface
 // (T-1104's POST /tokens): it normalizes ctx's authenticated session's
 // requested scopes against both the full capability vocabulary

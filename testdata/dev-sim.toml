@@ -37,3 +37,15 @@ lldp_interval = "30s"
 
 [metrics]
 key_file = "var/dev-sim-metrics.key"
+
+# T-1307: this stack never had a [blueprint] override (unlike dev.toml,
+# testdata/dev.toml's own §"T-1107" comment) and so fell back to the
+# production default (/etc/vnprox/keys/blueprint-signing.key), which
+# doesn't exist and isn't writable without root — vnproxd refused to start
+# at all on any host/sandbox without a pre-existing /etc/vnprox, breaking
+# every web/e2e spec in this repo's shared webServer array (simulator.spec.ts
+# and this task's own diagnose.spec.ts both run against this stack), not
+# just this task's own coverage. Mirrors dev.toml's identical var/ override.
+[blueprint]
+signing_key_file = "var/dev-sim-blueprint-signing.key"
+trusted_signers_dir = "var/dev-sim-trusted-signers"

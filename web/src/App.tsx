@@ -11,6 +11,7 @@ import { SdnPage } from "./pages/SdnPage";
 import { FirewallPage } from "./pages/FirewallPage";
 import { FlowExplorerPage } from "./pages/FlowExplorerPage";
 import { ConntrackPage } from "./pages/ConntrackPage";
+import { DiagnosePage } from "./pages/DiagnosePage";
 import { IpamPage } from "./pages/IpamPage";
 import { ManagementPage } from "./pages/ManagementPage";
 import { PortsPage } from "./pages/PortsPage";
@@ -109,6 +110,14 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Conntrack">
                   <ConntrackPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/diagnose"
+              element={
+                <DesktopOnlyRoute pageLabel="Diagnose">
+                  <DiagnosePage />
                 </DesktopOnlyRoute>
               }
             />
