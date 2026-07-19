@@ -25,6 +25,18 @@ const (
 	KindGuestNic     Kind = "guest-nic"
 	KindLldpNeighbor Kind = "lldp-neighbor"
 	KindFwRuleset    Kind = "fw-ruleset"
+
+	// KindWgTunnel / KindWgPeer are T-1401's WireGuard op-target kinds. They
+	// are app-owned intent (docs/data-model.md §2's wireguard_tunnels/
+	// wireguard_peers tables), not live-polled inventory entities the way
+	// every kind above is — no collector ever emits one into the graph. They
+	// exist here only so a wg.* changeset op's target Ref (docs/data-model.md
+	// §3) can be a first-class, parseable Ref like every other op target,
+	// keyed by the tunnel's app-store id (KindWgTunnel) or "<tunnelID>/<peer
+	// public key hash>" (KindWgPeer). The tunnel/peer lives on its owning
+	// node, so Node is the owning PVE node, never empty.
+	KindWgTunnel Kind = "wg-tunnel"
+	KindWgPeer   Kind = "wg-peer"
 )
 
 // knownKinds is the closed set of valid Kind values. ParseRef rejects any
@@ -34,7 +46,7 @@ var knownKinds = map[Kind]bool{
 	KindNode: true, KindPhysNic: true, KindBond: true, KindBridge: true,
 	KindVlan: true, KindOVSBridge: true, KindOVSBond: true, KindSDNZone: true,
 	KindSDNVnet: true, KindSDNSubnet: true, KindGuest: true, KindGuestNic: true,
-	KindLldpNeighbor: true, KindFwRuleset: true,
+	KindLldpNeighbor: true, KindFwRuleset: true, KindWgTunnel: true, KindWgPeer: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)
