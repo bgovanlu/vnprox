@@ -81,6 +81,10 @@ type HostReader interface {
 	// Conntrack returns node's fixture-declared live conntrack/NAT table
 	// (T-1305), verbatim — see conntrack.go's doc comment.
 	Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error)
+
+	// IPv6RA returns node's fixture-declared per-interface IPv6 RA/DHCPv6
+	// observation (T-1404), verbatim — see ipv6ra.go's doc comment.
+	IPv6RA(ctx context.Context, node string) ([]IPv6RAObservation, error)
 }
 
 // ContainerInteriorRaw is one lxc guest's raw host-side network-namespace

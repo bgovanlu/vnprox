@@ -132,6 +132,11 @@ type HostReader interface {
 	// host.Reader.Conntrack call, GET /conntrack's cluster fan-out
 	// dependency.
 	Conntrack(ctx context.Context, node string) ([]host.ConntrackEntry, error)
+	// IPv6RA returns node's own bounded, host-local IPv6 RA/DHCPv6
+	// observation (T-1404) — the remote-node counterpart of a local
+	// host.Reader.IPv6RA call, GET /ipv6/segments' cluster fan-out
+	// dependency.
+	IPv6RA(ctx context.Context, node string) ([]host.IPv6RAObservation, error)
 }
 
 // FirewallLogReader is the peer-server-side dependency for
@@ -304,6 +309,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/container-interior", s.handleContainerInterior)
 		r.Get("/host/container-ping", s.handleContainerPing)
 		r.Get("/host/conntrack", s.handleConntrack)
+		r.Get("/host/ipv6-ra", s.handleIPv6RA)
 		r.Get("/host/frr/bgp-summary", s.handleFRRBGPSummary)
 		r.Get("/host/frr/evpn-vni", s.handleFRREVPNVNI)
 		r.Get("/host/dhcp-leases", s.handleDHCPLeases)
@@ -611,6 +617,28 @@ func (s *Server) handleConntrack(w http.ResponseWriter, r *http.Request) {
 		entries = []host.ConntrackEntry{}
 	}
 	writeJSON(w, http.StatusOK, conntrackResponse{Entries: entries})
+}
+
+// handleIPv6RA implements GET /api/peer/host/ipv6-ra (T-1404): node's
+// bounded, host-local IPv6 RA/DHCPv6 observation, the peer-routed
+// counterpart of a local host.Reader.IPv6RA call — following
+// handleConntrack's precedent exactly (a plain read, no {available}
+// envelope needed).
+func (s *Server) handleIPv6RA(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	items, err := s.opts.Reader.IPv6RA(r.Context(), node)
+	if err != nil {
+		s.writeHostError(w, "reading ipv6 RA observations", err)
+		return
+	}
+	if items == nil {
+		items = []host.IPv6RAObservation{}
+	}
+	writeJSON(w, http.StatusOK, ipv6RAResponse{Items: items})
 }
 
 // handleFRRBGPSummary implements GET /api/peer/host/frr/bgp-summary

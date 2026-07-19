@@ -91,6 +91,9 @@ func (r fakeHostReader) ContainerPing(context.Context, string, int, string) (boo
 func (r fakeHostReader) Conntrack(context.Context, string) ([]host.ConntrackEntry, error) {
 	return nil, nil
 }
+func (r fakeHostReader) IPv6RA(context.Context, string) ([]host.IPv6RAObservation, error) {
+	return nil, nil
+}
 
 // partitionableTransport is an http.RoundTripper that fails every request to
 // a "cut" host (address, as in req.URL.Host) with a network-shaped error —

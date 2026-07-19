@@ -37,8 +37,11 @@ type resolvedEP struct {
 }
 
 // resolveEndpoint turns a request Endpoint into a resolvedEP, attaching any
-// endpoint-level caveats to res.
-func (e *Engine) resolveEndpoint(ep Endpoint, res *Result) resolvedEP {
+// endpoint-level caveats to res. family (already defaulted via
+// Family.orDefault) governs which address family a guest-nic endpoint's IP
+// resolves to; a literal ip endpoint's family is self-evident from the
+// address itself and ignores it.
+func (e *Engine) resolveEndpoint(ep Endpoint, family Family, res *Result) resolvedEP {
 	switch ep.Kind {
 	case EndpointExternal:
 		return resolvedEP{
@@ -49,7 +52,7 @@ func (e *Engine) resolveEndpoint(ep Endpoint, res *Result) resolvedEP {
 	case EndpointIP:
 		return e.resolveIP(ep.IP, res)
 	case EndpointGuestNic:
-		return e.resolveGuestNic(ep.NicRef, res)
+		return e.resolveGuestNic(ep.NicRef, family, res)
 	default:
 		res.addCaveat(notEvaluated(FeatureUnknownEntityKind,
 			fmt.Sprintf("endpoint kind %q is not supported", ep.Kind)))
@@ -96,7 +99,7 @@ func (e *Engine) resolveIP(raw string, res *Result) resolvedEP {
 	return rep
 }
 
-func (e *Engine) resolveGuestNic(ref inventory.Ref, res *Result) resolvedEP {
+func (e *Engine) resolveGuestNic(ref inventory.Ref, family Family, res *Result) resolvedEP {
 	if ref.Kind != inventory.KindGuestNic {
 		res.addCaveat(notEvaluated(FeatureUnknownEntityKind,
 			fmt.Sprintf("endpoint ref %s is a %s, not a guest NIC", ref, ref.Kind)))
@@ -126,7 +129,7 @@ func (e *Engine) resolveGuestNic(ref inventory.Ref, res *Result) resolvedEP {
 	}
 
 	e.resolveNicAttachment(&rep, nic, res)
-	e.resolveNicIP(&rep, ref, res)
+	e.resolveNicIP(&rep, ref, family, res)
 	rep.public.Description = e.describeNic(nic, rep)
 	return rep
 }
@@ -174,9 +177,11 @@ func (e *Engine) resolveNicAttachment(rep *resolvedEP, nic *inventory.GuestNic, 
 }
 
 // resolveNicIP fills a guest NIC endpoint's IP from the caller-supplied
-// side-table (best available source), and its subnet.
-func (e *Engine) resolveNicIP(rep *resolvedEP, ref inventory.Ref, res *Result) {
-	if ip, src, ok := e.bestGuestIP(ref); ok {
+// side-table (best available source, filtered to family — T-1404), and its
+// subnet.
+func (e *Engine) resolveNicIP(rep *resolvedEP, ref inventory.Ref, family Family, res *Result) {
+	family = family.orDefault()
+	if ip, src, ok := e.bestGuestIP(ref, family); ok {
 		rep.ip = ip
 		rep.ipKnown = true
 		rep.ipSource = src
@@ -192,11 +197,14 @@ func (e *Engine) resolveNicIP(rep *resolvedEP, ref inventory.Ref, res *Result) {
 		}
 		return
 	}
-	// No IP known. We may still know the *subnet* if the VNet has exactly
-	// one — enough for zone/L3 reasoning, though not for address-based
-	// firewall matching.
+	// No IP known for the requested family. We may still know the *subnet*
+	// if the VNet has exactly one subnet of that family — enough for
+	// zone/L3 reasoning, though not for address-based firewall matching
+	// (a dual-stack VNet's other-family subnet is deliberately excluded
+	// here, so a v6 request never anchors to a v4-only subnet or vice
+	// versa).
 	if rep.vnet != nil {
-		if subs := e.subnetsByVnet[rep.vnet.ID]; len(subs) == 1 {
+		if subs := familySubnets(e.subnetsByVnet[rep.vnet.ID], family); len(subs) == 1 {
 			rep.subnet = subs[0]
 			rep.public.Subnet = subs[0].ID
 		}
@@ -204,8 +212,28 @@ func (e *Engine) resolveNicIP(rep *resolvedEP, ref inventory.Ref, res *Result) {
 	rep.ipSource = IPSourceUnknown
 }
 
-// bestGuestIP returns the highest-confidence resolvable IP for a guest NIC.
-func (e *Engine) bestGuestIP(ref inventory.Ref) (netip.Addr, IPSource, bool) {
+// familySubnets filters subs to those whose CIDR parses as family — used to
+// disambiguate a dual-stack VNet's subnet list when a guest-nic's IP isn't
+// known for the requested family (resolveNicIP above).
+func familySubnets(subs []*inventory.SdnSubnet, family Family) []*inventory.SdnSubnet {
+	var out []*inventory.SdnSubnet
+	for _, s := range subs {
+		pfx, err := netip.ParsePrefix(s.ID)
+		if err != nil {
+			continue
+		}
+		if family.matches(pfx.Addr()) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// bestGuestIP returns the highest-confidence resolvable IP of the
+// requested family for a guest NIC — an address of the other family in
+// Input.GuestIPs is never returned, even if it would otherwise outrank a
+// same-family candidate (T-1404: family selects, not merely prefers).
+func (e *Engine) bestGuestIP(ref inventory.Ref, family Family) (netip.Addr, IPSource, bool) {
 	ips := e.guestIPs[ref]
 	if len(ips) == 0 {
 		return netip.Addr{}, IPSourceUnknown, false
@@ -216,7 +244,7 @@ func (e *Engine) bestGuestIP(ref inventory.Ref) (netip.Addr, IPSource, bool) {
 	bestSrc := IPSourceUnknown
 	for _, gi := range ips {
 		addr, err := netip.ParseAddr(gi.IP)
-		if err != nil {
+		if err != nil || !family.matches(addr) {
 			continue
 		}
 		if r := order[gi.Source]; r > bestRank {

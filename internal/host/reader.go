@@ -142,6 +142,20 @@ type Reader interface {
 	// docs/api.md's Conntrack section — conntrack entries are never
 	// flushed/mutated by vnprox.
 	Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error)
+
+	// IPv6RA returns node's own bounded, host-local observation of IPv6
+	// Router Advertisements and DHCPv6 activity on each of its bridge/VLAN
+	// interfaces (T-1404, docs/features/sdn.md §6's "IPv6 SLAAC management
+	// — display yes" now backed by a real read): RA presence, the M
+	// (Managed) and O (Other) flags, advertised prefixes, and router
+	// lifetime — the same per-node, fanned-out-via-peer-API shape LLDP
+	// uses (GET /api/peer/host/ipv6-ra). Returns already-structured
+	// observations (like Neighbors/Conntrack above), not a raw external
+	// tool's byte format to parse — there is no one external tool whose
+	// wire format is worth preserving verbatim the way vtysh's JSON is for
+	// FRRBGPSummary/FRREVPNVNI. See IPv6RAObservation's doc comment for the
+	// DHCPv6-server-presence field's documented inference limitation.
+	IPv6RA(ctx context.Context, node string) ([]IPv6RAObservation, error)
 }
 
 // ContainerInteriorRaw is one lxc guest's raw host-side

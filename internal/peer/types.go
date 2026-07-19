@@ -83,6 +83,14 @@ type conntrackResponse struct {
 	Entries []host.ConntrackEntry `json:"entries"`
 }
 
+// ipv6RAResponse is GET /api/peer/host/ipv6-ra's body (T-1404): a plain
+// read, no {available} envelope needed — an interface with no observed RA
+// is itself a clean, unremarkable answer, the same convention
+// conntrackResponse/neighbors above follow.
+type ipv6RAResponse struct {
+	Items []host.IPv6RAObservation `json:"items"`
+}
+
 // firewallLogResponse is GET /api/peer/firewall/log's body (T-505: one
 // node's own pve-firewall log tail/follow increment — internal/fwlog.
 // Service.fetch calls this for every non-local node in the cluster,

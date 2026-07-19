@@ -72,3 +72,7 @@ func (r *Real) ContainerPing(_ context.Context, _ string, _ int, _ string) (bool
 func (r *Real) Conntrack(_ context.Context, _ string) ([]ConntrackEntry, error) {
 	return nil, fmt.Errorf("host: Conntrack: %w", ErrUnsupportedPlatform)
 }
+
+func (r *Real) IPv6RA(_ context.Context, _ string) ([]IPv6RAObservation, error) {
+	return nil, fmt.Errorf("host: IPv6RA: %w", ErrUnsupportedPlatform)
+}

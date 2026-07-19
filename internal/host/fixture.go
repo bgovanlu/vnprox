@@ -58,6 +58,9 @@ type pvemockReader interface {
 	// an earlier task before pvemockReader itself existed) since this
 	// interface was still open for a direct addition when T-1305 landed.
 	Conntrack(ctx context.Context, node string) ([]pvemock.ConntrackEntry, error)
+	// IPv6RA returns node's fixture-declared per-interface IPv6 RA/DHCPv6
+	// observation (T-1404).
+	IPv6RA(ctx context.Context, node string) ([]pvemock.IPv6RAObservation, error)
 }
 
 // FixtureReader adapts a *pvemock.FixtureHostReader (T-004's YAML
@@ -226,6 +229,27 @@ func (f *FixtureReader) Conntrack(ctx context.Context, node string) ([]Conntrack
 			Proto: e.Proto, SrcIP: e.SrcIP, DstIP: e.DstIP, SrcPort: e.SrcPort, DstPort: e.DstPort,
 			State: e.State, TimeoutSec: e.TimeoutSec,
 			NatSrc: convertFixtureNatAddr(e.NatSrc), NatDst: convertFixtureNatAddr(e.NatDst),
+		}
+	}
+	return out, nil
+}
+
+// IPv6RA implements Reader (T-1404): node's fixture-declared per-interface
+// RA/DHCPv6 observation, converting pvemock.IPv6RAObservation to
+// host.IPv6RAObservation field-for-field (same "two interfaces,
+// one adapter" reasoning as the rest of this file).
+func (f *FixtureReader) IPv6RA(ctx context.Context, node string) ([]IPv6RAObservation, error) {
+	in, err := f.r.IPv6RA(ctx, node)
+	if err != nil {
+		return nil, wrapFixtureErr(err)
+	}
+	out := make([]IPv6RAObservation, len(in))
+	for i, e := range in {
+		out[i] = IPv6RAObservation{
+			Iface: e.Iface, Prefixes: append([]string(nil), e.Prefixes...),
+			RouterLifetimeSec: e.RouterLifetimeSec, RAPresent: e.RAPresent,
+			ManagedFlag: e.ManagedFlag, OtherFlag: e.OtherFlag,
+			DHCPv6ServerPresent: e.DHCPv6ServerPresent, DHCPv6InferredFromRA: e.DHCPv6InferredFromRA,
 		}
 	}
 	return out, nil

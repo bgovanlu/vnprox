@@ -404,6 +404,22 @@ func (c *Client) Conntrack(ctx context.Context, p Peer, node string) ([]host.Con
 	return out.Entries, nil
 }
 
+// IPv6RA fetches node's bounded, host-local IPv6 RA/DHCPv6 observation from
+// peer p (T-1404): the remote-node counterpart of a local
+// host.Reader.IPv6RA call, used by GET /ipv6/segments' cluster fan-out.
+func (c *Client) IPv6RA(ctx context.Context, p Peer, node string) ([]host.IPv6RAObservation, error) {
+	path := "/api/peer/host/ipv6-ra?node=" + url.QueryEscape(node)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out ipv6RAResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Items, nil
+}
+
 // FRRBGPSummary fetches node's raw `vtysh -c "show bgp summary json"`
 // output from peer p (T-404). available is false (raw is nil) when node
 // runs no FRR at all — the peer-routed counterpart of
