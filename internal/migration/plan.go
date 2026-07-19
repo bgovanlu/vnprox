@@ -236,6 +236,17 @@ func (p *Planner) Plan(ctx context.Context, guest inventory.Ref, targetNode stri
 			sig.Fabric, sourceNode, targetNode, sig.LossPct, sig.RttMs))
 	}
 
+	// If the guest's RAM couldn't be read, dirtyRateMbps is 0 and the switch
+	// above can't have flagged a dirty-rate problem — so the machine-readable
+	// verdict would otherwise report "ok" on a meaningless estimate. Downstream
+	// consumers (T-1604 failure-impact sim, T-1103 scheduler) branch on this
+	// field, so degrade an otherwise-clean verdict to "tight": the caveat
+	// already explains why, and "ok" here would be false confidence
+	// (review-T-1507).
+	if !memOk && verdict == VerdictOK {
+		verdict = VerdictTight
+	}
+
 	return Assessment{
 		HeadroomMbps:         round2(headroomMbps),
 		EstimatedTransferSec: round2(estimatedTransferSec),

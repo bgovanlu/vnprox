@@ -117,6 +117,31 @@ func TestPlan_AmpleHeadroom_OK(t *testing.T) {
 	}
 }
 
+// When the guest's RAM can't be read, the transfer/dirty-rate estimate is
+// meaningless — so an otherwise-healthy link must NOT report a clean "ok"
+// verdict (downstream T-1604/T-1103 branch on it). It degrades to "tight"
+// with an explanatory caveat (review-T-1507).
+func TestPlan_UnreadableRAM_DegradesToTight(t *testing.T) {
+	g := buildTwoNodeGraph(t, 1000)
+	p := migration.New(migration.Config{
+		Graph:       g,
+		GuestConfig: &fakeGuestConfig{memoryMB: ""}, // no "memory" value -> unreadable
+		Mesh: &fakeMesh{links: []latmesh.LinkHeat{
+			{LinkID: "corosync|pve1->pve2", Fabric: latmesh.FabricCorosync, FromNode: "pve1", ToNode: "pve2", RollingLossPct: 0, RollingRttMs: 5},
+		}},
+		Traffic: &fakeTraffic{mbps: 0, ok: true},
+	})
+
+	got := p.Plan(context.Background(), vm100, "pve2")
+
+	if got.Verdict != migration.VerdictTight {
+		t.Errorf("Verdict = %q, want %q (unreadable RAM must not read as ok; caveats: %v)", got.Verdict, migration.VerdictTight, got.Caveats)
+	}
+	if !got.BestEffort {
+		t.Error("BestEffort must always be true")
+	}
+}
+
 // latmeshFixtureRow mirrors testdata/latmesh/*.json's per-tick shape
 // (internal/latmesh/pairs_test.go, internal/findings/health_latmesh_test.go).
 type latmeshFixtureRow struct {
