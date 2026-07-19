@@ -22,6 +22,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/ingress"
+	"github.com/bgovanlu/vnprox/internal/migration"
 )
 
 // AuthService is the subset of *auth.Service the router needs: route
@@ -361,8 +362,12 @@ type Options struct {
 	K8sGraph        K8sGraph
 	K8sIPAM         K8sIPAMSource
 	K8sAudit        k8sAuditWriter
-	Logger          *slog.Logger
-	Version         string
+	// Migration backs T-1507's POST /migration/preflight (docs/api.md's
+	// Migration planner section) — a purely advisory, read-only bandwidth-
+	// headroom pre-flight check; nil skips mounting the route.
+	Migration *migration.Planner
+	Logger    *slog.Logger
+	Version   string
 	// Instance is the non-secret operational config surfaced by GET
 	// /config (the Settings page's "Instance" section). Zero value is fine
 	// — the route still mounts and reports whatever's set (Version at
@@ -441,6 +446,7 @@ func NewRouter(opts Options) http.Handler {
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
 		mountK8sRoutes(r, opts.K8sClusters, opts.K8sSecretCipher, opts.K8sPoller, opts.K8sGraph, opts.K8sIPAM, opts.K8sAudit, opts.Auth)
+		mountMigrationRoutes(r, opts.Migration, opts.Auth)
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

@@ -26,6 +26,7 @@ import { fieldRows } from "./fields";
 import { InteriorTab } from "./InteriorTab";
 import { METRICS_KINDS } from "./metricsKinds";
 import { MetricsTab } from "./MetricsTab";
+import { MigrationPreflightTab } from "./MigrationPreflightTab";
 import { useInventoryDetailQuery, useMgmtStatusQuery } from "./queries";
 import { useTopologyStore } from "./store";
 import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
@@ -447,6 +448,11 @@ export function InspectorPanel({
                   Interior
                 </RadixTabs.Trigger>
               )}
+              {isGuestKind && (
+                <RadixTabs.Trigger value="migration" className={tabTriggerClass}>
+                  Migration
+                </RadixTabs.Trigger>
+              )}
             </RadixTabs.List>
 
             <RadixTabs.Content value="fields" className="mt-3 flex-1 overflow-y-auto">
@@ -595,6 +601,11 @@ export function InspectorPanel({
             {isGuestKind && (
               <RadixTabs.Content value="interior" className="mt-3 flex-1 overflow-y-auto">
                 <InteriorTab entityRef={data.ref} />
+              </RadixTabs.Content>
+            )}
+            {isGuestKind && (
+              <RadixTabs.Content value="migration" className="mt-3 flex-1 overflow-y-auto">
+                <MigrationPreflightTab entityRef={data.ref} />
               </RadixTabs.Content>
             )}
           </RadixTabs.Root>
