@@ -114,12 +114,12 @@ type Engine struct {
 	mtuSvc           MTUProvider
 	wgSvc            WGProvider
 	wanSvc           WanProvider
-	serviceDB        *debouncer
-	services         *serviceStatusStore
-	onChange         func(int)
+	flowSvc          FlowProvider
+	lastIDs          map[string]bool
+	latLossDB        *debouncer
 	log              *slog.Logger
 	notified         map[string]string
-	lastIDs          map[string]bool
+	services         *serviceStatusStore
 	now              func() time.Time
 	bondDB           *debouncer
 	lacpDB           *debouncer
@@ -128,20 +128,20 @@ type Engine struct {
 	corosyncDB       *debouncer
 	vxlanMTUDB       *debouncer
 	latRttDB         *debouncer
-	latLossDB        *debouncer
+	onChange         func(int)
 	wgStaleDB        *debouncer
 	wgDriftDB        *debouncer
 	wanDB            *debouncer
 	graph            *inventory.Graph
 	stpTracker       *stpBurstTracker
 	pendingTr        *pendingTracker
+	serviceTrafficDB *debouncer
+	serviceDB        *debouncer
 	notifyMin        string
 	thresholds       HealthThresholds
 	interval         time.Duration
 	mu               sync.Mutex
 	lastEval         bool
-	flowSvc          FlowProvider
-	serviceTrafficDB *debouncer
 }
 
 // New builds an Engine from cfg.
