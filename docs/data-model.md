@@ -290,3 +290,18 @@ sdn:                          # omitted entirely when the cluster has no SDN obj
 ```
 
 `vids` are the inventory `VidRange` string forms (`"100"`, `"2-4094"`), sorted. `Parse` rejects any `specVersion` other than `1` (an absent field is `0` and is rejected too), so an operator never reconciles against a schema this daemon can't fully honor.
+
+## 7. Guest interior toggles (`internal/store`, T-1304)
+
+`guest_interior_toggles` (`internal/store/migrations/0011_guest_interior_toggles.sql`): the per-guest opt-in preference gating docs/api.md's `GET /guests/{ref}/interior` (§"Guest interior") — app-owned UI state per this doc's top-level rule (D5): it records only "has an operator opted this guest in", never a copy of any PVE-owned config or the interior read set itself, which is never persisted at all (live-read fresh on every request).
+
+```sql
+CREATE TABLE guest_interior_toggles (
+  ref        TEXT PRIMARY KEY,   -- the guest's Ref string (guest:<node>:<vmid>)
+  enabled    INTEGER NOT NULL,
+  updated_by TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+```
+
+Keyed by `ref` (one row per guest, following `annotations`' ref-keyed shape rather than `layouts`' per-username shape, §2): the toggle is a shared, cluster-wide preference any `netRead`-capable operator can see and flip, not private per-user data. A guest with no row at all reads as `enabled: false` (off by default) — the table only ever grows a row the first time a guest is toggled.

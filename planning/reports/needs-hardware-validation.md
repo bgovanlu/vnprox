@@ -399,3 +399,46 @@ from; and pvemock does not model an `ifreload` outage at all):
       acceptance must be confirmed across the full PVE 8.2+/9.x kernel range before shipping: a
       BPF verifier rejection is a load-time failure, not a runtime one, so it needs to be caught
       per-kernel-version, not just once.
+
+## Guest network interior inspector (T-1304)
+
+- [ ] **Exact in-guest/in-container command set per guest OS family.** `internal/guestinterior`
+      (both the qemu path, `qemu.go`, and the parsers `lxc.go` shares with it) deliberately
+      implements exactly one target profile — a Linux guest/container with iproute2's `ip -j addr
+      show`/`ip -j route show` (JSON output support, iproute2 ~4.x+), a POSIX-ish `/etc/resolv.conf`,
+      and `ss` supporting `-H -tuln` — rather than guessing a "portable" command across every guest
+      OS/toolchain, mirroring `internal/probe/command.go`'s own precedent (T-802's entry above).
+      Unverified against real guest images: (1) whether `ip -j` JSON output is actually present and
+      stably shaped across the iproute2 versions PVE's own common guest templates (Debian/Ubuntu
+      cloud images) ship; (2) minimal/busybox/Alpine images' `ip`/`ss` flag support (busybox `ip`
+      has no `-j`; Alpine's `ss` comes from `iproute2-minimal` and may lack `-H`); (3) Windows
+      guests and non-Linux containers need an entirely different command set — **not implemented at
+      all**, a qemu guest-agent read against one will fail the same "unrecognized command" way an
+      unsupported `internal/probe` target does; (4) whether `POST/GET .../agent/exec[-status]`'s
+      real guest-agent exec privilege/allowlist policy (see T-802's own entry above) permits these
+      three additional read-only commands the same way it permits `ping`/`nc`.
+- [ ] **LXC pid-resolution mechanism** (`internal/host/containerinterior_linux.go`'s `containerPID`).
+      Assumes PVE 8.x's default cgroupv2-unified layout places a running container's processes
+      under `/sys/fs/cgroup/lxc/<vmid>/cgroup.procs` — this codebase's own best inference from
+      pve-container's conventions, not verified against a live cluster. No cgroupv1 fallback is
+      attempted (this codebase has no fixture or hardware to verify one against). Confirm against a
+      real PVE node: (1) the exact cgroup path on both a fresh PVE 8.x install and an
+      upgraded-from-PVE-7 node (which may still run cgroupv1 hybrid mode); (2) whether the first pid
+      listed in `cgroup.procs` is always a suitable target for `nsenter --net=` (vs. a transient
+      short-lived process that has already exited by the time `nsenter` runs — a race this
+      implementation does not currently guard against with a retry).
+- [ ] **`nsenter`/`ip`/`ss`/`ping` availability and required capabilities on the vnproxd host.**
+      `Real.ContainerInterior`/`ContainerPing` shell out to these binaries via `os/exec` assuming
+      they're on `PATH` and that vnproxd's own process has `CAP_SYS_ADMIN` (or runs as root) to
+      enter another process's network namespace — neither is guaranteed by this task's own
+      development/CI sandbox (no `/sys/fs/cgroup/lxc` exists there at all, so
+      `TestReal_ContainerInterior_LiveLXC`, `internal/host/containerinterior_linux_test.go`, skips
+      cleanly rather than asserting anything). Confirm vnproxd's packaged systemd unit
+      (`packaging/systemd/`) grants the needed capability/runs with sufficient privilege on a real
+      PVE node.
+- [ ] **`defaultGatewayReachable`'s ping semantics for the lxc path.** Unlike the qemu path (which
+      reuses `internal/probe.Run`'s full `Outcome` classification), the lxc path's `ContainerPing`
+      collapses "no reply" and "could not attempt the ping at all" into a single `false` — a
+      deliberate scope simplification (see docs/api.md's Guest interior section) this task's report
+      flags rather than a verified real-hardware behavior; confirm this reads honestly enough in
+      practice, or whether a follow-up should give it the same three-way `Outcome` the qemu path has.
