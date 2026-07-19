@@ -281,6 +281,41 @@ func TestTwoDaemonHarness_Neighbors(t *testing.T) {
 	}
 }
 
+// TestTwoDaemonHarness_Conntrack is T-1305 acceptance criterion 2:
+// GET /api/peer/host/conntrack returns fixture data, HMAC-gated like every
+// other peer route (h.client signs the request exactly like it does for
+// Neighbors/FDB/DHCPLeases above — a request that reached this handler at
+// all already passed signature verification).
+func TestTwoDaemonHarness_Conntrack(t *testing.T) {
+	h := newTwoDaemonHarness(t)
+
+	h.readerA.conntrack["pve1"] = []host.ConntrackEntry{
+		{Proto: 6, SrcIP: "10.50.0.10", DstIP: "10.50.0.20", SrcPort: 54321, DstPort: 443, State: "ESTABLISHED", TimeoutSec: 431999},
+		{
+			Proto: 6, SrcIP: "10.50.0.30", DstIP: "8.8.8.8", SrcPort: 44444, DstPort: 443, State: "ESTABLISHED", TimeoutSec: 431999,
+			NatSrc: &host.NatAddr{IP: "203.0.113.10", Port: 44444},
+		},
+	}
+
+	got, err := h.client.Conntrack(t.Context(), h.nodeA, "pve1")
+	if err != nil {
+		t.Fatalf("Conntrack(nodeA): %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("Conntrack(nodeA) = %+v, want 2 entries", got)
+	}
+	if got[1].NatSrc == nil || got[1].NatSrc.IP != "203.0.113.10" {
+		t.Errorf("Conntrack(nodeA)[1].NatSrc = %+v, want 203.0.113.10", got[1].NatSrc)
+	}
+	if h.readerA.conntrackCalls != 1 {
+		t.Errorf("readerA.conntrackCalls = %d, want 1", h.readerA.conntrackCalls)
+	}
+
+	if _, err := h.client.Conntrack(t.Context(), h.nodeA, "nosuch"); err == nil {
+		t.Fatal("expected an error for an unknown node")
+	}
+}
+
 // TestPeerAudit_FetchesFilteredPage is T-303: GET /api/peer/audit parses
 // every documented GET /audit query param into peer.AuditFilter and
 // forwards it, and decodes the served page back into []AuditRecord/

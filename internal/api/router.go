@@ -182,6 +182,16 @@ type Options struct {
 	// node-local-only).
 	Flows     FlowLocalSource
 	PeerFlows PeerFlowSource
+	// Conntrack is T-1305's local-node read seam for GET /conntrack (nil
+	// skips mounting the route, same degraded-mode treatment as every other
+	// optional Options field); PeerConntrack is its cluster fan-out
+	// dependency (nil-safe, falls back to node-local-only); ConntrackGuests
+	// resolves the `guest=` filter (nil-safe, that filter then matches
+	// nothing rather than 500ing). Reuses LocalNode (T-605's own field,
+	// below) to tag local entries with this node's own name.
+	Conntrack       ConntrackLocalSource
+	PeerConntrack   PeerConntrackSource
+	ConntrackGuests ConntrackGuestResolver
 	// DocExport backs T-605's GET /export/doc (config documentation
 	// export); nil skips mounting the route, matching every other optional
 	// Options field.
@@ -255,6 +265,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
+		mountConntrackRoutes(r, opts.Conntrack, opts.PeerConntrack, opts.ConntrackGuests, opts.LocalNode, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 	})

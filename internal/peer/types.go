@@ -56,6 +56,14 @@ type neighborsResponse struct {
 	Neighbors []host.Neighbor `json:"neighbors"`
 }
 
+// conntrackResponse is GET /api/peer/host/conntrack's body (T-1305: a
+// node's own live conntrack/NAT table — GET /conntrack's cluster fan-out
+// dependency, following the `links`/`neighbors` additive-route precedent
+// linksResponse's doc comment describes).
+type conntrackResponse struct {
+	Entries []host.ConntrackEntry `json:"entries"`
+}
+
 // firewallLogResponse is GET /api/peer/firewall/log's body (T-505: one
 // node's own pve-firewall log tail/follow increment — internal/fwlog.
 // Service.fetch calls this for every non-local node in the cluster,
