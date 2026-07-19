@@ -19,17 +19,19 @@ type IPv6Service interface {
 }
 
 // mountIPv6Routes registers docs/api.md's `GET /ipv6/segments` — gated on
-// the same sdnRead capability GET /sdn uses (RA/DHCPv6 visibility is an
-// SDN-adjacent read view, the same reasoning capIPAMRead above already
-// applies to IPAM). svc == nil mirrors every other mountXRoutes function
-// in this package: the route simply isn't mounted.
+// `netRead` per the task card's own explicit wording ("GET /ipv6/segments
+// (netRead-gated)"), not `sdnRead` (the gate `GET /sdn`/`GET /ipam/*` use)
+// — RA/DHCPv6 observation is host-local diagnostic data (the same
+// category `GET /conntrack`/`GET /latmesh/heatmap` are gated on), not SDN
+// config itself. svc == nil mirrors every other mountXRoutes function in
+// this package: the route simply isn't mounted.
 func mountIPv6Routes(r chi.Router, svc IPv6Service, auth AuthService) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
-		r.Use(auth.RequireCap(capSDNRead))
+		r.Use(auth.RequireCap(capNetRead))
 		r.Get("/ipv6/segments", handleIPv6Segments(svc))
 	})
 }
