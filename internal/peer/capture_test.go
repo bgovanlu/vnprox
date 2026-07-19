@@ -10,11 +10,13 @@ import (
 // spyCaptureAgent is an in-memory CaptureAgent stand-in for the peer capture
 // route tests, recording what it was asked to run.
 type spyCaptureAgent struct {
-	err      error
-	lastStop string
-	lastStat string
-	startRes CaptureResult
-	lastSpec CaptureSpec
+	downloadData []byte
+	err          error
+	lastStop     string
+	lastStat     string
+	lastDownload string
+	startRes     CaptureResult
+	lastSpec     CaptureSpec
 }
 
 func (s *spyCaptureAgent) StartLocal(_ context.Context, spec CaptureSpec) (CaptureResult, error) {
@@ -28,6 +30,13 @@ func (s *spyCaptureAgent) StopLocal(_ context.Context, id string) (CaptureResult
 func (s *spyCaptureAgent) StatusLocal(_ context.Context, id string) (CaptureResult, error) {
 	s.lastStat = id
 	return CaptureResult{Status: "running", Packets: 3, Bytes: 300}, s.err
+}
+func (s *spyCaptureAgent) DownloadLocal(_ context.Context, id string) ([]byte, error) {
+	s.lastDownload = id
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.downloadData, nil
 }
 
 func TestClient_Capture_RoundTrip(t *testing.T) {
@@ -80,6 +89,15 @@ func TestClient_Capture_RoundTrip(t *testing.T) {
 	if stat.Packets != 3 || agent.lastStat != "s1" {
 		t.Errorf("status = %+v, lastStat=%q", stat, agent.lastStat)
 	}
+
+	agent.downloadData = []byte("raw pcap bytes")
+	dl, err := client.CaptureDownload(t.Context(), p, "s1")
+	if err != nil {
+		t.Fatalf("CaptureDownload: %v", err)
+	}
+	if string(dl) != "raw pcap bytes" || agent.lastDownload != "s1" {
+		t.Errorf("download = %q, lastDownload=%q", dl, agent.lastDownload)
+	}
 }
 
 func TestServer_UnconfiguredCapture503s(t *testing.T) {
@@ -122,5 +140,12 @@ func TestServer_CaptureRequiresHMAC(t *testing.T) {
 	}
 	if agent.lastSpec.SessionID != "" {
 		t.Errorf("capture agent was reached despite bad HMAC: %+v", agent.lastSpec)
+	}
+
+	if _, err := badClient.CaptureDownload(t.Context(), p, "s1"); err == nil {
+		t.Fatal("expected HMAC rejection with a wrong cluster secret")
+	}
+	if agent.lastDownload != "" {
+		t.Errorf("capture agent's DownloadLocal was reached despite bad HMAC: %q", agent.lastDownload)
 	}
 }

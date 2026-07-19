@@ -12,8 +12,10 @@ import (
 )
 
 type fakeCaptureService struct {
-	startErr error
-	group    capture.Group
+	startErr     error
+	downloadErr  error
+	downloadData []byte
+	group        capture.Group
 }
 
 func (f fakeCaptureService) Start(_ context.Context, _ capture.StartRequest) (capture.Group, error) {
@@ -27,6 +29,17 @@ func (f fakeCaptureService) Get(_ context.Context, _ string) (capture.Group, err
 }
 func (f fakeCaptureService) List(_ context.Context) ([]capture.Group, error) {
 	return []capture.Group{f.group}, nil
+}
+func (f fakeCaptureService) Download(_ context.Context, sessionID string) ([]byte, capture.Session, error) {
+	if f.downloadErr != nil {
+		return nil, capture.Session{}, f.downloadErr
+	}
+	for _, s := range f.group.Sessions {
+		if s.ID == sessionID {
+			return f.downloadData, s, nil
+		}
+	}
+	return f.downloadData, capture.Session{ID: sessionID}, nil
 }
 
 func newCaptureTestRouter(svc CaptureService, auth fakeAuthWithCaps) http.Handler {
@@ -115,4 +128,87 @@ func TestCaptureRoutes_ListWithCapability(t *testing.T) {
 	if len(got.Items) != 1 || got.Items[0].ID != "g1" {
 		t.Errorf("items = %+v, want one group g1", got.Items)
 	}
+}
+
+// TestCaptureRoutes_Download is T-1302's per-session pcap download route:
+// {id} is the group id, ?sessionId= disambiguates a multi-point group
+// (defaulting to the first session), and the response is the raw pcap bytes
+// with an attachment Content-Disposition — never a JSON envelope.
+func TestCaptureRoutes_Download(t *testing.T) {
+	group := capture.Group{
+		ID: "g1", Status: capture.StatusCompleted,
+		Sessions: []capture.Session{
+			{ID: "s1", GroupID: "g1", Node: "pve1"},
+			{ID: "s2", GroupID: "g1", Node: "pve2"},
+		},
+	}
+	auth := captureAuth(map[string]bool{capNetRead: true, "capture": true})
+
+	t.Run("no sessionId downloads the first/primary session", func(t *testing.T) {
+		svc := fakeCaptureService{group: group, downloadData: []byte("pcap-bytes-1")}
+		r := newCaptureTestRouter(svc, auth)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/captures/g1/download", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET /captures/g1/download = %d, want 200 (body %s)", w.Code, w.Body.String())
+		}
+		if got := w.Body.String(); got != "pcap-bytes-1" {
+			t.Errorf("body = %q, want the raw pcap bytes", got)
+		}
+		if ct := w.Header().Get("Content-Type"); ct != "application/vnd.tcpdump.pcap" {
+			t.Errorf("Content-Type = %q", ct)
+		}
+		if cd := w.Header().Get("Content-Disposition"); cd == "" {
+			t.Error("want a Content-Disposition attachment header")
+		}
+	})
+
+	t.Run("explicit sessionId picks that session", func(t *testing.T) {
+		svc := fakeCaptureService{group: group, downloadData: []byte("pcap-bytes-2")}
+		r := newCaptureTestRouter(svc, auth)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/captures/g1/download?sessionId=s2", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if got := w.Body.String(); got != "pcap-bytes-2" {
+			t.Errorf("body = %q, want pcap-bytes-2", got)
+		}
+	})
+
+	t.Run("unknown sessionId -> 404", func(t *testing.T) {
+		svc := fakeCaptureService{group: group}
+		r := newCaptureTestRouter(svc, auth)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/captures/g1/download?sessionId=nope", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", w.Code)
+		}
+	})
+
+	t.Run("purged file -> 404", func(t *testing.T) {
+		svc := fakeCaptureService{group: group, downloadErr: capture.ErrFileUnavailable}
+		r := newCaptureTestRouter(svc, auth)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/captures/g1/download", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", w.Code)
+		}
+	})
+
+	t.Run("without capture cap -> 403", func(t *testing.T) {
+		svc := fakeCaptureService{group: group, downloadData: []byte("x")}
+		noCap := captureAuth(map[string]bool{capNetRead: true})
+		r := newCaptureTestRouter(svc, noCap)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/captures/g1/download", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", w.Code)
+		}
+	})
 }

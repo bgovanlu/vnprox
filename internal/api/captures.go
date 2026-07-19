@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -34,6 +35,11 @@ type CaptureService interface {
 	StopGroup(ctx context.Context, groupID, actor string) (capture.Group, error)
 	Get(ctx context.Context, groupID string) (capture.Group, error)
 	List(ctx context.Context) ([]capture.Group, error)
+	// Download returns one session's raw pcap bytes (T-1302) — never a whole
+	// group, since a multi-point capture has one file per node. Resolves
+	// local vs. peer-node sessions transparently (cluster-aware, per
+	// CLAUDE.md); the on-disk path itself is never part of this contract.
+	Download(ctx context.Context, sessionID string) ([]byte, capture.Session, error)
 }
 
 // captureStartRequest is POST /captures' body (docs/api.md's Captures
@@ -76,6 +82,7 @@ func mountCaptureRoutes(r chi.Router, svc CaptureService, auth AuthService) {
 		r.Use(auth.RequireCap(capCapture))
 		r.Get("/captures", handleListCaptures(svc))
 		r.Get("/captures/{id}", handleGetCapture(svc))
+		r.Get("/captures/{id}/download", handleDownloadCapture(svc))
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
@@ -167,9 +174,58 @@ func handleListCaptures(svc CaptureService) http.HandlerFunc {
 	}
 }
 
+// handleDownloadCapture implements GET /captures/{id}/download?sessionId=
+// (T-1302, docs/api.md's Captures section): the per-session pcap download
+// button. {id} is the capture *group* id, matching every other /captures/{id}
+// route's convention; ?sessionId= disambiguates which node's session to
+// download for a multi-point group (defaults to the group's first/primary
+// session — the common single-node case needs no query param at all). The
+// coordinator resolves local-vs-peer transparently — this handler never
+// touches a file path itself, only the bytes the coordinator hands back.
+func handleDownloadCapture(svc CaptureService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		groupID := chi.URLParam(r, "id")
+		group, err := svc.Get(r.Context(), groupID)
+		if err != nil {
+			writeCaptureError(w, err)
+			return
+		}
+		if len(group.Sessions) == 0 {
+			writeJSONError(w, http.StatusNotFound, "not_found", "capture group has no sessions")
+			return
+		}
+		sessionID := r.URL.Query().Get("sessionId")
+		target := &group.Sessions[0]
+		if sessionID != "" {
+			target = nil
+			for i := range group.Sessions {
+				if group.Sessions[i].ID == sessionID {
+					target = &group.Sessions[i]
+					break
+				}
+			}
+			if target == nil {
+				writeJSONError(w, http.StatusNotFound, "not_found", "session not found in this capture group")
+				return
+			}
+		}
+		data, sess, err := svc.Download(r.Context(), target.ID)
+		if err != nil {
+			writeCaptureError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.tcpdump.pcap")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+sess.ID+`.pcap"`)
+		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(data)
+	}
+}
+
 // writeCaptureError maps the capture engine's sentinel errors to HTTP status
 // codes: a rejected filter or unresolvable target is a 400 (the client's
-// request was bad), an unknown group is a 404, everything else a 500.
+// request was bad), an unknown group/session or a purged file is a 404,
+// everything else a 500.
 func writeCaptureError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, capture.ErrInvalidFilter):
@@ -180,6 +236,8 @@ func writeCaptureError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed", err.Error())
 	case errors.Is(err, capture.ErrNotFound):
 		writeJSONError(w, http.StatusNotFound, "not_found", "capture not found")
+	case errors.Is(err, capture.ErrFileUnavailable):
+		writeJSONError(w, http.StatusNotFound, "not_found", "this capture's file is no longer available (purged past retention)")
 	default:
 		writeJSONError(w, http.StatusInternalServerError, "internal_error", "capture operation failed")
 	}

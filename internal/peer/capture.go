@@ -63,4 +63,18 @@ type CaptureAgent interface {
 	StartLocal(ctx context.Context, spec CaptureSpec) (CaptureResult, error)
 	StopLocal(ctx context.Context, sessionID string) (CaptureResult, error)
 	StatusLocal(ctx context.Context, sessionID string) (CaptureResult, error)
+	// DownloadLocal returns the raw pcap bytes of a session this node
+	// captured (T-1302). The whole file is returned at once — sessions are
+	// already byte-capped by [capture] max_bytes, so this is bounded.
+	DownloadLocal(ctx context.Context, sessionID string) ([]byte, error)
+}
+
+// captureDownloadResponse is GET /api/peer/capture/download's body
+// (T-1302). Content is JSON-encoded as a base64 string (Go's encoding/json
+// does this automatically for a []byte field) rather than served as a raw
+// octet stream — the peer wire format stays JSON end-to-end, like every
+// other peer route in this codebase (DHCPLeases' text-content precedent,
+// generalized to binary).
+type captureDownloadResponse struct {
+	Content []byte `json:"content"`
 }

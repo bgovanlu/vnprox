@@ -2,6 +2,7 @@ package capture_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,9 +121,12 @@ func (a *fakeAuditor) byAction(action string) []capture.AuditEvent {
 }
 
 type fakeRemote struct {
-	started []string
-	stopped []string
-	mu      sync.Mutex
+	started      []string
+	stopped      []string
+	downloaded   []string
+	downloadErr  error
+	downloadData []byte
+	mu           sync.Mutex
 }
 
 func (r *fakeRemote) Start(_ context.Context, node string, _ capture.Spec) (capture.Result, error) {
@@ -139,6 +143,15 @@ func (r *fakeRemote) Stop(_ context.Context, node, _ string) (capture.Result, er
 }
 func (r *fakeRemote) Status(_ context.Context, _ string, _ string) (capture.Result, error) {
 	return capture.Result{Status: capture.StatusRunning}, nil
+}
+func (r *fakeRemote) Download(_ context.Context, node, sessionID string) ([]byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.downloaded = append(r.downloaded, node+"/"+sessionID)
+	if r.downloadErr != nil {
+		return nil, r.downloadErr
+	}
+	return r.downloadData, nil
 }
 
 // --- harness ----------------------------------------------------------------
@@ -508,5 +521,92 @@ func TestNoPayloadBytesPersistedOutsideCaptureFile(t *testing.T) {
 		if strings.Contains(e.Detail["filter"].(string), "vnprox-udp") {
 			t.Error("payload marker leaked into audit detail")
 		}
+	}
+}
+
+// --- T-1302: per-session pcap download --------------------------------------
+
+// A local session's Download reads the exact bytes on disk.
+func TestDownloadLocalSessionReadsFile(t *testing.T) {
+	h := newHarness(t, capture.DefaultCaps, bridgeRefs)
+	g, err := h.coord.Start(context.Background(), capture.StartRequest{
+		TargetRef: "bridge:pve1:vmbr0", Filter: "udp", StartedBy: "u",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	want, err := os.ReadFile(g.Sessions[0].FilePath)
+	if err != nil {
+		t.Fatalf("reading capture file directly: %v", err)
+	}
+	got, sess, err := h.coord.Download(context.Background(), g.Sessions[0].ID)
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("Download returned %d bytes, want the %d on-disk bytes", len(got), len(want))
+	}
+	if sess.ID != g.Sessions[0].ID {
+		t.Errorf("Download session.ID = %q, want %q", sess.ID, g.Sessions[0].ID)
+	}
+	if len(h.remote.downloaded) != 0 {
+		t.Errorf("a local download must never call RemoteCapturer.Download, got %v", h.remote.downloaded)
+	}
+}
+
+// A session on a peer node is proxied via RemoteCapturer.Download — the
+// cluster-aware contract (CLAUDE.md: "any feature that reads or writes node
+// state must work when that node is a peer, not just localhost").
+func TestDownloadRemoteSessionProxiesViaRemoteCapturer(t *testing.T) {
+	h := newHarness(t, capture.DefaultCaps, bridgeRefs)
+	h.remote.downloadData = []byte("remote pcap bytes")
+	g, err := h.coord.Start(context.Background(), capture.StartRequest{
+		TargetRef: "bridge:pve2:vmbr0", Filter: "udp", StartedBy: "u",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	got, sess, err := h.coord.Download(context.Background(), g.Sessions[0].ID)
+	if err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if string(got) != "remote pcap bytes" {
+		t.Errorf("Download = %q, want the remote-proxied bytes", got)
+	}
+	if sess.Node != "pve2" {
+		t.Errorf("session.Node = %q, want pve2", sess.Node)
+	}
+	if len(h.remote.downloaded) != 1 || h.remote.downloaded[0] != "pve2/"+g.Sessions[0].ID {
+		t.Errorf("RemoteCapturer.Download not called as expected: %v", h.remote.downloaded)
+	}
+}
+
+// A purged session's file is gone — Download reports ErrFileUnavailable, a
+// distinct reason from "session unknown".
+func TestDownloadPurgedSessionReturnsFileUnavailable(t *testing.T) {
+	ceil := capture.Caps{MaxDurationSec: 60, MaxBytes: 1 << 20, MaxPackets: 1 << 20, RetentionHours: 1}
+	h := newHarness(t, ceil, bridgeRefs)
+	g, err := h.coord.Start(context.Background(), capture.StartRequest{
+		TargetRef: "bridge:pve1:vmbr0", Filter: "tcp", StartedBy: "u",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	*h.nowUnix += int64(2 * 3600)
+	if sweepErr := h.coord.Sweep(context.Background()); sweepErr != nil {
+		t.Fatalf("Sweep: %v", sweepErr)
+	}
+	_, _, err = h.coord.Download(context.Background(), g.Sessions[0].ID)
+	if !errors.Is(err, capture.ErrFileUnavailable) {
+		t.Errorf("Download error = %v, want ErrFileUnavailable", err)
+	}
+}
+
+// An unknown session id is ErrNotFound (distinct from ErrFileUnavailable).
+func TestDownloadUnknownSessionReturnsNotFound(t *testing.T) {
+	h := newHarness(t, capture.DefaultCaps, bridgeRefs)
+	_, _, err := h.coord.Download(context.Background(), "no-such-session")
+	if !errors.Is(err, capture.ErrNotFound) {
+		t.Errorf("Download error = %v, want ErrNotFound", err)
 	}
 }
