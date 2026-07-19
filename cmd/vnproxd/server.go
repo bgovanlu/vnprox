@@ -24,6 +24,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/evpn"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/host"
+	"github.com/bgovanlu/vnprox/internal/ingress"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
 	"github.com/bgovanlu/vnprox/internal/ipv6"
@@ -403,6 +404,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// changeset ops.
 	wgRepo := store.NewWireGuardRepo(db)
 	wgReadSvc := newWireGuardReadService(wgRepo, localNode, logger)
+	// T-1406: ingress visibility — the operator-configured reverse-proxy
+	// target list, read by api.Options.IngressTargets/GET /ingress/status
+	// below.
+	ingressTargetRepo := store.NewIngressTargetRepo(db)
 	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
@@ -850,23 +855,32 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// (Changesets' own ReadRawInterfaces), EdgeGraph reuses the same
 		// live graph, EdgeIPAM reuses ipamConcrete (nil-safe, same pattern
 		// as GuestInteriorIPAM above).
-		EdgeInterfaces:  changeSvc,
-		EdgeGraph:       graph,
-		EdgeIPAM:        edgeIPAM,
-		FwLog:           fwLogAPI,
-		Peer:            peerSrv,
-		PeerAudit:       peerAudit,
-		PeerSnapshots:   peerSnapshots,
-		Flows:           flowRepo,
-		PeerFlows:       peerFlows,
-		LatMesh:         latMeshSvc,
-		MTUProbe:        mtuProbeSvc,
-		WireGuard:       wgReadSvc,
-		WgCarriers:      wgReadSvc,
-		Captures:        captureCoord,
-		Conntrack:       realHost,
-		PeerConntrack:   peerConntrack,
-		ConntrackGuests: conntrackGuests,
+		EdgeInterfaces: changeSvc,
+		EdgeGraph:      graph,
+		EdgeIPAM:       edgeIPAM,
+		// T-1406: ingress visibility — IngressTargets is the app-owned
+		// operator-configured target list, IngressSecretCipher reuses the
+		// identical session-secret cipher AlertSecretCipher/
+		// WebhookSecretCipher above already wire in, and
+		// IngressDiscoverers is the default HAProxy/nginx/Caddy/Traefik
+		// registry (the seam T-1702's plugin SDK later extends).
+		IngressTargets:      ingressTargetRepo,
+		IngressSecretCipher: sessionCipher,
+		IngressDiscoverers:  ingress.NewDefaultRegistry(nil),
+		FwLog:               fwLogAPI,
+		Peer:                peerSrv,
+		PeerAudit:           peerAudit,
+		PeerSnapshots:       peerSnapshots,
+		Flows:               flowRepo,
+		PeerFlows:           peerFlows,
+		LatMesh:             latMeshSvc,
+		MTUProbe:            mtuProbeSvc,
+		WireGuard:           wgReadSvc,
+		WgCarriers:          wgReadSvc,
+		Captures:            captureCoord,
+		Conntrack:           realHost,
+		PeerConntrack:       peerConntrack,
+		ConntrackGuests:     conntrackGuests,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see

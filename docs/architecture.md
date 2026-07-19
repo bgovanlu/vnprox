@@ -173,6 +173,7 @@ SQLite (embedded, WAL mode) at `/var/lib/vnprox/vnprox.db`, one DB per node. Con
 | layouts | per-user saved topology layouts/filters |
 | metrics rings | short-horizon (24h) counter history |
 | kv | schema version, install id, settings |
+| ingress_targets | operator-configured reverse-proxy discovery targets (T-1406): kind, address, encrypted credential — never a snapshot of the target's own discovered state, which is polled fresh on every `GET /ingress/status` |
 
 Cluster-shared data is intentionally minimal (the cluster secret under `/etc/pve/priv/vnprox/` and instance settings under `/etc/pve/vnprox/`, both replicated by pmxcfs). Audit/snapshot queries in the UI fan out to peers and merge.
 

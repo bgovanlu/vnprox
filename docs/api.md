@@ -314,6 +314,29 @@ Both routes are netRead-gated, accept no request body, and mount no `netWrite`-c
 
 **Validation.** Schema class: `sourceCidr`/`destCidr` valid CIDR, `gateway`/`intIp` valid IP, `proto` one of `tcp`\|`udp`, `extPort`/`intPort` in `[1,65535]`, `metric` non-negative, and every create op's target id non-empty and charset-valid (codes `schema.cidr_invalid`, `schema.ip_invalid`, `schema.nat_proto_invalid`, `schema.port_number_invalid`, `schema.edge_rule_id_invalid`). Referential class: `iface` must name a currently-known interface on the op's node (`referential.iface_not_found`); `route.static.create/update`'s `gateway` must fall inside some already-configured address's subnet on that node (`referential.route_gateway_unreachable` — the same failure a real `ip route add ... via <gw>` hits when no directly-connected interface can reach the nexthop), net-effect-aware (a `bridge.create` earlier in the same changeset that gives the node a matching address satisfies it).
 
+## Ingress visibility (T-1406)
+
+Read-only discovery of the reverse-proxy layer sitting between a port-forward and its actual backend — HAProxy, nginx, Caddy, or Traefik — via each vendor's own status/admin endpoint, and **only** for targets the operator explicitly added below. `internal/ingress`'s `IngressDiscoverer` interface (`Discover(ctx, Target) (ProxyState, error)`) is the seam Phase 17's plugin SDK (T-1702) is expected to make pluggable — a plugin registers an additional vendor `Kind` against the same `Registry` map without any change to the routes below. **Every discoverer implementation issues only HTTP GET requests against a configured target — never a mutating call, and never a target this table doesn't already contain** (no network-range scan exists anywhere in this package).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/ingress/targets` | list every configured discovery target (credential never echoed back) |
+| POST | `/ingress/targets` | add a target: `{kind, address, credential?}` → `201` with the created target |
+| DELETE | `/ingress/targets/{id}` | remove a target; `204` whether or not it previously existed |
+| GET | `/ingress/status` | discover every target fresh, correlate discovered backends to known guest refs, and render any WAN → port-forward → proxy guest → backend guest chain that lines up |
+
+`GET`/`POST`/`DELETE /ingress/targets` are `netRead`/`netWrite`+CSRF respectively, matching every other read/write route family in this doc. **`GET /ingress/status` is itself `netRead`-gated and accepts no request body** — it only ever calls `IngressDiscoverer.Discover` (GET-only against the target, see above) fresh on every request; nothing it returns is ever persisted as authoritative (docs/architecture.md §7's new-domain invariant carried forward from T-1401/T-1403/T-1404).
+
+**`IngressTarget`**: `{id, kind: "haproxy"|"nginx"|"caddy"|"traefik", address, addedBy, addedAt, hasCredential}`. `address` is the target's own status/admin endpoint base URL (e.g. `http://10.0.0.5:8404` for an HAProxy stats page); `credential` (create-only, never returned) is an optional bearer-token/basic-auth secret some deployments put in front of a status endpoint, sent as `Authorization: Bearer <credential>` on every discovery call — encrypted at rest with the identical `internal/store.SessionCipher` AES-256-GCM primitive `sessions.pve_ticket_enc`/`alert_rules.target_secret_enc`/`wireguard_tunnels.private_key_enc` all use (not a second cipher).
+
+**Per-vendor discovery** (`internal/ingress`, each a plain HTTP GET, no admin/mutation endpoint of any vendor is ever called):
+- **HAProxy** — the classic `;csv` stats-page export (`stats enable`/`stats uri` in haproxy.cfg); server rows carry a dial address (HAProxy ≥2.0's `addr` column) when the deployment's stats page reports one, else the bare server name.
+- **nginx** — auto-detected per response: nginx Plus's JSON `/api/<ver>/http/upstreams` (per-backend `server`/`state`, used for guest correlation) or open-source nginx's plain-text `stub_status` block (aggregate connection counters only, no backend list — a target speaking only this format is reported reachable with zero backends).
+- **Caddy** — the admin API's own `GET /reverse_proxy/upstreams` (currently active upstreams + live fail counters).
+- **Traefik** — the API's own `GET /api/http/services` (every configured HTTP service's load-balancer servers + enabled/disabled status).
+
+**`GET /ingress/status` response shape**: `{targets: [TargetStatus], chains: [Chain], generatedAt}`. `TargetStatus`: `{id, kind, address, reachable, error?, backends: [Backend]}` — `reachable: false` with a human-readable `error` is a normal, expected outcome (a down/misconfigured proxy), never an API error. `Backend`: `{route?, address, guestRef?, healthy}` — `guestRef` is populated when `address`'s host correlates to a currently-known guest via the same IPAM-allocation-based lookup `GET /edge/nat`'s `targetGuestRef` uses (T-1406 AC2); omitted when it doesn't (an external/unmanaged backend, or simply no IPAM data for it — never guessed). `Chain`: `{portForwardId, node, proto, extPort, proxyGuestRef?, targetId, targetKind, backends: [Backend]}` — one entry per `GET /edge/nat` port-forward whose `intIp` matches a configured `ingress_targets` row's own address, drawing the full WAN → port-forward → proxy guest (`proxyGuestRef`, from `GET /edge/nat`'s own port-forward → guest correlation) → backend guest (`backends[].guestRef`) chain; a port-forward with no matching `ingress_targets` entry produces no `Chain` — this route only ever draws a chain the operator's own configuration actually lines up, never an inferred one.
+
 ## Path simulator
 
 | Method | Path | Purpose |
