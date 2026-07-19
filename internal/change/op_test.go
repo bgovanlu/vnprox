@@ -29,12 +29,13 @@ var allOpTypeConstants = []OpType{
 	OpFwIpsetCreate, OpFwIpsetUpdate, OpFwIpsetDelete,
 	OpFwGroupCreate, OpFwGroupUpdate, OpFwGroupDelete,
 	OpIpamAllocCreate, OpIpamAllocDelete,
+	OpWgTunnelCreate, OpWgTunnelUpdate, OpWgTunnelDelete, OpWgPeerAdd, OpWgPeerRemove,
 }
 
-// docs/data-model.md §3's table lists exactly these groups: iface(2, incl.
+// docs/data-model.md §3's table lists exactly these groups: iface(3, incl.
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
-// fw(14), ipam(2) = 40.
-const wantOpVocabularySize = 41
+// fw(14), ipam(2), wg(5, T-1401) = 46.
+const wantOpVocabularySize = 46
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -294,6 +295,31 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "ipam.alloc.delete", opType: OpIpamAllocDelete,
 			target: ref(inventory.KindSDNSubnet, "", "10.10.0.0/24"),
 			params: &IpamAllocDeleteParams{CIDR: "10.10.0.50/32"},
+		},
+		{
+			name: "wg.tunnel.create", opType: OpWgTunnelCreate,
+			target: ref(inventory.KindWgTunnel, "pve1", "01HWGTUN000000000000000001"),
+			params: &WgTunnelCreateParams{IfName: "wg0", ListenPort: 51820, Addresses: []string{"10.10.0.1/24"}, MTU: 1420, Carrier: "vmbr0"},
+		},
+		{
+			name: "wg.tunnel.update", opType: OpWgTunnelUpdate,
+			target: ref(inventory.KindWgTunnel, "pve1", "01HWGTUN000000000000000001"),
+			params: &WgTunnelUpdateParams{ListenPort: i(51821), MTU: i(1380)},
+		},
+		{
+			name: "wg.tunnel.delete", opType: OpWgTunnelDelete,
+			target: ref(inventory.KindWgTunnel, "pve1", "01HWGTUN000000000000000001"),
+			params: &WgTunnelDeleteParams{},
+		},
+		{
+			name: "wg.peer.add", opType: OpWgPeerAdd,
+			target: ref(inventory.KindWgPeer, "pve1", "01HWGTUN000000000000000001/PEERkey000000000000000000000000000000000000="),
+			params: &WgPeerAddParams{PublicKey: "PEERkey000000000000000000000000000000000000=", Endpoint: "203.0.113.10:51820", AllowedIPs: []string{"10.10.0.2/32"}, KeepaliveSec: 25, External: true},
+		},
+		{
+			name: "wg.peer.remove", opType: OpWgPeerRemove,
+			target: ref(inventory.KindWgPeer, "pve1", "01HWGTUN000000000000000001/PEERkey000000000000000000000000000000000000="),
+			params: &WgPeerRemoveParams{PublicKey: "PEERkey000000000000000000000000000000000000="},
 		},
 	}
 }

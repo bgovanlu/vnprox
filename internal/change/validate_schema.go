@@ -7,6 +7,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/fw"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/wireguard"
 )
 
 // ifaceNameRe is a valid Linux interface name for a rename target: a
@@ -542,9 +543,61 @@ func schemaValidateOp(op Op) []Finding {
 		} else if !validCIDR(p.CIDR) {
 			out = append(out, errorf(codeCIDRInvalid, ref, "cidr %q is not a valid CIDR", p.CIDR))
 		}
+
+	case *WgTunnelCreateParams:
+		if strings.TrimSpace(p.IfName) == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "wg.tunnel.create requires ifName"))
+		} else if len(p.IfName) > maxIfaceNameLen || !ifaceNameRe.MatchString(p.IfName) {
+			out = append(out, errorf(codeIfaceNameInvalid, ref, "interface name %q is not valid — use letters, digits, and .-_ only, at most %d characters", p.IfName, maxIfaceNameLen))
+		}
+		schemaWgPort(p.ListenPort, ref, &out)
+		schemaMTU(op, p.MTU, ref, &out)
+		schemaAddresses(p.Addresses, ref, &out)
+
+	case *WgTunnelUpdateParams:
+		if p.ListenPort != nil {
+			schemaWgPort(*p.ListenPort, ref, &out)
+		}
+		schemaMTUPtr(op, p.MTU, ref, &out)
+		if p.Addresses != nil {
+			schemaAddresses(*p.Addresses, ref, &out)
+		}
+
+	case *WgTunnelDeleteParams:
+		// Nothing structural to check — target identity is validated at decode.
+
+	case *WgPeerAddParams:
+		schemaWgKey(p.PublicKey, ref, &out)
+		schemaAddresses(p.AllowedIPs, ref, &out)
+
+	case *WgPeerRemoveParams:
+		schemaWgKey(p.PublicKey, ref, &out)
 	}
 
 	return out
+}
+
+// schemaWgKey flags a WireGuard peer public key that isn't a valid base64
+// 32-byte Curve25519 key (T-1401 schema class).
+func schemaWgKey(key, ref string, out *[]Finding) {
+	if strings.TrimSpace(key) == "" {
+		*out = append(*out, errorf(codeRequiredFieldMissing, ref, "a WireGuard peer requires a publicKey"))
+		return
+	}
+	if _, err := wireguard.DecodeKey(key); err != nil {
+		*out = append(*out, errorf(codeWgKeyInvalid, ref, "publicKey %q is not a valid base64 WireGuard key", key))
+	}
+}
+
+// schemaWgPort flags a WireGuard listen port outside 1–65535 (0 == "not set",
+// skipped — WireGuard picks a random port when none is configured).
+func schemaWgPort(port int, ref string, out *[]Finding) {
+	if port == 0 {
+		return
+	}
+	if port < 1 || port > 65535 {
+		*out = append(*out, errorf(codeWgPortInvalid, ref, "listenPort %d is out of range (1–65535)", port))
+	}
 }
 
 func schemaFwDirection(v, ref string, out *[]Finding) {

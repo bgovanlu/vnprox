@@ -128,3 +128,51 @@ func TestTouchesMgmtPath_RawReplaceOnNodeWithPath(t *testing.T) {
 		t.Error("iface.raw.replace on a node with no management path should not touch it")
 	}
 }
+
+// TestTouchesMgmtPath_WireGuard is T-1401's mgmt-path interlock-coverage
+// safety-analysis test: a wg.* op on a tunnel whose carrier interface is part
+// of a node's resolved management/corosync path is touchesMgmtPath (inheriting
+// T-703's typed-ack / 180s-floor ceremony with no override), and one whose
+// carrier is off the path is not.
+func TestTouchesMgmtPath_WireGuard(t *testing.T) {
+	paths := mgmtPathsPve1() // pve1: vmbr0 (mgmt) via bond0 -> eno1/eno2
+	tests := []struct {
+		name string
+		ops  string
+		want bool
+	}{
+		{
+			name: "wg.tunnel.create carried on the mgmt bridge",
+			ops:  `[{"op":"wg.tunnel.create","target":"wg-tunnel:pve1:tun1","params":{"ifName":"wg0","carrier":"vmbr0"}}]`,
+			want: true,
+		},
+		{
+			name: "wg.tunnel.create carried on a mgmt-path bond slave",
+			ops:  `[{"op":"wg.tunnel.create","target":"wg-tunnel:pve1:tun1","params":{"ifName":"wg0","carrier":"eno1"}}]`,
+			want: true,
+		},
+		{
+			name: "wg.tunnel.create carried on an unrelated interface",
+			ops:  `[{"op":"wg.tunnel.create","target":"wg-tunnel:pve1:tun1","params":{"ifName":"wg0","carrier":"vmbr9"}}]`,
+			want: false,
+		},
+		{
+			name: "wg.tunnel.update moving carrier onto the mgmt bridge",
+			ops:  `[{"op":"wg.tunnel.update","target":"wg-tunnel:pve1:tun1","params":{"carrier":"vmbr0"}}]`,
+			want: true,
+		},
+		{
+			name: "wg.tunnel.create carried on another node's iface named like the path",
+			ops:  `[{"op":"wg.tunnel.create","target":"wg-tunnel:pve2:tun1","params":{"ifName":"wg0","carrier":"vmbr0"}}]`,
+			want: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ops := opsFromJSON(t, tc.ops)
+			if got := change.TouchesMgmtPath(paths, ops); got != tc.want {
+				t.Errorf("TouchesMgmtPath = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -66,6 +66,7 @@ type AllocationsSource interface {
 type Config struct {
 	Nodes              NodeAgent
 	Timers             NodeTimerAgent
+	WG                 WGGateway
 	Refresher          InventoryRefresher
 	WS                 Broadcaster
 	Inventory          InventorySource
@@ -108,6 +109,7 @@ type Stopper interface {
 type Service struct {
 	nodes              NodeAgent
 	nodeTimers         NodeTimerAgent
+	wg                 WGGateway
 	refresher          InventoryRefresher
 	ws                 Broadcaster
 	inv                InventorySource
@@ -185,7 +187,7 @@ func NewService(cfg Config) (*Service, error) {
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
-		nodes: cfg.Nodes, nodeTimers: cfg.Timers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
+		nodes: cfg.Nodes, nodeTimers: cfg.Timers, wg: cfg.WG, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
 		rollbackWindowDays: rollbackWindowDays,
 		timers:             map[string]Stopper{},

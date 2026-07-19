@@ -110,6 +110,17 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
 			if touched(op.Target.ID) || touched(params.Parent) {
 				return true
 			}
+		case *WgTunnelCreateParams:
+			// T-1401: a wg.* op on a tunnel whose carrier interface is itself
+			// part of a node's resolved management/corosync path is
+			// touchesMgmtPath — inheriting T-703's ceremony with no override.
+			if touched(params.Carrier) {
+				return true
+			}
+		case *WgTunnelUpdateParams:
+			if params.Carrier != nil && touched(*params.Carrier) {
+				return true
+			}
 		default:
 			// Every remaining iface-namespace op (iface.update,
 			// bond/bridge/vlan update+delete) touches exactly its target;
