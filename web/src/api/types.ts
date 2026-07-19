@@ -323,7 +323,10 @@ export type OpType =
   | "fw.group.update"
   | "fw.group.delete"
   | "ipam.alloc.create"
-  | "ipam.alloc.delete";
+  | "ipam.alloc.delete"
+  | "qos.shape.create"
+  | "qos.shape.update"
+  | "qos.shape.delete";
 
 /** internal/change's VidRange: an inclusive VLAN ID range (Low === High for
  * a single VID). */

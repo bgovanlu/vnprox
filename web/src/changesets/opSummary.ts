@@ -183,6 +183,15 @@ export function summarizeOp(op: Op): string {
       const cidr = str(op.params, "cidr") ?? "?";
       return `Release ${cidr} in subnet ${id ?? "?"}`;
     }
+    case "qos.shape.create": {
+      const bridge = str(op.params, "bridge") ?? "?";
+      const rate = num(op.params, "rateMbit");
+      return `Create QoS shape ${id ?? "?"} on bridge ${bridge} (${rate === undefined ? "?" : String(rate)} Mbit)`;
+    }
+    case "qos.shape.update":
+      return `Update QoS shape ${id ?? "?"} (${updateFieldList(op.params)})`;
+    case "qos.shape.delete":
+      return `Delete QoS shape ${id ?? "?"}`;
     default:
       return `${op.op} ${id ?? ""}`.trim();
   }
@@ -250,6 +259,20 @@ function updateFieldList(params: unknown): string {
   if (dport !== undefined) fields.push(`dport=${dport}`);
   const macro = str(params, "macro");
   if (macro !== undefined) fields.push(`macro=${macro}`);
+  // qos.shape.update's own field set (T-1505), added alongside the
+  // fw.rule.*/ipam.alloc.* summary cases above.
+  const qosBridge = str(params, "bridge");
+  if (qosBridge !== undefined) fields.push("bridge");
+  const matchCidr = str(params, "matchCidr");
+  if (matchCidr !== undefined) fields.push("matchCidr");
+  const matchVlan = num(params, "matchVlan");
+  if (matchVlan !== undefined) fields.push(`matchVlan=${String(matchVlan)}`);
+  const rateMbit = num(params, "rateMbit");
+  if (rateMbit !== undefined) fields.push(`rateMbit=${String(rateMbit)}`);
+  const ceilMbit = num(params, "ceilMbit");
+  if (ceilMbit !== undefined) fields.push(`ceilMbit=${String(ceilMbit)}`);
+  const priority = num(params, "priority");
+  if (priority !== undefined) fields.push(`priority=${String(priority)}`);
   if (fields.length === 0) return "no changes";
   return fields.join(", ");
 }

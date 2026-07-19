@@ -171,4 +171,20 @@ describe("summarizeOp", () => {
       summarizeOp({ op: "ipam.alloc.delete", target: "sdn-subnet::10.100.0.0/24", params: { cidr: "10.100.0.51/32" } }),
     ).toBe("Release 10.100.0.51/32 in subnet 10.100.0.0/24");
   });
+
+  it("renders qos.shape.create/update/delete (T-1505)", () => {
+    expect(
+      summarizeOp({
+        op: "qos.shape.create",
+        target: "qos-shape:pve1:shape1",
+        params: { bridge: "vmbr0", rateMbit: 10 },
+      }),
+    ).toBe("Create QoS shape shape1 on bridge vmbr0 (10 Mbit)");
+    expect(
+      summarizeOp({ op: "qos.shape.update", target: "qos-shape:pve1:shape1", params: { rateMbit: 25, ceilMbit: 50 } }),
+    ).toBe("Update QoS shape shape1 (rateMbit=25, ceilMbit=50)");
+    expect(summarizeOp({ op: "qos.shape.delete", target: "qos-shape:pve1:shape1", params: {} })).toBe(
+      "Delete QoS shape shape1",
+    );
+  });
 });
