@@ -168,6 +168,7 @@ func TestParamsUnion_Membership(t *testing.T) {
 		&NatMasqueradeCreateParams{}, &NatMasqueradeDeleteParams{},
 		&NatPortForwardCreateParams{}, &NatPortForwardUpdateParams{}, &NatPortForwardDeleteParams{},
 		&RouteStaticCreateParams{}, &RouteStaticUpdateParams{}, &RouteStaticDeleteParams{},
+		&VFProvisionParams{},
 	}
 	for _, m := range members {
 		m.isChangeParams() // marker; asserts union membership at runtime too

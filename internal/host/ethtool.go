@@ -69,6 +69,24 @@ func sysfsDriverInfo(iface string) (driver, busInfo string) {
 	return driver, busInfo
 }
 
+// sysfsVFPCIAddr resolves one SR-IOV virtual function's PCI address via its
+// PF's /sys/class/net/<iface>/device/virtfn<vfID> symlink (the kernel's own
+// SR-IOV sysfs convention: each configured VF gets a virtfnN symlink
+// pointing at that VF's own PCI device directory, named by its bus address
+// — the same convention sysfsDriverInfo's "device" symlink read uses one
+// level up, for the PF itself). Returns "" when the link doesn't exist
+// (platform without sysfs, VF not yet configured, or a permission/race
+// condition), never an error — this is a best-effort enrichment, not a
+// required field (T-1506, needs-hardware-validation: not verified against
+// real SR-IOV hardware).
+func sysfsVFPCIAddr(iface string, vfID int) string {
+	target, err := os.Readlink(filepath.Join(sysClassNetDir, iface, "device", "virtfn"+strconv.Itoa(vfID)))
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(target)
+}
+
 // sysfsSpeedDuplex reads /sys/class/net/<iface>/speed and .../duplex.
 // Both files return an error (or, for speed, occasionally the sentinel
 // value -1) when the link is down or the driver does not support

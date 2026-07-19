@@ -1,0 +1,117 @@
+# pf-vf-topology.yaml — T-1506's SR-IOV & accelerated NIC lifecycle fixture:
+# one standalone PVE node whose eno1 is an SR-IOV-capable PF carrying two
+# already-configured VFs (host-netlink `links: eno1: vfs: [...]`), eno2 a
+# plain PF with none, and a guest whose hostpci0 passthrough config names
+# vf0's PCI address — proving the guest<->VF correlation
+# (internal/topology.ResolveVFAssignments) end to end through the real
+# collector pipeline, no real SR-IOV hardware involved (T-1506 acceptance
+# criterion 1/2's golden fixture; docs/development.md's mock-first
+# convention).
+cluster:
+  name: pve-sriov
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 192.168.1.10
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      # eno1: SR-IOV-capable PF, currently configured with 2 VFs.
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      # eno2: a plain PF with no SR-IOV VFs configured — the "not every PF
+      # has VFs" control case.
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 192.168.1.10/24
+        gateway: 192.168.1.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno2
+        bridge_vlan_aware: false
+        comments: "management bridge (eno2 only — eno1 stays a bare SR-IOV PF)"
+    links:
+      eno1:
+        mac: "bc:24:11:00:01:00"
+        driver: ixgbevf
+        speed_mbps: 10000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:01:00.0"
+        mtu: 1500
+        vfs:
+          - id: 0
+            mac: "aa:bb:cc:dd:ee:00"
+            vlan: 100
+            spoof_check: true
+            trust: false
+            pci_addr: "0000:01:00.1"
+          - id: 1
+            mac: "aa:bb:cc:dd:ee:01"
+            vlan: 200
+            spoof_check: false
+            trust: true
+            pci_addr: "0000:01:00.2"
+      eno2:
+        mac: "bc:24:11:00:02:00"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:02:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:11:00:02:00"
+        link_up: true
+        mtu: 1500
+    qemu:
+      "200":
+        name: gpu-passthrough-vm
+        status: running
+        config:
+          name: gpu-passthrough-vm
+          cores: "4"
+          memory: "8192"
+          net0: "virtio=BC:24:11:AA:00:C8,bridge=vmbr0,firewall=1"
+          # hostpci0 names vf0's own PCI address (eno1's first VF, above) —
+          # the today-invisible passthrough attachment T-1506's inspector
+          # correlation surfaces.
+          hostpci0: "0000:01:00.1,pcie=1"
+          ostype: l26
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []

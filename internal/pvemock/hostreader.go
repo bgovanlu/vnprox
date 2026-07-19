@@ -116,7 +116,11 @@ type LinkState struct {
 	Members []string
 	// FDB is this (bridge-kind) link's fixture-declared forwarding
 	// database (T-306's MAC/FDB browser) — nil for every non-bridge Kind.
-	FDB       []FDBEntry
+	FDB []FDBEntry
+	// VFs (T-1506) is this (physical-kind) link's fixture-declared SR-IOV
+	// virtual functions — nil for every non-physical Kind, same convention
+	// as FDB above.
+	VFs       []VF
 	SpeedMbps int
 	MTU       int
 	LinkUp    bool
@@ -134,6 +138,19 @@ type FDBEntry struct {
 	Master    bool
 	Permanent bool
 	Stale     bool
+}
+
+// VF is one SR-IOV virtual function on a (physical-kind) link, as
+// internal/host would report it (mirrors internal/host.VF's field set;
+// kept as this package's own type for the same reason the rest of
+// LinkState is — see internal/host's Reader doc comment).
+type VF struct {
+	Mac        string
+	PCIAddr    string
+	ID         int
+	Vlan       int
+	SpoofCheck bool
+	Trust      bool
 }
 
 // FixtureHostReader implements HostReader by reading a mock server's
@@ -205,6 +222,11 @@ func (h *FixtureHostReader) Links(_ context.Context, node string) ([]LinkState, 
 				ls.FDB = convertFDBSpecs(link.FDB)
 			}
 		}
+		if iface.Type == "eth" {
+			if link, ok := ns.links[iface.Iface]; ok {
+				ls.VFs = convertVFSpecs(link.VFs)
+			}
+		}
 		out = append(out, ls)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -220,6 +242,19 @@ func convertFDBSpecs(specs []FDBEntrySpec) []FDBEntry {
 	out := make([]FDBEntry, len(specs))
 	for i, s := range specs {
 		out[i] = FDBEntry(s)
+	}
+	return out
+}
+
+// convertVFSpecs converts a fixture's declared VFs (LinkInfo.VFs,
+// YAML-tagged) to this file's plain LinkState.VFs shape (T-1506).
+func convertVFSpecs(specs []VFEntrySpec) []VF {
+	if len(specs) == 0 {
+		return nil
+	}
+	out := make([]VF, len(specs))
+	for i, s := range specs {
+		out[i] = VF(s)
 	}
 	return out
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
@@ -71,6 +72,13 @@ const (
 	OpRouteStaticCreate OpType = "route.static.create"
 	OpRouteStaticUpdate OpType = "route.static.update"
 	OpRouteStaticDelete OpType = "route.static.delete"
+
+	// OpVFProvision is T-1506's "vf" op group: configures Target's (a
+	// PhysNic acting as an SR-IOV PF) virtual-function pool. Applied as a
+	// post-up/post-down stanza pair on Target's own iface — the same
+	// interfaces-file write path the nat/route families already use. See
+	// vfop.go for the mutation semantics.
+	OpVFProvision OpType = "vf.provision"
 )
 
 // Op is the common interface every concrete op type in this package
@@ -424,6 +432,29 @@ type RouteStaticDelete struct{ Target inventory.Ref }
 func (o RouteStaticDelete) Kind() OpType       { return OpRouteStaticDelete }
 func (o RouteStaticDelete) Ref() inventory.Ref { return o.Target }
 
+// --- vf.provision (T-1506) -------------------------------------------------
+
+// VFProvision is op "vf.provision": configures Target's (a PhysNic acting
+// as an SR-IOV PF) virtual-function pool. Exactly one of Count/VFs is set
+// (internal/change's schema validation enforces this before an op ever
+// reaches here) — see host.ResolveVFPlan, the single shared function this
+// package's mutator and internal/change's validators both call to expand
+// Count/VFs + the top-level MacAddr/VLAN/SpoofCheck/Trust defaults into a
+// concrete per-VF plan, so validation and apply can never disagree about
+// what a vf.provision op actually configures.
+type VFProvision struct {
+	SpoofCheck *bool
+	Trust      *bool
+	Target     inventory.Ref
+	MacAddr    string
+	VFs        []host.VFSpec
+	VLAN       int
+	Count      int
+}
+
+func (o VFProvision) Kind() OpType       { return OpVFProvision }
+func (o VFProvision) Ref() inventory.Ref { return o.Target }
+
 // --- wire decode ---------------------------------------------------------
 
 // envelope is the docs/api.md wire shape: {"op": "<type>", "target": Ref,
@@ -454,6 +485,12 @@ type wireParams struct {
 	IntIP                *string              `json:"intIp"`
 	Proto                *string              `json:"proto"`
 	SourceCIDR           *string              `json:"sourceCidr"`
+	VLAN                 *int                 `json:"vlan"`
+	SpoofCheck           *bool                `json:"spoofCheck"`
+	MacAddr              *string              `json:"macAddr"`
+	Trust                *bool                `json:"trust"`
+	VFs                  []host.VFSpec        `json:"vfs"`
+	Count                int                  `json:"count"`
 	XmitHashPolicy       string               `json:"xmitHashPolicy"`
 	LacpRate             string               `json:"lacpRate"`
 	NewName              string               `json:"newName"`
@@ -604,6 +641,11 @@ func DecodeOp(raw json.RawMessage) (Op, error) {
 		}, nil
 	case OpRouteStaticDelete:
 		return RouteStaticDelete{Target: target}, nil
+	case OpVFProvision:
+		return VFProvision{
+			Target: target, MacAddr: strOr(p.MacAddr), VFs: p.VFs,
+			VLAN: intOr(p.VLAN), Count: p.Count, SpoofCheck: p.SpoofCheck, Trust: p.Trust,
+		}, nil
 	default:
 		return nil, fmt.Errorf("ifaces: unsupported op type %q", env.Op)
 	}

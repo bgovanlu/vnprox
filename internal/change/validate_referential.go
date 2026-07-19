@@ -5,7 +5,9 @@ import (
 	"strings"
 
 	"github.com/bgovanlu/vnprox/internal/fw"
+	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/topology"
 )
 
 // referentialValidate is validator class 2 (docs/features/
@@ -367,6 +369,8 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 
 	case *RouteStaticDeleteParams:
 		// see NatMasqueradeDeleteParams above.
+	case *VFProvisionParams:
+		checkVFProvision(p, op, params, ref, &out)
 	}
 
 	return out
@@ -399,6 +403,48 @@ func checkRouteGatewayReachable(p *projection, node, gateway, ref string, out *[
 		}
 	}
 	*out = append(*out, errorf(codeRouteGatewayUnreachable, ref, "gateway %s is not reachable via any known interface on node %s", gateway, node))
+}
+
+// checkVFProvision is T-1506's vf.provision referential check: the target
+// PF must exist (codePFNotFound, this op family's flavor of the standard
+// "target must exist" check every other op gets), and every VF the op would
+// resolve to (host.ResolveVFPlan — the single plan-resolution function this
+// package and internal/change/ifaces' file mutator both call, so validation
+// and apply can never disagree about what a vf.provision op actually
+// configures) must not diverge from its PF's own bridge policy
+// (topology.VFPolicyMismatch — the identical comparison internal/drift's
+// standing vf_spoofcheck_mismatch finding reuses for already-diverged live
+// state, codeVFSpoofcheckMismatch here for a *staged* divergence).
+func checkVFProvision(p *projection, op Op, params *VFProvisionParams, ref string, out *[]Finding) {
+	if !p.exists(op.Target) {
+		*out = append(*out, errorf(codePFNotFound, ref, "PF %s does not exist", op.Target))
+		return
+	}
+	bridge := topology.BridgeFor(p.snap, op.Target)
+	if bridge == nil {
+		return
+	}
+	plan := host.ResolveVFPlan(params.Count, toHostVFSpecs(params.VFs), params.VLAN, params.MacAddr, params.SpoofCheck, params.Trust)
+	for _, e := range plan {
+		vf := inventory.VirtualFunction{VLAN: e.VLAN, SpoofCheck: e.SpoofCheck}
+		if topology.VFPolicyMismatch(vf, bridge) {
+			*out = append(*out, errorf(codeVFSpoofcheckMismatch, ref,
+				"vf %d's vlan/spoof-check policy diverges from %s's VLAN-awareness/VID-set policy", e.ID, bridge.Name))
+		}
+	}
+}
+
+// toHostVFSpecs adapts this package's own VFSpec wire type to
+// internal/host's identically-shaped VFSpec, field for field.
+func toHostVFSpecs(vfs []VFSpec) []host.VFSpec {
+	if len(vfs) == 0 {
+		return nil
+	}
+	out := make([]host.VFSpec, len(vfs))
+	for i, v := range vfs {
+		out[i] = host.VFSpec{ID: v.ID, MacAddr: v.MacAddr, VLAN: v.VLAN, SpoofCheck: v.SpoofCheck, Trust: v.Trust}
+	}
+	return out
 }
 
 // checkSlaves validates a bond's slave list: every named iface must exist

@@ -70,6 +70,11 @@ const (
 	// exactly one VID (Vid itself), so a Trunks list there is meaningless.
 	codeOVSTrunkNotAllowed = "schema.ovs_trunk_not_allowed"
 	codeFwMacroUnknown     = "schema.fw_macro_unknown"
+	// codeVFPlanInvalid (T-1506) flags a vf.provision op whose Count/VFs
+	// shape is malformed: neither set, both set, a non-positive Count, a
+	// negative/duplicate VFSpec.ID, or a MacAddr set alongside Count > 1
+	// (a MAC shared across more than one freshly-numbered VF).
+	codeVFPlanInvalid = "schema.vf_plan_invalid"
 
 	// --- T-1403's nat.*/route.static.* schema codes ---------------------
 
@@ -130,6 +135,19 @@ const (
 	// list (scope, ruleset ref, position) the editor UI's deep-links need
 	// — see checkFwObjectDeletable's doc comment.
 	codeFwObjectInUse = "referential.fw_object_in_use"
+	// codePFNotFound (T-1506) flags a vf.provision op whose Target does not
+	// resolve to an existing physnic — the standard "target must exist"
+	// referential check every op family already gets, named for this one
+	// since VFProvisionParams carries no separate PF field to check
+	// (Target itself is the PF, per op.go's OpVFProvision doc comment).
+	codePFNotFound = "referential.pf_not_found"
+	// codeVFSpoofcheckMismatch (T-1506) is the changeset-validate-time half
+	// of the vf_spoofcheck_mismatch check (the drift-finding half lives in
+	// internal/drift/sriov.go): a staged vf.provision op would configure a
+	// VF whose VLAN/spoof-check setting diverges from its PF's own
+	// bridge's VLAN-awareness/VID-set policy (internal/topology.BridgeFor
+	// + the same policy comparison drift's standing check reuses).
+	codeVFSpoofcheckMismatch = "referential.vf_spoofcheck_mismatch"
 
 	// --- safety (class 3: protected interfaces, guest-bearing bridges) --
 	// T-203, docs/security.md "Safety interlocks" / docs/features/

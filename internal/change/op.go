@@ -102,6 +102,22 @@ const (
 	OpRouteStaticCreate    OpType = "route.static.create"
 	OpRouteStaticUpdate    OpType = "route.static.update"
 	OpRouteStaticDelete    OpType = "route.static.delete"
+	// OpVFProvision is T-1506's "vf" op group (docs/data-model.md §3
+	// addition): configures Target's (a PhysNic acting as an SR-IOV PF)
+	// virtual-function pool. Target is the PF's own Ref (KindPhysNic) —
+	// the entity whose VF pool is being (re)configured, the same "target
+	// is the entity the op principally concerns" convention every op in
+	// this vocabulary follows — not a synthetic per-VF id, since a single
+	// op can provision an entire batch of VFs on one PF in one shot (see
+	// VFProvisionParams' doc comment). There is no vf.update/vf.delete op:
+	// re-provisioning (a new count, a changed VLAN/MAC/policy) is always a
+	// fresh vf.provision — like nat.masquerade's own "no update" rule, this
+	// keeps every VF pool change a visible, individually auditable
+	// changeset op rather than a silent overwrite. Applied via the ordinary
+	// node-file path (internal/change/ifaces), a post-up/post-down stanza
+	// pair appended to the PF's own existing iface stanza — never a second
+	// mutation mechanism.
+	OpVFProvision OpType = "vf.provision"
 )
 
 // noTargetOps is the (deliberately tiny) set of ops with no natural target
@@ -189,6 +205,7 @@ var paramFactories = map[OpType]func() Params{
 	OpRouteStaticCreate:    func() Params { return &RouteStaticCreateParams{} },
 	OpRouteStaticUpdate:    func() Params { return &RouteStaticUpdateParams{} },
 	OpRouteStaticDelete:    func() Params { return &RouteStaticDeleteParams{} },
+	OpVFProvision:          func() Params { return &VFProvisionParams{} },
 }
 
 // KnownOpTypes returns every OpType this package can decode, for tests

@@ -56,6 +56,16 @@ func Detail(snap inventory.Snapshot, ref inventory.Ref) (EntityDetail, bool) {
 	if br, ok := e.(*inventory.Bridge); ok && len(br.FDB) > 0 {
 		fields["FDB"] = fdbRowsForBridge(br, buildMacIndex(snap))
 	}
+	// T-1506: a PF's SRIOVVFs table is otherwise just host-netlink's raw
+	// per-VF fields (AssignedGuest always the zero Ref — see PhysNic.
+	// SRIOVVFs' doc comment) — override the "SRIOVVFs" key with
+	// ResolveVFAssignments' live guest-correlated view, so the inspector's
+	// PF detail surfaces a today-invisible passthrough VF's owning guest
+	// (T-1506's "surfaced in the inspector as an attached entity") with no
+	// separate fetch, the same pattern the FDB override above establishes.
+	if pn, ok := e.(*inventory.PhysNic); ok && len(pn.SRIOVVFs) > 0 {
+		fields["SRIOVVFs"] = ResolveVFAssignments(snap, ref)
+	}
 
 	// Raw source text per contributing source (docs/api.md's "including raw
 	// source (interfaces stanza / PVE API object)"): the graph retains, per

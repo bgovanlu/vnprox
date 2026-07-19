@@ -33,12 +33,14 @@ var allOpTypeConstants = []OpType{
 	OpNatMasqueradeCreate, OpNatMasqueradeDelete,
 	OpNatPortForwardCreate, OpNatPortForwardUpdate, OpNatPortForwardDelete,
 	OpRouteStaticCreate, OpRouteStaticUpdate, OpRouteStaticDelete,
+	OpVFProvision,
 }
 
 // docs/data-model.md §3's table lists exactly these groups: iface(3, incl.
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
-// fw(14), ipam(2), wg(5, T-1401), nat(5, T-1403), route(3, T-1403) = 54.
-const wantOpVocabularySize = 54
+// fw(14), ipam(2), wg(5, T-1401), nat(5, T-1403), route(3, T-1403),
+// vf(1, T-1506) = 55.
+const wantOpVocabularySize = 55
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -363,6 +365,11 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "route.static.delete", opType: OpRouteStaticDelete,
 			target: ref(inventory.KindStaticRoute, "pve1", "lab-route"),
 			params: &RouteStaticDeleteParams{},
+		},
+		{
+			name: "vf.provision", opType: OpVFProvision,
+			target: ref(inventory.KindPhysNic, "pve1", "eno1"),
+			params: &VFProvisionParams{Count: 2, VLAN: 100, SpoofCheck: boolPtr(true), Trust: boolPtr(false)},
 		},
 	}
 }

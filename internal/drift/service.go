@@ -80,6 +80,7 @@ var checkFuncs = []func(inventory.Snapshot) []Finding{
 	checkSDNRealization,
 	checkPendingInterfaces,
 	checkFileRuntimeDivergence,
+	checkVFSpoofcheckMismatch,
 }
 
 // Findings runs every check family fresh against the graph's current

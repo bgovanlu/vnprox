@@ -91,9 +91,11 @@ var ownershipRules = map[Kind]map[string]Ownership{
 		"duplex":    {Precedence: []Source{SourceHostNetlink}},
 		"operState": {Precedence: []Source{SourceHostNetlink}},
 		"speedMbps": {Precedence: []Source{SourceHostNetlink}},
-		"sriovVFs":  {Precedence: []Source{SourceHostNetlink}},
-		"linkUp":    {Precedence: []Source{SourceHostNetlink}},
-		"mtu":       {Precedence: []Source{SourceHostNetlink}},
+		// sriovVFs (T-1506) is deliberately absent here, like Bridge's "fdb"
+		// — host-netlink-only with a single contributing source, copied
+		// straight through in resolvePhysNic rather than merged via pick.
+		"linkUp": {Precedence: []Source{SourceHostNetlink}},
+		"mtu":    {Precedence: []Source{SourceHostNetlink}},
 		"mtuDeclared": {
 			Precedence:   []Source{SourceHostInterfaces, SourcePVENetwork},
 			FlagConflict: true,

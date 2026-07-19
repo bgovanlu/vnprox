@@ -61,6 +61,8 @@ func Mutate(f *host.File, op Op, changesetID string) error {
 		return mutateRouteStaticUpdate(f, o, nl)
 	case RouteStaticDelete:
 		return mutateRouteStaticDelete(f, o)
+	case VFProvision:
+		return mutateVFProvision(f, o, nl)
 	default:
 		return fmt.Errorf("ifaces: mutate: unsupported op %T", op)
 	}
