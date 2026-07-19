@@ -26,39 +26,14 @@ import (
 // read to a cluster peer is the caller's responsibility (see the Reader
 // doc comment in reader.go).
 type Real struct {
-	// InterfacesPath is /etc/network/interfaces, overridable for tests.
-	InterfacesPath string
-	// InterfacesPendingPath is the ifupdown2 staged-config file
-	// (/etc/network/interfaces.new), overridable for tests.
+	InterfacesPath        string
 	InterfacesPendingPath string
-	// OVSVSCtlPath is the ovs-vsctl binary name/path OVSStatus invokes;
-	// defaults to "ovs-vsctl" (resolved via PATH). Overridable for tests.
-	OVSVSCtlPath string
-	// DHCPLeaseGlob is the filesystem glob DHCPLeases reads every matched
-	// file from (T-406, docs/features/sdn.md §5); defaults to
-	// "/var/lib/misc/dnsmasq.*.leases" — PVE SDN's own per-zone dnsmasq
-	// instances each write their lease file under this convention.
-	// Overridable for tests. **Needs hardware validation**: this glob is
-	// this codebase's own best inference (PVE's exact dnsmasq lease-file
-	// naming is not otherwise documented in this repo) rather than
-	// verified against a live PVE cluster — see this task's completion
-	// report.
-	DHCPLeaseGlob string
-	// LLDPCommand is the argv used to fetch LLDP neighbor data as JSON;
-	// defaults to `lldpctl -f json`. Overridable for tests/environments
-	// where lldpd is installed under a different name or path.
-	LLDPCommand []string
-	// BGPSummaryCommand is the argv used to fetch FRR's BGP peering
-	// summary as JSON; defaults to `vtysh -c "show bgp summary json"`
-	// (T-404, docs/features/sdn.md §3). Overridable for tests.
-	BGPSummaryCommand []string
-	// EVPNVNICommand is the argv used to fetch FRR's EVPN VNI table as
-	// JSON; defaults to `vtysh -c "show evpn vni json"`. Overridable for
-	// tests.
-	EVPNVNICommand []string
-	// CorosyncStatusCommand is the argv used to fetch corosync's live ring
-	// status; defaults to `corosync-cfgtool -s` (T-803, docs/features/
-	// monitoring.md §5). Overridable for tests.
+	OVSVSCtlPath          string
+	DHCPLeaseGlob         string
+	ConntrackPath         string
+	LLDPCommand           []string
+	BGPSummaryCommand     []string
+	EVPNVNICommand        []string
 	CorosyncStatusCommand []string
 }
 
@@ -74,6 +49,7 @@ func NewReal() *Real {
 		CorosyncStatusCommand: []string{"corosync-cfgtool", "-s"},
 		OVSVSCtlPath:          "ovs-vsctl",
 		DHCPLeaseGlob:         "/var/lib/misc/dnsmasq.*.leases",
+		ConntrackPath:         DefaultConntrackPath,
 	}
 }
 
@@ -231,6 +207,24 @@ func (r *Real) DHCPLeases(_ context.Context, _ string) ([]byte, error) {
 		}
 	}
 	return buf.Bytes(), nil
+}
+
+// Conntrack implements Reader (T-1305) by reading and parsing ConntrackPath
+// (/proc/net/nf_conntrack) — present whenever the nf_conntrack kernel
+// module is loaded. A malformed line is skipped defensively (see
+// ParseConntrackTable's doc comment); only a read failure (module not
+// loaded, permission denied) is surfaced as an error.
+func (r *Real) Conntrack(_ context.Context, _ string) ([]ConntrackEntry, error) {
+	path := r.ConntrackPath
+	if path == "" {
+		path = DefaultConntrackPath
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("host: reading conntrack table %s: %w", path, err)
+	}
+	entries, _ := ParseConntrackTable(data)
+	return entries, nil
 }
 
 // Links implements Reader using github.com/vishvananda/netlink for link,

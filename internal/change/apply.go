@@ -691,3 +691,7 @@ func (r nodeAgentReader) Neighbors(context.Context, string) ([]host.Neighbor, er
 func (r nodeAgentReader) CorosyncStatus(context.Context, string) ([]byte, error) {
 	return nil, fmt.Errorf("change: nodeAgentReader.CorosyncStatus not supported")
 }
+
+func (r nodeAgentReader) Conntrack(context.Context, string) ([]host.ConntrackEntry, error) {
+	return nil, fmt.Errorf("change: nodeAgentReader.Conntrack not supported")
+}

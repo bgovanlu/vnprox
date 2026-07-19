@@ -60,3 +60,7 @@ func (r *Real) OVSStatus(_ context.Context, _ string) ([]OVSBridgeStatus, error)
 func (r *Real) Services(_ context.Context, _ string) (map[string]bool, error) {
 	return nil, fmt.Errorf("host: Services: %w", ErrUnsupportedPlatform)
 }
+
+func (r *Real) Conntrack(_ context.Context, _ string) ([]ConntrackEntry, error) {
+	return nil, fmt.Errorf("host: Conntrack: %w", ErrUnsupportedPlatform)
+}

@@ -64,6 +64,10 @@ type HostReader interface {
 	// (T-805), unfiltered (see neighbors.go's doc comment for why state
 	// filtering is internal/host's job, not this package's).
 	Neighbors(ctx context.Context, node string) ([]Neighbor, error)
+
+	// Conntrack returns node's fixture-declared live conntrack/NAT table
+	// (T-1305), verbatim — see conntrack.go's doc comment.
+	Conntrack(ctx context.Context, node string) ([]ConntrackEntry, error)
 }
 
 // LinkState is one netlink-equivalent link (physical NIC, bond, bridge, or

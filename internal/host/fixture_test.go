@@ -137,6 +137,42 @@ func TestFixtureReader_LLDPAndStats(t *testing.T) {
 	}
 }
 
+// TestFixtureReader_Conntrack exercises the pvemock.ConntrackEntry ->
+// host.ConntrackEntry conversion (T-1305), including NAT pointer fields.
+func TestFixtureReader_Conntrack(t *testing.T) {
+	r := loadFixtureReader(t, "three-node-vlan.yaml")
+	ctx := context.Background()
+
+	entries, err := r.Conntrack(ctx, "pve1")
+	if err != nil {
+		t.Fatalf("Conntrack: %v", err)
+	}
+	if len(entries) != 4 {
+		t.Fatalf("got %d entries, want 4: %+v", len(entries), entries)
+	}
+
+	var sawSNAT, sawDNAT, sawPlain bool
+	for _, e := range entries {
+		switch {
+		case e.NatSrc != nil:
+			sawSNAT = true
+			if e.NatSrc.IP != "203.0.113.10" {
+				t.Errorf("NatSrc = %+v, unexpected", e.NatSrc)
+			}
+		case e.NatDst != nil:
+			sawDNAT = true
+			if e.NatDst.IP != "10.10.0.11" {
+				t.Errorf("NatDst = %+v, unexpected", e.NatDst)
+			}
+		case e.NatSrc == nil && e.NatDst == nil && e.Proto == 6:
+			sawPlain = true
+		}
+	}
+	if !sawSNAT || !sawDNAT || !sawPlain {
+		t.Errorf("missing expected entry kinds: SNAT=%v DNAT=%v plain=%v", sawSNAT, sawDNAT, sawPlain)
+	}
+}
+
 // TestFixtureReader_UnknownNode mirrors pvemock's own
 // TestFixtureHostReader_UnknownNode, confirming errors propagate through
 // the adapter rather than being swallowed.
