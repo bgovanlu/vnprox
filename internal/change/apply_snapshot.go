@@ -29,6 +29,17 @@ const (
 	sdnSubnetsSnapshotPath = "/etc/pve/sdn/subnets.cfg"
 )
 
+// qosStateSnapshotPath is the synthetic, cluster-scoped (Node="")
+// snapshotFile path holding T-1505's QoS pre-apply state: a JSON object
+// mapping each affected node to the opaque QosGateway.SnapshotQos string
+// for that node. Cluster-scoped (Node="") deliberately, the same
+// "one JSON blob rather than one snapshotFile per node" stand-in the
+// sdn*SnapshotPath constants above use for the identical reason: a
+// per-node interfaces file already occupies that node's snapshotFile slot,
+// and restoreAll/undoNode key those by node, so a second per-node file
+// would collide.
+const qosStateSnapshotPath = "/var/lib/vnprox/qos.state"
+
 // Snapshot kinds (store.Snapshot.Kind, docs/data-model.md §2: pre|post|
 // manual|scheduled).
 const (
@@ -119,10 +130,56 @@ func (s *Service) captureSnapshotFull(ctx context.Context, changesetID, kind str
 		files = append(files, sdnFiles...)
 	}
 
+	if plan.hasQos() && s.qos != nil {
+		qosFile, err := s.qosStateSnapshotFile(ctx, plan.qosNodes())
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, qosFile)
+	}
+
 	if _, err := s.persistSnapshot(ctx, changesetID, kind, "", files); err != nil {
 		return nil, err
 	}
 	return files, nil
+}
+
+// qosStateSnapshotFile captures each qos node's shape state (QosGateway.
+// SnapshotQos) into one cluster-scoped snapshotFile (qosStateSnapshotPath),
+// stored in the blob store exactly like every other snapshot file.
+func (s *Service) qosStateSnapshotFile(ctx context.Context, nodes []string) (snapshotFile, error) {
+	state := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		snap, err := s.qos.SnapshotQos(ctx, node)
+		if err != nil {
+			return snapshotFile{}, fmt.Errorf("change: snapshotting QoS state on node %s: %w", node, err)
+		}
+		state[node] = snap
+	}
+	b, err := json.Marshal(state)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: encoding QoS state snapshot: %w", err)
+	}
+	content := string(b)
+	hash, err := s.blobs.Put(ctx, content)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: storing QoS state snapshot blob: %w", err)
+	}
+	return snapshotFile{Path: qosStateSnapshotPath, SHA256: hash, Content: content}, nil
+}
+
+// qosStateFromSnapshot decodes the per-node QoS state map out of a loaded
+// pre-snapshot's file list. ok is false if the snapshot carries no QoS
+// state file (a changeset with no qos.* ops).
+func qosStateFromSnapshot(files []snapshotFile) (state map[string]string, ok bool) {
+	for _, f := range files {
+		if f.Path == qosStateSnapshotPath {
+			if json.Unmarshal([]byte(f.Content), &state) == nil {
+				return state, true
+			}
+		}
+	}
+	return nil, false
 }
 
 // sdnConfigSnapshotFiles encodes cfg's three entity families as the

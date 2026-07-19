@@ -29,12 +29,13 @@ var allOpTypeConstants = []OpType{
 	OpFwIpsetCreate, OpFwIpsetUpdate, OpFwIpsetDelete,
 	OpFwGroupCreate, OpFwGroupUpdate, OpFwGroupDelete,
 	OpIpamAllocCreate, OpIpamAllocDelete,
+	OpQosShapeCreate, OpQosShapeUpdate, OpQosShapeDelete,
 }
 
 // docs/data-model.md §3's table lists exactly these groups: iface(2, incl.
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
-// fw(14), ipam(2) = 40.
-const wantOpVocabularySize = 41
+// fw(14), ipam(2), qos(3, T-1505) = 44.
+const wantOpVocabularySize = 44
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -294,6 +295,21 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "ipam.alloc.delete", opType: OpIpamAllocDelete,
 			target: ref(inventory.KindSDNSubnet, "", "10.10.0.0/24"),
 			params: &IpamAllocDeleteParams{CIDR: "10.10.0.50/32"},
+		},
+		{
+			name: "qos.shape.create", opType: OpQosShapeCreate,
+			target: ref(inventory.KindQosShape, "pve1", "shape1"),
+			params: &QosShapeCreateParams{Bridge: "vmbr0", MatchCIDR: "10.10.0.0/24", RateMbit: 10, CeilMbit: i(20), Priority: i(1)},
+		},
+		{
+			name: "qos.shape.update", opType: OpQosShapeUpdate,
+			target: ref(inventory.KindQosShape, "pve1", "shape1"),
+			params: &QosShapeUpdateParams{RateMbit: i(15), CeilMbit: i(30)},
+		},
+		{
+			name: "qos.shape.delete", opType: OpQosShapeDelete,
+			target: ref(inventory.KindQosShape, "pve1", "shape1"),
+			params: &QosShapeDeleteParams{},
 		},
 	}
 }

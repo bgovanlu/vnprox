@@ -58,6 +58,18 @@ const (
 	// requirement, so each op gets its own step for a precise per-op apply
 	// log entry).
 	StepIpamAlloc StepKind = "ipam_alloc"
+
+	// StepQosApply realizes one qos.shape.create/update/delete op (T-1505):
+	// a node-local tc/HTB mutation, executed by the daemon-level QosGateway
+	// — like StepReload (and unlike the ticket-scoped PVEGateway steps),
+	// this needs no live user session, so its rollback works on the
+	// unattended commit-confirm-timeout path too (T-205's existing
+	// inverse-order rollback contract). One step per op, in the changeset's
+	// own op order, placed after the per-node interface stage/reload pairs
+	// (a shape's bridge must already exist) and before any trailing
+	// sdn.apply — "a new apply-step kind ordered alongside the existing
+	// per-node ifreload step", per this card's task text.
+	StepQosApply StepKind = "qos_apply"
 )
 
 // nodeFileOpTypes is the subset of the v1 op vocabulary that mutates a node's
@@ -114,6 +126,14 @@ var fwOpTypes = map[OpType]bool{
 	OpFwGroupCreate:   true,
 	OpFwGroupUpdate:   true,
 	OpFwGroupDelete:   true,
+}
+
+// qosOpTypes is T-1505's full QoS op vocabulary: each becomes a
+// StepQosApply step executed by the node-local QosGateway.
+var qosOpTypes = map[OpType]bool{
+	OpQosShapeCreate: true,
+	OpQosShapeUpdate: true,
+	OpQosShapeDelete: true,
 }
 
 // Step is one entry in a rendered apply Plan — the shape the review screen's
@@ -185,9 +205,18 @@ func BuildPlan(ops []Op) (Plan, error) {
 	sdnApply := false
 	var fwTargetOrder []inventory.Ref
 	byFwTarget := map[string][]int{}
+	var qosSteps []Step
 
 	for i, op := range ops {
 		switch {
+		case qosOpTypes[op.Type]:
+			qosSteps = append(qosSteps, Step{
+				Kind:    StepQosApply,
+				Node:    op.Target.Node,
+				Target:  op.Target.String(),
+				OpIdx:   []int{i},
+				Summary: qosStepSummary(op),
+			})
 		case nodeFileOpTypes[op.Type]:
 			node := op.Target.Node
 			if _, seen := byNode[node]; !seen {
@@ -251,6 +280,10 @@ func BuildPlan(ops []Op) (Plan, error) {
 			},
 		)
 	}
+	// QoS steps come after the per-node interface stage/reload pairs (a
+	// shape's bridge must already exist) and before firewall/sdn.apply —
+	// see StepQosApply's doc comment.
+	steps = append(steps, qosSteps...)
 	for _, target := range fwTargetOrder {
 		idxs := byFwTarget[target.String()]
 		steps = append(steps, Step{
@@ -320,6 +353,48 @@ func (p Plan) hasSDN() bool {
 		}
 	}
 	return false
+}
+
+// qosStepSummary renders one StepQosApply's Plan-tab summary (T-1505).
+func qosStepSummary(op Op) string {
+	switch p := op.Params.(type) {
+	case *QosShapeCreateParams:
+		return fmt.Sprintf("Create QoS shape %s on bridge %s (%d Mbit)", op.Target.ID, p.Bridge, p.RateMbit)
+	case *QosShapeUpdateParams:
+		return fmt.Sprintf("Update QoS shape %s", op.Target.ID)
+	case *QosShapeDeleteParams:
+		return fmt.Sprintf("Delete QoS shape %s", op.Target.ID)
+	default:
+		return "QoS shape operation"
+	}
+}
+
+// hasQos reports whether the plan carries any QoS step — the gate for
+// whether the apply/rollback engine snapshots and restores shape state
+// alongside node interface files (apply_snapshot.go's captureSnapshotFull,
+// apply.go's doRollbackLocked).
+func (p Plan) hasQos() bool {
+	for _, s := range p.Steps {
+		if s.Kind == StepQosApply {
+			return true
+		}
+	}
+	return false
+}
+
+// qosNodes returns, in first-appearance order, every node this plan's
+// StepQosApply steps touch — the set whose shape state the pre-apply
+// snapshot must capture and restore.
+func (p Plan) qosNodes() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range p.Steps {
+		if s.Kind == StepQosApply && s.Node != "" && !seen[s.Node] {
+			seen[s.Node] = true
+			out = append(out, s.Node)
+		}
+	}
+	return out
 }
 
 // describeFwTarget renders a firewall ruleset Ref as a short human string

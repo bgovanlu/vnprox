@@ -82,6 +82,22 @@ func TestTouchesMgmtPath(t *testing.T) {
 			want: false,
 		},
 		{
+			// T-1505 regression: a qos.shape.create naming the mgmt-path
+			// bridge in its Bridge param inherits T-703's ceremony (a shape
+			// on the management/uplink bridge can starve or deprioritize
+			// mgmt/corosync traffic).
+			name: "qos.shape.create on the mgmt-path bridge",
+			ops:  `[{"op":"qos.shape.create","target":"qos-shape:pve1:shape1","params":{"bridge":"vmbr0","rateMbit":10}}]`,
+			want: true,
+		},
+		{
+			// T-1505 regression: the off-path sibling — a shape on a bridge
+			// with no management role at all must not trip the ceremony.
+			name: "qos.shape.create on an unrelated bridge",
+			ops:  `[{"op":"qos.shape.create","target":"qos-shape:pve1:shape2","params":{"bridge":"vmbr9","rateMbit":10}}]`,
+			want: false,
+		},
+		{
 			name: "same interface name on a different node",
 			ops:  `[{"op":"bond.update","target":"bond:pve2:bond0","params":{"slaves":["eno1"]}}]`,
 			want: false,

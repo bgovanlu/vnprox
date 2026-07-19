@@ -58,6 +58,39 @@ type NodeAgent interface {
 	DiscardStaged(ctx context.Context, node string) error
 }
 
+// QosGateway performs node-local tc/HTB mutations for T-1505's qos.shape.*
+// op family: it renders (internal/qos.RenderTC/RenderTCTeardown) and execs
+// each shape's on-node tc commands, and persists the shape's own intent row
+// (store.QosShapeRepo) alongside. Like NodeAgent (and unlike the
+// ticket-scoped PVEGateway), it is a daemon-level (root) dependency injected
+// once at Service construction — a shape is node-local state with no PVE
+// API surface of its own, so it needs no user ticket, and — crucially —
+// that means its rollback works on the unattended commit-confirm-timeout /
+// crash-recovery path too, the same way NodeAgent's interfaces-file restore
+// does (T-205's existing inverse-order rollback contract this card's task
+// text calls for).
+//
+// A nil QosGateway makes qos.shape.* ops unexecutable (execStep errors), the
+// same "nil dependency -> that op family isn't wired" degradation the other
+// seams use.
+type QosGateway interface {
+	// ApplyQosOp applies one qos.shape.* op on op.Target.Node: renders the
+	// shape's tc/HTB commands and execs them, and persists/updates/removes
+	// its qos_shapes row accordingly.
+	ApplyQosOp(ctx context.Context, op Op) error
+
+	// SnapshotQos captures node's full set of currently-stored shapes as an
+	// opaque string, for the pre-apply snapshot.
+	SnapshotQos(ctx context.Context, node string) (string, error)
+
+	// RestoreQos reconciles node's shape set back to a SnapshotQos output:
+	// shapes present live but absent from the snapshot are torn down (tc
+	// class/filter removed, store row deleted); shapes in the snapshot but
+	// missing live are re-applied from their exact stored fields. Callable
+	// unattended — no user ticket needed.
+	RestoreQos(ctx context.Context, node, snapshot string) error
+}
+
 // PVEGateway performs cluster-scope PVE API mutations under the *user's own*
 // ticket (docs/architecture.md §6, D3: "PVE ACLs enforced by PVE; no
 // privilege escalation through vnprox"). It is passed per Apply/Rollback

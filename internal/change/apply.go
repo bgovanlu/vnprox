@@ -430,6 +430,24 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 		}
 	}
 
+	// T-1505: QoS shape state restore. Like NodeAgent's interfaces-file
+	// restore (and unlike SDN/fw.*), this works on the unattended
+	// commit-confirm-timeout / crash-recovery path too — the QosGateway is
+	// daemon-level (no user ticket needed) — so a qos.shape.create that
+	// times out un-confirmed fully reverts (tc class/filter + qos_shapes
+	// row removed).
+	if plan.hasQos() {
+		if qosPre, ok := qosStateFromSnapshot(pre); ok {
+			qosLogs := s.restoreQosState(ctx, qosPre)
+			for _, l := range qosLogs {
+				if l.Status != StepOK {
+					anyFailed = true
+				}
+			}
+			rbLogs = append(rbLogs, qosLogs...)
+		}
+	}
+
 	log.Rollback = append(log.Rollback, rbLogs...)
 	log.RolledBackBy = actor
 	if logJSON, mErr := json.Marshal(log); mErr == nil {
