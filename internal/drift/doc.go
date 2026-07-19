@@ -7,7 +7,7 @@
 // (bridge-property harmonization and MTU alignment — the two families the
 // task card names explicitly).
 //
-// The five documented check families (topology.md §6) each live in their
+// The six documented check families (topology.md §6) each live in their
 // own file:
 //
 //   - bridge.go: same-named bridge presence/VLAN-awareness/VID-set
@@ -21,6 +21,11 @@
 //   - filerun.go: interfaces file vs. runtime (netlink) divergence —
 //     someone edited by hand or ran `ip` commands directly
 //     (checkFileRuntimeDivergence).
+//   - sriov.go (T-1506): an already-diverged live SR-IOV VF whose VLAN/
+//     spoof-check setting no longer matches its PF's bridge's own
+//     VLAN-awareness/VID-set policy (checkVFSpoofcheckMismatch) — the
+//     identical comparison internal/change's changeset-validate-time check
+//     reuses for a *staged* vf.provision op.
 //
 // Every check function is a pure func(inventory.Snapshot) []Finding: no
 // state, no I/O, deterministic given the same snapshot content (T-305

@@ -15,6 +15,13 @@ const (
 	CheckSDNRealization        = "sdn_realization"
 	CheckPendingInterfaces     = "pending_interfaces"
 	CheckFileRuntimeDivergence = "file_runtime_divergence"
+	// CheckVFSpoofcheckMismatch (T-1506) is the standing-drift half of
+	// vf_spoofcheck_mismatch: an already-diverged live VF (host-netlink
+	// observed) whose VLAN/spoof-check setting no longer matches its PF's
+	// bridge's own VLAN-awareness/VID-set policy — see sriov.go. The
+	// identical comparison also runs at changeset-validate time, for a
+	// *staged* vf.provision op, in internal/change/validate_referential.go.
+	CheckVFSpoofcheckMismatch = "vf_spoofcheck_mismatch"
 )
 
 // Severity mirrors docs/api.md's changeset finding vocabulary
