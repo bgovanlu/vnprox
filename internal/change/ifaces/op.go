@@ -470,8 +470,8 @@ type envelope struct {
 // Field names are the camelCase wire names implied by
 // docs/data-model.md §3's field lists.
 type wireParams struct {
+	IntIP                *string              `json:"intIp"`
 	Iface                *string              `json:"iface"`
-	Comments             *string              `json:"comments"`
 	Gateway              *string              `json:"gateway"`
 	Autostart            *bool                `json:"autostart"`
 	STP                  *bool                `json:"stp"`
@@ -481,30 +481,30 @@ type wireParams struct {
 	ExtPort              *int                 `json:"extPort"`
 	VlanAware            *bool                `json:"vlanAware"`
 	Comment              *string              `json:"comment"`
-	DestCIDR             *string              `json:"destCidr"`
-	IntIP                *string              `json:"intIp"`
-	Proto                *string              `json:"proto"`
 	SourceCIDR           *string              `json:"sourceCidr"`
+	Comments             *string              `json:"comments"`
+	Proto                *string              `json:"proto"`
+	DestCIDR             *string              `json:"destCidr"`
 	VLAN                 *int                 `json:"vlan"`
 	SpoofCheck           *bool                `json:"spoofCheck"`
 	MacAddr              *string              `json:"macAddr"`
 	Trust                *bool                `json:"trust"`
-	VFs                  []host.VFSpec        `json:"vfs"`
-	Count                int                  `json:"count"`
+	Port                 string               `json:"port"`
+	Bridge               string               `json:"bridge"`
 	XmitHashPolicy       string               `json:"xmitHashPolicy"`
 	LacpRate             string               `json:"lacpRate"`
 	NewName              string               `json:"newName"`
 	Mode                 string               `json:"mode"`
 	Content              string               `json:"content"`
 	Parent               string               `json:"parent"`
-	Port                 string               `json:"port"`
-	Bridge               string               `json:"bridge"`
-	Ports                []string             `json:"ports"`
 	Trunks               []inventory.VidRange `json:"trunks"`
+	Vids                 []inventory.VidRange `json:"vids"`
+	Ports                []string             `json:"ports"`
+	VFs                  []host.VFSpec        `json:"vfs"`
 	Addresses            []string             `json:"addresses"`
 	Slaves               []string             `json:"slaves"`
-	Vids                 []inventory.VidRange `json:"vids"`
 	VID                  int                  `json:"vid"`
+	Count                int                  `json:"count"`
 	MIIMon               int                  `json:"miimon"`
 	RemoveAddress        bool                 `json:"removeAddress"`
 	OVS                  bool                 `json:"ovs"`
