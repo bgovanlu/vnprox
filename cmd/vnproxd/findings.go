@@ -32,8 +32,20 @@ import (
 // engine). Nil-safe: a nil ipam service (degraded mode — no PVE client)
 // contributes no findings.
 type ipamFindingsAdapter struct {
-	ipam   *ipam.Service
-	logger *slog.Logger
+	baseCtx context.Context //nolint:containedctx // the daemon's shutdown ctx, so a findings cycle's IPAM HTTP call unblocks on shutdown instead of waiting out its 10s timeout (the findings.IPAMProvider interface has no ctx param to thread it through)
+	ipam    *ipam.Service
+	logger  *slog.Logger
+}
+
+// findingsAdapterCtx derives a 10s-timeout context whose parent is the
+// daemon's shutdown ctx when set (so cancellation propagates into an
+// in-flight provider HTTP call), falling back to context.Background() for
+// adapters constructed in unit tests that don't wire a base ctx.
+func findingsAdapterCtx(base context.Context) (context.Context, context.CancelFunc) {
+	if base == nil {
+		base = context.Background()
+	}
+	return context.WithTimeout(base, 10*time.Second)
 }
 
 // ipamConflictDocsLink is the remediation pointer for an IPAM conflict —
@@ -46,7 +58,7 @@ func (a ipamFindingsAdapter) Findings() []findings.Finding {
 	if a.ipam == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := findingsAdapterCtx(a.baseCtx)
 	defer cancel()
 	conflicts, err := a.ipam.Conflicts(ctx)
 	if err != nil {
@@ -101,8 +113,9 @@ func ipamConflictToFinding(sc ipam.SubnetConflict) findings.Finding {
 // every other producer seam's own defensive convention) contributes no
 // findings.
 type probeFindingsAdapter struct {
-	repo   *store.SimDivergenceRepo
-	logger *slog.Logger
+	baseCtx context.Context //nolint:containedctx // daemon shutdown ctx — see ipamFindingsAdapter.baseCtx
+	repo    *store.SimDivergenceRepo
+	logger  *slog.Logger
 }
 
 // simDivergenceDeepLink builds T-806's DocsLink for a persisted
@@ -183,7 +196,7 @@ func (a probeFindingsAdapter) Findings() []findings.Finding {
 	if a.repo == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := findingsAdapterCtx(a.baseCtx)
 	defer cancel()
 	rows, err := a.repo.List(ctx)
 	if err != nil {
@@ -277,6 +290,7 @@ func (a *scheduleMissedAdapter) MissedSchedules() []change.MissedSchedule {
 // one — a multi-node cluster today only ever sees *this* daemon's own
 // node's corosync health through this check, not every peer's.
 type corosyncStatusAdapter struct {
+	baseCtx   context.Context //nolint:containedctx // daemon shutdown ctx — see ipamFindingsAdapter.baseCtx
 	host      host.Reader
 	localNode func() string
 	logger    *slog.Logger
@@ -293,7 +307,7 @@ func (a corosyncStatusAdapter) CorosyncStatus() (map[string][]host.RingStatus, e
 	if node == "" || a.host == nil {
 		return nil, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := findingsAdapterCtx(a.baseCtx)
 	defer cancel()
 	raw, err := a.host.CorosyncStatus(ctx, node)
 	if err != nil {
@@ -382,13 +396,13 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, logger *slog.Logger) *findings.Engine {
+func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
 		LLDP:        topoSvc,
-		IPAM:        ipamFindingsAdapter{ipam: ipamSvc, logger: logger},
-		Probe:       probeFindingsAdapter{repo: probeRepo, logger: logger},
+		IPAM:        ipamFindingsAdapter{baseCtx: ctx, ipam: ipamSvc, logger: logger},
+		Probe:       probeFindingsAdapter{baseCtx: ctx, repo: probeRepo, logger: logger},
 		Metrics:     metricsSampler,
 		Mgmt:        mgmtSvc,
 		Corosync:    corosyncSvc,

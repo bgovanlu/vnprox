@@ -334,7 +334,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// T-803: corosyncStatusAdapter reuses realHost/localNode (already built
 	// above for dhcpSvc/neighborSvc) — local-node-only for now, see its own
 	// doc comment (findings.go) for the documented cluster-fan-out gap.
-	corosyncAdapter := corosyncStatusAdapter{host: realHost, localNode: localNode, logger: logger}
+	corosyncAdapter := corosyncStatusAdapter{baseCtx: ctx, host: realHost, localNode: localNode, logger: logger}
 	// T-1006: fwAnalyticsAdapter is wired in now (findings.Engine is
 	// constructed before *fwlog.Service exists, below) and filled in with
 	// its real target once fwlogSvc is built — see the adapter's own doc
@@ -372,7 +372,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// registered with the run group alongside every other owned goroutine,
 	// below.
 	latMeshSvc, latMeshActors := setupLatMesh(cfg, db, graph, localNode, logger)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
