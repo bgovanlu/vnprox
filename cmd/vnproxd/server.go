@@ -408,7 +408,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// target list, read by api.Options.IngressTargets/GET /ingress/status
 	// below.
 	ingressTargetRepo := store.NewIngressTargetRepo(db)
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	// T-1405: WAN & upstream health — a node-local scheduler reusing
+	// *latmesh.Service itself (setupWan's own doc comment), probing this
+	// node's own operator-configured reference targets. Its Service
+	// satisfies findings.Config.Wan (wan_degraded) directly below and
+	// api.Options.Wan (GET /wan/status, GET/PUT /wan/targets) further down;
+	// wanActors joins the same run group. wanLossWarnPct keeps the
+	// findings check's own threshold in sync with the Service's per-uplink
+	// "degraded" verdict rather than letting the two silently drift apart.
+	wanSvc, wanLossWarnPct, wanActors := setupWan(cfg, db, localNode, logger)
+	wanThresholds := findings.DefaultThresholds
+	wanThresholds.WanLossWarnPct = wanLossWarnPct
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -877,6 +888,8 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		MTUProbe:            mtuProbeSvc,
 		WireGuard:           wgReadSvc,
 		WgCarriers:          wgReadSvc,
+		Wan:                 wanSvc,
+		WanAudit:            auditRepo,
 		Captures:            captureCoord,
 		Conntrack:           realHost,
 		PeerConntrack:       peerConntrack,
@@ -1010,6 +1023,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// comment) — always on, its own coarser interval; no prune-loop actor
 	// (current-state only, no SQLite ring — internal/mtuprobe's doc.go).
 	for _, actor := range mtuProbeActors {
+		g.add(actor)
+	}
+	// T-1405: the WAN health probe loop and prune loop (setupWan's doc
+	// comment) — always on, same "always registered, each actor degrades
+	// independently" treatment every other probe-loop actor above gets; a
+	// node with no configured WAN targets simply has nothing to probe.
+	for _, actor := range wanActors {
 		g.add(actor)
 	}
 	// T-1301: the capture retention sweep — deletes per-session .pcap files

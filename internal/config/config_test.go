@@ -686,6 +686,65 @@ probe_interval_sec = 600
 	}
 }
 
+// TestLoad_WanDefaults covers T-1405's [wan] section: every tunable
+// defaults to internal/wan's own documented constants when omitted.
+func TestLoad_WanDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "wan-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Wan.ProbeIntervalSec != 10 {
+		t.Errorf("Wan.ProbeIntervalSec = %d, want default 10", cfg.Wan.ProbeIntervalSec)
+	}
+	if cfg.Wan.RetentionMinutes != 60 {
+		t.Errorf("Wan.RetentionMinutes = %d, want default 60", cfg.Wan.RetentionMinutes)
+	}
+	if cfg.Wan.MaxRows != 500_000 {
+		t.Errorf("Wan.MaxRows = %d, want default 500000", cfg.Wan.MaxRows)
+	}
+	if cfg.Wan.LossWarnPct != 0 {
+		t.Errorf("Wan.LossWarnPct = %v, want 0 (unset -> internal/wan.DefaultLossWarnPct applies downstream)", cfg.Wan.LossWarnPct)
+	}
+}
+
+// TestLoad_WanOverride covers explicit [wan] values.
+func TestLoad_WanOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[wan]
+probe_interval_sec = 30
+retention_minutes = 120
+max_rows = 1000000
+loss_warn_pct = 15
+`
+	cfg, err := Load(writeTemp(t, "wan-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Wan.ProbeIntervalSec != 30 {
+		t.Errorf("Wan.ProbeIntervalSec = %d, want 30", cfg.Wan.ProbeIntervalSec)
+	}
+	if cfg.Wan.RetentionMinutes != 120 {
+		t.Errorf("Wan.RetentionMinutes = %d, want 120", cfg.Wan.RetentionMinutes)
+	}
+	if cfg.Wan.MaxRows != 1_000_000 {
+		t.Errorf("Wan.MaxRows = %d, want 1000000", cfg.Wan.MaxRows)
+	}
+	if cfg.Wan.LossWarnPct != 15 {
+		t.Errorf("Wan.LossWarnPct = %v, want 15", cfg.Wan.LossWarnPct)
+	}
+}
+
 func mustParseIP(t *testing.T, s string) net.IP {
 	t.Helper()
 	ip := net.ParseIP(s)

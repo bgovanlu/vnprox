@@ -71,7 +71,12 @@ type Config struct {
 	// wg_handshake_stale / wg_endpoint_drift findings (source "wireguard").
 	// Nil skips both checks entirely, same degradation as every other
 	// optional Config field.
-	WG              WGProvider
+	WG WGProvider
+	// Wan is T-1405's WAN health seam (*wan.Service via its WanHeatmap
+	// method), backing the wan_degraded health check (source "wan"). Nil
+	// skips that check entirely, same degradation as every other optional
+	// Config field.
+	Wan             WanProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -102,6 +107,7 @@ type Engine struct {
 	latMeshSvc  LatMeshProvider
 	mtuSvc      MTUProvider
 	wgSvc       WGProvider
+	wanSvc      WanProvider
 	serviceDB   *debouncer
 	services    *serviceStatusStore
 	onChange    func(int)
@@ -119,6 +125,7 @@ type Engine struct {
 	latLossDB   *debouncer
 	wgStaleDB   *debouncer
 	wgDriftDB   *debouncer
+	wanDB       *debouncer
 	graph       *inventory.Graph
 	stpTracker  *stpBurstTracker
 	pendingTr   *pendingTracker
@@ -167,6 +174,7 @@ func New(cfg Config) *Engine {
 		latMeshSvc:  cfg.LatMesh,
 		mtuSvc:      cfg.MTU,
 		wgSvc:       cfg.WG,
+		wanSvc:      cfg.Wan,
 		log:         logger,
 		now:         now,
 		onChange:    cfg.OnChange,
@@ -185,6 +193,7 @@ func New(cfg Config) *Engine {
 		latLossDB:   newDebouncer(),
 		wgStaleDB:   newDebouncer(),
 		wgDriftDB:   newDebouncer(),
+		wanDB:       newDebouncer(),
 		stpTracker:  newStpBurstTracker(),
 		pendingTr:   newPendingTracker(),
 		services:    newServiceStatusStore(),
@@ -214,6 +223,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, probeFindings(e.probeSvc)...)
 	out = append(out, webhookFindings(e.webhooksSvc)...)
 	out = append(out, wgFindings(e.wgSvc, e.wgStaleDB, e.wgDriftDB, e.now())...)
+	out = append(out, checkWanDegraded(e.wanSvc, e.wanDB, e.thresholds)...)
 	out = append(out, e.healthFindings()...)
 	sortFindings(out)
 	return out

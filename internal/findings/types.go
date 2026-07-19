@@ -25,6 +25,10 @@ const (
 	// `wg show <if> dump`-equivalent poll of WireGuard's own on-node state
 	// (never persisted as truth) — wg_handshake_stale / wg_endpoint_drift.
 	SourceWireguard Source = "wireguard"
+	// SourceWan (T-1405) marks a finding computed from internal/wan's
+	// continuous probe of operator-configured external reference targets —
+	// wan_degraded, the "it's the ISP, not the cluster" signal.
+	SourceWan Source = "wan"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

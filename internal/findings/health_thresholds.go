@@ -53,6 +53,12 @@ type HealthThresholds struct {
 	// notices from application-level symptoms.
 	LatRttWarnMs   float64
 	LatLossWarnPct float64
+	// WanLossWarnPct (T-1405) is the threshold health_wan.go's wan_degraded
+	// check compares a WAN link's *rolling* loss% against — deliberately
+	// looser than LatLossWarnPct's 2% LAN threshold, since an ordinary WAN
+	// path's baseline jitter/loss to an external reference target is
+	// inherently higher than a LAN/corosync link's. Default: 20%.
+	WanLossWarnPct float64
 }
 
 // DefaultThresholds is applied by Engine's constructor when Config.Thresholds
@@ -64,6 +70,7 @@ var DefaultThresholds = HealthThresholds{
 	FallCycles:      2,
 	LatRttWarnMs:    80,
 	LatLossWarnPct:  2,
+	WanLossWarnPct:  20,
 }
 
 // sampleableKinds is the same Kind set internal/metrics samples (see its

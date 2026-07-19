@@ -288,6 +288,16 @@ type Options struct {
 	// WireGuard read service WireGuard is wired from. Nil degrades those ops
 	// to params-only coverage (a create still names its own carrier).
 	WgCarriers change.WgCarrierSource
+	// Wan backs T-1405's GET /wan/status and GET/PUT /wan/targets
+	// (docs/api.md's WAN & upstream health section); nil skips mounting
+	// every /wan route, matching every other optional Options field.
+	// Typically the daemon's own *wan.Service. WanAudit backs the PUT
+	// route's wan.targets_update audit row (typically the same *store.
+	// AuditRepo every other write route's audit seam already wires in);
+	// nil (or an Auth backend with no UsernameLookup) skips mounting only
+	// the PUT route, leaving the two GET routes mounted.
+	Wan      WanService
+	WanAudit wanAuditor
 	// Captures is T-1301's packet-capture coordinator seam (POST /captures,
 	// POST /captures/{id}/stop, GET /captures/{id}, GET /captures). Nil skips
 	// mounting every /captures route, same degraded-mode treatment as every
@@ -398,6 +408,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
 		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
 		mountWireGuardRoutes(r, opts.WireGuard, opts.Auth)
+		mountWanRoutes(r, opts.Wan, opts.Findings, opts.LocalNode, opts.WanAudit, opts.Auth)
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)
 		mountConntrackRoutes(r, opts.Conntrack, opts.PeerConntrack, opts.ConntrackGuests, opts.LocalNode, opts.Auth)
 		mountDiagnoseRoutes(r, opts, opts.Auth)
