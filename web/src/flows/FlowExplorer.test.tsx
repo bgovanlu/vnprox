@@ -7,7 +7,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FlowBatchEvent, FlowRecord, FlowsPage } from "../api/types";
+import type { FlowBatchEvent, FlowRecord, FlowsPage, K8sOverlay } from "../api/types";
 import { FlowExplorer } from "./FlowExplorer";
 
 let queryResult: { data: FlowsPage | undefined; isLoading: boolean; error: Error | null } = {
@@ -22,6 +22,19 @@ vi.mock("./flowsQueries", () => ({
   useFlowsWsBridge: (onBatch: (evt: FlowBatchEvent) => void) => {
     onBatchHandler = onBatch;
   },
+}));
+
+// T-1502: FlowExplorer now also reads every registered k8s cluster's live
+// overlay for its k8sService column — mocked at this same module seam
+// (mirrors ./flowsQueries above) so these tests never touch a real
+// QueryClient/fetch for it either. Empty by default (no clusters
+// registered — every row shows "—", the same "absent, not a wrong guess"
+// default this task's card requires).
+let k8sOverlaysResult: { overlays: K8sOverlay[]; isLoading: boolean } = { overlays: [], isLoading: false };
+
+vi.mock("../topology/layers/k8sQueries", () => ({
+  useK8sClustersQuery: () => ({ data: undefined, isLoading: false }),
+  useK8sOverlaysQuery: () => k8sOverlaysResult,
 }));
 
 function rec(overrides: Partial<FlowRecord> = {}): FlowRecord {
@@ -55,6 +68,7 @@ function renderExplorer(initialEntries: string[] = ["/flows"]): void {
 beforeEach(() => {
   queryResult = { data: { items: [] }, isLoading: false, error: null };
   onBatchHandler = undefined;
+  k8sOverlaysResult = { overlays: [], isLoading: false };
 });
 
 afterEach(() => {
@@ -181,5 +195,39 @@ describe("FlowExplorer", () => {
       expect(screen.getByText("pve1")).toBeInTheDocument();
     });
     expect(screen.queryByText("pve2")).not.toBeInTheDocument();
+  });
+
+  it("T-1502 AC2: attributes the k8sService column against a registered cluster's overlay, and shows no attribution for an address outside every CIDR", async () => {
+    k8sOverlaysResult = {
+      overlays: [
+        {
+          clusterId: "c1",
+          cni: "flannel",
+          podCidrs: [],
+          services: [{ namespace: "default", name: "web", type: "ClusterIP", clusterIp: "10.96.0.10" }],
+          pods: [],
+          nodes: [],
+          generatedAt: 1,
+        },
+      ],
+      isLoading: false,
+    };
+    queryResult = {
+      data: {
+        items: [
+          rec({ node: "pve1", srcIp: "10.0.0.5", dstIp: "10.96.0.10" }),
+          rec({ node: "pve2", srcIp: "10.0.0.6", dstIp: "203.0.113.9" }),
+        ],
+      },
+      isLoading: false,
+      error: null,
+    };
+    renderExplorer();
+    await waitFor(() => screen.getByText("pve1"));
+
+    expect(screen.getByText("default/web (svc)")).toBeInTheDocument();
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows[0]).toHaveTextContent("default/web (svc)");
+    expect(rows[1]).toHaveTextContent("—");
   });
 });

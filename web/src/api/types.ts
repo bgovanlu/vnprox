@@ -244,6 +244,105 @@ export interface WireGuardTunnelsResponse {
   items: WireGuardTunnel[];
 }
 
+// --- Kubernetes (T-1501 backend, T-1502 map layer + flow attribution) -----
+// Mirrors internal/k8s.Overlay / internal/api/k8s.go's response shapes
+// exactly (docs/api.md's Kubernetes section). Read-only forever: no route
+// or type in this section is ever the target of a PATCH/PUT/DELETE/POST
+// beyond registering/deregistering a *local* cluster record — see
+// web/src/api/k8s.ts's own doc comment.
+
+/** GET /k8s/clusters' list item. `kubeconfig` is never echoed back by any
+ * route — this shape carries only what's safe to display. */
+export interface K8sCluster {
+  id: string;
+  name: string;
+  addedBy: string;
+  addedAt: number;
+  /** "flannel"|"calico"|"cilium"|"unknown"|"" (never polled yet) — the last
+   * poll's cached summary, not authoritative (see GET /k8s/{id}/overlay's
+   * own `cni` field for a fresh read). */
+  cniDetected?: string;
+  /** "unpolled"|"ok"|"unreachable". */
+  status: string;
+}
+
+export interface K8sClustersResponse {
+  items: K8sCluster[];
+}
+
+/** One k8s node's advertised pod-network block (internal/k8s.PodCIDR). */
+export interface K8sPodCidr {
+  node: string;
+  cidr: string;
+}
+
+export interface K8sServicePortInfo {
+  name?: string;
+  protocol: string;
+  port: number;
+  nodePort?: number;
+}
+
+/** internal/k8s.ServiceInfo — never a guessed "service CIDR" (see
+ * internal/k8s/overlay.go's own doc comment); every service is carried in
+ * full instead. */
+export interface K8sServiceInfo {
+  namespace: string;
+  name: string;
+  /** "ClusterIP"|"NodePort"|"LoadBalancer"|"ExternalName". */
+  type: string;
+  clusterIp?: string;
+  ports?: K8sServicePortInfo[];
+}
+
+/** internal/k8s.PodSummary — deliberately minimal (docs/api.md's Kubernetes
+ * section), carried for this task's pod-drilldown selection. */
+export interface K8sPodSummary {
+  namespace: string;
+  name: string;
+  node?: string;
+  podIp?: string;
+  phase?: string;
+}
+
+/** internal/k8s.NodeCorrelation. `matched: false` (never a wrong
+ * `guestRef`) when nothing in the live inventory/IPAM data claims the
+ * node's reported InternalIP — "observed, never guessed". */
+export interface K8sNodeCorrelation {
+  k8sNode: string;
+  internalIp?: string;
+  guestRef?: string;
+  matched: boolean;
+}
+
+/** internal/k8s.NodePortFinding, also surfaced in the unified GET /findings
+ * stream (`source: "k8s"`, `check: "k8s_nodeport_exposed_without_fw_rule"`) —
+ * carried alongside the overlay so a single poll answers both. */
+export interface K8sNodePortFinding {
+  clusterId: string;
+  namespace: string;
+  service: string;
+  port: number;
+  nodePort: number;
+  proto: string;
+  refs: string[];
+  detail: string;
+}
+
+/** GET /k8s/{clusterId}/overlay's response (internal/k8s.Overlay plus the
+ * poll's own findings) — computed fresh on every call, never cached as
+ * authoritative. */
+export interface K8sOverlay {
+  clusterId: string;
+  cni: string;
+  podCidrs: K8sPodCidr[];
+  services: K8sServiceInfo[];
+  pods: K8sPodSummary[];
+  nodes: K8sNodeCorrelation[];
+  generatedAt: number;
+  nodePortFindings?: K8sNodePortFinding[];
+}
+
 // --- Saved layouts (internal/api/layouts.go, additive — no docs/api.md
 // entry existed before this task; see that file's doc comment) -----------
 

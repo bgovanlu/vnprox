@@ -40,6 +40,15 @@ export interface LayerToggleBarProps {
    * keeps this bar's exact prior output. */
   wgLayerActive?: boolean;
   onToggleWG?: () => void;
+  /** T-1502: a 9th "Kubernetes" toggle, same optional-pair convention as
+   * wgLayerActive/onToggleWG above — a client-only overlay rendering
+   * T-1501's pod/service CIDR model as map regions plus node<->guest
+   * correlation lines (topology/layers/k8sOverlay.ts), not one of the
+   * server-emitted entity layers either. Both props must be provided
+   * together to render the button; omitted keeps this bar's exact prior
+   * output. */
+  k8sLayerActive?: boolean;
+  onToggleK8s?: () => void;
 }
 
 /** The `1`-`4` layer toggle rail (docs/features/topology.md §1), plus an
@@ -56,6 +65,8 @@ export function LayerToggleBar({
   onToggleMTU,
   wgLayerActive,
   onToggleWG,
+  k8sLayerActive,
+  onToggleK8s,
 }: LayerToggleBarProps) {
   return (
     <div className="flex gap-1 rounded-md border border-slate-200 bg-white/90 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/90">
@@ -139,6 +150,21 @@ export function LayerToggleBar({
           )}
         >
           WireGuard
+        </button>
+      )}
+      {onToggleK8s && (
+        <button
+          type="button"
+          aria-pressed={k8sLayerActive ?? false}
+          onClick={onToggleK8s}
+          className={clsx(
+            "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
+            k8sLayerActive
+              ? "bg-emerald-600 text-white"
+              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+          )}
+        >
+          Kubernetes
         </button>
       )}
     </div>
