@@ -18,6 +18,7 @@ import type { EntityNodeData } from "./EntityNode";
 import type { Size, Viewport } from "./canvasScene";
 import { DEFAULT_NODE_SIZE, graphToScreen } from "./canvasScene";
 import type { LatencyOverlayEdge } from "./latencyMode";
+import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
 import { trafficEdgeStyle } from "./trafficMode";
 
 export interface SceneTheme {
@@ -416,6 +417,59 @@ export function drawLatencyOverlay(ctx: CanvasRenderingContext2D, params: DrawLa
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// --- T-1306: the "Verified MTU" badge layer overlay -------------------------
+// A third, independent overlay pass — unlike drawLatencyOverlay's colored
+// line, this one draws a small text badge ("MTU 1450") at each probed
+// link's midpoint, distinct from wherever that link's *configured* MTU is
+// shown elsewhere (mtuOverlay.ts's own doc comment). A link with no probe
+// result simply isn't in `badges` at all (mtuOverlay.computeMTUOverlayEdges'
+// own contract), so nothing is drawn for it — never a stale/zero label.
+
+export interface DrawMTUOverlayParams {
+  nodes: FlowNode<EntityNodeData, "entity">[];
+  badges: readonly MTUOverlayBadge[];
+  viewport: Viewport;
+  nodeSize: Size;
+  theme: Pick<SceneTheme, "badgeBg" | "badgeText">;
+  dragTopLeft?: DrawSceneParams["dragTopLeft"];
+}
+
+export function drawMTUOverlay(ctx: CanvasRenderingContext2D, params: DrawMTUOverlayParams): void {
+  const { nodes, badges, viewport: vp, nodeSize, theme, dragTopLeft } = params;
+  if (badges.length === 0) return;
+  const size = nodeSize.width > 0 ? nodeSize : DEFAULT_NODE_SIZE;
+  const byId = new Map<string, FlowNode<EntityNodeData, "entity">>();
+  for (const n of nodes) byId.set(n.id, n);
+
+  ctx.save();
+  ctx.font = "600 9px ui-sans-serif, system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  for (const b of badges) {
+    const from = byId.get(b.from);
+    const to = byId.get(b.to);
+    if (!from || !to) continue;
+    const a = nodeCenterScreen(from, vp, size, dragTopLeft);
+    const c = nodeCenterScreen(to, vp, size, dragTopLeft);
+    const midX = (a.x + c.x) / 2;
+    const midY = (a.y + c.y) / 2;
+
+    const label = formatMTUBadgeLabel(b.mtu);
+    const textWidth = ctx.measureText(label).width;
+    const padX = 4;
+    const boxW = textWidth + padX * 2;
+    const boxH = 14;
+
+    ctx.save();
+    ctx.fillStyle = theme.badgeBg;
+    roundRectPath(ctx, midX - boxW / 2, midY - boxH / 2, boxW, boxH, 4);
+    ctx.fill();
+    ctx.fillStyle = theme.badgeText;
+    ctx.fillText(label, midX - textWidth / 2, midY + 0.5);
     ctx.restore();
   }
   ctx.restore();

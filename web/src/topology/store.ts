@@ -80,6 +80,14 @@ export interface TopologyUIState {
    * per-session (not persisted-layout) lifetime as the other two.
    * v2-renderer-only, mirroring flowsLayerActive's own scope. */
   latencyLayerActive: boolean;
+  /** T-1306 "Verified MTU" badge layer: renders each node-to-node link's
+   * measured (DF-probe-verified) path MTU as a badge at its midpoint
+   * (topology/mtuOverlay.ts) — a second, independent overlay from
+   * latencyLayerActive, distinct from wherever a link's *configured* MTU is
+   * shown elsewhere (never merged into that display). Same per-session
+   * (not persisted-layout) lifetime and v2-renderer-only scope as
+   * latencyLayerActive. */
+  mtuLayerActive: boolean;
 
   toggleLayer: (layer: Layer) => void;
   /** T-907: sets the whole active-layer set at once (as opposed to
@@ -94,6 +102,7 @@ export interface TopologyUIState {
   toggleTrafficMode: () => void;
   toggleFlowsLayer: () => void;
   toggleLatencyLayer: () => void;
+  toggleMTULayer: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
   hover: (id: string | undefined) => void;
@@ -122,6 +131,7 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   trafficMode: false,
   flowsLayerActive: false,
   latencyLayerActive: false,
+  mtuLayerActive: false,
 
   toggleLayer: (layer) => {
     set((state) => {
@@ -149,6 +159,9 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   },
   toggleLatencyLayer: () => {
     set((state) => ({ latencyLayerActive: !state.latencyLayerActive }));
+  },
+  toggleMTULayer: () => {
+    set((state) => ({ mtuLayerActive: !state.mtuLayerActive }));
   },
   setVlanFilter: (vlan) => {
     set({ vlanFilter: vlan });

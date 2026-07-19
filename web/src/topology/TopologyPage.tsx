@@ -25,6 +25,8 @@ import { computeFlowEdges, flowEdgeStrokeWidth, type FlowEdge } from "./flowEdge
 import { useLiveFlowRecords } from "../flows/flowsQueries";
 import { computeLatencyOverlayEdges } from "./latencyMode";
 import { useLatMeshHeatmapQuery } from "./latMeshQueries";
+import { computeMTUOverlayEdges } from "./mtuOverlay";
+import { useMTUProbeResultsQuery } from "./mtuProbeQueries";
 import { FlowPairPanel } from "./FlowPairPanel";
 import { HistoryTimeline, type HistoryPlaybackState } from "./history/HistoryTimeline";
 import { InspectorStack } from "./InspectorStack";
@@ -124,6 +126,8 @@ function TopologyPageContent() {
   const toggleFlowsLayer = useTopologyStore((s) => s.toggleFlowsLayer);
   const latencyLayerActive = useTopologyStore((s) => s.latencyLayerActive);
   const toggleLatencyLayer = useTopologyStore((s) => s.toggleLatencyLayer);
+  const mtuLayerActive = useTopologyStore((s) => s.mtuLayerActive);
+  const toggleMTULayer = useTopologyStore((s) => s.toggleMTULayer);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
   const setActiveLayers = useTopologyStore((s) => s.setActiveLayers);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
@@ -449,6 +453,15 @@ function TopologyPageContent() {
     () => (latencyPaintable && latMeshLinks ? computeLatencyOverlayEdges(latMeshLinks, nodeIdForName) : []),
     [latencyPaintable, latMeshLinks, nodeIdForName],
   );
+
+  // T-1306 "Verified MTU" badge layer: same v2-canvas-only, "only fetch
+  // while genuinely paintable" scope as the Latency layer above.
+  const mtuPaintable = mtuLayerActive && viewMode === "graph" && rendererVersion === "v2";
+  const { data: mtuProbeResults } = useMTUProbeResultsQuery(mtuPaintable);
+  const mtuOverlayBadges = useMemo(
+    () => (mtuPaintable && mtuProbeResults ? computeMTUOverlayEdges(mtuProbeResults, nodeIdForName) : []),
+    [mtuPaintable, mtuProbeResults, nodeIdForName],
+  );
   // AC4: the empty-state hint is purely data-driven (zero records
   // cluster-wide, once the initial fetch has actually completed — never
   // flashed during the brief initial loading window) and disappears the
@@ -694,6 +707,10 @@ function TopologyPageContent() {
             // (latencyPaintable).
             latencyLayerActive={latencyLayerActive}
             onToggleLatency={toggleLatencyLayer}
+            // T-1306: same v2-canvas-only scope note as Latency above
+            // (mtuPaintable).
+            mtuLayerActive={mtuLayerActive}
+            onToggleMTU={toggleMTULayer}
           />
           {viewMode === "graph" && (
             <Button
@@ -880,6 +897,7 @@ function TopologyPageContent() {
             flowEdges={flowOverlayEdges}
             selectedFlowEdgeId={selectedFlowEdgeId}
             latencyEdges={latencyOverlayEdges}
+            mtuBadges={mtuOverlayBadges}
             onFlowEdgeClick={(id) => {
               setSelectedFlowEdgeId(id);
             }}
