@@ -165,12 +165,12 @@ type NodeSpec struct {
 // server instead, which this task does not need: no fixture scenario in
 // this codebase's testdata distinguishes the two.
 type IPv6RASpec struct {
-	Iface                string   `yaml:"iface"`
-	Prefixes             []string `yaml:"prefixes,omitempty"`
-	RouterLifetimeSec    int      `yaml:"router_lifetime_sec,omitempty"`
-	ManagedFlag          bool     `yaml:"managed_flag,omitempty"`
-	OtherFlag            bool     `yaml:"other_flag,omitempty"`
-	DHCPv6ServerPresent  bool     `yaml:"dhcpv6_server_present,omitempty"`
+	Iface               string   `yaml:"iface"`
+	Prefixes            []string `yaml:"prefixes,omitempty"`
+	RouterLifetimeSec   int      `yaml:"router_lifetime_sec,omitempty"`
+	ManagedFlag         bool     `yaml:"managed_flag,omitempty"`
+	OtherFlag           bool     `yaml:"other_flag,omitempty"`
+	DHCPv6ServerPresent bool     `yaml:"dhcpv6_server_present,omitempty"`
 }
 
 // ConntrackEntrySpec is one fixture-declared live conntrack table entry

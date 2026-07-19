@@ -20,6 +20,16 @@ Proxmox has IPAM plugins (built-in `pve`, NetBox, phpIPAM) but no usable view of
 - "Next free address" picker (`web/src/ipam/NextFreePicker.tsx`) exposed on the bridge editor's address field today; wiring it into every other IP-entry field in the UI (VLAN editor, interface editor, SDN subnet gateway) is a known follow-up (flagged, T-607), not yet done for all of them.
 - CSV export per subnet.
 
-## 4. Out of scope v1
+## 5. IPv6 planning grid (T-1404)
 
-Managing IP space outside Proxmox's knowledge (arbitrary external subnets as pure records) — P2; DNS record management — P2 (display PowerDNS SDN integration status only).
+Given a delegated IPv6 prefix (e.g. a `/56` from an upstream ISP/RIR), `GET /ipam/subnets/{prefix}/v6-plan` (`docs/api.md`) enumerates its `/64`-aligned blocks — PVE SDN's (and nearly every real-world v6 addressing plan's) atomic per-subnet unit — and proposes one block per currently v4-only VLAN/VNet, aligned in ascending order against VNet ID for a deterministic, reviewable proposal. A block an already-configured SDN v6 subnet occupies renders `allocated`; everything else not proposed to a target renders `free`. Read-only: the grid is a planning aid, not a write path — turning a `proposed` block into a real subnet goes through the ordinary `sdn.subnet.create` changeset op (directly, or via the dual-stack rollout wizard below).
+
+DHCPv6-PD from an upstream device vnprox doesn't manage is visibility-only, surfaced through `GET /ipv6/segments`'s RA observation (`docs/api.md`'s IPv6 section) — never fetched, requested, or configured by vnprox itself.
+
+## 6. Dual-stack rollout wizard (T-1404)
+
+`web/src/ipv6/DualStackWizard.tsx`, built on `docs/features/blueprints.md`'s `blueprint.Instantiate` pattern: picks an existing VLAN/VNet, collects a v6 subnet CIDR/gateway/SNAT choice, and stages an `sdn.subnet.create` op as one reviewable changeset — the ordinary stage→validate→diff→apply→confirm/rollback lifecycle, no new op type. Idempotent by construction (the same "entities that already match are skipped" contract every blueprint instantiation gets): re-running the wizard against a VNet that already has the requested v6 subnet yields a zero-op changeset, rendered as "already up to date" rather than a duplicate or conflicting draft. RA/DHCPv6 *parameter* control beyond addressing (M/O flags, DHCPv6 ranges) remains P1 — PVE SDN's own subnet model has no such fields yet (§6 of `docs/features/sdn.md`); once addressing exists on an SDN zone, the zone's own dnsmasq/radvd instance is what actually emits the RA the segments view (§5 above's sibling, `GET /ipv6/segments`) then observes.
+
+## 7. Out of scope v1
+
+Managing IP space outside Proxmox's knowledge (arbitrary external subnets as pure records) — P2; DNS record management — P2 (display PowerDNS SDN integration status only). Full RA/DHCPv6 parameter control (M/O flags, ranges) beyond addressing — P1, see §6 above.

@@ -22,10 +22,10 @@ package host
 // reachable (a misconfiguration this field would then under-report).
 type IPv6RAObservation struct {
 	Iface string
-	Vlan  int // 0 when the interface has no VLAN tag of its own
 	// Prefixes are the RA's advertised on-link prefixes, in CIDR form.
 	Prefixes             []string
 	RouterLifetimeSec    int
+	Vlan                 int // 0 when the interface has no VLAN tag of its own
 	RAPresent            bool
 	ManagedFlag          bool
 	OtherFlag            bool

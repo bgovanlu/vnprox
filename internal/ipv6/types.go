@@ -24,7 +24,7 @@ type Segment struct {
 // GET /sdn/evpn/status's partial/failedNodes cluster-fan-out convention.
 type SegmentsResponse struct {
 	Items       []Segment `json:"items"`
+	FailedNodes []string  `json:"failedNodes,omitempty"`
 	GeneratedAt int64     `json:"generatedAt"`
 	Partial     bool      `json:"partial,omitempty"`
-	FailedNodes []string  `json:"failedNodes,omitempty"`
 }

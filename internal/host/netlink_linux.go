@@ -65,9 +65,6 @@ type Real struct {
 	// installed on a stock Debian/PVE host by default — see IPv6RA's doc
 	// comment for the exact fallback behavior when it is absent.
 	RDisc6Path string
-	// RDisc6TimeoutMs bounds each per-interface rdisc6 solicit-and-wait
-	// call; defaults to RDisc6DefaultTimeoutMs. Overridable for tests.
-	RDisc6TimeoutMs int
 	// LLDPCommand is the argv used to fetch LLDP neighbor data as JSON;
 	// defaults to `lldpctl -f json`. Overridable for tests/environments
 	// where lldpd is installed under a different name or path.
@@ -84,6 +81,9 @@ type Real struct {
 	// status; defaults to `corosync-cfgtool -s` (T-803, docs/features/
 	// monitoring.md §5). Overridable for tests.
 	CorosyncStatusCommand []string
+	// RDisc6TimeoutMs bounds each per-interface rdisc6 solicit-and-wait
+	// call; defaults to RDisc6DefaultTimeoutMs. Overridable for tests.
+	RDisc6TimeoutMs int
 }
 
 // NewReal constructs a Real reader with the standard Debian/Proxmox paths

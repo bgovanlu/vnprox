@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -377,7 +378,7 @@ func handleSimulateVerify(graph SimulatorGraph, guestIPs GuestInteriorIPAMSource
 			sim.Request{Src: src, Dst: dst, Proto: req.Proto, Port: req.Port, Family: family})
 
 		var observed probe.Result
-		if dstIP, dstErr := resolveProbeTargetIP(r.Context(), client, snap, req.Dst); dstErr != "" {
+		if dstIP, dstErr := resolveProbeTargetIP(r.Context(), client, snap, req.Dst, family); dstErr != "" {
 			observed = probe.Result{Outcome: probe.OutcomeError, ExecError: dstErr}
 		} else {
 			observed = probe.Run(r.Context(), client, probe.Request{
@@ -453,7 +454,7 @@ func resolveQemuGuestNicOwner(snap inventory.Snapshot, ref inventory.Ref) (node 
 // diagnostic route, so resolving live rather than reusing the simulator's
 // (deliberately unpopulated) GuestIPs side-table is the honest choice here.
 // external has no concrete host to probe at all.
-func resolveProbeTargetIP(ctx context.Context, client probe.PVEExecer, snap inventory.Snapshot, ep endpointSpec) (ip, errMsg string) {
+func resolveProbeTargetIP(ctx context.Context, client probe.PVEExecer, snap inventory.Snapshot, ep endpointSpec, family sim.Family) (ip, errMsg string) {
 	switch ep.Kind {
 	case string(sim.EndpointIP):
 		if ep.IP == "" {
@@ -491,10 +492,10 @@ func resolveProbeTargetIP(ctx context.Context, client probe.PVEExecer, snap inve
 		if err != nil || len(ifaces) == 0 {
 			return "", fmt.Sprintf("could not resolve destination guest %s's IP via its guest agent", nic.Guest)
 		}
-		if addr := bestAgentIPv4(ifaces, nic.Mac); addr != "" {
+		if addr := bestAgentIP(ifaces, nic.Mac, family); addr != "" {
 			return addr, ""
 		}
-		return "", fmt.Sprintf("destination guest %s's guest agent reported no usable IPv4 address", nic.Guest)
+		return "", fmt.Sprintf("destination guest %s's guest agent reported no usable %s address", nic.Guest, family)
 	default:
 		return "", fmt.Sprintf("destination endpoint kind %q is not supported for a live probe", ep.Kind)
 	}
@@ -513,30 +514,58 @@ type guestAgentInterfaceReader interface {
 	GetGuestAgentInterfaces(ctx context.Context, node string, vmid int) ([]pve.AgentIface, error)
 }
 
-// bestAgentIPv4 prefers the address on the interface whose hardware address
+// agentAddrTypeForFamily maps sim.Family onto pve.AgentIface's own
+// IPAddressType vocabulary ("ipv4"/"ipv6", QEMU guest-agent's wire terms).
+func agentAddrTypeForFamily(family sim.Family) string {
+	if family == sim.FamilyV6 {
+		return "ipv6"
+	}
+	return "ipv4"
+}
+
+// bestAgentIP prefers the address on the interface whose hardware address
 // matches nicMac (the specific NIC the caller asked about), falling back to
-// the first non-loopback IPv4 address any interface reports — a guest's
-// agent-reported interface naming isn't guaranteed to line up with its PVE
-// NIC key (docs/features/ipam.md §1's own guest-agent caveat).
-func bestAgentIPv4(ifaces []pve.AgentIface, nicMac string) string {
+// the first non-loopback address of the requested family any interface
+// reports — a guest's agent-reported interface naming isn't guaranteed to
+// line up with its PVE NIC key (docs/features/ipam.md §1's own guest-agent
+// caveat). For family v6 (T-1404), a link-local address (fe80::/10) is
+// skipped as a fallback candidate — not a useful default live-probe
+// target — but still returned if it's the one on the MAC-matched
+// interface specifically (the caller asked for that interface's own
+// address, link-local or not).
+func bestAgentIP(ifaces []pve.AgentIface, nicMac string, family sim.Family) string {
+	wantType := agentAddrTypeForFamily(family)
 	var fallback string
 	for _, iface := range ifaces {
 		if strings.EqualFold(iface.Name, "lo") {
 			continue
 		}
 		for _, addr := range iface.IPAddresses {
-			if addr.IPAddressType != "" && addr.IPAddressType != "ipv4" {
+			if addr.IPAddressType != "" && addr.IPAddressType != wantType {
 				continue
 			}
-			if fallback == "" {
-				fallback = addr.IPAddress
-			}
-			if nicMac != "" && strings.EqualFold(iface.HardwareAddr, nicMac) {
+			macMatch := nicMac != "" && strings.EqualFold(iface.HardwareAddr, nicMac)
+			if macMatch {
 				return addr.IPAddress
+			}
+			if fallback == "" && (family != sim.FamilyV6 || !isLinkLocalV6(addr.IPAddress)) {
+				fallback = addr.IPAddress
 			}
 		}
 	}
 	return fallback
+}
+
+// isLinkLocalV6 reports whether addr is an IPv6 link-local address
+// (fe80::/10) — never a useful default live-probe fallback target (it's
+// only reachable from the exact same L2 segment with a zone id this route
+// has no way to supply).
+func isLinkLocalV6(addr string) bool {
+	parsed, err := netip.ParseAddr(addr)
+	if err != nil {
+		return false
+	}
+	return parsed.Is6() && parsed.IsLinkLocalUnicast()
 }
 
 // auditSimulateVerify appends one probe.verify audit_log row per attempted

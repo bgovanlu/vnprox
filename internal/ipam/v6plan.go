@@ -50,11 +50,11 @@ type V6PlanBlock struct {
 // V6PlanResponse is GET /ipam/subnets/{prefix}/v6-plan's response.
 type V6PlanResponse struct {
 	Prefix         string        `json:"prefix"`
+	Blocks         []V6PlanBlock `json:"blocks"`
+	GeneratedAt    int64         `json:"generatedAt"`
 	PrefixLen      int           `json:"prefixLen"`
 	BlockPrefixLen int           `json:"blockPrefixLen"`
 	TotalBlocks    int           `json:"totalBlocks"`
-	Blocks         []V6PlanBlock `json:"blocks"`
-	GeneratedAt    int64         `json:"generatedAt"`
 }
 
 // V6Plan builds docs/api.md's GET /ipam/subnets/{prefix}/v6-plan response:

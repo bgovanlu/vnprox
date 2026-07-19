@@ -41,4 +41,4 @@ For zones with PVE-managed DHCP (dnsmasq): range editor on subnets, static reser
 
 ## 6. Out of scope v1
 
-Custom FRR config beyond what PVE's EVPN controller writes; BGP to external fabrics beyond PVE's controller/exit-node model (view-only where present); IPv6 SLAAC management (display yes, config P1).
+Custom FRR config beyond what PVE's EVPN controller writes; BGP to external fabrics beyond PVE's controller/exit-node model (view-only where present); IPv6 SLAAC management — **display now real** (T-1404: `GET /ipv6/segments` surfaces per-segment RA presence, M/O flags, advertised prefixes, and DHCPv6-server presence, cluster-wide — `docs/api.md`'s IPv6 section, `docs/features/ipam.md` §5-§6), **basic addressing config now real** (a v6 subnet is an ordinary `sdn.subnet.create` op, staged directly or via the dual-stack rollout wizard); full RA/DHCPv6 *parameter* control (M/O flags, DHCPv6 ranges) beyond addressing remains P1 — PVE SDN's own subnet model has no such fields to set yet.

@@ -102,7 +102,7 @@ func TestSegments_IPv6DualstackFixture_GoldenScenarios(t *testing.T) {
 	// symptom itself: an interface with nothing in host.Reader.IPv6RA's
 	// result simply produces no segment entry, rather than a fabricated
 	// false-RA row).
-	if v21, ok := byIface["vnet21"]; ok {
+	if v21, present := byIface["vnet21"]; present {
 		t.Errorf("vnet21 should have no RA observation (the v6-broken symptom), got %+v", v21)
 	}
 

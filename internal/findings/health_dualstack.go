@@ -23,6 +23,7 @@
 // drift (an IPv4-only ALLOW rule with no IPv6 counterpart) is a distinct,
 // narrower case this VNet-boundary check does not attempt to catch — see
 // this task's completion report for the scope note.
+
 package findings
 
 import (
