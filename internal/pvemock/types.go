@@ -8,12 +8,20 @@ import "encoding/json"
 // permission model are all derived from one Fixture value.
 type Fixture struct {
 	Nodes    map[string]*NodeSpec `yaml:"nodes"`
+	Ceph     ClusterCephSpec      `yaml:"ceph,omitempty"`
 	SDN      SDNSpec              `yaml:"sdn"`
 	Users    []UserSpec           `yaml:"users"`
 	Mess     []string             `yaml:"mess"`
 	Firewall FirewallSpec         `yaml:"firewall"`
 	Cluster  ClusterSpec          `yaml:"cluster"`
 	Mock     MockOptions          `yaml:"mock"`
+}
+
+// ClusterCephSpec is Fixture.Ceph's shape: the cluster-wide public/cluster
+// network CIDRs GET /cluster/ceph/config reports (T-1503).
+type ClusterCephSpec struct {
+	PublicNetwork  string `yaml:"public_network,omitempty"`
+	ClusterNetwork string `yaml:"cluster_network,omitempty"`
 }
 
 // ClusterSpec describes cluster membership as reported by GET /cluster/status.
@@ -155,6 +163,22 @@ type NodeSpec struct {
 	IPv6RA         []IPv6RASpec `yaml:"ipv6_ra,omitempty"`
 	Network        []NetIface   `yaml:"network"`
 	NetworkPending []NetIface   `yaml:"network_pending"`
+	// CephOSDs is this node's fixture-declared Ceph OSD placement (T-1503),
+	// backing GET /nodes/{node}/ceph/osd (handleCephOSDs, ceph.go). Empty
+	// (the default) models a node hosting no OSDs — including every node in
+	// a cluster with no Ceph installed at all (Fixture.Ceph's zero value).
+	CephOSDs []CephOSDSpec `yaml:"ceph_osds,omitempty"`
+}
+
+// CephOSDSpec is one fixture-declared OSD (T-1503): id, up/in status, and
+// backing device, mirroring pve.CephOSD's shape (this node's own name is
+// implicit — GET /nodes/{node}/ceph/osd is node-scoped, exactly like real
+// PVE's route).
+type CephOSDSpec struct {
+	Device string `yaml:"device,omitempty"`
+	ID     int    `yaml:"id"`
+	Up     bool   `yaml:"up"`
+	In     bool   `yaml:"in"`
 }
 
 // IPv6RASpec is one fixture-declared interface's IPv6 RA/DHCPv6 observation
