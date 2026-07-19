@@ -364,9 +364,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// findings.Config.LatMesh directly below and api.Options.LatMesh
 	// further down (setupLatMesh's own doc comment); latMeshActors is
 	// registered with the run group alongside every other owned goroutine,
-	// below.
-	latMeshSvc, latMeshActors := setupLatMesh(cfg, db, graph, localNode, logger)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	// below. latMeshDiscoverer is the same *latmesh.GraphDiscoverer instance
+	// T-1306's setupMTUProbe reuses just below, rather than building a
+	// second, functionally-identical one.
+	latMeshSvc, latMeshDiscoverer, latMeshActors := setupLatMesh(cfg, db, graph, localNode, logger)
+	// T-1306: the path MTU prober — built on latMeshDiscoverer directly
+	// (internal/mtuprobe's own package doc comment: "reuses T-1303's
+	// infrastructure, does not duplicate it"), on its own coarser interval.
+	// Its Service satisfies findings.Config.MTU (vxlan_underlay_mtu's
+	// measured upgrade) directly below and api.Options.MTUProbe further
+	// down; mtuProbeActors joins the same run group.
+	mtuProbeSvc, mtuProbeActors := setupMTUProbe(cfg, latMeshDiscoverer, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -760,6 +769,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Flows:                 flowRepo,
 		PeerFlows:             peerFlows,
 		LatMesh:               latMeshSvc,
+		MTUProbe:              mtuProbeSvc,
 		Captures:              captureCoord,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
@@ -884,6 +894,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// each actor degrades independently" treatment flowActors/
 	// hostSampleActors above get.
 	for _, actor := range latMeshActors {
+		g.add(actor)
+	}
+	// T-1306: the path MTU prober's own probe loop (setupMTUProbe's doc
+	// comment) — always on, its own coarser interval; no prune-loop actor
+	// (current-state only, no SQLite ring — internal/mtuprobe's doc.go).
+	for _, actor := range mtuProbeActors {
 		g.add(actor)
 	}
 	// T-1301: the capture retention sweep — deletes per-session .pcap files

@@ -210,6 +210,10 @@ type Options struct {
 	// routes, matching every other optional Options field. Typically the
 	// daemon's own *latmesh.Service.
 	LatMesh LatMeshService
+	// MTUProbe backs T-1306's GET /mtuprobe/results (docs/api.md's Path MTU
+	// prober section); nil skips mounting the route, matching every other
+	// optional Options field. Typically the daemon's own *mtuprobe.Service.
+	MTUProbe MTUProbeService
 	// Captures is T-1301's packet-capture coordinator seam (POST /captures,
 	// POST /captures/{id}/stop, GET /captures/{id}, GET /captures). Nil skips
 	// mounting every /captures route, same degraded-mode treatment as every
@@ -304,6 +308,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
 		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
+		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)

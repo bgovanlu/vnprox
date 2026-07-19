@@ -382,7 +382,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, logger *slog.Logger) *findings.Engine {
+func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
@@ -399,6 +399,8 @@ func setupFindings(graph *inventory.Graph, driftSvc findings.DriftProvider, topo
 		// automation.go's webhookHealthAdapter doc comment.
 		Webhooks: webhookHealthAdapter{repo: webhookRepo, logger: logger},
 		LatMesh:  latMeshSvc,
+		// T-1306: vxlan_underlay_mtu's measured-MTU upgrade input.
+		MTU:      mtuSvc,
 		Logger:   logger,
 		Notifier: notifier,
 		OnChange: func(count int) {
