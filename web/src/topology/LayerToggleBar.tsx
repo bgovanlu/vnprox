@@ -40,6 +40,14 @@ export interface LayerToggleBarProps {
    * keeps this bar's exact prior output. */
   wgLayerActive?: boolean;
   onToggleWG?: () => void;
+  /** T-1503: a 9th "Ceph" toggle, same optional-pair convention as
+   * wgLayerActive/onToggleWG above — a client-only overlay painting
+   * ceph-public/ceph-cluster badges onto existing bond/PhysNic map nodes
+   * (topology/cephOverlay.ts), not one of the server-emitted entity layers
+   * either. Both props must be provided together to render the button;
+   * omitted keeps this bar's exact prior output. */
+  cephLayerActive?: boolean;
+  onToggleCeph?: () => void;
 }
 
 /** The `1`-`4` layer toggle rail (docs/features/topology.md §1), plus an
@@ -56,6 +64,8 @@ export function LayerToggleBar({
   onToggleMTU,
   wgLayerActive,
   onToggleWG,
+  cephLayerActive,
+  onToggleCeph,
 }: LayerToggleBarProps) {
   return (
     <div className="flex gap-1 rounded-md border border-slate-200 bg-white/90 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/90">
@@ -139,6 +149,21 @@ export function LayerToggleBar({
           )}
         >
           WireGuard
+        </button>
+      )}
+      {onToggleCeph && (
+        <button
+          type="button"
+          aria-pressed={cephLayerActive ?? false}
+          onClick={onToggleCeph}
+          className={clsx(
+            "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors",
+            cephLayerActive
+              ? "bg-orange-600 text-white"
+              : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+          )}
+        >
+          Ceph
         </button>
       )}
     </div>
