@@ -2331,6 +2331,8 @@ export interface MTUProbeResult {
 /** GET /mtuprobe/results response envelope. */
 export interface MTUProbeResults {
   items: MTUProbeResult[];
+}
+
 // --- Conntrack (T-1305 backend / frontend; docs/api.md's "Conntrack"
 // section + internal/api/conntrack.go's conntrackEntryResponse) -----------
 
