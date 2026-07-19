@@ -399,3 +399,47 @@ from; and pvemock does not model an `ifreload` outage at all):
       acceptance must be confirmed across the full PVE 8.2+/9.x kernel range before shipping: a
       BPF verifier rejection is a load-time failure, not a runtime one, so it needs to be caught
       per-kernel-version, not just once.
+
+## SR-IOV virtual function lifecycle (T-1506)
+
+Named in the task card from day one, per the arc's standing "mock-first / needs-hardware-validation"
+constraint — no acceptance criterion for this task required real SR-IOV hardware; both items below
+are genuinely unverifiable against `internal/pvemock`.
+
+- [ ] **Real VF creation and kernel/driver behavior.** `internal/host.VFProvisionCommands`
+      (`internal/host/vfmarker.go`) renders a `vf.provision` op into `echo <N> >
+      /sys/class/net/<pf>/device/sriov_numvfs` followed by per-VF `ip link set <pf> vf <id> ...`
+      lines, applied via the ordinary node-file post-up/post-down path
+      (`internal/change/ifaces/vfop.go`) — this task only proves those commands are *rendered*
+      correctly (golden ops + apply/rollback against the fixture `host.Reader`,
+      `internal/change/apply_vf_test.go`); it has no way to execute them against a real NIC.
+      Real hardware/driver behavior this needs to confirm: (1) rewriting `sriov_numvfs` while VFs
+      already exist and one is attached to a running guest — real Linux SR-IOV drivers commonly
+      require `sriov_numvfs` to be reset to `0` before it can be increased again, which
+      `VFProvisionCommands` does not currently sequence (it always writes the target count
+      directly); (2) whether a VF actively passed through to a running guest can be reconfigured
+      (`ip link set ... vlan/mac/spoofchk/trust`) live from the PF's host side without first
+      detaching it, or whether the command silently no-ops/errors; (3) driver-specific quirks
+      (ixgbevf/i40e/mlx5 etc. are known to differ on exactly which `ip link set vf` sub-options
+      they honor) that could make a rendered command a no-op on some real NICs.
+- [ ] **PCI address resolution via the `virtfnN` sysfs symlink
+      (`internal/host.sysfsVFPCIAddr`, `internal/host/ethtool.go`).** The real (non-fixture)
+      reader resolves a VF's PCI bus address by reading
+      `/sys/class/net/<pf>/device/virtfn<vfID>`'s symlink target — this package's own inference
+      from the kernel's documented SR-IOV sysfs convention, exercised in this task only via a
+      fixture that declares `pci_addr` directly (`internal/pvemock`'s `VFEntrySpec`). Confirm
+      against real hardware that `virtfnN`'s index `N` always matches netlink's own `IFLA_VF_INFO`
+      VF `id` field one-for-one (an off-by-one or reordering here would silently mis-attribute a
+      VF's PCI address, which the guest<->VF correlation
+      — `internal/topology.ResolveVFAssignments` — depends on to match against a guest's `hostpci`
+      config).
+- [ ] **Firmware-level spoof-check enforcement.** `vf_spoofcheck_mismatch`
+      (`internal/topology.VFPolicyMismatch`, `internal/drift/sriov.go`,
+      `internal/change/validate_referential.go`'s `checkVFProvision`) treats a VF's
+      `spoofchk`/`trust` bits as reported by netlink as authoritative — it has no way to confirm
+      those bits are actually *enforced* by the NIC's firmware for a given driver/firmware
+      combination (some SR-IOV NICs are documented to accept the `ip link set ... spoofchk on`
+      call without fully enforcing it in all traffic paths, e.g. certain VLAN-tag-strip
+      configurations). Confirm on real hardware that a VF configured `spoofchk on` genuinely
+      cannot forge its source MAC/VLAN before treating this finding's absence as a security
+      guarantee rather than a configuration-intent check.

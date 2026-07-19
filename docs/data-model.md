@@ -38,7 +38,10 @@ Every entity embeds `Ref`:
 type Ref struct {
     Kind Kind   // "physnic","bond","bridge","vlan","ovs-bridge","ovs-bond",
                 // "sdn-zone","sdn-vnet","sdn-subnet","guest","guest-nic",
-                // "lldp-neighbor","fw-ruleset","node"
+                // "lldp-neighbor","fw-ruleset","node",
+                // "vf" (T-1506: an SR-IOV virtual function's own identity —
+                // "<pfName>/vf<index>" — not a merge/provenance-tracked
+                // graph entity itself, see PhysNic.sriovVFs below)
     Node string // "" for cluster-scoped entities (SDN, cluster firewall)
     ID   string // stable within (Kind,Node), e.g. "vmbr0", "eno1", "zone1/vnet1"
 }
@@ -48,7 +51,8 @@ Selected entities (full field lists are the implementing task's responsibility; 
 
 | Type | Key fields |
 |---|---|
-| `PhysNic` | name, mac, driver, speedMbps, duplex, linkUp, mtu, pciAddr, sriovVFs, pending |
+| `PhysNic` | name, mac, driver, speedMbps, duplex, linkUp, mtu, pciAddr, sriovVFs []VirtualFunction (T-1506, given full shape below — host-netlink-only, excluded from the merge/provenance/delta machinery exactly like Bridge.fdb below, since it is one contributing source's live hardware/driver state, not a config value multiple sources could disagree on), pending |
+| `VirtualFunction` (T-1506) | ref (Kind `vf`, "<pfName>/vf<index>"), pf Ref (the owning PhysNic), macAddr, vlan, spoofCheck bool, trust bool, pciAddr, assignedGuest Ref (resolved live against guest `hostpci` config by `internal/topology.ResolveVFAssignments` — never baked into the collector-owned field, "never guessed": the zero Ref when no guest's hostpci config resolves to this VF's pciAddr) |
 | `Bond` | name, mode (802.3ad, active-backup, ...), slaves []string, lacpRate, xmitHashPolicy, miiStatus, activeSlave, mtu, pending, slaveDetail []BondSlave (per-slave runtime status, host-netlink-only) |
 | `BondSlave` | name, miiStatus, permHWAddr, linkFailureCount, active bool — plus (T-804) LACP actor/partner detail decoded from `/proc/net/bonding/<name>`'s "details actor/partner lacp pdu" block, opportunistically refined by netlink AD-info attributes where the kernel exposes them (`internal/host/bonding.go`, `internal/host/netlink_linux.go`): actorSystemID, actorSystemPriority, actorKey, actorSynchronized/actorCollecting/actorDistributing bool (the decoded 802.3ad port-state bits — "bond is up" vs. "bond is negotiated correctly"), partnerSystemID, partnerSystemPriority, partnerKey, lacpDetailSet bool (false — every field above at its zero value — for a bond not running 802.3ad, or an older kernel/driver that never emits the block; best-effort, not a hard requirement) |
 | `Bridge` | name, kind (linux|ovs), ports []Ref, vlanAware bool, vids []VidRange, stp, mtu, addresses []CIDR, gateway, comments, pending, fdb []FDBEntry (T-306, added retroactively per docs/development.md's definition-of-done #4: `{mac, port, vlan, master bool, permanent bool, stale bool}`, host-netlink-only — excluded from the merge/provenance/delta machinery every other field here goes through, since FDB churns on every poll and has only one contributing source; see `internal/topology.FDB`/`FDBSearch` for the cluster-wide, ownership-labeled view built from it) |
@@ -56,7 +60,7 @@ Selected entities (full field lists are the implementing task's responsibility; 
 | `SdnZone` | id, type (simple|vlan|qinq|vxlan|evpn), bridge, mtu, nodes []string, exitNodes []string (evpn), peers []string (vxlan/evpn underlay peer addresses), controller, vrfVxlan, ipam |
 | `SdnVnet` | id, zone, tag, alias, vlanAware |
 | `SdnSubnet` | id (cidr), vnet, gateway, snat bool, dhcpRanges, dnsZonePrefix |
-| `Guest` | vmid, name, type (qemu|lxc), node, status |
+| `Guest` | vmid, name, type (qemu|lxc), node, status, hostPci map[string]string (T-1506: raw `hostpciN` PCI-passthrough config verbatim from PVE guest config, e.g. `{"hostpci0": "0000:01:00.1,pcie=1"}` — read by `internal/topology.ResolveVFAssignments` to correlate against VF inventory; a resource-mapping form like `"mapping=<name>"` is left uncorrelated, never guessed) |
 | `GuestNic` | guest Ref, key ("net0"), bridgeOrVnet Ref, vid, model, mac, firewall bool, rateMbps, linkDown bool |
 | `LldpNeighbor` | localNic Ref, chassisName, chassisId, portId, portDescr, mgmtIP, vlan info, ttl |
 | `FwRuleset` | scope (cluster|node|guest), ref, enabled, defaultIn/Out policy, rules []FwRule, aliases []FwAlias, ipsets []FwIPSet, groups []FwGroup |
@@ -215,6 +219,7 @@ CREATE TABLE changeset_schedules (     -- T-1103: internal/store/migrations/0010
 | guest | `guest.nic.update` (reattach bridge/vnet, vid, rate, firewall flag) |
 | fw | `fw.rule.create/update/delete/move`, `fw.options.update`, `fw.alias.*`, `fw.ipset.*`, `fw.group.*` |
 | ipam | `ipam.alloc.create/delete` |
+| vf (T-1506) | `vf.provision` (params: `count` or explicit `vfs` []{id, macAddr?, vlan?, spoofCheck?, trust?}, top-level `vlan?`/`macAddr?`/`spoofCheck?`/`trust?` defaults — exactly one of `count`/`vfs` set, `internal/host.ResolveVFPlan`'s shared resolution) — target is the PF's own `physnic` Ref (the entity whose VF pool is being configured), not a synthetic per-VF id, since one op can provision a whole batch in one shot; there is no `vf.update`/`vf.delete` op — re-provisioning is always a fresh `vf.provision`, mirroring the "no silent overwrite of a generated rule" convention this vocabulary already uses elsewhere. Applied via the ordinary node-file post-up/post-down path (category (2)/(3) below), exactly like `bond.create`/`bridge.create` — never a second mutation mechanism. |
 
 Each op maps to one or more **apply steps**; the planner orders steps: (1) cluster-scope PVE API calls, (2) per-node interface file staging, (3) per-node `ifreload -a` (executed directly by vnproxd's own `NodeAgent` — **correction, T-607 docs audit:** not "via PVE's network reload endpoint" as this line previously said; `cmd/vnproxd/changeagent.go` writes `/etc/network/interfaces` and execs `ifreload` itself, since vnproxd runs on the node — see `docs/architecture.md` §4 for the fuller correction), (4) `sdn.apply` last when present. Rollback executes the inverse from the pre-snapshot in reverse order.
 
