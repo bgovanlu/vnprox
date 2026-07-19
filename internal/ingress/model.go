@@ -137,6 +137,17 @@ func NewDefaultRegistry(client *http.Client) Registry {
 	if client == nil {
 		client = &http.Client{Timeout: defaultHTTPTimeout}
 	}
+	// Never follow redirects: an operator-configured target that has been
+	// compromised (or misconfigured) could otherwise 30x-redirect vnprox's
+	// discovery fetch toward an internal endpoint it was never pointed at
+	// (review-T-1406 SSRF hardening). We only ever read the status body the
+	// target itself returns; a redirect is surfaced as the final response,
+	// not chased.
+	if client.CheckRedirect == nil {
+		client.CheckRedirect = func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
 	return Registry{
 		KindHAProxy: &HAProxyDiscoverer{Client: client},
 		KindNginx:   &NginxDiscoverer{Client: client},

@@ -32,12 +32,16 @@ type HAProxyDiscoverer struct {
 // port after host" parse error for what naive concatenation would hit
 // there). Already-`;csv`-suffixed addresses pass through unchanged.
 func haproxyCSVURL(address string) (string, error) {
-	if strings.Contains(address, "csv") {
-		return address, nil
-	}
 	u, err := url.Parse(address)
 	if err != nil {
 		return "", fmt.Errorf("ingress: parsing haproxy target address %q: %w", address, err)
+	}
+	// Match the `;csv` modifier on the path specifically, not a bare "csv"
+	// substring anywhere in the URL — a host or path merely containing "csv"
+	// (e.g. "haproxy-csv.lan") must still get the `;csv` suffix appended
+	// (review-T-1406 correctness fix).
+	if strings.Contains(u.Path, ";csv") {
+		return address, nil
 	}
 	switch u.Path {
 	case "", "/":
