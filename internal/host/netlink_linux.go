@@ -285,7 +285,22 @@ func buildLinkState(
 		}
 	}
 	if len(attrs.Vfs) > 0 {
-		ls.SRIOVNumVFs = len(attrs.Vfs)
+		ls.VFs = make([]VF, len(attrs.Vfs))
+		for i, vf := range attrs.Vfs {
+			ls.VFs[i] = VF{
+				ID:         vf.ID,
+				MacAddr:    vf.Mac.String(),
+				VLAN:       vf.Vlan,
+				SpoofCheck: vf.Spoofchk,
+				Trust:      vf.Trust != 0,
+				// PCIAddr is best-effort (needs-hardware-validation): the
+				// exact virtfnN sysfs symlink naming/ordering is this
+				// package's own inference from the kernel's SR-IOV sysfs
+				// convention, not verified against real SR-IOV hardware —
+				// see planning/reports/needs-hardware-validation.md.
+				PCIAddr: sysfsVFPCIAddr(attrs.Name, vf.ID),
+			}
+		}
 	}
 
 	switch v := l.(type) {

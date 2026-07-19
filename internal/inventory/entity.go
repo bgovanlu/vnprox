@@ -85,6 +85,26 @@ func boolStr(b bool) string {
 	return "0"
 }
 
+// hostPCIJoin canonicalizes a Guest.HostPCI map into a stable, order
+// insensitive string for fieldMap (sorted "key=value" pairs), the same
+// map-to-deterministic-string convention this file uses throughout so a
+// reordered-but-equal poll never registers as a spurious delta.
+func hostPCIJoin(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = k + "=" + m[k]
+	}
+	return strings.Join(parts, ",")
+}
+
 // --- cluster node (single-source: pve-cluster) ---------------------------
 
 // Node is one PVE cluster member.
@@ -118,17 +138,17 @@ func (n *Node) fieldMap() map[string]string {
 // interfaces file / PVE network API.
 type PhysNic struct {
 	Ref
-	Duplex  string
-	Pending string
-	Mac     string
-	Driver  string
-	PCIAddr string
 	rawSrc
-	OperState   string
 	Name        string
+	Mac         string
+	Driver      string
+	PCIAddr     string
+	Duplex      string
+	OperState   string
+	Pending     string
+	SRIOVVFs    []VirtualFunction
 	SpeedMbps   int
 	MTUDeclared int
-	SRIOVVFs    int
 	MTU         int
 	LinkUp      bool
 	LinkUpSet   bool
@@ -137,6 +157,7 @@ type PhysNic struct {
 func (p *PhysNic) GetRef() Ref { return p.Ref }
 func (p *PhysNic) clone() Entity {
 	cp := *p
+	cp.SRIOVVFs = append([]VirtualFunction(nil), p.SRIOVVFs...)
 	return &cp
 }
 func (p *PhysNic) fieldMap() map[string]string {
@@ -144,9 +165,30 @@ func (p *PhysNic) fieldMap() map[string]string {
 		"name": p.Name, "mac": p.Mac, "driver": p.Driver, "pciAddr": p.PCIAddr,
 		"duplex": p.Duplex, "operState": p.OperState,
 		"speedMbps": strconv.Itoa(p.SpeedMbps), "mtu": strconv.Itoa(p.MTU),
-		"mtuDeclared": strconv.Itoa(p.MTUDeclared), "sriovVFs": strconv.Itoa(p.SRIOVVFs),
-		"linkUp": boolStr(p.LinkUp), "pending": p.Pending,
+		"mtuDeclared": strconv.Itoa(p.MTUDeclared),
+		"linkUp":      boolStr(p.LinkUp), "pending": p.Pending,
 	}
+}
+
+// VirtualFunction is one SR-IOV virtual function belonging to a PhysNic
+// acting as a PF (T-1506, docs/data-model.md §1). PF names the owning
+// PhysNic's Ref; Ref (this VF's own identity, Kind KindVF,
+// "<pfName>/vf<ID>") lets it be named independently in findings
+// (vf_spoofcheck_mismatch) and changeset validation output even though it
+// is not itself tracked in the graph (see PhysNic.SRIOVVFs' doc comment).
+// AssignedGuest is the zero Ref when no guest's hostpci config currently
+// resolves to this VF's PCIAddr — "never guessed", the same honesty
+// contract flow_samples' src_ref/dst_ref and T-1501's k8s node correlation
+// document elsewhere in this codebase.
+type VirtualFunction struct {
+	Ref
+	PF            Ref
+	MacAddr       string
+	PCIAddr       string
+	AssignedGuest Ref
+	VLAN          int
+	SpoofCheck    bool
+	Trust         bool
 }
 
 // BondSlaveState is one slave's runtime status inside a bond.
@@ -478,6 +520,7 @@ func (s *SdnSubnet) fieldMap() map[string]string {
 
 // Guest is a qemu VM or lxc container.
 type Guest struct {
+	HostPCI map[string]string
 	Ref
 	rawSrc
 	Name   string
@@ -490,12 +533,18 @@ type Guest struct {
 func (g *Guest) GetRef() Ref { return g.Ref }
 func (g *Guest) clone() Entity {
 	cp := *g
+	if g.HostPCI != nil {
+		cp.HostPCI = make(map[string]string, len(g.HostPCI))
+		for k, v := range g.HostPCI {
+			cp.HostPCI[k] = v
+		}
+	}
 	return &cp
 }
 func (g *Guest) fieldMap() map[string]string {
 	return map[string]string{
 		"vmid": strconv.Itoa(g.VMID), "name": g.Name, "type": g.Type,
-		"node": g.Node, "status": g.Status,
+		"node": g.Node, "status": g.Status, "hostPci": hostPCIJoin(g.HostPCI),
 	}
 }
 

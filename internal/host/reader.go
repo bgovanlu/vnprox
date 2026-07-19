@@ -135,25 +135,43 @@ var ErrNotFound = errors.New("host: not found")
 // LinkState is one netlink-equivalent link (physical NIC, bond, bridge,
 // VLAN sub-interface, veth, OVS bridge/bond, ...) as observed on a node.
 type LinkState struct {
-	Bond        *BondDetail
-	Bridge      *BridgeDetail
-	OperState   string
-	VlanParent  string
-	Driver      string
-	PCIAddr     string
-	Kind        string
-	Mac         string
-	Name        string
-	Master      string
-	Duplex      string
-	Members     []string
-	Addresses   []string
-	SpeedMbps   int
-	VlanID      int
-	SRIOVNumVFs int
-	MTU         int
-	Index       int
-	LinkUp      bool
+	Bond       *BondDetail
+	Bridge     *BridgeDetail
+	Name       string
+	VlanParent string
+	Driver     string
+	PCIAddr    string
+	Kind       string
+	Mac        string
+	OperState  string
+	Master     string
+	Duplex     string
+	Members    []string
+	Addresses  []string
+	VFs        []VF
+	SpeedMbps  int
+	VlanID     int
+	MTU        int
+	Index      int
+	LinkUp     bool
+}
+
+// VF is one SR-IOV virtual function on a PF link, as internal/host reports
+// it (real.go's netlink read, or a fixture's declared VFSpec list —
+// fixture.go/pvemock.VF). ID is the VF's index on its PF (netlink's
+// IFLA_VF_INFO id / `ip link show <pf>`'s "vf N"). PCIAddr is best-effort:
+// real.go resolves it from the PF's /sys/class/net/<pf>/device/virtfnN
+// symlink (needs-hardware-validation — see
+// planning/reports/needs-hardware-validation.md), empty when that read
+// fails or the platform doesn't support it; a fixture always declares it
+// directly.
+type VF struct {
+	MacAddr    string
+	PCIAddr    string
+	ID         int
+	VLAN       int
+	SpoofCheck bool
+	Trust      bool
 }
 
 // BondDetail is bond runtime state as reported by

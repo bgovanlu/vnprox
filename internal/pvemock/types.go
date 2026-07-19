@@ -276,15 +276,19 @@ func (i NetIface) MarshalJSON() ([]byte, error) {
 
 // LinkInfo is netlink-equivalent physical/virtual link state for one iface.
 type LinkInfo struct {
-	Mac       string         `yaml:"mac" json:"mac"`
-	Driver    string         `yaml:"driver,omitempty" json:"driver,omitempty"`
-	Duplex    string         `yaml:"duplex,omitempty" json:"duplex,omitempty"`
-	PCIAddr   string         `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
-	Members   []string       `yaml:"members,omitempty" json:"members,omitempty"`
-	FDB       []FDBEntrySpec `yaml:"fdb,omitempty" json:"fdb,omitempty"`
-	SpeedMbps int            `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
-	MTU       int            `yaml:"mtu,omitempty" json:"mtu,omitempty"`
-	LinkUp    bool           `yaml:"link_up" json:"link_up"`
+	Mac     string         `yaml:"mac" json:"mac"`
+	Driver  string         `yaml:"driver,omitempty" json:"driver,omitempty"`
+	Duplex  string         `yaml:"duplex,omitempty" json:"duplex,omitempty"`
+	PCIAddr string         `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
+	Members []string       `yaml:"members,omitempty" json:"members,omitempty"`
+	FDB     []FDBEntrySpec `yaml:"fdb,omitempty" json:"fdb,omitempty"`
+	// VFs (T-1506) is this (physical-kind) link's fixture-declared SR-IOV
+	// virtual functions — nil for every non-physical link, same convention
+	// as FDB above (bridge-only).
+	VFs       []VFEntrySpec `yaml:"vfs,omitempty" json:"vfs,omitempty"`
+	SpeedMbps int           `yaml:"speed_mbps,omitempty" json:"speed_mbps,omitempty"`
+	MTU       int           `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	LinkUp    bool          `yaml:"link_up" json:"link_up"`
 }
 
 // FDBEntrySpec is one fixture-declared bridge forwarding-database entry: a
@@ -298,6 +302,20 @@ type FDBEntrySpec struct {
 	Master    bool   `yaml:"master,omitempty" json:"master,omitempty"`
 	Permanent bool   `yaml:"permanent,omitempty" json:"permanent,omitempty"`
 	Stale     bool   `yaml:"stale,omitempty" json:"stale,omitempty"`
+}
+
+// VFEntrySpec is one fixture-declared SR-IOV virtual function on a PF link
+// (T-1506): id (the VF's index on its PF, "vf N" in `ip link show`), an
+// optionally-assigned MAC/VLAN, and its spoof-check/trust bits — the same
+// fields internal/host.VF (a real netlink read) and internal/inventory.
+// VirtualFunction (the resolved inventory projection) carry.
+type VFEntrySpec struct {
+	Mac        string `yaml:"mac,omitempty" json:"mac,omitempty"`
+	PCIAddr    string `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
+	ID         int    `yaml:"id" json:"id"`
+	Vlan       int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
+	SpoofCheck bool   `yaml:"spoof_check,omitempty" json:"spoof_check,omitempty"`
+	Trust      bool   `yaml:"trust,omitempty" json:"trust,omitempty"`
 }
 
 // LLDPNeighbor is one LLDP-discovered neighbor on a local iface.

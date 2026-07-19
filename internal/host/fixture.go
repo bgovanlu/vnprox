@@ -234,8 +234,26 @@ func convertFixtureLink(l pvemock.LinkState, parsed *File) LinkState {
 		ls.Bridge = fixtureBridgeDetail(opts, l.FDB)
 	case "vlan":
 		ls.VlanID, ls.VlanParent = fixtureVlanInfo(l.Name, opts)
+	case "physical":
+		ls.VFs = convertFixtureVFs(l.VFs)
 	}
 	return ls
+}
+
+// convertFixtureVFs converts a fixture's declared SR-IOV VFs (T-1506,
+// pvemock.LinkState.VFs) to this package's own VF shape.
+func convertFixtureVFs(vfs []pvemock.VF) []VF {
+	if len(vfs) == 0 {
+		return nil
+	}
+	out := make([]VF, len(vfs))
+	for i, v := range vfs {
+		out[i] = VF{
+			ID: v.ID, MacAddr: v.Mac, VLAN: v.Vlan,
+			SpoofCheck: v.SpoofCheck, Trust: v.Trust, PCIAddr: v.PCIAddr,
+		}
+	}
+	return out
 }
 
 // normalizeFixtureKind maps pvemock's NetIface.Type strings (which mirror

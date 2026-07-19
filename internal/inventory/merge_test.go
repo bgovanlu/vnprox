@@ -52,8 +52,6 @@ func setField(t *testing.T, e Entity, field string, idx int) {
 			v.OperState = s
 		case "speedMbps":
 			v.SpeedMbps = n
-		case "sriovVFs":
-			v.SRIOVVFs = n
 		case "mtu":
 			v.MTU = n
 		case "mtuDeclared":

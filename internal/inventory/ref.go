@@ -25,6 +25,19 @@ const (
 	KindGuestNic     Kind = "guest-nic"
 	KindLldpNeighbor Kind = "lldp-neighbor"
 	KindFwRuleset    Kind = "fw-ruleset"
+
+	// KindVF names an SR-IOV virtual function (T-1506): a PhysNic acting as
+	// a PF carries zero or more VFs (PhysNic.SRIOVVFs), each identified by
+	// "<pfName>/vf<index>" within its owning node. A VF *is*
+	// collector-observed (host-netlink), like PhysNic itself, but — like
+	// Bridge.FDB/Bond.SlaveDetail — is not merge/provenance-tracked as a
+	// top-level graph entity (see entity.go's PhysNic.SRIOVVFs doc
+	// comment); this Kind exists purely so a VF has a first-class,
+	// parseable Ref for changeset op targets (vf.provision targets its PF,
+	// but a VF's own Ref is exposed in findings/inspector output),
+	// mirroring the role KindLldpNeighbor plays for another
+	// host-netlink-sourced, per-NIC observation.
+	KindVF Kind = "vf"
 )
 
 // knownKinds is the closed set of valid Kind values. ParseRef rejects any
@@ -34,7 +47,7 @@ var knownKinds = map[Kind]bool{
 	KindNode: true, KindPhysNic: true, KindBond: true, KindBridge: true,
 	KindVlan: true, KindOVSBridge: true, KindOVSBond: true, KindSDNZone: true,
 	KindSDNVnet: true, KindSDNSubnet: true, KindGuest: true, KindGuestNic: true,
-	KindLldpNeighbor: true, KindFwRuleset: true,
+	KindLldpNeighbor: true, KindFwRuleset: true, KindVF: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)
