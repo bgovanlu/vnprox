@@ -117,19 +117,12 @@ func (s *Service) Tick(ctx context.Context) {
 // cancelled — the same owned-goroutine/ticker shape internal/flow.Service.
 // RunPruneLoop and internal/findings.Engine.RunLoop both use, per
 // docs/development.md's "every goroutine has an owner and a shutdown path".
+// Delegates to RunTicker (this package's shared scheduler primitive) rather
+// than hand-rolling its own ticker loop, so a sibling package built on this
+// one (internal/mtuprobe, T-1306) can reuse the exact same mechanism.
 func (s *Service) RunLoop(ctx context.Context) error {
 	interval := time.Duration(s.cfg.ProbeIntervalSec) * time.Second
-	s.Tick(ctx)
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-t.C:
-			s.Tick(ctx)
-		}
-	}
+	return RunTicker(ctx, interval, s.Tick)
 }
 
 // RunPruneLoop enforces this package's documented ring bound (retention
@@ -143,17 +136,7 @@ func (s *Service) RunPruneLoop(ctx context.Context, interval time.Duration) erro
 	if interval <= 0 {
 		interval = DefaultPruneInterval
 	}
-	s.prune(ctx) // prime immediately rather than waiting a full interval
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-t.C:
-			s.prune(ctx)
-		}
-	}
+	return RunTicker(ctx, interval, s.prune)
 }
 
 func (s *Service) prune(ctx context.Context) {
