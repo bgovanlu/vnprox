@@ -94,8 +94,8 @@ func splitPeerTarget(id string) (tunnelID, publicKey string) {
 // sealed private key travels verbatim (never decrypted), so a restored
 // (rolled-back) delete restores the identical keypair.
 type wgSnapState struct {
-	Tunnels []store.WireGuardTunnel          `json:"tunnels"`
 	Peers   map[string][]store.WireGuardPeer `json:"peers"`
+	Tunnels []store.WireGuardTunnel          `json:"tunnels"`
 }
 
 func (g *fakeWGGateway) SnapshotWg(ctx context.Context, node string) (string, error) {
@@ -106,9 +106,9 @@ func (g *fakeWGGateway) SnapshotWg(ctx context.Context, node string) (string, er
 	st := wgSnapState{Peers: map[string][]store.WireGuardPeer{}}
 	for _, tun := range tuns {
 		st.Tunnels = append(st.Tunnels, tun)
-		peers, err := g.repo.ListPeers(ctx, tun.ID)
-		if err != nil {
-			return "", err
+		peers, listErr := g.repo.ListPeers(ctx, tun.ID)
+		if listErr != nil {
+			return "", listErr
 		}
 		st.Peers[tun.ID] = peers
 	}
@@ -182,8 +182,8 @@ func TestApply_WgTunnelLifecycle_CreateConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := svc.Validate(ctx, cs.ID, "root@pam"); err != nil {
-		t.Fatalf("Validate: %v", err)
+	if _, vErr := svc.Validate(ctx, cs.ID, "root@pam"); vErr != nil {
+		t.Fatalf("Validate: %v", vErr)
 	}
 
 	applied, err := svc.Apply(ctx, cs.ID, "root@pam", nil, 0)
@@ -250,11 +250,11 @@ func TestApply_WgTunnelLifecycle_RollbackOnTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := svc.Apply(ctx, cs.ID, "root@pam", nil, 0); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if _, applyErr := svc.Apply(ctx, cs.ID, "root@pam", nil, 0); applyErr != nil {
+		t.Fatalf("Apply: %v", applyErr)
 	}
-	if _, err := gw.repo.GetTunnel(ctx, "tun1"); err != nil {
-		t.Fatalf("tunnel should exist after apply: %v", err)
+	if _, getErr := gw.repo.GetTunnel(ctx, "tun1"); getErr != nil {
+		t.Fatalf("tunnel should exist after apply: %v", getErr)
 	}
 
 	// Deadline elapses with no confirm -> auto-rollback.

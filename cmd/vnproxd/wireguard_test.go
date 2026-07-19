@@ -21,8 +21,8 @@ func wgTestGateway(t *testing.T) (*hostWGGateway, *store.WireGuardRepo, *store.S
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	key := make([]byte, store.KeySize)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatalf("rand: %v", err)
+	if _, randErr := rand.Read(key); randErr != nil {
+		t.Fatalf("rand: %v", randErr)
 	}
 	cipher, err := store.NewSessionCipher(key)
 	if err != nil {

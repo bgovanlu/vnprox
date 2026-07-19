@@ -7,6 +7,7 @@
 // AlertRuleRepo does for target_secret_enc. The private key is never returned
 // by any API response, log line, or audit detail (docs/security.md's WireGuard
 // credential-storage note).
+
 package store
 
 import (
@@ -22,13 +23,13 @@ type WireGuardTunnel struct {
 	ID            string
 	Node          string
 	IfName        string
-	PrivateKeyEnc []byte
 	PublicKey     string
-	ListenPort    int
-	Addresses     []string
-	MTU           int
 	Carrier       string
 	CreatedBy     string
+	PrivateKeyEnc []byte
+	Addresses     []string
+	ListenPort    int
+	MTU           int
 	CreatedAt     int64
 }
 
@@ -37,11 +38,11 @@ type WireGuardPeer struct {
 	TunnelID        string
 	PublicKey       string
 	Endpoint        string
+	ClusterID       string
 	AllowedIPs      []string
 	PresharedKeyEnc []byte
 	KeepaliveSec    int
 	External        bool
-	ClusterID       string
 }
 
 // WireGuardRepo is the wireguard_tunnels / wireguard_peers repository.
@@ -210,8 +211,8 @@ func (r *WireGuardRepo) ListPeers(ctx context.Context, tunnelID string) ([]WireG
 		var p WireGuardPeer
 		var ipsJSON string
 		var external int
-		if err := rows.Scan(&p.TunnelID, &p.PublicKey, &p.Endpoint, &ipsJSON, &p.PresharedKeyEnc, &p.KeepaliveSec, &external, &p.ClusterID); err != nil {
-			return nil, fmt.Errorf("store: scanning wireguard peer: %w", err)
+		if scanErr := rows.Scan(&p.TunnelID, &p.PublicKey, &p.Endpoint, &ipsJSON, &p.PresharedKeyEnc, &p.KeepaliveSec, &external, &p.ClusterID); scanErr != nil {
+			return nil, fmt.Errorf("store: scanning wireguard peer: %w", scanErr)
 		}
 		p.External = external != 0
 		if p.AllowedIPs, err = unmarshalStrings(ipsJSON); err != nil {

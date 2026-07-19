@@ -23,10 +23,10 @@ package change
 // (mgmttouch.go), inheriting T-703's ceremony with no override.
 type WgTunnelCreateParams struct {
 	IfName     string   `json:"ifName"`
-	ListenPort int      `json:"listenPort,omitempty"`
-	Addresses  []string `json:"addresses,omitempty"`
-	MTU        int      `json:"mtu,omitempty"`
 	Carrier    string   `json:"carrier,omitempty"`
+	Addresses  []string `json:"addresses,omitempty"`
+	ListenPort int      `json:"listenPort,omitempty"`
+	MTU        int      `json:"mtu,omitempty"`
 }
 
 func (WgTunnelCreateParams) isChangeParams() {}
@@ -59,11 +59,11 @@ func (WgTunnelDeleteParams) isChangeParams() {}
 type WgPeerAddParams struct {
 	PublicKey    string   `json:"publicKey"`
 	Endpoint     string   `json:"endpoint,omitempty"`
+	PresharedKey string   `json:"presharedKey,omitempty"`
+	ClusterID    string   `json:"clusterId,omitempty"`
 	AllowedIPs   []string `json:"allowedIps,omitempty"`
 	KeepaliveSec int      `json:"keepaliveSec,omitempty"`
-	PresharedKey string   `json:"presharedKey,omitempty"`
 	External     bool     `json:"external,omitempty"`
-	ClusterID    string   `json:"clusterId,omitempty"`
 }
 
 func (WgPeerAddParams) isChangeParams() {}

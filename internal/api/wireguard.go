@@ -39,25 +39,25 @@ type WireGuardTunnelView struct {
 	Node       string                `json:"node"`
 	IfName     string                `json:"ifName"`
 	PublicKey  string                `json:"publicKey"`
-	ListenPort int                   `json:"listenPort"`
-	Addresses  []string              `json:"addresses"`
-	MTU        int                   `json:"mtu"`
 	Carrier    string                `json:"carrier,omitempty"`
+	Addresses  []string              `json:"addresses"`
 	Peers      []WireGuardPeerView   `json:"peers"`
 	Status     WireGuardTunnelStatus `json:"status"`
+	ListenPort int                   `json:"listenPort"`
+	MTU        int                   `json:"mtu"`
 }
 
 // WireGuardPeerView is one peer's config + live status within a tunnel view.
 type WireGuardPeerView struct {
 	PublicKey         string   `json:"publicKey"`
 	Endpoint          string   `json:"endpoint,omitempty"`
+	ObservedEndpoint  string   `json:"observedEndpoint,omitempty"`
 	AllowedIPs        []string `json:"allowedIps"`
 	KeepaliveSec      int      `json:"keepaliveSec,omitempty"`
-	External          bool     `json:"external"`
-	ObservedEndpoint  string   `json:"observedEndpoint,omitempty"`
 	LastHandshakeUnix int64    `json:"lastHandshakeUnix,omitempty"`
 	RxBytes           int64    `json:"rxBytes"`
 	TxBytes           int64    `json:"txBytes"`
+	External          bool     `json:"external"`
 	EndpointDrifted   bool     `json:"endpointDrifted"`
 }
 

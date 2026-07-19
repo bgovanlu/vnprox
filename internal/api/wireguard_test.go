@@ -15,10 +15,10 @@ import (
 // key.
 
 type fakeWireGuardService struct {
-	tunnels    []WireGuardTunnelView
+	err        error
 	pubkey     string
 	peerConfig string
-	err        error
+	tunnels    []WireGuardTunnelView
 }
 
 func (f *fakeWireGuardService) Tunnels(context.Context) ([]WireGuardTunnelView, error) {

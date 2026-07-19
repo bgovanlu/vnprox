@@ -50,8 +50,8 @@ func TestWireGuardRepo_TunnelLifecycle(t *testing.T) {
 		{TunnelID: tun.ID, PublicKey: "PEERext", AllowedIPs: []string{"10.10.0.4/32"}, External: true},
 	}
 	for _, p := range peers {
-		if err := repo.AddPeer(ctx, p); err != nil {
-			t.Fatalf("AddPeer: %v", err)
+		if addErr := repo.AddPeer(ctx, p); addErr != nil {
+			t.Fatalf("AddPeer: %v", addErr)
 		}
 	}
 	gotPeers, err := repo.ListPeers(ctx, tun.ID)

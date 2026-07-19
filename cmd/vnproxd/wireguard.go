@@ -44,17 +44,15 @@ type wgCipher interface {
 // not yet routed (a wg op targeting another node errors clearly) — the same
 // single-node scope hostNodeAgent documents until cluster wg routing lands.
 type hostWGGateway struct {
-	repo      *store.WireGuardRepo
-	cipher    wgCipher
-	localNode func() string
-	log       *slog.Logger
-	confDir   string
-
-	// Injectable on-node effects (fixed argv in production; no-ops in tests).
+	cipher     wgCipher
+	repo       *store.WireGuardRepo
+	localNode  func() string
+	log        *slog.Logger
 	writeFile  func(path string, content string) error
 	removeFile func(path string) error
-	syncTunnel func(ctx context.Context, ifName, confPath string) error // wg-quick up / wg syncconf
-	downTunnel func(ctx context.Context, ifName, confPath string) error // wg-quick down
+	syncTunnel func(ctx context.Context, ifName, confPath string) error
+	downTunnel func(ctx context.Context, ifName, confPath string) error
+	confDir    string
 }
 
 var _ change.WGGateway = (*hostWGGateway)(nil)
@@ -270,9 +268,9 @@ func (g *hostWGGateway) SnapshotWg(ctx context.Context, node string) (string, er
 	snap := wgNodeSnapshot{Peers: map[string][]store.WireGuardPeer{}}
 	for _, tun := range tuns {
 		snap.Tunnels = append(snap.Tunnels, tun)
-		peers, err := g.repo.ListPeers(ctx, tun.ID)
-		if err != nil {
-			return "", err
+		peers, listErr := g.repo.ListPeers(ctx, tun.ID)
+		if listErr != nil {
+			return "", listErr
 		}
 		snap.Peers[tun.ID] = peers
 	}
@@ -366,8 +364,8 @@ func (g *hostWGGateway) reconcilePeers(ctx context.Context, tun store.WireGuardT
 
 // wgNodeSnapshot is the opaque per-node snapshot SnapshotWg/RestoreWg exchange.
 type wgNodeSnapshot struct {
-	Tunnels []store.WireGuardTunnel          `json:"tunnels"`
 	Peers   map[string][]store.WireGuardPeer `json:"peers"`
+	Tunnels []store.WireGuardTunnel          `json:"tunnels"`
 }
 
 func splitWgPeerTarget(id string) (tunnelID, publicKey string) {
