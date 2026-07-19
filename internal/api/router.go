@@ -340,7 +340,7 @@ func NewRouter(opts Options) http.Handler {
 		mountBlueprintBundleRoutes(r, opts.Blueprints, opts.BlueprintSigningKey, opts.BlueprintTrust, opts.BlueprintSignersAudit, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
 		mountSpecPinRoutes(r, opts.SpecPin, opts.SpecPinAudit, opts.Auth)
-		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
+		mountSimulateRoutes(r, opts.Simulator, opts.GuestInteriorIPAM, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountGuestInteriorRoutes(r, opts.GuestInteriorToggles, opts.GuestInteriorGraph, opts.ProbeClients, opts.GuestInteriorHost, opts.GuestInteriorPeers, opts.GuestInteriorIPAM, opts.LocalNode, opts.ProbeAudit, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
