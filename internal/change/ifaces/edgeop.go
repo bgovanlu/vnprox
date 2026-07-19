@@ -9,6 +9,7 @@
 // record of it anywhere in vnprox, so update/delete recover it by scanning
 // the file for that marker rather than trusting the op's own (possibly
 // stale, possibly Iface-migrating) params.
+
 package ifaces
 
 import (

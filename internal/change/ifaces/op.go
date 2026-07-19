@@ -368,13 +368,13 @@ func (o NatPortForwardCreate) Ref() inventory.Ref { return o.Target }
 // stored fields are recovered from the marker before being merged with
 // these overrides and re-rendered).
 type NatPortForwardUpdate struct {
-	Target  inventory.Ref
 	Iface   *string
 	Proto   *string
 	IntIP   *string
 	Comment *string
 	ExtPort *int
 	IntPort *int
+	Target  inventory.Ref
 }
 
 func (o NatPortForwardUpdate) Kind() OpType       { return OpNatPortForwardUpdate }
@@ -406,12 +406,12 @@ func (o RouteStaticCreate) Ref() inventory.Ref { return o.Target }
 // RouteStaticUpdate replaces an existing static route's fields (same
 // merge-with-stored-state semantics as NatPortForwardUpdate).
 type RouteStaticUpdate struct {
-	Target   inventory.Ref
 	Iface    *string
 	DestCIDR *string
 	Gateway  *string
 	Comment  *string
 	Metric   *int
+	Target   inventory.Ref
 }
 
 func (o RouteStaticUpdate) Kind() OpType       { return OpRouteStaticUpdate }
@@ -439,44 +439,42 @@ type envelope struct {
 // Field names are the camelCase wire names implied by
 // docs/data-model.md §3's field lists.
 type wireParams struct {
-	VlanAware            *bool                `json:"vlanAware"`
+	Iface                *string              `json:"iface"`
 	Comments             *string              `json:"comments"`
 	Gateway              *string              `json:"gateway"`
 	Autostart            *bool                `json:"autostart"`
 	STP                  *bool                `json:"stp"`
 	MTU                  *int                 `json:"mtu"`
-	Bridge               string               `json:"bridge"`
-	Port                 string               `json:"port"`
-	Parent               string               `json:"parent"`
+	Metric               *int                 `json:"metric"`
+	IntPort              *int                 `json:"intPort"`
+	ExtPort              *int                 `json:"extPort"`
+	VlanAware            *bool                `json:"vlanAware"`
+	Comment              *string              `json:"comment"`
+	DestCIDR             *string              `json:"destCidr"`
+	IntIP                *string              `json:"intIp"`
+	Proto                *string              `json:"proto"`
+	SourceCIDR           *string              `json:"sourceCidr"`
 	XmitHashPolicy       string               `json:"xmitHashPolicy"`
 	LacpRate             string               `json:"lacpRate"`
+	NewName              string               `json:"newName"`
 	Mode                 string               `json:"mode"`
 	Content              string               `json:"content"`
-	NewName              string               `json:"newName"`
-	Slaves               []string             `json:"slaves"`
-	Addresses            []string             `json:"addresses"`
+	Parent               string               `json:"parent"`
+	Port                 string               `json:"port"`
+	Bridge               string               `json:"bridge"`
 	Ports                []string             `json:"ports"`
-	Vids                 []inventory.VidRange `json:"vids"`
 	Trunks               []inventory.VidRange `json:"trunks"`
-	MIIMon               int                  `json:"miimon"`
+	Addresses            []string             `json:"addresses"`
+	Slaves               []string             `json:"slaves"`
+	Vids                 []inventory.VidRange `json:"vids"`
 	VID                  int                  `json:"vid"`
+	MIIMon               int                  `json:"miimon"`
 	RemoveAddress        bool                 `json:"removeAddress"`
-	RemoveGateway        bool                 `json:"removeGateway"`
-	RemoveVids           bool                 `json:"removeVids"`
-	RemoveLacpRate       bool                 `json:"removeLacpRate"`
-	RemoveXmitHashPolicy bool                 `json:"removeXmitHashPolicy"`
 	OVS                  bool                 `json:"ovs"`
-
-	// T-1403's nat.*/route.static.* fields.
-	Iface      *string `json:"iface"`
-	SourceCIDR *string `json:"sourceCidr"`
-	Proto      *string `json:"proto"`
-	IntIP      *string `json:"intIp"`
-	DestCIDR   *string `json:"destCidr"`
-	Comment    *string `json:"comment"`
-	ExtPort    *int    `json:"extPort"`
-	IntPort    *int    `json:"intPort"`
-	Metric     *int    `json:"metric"`
+	RemoveXmitHashPolicy bool                 `json:"removeXmitHashPolicy"`
+	RemoveLacpRate       bool                 `json:"removeLacpRate"`
+	RemoveVids           bool                 `json:"removeVids"`
+	RemoveGateway        bool                 `json:"removeGateway"`
 }
 
 func intOr(p *int) int {

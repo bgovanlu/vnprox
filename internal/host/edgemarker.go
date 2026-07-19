@@ -14,6 +14,7 @@
 // it will re-read" pattern iface.raw.replace already established
 // (docs/features/change-management.md §7) — the interfaces file is both the
 // only write target and the only read source, never duplicated into SQLite.
+
 package host
 
 import (

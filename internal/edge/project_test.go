@@ -141,8 +141,8 @@ func TestProjectNAT_DeleteRoundTrip(t *testing.T) {
 		t.Fatalf("ParseInterfaces: %v", err)
 	}
 	del := ifaces.NatPortForwardDelete{Target: inventory.Ref{Kind: inventory.KindNatRule, Node: "pve1", ID: "pf-ssh"}}
-	if err := ifaces.Mutate(f, del, "cs-fixture-2"); err != nil {
-		t.Fatalf("Mutate delete: %v", err)
+	if mutateErr := ifaces.Mutate(f, del, "cs-fixture-2"); mutateErr != nil {
+		t.Fatalf("Mutate delete: %v", mutateErr)
 	}
 	got, err := edge.ProjectNAT([]edge.NodeInterfaces{{Node: "pve1", Content: f.Render()}}, nil, nil)
 	if err != nil {

@@ -38,7 +38,7 @@ Every entity embeds `Ref`:
 type Ref struct {
     Kind Kind   // "physnic","bond","bridge","vlan","ovs-bridge","ovs-bond",
                 // "sdn-zone","sdn-vnet","sdn-subnet","guest","guest-nic",
-                // "lldp-neighbor","fw-ruleset","node"
+                // "lldp-neighbor","fw-ruleset","node","nat-rule","static-route"
     Node string // "" for cluster-scoped entities (SDN, cluster firewall)
     ID   string // stable within (Kind,Node), e.g. "vmbr0", "eno1", "zone1/vnet1"
 }
@@ -267,8 +267,12 @@ CREATE TABLE webhooks (                -- T-1104: internal/store/migrations/0011
 | guest | `guest.nic.update` (reattach bridge/vnet, vid, rate, firewall flag) |
 | fw | `fw.rule.create/update/delete/move`, `fw.options.update`, `fw.alias.*`, `fw.ipset.*`, `fw.group.*` |
 | ipam | `ipam.alloc.create/delete` |
+| nat | (T-1403) `nat.masquerade.create/delete` (a PVE-host SNAT/MASQUERADE rule; no `update` — rotating one is delete-and-recreate, so it's always two visible ops, never a silent overwrite), `nat.portforward.create/update/delete` (a DNAT/port-forward rule: `iface`, `proto` tcp\|udp, `extPort`, `intIp`, `intPort`, `comment?`) |
+| route | (T-1403) `route.static.create/update/delete` — an additional/policy static route (`iface`, `destCidr`, `gateway`, `metric?`, `comment?`); a node's *default* gateway stays owned by `iface.update`'s own `gateway` field, unchanged by this group |
 
 Each op maps to one or more **apply steps**; the planner orders steps: (1) cluster-scope PVE API calls, (2) per-node interface file staging, (3) per-node `ifreload -a` (executed directly by vnproxd's own `NodeAgent` — **correction, T-607 docs audit:** not "via PVE's network reload endpoint" as this line previously said; `cmd/vnproxd/changeagent.go` writes `/etc/network/interfaces` and execs `ifreload` itself, since vnproxd runs on the node — see `docs/architecture.md` §4 for the fuller correction), (4) `sdn.apply` last when present. Rollback executes the inverse from the pre-snapshot in reverse order.
+
+**T-1403's `nat`/`route` op groups are node-file ops** (category (2)/(3) above, exactly like `iface`/`bond`/`bridge`/`vlan`): `internal/change/ifaces/edgeop.go` appends/replaces/removes a post-up/post-down shell-command stanza pair inside an *already-existing* iface stanza named by the op's own `iface` field — never a second file, never a second apply mechanism. `nat-rule`/`static-route` have no dedicated `inventory.Kind` entity of their own (like `fw.alias`/`ipset`/`group` above): a rule's entire state lives in its two generated lines' own trailing marker comment (`# vnprox-edge:<kind>:<url-encoded fields>`, `internal/host`'s `EncodeNat*Marker`/`DecodeNat*Marker`/`EncodeStaticRouteMarker`/`DecodeStaticRouteMarker`) — GET /edge/routes and GET /edge/nat (docs/api.md) decode it back apart on every read rather than tracking it in a second store table, so there is exactly one record of a rule anywhere: the file itself.
 
 ## 4. Blueprints (`internal/blueprint`, T-603)
 
