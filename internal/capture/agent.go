@@ -75,6 +75,14 @@ type RemoteCapturer interface {
 	Start(ctx context.Context, node string, spec Spec) (Result, error)
 	Stop(ctx context.Context, node, sessionID string) (Result, error)
 	Status(ctx context.Context, node, sessionID string) (Result, error)
+	// Download fetches the raw pcap bytes of one session that lives on a
+	// remote node (T-1302: "everything is cluster-aware" — a per-session
+	// download must work whether the file is local or on a peer). The whole
+	// file is buffered (sessions are already byte-capped by [capture]
+	// max_bytes, so this is bounded), never streamed opaquely, so the
+	// bytes-in-flight are exactly the bytes a caller with capture+netRead is
+	// already entitled to see.
+	Download(ctx context.Context, node, sessionID string) ([]byte, error)
 }
 
 // AuditEvent is one capture.start / capture.stop audit row the coordinator

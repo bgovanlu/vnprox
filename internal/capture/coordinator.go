@@ -322,6 +322,47 @@ func (c *Coordinator) StatusLocal(ctx context.Context, sessionID string) (Result
 	return Result{Packets: s.Packets, Bytes: s.FileBytes, Status: s.Status}, nil
 }
 
+// Download returns the raw pcap bytes for one session (never a whole
+// group — a multi-point capture has one file per node, so a caller
+// downloads each session it wants individually). A local session's file is
+// read directly from disk under [capture] root; a session on a peer node is
+// proxied via RemoteCapturer — the same cluster-aware contract every other
+// host-state read in this codebase honors (CLAUDE.md's "Everything is
+// cluster-aware" rule), never a local-only shortcut. A purged
+// (retention-expired) or never-written session's file is
+// ErrFileUnavailable, not a generic ErrNotFound, so the caller can render an
+// accurate reason.
+func (c *Coordinator) Download(ctx context.Context, sessionID string) ([]byte, Session, error) {
+	s, err := c.cfg.Store.Get(ctx, sessionID)
+	if err != nil {
+		return nil, Session{}, err
+	}
+	if s.Status == StatusPurged {
+		return nil, s, ErrFileUnavailable
+	}
+	if c.isLocal(s.Node) {
+		if s.FilePath == "" {
+			return nil, s, ErrFileUnavailable
+		}
+		data, rerr := os.ReadFile(s.FilePath)
+		if rerr != nil {
+			if os.IsNotExist(rerr) {
+				return nil, s, ErrFileUnavailable
+			}
+			return nil, s, fmt.Errorf("capture: reading capture file for session %s: %w", sessionID, rerr)
+		}
+		return data, s, nil
+	}
+	if c.cfg.Remote == nil {
+		return nil, s, ErrNoRemote
+	}
+	data, rerr := c.cfg.Remote.Download(ctx, s.Node, s.ID)
+	if rerr != nil {
+		return nil, s, fmt.Errorf("capture: downloading session %s from node %s: %w", sessionID, s.Node, rerr)
+	}
+	return data, s, nil
+}
+
 // StopGroup stops every non-terminal session in a group (local via the live
 // process, remote via the peer). It audits each stop. Returns the resulting
 // Group.

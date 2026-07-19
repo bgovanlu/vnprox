@@ -8,7 +8,7 @@ import { RenameDialog } from "./RenameDialog";
 
 const me: MeResponse = {
   user: { username: "root", realm: "pam" },
-  caps: { pve1: { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true } },
+  caps: { pve1: { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true, capture: false } },
 };
 
 function renderDialog() {

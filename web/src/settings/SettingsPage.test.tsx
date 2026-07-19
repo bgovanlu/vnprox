@@ -10,7 +10,7 @@ import { SettingsPage } from "./SettingsPage";
 
 const me: MeResponse = {
   user: { username: "root", realm: "pam" },
-  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: false, fwRead: true, fwWrite: false, guestNet: false, audit: true } },
+  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: false, fwRead: true, fwWrite: false, guestNet: false, audit: true, capture: true } },
 };
 
 const config: InstanceConfigResponse = {

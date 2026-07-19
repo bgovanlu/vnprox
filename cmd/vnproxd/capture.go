@@ -188,6 +188,18 @@ func (a captureRemoteAdapter) Status(ctx context.Context, node, sessionID string
 	return fromPeerResult(res), nil
 }
 
+// Download fetches sessionID's raw pcap bytes from the peer node that
+// captured it (T-1302) — the cluster-aware half of per-session download: a
+// session whose Node isn't this daemon's own is never locally readable, so
+// the coordinator always reaches it through here.
+func (a captureRemoteAdapter) Download(ctx context.Context, node, sessionID string) ([]byte, error) {
+	p, err := a.peerFor(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	return a.client.CaptureDownload(ctx, p, sessionID)
+}
+
 // capturePeerAdapter satisfies peer.CaptureAgent by delegating to the local
 // coordinator's node-local-only entry points (StartLocalSpec/StopLocal/
 // StatusLocal) — the peer-server side of a coordinating daemon's fan-out.
@@ -215,6 +227,20 @@ func (a capturePeerAdapter) StatusLocal(ctx context.Context, sessionID string) (
 		return peer.CaptureResult{}, err
 	}
 	return toPeerResult(res), nil
+}
+
+// DownloadLocal returns sessionID's raw pcap bytes (T-1302) — a peer
+// download request always names a session this node itself captured (a
+// StartLocalSpec-received session's Node is always re-derived to this
+// node's own LocalNode(), never trusted from the caller), so
+// Coordinator.Download's local-file branch is exactly what runs here; it
+// never re-triggers a further remote hop.
+func (a capturePeerAdapter) DownloadLocal(ctx context.Context, sessionID string) ([]byte, error) {
+	data, _, err := a.coord.Download(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func toPeerSpec(s capture.Spec) peer.CaptureSpec {

@@ -36,12 +36,12 @@ let mockSession: MeResponse | undefined;
 
 const fullSession: MeResponse = {
   user: { username: "root", realm: "pam" },
-  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true } },
+  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true, capture: false } },
 };
 
 const readOnlySession: MeResponse = {
   user: { username: "auditor", realm: "pve" },
-  caps: { "": { netRead: true, netWrite: false, sdnRead: false, sdnWrite: false, fwRead: false, fwWrite: false, guestNet: false, audit: true } },
+  caps: { "": { netRead: true, netWrite: false, sdnRead: false, sdnWrite: false, fwRead: false, fwWrite: false, guestNet: false, audit: true, capture: false } },
 };
 
 function renderPage(): void {

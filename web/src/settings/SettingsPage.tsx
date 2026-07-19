@@ -56,6 +56,7 @@ const CAP_LABELS: { key: keyof Capabilities; label: string }[] = [
   { key: "fwWrite", label: "Change firewall" },
   { key: "guestNet", label: "Change guest NICs" },
   { key: "audit", label: "View audit log" },
+  { key: "capture", label: "Capture packets" },
 ];
 
 /** Aggregates a capability across every node the session is scoped to: true

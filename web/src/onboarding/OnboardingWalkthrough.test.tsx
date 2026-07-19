@@ -75,7 +75,7 @@ import * as protectedApi from "../api/protectedInterfaces";
 
 const fullSession: MeResponse = {
   user: { username: "root", realm: "pam" },
-  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true } },
+  caps: { "": { netRead: true, netWrite: true, sdnRead: true, sdnWrite: true, fwRead: true, fwWrite: true, guestNet: true, audit: true, capture: false } },
 };
 
 const THREE_NODE_VLAN_SUGGESTION: ProtectedInterfacesSuggestResponse = {
@@ -199,7 +199,7 @@ describe("OnboardingWalkthrough", () => {
     mockOnboardingProgress = atStep("protected");
     mockSession = {
       user: { username: "auditor", realm: "pve" },
-      caps: { "": { netRead: true, netWrite: false, sdnRead: false, sdnWrite: false, fwRead: false, fwWrite: false, guestNet: false, audit: true } },
+      caps: { "": { netRead: true, netWrite: false, sdnRead: false, sdnWrite: false, fwRead: false, fwWrite: false, guestNet: false, audit: true, capture: false } },
     };
     renderWalkthrough();
     await screen.findByText("Protected interfaces");

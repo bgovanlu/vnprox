@@ -28,4 +28,12 @@ var (
 	// ErrNoRemote is returned when a peer-node capture is requested but no
 	// remote capturer (peer client) is wired.
 	ErrNoRemote = errors.New("capture: no remote capturer configured for peer nodes")
+
+	// ErrFileUnavailable is returned by Download when a session's pcap file
+	// no longer exists — purged past retention, or (in principle) never
+	// written because the session errored before any bytes landed. Distinct
+	// from ErrNotFound (unknown session id) so the UI can render an
+	// accurate "this capture's file has been purged" reason rather than a
+	// generic 404.
+	ErrFileUnavailable = errors.New("capture: capture file is not available")
 )

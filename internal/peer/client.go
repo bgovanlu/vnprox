@@ -748,6 +748,22 @@ func (c *Client) CaptureStatus(ctx context.Context, p Peer, sessionID string) (C
 	return out, nil
 }
 
+// CaptureDownload fetches the raw pcap bytes of node-local capture
+// sessionID from peer p (T-1302) — the whole file, buffered (sessions are
+// already byte-capped by [capture] max_bytes).
+func (c *Client) CaptureDownload(ctx context.Context, p Peer, sessionID string) ([]byte, error) {
+	path := "/api/peer/capture/download?sessionId=" + url.QueryEscape(sessionID)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out captureDownloadResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return nil, err
+	}
+	return out.Content, nil
+}
+
 // Health checks peer p's /api/peer/health.
 func (c *Client) Health(ctx context.Context, p Peer) error {
 	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/health", nil)

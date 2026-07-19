@@ -325,6 +325,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Post("/capture/start", s.handleCaptureStart)
 		r.Post("/capture/stop", s.handleCaptureStop)
 		r.Get("/capture/status", s.handleCaptureStatus)
+		r.Get("/capture/download", s.handleCaptureDownload)
 	})
 }
 
@@ -388,6 +389,29 @@ func (s *Server) handleCaptureStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// handleCaptureDownload implements GET /api/peer/capture/download?sessionId=
+// (T-1302): a coordinating daemon fetching one session's raw pcap bytes from
+// the node that actually captured it. Payload bytes cross the wire exactly
+// once here, HMAC-authenticated like every other peer route — never logged,
+// never persisted by this handler.
+func (s *Server) handleCaptureDownload(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Capture == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "capture agent not configured")
+		return
+	}
+	sessionID := r.URL.Query().Get("sessionId")
+	if sessionID == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "sessionId is required")
+		return
+	}
+	data, err := s.opts.Capture.DownloadLocal(r.Context(), sessionID)
+	if err != nil {
+		s.writeCaptureError(w, "downloading capture", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, captureDownloadResponse{Content: data})
 }
 
 func (s *Server) writeCaptureError(w http.ResponseWriter, op string, err error) {
