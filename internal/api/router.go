@@ -18,6 +18,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/bgovanlu/vnprox/internal/ingress"
 )
 
 // AuthService is the subset of *auth.Service the router needs: route
@@ -122,6 +124,22 @@ type Options struct {
 	EdgeInterfaces EdgeInterfacesSource
 	EdgeGraph      EdgeGraph
 	EdgeIPAM       EdgeIPAMSource
+	// IngressTargets/IngressSecretCipher/IngressDiscoverers back T-1406's
+	// ingress visibility routes (docs/api.md's Ingress visibility
+	// section): GET/POST/DELETE /ingress/targets + GET /ingress/status.
+	// IngressTargets nil skips mounting the whole family, matching every
+	// other optional Options field; IngressSecretCipher is typically the
+	// same sessionCipher AlertSecretCipher/WebhookSecretCipher above
+	// already wire in (docs/security.md's one shared AES-256-GCM
+	// primitive); IngressDiscoverers is typically
+	// ingress.NewDefaultRegistry(nil) — the seam T-1702's plugin SDK
+	// extends by registering additional ingress.Kind values into the same
+	// Registry. GET /ingress/status's port-forward -> proxy guest
+	// correlation reuses EdgeInterfaces/EdgeGraph/EdgeIPAM above verbatim
+	// (T-1403's own projection, not a second interfaces-file read path).
+	IngressTargets      IngressTargetStore
+	IngressSecretCipher SecretCipher
+	IngressDiscoverers  ingress.IngressDiscoverer
 	// EVPN is T-404's read view seam (docs/api.md's `GET /sdn/evpn/status`);
 	// nil (no PVE/peer clients wired) simply skips mounting the route,
 	// same degraded-mode treatment as SDN above.
@@ -355,6 +373,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
 		mountEdgeRoutes(r, opts.EdgeInterfaces, opts.SDN, opts.EdgeGraph, opts.EdgeIPAM, opts.Auth)
+		mountIngressRoutes(r, opts.IngressTargets, opts.IngressSecretCipher, opts.IngressDiscoverers, opts.EdgeInterfaces, opts.EdgeGraph, opts.EdgeIPAM, opts.TokenAudit, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
 		mountIPv6Routes(r, opts.IPv6, opts.Auth)
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
