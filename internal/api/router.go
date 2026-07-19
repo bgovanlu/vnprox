@@ -105,6 +105,23 @@ type Options struct {
 	// IPAM is T-405's read view seam (docs/api.md's `GET /ipam/subnets` and
 	// `GET /ipam/subnets/{cidr}/allocations`); nil-safe like SDN above.
 	IPAM IPAMService
+	// EdgeInterfaces/EdgeGraph/EdgeIPAM back T-1403's Edge & NAT cockpit
+	// (docs/api.md's `GET /edge/routes`/`GET /edge/nat`). EdgeInterfaces is
+	// typically the same *change.Service changeSvc wires in as Changesets
+	// above — its ReadRawInterfaces is the identical per-node interfaces-
+	// file read T-208's raw editor uses (docs/api.md's `GET /nodes/{node}/
+	// interfaces/raw`), reused rather than duplicated; a dedicated field
+	// (rather than reusing Changesets directly) keeps this route's
+	// dependency to the one method it needs, testable without a full
+	// ChangesetService fake. EdgeGraph is typically the same live
+	// *inventory.Graph GuestInteriorGraph above already wires in (node
+	// enumeration + guest status); EdgeIPAM is typically the same
+	// *ipam.Service ipamSvc wires in elsewhere (port-forward -> guest IP
+	// correlation), nil-safe — it only narrows the response, see
+	// mountEdgeRoutes' doc comment.
+	EdgeInterfaces EdgeInterfacesSource
+	EdgeGraph      EdgeGraph
+	EdgeIPAM       EdgeIPAMSource
 	// EVPN is T-404's read view seam (docs/api.md's `GET /sdn/evpn/status`);
 	// nil (no PVE/peer clients wired) simply skips mounting the route,
 	// same degraded-mode treatment as SDN above.
@@ -329,6 +346,7 @@ func NewRouter(opts Options) http.Handler {
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
+		mountEdgeRoutes(r, opts.EdgeInterfaces, opts.SDN, opts.EdgeGraph, opts.EdgeIPAM, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)

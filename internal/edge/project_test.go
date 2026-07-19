@@ -84,7 +84,7 @@ func TestProjectNAT(t *testing.T) {
 	}
 	subnets := []edge.SDNSubnetInput{
 		{Zone: "zone1", ZoneType: "simple", Vnet: "vnet1", CIDR: "10.20.0.0/24", Gateway: "10.20.0.1", SNAT: true},
-		{Zone: "zone2", ZoneType: "vlan", Vnet: "vnet2", CIDR: "10.30.0.0/24", SNAT: true}, // not simple: excluded
+		{Zone: "zone2", ZoneType: "vlan", Vnet: "vnet2", CIDR: "10.30.0.0/24", SNAT: true},    // not simple: excluded
 		{Zone: "zone1", ZoneType: "simple", Vnet: "vnet3", CIDR: "10.40.0.0/24", SNAT: false}, // no snat: excluded
 	}
 
