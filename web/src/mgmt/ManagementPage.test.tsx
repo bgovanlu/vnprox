@@ -33,6 +33,7 @@ const ALL_CAPS: Capabilities = {
   fwWrite: true,
   guestNet: true,
   audit: true,
+  capture: false,
 };
 
 vi.mock("../api/topology", () => ({

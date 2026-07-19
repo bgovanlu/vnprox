@@ -32,6 +32,10 @@ export interface Capabilities {
   fwWrite: boolean;
   guestNet: boolean;
   audit: boolean;
+  /** T-1301: the dedicated packet-capture gate (internal/auth.CapCapture) —
+   * strictly stronger than netWrite (Sys.Modify AND Sys.Console); holding
+   * netRead/netWrite alone never implies this. */
+  capture: boolean;
 }
 
 export interface AuthUser {
@@ -2356,6 +2360,69 @@ export interface HistoryEvent {
 /** GET /history/events response envelope. */
 export interface HistoryEventsResponse {
   items: HistoryEvent[];
+}
+
+// --- Captures (docs/api.md's Captures section; T-1301, T-1302) ------------
+
+/** The server-enforced, un-overridable cap set effective for a capture
+ * session/group — docs/api.md: "a request may ask for a lower value, never
+ * a higher one". The UI only ever renders these (server-reported) values,
+ * never the request it sent (T-1302 AC1's "server's actual (lower) value,
+ * never the requested one"). */
+export interface CaptureCaps {
+  maxDurationSec: number;
+  maxBytes: number;
+  maxPackets: number;
+  retentionHours: number;
+}
+
+export type CaptureStatus = "running" | "completed" | "stopped" | "error" | "purged";
+
+/** One node-local capture session — docs/api.md's `captureSession` shape.
+ * There is deliberately no `filePath` field: the on-disk path is never
+ * serialized to API clients. */
+export interface CaptureSession {
+  id: string;
+  groupId: string;
+  targetRef: string;
+  node: string;
+  filter: string;
+  caps: CaptureCaps;
+  status: CaptureStatus;
+  startedBy: string;
+  startedAt: number;
+  stoppedAt: number;
+  fileBytes: number;
+  packets: number;
+  nodes?: string[];
+}
+
+/** POST /captures' response, and GET /captures/{id}'s shape — a "capture
+ * group": one session for a single-point capture, ≥2 correlated sessions
+ * (sharing this `id`) for a multi-point one. */
+export interface CaptureGroup {
+  id: string;
+  status: CaptureStatus;
+  startedBy: string;
+  startedAt: number;
+  caps: CaptureCaps;
+  sessions: CaptureSession[];
+}
+
+/** GET /captures response envelope. */
+export interface CaptureListResponse {
+  items: CaptureGroup[];
+}
+
+/** POST /captures' body. durationSec/maxBytes/maxPackets are *requests*
+ * only — see CaptureCaps' doc comment. */
+export interface CaptureStartRequest {
+  targetRef: string;
+  filter?: string;
+  durationSec?: number;
+  maxBytes?: number;
+  maxPackets?: number;
+  peerTargets?: string[];
 }
 
 // --- Everything else in docs/api.md ---------------------------------------
