@@ -330,9 +330,75 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 		if !p.exists(op.Target) {
 			out = append(out, errorf(codeTargetNotFound, ref, "subnet %s does not exist", op.Target))
 		}
+
+	case *NatMasqueradeCreateParams:
+		checkEdgeRuleIface(p, op.Target.Node, params.Iface, ref, &out)
+
+	case *NatMasqueradeDeleteParams:
+		// A T-1403 nat/route rule has no snapshot-backed existence check
+		// (it lives only inside its own generated marker lines, which this
+		// pure, snapshot-driven validator class never reads — see
+		// edgeop.go's package doc comment); the apply-time mutator itself
+		// still errors on a truly nonexistent id (ErrNotFound), it just
+		// isn't a *validation finding* the way a missing bond/bridge is.
+
+	case *NatPortForwardCreateParams:
+		checkEdgeRuleIface(p, op.Target.Node, params.Iface, ref, &out)
+
+	case *NatPortForwardUpdateParams:
+		if params.Iface != nil {
+			checkEdgeRuleIface(p, op.Target.Node, *params.Iface, ref, &out)
+		}
+
+	case *NatPortForwardDeleteParams:
+		// see NatMasqueradeDeleteParams above.
+
+	case *RouteStaticCreateParams:
+		checkEdgeRuleIface(p, op.Target.Node, params.Iface, ref, &out)
+		checkRouteGatewayReachable(p, op.Target.Node, params.Gateway, ref, &out)
+
+	case *RouteStaticUpdateParams:
+		if params.Iface != nil {
+			checkEdgeRuleIface(p, op.Target.Node, *params.Iface, ref, &out)
+		}
+		if params.Gateway != nil && *params.Gateway != "" {
+			checkRouteGatewayReachable(p, op.Target.Node, *params.Gateway, ref, &out)
+		}
+
+	case *RouteStaticDeleteParams:
+		// see NatMasqueradeDeleteParams above.
 	}
 
 	return out
+}
+
+// checkEdgeRuleIface flags a T-1403 nat.*/route.static.* op whose Iface
+// does not name a currently known interface(5) stanza on node — the
+// generated post-up/post-down lines would have nowhere to attach.
+func checkEdgeRuleIface(p *projection, node, iface, ref string, out *[]Finding) {
+	if iface == "" {
+		return // schema class already flagged the missing-iface case
+	}
+	if _, ok := p.ifaceRef(node, iface); !ok {
+		*out = append(*out, errorf(codeIfaceNotFound, ref, "interface %q does not exist on node %s", iface, node))
+	}
+}
+
+// checkRouteGatewayReachable flags a route.static.create/update whose
+// Gateway does not fall inside any of node's currently-configured address
+// CIDRs — real `ip route add ... via <gw>` fails identically when no
+// directly-connected interface can reach the nexthop.
+func checkRouteGatewayReachable(p *projection, node, gateway, ref string, out *[]Finding) {
+	ip := net.ParseIP(gateway)
+	if ip == nil {
+		return // schema class already flagged the malformed-IP case
+	}
+	for _, a := range p.addrs[node] {
+		if a.ipnet != nil && a.ipnet.Contains(ip) {
+			return
+		}
+	}
+	*out = append(*out, errorf(codeRouteGatewayUnreachable, ref, "gateway %s is not reachable via any known interface on node %s", gateway, node))
 }
 
 // checkSlaves validates a bond's slave list: every named iface must exist

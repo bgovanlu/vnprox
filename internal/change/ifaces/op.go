@@ -47,6 +47,30 @@ const (
 	// /etc/network/interfaces content wholesale, rather than an AST-level
 	// patch. See IfaceRawReplace's doc comment for the mutation semantics.
 	OpIfaceRawReplace OpType = "iface.raw.replace"
+
+	// OpNatMasqueradeCreate/Delete and OpNatPortForwardCreate/Update/Delete
+	// (T-1403's "nat" op group, docs/data-model.md §3) are a PVE-host
+	// SNAT/masquerade rule and a DNAT/port-forward rule, respectively — each
+	// applied as a post-up/post-down iptables stanza pair appended to an
+	// *existing* iface stanza (Iface), the same interfaces-file write path
+	// iface.raw.replace already established. See edgeop.go for the mutation
+	// semantics and host.EncodeNat*Marker for how a rule's full state is
+	// round-tripped through the generated lines themselves (no second,
+	// shadow store).
+	OpNatMasqueradeCreate  OpType = "nat.masquerade.create"
+	OpNatMasqueradeDelete  OpType = "nat.masquerade.delete"
+	OpNatPortForwardCreate OpType = "nat.portforward.create"
+	OpNatPortForwardUpdate OpType = "nat.portforward.update"
+	OpNatPortForwardDelete OpType = "nat.portforward.delete"
+
+	// OpRouteStaticCreate/Update/Delete (T-1403's "route" op group) adds an
+	// additional/policy static route via a post-up/post-down `ip route`
+	// stanza pair appended to an existing iface stanza — a node's *default*
+	// gateway stays owned by iface.update's own Gateway field (docs/data-
+	// model.md §3); this op group never sets it.
+	OpRouteStaticCreate OpType = "route.static.create"
+	OpRouteStaticUpdate OpType = "route.static.update"
+	OpRouteStaticDelete OpType = "route.static.delete"
 )
 
 // Op is the common interface every concrete op type in this package
@@ -292,6 +316,114 @@ type IfaceRawReplace struct {
 func (o IfaceRawReplace) Kind() OpType       { return OpIfaceRawReplace }
 func (o IfaceRawReplace) Ref() inventory.Ref { return o.Target }
 
+// --- nat.masquerade.* / nat.portforward.* / route.static.* (T-1403) -------
+
+// NatMasqueradeCreate is op "nat.masquerade.create": a PVE-host SNAT/
+// MASQUERADE rule for traffic leaving Iface, sourced from SourceCIDR.
+// Target (Ref{Kind: "nat-rule", ID: <caller-chosen id>}) names the rule
+// itself, which has no interfaces(5) stanza of its own — Iface names the
+// *existing* stanza (typically the uplink/WAN-facing iface) the generated
+// post-up/post-down lines attach to. See edgeop.go.
+type NatMasqueradeCreate struct {
+	Target     inventory.Ref
+	Iface      string
+	SourceCIDR string
+	Comment    string
+}
+
+func (o NatMasqueradeCreate) Kind() OpType       { return OpNatMasqueradeCreate }
+func (o NatMasqueradeCreate) Ref() inventory.Ref { return o.Target }
+
+// NatMasqueradeDelete removes a nat.masquerade rule's post-up/post-down
+// lines wherever they currently live in the file (found by Target's marker,
+// not by re-deriving Iface — see edgeop.go's removeMarkedLines). There is
+// no nat.masquerade.update op (docs/data-model.md §3): rotating a
+// masquerade rule's shape is delete-and-recreate, mirroring T-1401's own
+// key-rotation-is-never-in-place convention for the same "no silent
+// overwrite of a generated rule" reason.
+type NatMasqueradeDelete struct{ Target inventory.Ref }
+
+func (o NatMasqueradeDelete) Kind() OpType       { return OpNatMasqueradeDelete }
+func (o NatMasqueradeDelete) Ref() inventory.Ref { return o.Target }
+
+// NatPortForwardCreate is op "nat.portforward.create": a DNAT rule
+// forwarding ExtPort/Proto arriving on Iface to IntIP:IntPort — the classic
+// "port forward" a home-lab operator adds to expose one guest's service.
+type NatPortForwardCreate struct {
+	Target  inventory.Ref
+	Iface   string
+	Proto   string // tcp|udp
+	IntIP   string
+	Comment string
+	ExtPort int
+	IntPort int
+}
+
+func (o NatPortForwardCreate) Kind() OpType       { return OpNatPortForwardCreate }
+func (o NatPortForwardCreate) Ref() inventory.Ref { return o.Target }
+
+// NatPortForwardUpdate replaces an existing port-forward rule's fields
+// (whichever pointers are non-nil; nil fields keep the rule's currently
+// stored value — see edgeop.go's mutateNatPortForwardUpdate for how the old
+// stored fields are recovered from the marker before being merged with
+// these overrides and re-rendered).
+type NatPortForwardUpdate struct {
+	Target  inventory.Ref
+	Iface   *string
+	Proto   *string
+	IntIP   *string
+	Comment *string
+	ExtPort *int
+	IntPort *int
+}
+
+func (o NatPortForwardUpdate) Kind() OpType       { return OpNatPortForwardUpdate }
+func (o NatPortForwardUpdate) Ref() inventory.Ref { return o.Target }
+
+// NatPortForwardDelete removes a port-forward rule's lines wherever they
+// currently live.
+type NatPortForwardDelete struct{ Target inventory.Ref }
+
+func (o NatPortForwardDelete) Kind() OpType       { return OpNatPortForwardDelete }
+func (o NatPortForwardDelete) Ref() inventory.Ref { return o.Target }
+
+// RouteStaticCreate is op "route.static.create": an additional/policy
+// static route (destCidr via gateway, dev Iface) — a node's *default*
+// gateway stays owned by IfaceUpdate.Gateway; this op never sets it (see
+// route validation's own doc comment in internal/change).
+type RouteStaticCreate struct {
+	Target   inventory.Ref
+	Iface    string
+	DestCIDR string
+	Gateway  string
+	Comment  string
+	Metric   int
+}
+
+func (o RouteStaticCreate) Kind() OpType       { return OpRouteStaticCreate }
+func (o RouteStaticCreate) Ref() inventory.Ref { return o.Target }
+
+// RouteStaticUpdate replaces an existing static route's fields (same
+// merge-with-stored-state semantics as NatPortForwardUpdate).
+type RouteStaticUpdate struct {
+	Target   inventory.Ref
+	Iface    *string
+	DestCIDR *string
+	Gateway  *string
+	Comment  *string
+	Metric   *int
+}
+
+func (o RouteStaticUpdate) Kind() OpType       { return OpRouteStaticUpdate }
+func (o RouteStaticUpdate) Ref() inventory.Ref { return o.Target }
+
+// RouteStaticDelete removes a static route's lines wherever they currently
+// live.
+type RouteStaticDelete struct{ Target inventory.Ref }
+
+func (o RouteStaticDelete) Kind() OpType       { return OpRouteStaticDelete }
+func (o RouteStaticDelete) Ref() inventory.Ref { return o.Target }
+
 // --- wire decode ---------------------------------------------------------
 
 // envelope is the docs/api.md wire shape: {"op": "<type>", "target": Ref,
@@ -334,6 +466,17 @@ type wireParams struct {
 	RemoveLacpRate       bool                 `json:"removeLacpRate"`
 	RemoveXmitHashPolicy bool                 `json:"removeXmitHashPolicy"`
 	OVS                  bool                 `json:"ovs"`
+
+	// T-1403's nat.*/route.static.* fields.
+	Iface      *string `json:"iface"`
+	SourceCIDR *string `json:"sourceCidr"`
+	Proto      *string `json:"proto"`
+	IntIP      *string `json:"intIp"`
+	DestCIDR   *string `json:"destCidr"`
+	Comment    *string `json:"comment"`
+	ExtPort    *int    `json:"extPort"`
+	IntPort    *int    `json:"intPort"`
+	Metric     *int    `json:"metric"`
 }
 
 func intOr(p *int) int {
@@ -433,6 +576,36 @@ func DecodeOp(raw json.RawMessage) (Op, error) {
 		return IfaceRename{Target: target, NewName: p.NewName}, nil
 	case OpIfaceRawReplace:
 		return IfaceRawReplace{Target: target, Content: p.Content}, nil
+	case OpNatMasqueradeCreate:
+		return NatMasqueradeCreate{
+			Target: target, Iface: strOr(p.Iface), SourceCIDR: strOr(p.SourceCIDR), Comment: strOr(p.Comment),
+		}, nil
+	case OpNatMasqueradeDelete:
+		return NatMasqueradeDelete{Target: target}, nil
+	case OpNatPortForwardCreate:
+		return NatPortForwardCreate{
+			Target: target, Iface: strOr(p.Iface), Proto: strOr(p.Proto), IntIP: strOr(p.IntIP),
+			Comment: strOr(p.Comment), ExtPort: intOr(p.ExtPort), IntPort: intOr(p.IntPort),
+		}, nil
+	case OpNatPortForwardUpdate:
+		return NatPortForwardUpdate{
+			Target: target, Iface: p.Iface, Proto: p.Proto, IntIP: p.IntIP,
+			Comment: p.Comment, ExtPort: p.ExtPort, IntPort: p.IntPort,
+		}, nil
+	case OpNatPortForwardDelete:
+		return NatPortForwardDelete{Target: target}, nil
+	case OpRouteStaticCreate:
+		return RouteStaticCreate{
+			Target: target, Iface: strOr(p.Iface), DestCIDR: strOr(p.DestCIDR), Gateway: strOr(p.Gateway),
+			Comment: strOr(p.Comment), Metric: intOr(p.Metric),
+		}, nil
+	case OpRouteStaticUpdate:
+		return RouteStaticUpdate{
+			Target: target, Iface: p.Iface, DestCIDR: p.DestCIDR, Gateway: p.Gateway,
+			Comment: p.Comment, Metric: p.Metric,
+		}, nil
+	case OpRouteStaticDelete:
+		return RouteStaticDelete{Target: target}, nil
 	default:
 		return nil, fmt.Errorf("ifaces: unsupported op type %q", env.Op)
 	}

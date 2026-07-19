@@ -25,6 +25,15 @@ const (
 	KindGuestNic     Kind = "guest-nic"
 	KindLldpNeighbor Kind = "lldp-neighbor"
 	KindFwRuleset    Kind = "fw-ruleset"
+
+	// KindNatRule and KindStaticRoute (T-1403: Edge & NAT cockpit) name a
+	// nat.masquerade/nat.portforward rule and a route.static route,
+	// respectively — node-scoped, caller-chosen ids (docs/data-model.md §3),
+	// with no interfaces(5) stanza of their own (they live inside an
+	// *existing* iface's post-up/post-down lines — see
+	// internal/change/ifaces/edgeop.go).
+	KindNatRule     Kind = "nat-rule"
+	KindStaticRoute Kind = "static-route"
 )
 
 // knownKinds is the closed set of valid Kind values. ParseRef rejects any
@@ -35,6 +44,7 @@ var knownKinds = map[Kind]bool{
 	KindVlan: true, KindOVSBridge: true, KindOVSBond: true, KindSDNZone: true,
 	KindSDNVnet: true, KindSDNSubnet: true, KindGuest: true, KindGuestNic: true,
 	KindLldpNeighbor: true, KindFwRuleset: true,
+	KindNatRule: true, KindStaticRoute: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)

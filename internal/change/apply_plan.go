@@ -78,6 +78,18 @@ var nodeFileOpTypes = map[OpType]bool{
 	OpVlanCreate:       true,
 	OpVlanUpdate:       true,
 	OpVlanDelete:       true,
+
+	// T-1403's nat.*/route.static.* ops (docs/data-model.md §3): applied via
+	// the same interfaces-file post-up/post-down write path as every op
+	// above, never a second mutation mechanism.
+	OpNatMasqueradeCreate:  true,
+	OpNatMasqueradeDelete:  true,
+	OpNatPortForwardCreate: true,
+	OpNatPortForwardUpdate: true,
+	OpNatPortForwardDelete: true,
+	OpRouteStaticCreate:    true,
+	OpRouteStaticUpdate:    true,
+	OpRouteStaticDelete:    true,
 }
 
 // sdnStageOpTypes is the subset of the v1 op vocabulary T-402 realizes as a
