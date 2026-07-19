@@ -7,6 +7,21 @@
 import { Link } from "react-router-dom";
 import type { FlowEdge } from "./flowEdges";
 import { flowPairExplorerPath } from "../flows/urlState";
+import { conntrackNodeLinkPath } from "../conntrack/urlState";
+
+/** A Ref string's node segment, per inventory.Ref's "kind:node:id" encoding
+ * (ParseRef splits on only the first two ':' — mirrors expand.ts's/
+ * opSummary.ts's identical helper, kept local here rather than shared so
+ * this small pure function doesn't force a cross-feature import). Empty for
+ * a cluster-scoped ref (e.g. an SdnVnet ref's node segment is "") — the
+ * caller (conntrackNodeLinkPath) treats that as "no node to scope to". */
+function refNode(ref: string): string {
+  const first = ref.indexOf(":");
+  if (first === -1) return "";
+  const second = ref.indexOf(":", first + 1);
+  if (second === -1) return "";
+  return ref.slice(first + 1, second);
+}
 
 export interface FlowPairPanelProps {
   edge: FlowEdge;
@@ -59,12 +74,20 @@ export function FlowPairPanel({ edge, onClose }: FlowPairPanelProps) {
         <dt className="text-slate-500 dark:text-slate-400">Records</dt>
         <dd>{edge.recordCount.toLocaleString()}</dd>
       </dl>
-      <Link
-        to={flowPairExplorerPath("/flows", edge.from, edge.to)}
-        className="mt-3 inline-block text-sm text-accent-700 underline dark:text-accent-300"
-      >
-        View in Flow Explorer
-      </Link>
+      <div className="mt-3 flex flex-col gap-1">
+        <Link
+          to={flowPairExplorerPath("/flows", edge.from, edge.to)}
+          className="inline-block text-sm text-accent-700 underline dark:text-accent-300"
+        >
+          View in Flow Explorer
+        </Link>
+        <Link
+          to={conntrackNodeLinkPath("/conntrack", refNode(edge.from))}
+          className="inline-block text-sm text-accent-700 underline dark:text-accent-300"
+        >
+          View live connections
+        </Link>
+      </div>
     </div>
   );
 }

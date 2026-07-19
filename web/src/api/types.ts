@@ -2121,6 +2121,44 @@ export interface FlowBatchEvent {
   droppedTotal: number;
 }
 
+// --- Conntrack (T-1305 backend / frontend; docs/api.md's "Conntrack"
+// section + internal/api/conntrack.go's conntrackEntryResponse) -----------
+
+/** One NAT-translated endpoint — docs/api.md's Conntrack section's
+ * `natSrc`/`natDst` shape. */
+export interface NatAddr {
+  ip: string;
+  port?: number;
+}
+
+/** One live conntrack table entry — the shape `GET /conntrack`'s `items`
+ * carries, field-for-field per docs/api.md. `node` is which cluster node
+ * this connection was observed on (a live, per-node kernel read, never
+ * cached/merged server-side beyond this one response). `natSrc`/`natDst`
+ * are present only when that side of the connection is NAT'd (SNAT/DNAT
+ * respectively) — absent for a plain, untranslated connection. */
+export interface ConntrackEntry {
+  node: string;
+  srcIp: string;
+  dstIp: string;
+  state?: string;
+  natSrc?: NatAddr;
+  natDst?: NatAddr;
+  proto: number;
+  srcPort?: number;
+  dstPort?: number;
+  timeoutSec?: number;
+}
+
+/** GET /conntrack response envelope — the same cluster-fan-out shape GET
+ * /audit / GET /flows use, minus pagination (a live table snapshot has no
+ * cursor to resume — every request re-reads current state fresh). */
+export interface ConntrackPage {
+  items: ConntrackEntry[];
+  partial?: boolean;
+  failedNodes?: string[];
+}
+
 // --- History (GET /history/events; internal/api/history.go, T-1007) -------
 
 /** One merged timeline-marker item — docs/api.md's `HistoryEvent` shape,
