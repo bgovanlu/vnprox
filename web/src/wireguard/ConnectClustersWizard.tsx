@@ -131,15 +131,22 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
 
   // The new firewall rule appends after every rule this ruleset already
   // has — never displacing an existing rule's position (wizardOps.ts's own
-  // doc comment). Not fetched until the source node is picked.
+  // doc comment). Not fetched until the source node is picked. `fwPos` is
+  // `undefined` until the count is actually known: defaulting to 0 would
+  // top-insert and displace existing rules under a slow/failed fetch, so
+  // the Review step stays invalid until the ruleset resolves (review-T-1402).
   const rulesetQuery = useNodeRulesetQuery(sourceNode || undefined);
-  const fwPos = rulesetQuery.data?.rules.length ?? 0;
+  const fwPos = rulesetQuery.data?.rules.length;
 
   const cap = capsForNode(session, sourceNode);
   const capDenied = sourceNode !== "" && !cap.netWrite;
   const capReason = sourceNode ? missingCapTooltip(session, sourceNode, "netWrite") : undefined;
 
   function handleFinish(): void {
+    if (fwPos === undefined) {
+      toast({ title: "Loading firewall rules…", description: "One moment — reading the node's ruleset so the new rule appends cleanly.", variant: "error" });
+      return;
+    }
     setFinishing(true);
     const ops: Op[] = buildConnectClustersOps(params, tunnelId, fwPos);
     void addOps(ops, `WireGuard tunnel: ${sourceNode} → ${params.peerEndpoint || "peer"}`)
@@ -255,7 +262,7 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
     {
       id: "review",
       title: S.steps.review,
-      isValid: !capDenied,
+      isValid: !capDenied && fwPos !== undefined,
       invalidReason: capReason,
       content: (
         <div className="space-y-2 text-slate-600 dark:text-slate-300">

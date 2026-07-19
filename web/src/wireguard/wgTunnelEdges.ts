@@ -8,10 +8,11 @@
 // shape exactly.
 //
 // A tunnel's own node isn't rendered as a new synthetic node — it anchors
-// to the REAL per-node topology entity ("node:<name>:<name>", the same
-// anchor TopologyPage.tsx's own nodeIdForName resolves latency/MTU overlay
-// edges onto) via the injected `nodeIdForName` resolver, so this overlay
-// never duplicates a node the base topology already renders. The far side
+// to the REAL rendered per-node entity (the first-by-id element in that
+// node's own nodeGroup band, the same anchor the latency/MTU overlays now
+// resolve onto — see topology/nodeAnchor.ts) via the injected
+// `nodeIdForName` resolver, so this overlay never duplicates a node the
+// base topology already renders. The far side
 // of a tunnel, though, is very often NOT a rendered inventory entity at
 // all — an external/road-warriorless peer, or (per this task's federation
 // seam note) a node belonging to a cluster this repo cannot yet resolve —
