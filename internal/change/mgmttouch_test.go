@@ -176,3 +176,65 @@ func TestTouchesMgmtPath_WireGuard(t *testing.T) {
 		})
 	}
 }
+
+// TestTouchesMgmtPath_EdgeNAT is the T-1403 regression: a nat.*/route.static.*
+// op whose iface is on the management path must inherit T-703's ceremony
+// (review-T-1403 gating finding), and the same op on an unrelated iface must
+// not.
+func TestTouchesMgmtPath_EdgeNAT(t *testing.T) {
+	paths := mgmtPathsPve1() // pve1: vmbr0 (mgmt) via bond0 -> eno1/eno2
+	tests := []struct {
+		name string
+		ops  string
+		want bool
+	}{
+		{
+			name: "nat.masquerade.create on the mgmt bridge",
+			ops:  `[{"op":"nat.masquerade.create","target":"nat-rule:pve1:m1","params":{"iface":"vmbr0","sourceCidr":"10.0.0.0/24"}}]`,
+			want: true,
+		},
+		{
+			name: "nat.masquerade.create on a mgmt-path bond slave",
+			ops:  `[{"op":"nat.masquerade.create","target":"nat-rule:pve1:m1","params":{"iface":"eno1","sourceCidr":"10.0.0.0/24"}}]`,
+			want: true,
+		},
+		{
+			name: "nat.masquerade.create on an unrelated iface",
+			ops:  `[{"op":"nat.masquerade.create","target":"nat-rule:pve1:m1","params":{"iface":"vmbr9","sourceCidr":"10.0.0.0/24"}}]`,
+			want: false,
+		},
+		{
+			name: "nat.portforward.create on the mgmt bridge",
+			ops:  `[{"op":"nat.portforward.create","target":"nat-rule:pve1:p1","params":{"iface":"vmbr0","proto":"tcp","extPort":443,"intIp":"10.0.0.5","intPort":443}}]`,
+			want: true,
+		},
+		{
+			name: "nat.portforward.update moving onto the mgmt bridge",
+			ops:  `[{"op":"nat.portforward.update","target":"nat-rule:pve1:p1","params":{"iface":"vmbr0"}}]`,
+			want: true,
+		},
+		{
+			name: "route.static.create via the mgmt bridge",
+			ops:  `[{"op":"route.static.create","target":"static-route:pve1:r1","params":{"iface":"vmbr0","destCidr":"192.0.2.0/24","gateway":"10.0.0.254"}}]`,
+			want: true,
+		},
+		{
+			name: "route.static.update moving onto the mgmt bridge",
+			ops:  `[{"op":"route.static.update","target":"static-route:pve1:r1","params":{"iface":"vmbr0"}}]`,
+			want: true,
+		},
+		{
+			name: "route.static.create on an unrelated iface",
+			ops:  `[{"op":"route.static.create","target":"static-route:pve1:r1","params":{"iface":"vmbr9","destCidr":"192.0.2.0/24","gateway":"10.9.0.254"}}]`,
+			want: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ops := opsFromJSON(t, tc.ops)
+			if got := change.TouchesMgmtPath(paths, ops); got != tc.want {
+				t.Errorf("TouchesMgmtPath = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

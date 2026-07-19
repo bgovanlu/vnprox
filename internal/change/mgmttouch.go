@@ -121,6 +121,35 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
 			if params.Carrier != nil && touched(*params.Carrier) {
 				return true
 			}
+		case *NatMasqueradeCreateParams:
+			// T-1403: a nat.*/route.static.* op whose iface is on a node's
+			// resolved management path is touchesMgmtPath — a masquerade or
+			// static route on the management/uplink interface can redirect or
+			// black-hole management connectivity, so it inherits T-703's
+			// ceremony with no override, exactly like the WgTunnel carrier
+			// cases above. (Delete ops carry no iface in their params — a
+			// delete-by-ref on an existing mgmt-path rule needs the same
+			// rule-id→iface resolution the WireGuard tunnel-delete follow-up
+			// threads in; tracked there.)
+			if touched(params.Iface) {
+				return true
+			}
+		case *NatPortForwardCreateParams:
+			if touched(params.Iface) {
+				return true
+			}
+		case *NatPortForwardUpdateParams:
+			if params.Iface != nil && touched(*params.Iface) {
+				return true
+			}
+		case *RouteStaticCreateParams:
+			if touched(params.Iface) {
+				return true
+			}
+		case *RouteStaticUpdateParams:
+			if params.Iface != nil && touched(*params.Iface) {
+				return true
+			}
 		default:
 			// Every remaining iface-namespace op (iface.update,
 			// bond/bridge/vlan update+delete) touches exactly its target;
