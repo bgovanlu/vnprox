@@ -18,6 +18,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/bgovanlu/vnprox/internal/change"
 )
 
 // AuthService is the subset of *auth.Service the router needs: route
@@ -241,6 +243,14 @@ type Options struct {
 	// every /wireguard route. Read-only — WireGuard is mutated only through
 	// the wg.* changeset op family, never a route here.
 	WireGuard WireGuardService
+	// WgCarriers supplies the changesets routes' touchesMgmtPath computation
+	// with each existing WireGuard tunnel's stored carrier, so a wg op that
+	// references a management-path tunnel WITHOUT the carrier in its params
+	// (wg.peer.*, wg.tunnel.delete, carrier-less wg.tunnel.update) is still
+	// flagged (Finding 2 / the mgmt-path interlock). Typically the same
+	// WireGuard read service WireGuard is wired from. Nil degrades those ops
+	// to params-only coverage (a create still names its own carrier).
+	WgCarriers change.WgCarrierSource
 	// Captures is T-1301's packet-capture coordinator seam (POST /captures,
 	// POST /captures/{id}/stop, GET /captures/{id}, GET /captures). Nil skips
 	// mounting every /captures route, same degraded-mode treatment as every
@@ -327,7 +337,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountAnnotationsRoutes(r, opts.Annotations, opts.Auth)
 		mountAlertRulesRoutes(r, opts.AlertRules, opts.AlertDeliveries, opts.AlertSecretCipher, opts.Auth)
-		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected)
+		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountHistoryRoutes(r, opts.History, opts.HistoryFindingEvents, opts.Auth)

@@ -20,7 +20,12 @@ package change
 // interface (e.g. "wg0"); Carrier is the underlying interface the tunnel's
 // endpoint rides on ("vmbr0", "bond0") — a tunnel whose Carrier is on a node's
 // resolved management/corosync path makes every wg.* op on it touchesMgmtPath
-// (mgmttouch.go), inheriting T-703's ceremony with no override.
+// (mgmttouch.go), inheriting T-703's ceremony with no override. This holds for
+// ops that do NOT carry the carrier in their params too — a standalone
+// wg.peer.add/remove, a carrier-less wg.tunnel.update, or a wg.tunnel.delete on
+// an already-existing tunnel — because TouchesMgmtPath resolves such a tunnel's
+// stored carrier from a tunnelID->carrier lookup (WgCarrierSource), not only
+// from the op params.
 type WgTunnelCreateParams struct {
 	IfName     string   `json:"ifName"`
 	Carrier    string   `json:"carrier,omitempty"`
@@ -54,16 +59,26 @@ func (WgTunnelDeleteParams) isChangeParams() {}
 // own (a road-warrior, or a cluster vnprox does not manage): it is modeled
 // read-only and config-export-only, and vnprox never runs an apply step
 // against its own side (T-1401 AC5) — but it still appears in this tunnel's own
-// on-node peer list, which is what lets it connect. PresharedKey, when set, is
-// the plaintext key sealed on the owning node before storage.
+// on-node peer list, which is what lets it connect.
+//
+// The preshared key is a WireGuard secret and never rides an op or a read
+// response in the clear. PresharedKey is a WRITE-ONLY ingest field: a client
+// supplies the plaintext on create/update, Service.sealOpSecrets immediately
+// seals it into PresharedKeyEnc (AES-256-GCM, the same SessionCipher the
+// private key and sessions.pve_ticket_enc use) and clears PresharedKey, so
+// only the sealed form is persisted in changesets.ops_json. The read surface
+// (GET /changesets) strips both fields entirely (internal/api's
+// redactOpSecrets). At apply time the owning node unseals PresharedKeyEnc
+// just-in-time and re-seals it into wireguard_peers.preshared_key_enc.
 type WgPeerAddParams struct {
-	PublicKey    string   `json:"publicKey"`
-	Endpoint     string   `json:"endpoint,omitempty"`
-	PresharedKey string   `json:"presharedKey,omitempty"`
-	ClusterID    string   `json:"clusterId,omitempty"`
-	AllowedIPs   []string `json:"allowedIps,omitempty"`
-	KeepaliveSec int      `json:"keepaliveSec,omitempty"`
-	External     bool     `json:"external,omitempty"`
+	PublicKey       string   `json:"publicKey"`
+	Endpoint        string   `json:"endpoint,omitempty"`
+	PresharedKey    string   `json:"presharedKey,omitempty"`
+	ClusterID       string   `json:"clusterId,omitempty"`
+	AllowedIPs      []string `json:"allowedIps,omitempty"`
+	PresharedKeyEnc []byte   `json:"presharedKeyEnc,omitempty"`
+	KeepaliveSec    int      `json:"keepaliveSec,omitempty"`
+	External        bool     `json:"external,omitempty"`
 }
 
 func (WgPeerAddParams) isChangeParams() {}

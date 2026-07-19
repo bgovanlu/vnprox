@@ -100,7 +100,7 @@ func TestTouchesMgmtPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := change.TouchesMgmtPath(paths, opsFromJSON(t, tt.ops))
+			got := change.TouchesMgmtPath(paths, nil, opsFromJSON(t, tt.ops))
 			if got != tt.want {
 				t.Errorf("TouchesMgmtPath = %v, want %v", got, tt.want)
 			}
@@ -110,7 +110,7 @@ func TestTouchesMgmtPath(t *testing.T) {
 
 func TestTouchesMgmtPath_NoPaths(t *testing.T) {
 	ops := opsFromJSON(t, `[{"op":"bond.update","target":"bond:pve1:bond0","params":{"slaves":["eno1"]}}]`)
-	if change.TouchesMgmtPath(nil, ops) {
+	if change.TouchesMgmtPath(nil, nil, ops) {
 		t.Error("TouchesMgmtPath with no resolved paths should be false")
 	}
 }
@@ -119,12 +119,12 @@ func TestTouchesMgmtPath_RawReplaceOnNodeWithPath(t *testing.T) {
 	// iface.raw.replace targets a node ref; it rewrites the whole file, so a
 	// node that has any management path is touched.
 	ops := opsFromJSON(t, `[{"op":"iface.raw.replace","target":"node:pve1:pve1","params":{"content":"auto lo\n"}}]`)
-	if !change.TouchesMgmtPath(mgmtPathsPve1(), ops) {
+	if !change.TouchesMgmtPath(mgmtPathsPve1(), nil, ops) {
 		t.Error("iface.raw.replace on a node with a management path should touch it")
 	}
 	// ... but not a node without one.
 	ops2 := opsFromJSON(t, `[{"op":"iface.raw.replace","target":"node:pve2:pve2","params":{"content":"auto lo\n"}}]`)
-	if change.TouchesMgmtPath(mgmtPathsPve1(), ops2) {
+	if change.TouchesMgmtPath(mgmtPathsPve1(), nil, ops2) {
 		t.Error("iface.raw.replace on a node with no management path should not touch it")
 	}
 }
@@ -133,7 +133,8 @@ func TestTouchesMgmtPath_RawReplaceOnNodeWithPath(t *testing.T) {
 // safety-analysis test: a wg.* op on a tunnel whose carrier interface is part
 // of a node's resolved management/corosync path is touchesMgmtPath (inheriting
 // T-703's typed-ack / 180s-floor ceremony with no override), and one whose
-// carrier is off the path is not.
+// carrier is off the path is not — including the ops that carry the carrier
+// only in their params (create, carrier-setting update).
 func TestTouchesMgmtPath_WireGuard(t *testing.T) {
 	paths := mgmtPathsPve1() // pve1: vmbr0 (mgmt) via bond0 -> eno1/eno2
 	tests := []struct {
@@ -170,7 +171,94 @@ func TestTouchesMgmtPath_WireGuard(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ops := opsFromJSON(t, tc.ops)
-			if got := change.TouchesMgmtPath(paths, ops); got != tc.want {
+			if got := change.TouchesMgmtPath(paths, nil, ops); got != tc.want {
+				t.Errorf("TouchesMgmtPath = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestTouchesMgmtPath_WireGuard_StoredCarrier is Finding 2's regression:
+// carrier-less wg ops (wg.peer.add/remove, wg.tunnel.delete, and an update
+// that leaves the carrier alone) on an ALREADY-EXISTING tunnel whose stored
+// carrier is on the mgmt path MUST be flagged touchesMgmtPath — resolved from
+// the tunnelID->carrier lookup, since the carrier never appears in these ops'
+// params. The same ops on a tunnel whose stored carrier is off the path must
+// not be flagged.
+func TestTouchesMgmtPath_WireGuard_StoredCarrier(t *testing.T) {
+	paths := mgmtPathsPve1() // pve1: vmbr0 (mgmt) via bond0 -> eno1/eno2
+
+	// tunMgmt rides the mgmt bridge; tunOff rides an unrelated interface.
+	carriers := map[string]change.WgTunnelCarrier{
+		"tunMgmt":  {Node: "pve1", Carrier: "vmbr0"},
+		"tunSlave": {Node: "pve1", Carrier: "eno1"},
+		"tunOff":   {Node: "pve1", Carrier: "vmbr9"},
+	}
+
+	tests := []struct {
+		name string
+		ops  string
+		want bool
+	}{
+		{
+			name: "wg.peer.add on a mgmt-path tunnel (carrier only in store)",
+			ops:  `[{"op":"wg.peer.add","target":"wg-peer:pve1:tunMgmt/cGVlcg==","params":{"publicKey":"cGVlcg==","allowedIps":["10.0.0.2/32"]}}]`,
+			want: true,
+		},
+		{
+			name: "wg.peer.add on a tunnel whose stored carrier is a mgmt-path bond slave",
+			ops:  `[{"op":"wg.peer.add","target":"wg-peer:pve1:tunSlave/cGVlcg==","params":{"publicKey":"cGVlcg=="}}]`,
+			want: true,
+		},
+		{
+			name: "wg.peer.remove on a mgmt-path tunnel",
+			ops:  `[{"op":"wg.peer.remove","target":"wg-peer:pve1:tunMgmt/cGVlcg==","params":{"publicKey":"cGVlcg=="}}]`,
+			want: true,
+		},
+		{
+			name: "wg.tunnel.delete on a mgmt-path tunnel (no params at all)",
+			ops:  `[{"op":"wg.tunnel.delete","target":"wg-tunnel:pve1:tunMgmt","params":{}}]`,
+			want: true,
+		},
+		{
+			name: "carrier-less wg.tunnel.update (MTU only) on a mgmt-path tunnel",
+			ops:  `[{"op":"wg.tunnel.update","target":"wg-tunnel:pve1:tunMgmt","params":{"mtu":1380}}]`,
+			want: true,
+		},
+		{
+			name: "wg.peer.add on an off-path tunnel is not flagged",
+			ops:  `[{"op":"wg.peer.add","target":"wg-peer:pve1:tunOff/cGVlcg==","params":{"publicKey":"cGVlcg=="}}]`,
+			want: false,
+		},
+		{
+			name: "wg.tunnel.delete on an off-path tunnel is not flagged",
+			ops:  `[{"op":"wg.tunnel.delete","target":"wg-tunnel:pve1:tunOff","params":{}}]`,
+			want: false,
+		},
+		{
+			name: "carrier-less update on an off-path tunnel is not flagged",
+			ops:  `[{"op":"wg.tunnel.update","target":"wg-tunnel:pve1:tunOff","params":{"mtu":1380}}]`,
+			want: false,
+		},
+		{
+			name: "wg.peer.add on a mgmt-path tunnel owned by another node is not flagged",
+			ops:  `[{"op":"wg.peer.add","target":"wg-peer:pve2:tunMgmt/cGVlcg==","params":{"publicKey":"cGVlcg=="}}]`,
+			want: false,
+		},
+		{
+			name: "without a carrier lookup, a carrier-less op falls back to unflagged",
+			ops:  `[{"op":"wg.peer.add","target":"wg-peer:pve1:tunMgmt/cGVlcg==","params":{"publicKey":"cGVlcg=="}}]`,
+			want: false, // nil carriers below
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ops := opsFromJSON(t, tc.ops)
+			c := carriers
+			if tc.name == "without a carrier lookup, a carrier-less op falls back to unflagged" {
+				c = nil
+			}
+			if got := change.TouchesMgmtPath(paths, c, ops); got != tc.want {
 				t.Errorf("TouchesMgmtPath = %v, want %v", got, tc.want)
 			}
 		})

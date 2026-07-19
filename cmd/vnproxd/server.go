@@ -532,7 +532,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// private key via the same session cipher, fixed-argv wg/wg-quick
 		// exec). Daemon-level, so wg rollback works on the unattended
 		// commit-confirm-timeout path too.
-		WG:             newHostWGGateway(wgRepo, sessionCipher, localNode, logger),
+		WG: newHostWGGateway(wgRepo, sessionCipher, localNode, logger),
+		// T-1401 Finding 1: seal a wg.peer.add op's preshared key at
+		// stage/create time with the same session cipher, so the plaintext PSK
+		// never lands in changesets.ops_json or a read response.
+		Sealer: sessionCipher,
+		// T-1401 Finding 2: resolve an existing tunnel's stored carrier so a
+		// carrier-less wg op (peer add/remove, delete, MTU-only update) on a
+		// mgmt-path tunnel is caught by the scheduling gate the same way the
+		// API interlock catches it.
+		WgCarriers:     wgReadSvc,
 		Snapshots:      snapshotRepo,
 		Blobs:          blobRepo,
 		Refresher:      refresher,
@@ -823,6 +832,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LatMesh:              latMeshSvc,
 		MTUProbe:             mtuProbeSvc,
 		WireGuard:            wgReadSvc,
+		WgCarriers:           wgReadSvc,
 		Captures:             captureCoord,
 		Conntrack:            realHost,
 		PeerConntrack:        peerConntrack,
