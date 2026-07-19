@@ -1888,6 +1888,85 @@ export interface VerifyEligibility {
   reason?: VerifyEligibilityReason;
 }
 
+// --- Guest network interior inspector (docs/api.md §"Guest interior",
+// T-1304) ---------------------------------------------------------------
+
+/** `GET/PUT /guests/{ref}/interior-toggle` response: whether the
+ * interior-inspector opt-in is currently enabled for this guest (off by
+ * default). */
+export interface GuestInteriorToggle {
+  ref: string;
+  enabled: boolean;
+}
+
+/** One network interface reported inside the guest. */
+export interface GuestInteriorInterface {
+  name: string;
+  mac?: string;
+  mtu?: number;
+  up: boolean;
+}
+
+/** One address claimed on one of the guest's interfaces. */
+export interface GuestInteriorAddress {
+  interface: string;
+  ip: string;
+  family: "ipv4" | "ipv6";
+  prefix?: number;
+}
+
+/** One routing-table entry reported inside the guest. `destination` is
+ * `"default"` or a CIDR. */
+export interface GuestInteriorRoute {
+  destination: string;
+  gateway?: string;
+  dev?: string;
+  metric?: number;
+}
+
+/** The guest's resolver configuration. */
+export interface GuestInteriorDNS {
+  nameservers?: string[];
+  searchDomains?: string[];
+}
+
+/** One listening TCP/UDP socket reported inside the guest. */
+export interface GuestInteriorListeningSocket {
+  proto: "tcp" | "udp";
+  localAddr: string;
+  localPort: number;
+}
+
+/** `GET /guests/{ref}/interior`'s per-address IPAM cross-check annotation
+ * — `claimed` is always true (this list only ever holds addresses the
+ * guest itself claimed); `allocated` reports whether IPAM has a matching
+ * allocation record; `matches` is `claimed && allocated`. Never a write to
+ * IPAM — this is an observed-vs-allocated comparison only
+ * (docs/features/ipam.md §1's "observed, never authoritative" confidence
+ * labeling applied to the guest's own self-report). */
+export interface GuestInteriorIPAMDiffEntry {
+  ip: string;
+  claimed: boolean;
+  allocated: boolean;
+  matches: boolean;
+}
+
+/** Which read path produced a `GuestInterior` view. */
+export type GuestInteriorSource = "qemu-ga" | "lxc-host";
+
+/** `GET /guests/{ref}/interior` response: the guest's own inside view of
+ * its network, plus the IPAM cross-check annotation. */
+export interface GuestInterior {
+  interfaces: GuestInteriorInterface[];
+  addresses: GuestInteriorAddress[];
+  routes: GuestInteriorRoute[];
+  dns: GuestInteriorDNS;
+  listeningSockets: GuestInteriorListeningSocket[];
+  defaultGatewayReachable: boolean;
+  source: GuestInteriorSource;
+  ipamDiff: GuestInteriorIPAMDiffEntry[];
+}
+
 // --- Protected interfaces (docs/api.md §"Protected interfaces"; T-203,
 // consumed by T-605's onboarding walkthrough step 2) -----------------------
 

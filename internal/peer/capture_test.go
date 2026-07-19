@@ -49,7 +49,7 @@ func TestClient_Capture_RoundTrip(t *testing.T) {
 		Iface: "vmbr0", Filter: "tcp port 443",
 		Caps:      CaptureCaps{MaxDurationSec: 60, MaxBytes: 4096, MaxPackets: 100, RetentionHours: 24},
 		StartedBy: "root@pam", StartedAt: 100,
-		Nodes:     []string{"pve1", "pve2"},
+		Nodes: []string{"pve1", "pve2"},
 	}
 	res, err := client.CaptureStart(t.Context(), p, spec)
 	if err != nil {

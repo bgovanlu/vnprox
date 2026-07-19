@@ -82,6 +82,12 @@ func (r fakeHostReader) Neighbors(context.Context, string) ([]host.Neighbor, err
 func (r fakeHostReader) CorosyncStatus(context.Context, string) ([]byte, error) {
 	return nil, host.ErrCorosyncUnavailable
 }
+func (r fakeHostReader) ContainerInterior(context.Context, string, int) (host.ContainerInteriorRaw, error) {
+	return host.ContainerInteriorRaw{}, host.ErrNotFound
+}
+func (r fakeHostReader) ContainerPing(context.Context, string, int, string) (bool, error) {
+	return false, nil
+}
 
 // partitionableTransport is an http.RoundTripper that fails every request to
 // a "cut" host (address, as in req.URL.Host) with a network-shaped error —

@@ -21,6 +21,7 @@ import { AnnotationsSection } from "./AnnotationsSection";
 import { useAnnotationsForRef } from "./annotationsQueries";
 import { BondLacpSection } from "./BondLacpSection";
 import { fieldRows } from "./fields";
+import { InteriorTab } from "./InteriorTab";
 import { METRICS_KINDS } from "./metricsKinds";
 import { MetricsTab } from "./MetricsTab";
 import { useInventoryDetailQuery, useMgmtStatusQuery } from "./queries";
@@ -191,6 +192,10 @@ export function InspectorPanel({
   const isBondKind = data ? data.kind === "bond" || data.kind === "ovs-bond" : false;
   const fdbRows = isBridgeKind && data ? (isFDBRows(data.fields.FDB) ? data.fields.FDB : []) : [];
   const hasMetrics = data ? METRICS_KINDS.has(data.kind) : false;
+  // T-1304: the guest network interior inspector applies to guest
+  // entities only (qemu/lxc) — a bare bridge/bond/etc. has no "inside" to
+  // read.
+  const isGuestKind = data ? data.kind === "guest" : false;
   // T-702: node-scoped entities only (bridge/bond/vlan/physnic/guest/...) —
   // cluster-scoped SDN entities (data.node === "") never carry a management
   // IP or corosync link of their own.
@@ -401,6 +406,11 @@ export function InspectorPanel({
                   Metrics
                 </RadixTabs.Trigger>
               )}
+              {isGuestKind && (
+                <RadixTabs.Trigger value="interior" className={tabTriggerClass}>
+                  Interior
+                </RadixTabs.Trigger>
+              )}
             </RadixTabs.List>
 
             <RadixTabs.Content value="fields" className="mt-3 flex-1 overflow-y-auto">
@@ -544,6 +554,11 @@ export function InspectorPanel({
             {hasMetrics && (
               <RadixTabs.Content value="metrics" className="mt-3 flex-1 overflow-y-auto">
                 <MetricsTab entityRef={data.ref} kind={data.kind} wsClient={metricsWsClient} />
+              </RadixTabs.Content>
+            )}
+            {isGuestKind && (
+              <RadixTabs.Content value="interior" className="mt-3 flex-1 overflow-y-auto">
+                <InteriorTab entityRef={data.ref} />
               </RadixTabs.Content>
             )}
           </RadixTabs.Root>

@@ -352,6 +352,42 @@ func (c *Client) Neighbors(ctx context.Context, p Peer, node string) ([]host.Nei
 	return out.Neighbors, nil
 }
 
+// ContainerInterior fetches an lxc guest's raw host-side
+// network-namespace read set from peer p (T-1304), the remote-node
+// counterpart of a local host.Reader.ContainerInterior call.
+func (c *Client) ContainerInterior(ctx context.Context, p Peer, node string, vmid int) (host.ContainerInteriorRaw, error) {
+	path := fmt.Sprintf("/api/peer/host/container-interior?node=%s&vmid=%d", url.QueryEscape(node), vmid)
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return host.ContainerInteriorRaw{}, err
+	}
+	var out containerInteriorResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return host.ContainerInteriorRaw{}, err
+	}
+	return host.ContainerInteriorRaw{
+		AddrJSON: []byte(out.AddrJSON), RouteJSON: []byte(out.RouteJSON),
+		ResolvConf: []byte(out.ResolvConf), Sockets: []byte(out.Sockets),
+	}, nil
+}
+
+// ContainerPing fetches whether targetIP answered a single best-effort
+// ping issued from inside vmid's network namespace on node, via peer p
+// (T-1304), the remote-node counterpart of a local host.Reader.
+// ContainerPing call.
+func (c *Client) ContainerPing(ctx context.Context, p Peer, node string, vmid int, targetIP string) (bool, error) {
+	path := fmt.Sprintf("/api/peer/host/container-ping?node=%s&vmid=%d&ip=%s", url.QueryEscape(node), vmid, url.QueryEscape(targetIP))
+	resp, err := c.do(ctx, p, http.MethodGet, path, nil)
+	if err != nil {
+		return false, err
+	}
+	var out containerPingResponse
+	if err := decodeInto(resp, &out); err != nil {
+		return false, err
+	}
+	return out.Reachable, nil
+}
+
 // FRRBGPSummary fetches node's raw `vtysh -c "show bgp summary json"`
 // output from peer p (T-404). available is false (raw is nil) when node
 // runs no FRR at all — the peer-routed counterpart of

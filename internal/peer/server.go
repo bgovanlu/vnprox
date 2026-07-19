@@ -114,6 +114,19 @@ type HostReader interface {
 	// already filtered to resolved states by host.Reader.Neighbors — see
 	// that method's doc comment.
 	Neighbors(ctx context.Context, node string) ([]host.Neighbor, error)
+
+	// ContainerInterior returns an lxc guest's raw host-side
+	// network-namespace read set (T-1304's guest-interior inspector — see
+	// host.ContainerInteriorRaw's doc comment). The lxc counterpart of the
+	// qemu path's guest-agent exec, which reaches PVE's own
+	// cluster-transparent REST API directly and so needs no peer route of
+	// its own.
+	ContainerInterior(ctx context.Context, node string, vmid int) (host.ContainerInteriorRaw, error)
+
+	// ContainerPing returns whether targetIP answered a single best-effort
+	// ping issued from inside vmid's network namespace on node (T-1304's
+	// default-gateway reachability check).
+	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
 }
 
 // FirewallLogReader is the peer-server-side dependency for
@@ -283,6 +296,8 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Get("/host/links", s.handleLinks)
 		r.Get("/host/fdb", s.handleFDB)
 		r.Get("/host/neighbors", s.handleNeighbors)
+		r.Get("/host/container-interior", s.handleContainerInterior)
+		r.Get("/host/container-ping", s.handleContainerPing)
 		r.Get("/host/frr/bgp-summary", s.handleFRRBGPSummary)
 		r.Get("/host/frr/evpn-vni", s.handleFRREVPNVNI)
 		r.Get("/host/dhcp-leases", s.handleDHCPLeases)
@@ -492,6 +507,58 @@ func (s *Server) handleNeighbors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, neighborsResponse{Neighbors: neighbors})
+}
+
+// handleContainerInterior implements GET /api/peer/host/container-interior
+// (T-1304): an lxc guest's raw host-side network-namespace read set, the
+// peer-routed counterpart of a local host.Reader.ContainerInterior call —
+// following handleNeighbors' precedent exactly (a plain read, no
+// {available} envelope). ?vmid= must parse as a positive int; a malformed
+// value is 400, not silently coerced to 0.
+func (s *Server) handleContainerInterior(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	vmid, err := strconv.Atoi(r.URL.Query().Get("vmid"))
+	if err != nil || vmid <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "vmid must be a positive integer")
+		return
+	}
+	raw, err := s.opts.Reader.ContainerInterior(r.Context(), node, vmid)
+	if err != nil {
+		s.writeHostError(w, "reading container interior", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, containerInteriorResponse{
+		AddrJSON: string(raw.AddrJSON), RouteJSON: string(raw.RouteJSON),
+		ResolvConf: string(raw.ResolvConf), Sockets: string(raw.Sockets),
+	})
+}
+
+// handleContainerPing implements GET /api/peer/host/container-ping
+// (T-1304): the peer-routed counterpart of a local
+// host.Reader.ContainerPing call. ?ip= is required (the target address to
+// ping from inside the container's netns).
+func (s *Server) handleContainerPing(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Reader == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host reader not configured")
+		return
+	}
+	node := r.URL.Query().Get("node")
+	targetIP := r.URL.Query().Get("ip")
+	vmid, err := strconv.Atoi(r.URL.Query().Get("vmid"))
+	if err != nil || vmid <= 0 || targetIP == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "vmid must be a positive integer and ip must be set")
+		return
+	}
+	reachable, err := s.opts.Reader.ContainerPing(r.Context(), node, vmid, targetIP)
+	if err != nil {
+		s.writeHostError(w, "pinging from container", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, containerPingResponse{Reachable: reachable})
 }
 
 // handleFRRBGPSummary implements GET /api/peer/host/frr/bgp-summary

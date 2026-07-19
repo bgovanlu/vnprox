@@ -357,3 +357,18 @@ CREATE TABLE pinned_spec (
 ```
 
 `POST /spec/pin` validates `content` through the same `spec.Parse` `POST /spec/import` uses (rejecting an unparseable document or a `specVersion` other than `1` before anything is stored) and upserts this one row in place — re-pinning replaces the previous pin outright, there is no history of past pins. `DELETE /spec/pin` removes the row; `internal/drift`'s spec_drift check treats "no row" identically to "never pinned" (zero findings, never an error) so unpinning cleanly clears every `spec_drift` finding on the next drift cycle. Note for the next agent: migration numbering skips `0010`/`0011`, reserved for in-flight sibling tasks (T-1103 scheduled changesets, T-1104 event stream/tokens) landing independently — the same "reserved gap" precedent `0007`'s own note above documents.
+
+## 8. Guest interior toggles (`internal/store`, T-1304)
+
+`guest_interior_toggles` (`internal/store/migrations/0015_guest_interior_toggles.sql`): the per-guest opt-in preference gating docs/api.md's `GET /guests/{ref}/interior` (§"Guest interior") — app-owned UI state per this doc's top-level rule (D5): it records only "has an operator opted this guest in", never a copy of any PVE-owned config or the interior read set itself, which is never persisted at all (live-read fresh on every request).
+
+```sql
+CREATE TABLE guest_interior_toggles (
+  ref        TEXT PRIMARY KEY,   -- the guest's Ref string (guest:<node>:<vmid>)
+  enabled    INTEGER NOT NULL,
+  updated_by TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+```
+
+Keyed by `ref` (one row per guest, following `annotations`' ref-keyed shape rather than `layouts`' per-username shape, §2): the toggle is a shared, cluster-wide preference any `netRead`-capable operator can see and flip, not private per-user data. A guest with no row at all reads as `enabled: false` (off by default) — the table only ever grows a row the first time a guest is toggled.

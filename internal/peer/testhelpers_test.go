@@ -148,6 +148,14 @@ func (r *spyHostReader) CorosyncStatus(_ context.Context, node string) ([]byte, 
 	return nil, host.ErrCorosyncUnavailable
 }
 
+func (r *spyHostReader) ContainerInterior(_ context.Context, _ string, _ int) (host.ContainerInteriorRaw, error) {
+	return host.ContainerInteriorRaw{}, host.ErrNotFound
+}
+
+func (r *spyHostReader) ContainerPing(_ context.Context, _ string, _ int, _ string) (bool, error) {
+	return false, nil
+}
+
 // spyHostWriter records every call it receives and its arguments.
 type spyHostWriter struct {
 	failNext  error

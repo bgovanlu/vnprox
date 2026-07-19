@@ -50,6 +50,8 @@ type pvemockReader interface {
 	DHCPLeases(ctx context.Context, node string) ([]byte, error)
 	Services(ctx context.Context, node string) (map[string]bool, error)
 	CorosyncStatus(ctx context.Context, node string) ([]byte, error)
+	ContainerInterior(ctx context.Context, node string, vmid int) (pvemock.ContainerInteriorRaw, error)
+	ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error)
 }
 
 // FixtureReader adapts a *pvemock.FixtureHostReader (T-004's YAML
@@ -168,6 +170,30 @@ func (f *FixtureReader) CorosyncStatus(ctx context.Context, node string) ([]byte
 		return nil, wrapFixtureErr(err)
 	}
 	return b, nil
+}
+
+// ContainerInterior implements Reader by delegating directly and
+// converting pvemock's own ContainerInteriorRaw to this package's
+// identically-shaped type (T-1304 — same "two interfaces, one adapter"
+// reasoning as the rest of this file).
+func (f *FixtureReader) ContainerInterior(ctx context.Context, node string, vmid int) (ContainerInteriorRaw, error) {
+	raw, err := f.r.ContainerInterior(ctx, node, vmid)
+	if err != nil {
+		return ContainerInteriorRaw{}, wrapFixtureErr(err)
+	}
+	return ContainerInteriorRaw{
+		AddrJSON: raw.AddrJSON, RouteJSON: raw.RouteJSON,
+		ResolvConf: raw.ResolvConf, Sockets: raw.Sockets,
+	}, nil
+}
+
+// ContainerPing implements Reader by delegating directly.
+func (f *FixtureReader) ContainerPing(ctx context.Context, node string, vmid int, targetIP string) (bool, error) {
+	reachable, err := f.r.ContainerPing(ctx, node, vmid, targetIP)
+	if err != nil {
+		return false, wrapFixtureErr(err)
+	}
+	return reachable, nil
 }
 
 // Services implements Reader by delegating directly.
