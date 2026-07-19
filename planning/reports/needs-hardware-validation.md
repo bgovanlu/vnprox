@@ -655,3 +655,41 @@ are genuinely unverifiable against `internal/pvemock`.
       configurations). Confirm on real hardware that a VF configured `spoofchk on` genuinely
       cannot forge its source MAC/VLAN before treating this finding's absence as a security
       guarantee rather than a configuration-intent check.
+
+## Ceph network awareness (T-1503)
+
+No live Proxmox+Ceph cluster is available in this environment (docs/development.md) — every read
+in `internal/ceph` is exercised against `internal/pvemock`'s fixture-driven implementation of
+`GET /cluster/ceph/config`/`GET /nodes/{node}/ceph/osd`, not real PVE/Ceph.
+
+- [ ] **Real `GET /cluster/ceph/config` / `GET /nodes/{node}/ceph/osd` wire shapes.**
+      `internal/pve/ceph.go`'s `CephConfig`/`CephOSD` types are this task's best-effort modeling of
+      PVE's documented Ceph API surface (`public_network`/`cluster_network` as flat keys on the
+      config route; `osd`/`up`/`in`/`device` per row on the OSD route, PVE's numeric-boolean
+      convention for `up`/`in` via the existing `pveBool` codec) — never independently confirmed
+      against a real PVE node with Ceph installed. A field name, nesting shape, or boolean encoding
+      mismatch here would silently produce an empty `ceph.Status` (this package's "absence, not an
+      error" contract means a wire-shape bug degrades to "no Ceph detected" rather than a visible
+      failure) rather than a wrong-but-detected read.
+- [ ] **Ceph's actual `cluster_network`-unset-defaults-to-`public_network` behavior.** Real Ceph
+      allows a deployment to declare only `public_network`, in which case cluster (replication)
+      traffic defaults to riding the same network — `pve.CephConfig`/`ceph.Discover` never infer
+      this default on the caller's behalf (an empty `ClusterNetwork` is reported as-is, "PVE
+      reported none", per that type's own doc comment) to avoid guessing dressed up as a fact; not
+      confirmed whether PVE's own `GET /cluster/ceph/config` response already resolves this default
+      server-side (in which case this package's stance is moot) or reports it unset (in which case
+      a future task should decide whether to model the default explicitly).
+- [ ] **`ceph_corosync_shared_link`'s real-world saturation risk.** The finding fires on *physical
+      link sharing* (same terminal NIC/bond) between corosync's ring and Ceph's cluster network —
+      it has no live utilization/bandwidth data behind it (no new dependency on `internal/metrics`
+      or `internal/latmesh` was added for this task), so its detail text states the qualitative risk
+      without a measured "how close to saturated" figure. Confirming how quickly a real Ceph
+      rebalance actually degrades corosync heartbeat latency on a shared link (and whether T-1507's
+      migration planner or a future card should wire live utilization into this specific finding) is
+      unverified here.
+- [ ] **`ceph_cluster_mtu_mismatch`'s practical impact.** Verified only that the check correctly
+      compares OSD-hosting nodes' resolved cluster-network carrier MTU (fixture-level, table test) —
+      not confirmed against a real cluster whether a jumbo/non-jumbo MTU mismatch on Ceph's cluster
+      network actually degrades replication throughput as sharply as the equivalent VXLAN
+      encapsulation-overhead case (`vxlan_underlay_mtu`) does, or merely risks occasional
+      fragmentation PMTU discovery already handles gracefully.
