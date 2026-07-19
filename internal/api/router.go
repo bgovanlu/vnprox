@@ -160,6 +160,15 @@ type Options struct {
 	ProbeClients  ProbeClientProvider
 	ProbeAudit    simulateVerifyAuditor
 	SimDivergence simDivergenceRecorder
+	// QosShapes is T-1505's shape-awareness seam for both simulate routes
+	// (a shaped-hop caveat, never a blocker) and GET /topology's
+	// shaping-active badge (paintQosBadges); nil-safe like every other
+	// optional Options field (both degrade to "no shape awareness this
+	// request" rather than failing).
+	QosShapes QosShapeSource
+	// Qos backs `GET /qos/shapes` (T-1505); nil skips mounting the route,
+	// same degraded-mode treatment as every other optional Options field.
+	Qos QosShapeListService
 	// FwLog backs T-505's GET /firewall/log (docs/features/firewall.md
 	// §4) — typically the daemon's *fwlog.Service, which also owns the
 	// `firewall.log.batch` WS push (fed directly from its own Run loop
@@ -230,7 +239,7 @@ func NewRouter(opts Options) http.Handler {
 				r.Get("/config", configHandler(opts.Instance))
 			})
 		}
-		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected)
+		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected, opts.QosShapes)
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
 		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth)
@@ -252,7 +261,8 @@ func NewRouter(opts Options) http.Handler {
 		mountFirewallRoutes(r, opts.Firewall, opts.Auth)
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
-		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
+		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.QosShapes, opts.Auth)
+		mountQosRoutes(r, opts.Qos, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)

@@ -52,14 +52,14 @@ type TopologyService interface {
 // keep working unchanged. ch may be nil (no collector wired — tests, or the
 // collector failed to initialize): /topology then simply omits its
 // staleness section.
-func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService) {
+func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService, qosSvc QosShapeSource) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Get("/topology", handleTopology(svc, ch, driftSvc, findingsSvc, mgmtSvc))
+		r.Get("/topology", handleTopology(svc, ch, driftSvc, findingsSvc, mgmtSvc, qosSvc))
 		r.Get("/inventory/search", handleInventorySearch(svc))
 		// A trailing chi wildcard (not a "{ref}" single-segment param) is
 		// required here: docs/api.md's Ref triplet scheme allows literal
@@ -127,7 +127,7 @@ func parseTopologyFilter(r *http.Request) topology.Filter {
 	return f
 }
 
-func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService) http.HandlerFunc {
+func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService, qosSvc QosShapeSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t := svc.Topology(parseTopologyFilter(r))
 		if ch != nil {
@@ -148,6 +148,9 @@ func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftServi
 		}
 		if mgmtSvc != nil {
 			paintMgmtStatus(r.Context(), &t, mgmtSvc)
+		}
+		if qosSvc != nil {
+			paintQosBadges(r.Context(), &t, qosSvc)
 		}
 		writeJSON(w, http.StatusOK, t)
 	}
@@ -208,6 +211,39 @@ func paintFindings(t *topology.Topology, fs []findings.Finding) {
 		}
 	}
 	paintBadge(t, affected)
+}
+
+// qosShapedBadge is T-1505's shaping-active badge token — additive to
+// whatever badges Project/paintFindings/paintMgmtStatus already assigned,
+// the same "one more token in badges[]" convention every other overlay in
+// this file uses (T-901's badge-rendering convention).
+const qosShapedBadge = "qos-shaped"
+
+// paintQosBadges decorates t with T-1505's shaping-active badge: every
+// node whose id names a bridge currently carrying an applied qos.shape
+// (qosSvc.ShapedBridgeRefs) gets qosShapedBadge appended to its Badges. A
+// read error degrades to "no qos badges this request" (logged nowhere,
+// matching paintMgmtStatus's identical tolerance) rather than failing the
+// whole /topology request over a display-only decoration.
+func paintQosBadges(ctx context.Context, t *topology.Topology, qosSvc QosShapeSource) {
+	refs, err := qosSvc.ShapedBridgeRefs(ctx)
+	if err != nil || len(refs) == 0 {
+		return
+	}
+	affected := make(map[string]bool, len(refs))
+	for ref, shaped := range refs {
+		if shaped {
+			affected[ref.String()] = true
+		}
+	}
+	if len(affected) == 0 {
+		return
+	}
+	for i, n := range t.Nodes {
+		if affected[n.ID] {
+			t.Nodes[i].Badges = append(append([]string{}, n.Badges...), qosShapedBadge)
+		}
+	}
 }
 
 func paintBadge(t *topology.Topology, affected map[string]bool) {

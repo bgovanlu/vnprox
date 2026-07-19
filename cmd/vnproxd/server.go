@@ -371,6 +371,21 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	blobRepo := store.NewBlobRepo(db)
 	auditRepo := store.NewAuditRepo(db)
 
+	// T-1505: QoS shape storage + the node-local tc/HTB gateway, mirroring
+	// nodeAgent's own real-vs-dev-sandbox split immediately above (a
+	// `make dev` daemon must never exec real tc any more than it may
+	// rewrite /etc/network/interfaces). localNode is the same closure
+	// every other node-scoped gateway below reuses (see its own doc
+	// comment further down this function).
+	qosShapeRepo := store.NewQosShapeRepo(db)
+	var qosGateway *hostQosGateway
+	if cfg.Safety.DevInterfacesDir != "" {
+		qosGateway = newDevQosGateway(qosShapeRepo, localNode, logger)
+	} else {
+		qosGateway = newHostQosGateway(qosShapeRepo, localNode, logger)
+	}
+	qosReadSvc := newQosReadService(qosShapeRepo)
+
 	// T-304: the local-timer protocol's node-side agent — every daemon runs
 	// one, independent of whether it ends up coordinating anything, so it
 	// can answer a coordinator's arm/cancel/status calls for its own node
@@ -440,10 +455,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
 		Nodes:             clusterNodes,
 		Timers:            clusterTimers,
-		Snapshots:         snapshotRepo,
-		Blobs:             blobRepo,
-		Refresher:         refresher,
-		ConfirmTimeout:    time.Duration(cfg.Server.ConfirmTimeoutDefault) * time.Second,
+		// T-1505: node-local QoS gateway (qos.shape.* ops) — daemon-level,
+		// no user ticket needed, exactly like Nodes above.
+		Qos:            qosGateway,
+		Snapshots:      snapshotRepo,
+		Blobs:          blobRepo,
+		Refresher:      refresher,
+		ConfirmTimeout: time.Duration(cfg.Server.ConfirmTimeoutDefault) * time.Second,
 		// The manual-rollback window tracks the snapshot-retention pin so a
 		// still-offered rollback always has its pre-apply snapshot (audit
 		// phase-2 F-10).
@@ -675,12 +693,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		ProbeClients:         probeClientProvider{authSvc},
 		ProbeAudit:           auditRepo,
 		SimDivergence:        simDivergenceRepo,
-		FwLog:                fwLogAPI,
-		Peer:                 peerSrv,
-		PeerAudit:            peerAudit,
-		PeerSnapshots:        peerSnapshots,
-		Flows:                flowRepo,
-		PeerFlows:            peerFlows,
+		// T-1505: shape-awareness for both simulate routes (a shaped-hop
+		// caveat) and GET /topology's shaping-active badge, plus the
+		// read-only GET /qos/shapes route — all backed by the same
+		// node-local store the qos.shape.* apply/rollback executor writes.
+		QosShapes:     qosReadSvc,
+		Qos:           qosReadSvc,
+		FwLog:         fwLogAPI,
+		Peer:          peerSrv,
+		PeerAudit:     peerAudit,
+		PeerSnapshots: peerSnapshots,
+		Flows:         flowRepo,
+		PeerFlows:     peerFlows,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see

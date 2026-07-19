@@ -24,6 +24,33 @@ type SimulatorGraph interface {
 	Snapshot() inventory.Snapshot
 }
 
+// QosShapeSource is T-1505's shape-awareness seam for the path simulator:
+// the set of bridge (today; the only shapeable kind) Refs currently
+// carrying an applied qos.shape, sourced from the app-owned qos_shapes
+// store table (never re-derived from live tc state). Optional — nil skips
+// wiring sim.Input.ShapedRefs, so the simulator simply discloses no
+// qos-shaped caveats (the same "not wired -> the enrichment silently
+// degrades to absent" convention GuestInteriorIPAMSource and every other
+// optional simulate-route seam already use).
+type QosShapeSource interface {
+	ShapedBridgeRefs(ctx context.Context) (map[inventory.Ref]bool, error)
+}
+
+// qosShapedRefs fetches src's currently-shaped bridge refs for one request,
+// degrading to nil (no shape-awareness this call) on a nil source or a read
+// error — a transient QoS-store hiccup must not fail the whole simulate
+// request over a disclosure-only enrichment.
+func qosShapedRefs(ctx context.Context, src QosShapeSource) map[inventory.Ref]bool {
+	if src == nil {
+		return nil
+	}
+	refs, err := src.ShapedBridgeRefs(ctx)
+	if err != nil {
+		return nil
+	}
+	return refs
+}
+
 const maxSimulateBodyBytes = 1 << 16
 
 // ProbeClientProvider supplies a live PVE session client bound to the
@@ -78,18 +105,18 @@ type guestAgentPinger interface {
 // nil-safe, like every other mountXRoutes; probeClients/audit/divergence
 // nil-safe on top of that (the routes simply aren't mounted without a live
 // PVE-client provider — a live probe makes no sense without one).
-func mountSimulateRoutes(r chi.Router, graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, auth AuthService) {
+func mountSimulateRoutes(r chi.Router, graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, qosShapes QosShapeSource, auth AuthService) {
 	if graph == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Post("/simulate/path", handleSimulatePath(graph))
+		r.Post("/simulate/path", handleSimulatePath(graph, qosShapes))
 		if probeClients != nil {
 			r.Get("/simulate/verify/eligibility", handleSimulateVerifyEligibility(graph, probeClients))
 			if lookup, ok := auth.(UsernameLookup); ok {
-				r.Post("/simulate/verify", handleSimulateVerify(graph, probeClients, audit, divergence, lookup))
+				r.Post("/simulate/verify", handleSimulateVerify(graph, probeClients, audit, divergence, qosShapes, lookup))
 			}
 		}
 	})
@@ -177,7 +204,7 @@ func toSimulateResponse(res sim.Result) simulateResponse {
 }
 
 // handleSimulatePath implements `POST /simulate/path`.
-func handleSimulatePath(graph SimulatorGraph) http.HandlerFunc {
+func handleSimulatePath(graph SimulatorGraph, qosShapes QosShapeSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req simulateRequest
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxSimulateBodyBytes))
@@ -197,7 +224,7 @@ func handleSimulatePath(graph SimulatorGraph) http.HandlerFunc {
 			return
 		}
 
-		res := sim.Simulate(sim.Input{Inventory: graph.Snapshot()},
+		res := sim.Simulate(sim.Input{Inventory: graph.Snapshot(), ShapedRefs: qosShapedRefs(r.Context(), qosShapes)},
 			sim.Request{Src: src, Dst: dst, Proto: req.Proto, Port: req.Port})
 		writeJSON(w, http.StatusOK, toSimulateResponse(res))
 	}
@@ -232,7 +259,7 @@ type verifyResponse struct {
 // (observed.outcome == "error", in which case result is "error") — a
 // malformed request never reaches the point of "an action was attempted",
 // so it is not audited, matching every other route in this package.
-func handleSimulateVerify(graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, lookup UsernameLookup) http.HandlerFunc {
+func handleSimulateVerify(graph SimulatorGraph, probeClients ProbeClientProvider, audit simulateVerifyAuditor, divergence simDivergenceRecorder, qosShapes QosShapeSource, lookup UsernameLookup) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -286,7 +313,7 @@ func handleSimulateVerify(graph SimulatorGraph, probeClients ProbeClientProvider
 			return
 		}
 
-		simRes := sim.Simulate(sim.Input{Inventory: snap}, sim.Request{Src: src, Dst: dst, Proto: req.Proto, Port: req.Port})
+		simRes := sim.Simulate(sim.Input{Inventory: snap, ShapedRefs: qosShapedRefs(r.Context(), qosShapes)}, sim.Request{Src: src, Dst: dst, Proto: req.Proto, Port: req.Port})
 
 		var observed probe.Result
 		if dstIP, dstErr := resolveProbeTargetIP(r.Context(), client, snap, req.Dst); dstErr != "" {
