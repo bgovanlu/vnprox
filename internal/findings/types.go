@@ -21,6 +21,10 @@ const (
 	// enum (docs/api.md's GET /findings finding shape). Currently the sole
 	// producer is the persisted sim_divergence check (adapt_probe.go).
 	SourceProbe Source = "probe"
+	// SourceWireguard (T-1401) marks a finding computed fresh from a live
+	// `wg show <if> dump`-equivalent poll of WireGuard's own on-node state
+	// (never persisted as truth) — wg_handshake_stale / wg_endpoint_drift.
+	SourceWireguard Source = "wireguard"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

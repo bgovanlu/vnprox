@@ -430,6 +430,23 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 		}
 	}
 
+	// T-1401: WireGuard state restore. Unlike SDN/fw, this works on the
+	// unattended commit-confirm-timeout / crash-recovery paths too — the
+	// WGGateway is daemon-level (no user ticket needed) — so a wg.tunnel.create
+	// that times out un-confirmed fully reverts (tunnel + generated keypair
+	// removed, no orphaned key material — AC6).
+	if plan.hasWg() {
+		if wgPre, ok := wgStateFromSnapshot(pre); ok {
+			wgLogs := s.restoreWgState(ctx, wgPre)
+			for _, l := range wgLogs {
+				if l.Status != StepOK {
+					anyFailed = true
+				}
+			}
+			rbLogs = append(rbLogs, wgLogs...)
+		}
+	}
+
 	log.Rollback = append(log.Rollback, rbLogs...)
 	log.RolledBackBy = actor
 	if logJSON, mErr := json.Marshal(log); mErr == nil {

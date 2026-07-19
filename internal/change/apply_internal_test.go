@@ -163,6 +163,8 @@ func TestParamsUnion_Membership(t *testing.T) {
 		&FwGroupCreateParams{}, &FwGroupUpdateParams{}, &FwGroupDeleteParams{},
 		&IfaceRenameParams{},
 		&IpamAllocCreateParams{}, &IpamAllocDeleteParams{},
+		&WgTunnelCreateParams{}, &WgTunnelUpdateParams{}, &WgTunnelDeleteParams{},
+		&WgPeerAddParams{}, &WgPeerRemoveParams{},
 	}
 	for _, m := range members {
 		m.isChangeParams() // marker; asserts union membership at runtime too

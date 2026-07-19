@@ -77,6 +77,15 @@ const (
 
 	OpIpamAllocCreate OpType = "ipam.alloc.create"
 	OpIpamAllocDelete OpType = "ipam.alloc.delete"
+
+	// WireGuard op group (T-1401, docs/data-model.md §3 addition). Every
+	// wg.* op is an ordinary changeset op — there is no second mutation path
+	// for WireGuard (CLAUDE.md's change-engine invariant).
+	OpWgTunnelCreate OpType = "wg.tunnel.create"
+	OpWgTunnelUpdate OpType = "wg.tunnel.update"
+	OpWgTunnelDelete OpType = "wg.tunnel.delete"
+	OpWgPeerAdd      OpType = "wg.peer.add"
+	OpWgPeerRemove   OpType = "wg.peer.remove"
 )
 
 // noTargetOps is the (deliberately tiny) set of ops with no natural target
@@ -150,6 +159,12 @@ var paramFactories = map[OpType]func() Params{
 
 	OpIpamAllocCreate: func() Params { return &IpamAllocCreateParams{} },
 	OpIpamAllocDelete: func() Params { return &IpamAllocDeleteParams{} },
+
+	OpWgTunnelCreate: func() Params { return &WgTunnelCreateParams{} },
+	OpWgTunnelUpdate: func() Params { return &WgTunnelUpdateParams{} },
+	OpWgTunnelDelete: func() Params { return &WgTunnelDeleteParams{} },
+	OpWgPeerAdd:      func() Params { return &WgPeerAddParams{} },
+	OpWgPeerRemove:   func() Params { return &WgPeerRemoveParams{} },
 }
 
 // KnownOpTypes returns every OpType this package can decode, for tests

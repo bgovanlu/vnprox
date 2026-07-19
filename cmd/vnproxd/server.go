@@ -389,7 +389,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// measured upgrade) directly below and api.Options.MTUProbe further
 	// down; mtuProbeActors joins the same run group.
 	mtuProbeSvc, mtuProbeActors := setupMTUProbe(cfg, latMeshDiscoverer, logger)
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	// T-1401: WireGuard. The read service (store config + live wg-show-dump
+	// status) backs both the findings engine's wg_handshake_stale/
+	// wg_endpoint_drift checks and the api.Options.WireGuard read routes; the
+	// on-node gateway (built near the change engine below) executes the wg.*
+	// changeset ops.
+	wgRepo := store.NewWireGuardRepo(db)
+	wgReadSvc := newWireGuardReadService(wgRepo, localNode, logger)
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -521,10 +528,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
 		Nodes:             clusterNodes,
 		Timers:            clusterTimers,
-		Snapshots:         snapshotRepo,
-		Blobs:             blobRepo,
-		Refresher:         refresher,
-		ConfirmTimeout:    time.Duration(cfg.Server.ConfirmTimeoutDefault) * time.Second,
+		// T-1401: the node-local WireGuard gateway (keygen on-node, sealed
+		// private key via the same session cipher, fixed-argv wg/wg-quick
+		// exec). Daemon-level, so wg rollback works on the unattended
+		// commit-confirm-timeout path too.
+		WG:             newHostWGGateway(wgRepo, sessionCipher, localNode, logger),
+		Snapshots:      snapshotRepo,
+		Blobs:          blobRepo,
+		Refresher:      refresher,
+		ConfirmTimeout: time.Duration(cfg.Server.ConfirmTimeoutDefault) * time.Second,
 		// The manual-rollback window tracks the snapshot-retention pin so a
 		// still-offered rollback always has its pre-apply snapshot (audit
 		// phase-2 F-10).
@@ -810,6 +822,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		PeerFlows:            peerFlows,
 		LatMesh:              latMeshSvc,
 		MTUProbe:             mtuProbeSvc,
+		WireGuard:            wgReadSvc,
 		Captures:             captureCoord,
 		Conntrack:            realHost,
 		PeerConntrack:        peerConntrack,

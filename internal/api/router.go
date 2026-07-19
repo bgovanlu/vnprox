@@ -236,6 +236,11 @@ type Options struct {
 	// prober section); nil skips mounting the route, matching every other
 	// optional Options field. Typically the daemon's own *mtuprobe.Service.
 	MTUProbe MTUProbeService
+	// WireGuard backs T-1401's GET /wireguard/tunnels + /{id}/pubkey +
+	// /{id}/peer-config (docs/api.md's WireGuard section); nil skips mounting
+	// every /wireguard route. Read-only — WireGuard is mutated only through
+	// the wg.* changeset op family, never a route here.
+	WireGuard WireGuardService
 	// Captures is T-1301's packet-capture coordinator seam (POST /captures,
 	// POST /captures/{id}/stop, GET /captures/{id}, GET /captures). Nil skips
 	// mounting every /captures route, same degraded-mode treatment as every
@@ -342,6 +347,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
 		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
 		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
+		mountWireGuardRoutes(r, opts.WireGuard, opts.Auth)
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)
 		mountConntrackRoutes(r, opts.Conntrack, opts.PeerConntrack, opts.ConntrackGuests, opts.LocalNode, opts.Auth)
 		mountDiagnoseRoutes(r, opts, opts.Auth)

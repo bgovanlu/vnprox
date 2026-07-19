@@ -38,7 +38,9 @@ Every entity embeds `Ref`:
 type Ref struct {
     Kind Kind   // "physnic","bond","bridge","vlan","ovs-bridge","ovs-bond",
                 // "sdn-zone","sdn-vnet","sdn-subnet","guest","guest-nic",
-                // "lldp-neighbor","fw-ruleset","node"
+                // "lldp-neighbor","fw-ruleset","node",
+                // "wg-tunnel","wg-peer" (T-1401: app-owned WireGuard op
+                // targets, not live-polled inventory entities)
     Node string // "" for cluster-scoped entities (SDN, cluster firewall)
     ID   string // stable within (Kind,Node), e.g. "vmbr0", "eno1", "zone1/vnet1"
 }
@@ -233,6 +235,25 @@ CREATE TABLE webhooks (                -- T-1104: internal/store/migrations/0011
   consecutive_failures INTEGER NOT NULL DEFAULT 0,
   last_attempt_at INTEGER, last_success_at INTEGER, last_error TEXT
 );
+
+CREATE TABLE wireguard_tunnels (   -- T-1401: internal/store/migrations/0016_wireguard.sql
+  id TEXT PRIMARY KEY, node TEXT NOT NULL, if_name TEXT NOT NULL,
+  private_key_enc BLOB NOT NULL,    -- AES-256-GCM ciphertext, never returned by any API
+  public_key TEXT NOT NULL,         -- base64, the exportable half
+  listen_port INTEGER NOT NULL DEFAULT 0, addresses_json TEXT NOT NULL DEFAULT '[]',
+  mtu INTEGER NOT NULL DEFAULT 0, carrier TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL, created_at INTEGER NOT NULL
+);  -- UNIQUE (node, if_name)
+
+CREATE TABLE wireguard_peers (     -- T-1401
+  tunnel_id TEXT NOT NULL REFERENCES wireguard_tunnels(id) ON DELETE CASCADE,
+  public_key TEXT NOT NULL, endpoint TEXT NOT NULL DEFAULT '',
+  allowed_ips_json TEXT NOT NULL DEFAULT '[]',
+  preshared_key_enc BLOB,           -- AES-256-GCM ciphertext, NULL when unused
+  keepalive_sec INTEGER NOT NULL DEFAULT 0, external INTEGER NOT NULL DEFAULT 0,
+  cluster_id TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (tunnel_id, public_key)
+);
 ```
 
 **`layouts` / `annotations` (T-907: saved views & annotations, docs/api.md's "Saved views & annotations" section).** Both are strictly app-owned UI state — never a shadow copy of any PVE-authoritative config, per this doc's top-level rule. `layouts` (T-107) already held the auto-persisted canvas-position/filter blob under the reserved name `"topology"` (and `"onboarding"`'s walkthrough progress); T-907 reuses the identical mechanism for **named saved views** — a user-chosen `name` whose `layout_json` is a frontend-owned, backend-opaque blob shaped `{kind: "view", layers, vlanFilter?, zoom, viewport: {x, y}, selection?, view}` (docs/api.md documents the exact shape). The `kind: "view"` tag is how the frontend tells a saved view apart from the reserved auto-layout blobs when listing — vnproxd itself never inspects `layout_json`'s contents either way. `annotations` is a **new** table rather than a further extension of `layouts`: an entity-pinned sticky note is naturally many-rows-per-user (indeed many-rows-per-entity, shared across every user, not one blob overwritten in place), so it doesn't fit `layouts`' per-`(username, name)` single-blob shape — see `internal/store/migrations/0006_annotations.sql`'s doc comment for the full reasoning. `ref` is the pinned entity's `Ref` string (kind:node:id); `content` is free text vnproxd never interprets; `created_by` is the authoring user, kept for display/audit only — annotations are a shared team scratchpad visible to every `netRead`-capable user, not private per-user data like `layouts`.
@@ -267,6 +288,7 @@ CREATE TABLE webhooks (                -- T-1104: internal/store/migrations/0011
 | guest | `guest.nic.update` (reattach bridge/vnet, vid, rate, firewall flag) |
 | fw | `fw.rule.create/update/delete/move`, `fw.options.update`, `fw.alias.*`, `fw.ipset.*`, `fw.group.*` |
 | ipam | `ipam.alloc.create/delete` |
+| wg (T-1401) | `wg.tunnel.create/update/delete`, `wg.peer.add/remove` |
 
 Each op maps to one or more **apply steps**; the planner orders steps: (1) cluster-scope PVE API calls, (2) per-node interface file staging, (3) per-node `ifreload -a` (executed directly by vnproxd's own `NodeAgent` — **correction, T-607 docs audit:** not "via PVE's network reload endpoint" as this line previously said; `cmd/vnproxd/changeagent.go` writes `/etc/network/interfaces` and execs `ifreload` itself, since vnproxd runs on the node — see `docs/architecture.md` §4 for the fuller correction), (4) `sdn.apply` last when present. Rollback executes the inverse from the pre-snapshot in reverse order.
 
@@ -372,3 +394,11 @@ CREATE TABLE guest_interior_toggles (
 ```
 
 Keyed by `ref` (one row per guest, following `annotations`' ref-keyed shape rather than `layouts`' per-username shape, §2): the toggle is a shared, cluster-wide preference any `netRead`-capable operator can see and flip, not private per-user data. A guest with no row at all reads as `enabled: false` (off by default) — the table only ever grows a row the first time a guest is toggled.
+
+## 9. WireGuard tunnels & peers (`internal/store`, T-1401)
+
+`wireguard_tunnels` / `wireguard_peers` (`internal/store/migrations/0016_wireguard.sql`) hold **app-owned intent + audit only**, per this doc's top-level rule and `docs/architecture.md` §7's new-domain invariant — WireGuard's own on-node state (the live interface, handshake ages, transfer counters, the endpoint a peer is actually reaching us from) stays authoritative and is never shadow-copied here (`internal/wireguard.ParseDump` reads it fresh on every poll). Every WireGuard change is an ordinary `wg.*` changeset op (§3) through the normal stage→validate→diff→apply→confirm/rollback lifecycle — there is **no second mutation path**.
+
+**Key custody.** A tunnel's private key is generated *on the owning node* via stdlib `crypto/ecdh`'s X25519 curve (`internal/wireguard.GenerateKeypair` — no new third-party crypto dependency) as part of applying `wg.tunnel.create`, written once to `private_key_enc` **AES-256-GCM-encrypted at rest using the identical `internal/store.SessionCipher` cipher/key `sessions.pve_ticket_enc` and `alert_rules.target_secret_enc` use** (not a second key pair), and is never returned by any API response, log line, or audit-log detail. Only the derived `public_key` (plaintext) is exportable (`GET /wireguard/tunnels/{id}/pubkey`). A tunnel's key is never regenerated in place by an `update` op — rotation is delete-and-recreate, always two ordinary audited changeset ops, never a silent in-place overwrite. `wireguard_peers.preshared_key_enc` is the same sealed form when a peer uses an optional preshared key.
+
+**External peers** (`wireguard_peers.external = 1`) are endpoints vnprox does not own (a road-warrior, or a cluster vnprox does not manage): modeled read-only, config-export-only (`GET /wireguard/tunnels/{id}/peer-config`), and never targeted by an apply step of vnprox's own — their own key hygiene is explicitly out of this card's control. `cluster_id` links a federation-managed internal peer (the T-1201 seam, not yet in this repo — external/non-federated peers are the modeled shape until federation lands).

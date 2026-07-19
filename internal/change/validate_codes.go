@@ -22,8 +22,13 @@ const (
 	codeCIDRInvalid          = "schema.cidr_invalid"
 	codeIPInvalid            = "schema.ip_invalid"
 	codeMACInvalid           = "schema.mac_invalid"
-	codeDHCPRangeInvalid     = "schema.dhcp_range_invalid"
-	codeSDNZoneTypeInvalid   = "schema.sdn_zone_type_invalid"
+	// WireGuard schema codes (T-1401): a peer public key that isn't a valid
+	// base64 32-byte Curve25519 key, and a listen/endpoint port out of the
+	// 1–65535 range.
+	codeWgKeyInvalid       = "schema.wg_key_invalid"
+	codeWgPortInvalid      = "schema.wg_port_out_of_range"
+	codeDHCPRangeInvalid   = "schema.dhcp_range_invalid"
+	codeSDNZoneTypeInvalid = "schema.sdn_zone_type_invalid"
 	// codeSDNNameInvalid flags an sdn.zone.create/vnet.create whose id
 	// contains characters real PVE's SDN id format rejects. Real PVE
 	// validates zone/vnet ids against (case-insensitively) `[a-z][a-z0-9]*`

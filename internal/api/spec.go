@@ -55,8 +55,8 @@ type specImportRequest struct {
 //
 //nolint:govet // fieldalignment: response DTO; field order is the JSON shape, not packing.
 type specImportResponse struct {
-	changesetResponse
 	NotInSpec []string `json:"notInSpec"`
+	changesetResponse
 }
 
 // mountSpecRoutes registers the spec routes. GET /spec is netRead-gated like

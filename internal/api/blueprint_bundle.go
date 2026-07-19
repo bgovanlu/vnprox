@@ -74,9 +74,9 @@ type bundleSignatureResponse struct {
 
 //nolint:govet // fieldalignment: response DTO; field order is the JSON shape, not packing.
 type bundleResponse struct {
-	BundleVersion int                      `json:"bundleVersion"`
 	Blueprint     *blueprint.Blueprint     `json:"blueprint"`
 	Signature     *bundleSignatureResponse `json:"signature,omitempty"`
+	BundleVersion int                      `json:"bundleVersion"`
 }
 
 func toBundleResponse(b blueprint.Bundle) bundleResponse {
@@ -105,9 +105,9 @@ func toBundleSignature(r *bundleSignatureResponse) *blueprint.BundleSignature {
 //
 //nolint:govet // fieldalignment: request DTO; field order is the JSON shape, not packing.
 type bundleRequest struct {
-	BundleVersion int                      `json:"bundleVersion"`
-	Blueprint     blueprint.Blueprint      `json:"blueprint"`
 	Signature     *bundleSignatureResponse `json:"signature,omitempty"`
+	Blueprint     blueprint.Blueprint      `json:"blueprint"`
+	BundleVersion int                      `json:"bundleVersion"`
 	TrustUnsigned bool                     `json:"trustUnsigned,omitempty"`
 	TrustNewKey   bool                     `json:"trustNewKey,omitempty"`
 }
@@ -138,9 +138,9 @@ func toBundleSignerResponse(s blueprint.TrustedSigner) bundleSignerResponse {
 
 //nolint:govet // fieldalignment: response DTO; field order is the JSON shape, not packing.
 type bundleImportResponse struct {
-	Status    string                `json:"status"`
 	Blueprint *blueprint.Blueprint  `json:"blueprint,omitempty"`
 	Signer    *bundleSignerResponse `json:"signer,omitempty"`
+	Status    string                `json:"status"`
 }
 
 type signingKeyResponse struct {
