@@ -21,6 +21,10 @@ const (
 	// enum (docs/api.md's GET /findings finding shape). Currently the sole
 	// producer is the persisted sim_divergence check (adapt_probe.go).
 	SourceProbe Source = "probe"
+	// SourceK8s (T-1501) marks a finding produced by internal/k8s's
+	// read-only Kubernetes overlay mapping engine — currently the sole
+	// producer is k8s_nodeport_exposed_without_fw_rule (adapt_k8s.go).
+	SourceK8s Source = "k8s"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

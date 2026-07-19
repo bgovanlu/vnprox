@@ -50,7 +50,11 @@ type Config struct {
 	// MissedSchedules), backing the schedule_missed health check. Nil skips
 	// that check entirely, same degradation as every other optional Config
 	// field.
-	Schedule        ScheduleMissedProvider
+	Schedule ScheduleMissedProvider
+	// K8s is T-1501's read-only Kubernetes overlay seam (adapt_k8s.go),
+	// backing k8s_nodeport_exposed_without_fw_rule. Nil skips that producer
+	// entirely, same degradation as every other optional Config field.
+	K8s             K8sProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -76,6 +80,7 @@ type Engine struct {
 	corosyncSvc CorosyncProvider
 	fwAnalytics FwAnalyticsProvider
 	scheduleSvc ScheduleMissedProvider
+	k8sSvc      K8sProvider
 	probeSvc    ProbeProvider
 	serviceDB   *debouncer
 	services    *serviceStatusStore
@@ -133,6 +138,7 @@ func New(cfg Config) *Engine {
 		corosyncSvc: cfg.Corosync,
 		fwAnalytics: cfg.FwAnalytics,
 		scheduleSvc: cfg.Schedule,
+		k8sSvc:      cfg.K8s,
 		probeSvc:    cfg.Probe,
 		log:         logger,
 		now:         now,
@@ -174,6 +180,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, driftFindings(e.driftSvc)...)
 	out = append(out, lldpFindings(e.lldpSvc)...)
 	out = append(out, ipamFindings(e.ipamSvc)...)
+	out = append(out, k8sFindings(e.k8sSvc)...)
 	out = append(out, probeFindings(e.probeSvc)...)
 	out = append(out, e.healthFindings()...)
 	sortFindings(out)

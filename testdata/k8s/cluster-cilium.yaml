@@ -1,0 +1,33 @@
+# T-1501 fixture: a single-node cluster running Cilium (cilium DaemonSet
+# in kube-system). Also exercises the NodePort-exposed-without-fw-rule
+# finding's "silent when a matching allow rule exists" direction paired
+# with internal/api/k8s_test.go's firewall fixture — this file itself
+# carries no firewall data (that lives in the inventory graph fixture the
+# API-layer test builds), only the k8s-side service/node facts.
+nodes:
+  - name: k8s-node-1
+    internalIP: 10.10.0.31
+    podCIDR: 10.246.0.0/24
+
+pods:
+  - namespace: default
+    name: cache-1a2b3-klmno
+    node: k8s-node-1
+    podIP: 10.246.0.7
+    phase: Running
+
+services:
+  - namespace: default
+    name: cache
+    type: NodePort
+    clusterIP: 10.96.2.10
+    ports:
+      - port: 6379
+        nodePort: 30637
+        protocol: TCP
+
+daemonsets:
+  - namespace: kube-system
+    name: cilium
+  - namespace: kube-system
+    name: cilium-operator

@@ -1,0 +1,48 @@
+# T-1501 fixture: a 2-node cluster running Flannel (VXLAN backend), one
+# node correlating to a known PVE guest (pve1's IPAM allocation for
+# 10.10.0.11), one deliberately left unmatched (10.10.0.99, no IPAM
+# allocation anywhere) — exercises correlate.go's matched/unmatched split.
+nodes:
+  - name: k8s-node-1
+    internalIP: 10.10.0.11
+    podCIDR: 10.244.0.0/24
+    annotations:
+      flannel.alpha.coreos.com/backend-type: vxlan
+      flannel.alpha.coreos.com/public-ip: 10.10.0.11
+  - name: k8s-node-2
+    internalIP: 10.10.0.99
+    podCIDR: 10.244.1.0/24
+    annotations:
+      flannel.alpha.coreos.com/backend-type: vxlan
+      flannel.alpha.coreos.com/public-ip: 10.10.0.99
+
+pods:
+  - namespace: default
+    name: web-6f9d8-abcde
+    node: k8s-node-1
+    podIP: 10.244.0.5
+    phase: Running
+  - namespace: kube-system
+    name: kube-flannel-ds-xyz12
+    node: k8s-node-1
+    podIP: 10.244.0.2
+    phase: Running
+
+services:
+  - namespace: default
+    name: web
+    type: NodePort
+    clusterIP: 10.96.0.10
+    ports:
+      - port: 80
+        nodePort: 30080
+        protocol: TCP
+  - namespace: default
+    name: web-internal
+    type: ClusterIP
+    clusterIP: 10.96.0.20
+    ports:
+      - port: 443
+        protocol: TCP
+
+daemonsets: []

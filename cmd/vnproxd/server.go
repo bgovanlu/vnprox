@@ -25,6 +25,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
+	"github.com/bgovanlu/vnprox/internal/k8s"
 	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/neighbor"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -251,10 +252,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// the same "true nil interface until assigned" pattern as ipamSvc
 	// itself.
 	var dhcpAPISvc api.DHCPService
+	// k8sIPAMSrc is the same concrete *ipam.Service value as ipamSvc, typed
+	// as api.K8sIPAMSource (T-1501's node<->guest correlation seam,
+	// AllAllocations) — the identical "true nil interface until assigned"
+	// pattern as ipamSvc/dhcpAPISvc above, assigned in the same branch.
+	var k8sIPAMSrc api.K8sIPAMSource
 	if sdnPVEClient != nil {
 		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc})
 		ipamSvc = ipamConcrete
 		dhcpAPISvc = ipamConcrete
+		k8sIPAMSrc = ipamConcrete
 	}
 	// changeAllocations adapts ipamConcrete into change.AllocationsSource
 	// for T-406's DHCP-range-overlap advisory check — see
@@ -312,7 +319,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
 	simDivergenceRepo := store.NewSimDivergenceRepo(db)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	// T-1501: the k8s cluster registry (app-owned registration intent only,
+	// docs/data-model.md's k8s_clusters table) and the per-cluster poll-
+	// result cache (internal/k8s.Poller) — the latter is updated
+	// synchronously on every GET /k8s/{clusterId}/overlay request
+	// (api.Options.K8sPoller below) and read fresh by k8sFindingsAdapter
+	// (k8s.go) for the unified findings stream just below.
+	k8sClusterRepo := store.NewK8sClusterRepo(db)
+	k8sPoller := k8s.NewPoller()
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, k8sPoller, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -690,6 +705,20 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LLDPPeerInstaller: lldpPeerInstaller,
 		LLDPAudit:         auditRepo,
 		LocalNode:         localNode,
+		// T-1501: Kubernetes overlay mapping engine (read-only forever).
+		// K8sClusters/K8sAudit reuse the same *store.AuditRepo/db
+		// everything else in this file wires in; K8sSecretCipher reuses
+		// the identical session-secret cipher AlertSecretCipher/
+		// IngressSecretCipher-shaped fields elsewhere use;
+		// K8sGraph is the same live *inventory.Graph every other read
+		// path shares; K8sIPAM is nil-safe (k8sIPAMSrc above), only
+		// narrowing node<->guest correlation, never failing the route.
+		K8sClusters:     k8sClusterRepo,
+		K8sSecretCipher: sessionCipher,
+		K8sPoller:       k8sPoller,
+		K8sGraph:        graph,
+		K8sIPAM:         k8sIPAMSrc,
+		K8sAudit:        auditRepo,
 	})
 
 	srv := &http.Server{
