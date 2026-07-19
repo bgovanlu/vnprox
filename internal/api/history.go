@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
@@ -32,16 +33,22 @@ type HistoryFindingEventsSource interface {
 // route is a timeline-marker feed for HistoryTimeline.tsx, not a second
 // full audit browser: the marker's own deep link is `changesetId`, which
 // opens the existing changeset detail/diff view). `kind: "finding"` carries
-// findingId/transition.
+// findingId/transition, plus (T-1504) an additive serviceClass when
+// findingId is a service_traffic_on_wrong_network finding — parsed straight
+// back out of that finding's own content-derived id
+// (findings.ServiceClassFromFindingID) rather than a new finding_events
+// column, since the id already carries it (see that function's doc
+// comment). Every other finding's entries simply omit the field.
 type historyEventResponse struct {
-	Kind        string `json:"kind"`
-	Action      string `json:"action,omitempty"`
-	Target      string `json:"target,omitempty"`
-	ChangesetID string `json:"changesetId,omitempty"`
-	Result      string `json:"result,omitempty"`
-	FindingID   string `json:"findingId,omitempty"`
-	Transition  string `json:"transition,omitempty"`
-	At          int64  `json:"at"`
+	Kind         string `json:"kind"`
+	Action       string `json:"action,omitempty"`
+	Target       string `json:"target,omitempty"`
+	ChangesetID  string `json:"changesetId,omitempty"`
+	Result       string `json:"result,omitempty"`
+	FindingID    string `json:"findingId,omitempty"`
+	Transition   string `json:"transition,omitempty"`
+	ServiceClass string `json:"serviceClass,omitempty"`
+	At           int64  `json:"at"`
 }
 
 // historyEventsResponse is GET /history/events' response envelope.
@@ -106,12 +113,16 @@ func handleHistoryEvents(audit HistoryAuditSource, findingEvents HistoryFindingE
 				return
 			}
 			for _, e := range rows {
-				items = append(items, historyEventResponse{
+				item := historyEventResponse{
 					Kind:       "finding",
 					At:         e.At,
 					FindingID:  e.FindingID,
 					Transition: e.Transition,
-				})
+				}
+				if class, ok := findings.ServiceClassFromFindingID(e.FindingID); ok {
+					item.ServiceClass = class
+				}
+				items = append(items, item)
 			}
 		}
 

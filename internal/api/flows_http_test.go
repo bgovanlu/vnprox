@@ -6,8 +6,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
@@ -66,6 +68,18 @@ func flowsTestRouter(svc FlowLocalSource, peers PeerFlowSource) http.Handler {
 		Auth:      fakeAuth{authenticated: true},
 		Flows:     svc,
 		PeerFlows: peers,
+	})
+}
+
+func flowsTestRouterWithClassifier(svc FlowLocalSource, peers PeerFlowSource, classifier *flow.Classifier) http.Handler {
+	return NewRouter(Options{
+		Version:        "test",
+		DistFS:         testDistFS(),
+		Logger:         testLogger(),
+		Auth:           fakeAuth{authenticated: true},
+		Flows:          svc,
+		PeerFlows:      peers,
+		FlowClassifier: classifier,
 	})
 }
 
@@ -177,6 +191,53 @@ func TestFlowsRoute_InvalidVLAN_400(t *testing.T) {
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/flows?vlan=notanumber", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+// TestFlowsRoute_ServiceClass covers T-1504 AC2's GET /flows half: when a
+// FlowClassifier is wired, every item (local and peer-fanned-out alike)
+// carries the additive serviceClass field; when no classifier is wired
+// (the pre-T-1504 default), the field is omitted entirely rather than
+// emitted as a misleading "unclassified".
+func TestFlowsRoute_ServiceClass(t *testing.T) {
+	svc := &fakeFlowLocalSource{samples: []store.FlowSample{
+		{ID: 1, At: 100, Node: "pve1", SrcIP: "10.10.10.1", DstIP: "10.10.10.2", Proto: 17, Source: "netflow5"},
+		{ID: 2, At: 200, Node: "pve1", SrcIP: "203.0.113.1", DstIP: "203.0.113.2", Proto: 6, Source: "netflow5"},
+	}}
+
+	classifier := flow.NewClassifier()
+	classifier.RegisterNetworkSource(flow.NetworkSourceKindCorosync, flow.NewCorosyncSource([]string{"10.10.10.1"}, nil))
+
+	r := flowsTestRouterWithClassifier(svc, nil, classifier)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/flows", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var body flowListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(body.Items) != 2 {
+		t.Fatalf("items = %+v, want 2", body.Items)
+	}
+	if body.Items[0].ServiceClass != "corosync" {
+		t.Errorf("items[0].ServiceClass = %q, want corosync", body.Items[0].ServiceClass)
+	}
+	if body.Items[1].ServiceClass != "unclassified" {
+		t.Errorf("items[1].ServiceClass = %q, want unclassified", body.Items[1].ServiceClass)
+	}
+
+	// No classifier wired: field is omitted from the raw JSON, not present
+	// as an empty/zero value.
+	r2 := flowsTestRouter(svc, nil)
+	rec2 := httptest.NewRecorder()
+	r2.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/api/v1/flows", nil))
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec2.Code, rec2.Body.String())
+	}
+	if bodyStr := rec2.Body.String(); strings.Contains(bodyStr, "serviceClass") {
+		t.Errorf("body = %s, want no serviceClass field when no classifier is wired", bodyStr)
 	}
 }
 

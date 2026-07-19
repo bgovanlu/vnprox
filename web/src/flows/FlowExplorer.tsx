@@ -45,6 +45,14 @@ function formatTime(at: number): string {
   return new Date(at * 1000).toLocaleTimeString();
 }
 
+/** T-1504: a small text badge for a flow row's serviceClass — "—" for an
+ * absent field (no FlowClassifier wired daemon-side) so this reads as
+ * "unknown", distinct from the classifier's own explicit "unclassified"
+ * verdict (a registered NetworkSource ran and found no match). */
+function serviceClassLabel(serviceClass: FlowRecord["serviceClass"]): string {
+  return serviceClass ?? "—";
+}
+
 /** Renders a resolved ref if present, otherwise the raw IP — every record's
  * endpoints are shown honestly (never a guessed ref), mirroring
  * FlowRecord's own "srcRef/dstRef populated only when resolved" contract. */
@@ -290,6 +298,7 @@ export function FlowExplorer() {
               <TableHead>Bytes</TableHead>
               <TableHead>Packets</TableHead>
               <TableHead>VLAN</TableHead>
+              <TableHead>Service</TableHead>
               <TableHead>Origin</TableHead>
             </TableRow>
           </TableHeader>
@@ -348,6 +357,7 @@ function FlowRow({ record }: { record: FlowRecord }) {
       <TableCell>{formatBytes(record.bytes)}</TableCell>
       <TableCell>{record.packets.toLocaleString()}</TableCell>
       <TableCell>{record.vlan ?? "—"}</TableCell>
+      <TableCell className="text-xs">{serviceClassLabel(record.serviceClass)}</TableCell>
       <TableCell className="text-xs text-slate-500 dark:text-slate-400">{record.source}</TableCell>
     </TableRow>
   );

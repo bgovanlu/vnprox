@@ -43,40 +43,61 @@ type PeerFlowSource interface {
 // needs as a tiebreak is used internally by fetchClusterFlows and never
 // serialized here — see toFlowRecordResponse/peerFlowRecordToResponse).
 type flowRecordResponse struct {
-	Node    string `json:"node"`
-	SrcIP   string `json:"srcIp"`
-	DstIP   string `json:"dstIp"`
-	SrcRef  string `json:"srcRef,omitempty"`
-	DstRef  string `json:"dstRef,omitempty"`
-	Source  string `json:"source"`
-	At      int64  `json:"at"`
-	Bytes   int64  `json:"bytes"`
-	Packets int64  `json:"packets"`
-
-	SrcPort        int `json:"srcPort,omitempty"`
-	DstPort        int `json:"dstPort,omitempty"`
-	Proto          int `json:"proto"`
-	VLAN           int `json:"vlan,omitempty"`
-	IngressIfIndex int `json:"ingressIfIndex,omitempty"`
-	EgressIfIndex  int `json:"egressIfIndex,omitempty"`
+	Node           string `json:"node"`
+	SrcIP          string `json:"srcIp"`
+	DstIP          string `json:"dstIp"`
+	SrcRef         string `json:"srcRef,omitempty"`
+	DstRef         string `json:"dstRef,omitempty"`
+	Source         string `json:"source"`
+	ServiceClass   string `json:"serviceClass,omitempty"`
+	Packets        int64  `json:"packets"`
+	Bytes          int64  `json:"bytes"`
+	SrcPort        int    `json:"srcPort,omitempty"`
+	DstPort        int    `json:"dstPort,omitempty"`
+	Proto          int    `json:"proto"`
+	VLAN           int    `json:"vlan,omitempty"`
+	IngressIfIndex int    `json:"ingressIfIndex,omitempty"`
+	EgressIfIndex  int    `json:"egressIfIndex,omitempty"`
+	At             int64  `json:"at"`
 }
 
-func toFlowRecordResponse(s store.FlowSample) flowRecordResponse {
-	return flowRecordResponse{
+// classifyRecordFromStore/classifyRecordFromPeer extract just the metadata
+// fields internal/flow.Classifier.Verdict needs (IP/port/proto/VLAN) from a
+// stored sample / peer-wire record — a transient, never-persisted
+// flow.Record used purely for this request's classification, not a second
+// copy of anything durable.
+func classifyRecordFromStore(s store.FlowSample) flow.Record {
+	return flow.Record{SrcIP: s.SrcIP, DstIP: s.DstIP, SrcPort: s.SrcPort, DstPort: s.DstPort, Proto: s.Proto, VLAN: s.VLAN, Node: s.Node}
+}
+
+func classifyRecordFromPeer(r peer.FlowRecord) flow.Record {
+	return flow.Record{SrcIP: r.SrcIP, DstIP: r.DstIP, SrcPort: r.SrcPort, DstPort: r.DstPort, Proto: r.Proto, VLAN: r.VLAN, Node: r.Node}
+}
+
+func toFlowRecordResponse(s store.FlowSample, classifier *flow.Classifier) flowRecordResponse {
+	resp := flowRecordResponse{
 		Node: s.Node, SrcIP: s.SrcIP, DstIP: s.DstIP, SrcRef: s.SrcRef, DstRef: s.DstRef,
 		Source: s.Source, At: s.At, Bytes: s.Bytes, Packets: s.Packets,
 		SrcPort: s.SrcPort, DstPort: s.DstPort, Proto: s.Proto, VLAN: s.VLAN,
 		IngressIfIndex: s.IngressIf, EgressIfIndex: s.EgressIf,
 	}
+	if classifier != nil {
+		resp.ServiceClass = string(classifier.Classify(classifyRecordFromStore(s)))
+	}
+	return resp
 }
 
-func peerFlowRecordToResponse(r peer.FlowRecord) flowRecordResponse {
-	return flowRecordResponse{
+func peerFlowRecordToResponse(r peer.FlowRecord, classifier *flow.Classifier) flowRecordResponse {
+	resp := flowRecordResponse{
 		Node: r.Node, SrcIP: r.SrcIP, DstIP: r.DstIP, SrcRef: r.SrcRef, DstRef: r.DstRef,
 		Source: r.Source, At: r.At, Bytes: r.Bytes, Packets: r.Packets,
 		SrcPort: r.SrcPort, DstPort: r.DstPort, Proto: r.Proto, VLAN: r.VLAN,
 		IngressIfIndex: r.IngressIfIndex, EgressIfIndex: r.EgressIfIndex,
 	}
+	if classifier != nil {
+		resp.ServiceClass = string(classifier.Classify(classifyRecordFromPeer(r)))
+	}
+	return resp
 }
 
 // flowListResponse is GET /flows' response envelope: {items, nextCursor?,
@@ -93,18 +114,21 @@ type flowListResponse struct {
 // section): netRead-gated, matching every other live-network-observability
 // read route (GET /metrics/live, GET /firewall/log, ...). peers is nil-safe
 // (falls back to node-local-only, exactly like PeerAudit/PeerSnapshots).
-func mountFlowRoutes(r chi.Router, svc FlowLocalSource, auth AuthService, peers PeerFlowSource) {
+// classifier is T-1504's optional serviceClass attribution (nil-safe: every
+// item's serviceClass field is simply omitted — see flowRecordResponse's
+// doc comment).
+func mountFlowRoutes(r chi.Router, svc FlowLocalSource, auth AuthService, peers PeerFlowSource, classifier *flow.Classifier) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Get("/flows", handleListFlows(svc, peers))
+		r.Get("/flows", handleListFlows(svc, peers, classifier))
 	})
 }
 
-func handleListFlows(svc FlowLocalSource, peers PeerFlowSource) http.HandlerFunc {
+func handleListFlows(svc FlowLocalSource, peers PeerFlowSource, classifier *flow.Classifier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
@@ -177,13 +201,13 @@ func handleListFlows(svc FlowLocalSource, peers PeerFlowSource) http.HandlerFunc
 			}
 			items := make([]flowRecordResponse, len(samples))
 			for i, s := range samples {
-				items[i] = toFlowRecordResponse(s)
+				items[i] = toFlowRecordResponse(s, classifier)
 			}
 			writeJSON(w, http.StatusOK, flowListResponse{Items: items, NextCursor: next})
 			return
 		}
 
-		items, next, partial, failed, err := fetchClusterFlows(r.Context(), svc, peers, filter, q.Get("cursor"), limit)
+		items, next, partial, failed, err := fetchClusterFlows(r.Context(), svc, peers, filter, q.Get("cursor"), limit, classifier)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not list flow records")
 			return

@@ -13,6 +13,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   Changeset,
+  FlowsPage,
   LiveMetric,
   ProtectedInterfacesStatusResponse,
   StreamFinding,
@@ -28,6 +29,7 @@ let mockMgmtStatus: ProtectedInterfacesStatusResponse = { source: "confirmed", n
 let mockTopology: TopologyResponse = { nodes: [], edges: [], layers: [], generatedAt: 0 };
 let mockLiveMetrics: LiveMetric[] = [];
 let mockAudit: AuditListResponse = { items: [] };
+let mockFlows: FlowsPage = { items: [] };
 
 vi.mock("../api/findings", () => ({
   fetchFindings: () => Promise.resolve(mockFindings),
@@ -69,6 +71,10 @@ vi.mock("../api/audit", () => ({
   fetchAudit: () => Promise.resolve(mockAudit),
 }));
 
+vi.mock("../api/flows", () => ({
+  fetchFlows: () => Promise.resolve(mockFlows),
+}));
+
 vi.mock("../api/ws", () => ({
   createWsClient: () => ({ subscribe: () => () => undefined, status: () => "closed", close: () => undefined }),
   defaultWsUrl: () => "ws://unused",
@@ -85,6 +91,7 @@ function renderDashboard() {
           <Route path="/topology" element={<div>Topology page</div>} />
           <Route path="/management" element={<div>Management page</div>} />
           <Route path="/audit" element={<div>Audit page</div>} />
+          <Route path="/flows" element={<div>Flows page</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -151,6 +158,14 @@ const THREE_NODE_LIVE: LiveMetric[] = [
   { ref: "guest-nic:pve2:200/net0", at: 1, rates: RATES(1_000, 500) },
 ];
 
+const THREE_NODE_FLOWS: FlowsPage = {
+  items: [
+    { at: 1000, node: "pve1", srcIp: "10.10.10.1", dstIp: "10.10.10.2", proto: 17, bytes: 8000, packets: 8, source: "netflow5", serviceClass: "corosync" },
+    { at: 1010, node: "pve1", srcIp: "10.10.10.1", dstIp: "10.10.10.2", proto: 17, bytes: 2000, packets: 2, source: "netflow5", serviceClass: "corosync" },
+    { at: 1005, node: "pve2", srcIp: "10.20.0.5", dstIp: "10.20.0.9", proto: 6, bytes: 1000, packets: 3, source: "netflow5", serviceClass: "migration" },
+  ],
+};
+
 const THREE_NODE_AUDIT: AuditListResponse = {
   items: [
     { id: 1, at: 1_700_000_000, username: "root@pam", action: "changeset.apply", target: "cs2", result: "ok" },
@@ -165,6 +180,7 @@ function seedThreeNodeFixture(): void {
   mockTopology = THREE_NODE_TOPOLOGY;
   mockLiveMetrics = THREE_NODE_LIVE;
   mockAudit = THREE_NODE_AUDIT;
+  mockFlows = THREE_NODE_FLOWS;
 }
 
 function seedSingleNodeCleanFixture(): void {
@@ -174,6 +190,7 @@ function seedSingleNodeCleanFixture(): void {
   mockTopology = { generatedAt: 1, layers: ["phys", "l2", "sdn", "guest"], nodes: [], edges: [] };
   mockLiveMetrics = [];
   mockAudit = { items: [] };
+  mockFlows = { items: [] };
 }
 
 beforeEach(() => {
@@ -247,6 +264,19 @@ describe("DashboardPage tiles render real data (AC2, three-node-vlan-shaped fixt
     });
     expect(within(region).getByText(/login/)).toBeInTheDocument();
   });
+
+  it("service-network-traffic tile ranks serviceClass by bytes/sec (T-1504)", async () => {
+    renderDashboard();
+    const region = tile("Service-network traffic");
+    await waitFor(() => {
+      expect(within(region).getByText("Corosync")).toBeInTheDocument();
+    });
+    // Corosync (8000+2000 bytes over 10s = 1000 B/s = 8000bps) outranks
+    // migration (1000 bytes, single-instant sample -> floored 1s window).
+    expect(within(region).getByText("Migration")).toBeInTheDocument();
+    const items = within(region).getAllByRole("listitem");
+    expect(items[0]?.textContent).toContain("Corosync");
+  });
 });
 
 describe("DashboardPage deep links (AC3)", () => {
@@ -306,6 +336,18 @@ describe("DashboardPage deep links (AC3)", () => {
       expect(screen.getByText("Audit page")).toBeInTheDocument();
     });
   });
+
+  it("service-network-traffic tile deep-links to /flows", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    await waitFor(() => {
+      expect(within(tile("Service-network traffic")).getByText("Corosync")).toBeInTheDocument();
+    });
+    await user.click(within(tile("Service-network traffic")).getByRole("button", { name: "Open flow explorer" }));
+    await waitFor(() => {
+      expect(screen.getByText("Flows page")).toBeInTheDocument();
+    });
+  });
 });
 
 describe("DashboardPage empty states (AC4, single-node-shaped fixture with nothing open/pending)", () => {
@@ -321,6 +363,7 @@ describe("DashboardPage empty states (AC4, single-node-shaped fixture with nothi
     expect(within(tile("Pending changesets")).getByText("Nothing pending")).toBeInTheDocument();
     expect(within(tile("Management-path redundancy")).getByText("All nodes redundant")).toBeInTheDocument();
     expect(within(tile("Top talkers")).getByText("No measurable traffic")).toBeInTheDocument();
+    expect(within(tile("Service-network traffic")).getByText("No classified traffic")).toBeInTheDocument();
     expect(within(tile("Recent audit activity")).getByText("No audit activity yet")).toBeInTheDocument();
 
     // None of these should ever render an error string in the clean case.

@@ -2074,6 +2074,13 @@ export interface AlertRuleTestResponse {
 // --- Flows (T-1002 backend / T-1003 frontend; docs/api.md's "Flows"
 // section + `internal/api/flows.go`'s flowRecordResponse) -----------------
 
+/** T-1504's flow-metadata service-network attribution
+ * (internal/flow.Classifier) — never payload inspection, see that
+ * package's doc comment. `"unclassified"` means no registered NetworkSource
+ * matched; `serviceClass` is omitted entirely (not `"unclassified"`) when
+ * the daemon has no FlowClassifier wired at all. */
+export type ServiceClass = "migration" | "backup" | "ceph-public" | "ceph-cluster" | "corosync" | "unclassified";
+
 /** One ingested flow sample — the shape both `GET /flows`'s `items` and the
  * `flow.batch` WS event's `entries` carry, field-for-field per docs/api.md.
  * `srcRef`/`dstRef` are inventory Ref strings, populated only when the IP
@@ -2099,6 +2106,7 @@ export interface FlowRecord {
   ingressIfIndex?: number;
   egressIfIndex?: number;
   source: "sflow" | "netflow5" | "netflow9" | "ipfix" | "conntrack";
+  serviceClass?: ServiceClass;
 }
 
 /** GET /flows response envelope — the same cluster-fan-out shape GET
@@ -2129,7 +2137,10 @@ export interface FlowBatchEvent {
  * rollback/timer_rearm/recover/safety_override); `kind: "finding"` mirrors
  * one `finding_events` row. Exactly one of the two field groups is
  * populated, keyed on `kind` — never both, since a merged row is always
- * one or the other. */
+ * one or the other. `serviceClass` (T-1504) is additionally present on a
+ * `kind: "finding"` entry only when that finding is a
+ * `service_traffic_on_wrong_network` finding — parsed server-side from the
+ * finding's own content-derived id, never present on any other finding. */
 export interface HistoryEvent {
   at: number;
   kind: "changeset" | "finding";
@@ -2139,6 +2150,7 @@ export interface HistoryEvent {
   result?: string;
   findingId?: string;
   transition?: "new" | "escalated" | "resolved";
+  serviceClass?: ServiceClass;
 }
 
 /** GET /history/events response envelope. */

@@ -17,6 +17,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/bgovanlu/vnprox/internal/flow"
 )
 
 // AuthService is the subset of *auth.Service the router needs: route
@@ -182,6 +184,13 @@ type Options struct {
 	// node-local-only).
 	Flows     FlowLocalSource
 	PeerFlows PeerFlowSource
+	// FlowClassifier is T-1504's optional service-network attribution
+	// (internal/flow.Classifier): when set, every GET /flows item carries
+	// an additive serviceClass field. Nil (no NetworkSource registered/no
+	// classifier wired, e.g. most tests) simply omits the field on every
+	// item — the same degraded-mode treatment every other optional Options
+	// field gets.
+	FlowClassifier *flow.Classifier
 	// DocExport backs T-605's GET /export/doc (config documentation
 	// export); nil skips mounting the route, matching every other optional
 	// Options field.
@@ -254,7 +263,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
 		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
-		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
+		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows, opts.FlowClassifier)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 	})

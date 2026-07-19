@@ -50,7 +50,13 @@ type Config struct {
 	// MissedSchedules), backing the schedule_missed health check. Nil skips
 	// that check entirely, same degradation as every other optional Config
 	// field.
-	Schedule        ScheduleMissedProvider
+	Schedule ScheduleMissedProvider
+	// Flow is T-1504's classified-flow seam (internal/flow.Classifier via a
+	// cmd/vnproxd adapter over recent flow_samples), backing the
+	// service_traffic_on_wrong_network finding (source "flow", not
+	// "health" — see SourceFlow's doc comment). Nil skips that check
+	// entirely, same degradation as every other optional Config field.
+	Flow            FlowProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -67,37 +73,39 @@ type Config struct {
 // WS change notification and the notification-hook transition detection
 // (AC5).
 type Engine struct {
-	notifier    Notifier
-	driftSvc    DriftProvider
-	lldpSvc     LLDPProvider
-	ipamSvc     IPAMProvider
-	metricsSvc  MetricsProvider
-	mgmtSvc     MgmtProvider
-	corosyncSvc CorosyncProvider
-	fwAnalytics FwAnalyticsProvider
-	scheduleSvc ScheduleMissedProvider
-	probeSvc    ProbeProvider
-	serviceDB   *debouncer
-	services    *serviceStatusStore
-	onChange    func(int)
-	log         *slog.Logger
-	notified    map[string]string
-	lastIDs     map[string]bool
-	now         func() time.Time
-	bondDB      *debouncer
-	lacpDB      *debouncer
-	carrierDB   *debouncer
-	errDropDB   *debouncer
-	corosyncDB  *debouncer
-	vxlanMTUDB  *debouncer
-	graph       *inventory.Graph
-	stpTracker  *stpBurstTracker
-	pendingTr   *pendingTracker
-	notifyMin   string
-	thresholds  HealthThresholds
-	interval    time.Duration
-	mu          sync.Mutex
-	lastEval    bool
+	notifier         Notifier
+	driftSvc         DriftProvider
+	lldpSvc          LLDPProvider
+	ipamSvc          IPAMProvider
+	metricsSvc       MetricsProvider
+	mgmtSvc          MgmtProvider
+	corosyncSvc      CorosyncProvider
+	fwAnalytics      FwAnalyticsProvider
+	scheduleSvc      ScheduleMissedProvider
+	probeSvc         ProbeProvider
+	flowSvc          FlowProvider
+	serviceTrafficDB *debouncer
+	serviceDB        *debouncer
+	services         *serviceStatusStore
+	onChange         func(int)
+	log              *slog.Logger
+	notified         map[string]string
+	lastIDs          map[string]bool
+	now              func() time.Time
+	bondDB           *debouncer
+	lacpDB           *debouncer
+	carrierDB        *debouncer
+	errDropDB        *debouncer
+	corosyncDB       *debouncer
+	vxlanMTUDB       *debouncer
+	graph            *inventory.Graph
+	stpTracker       *stpBurstTracker
+	pendingTr        *pendingTracker
+	notifyMin        string
+	thresholds       HealthThresholds
+	interval         time.Duration
+	mu               sync.Mutex
+	lastEval         bool
 }
 
 // New builds an Engine from cfg.
@@ -124,34 +132,36 @@ func New(cfg Config) *Engine {
 	}
 
 	return &Engine{
-		graph:       cfg.Graph,
-		driftSvc:    cfg.Drift,
-		lldpSvc:     cfg.LLDP,
-		ipamSvc:     cfg.IPAM,
-		metricsSvc:  cfg.Metrics,
-		mgmtSvc:     cfg.Mgmt,
-		corosyncSvc: cfg.Corosync,
-		fwAnalytics: cfg.FwAnalytics,
-		scheduleSvc: cfg.Schedule,
-		probeSvc:    cfg.Probe,
-		log:         logger,
-		now:         now,
-		onChange:    cfg.OnChange,
-		notifier:    cfg.Notifier,
-		notifyMin:   notifyMin,
-		interval:    interval,
-		thresholds:  th,
-		bondDB:      newDebouncer(),
-		lacpDB:      newDebouncer(),
-		carrierDB:   newDebouncer(),
-		errDropDB:   newDebouncer(),
-		serviceDB:   newDebouncer(),
-		corosyncDB:  newDebouncer(),
-		vxlanMTUDB:  newDebouncer(),
-		stpTracker:  newStpBurstTracker(),
-		pendingTr:   newPendingTracker(),
-		services:    newServiceStatusStore(),
-		notified:    map[string]string{},
+		graph:            cfg.Graph,
+		driftSvc:         cfg.Drift,
+		lldpSvc:          cfg.LLDP,
+		ipamSvc:          cfg.IPAM,
+		metricsSvc:       cfg.Metrics,
+		mgmtSvc:          cfg.Mgmt,
+		corosyncSvc:      cfg.Corosync,
+		fwAnalytics:      cfg.FwAnalytics,
+		scheduleSvc:      cfg.Schedule,
+		probeSvc:         cfg.Probe,
+		flowSvc:          cfg.Flow,
+		log:              logger,
+		now:              now,
+		onChange:         cfg.OnChange,
+		notifier:         cfg.Notifier,
+		notifyMin:        notifyMin,
+		interval:         interval,
+		thresholds:       th,
+		bondDB:           newDebouncer(),
+		lacpDB:           newDebouncer(),
+		carrierDB:        newDebouncer(),
+		errDropDB:        newDebouncer(),
+		serviceDB:        newDebouncer(),
+		corosyncDB:       newDebouncer(),
+		vxlanMTUDB:       newDebouncer(),
+		serviceTrafficDB: newDebouncer(),
+		stpTracker:       newStpBurstTracker(),
+		pendingTr:        newPendingTracker(),
+		services:         newServiceStatusStore(),
+		notified:         map[string]string{},
 	}
 }
 
@@ -175,6 +185,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, lldpFindings(e.lldpSvc)...)
 	out = append(out, ipamFindings(e.ipamSvc)...)
 	out = append(out, probeFindings(e.probeSvc)...)
+	out = append(out, checkServiceTrafficOnWrongNetwork(e.flowSvc, e.serviceTrafficDB)...)
 	out = append(out, e.healthFindings()...)
 	sortFindings(out)
 	return out

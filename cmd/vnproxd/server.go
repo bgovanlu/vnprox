@@ -291,6 +291,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// constructed before change.Service exists, below) and filled in with
 	// its real target once changeSvc is built — mirrors mgmtAdapter above.
 	scheduleAdapter := &scheduleMissedAdapter{}
+	// T-1504: flowClassifier is built now (it only needs corosync.conf,
+	// already readable) and registered into api.Options.FlowClassifier
+	// below; flowClassifyAdapterVal is wired in now (findings.Engine is
+	// constructed before setupFlows builds flowRepo, below) and filled in
+	// with both once setupFlows returns — mirrors scheduleAdapter above.
+	// See serviceclassify.go's doc comment for the full picture.
+	flowClassifier := setupFlowClassifier(logger)
+	flowClassifyAdapterVal := &flowClassifyAdapter{}
 	// T-1005: alert_rules/alert_deliveries repos + the webhook Notifier,
 	// composed alongside PVE's own notification-target hook via
 	// multiNotifier — independent delivery paths, per that task's card, not
@@ -312,7 +320,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
 	simDivergenceRepo := store.NewSimDivergenceRepo(db)
-	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
+	findingsEngine = setupFindings(graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, flowClassifyAdapterVal, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -514,6 +522,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// host-local samplers feed the exact same *flow.Service/ring — no
 	// second storage path.
 	flowSvc, flowRepo, flowActors := setupFlows(cfg, db, graph, topoSvc, localNode, logger)
+	// T-1504: now that flowRepo exists, point the findings engine's
+	// service_traffic_on_wrong_network check at the real recent-samples
+	// source (see flowClassifyAdapter's own doc comment above).
+	flowClassifyAdapterVal.set(flowRepo, flowClassifier)
 
 	// T-1004: host-local flow sampling (conntrack/eBPF) — both strictly
 	// opt-in per node via [flows] conntrack_sampling_enabled/
@@ -681,6 +693,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		PeerSnapshots:        peerSnapshots,
 		Flows:                flowRepo,
 		PeerFlows:            peerFlows,
+		FlowClassifier:       flowClassifier,
 		// T-605: config documentation export (Tools -> Export documentation)
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
