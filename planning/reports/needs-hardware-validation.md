@@ -439,6 +439,37 @@ from; and pvemock does not model an `ifreload` outage at all):
       guessing the shape risks the same "two names, one problem" duplication T-801 exists to
       prevent.
 
+## Path MTU prober (T-1306)
+
+- [ ] **`ping -M do -s <size>` DF-probe behavior across real PVE node builds.** `internal/mtuprobe.
+      RealProber`/`dfProbe` assumes iputils-ping's `-M do` (Don't Fragment) flag is available and
+      that a dropped DF-probe surfaces as either a `"Frag needed"`/`"Message too long"` line or a
+      non-zero exit with `"100% packet loss"` — the same PVE-node-is-Debian/iputils-ping-format
+      assumption `internal/latmesh.RealProber` already carries (and needs its own hardware
+      validation entry above), extended here to a flag/output shape this task had no live cluster
+      to confirm. Confirm on a real PVE 8.x/9.x node that `ping -M do -c 1 -s <n> -W <t> <addr>`
+      behaves as `dfProbe` expects for both a size that fits and one that doesn't, across at least
+      one path with a real, non-default MTU (a VXLAN/EVPN underlay is the most useful case, since
+      that's exactly what `vxlan_underlay_mtu`'s measured-MTU upgrade consumes).
+- [ ] **Binary-search convergence against a real, non-synthetic path.** `TestBinarySearchMTU_*`
+      (`internal/mtuprobe/binarysearch_test.go`) exercises the search algorithm itself against
+      scripted mock responses, not a real network path with real DF-drop latency/occasional packet
+      loss unrelated to fragmentation (a lossy-but-not-MTU-limited path could in principle cause a
+      false "too big" read on an unlucky probe). Confirm on real hardware whether a single-probe-
+      per-size binary search is robust enough in practice, or whether production should retry a
+      failed probe once before concluding "too big" (a documented, not-yet-implemented follow-up if
+      real-world flakiness shows up).
+- [ ] **Bond/VXLAN-EVPN path coverage scoping deviation (not a bug to fix blindly).** This task's
+      card asked for probing "along each bridge/bond/VXLAN-EVPN path" but `internal/mtuprobe`
+      reuses `internal/latmesh`'s existing Discoverer verbatim (corosync + shared-bridge-name
+      "guest" fabric pairs only — see that package's own needs-hardware-validation entry above for
+      why) rather than inventing a third, bond-specific pair-discovery mechanism this codebase has
+      no substrate for (see `internal/mtuprobe`'s package doc comment for the full reasoning: a
+      bond is node-local link aggregation with no node-to-node IP path of its own to path-MTU
+      discover in isolation). Confirm against a real cluster whether this is a genuine, actionable
+      gap (e.g. an operator wants a *specific* bond slave's own MTU verified, not just the bridge
+      path riding over it) before building a third discovery mechanism.
+
 ## T-1301 — distributed packet capture engine
 
 - [ ] **Real on-hardware capture backend (AF_PACKET/libpcap/`tcpdump`).** `internal/capture` is
