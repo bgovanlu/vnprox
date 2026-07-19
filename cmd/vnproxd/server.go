@@ -251,10 +251,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// the same "true nil interface until assigned" pattern as ipamSvc
 	// itself.
 	var dhcpAPISvc api.DHCPService
+	// guestInteriorIPAM is the same concrete *ipam.Service value as ipamSvc,
+	// typed as api.GuestInteriorIPAMSource (T-1304's IPAM cross-check
+	// annotation) — same true-nil-interface-until-assigned pattern as
+	// dhcpAPISvc above.
+	var guestInteriorIPAM api.GuestInteriorIPAMSource
 	if sdnPVEClient != nil {
 		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc})
 		ipamSvc = ipamConcrete
 		dhcpAPISvc = ipamConcrete
+		guestInteriorIPAM = ipamConcrete
 	}
 	// changeAllocations adapts ipamConcrete into change.AllocationsSource
 	// for T-406's DHCP-range-overlap advisory check — see
@@ -370,6 +376,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	snapshotRepo := store.NewSnapshotRepo(db)
 	blobRepo := store.NewBlobRepo(db)
 	auditRepo := store.NewAuditRepo(db)
+	// T-1304: the per-guest guest-interior-inspector opt-in preference
+	// (app-owned UI state, off by default per guest).
+	guestInteriorToggleRepo := store.NewGuestInteriorToggleRepo(db)
 
 	// T-304: the local-timer protocol's node-side agent — every daemon runs
 	// one, independent of whether it ends up coordinating anything, so it
@@ -558,11 +567,17 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	var peerSnapshots api.PeerSnapshotSource
 	var lldpPeerInstaller api.PeerLLDPInstaller
 	var peerFlows api.PeerFlowSource
+	// T-1304: guestInteriorPeers backs GET /guests/{ref}/interior's lxc
+	// path for a guest whose node is a peer, not this daemon's own — the
+	// same nil-safe typed-interface pattern every other peerClient-backed
+	// Options field above uses.
+	var guestInteriorPeers api.PeerContainerSource
 	if peerClient != nil {
 		peerAudit = peerClient
 		peerSnapshots = peerClient
 		lldpPeerInstaller = peerClient
 		peerFlows = peerClient
+		guestInteriorPeers = peerClient
 	}
 
 	// T-404: GET /sdn/evpn/status fans FRR/BGP state across the cluster
@@ -675,6 +690,19 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		ProbeClients:         probeClientProvider{authSvc},
 		ProbeAudit:           auditRepo,
 		SimDivergence:        simDivergenceRepo,
+		// T-1304: guest network interior inspector — GuestInteriorGraph
+		// reuses the same live graph Simulator/Firewall above already
+		// wire in; GuestInteriorHost reuses realHost (local lxc reads);
+		// GuestInteriorPeers reuses peerClient (peer lxc reads, nil-safe
+		// per guestInteriorPeers' own construction above); GuestInteriorIPAM
+		// reuses ipamConcrete (nil-safe — the same true-nil-interface-
+		// until-assigned pattern ipamSvc itself uses, since ipamConcrete
+		// may be a nil *ipam.Service).
+		GuestInteriorToggles: guestInteriorToggleRepo,
+		GuestInteriorGraph:   graph,
+		GuestInteriorHost:    realHost,
+		GuestInteriorPeers:   guestInteriorPeers,
+		GuestInteriorIPAM:    guestInteriorIPAM,
 		FwLog:                fwLogAPI,
 		Peer:                 peerSrv,
 		PeerAudit:            peerAudit,

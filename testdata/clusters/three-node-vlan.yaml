@@ -132,6 +132,31 @@ nodes:
           memory: "4096"
           net0: "virtio=BC:24:11:AA:02:C8,bridge=vmbr0,tag=100,firewall=1"
           ostype: l26
+        # T-1304: guest network interior inspector fixtures — app01's own
+        # QEMU-guest-agent-reported view of itself, exercised end to end by
+        # internal/api's guestinterior_test.go and web/e2e's interior tab
+        # spec. agent_interfaces is the addresses/interfaces source (T-405's
+        # existing enrichment shape); interior_routes_json/
+        # interior_resolv_conf/interior_sockets back the three additional
+        # `agent/exec` command shapes internal/guestinterior's qemu.go
+        # emits (see pvemock's parseInteriorCommand); agent_exec_outcomes'
+        # icmp entry backs the default-gateway reachability check (reusing
+        # T-802's existing probe scripting rather than a fourth field).
+        agent_interfaces:
+          - name: eth0
+            hardware_address: "BC:24:11:AA:02:C8"
+            ip_addresses:
+              - ip: "10.10.0.200"
+                type: ipv4
+                prefix: 24
+        agent_exec_outcomes:
+          - proto: icmp
+            dst: "10.10.0.1"
+            outcome: reachable
+            detail: "connected"
+        interior_routes_json: '[{"dst":"default","gateway":"10.10.0.1","dev":"eth0"},{"dst":"10.10.0.0/24","dev":"eth0"}]'
+        interior_resolv_conf: "nameserver 10.10.0.1\n"
+        interior_sockets: "tcp   LISTEN 0      128          0.0.0.0:22         0.0.0.0:*\n"
     lxc: {}
     firewall:
       enabled: true
@@ -217,6 +242,20 @@ nodes:
           cores: "2"
           memory: "1024"
           net0: "name=eth0,bridge=vmbr0,tag=100,firewall=1"
+        # T-1304: guest network interior inspector fixtures — cache01 has
+        # no QEMU guest agent (it's an lxc container), so its interior view
+        # is read host-side (internal/host.Reader.ContainerInterior/
+        # ContainerPing, backed here by FixtureHostReader.ContainerInterior/
+        # ContainerPing reading these fields directly — see GuestSpec's own
+        # doc comment). Same response shape as app01's qemu fixtures above,
+        # by design (source: "lxc-host" is the only difference).
+        interior_addr_json: '[{"ifname":"eth0","address":"BC:24:11:AA:02:C9","mtu":1500,"flags":["BROADCAST","UP"],"addr_info":[{"family":"inet","local":"10.10.0.201","prefixlen":24}]}]'
+        interior_routes_json: '[{"dst":"default","gateway":"10.10.0.1","dev":"eth0"},{"dst":"10.10.0.0/24","dev":"eth0"}]'
+        interior_resolv_conf: "nameserver 10.10.0.1\n"
+        interior_sockets: "tcp   LISTEN 0      128          0.0.0.0:11211       0.0.0.0:*\n"
+        interior_ping_outcomes:
+          - ip: "10.10.0.1"
+            reachable: true
     firewall:
       enabled: true
       policy_in: DROP

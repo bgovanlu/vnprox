@@ -160,6 +160,28 @@ type Options struct {
 	ProbeClients  ProbeClientProvider
 	ProbeAudit    simulateVerifyAuditor
 	SimDivergence simDivergenceRecorder
+	// GuestInteriorToggles/GuestInteriorGraph/GuestInteriorHost/
+	// GuestInteriorPeers/GuestInteriorIPAM back T-1304's guest network
+	// interior inspector: GET/PUT /guests/{ref}/interior-toggle and
+	// GET /guests/{ref}/interior. GuestInteriorToggles nil skips mounting
+	// the whole family (matching Layouts/Annotations' degraded-mode
+	// convention); GuestInteriorGraph is typically the same live
+	// *inventory.Graph Simulator/Firewall above already wire in.
+	// GuestInteriorHost (typically realHost, host.NewReal()) backs the lxc
+	// host-side read path for a guest on this daemon's own node;
+	// GuestInteriorPeers (typically *peer.Client) backs it for a guest on
+	// a peer node — the qemu path needs neither (it reuses ProbeClients
+	// above, since PVE's own REST API is already cluster-transparent).
+	// GuestInteriorIPAM (typically the same *ipam.Service ipamSvc wires in
+	// elsewhere) backs the IPAM cross-check annotation; nil simply omits
+	// it. The interior read route reuses ProbeAudit above for its own
+	// guest.interior_read audit row (same shared-seam pattern TokenAudit
+	// already establishes across the Tokens/Webhooks route families).
+	GuestInteriorToggles GuestInteriorToggleStore
+	GuestInteriorGraph   GuestInteriorGraph
+	GuestInteriorHost    GuestInteriorHostReader
+	GuestInteriorPeers   PeerContainerSource
+	GuestInteriorIPAM    GuestInteriorIPAMSource
 	// FwLog backs T-505's GET /firewall/log (docs/features/firewall.md
 	// §4) — typically the daemon's *fwlog.Service, which also owns the
 	// `firewall.log.batch` WS push (fed directly from its own Run loop
@@ -253,6 +275,7 @@ func NewRouter(opts Options) http.Handler {
 		mountBlueprintsRoutes(r, opts.Blueprints, opts.Changesets, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
 		mountSimulateRoutes(r, opts.Simulator, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.Auth)
+		mountGuestInteriorRoutes(r, opts.GuestInteriorToggles, opts.GuestInteriorGraph, opts.ProbeClients, opts.GuestInteriorHost, opts.GuestInteriorPeers, opts.GuestInteriorIPAM, opts.LocalNode, opts.ProbeAudit, opts.Auth)
 		mountFwLogRoutes(r, opts.FwLog, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
