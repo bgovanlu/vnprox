@@ -15,6 +15,7 @@ import { useEditorLauncherStore, editorKindForInventoryKind } from "../changeset
 import { buildBondDeleteOp, buildVlanDeleteOp } from "../changesets/opBuilders";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
+import { isCapturableEntityKind, useCaptureLauncherStore } from "../capture/captureLauncherStore";
 import { resumeOnboarding } from "../onboarding/onboardingMachine";
 import { useOnboardingProgressQuery, useSaveOnboardingProgressMutation } from "../onboarding/queries";
 import { AnnotationsSection } from "./AnnotationsSection";
@@ -178,12 +179,18 @@ export function InspectorPanel({
   const rawSourceEntries = Object.entries(data?.rawSource ?? {});
   const { data: session } = useSession();
   const openEditor = useEditorLauncherStore((s) => s.open);
+  const openCapture = useCaptureLauncherStore((s) => s.open);
   const { addOps } = useDrawerActions();
   const { toast } = useToast();
 
   const editorKind = editorKindForInventoryKind(data?.kind);
   const deletable = data ? DELETABLE_KINDS.has(data.kind) : false;
   const editDisabledReason = data ? missingCapTooltip(session, data.node, "netWrite") : undefined;
+  // T-1302: the "Capture" button — offered on the same bridge/bond/guest-NIC/
+  // SDN-VNet kinds the map's right-click entry point uses (captureLauncherStore's
+  // own gate), disabled with the missing-privilege tooltip's usual convention
+  // when the session lacks the dedicated `capture` capability.
+  const captureDisabledReason = data ? missingCapTooltip(session, data.node, "capture") : undefined;
   const canWrite = data ? capsForNode(session, data.node).netWrite : false;
   const isBridgeKind = data ? data.kind === "bridge" || data.kind === "ovs-bridge" : false;
   // T-804: the live LACP section applies to bonds of either flavor — a
@@ -270,8 +277,24 @@ export function InspectorPanel({
                 Close
               </Button>
             )}
-            {(editorKind !== undefined || isTraceableEntityKind(data.kind)) && (
+            {(editorKind !== undefined || isTraceableEntityKind(data.kind) || isCapturableEntityKind(data.kind)) && (
               <>
+              {isCapturableEntityKind(data.kind) && (
+                <Tooltip content={captureDisabledReason}>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={captureDisabledReason !== undefined}
+                      onClick={() => {
+                        openCapture({ targetRef: data.ref, node: data.node, label: data.label });
+                      }}
+                    >
+                      Capture
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
               {isTraceableEntityKind(data.kind) && (
                 <RadixDropdown.Root>
                   <RadixDropdown.Trigger asChild>

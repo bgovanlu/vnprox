@@ -13,6 +13,8 @@ import { capsForNode } from "../changesets/capabilities";
 import { computeDragOp } from "../changesets/dragDropOps";
 import { editorKindForInventoryKind, useEditorLauncherStore } from "../changesets/editorLauncherStore";
 import { EditorLauncher } from "../changesets/EditorLauncher";
+import { CaptureDialog } from "../capture/CaptureDialog";
+import { isCapturableEntityKind, useCaptureLauncherStore } from "../capture/captureLauncherStore";
 import { refNode, summarizeOp } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
 import { isTraceableEntityKind, traceFromPath, traceToExternalPath, traceToPath } from "../simulator/traceLink";
@@ -280,6 +282,7 @@ function TopologyPageContent() {
   // drag-drop handler below both check, so the palette never offers an
   // edit a read-only session can't actually perform.
   const openEditor = useEditorLauncherStore((s) => s.open);
+  const openCapture = useCaptureLauncherStore((s) => s.open);
   const topologyPaletteActions = useMemo<PaletteAction[]>(() => {
     if (!topology) return [];
     const actions: PaletteAction[] = [];
@@ -556,9 +559,23 @@ function TopologyPageContent() {
     return items;
   }
 
+  // T-1302: "Start capture" — the map right-click entry into the capture
+  // dialog, offered on the same bridge/bond/guest-NIC/SDN-VNet kinds
+  // docs/api.md's Captures section documents as valid targetRefs. Node is
+  // read off nodeGroup (the column this map node renders in — "" for a
+  // cluster-scoped sdn-vnet, matching CaptureDialog's own node display).
+  function captureItemFor(kind: string, ref: string, nodeGroup: string, label: string): ContextMenuItem[] {
+    if (!isCapturableEntityKind(kind)) return [];
+    return [{ label: "Start capture", onSelect: () => { openCapture({ targetRef: ref, node: nodeGroup, label }); } }];
+  }
+
+  function contextMenuItemsFor(kind: string, ref: string, nodeGroup: string, label: string): ContextMenuItem[] {
+    return [...traceItemsFor(kind, ref), ...captureItemFor(kind, ref, nodeGroup, label)];
+  }
+
   function handleNodeContextMenu(id: string, clientX: number, clientY: number): void {
     const node = topology?.nodes.find((n) => n.id === id);
-    if (!node || traceItemsFor(node.kind, id).length === 0) {
+    if (!node || contextMenuItemsFor(node.kind, id, node.nodeGroup, node.label).length === 0) {
       setContextMenu(undefined);
       return;
     }
@@ -918,12 +935,16 @@ function TopologyPageContent() {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={traceItemsFor(topology?.nodes.find((n) => n.id === contextMenu.id)?.kind ?? "", contextMenu.id)}
+          items={(() => {
+            const n = topology?.nodes.find((nd) => nd.id === contextMenu.id);
+            return contextMenuItemsFor(n?.kind ?? "", contextMenu.id, n?.nodeGroup ?? "", n?.label ?? contextMenu.id);
+          })()}
           onClose={() => {
             setContextMenu(undefined);
           }}
         />
       )}
+      <CaptureDialog />
 
       {Array.from(expandedGroups).map((id) => (
         <GuestGroupExpansion key={id} groupId={id} onData={handleExpandedData} />
