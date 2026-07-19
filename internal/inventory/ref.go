@@ -57,6 +57,16 @@ const (
 	// mirroring the role KindLldpNeighbor plays for another
 	// host-netlink-sourced, per-NIC observation.
 	KindVF Kind = "vf"
+	// KindCephOSD names a Ceph OSD (T-1503): read from PVE's own Ceph
+	// config (GET /nodes/{node}/ceph/osd, internal/pve.Client.CephOSDs),
+	// identified by "osd<id>" within its hosting node. Like KindVF, an OSD
+	// is not merge/provenance-tracked as a top-level graph entity (it is
+	// never emitted into internal/inventory.Graph at all — internal/ceph
+	// computes its bond attribution live against the graph, the same
+	// live-resolved-on-read pattern ResolveVFAssignments established for
+	// VFs); this Kind exists purely so an OSD has a first-class, parseable
+	// Ref for GET /ceph/status/inspector output, mirroring KindVF's role.
+	KindCephOSD Kind = "ceph-osd"
 )
 
 // knownKinds is the closed set of valid Kind values. ParseRef rejects any
@@ -67,7 +77,7 @@ var knownKinds = map[Kind]bool{
 	KindVlan: true, KindOVSBridge: true, KindOVSBond: true, KindSDNZone: true,
 	KindSDNVnet: true, KindSDNSubnet: true, KindGuest: true, KindGuestNic: true,
 	KindLldpNeighbor: true, KindFwRuleset: true, KindWgTunnel: true, KindWgPeer: true,
-	KindNatRule: true, KindStaticRoute: true, KindVF: true,
+	KindNatRule: true, KindStaticRoute: true, KindVF: true, KindCephOSD: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)
