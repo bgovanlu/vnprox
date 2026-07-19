@@ -95,6 +95,12 @@ export interface TopologyUIState {
    * Same per-session (not persisted-layout) lifetime and v2-renderer-only
    * scope as those two. */
   wgLayerActive: boolean;
+  /** T-1502 "Kubernetes" layer: renders T-1501's pod/service CIDR model as
+   * map regions plus node<->guest correlation lines (topology/layers/
+   * k8sOverlay.ts) — a second, independent overlay from wgLayerActive/
+   * mtuLayerActive/latencyLayerActive. Same per-session (not
+   * persisted-layout) lifetime and v2-renderer-only scope as those three. */
+  k8sLayerActive: boolean;
 
   toggleLayer: (layer: Layer) => void;
   /** T-907: sets the whole active-layer set at once (as opposed to
@@ -111,6 +117,7 @@ export interface TopologyUIState {
   toggleLatencyLayer: () => void;
   toggleMTULayer: () => void;
   toggleWGLayer: () => void;
+  toggleK8sLayer: () => void;
   setVlanFilter: (vlan: number | undefined) => void;
   select: (id: string | undefined) => void;
   hover: (id: string | undefined) => void;
@@ -141,6 +148,7 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   latencyLayerActive: false,
   mtuLayerActive: false,
   wgLayerActive: false,
+  k8sLayerActive: false,
 
   toggleLayer: (layer) => {
     set((state) => {
@@ -174,6 +182,9 @@ export const useTopologyStore = create<TopologyUIState>((set) => ({
   },
   toggleWGLayer: () => {
     set((state) => ({ wgLayerActive: !state.wgLayerActive }));
+  },
+  toggleK8sLayer: () => {
+    set((state) => ({ k8sLayerActive: !state.k8sLayerActive }));
   },
   setVlanFilter: (vlan) => {
     set({ vlanFilter: vlan });

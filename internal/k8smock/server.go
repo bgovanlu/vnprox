@@ -38,11 +38,16 @@ func (r *Recorder) Requests() []RecordedRequest {
 	return out
 }
 
-// NewServer builds an httptest.Server serving f's four fixed k8s API
-// endpoints (see this package's doc comment). Any other path 404s, same
-// as a real apiserver would for a path this package's Client never
-// requests.
-func NewServer(f Fixture) (*httptest.Server, *Recorder) {
+// NewHandler builds the plain http.Handler serving f's four fixed k8s API
+// endpoints (see this package's doc comment), without binding it to any
+// listener — NewServer below wraps it in an httptest.Server for in-process
+// Go tests; T-1502's standalone `cmd/k8smock` binary wraps the same
+// handler in a real `net/http.Server` on a fixed port instead, for the
+// Playwright e2e harness (web/e2e/k8s-overlay.spec.ts), which needs a k8s
+// API server reachable from outside the test process. Any other path
+// 404s, same as a real apiserver would for a path this package's Client
+// never requests.
+func NewHandler(f Fixture) (http.Handler, *Recorder) {
 	rec := &Recorder{}
 	nodes, pods, services, daemonsets := f.ToK8s()
 
@@ -52,11 +57,17 @@ func NewServer(f Fixture) (*httptest.Server, *Recorder) {
 	mux.HandleFunc("/api/v1/services", writeJSON(k8s.ServiceList{Items: services}))
 	mux.HandleFunc("/apis/apps/v1/namespaces/kube-system/daemonsets", writeJSON(k8s.DaemonSetList{Items: daemonsets}))
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.record(r)
 		mux.ServeHTTP(w, r)
-	}))
-	return srv, rec
+	}), rec
+}
+
+// NewServer builds an httptest.Server serving f's four fixed k8s API
+// endpoints (see NewHandler/this package's doc comment).
+func NewServer(f Fixture) (*httptest.Server, *Recorder) {
+	handler, rec := NewHandler(f)
+	return httptest.NewServer(handler), rec
 }
 
 func writeJSON(body any) http.HandlerFunc {

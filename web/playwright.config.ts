@@ -50,6 +50,28 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    // T-1502's own mock k8s API server (k8s-overlay.spec.ts), additive: a
+    // plain-HTTP standalone internal/k8smock instance on port 8008,
+    // alongside (not a separate pvemock+vnproxd pair for) the three-node-
+    // vlan stack above — the spec registers this as a real k8s cluster via
+    // POST /k8s/clusters against the already-running 8007 vnproxd, whose
+    // kubeconfig `server:` field points straight at this address (a
+    // bearer-token kubeconfig needs no TLS at all — internal/k8s.Client's
+    // http.Transport handles a plain `http://` BaseURL the same way
+    // `kubectl` would). testdata/k8s/e2e-cluster.yaml's own doc comment
+    // explains why its one node's InternalIP is deliberately set to
+    // three-node-vlan.yaml's own real IPAM allocation for guest vmid 200
+    // (app01/pve1) — a genuinely MATCHED node<->guest correlation, so
+    // PodDrilldown's pod -> node-guest -> bridge -> bond chain has real
+    // data to trace end to end against the real stack, not a synthetic
+    // stand-in.
+    {
+      command: "go run ./cmd/k8smock --addr 127.0.0.1:8008 --fixture testdata/k8s/e2e-cluster.yaml",
+      cwd: "..",
+      port: 8008,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
     // T-504's own stack (simulator.spec.ts), additive: a second, distinct
     // mock PVE + vnproxd pair on ports 18006/18007 serving
     // testdata/clusters/sim-lab.yaml, purpose-built for the path

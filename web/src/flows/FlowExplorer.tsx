@@ -13,6 +13,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import type { FlowRecord } from "../api/types";
 import { protoName } from "./proto";
 import { useFlowsQuery, useFlowsWsBridge } from "./flowsQueries";
+import { useK8sClustersQuery, useK8sOverlaysQuery } from "../topology/layers/k8sQueries";
+import {
+  attributeK8sFlow,
+  buildK8sAttributionIndex,
+  formatK8sAttribution,
+  type K8sAttributionIndex,
+} from "../topology/layers/k8sFlowAttribution";
 import {
   aggregateConversations,
   flowReducer,
@@ -58,6 +65,30 @@ function serviceClassLabel(serviceClass: FlowRecord["serviceClass"]): string {
  * FlowRecord's own "srcRef/dstRef populated only when resolved" contract. */
 function endpointLabel(ip: string, ref: string | undefined): string {
   return ref ? `${ref} (${ip})` : ip;
+}
+
+/** T-1502: the `k8sService` column's label — display-only, never a filter
+ * that hides an unresolved row (this task's card, verbatim), so an address
+ * outside every registered cluster's pod/service CIDR simply shows "—",
+ * the same "absent, not a wrong guess" convention serviceClassLabel above
+ * already follows for T-1504's field. Computed client-side
+ * (k8sFlowAttribution.ts) against every registered k8s cluster's overlay —
+ * see this file's own useK8sAttributionIndex for why. */
+function k8sServiceLabel(index: K8sAttributionIndex, record: Pick<FlowRecord, "srcIp" | "dstIp">): string {
+  const ref = attributeK8sFlow(index, record);
+  return ref ? formatK8sAttribution(ref) : "—";
+}
+
+/** Indexes every currently-registered k8s cluster's live overlay for the
+ * `k8sService` column — independent of the map's own "Kubernetes" layer
+ * toggle (topology/TopologyPage.tsx's k8sLayerActive): this is a read-only
+ * display column on a different page, so it fetches whenever at least one
+ * cluster is registered, the same "always populate a display-only
+ * attribution column" precedent serviceClass's own wiring sets. */
+function useK8sAttributionIndex(): K8sAttributionIndex {
+  const { data: clusters } = useK8sClustersQuery(true);
+  const { overlays } = useK8sOverlaysQuery(clusters, true);
+  return useMemo(() => buildK8sAttributionIndex(overlays), [overlays]);
 }
 
 function FilterBar({ filter, onChange }: { filter: FlowFilterState; onChange: (patch: Partial<FlowFilterState>) => void }) {
@@ -143,6 +174,7 @@ export function FlowExplorer() {
   );
 
   const { data, isLoading, error } = useFlowsQuery(apiFilter);
+  const k8sIndex = useK8sAttributionIndex();
 
   useEffect(() => {
     if (data) {
@@ -299,12 +331,13 @@ export function FlowExplorer() {
               <TableHead>Packets</TableHead>
               <TableHead>VLAN</TableHead>
               <TableHead>Service</TableHead>
+              <TableHead>k8s service</TableHead>
               <TableHead>Origin</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {renderedRaw.map((r, i) => (
-              <FlowRow key={`${String(r.at)}-${String(i)}`} record={r} />
+              <FlowRow key={`${String(r.at)}-${String(i)}`} record={r} k8sIndex={k8sIndex} />
             ))}
           </TableBody>
         </Table>
@@ -340,7 +373,7 @@ export function FlowExplorer() {
   );
 }
 
-function FlowRow({ record }: { record: FlowRecord }) {
+function FlowRow({ record, k8sIndex }: { record: FlowRecord; k8sIndex: K8sAttributionIndex }) {
   return (
     <TableRow>
       <TableCell className="whitespace-nowrap font-mono text-xs">{formatTime(record.at)}</TableCell>
@@ -358,6 +391,7 @@ function FlowRow({ record }: { record: FlowRecord }) {
       <TableCell>{record.packets.toLocaleString()}</TableCell>
       <TableCell>{record.vlan ?? "—"}</TableCell>
       <TableCell className="text-xs">{serviceClassLabel(record.serviceClass)}</TableCell>
+      <TableCell className="text-xs">{k8sServiceLabel(k8sIndex, record)}</TableCell>
       <TableCell className="text-xs text-slate-500 dark:text-slate-400">{record.source}</TableCell>
     </TableRow>
   );

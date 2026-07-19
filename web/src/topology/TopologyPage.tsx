@@ -35,6 +35,9 @@ import { useWireGuardTunnelsQuery } from "../wireguard/wgTunnelsQuery";
 import { computeWgTunnelOverlay } from "../wireguard/wgTunnelEdges";
 import { buildNodeAnchorResolver } from "./nodeAnchor";
 import { FlowPairPanel } from "./FlowPairPanel";
+import { useK8sClustersQuery, useK8sOverlaysQuery } from "./layers/k8sQueries";
+import { computeK8sOverlay, isK8sSyntheticId, parseK8sSyntheticId, type K8sSelection } from "./layers/k8sOverlay";
+import { PodDrilldown } from "./layers/PodDrilldown";
 import { HistoryTimeline, type HistoryPlaybackState } from "./history/HistoryTimeline";
 import { InspectorStack } from "./InspectorStack";
 import { NewEntityMenu } from "./NewEntityMenu";
@@ -148,6 +151,8 @@ function TopologyPageContent() {
   const toggleMTULayer = useTopologyStore((s) => s.toggleMTULayer);
   const wgLayerActive = useTopologyStore((s) => s.wgLayerActive);
   const toggleWGLayer = useTopologyStore((s) => s.toggleWGLayer);
+  const k8sLayerActive = useTopologyStore((s) => s.k8sLayerActive);
+  const toggleK8sLayer = useTopologyStore((s) => s.toggleK8sLayer);
   const toggleLayer = useTopologyStore((s) => s.toggleLayer);
   const setActiveLayers = useTopologyStore((s) => s.setActiveLayers);
   const setVlanFilter = useTopologyStore((s) => s.setVlanFilter);
@@ -388,14 +393,58 @@ function TopologyPageContent() {
     [wgPaintable, wgTunnels, nodeIdForName],
   );
 
+  // T-1502 "Kubernetes" layer: renders every registered cluster's pod/
+  // service CIDR model (T-1501's GET /k8s/{clusterId}/overlay) as map
+  // regions plus node<->guest correlation lines — same v2-canvas-only,
+  // "only fetch while genuinely paintable" scope as WireGuard above, and
+  // the same "synthetic nodes/edges merged into extraNodes/extraEdges"
+  // shape (k8sOverlay.ts's computeK8sOverlay mirrors computeWgTunnelOverlay
+  // exactly).
+  const k8sPaintable = k8sLayerActive && viewMode === "graph" && rendererVersion === "v2";
+  const { data: k8sClusters } = useK8sClustersQuery(k8sPaintable);
+  const { overlays: k8sOverlays } = useK8sOverlaysQuery(k8sClusters, k8sPaintable);
+  const k8sOverlayByCluster = useMemo(() => new Map(k8sOverlays.map((o) => [o.clusterId, o])), [k8sOverlays]);
+  const k8sOverlay = useMemo(
+    () =>
+      k8sPaintable
+        ? k8sOverlays.reduce<{ nodes: TopologyNode[]; edges: TopologyEdge[] }>(
+            (acc, overlay) => {
+              const computed = computeK8sOverlay(overlay);
+              acc.nodes.push(...computed.nodes);
+              acc.edges.push(...computed.edges);
+              return acc;
+            },
+            { nodes: [], edges: [] },
+          )
+        : { nodes: [], edges: [] },
+    [k8sPaintable, k8sOverlays],
+  );
+
   const extraNodes = useMemo(
-    () => [...Array.from(expandedGroups).flatMap((id) => expandedData[id]?.nodes ?? []), ...wgOverlay.nodes],
-    [expandedGroups, expandedData, wgOverlay.nodes],
+    () => [
+      ...Array.from(expandedGroups).flatMap((id) => expandedData[id]?.nodes ?? []),
+      ...wgOverlay.nodes,
+      ...k8sOverlay.nodes,
+    ],
+    [expandedGroups, expandedData, wgOverlay.nodes, k8sOverlay.nodes],
   );
   const extraEdges = useMemo(
-    () => [...Array.from(expandedGroups).flatMap((id) => expandedData[id]?.edges ?? []), ...wgOverlay.edges],
-    [expandedGroups, expandedData, wgOverlay.edges],
+    () => [
+      ...Array.from(expandedGroups).flatMap((id) => expandedData[id]?.edges ?? []),
+      ...wgOverlay.edges,
+      ...k8sOverlay.edges,
+    ],
+    [expandedGroups, expandedData, wgOverlay.edges, k8sOverlay.edges],
   );
+
+  // Selecting a pod/pod-network/service on the Kubernetes layer opens
+  // PodDrilldown below instead of the ordinary inventory inspector — a k8s
+  // synthetic id is never a real inventory.Ref (isK8sSyntheticId), so
+  // handleNodeClick routes it here rather than calling `select(id)` (which
+  // would otherwise fire a doomed GET /inventory/{ref} the way T-1402's own
+  // wg-external-endpoint nodes still do today — see k8sOverlay.ts's module
+  // doc comment).
+  const [k8sSelection, setK8sSelection] = useState<K8sSelection | undefined>(undefined);
 
   // §5 staleness: grey the bands whose node-scoped collector data is stale
   // (cluster-wide staleness is the banner's job — see StalenessBanner).
@@ -649,6 +698,11 @@ function TopologyPageContent() {
       toggleExpanded(id);
       return;
     }
+    if (isK8sSyntheticId(id)) {
+      const parsed = parseK8sSyntheticId(id);
+      if (parsed) setK8sSelection(parsed);
+      return;
+    }
     select(id);
   }
 
@@ -794,6 +848,10 @@ function TopologyPageContent() {
             // (wgPaintable).
             wgLayerActive={wgLayerActive}
             onToggleWG={toggleWGLayer}
+            // T-1502: same v2-canvas-only scope note as WireGuard above
+            // (k8sPaintable).
+            k8sLayerActive={k8sLayerActive}
+            onToggleK8s={toggleK8sLayer}
           />
           {viewMode === "graph" && (
             <Button
@@ -993,6 +1051,18 @@ function TopologyPageContent() {
           edge={selectedFlowEdge}
           onClose={() => {
             setSelectedFlowEdgeId(undefined);
+          }}
+        />
+      )}
+
+      {k8sSelection && (
+        <PodDrilldown
+          selection={k8sSelection}
+          overlay={k8sOverlayByCluster.get(k8sSelection.clusterId)}
+          topologyNodes={topology?.nodes ?? []}
+          topologyEdges={topology?.edges ?? []}
+          onClose={() => {
+            setK8sSelection(undefined);
           }}
         />
       )}
