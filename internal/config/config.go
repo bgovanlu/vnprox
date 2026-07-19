@@ -24,6 +24,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/latmesh"
 	"github.com/bgovanlu/vnprox/internal/mtuprobe"
 	"github.com/bgovanlu/vnprox/internal/peer"
+	"github.com/bgovanlu/vnprox/internal/wan"
 )
 
 // Defaults mirror the example config in docs/deployment.md.
@@ -123,6 +124,7 @@ type Config struct {
 	Retention   RetentionConfig
 	Latmesh     LatmeshConfig
 	MTUProbe    MTUProbeConfig
+	Wan         WanConfig
 }
 
 // CaptureConfig is the [capture] section (T-1301): the server-enforced,
@@ -328,6 +330,25 @@ type MTUProbeConfig struct {
 	ProbeIntervalSec int
 }
 
+// WanConfig is the [wan] section (T-1405): the WAN health probe's own
+// scheduling/retention knobs, independent of [latmesh]'s (see internal/wan's
+// package doc comment for why a WAN link's own ring gets its own bound
+// rather than sharing latency_samples'). Always on, same reasoning as
+// [latmesh]/[mtuprobe] — a low-rate outbound probe toward an operator-
+// configured reference target carries no listening-port attack surface to
+// gate behind an opt-in flag; a node with no configured targets simply has
+// nothing to probe (internal/wan.TargetDiscoverer.Pairs returns empty).
+// ProbeIntervalSec/RetentionMinutes/MaxRows default to internal/wan's own
+// documented constants when unset/non-positive.
+type WanConfig struct {
+	ProbeIntervalSec int
+	RetentionMinutes int
+	MaxRows          int64
+	// LossWarnPct is findings.HealthThresholds.WanLossWarnPct's config-file
+	// override (0/unset keeps internal/wan.DefaultLossWarnPct, 20%).
+	LossWarnPct float64
+}
+
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
@@ -345,6 +366,7 @@ type rawConfig struct {
 	Retention   rawRetention   `toml:"retention"`
 	Latmesh     rawLatmesh     `toml:"latmesh"`
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
+	Wan         rawWan         `toml:"wan"`
 }
 
 type rawCapture struct {
@@ -441,6 +463,13 @@ type rawLatmesh struct {
 
 type rawMTUProbe struct {
 	ProbeIntervalSec int `toml:"probe_interval_sec"`
+}
+
+type rawWan struct {
+	ProbeIntervalSec int     `toml:"probe_interval_sec"`
+	RetentionMinutes int     `toml:"retention_minutes"`
+	MaxRows          int64   `toml:"max_rows"`
+	LossWarnPct      float64 `toml:"loss_warn_pct"`
 }
 
 // Load reads, parses, defaults, and validates the config file at path.
@@ -540,6 +569,12 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		},
 		MTUProbe: MTUProbeConfig{
 			ProbeIntervalSec: firstNonZeroInt(raw.MTUProbe.ProbeIntervalSec, mtuprobe.DefaultProbeIntervalSec),
+		},
+		Wan: WanConfig{
+			ProbeIntervalSec: firstNonZeroInt(raw.Wan.ProbeIntervalSec, wan.DefaultProbeIntervalSec),
+			RetentionMinutes: firstNonZeroInt(raw.Wan.RetentionMinutes, wan.DefaultRetentionMinutes),
+			MaxRows:          firstNonZeroInt64(raw.Wan.MaxRows, wan.DefaultMaxRows),
+			LossWarnPct:      raw.Wan.LossWarnPct,
 		},
 		Capture: CaptureConfig{
 			Root:                  firstNonEmpty(raw.Capture.Root, DefaultCaptureRoot),
