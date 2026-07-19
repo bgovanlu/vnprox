@@ -45,7 +45,7 @@ func CrossNodeMTU(src Source) []Divergence {
 		if len(votes) < 2 {
 			continue
 		}
-		canonical := majorityInt(votes)
+		canonical := MajorityInt(votes)
 
 		var refs, dissentNodes []string
 		var fixes []BridgeFix
@@ -77,7 +77,15 @@ func CrossNodeMTU(src Source) []Divergence {
 	return out
 }
 
-func majorityInt(votes map[int]int) int {
+// MajorityInt returns the int key with the most votes in votes (ties broken
+// by the smallest value, via ascending iteration — deterministic
+// regardless of map order). Exported (T-1503) so internal/ceph's
+// ceph_cluster_mtu_mismatch check can reuse this exact majority-vote rule
+// for its own "OSD-hosting nodes' cluster-network carrier MTU" comparison,
+// rather than re-implementing CrossNodeMTU's tie-breaking behavior for a
+// same-named-bridge grouping that doesn't fit Ceph's per-node carrier
+// (which is frequently a *different*-named interface across nodes).
+func MajorityInt(votes map[int]int) int {
 	bestVal, bestVotes := 0, -1
 	vals := make([]int, 0, len(votes))
 	for v := range votes {
