@@ -195,14 +195,17 @@ func (g *hostWGGateway) deleteTunnel(ctx context.Context, op change.Op) error {
 
 func (g *hostWGGateway) addPeer(ctx context.Context, op change.Op, p *change.WgPeerAddParams) error {
 	tunnelID, _ := splitWgPeerTarget(op.Target.ID)
+	psk, err := g.peerPresharedKey(p)
+	if err != nil {
+		return err
+	}
 	var sealed []byte
-	if p.PresharedKey != "" {
-		var err error
-		if sealed, err = g.cipher.Encrypt([]byte(p.PresharedKey)); err != nil {
+	if psk != "" {
+		if sealed, err = g.cipher.Encrypt([]byte(psk)); err != nil {
 			return fmt.Errorf("wireguard: sealing preshared key: %w", err)
 		}
 	}
-	if err := g.repo.AddPeer(ctx, store.WireGuardPeer{
+	if err = g.repo.AddPeer(ctx, store.WireGuardPeer{
 		TunnelID: tunnelID, PublicKey: p.PublicKey, Endpoint: p.Endpoint, AllowedIPs: p.AllowedIPs,
 		PresharedKeyEnc: sealed, KeepaliveSec: p.KeepaliveSec, External: p.External, ClusterID: p.ClusterID,
 	}); err != nil {
@@ -235,6 +238,25 @@ func (g *hostWGGateway) rerender(ctx context.Context, tun store.WireGuardTunnel)
 		return err
 	}
 	return g.renderAndSync(ctx, tun, privB64)
+}
+
+// peerPresharedKey returns the plaintext preshared key for a wg.peer.add op.
+// The change engine seals the PSK into WgPeerAddParams.PresharedKeyEnc at
+// stage/create time (change.Service.sealOpSecrets) so it never rides
+// changesets.ops_json or a changeset read response in the clear (Finding 1); on
+// the owning node here it is unsealed just-in-time, then re-sealed into
+// wireguard_peers.preshared_key_enc exactly as before. A hand-built op carrying
+// the plaintext directly (an op that never passed through the stage path) is
+// still honored.
+func (g *hostWGGateway) peerPresharedKey(p *change.WgPeerAddParams) (string, error) {
+	if len(p.PresharedKeyEnc) > 0 {
+		plain, err := g.cipher.Decrypt(p.PresharedKeyEnc)
+		if err != nil {
+			return "", fmt.Errorf("wireguard: unsealing preshared key from op: %w", err)
+		}
+		return string(plain), nil
+	}
+	return p.PresharedKey, nil
 }
 
 func (g *hostWGGateway) unsealKey(tun store.WireGuardTunnel) (string, error) {
@@ -411,7 +433,8 @@ type wireGuardReadService struct {
 }
 
 var (
-	_ api.WireGuardService = (*wireGuardReadService)(nil)
+	_ api.WireGuardService   = (*wireGuardReadService)(nil)
+	_ change.WgCarrierSource = (*wireGuardReadService)(nil)
 	_ interface {
 		WireGuardState() []wireguard.ObservedTunnel
 	} = (*wireGuardReadService)(nil)
@@ -483,6 +506,25 @@ func (s *wireGuardReadService) Tunnels(ctx context.Context) ([]api.WireGuardTunn
 			view.Peers = []api.WireGuardPeerView{}
 		}
 		out = append(out, view)
+	}
+	return out, nil
+}
+
+// TunnelCarriers implements change.WgCarrierSource: the tunnelID->carrier map
+// TouchesMgmtPath needs to flag carrier-less wg ops (wg.peer.*,
+// wg.tunnel.delete, carrier-less wg.tunnel.update) on an existing
+// management-path tunnel (Finding 2 / the mgmt-path interlock). Reads only the
+// store config (no live wg poll) — the carrier is app-owned intent, not live
+// state. Lists this daemon's own node's store, the same single-node scope the
+// rest of this read service documents.
+func (s *wireGuardReadService) TunnelCarriers(ctx context.Context) (map[string]change.WgTunnelCarrier, error) {
+	tuns, err := s.repo.ListTunnels(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]change.WgTunnelCarrier, len(tuns))
+	for _, t := range tuns {
+		out[t.ID] = change.WgTunnelCarrier{Node: t.Node, Carrier: t.Carrier}
 	}
 	return out, nil
 }

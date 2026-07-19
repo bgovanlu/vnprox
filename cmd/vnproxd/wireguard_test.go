@@ -149,3 +149,79 @@ func TestWireGuardReadService_NoPrivateKey(t *testing.T) {
 		t.Fatal("peer config leaked a real key")
 	}
 }
+
+// TestHostWGGateway_PeerPresharedKeySealed is Finding 1's regression (c): a
+// wg.peer.add op whose preshared key rides sealed in the op (the shape the
+// change engine produces after Service.sealOpSecrets) still applies, and the
+// gateway ends up sealing the real key into wireguard_peers.preshared_key_enc
+// exactly as before — the stored column decrypts back to the original PSK.
+func TestHostWGGateway_PeerPresharedKeySealed(t *testing.T) {
+	gw, repo, cipher := wgTestGateway(t)
+	ctx := context.Background()
+	if err := gw.ApplyWgOp(ctx, wgCreateOp("tun1", "pve1", "wg0", "vmbr9")); err != nil {
+		t.Fatalf("create tunnel: %v", err)
+	}
+
+	const psk = "cHNrLXNlY3JldC1iYXNlNjQtdmFsdWU="
+	const peerPub = "cGVlcnB1YmtleS12YWx1ZQ=="
+
+	// The op carries the PSK sealed in PresharedKeyEnc (not plaintext), as the
+	// change engine hands it to apply after sealing at stage time.
+	sealedInOp, err := cipher.Encrypt([]byte(psk))
+	if err != nil {
+		t.Fatalf("seal PSK for op: %v", err)
+	}
+	addOp := change.Op{
+		Type:   change.OpWgPeerAdd,
+		Target: inventory.Ref{Kind: inventory.KindWgPeer, Node: "pve1", ID: "tun1/" + peerPub},
+		Params: &change.WgPeerAddParams{PublicKey: peerPub, PresharedKeyEnc: sealedInOp, AllowedIPs: []string{"10.0.0.2/32"}},
+	}
+	if err = gw.ApplyWgOp(ctx, addOp); err != nil {
+		t.Fatalf("apply wg.peer.add: %v", err)
+	}
+
+	peers, err := repo.ListPeers(ctx, "tun1")
+	if err != nil {
+		t.Fatalf("ListPeers: %v", err)
+	}
+	if len(peers) != 1 {
+		t.Fatalf("want 1 peer, got %d", len(peers))
+	}
+	if len(peers[0].PresharedKeyEnc) == 0 {
+		t.Fatal("stored peer has no sealed preshared key")
+	}
+	plain, err := cipher.Decrypt(peers[0].PresharedKeyEnc)
+	if err != nil || string(plain) != psk {
+		t.Fatalf("stored preshared_key_enc did not decrypt to the PSK: plain=%q err=%v", plain, err)
+	}
+
+	// A hand-built op carrying the plaintext directly (never through the stage
+	// path) is still honored and sealed into the column too.
+	const peerPub2 = "cGVlcnB1YmtleS10d28="
+	addPlain := change.Op{
+		Type:   change.OpWgPeerAdd,
+		Target: inventory.Ref{Kind: inventory.KindWgPeer, Node: "pve1", ID: "tun1/" + peerPub2},
+		Params: &change.WgPeerAddParams{PublicKey: peerPub2, PresharedKey: psk},
+	}
+	if err = gw.ApplyWgOp(ctx, addPlain); err != nil {
+		t.Fatalf("apply wg.peer.add (plaintext): %v", err)
+	}
+	peers2, err := repo.ListPeers(ctx, "tun1")
+	if err != nil {
+		t.Fatalf("ListPeers: %v", err)
+	}
+	var found bool
+	for _, p := range peers2 {
+		if p.PublicKey != peerPub2 {
+			continue
+		}
+		found = true
+		plain2, decErr := cipher.Decrypt(p.PresharedKeyEnc)
+		if decErr != nil || string(plain2) != psk {
+			t.Fatalf("plaintext-op PSK not sealed correctly: plain=%q err=%v", plain2, decErr)
+		}
+	}
+	if !found {
+		t.Fatal("second peer not stored")
+	}
+}

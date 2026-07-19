@@ -113,7 +113,7 @@ type changesetResponse struct {
 }
 
 func toChangesetResponse(c change.Changeset) changesetResponse {
-	ops := c.Ops
+	ops := redactOpSecrets(c.Ops)
 	if ops == nil {
 		ops = []change.Op{}
 	}
@@ -126,6 +126,36 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 		Ops: ops, Findings: findings, Plan: c.Plan, ApplyLog: c.ApplyLog,
 		ConfirmDeadline: c.ConfirmDeadline, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
+}
+
+// redactOpSecrets returns ops with every wg.peer.add op's preshared key
+// stripped — both the write-only plaintext PresharedKey and the sealed-at-rest
+// PresharedKeyEnc — so no changeset read response (GET /changesets, and every
+// route that echoes a changeset) ever carries a peer secret in any form
+// (Finding 1 / docs/security.md's WireGuard credential-storage note). The
+// stored ops (and the sealed bytes persisted in changesets.ops_json, which the
+// apply path reads) are untouched: this allocates a shallow copy only when it
+// finds something to redact and never mutates the caller's backing array.
+func redactOpSecrets(ops []change.Op) []change.Op {
+	var out []change.Op
+	for i, op := range ops {
+		p, ok := op.Params.(*change.WgPeerAddParams)
+		if !ok || (p.PresharedKey == "" && len(p.PresharedKeyEnc) == 0) {
+			continue
+		}
+		if out == nil {
+			out = make([]change.Op, len(ops))
+			copy(out, ops)
+		}
+		clone := *p
+		clone.PresharedKey = ""
+		clone.PresharedKeyEnc = nil
+		out[i].Params = &clone
+	}
+	if out != nil {
+		return out
+	}
+	return ops
 }
 
 // mountChangesetsRoutes registers docs/api.md's changesets routes: the
@@ -141,7 +171,7 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 // mounted — same reasoning as mountLayoutsRoutes: there would be no safe
 // way to attribute a created/discarded changeset to a user for the
 // audit trail docs/security.md requires.
-func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService, gateways PVEGatewayProvider, mgmt MgmtStatusService) {
+func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService, gateways PVEGatewayProvider, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) {
 	if svc == nil || auth == nil {
 		return
 	}
@@ -153,8 +183,8 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Get("/changesets", handleListChangesets(svc, mgmt))
-		r.Get("/changesets/{id}", handleGetChangeset(svc, mgmt))
+		r.Get("/changesets", handleListChangesets(svc, mgmt, wgCarriers))
+		r.Get("/changesets/{id}", handleGetChangeset(svc, mgmt, wgCarriers))
 		r.Get("/changesets/{id}/diff", handleDiffChangeset(svc))
 
 		// T-208 raw editor: the "open" call and its live syntax-lint
@@ -172,13 +202,13 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 			r.Use(csrf.CSRFMiddleware)
 		}
 		r.Use(auth.RequireCap(capNetWrite))
-		r.Post("/changesets", handleCreateChangeset(svc, lookup, mgmt))
-		r.Put("/changesets/{id}", handleUpdateChangeset(svc, lookup, mgmt))
+		r.Post("/changesets", handleCreateChangeset(svc, lookup, mgmt, wgCarriers))
+		r.Put("/changesets/{id}", handleUpdateChangeset(svc, lookup, mgmt, wgCarriers))
 		r.Delete("/changesets/{id}", handleDiscardChangeset(svc, lookup))
-		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup, mgmt))
-		r.Post("/changesets/{id}/apply", handleApplyChangeset(svc, lookup, gateways, mgmt))
-		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup, mgmt))
-		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup, gateways, mgmt))
+		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup, mgmt, wgCarriers))
+		r.Post("/changesets/{id}/apply", handleApplyChangeset(svc, lookup, gateways, mgmt, wgCarriers))
+		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup, mgmt, wgCarriers))
+		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup, gateways, mgmt, wgCarriers))
 	})
 
 	// T-1103: scheduled changesets & maintenance windows. Mounted alongside
@@ -206,10 +236,35 @@ func mgmtPathsFor(ctx context.Context, mgmt MgmtStatusService) map[string][]topo
 	return status.Nodes
 }
 
+// wgCarriersFor resolves the tunnelID->carrier map TouchesMgmtPath needs to
+// flag carrier-less wg ops (wg.peer.*, wg.tunnel.delete, carrier-less
+// wg.tunnel.update) on an existing management-path tunnel — supplied by the
+// WireGuard read service (change.WgCarrierSource). Nil-safe and
+// degrade-quietly, exactly like mgmtPathsFor: a nil seam or a failed read
+// yields nil, so those ops simply fall back to params-only coverage rather
+// than erroring the route.
+func wgCarriersFor(ctx context.Context, src change.WgCarrierSource) map[string]change.WgTunnelCarrier {
+	if src == nil {
+		return nil
+	}
+	carriers, err := src.TunnelCarriers(ctx)
+	if err != nil {
+		return nil
+	}
+	return carriers
+}
+
+// mgmtEval resolves both inputs TouchesMgmtPath needs — the management paths
+// and the tunnel-carrier map — once per request, for handlers that decorate a
+// whole changeset list.
+func mgmtEval(ctx context.Context, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) (map[string][]topology.MgmtPath, map[string]change.WgTunnelCarrier) {
+	return mgmtPathsFor(ctx, mgmt), wgCarriersFor(ctx, wgCarriers)
+}
+
 // withMgmtFlag decorates a changesetResponse with the touchesMgmtPath flag.
-func withMgmtFlag(c change.Changeset, paths map[string][]topology.MgmtPath) changesetResponse {
+func withMgmtFlag(c change.Changeset, paths map[string][]topology.MgmtPath, carriers map[string]change.WgTunnelCarrier) changesetResponse {
 	resp := toChangesetResponse(c)
-	resp.TouchesMgmtPath = change.TouchesMgmtPath(paths, c.Ops)
+	resp.TouchesMgmtPath = change.TouchesMgmtPath(paths, carriers, c.Ops)
 	return resp
 }
 
@@ -234,7 +289,7 @@ type mgmtAckRequest struct {
 	Node string `json:"node"`
 }
 
-func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider, mgmt MgmtStatusService) http.HandlerFunc {
+func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -261,10 +316,10 @@ func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways 
 		// Pre-apply checks that need the changeset's ops. Best-effort: if
 		// the changeset can't be loaded, fall through to svc.Apply, which
 		// reports the real error (not found / illegal transition) itself.
-		paths := mgmtPathsFor(r.Context(), mgmt)
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
 		touchesMgmt := false
 		if cs, getErr := svc.Get(r.Context(), id); getErr == nil {
-			touchesMgmt = change.TouchesMgmtPath(paths, cs.Ops)
+			touchesMgmt = change.TouchesMgmtPath(paths, carriers, cs.Ops)
 
 			// T-701 acceptance criterion 5: fail fast, before any snapshot/
 			// mutation, when the plan needs a PVEGateway (sdn/fw/ipam
@@ -319,7 +374,7 @@ func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways 
 	}
 }
 
-func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService) http.HandlerFunc {
+func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -331,11 +386,12 @@ func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mg
 			writeApplyError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
 	}
 }
 
-func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider, mgmt MgmtStatusService) http.HandlerFunc {
+func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -351,7 +407,8 @@ func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gatewa
 			writeApplyError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
 	}
 }
 
@@ -505,7 +562,7 @@ func writeApplyError(w http.ResponseWriter, err error) {
 	writeJSONError(w, http.StatusInternalServerError, "internal_error", "apply operation failed")
 }
 
-func handleListChangesets(svc ChangesetService, mgmt MgmtStatusService) http.HandlerFunc {
+func handleListChangesets(svc ChangesetService, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		status := r.URL.Query().Get("status")
 		changesets, err := svc.List(r.Context(), status)
@@ -513,16 +570,16 @@ func handleListChangesets(svc ChangesetService, mgmt MgmtStatusService) http.Han
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not list changesets")
 			return
 		}
-		paths := mgmtPathsFor(r.Context(), mgmt) // once for the whole list
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers) // once for the whole list
 		out := make([]changesetResponse, len(changesets))
 		for i, c := range changesets {
-			out[i] = withMgmtFlag(c, paths)
+			out[i] = withMgmtFlag(c, paths, carriers)
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
 }
 
-func handleGetChangeset(svc ChangesetService, mgmt MgmtStatusService) http.HandlerFunc {
+func handleGetChangeset(svc ChangesetService, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		c, err := svc.Get(r.Context(), id)
@@ -534,7 +591,8 @@ func handleGetChangeset(svc ChangesetService, mgmt MgmtStatusService) http.Handl
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not load changeset")
 			return
 		}
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
 	}
 }
 
@@ -579,7 +637,7 @@ type createChangesetRequest struct {
 	Ops   opsField `json:"ops"`
 }
 
-func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService) http.HandlerFunc {
+func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -598,7 +656,8 @@ func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mgm
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not create changeset")
 			return
 		}
-		writeJSON(w, http.StatusCreated, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
+		writeJSON(w, http.StatusCreated, withMgmtFlag(c, paths, carriers))
 	}
 }
 
@@ -613,7 +672,7 @@ type updateChangesetRequest struct {
 	Ops   opsField `json:"ops"`
 }
 
-func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService) http.HandlerFunc {
+func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -640,7 +699,8 @@ func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mgm
 			writeChangesetMutationError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
 	}
 }
 
@@ -664,7 +724,7 @@ func handleDiscardChangeset(svc ChangesetService, lookup UsernameLookup) http.Ha
 // handleValidateChangeset backs `POST /changesets/{id}/validate`
 // (docs/api.md: "re-run validation, returns findings") with T-202's real
 // pipeline.
-func handleValidateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService) http.HandlerFunc {
+func handleValidateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -678,7 +738,8 @@ func handleValidateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt M
 			writeChangesetMutationError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, mgmtPathsFor(r.Context(), mgmt)))
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
+		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
 	}
 }
 

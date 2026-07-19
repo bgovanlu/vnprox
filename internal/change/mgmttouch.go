@@ -14,11 +14,34 @@ package change
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/topology"
 )
+
+// WgTunnelCarrier identifies an existing WireGuard tunnel's carrier interface
+// and owning node. TouchesMgmtPath consumes a tunnelID->WgTunnelCarrier map so
+// it can flag wg ops that reference a management-path tunnel WITHOUT the
+// carrier appearing in the op params: a standalone wg.peer.add/remove, a
+// carrier-less wg.tunnel.update (MTU/port only), or a wg.tunnel.delete on an
+// already-existing tunnel. For those ops the carrier lives only in the store,
+// so without this lookup they would fall through untouched and bypass T-703's
+// no-override ceremony (the mgmt-path interlock).
+type WgTunnelCarrier struct {
+	Node    string
+	Carrier string
+}
+
+// WgCarrierSource resolves the tunnelID->carrier map TouchesMgmtPath needs.
+// The API layer builds it once per request from the WireGuard read service
+// (cmd/vnproxd's wireGuardReadService), and Service.sealOpSecrets' sibling
+// scheduling gate uses it via Config.WgCarriers so an unattended scheduled
+// wg op on a mgmt-path tunnel is caught the same way.
+type WgCarrierSource interface {
+	TunnelCarriers(ctx context.Context) (map[string]WgTunnelCarrier, error)
+}
 
 // MgmtConfirmTimeoutFloor is the minimum (and default) commit-confirm
 // window for a changeset whose ops touch a management path (T-703: "confirm
@@ -41,9 +64,16 @@ const MgmtConfirmTimeoutFloor = 180 * time.Second
 // carries the path by definition, and diffing the raw content is the
 // validators' job, not this flag's).
 //
-// Pure: callers (internal/api) compute paths once per request via
-// Service.MgmtStatus and reuse it across a whole changeset list.
-func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
+// tunnelCarriers maps an existing WireGuard tunnel's id to its stored carrier
+// (WgCarrierSource) so wg ops that don't name the carrier in their params
+// (wg.peer.*, carrier-less wg.tunnel.update, wg.tunnel.delete) are still
+// flagged when that carrier is on a node's management path. A nil/empty map
+// degrades to params-only coverage (a create still names its own carrier).
+//
+// Pure: callers (internal/api) compute paths + tunnelCarriers once per request
+// via Service.MgmtStatus / the WireGuard read service and reuse them across a
+// whole changeset list.
+func TouchesMgmtPath(paths map[string][]topology.MgmtPath, tunnelCarriers map[string]WgTunnelCarrier, ops []Op) bool {
 	if len(paths) == 0 || len(ops) == 0 {
 		return false
 	}
@@ -62,6 +92,14 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
 	for _, op := range ops {
 		node := op.Target.Node
 		touched := func(name string) bool { return name != "" && names[ifaceKey{node, name}] }
+		// storedCarrierTouched reports whether the tunnel identified by
+		// tunnelID has a stored carrier on this op's node's management path —
+		// the resolution wg.peer.*/delete/carrier-less-update ops rely on
+		// since they carry no carrier of their own.
+		storedCarrierTouched := func(tunnelID string) bool {
+			c, ok := tunnelCarriers[tunnelID]
+			return ok && c.Node == node && touched(c.Carrier)
+		}
 
 		switch params := op.Params.(type) {
 		case *IfaceRawReplaceParams:
@@ -114,11 +152,37 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
 			// T-1401: a wg.* op on a tunnel whose carrier interface is itself
 			// part of a node's resolved management/corosync path is
 			// touchesMgmtPath — inheriting T-703's ceremony with no override.
+			// A create names its own carrier (the tunnel doesn't exist yet).
 			if touched(params.Carrier) {
 				return true
 			}
 		case *WgTunnelUpdateParams:
+			// A carrier-setting update names the new carrier; a carrier-less
+			// update (MTU/port only) or one moving the carrier OFF the path
+			// still edits a tunnel that may currently ride the mgmt path, so
+			// its stored carrier is resolved too.
 			if params.Carrier != nil && touched(*params.Carrier) {
+				return true
+			}
+			// A carrier-less update (MTU/port only) or one moving the carrier
+			// OFF the path still edits a tunnel that may currently ride the
+			// mgmt path, so its stored carrier is resolved too.
+			if storedCarrierTouched(op.Target.ID) {
+				return true
+			}
+		case *WgTunnelDeleteParams:
+			// Delete carries no params: resolve the tunnel's stored carrier.
+			// Tearing the interface + its routes down on a mgmt-path carrier
+			// is exactly the ceremony-worthy case.
+			if storedCarrierTouched(op.Target.ID) {
+				return true
+			}
+		case *WgPeerAddParams, *WgPeerRemoveParams:
+			// Peer ops target "<tunnelID>/<pubkey>" and carry no carrier; a
+			// peer add/remove re-renders and re-syncs the tunnel's interface,
+			// so it touches the mgmt path whenever the tunnel's stored carrier
+			// is on it.
+			if storedCarrierTouched(wgPeerTunnelID(op.Target.ID)) {
 				return true
 			}
 		case *NatMasqueradeCreateParams:
@@ -129,8 +193,8 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
 			// ceremony with no override, exactly like the WgTunnel carrier
 			// cases above. (Delete ops carry no iface in their params — a
 			// delete-by-ref on an existing mgmt-path rule needs the same
-			// rule-id→iface resolution the WireGuard tunnel-delete follow-up
-			// threads in; tracked there.)
+			// rule-id→iface resolution the WireGuard tunnel-delete case
+			// above already threads in; a follow-up will extend it here.)
 			if touched(params.Iface) {
 				return true
 			}
@@ -164,6 +228,17 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
 		}
 	}
 	return false
+}
+
+// wgPeerTunnelID extracts the tunnel id from a wg-peer target id, which
+// encodes "<tunnelID>/<peer public key>" (params_wg.go). A target with no "/"
+// (a tunnel-scoped or malformed id) yields the whole string, which simply
+// won't match any tunnelCarriers entry.
+func wgPeerTunnelID(targetID string) string {
+	if i := strings.IndexByte(targetID, '/'); i >= 0 {
+		return targetID[:i]
+	}
+	return targetID
 }
 
 // isIfaceNamespaceKind reports whether kind lives in a node's flat
