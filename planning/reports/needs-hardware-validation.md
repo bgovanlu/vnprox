@@ -399,3 +399,39 @@ from; and pvemock does not model an `ifreload` outage at all):
       acceptance must be confirmed across the full PVE 8.2+/9.x kernel range before shipping: a
       BPF verifier rejection is a load-time failure, not a runtime one, so it needs to be caught
       per-kernel-version, not just once.
+
+## Conntrack & NAT table explorer (T-1305)
+
+- [ ] **`/proc/net/nf_conntrack` field layout for state/timeout/NAT across the target kernel
+      range (PVE 8.2+/9.x), independent of T-1004's own conntrack-format validation entry
+      above.** `internal/host/conntrack.go`'s parser reads a superset of what T-1004's
+      diff-only sampler needs — the tcp-only state word, the numeric timeout field, and (new
+      here) both the original *and* reply direction tuples, diffed against each other to detect
+      SNAT/DNAT (see that file's `parseConntrackLine` doc comment for the exact detection
+      logic). Built and table-tested only against hand-built golden fixtures
+      (`internal/host/testdata/conntrack_golden.txt`) matching the documented/observed wire
+      format — never a real kernel's live table, and never a real NAT'd connection's actual
+      tuple pair. Confirm: (1) the state word's exact position/vocabulary for every protocol
+      family (this parser only special-cases tcp's state word; SCTP also has textual states in
+      real conntrack output and is currently treated the same as UDP/ICMP — no state parsed,
+      falling back to the `[ASSURED]`/`[UNREPLIED]` bracket flag if present); (2) that a real
+      masquerade (SNAT) and a real DNAT/port-forward rule's conntrack entries actually produce
+      the original/reply tuple divergence this parser's detection logic assumes (derived from
+      documented netfilter conntrack semantics, not observed against a live NAT setup); (3)
+      whether any IPv6 NAT66/NPTv6 variant, or a conntrack helper (ftp, sip, ...) with its own
+      expectation entries, produces a line shape this parser mis-reads.
+- [ ] **Non-root read permission on a real PVE node.** `docs/security.md` documents vnprox
+      running as root with a scoped `CapabilityBoundingSet` in production, so
+      `/proc/net/nf_conntrack`'s real-world `0440 root:root` permission bits (confirmed against
+      *this* development sandbox, not a PVE node) should not block the read there — but this was
+      never confirmed against an actual systemd-hardened `vnprox.service` unit (this task's own
+      dev/e2e harness runs vnproxd unprivileged, where the read legitimately fails with EPERM;
+      `web/e2e/conntrack.spec.ts`'s own header comment documents this and asserts the resulting
+      `partial`/`failedNodes` degradation instead of fixture data). Confirm on a real node that
+      the six capabilities `docs/security.md`'s Host footprint section lists
+      (`CAP_NET_ADMIN`/`CAP_NET_RAW`/`CAP_NET_BIND_SERVICE`/`CAP_DAC_OVERRIDE`/
+      `CAP_DAC_READ_SEARCH`/`CAP_CHOWN`/`CAP_FOWNER`) plus running as root are sufficient — root
+      bypasses standard DAC permission checks regardless of capability set, so this is expected
+      to already work, but has not been observed against a live node's actual file mode/SELinux-
+      or AppArmor-equivalent MAC policy (PVE ships neither by default, but worth a one-line
+      confirmation rather than an assumption).
