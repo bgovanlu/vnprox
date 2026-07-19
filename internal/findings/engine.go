@@ -66,7 +66,12 @@ type Config struct {
 	// evaluation with a measured reading when one exists. Nil falls back to
 	// that check's original T-803 observed-MTU behavior, same degradation
 	// as every other optional Config field.
-	MTU             MTUProvider
+	MTU MTUProvider
+	// WG is T-1401's WireGuard live-state seam, backing the
+	// wg_handshake_stale / wg_endpoint_drift findings (source "wireguard").
+	// Nil skips both checks entirely, same degradation as every other
+	// optional Config field.
+	WG              WGProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -96,6 +101,7 @@ type Engine struct {
 	probeSvc    ProbeProvider
 	latMeshSvc  LatMeshProvider
 	mtuSvc      MTUProvider
+	wgSvc       WGProvider
 	serviceDB   *debouncer
 	services    *serviceStatusStore
 	onChange    func(int)
@@ -111,6 +117,8 @@ type Engine struct {
 	vxlanMTUDB  *debouncer
 	latRttDB    *debouncer
 	latLossDB   *debouncer
+	wgStaleDB   *debouncer
+	wgDriftDB   *debouncer
 	graph       *inventory.Graph
 	stpTracker  *stpBurstTracker
 	pendingTr   *pendingTracker
@@ -158,6 +166,7 @@ func New(cfg Config) *Engine {
 		probeSvc:    cfg.Probe,
 		latMeshSvc:  cfg.LatMesh,
 		mtuSvc:      cfg.MTU,
+		wgSvc:       cfg.WG,
 		log:         logger,
 		now:         now,
 		onChange:    cfg.OnChange,
@@ -174,6 +183,8 @@ func New(cfg Config) *Engine {
 		vxlanMTUDB:  newDebouncer(),
 		latRttDB:    newDebouncer(),
 		latLossDB:   newDebouncer(),
+		wgStaleDB:   newDebouncer(),
+		wgDriftDB:   newDebouncer(),
 		stpTracker:  newStpBurstTracker(),
 		pendingTr:   newPendingTracker(),
 		services:    newServiceStatusStore(),
@@ -202,6 +213,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, ipamFindings(e.ipamSvc)...)
 	out = append(out, probeFindings(e.probeSvc)...)
 	out = append(out, webhookFindings(e.webhooksSvc)...)
+	out = append(out, wgFindings(e.wgSvc, e.wgStaleDB, e.wgDriftDB, e.now())...)
 	out = append(out, e.healthFindings()...)
 	sortFindings(out)
 	return out
