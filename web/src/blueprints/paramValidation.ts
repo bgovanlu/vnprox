@@ -18,19 +18,64 @@ export interface ParamValidationResult {
   value?: BlueprintParamValue;
 }
 
-function isValidCIDR(raw: string): boolean {
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(raw.trim());
-  if (!m) return false;
-  const octets = [m[1], m[2], m[3], m[4]];
-  if (!octets.every((o) => Number(o) >= 0 && Number(o) <= 255)) return false;
-  const prefix = Number(m[5]);
-  return prefix >= 0 && prefix <= 32;
-}
-
 function isValidIPv4(raw: string): boolean {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(raw.trim());
   if (!m) return false;
   return [m[1], m[2], m[3], m[4]].every((o) => Number(o) >= 0 && Number(o) <= 255);
+}
+
+/** Reasonably permissive IPv6 address validator (T-1404: a "cidr"/"ip"
+ * param form field must accept v6 input too — a hard-coded dotted-decimal
+ * regex, this file's own pre-T-1404 shape, would silently reject every
+ * legitimate IPv6 address at the form). Not an exhaustive RFC 4291
+ * validator (no embedded-IPv4-tail form, no zone-id suffix) — a
+ * pragmatic, segment-based check mirroring this file's existing
+ * dotted-decimal validators' own level of rigor: reject anything a real
+ * address clearly isn't, without reimplementing a full parser the
+ * server-side net/netip.ParseAddr call re-validates anyway (defense in
+ * depth's *first* line, per this file's own doc comment, not the only
+ * one).
+ */
+function isValidIPv6(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === "" || trimmed.includes(".")) return false; // no v4-mapped tail form
+  const doubleColonCount = (trimmed.match(/::/g) ?? []).length;
+  if (doubleColonCount > 1) return false;
+  const hasDoubleColon = doubleColonCount === 1;
+  const halves = trimmed.split("::");
+  if (halves.length > 2) return false;
+
+  const groups = trimmed
+    .split("::")
+    .flatMap((half) => (half === "" ? [] : half.split(":")));
+  const isHexGroup = (g: string) => /^[0-9a-fA-F]{1,4}$/.test(g);
+  if (!groups.every(isHexGroup)) return false;
+
+  if (hasDoubleColon) {
+    // "::" stands for one-or-more zero groups; the explicit groups must
+    // leave room for at least one.
+    return groups.length <= 7;
+  }
+  return groups.length === 8;
+}
+
+function isValidCIDR(raw: string): boolean {
+  const trimmed = raw.trim();
+  const slash = trimmed.lastIndexOf("/");
+  if (slash < 0) return false;
+  const addr = trimmed.slice(0, slash);
+  const prefixStr = trimmed.slice(slash + 1);
+  if (!/^\d{1,3}$/.test(prefixStr)) return false;
+  const prefix = Number(prefixStr);
+
+  if (addr.includes(":")) {
+    return isValidIPv6(addr) && prefix >= 0 && prefix <= 128;
+  }
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(addr);
+  if (!m) return false;
+  const octets = [m[1], m[2], m[3], m[4]];
+  if (!octets.every((o) => Number(o) >= 0 && Number(o) <= 255)) return false;
+  return prefix >= 0 && prefix <= 32;
 }
 
 /** Parses a comma/whitespace-separated list of integers (the param form's
@@ -112,13 +157,13 @@ export function validateParamInput(def: BlueprintParamDef, raw: string): ParamVa
 
     case "cidr":
       if (!isValidCIDR(trimmed)) {
-        return { valid: false, error: `${def.label ?? def.name} must be a CIDR address, e.g. 192.168.1.10/24` };
+        return { valid: false, error: `${def.label ?? def.name} must be a CIDR address, e.g. 192.168.1.10/24 or 2001:db8::/64` };
       }
       return { valid: true, value: trimmed };
 
     case "ip":
-      if (!isValidIPv4(trimmed)) {
-        return { valid: false, error: `${def.label ?? def.name} must be an IP address, e.g. 192.168.1.1` };
+      if (!isValidIPv4(trimmed) && !isValidIPv6(trimmed)) {
+        return { valid: false, error: `${def.label ?? def.name} must be an IP address, e.g. 192.168.1.1 or 2001:db8::1` };
       }
       return { valid: true, value: trimmed };
 
