@@ -718,3 +718,20 @@ in `internal/ceph` is exercised against `internal/pvemock`'s fixture-driven impl
       network actually degrades replication throughput as sharply as the equivalent VXLAN
       encapsulation-overhead case (`vxlan_underlay_mtu`) does, or merely risks occasional
       fragmentation PMTU discovery already handles gracefully.
+
+## T-1203 — Cross-cluster IPAM, external subnets & bidirectional sync
+
+- [ ] **Concrete NetBox/phpIPAM production write client.** The bidirectional-sync diff engine,
+      preview/apply/confirm/audit flow, and findings are complete and tested against an HTTP test
+      double (`internal/ipam/sync_test.go`), but the real `ipam.ExternalIPAMClient` implementation —
+      keyed to NetBox's and phpIPAM's actual REST shapes (address-object endpoints, pagination,
+      auth headers/tokens, error bodies), which differ substantially between the two systems and
+      across NetBox major versions — is not implemented. `cmd/vnproxd` wires the sync engine with a
+      nil client (routes report "not configured") until it lands. Exact request/response shapes,
+      idempotency semantics of create/delete, and how each system reports a rejected write must be
+      validated against real instances.
+- [ ] **Overlap semantics for intentional cross-cluster reuse.** `cross_cluster_duplicate_subnet`
+      flags any overlapping CIDR across attached clusters as a `warning`. Whether operators running
+      deliberately-isolated identical L2 domains in separate clusters want this as a warning, an
+      info, or a suppressible finding is a UX judgment better made against real multi-cluster
+      deployments than guessed here.

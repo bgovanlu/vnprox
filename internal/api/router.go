@@ -126,6 +126,17 @@ type Options struct {
 	// IPAM is T-405's read view seam (docs/api.md's `GET /ipam/subnets` and
 	// `GET /ipam/subnets/{cidr}/allocations`); nil-safe like SDN above.
 	IPAM IPAMService
+	// IPAMExternal/IPAMExternalAudit back T-1203's external-subnet CRUD and
+	// NetBox/phpIPAM bidirectional-sync routes (typically the same concrete
+	// *ipam.Service as IPAM above, plus the shared audit repo). IPAMExternal
+	// nil skips the whole family; IPAMExternalAudit is optional.
+	IPAMExternal      IPAMExternalService
+	IPAMExternalAudit ipamExternalAuditWriter
+	// FederationIPAM backs T-1203's GET /federation/ipam/conflicts
+	// (cross-cluster duplicate-subnet findings, via T-1201's aggregator); nil
+	// skips mounting (a single-cluster deployment has no cross-cluster
+	// conflicts).
+	FederationIPAM FederationIPAMSource
 	// EdgeInterfaces/EdgeGraph/EdgeIPAM back T-1403's Edge & NAT cockpit
 	// (docs/api.md's `GET /edge/routes`/`GET /edge/nat`). EdgeInterfaces is
 	// typically the same *change.Service changeSvc wires in as Changesets
@@ -454,6 +465,7 @@ func NewRouter(opts Options) http.Handler {
 		mountAlertRulesRoutes(r, opts.AlertRules, opts.AlertDeliveries, opts.AlertSecretCipher, opts.Auth)
 		mountFederationRoutes(r, opts.Federation, opts.FederationAudit, opts.Auth)
 		mountFederationTopologyRoutes(r, opts.FederationAgg, opts.Auth)
+		mountFederationIPAMRoutes(r, opts.FederationIPAM, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
@@ -462,6 +474,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountSDNDNSRoutes(r, opts.SDNDNS, opts.Auth)
 		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
+		mountIPAMExternalRoutes(r, opts.IPAMExternal, opts.IPAMExternalAudit, opts.Auth)
 		mountEdgeRoutes(r, opts.EdgeInterfaces, opts.SDN, opts.EdgeGraph, opts.EdgeIPAM, opts.Auth)
 		mountIngressRoutes(r, opts.IngressTargets, opts.IngressSecretCipher, opts.IngressDiscoverers, opts.EdgeInterfaces, opts.EdgeGraph, opts.EdgeIPAM, opts.TokenAudit, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)

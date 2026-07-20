@@ -63,17 +63,26 @@ type Config struct {
 	Inventory InventorySource
 	Neighbors NeighborSource
 	Leases    LeaseSource
-	Now       func() time.Time
+	// External is T-1203's app-owned external-subnet store (nil disables the
+	// external-subnet CRUD/rows — the same degraded-mode treatment every
+	// optional source gets).
+	External ExternalSubnetStore
+	// ExternalIPAM is T-1203's NetBox/phpIPAM bidirectional-sync bridge (nil
+	// disables sync entirely — ErrSyncNotConfigured).
+	ExternalIPAM ExternalIPAMClient
+	Now          func() time.Time
 }
 
 // Service builds docs/api.md's GET /ipam/subnets and
 // GET /ipam/subnets/{cidr}/allocations responses.
 type Service struct {
-	pve       PVEReader
-	inv       InventorySource
-	neighbors NeighborSource
-	leases    LeaseSource
-	now       func() time.Time
+	pve        PVEReader
+	inv        InventorySource
+	neighbors  NeighborSource
+	leases     LeaseSource
+	external   ExternalSubnetStore
+	syncClient ExternalIPAMClient
+	now        func() time.Time
 }
 
 // NewService builds a Service from cfg.
@@ -82,7 +91,7 @@ func NewService(cfg Config) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{pve: cfg.PVE, inv: cfg.Inventory, neighbors: cfg.Neighbors, leases: cfg.Leases, now: now}
+	return &Service{pve: cfg.PVE, inv: cfg.Inventory, neighbors: cfg.Neighbors, leases: cfg.Leases, external: cfg.External, syncClient: cfg.ExternalIPAM, now: now}
 }
 
 // sdnSubnetInfo is one SDN subnet's context (zone/vnet/gateway/DHCP),

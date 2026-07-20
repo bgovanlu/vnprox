@@ -335,14 +335,30 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// AllAllocations) — the identical "true nil interface until assigned"
 	// pattern as ipamSvc/dhcpAPISvc above, assigned in the same branch.
 	var k8sIPAMSrc api.K8sIPAMSource
+	// ipamExternalSvc is the same concrete *ipam.Service, typed as
+	// api.IPAMExternalService (T-1203's external-subnet CRUD + NetBox/phpIPAM
+	// bidirectional-sync seam) — assigned in the same branch, same "true nil
+	// interface until assigned" pattern as the seams above.
+	var ipamExternalSvc api.IPAMExternalService
 	if sdnPVEClient != nil {
-		ipamConcrete = ipam.NewService(ipam.Config{PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc})
+		ipamConcrete = ipam.NewService(ipam.Config{
+			PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc,
+			// T-1203: the app-owned external-subnet store. ExternalIPAM (the
+			// concrete NetBox/phpIPAM write client) is deliberately left nil —
+			// the sync engine + preview/apply/audit ceremony are complete and
+			// tested against internal/ipam's HTTP double, but a production
+			// client keyed to real NetBox/phpIPAM API shapes needs hardware
+			// validation (see planning/reports/needs-hardware-validation.md),
+			// so sync routes report "not configured" until that lands.
+			External: store.NewExternalSubnetRepo(db),
+		})
 		ipamSvc = ipamConcrete
 		dhcpAPISvc = ipamConcrete
 		guestInteriorIPAM = ipamConcrete
 		conntrackGuests = ipamConcrete
 		edgeIPAM = ipamConcrete
 		k8sIPAMSrc = ipamConcrete
+		ipamExternalSvc = ipamConcrete
 	}
 	// changeAllocations adapts ipamConcrete into change.AllocationsSource
 	// for T-406's DHCP-range-overlap advisory check — see
@@ -914,9 +930,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Federation:        federationSvc,
 		FederationAudit:   auditRepo,
 		FederationAgg:     federationAgg,
-		Changesets:        changeSvc,
-		Snapshots:         changeSvc,
-		Audit:             auditRepo,
+		// T-1203: cross-cluster IPAM conflicts via T-1201's aggregator. The
+		// adapter maps federation.ClusterSubnets into the api seam's
+		// ipam.ClusterSubnets shape.
+		FederationIPAM: federationIPAMAdapter{agg: federationAgg},
+		Changesets:     changeSvc,
+		Snapshots:      changeSvc,
+		Audit:          auditRepo,
 		// T-1007: GET /history/events merges the same audit_log (narrowed to
 		// the changeset-lifecycle action set) with finding_events.
 		History:              auditRepo,
@@ -924,6 +944,8 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		SDN:                  sdnSvc,
 		SDNDNS:               sdnDNSSvc,
 		IPAM:                 ipamSvc,
+		IPAMExternal:         ipamExternalSvc,
+		IPAMExternalAudit:    auditRepo,
 		EVPN:                 evpnSvc,
 		IPv6:                 ipv6Svc,
 		DHCP:                 dhcpAPISvc,

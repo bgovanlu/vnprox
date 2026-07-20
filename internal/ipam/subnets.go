@@ -41,6 +41,7 @@ func (s *Service) Subnets(ctx context.Context) (SubnetsResponse, error) {
 	}
 
 	items = append(items, nonSDNSubnets(snap, sdnCIDRs, obs)...)
+	items = append(items, s.externalSubnetRows(ctx)...)
 
 	sort.Slice(items, func(i, j int) bool { return items[i].CIDR < items[j].CIDR })
 	return SubnetsResponse{Items: items, GeneratedAt: s.now().Unix()}, nil
