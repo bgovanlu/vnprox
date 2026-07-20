@@ -11,16 +11,16 @@ import (
 type Kind string
 
 const (
-	KindNode         Kind = "node"
-	KindPhysNic      Kind = "physnic"
-	KindBond         Kind = "bond"
-	KindBridge       Kind = "bridge"
-	KindVlan         Kind = "vlan"
-	KindOVSBridge    Kind = "ovs-bridge"
-	KindOVSBond      Kind = "ovs-bond"
-	KindSDNZone      Kind = "sdn-zone"
-	KindSDNVnet      Kind = "sdn-vnet"
-	KindSDNSubnet    Kind = "sdn-subnet"
+	KindNode      Kind = "node"
+	KindPhysNic   Kind = "physnic"
+	KindBond      Kind = "bond"
+	KindBridge    Kind = "bridge"
+	KindVlan      Kind = "vlan"
+	KindOVSBridge Kind = "ovs-bridge"
+	KindOVSBond   Kind = "ovs-bond"
+	KindSDNZone   Kind = "sdn-zone"
+	KindSDNVnet   Kind = "sdn-vnet"
+	KindSDNSubnet Kind = "sdn-subnet"
 	// KindSDNDnsZone and KindSDNDnsRecord (T-1204: SDN DNS management) name a
 	// PVE SDN DNS zone (a forward domain registered in /etc/pve/sdn/dns.cfg,
 	// backed by a PowerDNS plugin instance) and one A/AAAA/PTR/CNAME/TXT
@@ -101,6 +101,21 @@ const (
 	// across nodes), so Node is empty and ID is the server's address
 	// (internal/pbs.HostRef).
 	KindPBSHost Kind = "pbs-host"
+
+	// KindSwitchPort names a physical switch's port (T-1205: guarded switch
+	// config push). It is app-owned intent, not a live-polled inventory
+	// entity — no collector ever emits one into the graph; a switch is an
+	// external device vnprox drives through a SwitchDriver
+	// (internal/switchdrv), not a PVE node. This Kind exists only so a
+	// switch.port.update changeset op's target Ref (docs/data-model.md §3) is
+	// a first-class, parseable Ref like every other op target. It is
+	// cluster-scoped (Node is empty — a switch is not a PVE node); ID encodes
+	// "<switchID>/<port name>" (the app-store switch id from the switches
+	// table plus the driver-native port identifier, e.g.
+	// "sw-01ABC/Ethernet1/14"). The '/' is not structural to ParseRef (which
+	// splits on only the first two ':'), so the port name may itself contain
+	// '/' (common on chassis switches) and still round-trip.
+	KindSwitchPort Kind = "switch-port"
 )
 
 // knownKinds is the closed set of valid Kind values. ParseRef rejects any
@@ -113,8 +128,9 @@ var knownKinds = map[Kind]bool{
 	KindLldpNeighbor: true, KindFwRuleset: true, KindQosShape: true,
 	KindWgTunnel: true, KindWgPeer: true,
 	KindNatRule: true, KindStaticRoute: true, KindVF: true, KindCephOSD: true,
-	KindPBSHost: true,
+	KindPBSHost:    true,
 	KindSDNDnsZone: true, KindSDNDnsRecord: true,
+	KindSwitchPort: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)

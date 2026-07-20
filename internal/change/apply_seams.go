@@ -130,6 +130,42 @@ type WGGateway interface {
 	RestoreWg(ctx context.Context, node, snapshot string) error
 }
 
+// SwitchGateway performs physical-switch port mutations for T-1205's
+// switch.port.* op family. Like NodeAgent (and unlike the ticket-scoped
+// PVEGateway) it is a daemon-level dependency injected once at Service
+// construction: a switch is an external device vnprox drives through a
+// SwitchDriver (internal/switchdrv), not a PVE node, and it needs no user
+// ticket — so its rollback (RestoreSwitchPort) works on the unattended
+// commit-confirm-timeout / crash-recovery paths too, exactly like the
+// interfaces-file restore, which is what lets a switch push that times out
+// un-confirmed revert to its pre-image.
+//
+// ApplySwitchOp carries T-1205's defining interlock: it re-reads the target
+// port's live LLDP neighbor and hard-aborts before any write if it no longer
+// matches the PVE-node neighbor the op was scoped against (AC4). No op can
+// bypass this check.
+//
+// A nil SwitchGateway makes switch.port.* ops unexecutable (execStep errors) —
+// the same "nil dependency -> that op family isn't wired" degradation the other
+// seams use, and the mechanism by which switch push ships dark: a daemon that
+// never wires a SwitchGateway simply cannot apply a switch op.
+type SwitchGateway interface {
+	// ApplySwitchOp applies one switch.port.update op: re-verify the target
+	// port's live LLDP neighbor (aborting hard on mismatch — no write reaches
+	// the switch), then write the op's net-effect config.
+	ApplySwitchOp(ctx context.Context, op Op) error
+
+	// SnapshotSwitchPort captures portRef's current port config as an opaque
+	// string, for the pre-apply snapshot / rollback pre-image.
+	SnapshotSwitchPort(ctx context.Context, portRef string) (string, error)
+
+	// RestoreSwitchPort re-pushes a SnapshotSwitchPort pre-image onto portRef.
+	// Callable unattended (no user ticket). If the switch is unreachable at
+	// this moment it returns an error and the changeset lands in a
+	// distinguishable "rollback incomplete" state (T-1205 AC6).
+	RestoreSwitchPort(ctx context.Context, portRef, snapshot string) error
+}
+
 // PVEGateway performs cluster-scope PVE API mutations under the *user's own*
 // ticket (docs/architecture.md §6, D3: "PVE ACLs enforced by PVE; no
 // privilege escalation through vnprox"). It is passed per Apply/Rollback

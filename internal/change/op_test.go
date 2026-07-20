@@ -38,14 +38,15 @@ var allOpTypeConstants = []OpType{
 	OpNatPortForwardCreate, OpNatPortForwardUpdate, OpNatPortForwardDelete,
 	OpRouteStaticCreate, OpRouteStaticUpdate, OpRouteStaticDelete,
 	OpVFProvision,
+	OpSwitchPortUpdate,
 }
 
 // docs/data-model.md §3's table lists exactly these groups: iface(3, incl.
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
 // fw(14), ipam(2), qos(3, T-1505), wg(5, T-1401), nat(5, T-1403),
 // route(3, T-1403), vf(1, T-1506) = 58, plus T-1204's sdn.dns.zone.*(3) +
-// sdn.dns.record.*(3) = 6 more = 64.
-const wantOpVocabularySize = 64
+// sdn.dns.record.*(3) = 6 and T-1205's switch.port.update(1) = 65.
+const wantOpVocabularySize = 65
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -420,6 +421,18 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "vf.provision", opType: OpVFProvision,
 			target: ref(inventory.KindPhysNic, "pve1", "eno1"),
 			params: &VFProvisionParams{Count: 2, VLAN: 100, SpoofCheck: boolPtr(true), Trust: boolPtr(false)},
+		},
+		{
+			name: "switch.port.update", opType: OpSwitchPortUpdate,
+			target: ref(inventory.KindSwitchPort, "", "sw-1/Ethernet1/14"),
+			params: &SwitchPortUpdateParams{
+				Untagged:       intPtr(10),
+				Tagged:         &[]int{10, 20},
+				Description:    str("pve1 uplink"),
+				LacpMode:       str("active"),
+				LacpRate:       str("fast"),
+				ExpectNeighbor: SwitchNeighbor{ChassisID: "aa:bb:cc:dd:ee:ff", PortID: "eno1"},
+			},
 		},
 	}
 }

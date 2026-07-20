@@ -140,6 +140,16 @@ const (
 	// pair appended to the PF's own existing iface stanza — never a second
 	// mutation mechanism.
 	OpVFProvision OpType = "vf.provision"
+	// OpSwitchPortUpdate (T-1205: guarded switch config push) is the sole
+	// member of the switch.port.* op group — a single op that sets exactly a
+	// switch port's VLAN membership, description, and/or LACP settings, and
+	// nothing else. Target is a KindSwitchPort ref (Node empty, ID
+	// "<switchID>/<port>"). It is an ordinary changeset op flowing through the
+	// full stage→validate→diff→apply→confirm/rollback lifecycle (CLAUDE.md's
+	// change-engine invariant): there is no second mutation path for a switch.
+	// It ships dark — no push is possible unless both a daemon-level flag and
+	// the specific switch's `enabled` are true (docs/security.md).
+	OpSwitchPortUpdate OpType = "switch.port.update"
 )
 
 // noTargetOps is the (deliberately tiny) set of ops with no natural target
@@ -240,6 +250,7 @@ var paramFactories = map[OpType]func() Params{
 	OpRouteStaticUpdate:    func() Params { return &RouteStaticUpdateParams{} },
 	OpRouteStaticDelete:    func() Params { return &RouteStaticDeleteParams{} },
 	OpVFProvision:          func() Params { return &VFProvisionParams{} },
+	OpSwitchPortUpdate:     func() Params { return &SwitchPortUpdateParams{} },
 }
 
 // KnownOpTypes returns every OpType this package can decode, for tests

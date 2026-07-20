@@ -131,7 +131,7 @@ func TestTouchesMgmtPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := change.TouchesMgmtPath(paths, nil, opsFromJSON(t, tt.ops))
+			got := change.TouchesMgmtPath(paths, nil, nil, opsFromJSON(t, tt.ops))
 			if got != tt.want {
 				t.Errorf("TouchesMgmtPath = %v, want %v", got, tt.want)
 			}
@@ -141,7 +141,7 @@ func TestTouchesMgmtPath(t *testing.T) {
 
 func TestTouchesMgmtPath_NoPaths(t *testing.T) {
 	ops := opsFromJSON(t, `[{"op":"bond.update","target":"bond:pve1:bond0","params":{"slaves":["eno1"]}}]`)
-	if change.TouchesMgmtPath(nil, nil, ops) {
+	if change.TouchesMgmtPath(nil, nil, nil, ops) {
 		t.Error("TouchesMgmtPath with no resolved paths should be false")
 	}
 }
@@ -150,12 +150,12 @@ func TestTouchesMgmtPath_RawReplaceOnNodeWithPath(t *testing.T) {
 	// iface.raw.replace targets a node ref; it rewrites the whole file, so a
 	// node that has any management path is touched.
 	ops := opsFromJSON(t, `[{"op":"iface.raw.replace","target":"node:pve1:pve1","params":{"content":"auto lo\n"}}]`)
-	if !change.TouchesMgmtPath(mgmtPathsPve1(), nil, ops) {
+	if !change.TouchesMgmtPath(mgmtPathsPve1(), nil, nil, ops) {
 		t.Error("iface.raw.replace on a node with a management path should touch it")
 	}
 	// ... but not a node without one.
 	ops2 := opsFromJSON(t, `[{"op":"iface.raw.replace","target":"node:pve2:pve2","params":{"content":"auto lo\n"}}]`)
-	if change.TouchesMgmtPath(mgmtPathsPve1(), nil, ops2) {
+	if change.TouchesMgmtPath(mgmtPathsPve1(), nil, nil, ops2) {
 		t.Error("iface.raw.replace on a node with no management path should not touch it")
 	}
 }
@@ -202,7 +202,7 @@ func TestTouchesMgmtPath_WireGuard(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ops := opsFromJSON(t, tc.ops)
-			if got := change.TouchesMgmtPath(paths, nil, ops); got != tc.want {
+			if got := change.TouchesMgmtPath(paths, nil, nil, ops); got != tc.want {
 				t.Errorf("TouchesMgmtPath = %v, want %v", got, tc.want)
 			}
 		})
@@ -289,7 +289,7 @@ func TestTouchesMgmtPath_WireGuard_StoredCarrier(t *testing.T) {
 			if tc.name == "without a carrier lookup, a carrier-less op falls back to unflagged" {
 				c = nil
 			}
-			if got := change.TouchesMgmtPath(paths, c, ops); got != tc.want {
+			if got := change.TouchesMgmtPath(paths, c, nil, ops); got != tc.want {
 				t.Errorf("TouchesMgmtPath = %v, want %v", got, tc.want)
 			}
 		})
@@ -351,7 +351,7 @@ func TestTouchesMgmtPath_EdgeNAT(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ops := opsFromJSON(t, tc.ops)
-			if got := change.TouchesMgmtPath(paths, nil, ops); got != tc.want {
+			if got := change.TouchesMgmtPath(paths, nil, nil, ops); got != tc.want {
 				t.Errorf("TouchesMgmtPath = %v, want %v", got, tc.want)
 			}
 		})

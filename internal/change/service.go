@@ -82,10 +82,23 @@ type Config struct {
 	// Qos is T-1505's node-local QoS gateway (qos.shape.* ops). Optional:
 	// nil makes qos.shape.* ops unexecutable (execStep errors), mirroring
 	// every other optional gateway seam on this Config.
-	Qos                QosGateway
-	WG                 WGGateway
-	Sealer             SecretSealer
-	WgCarriers         WgCarrierSource
+	Qos        QosGateway
+	WG         WGGateway
+	Sealer     SecretSealer
+	WgCarriers WgCarrierSource
+	// Switches is T-1205's daemon-level switch gateway (switch.port.* ops).
+	// Optional: nil makes switch.port.* ops unexecutable (execStep errors) —
+	// the mechanism by which switch push ships dark until a daemon wires it.
+	Switches SwitchGateway
+	// SwitchScope supplies the per-validation switch-push scoping context
+	// (which switches are registered/enabled, which ports face a PVE node,
+	// which carry a management path). Optional: nil means no switch is
+	// registered/scoped, so every switch.port.* op is rejected at validation.
+	SwitchScope SwitchScopeSource
+	// SwitchPushEnabled is the daemon-level [switches] enabled flag
+	// (docs/security.md). False (the default) blocks every switch push at
+	// validation regardless of any individual switch's own enabled state.
+	SwitchPushEnabled  bool
 	Refresher          InventoryRefresher
 	WS                 Broadcaster
 	Inventory          InventorySource
@@ -132,6 +145,9 @@ type Service struct {
 	wg                 WGGateway
 	sealer             SecretSealer
 	wgCarriers         WgCarrierSource
+	switches           SwitchGateway
+	switchScope        SwitchScopeSource
+	switchPushEnabled  bool
 	refresher          InventoryRefresher
 	ws                 Broadcaster
 	inv                InventorySource
@@ -210,6 +226,7 @@ func NewService(cfg Config) (*Service, error) {
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
+		switches: cfg.Switches, switchScope: cfg.SwitchScope, switchPushEnabled: cfg.SwitchPushEnabled,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
 		rollbackWindowDays: rollbackWindowDays,
 		timers:             map[string]Stopper{},

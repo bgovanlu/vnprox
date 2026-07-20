@@ -116,6 +116,7 @@ type Config struct {
 	Blueprint   BlueprintConfig
 	Peer        PeerConfig
 	Safety      SafetyConfig
+	Switches    SwitchesConfig
 	Server      ServerConfig
 	Metrics     MetricsConfig
 	Capture     CaptureConfig
@@ -199,6 +200,17 @@ type SafetyConfig struct {
 	DevInterfacesDir string
 
 	AllowDangerousOps bool
+}
+
+// SwitchesConfig is the [switches] section (T-1205: guarded switch config
+// push). Enabled is the daemon-level master flag gating the entire switch-push
+// feature: false (the default) means no switch.port.update can ever be applied,
+// regardless of any individual switch's own enabled flag in the switches table
+// — switch push ships dark by construction (docs/security.md). This is a
+// deliberate two-key interlock (daemon flag AND per-switch opt-in), so a stray
+// enabled switch row can never by itself make pushes possible.
+type SwitchesConfig struct {
+	Enabled bool
 }
 
 // PeerConfig is the [peer] section: where T-301's cluster secret lives on
@@ -360,6 +372,7 @@ type rawConfig struct {
 	Peer        rawPeer        `toml:"peer"`
 	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
+	Switches    rawSwitches    `toml:"switches"`
 	Server      rawServer      `toml:"server"`
 	Capture     rawCapture     `toml:"capture"`
 	Flows       rawFlows       `toml:"flows"`
@@ -376,6 +389,10 @@ type rawCapture struct {
 	MaxPackets            int64  `toml:"max_packets"`
 	RetentionHours        int    `toml:"retention_hours"`
 	MaxFilterInstructions int    `toml:"max_filter_instructions"`
+}
+
+type rawSwitches struct {
+	Enabled bool `toml:"enabled"`
 }
 
 type rawServer struct {
@@ -526,6 +543,9 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			AllowDangerousOps: raw.Safety.AllowDangerousOps,
 			ProtectedPath:     firstNonEmpty(raw.Safety.ProtectedPath, DefaultProtectedPath),
 			DevInterfacesDir:  raw.Safety.DevInterfacesDir,
+		},
+		Switches: SwitchesConfig{
+			Enabled: raw.Switches.Enabled,
 		},
 		Storage: StorageConfig{
 			DBPath:         firstNonEmpty(raw.Storage.DBPath, DefaultDBPath),

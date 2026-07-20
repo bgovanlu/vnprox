@@ -51,6 +51,17 @@ const qosStateSnapshotPath = "/var/lib/vnprox/qos.state"
 // more sensitive than the sealed store rows it mirrors.
 const wgStateSnapshotPath = "/var/lib/vnprox/wireguard.state"
 
+// switchStateSnapshotPath is the synthetic, cluster-scoped (Node="")
+// snapshotFile path holding T-1205's switch-port pre-images: a JSON object
+// mapping each touched switch-port Ref string to its opaque
+// SwitchGateway.SnapshotSwitchPort pre-image. Cluster-scoped (Node="") for the
+// same reason the SDN snapshot files are — a switch is not a PVE node, so it
+// occupies no per-node snapshotFile slot, and restoreAll keys those by node.
+// Storing the pre-images in the pre-snapshot blob (not only in the executor) is
+// what lets the unattended commit-confirm-timeout rollback restore a switch
+// port with no live session (T-1205 AC6).
+const switchStateSnapshotPath = "/var/lib/vnprox/switches.state"
+
 // Snapshot kinds (store.Snapshot.Kind, docs/data-model.md §2: pre|post|
 // manual|scheduled).
 const (
@@ -157,6 +168,14 @@ func (s *Service) captureSnapshotFull(ctx context.Context, changesetID, kind str
 		files = append(files, wgFile)
 	}
 
+	if plan.hasSwitch() && s.switches != nil {
+		switchFile, err := s.switchStateSnapshotFile(ctx, plan.switchPortTargets())
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, switchFile)
+	}
+
 	if _, err := s.persistSnapshot(ctx, changesetID, kind, "", files); err != nil {
 		return nil, err
 	}
@@ -193,6 +212,45 @@ func (s *Service) qosStateSnapshotFile(ctx context.Context, nodes []string) (sna
 func qosStateFromSnapshot(files []snapshotFile) (state map[string]string, ok bool) {
 	for _, f := range files {
 		if f.Path == qosStateSnapshotPath {
+			if json.Unmarshal([]byte(f.Content), &state) == nil {
+				return state, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// switchStateSnapshotFile captures each touched switch port's pre-image
+// (SwitchGateway.SnapshotSwitchPort) into one cluster-scoped snapshotFile
+// (switchStateSnapshotPath), stored in the blob store like every other snapshot
+// file. Keyed by the port's Ref string.
+func (s *Service) switchStateSnapshotFile(ctx context.Context, portRefs []string) (snapshotFile, error) {
+	state := make(map[string]string, len(portRefs))
+	for _, portRef := range portRefs {
+		pre, err := s.switches.SnapshotSwitchPort(ctx, portRef)
+		if err != nil {
+			return snapshotFile{}, fmt.Errorf("change: snapshotting switch port %s: %w", portRef, err)
+		}
+		state[portRef] = pre
+	}
+	b, err := json.Marshal(state)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: encoding switch state snapshot: %w", err)
+	}
+	content := string(b)
+	hash, err := s.blobs.Put(ctx, content)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: storing switch state snapshot blob: %w", err)
+	}
+	return snapshotFile{Path: switchStateSnapshotPath, SHA256: hash, Content: content}, nil
+}
+
+// switchStateFromSnapshot decodes the per-port switch pre-image map out of a
+// loaded pre-snapshot's file list. ok is false if the snapshot carries no
+// switch state file (a changeset with no switch.port.* ops).
+func switchStateFromSnapshot(files []snapshotFile) (state map[string]string, ok bool) {
+	for _, f := range files {
+		if f.Path == switchStateSnapshotPath {
 			if json.Unmarshal([]byte(f.Content), &state) == nil {
 				return state, true
 			}

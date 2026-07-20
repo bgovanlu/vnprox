@@ -264,7 +264,7 @@ func mgmtEval(ctx context.Context, mgmt MgmtStatusService, wgCarriers change.WgC
 // withMgmtFlag decorates a changesetResponse with the touchesMgmtPath flag.
 func withMgmtFlag(c change.Changeset, paths map[string][]topology.MgmtPath, carriers map[string]change.WgTunnelCarrier) changesetResponse {
 	resp := toChangesetResponse(c)
-	resp.TouchesMgmtPath = change.TouchesMgmtPath(paths, carriers, c.Ops)
+	resp.TouchesMgmtPath = change.TouchesMgmtPath(paths, carriers, nil, c.Ops)
 	return resp
 }
 
@@ -319,7 +319,7 @@ func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways 
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
 		touchesMgmt := false
 		if cs, getErr := svc.Get(r.Context(), id); getErr == nil {
-			touchesMgmt = change.TouchesMgmtPath(paths, carriers, cs.Ops)
+			touchesMgmt = change.TouchesMgmtPath(paths, carriers, nil, cs.Ops)
 
 			// T-701 acceptance criterion 5: fail fast, before any snapshot/
 			// mutation, when the plan needs a PVEGateway (sdn/fw/ipam

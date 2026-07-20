@@ -60,6 +60,19 @@ const (
 	// reload pairs (the carrier interface must exist before the tunnel rides
 	// on it) and before any trailing sdn.apply.
 	StepWgApply StepKind = "wg_apply"
+	// StepSwitchApply realizes one switch.port.update op (T-1205): a write to
+	// a physical switch port (VLAN membership / description / LACP) via the
+	// daemon-level SwitchGateway. Like the interfaces-file steps (and unlike
+	// the ticket-scoped PVEGateway steps) it needs no live user session, so its
+	// rollback works on the unattended commit-confirm-timeout path too. One
+	// step per op. It is placed FIRST — before the per-node interface
+	// stage/reload pairs — because switch-side additions (adding a VLAN to a
+	// trunk) are additive and don't remove existing connectivity, so applying
+	// them ahead of the corresponding node-side change is safe, whereas the
+	// reverse ordering could strand the node step behind a not-yet-configured
+	// trunk (T-1205 safety analysis: "the plan always applies switch-port steps
+	// before node-network steps within one changeset").
+	StepSwitchApply StepKind = "switch_apply"
 
 	// StepIpamAlloc realizes one ipam.alloc.create/delete op (T-405): a
 	// cluster-scope PVE IPAM plugin write, category (1) in
@@ -157,6 +170,12 @@ var wgOpTypes = map[OpType]bool{
 	OpWgTunnelDelete: true,
 	OpWgPeerAdd:      true,
 	OpWgPeerRemove:   true,
+}
+
+// switchOpTypes is T-1205's switch op vocabulary: each becomes a
+// StepSwitchApply step executed by the daemon-level SwitchGateway.
+var switchOpTypes = map[OpType]bool{
+	OpSwitchPortUpdate: true,
 }
 
 // fwOpTypes is the full T-502 firewall op vocabulary: every one of these
@@ -258,6 +277,7 @@ func BuildPlan(ops []Op) (Plan, error) {
 	byFwTarget := map[string][]int{}
 	var qosSteps []Step
 	var wgSteps []Step
+	var switchSteps []Step
 
 	for i, op := range ops {
 		switch {
@@ -276,6 +296,13 @@ func BuildPlan(ops []Op) (Plan, error) {
 				Target:  op.Target.String(),
 				OpIdx:   []int{i},
 				Summary: wgStepSummary(op),
+			})
+		case switchOpTypes[op.Type]:
+			switchSteps = append(switchSteps, Step{
+				Kind:    StepSwitchApply,
+				Target:  op.Target.String(),
+				OpIdx:   []int{i},
+				Summary: switchStepSummary(op),
 			})
 		case nodeFileOpTypes[op.Type]:
 			node := op.Target.Node
@@ -322,6 +349,10 @@ func BuildPlan(ops []Op) (Plan, error) {
 	// deterministic (SDN-then-IPAM) placement rather than a spec-mandated
 	// one.
 	var steps []Step
+	// Switch-port steps go first of all (T-1205): they must precede the
+	// node-network stage/reload pairs so an additive switch trunk change lands
+	// before the node step that relies on it — see StepSwitchApply's doc.
+	steps = append(steps, switchSteps...)
 	steps = append(steps, sdnStageSteps...)
 	steps = append(steps, ipamSteps...)
 	for _, node := range nodeOrder {
@@ -449,6 +480,24 @@ func (p Plan) hasQos() bool {
 	return false
 }
 
+// switchStepSummary renders one StepSwitchApply's Plan-tab summary (T-1205).
+func switchStepSummary(op Op) string {
+	return fmt.Sprintf("Push switch port config to %s", op.Target.ID)
+}
+
+// hasSwitch reports whether the plan carries any switch step — the gate for
+// whether the apply/rollback engine snapshots and restores switch-port
+// pre-images alongside node interface files (apply_snapshot.go's
+// captureSnapshotFull, apply.go's doRollbackLocked).
+func (p Plan) hasSwitch() bool {
+	for _, s := range p.Steps {
+		if s.Kind == StepSwitchApply {
+			return true
+		}
+	}
+	return false
+}
+
 // wgStepSummary renders one StepWgApply's Plan-tab summary (T-1401).
 func wgStepSummary(op Op) string {
 	switch op.Type {
@@ -505,6 +554,21 @@ func (p Plan) wgNodes() []string {
 		if s.Kind == StepWgApply && s.Node != "" && !seen[s.Node] {
 			seen[s.Node] = true
 			out = append(out, s.Node)
+		}
+	}
+	return out
+}
+
+// switchPortTargets returns, in first-appearance order, every switch-port Ref
+// string this plan's StepSwitchApply steps touch — the set whose pre-image the
+// pre-apply snapshot must capture and rollback must restore.
+func (p Plan) switchPortTargets() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range p.Steps {
+		if s.Kind == StepSwitchApply && s.Target != "" && !seen[s.Target] {
+			seen[s.Target] = true
+			out = append(out, s.Target)
 		}
 	}
 	return out

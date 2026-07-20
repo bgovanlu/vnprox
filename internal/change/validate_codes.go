@@ -128,7 +128,7 @@ const (
 	// codeDNSZoneNotFound (T-1204) flags a sdn.dns.record.* op whose owning
 	// DNS zone does not exist — neither in the base snapshot nor created by
 	// an earlier sdn.dns.zone.create in the same changeset (net-effect fold).
-	codeDNSZoneNotFound = "referential.dns_zone_not_found"
+	codeDNSZoneNotFound      = "referential.dns_zone_not_found"
 	codeNodeNotFound         = "referential.node_not_found"
 	codeBridgeOrVnetNotFound = "referential.bridge_or_vnet_not_found"
 	// codeRenameTargetExists flags an iface.rename whose new name already
@@ -214,6 +214,35 @@ const (
 	// changeset clears it) and AllowDangerousOps-downgradable, exactly like
 	// the subnet/vnet deletion guards.
 	codeDNSZoneHasRecords = "safety.dns_zone_has_records"
+
+	// --- switch push (T-1205: guarded switch config push) -----------------
+	// The switch.port.* op family's authorization + interlock checks
+	// (switchValidate, validate_switch.go). The first three are blocking
+	// authorization gates (feature ships dark by construction); the last is a
+	// no-override safety interlock mirroring T-703's protected-interface rule.
+
+	// codeSwitchPushDisabled flags any switch.port.* op when the daemon-level
+	// [switches] enabled flag is off — no switch push is possible at all
+	// (docs/security.md). This gate fires regardless of any individual
+	// switch's own enabled state.
+	codeSwitchPushDisabled = "switch.push_disabled"
+	// codeSwitchNotEnabled flags a switch.port.* op targeting a switch that is
+	// either not registered or registered with enabled=false — per-switch
+	// explicit opt-in (docs/security.md).
+	codeSwitchNotEnabled = "switch.not_enabled"
+	// codeSwitchPortNotPVEFacing flags a switch.port.* op targeting a port
+	// whose LLDP-observed neighbor is not a known PVE node's PhysNic — the
+	// port-scoping guarantee that a push can only ever touch a PVE-node uplink
+	// (T-1205 AC3), rejected before any driver call.
+	codeSwitchPortNotPVEFacing = "switch.port_not_pve_facing"
+	// codeProtectedSwitchPort is T-1205's management-path interlock extended
+	// one hop onto the uplink switch port carrying a node's management path: a
+	// switch.port.update whose net effect strips the management VLAN from that
+	// port is hard-blocked with NO override (mirroring T-703's "no override in
+	// UI"), because severing a switch's management VLAN can cut connectivity to
+	// hardware vnprox cannot itself recover. It is emitted by switchValidate,
+	// not safetyValidate, so AllowDangerousOps never downgrades it.
+	codeProtectedSwitchPort = "safety.protected_switch_port"
 
 	// --- sdn (T-402: docs/features/sdn.md §4's documented pre-apply
 	// validation — "zone node coverage, bridge existence on member nodes,

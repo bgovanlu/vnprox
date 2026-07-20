@@ -31,10 +31,19 @@ type SafetyOptions struct {
 	// about, never an error.
 	Allocations []DHCPRangeAllocation
 
+	// Switches is T-1205's switch-push scoping/interlock input: which
+	// switches are registered/enabled, which of their ports face a PVE node,
+	// and which carry a node's management path. A zero value means "switch
+	// push is off / nothing scoped", so every switch.port.* op is rejected —
+	// the fail-closed default that makes switch push dark. See switchValidate.
+	Switches SwitchSafetyInput
+
 	// AllowDangerousOps downgrades every finding this class would
 	// otherwise emit at SeverityError down to SeverityWarning, without
 	// changing Validate's short-circuit behavior (a warning never
-	// short-circuits, matching every other class).
+	// short-circuits, matching every other class). It deliberately does NOT
+	// affect switchValidate's safety.protected_switch_port interlock, which
+	// has no override (docs/security.md; mirrors T-703's "no override in UI").
 	AllowDangerousOps bool
 }
 
@@ -109,6 +118,18 @@ func ValidateWithSafety(ops []Op, snap inventory.Snapshot, safety SafetyOptions)
 	sdnFindings := sdnValidate(ops, snap)
 	findings = append(findings, sdnFindings...)
 	if hasError(sdnFindings) {
+		return findings
+	}
+
+	// T-1205's switch-push authorization + interlock class: the feature-flag/
+	// enabled/PVE-facing gates plus the no-override protected-switch-port
+	// interlock. Runs after referential/sdn (the op must be well-formed) and
+	// before safetyValidate — its protected_switch_port finding lives here,
+	// not in safetyValidate, precisely so AllowDangerousOps never downgrades
+	// it.
+	switchFindings := switchValidate(ops, safety.Switches)
+	findings = append(findings, switchFindings...)
+	if hasError(switchFindings) {
 		return findings
 	}
 
