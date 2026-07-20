@@ -7,13 +7,53 @@ import "encoding/json"
 // built from: the PVE API surface, the host.Reader fixture backing, and the
 // permission model are all derived from one Fixture value.
 type Fixture struct {
-	Nodes    map[string]*NodeSpec `yaml:"nodes"`
-	SDN      SDNSpec              `yaml:"sdn"`
-	Users    []UserSpec           `yaml:"users"`
-	Mess     []string             `yaml:"mess"`
-	Firewall FirewallSpec         `yaml:"firewall"`
-	Cluster  ClusterSpec          `yaml:"cluster"`
-	Mock     MockOptions          `yaml:"mock"`
+	Nodes map[string]*NodeSpec `yaml:"nodes"`
+	Users []UserSpec           `yaml:"users"`
+	Mess  []string             `yaml:"mess"`
+	// Storage backs GET /storage (T-1206 PBS network awareness): the
+	// cluster-wide storage.cfg entries, of which internal/pbs reads only the
+	// "pbs"-type ones. Empty models a cluster with no storage configured at
+	// all — a valid, unremarkable state, never an error.
+	Storage []StorageSpec `yaml:"storage,omitempty"`
+	// BackupJobs backs GET /cluster/backup (T-1206): the cluster-wide vzdump
+	// backup jobs. Empty models a cluster with no backup jobs.
+	BackupJobs []BackupJobSpec `yaml:"backup_jobs,omitempty"`
+	SDN        SDNSpec         `yaml:"sdn"`
+	Firewall   FirewallSpec    `yaml:"firewall"`
+	Cluster    ClusterSpec     `yaml:"cluster"`
+	Mock       MockOptions     `yaml:"mock"`
+}
+
+// StorageSpec is one fixture-declared storage.cfg entry backing GET /storage
+// (T-1206). Server/Datastore/Fingerprint/Port are meaningful only for
+// Type == "pbs"; Nodes is the entry's node restriction (empty = all nodes).
+type StorageSpec struct {
+	Storage     string   `yaml:"storage"`
+	Type        string   `yaml:"type"`
+	Server      string   `yaml:"server,omitempty"`
+	Datastore   string   `yaml:"datastore,omitempty"`
+	Fingerprint string   `yaml:"fingerprint,omitempty"`
+	Content     []string `yaml:"content,omitempty"`
+	Nodes       []string `yaml:"nodes,omitempty"`
+	Port        int      `yaml:"port,omitempty"`
+	Disable     bool     `yaml:"disable,omitempty"`
+}
+
+// BackupJobSpec is one fixture-declared vzdump backup job backing GET
+// /cluster/backup (T-1206). Node is the job's node restriction (empty = every
+// node); All true means "back up every guest"; VMIDs is the explicit guest
+// selection otherwise. Enabled defaults to false at the YAML zero value, so
+// fixtures set it explicitly (real PVE always returns the field).
+type BackupJobSpec struct {
+	ID       string   `yaml:"id"`
+	Storage  string   `yaml:"storage"`
+	Node     string   `yaml:"node,omitempty"`
+	Schedule string   `yaml:"schedule,omitempty"`
+	Mode     string   `yaml:"mode,omitempty"`
+	Comment  string   `yaml:"comment,omitempty"`
+	VMIDs    []string `yaml:"vmids,omitempty"`
+	Enabled  bool     `yaml:"enabled,omitempty"`
+	All      bool     `yaml:"all,omitempty"`
 }
 
 // ClusterSpec describes cluster membership as reported by GET /cluster/status.

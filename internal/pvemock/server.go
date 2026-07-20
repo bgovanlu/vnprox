@@ -90,6 +90,14 @@ func (srv *Server) buildRouter() chi.Router {
 
 		api.Get("/cluster/status", srv.requirePrivilege(PrivSysAudit, srv.handleClusterStatus))
 		api.Get("/cluster/resources", srv.requirePrivilege(PrivSysAudit, srv.handleClusterResources))
+		// T-1206: PBS network awareness — cluster-wide storage.cfg entries
+		// and vzdump backup jobs, gated on the same PrivSysAudit read
+		// privilege every other read-only cluster route uses. Both are
+		// read-only (internal/pbs never writes storage or backup config —
+		// PVE's own tooling keeps ownership), so no POST/PUT/DELETE
+		// counterpart is registered here.
+		api.Get("/storage", srv.requirePrivilege(PrivSysAudit, srv.handleStorageList))
+		api.Get("/cluster/backup", srv.requirePrivilege(PrivSysAudit, srv.handleBackupJobs))
 
 		api.Get("/nodes/{node}/network", srv.requirePrivilege(PrivSysAudit, srv.handleNetworkList))
 		api.Post("/nodes/{node}/network", srv.requirePrivilege(PrivSysModify, srv.handleNetworkCreate))

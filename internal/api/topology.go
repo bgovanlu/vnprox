@@ -52,14 +52,14 @@ type TopologyService interface {
 // keep working unchanged. ch may be nil (no collector wired — tests, or the
 // collector failed to initialize): /topology then simply omits its
 // staleness section.
-func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService) {
+func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService, pbsSvc PBSService) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
-		r.Get("/topology", handleTopology(svc, ch, driftSvc, findingsSvc, mgmtSvc))
+		r.Get("/topology", handleTopology(svc, ch, driftSvc, findingsSvc, mgmtSvc, pbsSvc))
 		r.Get("/inventory/search", handleInventorySearch(svc))
 		// A trailing chi wildcard (not a "{ref}" single-segment param) is
 		// required here: docs/api.md's Ref triplet scheme allows literal
@@ -127,7 +127,7 @@ func parseTopologyFilter(r *http.Request) topology.Filter {
 	return f
 }
 
-func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService) http.HandlerFunc {
+func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService, pbsSvc PBSService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t := svc.Topology(parseTopologyFilter(r))
 		if ch != nil {
@@ -148,6 +148,9 @@ func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftServi
 		}
 		if mgmtSvc != nil {
 			paintMgmtStatus(r.Context(), &t, mgmtSvc)
+		}
+		if pbsSvc != nil {
+			paintPBS(r.Context(), &t, pbsSvc)
 		}
 		writeJSON(w, http.StatusOK, t)
 	}

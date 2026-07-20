@@ -25,6 +25,18 @@ const (
 	KindGuestNic     Kind = "guest-nic"
 	KindLldpNeighbor Kind = "lldp-neighbor"
 	KindFwRuleset    Kind = "fw-ruleset"
+	// KindPBSHost names a Proxmox Backup Server host (T-1206): discovered
+	// read-only from PVE's own storage config (GET /storage, storage.cfg
+	// entries of type "pbs") by internal/pbs.Discover — never a PBS API
+	// client of its own, never a stored PBS credential. A pbs-host is NOT
+	// merge/provenance-tracked as a top-level graph entity: no collector
+	// ever emits one into internal/inventory.Graph. This Kind exists purely
+	// so a PBS host has a first-class, parseable Ref for its GET /topology
+	// synthetic node and GET /pbs inspector output. A PBS host is
+	// cluster-scoped (its storage.cfg entry is cluster-wide config, shared
+	// across nodes), so Node is empty and ID is the server's address
+	// (internal/pbs.HostRef).
+	KindPBSHost Kind = "pbs-host"
 )
 
 // knownKinds is the closed set of valid Kind values. ParseRef rejects any
@@ -34,7 +46,7 @@ var knownKinds = map[Kind]bool{
 	KindNode: true, KindPhysNic: true, KindBond: true, KindBridge: true,
 	KindVlan: true, KindOVSBridge: true, KindOVSBond: true, KindSDNZone: true,
 	KindSDNVnet: true, KindSDNSubnet: true, KindGuest: true, KindGuestNic: true,
-	KindLldpNeighbor: true, KindFwRuleset: true,
+	KindLldpNeighbor: true, KindFwRuleset: true, KindPBSHost: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)
