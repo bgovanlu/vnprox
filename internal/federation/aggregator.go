@@ -19,9 +19,13 @@ const DefaultAggregateTimeout = 15 * time.Second
 // PVEReader is the subset of *pve.Client the Aggregator's built-in reads use.
 // *pve.Client satisfies it directly, so production wiring needs no adapter;
 // tests can also inject a fake to script a specific failure without a mock
-// server.
+// server. The SDN reads back the cross-cluster IPAM view (T-1203): each
+// attached cluster's configured SDN subnet CIDRs, the per-cluster input the
+// cross-cluster duplicate-subnet check folds together.
 type PVEReader interface {
 	ClusterStatus(ctx context.Context) ([]pve.ClusterStatusEntry, error)
+	ListSDNVnets(ctx context.Context) ([]pve.SDNVnet, error)
+	ListSDNSubnets(ctx context.Context, vnet string) ([]pve.SDNSubnet, error)
 }
 
 // ReaderFactory builds a PVEReader for one attached cluster (typically by
@@ -210,6 +214,71 @@ func (a *Aggregator) NodeClusters(ctx context.Context) (map[string]string, error
 			continue
 		}
 		out[name] = cid
+	}
+	return out, nil
+}
+
+// ClusterSubnets is one attached cluster's configured SDN subnet CIDR set,
+// tagged with the cluster it came from — the per-cluster input the
+// cross-cluster IPAM duplicate-subnet check (T-1203) folds together. It is
+// deliberately the same shape as internal/ipam.ClusterSubnets, which the API
+// layer maps this into to run the actual overlap computation (keeping this
+// package free of an internal/ipam dependency).
+type ClusterSubnets struct {
+	ClusterID   string   `json:"clusterId"`
+	ClusterName string   `json:"clusterName"`
+	CIDRs       []string `json:"cidrs"`
+}
+
+// IPAMSubnets fans the per-cluster SDN subnet enumeration out to every
+// attached cluster and returns each reachable cluster's configured subnet
+// CIDRs tagged with its clusterId, plus partial/failedClusters for any that
+// were unreachable (the cross-cluster IPAM conflict view, T-1203). Failure
+// isolation is identical to ClusterNodesAll: one cluster being down never
+// blanks the others' contribution. A store-level failure to even list the
+// registered clusters is the one hard error.
+func (a *Aggregator) IPAMSubnets(ctx context.Context) (results []ClusterSubnets, partial bool, failedClusters []string, err error) {
+	clusters, err := a.svc.List(ctx)
+	if err != nil {
+		return nil, false, nil, err
+	}
+	raw := fanOut(ctx, a, clusters, func(ctx context.Context, r PVEReader) ([]string, error) {
+		return sdnSubnetCIDRs(ctx, r)
+	})
+
+	results = make([]ClusterSubnets, 0, len(raw))
+	for _, res := range raw {
+		if res.err != nil {
+			partial = true
+			failedClusters = append(failedClusters, res.cluster.ID)
+			a.log.Debug("federation: cluster unreachable during IPAM subnet aggregation", "cluster", res.cluster.ID, "error", res.err)
+			continue
+		}
+		results = append(results, ClusterSubnets{ClusterID: res.cluster.ID, ClusterName: res.cluster.Name, CIDRs: res.data})
+	}
+	return results, partial, failedClusters, nil
+}
+
+// sdnSubnetCIDRs reads every SDN vnet's subnets from one cluster and returns
+// the flat CIDR list. One vnet's subnet listing failing is tolerated (skipped)
+// — matches internal/ipam.Service.sdnSubnets' own per-vnet tolerance — but a
+// failure to even list the vnets is the cluster's fan-out error.
+func sdnSubnetCIDRs(ctx context.Context, r PVEReader) ([]string, error) {
+	vnets, err := r.ListSDNVnets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, v := range vnets {
+		subnets, serr := r.ListSDNSubnets(ctx, v.ID)
+		if serr != nil {
+			continue
+		}
+		for _, sub := range subnets {
+			if sub.CIDR != "" {
+				out = append(out, sub.CIDR)
+			}
+		}
 	}
 	return out, nil
 }

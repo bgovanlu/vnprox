@@ -108,13 +108,30 @@ type Counts struct {
 // Conflict is one health finding from conflict detection
 // (docs/features/ipam.md §2: "Each conflict is a health finding with
 // suggested resolution").
+//
+// Clusters is populated only for the T-1203 cross-cluster conflict type
+// (cross_cluster_duplicate_subnet): the pair of attached clusters that both
+// allocate the same or an overlapping CIDR. It is the "cluster-pair field
+// added" to the reused Conflict shape (task card T-1203) — omitted entirely
+// for every intra-cluster conflict type, which is single-cluster by nature.
 type Conflict struct {
 	Type       string   `json:"type"`
 	Severity   string   `json:"severity"`
 	Message    string   `json:"message"`
 	Suggestion string   `json:"suggestion"`
 	IPs        []string `json:"ips"`
+	Clusters   []string `json:"clusters,omitempty"`
 }
+
+// Conflict type values. The first three are the intra-subnet vocabulary the
+// merge engine emits (docs/features/ipam.md §2); ConflictCrossClusterDuplicateSubnet
+// is T-1203's cross-cluster addition, produced by CrossClusterConflicts.
+const (
+	ConflictDuplicateIP                 = "duplicate_ip"
+	ConflictObservedUnallocated         = "observed_unallocated"
+	ConflictAllocatedDark               = "allocated_dark"
+	ConflictCrossClusterDuplicateSubnet = "cross_cluster_duplicate_subnet"
+)
 
 // AllocationList is `GET /ipam/subnets/{cidr}/allocations`'s response: the
 // NetBox-style address list (docs/features/ipam.md §2). Entries holds every

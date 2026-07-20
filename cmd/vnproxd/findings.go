@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/federation"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/fwlog"
 	"github.com/bgovanlu/vnprox/internal/host"
@@ -70,7 +71,56 @@ func (a ipamFindingsAdapter) Findings() []findings.Finding {
 	for _, sc := range conflicts {
 		out = append(out, ipamConflictToFinding(sc))
 	}
+	// T-1203: external-IPAM sync findings (external_ipam_drift /
+	// external_ipam_conflict) flow into the same unified stream, source ipam.
+	// A nil sync client makes ExternalSyncFindings return an empty slice, so
+	// this is inert until the NetBox/phpIPAM bridge is configured.
+	syncFindings, serr := a.ipam.ExternalSyncFindings(ctx)
+	if serr != nil {
+		a.logger.Warn("findings: computing external IPAM sync findings", "error", serr)
+	} else {
+		for _, sf := range syncFindings {
+			out = append(out, ipamSyncToFinding(sf))
+		}
+	}
 	return out
+}
+
+// ipamSyncToFinding maps one external-IPAM sync finding to a unified Finding:
+// source ipam, check external_ipam_drift/external_ipam_conflict, a
+// content-derived stable id (check + address) so re-scanning unchanged state
+// reproduces byte-identical ids. Not fixable (external IPAM is outside the
+// change engine — there is no computable changeset patch), so it carries the
+// sync design-note docs link.
+func ipamSyncToFinding(sf ipam.SyncFinding) findings.Finding {
+	return findings.Finding{
+		ID:       "ipam:" + sf.Check + "|" + sf.IP,
+		Source:   findings.SourceIPAM,
+		Check:    sf.Check,
+		Severity: sf.Severity,
+		Detail:   sf.Detail,
+		Nodes:    []string{},
+		DocsLink: sf.DocsLink,
+	}
+}
+
+// federationIPAMAdapter bridges *federation.Aggregator to
+// api.FederationIPAMSource, mapping federation.ClusterSubnets into the
+// ipam.ClusterSubnets shape CrossClusterConflicts consumes (T-1203).
+type federationIPAMAdapter struct {
+	agg *federation.Aggregator
+}
+
+func (a federationIPAMAdapter) IPAMSubnets(ctx context.Context) ([]ipam.ClusterSubnets, bool, []string, error) {
+	raw, partial, failed, err := a.agg.IPAMSubnets(ctx)
+	if err != nil {
+		return nil, false, nil, err
+	}
+	out := make([]ipam.ClusterSubnets, 0, len(raw))
+	for _, c := range raw {
+		out = append(out, ipam.ClusterSubnets{ClusterID: c.ClusterID, ClusterName: c.ClusterName, CIDRs: c.CIDRs})
+	}
+	return out, partial, failed, nil
 }
 
 // ipamConflictToFinding maps one IPAM conflict to a unified Finding: source
