@@ -22,6 +22,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/dhcp"
 	"github.com/bgovanlu/vnprox/internal/docexport"
 	"github.com/bgovanlu/vnprox/internal/evpn"
+	"github.com/bgovanlu/vnprox/internal/federation"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/ingress"
@@ -543,6 +544,22 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	qosReadSvc := newQosReadService(qosShapeRepo)
 
+	// T-1201: the federation core — the cluster registry (credential sealed
+	// at rest with the same session cipher every other secret column uses)
+	// plus the read aggregator. With zero clusters attached (a single-cluster
+	// deployment), the registry is empty and the aggregator's membership
+	// resolver returns an empty map, so wiring it in is inert — federation is
+	// additive, invisible until a cluster is actually attached.
+	federationSvc, err := federation.NewService(federation.Config{
+		Clusters: store.NewClusterRepo(db),
+		Cipher:   sessionCipher,
+		Logger:   logger,
+	})
+	if err != nil {
+		return fmt.Errorf("initializing federation service: %w", err)
+	}
+	federationAgg := federation.NewAggregator(federationSvc)
+
 	// T-304: the local-timer protocol's node-side agent — every daemon runs
 	// one, independent of whether it ends up coordinating anything, so it
 	// can answer a coordinator's arm/cancel/status calls for its own node
@@ -602,11 +619,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	clusterTimers := change.NewClusterTimerAgent(localNode, localTimers, coordPeerClient, peerLocator)
 
 	changeSvc, err := change.NewService(change.Config{
-		Changesets:        store.NewChangesetRepo(db),
-		Audit:             auditRepo,
-		WS:                topoSvc,
-		Inventory:         graph,
-		Allocations:       changeAllocations,
+		Changesets:  store.NewChangesetRepo(db),
+		Audit:       auditRepo,
+		WS:          topoSvc,
+		Inventory:   graph,
+		Allocations: changeAllocations,
+		// T-1201: cross-cluster changeset scoping. LocalClusterID stays "" (the
+		// implicit default cluster) so the check is inert for a single-cluster
+		// deployment; the aggregator supplies node->cluster membership once
+		// clusters are attached.
+		ClusterMembership: federationAgg,
 		Logger:            logger,
 		ProtectedPath:     cfg.Safety.ProtectedPath,
 		AllowDangerousOps: cfg.Safety.AllowDangerousOps,
@@ -889,6 +911,8 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		AlertRules:        alertRuleRepo,
 		AlertDeliveries:   alertDeliveryRepo,
 		AlertSecretCipher: sessionCipher,
+		Federation:        federationSvc,
+		FederationAudit:   auditRepo,
 		Changesets:        changeSvc,
 		Snapshots:         changeSvc,
 		Audit:             auditRepo,

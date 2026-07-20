@@ -343,4 +343,13 @@ const (
 	codeRawReplaceParseError   = "raw.parse_error"
 	codeRawReplaceReadFailed   = "raw.read_failed"
 	codeRawReplaceHashConflict = "raw.hash_conflict"
+
+	// --- federation cluster scoping (T-1201) ----------------------------
+	// codeCrossClusterRef is the stable, blocking error code an op whose
+	// target Ref belongs to a different attached cluster than the
+	// changeset's own ClusterID earns (validate_crosscluster.go). Config
+	// ownership stays strictly per-cluster — there is no cross-cluster
+	// mutation primitive, so a changeset that would span clusters can never
+	// even validate, let alone apply.
+	codeCrossClusterRef = "federation.cross_cluster_ref"
 )

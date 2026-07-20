@@ -52,6 +52,43 @@ func (s *Service) validate(ctx context.Context, ops []Op) []Finding {
 	return append(rawFindings, findings...)
 }
 
+// validateScoped is validate plus T-1201's cross-cluster scoping class: it
+// runs the ordinary pipeline, then appends any codeCrossClusterRef findings
+// for ops whose target belongs to a different attached cluster than
+// clusterID. The scoping class is deliberately additive and last — it never
+// short-circuits or reorders the existing classes, so a single-cluster
+// deployment (clusterID == "" and no ClusterMembership seam) sees byte-for-
+// byte the same findings validate already produced.
+func (s *Service) validateScoped(ctx context.Context, clusterID string, ops []Op) []Finding {
+	findings := s.validate(ctx, ops)
+	// Skip the membership fetch entirely for an unscoped (implicit-default-
+	// cluster) changeset — the common single-cluster case — since
+	// ValidateClusterScope is a guaranteed no-op there anyway.
+	if clusterID == "" {
+		return findings
+	}
+	if scope := ValidateClusterScope(clusterID, ops, s.nodeClusters(ctx)); len(scope) > 0 {
+		findings = append(findings, scope...)
+	}
+	return findings
+}
+
+// nodeClusters resolves the node->cluster membership map the cross-cluster
+// scoping check needs, or nil when no ClusterMembership seam is wired (the
+// non-federated case) or the live read fails — a soft-fail read exactly like
+// dhcpAllocations, never blocking validation on a transient hiccup.
+func (s *Service) nodeClusters(ctx context.Context) map[string]string {
+	if s.membership == nil {
+		return nil
+	}
+	m, err := s.membership.NodeClusters(ctx)
+	if err != nil {
+		s.log.Debug("change: reading cluster membership for cross-cluster scoping failed, skipping", "error", err)
+		return nil
+	}
+	return m
+}
+
 // expandRawReplaceOps walks ops, passing every non-raw op through
 // unchanged, and for each iface.raw.replace op: reading that node's live
 // file, checking BaseHash against it (a mismatch is the hash-conflict
