@@ -58,6 +58,21 @@ type AllocationsSource interface {
 	DHCPRangeAllocations(ctx context.Context) ([]DHCPRangeAllocation, error)
 }
 
+// ClusterMembershipSource is T-1201's optional seam for resolving which
+// attached cluster each PVE node belongs to, so the cross-cluster changeset
+// scoping check (validate_crosscluster.go) can reject an op targeting a node
+// in a different cluster than the changeset's ClusterID. In a federated
+// deployment cmd/vnproxd wires internal/federation.Aggregator here (it
+// already fans out every cluster's node list); a single-cluster deployment
+// leaves it nil, which — together with the implicit-default-cluster ("")
+// convention — makes the check a complete no-op, so nothing changes for the
+// non-federated case. Soft-fail by contract: a read error yields no
+// membership rather than blocking validation on a transient hiccup, the same
+// stance AllocationsSource above already takes.
+type ClusterMembershipSource interface {
+	NodeClusters(ctx context.Context) (map[string]string, error)
+}
+
 // Config configures a Service. Changesets and Audit are required; WS and
 // Inventory are optional (nil disables WS broadcasting / validates against
 // an empty snapshot, respectively — e.g. in tests that don't need them) and
@@ -70,6 +85,7 @@ type Config struct {
 	WS                 Broadcaster
 	Inventory          InventorySource
 	Allocations        AllocationsSource
+	ClusterMembership  ClusterMembershipSource
 	Clock              Clock
 	Changesets         *store.ChangesetRepo
 	Logger             *slog.Logger
@@ -81,6 +97,11 @@ type Config struct {
 	Snapshots          *store.SnapshotRepo
 	ProtectedPath      string
 	CorosyncPath       string
+	// LocalClusterID is the cluster id new changesets created through this
+	// Service's Create are scoped to (Changeset.ClusterID). Empty (the
+	// default) is the implicit local/default cluster a single-cluster
+	// deployment uses — cross-cluster scoping stays inert in that case.
+	LocalClusterID     string
 	RollbackWindowDays int
 	ConfirmTimeout     time.Duration
 	AllowDangerousOps  bool
@@ -112,6 +133,7 @@ type Service struct {
 	ws                 Broadcaster
 	inv                InventorySource
 	allocations        AllocationsSource
+	membership         ClusterMembershipSource
 	clock              Clock
 	timers             map[string]Stopper
 	repo               *store.ChangesetRepo
@@ -125,6 +147,7 @@ type Service struct {
 	lockHeldBy         string
 	corosyncPath       string
 	protectedPath      string
+	localClusterID     string
 	scheduleSecret     []byte
 	confirmTimeout     time.Duration
 	rollbackWindowDays int
@@ -185,6 +208,7 @@ func NewService(cfg Config) (*Service, error) {
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
+		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership,
 		nodes: cfg.Nodes, nodeTimers: cfg.Timers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
 		rollbackWindowDays: rollbackWindowDays,
@@ -332,9 +356,9 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 		ops = []Op{}
 	}
 	nowUnix := s.now().Unix()
-	findings := s.validate(ctx, ops)
+	findings := s.validateScoped(ctx, s.localClusterID, ops)
 	c := Changeset{
-		ID: store.NewULID(), Title: title, Author: author, Status: StatusDraft,
+		ID: store.NewULID(), Title: title, Author: author, Status: StatusDraft, ClusterID: s.localClusterID,
 		Ops: ops, Findings: findings, CreatedAt: nowUnix, UpdatedAt: nowUnix,
 	}
 	row, err := toStoreRow(c)
@@ -379,7 +403,7 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 		ops = []Op{}
 	}
 	c.Ops = ops
-	findings := s.validate(ctx, ops)
+	findings := s.validateScoped(ctx, c.ClusterID, ops)
 	c.Findings = findings
 	if title != nil {
 		c.Title = *title
@@ -446,7 +470,7 @@ func (s *Service) Validate(ctx context.Context, id, author string) (Changeset, e
 		return Changeset{}, &ErrIllegalTransition{From: c.Status, To: StatusValidated}
 	}
 
-	findings := s.validate(ctx, c.Ops)
+	findings := s.validateScoped(ctx, c.ClusterID, c.Ops)
 	c.Findings = findings
 	clean := !hasError(findings)
 	prevStatus := c.Status
@@ -679,7 +703,7 @@ func toStoreRow(c Changeset) (store.Changeset, error) {
 		return store.Changeset{}, fmt.Errorf("change: marshaling ops for changeset %s: %w", c.ID, err)
 	}
 	row := store.Changeset{
-		ID: c.ID, Title: c.Title, Author: c.Author, Status: string(c.Status),
+		ID: c.ID, Title: c.Title, Author: c.Author, Status: string(c.Status), ClusterID: c.ClusterID,
 		OpsJSON: string(opsJSON), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 	if c.Findings != nil {
@@ -708,7 +732,7 @@ func fromStoreRow(row store.Changeset) (Changeset, error) {
 		return Changeset{}, fmt.Errorf("change: decoding stored ops for changeset %s: %w", row.ID, err)
 	}
 	c := Changeset{
-		ID: row.ID, Title: row.Title, Author: row.Author, Status: Status(row.Status),
+		ID: row.ID, Title: row.Title, Author: row.Author, Status: Status(row.Status), ClusterID: row.ClusterID,
 		Ops: ops, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if row.FindingsJSON.Valid {

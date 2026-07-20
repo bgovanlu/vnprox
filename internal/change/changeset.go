@@ -124,8 +124,14 @@ type Changeset struct {
 	ID              string
 	Title           string
 	Author          string
-	Status          Status
-	Ops             []Op
+	// ClusterID (T-1201) scopes this changeset to a single attached cluster.
+	// '' is the implicit default/local cluster, so a single-cluster
+	// deployment's changesets keep working unchanged. Set once at Create and
+	// never mutated — no op type or API surface lets a changeset span
+	// clusters (validate_crosscluster.go enforces this at validation time).
+	ClusterID string
+	Status    Status
+	Ops       []Op
 	Findings        []Finding
 	Plan            json.RawMessage
 	ApplyLog        json.RawMessage

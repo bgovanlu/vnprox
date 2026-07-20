@@ -17,6 +17,11 @@ type AuditEntry struct {
 	Username    string
 	Action      string
 	Result      string
+	// ClusterID (T-1201) tags which attached cluster the audited action
+	// targeted; '' is the implicit default/local cluster, so every
+	// pre-federation row keeps its meaning. GET /audit's cluster-dimension
+	// fan-out (docs/architecture §7) reads this.
+	ClusterID   string
 	Target      sql.NullString
 	ChangesetID sql.NullString
 	DetailJSON  sql.NullString
@@ -35,9 +40,9 @@ func NewAuditRepo(db *DB) *AuditRepo { return &AuditRepo{db: db} }
 // Append inserts a new audit entry and returns its assigned id.
 func (r *AuditRepo) Append(ctx context.Context, e AuditEntry) (int64, error) {
 	res, err := r.db.sqlDB.ExecContext(ctx, `
-		INSERT INTO audit_log (at, username, action, target, changeset_id, result, detail_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		e.At, e.Username, e.Action, e.Target, e.ChangesetID, e.Result, e.DetailJSON,
+		INSERT INTO audit_log (at, username, action, target, changeset_id, result, detail_json, cluster_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.At, e.Username, e.Action, e.Target, e.ChangesetID, e.Result, e.DetailJSON, e.ClusterID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("store: appending audit entry: %w", err)
@@ -52,7 +57,7 @@ func (r *AuditRepo) Append(ctx context.Context, e AuditEntry) (int64, error) {
 // Get returns the audit entry with the given id, or ErrNotFound.
 func (r *AuditRepo) Get(ctx context.Context, id int64) (AuditEntry, error) {
 	row := r.db.sqlDB.QueryRowContext(ctx, `
-		SELECT id, at, username, action, target, changeset_id, result, detail_json
+		SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id
 		FROM audit_log WHERE id = ?`, id,
 	)
 	e, err := scanAuditEntry(row)
@@ -66,7 +71,7 @@ func (r *AuditRepo) Get(ctx context.Context, id int64) (AuditEntry, error) {
 // optionally filtered to a single changeset. Pass an empty changesetID to
 // list all. limit <= 0 means "no limit".
 func (r *AuditRepo) List(ctx context.Context, changesetID string, limit int) ([]AuditEntry, error) {
-	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json FROM audit_log`
+	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id FROM audit_log`
 	args := []any{}
 	if changesetID != "" {
 		query += ` WHERE changeset_id = ?`
@@ -108,8 +113,12 @@ type AuditFilter struct {
 	Target      string
 	Result      string
 	ChangesetID string
-	From        int64
-	To          int64
+	// ClusterID (T-1201) narrows to a single cluster's audit rows — the
+	// per-cluster slice internal/federation.Aggregator fans out over for
+	// GET /audit's cluster dimension. Empty imposes no constraint.
+	ClusterID string
+	From      int64
+	To        int64
 }
 
 // ListPage returns one page of audit entries newest-first matching filter,
@@ -121,7 +130,7 @@ func (r *AuditRepo) ListPage(ctx context.Context, filter AuditFilter, cursor str
 	if limit <= 0 {
 		limit = 50
 	}
-	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json FROM audit_log WHERE 1=1`
+	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id FROM audit_log WHERE 1=1`
 	var args []any
 	if filter.User != "" {
 		query += ` AND username = ?`
@@ -142,6 +151,10 @@ func (r *AuditRepo) ListPage(ctx context.Context, filter AuditFilter, cursor str
 	if filter.ChangesetID != "" {
 		query += ` AND changeset_id = ?`
 		args = append(args, filter.ChangesetID)
+	}
+	if filter.ClusterID != "" {
+		query += ` AND cluster_id = ?`
+		args = append(args, filter.ClusterID)
 	}
 	if filter.From > 0 {
 		query += ` AND at >= ?`
@@ -222,7 +235,7 @@ func (r *AuditRepo) ListActionsInRange(ctx context.Context, actions []string, fr
 		placeholders[i] = "?"
 		args = append(args, a)
 	}
-	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json FROM audit_log WHERE action IN (` +
+	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id FROM audit_log WHERE action IN (` +
 		strings.Join(placeholders, ",") + `)`
 	if from > 0 {
 		query += ` AND at >= ?`
@@ -276,7 +289,7 @@ func decodeAuditCursor(cursor string) (int64, int64, error) {
 
 func scanAuditEntry(row rowScanner) (AuditEntry, error) {
 	var e AuditEntry
-	err := row.Scan(&e.ID, &e.At, &e.Username, &e.Action, &e.Target, &e.ChangesetID, &e.Result, &e.DetailJSON)
+	err := row.Scan(&e.ID, &e.At, &e.Username, &e.Action, &e.Target, &e.ChangesetID, &e.Result, &e.DetailJSON, &e.ClusterID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AuditEntry{}, err

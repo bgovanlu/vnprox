@@ -15,6 +15,7 @@ type Changeset struct {
 	Title           string
 	Author          string
 	Status          string // draft|validated|applying|awaiting_confirm|committed|rolled_back|failed|discarded
+	ClusterID       string // T-1201: the cluster this changeset is scoped to; '' = implicit default/local cluster
 	OpsJSON         string
 	FindingsJSON    sql.NullString
 	PlanJSON        sql.NullString
@@ -35,9 +36,9 @@ func NewChangesetRepo(db *DB) *ChangesetRepo { return &ChangesetRepo{db: db} }
 // Insert creates a new changeset row, typically in "draft" status.
 func (r *ChangesetRepo) Insert(ctx context.Context, c Changeset) error {
 	_, err := r.db.sqlDB.ExecContext(ctx, `
-		INSERT INTO changesets (id, title, author, status, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.Title, c.Author, c.Status, c.OpsJSON, c.FindingsJSON, c.PlanJSON, c.ApplyLogJSON, c.ConfirmDeadline, c.CreatedAt, c.UpdatedAt,
+		INSERT INTO changesets (id, title, author, status, cluster_id, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.ID, c.Title, c.Author, c.Status, c.ClusterID, c.OpsJSON, c.FindingsJSON, c.PlanJSON, c.ApplyLogJSON, c.ConfirmDeadline, c.CreatedAt, c.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("store: inserting changeset %s: %w", c.ID, err)
@@ -48,7 +49,7 @@ func (r *ChangesetRepo) Insert(ctx context.Context, c Changeset) error {
 // Get returns the changeset with the given id, or ErrNotFound.
 func (r *ChangesetRepo) Get(ctx context.Context, id string) (Changeset, error) {
 	row := r.db.sqlDB.QueryRowContext(ctx, `
-		SELECT id, title, author, status, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at
+		SELECT id, title, author, status, cluster_id, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at
 		FROM changesets WHERE id = ?`, id,
 	)
 	c, err := scanChangeset(row)
@@ -61,7 +62,7 @@ func (r *ChangesetRepo) Get(ctx context.Context, id string) (Changeset, error) {
 // List returns changesets ordered by created_at descending (newest first),
 // optionally filtered to a single status. Pass an empty status to list all.
 func (r *ChangesetRepo) List(ctx context.Context, status string) ([]Changeset, error) {
-	query := `SELECT id, title, author, status, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at
+	query := `SELECT id, title, author, status, cluster_id, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at
 		FROM changesets`
 	args := []any{}
 	if status != "" {
@@ -109,7 +110,7 @@ func (r *ChangesetRepo) Update(ctx context.Context, c Changeset) error {
 
 func scanChangeset(row rowScanner) (Changeset, error) {
 	var c Changeset
-	err := row.Scan(&c.ID, &c.Title, &c.Author, &c.Status, &c.OpsJSON, &c.FindingsJSON, &c.PlanJSON, &c.ApplyLogJSON, &c.ConfirmDeadline, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.Title, &c.Author, &c.Status, &c.ClusterID, &c.OpsJSON, &c.FindingsJSON, &c.PlanJSON, &c.ApplyLogJSON, &c.ConfirmDeadline, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Changeset{}, err
