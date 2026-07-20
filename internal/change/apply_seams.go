@@ -232,9 +232,30 @@ func (r SDNApplyResult) firstUnhealthy() (zone string, node SDNNodeHealth, ok bo
 // (apply_snapshot.go's sdnConfigSnapshotFiles) and the ops-diff rollback
 // restores from (apply_sdn.go's sdnRestoreOps).
 type SDNConfig struct {
-	Zones   []SDNZoneConfig   `json:"zones"`
-	Vnets   []SDNVnetConfig   `json:"vnets"`
-	Subnets []SDNSubnetConfig `json:"subnets"`
+	Zones      []SDNZoneConfig      `json:"zones"`
+	Vnets      []SDNVnetConfig      `json:"vnets"`
+	Subnets    []SDNSubnetConfig    `json:"subnets"`
+	DnsZones   []SDNDnsZoneConfig   `json:"dnsZones,omitempty"`
+	DnsRecords []SDNDnsRecordConfig `json:"dnsRecords,omitempty"`
+}
+
+// SDNDnsZoneConfig mirrors SdnDnsZoneCreateParams' field set plus the zone's
+// own domain id (T-1204).
+type SDNDnsZoneConfig struct {
+	ID  string `json:"id"`
+	DNS string `json:"dns,omitempty"`
+	TTL int    `json:"ttl,omitempty"`
+}
+
+// SDNDnsRecordConfig mirrors SdnDnsRecordCreateParams' field set. ID is the
+// "<zone>/<name>/<type>" composite Ref.ID.
+type SDNDnsRecordConfig struct {
+	ID    string `json:"id"`
+	Zone  string `json:"zone"`
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	TTL   int    `json:"ttl,omitempty"`
 }
 
 // SDNZoneConfig mirrors SdnZoneCreateParams' field set (the params struct

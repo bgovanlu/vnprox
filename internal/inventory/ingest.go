@@ -476,6 +476,39 @@ func parseGuestNic(node, vmid, key, val string) *GuestNic {
 	return nic
 }
 
+// FromPVEDNS maps PVE SDN's DNS plugin config (zones) and their PowerDNS
+// records to cluster-scoped SdnDnsZone/SdnDnsRecord partials (T-1204).
+// records is keyed by zone (domain) id. These entities carry the same
+// SourcePVESDN provenance as the rest of the SDN tree — the SDN poll folds
+// them into the same ApplyPoll call.
+func FromPVEDNS(zones []pve.SDNDnsZone, records map[string][]pve.SDNDnsRecord) []Entity {
+	var out []Entity
+	for _, z := range zones {
+		zone := &SdnDnsZone{
+			Ref:     Ref{Kind: KindSDNDnsZone, ID: z.ID},
+			ID:      z.ID,
+			DNS:     z.DNS,
+			TTL:     z.TTL,
+			Pending: string(z.Pending),
+		}
+		setRaw(zone, prettyJSON(z))
+		out = append(out, zone)
+		for _, r := range records[z.ID] {
+			rec := &SdnDnsRecord{
+				Ref:   Ref{Kind: KindSDNDnsRecord, ID: z.ID + "/" + r.Name + "/" + r.Type},
+				Zone:  z.ID,
+				Name:  r.Name,
+				Type:  r.Type,
+				Value: r.Value,
+				TTL:   r.TTL,
+			}
+			setRaw(rec, prettyJSON(r))
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
 // FromPVESDN maps the SDN tree to cluster-scoped SdnZone/SdnVnet/SdnSubnet
 // partials. zoneStatus is keyed by zone ID; subnets is keyed by vnet ID.
 func FromPVESDN(

@@ -56,7 +56,21 @@ const (
 	OpSdnSubnetCreate OpType = "sdn.subnet.create"
 	OpSdnSubnetUpdate OpType = "sdn.subnet.update"
 	OpSdnSubnetDelete OpType = "sdn.subnet.delete"
-	OpSdnApply        OpType = "sdn.apply"
+
+	// SDN DNS op family (T-1204). PVE stages and applies the DNS plugin
+	// config exactly like zones/vnets/subnets, so these route through the
+	// same StepSDNStage/StepSDNApply plan (apply_plan.go's sdnStageOpTypes),
+	// not a separate apply path. A DNS zone target is Ref{KindSDNDnsZone, ID:
+	// domain}; a record target is Ref{KindSDNDnsRecord, ID:
+	// "<zone>/<name>/<type>"}.
+	OpSdnDnsZoneCreate   OpType = "sdn.dns.zone.create"
+	OpSdnDnsZoneUpdate   OpType = "sdn.dns.zone.update"
+	OpSdnDnsZoneDelete   OpType = "sdn.dns.zone.delete"
+	OpSdnDnsRecordCreate OpType = "sdn.dns.record.create"
+	OpSdnDnsRecordUpdate OpType = "sdn.dns.record.update"
+	OpSdnDnsRecordDelete OpType = "sdn.dns.record.delete"
+
+	OpSdnApply OpType = "sdn.apply"
 
 	OpGuestNicUpdate OpType = "guest.nic.update"
 
@@ -129,7 +143,15 @@ var paramFactories = map[OpType]func() Params{
 	OpSdnSubnetCreate: func() Params { return &SdnSubnetCreateParams{} },
 	OpSdnSubnetUpdate: func() Params { return &SdnSubnetUpdateParams{} },
 	OpSdnSubnetDelete: func() Params { return &SdnSubnetDeleteParams{} },
-	OpSdnApply:        func() Params { return &SdnApplyParams{} },
+
+	OpSdnDnsZoneCreate:   func() Params { return &SdnDnsZoneCreateParams{} },
+	OpSdnDnsZoneUpdate:   func() Params { return &SdnDnsZoneUpdateParams{} },
+	OpSdnDnsZoneDelete:   func() Params { return &SdnDnsZoneDeleteParams{} },
+	OpSdnDnsRecordCreate: func() Params { return &SdnDnsRecordCreateParams{} },
+	OpSdnDnsRecordUpdate: func() Params { return &SdnDnsRecordUpdateParams{} },
+	OpSdnDnsRecordDelete: func() Params { return &SdnDnsRecordDeleteParams{} },
+
+	OpSdnApply: func() Params { return &SdnApplyParams{} },
 
 	OpGuestNicUpdate: func() Params { return &GuestNicUpdateParams{} },
 

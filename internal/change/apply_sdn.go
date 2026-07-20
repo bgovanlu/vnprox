@@ -130,6 +130,13 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 
 	var out []sdnRestoreOp
 
+	// DNS (T-1204): inverse records before inverse subnets/vnets/zones in the
+	// removal phase (a record must be gone before its DNS zone), and after
+	// the recreations in phase 2 (a DNS zone must exist before its records) —
+	// see sdnDnsRestoreOps' two return slices.
+	dnsRemovals, dnsRecreations := sdnDnsRestoreOps(pre, current)
+	out = append(out, dnsRemovals...)
+
 	// Phase 1: remove additions, deepest first.
 	for _, id := range sortedKeys(curSubnets) {
 		if _, ok := preSubnets[id]; ok {
@@ -224,7 +231,88 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 		})
 	}
 
+	out = append(out, dnsRecreations...)
+
 	return out
+}
+
+// sdnDnsRestoreOps computes the inverse DNS ops (T-1204) that transform
+// current back into pre, split into removals (issued before the zone/vnet/
+// subnet removals so a record is gone before its zone) and recreations
+// (issued after the zone/vnet/subnet recreations so a zone exists before its
+// records). Field-only changes to a surviving zone/record are emitted with
+// the recreations. Mirrors the zone/vnet/subnet dependency-ordering the rest
+// of sdnRestoreOps uses.
+func sdnDnsRestoreOps(pre, current SDNConfig) (removals, recreations []sdnRestoreOp) {
+	preZones, curZones := dnsZoneMapOf(pre.DnsZones), dnsZoneMapOf(current.DnsZones)
+	preRecs, curRecs := dnsRecordMapOf(pre.DnsRecords), dnsRecordMapOf(current.DnsRecords)
+
+	// Removals: records current added, then zones current added (deepest
+	// first).
+	for _, id := range sortedKeys(curRecs) {
+		if _, ok := preRecs[id]; ok {
+			continue
+		}
+		removals = append(removals, sdnRestoreOp{op: Op{Type: OpSdnDnsRecordDelete, Target: inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: id}, Params: &SdnDnsRecordDeleteParams{}}})
+	}
+	for _, id := range sortedKeys(curZones) {
+		if _, ok := preZones[id]; ok {
+			continue
+		}
+		removals = append(removals, sdnRestoreOp{op: Op{Type: OpSdnDnsZoneDelete, Target: inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: id}, Params: &SdnDnsZoneDeleteParams{}}})
+	}
+
+	// Recreations: zones pre had that current removed (shallowest first),
+	// then records, then field updates on survivors.
+	for _, id := range sortedKeys(preZones) {
+		if _, ok := curZones[id]; ok {
+			continue
+		}
+		z := preZones[id]
+		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsZoneCreate, Target: inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: id}, Params: &SdnDnsZoneCreateParams{DNS: z.DNS, TTL: z.TTL}}})
+	}
+	for _, id := range sortedKeys(preRecs) {
+		if _, ok := curRecs[id]; ok {
+			continue
+		}
+		r := preRecs[id]
+		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsRecordCreate, Target: inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: id}, Params: &SdnDnsRecordCreateParams{Zone: r.Zone, Name: r.Name, Type: r.Type, Value: r.Value, TTL: r.TTL}}})
+	}
+	for _, id := range sortedKeys(preZones) {
+		cz, ok := curZones[id]
+		if !ok || reflect.DeepEqual(preZones[id], cz) {
+			continue
+		}
+		z := preZones[id]
+		dns, ttl := z.DNS, z.TTL
+		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsZoneUpdate, Target: inventory.Ref{Kind: inventory.KindSDNDnsZone, ID: id}, Params: &SdnDnsZoneUpdateParams{DNS: &dns, TTL: &ttl}}})
+	}
+	for _, id := range sortedKeys(preRecs) {
+		cr, ok := curRecs[id]
+		if !ok || reflect.DeepEqual(preRecs[id], cr) {
+			continue
+		}
+		r := preRecs[id]
+		value, ttl := r.Value, r.TTL
+		recreations = append(recreations, sdnRestoreOp{op: Op{Type: OpSdnDnsRecordUpdate, Target: inventory.Ref{Kind: inventory.KindSDNDnsRecord, ID: id}, Params: &SdnDnsRecordUpdateParams{Value: &value, TTL: &ttl}}})
+	}
+	return removals, recreations
+}
+
+func dnsZoneMapOf(zs []SDNDnsZoneConfig) map[string]SDNDnsZoneConfig {
+	m := make(map[string]SDNDnsZoneConfig, len(zs))
+	for _, z := range zs {
+		m[z.ID] = z
+	}
+	return m
+}
+
+func dnsRecordMapOf(rs []SDNDnsRecordConfig) map[string]SDNDnsRecordConfig {
+	m := make(map[string]SDNDnsRecordConfig, len(rs))
+	for _, r := range rs {
+		m[r.ID] = r
+	}
+	return m
 }
 
 func zoneMapOf(zs []SDNZoneConfig) map[string]SDNZoneConfig {

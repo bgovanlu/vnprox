@@ -101,6 +101,9 @@ type Options struct {
 	// simply skips mounting the route, the same degraded-mode treatment
 	// every other optional Options field gets.
 	SDN SDNService
+	// SDNDNS is T-1204's read view seam (docs/api.md's `GET /sdn/dns`);
+	// nil-safe like SDN above.
+	SDNDNS SDNDNSService
 	// IPAM is T-405's read view seam (docs/api.md's `GET /ipam/subnets` and
 	// `GET /ipam/subnets/{cidr}/allocations`); nil-safe like SDN above.
 	IPAM IPAMService
@@ -246,6 +249,7 @@ func NewRouter(opts Options) http.Handler {
 		mountHistoryRoutes(r, opts.History, opts.HistoryFindingEvents, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
+		mountSDNDNSRoutes(r, opts.SDNDNS, opts.Auth)
 		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
 		mountEVPNRoutes(r, opts.EVPN, opts.Auth)
 		mountDHCPRoutes(r, opts.DHCP, opts.Auth)

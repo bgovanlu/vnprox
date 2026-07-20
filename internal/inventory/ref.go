@@ -21,6 +21,20 @@ const (
 	KindSDNZone      Kind = "sdn-zone"
 	KindSDNVnet      Kind = "sdn-vnet"
 	KindSDNSubnet    Kind = "sdn-subnet"
+	// KindSDNDnsZone and KindSDNDnsRecord (T-1204: SDN DNS management) name a
+	// PVE SDN DNS zone (a forward domain registered in /etc/pve/sdn/dns.cfg,
+	// backed by a PowerDNS plugin instance) and one A/AAAA/PTR/CNAME/TXT
+	// record within it. Both are cluster-scoped (empty Node, like every other
+	// sdn-* kind — SDN config is pmxcfs-replicated). A DNS zone's ID is its
+	// domain ("example.com"); a record's ID is the "<zone>/<name>/<type>"
+	// composite (params_sdn_dns.go's op-target convention). They are
+	// live-polled inventory entities (ingested by the SDN poll,
+	// internal/collect.pollSDN) but are deliberately NOT rendered as
+	// topology-map nodes (topology.layerOf returns false for them) — the map
+	// surfaces a matching record only as a guest's dnsName badge
+	// (docs/features/sdn.md §6), not as a node of its own.
+	KindSDNDnsZone   Kind = "sdn-dns-zone"
+	KindSDNDnsRecord Kind = "sdn-dns-record"
 	KindGuest        Kind = "guest"
 	KindGuestNic     Kind = "guest-nic"
 	KindLldpNeighbor Kind = "lldp-neighbor"
@@ -35,6 +49,7 @@ var knownKinds = map[Kind]bool{
 	KindVlan: true, KindOVSBridge: true, KindOVSBond: true, KindSDNZone: true,
 	KindSDNVnet: true, KindSDNSubnet: true, KindGuest: true, KindGuestNic: true,
 	KindLldpNeighbor: true, KindFwRuleset: true,
+	KindSDNDnsZone: true, KindSDNDnsRecord: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)

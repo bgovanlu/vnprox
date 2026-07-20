@@ -212,6 +212,8 @@ var singleSourceOwner = map[Kind]Source{
 	KindSDNZone:      SourcePVESDN,
 	KindSDNVnet:      SourcePVESDN,
 	KindSDNSubnet:    SourcePVESDN,
+	KindSDNDnsZone:   SourcePVESDN,
+	KindSDNDnsRecord: SourcePVESDN,
 	KindGuest:        SourcePVEGuest,
 	KindGuestNic:     SourcePVEGuest,
 	KindLldpNeighbor: SourceHostLLDP,

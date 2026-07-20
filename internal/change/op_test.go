@@ -22,7 +22,10 @@ var allOpTypeConstants = []OpType{
 	OpVlanCreate, OpVlanUpdate, OpVlanDelete,
 	OpSdnZoneCreate, OpSdnZoneUpdate, OpSdnZoneDelete,
 	OpSdnVnetCreate, OpSdnVnetUpdate, OpSdnVnetDelete,
-	OpSdnSubnetCreate, OpSdnSubnetUpdate, OpSdnSubnetDelete, OpSdnApply,
+	OpSdnSubnetCreate, OpSdnSubnetUpdate, OpSdnSubnetDelete,
+	OpSdnDnsZoneCreate, OpSdnDnsZoneUpdate, OpSdnDnsZoneDelete,
+	OpSdnDnsRecordCreate, OpSdnDnsRecordUpdate, OpSdnDnsRecordDelete,
+	OpSdnApply,
 	OpGuestNicUpdate,
 	OpFwRuleCreate, OpFwRuleUpdate, OpFwRuleDelete, OpFwRuleMove, OpFwOptionsUpdate,
 	OpFwAliasCreate, OpFwAliasUpdate, OpFwAliasDelete,
@@ -33,8 +36,9 @@ var allOpTypeConstants = []OpType{
 
 // docs/data-model.md §3's table lists exactly these groups: iface(2, incl.
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
-// fw(14), ipam(2) = 40.
-const wantOpVocabularySize = 41
+// fw(14), ipam(2) = 40. T-1204 adds sdn.dns.zone.*(3) + sdn.dns.record.*(3)
+// = 6 more.
+const wantOpVocabularySize = 47
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -204,6 +208,36 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "sdn.subnet.delete", opType: OpSdnSubnetDelete,
 			target: ref(inventory.KindSDNSubnet, "", "10.10.0.0/24"),
 			params: &SdnSubnetDeleteParams{},
+		},
+		{
+			name: "sdn.dns.zone.create", opType: OpSdnDnsZoneCreate,
+			target: ref(inventory.KindSDNDnsZone, "", "example.com"),
+			params: &SdnDnsZoneCreateParams{DNS: "powerdns", TTL: 3600},
+		},
+		{
+			name: "sdn.dns.zone.update", opType: OpSdnDnsZoneUpdate,
+			target: ref(inventory.KindSDNDnsZone, "", "example.com"),
+			params: &SdnDnsZoneUpdateParams{TTL: i(7200)},
+		},
+		{
+			name: "sdn.dns.zone.delete", opType: OpSdnDnsZoneDelete,
+			target: ref(inventory.KindSDNDnsZone, "", "example.com"),
+			params: &SdnDnsZoneDeleteParams{},
+		},
+		{
+			name: "sdn.dns.record.create", opType: OpSdnDnsRecordCreate,
+			target: ref(inventory.KindSDNDnsRecord, "", "example.com/web1/A"),
+			params: &SdnDnsRecordCreateParams{Zone: "example.com", Name: "web1", Type: "A", Value: "10.10.0.5", TTL: 300},
+		},
+		{
+			name: "sdn.dns.record.update", opType: OpSdnDnsRecordUpdate,
+			target: ref(inventory.KindSDNDnsRecord, "", "example.com/web1/A"),
+			params: &SdnDnsRecordUpdateParams{Value: str("10.10.0.6")},
+		},
+		{
+			name: "sdn.dns.record.delete", opType: OpSdnDnsRecordDelete,
+			target: ref(inventory.KindSDNDnsRecord, "", "example.com/web1/A"),
+			params: &SdnDnsRecordDeleteParams{},
 		},
 		{
 			name: "sdn.apply", opType: OpSdnApply,

@@ -344,9 +344,58 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 	case *change.SdnSubnetDeleteParams:
 		return g.client.DeleteSDNSubnet(ctx, pve.SDNVnetID(subnetVnet), pve.SDNSubnetID(op.Target.ID))
 
+	// T-1204 SDN DNS ops. Zone configs stage into /etc/pve/sdn/dns.cfg (like
+	// zones/vnets/subnets); records are written straight into the backing
+	// PowerDNS server per-record. The record target's Ref.ID is the
+	// "<zone>/<name>/<type>" composite — the params carry those fields
+	// explicitly for create; update/delete recover them from the target id.
+	case *change.SdnDnsZoneCreateParams:
+		return g.client.CreateSDNDnsZone(ctx, pve.SDNDnsZone{ID: op.Target.ID, DNS: p.DNS, TTL: p.TTL})
+	case *change.SdnDnsZoneUpdateParams:
+		z := pve.SDNDnsZone{ID: op.Target.ID}
+		if p.DNS != nil {
+			z.DNS = *p.DNS
+		}
+		if p.TTL != nil {
+			z.TTL = *p.TTL
+		}
+		return g.client.UpdateSDNDnsZone(ctx, op.Target.ID, z)
+	case *change.SdnDnsZoneDeleteParams:
+		return g.client.DeleteSDNDnsZone(ctx, op.Target.ID)
+
+	case *change.SdnDnsRecordCreateParams:
+		return g.client.CreateSDNDnsRecord(ctx, p.Zone, pve.SDNDnsRecord{Name: p.Name, Type: p.Type, Value: p.Value, TTL: p.TTL})
+	case *change.SdnDnsRecordUpdateParams:
+		zone, name, typ := splitDNSRecordID(op.Target.ID)
+		rec := pve.SDNDnsRecord{Name: name, Type: typ}
+		if p.Value != nil {
+			rec.Value = *p.Value
+		}
+		if p.TTL != nil {
+			rec.TTL = *p.TTL
+		}
+		return g.client.UpdateSDNDnsRecord(ctx, zone, name, typ, rec)
+	case *change.SdnDnsRecordDeleteParams:
+		zone, name, typ := splitDNSRecordID(op.Target.ID)
+		return g.client.DeleteSDNDnsRecord(ctx, zone, name, typ)
+
 	default:
 		return fmt.Errorf("changeagent: SDNStageOp: unsupported op type %q", op.Type)
 	}
+}
+
+// splitDNSRecordID splits a sdn-dns-record Ref.ID's "<zone>/<name>/<type>"
+// composite (T-1204) into its three parts. A record's name may itself
+// contain no "/" (a hostname label or FQDN), so the split is on the first and
+// last "/": everything before the first is the zone, everything after the
+// last is the type, the middle is the name.
+func splitDNSRecordID(id string) (zone, name, typ string) {
+	first := strings.IndexByte(id, '/')
+	last := strings.LastIndexByte(id, '/')
+	if first < 0 || last <= first {
+		return id, "", ""
+	}
+	return id[:first], id[first+1 : last], id[last+1:]
 }
 
 // firstDHCPRange splits ranges[0] ("start-end", change.validDHCPRange's
@@ -449,6 +498,26 @@ func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 			})
 		}
 	}
+
+	// T-1204: DNS zones + their records, for the same pre-apply/rollback
+	// snapshot. A cluster with no DNS plugin configured contributes nothing.
+	dnsZones, err := g.client.ListSDNDnsZones(ctx)
+	if err != nil {
+		return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn dns zones: %w", err)
+	}
+	for _, z := range dnsZones {
+		cfg.DnsZones = append(cfg.DnsZones, change.SDNDnsZoneConfig{ID: z.ID, DNS: z.DNS, TTL: z.TTL})
+		recs, err := g.client.ListSDNDnsRecords(ctx, z.ID)
+		if err != nil {
+			return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn dns records for zone %s: %w", z.ID, err)
+		}
+		for _, r := range recs {
+			cfg.DnsRecords = append(cfg.DnsRecords, change.SDNDnsRecordConfig{
+				ID: z.ID + "/" + r.Name + "/" + r.Type, Zone: z.ID, Name: r.Name, Type: r.Type, Value: r.Value, TTL: r.TTL,
+			})
+		}
+	}
+
 	return cfg, nil
 }
 

@@ -65,6 +65,17 @@ const (
 	// exactly one VID (Vid itself), so a Trunks list there is meaningless.
 	codeOVSTrunkNotAllowed = "schema.ovs_trunk_not_allowed"
 	codeFwMacroUnknown     = "schema.fw_macro_unknown"
+	// T-1204 SDN DNS schema codes. codeDNSNameInvalid flags a
+	// sdn.dns.record.create/zone whose name/domain isn't a valid hostname/
+	// FQDN label; codeDNSRecordTypeInvalid a record whose type is outside
+	// the accepted A/AAAA/PTR/CNAME/TXT set; codeDNSRecordValueInvalid a
+	// record whose value doesn't match its type (an A record whose value is
+	// not an IPv4 address, an AAAA whose value is not IPv6). All three are
+	// context-free per-op checks; the exact real-PVE/PowerDNS validation is
+	// unconfirmed against live hardware (needs-hardware-validation).
+	codeDNSNameInvalid        = "schema.dns_name_invalid"
+	codeDNSRecordTypeInvalid  = "schema.dns_record_type_invalid"
+	codeDNSRecordValueInvalid = "schema.dns_record_value_invalid"
 
 	// --- referential (class 2: existence, collisions, overlaps) --------
 
@@ -77,6 +88,10 @@ const (
 	codeDuplicateEnslavement = "referential.duplicate_enslavement"
 	codeZoneNotFound         = "referential.zone_not_found"
 	codeVnetNotFound         = "referential.vnet_not_found"
+	// codeDNSZoneNotFound (T-1204) flags a sdn.dns.record.* op whose owning
+	// DNS zone does not exist — neither in the base snapshot nor created by
+	// an earlier sdn.dns.zone.create in the same changeset (net-effect fold).
+	codeDNSZoneNotFound = "referential.dns_zone_not_found"
 	codeNodeNotFound         = "referential.node_not_found"
 	codeBridgeOrVnetNotFound = "referential.bridge_or_vnet_not_found"
 	// codeRenameTargetExists flags an iface.rename whose new name already
@@ -127,6 +142,14 @@ const (
 	// the same changeset clears the count, mirroring codeGuestBearingBridge's
 	// reattach-in-same-changeset pattern).
 	codeSubnetHasAllocations = "safety.subnet_has_allocations"
+	// codeDNSZoneHasRecords (T-1204 acceptance criterion 3) flags a
+	// sdn.dns.zone.delete whose target zone still has one or more records
+	// that this same changeset does not also delete — deleting the zone
+	// would orphan them, so the changeset must cascade the record deletes.
+	// Net-effect-aware (a sdn.dns.record.delete for each record in the same
+	// changeset clears it) and AllowDangerousOps-downgradable, exactly like
+	// the subnet/vnet deletion guards.
+	codeDNSZoneHasRecords = "safety.dns_zone_has_records"
 
 	// --- sdn (T-402: docs/features/sdn.md §4's documented pre-apply
 	// validation — "zone node coverage, bridge existence on member nodes,

@@ -388,6 +388,51 @@ func schemaValidateOp(op Op) []Finding {
 	case *SdnSubnetDeleteParams:
 		// no params to validate.
 
+	case *SdnDnsZoneCreateParams:
+		if !validDNSName(op.Target.ID) {
+			out = append(out, errorf(codeDNSNameInvalid, ref, "dns zone %q is not a valid domain name", op.Target.ID))
+		}
+		if p.TTL < 0 {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "dns zone ttl %d must not be negative", p.TTL))
+		}
+
+	case *SdnDnsZoneUpdateParams:
+		if p.TTL != nil && *p.TTL < 0 {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "dns zone ttl %d must not be negative", *p.TTL))
+		}
+
+	case *SdnDnsZoneDeleteParams:
+		// no params to validate.
+
+	case *SdnDnsRecordCreateParams:
+		if p.Zone == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.record.create requires zone"))
+		}
+		if p.Name == "" {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.record.create requires name"))
+		} else if !validDNSName(p.Name) {
+			out = append(out, errorf(codeDNSNameInvalid, ref, "dns record name %q is not a valid hostname/FQDN", p.Name))
+		}
+		schemaDNSRecordType(p.Type, ref, &out)
+		schemaDNSRecordValue(p.Type, p.Value, ref, &out)
+		if p.TTL < 0 {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "dns record ttl %d must not be negative", p.TTL))
+		}
+
+	case *SdnDnsRecordUpdateParams:
+		// Zone/Name/Type are identity (op.Target.ID's "<zone>/<name>/<type>"
+		// composite); only value/ttl are editable. The record type is parsed
+		// back from the target so the value is checked against it.
+		if p.Value != nil {
+			schemaDNSRecordValue(dnsTypeFromRecordID(op.Target.ID), *p.Value, ref, &out)
+		}
+		if p.TTL != nil && *p.TTL < 0 {
+			out = append(out, errorf(codeRequiredFieldMissing, ref, "dns record ttl %d must not be negative", *p.TTL))
+		}
+
+	case *SdnDnsRecordDeleteParams:
+		// no params to validate.
+
 	case *SdnApplyParams:
 		// no params to validate.
 
@@ -728,5 +773,75 @@ func schemaDuplicateStrings(ss []string, ref, code, format string, out *[]Findin
 			continue
 		}
 		seen[s] = true
+	}
+}
+
+// dnsRecordTypes is the accepted SDN DNS record-type set (T-1204), matching
+// internal/pvemock's own accepted set. Real PowerDNS supports many more;
+// these are the ones vnprox's DNS management surface exposes.
+var dnsRecordTypes = map[string]bool{
+	"A": true, "AAAA": true, "PTR": true, "CNAME": true, "TXT": true,
+}
+
+// dnsLabelRe validates one hostname label / FQDN name (T-1204): letters,
+// digits, hyphen, underscore, dots between labels, optional trailing dot, and
+// a leading "@" (zone apex) or "*" (wildcard) as the first character. A
+// deliberately permissive superset flagged for hardware validation, not a
+// strict RFC-1035 check (see needs-hardware-validation.md).
+var dnsLabelRe = regexp.MustCompile(`^(\*|@|[A-Za-z0-9_])[A-Za-z0-9_.-]*\.?$`)
+
+// validDNSName reports whether s is an acceptable DNS record name / zone
+// domain.
+func validDNSName(s string) bool {
+	if s == "" || len(s) > 253 {
+		return false
+	}
+	return dnsLabelRe.MatchString(s)
+}
+
+// dnsTypeFromRecordID recovers the record type from a sdn-dns-record Ref.ID's
+// "<zone>/<name>/<type>" composite (the last "/"-delimited segment), or "" if
+// malformed — an update op's params carry no type field of their own.
+func dnsTypeFromRecordID(id string) string {
+	if i := strings.LastIndexByte(id, '/'); i >= 0 {
+		return id[i+1:]
+	}
+	return ""
+}
+
+// schemaDNSRecordType flags a record whose type is outside the accepted set.
+func schemaDNSRecordType(typ, ref string, out *[]Finding) {
+	if typ == "" {
+		*out = append(*out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.record.create requires type"))
+		return
+	}
+	if !dnsRecordTypes[typ] {
+		*out = append(*out, errorf(codeDNSRecordTypeInvalid, ref, "dns record type %q is not one of A, AAAA, PTR, CNAME, TXT", typ))
+	}
+}
+
+// schemaDNSRecordValue flags a record whose value doesn't match its type: an
+// A record must carry an IPv4 address, an AAAA an IPv6, a PTR any IP. CNAME/
+// TXT values are free-form (only non-empty is required, checked by the
+// caller). An unknown type is not re-flagged here (schemaDNSRecordType owns
+// that).
+func schemaDNSRecordValue(typ, value, ref string, out *[]Finding) {
+	if value == "" {
+		*out = append(*out, errorf(codeRequiredFieldMissing, ref, "sdn.dns.record requires value"))
+		return
+	}
+	switch typ {
+	case "A":
+		if ip := net.ParseIP(value); ip == nil || ip.To4() == nil {
+			*out = append(*out, errorf(codeDNSRecordValueInvalid, ref, "A record value %q is not a valid IPv4 address", value))
+		}
+	case "AAAA":
+		if ip := net.ParseIP(value); ip == nil || ip.To4() != nil {
+			*out = append(*out, errorf(codeDNSRecordValueInvalid, ref, "AAAA record value %q is not a valid IPv6 address", value))
+		}
+	case "PTR":
+		if ip := net.ParseIP(value); ip == nil {
+			*out = append(*out, errorf(codeDNSRecordValueInvalid, ref, "PTR record value %q is not a valid IP address", value))
+		}
 	}
 }

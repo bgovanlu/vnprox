@@ -256,6 +256,29 @@ func (c *Collector) pollSDN(ctx context.Context) error {
 	}
 
 	entities := inventory.FromPVESDN(zones, vnets, subnets, zoneStatus)
+
+	// T-1204: fold the SDN DNS plugin config (zones + their PowerDNS records)
+	// into the same SourcePVESDN poll. A cluster with no DNS plugin
+	// configured simply contributes nothing (an empty zone list is not an
+	// error), and one zone's record read failing skips only that zone rather
+	// than failing the whole SDN poll — the same tolerate-per-item posture
+	// the subnet/zone-status reads above use.
+	dnsZones, err := c.pve.ListSDNDnsZones(ctx)
+	if err != nil {
+		c.log.Warn("collect: listing SDN DNS zones failed, skipping DNS", "error", err)
+	} else {
+		dnsRecords := make(map[string][]pve.SDNDnsRecord, len(dnsZones))
+		for _, z := range dnsZones {
+			recs, err := c.pve.ListSDNDnsRecords(ctx, z.ID)
+			if err != nil {
+				c.log.Warn("collect: listing SDN DNS records failed, skipping", "zone", z.ID, "error", err)
+				continue
+			}
+			dnsRecords[z.ID] = recs
+		}
+		entities = append(entities, inventory.FromPVEDNS(dnsZones, dnsRecords)...)
+	}
+
 	c.graph.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{}, entities)
 	return nil
 }
