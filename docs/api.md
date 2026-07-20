@@ -872,6 +872,34 @@ Added by T-1501 (`internal/k8s`, `internal/api/k8s.go`, `internal/store/k8sclust
 
 **CNI detection** (`internal/k8s.DetectCNI`, best-effort): Calico (`calico-node` DaemonSet in `kube-system`) and Cilium (`cilium` DaemonSet in `kube-system`) are recognized from their default install's own DaemonSet name; Flannel is recognized from the `flannel.alpha.coreos.com/backend-type` node annotation its kube-subnet-manager writes. Anything else — a different CNI, a non-default install, or no recognizable marker at all — reports `"unknown"` rather than guessing.
 
+## Federation (T-1201 registry, T-1202 global read surfaces)
+
+Added by T-1201 (`internal/federation`, `internal/api/federation.go`, `internal/store/clusters.go`) and T-1202 (`internal/api/federationtopo.go`). Federation federates *views and workflows*, never config ownership: Proxmox stays each attached cluster's own source of truth, and **there is no cross-cluster mutation primitive** anywhere in this section — every route here is a read/aggregate or a change to vnprox's own local registry row, never a write to an attached cluster's config.
+
+**Cluster registry (T-1201)** — one app-owned row per attached cluster; the PVE credential is sealed at rest with the identical AES-256-GCM primitive `sessions.pve_ticket_enc` uses and is never returned by any route:
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/federation/clusters` | list attached clusters: `{items: [Cluster]}` (credential never echoed) |
+| POST | `/federation/clusters` | attach a cluster: `{name, apiUrl, credential}` → `201` with the created `Cluster`; `400 validation_failed` on a bad body/credential |
+| GET | `/federation/clusters/{id}` | one attached cluster (credential-free); `404 not_found` if absent |
+| PUT | `/federation/clusters/{id}` | edit name/apiUrl and, only when `credential` is present, re-seal it (a rename never forces re-entering the token); `404 not_found` if absent |
+| DELETE | `/federation/clusters/{id}` | detach a cluster; `204` whether or not it existed |
+
+**`Cluster`**: `{id, name, apiUrl, status, addedBy, addedAt}`. `credential` is accepted only on create/update — one of `{kind:"ticket", username, password, realm?}` or `{kind:"token", token}` — and never returned. GET routes are `netRead`-gated; POST/PUT/DELETE are `netWrite` + CSRF. Attach/edit/detach are audited `federation.cluster.add`/`.update`/`.remove`.
+
+**Global read surfaces (T-1202)** — backed by `internal/federation.Aggregator`, which fans reads out to every attached cluster's own `internal/pve.Client` concurrently with per-cluster failure isolation. Every response carries the standard `partial`/`failedClusters` envelope (mirroring `/audit`'s `partial`/`failedNodes` peer fan-out): a single unreachable cluster degrades its own contribution — never blanks the whole response. All three are `netRead`-gated reads (no CSRF). They are mounted only when federation is wired; a single-cluster deployment (zero attached clusters) never exposes them, and the frontend keeps its existing per-cluster topology unchanged until a *second* cluster is attached.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/federation/topology` | per-cluster capsule summaries: `{clusters: [ClusterSummary], partial?, failedClusters?}`. Always cheap (a `/cluster/status` + `/cluster/resources` fan-out per cluster) — one summary per attached cluster, including unreachable ones (`reachable:false`, so the capsule renders greyed rather than dropping). |
+| GET | `/federation/topology/clusters/{id}` | one cluster's full projected topology, fetched lazily on drill-down: the same body `GET /topology` returns, projected from that cluster's PVE API alone (nodes, PVE-parsed network, guests, SDN). `404 not_found` for an unknown id; `502 cluster_unreachable` if the attached cluster can't be reached/projected. |
+| GET | `/federation/search?q=` | cluster-namespaced global entity search: `{results: [SearchHit], partial?, failedClusters?}`. Fans a substring query (node names, guest names, VMIDs) out to every attached cluster; a blank query returns no results without any fan-out. |
+
+**`ClusterSummary`**: `{clusterId, clusterName, reachable, nodes, nodesOnline, guests, findings, drift}`. `findings`/`drift` are the summary altitude's honest, PVE-observable health signal (an offline member node counts as one finding and sets `drift`); deeper per-cluster findings/drift analysis lives behind the full drill-down projection, not the capsule summary.
+
+**`SearchHit`**: `{clusterId, clusterName, ref, kind, label, node, matchedField}` — a single-cluster `SearchResult` plus the `clusterId`/`clusterName` the command palette groups by. `ref` is an inventory Ref triplet unique within its own cluster; `(clusterId, ref)` is globally unique.
+
 ## Migration planner (T-1507)
 
 Added by T-1507 (`internal/migration`, `internal/api/migration.go`). A **purely advisory, read-only** pre-flight bandwidth-headroom check for a live migration/evacuation an operator is about to trigger *in PVE itself*: bandwidth headroom on the migration network versus a guest's configured RAM size and a best-effort dirty-page-rate estimate, warning before a Friday-night evacuation saturates a shared link. It never triggers, blocks, or otherwise participates in an actual migration — there is no code path anywhere in `internal/migration` that calls a PVE migration-start/evacuate endpoint (a mechanical regression test asserts this: the package's only PVE-facing interface, `GuestConfigReader`, exposes exactly one read-only method).

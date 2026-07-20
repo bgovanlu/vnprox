@@ -8,6 +8,7 @@ import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { fetchInventoryDetail, fetchTopology, searchInventory } from "../api/topology";
+import { fetchFederationClusterTopology } from "../api/federation";
 import { fetchLayout, saveLayout } from "../api/layouts";
 import { fetchMgmtStatus } from "../api/protectedInterfaces";
 import { ApiError } from "../api/client";
@@ -48,11 +49,19 @@ export function useMgmtStatusQuery() {
  * concerns (see projection.ts) applied on top of this one cached response —
  * deliberately, since the data is already fetched and re-requesting it on
  * every filter toggle would cost a round trip for no benefit the client
- * can't already compute itself. */
-export function useTopologyQuery() {
+ * can't already compute itself.
+ *
+ * `clusterId` (T-1202) drills the same canvas into an *attached* cluster's
+ * projected topology: when set, the fetch targets GET
+ * /federation/topology/clusters/{id} under a cluster-scoped query key. When
+ * omitted — the only path a single-cluster deployment ever takes — this is
+ * byte-for-byte the original local `GET /topology` behaviour (same query
+ * key, same request), so federation stays invisible until a second cluster
+ * is attached and a capsule is drilled into. */
+export function useTopologyQuery(clusterId?: string) {
   return useQuery<TopologyResponse>({
-    queryKey: TOPOLOGY_QUERY_KEY,
-    queryFn: () => fetchTopology({}),
+    queryKey: clusterId ? (["federation", "topology", "cluster", clusterId] as const) : TOPOLOGY_QUERY_KEY,
+    queryFn: () => (clusterId ? fetchFederationClusterTopology(clusterId) : fetchTopology({})),
     staleTime: 15_000,
   });
 }
