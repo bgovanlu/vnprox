@@ -116,6 +116,7 @@ type Config struct {
 	Blueprint   BlueprintConfig
 	Peer        PeerConfig
 	Safety      SafetyConfig
+	OIDC        OIDCConfig
 	Server      ServerConfig
 	Metrics     MetricsConfig
 	Capture     CaptureConfig
@@ -126,6 +127,36 @@ type Config struct {
 	Retention   RetentionConfig
 	MTUProbe    MTUProbeConfig
 	Switches    SwitchesConfig
+}
+
+// OIDCConfig is the [oidc] section (T-1207: OIDC SSO). Enabled is derived —
+// true iff Issuer is set — so a deployment with no [oidc] section keeps the
+// PVE-ticket-bridge-only login flow unchanged. The client secret is loaded from
+// ClientSecretFile (a root:root 0600 file, the same on-disk-secret convention
+// the session/metrics keys use), never inlined in the config in the clear. The
+// group→role mapping table (Groups) maps OIDC group claims to vnprox capability
+// bundles; the per-cluster OIDC-group→PVE-identity linkage that caps those
+// bundles at real PVE ACLs lives in the encrypted oidc_pve_links store table,
+// not here (docs/security.md's Authentication section).
+type OIDCConfig struct {
+	Issuer           string
+	ClientID         string
+	ClientSecretFile string
+	RedirectURL      string
+	GroupsClaim      string
+	ClusterID        string
+	Scopes           []string
+	Groups           []OIDCGroupMapping
+	Enabled          bool
+}
+
+// OIDCGroupMapping maps one OIDC group-claim value to a set of capability
+// names (from internal/auth/caps.go's vocabulary: netRead, netWrite, sdnRead,
+// sdnWrite, fwRead, fwWrite, guestNet, audit). cmd/vnproxd translates this into
+// an internal/auth.GroupMapping, validating each cap name at startup.
+type OIDCGroupMapping struct {
+	Group string
+	Caps  []string
 }
 
 // CaptureConfig is the [capture] section (T-1301): the server-enforced,
@@ -370,6 +401,7 @@ type rawConfig struct {
 	FirewallLog rawFirewallLog `toml:"firewalllog"`
 	Blueprint   rawBlueprint   `toml:"blueprint"`
 	Peer        rawPeer        `toml:"peer"`
+	OIDC        rawOIDC        `toml:"oidc"`
 	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
 	Server      rawServer      `toml:"server"`
@@ -380,6 +412,22 @@ type rawConfig struct {
 	Retention   rawRetention   `toml:"retention"`
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
 	Switches    rawSwitches    `toml:"switches"`
+}
+
+type rawOIDC struct {
+	Issuer           string         `toml:"issuer"`
+	ClientID         string         `toml:"client_id"`
+	ClientSecretFile string         `toml:"client_secret_file"`
+	RedirectURL      string         `toml:"redirect_url"`
+	GroupsClaim      string         `toml:"groups_claim"`
+	ClusterID        string         `toml:"cluster_id"`
+	Scopes           []string       `toml:"scopes"`
+	Groups           []rawOIDCGroup `toml:"group"`
+}
+
+type rawOIDCGroup struct {
+	Name string   `toml:"name"`
+	Caps []string `toml:"caps"`
 }
 
 type rawCapture struct {
@@ -604,6 +652,7 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			RetentionHours:        firstNonZeroInt(raw.Capture.RetentionHours, capture.DefaultCaps.RetentionHours),
 			MaxFilterInstructions: firstNonZeroInt(raw.Capture.MaxFilterInstructions, capture.DefaultMaxFilterInstructions),
 		},
+		OIDC: resolveOIDCConfig(raw.OIDC),
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -687,6 +736,10 @@ func (c *Config) validate() error {
 
 	if _, err := url.ParseRequestURI(c.PVE.APIURL); err != nil {
 		return fmt.Errorf("%w: pve.api_url %q: %v", ErrInvalidConfig, c.PVE.APIURL, err)
+	}
+
+	if err := c.validateOIDC(); err != nil {
+		return err
 	}
 
 	return nil
@@ -801,6 +854,68 @@ func parseCIDRList(raw []string) ([]*net.IPNet, error) {
 		out = append(out, ipnet)
 	}
 	return out, nil
+}
+
+// resolveOIDCConfig defaults [oidc]: Enabled is derived from a set issuer,
+// GroupsClaim defaults to "groups", and the group→role mapping table is carried
+// through verbatim (cap-name validation happens in validate()). Scopes are
+// passed through as-is; internal/auth's provider always adds "openid".
+func resolveOIDCConfig(raw rawOIDC) OIDCConfig {
+	groups := make([]OIDCGroupMapping, 0, len(raw.Groups))
+	for _, g := range raw.Groups {
+		groups = append(groups, OIDCGroupMapping{Group: g.Name, Caps: g.Caps})
+	}
+	return OIDCConfig{
+		Enabled:          strings.TrimSpace(raw.Issuer) != "",
+		Issuer:           raw.Issuer,
+		ClientID:         raw.ClientID,
+		ClientSecretFile: raw.ClientSecretFile,
+		RedirectURL:      raw.RedirectURL,
+		GroupsClaim:      firstNonEmpty(raw.GroupsClaim, "groups"),
+		ClusterID:        raw.ClusterID,
+		Scopes:           raw.Scopes,
+		Groups:           groups,
+	}
+}
+
+// knownCapNames is the capability vocabulary [[oidc.group]] `caps` entries are
+// validated against — kept in sync with internal/auth/caps.go's AllCaps (this
+// package cannot import internal/auth without a cycle risk with cmd/vnproxd's
+// wiring, following the same duplicate-and-validate precedent DefaultProtectedPath
+// uses). "automation"/"capture" are intentionally omitted: neither is a
+// group-mappable role (automation is token-only; capture is a Sys.Console-gated
+// PVE-derived cap, never granted through an OIDC bundle).
+var knownCapNames = map[string]bool{
+	"netRead": true, "netWrite": true, "sdnRead": true, "sdnWrite": true,
+	"fwRead": true, "fwWrite": true, "guestNet": true, "audit": true,
+}
+
+// validateOIDC checks [oidc] semantics when enabled: a client id and redirect
+// URL are required, and every group→role cap name must be recognized.
+func (c *Config) validateOIDC() error {
+	if !c.OIDC.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(c.OIDC.ClientID) == "" {
+		return fmt.Errorf("%w: oidc.client_id is required when oidc.issuer is set", ErrInvalidConfig)
+	}
+	if strings.TrimSpace(c.OIDC.RedirectURL) == "" {
+		return fmt.Errorf("%w: oidc.redirect_url is required when oidc.issuer is set", ErrInvalidConfig)
+	}
+	if _, err := url.ParseRequestURI(c.OIDC.Issuer); err != nil {
+		return fmt.Errorf("%w: oidc.issuer %q: %v", ErrInvalidConfig, c.OIDC.Issuer, err)
+	}
+	for _, g := range c.OIDC.Groups {
+		if strings.TrimSpace(g.Group) == "" {
+			return fmt.Errorf("%w: an [[oidc.group]] entry is missing name", ErrInvalidConfig)
+		}
+		for _, cap := range g.Caps {
+			if !knownCapNames[cap] {
+				return fmt.Errorf("%w: [[oidc.group]] %q has unknown cap %q", ErrInvalidConfig, g.Group, cap)
+			}
+		}
+	}
+	return nil
 }
 
 func parseDurationOrDefault(raw string, def time.Duration, field string) (time.Duration, error) {
