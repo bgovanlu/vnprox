@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -25,6 +26,13 @@ import (
 // apply s.RequireCap(...) per-route or per-group as needed.
 func (s *Service) MountRoutes(r chi.Router) {
 	r.Post("/auth/login", s.handleLogin)
+	// T-1207: OIDC SSO login/callback are public (there is no session yet to
+	// protect, exactly like /auth/login) and, being non-cookie, CSRF-exempt on
+	// the callback POST. Mounted only when [oidc] is configured.
+	if s.oidc != nil {
+		r.Get("/auth/oidc/login", s.handleOIDCLogin)
+		r.Post("/auth/oidc/callback", s.handleOIDCCallback)
+	}
 	r.Group(func(r chi.Router) {
 		r.Use(s.SessionMiddleware)
 		r.Use(s.CSRFMiddleware)
@@ -113,25 +121,40 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 		caps = map[string]Capabilities{"": {}}
 	}
 
+	if err := s.startSession(ctx, w, identity, req.Username, req.Realm, ticket, csrf, caps); err != nil {
+		s.log.Error("auth: establishing session", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal_error", "internal server error", nil)
+		return
+	}
+
+	s.appendAudit(ctx, req.Username, "login", "success", ip, nil)
+	writeJSON(w, http.StatusOK, meResponse{
+		User: authUser{Username: req.Username, Realm: req.Realm},
+		Caps: caps,
+	})
+}
+
+// startSession persists a new session for an authenticated identity, registers
+// it in this process's live map for renewal/hourly re-derivation, and sets the
+// session + CSRF cookies. Shared by the PVE ticket bridge (handleLogin) and the
+// OIDC callback (handleOIDCCallback) so both converge on one session shape.
+// ticket is the PVE ticket ("" for an OIDC session, which has none); csrf is the
+// double-submit secret; caps the already-derived (and, for OIDC, PVE-capped)
+// capability map.
+func (s *Service) startSession(ctx context.Context, w http.ResponseWriter, identity PVEIdentity, username, realm, ticket, csrf string, caps map[string]Capabilities) error {
 	sessionID, err := newSessionID()
 	if err != nil {
-		s.log.Error("auth: generating session id", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal_error", "internal server error", nil)
-		return
+		return err
 	}
-
 	capsJSONStr, err := capsJSON(caps)
 	if err != nil {
-		s.log.Error("auth: encoding capabilities", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal_error", "internal server error", nil)
-		return
+		return err
 	}
-
 	now := s.now()
 	rec := store.Session{
 		ID:        sessionID,
-		Username:  req.Username,
-		Realm:     req.Realm,
+		Username:  username,
+		Realm:     realm,
 		PVETicket: ticket,
 		CSRFToken: csrf,
 		CapsJSON:  capsJSONStr,
@@ -139,21 +162,14 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: now.Add(s.idleTimeout).Unix(),
 	}
 	if err := s.sessions.Insert(ctx, rec); err != nil {
-		s.log.Error("auth: inserting session", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal_error", "internal server error", nil)
-		return
+		return fmt.Errorf("auth: inserting session: %w", err)
 	}
-
 	s.mu.Lock()
 	s.live[sessionID] = &liveSession{identity: identity, lastCapRefresh: now}
 	s.mu.Unlock()
 
-	s.appendAudit(ctx, req.Username, "login", "success", ip, nil)
 	setSessionCookies(w, sessionID, csrf, s.hardTimeout)
-	writeJSON(w, http.StatusOK, meResponse{
-		User: authUser{Username: req.Username, Realm: req.Realm},
-		Caps: caps,
-	})
+	return nil
 }
 
 func (s *Service) handleLoginFailure(w http.ResponseWriter, ctx context.Context, username, ip string, err error) {
@@ -190,6 +206,17 @@ func (s *Service) deriveCapabilities(ctx context.Context, identity PVEIdentity) 
 		}
 	}
 	caps := BuildCapabilities(perms, nodes)
+	// T-1207: an OIDC identity caps its PVE-derived capabilities at the
+	// group→role bundle it authenticated with (capLimiter). Applied here so
+	// BOTH login derivation and the hourly re-derivation (renewal.go) enforce
+	// the OIDC ceiling — the bundle can only ever narrow the PVE-derived caps,
+	// never widen them (docs/security.md's authn/authz split).
+	if lim, ok := identity.(capLimiter); ok {
+		bundle := lim.capBundle()
+		for node, c := range caps {
+			caps[node] = IntersectCaps(c, bundle)
+		}
+	}
 	if s.readOnly {
 		forceReadOnly(caps)
 	}

@@ -50,12 +50,16 @@ const (
 // zero; tests override them to exercise renewal/expiry/rate-limiting on a
 // short, fast timescale (T-105 acceptance criteria 4 and 5).
 type Config struct {
-	Tokens                   *store.APITokenRepo
-	Audit                    *store.AuditRepo
-	NewIdentity              IdentityFactory
-	Now                      func() time.Time
-	Logger                   *slog.Logger
-	Sessions                 *store.SessionRepo
+	Tokens      *store.APITokenRepo
+	Audit       *store.AuditRepo
+	NewIdentity IdentityFactory
+	Now         func() time.Time
+	Logger      *slog.Logger
+	Sessions    *store.SessionRepo
+	// OIDC is T-1207's optional OIDC SSO service. nil disables the
+	// /auth/oidc/* routes entirely (a deployment with no [oidc] config), the
+	// same nil-safe convention Tokens uses to disable bearer auth.
+	OIDC                     *OIDCService
 	RateLimit                RateLimitConfig
 	BearerRateLimit          RateLimitConfig
 	IdleTimeout              time.Duration
@@ -77,6 +81,7 @@ type Service struct {
 	limiter       *loginLimiter
 	tokens        *store.APITokenRepo
 	bearerLimiter *tokenBucket
+	oidc          *OIDCService
 	now           func() time.Time
 	log           *slog.Logger
 	live          map[string]*liveSession
@@ -156,6 +161,7 @@ func NewService(cfg Config) (*Service, error) {
 		limiter:       newLoginLimiter(cfg.RateLimit, now),
 		tokens:        cfg.Tokens,
 		bearerLimiter: newTokenBucket(bearerLimit, now),
+		oidc:          cfg.OIDC,
 		now:           now,
 		log:           logger,
 		live:          make(map[string]*liveSession),
@@ -312,11 +318,15 @@ func (s *Service) PVEClientFor(sessionID string) (*pve.Client, bool) {
 	if !ok {
 		return nil, false
 	}
-	ci, ok := live.identity.(clientIdentity)
-	if !ok {
-		return nil, false
+	if ci, isClient := live.identity.(clientIdentity); isClient {
+		return ci.c, true
 	}
-	return ci.c, true
+	// T-1207: an OIDC session has no PVE ticket of its own — cluster-scoped
+	// PVE calls go out on the mapped PVE identity its groups linked to.
+	if oid, isOIDC := live.identity.(*oidcIdentity); isOIDC {
+		return oid.linkedClient()
+	}
+	return nil, false
 }
 
 func capsJSON(caps map[string]Capabilities) (string, error) {

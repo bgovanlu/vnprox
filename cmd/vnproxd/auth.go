@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/bgovanlu/vnprox/internal/auth"
 	"github.com/bgovanlu/vnprox/internal/config"
@@ -88,11 +89,20 @@ func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo 
 		TLS:    loginTLS,
 	})
 
+	// T-1207: OIDC SSO, wired only when [oidc] is configured (Enabled derived
+	// from a set issuer). A deployment with no [oidc] section gets a nil
+	// OIDCService, leaving the PVE-ticket-bridge-only login flow untouched.
+	oidcSvc, err := setupOIDC(cfg, logger, db, cipher, loginTLS)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	authSvc, err := auth.NewService(auth.Config{
 		Sessions:    sessions,
 		Audit:       auditRepo,
 		Tokens:      tokens,
 		NewIdentity: identityFactory,
+		OIDC:        oidcSvc,
 		Logger:      logger,
 		// T-605: `[server] read_only = true` (docs/features/blueprints.md
 		// §3) forces every derived capability read-only, server-side, not
@@ -103,4 +113,64 @@ func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo 
 		return nil, nil, err
 	}
 	return authSvc, cipher, nil
+}
+
+// setupOIDC constructs the OIDC SSO service from cfg.OIDC, or returns (nil, nil)
+// when OIDC is not configured. The client secret is read from
+// cfg.OIDC.ClientSecretFile (a root:root 0600 file, never inlined in the config
+// in the clear); the group→role mapping table is translated from config into
+// internal/auth.GroupMapping; and the per-cluster PVE-linkage resolver reads the
+// encrypted oidc_pve_links store table, building linked PVE clients against the
+// local cluster's PVE API with the same TLS trust the login client uses.
+func setupOIDC(cfg *config.Config, logger *slog.Logger, db *store.DB, cipher *store.SessionCipher, loginTLS pve.TLSConfig) (*auth.OIDCService, error) {
+	if !cfg.OIDC.Enabled {
+		return nil, nil
+	}
+
+	var clientSecret string
+	if cfg.OIDC.ClientSecretFile != "" {
+		b, err := os.ReadFile(cfg.OIDC.ClientSecretFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading oidc client secret file %s: %w", cfg.OIDC.ClientSecretFile, err)
+		}
+		clientSecret = strings.TrimSpace(string(b))
+	}
+
+	provider, err := auth.NewOIDCProvider(auth.OIDCProviderConfig{
+		Issuer:       cfg.OIDC.Issuer,
+		ClientID:     cfg.OIDC.ClientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  cfg.OIDC.RedirectURL,
+		Scopes:       cfg.OIDC.Scopes,
+		GroupsClaim:  cfg.OIDC.GroupsClaim,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("constructing oidc provider: %w", err)
+	}
+
+	mappings := make([]auth.GroupMapping, 0, len(cfg.OIDC.Groups))
+	for _, g := range cfg.OIDC.Groups {
+		scopes := make([]auth.Cap, 0, len(g.Caps))
+		for _, name := range g.Caps {
+			scopes = append(scopes, auth.Cap(name))
+		}
+		mappings = append(mappings, auth.GroupMapping{Group: g.Group, Caps: auth.CapabilitiesFromScopes(scopes)})
+	}
+
+	resolver := auth.NewStorePVELinkResolver(
+		store.NewOIDCPVELinkRepo(db), cipher, cfg.OIDC.ClusterID,
+		pve.Config{APIURL: cfg.PVE.APIURL, TLS: loginTLS},
+	)
+
+	oidcSvc, err := auth.NewOIDCService(auth.OIDCConfig{
+		Provider:  provider,
+		Resolver:  resolver,
+		Mappings:  mappings,
+		ClusterID: cfg.OIDC.ClusterID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("constructing oidc service: %w", err)
+	}
+	logger.Info("auth: OIDC SSO enabled", "issuer", cfg.OIDC.Issuer, "groups", len(mappings))
+	return oidcSvc, nil
 }
