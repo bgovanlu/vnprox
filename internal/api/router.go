@@ -178,6 +178,12 @@ type Options struct {
 	// "internal/api decorates the pure projection" seam Findings/Drift
 	// above already use for the finding-badge overlay; nil skips both.
 	Protected ProtectedService
+	// PBS backs T-1206's GET /pbs (the inspector's datastore-network sizing
+	// hints) and is passed into mountTopologyRoutes as the pbs-host/
+	// backup-path overlay input on GET /topology (docs/features/topology.md
+	// §1/§2) — the same "internal/api decorates the pure projection" seam
+	// Protected/Findings above use; nil skips both. Read-only.
+	PBS PBSService
 	// Firewall backs T-501's read routes (GET /firewall/rulesets,
 	// GET /firewall/objects) — typically the daemon's live *inventory.Graph
 	// (which satisfies FirewallGraph's one-method seam directly).
@@ -419,7 +425,8 @@ func NewRouter(opts Options) http.Handler {
 				r.Get("/config", configHandler(opts.Instance))
 			})
 		}
-		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected, opts.QosShapes)
+		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected, opts.QosShapes, opts.PBS)
+		mountPBSRoutes(r, opts.PBS, opts.Auth)
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
 		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth)

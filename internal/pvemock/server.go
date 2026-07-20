@@ -99,6 +99,14 @@ func (srv *Server) buildRouter() chi.Router {
 		// comment: PVE's own Ceph tooling keeps ownership).
 		api.Get("/cluster/ceph/config", srv.requirePrivilege(PrivSysAudit, srv.handleCephConfig))
 		api.Get("/nodes/{node}/ceph/osd", srv.requirePrivilege(PrivSysAudit, srv.handleCephOSDs))
+		// T-1206: PBS network awareness — cluster-wide storage.cfg entries
+		// and vzdump backup jobs, gated on the same PrivSysAudit read
+		// privilege every other read-only cluster route uses. Both are
+		// read-only (internal/pbs never writes storage or backup config —
+		// PVE's own tooling keeps ownership), so no POST/PUT/DELETE
+		// counterpart is registered here.
+		api.Get("/storage", srv.requirePrivilege(PrivSysAudit, srv.handleStorageList))
+		api.Get("/cluster/backup", srv.requirePrivilege(PrivSysAudit, srv.handleBackupJobs))
 
 		api.Get("/nodes/{node}/network", srv.requirePrivilege(PrivSysAudit, srv.handleNetworkList))
 		api.Post("/nodes/{node}/network", srv.requirePrivilege(PrivSysModify, srv.handleNetworkCreate))

@@ -1,0 +1,124 @@
+# backup-paths.yaml (T-1206) — two nodes, one Proxmox Backup Server storage.
+# pve1 runs a node-restricted daily backup job targeting the PBS storage;
+# pve2 runs none. Used to prove: a pbs-host node is discovered from PVE's own
+# storage.cfg, a backup-path edge exists for the backing-up node (pve1) and
+# not for pve2, and the resolved egress (vmbr0 -> bond0, 10 Gbit/s) drives a
+# deterministic datastore-network sizing hint. The PBS server (10.50.0.9) is
+# deliberately off every node's subnet, so egress resolves via the node's
+# default-gateway bridge — the routed-backup common case.
+cluster:
+  name: pve-pbs
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 192.168.1.10
+      online: true
+    - name: pve2
+      ip: 192.168.1.11
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 6b1c0a3e-8f2d-4c11-9a57-0d2f6f3a1b42
+
+storage:
+  # The PBS storage vnprox surfaces as a pbs-host node. server is off-subnet
+  # (routed), so pve1's egress resolves to its gateway-bearing bridge vmbr0.
+  - storage: pbs-main
+    type: pbs
+    server: 10.50.0.9
+    datastore: main
+    fingerprint: "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+    content: ["backup"]
+  # A non-PBS storage, to prove internal/pbs ignores everything but type pbs.
+  - storage: local
+    type: dir
+    content: ["images", "iso"]
+
+backup_jobs:
+  # Node-restricted to pve1: pve1 gets a backup-path, pve2 does not.
+  - id: backup-daily
+    storage: pbs-main
+    node: pve1
+    schedule: "mon..fri 02:00"
+    mode: snapshot
+    vmids: ["100", "101"]
+    enabled: true
+
+nodes:
+  pve1:
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: eno2, type: eth, method: manual, autostart: true, mtu: 9000}
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 9000
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+        comments: "uplink"
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 192.168.1.10/24
+        gateway: 192.168.1.1
+        autostart: true
+        mtu: 9000
+        bridge_ports: bond0
+        comments: "management + backup egress"
+    links:
+      eno1: {mac: "bc:24:11:00:00:01", driver: ixgbe, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0", mtu: 9000}
+      eno2: {mac: "bc:24:11:00:00:02", driver: ixgbe, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1", mtu: 9000}
+      bond0: {mac: "bc:24:11:00:00:01", link_up: true, mtu: 9000}
+      vmbr0: {mac: "bc:24:11:00:00:01", link_up: true, mtu: 9000}
+    qemu:
+      "100":
+        name: web01
+        status: running
+        config:
+          name: web01
+          net0: "virtio=BC:24:11:AA:00:64,bridge=vmbr0"
+    lxc:
+      "101":
+        name: dns01
+        status: running
+        config:
+          hostname: dns01
+          net0: "name=eth0,bridge=vmbr0"
+
+  pve2:
+    network:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 1500}
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 192.168.1.11/24
+        gateway: 192.168.1.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        comments: "management"
+    links:
+      eno1: {mac: "bc:24:11:00:00:11", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:01:00.0", mtu: 1500}
+      vmbr0: {mac: "bc:24:11:00:00:11", link_up: true, mtu: 1500}
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []

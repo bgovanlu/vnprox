@@ -103,11 +103,13 @@ func ResolveMgmtPaths(snap inventory.Snapshot, refs map[string][]MgmtRoleRef) ma
 // its declared/runtime slaves. path is every entity ref traversed (the
 // "mgmt-path" badge targets, ResolveMgmtPaths' own Path field); nics is the
 // subset that are terminal PhysNics (redundancy is counted over exactly
-// these). Exported (T-1503) so other packages needing "which bond/PhysNic
-// does this carrier's traffic ultimately ride" — internal/ceph's OSD↔bond
-// attribution — share this one resolver rather than re-implementing the
-// bond/VLAN-transitive walk a second time; ResolveMgmtPaths below is its
-// original (and, until T-1503, only) caller.
+// these). Exported (T-1503, T-1206) so other packages needing "which
+// bond/PhysNic does this carrier's traffic ultimately ride" — internal/ceph's
+// OSD↔bond attribution, and internal/pbs's backup-path network sizing hint
+// (which resolves a node's egress interface toward its PBS server and reports
+// that path's bottleneck link speed) — share this one resolver rather than
+// re-implementing the bond/VLAN-transitive walk a second time; ResolveMgmtPaths
+// below is its original caller.
 func ResolvePhysicalPath(snap inventory.Snapshot, carrier inventory.Ref) (path []inventory.Ref, nics []inventory.Ref) {
 	visited := map[inventory.Ref]bool{carrier: true}
 

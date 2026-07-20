@@ -246,6 +246,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if sdnPVEClient != nil {
 		sdnSvc = sdn.NewService(sdnPVEClient)
 	}
+	// T-1206: PBS network awareness — reads PVE's own storage.cfg + backup
+	// jobs once (sdnPVEClient, already available), re-projected against the
+	// live graph on each /topology or /pbs read (see pbswire.go). Always
+	// constructed; degrades to an empty overlay when sdnPVEClient is nil or
+	// no PBS storage is configured.
+	pbsAdapter := setupPBS(ctx, sdnPVEClient, graph, logger)
 	// T-406: internal/dhcp.Service fans DHCP-lease reads across the
 	// cluster (local node via realHost, every peer via peerClient) into
 	// ipam.Observation values — always constructed (mirrors evpnSvc's own
@@ -892,6 +898,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		DHCP:                 dhcpAPISvc,
 		PVEGateways:          pveGatewayProvider{authSvc},
 		Protected:            changeSvc,
+		PBS:                  pbsAdapter,
 		Firewall:             graph,
 		Blueprints:           blueprintSvc,
 		Spec:                 graph,
