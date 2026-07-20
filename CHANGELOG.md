@@ -5,14 +5,91 @@ All notable user-facing changes to vnprox are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 vnprox uses semantic versioning; the SQLite schema migrates forward-only.
 
-Versions below correspond to the milestones in `docs/roadmap.md`. Phase 3
-("Discovery & true cluster") does not have its own version cut per the
-roadmap — its functionality (peer clustering, LLDP discovery, drift
-detection, FDB browsing) shipped as part of the v0.8 development cycle and
-is listed under v0.8 below, alongside that release's SDN/IPAM work.
+Versions up to v1.0 correspond to the milestones in `docs/roadmap.md`;
+v2.0 is the milestone cut of the second arc in `docs/roadmap-next.md`
+("Beyond the cluster"). Phase 3 ("Discovery & true cluster") does not have
+its own version cut per the roadmap — its functionality (peer clustering,
+LLDP discovery, drift detection, FDB browsing) shipped as part of the v0.8
+development cycle and is listed under v0.8 below, alongside that release's
+SDN/IPAM work.
 
-Precise dates are only given for the v1.0.0 release being cut by this
-change; earlier milestones predate this file and are dated only by year.
+Precise dates are given for the v1.0.0 and v2.0.0 release cuts; earlier
+milestones predate this file and are dated only by year.
+
+## [2.0.0] - 2026-07-20
+
+The multi-cluster release — the cut where a vnprox instance is no longer
+1:1 with a Proxmox cluster. v2.0 caps the v1.4 → v2.0 arc (federation,
+cross-cluster IPAM, DNS management, guarded switch push, PBS awareness, and
+OIDC SSO). Target platforms: Proxmox VE 8.2+ and 9.x; PVE 10.x is the
+forward compatibility target (see `docs/deployment.md`, flagged
+needs-hardware-validation until validated on real hardware).
+
+**Federation is additive, not a fork:** a v1.x single-cluster install that
+upgrades with zero clusters attached keeps serving its existing
+single-cluster experience unchanged — the global cluster view only appears
+once a second cluster is attached, and DNS/switch-push/OIDC stay dormant
+until explicitly configured. DB migrations remain forward-only.
+
+### Added
+
+- **Multi-cluster federation.** Attach any number of PVE clusters to one
+  designated primary and see them all on one screen: a global topology with
+  per-cluster capsules and drill-down into each cluster's ordinary view, a
+  global search and command palette spanning clusters, per-cluster
+  changesets with a merged cluster-wide audit trail, and per-cluster failure
+  isolation — an unreachable cluster is greyed out and flagged as a partial
+  result, never blanking or erroring the whole view. Config ownership stays
+  strictly per-cluster; there is no cross-cluster mutation.
+- **Cross-cluster IPAM and external subnets.** The same or an overlapping
+  subnet allocated in two attached clusters now surfaces as a conflict
+  finding. Non-PVE subnets (office LANs, upstream transit, colo ranges) are
+  first-class IPAM records you can add and manage directly. The
+  NetBox/phpIPAM bridge is upgraded from read-merge to **bidirectional
+  sync**, with a dry-run preview that never writes and an explicit-confirm
+  apply step — every sync write is audited with before/after per record.
+- **DNS management.** Surface and edit PVE SDN's DNS plugin (PowerDNS):
+  zone and record visibility, guest names shown as badges on the map, and
+  record edits staged as ordinary changesets through the same SDN
+  apply flow as zones/VNets/subnets.
+- **Guarded switch config push.** The read-write step beyond LLDP discovery:
+  driver-based (OpenConfig/gNMI) pushes scoped strictly to switch ports
+  facing your PVE nodes (VLAN membership, port descriptions, LACP), each one
+  an ordinary changeset with validate/diff/confirm and the management-path
+  interlocks extended onto the uplink port. Per-switch, explicit opt-in;
+  ships dark (feature-flagged off) until you enable it for a specific switch,
+  with a plainly-stated residual risk that a switch made unreachable by a
+  push cannot be remotely reverted.
+- **PBS network awareness.** Proxmox Backup Server hosts appear on the map
+  with their interfaces, the backup traffic path (node → PBS) is
+  highlighted, and the inspector shows datastore-network sizing hints.
+  Entirely read-only — no new write actions, no PBS credentials stored.
+- **OIDC SSO.** Log in via OpenID Connect (authorization-code + PKCE)
+  alongside the existing Proxmox ticket bridge, for federated deployments
+  where per-cluster PVE credentials stop scaling, with group→role mapping.
+  OIDC authenticates you to vnprox; your Proxmox permissions still gate every
+  cluster-scoped action per cluster, and an OIDC role can never grant a
+  capability your real PVE ACLs don't already allow.
+
+### Changed
+
+- Compatibility target advanced to Proxmox VE 9.x and 10.x for this arc
+  (8.2+ still supported); PVE 10.x validation on real hardware is tracked as
+  a needs-hardware-validation item.
+
+### Security
+
+- Every new v2.0 credential class — the per-cluster registry credential
+  (`clusters.credential_enc`), the OIDC client secret and mapped PVE
+  credentials (`oidc_pve_links.credential_enc`), and switch-driver
+  credentials (`switches.credentials_enc`) — is sealed at rest with the same
+  single AES-256-GCM session key vnprox already uses for Proxmox tickets, and
+  is never returned by any API response, log line, or audit entry. Each has a
+  targeted encrypted-at-rest test.
+- The threat-model summary gains rows for the arc's new surfaces
+  (cluster-registry credential theft, a rogue or compromised attached
+  cluster, switch-driver credential theft/errant push, OIDC token forgery)
+  with stated mitigations.
 
 ## [1.0.0] - 2026-07-12
 

@@ -735,3 +735,60 @@ in `internal/ceph` is exercised against `internal/pvemock`'s fixture-driven impl
       deliberately-isolated identical L2 domains in separate clusters want this as a warning, an
       info, or a suppressible finding is a UX judgment better made against real multi-cluster
       deployments than guessed here.
+
+## T-1204 — DNS management (PowerDNS)
+_(surfaced during the T-1208 v2.0 docs-freeze audit — the DNS plugin is mock-only)_
+
+- [ ] **Real PVE SDN DNS-plugin / PowerDNS behavior.** `GET /sdn/dns` and the `sdn.dns.*` changeset
+      ops are developed against `internal/pvemock`'s PowerDNS-shaped double. The real per-record
+      PowerDNS API error shapes, TTL defaults, zone notify/transfer semantics, and the exact
+      `/etc/pve/sdn/dns.cfg` plugin-config wire shape must be confirmed against a real PVE node with
+      a configured DNS plugin. pvemock's `400` rejection shapes are modeled where known and flagged
+      where unverified — do not treat them as authoritative.
+
+## T-1205 — Guarded switch config push (gNMI/OpenConfig)
+_(surfaced during the T-1208 v2.0 docs-freeze audit — switchdrv is mock-only)_
+
+- [ ] **Real gNMI/OpenConfig vendor behavior variance.** `internal/switchdrv`'s OpenConfig/gNMI
+      driver is exercised only against `internal/switchmock`. Real vendor firmware differs in
+      OpenConfig path support (interfaces/vlan/lacp), transaction/commit semantics, and error
+      reporting — confirm against at least one real switch before any switch is enabled in production.
+- [ ] **Real LACP negotiation against physical hardware** when a `switch.port.update` changes LACP
+      settings on a port participating in a live bond — timing, and whether the bond re-converges.
+- [ ] **Rollback timing/atomicity on vendor firmware.** The pre-image snapshot + re-push rollback is
+      proven against the mock; real firmware's write atomicity and the "switch unreachable during
+      rollback → rollback-incomplete" path need hardware confirmation.
+- [ ] **MLAG / stacked-switch topologies.** Port identity, LLDP-neighbor re-check, and mgmt-path
+      interlock behavior on MLAG/stacked switches is untested — the LLDP-verified-port-identity
+      guard assumes a single logical neighbor per port.
+
+## T-1207 — OIDC SSO (real IdP)
+_(surfaced during the T-1208 v2.0 docs-freeze audit — OIDC is tested against a mock provider only)_
+
+- [ ] **Real-IdP claim-shape variance.** The OIDC flow is tested against an in-process mock provider
+      with configurable group claims. Real IdPs (Okta, Keycloak, Azure AD/Entra) differ in the
+      `groups` claim shape (array vs. space-delimited string, group IDs vs. names, claim name), JWKS
+      rotation cadence, and ID-token field population — confirm the group→role mapping against at
+      least Keycloak and one hosted IdP.
+- [ ] **Refresh-token edge cases.** Refresh-token rotation, revocation, and re-verification behavior
+      (and the "IdP refused refresh mid-session" fallback) need validation against a real IdP's
+      refresh semantics, which vary by provider and by `offline_access` scope grant.
+
+## T-1208 — v2.0 release (federation scale + PVE 10.x)
+
+- [ ] **PVE 10.x compatibility.** No PVE-10-specific API break is known against the surfaces vnprox
+      reads/writes, and every Phase 12 feature is mock-first, but no real PVE 10.x node has been
+      exercised here. Per docs/roadmap-next.md's versioning section, PVE 10.x gets a validation pass
+      within one phase of its release, as each prior PVE major did in v1. Confirm auth, SDN, IPAM,
+      and network-apply surfaces on a real PVE 10.x node.
+- [ ] **Full-daemon multi-cluster genscale HTTP + memory run.** `docs/performance.md` §10 records a
+      real *aggregator-level* pass over the 3× scale-lab federation profile (`TopologySummary`
+      ~14 ms/op, `Search` ~11 ms/op on a shared QEMU host). Still needed on the dev host: a
+      full `runDaemon` + TLS + auth HTTP round-trip pass (p50/p95/p99 per `/federation/*` endpoint,
+      like `BenchmarkAPIAtScale`) and RSS/goroutine memory for N attached clusters, plus a larger
+      (10+) cluster-count ceiling for the "designated primary aggregating many clusters" case.
+- [ ] **apt upgrade v1.x → v2.0 on real hardware.** The forward-only migration (v1.x schema →
+      federation migrations 0021–0024) is proven in `TestMigrate_FromEachPriorSchemaVersion`, and the
+      packaging/upgrade tests run on the dev host (podman + `packaging/test/upgrade.sh`), not here —
+      run the real apt upgrade against a v1.x-schema DB and confirm the single-cluster surface serves
+      unchanged with zero clusters attached.

@@ -132,3 +132,42 @@ While writing E2E coverage for the user-guide §3 "create an isolated test netwo
 Full real run (`npx playwright test`, all spec files, production SPA build, all three webServer stacks — three-node-vlan/sim-lab/scale-lab): **28 of 29 tests passed in 193 seconds (~3.2 minutes) total wall-clock time** — comfortably under the 15-minute AC2 budget.
 
 The one failure, `topology.spec.ts`'s screenshot-baseline test, is a **pre-existing, already-documented flake** (not a regression from this task): `docs/testing/topology-render-verification.md` (written for T-107, before this task) already states the committed baseline is "machine-dependent" and font-rendering-sensitive. Confirmed here: the same test passes cleanly when run in isolation (verified separately, with a fresh re-baseline that matched exactly, no diff needed) but fails with a 694px-vs-592px canvas-height mismatch when run as test #24 of a 29-test sequential suite — consistent with layout/font-metrics state differing between "cold browser, first test" and "24 tests into one worker's session," not a rendering regression. See `planning/reports/T-607.md` for the full user-guide §3 task-to-spec coverage map.
+
+## 10. Multi-cluster (v2.0 / federation) scale profile — T-1208
+
+The v1 scale target (§1–§5 above) is per-cluster. The v2.0 arc adds federation, so this section defines the **multi-cluster genscale profile** and records a real scale/perf pass over the federation aggregator that backs `GET /federation/topology` and `GET /federation/search`.
+
+### 10.1 The profile (numbers stated)
+
+**`scaleClusterCount = 3` scale-lab clusters** (`internal/federation/scale_bench_test.go`) — the roadmap's "three clusters on one screen" exit-demo number. Each cluster is the *full* single-cluster §1 target (`testdata/clusters/scale-lab.yaml`: 8 nodes × 6 NICs, 4 bridges/node, 300 guests, 40 VNets), so the aggregate multi-cluster profile is:
+
+| Dimension | Per cluster (§1 target) | × 3 clusters (v2.0 profile) |
+|---|---|---|
+| Nodes | 8 | **24** |
+| Guests | 300 | **900** |
+| VNets | 40 | **120** |
+| Subnets | 40 | **120** |
+
+The profile is stated as a **code constant** (`scaleClusterCount`) rather than a committed multi-GB fixture: `pvemock.StartClusterGroup` boots N in-process mock clusters off the one committed `scale-lab.yaml`, so the profile is reproducible without checking in three copies of a large fixture. `TestScaleProfile_Attaches` is a cheap `go test` guard that all three clusters stand up and each summarizes its 8 nodes.
+
+### 10.2 Federation aggregator latency at the profile
+
+**Method:** `internal/federation/scale_bench_test.go` attaches the 3-cluster profile to one real `federation.Aggregator` (real `internal/pve.Client`s against real `httptest` listeners, real AES-256-GCM credential sealing) and times the two fan-out-and-merge calls that back the global endpoints. Reproduce with:
+
+```
+go test ./internal/federation/ -run '^$' -bench 'BenchmarkFederation' -benchmem -benchtime=50x
+```
+
+| Aggregator call (backs) | mean latency | allocs | Provisional bar (p95) | Result |
+|---|---|---|---|---|
+| `TopologySummary` (`GET /federation/topology`) | **~14.0 ms/op** | 1.38 MB/op, 7,716 allocs/op | < 300 ms | **PASS** |
+| `Search` (`GET /federation/search`, cross-cluster fan-out) | **~11.0 ms/op** | 1.31 MB/op, 8,104 allocs/op | < 300 ms | **PASS** |
+
+Numbers from a real run on this shared virtualized dev host (QEMU vCPU, 32 logical CPUs advertised, no dedicated hardware, other work concurrently active) — a conservative upper bound, not a best-case measurement, carrying the *same* environment caveat as every §2 number. The provisional **p95 < 300 ms** bar is the same interactive-web-UX budget §2 adopted for the single-cluster endpoints (no documented numeric target exists for federation either); both calls clear it with a ~20× margin even at 3× the single-cluster entity count, because the aggregator fans the per-cluster reads out concurrently rather than serially.
+
+Note these are **aggregator-method** latencies (fan-out + merge — the dominant cost), not full HTTP round-trips; the router/auth/JSON-serialization overhead on top is the same thin layer §2 measured for the single-cluster endpoints. `benchmem` reports mean, not percentiles — Go benchmarks don't emit p95; the mean-plus-margin here is the honest available signal in this environment.
+
+### 10.3 What still needs the dev host (flagged, not fabricated)
+
+- **Full-daemon multi-cluster HTTP genscale run** (real `runDaemon` + TLS + auth against N booted clusters, p50/p95/p99 per endpoint like §2's `BenchmarkAPIAtScale`) and **RSS/goroutine memory for N attached clusters** — the aggregator-level pass above is real, but a full end-to-end HTTP + memory profile at the profile scale belongs on the dev host (per T-1208's own note that the genscale perf run happens there). Recorded as a target in `planning/reports/needs-hardware-validation.md`.
+- A larger federation profile (e.g. 10+ clusters) for the "designated primary aggregating many clusters" ceiling — the 3-cluster profile proves concurrency and failure-isolation; the upper cluster-count bound is a hardware-run question.
