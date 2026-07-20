@@ -36,7 +36,7 @@ func TestClusterRepo_RoundTrip(t *testing.T) {
 
 	// A second cluster, then List is stable by added_at, id.
 	c2 := Cluster{ID: NewULID(), Name: "west", APIURL: "https://west.example:8006", CredentialEnc: []byte{0x09}, AddedBy: "root@pam", AddedAt: 1700000100}
-	if err := repo.Insert(ctx, c2); err != nil {
+	if err = repo.Insert(ctx, c2); err != nil {
 		t.Fatalf("Insert #2: %v", err)
 	}
 	list, err := repo.List(ctx)
@@ -51,7 +51,7 @@ func TestClusterRepo_RoundTrip(t *testing.T) {
 	c.Name = "east-renamed"
 	c.CredentialEnc = []byte{0xAA, 0xBB}
 	c.Status = "ok"
-	if err := repo.Update(ctx, c); err != nil {
+	if err = repo.Update(ctx, c); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	got, err = repo.Get(ctx, c.ID)
@@ -63,7 +63,7 @@ func TestClusterRepo_RoundTrip(t *testing.T) {
 	}
 
 	// UpdateStatus touches status only, never the credential.
-	if err := repo.UpdateStatus(ctx, c.ID, "unreachable"); err != nil {
+	if err = repo.UpdateStatus(ctx, c.ID, "unreachable"); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	got, err = repo.Get(ctx, c.ID)

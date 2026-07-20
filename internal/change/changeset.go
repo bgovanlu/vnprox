@@ -132,11 +132,11 @@ type Changeset struct {
 	ClusterID string
 	Status    Status
 	Ops       []Op
-	Findings        []Finding
-	Plan            json.RawMessage
-	ApplyLog        json.RawMessage
-	CreatedAt       int64
-	UpdatedAt       int64
+	Findings  []Finding
+	Plan      json.RawMessage
+	ApplyLog  json.RawMessage
+	CreatedAt int64
+	UpdatedAt int64
 }
 
 // CanTransition reports whether moving from c's current Status to to is

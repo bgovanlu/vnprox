@@ -17,12 +17,10 @@ import (
 
 // Switch is one simulated switch. It is safe for concurrent use.
 type Switch struct {
-	mu        sync.Mutex
-	ports     map[string]switchdrv.PortConfig
-	neighbors map[string]switchdrv.Neighbor
-	writes    []Write
-	// Unreachable, when set, makes every method fail — simulating a switch
-	// that has dropped off the network (e.g. mid-rollback, T-1205 AC6).
+	ports       map[string]switchdrv.PortConfig
+	neighbors   map[string]switchdrv.Neighbor
+	writes      []Write
+	mu          sync.Mutex
 	unreachable bool
 }
 

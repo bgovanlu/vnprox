@@ -12,10 +12,10 @@ import (
 // fixed in-memory, and resolveErr lets a test model an unreachable PowerDNS
 // server for the config-vs-live duality.
 type fakeDNSReader struct {
-	zones      []pve.SDNDnsZone
 	records    map[string][]pve.SDNDnsRecord
 	resolved   map[string][]pve.SDNDnsRecord
 	resolveErr map[string]error
+	zones      []pve.SDNDnsZone
 }
 
 func (f *fakeDNSReader) ListSDNDnsZones(context.Context) ([]pve.SDNDnsZone, error) {
@@ -96,8 +96,8 @@ func TestDNS_Unconfigured(t *testing.T) {
 // never an error.
 func TestDNS_ResolveUnreachable(t *testing.T) {
 	reader := &fakeDNSReader{
-		zones:   []pve.SDNDnsZone{{ID: "example.com"}},
-		records: map[string][]pve.SDNDnsRecord{"example.com": {{Name: "web1", Type: "A", Value: "10.10.0.5"}}},
+		zones:      []pve.SDNDnsZone{{ID: "example.com"}},
+		records:    map[string][]pve.SDNDnsRecord{"example.com": {{Name: "web1", Type: "A", Value: "10.10.0.5"}}},
 		resolveErr: map[string]error{"example.com": errors.New("powerdns unreachable")},
 	}
 	view, err := NewDNSService(reader).DNS(context.Background(), "example.com")

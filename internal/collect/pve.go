@@ -237,9 +237,9 @@ func (c *Collector) pollSDN(ctx context.Context) error {
 
 	subnets := make(map[string][]pve.SDNSubnet, len(vnets))
 	for _, v := range vnets {
-		subs, err := c.pve.ListSDNSubnets(ctx, v.ID)
-		if err != nil {
-			c.log.Warn("collect: listing SDN subnets failed, skipping", "vnet", v.ID, "error", err)
+		subs, subErr := c.pve.ListSDNSubnets(ctx, v.ID)
+		if subErr != nil {
+			c.log.Warn("collect: listing SDN subnets failed, skipping", "vnet", v.ID, "error", subErr)
 			continue
 		}
 		subnets[v.ID] = subs
@@ -247,9 +247,9 @@ func (c *Collector) pollSDN(ctx context.Context) error {
 
 	zoneStatus := make(map[string][]pve.SDNZoneStatus, len(zones))
 	for _, z := range zones {
-		st, err := c.pve.GetSDNZoneStatus(ctx, z.ID)
-		if err != nil {
-			c.log.Warn("collect: getting SDN zone status failed, skipping", "zone", z.ID, "error", err)
+		st, statusErr := c.pve.GetSDNZoneStatus(ctx, z.ID)
+		if statusErr != nil {
+			c.log.Warn("collect: getting SDN zone status failed, skipping", "zone", z.ID, "error", statusErr)
 			continue
 		}
 		zoneStatus[z.ID] = st

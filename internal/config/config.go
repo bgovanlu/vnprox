@@ -116,16 +116,16 @@ type Config struct {
 	Blueprint   BlueprintConfig
 	Peer        PeerConfig
 	Safety      SafetyConfig
-	Switches    SwitchesConfig
 	Server      ServerConfig
 	Metrics     MetricsConfig
 	Capture     CaptureConfig
 	Flows       FlowsConfig
-	Collect     CollectConfig
-	Retention   RetentionConfig
-	Latmesh     LatmeshConfig
-	MTUProbe    MTUProbeConfig
 	Wan         WanConfig
+	Collect     CollectConfig
+	Latmesh     LatmeshConfig
+	Retention   RetentionConfig
+	MTUProbe    MTUProbeConfig
+	Switches    SwitchesConfig
 }
 
 // CaptureConfig is the [capture] section (T-1301): the server-enforced,
@@ -372,14 +372,14 @@ type rawConfig struct {
 	Peer        rawPeer        `toml:"peer"`
 	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
-	Switches    rawSwitches    `toml:"switches"`
 	Server      rawServer      `toml:"server"`
 	Capture     rawCapture     `toml:"capture"`
 	Flows       rawFlows       `toml:"flows"`
-	Retention   rawRetention   `toml:"retention"`
-	Latmesh     rawLatmesh     `toml:"latmesh"`
-	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
 	Wan         rawWan         `toml:"wan"`
+	Latmesh     rawLatmesh     `toml:"latmesh"`
+	Retention   rawRetention   `toml:"retention"`
+	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
+	Switches    rawSwitches    `toml:"switches"`
 }
 
 type rawCapture struct {

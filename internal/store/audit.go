@@ -14,9 +14,9 @@ import (
 // here; per docs/security.md "Audit", entries are append-only at the API
 // layer, so this repository intentionally has no Update or Delete.
 type AuditEntry struct {
-	Username    string
-	Action      string
-	Result      string
+	Username string
+	Action   string
+	Result   string
 	// ClusterID (T-1201) tags which attached cluster the audited action
 	// targeted; '' is the implicit default/local cluster, so every
 	// pre-federation row keeps its meaning. GET /audit's cluster-dimension

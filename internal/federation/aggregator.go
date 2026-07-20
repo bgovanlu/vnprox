@@ -93,8 +93,8 @@ type ClusterNodes struct {
 // from. err is set iff that cluster's read failed.
 type clusterResult[T any] struct {
 	err     error
-	cluster Cluster
 	data    T
+	cluster Cluster
 }
 
 // fanOut runs fn against every cluster concurrently, each under its own
@@ -238,8 +238,8 @@ type AuditSource interface {
 // AuditRow is one merged audit entry, always carrying the clusterId it was
 // tagged with.
 type AuditRow struct {
-	Entry     store.AuditEntry
 	ClusterID string
+	Entry     store.AuditEntry
 }
 
 // Audit merges the audit rows of every attached cluster into one newest-first

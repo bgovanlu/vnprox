@@ -618,12 +618,12 @@ type SDNSpec struct {
 // about but whose live "resolve" read fails — the config-vs-live duality
 // GET /sdn/dns's records/resolved split renders.
 type SDNDnsZoneSpec struct {
-	ID         string             `yaml:"id" json:"zone"`
-	DNS        string             `yaml:"dns,omitempty" json:"dns,omitempty"`
-	Type       string             `yaml:"type,omitempty" json:"type,omitempty"`
-	TTL        int                `yaml:"ttl,omitempty" json:"ttl,omitempty"`
-	Unreachable bool              `yaml:"unreachable,omitempty" json:"-"`
-	Records    []SDNDnsRecordSpec `yaml:"records,omitempty" json:"-"`
+	ID          string             `yaml:"id" json:"zone"`
+	DNS         string             `yaml:"dns,omitempty" json:"dns,omitempty"`
+	Type        string             `yaml:"type,omitempty" json:"type,omitempty"`
+	Records     []SDNDnsRecordSpec `yaml:"records,omitempty" json:"-"`
+	TTL         int                `yaml:"ttl,omitempty" json:"ttl,omitempty"`
+	Unreachable bool               `yaml:"unreachable,omitempty" json:"-"`
 }
 
 // SDNDnsRecordSpec is one DNS record within a zone.

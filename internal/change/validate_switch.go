@@ -34,14 +34,9 @@ type SwitchPortState struct {
 // per-port scoping/interlock facts, all keyed the way switchValidate consumes
 // them. A zero value fails every switch.port.* op closed.
 type SwitchSafetyInput struct {
-	// PushEnabled is the daemon-level [switches] enabled flag. When false, no
-	// switch push is possible at all, regardless of any switch's own Enabled.
+	Switches    map[string]SwitchState
+	Ports       map[string]SwitchPortState
 	PushEnabled bool
-	// Switches maps a switch's app-store id to its state.
-	Switches map[string]SwitchState
-	// Ports maps a switch-port Ref string ("switch-port::<switchID>/<port>")
-	// to its scoping/interlock facts.
-	Ports map[string]SwitchPortState
 }
 
 // SwitchScopeSource supplies switchValidate's per-request scoping context (the

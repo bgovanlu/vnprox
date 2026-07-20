@@ -23,8 +23,8 @@ type Switch struct {
 	Name           string
 	MgmtAddr       string
 	DriverType     string
-	CredentialsEnc []byte
 	AddedBy        string
+	CredentialsEnc []byte
 	AddedAt        int64
 	Enabled        bool
 }

@@ -14,36 +14,9 @@ import (
 // reads) rather than read from disk/config inside this pure validation
 // package — see safetyValidate in validate_safety.go.
 type SafetyOptions struct {
-	// Protected is the onboarding-confirmed set of protected interfaces per
-	// node, keyed by node name. A nil/empty ProtectedSet means "nothing is
-	// protected yet" (e.g. onboarding hasn't run) — safetyValidate then
-	// only evaluates the guest-bearing-bridge check.
-	Protected ProtectedSet
-
-	// Allocations is T-406's DHCP-range-overlap advisory input: every
-	// currently-known IPAM allocation, already fetched fresh by the
-	// caller (Service.dhcpAllocations, via the optional
-	// Config.Allocations seam — see AllocationsSource in service.go) the
-	// same way Protected above is fetched fresh from disk on every
-	// validation call. A nil/empty Allocations means either "no live IPAM
-	// data is wired" or "genuinely nothing allocated yet" — either way,
-	// advisoryValidate's checkDHCPRangeOverlap simply has nothing to warn
-	// about, never an error.
-	Allocations []DHCPRangeAllocation
-
-	// Switches is T-1205's switch-push scoping/interlock input: which
-	// switches are registered/enabled, which of their ports face a PVE node,
-	// and which carry a node's management path. A zero value means "switch
-	// push is off / nothing scoped", so every switch.port.* op is rejected —
-	// the fail-closed default that makes switch push dark. See switchValidate.
-	Switches SwitchSafetyInput
-
-	// AllowDangerousOps downgrades every finding this class would
-	// otherwise emit at SeverityError down to SeverityWarning, without
-	// changing Validate's short-circuit behavior (a warning never
-	// short-circuits, matching every other class). It deliberately does NOT
-	// affect switchValidate's safety.protected_switch_port interlock, which
-	// has no override (docs/security.md; mirrors T-703's "no override in UI").
+	Switches          SwitchSafetyInput
+	Protected         ProtectedSet
+	Allocations       []DHCPRangeAllocation
 	AllowDangerousOps bool
 }
 

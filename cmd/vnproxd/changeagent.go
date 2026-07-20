@@ -479,9 +479,9 @@ func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 		cfg.Vnets = append(cfg.Vnets, change.SDNVnetConfig{
 			ID: refID, Zone: v.Zone, Alias: v.Alias, Tag: v.Tag, VlanAware: v.VlanAware,
 		})
-		subnets, err := g.client.ListSDNSubnets(ctx, v.ID)
-		if err != nil {
-			return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn subnets for vnet %s: %w", v.ID, err)
+		subnets, subErr := g.client.ListSDNSubnets(ctx, v.ID)
+		if subErr != nil {
+			return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn subnets for vnet %s: %w", v.ID, subErr)
 		}
 		for _, s := range subnets {
 			var ranges []string

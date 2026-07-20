@@ -105,9 +105,9 @@ type federationClusterCreateRequest struct {
 // absent/null credential leaves the stored one untouched (a rename must not
 // force re-entering the token).
 type federationClusterUpdateRequest struct {
+	Credential *federationCredentialRequest `json:"credential"`
 	Name       string                       `json:"name"`
 	APIURL     string                       `json:"apiUrl"`
-	Credential *federationCredentialRequest `json:"credential"`
 }
 
 // mountFederationRoutes registers the routes above. svc/auth are required

@@ -92,51 +92,34 @@ type ClusterMembershipSource interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Nodes  NodeAgent
-	Timers NodeTimerAgent
-	// Qos is T-1505's node-local QoS gateway (qos.shape.* ops). Optional:
-	// nil makes qos.shape.* ops unexecutable (execStep errors), mirroring
-	// every other optional gateway seam on this Config.
-	Qos        QosGateway
-	WG         WGGateway
-	Sealer     SecretSealer
-	WgCarriers WgCarrierSource
-	// Switches is T-1205's daemon-level switch gateway (switch.port.* ops).
-	// Optional: nil makes switch.port.* ops unexecutable (execStep errors) —
-	// the mechanism by which switch push ships dark until a daemon wires it.
-	Switches SwitchGateway
-	// SwitchScope supplies the per-validation switch-push scoping context
-	// (which switches are registered/enabled, which ports face a PVE node,
-	// which carry a management path). Optional: nil means no switch is
-	// registered/scoped, so every switch.port.* op is rejected at validation.
-	SwitchScope SwitchScopeSource
-	// SwitchPushEnabled is the daemon-level [switches] enabled flag
-	// (docs/security.md). False (the default) blocks every switch push at
-	// validation regardless of any individual switch's own enabled state.
-	SwitchPushEnabled bool
-	Refresher         InventoryRefresher
-	WS                Broadcaster
-	Inventory         InventorySource
-	Allocations       AllocationsSource
-	ClusterMembership ClusterMembershipSource
-	Clock             Clock
-	Changesets        *store.ChangesetRepo
-	Logger            *slog.Logger
-	Now               func() time.Time
-	Blobs             *store.BlobRepo
-	Audit             *store.AuditRepo
-	TimerFunc         TimerFunc
-	Schedules         *store.ChangeScheduleRepo
-	Snapshots         *store.SnapshotRepo
-	ProtectedPath     string
-	CorosyncPath      string
-	// LocalClusterID is the cluster id new changesets created through this
-	// Service's Create are scoped to (Changeset.ClusterID). Empty (the
-	// default) is the implicit local/default cluster a single-cluster
-	// deployment uses — cross-cluster scoping stays inert in that case.
+	Clock              Clock
+	Timers             NodeTimerAgent
+	Qos                QosGateway
+	WG                 WGGateway
+	Sealer             SecretSealer
+	WgCarriers         WgCarrierSource
+	Switches           SwitchGateway
+	SwitchScope        SwitchScopeSource
+	Nodes              NodeAgent
+	Refresher          InventoryRefresher
+	WS                 Broadcaster
+	Inventory          InventorySource
+	Allocations        AllocationsSource
+	ClusterMembership  ClusterMembershipSource
+	Snapshots          *store.SnapshotRepo
+	Schedules          *store.ChangeScheduleRepo
+	Logger             *slog.Logger
+	Now                func() time.Time
+	Blobs              *store.BlobRepo
+	Changesets         *store.ChangesetRepo
+	TimerFunc          TimerFunc
+	Audit              *store.AuditRepo
+	ProtectedPath      string
+	CorosyncPath       string
 	LocalClusterID     string
 	RollbackWindowDays int
 	ConfirmTimeout     time.Duration
+	SwitchPushEnabled  bool
 	AllowDangerousOps  bool
 }
 
@@ -160,21 +143,21 @@ type Stopper interface {
 // draft<->validated status transition. Diff/Apply/Confirm/Rollback are
 // T-205's responsibility — see doc.go.
 type Service struct {
+	ws                 Broadcaster
 	nodes              NodeAgent
-	nodeTimers         NodeTimerAgent
 	qos                QosGateway
 	wg                 WGGateway
 	sealer             SecretSealer
 	wgCarriers         WgCarrierSource
 	switches           SwitchGateway
-	switchScope        SwitchScopeSource
-	switchPushEnabled  bool
-	refresher          InventoryRefresher
-	ws                 Broadcaster
-	inv                InventorySource
 	allocations        AllocationsSource
-	membership         ClusterMembershipSource
+	inv                InventorySource
+	refresher          InventoryRefresher
+	nodeTimers         NodeTimerAgent
 	clock              Clock
+	switchScope        SwitchScopeSource
+	membership         ClusterMembershipSource
+	schedules          *store.ChangeScheduleRepo
 	timers             map[string]Stopper
 	repo               *store.ChangesetRepo
 	snapshots          *store.SnapshotRepo
@@ -183,7 +166,6 @@ type Service struct {
 	log                *slog.Logger
 	newTimer           TimerFunc
 	now                func() time.Time
-	schedules          *store.ChangeScheduleRepo
 	lockHeldBy         string
 	corosyncPath       string
 	protectedPath      string
@@ -192,6 +174,7 @@ type Service struct {
 	confirmTimeout     time.Duration
 	rollbackWindowDays int
 	applyMu            sync.Mutex
+	switchPushEnabled  bool
 	allowDangerousOps  bool
 }
 

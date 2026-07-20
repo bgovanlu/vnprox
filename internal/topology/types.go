@@ -75,14 +75,9 @@ type Node struct {
 	Layer          Layer    `json:"layer"`
 	NodeGroup      string   `json:"nodeGroup"`
 	Status         Status   `json:"status"`
+	DnsName        string   `json:"dnsName,omitempty"`
 	Badges         []string `json:"badges"`
 	CollapsedCount int      `json:"collapsedCount,omitempty"`
-	// DnsName (T-1204) is the SDN DNS record's FQDN a Guest/GuestNic node
-	// correlates to by its guest hostname (docs/features/sdn.md §6). It is a
-	// label/badge, not a new entity kind — the projection also mirrors it into
-	// Badges as "dns:<fqdn>" so a renderer that only reads Badges shows it too.
-	// Empty when the guest has no matching DNS record.
-	DnsName string `json:"dnsName,omitempty"`
 }
 
 // Edge is one rendered relationship, per the same rendering contract:

@@ -22,9 +22,9 @@ func TestNew_ValidatesConfig(t *testing.T) {
 	// test-only table, and nesting pve.Config (whose own field order is
 	// already optimized for its own layout) as a value inevitably trips
 	// fieldalignment's cross-struct padding heuristic.
-	tests := []struct { //nolint:govet // see comment above
-		cfg  pve.Config
+	tests := []struct {
 		name string
+		cfg  pve.Config
 	}{
 		{name: "missing APIURL", cfg: pve.Config{Auth: pve.AuthTicket, Username: "u", Password: "p"}},
 		{name: "bad APIURL", cfg: pve.Config{APIURL: "not a url", Auth: pve.AuthTicket, Username: "u", Password: "p"}},

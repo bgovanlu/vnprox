@@ -52,10 +52,10 @@ type DNSRecord struct {
 // Resolved, never an error). Zones (optionally scoped by the ?zone= param)
 // carries each configured zone's own metadata.
 type DNSView struct {
-	Zones       []DNSZone    `json:"zones"`
-	Records     []DNSRecord  `json:"records"`
-	Resolved    []DNSRecord  `json:"resolved"`
-	GeneratedAt int64        `json:"generatedAt"`
+	Zones       []DNSZone   `json:"zones"`
+	Records     []DNSRecord `json:"records"`
+	Resolved    []DNSRecord `json:"resolved"`
+	GeneratedAt int64       `json:"generatedAt"`
 }
 
 // DNSZone is one configured DNS zone's metadata in the GET /sdn/dns response.

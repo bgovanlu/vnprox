@@ -57,13 +57,10 @@ type LACPConfig struct {
 // nothing else. There is deliberately no full-config or arbitrary-attribute
 // surface: a SwitchDriver cannot express any other port operation.
 type PortConfig struct {
-	// Untagged is the port's native/untagged (PVID) VLAN, or 0 for none.
-	Untagged int `json:"untagged"`
-	// Tagged is the set of tagged (trunk) VLAN IDs the port carries, sorted
-	// ascending for a stable snapshot encoding.
-	Tagged      []int      `json:"tagged"`
-	Description string     `json:"description"`
 	LACP        LACPConfig `json:"lacp"`
+	Description string     `json:"description"`
+	Tagged      []int      `json:"tagged"`
+	Untagged    int        `json:"untagged"`
 }
 
 // Neighbor is the LLDP neighbor a switch reports seeing on one of its ports —

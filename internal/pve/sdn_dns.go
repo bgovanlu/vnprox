@@ -24,8 +24,8 @@ type SDNDnsZone struct {
 	ID      string       `json:"zone"`
 	DNS     string       `json:"dns,omitempty"`
 	Type    string       `json:"type,omitempty"`
-	TTL     int          `json:"ttl,omitempty"`
 	Pending PendingState `json:"pending,omitempty"`
+	TTL     int          `json:"ttl,omitempty"`
 }
 
 // SDNDnsRecord is one A/AAAA/PTR/CNAME/TXT record within a zone. Name is the

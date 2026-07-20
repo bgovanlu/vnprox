@@ -133,7 +133,7 @@ func (g *Gateway) RestoreSwitchPort(ctx context.Context, portRef, snapshot strin
 		return err
 	}
 	var cfg PortConfig
-	if err := json.Unmarshal([]byte(snapshot), &cfg); err != nil {
+	if err = json.Unmarshal([]byte(snapshot), &cfg); err != nil {
 		return fmt.Errorf("switchdrv: decoding snapshot for %s port %s: %w", switchID, port, err)
 	}
 	drv, err := g.factory(ctx, switchID)
