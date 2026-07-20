@@ -5,7 +5,7 @@ import { RequireAuth } from "./routes/RequireAuth";
 import { DesktopOnlyRoute } from "./routes/DesktopOnlyRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import { TopologyPage } from "./pages/TopologyPage";
+import { GlobalTopologyGate } from "./topology/federation/GlobalTopologyGate";
 import { GuestsPage } from "./pages/GuestsPage";
 import { SdnPage } from "./pages/SdnPage";
 import { FirewallPage } from "./pages/FirewallPage";
@@ -51,7 +51,7 @@ export function App() {
               path="/topology"
               element={
                 <DesktopOnlyRoute pageLabel="Topology">
-                  <TopologyPage />
+                  <GlobalTopologyGate />
                 </DesktopOnlyRoute>
               }
             />

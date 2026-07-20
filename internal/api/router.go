@@ -97,9 +97,15 @@ type Options struct {
 	// FederationAudit is optional (nil just skips the audit rows).
 	Federation      FederationService
 	FederationAudit federationAuditWriter
-	Changesets      ChangesetService
-	Snapshots       SnapshotService
-	Audit           AuditService
+	// FederationAgg backs T-1202's global read routes (GET
+	// /federation/topology, /federation/topology/clusters/{id},
+	// /federation/search), aggregating across attached clusters. nil skips
+	// the whole family — inert on a single-cluster deployment, exactly like
+	// Federation above.
+	FederationAgg FederationAggregator
+	Changesets    ChangesetService
+	Snapshots     SnapshotService
+	Audit         AuditService
 	// History/HistoryFindingEvents back T-1007's `GET /history/events`
 	// (web/src/topology/history/HistoryTimeline.tsx's event-marker feed):
 	// History is the same *store.AuditRepo Audit above wires in, narrowed
@@ -447,6 +453,7 @@ func NewRouter(opts Options) http.Handler {
 		mountAnnotationsRoutes(r, opts.Annotations, opts.Auth)
 		mountAlertRulesRoutes(r, opts.AlertRules, opts.AlertDeliveries, opts.AlertSecretCipher, opts.Auth)
 		mountFederationRoutes(r, opts.Federation, opts.FederationAudit, opts.Auth)
+		mountFederationTopologyRoutes(r, opts.FederationAgg, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)

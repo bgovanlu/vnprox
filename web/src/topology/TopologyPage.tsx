@@ -120,7 +120,13 @@ export function TopologyPage() {
 }
 
 function TopologyPageContent() {
-  const { data: topology, isLoading, isError, dataUpdatedAt } = useTopologyQuery();
+  // T-1202: when the global map has drilled into an attached cluster, the
+  // `?cluster=<id>` param routes the same canvas to that cluster's projected
+  // topology. Absent the param — a single-cluster deployment's only case —
+  // this is undefined and the fetch is the unchanged local GET /topology.
+  const [clusterSearchParams] = useSearchParams();
+  const drilledClusterId = clusterSearchParams.get("cluster") ?? undefined;
+  const { data: topology, isLoading, isError, dataUpdatedAt } = useTopologyQuery(drilledClusterId);
   useTopologyWsBridge();
   const reactFlow = useReactFlow();
   const { data: session } = useSession();

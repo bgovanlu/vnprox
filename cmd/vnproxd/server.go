@@ -913,6 +913,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		AlertSecretCipher: sessionCipher,
 		Federation:        federationSvc,
 		FederationAudit:   auditRepo,
+		FederationAgg:     federationAgg,
 		Changesets:        changeSvc,
 		Snapshots:         changeSvc,
 		Audit:             auditRepo,

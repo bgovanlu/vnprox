@@ -19,9 +19,11 @@ const DefaultAggregateTimeout = 15 * time.Second
 // PVEReader is the subset of *pve.Client the Aggregator's built-in reads use.
 // *pve.Client satisfies it directly, so production wiring needs no adapter;
 // tests can also inject a fake to script a specific failure without a mock
-// server.
+// server. ClusterResources backs the global-topology summary and search
+// fan-outs (T-1202); ClusterStatus backs node-list/audit reachability.
 type PVEReader interface {
 	ClusterStatus(ctx context.Context) ([]pve.ClusterStatusEntry, error)
+	ClusterResources(ctx context.Context) ([]pve.ClusterResource, error)
 }
 
 // ReaderFactory builds a PVEReader for one attached cluster (typically by
@@ -36,10 +38,22 @@ type ReaderFactory func(ctx context.Context, c Cluster) (PVEReader, error)
 // (docs/api.md's partial/failedClusters convention, mirroring the existing
 // partial/failedNodes peer fan-out envelope).
 type Aggregator struct {
-	svc       *Service
-	newReader ReaderFactory
-	log       *slog.Logger
-	timeout   time.Duration
+	svc          *Service
+	newReader    ReaderFactory
+	newProjector ProjectorFactory
+	log          *slog.Logger
+	timeout      time.Duration
+}
+
+// ProjectorFactory builds a TopologyProjector for one attached cluster (the
+// wider PVE read surface a lazy drill-down projection needs; default:
+// Service.ClientFor). A test seam, mirroring ReaderFactory.
+type ProjectorFactory func(ctx context.Context, c Cluster) (TopologyProjector, error)
+
+// WithProjectorFactory overrides how per-cluster TopologyProjectors are built
+// (default: Service.ClientFor). Primarily a test seam.
+func WithProjectorFactory(f ProjectorFactory) AggregatorOption {
+	return func(a *Aggregator) { a.newProjector = f }
 }
 
 // AggregatorOption tunes an Aggregator at construction.
@@ -65,6 +79,9 @@ func WithTimeout(d time.Duration) AggregatorOption {
 func NewAggregator(svc *Service, opts ...AggregatorOption) *Aggregator {
 	a := &Aggregator{svc: svc, log: svc.log, timeout: DefaultAggregateTimeout}
 	a.newReader = func(ctx context.Context, c Cluster) (PVEReader, error) {
+		return svc.ClientFor(ctx, c.ID)
+	}
+	a.newProjector = func(ctx context.Context, c Cluster) (TopologyProjector, error) {
 		return svc.ClientFor(ctx, c.ID)
 	}
 	for _, o := range opts {
