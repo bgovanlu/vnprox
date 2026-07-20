@@ -209,7 +209,7 @@ func mgmtPathsFor(ctx context.Context, mgmt MgmtStatusService) map[string][]topo
 // withMgmtFlag decorates a changesetResponse with the touchesMgmtPath flag.
 func withMgmtFlag(c change.Changeset, paths map[string][]topology.MgmtPath) changesetResponse {
 	resp := toChangesetResponse(c)
-	resp.TouchesMgmtPath = change.TouchesMgmtPath(paths, c.Ops)
+	resp.TouchesMgmtPath = change.TouchesMgmtPath(paths, nil, c.Ops)
 	return resp
 }
 
@@ -264,7 +264,7 @@ func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways 
 		paths := mgmtPathsFor(r.Context(), mgmt)
 		touchesMgmt := false
 		if cs, getErr := svc.Get(r.Context(), id); getErr == nil {
-			touchesMgmt = change.TouchesMgmtPath(paths, cs.Ops)
+			touchesMgmt = change.TouchesMgmtPath(paths, nil, cs.Ops)
 
 			// T-701 acceptance criterion 5: fail fast, before any snapshot/
 			// mutation, when the plan needs a PVEGateway (sdn/fw/ipam

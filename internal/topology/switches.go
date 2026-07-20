@@ -207,6 +207,83 @@ func buildSwitches(candidate map[inventory.Ref]inventory.Entity, nodeSet map[str
 	return nodes, edges
 }
 
+// SwitchPortScope is one switch port's T-1205 scoping facts, resolved from
+// LLDP: whether it faces a known PVE node's PhysNic (writable at all), whether
+// it carries a node's resolved management path (management-path interlock), and
+// the management VLAN that must not be stripped from such a port. It is
+// internal/topology's own small shape (not internal/change.SwitchPortState —
+// change imports topology, so topology must not import change); cmd/vnproxd's
+// switch-scope source maps one to the other.
+type SwitchPortScope struct {
+	PVEFacing bool
+	MgmtPath  bool
+	MgmtVLAN  int
+}
+
+// ResolveSwitchPortScope extends the management-path resolver one hop onto the
+// physical switch (T-1205): for every LLDP neighbor observed on a cluster
+// PhysNic whose management address identifies a registered switch
+// (switchByMgmtIP: switch mgmt IP -> app-store switch id), it yields the scoped
+// switch-port Ref ("switch-port::<switchID>/<portID>") and its facts —
+// PVEFacing (always true here, since the local end is a known cluster PhysNic),
+// MgmtPath (the local PhysNic is part of some node's resolved management path),
+// and MgmtVLAN (the PVID the switch advertises on that port, the management VLAN
+// a push must not strip). mgmtPaths is ResolveMgmtPaths' output; a nil map means
+// "no management path known", so no port is flagged MgmtPath.
+//
+// This is a pure function so the daemon's switch-scope source and its tests can
+// share one implementation rather than re-deriving the LLDP↔switch linkage.
+func ResolveSwitchPortScope(snap inventory.Snapshot, mgmtPaths map[string][]MgmtPath, switchByMgmtIP map[string]string) map[string]SwitchPortScope {
+	if len(switchByMgmtIP) == 0 {
+		return nil
+	}
+	// Set of every PhysNic ref that is part of some node's management path.
+	mgmtNics := map[inventory.Ref]bool{}
+	for _, list := range mgmtPaths {
+		for _, p := range list {
+			mgmtNics[p.Ref] = true
+			for _, ref := range p.Path {
+				mgmtNics[ref] = true
+			}
+		}
+	}
+
+	out := map[string]SwitchPortScope{}
+	for _, e := range snap.All() {
+		n, ok := e.(*inventory.LldpNeighbor)
+		if !ok || n.LocalNic.IsZero() || n.PortID == "" {
+			continue
+		}
+		switchID := lookupSwitchID(n, switchByMgmtIP)
+		if switchID == "" {
+			continue
+		}
+		portRef := inventory.Ref{Kind: inventory.KindSwitchPort, ID: switchID + "/" + n.PortID}
+		out[portRef.String()] = SwitchPortScope{
+			PVEFacing: true,
+			MgmtPath:  mgmtNics[n.LocalNic],
+			MgmtVLAN:  n.VLAN,
+		}
+	}
+	return out
+}
+
+// lookupSwitchID resolves a neighbor's registered switch id by matching any of
+// its advertised management addresses against switchByMgmtIP.
+func lookupSwitchID(n *inventory.LldpNeighbor, switchByMgmtIP map[string]string) string {
+	if n.MgmtIP != "" {
+		if id, ok := switchByMgmtIP[n.MgmtIP]; ok {
+			return id
+		}
+	}
+	for _, ip := range n.MgmtIPs {
+		if id, ok := switchByMgmtIP[ip]; ok {
+			return id
+		}
+	}
+	return ""
+}
+
 // lldpPortBadges renders one lldp-port edge's badges: the switch port
 // identity plus, when known, its native/tagged VLAN summary.
 func lldpPortBadges(n *inventory.LldpNeighbor) []string {

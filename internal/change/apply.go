@@ -105,6 +105,7 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 	// deviation note 5a) — a bare Validate would silently drop them.
 	safety := s.safetyOptions()
 	safety.Allocations = s.dhcpAllocations(ctx)
+	safety.Switches = s.switchSafetyInput(ctx)
 	findings := ValidateWithSafety(cs.Ops, s.inventorySnapshot(), safety)
 	cs.Findings = findings
 	if hasError(findings) {
@@ -427,6 +428,25 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 				anyFailed = true
 			}
 			rbLogs = append(rbLogs, sdnLog)
+		}
+	}
+
+	// T-1205: switch-port state restore. Like the interfaces-file restore (and
+	// unlike SDN/fw), this works on the unattended commit-confirm-timeout /
+	// crash-recovery path too — the SwitchGateway is daemon-level (no user
+	// ticket needed). If the switch is unreachable at this moment, its restore
+	// fails and anyFailed escalates the changeset to a distinguishable
+	// "rollback incomplete" state (StatusFailed / result "rollback_incomplete")
+	// rather than a silent rolled_back (T-1205 AC6).
+	if plan.hasSwitch() {
+		if switchPre, ok := switchStateFromSnapshot(pre); ok {
+			switchLogs := s.restoreSwitchState(ctx, switchPre)
+			for _, l := range switchLogs {
+				if l.Status != StepOK {
+					anyFailed = true
+				}
+			}
+			rbLogs = append(rbLogs, switchLogs...)
 		}
 	}
 

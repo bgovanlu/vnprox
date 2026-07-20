@@ -25,6 +25,21 @@ const (
 	KindGuestNic     Kind = "guest-nic"
 	KindLldpNeighbor Kind = "lldp-neighbor"
 	KindFwRuleset    Kind = "fw-ruleset"
+
+	// KindSwitchPort names a physical switch's port (T-1205: guarded switch
+	// config push). It is app-owned intent, not a live-polled inventory
+	// entity — no collector ever emits one into the graph; a switch is an
+	// external device vnprox drives through a SwitchDriver
+	// (internal/switchdrv), not a PVE node. This Kind exists only so a
+	// switch.port.update changeset op's target Ref (docs/data-model.md §3) is
+	// a first-class, parseable Ref like every other op target. It is
+	// cluster-scoped (Node is empty — a switch is not a PVE node); ID encodes
+	// "<switchID>/<port name>" (the app-store switch id from the switches
+	// table plus the driver-native port identifier, e.g.
+	// "sw-01ABC/Ethernet1/14"). The '/' is not structural to ParseRef (which
+	// splits on only the first two ':'), so the port name may itself contain
+	// '/' (common on chassis switches) and still round-trip.
+	KindSwitchPort Kind = "switch-port"
 )
 
 // knownKinds is the closed set of valid Kind values. ParseRef rejects any
@@ -34,7 +49,7 @@ var knownKinds = map[Kind]bool{
 	KindNode: true, KindPhysNic: true, KindBond: true, KindBridge: true,
 	KindVlan: true, KindOVSBridge: true, KindOVSBond: true, KindSDNZone: true,
 	KindSDNVnet: true, KindSDNSubnet: true, KindGuest: true, KindGuestNic: true,
-	KindLldpNeighbor: true, KindFwRuleset: true,
+	KindLldpNeighbor: true, KindFwRuleset: true, KindSwitchPort: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)

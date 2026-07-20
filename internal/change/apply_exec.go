@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/bgovanlu/vnprox/internal/change/ifaces"
 	"github.com/bgovanlu/vnprox/internal/host"
@@ -31,11 +32,17 @@ type executor struct {
 	// its StepFwApply step fully completed: the snapshot is taken before
 	// the step's *first* op, so a step that errored partway through still
 	// needs the same restore as one that ran to completion.
-	fwPre     map[string]string
-	plan      Plan
-	cs        Changeset
-	deadline  int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
-	hasSDNPre bool
+	fwPre map[string]string
+	// switchPre is the per-switch-port pre-image (SwitchGateway.SnapshotSwitchPort),
+	// the restore target for a mid-apply failure that had already run a switch
+	// step (T-1205). Populated from the pre-snapshot's switchStateSnapshotPath
+	// file; hasSwitchPre is false for a changeset with no switch.port.* ops.
+	switchPre    map[string]string
+	plan         Plan
+	cs           Changeset
+	deadline     int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
+	hasSDNPre    bool
+	hasSwitchPre bool
 }
 
 // newExecutor builds an executor with a fresh apply log (all steps pending)
@@ -55,6 +62,7 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		}
 	}
 	sdnPre, hasSDNPre := sdnConfigFromSnapshot(pre)
+	switchPre, hasSwitchPre := switchStateFromSnapshot(pre)
 	steps := make([]StepLog, len(plan.Steps))
 	stageIx := map[string]int{}
 	loadIx := map[string]int{}
@@ -68,7 +76,8 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		}
 	}
 	return &executor{
-		svc: s, cs: cs, plan: plan, pre: preByNode, sdnPre: sdnPre, hasSDNPre: hasSDNPre, pveGW: pveGW, deadline: deadline,
+		svc: s, cs: cs, plan: plan, pre: preByNode, sdnPre: sdnPre, hasSDNPre: hasSDNPre,
+		switchPre: switchPre, hasSwitchPre: hasSwitchPre, pveGW: pveGW, deadline: deadline,
 		log:     &ApplyLog{Steps: steps},
 		stageIx: stageIx, loadIx: loadIx, fwPre: map[string]string{},
 	}
@@ -181,6 +190,15 @@ func (e *executor) execStep(ctx context.Context, i int) error {
 			return fmt.Errorf("no PVE gateway available for ipam.alloc (no user session)")
 		}
 		return e.execIpamAlloc(ctx, st)
+
+	case StepSwitchApply:
+		if e.svc.switches == nil {
+			return fmt.Errorf("no switch gateway available for switch op (switch push not wired on this daemon)")
+		}
+		if len(st.OpIdx) != 1 {
+			return fmt.Errorf("switch_apply step must reference exactly one op, got %d", len(st.OpIdx))
+		}
+		return e.svc.switches.ApplySwitchOp(ctx, e.cs.Ops[st.OpIdx[0]])
 
 	case StepFwApply:
 		return e.execFwApply(ctx, st)
@@ -320,6 +338,53 @@ func (e *executor) rollbackAfterFailure(ctx context.Context) {
 	}
 	e.rollbackIpamSteps(ctx)
 	e.undoFwTargets(ctx)
+	if e.hasSwitchPre && e.anySwitchStepSucceeded() {
+		e.log.Rollback = append(e.log.Rollback, e.svc.restoreSwitchState(ctx, e.switchPre)...)
+	}
+}
+
+// anySwitchStepSucceeded reports whether any StepSwitchApply step in this apply
+// attempt reached StepOK — the gate for whether restoreSwitchState has anything
+// to undo (if every switch step failed before writing anything, live already
+// matches the pre-image).
+func (e *executor) anySwitchStepSucceeded() bool {
+	for _, s := range e.log.Steps {
+		if s.Kind == StepSwitchApply && s.Status == StepOK {
+			return true
+		}
+	}
+	return false
+}
+
+// restoreSwitchState re-pushes every captured switch-port pre-image via the
+// daemon-level SwitchGateway (callable unattended — no user ticket). Best-effort
+// per port: an error restoring one (e.g. the switch is unreachable) is recorded
+// as a failed rollback action, which the caller escalates to a distinguishable
+// "rollback incomplete" changeset state rather than a clean rolled_back
+// (T-1205 AC6).
+func (s *Service) restoreSwitchState(ctx context.Context, state map[string]string) []RollbackLog {
+	if s.switches == nil {
+		return nil
+	}
+	portRefs := make([]string, 0, len(state))
+	for portRef := range state {
+		portRefs = append(portRefs, portRef)
+	}
+	sort.Strings(portRefs)
+	logs := make([]RollbackLog, 0, len(portRefs))
+	for _, portRef := range portRefs {
+		rb := RollbackLog{
+			At:      s.now().Unix(),
+			Status:  StepOK,
+			Summary: fmt.Sprintf("Restore switch port %s from pre-apply pre-image", portRef),
+		}
+		if err := s.switches.RestoreSwitchPort(ctx, portRef, state[portRef]); err != nil {
+			rb.Status = StepFailed
+			rb.Error = err.Error()
+		}
+		logs = append(logs, rb)
+	}
+	return logs
 }
 
 // rollbackIpamSteps best-effort undoes every already-succeeded

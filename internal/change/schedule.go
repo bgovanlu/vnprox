@@ -265,7 +265,7 @@ func (s *Service) Schedule(ctx context.Context, changesetID, author string, para
 	if mErr != nil {
 		return Schedule{}, fmt.Errorf("change: scheduling changeset %s: computing management-path status: %w", changesetID, mErr)
 	}
-	if TouchesMgmtPath(mgmtStatus.Nodes, cs.Ops) {
+	if TouchesMgmtPath(mgmtStatus.Nodes, nil, cs.Ops) {
 		s.appendAudit(ctx, author, "changeset.schedule_create", "mgmt_path_unattended_forbidden", changesetID, nil)
 		return Schedule{}, &ErrMgmtPathUnattendedForbidden{ChangesetID: changesetID}
 	}
@@ -445,7 +445,7 @@ func (s *Service) fireSchedule(ctx context.Context, row store.ChangesetSchedule,
 	}
 
 	mgmtStatus, mErr := s.MgmtStatus(ctx)
-	if mErr == nil && TouchesMgmtPath(mgmtStatus.Nodes, cs.Ops) {
+	if mErr == nil && TouchesMgmtPath(mgmtStatus.Nodes, nil, cs.Ops) {
 		s.resolveSchedule(ctx, row, store.ScheduleStatusBlocked)
 		s.appendAudit(ctx, systemScheduleActor, "changeset.schedule_fire_blocked", "mgmt_path_unattended_forbidden", row.ChangesetID, nil)
 		return

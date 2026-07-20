@@ -29,12 +29,13 @@ var allOpTypeConstants = []OpType{
 	OpFwIpsetCreate, OpFwIpsetUpdate, OpFwIpsetDelete,
 	OpFwGroupCreate, OpFwGroupUpdate, OpFwGroupDelete,
 	OpIpamAllocCreate, OpIpamAllocDelete,
+	OpSwitchPortUpdate,
 }
 
 // docs/data-model.md §3's table lists exactly these groups: iface(2, incl.
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
-// fw(14), ipam(2) = 40.
-const wantOpVocabularySize = 41
+// fw(14), ipam(2), switch(1, T-1205) = 42.
+const wantOpVocabularySize = 42
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -294,6 +295,18 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "ipam.alloc.delete", opType: OpIpamAllocDelete,
 			target: ref(inventory.KindSDNSubnet, "", "10.10.0.0/24"),
 			params: &IpamAllocDeleteParams{CIDR: "10.10.0.50/32"},
+		},
+		{
+			name: "switch.port.update", opType: OpSwitchPortUpdate,
+			target: ref(inventory.KindSwitchPort, "", "sw-1/Ethernet1/14"),
+			params: &SwitchPortUpdateParams{
+				Untagged:       intPtr(10),
+				Tagged:         &[]int{10, 20},
+				Description:    str("pve1 uplink"),
+				LacpMode:       str("active"),
+				LacpRate:       str("fast"),
+				ExpectNeighbor: SwitchNeighbor{ChassisID: "aa:bb:cc:dd:ee:ff", PortID: "eno1"},
+			},
 		},
 	}
 }

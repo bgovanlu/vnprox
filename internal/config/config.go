@@ -97,6 +97,7 @@ type Config struct {
 	Peer        PeerConfig
 	Metrics     MetricsConfig
 	Safety      SafetyConfig
+	Switches    SwitchesConfig
 	Server      ServerConfig
 	Collect     CollectConfig
 	Retention   RetentionConfig
@@ -158,6 +159,17 @@ type SafetyConfig struct {
 	DevInterfacesDir string
 
 	AllowDangerousOps bool
+}
+
+// SwitchesConfig is the [switches] section (T-1205: guarded switch config
+// push). Enabled is the daemon-level master flag gating the entire switch-push
+// feature: false (the default) means no switch.port.update can ever be applied,
+// regardless of any individual switch's own enabled flag in the switches table
+// — switch push ships dark by construction (docs/security.md). This is a
+// deliberate two-key interlock (daemon flag AND per-switch opt-in), so a stray
+// enabled switch row can never by itself make pushes possible.
+type SwitchesConfig struct {
+	Enabled bool
 }
 
 // PeerConfig is the [peer] section: where T-301's cluster secret lives on
@@ -268,9 +280,14 @@ type rawConfig struct {
 	Peer        rawPeer        `toml:"peer"`
 	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
+	Switches    rawSwitches    `toml:"switches"`
 	Server      rawServer      `toml:"server"`
 	Retention   rawRetention   `toml:"retention"`
 	Flows       rawFlows       `toml:"flows"`
+}
+
+type rawSwitches struct {
+	Enabled bool `toml:"enabled"`
 }
 
 type rawServer struct {
@@ -399,6 +416,9 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			AllowDangerousOps: raw.Safety.AllowDangerousOps,
 			ProtectedPath:     firstNonEmpty(raw.Safety.ProtectedPath, DefaultProtectedPath),
 			DevInterfacesDir:  raw.Safety.DevInterfacesDir,
+		},
+		Switches: SwitchesConfig{
+			Enabled: raw.Switches.Enabled,
 		},
 		Storage: StorageConfig{
 			DBPath:         firstNonEmpty(raw.Storage.DBPath, DefaultDBPath),

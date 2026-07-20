@@ -47,6 +47,7 @@ func (s *Service) validate(ctx context.Context, ops []Op) []Finding {
 	expanded, rawFindings := s.expandRawReplaceOps(ctx, ops)
 	safety := s.safetyOptions()
 	safety.Allocations = s.dhcpAllocations(ctx)
+	safety.Switches = s.switchSafetyInput(ctx)
 	findings := ValidateWithSafety(expanded, s.inventorySnapshot(), safety)
 	return append(rawFindings, findings...)
 }

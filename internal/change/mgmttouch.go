@@ -41,10 +41,21 @@ const MgmtConfirmTimeoutFloor = 180 * time.Second
 // carries the path by definition, and diffing the raw content is the
 // validators' job, not this flag's).
 //
-// Pure: callers (internal/api) compute paths once per request via
-// Service.MgmtStatus and reuse it across a whole changeset list.
-func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
-	if len(paths) == 0 || len(ops) == 0 {
+// mgmtSwitchPorts (T-1205) is the set of switch-port Ref strings that carry a
+// node's resolved management path — internal/topology's management-path
+// resolver extended one hop onto the LLDP-identified uplink switch port. A
+// switch.port.update targeting one of these is touchesMgmtPath (inheriting
+// T-703's ceremony), even though a switch port is not in any node's
+// interfaces(5) namespace. A nil/empty set degrades to "no switch port is on a
+// management path", so a switch op simply never flags via this path.
+//
+// Pure: callers (internal/api) compute paths + mgmtSwitchPorts once per request
+// via Service.MgmtStatus and reuse them across a whole changeset list.
+func TouchesMgmtPath(paths map[string][]topology.MgmtPath, mgmtSwitchPorts map[string]bool, ops []Op) bool {
+	if len(ops) == 0 {
+		return false
+	}
+	if len(paths) == 0 && len(mgmtSwitchPorts) == 0 {
 		return false
 	}
 
@@ -108,6 +119,12 @@ func TouchesMgmtPath(paths map[string][]topology.MgmtPath, ops []Op) bool {
 			}
 		case *VlanCreateParams:
 			if touched(op.Target.ID) || touched(params.Parent) {
+				return true
+			}
+		case *SwitchPortUpdateParams:
+			// T-1205: a switch.port.update on an uplink port carrying a node's
+			// management path inherits T-703's ceremony (no override).
+			if mgmtSwitchPorts[op.Target.String()] {
 				return true
 			}
 		default:
