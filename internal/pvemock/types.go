@@ -604,10 +604,34 @@ type AgentIPAddressSpec struct {
 
 // SDNSpec is the cluster-wide SDN configuration tree.
 type SDNSpec struct {
-	Zones   []SDNZoneSpec   `yaml:"zones"`
-	Vnets   []SDNVnetSpec   `yaml:"vnets"`
-	Subnets []SDNSubnetSpec `yaml:"subnets"`
-	Ipams   []SDNIpamSpec   `yaml:"ipams,omitempty"`
+	Zones    []SDNZoneSpec    `yaml:"zones"`
+	Vnets    []SDNVnetSpec    `yaml:"vnets"`
+	Subnets  []SDNSubnetSpec  `yaml:"subnets"`
+	Ipams    []SDNIpamSpec    `yaml:"ipams,omitempty"`
+	DNSZones []SDNDnsZoneSpec `yaml:"dns_zones,omitempty"`
+}
+
+// SDNDnsZoneSpec is one DNS zone (T-1204): a forward domain registered in
+// /etc/pve/sdn/dns.cfg, backed by a PowerDNS plugin instance. Records holds
+// the zone's authoritative record set (what PVE has written into PowerDNS).
+// Unreachable simulates a PowerDNS server that config-truth still knows
+// about but whose live "resolve" read fails — the config-vs-live duality
+// GET /sdn/dns's records/resolved split renders.
+type SDNDnsZoneSpec struct {
+	ID         string             `yaml:"id" json:"zone"`
+	DNS        string             `yaml:"dns,omitempty" json:"dns,omitempty"`
+	Type       string             `yaml:"type,omitempty" json:"type,omitempty"`
+	TTL        int                `yaml:"ttl,omitempty" json:"ttl,omitempty"`
+	Unreachable bool              `yaml:"unreachable,omitempty" json:"-"`
+	Records    []SDNDnsRecordSpec `yaml:"records,omitempty" json:"-"`
+}
+
+// SDNDnsRecordSpec is one DNS record within a zone.
+type SDNDnsRecordSpec struct {
+	Name  string `yaml:"name" json:"name"`
+	Type  string `yaml:"type" json:"type"`
+	Value string `yaml:"value" json:"value"`
+	TTL   int    `yaml:"ttl,omitempty" json:"ttl,omitempty"`
 }
 
 // SDNIpamSpec is one configured IPAM plugin instance, as listed by

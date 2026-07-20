@@ -182,6 +182,84 @@ func vidsContain(ranges []inventory.VidRange, vid int) bool {
 	return false
 }
 
+// dnsHostRecordTypes is the set of SDN DNS record types that name a host
+// identity (T-1204) — the ones a guest's dnsName badge correlates against. A
+// PTR/TXT record isn't a forward host name, so it never contributes here.
+var dnsHostRecordTypes = map[string]bool{"A": true, "AAAA": true, "CNAME": true}
+
+// dnsNamesByHost indexes every SDN DNS host record in snap by its lowercased
+// hostname keys (both the bare Name label and the full FQDN) to that record's
+// FQDN — the lookup dnsNameForGuest resolves a guest's own name against. When
+// two records share a key (e.g. an A and an AAAA for the same host), the
+// lexicographically-first FQDN wins for determinism (they resolve to the same
+// FQDN anyway; only the map value's identity matters, and it's identical).
+func dnsNamesByHost(snap inventory.Snapshot) map[string]string {
+	out := map[string]string{}
+	for _, e := range snap.All() {
+		rec, ok := e.(*inventory.SdnDnsRecord)
+		if !ok || !dnsHostRecordTypes[rec.Type] {
+			continue
+		}
+		fq := dnsFQDN(rec.Name, rec.Zone)
+		if fq == "" {
+			continue
+		}
+		for _, key := range []string{strings.ToLower(rec.Name), strings.ToLower(fq)} {
+			if key == "" {
+				continue
+			}
+			if existing, seen := out[key]; !seen || fq < existing {
+				out[key] = fq
+			}
+		}
+	}
+	return out
+}
+
+// dnsFQDN joins a record's name label and zone into a fully-qualified name,
+// mirroring internal/sdn.fqdn (kept local here so internal/topology needn't
+// import internal/sdn just for one string join).
+func dnsFQDN(name, zone string) string {
+	switch {
+	case name == "" || name == "@":
+		return zone
+	case zone == "":
+		return name
+	default:
+		return name + "." + zone
+	}
+}
+
+// dnsNameForGuest returns the DNS FQDN correlated to a Guest or GuestNic node
+// (via the guest's own hostname), or "" if none. Correlation is by hostname
+// (Guest.Name) — the map's key set covers both a record's bare label and its
+// FQDN, so a guest named either "web1" or "web1.example.com" matches. IP-based
+// correlation would additionally need guest-agent-reported guest IPs, which
+// the inventory snapshot does not carry (see the T-1204 report / needs-
+// hardware-validation.md).
+func dnsNameForGuest(snap inventory.Snapshot, e inventory.Entity, dnsByHost map[string]string) string {
+	if len(dnsByHost) == 0 {
+		return ""
+	}
+	var name string
+	switch v := e.(type) {
+	case *inventory.Guest:
+		name = v.Name
+	case *inventory.GuestNic:
+		if g, ok := snap.Get(v.Guest); ok {
+			if guest, ok := g.(*inventory.Guest); ok {
+				name = guest.Name
+			}
+		}
+	default:
+		return ""
+	}
+	if name == "" {
+		return ""
+	}
+	return dnsByHost[strings.ToLower(name)]
+}
+
 // nodeGroupOf returns the rendering column an entity belongs to:
 // docs/features/topology.md §1's per-cluster-node band for node-scoped
 // entities, or the empty string sentinel for the cluster-scoped SDN band
@@ -200,6 +278,12 @@ func buildNodes(snap inventory.Snapshot, byRef map[inventory.Ref]inventory.Entit
 	nodes := make([]Node, 0, len(candidate))
 	groups := map[string][]inventory.Ref{}
 
+	// T-1204: index SDN DNS records by guest hostname so a Guest/GuestNic
+	// node can carry its matching record's FQDN as a dnsName badge. Records
+	// live in the same snapshot (SdnDnsRecord entities), so this stays a pure
+	// function of the snapshot.
+	dnsByHost := dnsNamesByHost(snap)
+
 	for ref := range candidate {
 		e := byRef[ref]
 		layer, _ := layerOf(ref.Kind)
@@ -209,7 +293,7 @@ func buildNodes(snap inventory.Snapshot, byRef map[inventory.Ref]inventory.Entit
 			groups[key] = append(groups[key], ref)
 		}
 
-		nodes = append(nodes, Node{
+		n := Node{
 			ID:        ref.String(),
 			Kind:      string(ref.Kind),
 			Label:     labelOf(snap, e),
@@ -217,7 +301,12 @@ func buildNodes(snap inventory.Snapshot, byRef map[inventory.Ref]inventory.Entit
 			NodeGroup: nodeGroupOf(ref),
 			Status:    statusOf(snap, e),
 			Badges:    badgesOf(snap, e),
-		})
+		}
+		if dns := dnsNameForGuest(snap, e, dnsByHost); dns != "" {
+			n.DnsName = dns
+			n.Badges = append(n.Badges, "dns:"+dns)
+		}
+		nodes = append(nodes, n)
 	}
 	return nodes, groups
 }

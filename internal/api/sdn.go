@@ -19,6 +19,15 @@ type SDNService interface {
 	Tree(ctx context.Context) (sdn.Tree, error)
 }
 
+// SDNDNSService is the subset of T-1204's *sdn.DNSService the router needs:
+// docs/api.md's GET /sdn/dns (config records + live resolved). Declared as a
+// small interface (same seam pattern as SDNService) so this package's
+// dependency on the concrete service stays explicit; *sdn.DNSService's own
+// DNS method satisfies it directly.
+type SDNDNSService interface {
+	DNS(ctx context.Context, zone string) (sdn.DNSView, error)
+}
+
 // capSDNRead is docs/api.md's documented SDN-read capability flag name
 // (internal/auth.CapSDNRead's underlying string) — see capNetRead's doc
 // comment in topology.go for why this is spelled out as a plain string
@@ -43,6 +52,34 @@ func mountSDNRoutes(r chi.Router, svc SDNService, auth AuthService) {
 		r.Use(auth.RequireCap(capSDNRead))
 		r.Get("/sdn", handleSDNTree(svc))
 	})
+}
+
+// mountSDNDNSRoutes registers docs/api.md's `GET /sdn/dns?zone=` (T-1204) —
+// gated on the same sdnRead capability GET /sdn uses. svc == nil (DNS read
+// service not wired) simply skips mounting, matching every other optional
+// read route's degraded-mode treatment.
+func mountSDNDNSRoutes(r chi.Router, svc SDNDNSService, auth AuthService) {
+	if svc == nil || auth == nil {
+		return
+	}
+	r.Group(func(r chi.Router) {
+		r.Use(auth.SessionMiddleware)
+		r.Use(auth.RequireCap(capSDNRead))
+		r.Get("/sdn/dns", handleSDNDNS(svc))
+	})
+}
+
+// handleSDNDNS serves GET /sdn/dns?zone=. A DNS() failure (PVE unreachable)
+// maps to 503, the same degraded-upstream treatment GET /sdn gives.
+func handleSDNDNS(svc SDNDNSService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		view, err := svc.DNS(r.Context(), r.URL.Query().Get("zone"))
+		if err != nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "pve_unreachable", "could not read SDN DNS configuration from PVE")
+			return
+		}
+		writeJSON(w, http.StatusOK, view)
+	}
 }
 
 // handleSDNTree serves GET /sdn. A Tree() failure (PVE unreachable, auth

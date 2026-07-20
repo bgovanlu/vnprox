@@ -79,6 +79,14 @@ type projection struct {
 	// now", for the sibling-subnet CIDR-overlap check.
 	subnetsByVnet map[string][]inventory.Ref
 
+	// dnsZones/dnsRecords index cluster-scoped SDN DNS objects (T-1204) "as
+	// of now": dnsZones by domain (Ref.ID), dnsRecords by the
+	// "<zone>/<name>/<type>" composite Ref.ID. Seeded from the snapshot and
+	// folded from sdn.dns.* create/delete ops, so a record.create can
+	// reference a zone this same changeset's earlier zone.create established.
+	dnsZones   map[string]inventory.Ref
+	dnsRecords map[string]inventory.Ref
+
 	// allocsBySubnet tracks ipam.alloc.create CIDRs created earlier in
 	// this same changeset, keyed by the owning subnet Ref. IpAllocation
 	// has no dedicated inventory.Kind (docs/data-model.md's ER diagram
@@ -145,6 +153,8 @@ func newProjection(snap inventory.Snapshot) *projection {
 		vnetNames:      map[string]inventory.Ref{},
 		subnetNames:    map[string]inventory.Ref{},
 		subnetsByVnet:  map[string][]inventory.Ref{},
+		dnsZones:       map[string]inventory.Ref{},
+		dnsRecords:     map[string]inventory.Ref{},
 		allocsBySubnet: map[inventory.Ref][]string{},
 		nodeNames:      map[string]bool{},
 		fwNames:        map[string]bool{},
@@ -188,6 +198,10 @@ func newProjection(snap inventory.Snapshot) *projection {
 		case *inventory.SdnSubnet:
 			p.subnetNames[v.ID] = ref
 			p.subnetsByVnet[v.Vnet] = append(p.subnetsByVnet[v.Vnet], ref)
+		case *inventory.SdnDnsZone:
+			p.dnsZones[v.ID] = ref
+		case *inventory.SdnDnsRecord:
+			p.dnsRecords[ref.ID] = ref
 		}
 	}
 
@@ -321,6 +335,12 @@ func (p *projection) exists(ref inventory.Ref) bool {
 		return ok
 	case inventory.KindSDNSubnet:
 		_, ok := p.subnetNames[ref.ID]
+		return ok
+	case inventory.KindSDNDnsZone:
+		_, ok := p.dnsZones[ref.ID]
+		return ok
+	case inventory.KindSDNDnsRecord:
+		_, ok := p.dnsRecords[ref.ID]
 		return ok
 	default:
 		_, ok := p.snap.Get(ref)
@@ -502,6 +522,18 @@ func (p *projection) fold(op Op) {
 			}
 			p.subnetsByVnet[vnet] = kept
 		}
+
+	case *SdnDnsZoneCreateParams:
+		p.dnsZones[op.Target.ID] = op.Target
+
+	case *SdnDnsZoneDeleteParams:
+		delete(p.dnsZones, op.Target.ID)
+
+	case *SdnDnsRecordCreateParams:
+		p.dnsRecords[op.Target.ID] = op.Target
+
+	case *SdnDnsRecordDeleteParams:
+		delete(p.dnsRecords, op.Target.ID)
 
 	case *IpamAllocCreateParams:
 		p.allocsBySubnet[op.Target] = append(p.allocsBySubnet[op.Target], params.CIDR)

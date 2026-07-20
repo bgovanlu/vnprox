@@ -26,6 +26,7 @@ func safetyValidate(ops []Op, snap inventory.Snapshot, safety SafetyOptions) []F
 	out = append(out, ifaceRenameGuestFindings(ops, snap)...)
 	out = append(out, vnetDeletionGuardFindings(ops, snap)...)
 	out = append(out, subnetDeletionGuardFindings(ops, safety.Allocations)...)
+	out = append(out, dnsZoneDeletionGuardFindings(ops, snap)...)
 
 	if safety.AllowDangerousOps {
 		for i := range out {
@@ -297,6 +298,73 @@ func vnetDeletionGuardFindings(ops []Op, snap inventory.Snapshot) []Finding {
 // --- subnet-with-allocations deletion (T-402's other listed deletion guard,
 // closed out here once T-405 gave this package a live IPAM data feed to
 // check against) ------------------------------------------------------------
+
+// dnsZoneDeletionGuardFindings flags every sdn.dns.zone.delete op whose
+// target zone still has one or more DNS records that this same changeset
+// does not also delete (T-1204 acceptance criterion 3). Deleting the zone
+// would orphan those records in PowerDNS, so the changeset must cascade a
+// sdn.dns.record.delete for each. Net-effect-aware exactly like the subnet/
+// vnet deletion guards: a record removed elsewhere in the same changeset
+// clears it from the count, so "delete every record, then delete the
+// now-empty zone" validates clean in one changeset. Records live in the
+// inventory snapshot (SdnDnsRecord entities, ingested by the SDN poll), the
+// same authoritative source the referential/projection checks read.
+func dnsZoneDeletionGuardFindings(ops []Op, snap inventory.Snapshot) []Finding {
+	// deletedZones: domain -> index of its (last) sdn.dns.zone.delete op.
+	deletedZones := map[string]int{}
+	for i, op := range ops {
+		if op.Type == OpSdnDnsZoneDelete {
+			deletedZones[op.Target.ID] = i
+		}
+	}
+	if len(deletedZones) == 0 {
+		return nil
+	}
+
+	// deletedRecords: record Ref.ID ("<zone>/<name>/<type>") this changeset
+	// removes via sdn.dns.record.delete.
+	deletedRecords := map[string]bool{}
+	for _, op := range ops {
+		if op.Type == OpSdnDnsRecordDelete {
+			deletedRecords[op.Target.ID] = true
+		}
+	}
+
+	// remaining: op index -> the still-present records blocking that zone's
+	// delete.
+	remaining := map[int][]string{}
+	for _, e := range snap.All() {
+		rec, ok := e.(*inventory.SdnDnsRecord)
+		if !ok {
+			continue
+		}
+		opIdx, ok := deletedZones[rec.Zone]
+		if !ok {
+			continue
+		}
+		if deletedRecords[rec.GetRef().ID] {
+			continue
+		}
+		remaining[opIdx] = append(remaining[opIdx], rec.Name+"/"+rec.Type)
+	}
+
+	var out []Finding
+	for i, op := range ops {
+		hits := remaining[i]
+		if len(hits) == 0 {
+			continue
+		}
+		sort.Strings(hits)
+		examples := hits
+		if len(examples) > 3 {
+			examples = examples[:3]
+		}
+		out = append(out, errorf(codeDNSZoneHasRecords, refOf(op),
+			"dns zone %s still has %d record(s), for example: %s — delete them (sdn.dns.record.delete) in this changeset before deleting the zone",
+			op.Target.ID, len(hits), strings.Join(examples, ", ")))
+	}
+	return out
+}
 
 // subnetDeletionGuardFindings flags every sdn.subnet.delete op whose target
 // subnet still has one or more active IPAM allocations, per T-402's task

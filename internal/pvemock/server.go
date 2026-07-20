@@ -138,6 +138,7 @@ func (srv *Server) buildRouter() chi.Router {
 		api.Get("/nodes/{node}/tasks/{upid}/log", srv.requirePrivilege(PrivSysAudit, srv.handleTaskLog))
 
 		srv.mountSDN(api)
+		srv.mountSDNDNS(api)
 		srv.mountIPAM(api)
 		srv.mountFirewall(api)
 	})

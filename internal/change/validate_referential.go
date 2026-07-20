@@ -257,6 +257,39 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 			out = append(out, errorf(codeTargetNotFound, ref, "sdn subnet %s does not exist", op.Target))
 		}
 
+	case *SdnDnsZoneCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "an sdn dns zone named %q already exists", op.Target.ID))
+		}
+
+	case *SdnDnsZoneUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn dns zone %s does not exist", op.Target))
+		}
+
+	case *SdnDnsZoneDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn dns zone %s does not exist", op.Target))
+		}
+
+	case *SdnDnsRecordCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "an sdn dns record %q already exists", op.Target.ID))
+		}
+		if _, ok := p.dnsZones[params.Zone]; !ok {
+			out = append(out, errorf(codeDNSZoneNotFound, ref, "dns zone %q does not exist", params.Zone))
+		}
+
+	case *SdnDnsRecordUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn dns record %s does not exist", op.Target))
+		}
+
+	case *SdnDnsRecordDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn dns record %s does not exist", op.Target))
+		}
+
 	case *SdnApplyParams:
 		// no referential checks: cluster-wide, no single target.
 

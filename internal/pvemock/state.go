@@ -45,7 +45,14 @@ type sdnState struct {
 	zonesRunning   map[string]SDNZoneSpec
 	vnetsRunning   map[string]SDNVnetSpec
 	subnetsRunning map[string]SDNSubnetSpec
-	mu             sync.RWMutex
+	// dnsZones (T-1204) holds the SDN DNS plugin config plus each zone's
+	// authoritative record set. Unlike zones/vnets/subnets, DNS writes apply
+	// immediately (real PVE writes records straight into PowerDNS per-record,
+	// not into a staged cfg an apply later flushes), so there is no separate
+	// running/pending pair here — the config store IS the truth, and the
+	// live "resolve" read reflects it unless the zone is marked Unreachable.
+	dnsZones map[string]SDNDnsZoneSpec
+	mu       sync.RWMutex
 }
 
 // ipamState is the mutable runtime allocation set for every configured IPAM
@@ -123,6 +130,12 @@ func NewState(f *Fixture) *State {
 		if r, ok := runningSubnet(sub); ok {
 			s.sdn.subnetsRunning[sub.ID] = r
 		}
+	}
+
+	s.sdn.dnsZones = make(map[string]SDNDnsZoneSpec, len(f.SDN.DNSZones))
+	for _, z := range f.SDN.DNSZones {
+		z.Records = append([]SDNDnsRecordSpec(nil), z.Records...)
+		s.sdn.dnsZones[z.ID] = z
 	}
 
 	s.ipam.entries = make(map[string][]IPAMEntrySpec, len(f.SDN.Ipams))

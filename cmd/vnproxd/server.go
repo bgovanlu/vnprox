@@ -243,8 +243,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// exactly when collectErr is non-nil, mirroring peerClient's own
 	// nil-safety above.
 	var sdnSvc *sdn.Service
+	// sdnDNSSvc backs T-1204's GET /sdn/dns. Nil-typed-interface until
+	// assigned, the same degraded-mode pattern ipamSvc/dhcpAPISvc use below,
+	// so mountSDNDNSRoutes' `svc == nil` check gets a true nil interface.
+	var sdnDNSSvc api.SDNDNSService
 	if sdnPVEClient != nil {
 		sdnSvc = sdn.NewService(sdnPVEClient)
+		sdnDNSSvc = sdn.NewDNSService(sdnPVEClient)
 	}
 	// T-1206: PBS network awareness — reads PVE's own storage.cfg + backup
 	// jobs once (sdnPVEClient, already available), re-projected against the
@@ -892,6 +897,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		History:              auditRepo,
 		HistoryFindingEvents: findingEventRepo,
 		SDN:                  sdnSvc,
+		SDNDNS:               sdnDNSSvc,
 		IPAM:                 ipamSvc,
 		EVPN:                 evpnSvc,
 		IPv6:                 ipv6Svc,

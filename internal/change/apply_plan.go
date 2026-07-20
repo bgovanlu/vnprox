@@ -136,6 +136,17 @@ var sdnStageOpTypes = map[OpType]bool{
 	OpSdnSubnetCreate: true,
 	OpSdnSubnetUpdate: true,
 	OpSdnSubnetDelete: true,
+
+	// T-1204: PVE stages and applies the SDN DNS plugin config exactly like
+	// zones/vnets/subnets, so DNS ops are the same category (1) cluster-scope
+	// StepSDNStage call, sharing the single trailing StepSDNApply — never a
+	// separate apply path.
+	OpSdnDnsZoneCreate:   true,
+	OpSdnDnsZoneUpdate:   true,
+	OpSdnDnsZoneDelete:   true,
+	OpSdnDnsRecordCreate: true,
+	OpSdnDnsRecordUpdate: true,
+	OpSdnDnsRecordDelete: true,
 }
 
 // wgOpTypes is T-1401's WireGuard op vocabulary: each becomes a StepWgApply
@@ -384,11 +395,15 @@ func sdnStageSummary(op Op) string {
 		OpSdnZoneCreate: "Create", OpSdnZoneUpdate: "Update", OpSdnZoneDelete: "Delete",
 		OpSdnVnetCreate: "Create", OpSdnVnetUpdate: "Update", OpSdnVnetDelete: "Delete",
 		OpSdnSubnetCreate: "Create", OpSdnSubnetUpdate: "Update", OpSdnSubnetDelete: "Delete",
+		OpSdnDnsZoneCreate: "Create", OpSdnDnsZoneUpdate: "Update", OpSdnDnsZoneDelete: "Delete",
+		OpSdnDnsRecordCreate: "Create", OpSdnDnsRecordUpdate: "Update", OpSdnDnsRecordDelete: "Delete",
 	}[op.Type]
 	kind := map[OpType]string{
 		OpSdnZoneCreate: "sdn zone", OpSdnZoneUpdate: "sdn zone", OpSdnZoneDelete: "sdn zone",
 		OpSdnVnetCreate: "sdn vnet", OpSdnVnetUpdate: "sdn vnet", OpSdnVnetDelete: "sdn vnet",
 		OpSdnSubnetCreate: "sdn subnet", OpSdnSubnetUpdate: "sdn subnet", OpSdnSubnetDelete: "sdn subnet",
+		OpSdnDnsZoneCreate: "sdn dns zone", OpSdnDnsZoneUpdate: "sdn dns zone", OpSdnDnsZoneDelete: "sdn dns zone",
+		OpSdnDnsRecordCreate: "sdn dns record", OpSdnDnsRecordUpdate: "sdn dns record", OpSdnDnsRecordDelete: "sdn dns record",
 	}[op.Type]
 	return fmt.Sprintf("%s %s %s", verb, kind, op.Target.ID)
 }
