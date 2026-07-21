@@ -58,6 +58,13 @@ const (
 	// "health", since it is fed by rolled-up long-term aggregates rather than
 	// the live inventory graph or a polled host/PVE seam.
 	SourceCapacity Source = "capacity"
+	// SourceBaseline (T-1601) marks a finding computed from internal/baseline's
+	// learned per-guest/per-segment traffic baseline — its own top-level
+	// source (like SourceFlow/SourceProbe), since it is fed by a learned
+	// statistical summary of flow history rather than the inventory graph or
+	// a polled host/PVE seam. Checks are new_port|volume_spike|new_subnet
+	// (adapt_baseline.go).
+	SourceBaseline Source = "baseline"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

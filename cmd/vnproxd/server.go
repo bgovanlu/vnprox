@@ -497,7 +497,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// service. Built here so its provider can feed the findings engine below;
 	// its rollup/prune actors are registered in the run group further down.
 	capacityRollupActor, capacityPruneActor, capacityProvider, capacityExportSvc := setupCapacity(ctx, cfg, db, graph, metricSamples, ipamConcrete, logger)
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
+	// T-1601: flow baselining. The profiles repo backs the scheduled learn job
+	// + retention prune loop (registered with the run group below);
+	// baselineSvcVal is the findings.BaselineProvider whose RecentAnomalies()
+	// runs internal/baseline.Detect each findings cycle — wired in now (the
+	// findings engine is built before setupFlows creates flowRepo) and pointed
+	// at the real recent-samples source via set() once setupFlows returns,
+	// mirroring flowClassifyAdapterVal's identical two-step wiring above.
+	baselineProfileRepo := store.NewBaselineProfileRepo(db)
+	baselineSvcVal := newBaselineService(baselineProfileRepo, cfg.Baseline, logger)
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -764,6 +773,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// migration-traffic-volume input (migrationTrafficAdapter's own doc
 	// comment, cmd/vnproxd/migration.go).
 	migrationTrafficVal.set(flowRepo, flowClassifier)
+	// T-1601: point the baseline learn job + anomaly detector at the real
+	// flow_samples source now that flowRepo exists (baseline.go's own doc
+	// comment) — mirrors flowClassifyAdapterVal.set above.
+	baselineSvcVal.set(flowRepo)
 
 	// T-1004: host-local flow sampling (conntrack/eBPF) — both strictly
 	// opt-in per node via [flows] conntrack_sampling_enabled/
@@ -1134,6 +1147,20 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// actor in this group.
 	g.add(capacityRollupActor)
 	g.add(capacityPruneActor)
+	// T-1601: the flow-baseline learn job (recomputes per-Ref baselines from
+	// the retained flow window on [baseline] learn cadence) and the
+	// baseline_profiles retention prune loop ([baseline] profile_retention_days,
+	// default 90) — both supervised goroutines, the same "log and keep going"
+	// failure contract every other loop here follows (baseline.go's doc
+	// comments).
+	g.add(func(ctx context.Context) error {
+		return baselineSvcVal.RunLearnLoop(ctx, time.Duration(cfg.Baseline.LearnIntervalHours)*time.Hour)
+	})
+	g.add(func(ctx context.Context) error {
+		return baselineProfileRepo.RunPruneLoop(ctx, baselinePruneInterval, cfg.Baseline.ProfileRetentionDays, func(err error) {
+			logger.Error("store: baseline_profiles prune failed", "error", err)
+		})
+	})
 	// Snapshot retention (T-206, docs/features/change-management.md §4):
 	// keep cfg.Retention.SnapshotKeepDays of history, floored at
 	// SnapshotPinDays for any snapshot linked to a committed changeset (the

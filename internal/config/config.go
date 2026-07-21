@@ -116,6 +116,14 @@ const (
 	// /var/lib/vnprox (already an app-owned, root:root ReadWritePath in the
 	// systemd unit), auto-purged past retention_hours.
 	DefaultCaptureRoot = "/var/lib/vnprox/captures"
+
+	// DefaultBaselineProfileRetentionDays and DefaultBaselineLearnIntervalHours
+	// are T-1601's [baseline] section defaults: a learned traffic baseline
+	// (baseline_profiles) is retained 90 days — deliberately far longer than
+	// flow_samples' own retention, so a learned shape outlives the raw flows
+	// it was learned from — and the learn job recomputes baselines every 24h.
+	DefaultBaselineProfileRetentionDays = 90
+	DefaultBaselineLearnIntervalHours   = 24
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
@@ -139,6 +147,7 @@ type Config struct {
 	MTUProbe    MTUProbeConfig
 	Switches    SwitchesConfig
 	Capacity    CapacityConfig
+	Baseline    BaselineConfig
 }
 
 // SecurityConfig is the [security] section (T-1605: rogue-service detection).
@@ -150,6 +159,18 @@ type Config struct {
 // it.
 type SecurityConfig struct {
 	ProtectedSegments []string
+}
+
+// BaselineConfig is the [baseline] section (T-1601): the flow-baselining
+// subsystem's own retention/scheduling knobs. Always on (like [latmesh]/
+// [mtuprobe] — learning from already-ingested flow_samples adds no external
+// attack surface, so there's no opt-in gate to carry here).
+// ProfileRetentionDays caps how long a learned baseline_profiles row is kept
+// (default 90); LearnIntervalHours is the learn job's cadence (default 24).
+// Both default from DefaultBaseline* when unset/non-positive.
+type BaselineConfig struct {
+	ProfileRetentionDays int
+	LearnIntervalHours   int
 }
 
 // OIDCConfig is the [oidc] section (T-1207: OIDC SSO). Enabled is derived —
@@ -451,6 +472,7 @@ type rawConfig struct {
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
 	Switches    rawSwitches    `toml:"switches"`
 	Capacity    rawCapacity    `toml:"capacity"`
+	Baseline    rawBaseline    `toml:"baseline"`
 }
 
 type rawCapacity struct {
@@ -460,6 +482,11 @@ type rawCapacity struct {
 
 type rawSecurity struct {
 	ProtectedSegments []string `toml:"protected_segments"`
+}
+
+type rawBaseline struct {
+	ProfileRetentionDays int `toml:"profile_retention_days"`
+	LearnIntervalHours   int `toml:"learn_interval_hours"`
 }
 
 type rawOIDC struct {
@@ -685,6 +712,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			ProbeIntervalSec: firstNonZeroInt(raw.Latmesh.ProbeIntervalSec, latmesh.DefaultProbeIntervalSec),
 			RetentionMinutes: firstNonZeroInt(raw.Latmesh.RetentionMinutes, latmesh.DefaultRetentionMinutes),
 			MaxRows:          firstNonZeroInt64(raw.Latmesh.MaxRows, latmesh.DefaultMaxRows),
+		},
+		Baseline: BaselineConfig{
+			ProfileRetentionDays: firstNonZeroInt(raw.Baseline.ProfileRetentionDays, DefaultBaselineProfileRetentionDays),
+			LearnIntervalHours:   firstNonZeroInt(raw.Baseline.LearnIntervalHours, DefaultBaselineLearnIntervalHours),
 		},
 		MTUProbe: MTUProbeConfig{
 			ProbeIntervalSec: firstNonZeroInt(raw.MTUProbe.ProbeIntervalSec, mtuprobe.DefaultProbeIntervalSec),

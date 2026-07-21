@@ -103,7 +103,13 @@ type Config struct {
 	// over the rolled-up capacity_aggregates + internal/capacity.Analyze),
 	// backing capacity_link_forecast / capacity_ipam_forecast. Nil skips that
 	// producer entirely, same degradation as every other optional Config field.
-	Capacity        CapacityProvider
+	Capacity CapacityProvider
+	// Baseline is T-1601's learned-traffic-baseline seam (cmd/vnproxd's
+	// baselineAnomalyAdapter, running internal/baseline.Detect over stored
+	// profiles + a recent flow window), backing the new_port/volume_spike/
+	// new_subnet findings (source "baseline"). Nil skips all three, same
+	// degradation as every other optional Config field.
+	Baseline        BaselineProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -148,6 +154,8 @@ type Engine struct {
 	notified         map[string]string
 	onChange         func(int)
 	cephDB           *debouncer
+	baselineSvc      BaselineProvider
+	baselineDB       *debouncer
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
 	arpChurnDB       *arpChurnTracker
@@ -248,6 +256,8 @@ func New(cfg Config) *Engine {
 		rogueSvc:         cfg.Rogue,
 		arpChurnDB:       newArpChurnTracker(),
 		protectedSegs:    cfg.ProtectedSegments,
+		baselineSvc:      cfg.Baseline,
+		baselineDB:       newDebouncer(),
 	}
 }
 
@@ -277,6 +287,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, checkWanDegraded(e.wanSvc, e.wanDB, e.thresholds)...)
 	out = append(out, checkServiceTrafficOnWrongNetwork(e.flowSvc, e.serviceTrafficDB)...)
 	out = append(out, capacityFindings(e.capacitySvc)...)
+	out = append(out, checkBaselineAnomalies(e.baselineSvc, e.baselineDB)...)
 	out = append(out, e.healthFindings()...)
 	out = append(out, e.rogueFindings()...)
 	sortFindings(out)
