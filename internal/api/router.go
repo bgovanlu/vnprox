@@ -435,8 +435,22 @@ type Options struct {
 	// Migration planner section) — a purely advisory, read-only bandwidth-
 	// headroom pre-flight check; nil skips mounting the route.
 	Migration *migration.Planner
-	Logger    *slog.Logger
-	Version   string
+	// Tenant/TenantStore/TenantNotifier back T-1703's multi-tenancy &
+	// self-service (docs/api.md's Tenants section, docs/security.md's Tenant
+	// authorization). Tenant (the *tenant.Service scoping seam) drives the
+	// server-side scope filtering middleware on every tenant-scoped read route
+	// (/topology, /findings, /ipam/*, /flows) plus the request-changeset
+	// approve flow and scoped dashboard; TenantStore (the *store.TenantRepo)
+	// backs the tenant-management admin CRUD; TenantNotifier routes a pending
+	// request-changeset's approval notice through T-1005's alert plumbing.
+	// Tenant nil disables scoping entirely — every caller reads unscoped,
+	// exactly the pre-T-1703 behavior — and TenantStore nil skips the whole
+	// tenant-management family, matching every other optional Options field.
+	Tenant         TenantScoper
+	TenantStore    TenantAdminStore
+	TenantNotifier ApprovalNotifier
+	Logger         *slog.Logger
+	Version        string
 	// Instance is the non-secret operational config surfaced by GET
 	// /config (the Settings page's "Instance" section). Zero value is fine
 	// — the route still mounts and reports whatever's set (Version at
@@ -459,6 +473,17 @@ func NewRouter(opts Options) http.Handler {
 	r.Use(recovererMiddleware(logger))
 	r.Use(securityHeadersMiddleware)
 
+	// T-1703: the server-side tenant-scoping middleware, built once and shared
+	// by every tenant-scoped read route. nil when multi-tenancy is disabled
+	// (opts.Tenant nil) or when the auth backend can't resolve a username —
+	// the read routes then mount unscoped, exactly as before.
+	var scopeMW func(http.Handler) http.Handler
+	if opts.Tenant != nil && opts.Auth != nil {
+		if lookup, ok := opts.Auth.(UsernameLookup); ok {
+			scopeMW = tenantScopeMiddleware(opts.Tenant, lookup)
+		}
+	}
+
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(opts.Version, opts.Collectors))
 		if opts.Auth != nil {
@@ -472,11 +497,11 @@ func NewRouter(opts Options) http.Handler {
 				r.Get("/config", configHandler(opts.Instance))
 			})
 		}
-		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected, opts.QosShapes, opts.PBS)
+		mountTopologyRoutes(r, opts.Topology, opts.Auth, opts.Collectors, opts.Drift, opts.Findings, opts.Protected, opts.QosShapes, opts.PBS, scopeMW)
 		mountPBSRoutes(r, opts.PBS, opts.Auth)
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
-		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth)
+		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth, scopeMW)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
 		mountMetricsExporterRoutes(r, opts.MetricsCounters, opts.Findings, opts.Drift, opts.Changesets, opts.MetricsExporter)
@@ -486,14 +511,14 @@ func NewRouter(opts Options) http.Handler {
 		mountFederationRoutes(r, opts.Federation, opts.FederationAudit, opts.Auth)
 		mountFederationTopologyRoutes(r, opts.FederationAgg, opts.Auth)
 		mountFederationIPAMRoutes(r, opts.FederationIPAM, opts.Auth)
-		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers)
+		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers, opts.Tenant, opts.TenantNotifier, opts.TenantStore)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountHistoryRoutes(r, opts.History, opts.HistoryFindingEvents, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountSDNDNSRoutes(r, opts.SDNDNS, opts.Auth)
-		mountIPAMRoutes(r, opts.IPAM, opts.Auth)
+		mountIPAMRoutes(r, opts.IPAM, opts.Auth, scopeMW)
 		mountIPAMExternalRoutes(r, opts.IPAMExternal, opts.IPAMExternalAudit, opts.Auth)
 		mountEdgeRoutes(r, opts.EdgeInterfaces, opts.SDN, opts.EdgeGraph, opts.EdgeIPAM, opts.Auth)
 		mountIngressRoutes(r, opts.IngressTargets, opts.IngressSecretCipher, opts.IngressDiscoverers, opts.EdgeInterfaces, opts.EdgeGraph, opts.EdgeIPAM, opts.TokenAudit, opts.Auth)
@@ -519,7 +544,8 @@ func NewRouter(opts Options) http.Handler {
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)
 		mountConntrackRoutes(r, opts.Conntrack, opts.PeerConntrack, opts.ConntrackGuests, opts.LocalNode, opts.Auth)
 		mountDiagnoseRoutes(r, opts, opts.Auth)
-		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows, opts.FlowClassifier)
+		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows, opts.FlowClassifier, scopeMW)
+		mountTenantRoutes(r, opts.TenantStore, opts.Tenant, opts.Changesets, opts.TenantNotifier, opts.Auth)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountCapacityRoutes(r, opts.Capacity, opts.Auth)
 		mountPostureRoutes(r, opts.Posture, opts.Auth)

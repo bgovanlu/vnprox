@@ -40,6 +40,15 @@ const (
 	// StatusDiscarded is terminal: the draft was deleted before ever being
 	// applied.
 	StatusDiscarded Status = "discarded"
+	// StatusRequested is T-1703's request-changeset entry state: a tenant
+	// member created it (POST /changesets {tenantId}) but it is blocked from
+	// apply until an approver converts it to an ordinary StatusDraft
+	// (POST /changesets/{id}/approve). Its ops are validated exactly like a
+	// draft's at creation, but there is deliberately NO transition from
+	// requested to applying/validated — the only forward edges are to draft
+	// (approve) or discarded (reject), so no request-changeset can ever reach
+	// apply without passing through the ordinary draft flow an approver drives.
+	StatusRequested Status = "requested"
 )
 
 // allowedTransitions is the full legal (from -> to) status graph. Only
@@ -82,6 +91,14 @@ var allowedTransitions = map[Status]map[Status]bool{
 	StatusRolledBack: {},
 	StatusFailed:     {},
 	StatusDiscarded:  {},
+	// requested (T-1703): an approver converts it to an ordinary draft, or it
+	// is rejected/withdrawn to discarded. It can NEVER go straight to
+	// applying/validated — apply is only ever reachable from draft/validated,
+	// so the approval step is an unbypassable gate on every request-changeset.
+	StatusRequested: {
+		StatusDraft:     true,
+		StatusDiscarded: true,
+	},
 }
 
 // AllStatuses enumerates every valid Status, for tests (changeset_test.go's
@@ -90,6 +107,7 @@ var allowedTransitions = map[Status]map[Status]bool{
 var AllStatuses = []Status{
 	StatusDraft, StatusValidated, StatusApplying, StatusAwaitingConfirm,
 	StatusCommitted, StatusRolledBack, StatusFailed, StatusDiscarded,
+	StatusRequested,
 }
 
 // Severity is a validation Finding's severity (docs/api.md's finding

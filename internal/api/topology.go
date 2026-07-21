@@ -58,13 +58,16 @@ type TopologyService interface {
 // keep working unchanged. ch may be nil (no collector wired — tests, or the
 // collector failed to initialize): /topology then simply omits its
 // staleness section.
-func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService, qosSvc QosShapeSource, pbsSvc PBSService) {
+func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch CollectorHealth, driftSvc DriftService, findingsSvc FindingsService, mgmtSvc MgmtStatusService, qosSvc QosShapeSource, pbsSvc PBSService, scopeMW func(http.Handler) http.Handler) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
+		if scopeMW != nil {
+			r.Use(scopeMW)
+		}
 		r.Get("/topology", handleTopology(svc, ch, driftSvc, findingsSvc, mgmtSvc, qosSvc, pbsSvc))
 		r.Get("/inventory/search", handleInventorySearch(svc))
 		// A trailing chi wildcard (not a "{ref}" single-segment param) is
@@ -160,6 +163,12 @@ func handleTopology(svc TopologyService, ch CollectorHealth, driftSvc DriftServi
 		}
 		if pbsSvc != nil {
 			paintPBS(r.Context(), &t, pbsSvc)
+		}
+		// T-1703: a tenant-scoped caller sees only its own visible entities.
+		// Applied to the projection before serialization (data-access-layer
+		// enforcement); an unscoped caller is unaffected.
+		if scope, ok := scopeFromContext(r.Context()); ok {
+			t = filterTopologyForScope(t, scope)
 		}
 		writeJSON(w, http.StatusOK, t)
 	}
@@ -319,6 +328,13 @@ func handleInventoryDetail(svc TopologyService) http.HandlerFunc {
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", "malformed inventory ref")
 			return
 		}
+		// T-1703: a tenant-scoped caller may only look up Refs within its
+		// scope. An out-of-scope Ref returns 404 (existence is not confirmed) —
+		// never a 403 that would leak that the entity exists.
+		if scope, scoped := scopeFromContext(r.Context()); scoped && !scope.Visible(ref.String()) {
+			writeJSONError(w, http.StatusNotFound, "not_found", "no such inventory entity")
+			return
+		}
 		detail, ok := svc.InventoryDetail(ref)
 		if !ok {
 			writeJSONError(w, http.StatusNotFound, "not_found", "no such inventory entity")
@@ -331,7 +347,18 @@ func handleInventoryDetail(svc TopologyService) http.HandlerFunc {
 func handleInventorySearch(svc TopologyService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
-		writeJSON(w, http.StatusOK, map[string]any{"results": svc.Search(q)})
+		results := svc.Search(q)
+		// T-1703: search must not leak out-of-scope entities to a tenant.
+		if scope, scoped := scopeFromContext(r.Context()); scoped {
+			filtered := make([]topology.SearchResult, 0, len(results))
+			for _, res := range results {
+				if scope.Visible(res.Ref) {
+					filtered = append(filtered, res)
+				}
+			}
+			results = filtered
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"results": results})
 	}
 }
 

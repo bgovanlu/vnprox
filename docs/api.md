@@ -878,6 +878,39 @@ Vnprox-local, capability-scoped bearer tokens a logged-in user mints, plus webho
 **`Token`**: `{id, name, scopes: [string], createdBy, createdAt, lastUsedAt?, revokedAt?}`. `scopes` is drawn from the exact capability vocabulary `internal/auth/caps.go` already defines (`netRead`, `netWrite`, `sdnRead`, `sdnWrite`, `fwRead`, `fwWrite`, `guestNet`, `audit`) **plus** the new `automation` scope — no other privilege surface. **A token's scopes can never exceed the creating user's own derived capabilities at creation time**: `POST /tokens` validates each requested scope against the minting session's current `GET /auth/me`-equivalent capability set and 400s (`validation_failed`, unrecognized scope name) or 403s (`forbidden`, a real scope the session doesn't itself hold) otherwise — `automation` is the one exception, always grantable to any authenticated session (it isn't PVE-derived, so there is nothing for it to "exceed"). A bearer request authenticated by a token carries that token's scopes as its `Capabilities` (a single cluster-wide entry, no per-node granularity), is rate-limited per token (burst 60, refill 1/s by default), and is audited (`token.use`, `{tokenId, path, method}`) on every use, in addition to `token.create`/`token.revoke` on the lifecycle routes themselves.
 
 **`Webhook`**: `{id, url, events?: [string], createdBy, createdAt, consecutiveFailures, lastAttemptAt?, lastSuccessAt?, lastError?}`. `events` is the optional event-name allowlist (omitted/empty = every event, the same optional-filter convention Alert Rules' `sourceFilter`/`severityFilter` use); values are the WS `"events"` topic's own event-name vocabulary (`changeset.status`, `drift.changed`, `findings.changed`, `audit.appended`). `secret` (create-only, never returned) is the HMAC signing key: every delivery carries `X-VNPROX-SIGNATURE: <hex HMAC-SHA256 of the exact request body under secret>` — mirroring the peer API's HMAC construction (docs/security.md's Transport section: HMAC-SHA256, hex-encoded, verified with a constant-time compare), simplified to just the body (no method/path/timestamp canonicalization) since this is always vnprox-as-caller against an external, caller-chosen URL, not a mutually-authenticated intra-cluster request. Delivery is retried with exponential backoff (1s doubling to a 30s cap, 5 attempts) exactly like Alert Rules' webhook delivery; only the *sequence's* final outcome (not each attempt) updates `consecutiveFailures`/`lastError`. **N (3) consecutive failed sequences** raise a `webhook_unhealthy` finding (`source: "health"`, computed live from this table each findings cycle, no second persisted flag); a subsequent successful delivery resets the counter to 0, clearing the finding on the next cycle.
+
+## Tenants & self-service (T-1703)
+
+Delegated, server-side-scoped views on the federation-era permission model: a tenant sees only its own guests/VLANs/subnets and its members can **request** changes that route to an approver. Tenant scoping is enforced server-side at the data-access layer (docs/security.md's Tenant-authorization note) — it only ever narrows a member's view, and it adds no mutation path around the change engine.
+
+**Tenant management (admin).** Reads require `netRead`; mutations require `netWrite` + CSRF.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/tenants` | create a tenant: `{id?, name}` → `201` `Tenant` (id defaults to a ULID) |
+| GET | `/tenants` | list tenants: `{items: [Tenant]}` |
+| GET | `/tenants/{id}` | one tenant incl. its `scopes` and `members` |
+| DELETE | `/tenants/{id}` | delete a tenant (cascades scopes/members/request linkages); `204` |
+| PUT | `/tenants/{id}/scopes` | add a visible-resource ref: `{scopeRef}`; `204` |
+| DELETE | `/tenants/{id}/scopes?scopeRef=` | remove a scope ref; `204` |
+| PUT | `/tenants/{id}/members` | add/promote a member: `{identity, role}` (`member`\|`approver`); `204` |
+| DELETE | `/tenants/{id}/members/{identity}` | remove a member; `204` |
+
+**`Tenant`**: `{id, name, createdBy, createdAt, scopes: [string], members: [{identity, role}]}`. `scopes[]` are inventory Ref strings (a guest/subnet, or a coarse VLAN/VNet expanded to its members live at read time).
+
+**Request-changesets & approval.** A tenant member requests a change instead of writing directly:
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/changesets` (with `tenantId`) | create a request-changeset: `{tenantId, title, ops:[Op]}` → `201` `Changeset` with `status: "requested"`. Every op must target a Ref within the tenant's scope (else `403`); a non-member's `tenantId` is `404` (existence not confirmed). Raises a routed approval notification to the tenant's approver group (via alert routing, T-1005). |
+| POST | `/changesets/{id}/approve` | an **approver** of the owning tenant converts a `requested` changeset to an ordinary `draft` (`200` `Changeset`). A plain member gets `403`; an approver approving **their own** request gets `403`; a nonexistent/non-request changeset is `404`. Approval is not apply — the approver then drives the ordinary draft → apply → confirm/rollback flow. |
+
+The `requested` status is additive to the changeset lifecycle (docs/architecture §4): its only transitions are to `draft` (approve) or `discarded` (reject) — there is no path from `requested` to `applying`, so no request-changeset can ever reach apply without an approver first converting it.
+
+**Scoped dashboard.** `GET /dashboard?tenantId=` (`netRead`) returns the caller's scoped tile counts `{tenantId, visibleRefs, guests, subnets, vnets}`, computed only from the caller's own tenant scope. Asking for a tenant the caller doesn't belong to is `404`.
+
+**Scoped reads.** For a caller who is a tenant member, `GET /topology`, `/findings`, `/ipam/subnets`, `/flows`, `/inventory/search`, and `GET /inventory/{ref}` are all filtered server-side to the tenant's scope; an out-of-scope `GET /inventory/{ref}` (or `/ipam/subnets/{cidr}/allocations`) is `404`. An ordinary (non-tenant) caller is unaffected.
+
 ## Ceph (T-1503)
 
 Added by T-1503 (`internal/ceph`, `internal/api/ceph.go`). **Read-only forever** (the same carried-forward invariant T-1501's Kubernetes section states for its domain, `docs/roadmap-universal.md`'s Phase 15 Invariants section): every read in this section goes through the existing `internal/pve.Client` (`GET /cluster/ceph/config`, `GET /nodes/{node}/ceph/osd` — no new Ceph API client, no new credentials, mirroring T-1206's "read the owning system's own knowledge of itself" pattern this task's card cites). There is no route anywhere in this section, no `ceph.*` changeset op anywhere in `internal/change`, and no code path anywhere in `internal/ceph` that can write to Ceph — PVE's own Ceph tooling (`pveceph`, the GUI's Ceph panel) keeps sole, permanent ownership of Ceph configuration.
