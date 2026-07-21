@@ -525,6 +525,7 @@ func NewRouter(opts Options) http.Handler {
 		mountPostureRoutes(r, opts.Posture, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
+		mountEmbedTokenRoute(r, opts.Tokens, opts.TokenAudit, opts.Auth)
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
 		mountK8sRoutes(r, opts.K8sClusters, opts.K8sSecretCipher, opts.K8sPoller, opts.K8sGraph, opts.K8sIPAM, opts.K8sAudit, opts.Auth)
 		mountMigrationRoutes(r, opts.Migration, opts.Auth)
@@ -542,6 +543,15 @@ func NewRouter(opts Options) http.Handler {
 	if opts.Peer != nil {
 		opts.Peer.MountRoutes(r)
 	}
+
+	// /embed/* (T-1706): top-level, HTML-serving, read-only embed view
+	// shells for wikis/NOC screens/status pages. Like /api/ws and /api/peer
+	// above, these are outside /api/v1's session-cookie machinery — their
+	// own embedViewAuth authenticates the token from the query string only,
+	// never a session cookie (docs/security.md's embed-token model). Mounted
+	// before the SPA NotFound fallback so a valid-token request serves the
+	// shell while an invalid one gets a clean 401 rather than the SPA.
+	mountEmbedViewRoutes(r, opts.Tokens, opts.DistFS, opts.Posture != nil)
 
 	// Unmatched /api/* routes get a JSON 404 (per docs/api.md's error
 	// envelope), not the SPA fallback; everything else falls back to the

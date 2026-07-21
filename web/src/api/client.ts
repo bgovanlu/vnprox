@@ -5,6 +5,7 @@
 // (docs/api.md: `{"error":{"code","message","details"}}`) is normalized
 // into a single ApiError type exactly once, in exactly one place.
 import type { ErrorEnvelope } from "./types";
+import { getEmbedToken } from "../embed/embedToken";
 
 /** Base path for the versioned REST API, per docs/api.md ("Base:
  * `https://<node>:8007/api/v1`"). The dev server proxies this to vnproxd
@@ -96,12 +97,20 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     finalHeaders.set("X-VNPROX-CSRF", csrfToken);
   }
 
+  // Embed mode (T-1706): authenticate with the embed bearer token and never
+  // send the session cookie — an embedded read-only view is a distinct auth
+  // path from the cookie-session SPA (docs/security.md's embed-token model).
+  const embedToken = getEmbedToken();
+  if (embedToken) {
+    finalHeaders.set("Authorization", `Bearer ${embedToken}`);
+  }
+
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...rest,
       method: resolvedMethod,
-      credentials: "include",
+      credentials: embedToken ? "omit" : "include",
       headers: finalHeaders,
       body: json !== undefined ? JSON.stringify(json) : undefined,
     });
