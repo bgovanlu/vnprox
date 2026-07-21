@@ -913,6 +913,24 @@ Both are `netRead`-gated (read-only synthesis). `GET /failsim/spof-score` enumer
 
 **T-1103 pre-flight integration**: the scheduler calls the equivalent of `POST /changesets/{id}/preflight-impact` at `windowStart` re-validation and aborts an unattended apply on `quorumRisk` or nonempty `mgmtPathLoss`, audited distinctly (`changeset.schedule_fire_blocked` result `failure_impact_quorum_risk`/`failure_impact_mgmt_path_loss`). This is **additive** to — never an override of — T-1103's existing `touchesMgmtPath` exclusion, which is evaluated first and unconditionally: a changeset the failure-impact model rates "safe" that also touches the mgmt path still gets blocked. A pre-flight error fails closed (the unattended apply is aborted), since an unassessable impact is not a proof of safety.
 
+## Posture score & report (T-1607)
+
+Added by T-1607 (`internal/posture`, `internal/api/posture.go`, `internal/store/posturescores.go`). One periodically-recomputed network security/resilience score with **named, independently-inspectable** contributing factors — never an opaque single number. A supervised job (default daily) folds five surfaces into a score and persists it to the bounded `posture_scores` table (docs/data-model.md §2); the export extends T-605's `internal/docexport` renderer with a posture section rather than introducing a parallel one.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/posture` | the latest computed score: `Posture` (below); `404 not_found` before the first scheduled computation has run |
+| GET | `/posture/history?limit=` | the bounded trend, newest first: `{items: [Posture]}` (`limit` defaults to 90, capped at 400) |
+| GET | `/export/posture?format=md\|html` | the score + factor table + trend sparkline as a standalone Markdown or HTML report (`Content-Disposition: attachment`); `400 validation_failed` for any other `format`; `404 not_found` before the first computation |
+
+All three are `netRead`-gated (a posture score is a derived, read-only artifact recomputed on a schedule, never written through a request).
+
+**`Posture`** (`internal/posture.Posture`, JSON): `{overall, qualified, computedAt, factors: [Factor]}`. `overall` is `0..100`, the weighted mean of the **evaluated** factors only. **`qualified`** is the load-bearing honesty flag: `true` means at least one dimension could not be fully assessed, so the score is partial and must **not** be read as a clean bill of health.
+
+**`Factor`**: `{name, detail, caveat?, value, contribution, weight, scorePct, evaluated}`. The five `name`s are `spof_resilience` (T-1604's SPOF inventory), `segmentation` (fraction of guests carrying an *applied* T-1602 microsegmentation policy — a merely-proposed/dry-run policy counts unsegmented, since only applied rules appear in the resolved firewall view), `exposed_ports` (guest-scope inbound rules permitting any-source access with no narrower rule ahead, via `internal/fw`'s resolver), `anomaly_rate` (T-1601 `source: "baseline"` findings per guest), and `drift_hygiene` (`GET /drift` open-finding count per node). Each factor's `weight`/`value`/`scorePct`/`contribution` are independently inspectable — the score is never folded into one number with no factors.
+
+**Honesty contract** (inherited from `internal/failsim`/`internal/sim`'s "no silent approximation"): a factor that cannot be assessed at all — a cold-start `anomaly_rate` with no learned baseline profiles, where "zero anomalies" means "we have never looked" — is reported `evaluated: false` with `scorePct: -1`, `contribution: 0`, a `caveat`, and is **excluded** from `overall` rather than silently contributing a perfect 100. A factor computed over an incomplete underlying picture (`spof_resilience` when failsim reports `notEvaluated` dimensions) still counts but carries a `caveat` marking the score a ceiling. Either case sets `qualified: true`.
+
 ## Kubernetes (T-1501)
 
 Added by T-1501 (`internal/k8s`, `internal/api/k8s.go`, `internal/store/k8sclusters.go`). **Read-only forever** (carried-forward invariant, `docs/roadmap-universal.md`'s Phase 15 Invariants section): a minimal, hand-rolled kubeconfig parser + `net/http`-only REST client (deliberately not `client-go` — see `internal/k8s`'s package doc comment for the flagged new-dependency decision) that issues exclusively `GET` requests against a registered cluster's `/api/v1/nodes`, `/api/v1/pods`, `/api/v1/services`, and `/apis/apps/v1/namespaces/kube-system/daemonsets`. There is no route anywhere in this section, and no code path anywhere in `internal/k8s`, that can write to a k8s cluster — POST/DELETE below only ever add/remove vnprox's own *local* registration row.

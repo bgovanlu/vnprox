@@ -31,6 +31,15 @@ const (
 	// separate default-policy op — see Stage). DROP (silent) over REJECT is the
 	// microsegmentation convention.
 	DefaultDenyAction = "DROP"
+	// RuleCommentPrefix is the stable marker every rule this planner emits
+	// carries in its Comment. It is the ONLY observable trace a proposal leaves
+	// once it has been staged, applied, and re-polled back into the inventory
+	// graph, so downstream read-models (T-1607's posture score, which counts a
+	// guest "segmented" only once such a rule is actually present in its
+	// resolved firewall view) key off this exact prefix. A proposal that was
+	// merely dry-run — never staged/applied — never writes a rule and so leaves
+	// no such marker, which is precisely why "only applied coverage counts".
+	RuleCommentPrefix = "vnprox microseg: "
 )
 
 // Subject identifies what a proposal governs. GuestRef is the guest whose
@@ -331,7 +340,7 @@ func buildRules(included []*group, existing Existing, cfg Config) (rules []inven
 		rules = append(rules, inventory.FwRule{
 			Direction: dir,
 			Action:    cfg.DenyAction,
-			Comment:   "vnprox microseg: default-deny (everything else was noise)",
+			Comment:   RuleCommentPrefix + "default-deny (everything else was noise)",
 			Pos:       pos,
 			Enabled:   true,
 		})
@@ -350,7 +359,7 @@ func acceptRule(k groupKey, pos int) inventory.FwRule {
 		Action:    "ACCEPT",
 		Proto:     flow.ProtoName(k.proto),
 		Dport:     strconv.Itoa(k.port),
-		Comment:   fmt.Sprintf("vnprox microseg: observed %s to %s", flow.ProtoName(k.proto), k.subnet),
+		Comment:   fmt.Sprintf("%sobserved %s to %s", RuleCommentPrefix, flow.ProtoName(k.proto), k.subnet),
 		Pos:       pos,
 		Enabled:   true,
 	}
