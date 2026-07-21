@@ -204,3 +204,38 @@ Cluster-shared data is intentionally minimal (the cluster secret under `/etc/pve
 | D7 | Port 8007 default with PBS conflict detection | Product requirement; PBS coexistence handled at install |
 | D8 | Support Linux bridges + OVS + full SDN stack | "All networking in Proxmox," not a subset |
 | D9 | Target PVE 8.2+ and 9.x | ifupdown2 default, SDN GA, DHCP/IPAM present |
+
+## 11. Plugin SDK extension points (T-1702)
+
+`internal/plugin` freezes a small, versioned set of extension points third parties
+can implement — the read/discovery/ingest/render seams, plus the write-adjacent
+switch-driver seam bounded by the change engine. The frozen v1 surface:
+
+| Extension point | v1 interface | Class | Min capability |
+|---|---|---|---|
+| `switchDriver` | `internal/switchdrv.SwitchDriver` (reused verbatim) | write-adjacent, dark-by-default | `netWrite` |
+| `flowIngestor` | `plugin.FlowIngestor` | read-only decode | `netRead` |
+| `findingProducer` | `plugin.FindingProducer` | read-only | `netRead` |
+| `ingressDiscoverer` | `internal/ingress.IngressDiscoverer` (reused verbatim) | read-only | `netRead` |
+| `dashboardTile` | `plugin.DashboardTileProvider` | read-only | `netRead` |
+
+**API-stability contract.** These interfaces are frozen at `plugin.APIVersion == "v1"`.
+A plugin records the api version it was built against; the registry refuses one it
+does not understand. Two of the five points reuse an already-shipped interface
+verbatim (switchdrv, ingress) rather than forking it.
+
+**Deprecation policy.** A v1 interface is never edited in place — widening or changing
+a method signature is a breaking change that mints a new `APIVersion` ("v2"), with v1
+kept accepted for at least one minor release before removal, and the deprecation noted
+here and in `docs/api.md`. Adding a new *extension point* (a new `ExtensionPoint`
+constant + interface) is additive and does not bump the api version. This mirrors D3/D4:
+the plugin surface is a compatibility contract, designed conservatively — easier to
+widen later than to narrow.
+
+**The one boundary.** Plugins never gain an apply path. The only change-engine surface
+handed to plugin code is `plugin.Stager` (Create/Validate — stage-only); no
+Apply/Confirm/Rollback method is reachable, in-process or over the out-of-process
+transport (D4 holds for plugins too). A plugin's declared capabilities are a *ceiling*
+checked against `internal/auth`'s existing vocabulary — the SDK adds no new privilege.
+Out-of-process plugins (`internal/plugin/procshim`) run as supervised subprocesses with
+no DB/file access, speaking a length-delimited JSON wire protocol over stdio.

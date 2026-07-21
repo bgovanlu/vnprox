@@ -931,6 +931,21 @@ All three are `netRead`-gated (a posture score is a derived, read-only artifact 
 
 **Honesty contract** (inherited from `internal/failsim`/`internal/sim`'s "no silent approximation"): a factor that cannot be assessed at all — a cold-start `anomaly_rate` with no learned baseline profiles, where "zero anomalies" means "we have never looked" — is reported `evaluated: false` with `scorePct: -1`, `contribution: 0`, a `caveat`, and is **excluded** from `overall` rather than silently contributing a perfect 100. A factor computed over an incomplete underlying picture (`spof_resilience` when failsim reports `notEvaluated` dimensions) still counts but carries a `caveat` marking the score a ceiling. Either case sets `qualified: true`.
 
+## Plugins (T-1702)
+
+Added by T-1702 (`internal/plugin`, `internal/api/plugins.go`, `internal/store/plugins.go`). A capability-scoped extension SDK: stable, versioned extension points third parties implement — switch drivers, flow ingestors, finding producers, ingress discoverers, and dashboard tiles — installed into a registry with an audited capability scope. The registry is **not a second mutation path**: the only change-engine surface handed to plugin code is stage-only (`Create`/`Validate`), never `Apply`/`Confirm`/`Rollback`. See `docs/architecture.md` §11 (extension points + deprecation policy) and `docs/security.md` (plugin capability-scope model).
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| GET | `/plugins` | `netRead` | list installed plugins: `{items: [Plugin]}`, newest first |
+| POST | `/plugins/{id}/enable` | `netWrite` + CSRF | re-enable a disabled plugin's extension points; `204`, `404 not_found` for an unknown id |
+| POST | `/plugins/{id}/disable` | `netWrite` + CSRF | stop dispatching a plugin without uninstalling it; `204`, `404 not_found` |
+| DELETE | `/plugins/{id}` | `netWrite` + CSRF | uninstall a plugin (tears down any out-of-process subprocess); `204`, `404 not_found` |
+
+Installing a plugin (loading code / spawning a subprocess) is a config-time / Hub (T-1705) operation and is **not** a bare API write here. Every lifecycle transition — `plugin.install`/`plugin.enable`/`plugin.disable`/`plugin.uninstall` — writes an audit row recording the plugin's capability scope.
+
+**`Plugin`** (JSON): `{id, name, version, apiVersion, transport, extensionPoints, capabilities, installedBy, installedAt, enabled}`. `apiVersion` is the frozen SDK interface version the plugin was built against (`"v1"`); `transport` is `"in-process"` or `"grpc"` (an out-of-process supervised subprocess); `extensionPoints` is a subset of `switchDriver`/`flowIngestor`/`findingProducer`/`ingressDiscoverer`/`dashboardTile`; `capabilities` is the declared capability scope (a subset of the `caps.go` vocabulary) — the **ceiling** on which seams the plugin may touch and which change-engine op classes it may stage. The internal launch `endpoint` is deliberately omitted from the response.
+
 ## Kubernetes (T-1501)
 
 Added by T-1501 (`internal/k8s`, `internal/api/k8s.go`, `internal/store/k8sclusters.go`). **Read-only forever** (carried-forward invariant, `docs/roadmap-universal.md`'s Phase 15 Invariants section): a minimal, hand-rolled kubeconfig parser + `net/http`-only REST client (deliberately not `client-go` — see `internal/k8s`'s package doc comment for the flagged new-dependency decision) that issues exclusively `GET` requests against a registered cluster's `/api/v1/nodes`, `/api/v1/pods`, `/api/v1/services`, and `/apis/apps/v1/namespaces/kube-system/daemonsets`. There is no route anywhere in this section, and no code path anywhere in `internal/k8s`, that can write to a k8s cluster — POST/DELETE below only ever add/remove vnprox's own *local* registration row.

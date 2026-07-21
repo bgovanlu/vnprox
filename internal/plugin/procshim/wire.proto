@@ -1,0 +1,105 @@
+// wire.proto — T-1702 out-of-process plugin wire contract.
+//
+// This file is the DOCUMENTED message contract for the out-of-process
+// ("grpc"-class) plugin transport: one RPC per method of each plugin extension
+// interface, mirroring the Go interfaces in internal/plugin 1:1. Per this
+// package's doc.go, the messages below are carried as length-delimited proto3
+// JSON over the plugin subprocess's stdin/stdout, NOT over an HTTP/2 gRPC
+// runtime — a deliberate standard-library-first choice (CLAUDE.md) that keeps
+// the daemon free of a major new dependency while preserving a real, supervised
+// out-of-process boundary. The JSON field names below match the Go struct json
+// tags in wire.go exactly, so the two representations round-trip.
+//
+// The vocabulary is fixed and enumerable: there is no generic "call any method"
+// RPC. An unknown method is a hard error on the guest side.
+
+syntax = "proto3";
+
+package vnprox.plugin.v1;
+
+// ---- switchDriver (mirrors internal/switchdrv.SwitchDriver) ----
+
+message PortConfig {
+  LACPConfig   lacp        = 1;
+  string       description = 2;
+  repeated int32 tagged    = 3;
+  int32        untagged    = 4;
+}
+
+message LACPConfig {
+  string mode = 1; // off|active|passive
+  string rate = 2; // slow|fast (optional)
+}
+
+message Neighbor {
+  string chassisId = 1;
+  string portId    = 2;
+}
+
+message SwitchPortReq          { string port = 1; }
+message SwitchPortConfigResp   { PortConfig config = 1; }
+message SwitchSetPortConfigReq { string port = 1; PortConfig config = 2; }
+message SwitchNeighborResp     { Neighbor neighbor = 1; }
+
+// switch.portConfig(SwitchPortReq) -> SwitchPortConfigResp
+// switch.setPortConfig(SwitchSetPortConfigReq) -> (empty)
+// switch.portNeighbor(SwitchPortReq) -> SwitchNeighborResp
+// switch.close() -> (empty)
+
+// ---- flowIngestor (mirrors internal/plugin.FlowIngestor / internal/flow.Record) ----
+
+message FlowIngestReq {
+  string node    = 1;
+  string src     = 2;
+  bytes  payload = 3;
+}
+message FlowRecord {
+  string node = 1; string srcIp = 2; string dstIp = 3;
+  string srcRef = 4; string dstRef = 5; string source = 6;
+  int64 at = 7; int64 bytes = 8; int64 packets = 9;
+  int32 srcPort = 10; int32 dstPort = 11; int32 proto = 12; int32 vlan = 13;
+  int32 ingressIfIndex = 14; int32 egressIfIndex = 15;
+}
+message FlowIngestResp { repeated FlowRecord records = 1; }
+
+// flow.ingest(FlowIngestReq) -> FlowIngestResp
+
+// ---- findingProducer (mirrors internal/plugin.FindingProducer / internal/findings.Finding) ----
+
+message Finding {
+  string id = 1; string source = 2; string check = 3; string severity = 4;
+  string detail = 5; string docsLink = 6; repeated string nodes = 7;
+  repeated string refs = 8; bool fixable = 9;
+}
+message FindingProduceResp { repeated Finding findings = 1; }
+
+// finding.produce() -> FindingProduceResp
+
+// ---- ingressDiscoverer (mirrors internal/ingress.IngressDiscoverer) ----
+
+message IngressTarget { string id = 1; string kind = 2; string address = 3; string credential = 4; }
+message Backend { string route = 1; string address = 2; string detail = 3; bool healthy = 4; }
+message ProxyState {
+  string targetId = 1; string kind = 2; string error = 3;
+  repeated Backend backends = 4; bool reachable = 5;
+}
+message IngressDiscoverReq  { IngressTarget target = 1; }
+message IngressDiscoverResp { ProxyState state = 1; }
+
+// ingress.discover(IngressDiscoverReq) -> IngressDiscoverResp
+
+// ---- dashboardTile (mirrors internal/plugin.DashboardTileProvider / Tile) ----
+
+message Tile {
+  string id = 1; string title = 2; string value = 3;
+  string detail = 4; string link = 5; string severity = 6;
+}
+message TileTilesResp { repeated Tile tiles = 1; }
+
+// tile.tiles() -> TileTilesResp
+
+// ---- envelope ----
+//
+// Every call is framed as a 4-byte big-endian length prefix followed by a JSON
+// object: {"method": "<name>", "params": <message>} for a request, and
+// {"result": <message>} or {"error": "<string>"} for a response (never both).

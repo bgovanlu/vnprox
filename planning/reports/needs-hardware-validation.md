@@ -792,3 +792,23 @@ _(surfaced during the T-1208 v2.0 docs-freeze audit — OIDC is tested against a
       packaging/upgrade tests run on the dev host (podman + `packaging/test/upgrade.sh`), not here —
       run the real apt upgrade against a v1.x-schema DB and confirm the single-cluster surface serves
       unchanged with zero clusters attached.
+
+## T-1702 — plugin SDK
+
+- [ ] **Real vendor gNMI switch-driver plugin.** T-1702 re-registers T-1205's OpenConfig/gNMI
+      `internal/switchdrv.SwitchDriver` through the plugin registry and proves output parity against
+      a direct call using `internal/switchmock` (golden test). The real gNMI wire transport against
+      physical hardware remains a `switchdrv`/T-1205 needs-hardware item (its own `ErrTransportUnavailable`
+      until then); a real *third-party vendor driver plugin* pushing a bounded VLAN/description/LACP
+      change to a physical switch — and its neighbor-mismatch abort — must be confirmed on hardware.
+- [ ] **Out-of-process plugin resource limits.** The `procshim` transport spawns and supervises a real
+      subprocess; the fault-injection test kills it mid-call and confirms graceful degradation, all on
+      the loopback stdio pipe of the test binary. A real third-party plugin process's resource behavior
+      (CPU/memory ceilings, the stated residual risk of unconstrained OS-level network egress from the
+      plugin's own process) must be bounded operationally (systemd sandboxing / a dedicated netns /
+      cgroup limits) and validated on a real deployment — the SDK states this residual risk rather than
+      engineering it away.
+- [ ] **In-process Go plugin loading path.** Built-ins are registered in-process by `cmd/vnproxd` and
+      proven by the conformance harness; a real externally-distributed in-process plugin build/ABI path
+      (Go plugin `.so` compatibility across toolchain versions) is out of this card's scope and, if ever
+      offered, needs a real cross-build/version-skew validation pass.

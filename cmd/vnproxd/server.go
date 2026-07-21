@@ -33,6 +33,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/neighbor"
 	"github.com/bgovanlu/vnprox/internal/peer"
+	"github.com/bgovanlu/vnprox/internal/plugin"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
 	"github.com/bgovanlu/vnprox/internal/topology"
@@ -747,6 +748,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		logger.Error("change: re-arming pending rollbacks on startup", "error", armErr)
 	}
 	defer changeSvc.StopTimers()
+	// T-1702: the capability-scoped plugin registry. Built-ins register through
+	// the same registry as third-party plugins (proving the extension interfaces
+	// by use); the change engine is handed in as the stage-only seam — the
+	// registry never exposes Apply/Confirm/Rollback to plugin code. Repo/Audit
+	// reuse the same shared *store.DB / *store.AuditRepo every other subsystem
+	// uses, so plugin lifecycle events land in the one audit log.
+	pluginRegistry := plugin.NewRegistry(plugin.Config{
+		Repo:   store.NewPluginRepo(db),
+		Change: changeSvc,
+		Audit:  auditRepo,
+		Logger: logger,
+	})
 	// T-1103: an eager tick right at startup — mirrors ArmPendingRollbacks
 	// above — so a schedule whose window (or, for missedWindowPolicy "skip",
 	// whose windowEnd) already passed while this daemon was down is resolved
@@ -1089,6 +1102,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		DocExport:         docExportSvc,
 		Capacity:          capacityExportSvc,
 		Posture:           postureRead,
+		Plugins:           pluginRegistry,
 		LLDPInstaller:     realHost,
 		LLDPPeerInstaller: lldpPeerInstaller,
 		LLDPAudit:         auditRepo,

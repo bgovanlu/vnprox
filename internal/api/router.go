@@ -395,6 +395,10 @@ type Options struct {
 	// named factors, plus its Markdown/HTML report); nil skips mounting the
 	// routes, matching every other optional Options field.
 	Posture PostureService
+	// Plugins backs T-1702's GET /plugins and the plugin lifecycle routes
+	// (enable/disable/uninstall); nil skips mounting them, matching every other
+	// optional Options field.
+	Plugins PluginService
 	// LLDPInstaller/LLDPPeerInstaller/LLDPAudit/LocalNode back T-605's
 	// POST /lldp/install (the onboarding walkthrough's "LLDP offer" step,
 	// docs/user-guide.md §1.3); LLDPInstaller nil skips mounting the route.
@@ -523,6 +527,7 @@ func NewRouter(opts Options) http.Handler {
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountCapacityRoutes(r, opts.Capacity, opts.Auth)
 		mountPostureRoutes(r, opts.Posture, opts.Auth)
+		mountPluginRoutes(r, opts.Plugins, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
