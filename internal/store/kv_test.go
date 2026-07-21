@@ -99,7 +99,7 @@ func TestKVRepo_SchemaVersionIsPresentAfterOpen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(schema_version): %v", err)
 	}
-	if v != "24" {
-		t.Errorf("schema_version = %q, want %q", v, "24")
+	if v != "25" {
+		t.Errorf("schema_version = %q, want %q", v, "25")
 	}
 }

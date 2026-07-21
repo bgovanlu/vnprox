@@ -90,7 +90,13 @@ type Config struct {
 	// (health_ceph.go), backing ceph_corosync_shared_link/
 	// ceph_cluster_mtu_mismatch/ceph_single_nic. Nil skips all three checks,
 	// same degradation as every other optional Config field.
-	Ceph            CephProvider
+	Ceph CephProvider
+	// Baseline is T-1601's learned-traffic-baseline seam (cmd/vnproxd's
+	// baselineAnomalyAdapter, running internal/baseline.Detect over stored
+	// profiles + a recent flow window), backing the new_port/volume_spike/
+	// new_subnet findings (source "baseline"). Nil skips all three, same
+	// degradation as every other optional Config field.
+	Baseline        BaselineProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -126,6 +132,8 @@ type Engine struct {
 	k8sSvc           K8sProvider
 	cephSvc          CephProvider
 	cephDB           *debouncer
+	baselineSvc      BaselineProvider
+	baselineDB       *debouncer
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
 	notified         map[string]string
@@ -222,6 +230,8 @@ func New(cfg Config) *Engine {
 		k8sSvc:           cfg.K8s,
 		cephSvc:          cfg.Ceph,
 		cephDB:           newDebouncer(),
+		baselineSvc:      cfg.Baseline,
+		baselineDB:       newDebouncer(),
 	}
 }
 
@@ -250,6 +260,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, wgFindings(e.wgSvc, e.wgStaleDB, e.wgDriftDB, e.now())...)
 	out = append(out, checkWanDegraded(e.wanSvc, e.wanDB, e.thresholds)...)
 	out = append(out, checkServiceTrafficOnWrongNetwork(e.flowSvc, e.serviceTrafficDB)...)
+	out = append(out, checkBaselineAnomalies(e.baselineSvc, e.baselineDB)...)
 	out = append(out, e.healthFindings()...)
 	sortFindings(out)
 	return out

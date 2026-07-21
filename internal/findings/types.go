@@ -40,6 +40,13 @@ const (
 	// read-only Kubernetes overlay mapping engine — currently the sole
 	// producer is k8s_nodeport_exposed_without_fw_rule (adapt_k8s.go).
 	SourceK8s Source = "k8s"
+	// SourceBaseline (T-1601) marks a finding computed from internal/baseline's
+	// learned per-guest/per-segment traffic baseline — its own top-level
+	// source (like SourceFlow/SourceProbe), since it is fed by a learned
+	// statistical summary of flow history rather than the inventory graph or
+	// a polled host/PVE seam. Checks are new_port|volume_spike|new_subnet
+	// (adapt_baseline.go).
+	SourceBaseline Source = "baseline"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's
