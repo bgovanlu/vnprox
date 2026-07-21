@@ -55,3 +55,14 @@ snapshot_pin_days = 7
 #                                       # section; setting this to true and reinstalling/upgrading is what
 #                                       # grants those capabilities to vnprox.service (never unconditional)
 # host_sample_interval_sec = 10        # shared poll interval for both host-local samplers above
+
+# Blueprint & plugin hub (T-1705) — an opt-in client for a public registry of
+# signed blueprint bundles and SDK plugins. Off by default: leave registry_url
+# empty (or this whole section commented) and the hub routes are not mounted.
+# vnprox ships the client only; the registry service (index + artifacts) lives
+# elsewhere. Installs still pass the full Ed25519 signature + trust-store gate.
+# [hub]
+# registry_url = "https://hub.example.com/vnprox"
+# vetted_signers = []   # hex signer fingerprints shown a "vetted" badge; purely
+#                       # informational — never bypasses the per-install trust
+#                       # decision (a vetted-but-untrusted signer still prompts)

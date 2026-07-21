@@ -26,6 +26,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -384,73 +385,82 @@ func handleImportBundle(svc BlueprintService, trust BlueprintTrustStore, audit b
 			Signature:     toBundleSignature(req.Signature),
 		}
 
-		verified, fingerprint, verr := blueprint.VerifyBundle(bundle)
-
-		switch {
-		case bundle.Signature == nil:
-			if !req.TrustUnsigned {
-				auditBlueprintImport(r.Context(), audit, username, bundleStatusUnsigned, false, "", "")
-				writeJSON(w, http.StatusOK, bundleImportResponse{Status: bundleStatusUnsigned})
-				return
-			}
-			saved, err := saveImportedBlueprint(r.Context(), svc, username, req.Blueprint)
-			if err != nil {
-				writeBlueprintError(w, err)
-				return
-			}
-			auditBlueprintImport(r.Context(), audit, username, bundleStatusImported, false, "trustUnsigned", "")
-			writeJSON(w, http.StatusCreated, bundleImportResponse{Status: bundleStatusImported, Blueprint: saved})
-			return
-
-		case verr != nil || !verified:
-			auditBlueprintImport(r.Context(), audit, username, bundleStatusInvalidSignature, false, "", fingerprint)
-			writeJSON(w, http.StatusOK, bundleImportResponse{Status: bundleStatusInvalidSignature})
+		resp, status, err := importBundleCore(r.Context(), svc, trust, audit, username, bundle, req.TrustUnsigned, req.TrustNewKey)
+		if err != nil {
+			writeBlueprintError(w, err)
 			return
 		}
-
-		// Signature verifies against its own embedded key; decide trust.
-		_, alreadyTrusted, getErr := trust.Get(fingerprint)
-		if getErr != nil {
-			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not check trust store")
-			return
-		}
-
-		if alreadyTrusted {
-			saved, err := saveImportedBlueprint(r.Context(), svc, username, req.Blueprint)
-			if err != nil {
-				writeBlueprintError(w, err)
-				return
-			}
-			auditBlueprintImport(r.Context(), audit, username, bundleStatusImported, true, "alreadyTrusted", fingerprint)
-			writeJSON(w, http.StatusCreated, bundleImportResponse{Status: bundleStatusImported, Blueprint: saved})
-			return
-		}
-
-		if req.TrustNewKey {
-			signer := blueprint.TrustedSigner{
-				Fingerprint: fingerprint, PublicKey: bundle.Signature.PublicKey,
-				AddedBy: username, AddedAt: time.Now().Unix(),
-			}
-			if err := trust.Add(signer); err != nil {
-				writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not pin new signer")
-				return
-			}
-			saved, err := saveImportedBlueprint(r.Context(), svc, username, req.Blueprint)
-			if err != nil {
-				writeBlueprintError(w, err)
-				return
-			}
-			auditBlueprintImport(r.Context(), audit, username, bundleStatusImported, true, "trustNewKey", fingerprint)
-			writeJSON(w, http.StatusCreated, bundleImportResponse{Status: bundleStatusImported, Blueprint: saved})
-			return
-		}
-
-		auditBlueprintImport(r.Context(), audit, username, bundleStatusUntrustedSignature, false, "", fingerprint)
-		writeJSON(w, http.StatusOK, bundleImportResponse{
-			Status: bundleStatusUntrustedSignature,
-			Signer: &bundleSignerResponse{Fingerprint: fingerprint, PublicKey: bundle.Signature.PublicKey},
-		})
+		writeJSON(w, status, resp)
 	}
+}
+
+// importBundleCore is the single implementation of POST /blueprints/import's
+// documented trust-decision logic (see handleImportBundle's doc comment). It
+// is deliberately handler-independent so T-1705's POST /hub/install reuses this
+// exact path — verify -> trust-decision -> save + audit — rather than
+// duplicating any of it (T-1705 AC2's "no duplicated verification logic"
+// call-site check). It returns the response body plus the HTTP status to write;
+// a non-nil error is a blueprint-save or trust-store failure the caller maps
+// through writeBlueprintError. Every outcome (both explicit-trust paths and
+// every rejection) is audited as `blueprint.import` here, so a hub install
+// produces an identical audit shape to a direct import (T-1705 AC3).
+func importBundleCore(ctx context.Context, svc BlueprintService, trust BlueprintTrustStore, audit blueprintBundleAuditor, username string, bundle blueprint.Bundle, trustUnsigned, trustNewKey bool) (bundleImportResponse, int, error) {
+	verified, fingerprint, verr := blueprint.VerifyBundle(bundle)
+
+	switch {
+	case bundle.Signature == nil:
+		if !trustUnsigned {
+			auditBlueprintImport(ctx, audit, username, bundleStatusUnsigned, false, "", "")
+			return bundleImportResponse{Status: bundleStatusUnsigned}, http.StatusOK, nil
+		}
+		saved, err := saveImportedBlueprint(ctx, svc, username, bundle.Blueprint)
+		if err != nil {
+			return bundleImportResponse{}, 0, err
+		}
+		auditBlueprintImport(ctx, audit, username, bundleStatusImported, false, "trustUnsigned", "")
+		return bundleImportResponse{Status: bundleStatusImported, Blueprint: saved}, http.StatusCreated, nil
+
+	case verr != nil || !verified:
+		auditBlueprintImport(ctx, audit, username, bundleStatusInvalidSignature, false, "", fingerprint)
+		return bundleImportResponse{Status: bundleStatusInvalidSignature}, http.StatusOK, nil
+	}
+
+	// Signature verifies against its own embedded key; decide trust.
+	_, alreadyTrusted, getErr := trust.Get(fingerprint)
+	if getErr != nil {
+		return bundleImportResponse{}, 0, fmt.Errorf("checking trust store: %w", getErr)
+	}
+
+	if alreadyTrusted {
+		saved, err := saveImportedBlueprint(ctx, svc, username, bundle.Blueprint)
+		if err != nil {
+			return bundleImportResponse{}, 0, err
+		}
+		auditBlueprintImport(ctx, audit, username, bundleStatusImported, true, "alreadyTrusted", fingerprint)
+		return bundleImportResponse{Status: bundleStatusImported, Blueprint: saved}, http.StatusCreated, nil
+	}
+
+	if trustNewKey {
+		signer := blueprint.TrustedSigner{
+			Fingerprint: fingerprint, PublicKey: bundle.Signature.PublicKey,
+			AddedBy: username, AddedAt: time.Now().Unix(),
+		}
+		if err := trust.Add(signer); err != nil {
+			return bundleImportResponse{}, 0, fmt.Errorf("pinning new signer: %w", err)
+		}
+		saved, err := saveImportedBlueprint(ctx, svc, username, bundle.Blueprint)
+		if err != nil {
+			return bundleImportResponse{}, 0, err
+		}
+		auditBlueprintImport(ctx, audit, username, bundleStatusImported, true, "trustNewKey", fingerprint)
+		return bundleImportResponse{Status: bundleStatusImported, Blueprint: saved}, http.StatusCreated, nil
+	}
+
+	auditBlueprintImport(ctx, audit, username, bundleStatusUntrustedSignature, false, "", fingerprint)
+	return bundleImportResponse{
+		Status: bundleStatusUntrustedSignature,
+		Signer: &bundleSignerResponse{Fingerprint: fingerprint, PublicKey: bundle.Signature.PublicKey},
+	}, http.StatusOK, nil
 }
 
 // saveImportedBlueprint always mints a new saved blueprint (clears id and

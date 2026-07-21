@@ -276,3 +276,12 @@ standby lagging past a configured threshold raises the `ha_replication_degraded`
 **Relationship to D6.** This does not reintroduce a cluster leader: D6's peerless symmetric
 model still governs cluster-wide read/write coordination. The HA lease governs only *daemon*
 failover within an optional active/standby pair.
+
+**Hub install path (T-1705).** The Blueprint & plugin hub (`internal/hub`, §Hub in `docs/api.md`)
+is how a plugin is installed from a public registry. It is a catalog/install-orchestration
+layer, not a widening of this boundary: it downloads a `{manifest, signature}` artifact,
+verifies the Ed25519 signature against the same trust store blueprint bundles use, and only
+then installs the manifest through **this** registry's `Install` — which re-validates the
+capability scope. No Hub path reaches `Registry.Install` without that scope check, and only
+out-of-process (`grpc`) plugins are installable this way (an in-process plugin is build-time
+Go code that cannot be materialized from a downloaded manifest).

@@ -3017,3 +3017,72 @@ export interface MicrosegDryRunReport {
 // Snapshots and IPAM read views have routes defined in docs/api.md but no
 // frontend consumer yet — their request/response types land with the task
 // that first calls them. Add them here, not in a parallel file.
+
+// --- Blueprint & plugin hub (T-1705) --------------------------------------
+// The browse/install surface over T-1107 signed blueprint bundles and
+// T-1702 SDK plugins (docs/api.md's Hub section). The hub is a
+// catalog/install-orchestration client; the signature + trust gates are
+// inherited wholesale from T-1107 / T-1702, never re-implemented here.
+
+export type HubEntryType = "blueprint" | "plugin";
+
+/** One catalog entry from GET /hub/index. `vetted` is the informational
+ * badge (the signer is in the hub's own recognized list); it never bypasses
+ * the per-installation trust decision an install still enforces.
+ * capabilities/extensionPoints/transport are populated only for plugins so
+ * a browse UI can surface a plugin's declared capability scope for review
+ * before an install is confirmed. */
+export interface HubEntry {
+  type: HubEntryType;
+  id: string;
+  name: string;
+  version: string;
+  publisher?: string;
+  description?: string;
+  artifactUrl: string;
+  signerFingerprint?: string;
+  transport?: string;
+  capabilities?: string[];
+  extensionPoints?: string[];
+  signed: boolean;
+  vetted: boolean;
+}
+
+export interface HubIndexResponse {
+  items: HubEntry[];
+}
+
+/** POST /hub/install body. trustUnsigned/trustNewKey are the identical
+ * explicit-trust flags POST /blueprints/import uses — a hub install of an
+ * unsigned or untrusted-signer artifact requires the same explicit step. */
+export interface HubInstallRequest {
+  type: HubEntryType;
+  id: string;
+  version?: string;
+  trustUnsigned?: boolean;
+  trustNewKey?: boolean;
+}
+
+/** An installed plugin's identity + authoritative (signed) capability scope,
+ * echoed back on a successful plugin install. */
+export interface HubPluginInstalled {
+  id: string;
+  name: string;
+  version: string;
+  capabilities: string[];
+  extensionPoints: string[];
+}
+
+/** POST /hub/install response. `status` reuses the blueprint-bundle
+ * signature-gate vocabulary (unsigned / untrustedSignature /
+ * invalidSignature) plus "imported" (blueprint success) / "installed"
+ * (plugin success), so the same trust-status dialog covers both kinds. */
+export type HubInstallStatus = BundleImportStatus | "installed";
+
+export interface HubInstallResponse {
+  type: HubEntryType;
+  status: HubInstallStatus;
+  blueprint?: Blueprint;
+  signer?: BlueprintSigner;
+  plugin?: HubPluginInstalled;
+}

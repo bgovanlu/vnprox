@@ -140,6 +140,7 @@ type Config struct {
 	Storage     StorageConfig
 	FirewallLog FirewallLogConfig
 	Blueprint   BlueprintConfig
+	Hub         HubConfig
 	Peer        PeerConfig
 	Safety      SafetyConfig
 	Security    SecurityConfig
@@ -193,6 +194,20 @@ type HAConfig struct {
 	LagThreshold  int
 	Enabled       bool
 	Bootstrap     bool
+}
+
+// HubConfig is the [hub] section (T-1705): the opt-in Blueprint & plugin hub
+// client. RegistryURL is the base URL of the public registry whose
+// `GET <registry>/index.json` contract the client browses/installs from — empty
+// (the default) leaves the hub disabled (its routes still mount but return an
+// empty catalog / "not available"). VettedSigners is the hub's own
+// recognized-signer fingerprint allowlist, driving only the informational
+// "vetted" badge — it is distinct from T-1107's per-admin trust store
+// ([blueprint] trusted_signers_dir) and never bypasses that trust decision
+// (docs/security.md's Hub vetted-tier note).
+type HubConfig struct {
+	RegistryURL   string
+	VettedSigners []string
 }
 
 // SecurityConfig is the [security] section (T-1605: rogue-service detection).
@@ -503,6 +518,7 @@ type rawConfig struct {
 	Storage     rawStorage     `toml:"storage"`
 	FirewallLog rawFirewallLog `toml:"firewalllog"`
 	Blueprint   rawBlueprint   `toml:"blueprint"`
+	Hub         rawHub         `toml:"hub"`
 	Peer        rawPeer        `toml:"peer"`
 	OIDC        rawOIDC        `toml:"oidc"`
 	Metrics     rawMetrics     `toml:"metrics"`
@@ -647,6 +663,11 @@ type rawBlueprint struct {
 	TrustedSignersDir string `toml:"trusted_signers_dir"`
 }
 
+type rawHub struct {
+	RegistryURL   string   `toml:"registry_url"`
+	VettedSigners []string `toml:"vetted_signers"`
+}
+
 type rawFlows struct {
 	SFlowPort                int   `toml:"sflow_port"`
 	NetFlowPort              int   `toml:"netflow_port"`
@@ -764,6 +785,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		Blueprint: BlueprintConfig{
 			SigningKeyFile:    firstNonEmpty(raw.Blueprint.SigningKeyFile, DefaultBlueprintSigningKeyFile),
 			TrustedSignersDir: firstNonEmpty(raw.Blueprint.TrustedSignersDir, DefaultBlueprintTrustedSignersDir),
+		},
+		Hub: HubConfig{
+			RegistryURL:   raw.Hub.RegistryURL,
+			VettedSigners: raw.Hub.VettedSigners,
 		},
 		Flows: FlowsConfig{
 			SFlowEnabled:     raw.Flows.SFlowEnabled,

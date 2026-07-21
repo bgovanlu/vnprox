@@ -171,7 +171,34 @@ func VerifyBundle(b Bundle) (verified bool, fingerprint string, err error) {
 	if b.Signature == nil {
 		return false, "", nil
 	}
-	sig := b.Signature
+	msg, err := canonicalBlueprintBytes(b.Blueprint)
+	if err != nil {
+		return false, b.Signature.PublicKeyFingerprint, err
+	}
+	return VerifySignature(b.Signature, msg)
+}
+
+// VerifySignature checks a BundleSignature entirely against key material
+// carried in sig itself (its embedded PublicKey), over an arbitrary signed
+// message msg — exactly the check VerifyBundle runs, factored out so any
+// other signed artifact (T-1705's hub plugin manifests) verifies through
+// this one Ed25519 path rather than reimplementing the crypto. Like
+// VerifyBundle it consults no trust store: a true/nil result means only
+// "msg matches what this claimed key signed", never "this installation
+// trusts that key" — the caller layers a TrustStore lookup on top.
+//
+// Returns:
+//   - verified=false, fingerprint=<claimed>, err=ErrInvalidSignature : sig
+//     is malformed, internally inconsistent (its PublicKeyFingerprint does
+//     not match its own PublicKey), or the signature bytes do not verify
+//     against that public key over msg (including msg being tampered after
+//     signing).
+//   - verified=true, fingerprint=<signer>, err=nil : the signature
+//     verifies; the caller still must decide whether fingerprint is trusted.
+func VerifySignature(sig *BundleSignature, msg []byte) (verified bool, fingerprint string, err error) {
+	if sig == nil {
+		return false, "", fmt.Errorf("%w: nil signature", ErrInvalidSignature)
+	}
 	if sig.Alg != SignatureAlgEd25519 {
 		return false, sig.PublicKeyFingerprint, fmt.Errorf("%w: unsupported alg %q", ErrInvalidSignature, sig.Alg)
 	}
@@ -187,10 +214,6 @@ func VerifyBundle(b Bundle) (verified bool, fingerprint string, err error) {
 	sigBytes, err := base64.StdEncoding.DecodeString(sig.Sig)
 	if err != nil || len(sigBytes) != ed25519.SignatureSize {
 		return false, fp, fmt.Errorf("%w: malformed signature", ErrInvalidSignature)
-	}
-	msg, err := canonicalBlueprintBytes(b.Blueprint)
-	if err != nil {
-		return false, fp, err
 	}
 	if !ed25519.Verify(pub, msg, sigBytes) {
 		return false, fp, fmt.Errorf("%w: signature does not verify", ErrInvalidSignature)

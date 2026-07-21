@@ -27,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/edge", label: "Edge", glyph: "E" },
   { path: "/ports", label: "Ports", glyph: "P" },
   { path: "/blueprints", label: "Blueprints", glyph: "B" },
+  { path: "/hub", label: "Hub", glyph: "U" },
   { path: "/history", label: "History", glyph: "H" },
   { path: "/audit", label: "Audit", glyph: "A" },
   { path: "/tools", label: "Tools", glyph: "L" },

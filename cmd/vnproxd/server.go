@@ -26,6 +26,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/ha"
 	"github.com/bgovanlu/vnprox/internal/host"
+	"github.com/bgovanlu/vnprox/internal/hub"
 	"github.com/bgovanlu/vnprox/internal/ingress"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
@@ -206,6 +207,23 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return fmt.Errorf("initializing blueprint signing key: %w", err)
 	}
 	blueprintTrust := blueprint.NewTrustStore(cfg.Blueprint.TrustedSignersDir)
+
+	// T-1705: the opt-in Blueprint & plugin hub client. Constructed only when a
+	// registry URL is configured ([hub] registry_url) — an empty URL leaves
+	// hubClient nil, which skips mounting the hub routes entirely (the hub is
+	// off by default). A malformed URL is logged and the hub stays off rather
+	// than failing daemon startup. The vetted-signer set drives only the
+	// informational badge; it never gates an install.
+	var hubClient *hub.Client
+	if regURL := cfg.Hub.RegistryURL; regURL != "" {
+		hc, herr := hub.NewClient(regURL)
+		if herr != nil {
+			logger.Warn("blueprint & plugin hub disabled: invalid registry URL", "url", regURL, "err", herr)
+		} else {
+			hubClient = hc
+		}
+	}
+	hubVetted := hub.NewVettedSet(cfg.Hub.VettedSigners)
 
 	// T-602: the unified findings engine's IngestServices is wired in as
 	// collect.Config.OnServices below (the same "piggyback on the host
@@ -775,6 +793,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Audit:  auditRepo,
 		Logger: logger,
 	})
+	// T-1705: the hub's plugin-install adapter — turns a hub-verified manifest
+	// into a live registration and installs it through the same registry above
+	// (which re-validates the capability scope). See hubinstall.go.
+	hubInstaller := hubPluginInstaller{registry: pluginRegistry}
 	// T-1103: an eager tick right at startup — mirrors ArmPendingRollbacks
 	// above — so a schedule whose window (or, for missedWindowPolicy "skip",
 	// whose windowEnd) already passed while this daemon was down is resolved
@@ -1173,10 +1195,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// and the onboarding walkthrough's "LLDP offer" step's guided
 		// install, both additive to docs/api.md's original contract (see
 		// docexport.go/lldpinstall.go's doc comments).
-		DocExport:         docExportSvc,
-		Capacity:          capacityExportSvc,
-		Posture:           postureRead,
-		Plugins:           pluginRegistry,
+		DocExport: docExportSvc,
+		Capacity:  capacityExportSvc,
+		Posture:   postureRead,
+		Plugins:   pluginRegistry,
+		// T-1705: Blueprint & plugin hub. HubClient nil (no [hub] registry_url)
+		// skips the routes; PluginInstaller reuses pluginRegistry above so a hub
+		// plugin install goes through T-1702's capability-scoped registry.
+		HubClient:         hubClientOrNil(hubClient),
+		HubVetting:        hubVetted,
+		PluginInstaller:   hubInstaller,
 		LLDPInstaller:     realHost,
 		LLDPPeerInstaller: lldpPeerInstaller,
 		LLDPAudit:         auditRepo,

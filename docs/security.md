@@ -129,9 +129,18 @@ There is **one privileged internal identity**: a PVE API token `vnprox@pve!daemo
 - Cluster-wide apply lock prevents concurrent conflicting changesets.
 - **Scheduled/unattended apply (T-1103, addition):** a changeset whose ops touch a node's resolved management path (`touchesMgmtPath`) can never be scheduled for unattended apply (docs/api.md's `POST /changesets/{id}/schedule`: `422 mgmt_path_unattended_forbidden`). This is a **stricter, separate gate** from the `allow_dangerous_ops` line above, not an application of it: `allow_dangerous_ops` only ever downgrades a T-203 safety-interlock *validation finding* from error to warning for an ordinary, interactively-confirmed apply — it has no bearing on, and no effect over, the scheduling gate, which checks `touchesMgmtPath` directly and unconditionally before any validation pass even runs. There is no config flag, request field, or combination of the two that schedules a management-path change for unattended apply; the only path to changing a node's management path stays the interactive one (T-703's guided wizard, reviewed and confirmed by a human at apply time).
 
+## Blueprint & plugin hub (T-1705)
+
+The hub (`internal/hub`, opt-in via `[hub] registry_url`) is a browse/install **client** over a public registry of signed blueprint bundles (T-1107) and SDK plugins (T-1702); the registry service lives in a separate repo. It is **not a new trust boundary** — it inherits, and never weakens, the existing gates:
+
+- **Signature + trust gate (inherited).** A downloaded blueprint bundle goes through T-1107's exact `POST /blueprints/import` path (the same `importBundleCore`); a downloaded plugin manifest is verified with the same Ed25519 primitive (`blueprint.VerifySignature`) against the same trust store. An unsigned or untrusted-signer artifact is never installed without the explicit `trustUnsigned`/`trustNewKey` decision, identical to a direct import.
+- **Capability scope (inherited).** A plugin install is completed only through T-1702's `Registry.Install`, which re-validates the declared capability scope against `internal/auth`'s vocabulary. The hub reaches no path that installs a plugin without that check; only out-of-process (`grpc`) plugins are installable this way.
+- **Vetted tier is informational only.** `[hub] vetted_signers` is the hub's own recognized-signer allowlist, **distinct** from the per-admin trust store. A "vetted" badge is display metadata; it never substitutes for the per-installation trust decision — a vetted-but-untrusted signer still requires an explicit trust step. This is a deliberate non-authority: the vetted list can add reassurance but can never grant trust an admin hasn't.
+- **Off-origin fetch guard.** The fetched `index.json` is not signed as a whole, so an entry's `artifactUrl` is required to resolve to the registry's own host — the index can never redirect an install to an arbitrary third-party host (the artifact's own signature remains the authoritative gate; this is defence in depth).
+
 ## Audit
 
-Every mutation attempt (including denied and rolled-back) is written to the audit log with user, source IP, changeset id, op summaries, and result. Audit entries are append-only at the API layer; there is no delete endpoint.
+Every mutation attempt (including denied and rolled-back) is written to the audit log with user, source IP, changeset id, op summaries, and result. Audit entries are append-only at the API layer; there is no delete endpoint. Hub installs are audited as `blueprint.import` (blueprint installs, reusing T-1107's exact audit) or `hub.install` (plugin installs, recording the trust decision and signer fingerprint).
 
 ## Threat model summary
 
