@@ -88,13 +88,26 @@ func mountTopologyRoutes(r chi.Router, svc TopologyService, auth AuthService, ch
 // upgrade, gated by the same session + capability requirement as the REST
 // topology routes (T-106 acceptance criterion 5: "a WS upgrade ... with no
 // session cookie -> 401").
-func mountWSRoute(r chi.Router, svc TopologyService, auth AuthService) {
+//
+// T-1703 fail-closed WS guard: the /api/ws feed carries cluster-wide
+// topology.delta events that are NOT yet filtered per subscriber, so a
+// tenant-scoped principal must never be upgraded — it would receive unscoped,
+// cross-tenant deltas (exactly the leak this card must not ship). tenantWSGuard
+// (when wired) denies the upgrade with 403 for any principal that resolves to a
+// tenant scope; a non-tenant/admin principal is unaffected. A tenant getting NO
+// live feed is safe; a tenant getting an unscoped feed is a leak. Full
+// per-subscriber WS scoping is a documented follow-up (planning/reports/
+// T-1703.md) — this guard structurally closes the leak until then.
+func mountWSRoute(r chi.Router, svc TopologyService, auth AuthService, wsGuard func(http.Handler) http.Handler) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
+		if wsGuard != nil {
+			r.Use(wsGuard)
+		}
 		r.Get("/api/ws", svc.ServeWS)
 	})
 }

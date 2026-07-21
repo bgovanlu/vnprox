@@ -126,6 +126,37 @@ func tenantScopeMiddleware(scoper TenantScoper, lookup UsernameLookup) func(http
 	}
 }
 
+// tenantWSGuard denies the /api/ws upgrade for a tenant-scoped principal
+// (T-1703, fail-closed). The WS topology.delta feed is cluster-wide and NOT yet
+// filtered per subscriber, so a tenant member subscribing would receive
+// unscoped cross-tenant deltas — the exact leak this card must not ship. Any
+// principal that resolves to a tenant scope is refused with 403; a
+// non-tenant/admin principal passes through and gets the feed as before. This
+// is the same server-side scope resolution the REST scoping middleware uses. A
+// resolution error fails closed (500) rather than risk an unfiltered upgrade.
+func tenantWSGuard(scoper TenantScoper, lookup UsernameLookup) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			username, ok := lookup.Username(r.Context())
+			if !ok || username == "" {
+				next.ServeHTTP(w, r) // unauthenticated is already rejected upstream
+				return
+			}
+			_, isMember, err := scoper.ScopeFor(r.Context(), username)
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not resolve tenant scope")
+				return
+			}
+			if isMember {
+				writeJSONError(w, http.StatusForbidden, "forbidden",
+					"the live topology feed is not yet tenant-scoped; use the REST read routes, which are")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // ---- response filters (data-access-layer enforcement) -------------------
 
 // filterTopologyForScope narrows a projected Topology to the tenant's visible

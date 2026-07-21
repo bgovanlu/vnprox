@@ -478,9 +478,14 @@ func NewRouter(opts Options) http.Handler {
 	// (opts.Tenant nil) or when the auth backend can't resolve a username —
 	// the read routes then mount unscoped, exactly as before.
 	var scopeMW func(http.Handler) http.Handler
+	// wsGuard fail-closes the /api/ws upgrade for tenant-scoped principals
+	// (T-1703): the delta feed is cluster-wide and not yet per-subscriber
+	// filtered, so a tenant member is refused rather than handed unscoped data.
+	var wsGuard func(http.Handler) http.Handler
 	if opts.Tenant != nil && opts.Auth != nil {
 		if lookup, ok := opts.Auth.(UsernameLookup); ok {
 			scopeMW = tenantScopeMiddleware(opts.Tenant, lookup)
+			wsGuard = tenantWSGuard(opts.Tenant, lookup)
 		}
 	}
 
@@ -558,7 +563,7 @@ func NewRouter(opts Options) http.Handler {
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket
 	// section documents it at the bare /api/ws path).
-	mountWSRoute(r, opts.Topology, opts.Auth)
+	mountWSRoute(r, opts.Topology, opts.Auth, wsGuard)
 
 	// /api/peer/* is likewise outside /api/v1 (docs/api.md's Peer API
 	// section: "internal only", its own auth scheme) — mounted at the top

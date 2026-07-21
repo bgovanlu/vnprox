@@ -382,6 +382,33 @@ func TestApprove_NonRequestChangesetIs404(t *testing.T) {
 	}
 }
 
+// ---- WS fail-closed guard (cross-tenant leak prevention) ------------------
+
+// TestTenantScoping_WSUpgradeDeniedForTenant proves the /api/ws topology-delta
+// feed is refused for a tenant-scoped principal (the feed is cluster-wide and
+// not yet per-subscriber filtered, so an unscoped upgrade would leak
+// cross-tenant deltas) while a non-tenant/admin principal still gets it.
+func TestTenantScoping_WSUpgradeDeniedForTenant(t *testing.T) {
+	env := newTenantEnv(t)
+	env.seedTenant(t, "t1", map[string]string{"alice@pve": store.TenantRoleMember}, "guest:pve1:100")
+
+	// A tenant member is refused the WS upgrade with 403.
+	req := httptest.NewRequest(http.MethodGet, "/api/ws", nil)
+	rec := httptest.NewRecorder()
+	env.router("alice@pve").ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("tenant WS upgrade = %d, want 403 (fail-closed): %s", rec.Code, rec.Body.String())
+	}
+
+	// A non-tenant operator still gets the feed (fake ServeWS returns 200).
+	req = httptest.NewRequest(http.MethodGet, "/api/ws", nil)
+	rec = httptest.NewRecorder()
+	env.router("operator@pve").ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("non-tenant WS upgrade = %d, want 200 (unaffected)", rec.Code)
+	}
+}
+
 // ---- AC6: scoped dashboard ------------------------------------------------
 
 func TestTenantDashboard_ScopedCounts(t *testing.T) {
