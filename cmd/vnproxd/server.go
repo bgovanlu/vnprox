@@ -533,6 +533,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Topo:      topoSvc,
 	}
 
+	// T-1607: the network posture score & report — a scheduled computation job
+	// folding failsimSvc's SPOF inventory, findingsEngine's baseline-anomaly /
+	// drift finding counts, baselineProfileRepo's learned-profile count (the
+	// cold-start honesty signal), and the graph's own resolved firewall view
+	// (segmentation + exposed ports) into one explainable score, persisted to
+	// posture_scores. Its compute/prune actors are registered in the run group
+	// below; postureRead backs GET /posture, /posture/history, /export/posture.
+	postureComputeActor, posturePruneActor, postureRead := setupPosture(graph, failsimSvc, findingsEngine, baselineProfileRepo, db, logger)
+
 	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
 	// (docs/api.md's WebSocket section documents one shared /api/ws
 	// connection multiplexing "topology"/"changesets"/... topics alike —
@@ -1079,6 +1088,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// docexport.go/lldpinstall.go's doc comments).
 		DocExport:         docExportSvc,
 		Capacity:          capacityExportSvc,
+		Posture:           postureRead,
 		LLDPInstaller:     realHost,
 		LLDPPeerInstaller: lldpPeerInstaller,
 		LLDPAudit:         auditRepo,
@@ -1169,6 +1179,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// actor in this group.
 	g.add(capacityRollupActor)
 	g.add(capacityPruneActor)
+	// T-1607: the scheduled posture-score computation (daily; run-once-then-tick)
+	// and the posture_scores retention prune loop (keep last
+	// DefaultPostureKeepCount computations or DefaultPostureRetentionDays by age).
+	// Both supervised goroutines, the same "log and keep going" failure contract
+	// every other loop here follows (posture.go's doc comments).
+	g.add(postureComputeActor)
+	g.add(posturePruneActor)
 	// T-1601: the flow-baseline learn job (recomputes per-Ref baselines from
 	// the retained flow window on [baseline] learn cadence) and the
 	// baseline_profiles retention prune loop ([baseline] profile_retention_days,

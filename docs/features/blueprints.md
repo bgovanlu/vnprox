@@ -25,6 +25,8 @@ On first login vnprox must be immediately valuable on a brownfield cluster:
 
 One click → Markdown/HTML document of the cluster network: rendered topology (SVG), per-node interface tables, VLAN matrix, SDN inventory, firewall summaries, LLDP wiring table. Timestamped — the "as-built doc" that never gets written manually.
 
+**Posture report extension (T-1607).** The same export machinery (`internal/docexport`'s dual-format Markdown/HTML renderer, not a parallel one) also renders the **network posture report** via `GET /export/posture?format=md|html` (docs/api.md's "Posture score & report" section): the periodically-computed security/resilience score, its named-factor table (SPOF resilience, segmentation coverage, exposed ports, anomaly rate, drift hygiene — each factor's weight/value/contribution shown independently, never an opaque single number), and a trend sparkline over the bounded score history. It is the management-legible progress artifact that turns the findings stream into a trend line an operator can show someone else. The report is **honest about uncertainty**: a factor that could not be assessed (a cold-start anomaly rate with no learned baselines, a SPOF score resting on failsim dimensions it could not evaluate) is rendered as a partial/qualified score with its caveat, never silently shown as a clean 100 — the same "no silent approximation" contract the simulators in this codebase follow.
+
 ## 5. Blueprint sharing bundles (T-1107)
 
 A community layer on top of blueprints v2 (`internal/blueprint`, `docs/api.md`'s Blueprints section for the `Blueprint` shape): a signed envelope one installation can export and hand to another, with a trust model that never imports something unverified without an explicit human decision.

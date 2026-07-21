@@ -390,6 +390,11 @@ type Options struct {
 	// retention window); nil skips mounting the route, matching every other
 	// optional Options field.
 	Capacity CapacityService
+	// Posture backs T-1607's GET /posture, GET /posture/history, and GET
+	// /export/posture (the periodically-computed network posture score with
+	// named factors, plus its Markdown/HTML report); nil skips mounting the
+	// routes, matching every other optional Options field.
+	Posture PostureService
 	// LLDPInstaller/LLDPPeerInstaller/LLDPAudit/LocalNode back T-605's
 	// POST /lldp/install (the onboarding walkthrough's "LLDP offer" step,
 	// docs/user-guide.md §1.3); LLDPInstaller nil skips mounting the route.
@@ -517,6 +522,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows, opts.FlowClassifier)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
 		mountCapacityRoutes(r, opts.Capacity, opts.Auth)
+		mountPostureRoutes(r, opts.Posture, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
