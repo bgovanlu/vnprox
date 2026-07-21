@@ -116,6 +116,7 @@ type Config struct {
 	Blueprint   BlueprintConfig
 	Peer        PeerConfig
 	Safety      SafetyConfig
+	Security    SecurityConfig
 	OIDC        OIDCConfig
 	Server      ServerConfig
 	Metrics     MetricsConfig
@@ -127,6 +128,17 @@ type Config struct {
 	Retention   RetentionConfig
 	MTUProbe    MTUProbeConfig
 	Switches    SwitchesConfig
+}
+
+// SecurityConfig is the [security] section (T-1605: rogue-service detection).
+// ProtectedSegments lists the bridge/segment names an operator has flagged
+// protected — a MAC learned on one of them that matches no known
+// guest/PhysNic/LLDP-neighbor in the inventory raises the
+// unknown_mac_protected_segment finding (source "rogue"). Empty (the default)
+// leaves that check disabled; the other three rogue checks do not depend on
+// it.
+type SecurityConfig struct {
+	ProtectedSegments []string
 }
 
 // OIDCConfig is the [oidc] section (T-1207: OIDC SSO). Enabled is derived —
@@ -404,6 +416,7 @@ type rawConfig struct {
 	OIDC        rawOIDC        `toml:"oidc"`
 	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
+	Security    rawSecurity    `toml:"security"`
 	Server      rawServer      `toml:"server"`
 	Capture     rawCapture     `toml:"capture"`
 	Flows       rawFlows       `toml:"flows"`
@@ -412,6 +425,10 @@ type rawConfig struct {
 	Retention   rawRetention   `toml:"retention"`
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
 	Switches    rawSwitches    `toml:"switches"`
+}
+
+type rawSecurity struct {
+	ProtectedSegments []string `toml:"protected_segments"`
 }
 
 type rawOIDC struct {
@@ -594,6 +611,9 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		},
 		Switches: SwitchesConfig{
 			Enabled: raw.Switches.Enabled,
+		},
+		Security: SecurityConfig{
+			ProtectedSegments: raw.Security.ProtectedSegments,
 		},
 		Storage: StorageConfig{
 			DBPath:         firstNonEmpty(raw.Storage.DBPath, DefaultDBPath),

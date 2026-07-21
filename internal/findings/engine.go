@@ -90,15 +90,28 @@ type Config struct {
 	// (health_ceph.go), backing ceph_corosync_shared_link/
 	// ceph_cluster_mtu_mismatch/ceph_single_nic. Nil skips all three checks,
 	// same degradation as every other optional Config field.
-	Ceph            CephProvider
+	Ceph CephProvider
+	// Rogue is T-1605's rogue-service detection seam (cmd/vnproxd's
+	// rogueScanAdapter over internal/neighbor, the DHCP config view, and
+	// T-1404's RA feed), backing the three feed-driven rogue checks
+	// (rogue_dhcp_server / unexpected_ra / arp_spoof_suspected). Nil skips
+	// those three, same degradation as every other optional Config field;
+	// unknown_mac_protected_segment is graph+config-derived and runs
+	// regardless.
+	Rogue           RogueProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
 	OnChange        func(count int)
 	Now             func() time.Time
 	NotifyThreshold string
-	Thresholds      HealthThresholds
-	Interval        time.Duration
+	// ProtectedSegments is T-1605's operator-flagged protected-segment list
+	// (config [security] protected_segments) — bridge names whose newly-joined
+	// unknown MACs raise unknown_mac_protected_segment. Empty disables that
+	// check entirely.
+	ProtectedSegments []string
+	Thresholds        HealthThresholds
+	Interval          time.Duration
 }
 
 // Engine composes drift/lldp/ipam producers with this package's own health
@@ -125,10 +138,13 @@ type Engine struct {
 	flowSvc          FlowProvider
 	k8sSvc           K8sProvider
 	cephSvc          CephProvider
+	rogueSvc         RogueProvider
+	notified         map[string]string
+	onChange         func(int)
 	cephDB           *debouncer
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
-	notified         map[string]string
+	arpChurnDB       *arpChurnTracker
 	services         *serviceStatusStore
 	now              func() time.Time
 	latLossDB        *debouncer
@@ -138,7 +154,7 @@ type Engine struct {
 	corosyncDB       *debouncer
 	vxlanMTUDB       *debouncer
 	latRttDB         *debouncer
-	onChange         func(int)
+	lastIDs          map[string]bool
 	log              *slog.Logger
 	wgDriftDB        *debouncer
 	wanDB            *debouncer
@@ -147,8 +163,8 @@ type Engine struct {
 	pendingTr        *pendingTracker
 	serviceTrafficDB *debouncer
 	serviceDB        *debouncer
-	lastIDs          map[string]bool
 	notifyMin        string
+	protectedSegs    []string
 	thresholds       HealthThresholds
 	interval         time.Duration
 	mu               sync.Mutex
@@ -222,6 +238,9 @@ func New(cfg Config) *Engine {
 		k8sSvc:           cfg.K8s,
 		cephSvc:          cfg.Ceph,
 		cephDB:           newDebouncer(),
+		rogueSvc:         cfg.Rogue,
+		arpChurnDB:       newArpChurnTracker(),
+		protectedSegs:    cfg.ProtectedSegments,
 	}
 }
 
@@ -251,8 +270,26 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, checkWanDegraded(e.wanSvc, e.wanDB, e.thresholds)...)
 	out = append(out, checkServiceTrafficOnWrongNetwork(e.flowSvc, e.serviceTrafficDB)...)
 	out = append(out, e.healthFindings()...)
+	out = append(out, e.rogueFindings()...)
 	sortFindings(out)
 	return out
+}
+
+// rogueFindings runs T-1605's rogue-service detection producer (source
+// "rogue"): the three feed-driven checks over e.rogueSvc's live scan plus the
+// graph+config-derived unknown_mac_protected_segment check. When the daemon
+// has no inventory graph (degraded startup), the graph-derived check is
+// skipped by passing an empty protected-segment list — the feed-driven checks
+// still run, since they don't depend on the graph.
+func (e *Engine) rogueFindings() []Finding {
+	var snap inventory.Snapshot
+	segs := e.protectedSegs
+	if e.graph != nil {
+		snap = e.graph.Snapshot()
+	} else {
+		segs = nil
+	}
+	return rogueFindings(e.rogueSvc, snap, segs, e.arpChurnDB, e.now())
 }
 
 // healthFindings runs every health_*.go check family against the current

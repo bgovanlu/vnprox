@@ -447,7 +447,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, logger *slog.Logger) *findings.Engine {
+func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
@@ -482,10 +482,17 @@ func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc finding
 		// ceph_corosync_shared_link/ceph_cluster_mtu_mismatch/
 		// ceph_single_nic (cephwire.go's *cephProviderAdapter, nil-safe —
 		// see its own doc comment).
-		Ceph:       cephSvc,
-		Thresholds: thresholds,
-		Logger:     logger,
-		Notifier:   notifier,
+		Ceph: cephSvc,
+		// T-1605: rogue-service detection seam (rogueScanAdapter over
+		// internal/neighbor's cluster-wide ARP/IPv6-neighbor table) plus the
+		// operator-flagged protected-segment list — backing the four "rogue"
+		// checks. nil-safe (a nil adapter/empty list skips the feed-driven
+		// checks), same degradation convention as every other producer above.
+		Rogue:             rogueSvc,
+		ProtectedSegments: protectedSegments,
+		Thresholds:        thresholds,
+		Logger:            logger,
+		Notifier:          notifier,
 		OnChange: func(count int) {
 			data, err := json.Marshal(findingsChangedEvent{Event: "findings.changed", Count: count})
 			if err != nil {

@@ -482,7 +482,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// overlay reads back the api.Options.K8sPoller routes further down.
 	k8sClusterRepo := store.NewK8sClusterRepo(db)
 	k8sPoller := k8s.NewPoller()
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
+	// T-1605: rogue-service detection feed (cluster-wide neighbor table via
+	// neighborSvc) plus the operator-flagged [security] protected_segments list.
+	rogueAdapter := rogueScanAdapter{baseCtx: ctx, neighbors: neighborSvc, logger: logger}
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
