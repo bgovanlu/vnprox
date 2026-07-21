@@ -446,7 +446,16 @@ type Options struct {
 	// — the route still mounts and reports whatever's set (Version at
 	// minimum). Never populate it with a secret; see InstanceInfo.
 	Instance InstanceInfo
+	// MCP is T-1701's read-only/stage-only MCP server handler, mounted raw
+	// (its own bearer auth, no session/CSRF) at DefaultMCPPath. Nil unless
+	// [mcp] enabled=true, in which case the MCP route simply isn't mounted.
+	MCP http.Handler
 }
+
+// DefaultMCPPath is the fixed mount path (under /api/v1) for the MCP transport
+// (T-1701), kept here so the router and cmd/vnproxd agree without importing
+// internal/config. Pinned equal to config.DefaultMCPPath by a config test.
+const DefaultMCPPath = "/api/v1/mcp"
 
 // NewRouter builds the vnproxd HTTP handler: the full middleware stack,
 // /api/v1/* routes, and SPA-fallback static serving for everything else.
@@ -534,6 +543,12 @@ func NewRouter(opts Options) http.Handler {
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
 		mountK8sRoutes(r, opts.K8sClusters, opts.K8sSecretCipher, opts.K8sPoller, opts.K8sGraph, opts.K8sIPAM, opts.K8sAudit, opts.Auth)
 		mountMigrationRoutes(r, opts.Migration, opts.Auth)
+		// T-1701 MCP server: mounted raw (its own bearer auth, no session/CSRF)
+		// at DefaultMCPPath — "/mcp" relative to this /api/v1 subrouter. Handles
+		// POST (JSON-RPC) and GET (SSE). Nil unless [mcp] enabled=true.
+		if opts.MCP != nil {
+			r.Handle("/mcp", opts.MCP)
+		}
 	})
 
 	// /api/ws is intentionally not under /api/v1 (docs/api.md's WebSocket

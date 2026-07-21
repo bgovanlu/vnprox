@@ -617,3 +617,33 @@ func mergeSortedUniqueStrings(a, b []string) []string {
 	sort.Strings(out)
 	return out
 }
+
+// mcpDiagLookup is the UsernameLookup the MCP diagnose runner hands the ladder.
+// The MCP diagnose.run tool never escalates to capture (the one ladder rung
+// that consults a username), so this is only ever a placeholder; the real
+// per-invocation actor attribution for MCP lives in internal/mcp's own audit
+// row (mcp:<token-name>), not the ladder's.
+type mcpDiagLookup struct{}
+
+func (mcpDiagLookup) Username(context.Context) (string, bool) { return "mcp", true }
+
+// NewDiagnoseRunner builds the read-only diagnosis-ladder runner T-1701's MCP
+// diagnose.run tool wraps. It reuses the EXACT ladder POST /diagnose runs
+// (buildDiagnoseLadder), but always runs with EscalateToCapture=false — the
+// capture rung is the ladder's only side effect, so an MCP-driven diagnosis is
+// guaranteed free of side effects (a capture is never triggered over MCP).
+// Returns nil if the simulator (inventory) isn't wired, in which case the MCP
+// diagnose.run tool reports "not available" rather than mounting a broken
+// runner. Advisory only: the ladder never auto-remediates.
+func NewDiagnoseRunner(opts Options) func(ctx context.Context, targetRef string) (diagnose.Result, error) {
+	if opts.Simulator == nil {
+		return nil
+	}
+	ladder := buildDiagnoseLadder(opts, mcpDiagLookup{}, nil)
+	return func(ctx context.Context, targetRef string) (diagnose.Result, error) {
+		if _, err := inventory.ParseRef(targetRef); err != nil {
+			return diagnose.Result{}, fmt.Errorf("targetRef must be a valid inventory ref (kind:node:id): %w", err)
+		}
+		return ladder.Run(ctx, diagnose.Request{TargetRef: targetRef, EscalateToCapture: false}), nil
+	}
+}

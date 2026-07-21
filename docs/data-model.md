@@ -109,6 +109,9 @@ CREATE TABLE changesets (
                                      -- committed|rolled_back|failed|discarded
   cluster_id TEXT NOT NULL DEFAULT '', -- T-1201: attached cluster this changeset is scoped to;
                                      -- '' = implicit default/local cluster (single-cluster deployments)
+  origin TEXT NOT NULL DEFAULT 'ui', -- T-1701 (migration 0028): who staged this changeset —
+                                     -- 'ui'|'mcp'|'cli'; default 'ui' backfills every pre-0028 row
+  origin_token_id TEXT,              -- T-1701: staging bearer token's api_tokens.id; NULL unless token-staged (mcp/cli)
   ops_json TEXT NOT NULL,            -- ordered []Op
   findings_json TEXT,                -- validation results
   plan_json TEXT,                    -- ordered apply steps (rendered pre-apply)
