@@ -2954,6 +2954,65 @@ export interface MigrationAssessment {
   caveats: string[];
 }
 
+// --- Microsegmentation (POST /microseg/*; internal/api/microseg.go, T-1602;
+//     consumed by web/src/microseg/, T-1603) ------------------------------
+
+/** One classified flow in a `MicrosegDryRunReport` bucket (docs/api.md's
+ * Microsegmentation section). Enough to trace a would-have-blocked (or
+ * cannot-determine) flow back to the exact observed conversation and the
+ * rule tail it fell into. `reason` is set only for `cannotDetermine`
+ * entries (the undecidable rule's own reason string). `at` is a unix
+ * seconds timestamp; `proto` is the raw IP protocol number (6=tcp, ...),
+ * the same encoding FlowRecord uses. */
+export interface MicrosegFlowRef {
+  direction: string;
+  peerIp: string;
+  peerSubnet: string;
+  reason?: string;
+  proto: number;
+  port: number;
+  at: number;
+  bytes: number;
+}
+
+/** `POST /microseg/propose` response: the minimal covering-set firewall
+ * policy for a guest, its honesty fields, and the ready-to-stage changeset
+ * ops. `coveragePct`/`uncoveredFlowCount` are surfaced verbatim and **never
+ * rounded** to "covers everything" (T-1602's coverage contract). `rules`
+ * is the ordered ACCEPT allow-list plus one trailing match-all deny per
+ * governed direction; `stagedOps` are the `fw.rule.create` ops the review
+ * UI hands into the ordinary ChangesetDrawer — the planner never applies. */
+export interface MicrosegProposal {
+  guestRef: string;
+  rulesetRef: string;
+  directions: string[];
+  rules: RuleView[];
+  stagedOps: Op[];
+  coveragePct: number;
+  observedGoodBytes: number;
+  coveredBytes: number;
+  observedGoodFlowCount: number;
+  uncoveredFlowCount: number;
+  excludedAnomalyFlows: number;
+  alreadyCoveredGroups: number;
+}
+
+/** `POST /microseg/dry-run` response: every replayed flow in exactly one of
+ * four honest buckets (docs/api.md's Microsegmentation section). A
+ * `wouldBlock` flow that was observed-good is the **would-have-blocked**
+ * signal a reviewer must see before enforcing; `cannotDetermine` holds
+ * flows the shared evaluator could not prove permitted (never folded into
+ * `wouldAllow`). Both are surfaced prominently by the review UI. All four
+ * arrays are always present (`[]`, never null). */
+export interface MicrosegDryRunReport {
+  guestRef: string;
+  wouldAllow: MicrosegFlowRef[];
+  wouldBlock: MicrosegFlowRef[];
+  cannotDetermine: MicrosegFlowRef[];
+  ungoverned: MicrosegFlowRef[];
+  coveragePct: number;
+}
+
 // --- Everything else in docs/api.md ---------------------------------------
 // Snapshots and IPAM read views have routes defined in docs/api.md but no
 // frontend consumer yet — their request/response types land with the task

@@ -21,6 +21,7 @@ import { EmptyState } from "../components/EmptyState";
 import { FirewallBanners } from "./Banner";
 import type { FocusRule } from "./focusRule";
 import { parseFirewallDeepLink } from "./focusRule";
+import { MicrosegPlanner } from "../microseg/MicrosegPlanner";
 import { ObjectsPanel } from "./ObjectsPanel";
 import { ResolvedViewTable } from "./ResolvedViewTable";
 import { RuleEditor } from "./RuleEditor";
@@ -197,6 +198,11 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
             <h3 className="mb-1 text-sm font-semibold">Resolved evaluation order</h3>
             <ResolvedViewTable resolved={detail.resolved} focusRule={focusRule} />
           </div>
+          {selected && (
+            <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+              <MicrosegPlanner guestRef={selected} />
+            </div>
+          )}
         </div>
       )}
     </div>
