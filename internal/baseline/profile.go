@@ -151,6 +151,26 @@ func recordForRef(rec flow.Record, ref string) (refMatch, bool) {
 	return m, true
 }
 
+// PeerSubnet aggregates a peer IP to its containing /v4bits (IPv4) or /v6bits
+// (IPv6) network, rendered as a CIDR string — the exported form of the same
+// aggregation Learn/Detect use to key the observed-subnet set. T-1602's
+// microsegmentation planner reuses this verbatim so its per-subnet rule
+// grouping and its anomaly-exclusion subnet matching share ONE aggregation
+// with baseline detection (never a re-derived, drift-prone second copy). ok is
+// false for an unparseable address.
+func PeerSubnet(ipStr string, v4bits, v6bits int) (string, bool) {
+	return peerSubnet(ipStr, v4bits, v6bits)
+}
+
+// HourSubject renders the wall-clock hour bucket containing unixSeconds as the
+// same stable subject string a volume_spike Anomaly carries (e.g.
+// "2024-01-15T14:00Z"). Exported so T-1602's planner can decide whether a given
+// flow falls inside a volume_spike anomaly's flagged hour using baseline's own
+// bucket semantics rather than re-deriving them.
+func HourSubject(unixSeconds int64) string {
+	return hourSubject(unixSeconds / secondsPerHour)
+}
+
 // peerSubnet aggregates a peer IP to its /v4bits (IPv4) or /v6bits (IPv6)
 // containing network, rendered as a CIDR string (e.g. "10.0.0.0/24"). ok is
 // false for an unparseable address.
