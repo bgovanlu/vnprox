@@ -54,6 +54,13 @@ const peerSecretPollInterval = 30 * time.Second
 // table within ~4% of the retention window at negligible cost.
 const metricPruneInterval = time.Hour
 
+// capacityPruneInterval is how often the capacity_aggregates prune loop
+// (T-1606) enforces [capacity] aggregate_retention_days. These are daily
+// rollup rows on a ~13-month window, so a far coarser cadence than
+// metricPruneInterval suffices — running a few times a day keeps the table
+// trimmed without churn.
+const capacityPruneInterval = 6 * time.Hour
+
 // snapshotRetentionInterval is how often the snapshot retention job
 // (T-206) enforces cfg.Retention's keep/pin-days policy. Snapshots accrue
 // far more slowly than metric samples (one pre/post pair per apply, not a
@@ -482,7 +489,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// overlay reads back the api.Options.K8sPoller routes further down.
 	k8sClusterRepo := store.NewK8sClusterRepo(db)
 	k8sPoller := k8s.NewPoller()
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
+	// T-1606: capacity forecasting — the daily rollup job, the aggregate prune
+	// loop, the forecast findings provider, and the retention-bounded export
+	// service. Built here so its provider can feed the findings engine below;
+	// its rollup/prune actors are registered in the run group further down.
+	capacityRollupActor, capacityPruneActor, capacityProvider, capacityExportSvc := setupCapacity(ctx, cfg, db, graph, metricSamples, ipamConcrete, logger)
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, capacityProvider, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -1028,6 +1040,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// install, both additive to docs/api.md's original contract (see
 		// docexport.go/lldpinstall.go's doc comments).
 		DocExport:         docExportSvc,
+		Capacity:          capacityExportSvc,
 		LLDPInstaller:     realHost,
 		LLDPPeerInstaller: lldpPeerInstaller,
 		LLDPAudit:         auditRepo,
@@ -1110,6 +1123,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 			logger.Error("store: finding_events prune failed", "error", err)
 		})
 	})
+	// T-1606: the capacity forecasting daily rollup job and its aggregate
+	// prune loop. The rollup computes yesterday's downsampled utilization
+	// bucket (restart-safe/idempotent); the prune loop enforces
+	// [capacity] aggregate_retention_days on the arc's one deliberate
+	// retention extension. Both owned and shut down here like every other
+	// actor in this group.
+	g.add(capacityRollupActor)
+	g.add(capacityPruneActor)
 	// Snapshot retention (T-206, docs/features/change-management.md §4):
 	// keep cfg.Retention.SnapshotKeepDays of history, floored at
 	// SnapshotPinDays for any snapshot linked to a committed changeset (the

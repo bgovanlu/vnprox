@@ -75,6 +75,16 @@ const (
 	DefaultSnapshotKeepDays = 90
 	DefaultSnapshotPinDays  = 7
 
+	// DefaultCapacityAggregateRetentionDays and
+	// DefaultCapacityForecastHorizonDays are T-1606's documented [capacity]
+	// defaults — mirror store.DefaultCapacityRetentionDays (400) and
+	// capacity.DefaultForecastHorizonDays (90) so config defaults and those
+	// packages' own constants agree without this package importing them just
+	// for the numbers (the same mirror-not-import convention
+	// DefaultSnapshotKeepDays uses above; config_test pins the equality).
+	DefaultCapacityAggregateRetentionDays = 400
+	DefaultCapacityForecastHorizonDays    = 90
+
 	// DefaultFirewallLogPath is pve-firewall's conventional log location
 	// (T-505, docs/features/firewall.md §4) — mirrors
 	// internal/fwlog.DefaultLogPath; a config test pins the two strings
@@ -127,6 +137,7 @@ type Config struct {
 	Retention   RetentionConfig
 	MTUProbe    MTUProbeConfig
 	Switches    SwitchesConfig
+	Capacity    CapacityConfig
 }
 
 // OIDCConfig is the [oidc] section (T-1207: OIDC SSO). Enabled is derived —
@@ -392,6 +403,20 @@ type WanConfig struct {
 	LossWarnPct float64
 }
 
+// CapacityConfig is the [capacity] section (T-1606): the capacity-forecasting
+// rollup's own bounds. This card owns the network-intelligence arc's ONE
+// deliberate retention extension, so its knobs live in their own section
+// rather than reusing a raw-sample ring's [flows]/[latmesh]-style
+// retention_minutes/max_rows — the aggregate is bounded by an age cap in
+// *days*, not minutes/rows. AggregateRetentionDays defaults to
+// store.DefaultCapacityRetentionDays (400, ~13 months); ForecastHorizonDays
+// to capacity.DefaultForecastHorizonDays (90) — a forecast fires only when a
+// projected capacity crossing falls within this many days.
+type CapacityConfig struct {
+	AggregateRetentionDays int
+	ForecastHorizonDays    int
+}
+
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
@@ -412,6 +437,12 @@ type rawConfig struct {
 	Retention   rawRetention   `toml:"retention"`
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
 	Switches    rawSwitches    `toml:"switches"`
+	Capacity    rawCapacity    `toml:"capacity"`
+}
+
+type rawCapacity struct {
+	AggregateRetentionDays int `toml:"aggregate_retention_days"`
+	ForecastHorizonDays    int `toml:"forecast_horizon_days"`
 }
 
 type rawOIDC struct {
@@ -643,6 +674,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			RetentionMinutes: firstNonZeroInt(raw.Wan.RetentionMinutes, wan.DefaultRetentionMinutes),
 			MaxRows:          firstNonZeroInt64(raw.Wan.MaxRows, wan.DefaultMaxRows),
 			LossWarnPct:      raw.Wan.LossWarnPct,
+		},
+		Capacity: CapacityConfig{
+			AggregateRetentionDays: firstNonZeroInt(raw.Capacity.AggregateRetentionDays, DefaultCapacityAggregateRetentionDays),
+			ForecastHorizonDays:    firstNonZeroInt(raw.Capacity.ForecastHorizonDays, DefaultCapacityForecastHorizonDays),
 		},
 		Capture: CaptureConfig{
 			Root:                  firstNonEmpty(raw.Capture.Root, DefaultCaptureRoot),

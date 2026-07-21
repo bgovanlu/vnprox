@@ -90,7 +90,12 @@ type Config struct {
 	// (health_ceph.go), backing ceph_corosync_shared_link/
 	// ceph_cluster_mtu_mismatch/ceph_single_nic. Nil skips all three checks,
 	// same degradation as every other optional Config field.
-	Ceph            CephProvider
+	Ceph CephProvider
+	// Capacity is T-1606's capacity-forecast seam (capacityFindingsAdapter
+	// over the rolled-up capacity_aggregates + internal/capacity.Analyze),
+	// backing capacity_link_forecast / capacity_ipam_forecast. Nil skips that
+	// producer entirely, same degradation as every other optional Config field.
+	Capacity        CapacityProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -125,6 +130,7 @@ type Engine struct {
 	flowSvc          FlowProvider
 	k8sSvc           K8sProvider
 	cephSvc          CephProvider
+	capacitySvc      CapacityProvider
 	cephDB           *debouncer
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
@@ -221,6 +227,7 @@ func New(cfg Config) *Engine {
 		serviceTrafficDB: newDebouncer(),
 		k8sSvc:           cfg.K8s,
 		cephSvc:          cfg.Ceph,
+		capacitySvc:      cfg.Capacity,
 		cephDB:           newDebouncer(),
 	}
 }
@@ -250,6 +257,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, wgFindings(e.wgSvc, e.wgStaleDB, e.wgDriftDB, e.now())...)
 	out = append(out, checkWanDegraded(e.wanSvc, e.wanDB, e.thresholds)...)
 	out = append(out, checkServiceTrafficOnWrongNetwork(e.flowSvc, e.serviceTrafficDB)...)
+	out = append(out, capacityFindings(e.capacitySvc)...)
 	out = append(out, e.healthFindings()...)
 	sortFindings(out)
 	return out

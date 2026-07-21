@@ -375,6 +375,11 @@ type Options struct {
 	// export); nil skips mounting the route, matching every other optional
 	// Options field.
 	DocExport DocExportService
+	// Capacity backs T-1606's GET /capacity/export (the downsampled
+	// capacity_aggregates history for a ref, CSV or JSON, bounded to the
+	// retention window); nil skips mounting the route, matching every other
+	// optional Options field.
+	Capacity CapacityService
 	// LLDPInstaller/LLDPPeerInstaller/LLDPAudit/LocalNode back T-605's
 	// POST /lldp/install (the onboarding walkthrough's "LLDP offer" step,
 	// docs/user-guide.md §1.3); LLDPInstaller nil skips mounting the route.
@@ -499,6 +504,7 @@ func NewRouter(opts Options) http.Handler {
 		mountDiagnoseRoutes(r, opts, opts.Auth)
 		mountFlowRoutes(r, opts.Flows, opts.Auth, opts.PeerFlows, opts.FlowClassifier)
 		mountDocExportRoutes(r, opts.DocExport, opts.Auth)
+		mountCapacityRoutes(r, opts.Capacity, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)

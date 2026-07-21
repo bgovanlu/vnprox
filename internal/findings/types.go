@@ -40,6 +40,13 @@ const (
 	// read-only Kubernetes overlay mapping engine — currently the sole
 	// producer is k8s_nodeport_exposed_without_fw_rule (adapt_k8s.go).
 	SourceK8s Source = "k8s"
+	// SourceCapacity (T-1606) marks a finding computed by internal/capacity's
+	// linear trend over the downsampled capacity_aggregates history —
+	// capacity_link_forecast / capacity_ipam_forecast, the "vmbr1 uplink full
+	// in ~5 weeks" signal. Its own top-level source (like SourceProbe), not
+	// "health", since it is fed by rolled-up long-term aggregates rather than
+	// the live inventory graph or a polled host/PVE seam.
+	SourceCapacity Source = "capacity"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's
