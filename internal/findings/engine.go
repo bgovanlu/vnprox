@@ -98,7 +98,12 @@ type Config struct {
 	// those three, same degradation as every other optional Config field;
 	// unknown_mac_protected_segment is graph+config-derived and runs
 	// regardless.
-	Rogue           RogueProvider
+	Rogue RogueProvider
+	// Capacity is T-1606's capacity-forecast seam (capacityFindingsAdapter
+	// over the rolled-up capacity_aggregates + internal/capacity.Analyze),
+	// backing capacity_link_forecast / capacity_ipam_forecast. Nil skips that
+	// producer entirely, same degradation as every other optional Config field.
+	Capacity        CapacityProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -139,6 +144,7 @@ type Engine struct {
 	k8sSvc           K8sProvider
 	cephSvc          CephProvider
 	rogueSvc         RogueProvider
+	capacitySvc      CapacityProvider
 	notified         map[string]string
 	onChange         func(int)
 	cephDB           *debouncer
@@ -237,6 +243,7 @@ func New(cfg Config) *Engine {
 		serviceTrafficDB: newDebouncer(),
 		k8sSvc:           cfg.K8s,
 		cephSvc:          cfg.Ceph,
+		capacitySvc:      cfg.Capacity,
 		cephDB:           newDebouncer(),
 		rogueSvc:         cfg.Rogue,
 		arpChurnDB:       newArpChurnTracker(),
@@ -269,6 +276,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, wgFindings(e.wgSvc, e.wgStaleDB, e.wgDriftDB, e.now())...)
 	out = append(out, checkWanDegraded(e.wanSvc, e.wanDB, e.thresholds)...)
 	out = append(out, checkServiceTrafficOnWrongNetwork(e.flowSvc, e.serviceTrafficDB)...)
+	out = append(out, capacityFindings(e.capacitySvc)...)
 	out = append(out, e.healthFindings()...)
 	out = append(out, e.rogueFindings()...)
 	sortFindings(out)

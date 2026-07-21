@@ -51,6 +51,13 @@ const (
 	// not a noisy counter to debounce. Detection-only — never a mitigation path
 	// (health_rogue.go).
 	SourceRogue Source = "rogue"
+	// SourceCapacity (T-1606) marks a finding computed by internal/capacity's
+	// linear trend over the downsampled capacity_aggregates history —
+	// capacity_link_forecast / capacity_ipam_forecast, the "vmbr1 uplink full
+	// in ~5 weeks" signal. Its own top-level source (like SourceProbe), not
+	// "health", since it is fed by rolled-up long-term aggregates rather than
+	// the live inventory graph or a polled host/PVE seam.
+	SourceCapacity Source = "capacity"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's
