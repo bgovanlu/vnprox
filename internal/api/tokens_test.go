@@ -35,6 +35,17 @@ func (f *fakeAPITokenStore) Get(_ context.Context, id string) (store.APIToken, e
 	return t, nil
 }
 
+// GetByHash satisfies embedTokenReader (T-1706's embed view-route auth) — a
+// linear scan is fine for a test double.
+func (f *fakeAPITokenStore) GetByHash(_ context.Context, hash string) (store.APIToken, error) {
+	for _, t := range f.items {
+		if t.TokenHash == hash {
+			return t, nil
+		}
+	}
+	return store.APIToken{}, store.ErrNotFound
+}
+
 func (f *fakeAPITokenStore) List(context.Context) ([]store.APIToken, error) {
 	var out []store.APIToken
 	for _, t := range f.items {

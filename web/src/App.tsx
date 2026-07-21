@@ -22,6 +22,10 @@ import { AuditPage } from "./pages/AuditPage";
 import { ToolsPage } from "./pages/ToolsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AlertRulesPage } from "./pages/AlertRulesPage";
+import { EmbedFrame } from "./embed/EmbedFrame";
+import { EmbedMap } from "./embed/EmbedMap";
+import { EmbedDashboard } from "./embed/EmbedDashboard";
+import { EmbedPosture } from "./embed/EmbedPosture";
 import { applyThemeClass, useThemeStore } from "./store/theme";
 
 export function App() {
@@ -35,6 +39,35 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* T-1706: read-only, token-scoped embeds for wikis / NOC screens /
+         * status pages. Deliberately outside RequireAuth and AppShell —
+         * an embed authenticates with its `?token=` embed token (via
+         * EmbedFrame → apiFetch), never a session cookie, and carries no
+         * navigation or mutation chrome. */}
+        <Route
+          path="/embed/map"
+          element={
+            <EmbedFrame title="Network map">
+              <EmbedMap />
+            </EmbedFrame>
+          }
+        />
+        <Route
+          path="/embed/dashboard"
+          element={
+            <EmbedFrame title="Dashboard">
+              <EmbedDashboard />
+            </EmbedFrame>
+          }
+        />
+        <Route
+          path="/embed/posture"
+          element={
+            <EmbedFrame title="Network posture">
+              <EmbedPosture />
+            </EmbedFrame>
+          }
+        />
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
             {/* T-909: the narrow-viewport reachable set is Dashboard,
