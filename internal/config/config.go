@@ -124,6 +124,13 @@ const (
 	// it was learned from — and the learn job recomputes baselines every 24h.
 	DefaultBaselineProfileRetentionDays = 90
 	DefaultBaselineLearnIntervalHours   = 24
+
+	// DefaultMCPPath is where T-1701's MCP Streamable-HTTP/SSE transport mounts
+	// when [mcp] enabled = true (off by default). Under /api/v1 so it shares
+	// the daemon's TLS/request-logging/security-header middleware, but it does
+	// its own bearer-token auth (no session cookie / CSRF), the same exception
+	// GET /metrics already carries.
+	DefaultMCPPath = "/api/v1/mcp"
 )
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
@@ -144,10 +151,23 @@ type Config struct {
 	Collect     CollectConfig
 	Latmesh     LatmeshConfig
 	Retention   RetentionConfig
-	MTUProbe    MTUProbeConfig
-	Switches    SwitchesConfig
 	Capacity    CapacityConfig
 	Baseline    BaselineConfig
+	MTUProbe    MTUProbeConfig
+	Switches    SwitchesConfig
+	MCP         MCPConfig
+}
+
+// MCPConfig is the [mcp] section (T-1701): the read-only/stage-only MCP server
+// for AI operators. Enabled is the daemon-level master flag; false (the
+// default) ships the surface dark — no MCP HTTP route is mounted at all,
+// matching [switches]' feature-flag-dark precedent. The transport mounts at the
+// fixed DefaultMCPPath under /api/v1 and authenticates only via T-1104 bearer
+// tokens carrying the `automation` scope; there is no MCP-specific credential to
+// configure here, and no config key can widen it beyond reads + draft staging
+// (that boundary is structural in internal/mcp, not a config toggle).
+type MCPConfig struct {
+	Enabled bool
 }
 
 // SecurityConfig is the [security] section (T-1605: rogue-service detection).
@@ -469,10 +489,15 @@ type rawConfig struct {
 	Wan         rawWan         `toml:"wan"`
 	Latmesh     rawLatmesh     `toml:"latmesh"`
 	Retention   rawRetention   `toml:"retention"`
-	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
-	Switches    rawSwitches    `toml:"switches"`
 	Capacity    rawCapacity    `toml:"capacity"`
 	Baseline    rawBaseline    `toml:"baseline"`
+	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
+	Switches    rawSwitches    `toml:"switches"`
+	MCP         rawMCP         `toml:"mcp"`
+}
+
+type rawMCP struct {
+	Enabled bool `toml:"enabled"`
 }
 
 type rawCapacity struct {
@@ -716,6 +741,9 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		Baseline: BaselineConfig{
 			ProfileRetentionDays: firstNonZeroInt(raw.Baseline.ProfileRetentionDays, DefaultBaselineProfileRetentionDays),
 			LearnIntervalHours:   firstNonZeroInt(raw.Baseline.LearnIntervalHours, DefaultBaselineLearnIntervalHours),
+		},
+		MCP: MCPConfig{
+			Enabled: raw.MCP.Enabled,
 		},
 		MTUProbe: MTUProbeConfig{
 			ProbeIntervalSec: firstNonZeroInt(raw.MTUProbe.ProbeIntervalSec, mtuprobe.DefaultProbeIntervalSec),

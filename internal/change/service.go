@@ -378,8 +378,28 @@ func (s *Service) Get(ctx context.Context, id string) (Changeset, error) {
 // what they contain — only the explicit Validate call promotes a clean
 // draft to StatusValidated.
 func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (Changeset, error) {
+	return s.create(ctx, author, title, ops, OriginUI, "")
+}
+
+// CreateWithOrigin is Create with an explicit provenance label (T-1701): the
+// MCP surface (internal/mcp) calls it with OriginMCP and the staging token's
+// api_tokens.id so every AI-staged draft is unerasably labelled in the audit
+// trail. It is otherwise byte-identical to Create — the same validation, the
+// same StatusDraft result, the same single-in-flight-apply guarantees downstream
+// — because an MCP-staged changeset is an ordinary changeset that a human still
+// applies through the change engine; origin is a label, never a different code
+// path. An empty origin normalizes to OriginUI so a mis-wired caller can never
+// produce an unlabelled row.
+func (s *Service) CreateWithOrigin(ctx context.Context, author, title string, ops []Op, origin, originTokenID string) (Changeset, error) {
+	return s.create(ctx, author, title, ops, origin, originTokenID)
+}
+
+func (s *Service) create(ctx context.Context, author, title string, ops []Op, origin, originTokenID string) (Changeset, error) {
 	if ops == nil {
 		ops = []Op{}
+	}
+	if origin == "" {
+		origin = OriginUI
 	}
 	if err := s.sealOpSecrets(ops); err != nil {
 		return Changeset{}, err
@@ -388,6 +408,7 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 	findings := s.validateScoped(ctx, s.localClusterID, ops)
 	c := Changeset{
 		ID: store.NewULID(), Title: title, Author: author, Status: StatusDraft, ClusterID: s.localClusterID,
+		Origin: origin, OriginTokenID: originTokenID,
 		Ops: ops, Findings: findings, CreatedAt: nowUnix, UpdatedAt: nowUnix,
 	}
 	row, err := toStoreRow(c)
@@ -397,7 +418,7 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 	if err := s.repo.Insert(ctx, row); err != nil {
 		return Changeset{}, fmt.Errorf("change: creating changeset %s: %w", c.ID, err)
 	}
-	s.appendAudit(ctx, author, "changeset.create", "success", c.ID, map[string]any{"title": title, "opCount": len(ops)})
+	s.appendAudit(ctx, author, "changeset.create", "success", c.ID, map[string]any{"title": title, "opCount": len(ops), "origin": origin})
 	s.auditSafetyOverride(ctx, author, c.ID, findings)
 	s.broadcastStatus(c)
 	return c, nil
@@ -786,6 +807,7 @@ func toStoreRow(c Changeset) (store.Changeset, error) {
 	}
 	row := store.Changeset{
 		ID: c.ID, Title: c.Title, Author: c.Author, Status: string(c.Status), ClusterID: c.ClusterID,
+		Origin: c.Origin, OriginTokenID: c.OriginTokenID,
 		OpsJSON: string(opsJSON), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 	if c.Findings != nil {
@@ -815,6 +837,7 @@ func fromStoreRow(row store.Changeset) (Changeset, error) {
 	}
 	c := Changeset{
 		ID: row.ID, Title: row.Title, Author: row.Author, Status: Status(row.Status), ClusterID: row.ClusterID,
+		Origin: row.Origin, OriginTokenID: row.OriginTokenID,
 		Ops: ops, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if row.FindingsJSON.Valid {

@@ -90,17 +90,23 @@ type CSRFEnforcer interface {
 // (an empty array instead) so frontend code can always range over it
 // without a nil check.
 type changesetResponse struct {
-	Plan            json.RawMessage  `json:"plan,omitempty"`
-	ApplyLog        json.RawMessage  `json:"applyLog,omitempty"`
-	ConfirmDeadline *int64           `json:"confirmDeadline,omitempty"`
-	ID              string           `json:"id"`
-	Title           string           `json:"title"`
-	Author          string           `json:"author"`
-	Status          string           `json:"status"`
-	Ops             []change.Op      `json:"ops"`
-	Findings        []change.Finding `json:"findings"`
-	CreatedAt       int64            `json:"createdAt"`
-	UpdatedAt       int64            `json:"updatedAt"`
+	Plan            json.RawMessage `json:"plan,omitempty"`
+	ApplyLog        json.RawMessage `json:"applyLog,omitempty"`
+	ConfirmDeadline *int64          `json:"confirmDeadline,omitempty"`
+	ID              string          `json:"id"`
+	Title           string          `json:"title"`
+	Author          string          `json:"author"`
+	Status          string          `json:"status"`
+	// Origin (T-1701) is 'ui'|'mcp'|'cli': who staged this changeset, so the
+	// review UI can badge an AI-staged draft distinctly from a human one.
+	// OriginTokenID names the staging automation token (present only for a
+	// token-staged changeset).
+	Origin        string           `json:"origin"`
+	OriginTokenID string           `json:"originTokenId,omitempty"`
+	Ops           []change.Op      `json:"ops"`
+	Findings      []change.Finding `json:"findings"`
+	CreatedAt     int64            `json:"createdAt"`
+	UpdatedAt     int64            `json:"updatedAt"`
 	// TouchesMgmtPath is T-703's server-computed flag (docs/api.md's
 	// changesets section): the ops intersect a node's resolved management
 	// path (change.TouchesMgmtPath over the same MgmtStatus computation
@@ -121,8 +127,13 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 	if findings == nil {
 		findings = []change.Finding{}
 	}
+	origin := c.Origin
+	if origin == "" {
+		origin = change.OriginUI
+	}
 	return changesetResponse{
 		ID: c.ID, Title: c.Title, Author: c.Author, Status: string(c.Status),
+		Origin: origin, OriginTokenID: c.OriginTokenID,
 		Ops: ops, Findings: findings, Plan: c.Plan, ApplyLog: c.ApplyLog,
 		ConfirmDeadline: c.ConfirmDeadline, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}

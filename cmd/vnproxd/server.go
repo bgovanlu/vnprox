@@ -939,7 +939,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		fwLogAPI = fwlogSvc
 	}
 
-	handler := api.NewRouter(api.Options{
+	apiOpts := api.Options{
 		Version: version,
 		// Non-secret operational config for the Settings page's Instance
 		// section (GET /config). Deliberately excludes every secret/token/
@@ -1117,7 +1117,24 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// T-1507: the migration network planner (purely advisory, read-only
 		// — see internal/migration's own doc.go).
 		Migration: migrationPlanner,
-	})
+	}
+
+	// T-1701: the read-only/stage-only MCP server for AI operators. Off by
+	// default ([mcp] enabled=false) — when enabled it is mounted raw at
+	// api.DefaultMCPPath, authenticating solely via T-1104 automation bearer
+	// tokens. Built from the SAME live services the HTTP read handlers use
+	// (staging goes through changeSvc's change engine, never around it) and the
+	// SAME diagnosis ladder POST /diagnose runs. See mcpwire.go.
+	if cfg.MCP.Enabled {
+		mcpSrv, mcpErr := setupMCP(apiOpts, changeSvc, apiTokenRepo, auditRepo, topoSvc, findingsEngine, flowRepo, ipamSvc, graph, logger)
+		if mcpErr != nil {
+			return fmt.Errorf("setting up MCP server: %w", mcpErr)
+		}
+		apiOpts.MCP = mcpSrv.HTTPHandler()
+		logger.Info("mcp: read-only/stage-only MCP server enabled", "path", api.DefaultMCPPath)
+	}
+
+	handler := api.NewRouter(apiOpts)
 
 	srv := &http.Server{
 		Addr:    cfg.Server.Listen,

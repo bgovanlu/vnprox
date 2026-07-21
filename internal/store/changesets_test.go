@@ -18,6 +18,7 @@ func TestChangesetRepo_RoundTrip(t *testing.T) {
 		Title:     "add vlan 100",
 		Author:    "root@pam",
 		Status:    "draft",
+		Origin:    "ui", // T-1701: Insert defaults an unset origin to 'ui', so round-trip reads it back
 		OpsJSON:   `[{"op":"add_vlan","id":100}]`,
 		CreatedAt: 100,
 		UpdatedAt: 100,

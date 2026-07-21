@@ -109,6 +109,8 @@ Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contra
 
 Validation finding shape: `{severity: "error"|"warning"|"info", code, message, ref?, fix?}` where `fix` is an optional machine-applicable amendment (an `[]Op` patch the UI can offer one-click).
 
+**Changeset provenance: `origin` + `originTokenId` (added by T-1701).** Every changeset response carries `origin` (`"ui"` \| `"mcp"` \| `"cli"`) and, for a token-staged one, `originTokenId` (the staging `api_tokens.id`). `origin` records who/what staged the changeset — an ordinary human edit through the SPA (`"ui"`, the default for every pre-T-1701 changeset), an AI operator through the MCP server (`"mcp"`, see the MCP-server section below), or a CLI (`"cli"`). It is set once at create and never mutated; the change engine's apply path is identical regardless of origin (a changeset is a changeset), so this is a provenance label the review UI badges, not a control-flow switch. An MCP-staged changeset is also attributed in the audit trail to actor `mcp:<token-name>`, so an operator can always tell an AI-staged draft from a human one.
+
 **Management-path ceremony: `touchesMgmtPath` + the confirm-window floor (added by T-703).** Every changeset response (`POST`/`PUT`/`GET`/validate/apply/confirm/rollback) carries a server-computed boolean `touchesMgmtPath`: whether the changeset's ops intersect any node's resolved management path — the carrier refs plus every entity in their physical paths from `GET /protected-interfaces/status` (`change.TouchesMgmtPath`). It is computed over the same `MgmtStatus` the badges are painted from, so it is true for *any* changeset touching the path (hand-built drafts included, wizard or not) and false otherwise — never a client assertion. The review screen turns it into a mandatory acknowledgement block (a typed node-name confirmation). `POST /changesets/{id}/apply`'s body gains an optional `mgmtAck: {node}` — the typed acknowledgement, recorded to the audit log as `changeset.mgmt_ack` (with the originating user and node) when present. For a `touchesMgmtPath` changeset the commit-confirm window (`confirmTimeoutSec`) **defaults to and cannot be set below 180s** (`change.MgmtConfirmTimeoutFloor`): a lower value is rejected before any apply work with `400` and the stable code `confirm_window_too_short`, leaving the changeset in its pre-apply status. This is an *additive ceremony*, not an interlock override — T-203's safety class (`safety.protected_interface`) remains the enforcement backstop, and re-addressing the management IP stays out of scope (docs/security.md's "no override in UI" is unamended).
 
 **Scheduled changesets & maintenance windows (added by T-1103).** Stage now, apply inside a later window, reusing T-205's Apply/Confirm/Rollback and T-304's per-node local-timer machinery completely unchanged — this feature only decides *when* apply starts.
@@ -1091,3 +1093,31 @@ HMAC-authenticated (cluster secret) endpoints between daemons: `GET /api/peer/ho
 `GET /api/peer/audit` and `GET /api/peer/snapshots` (added by T-303): each node's own local page of its `/audit`/`/snapshots` data — `{items: [...], nextCursor?}`, the same shapes as the public `/audit`/`/snapshots` list items, minus the cluster-fan-out `partial`/`failedNodes` fields (a peer only ever reports its own node-local page here; the fan-out/merge happens on the calling daemon, inside `GET /audit`/`GET /snapshots` themselves). `/api/peer/audit` accepts the same filter query params as `GET /audit` (`user`, `action`, `target`, `result`, `changesetId`, `from`, `to`) plus `limit`/`cursor`; `/api/peer/snapshots` accepts `limit`/`cursor` only.
 
 T-304's local-timer protocol (`docs/features/change-management.md` §4: "each node arms its own local timer at step start"): `POST /api/peer/timer/arm` `{changesetId, node, content, deadline}` — persists `content` as the node's pre-apply state to restore and arms a real rollback timer for `deadline` (unix seconds); `POST /api/peer/timer/cancel` `{changesetId, node}` — stops it (idempotent); `GET /api/peer/timer/status?changesetId=&node=` — returns the current record, or 404 `timer_not_found` if this node never armed one for that key. All three return `{record: {changesetId, node, status, deadline, armedAt, resolvedAt?, error?}}`, where `status` is one of `armed|cancelled|rolled_back|rollback_failed`.
+
+## MCP server (T-1701, AI operator readiness)
+
+A first-class **Model Context Protocol** server (`internal/mcp`) exposing vnprox's **read** surfaces and its **draft-staging** surface to AI operators — and nothing more. It is the change engine's thesis applied to AI: *capability through the change engine, not around it*. **No apply/confirm/rollback/discard verb is reachable through MCP, by any tool, parameter, or combination** — a human (or T-1103's confirm machinery) remains the sole apply/confirm authority. This stage-only boundary is the card's central invariant and is enforced structurally (see docs/security.md's "MCP stage-only boundary").
+
+**Enablement.** Off by default. Set `[mcp] enabled = true` in `vnprox.toml` to mount the transport; otherwise the surface ships dark (no route mounted at all), matching `[switches]`' feature-flag-dark precedent.
+
+**Transport.** Mounted at `/api/v1/mcp` under the daemon's ordinary TLS/logging/security-header middleware, but — like `GET /metrics` — it does its **own** bearer-token auth, never a session cookie or CSRF header:
+- **Streamable HTTP** — `POST /api/v1/mcp` carries one JSON-RPC 2.0 message and returns one JSON response (or, with `Accept: text/event-stream`, that response framed as a single SSE event); `GET /api/v1/mcp` with `Accept: text/event-stream` opens the server→client SSE stream, held open until the client disconnects or the token is revoked.
+- **stdio** — the same server also speaks newline-delimited JSON-RPC over stdio (`internal/mcp.Server.ServeStdio`), for a locally-spawned MCP client.
+
+**Auth & scoping (reuses T-1104 tokens unchanged).** A session authenticates with an `Authorization: Bearer <token>` token that **must carry the `automation` scope** (missing it ⇒ `403 forbidden`; no/invalid token ⇒ `401 not_authenticated`). Beyond that, each tool is exposed to the session only if the token's scopes cover the tool's required scope — exposure is derived from the token at connect time, never from a client-asserted capability list. Revoking the token force-closes the session within one revocation tick.
+
+**Tool allowlist (fixed, enumerable — this is the security boundary).** Exactly these tools exist; there is no generic "call any route" bridge, and no tool names or reaches an apply/confirm/rollback/discard verb:
+
+| Tool | Required scope | Wraps | Effect |
+|---|---|---|---|
+| `topology.get` | `netRead` | `GET /topology` | read |
+| `findings.list` | `netRead` | `GET /findings` | read |
+| `flows.query` | `netRead` | `GET /flows` | read |
+| `ipam.subnets.list` | `netRead` | `GET /ipam/subnets` | read |
+| `simulate.path` | `netRead` | `POST /simulate/path` | read (static analysis) |
+| `diagnose.run` | `netRead` | `POST /diagnose` | read/advisory; **never escalates to capture** over MCP |
+| `changesets.diff` | `netRead` | `GET /changesets/{id}/diff` | read |
+| `changesets.create` | `netWrite` | `POST /changesets` | **stages a draft only** — labelled `origin: "mcp"`, never applied by this tool |
+| `changesets.validate` | `netWrite` | `POST /changesets/{id}/validate` | re-validate a draft; does not apply |
+
+A `{netRead, automation}` token therefore reaches every read/simulate/diagnose tool and `changesets.diff`, but never `changesets.create`/`changesets.validate` (both `netWrite`). Every MCP tool invocation is audited (`mcp.tool.invoke`, actor `mcp:<token-name>`), and every changeset it stages carries `origin: "mcp"` + `originTokenId` (see the Changesets section's provenance paragraph).

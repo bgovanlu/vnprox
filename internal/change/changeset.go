@@ -130,14 +130,39 @@ type Changeset struct {
 	// never mutated — no op type or API surface lets a changeset span
 	// clusters (validate_crosscluster.go enforces this at validation time).
 	ClusterID string
-	Status    Status
-	Ops       []Op
-	Findings  []Finding
-	Plan      json.RawMessage
-	ApplyLog  json.RawMessage
-	CreatedAt int64
-	UpdatedAt int64
+	// Origin records who/what staged this changeset (T-1701): OriginUI for an
+	// ordinary human edit through the SPA (the default for every pre-T-1701
+	// row and every Create call), OriginMCP for an AI-staged draft, OriginCLI
+	// for a vnproxctl-staged one. Set once at Create/CreateWithOrigin and never
+	// mutated. It is the audit-trail half of T-1701's stage-only invariant: an
+	// operator reading a changeset can always tell an AI-staged draft from a
+	// human one, regardless of the change engine's own uniform apply path.
+	Origin string
+	// OriginTokenID (T-1701) is the api_tokens.id of the bearer token that
+	// staged this changeset, when Origin is OriginMCP/OriginCLI; '' for a
+	// UI-originated one. It ties an AI-staged draft back to the exact
+	// automation credential that produced it.
+	OriginTokenID string
+	Status        Status
+	Ops           []Op
+	Findings      []Finding
+	Plan          json.RawMessage
+	ApplyLog      json.RawMessage
+	CreatedAt     int64
+	UpdatedAt     int64
 }
+
+// Origin values for Changeset.Origin (T-1701). OriginUI is the default for any
+// changeset staged through the ordinary human path; OriginMCP marks a draft
+// staged by an AI operator through internal/mcp; OriginCLI is reserved for a
+// vnproxctl-staged one. The set is small and closed — the change engine's apply
+// path is identical regardless of origin (a changeset is a changeset), so this
+// is purely a provenance label, never a control-flow switch.
+const (
+	OriginUI  = "ui"
+	OriginMCP = "mcp"
+	OriginCLI = "cli"
+)
 
 // CanTransition reports whether moving from c's current Status to to is
 // legal per allowedTransitions.
