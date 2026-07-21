@@ -836,3 +836,44 @@ These need real multi-instance/hardware validation beyond the injected-fault har
 - [ ] **HA-pair apt upgrade (standby-first).** The forward-only migration adds `0031_ha.sql`; the
       standby-first-then-active upgrade sequence (docs/deployment.md) is smoke-tested only against
       the injected harness — run the real apt upgrade on a two-node pair.
+
+## T-1707 — v3.0 release (platform freeze, HA/genscale, packaging, PVE 10.x/11.x)
+
+The v3.0 release gate. Everything provable in this environment is done (platform-API freeze docs,
+threat-model rows, encrypted-at-rest tests, the 40-cycle deterministic HA failover soak,
+forward-only migration proof to schema 31, docs freeze). These items require the dev host / real
+hardware and are flagged, not faked:
+
+- [ ] **HA failover-promotion latency (wall clock) at profile scale.** `docs/performance.md` §11.3
+      states a *target* of ≤ `lease_ttl + fencing_margin` (≈30 s with defaults) derived from config;
+      the deterministic soak proves the safety invariants (zero double-apply / zero dropped-rollback
+      across 40 cycles) on a fake clock but cannot measure real promotion time. Measure the real
+      active-death → standby-drives latency on two real hosts, including the operator VIP-move/DNS
+      cutover (cross-references the T-1704 VIP/DNS/partition items above).
+- [ ] **Full-daemon HA-pair genscale + replication-lag run.** Run the 3× scale-lab federation
+      profile (§10.1) with an active/standby pair on the primary and measure real replication lag,
+      push latency, and the standby's RSS/goroutine overhead under a real churn rate against the
+      `500`-row `ha_replication_degraded` threshold (extends the §10.3 full-daemon genscale gap).
+- [ ] **apt upgrade v2.x → v3.0 on real hardware** (and the HA-pair standby-first variant).
+      Forward-only migration v2.x schema → `0025`…`0031` is proven by
+      `TestMigrate_FromEachPriorSchemaVersion` (migrates to **31**, rows survive byte-for-byte), and
+      the podman packaging/upgrade tests run on the dev host (`packaging/test/upgrade.sh`), not here.
+      Run the real apt upgrade against a v2.x-schema DB, confirm the daemon serves unchanged with no
+      v3.0 feature configured, then the standby-first HA-pair sequence.
+- [ ] **Packaging + `.deb` version stamp at the v3.0.0 tag.** `make -C packaging deb`
+      (amd64+arm64), the T-606 container test matrix, and a `release.yml` dry run all run on the dev
+      host; confirm `dpkg -I` / `vnproxd --version` report `3.0.0` from a `.deb` built at the real
+      tag (version is git-tag-derived — `packaging/version.sh` — so no code carries "3.0.0").
+- [ ] **PVE 10.x / 11.x compatibility.** Carried forward and widened from T-1208's PVE 10.x item:
+      no PVE-10/11-specific API break is known against the surfaces vnprox reads/writes and every
+      Phase 13–17 feature is mock-first, but no real PVE 10.x/11.x node has been exercised. Confirm
+      auth/SDN/IPAM/network-apply on real PVE 10.x and 11.x nodes, tracking new SDN capabilities
+      (fabrics, NAT zones) per the roadmap's "validation pass within one phase of each PVE release".
+- [ ] **Live third-party MCP client integration (T-1701).** The MCP transport (Streamable-HTTP/SSE +
+      stdio, `2025-06-18` protocol) is exercised here only by the in-repo mock JSON-RPC client;
+      confirm a real AI assistant's MCP client negotiates and drives the read/stage tools against a
+      live daemon. Not a code gap — an integration confirmation.
+- [ ] **Tenant coarse-scope graph expansion (T-1703).** The VLAN/VNet → member-guests/subnets
+      expander is unit-tested against a hand-built inventory snapshot; confirm it resolves correctly
+      against a live PVE topology at scale (the enforcement pipeline itself is proven independently
+      with explicit refs).

@@ -3,7 +3,7 @@
 ## Supported platforms
 
 - Proxmox VE 8.2+ (Debian 12) and 9.x (Debian 13), amd64 and arm64.
-- **PVE 10.x** is the forward compatibility target for the v2.0 arc (docs/roadmap-next.md, "Compatibility & versioning"): no PVE-10-specific API break is known against the surfaces vnprox reads/writes, and every Phase 12 feature was developed mock-first so CI never needs hardware — but a real PVE 10.x node has not been exercised in this environment. PVE 10.x support is therefore a stated target, flagged **needs-hardware-validation** (`planning/reports/needs-hardware-validation.md`) until validated on real hardware, exactly as each prior PVE major got a validation task within one phase of its release in v1.
+- **PVE 10.x and 11.x** are the forward compatibility targets for the v3.0 arc (docs/roadmap-universal.md, "Compatibility & versioning"; carried forward from v2.0's PVE 10.x target): no PVE-10/11-specific API break is known against the surfaces vnprox reads/writes, and every Phase 13–17 feature was developed mock-first so CI never needs hardware — but a real PVE 10.x/11.x node has not been exercised in this environment. PVE 10.x/11.x support is therefore a stated target, flagged **needs-hardware-validation** (`planning/reports/needs-hardware-validation.md`) until validated on real hardware, exactly as each prior PVE major got a validation task within one phase of its release. The arc tracks new PVE SDN capabilities (fabrics, NAT zones) with a compatibility-validation task within one phase of each PVE release.
 - Install **on every node** of the cluster (the installer handles this). Single-node installs are fully supported.
 - Not supported: running vnprox off-cluster (a management VM elsewhere) — vnprox requires on-node deployment for host access and rollback safety. **Federation (v2.0) does not change this:** a designated *primary* vnprox instance attaches other clusters as app-owned registry entries and aggregates their *reads*, but each attached cluster still runs its own on-node vnprox for host-level operations and rollback safety — federation federates views and workflows, never config ownership (docs/security.md, "Cluster-registry credentials").
 
@@ -128,6 +128,25 @@ apt update && apt install vnprox        # per node; any order
 - **The v2.0 schema is a forward-only superset of v1.x's.** The federation arc adds migrations `0021_clusters` … `0024_oidc` (cluster registry, switches, external subnets, OIDC links) on top of the v1.x schema; they run automatically on first v2.0 daemon start and touch **only** the new app-owned tables — no existing v1.x row is rewritten. This is pinned by `internal/store`'s `TestMigrate_FromEachPriorSchemaVersion`, which freezes a DB at each prior schema version (including the last pre-federation one), migrates it to the current version, and asserts every pre-existing row survives byte-for-byte.
 - **Federation is additive, not a fork.** A v1.x single-cluster install that upgrades to v2.0 **with zero clusters attached** keeps serving its existing single-cluster experience unchanged: the global cluster-capsule view is skipped entirely until a *second* cluster is attached (T-1202's single-cluster-regression bar), and none of DNS/switch-push/OIDC is active unless explicitly configured (switch push additionally ships dark behind its daemon flag). Attaching federation, enabling OIDC, or registering a switch are all opt-in post-upgrade steps.
 - New v2.0 config stanzas (`[oidc]`, `[switches]`) are optional; omitting them preserves v1.x behavior exactly (unknown/absent keys are warnings, not fatals).
+
+### Upgrading a v2.x install to v3.0
+
+- **The v3.0 schema is a forward-only superset of v2.x's.** The v2.0 → v3.0 arc adds migrations
+  `0025_flow_baselines` … `0031_ha` (flow baselines, capacity samples, posture scores, changeset
+  origin, plugins, tenants, and the `ha_lease` singleton) on top of the v2.x schema; they run
+  automatically on first v3.0 daemon start and touch **only** new app-owned tables/columns — no
+  existing v2.x row is rewritten. This is pinned by `internal/store`'s
+  `TestMigrate_FromEachPriorSchemaVersion` (freezes a DB at each prior schema version, migrates to
+  the current version — **31** — and asserts every pre-existing row survives byte-for-byte).
+- **Every v3.0 platform feature is opt-in / dormant until configured.** A v2.x install that upgrades
+  to v3.0 keeps behaving exactly as before: the MCP server stays unmounted unless `[mcp] enabled =
+  true`; the plugin registry holds no plugins until one is installed; multi-tenancy narrows nothing
+  until an admin creates a tenant; HA is inert unless `[ha] enabled = true`; the hub's routes are
+  unmounted unless `[hub] registry_url` is set. None of these change the single-cluster or federated
+  experience of an install that leaves them alone.
+- New v3.0 config stanzas (`[mcp]`, `[ha]`, `[hub]`) are optional; omitting them preserves v2.x
+  behavior exactly (unknown/absent keys are warnings, not fatals). See the HA section below for the
+  **standby-first** sequence an HA pair must follow.
 
 ## Uninstall
 

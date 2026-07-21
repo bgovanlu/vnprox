@@ -203,7 +203,9 @@ Cluster-shared data is intentionally minimal (the cluster secret under `/etc/pve
 | D6 | Peerless symmetric cluster design (no leader) | Simplicity; PVE already provides cluster membership and pmxcfs |
 | D7 | Port 8007 default with PBS conflict detection | Product requirement; PBS coexistence handled at install |
 | D8 | Support Linux bridges + OVS + full SDN stack | "All networking in Proxmox," not a subset |
-| D9 | Target PVE 8.2+ and 9.x | ifupdown2 default, SDN GA, DHCP/IPAM present |
+| D9 | Target PVE 8.2+ and 9.x (10.x/11.x forward target for the v3.0 arc) | ifupdown2 default, SDN GA, DHCP/IPAM present; each PVE major gets a validation pass within one phase of its release |
+| D10 | **Platform API freeze at v3.0** — the MCP tool surface (T-1701), the plugin SDK interfaces (T-1702), and the WebSocket `"events"` stream schema (T-1104) become stable, documented compatibility contracts | v3.0 is the platform release (`docs/roadmap-universal.md`, Compatibility & versioning). Same deprecation policy the changeset API adopted at v1.7: additive-only within a version; a breaking change mints a new version and keeps the old accepted for ≥1 minor release. The frozen surfaces are enumerated in §13 |
+| D11 | **Peer wire protocol stays at version 2 across v3.0** — T-1704's `POST /api/peer/ha/replicate` is additive at protocol 2, not a bump | An HA pair runs the same build; the route is 503-nil-safe on any peer that does not serve it, so it follows the same additive-route precedent as every observability peer route (only routes the cross-node write/coordination path depends on force a bump — §5, `docs/api.md` Peer API). See §13 |
 
 ## 11. Plugin SDK extension points (T-1702)
 
@@ -239,7 +241,7 @@ transport (D4 holds for plugins too). A plugin's declared capabilities are a *ce
 checked against `internal/auth`'s existing vocabulary — the SDK adds no new privilege.
 Out-of-process plugins (`internal/plugin/procshim`) run as supervised subprocesses with
 no DB/file access, speaking a length-delimited JSON wire protocol over stdio.
-## 11. HA topology (active/standby)
+## 12. HA topology (active/standby)
 
 T-1704 adds an **optional** active/standby daemon pair so vnproxd itself is not the single
 point of failure a failure simulation would flag. It is disabled by default (`[ha] enabled =
@@ -285,3 +287,78 @@ then installs the manifest through **this** registry's `Install` — which re-va
 capability scope. No Hub path reaches `Registry.Install` without that scope check, and only
 out-of-process (`grpc`) plugins are installable this way (an in-process plugin is build-time
 Go code that cannot be materialized from a downloaded manifest).
+
+## 13. Platform API freeze (v3.0, T-1707)
+
+v3.0 is the platform release. Three programmable surfaces that opened during Phases 11–17 —
+the **MCP tool surface**, the **plugin SDK interfaces**, and the **WebSocket `"events"` stream
+schema** — become stable, documented compatibility contracts (decision D10). This section is the
+authoritative enumeration of exactly what is frozen; a reviewer can check it against the code and
+against `docs/api.md`. Nothing outside this list is a frozen contract.
+
+**The deprecation policy (identical to the changeset API's, declared at v1.7).** A frozen surface
+is **additive-only** within its version: new optional fields, new optional tool parameters, new
+tools/events/extension points may be added without a version bump, but no field/tool/event is ever
+renamed or removed and no method signature is changed in place. Any breaking change mints a new
+version (`v2`), announced here and in `docs/api.md`, with the previous version kept accepted for at
+least one minor release before removal.
+
+### 13.1 MCP tool manifest — frozen v1 (T-1701)
+
+The MCP server (`internal/mcp`, `docs/api.md` "MCP server") exposes a **fixed, enumerable** nine-tool
+allowlist; this is itself the security boundary (`docs/security.md`, "MCP stage-only boundary"), not
+merely an API-stability statement. The frozen v1 manifest:
+
+| Tool | Required scope | Class |
+|---|---|---|
+| `topology.get` | `netRead` | read |
+| `findings.list` | `netRead` | read |
+| `flows.query` | `netRead` | read |
+| `ipam.subnets.list` | `netRead` | read |
+| `simulate.path` | `netRead` | read (static analysis) |
+| `diagnose.run` | `netRead` | read/advisory (never escalates to capture over MCP) |
+| `changesets.diff` | `netRead` | read |
+| `changesets.create` | `netWrite` | **stage-only** (`origin: "mcp"`, never applied) |
+| `changesets.validate` | `netWrite` | stage-only |
+
+No `apply`/`confirm`/`rollback`/`discard` tool exists or can be added — a package-load check rejects
+any tool whose name matches those verbs, and the change-engine seam handed to the server has no
+mutation method (interface-surface test). Freezing this manifest at v1 means: a new read/stage tool
+may be added additively; a mutating tool never can. The negotiated protocol version string
+(`2025-06-18`) is the MCP wire protocol, independent of this v1 manifest freeze.
+
+### 13.2 Plugin SDK interfaces — frozen v1 (T-1702)
+
+The five extension-point interfaces in §11 are frozen at `plugin.APIVersion == "v1"` with the
+deprecation policy already stated there (widening mints a new `APIVersion`; a new extension point is
+additive). Restated here as a frozen v3.0 contract for completeness: `switchDriver`, `flowIngestor`,
+`findingProducer`, `ingressDiscoverer`, `dashboardTile`, each with the capability-ceiling and
+stage-only `Stager` boundary §11 describes. The registry refuses a plugin built against an
+`APIVersion` it does not understand.
+
+### 13.3 Event-stream schema — frozen v1 (T-1104)
+
+The WebSocket `"events"` topic (`docs/api.md` "WebSocket `/api/ws`") is frozen: the **flat**
+`{"event": "<name>", ...payload}` envelope (no nested payload wrapper), and the event set the
+`"events"` topic delivers — `changeset.status`, `drift.changed`, `findings.changed`,
+`audit.appended` (the automation-scope-gated superset), plus the per-topic producers
+`topology.delta`, `metrics.sample`, `firewall.log.batch`, `flow.batch`. Freezing means a new event
+may be added and a payload may gain a new optional field, but the envelope shape and every existing
+event/field name are stable — the same promise `internal/topology/hub.go`'s "all future event
+producers must keep this envelope" comment already makes, now a versioned contract. The
+`internal/apicontract` golden-fixture suite (`make check`) is this repo's enforcement of the
+changeset-API half of the freeze; the MCP registry-enumeration test and the plugin interface-surface
+test enforce the other two.
+
+### 13.4 Peer wire protocol — compatibility stance (T-1704)
+
+The internal peer protocol (`internal/peer`, `docs/api.md` "Peer API") is **not** part of the public
+platform freeze — it is an internal-only, same-build-to-same-build contract (`GET /api/peer/version`
+gates cross-node coordination on an exact `ProtocolVersion` match). For v3.0 it stays at
+**version 2** (decision D11): T-1704's `POST /api/peer/ha/replicate` is additive at protocol 2, not a
+bump, because an HA active/standby pair always runs the same build and the route is 503-nil-safe on
+any peer that does not serve it — the same additive-route precedent every observability peer route
+follows (only routes the cross-node write/coordination path depends on force a bump). Non-HA
+deployments and mixed-version rolling upgrades are unaffected: a peer that does not serve
+`ha/replicate` is simply never asked to (HA replication only ever targets the operator-configured
+standby, never an arbitrary cluster peer).

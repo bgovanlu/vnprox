@@ -171,3 +171,65 @@ Note these are **aggregator-method** latencies (fan-out + merge — the dominant
 
 - **Full-daemon multi-cluster HTTP genscale run** (real `runDaemon` + TLS + auth against N booted clusters, p50/p95/p99 per endpoint like §2's `BenchmarkAPIAtScale`) and **RSS/goroutine memory for N attached clusters** — the aggregator-level pass above is real, but a full end-to-end HTTP + memory profile at the profile scale belongs on the dev host (per T-1208's own note that the genscale perf run happens there). Recorded as a target in `planning/reports/needs-hardware-validation.md`.
 - A larger federation profile (e.g. 10+ clusters) for the "designated primary aggregating many clusters" ceiling — the 3-cluster profile proves concurrency and failure-isolation; the upper cluster-count bound is a hardware-run question.
+
+## 11. HA + multi-cluster genscale profile — T-1707 (v3.0)
+
+The v3.0 arc adds optional daemon HA (T-1704) on top of the v2.0 multi-cluster federation profile
+(§10). This section extends §10's genscale profile with the HA-standby dimension — active/standby
+**replication lag** and **failover-promotion latency** as explicit outputs — and states honestly
+which of those are proven deterministically here and which are hardware targets. **No number below
+is fabricated.**
+
+### 11.1 The profile (numbers stated)
+
+The HA/multi-cluster genscale profile is §10.1's 3-cluster profile (24 nodes / 900 guests / 120
+VNets / 120 subnets) with, on the designated primary, an **active/standby vnproxd pair** replicating
+app-owned state (changesets, `changeset_schedules`, `api_tokens`, the audit tail, and the in-flight
+pre-apply snapshots a rollback depends on — `snapshots`/`snapshot_files`/`blobs`; metrics rings
+excluded) over the existing `internal/peer` TLS+HMAC channel. The standby carries the same read load
+capacity as the active (it is a full daemon, not a thin follower) but drives no apply/confirm/
+rollback while it holds no lease.
+
+| Dimension | Value |
+|---|---|
+| Federation scale | 3 clusters × (8 nodes / 300 guests / 40 VNets) = 24 / 900 / 120 (§10.1) |
+| HA replicas on the primary | 1 active + 1 standby |
+| Replicated state classes | changesets, `changeset_schedules`, `api_tokens`, audit tail, pre-apply snapshots+blobs |
+| Excluded from replication | metrics rings (bounded/ephemeral) |
+| Lease TTL / renew / fencing margin (defaults) | `15s` / `5s` / `15s` (`docs/deployment.md` `[ha]`) |
+| Replication-lag alarm threshold (default) | `500` audit rows behind → `ha_replication_degraded` |
+
+### 11.2 What is proven deterministically here
+
+The two-daemon HA harness (`internal/ha`, injected fake clock + injectable partition switch, no real
+sleeps) proves the **safety** properties the profile depends on, across a **40-cycle failover soak**
+(`TestFailoverSoak_NoDoubleApply_NoDroppedRollback`, T-1707) alternating the missing-ack (rollback)
+and confirm (commit) outcomes:
+
+- **Zero double-apply and zero dropped-rollback across all 40 cycles** — every promoted standby
+  re-arms the *same absolute* commit-confirm deadline (never a promotion-relative one), a missing
+  confirm always rolls back exactly once, and a confirmed change is never rolled back by a late
+  timer fire.
+- **Replication carries the in-flight rollback state** — a promoted standby holds the byte-exact
+  pre-apply snapshot needed to complete a rollback (`internal/ha/replicate_test.go`,
+  `internal/ha/failover_test.go`).
+
+These are correctness invariants, measured on a fake clock — they are not wall-clock timings.
+
+### 11.3 What is a target, flagged needs-hardware-validation (NOT measured here)
+
+The following are **stated targets derived from the config defaults**, not measurements — the
+deterministic harness advances a fake clock, so it cannot produce a real wall-clock promotion time
+or a real replication-throughput number. Recorded in `planning/reports/needs-hardware-validation.md`
+under "T-1704"/"T-1707":
+
+| Metric | Target (design) | Status |
+|---|---|---|
+| Failover-promotion latency (active death → standby drives) | ≤ `lease_ttl + fencing_margin` (≈ **30 s** with defaults; tunable lower) — a standby promotes only after the last-observed lease has expired past the fencing margin | **needs-hardware-validation** — real value depends on real network RTT, clock skew, and the operator's VIP/ARP or DNS-TTL propagation, none of which the fake-clock harness models |
+| VIP/ARP or DNS failover-announce propagation | operator-provided mechanism (gratuitous ARP or DNS repoint); vnprox only triggers it | **needs-hardware-validation** — vnprox neither ships nor times this; measure the operator's chosen mechanism |
+| Replication lag under real primary load at profile scale | well under the `500`-row default alarm threshold in steady state | **needs-hardware-validation** — real throughput/lag under a real churn rate at 24-node/900-guest scale is a dev-host run |
+| Full-daemon HA-pair RSS/goroutine overhead of the standby | standby ≈ active steady-state footprint (full daemon) | **needs-hardware-validation** — same end-to-end memory-profile gap §10.3 flags, now with a second daemon |
+
+Setting a real number for the promotion-latency and replication-lag rows requires two real vnproxd
+instances on real hosts with a real network partition — explicitly out of this environment's reach,
+flagged rather than faked.
