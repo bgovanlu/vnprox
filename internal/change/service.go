@@ -106,6 +106,7 @@ type Config struct {
 	Inventory          InventorySource
 	Allocations        AllocationsSource
 	ClusterMembership  ClusterMembershipSource
+	ImpactPreflight    ImpactPreflighter
 	Snapshots          *store.SnapshotRepo
 	Schedules          *store.ChangeScheduleRepo
 	Logger             *slog.Logger
@@ -157,6 +158,7 @@ type Service struct {
 	clock              Clock
 	switchScope        SwitchScopeSource
 	membership         ClusterMembershipSource
+	impactPreflight    ImpactPreflighter
 	schedules          *store.ChangeScheduleRepo
 	timers             map[string]Stopper
 	repo               *store.ChangesetRepo
@@ -231,7 +233,7 @@ func NewService(cfg Config) (*Service, error) {
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
-		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership,
+		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,
 		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
 		switches: cfg.Switches, switchScope: cfg.SwitchScope, switchPushEnabled: cfg.SwitchPushEnabled,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
