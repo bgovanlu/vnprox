@@ -40,6 +40,17 @@ const (
 	// read-only Kubernetes overlay mapping engine — currently the sole
 	// producer is k8s_nodeport_exposed_without_fw_rule (adapt_k8s.go).
 	SourceK8s Source = "k8s"
+	// SourceRogue (T-1605) marks a rogue-service / L2-anomaly detection
+	// finding computed fresh from the collectors already gathering L2 data —
+	// T-805's ARP/IPv6-neighbor observations, T-1404's IPv6 RA feed, the
+	// existing DHCP lease/reservation views, and the inventory graph's own MAC
+	// knowledge. Its four checks (rogue_dhcp_server, unexpected_ra,
+	// arp_spoof_suspected, unknown_mac_protected_segment) are the stream's
+	// most-severe tier (error) and, unlike every other continuously-recomputed
+	// producer, hysteresis-exempt: a spoofed/rogue signal is a security event,
+	// not a noisy counter to debounce. Detection-only — never a mitigation path
+	// (health_rogue.go).
+	SourceRogue Source = "rogue"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's
