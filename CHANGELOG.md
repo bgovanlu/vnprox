@@ -7,14 +7,99 @@ vnprox uses semantic versioning; the SQLite schema migrates forward-only.
 
 Versions up to v1.0 correspond to the milestones in `docs/roadmap.md`;
 v2.0 is the milestone cut of the second arc in `docs/roadmap-next.md`
-("Beyond the cluster"). Phase 3 ("Discovery & true cluster") does not have
-its own version cut per the roadmap — its functionality (peer clustering,
-LLDP discovery, drift detection, FDB browsing) shipped as part of the v0.8
-development cycle and is listed under v0.8 below, alongside that release's
-SDN/IPAM work.
+("Beyond the cluster"); v3.0 is the platform cut of the third arc in
+`docs/roadmap-universal.md` ("The open platform"). Phase 3 ("Discovery &
+true cluster") does not have its own version cut per the roadmap — its
+functionality (peer clustering, LLDP discovery, drift detection, FDB
+browsing) shipped as part of the v0.8 development cycle and is listed under
+v0.8 below, alongside that release's SDN/IPAM work.
 
-Precise dates are given for the v1.0.0 and v2.0.0 release cuts; earlier
-milestones predate this file and are dated only by year.
+Precise dates are given for the v1.0.0, v2.0.0, and v3.0.0 release cuts;
+earlier milestones predate this file and are dated only by year.
+
+## [3.0.0] - 2026-07-21
+
+The platform release — the cut where vnprox stops being only a product and
+becomes infrastructure other tools build on. v3.0 caps the v2.0 → v3.0 arc
+(deep-sight diagnostics, edge/WireGuard, Kubernetes/Ceph/QoS visibility,
+microsegmentation & failure simulation, and — this phase — an AI-operator
+MCP surface, a plugin SDK, multi-tenancy, daemon HA, a blueprint/plugin hub,
+and embeddable views). Target platforms: Proxmox VE 8.2+ and 9.x; **PVE
+10.x and 11.x** are the forward compatibility targets for this arc (see
+`docs/deployment.md`, flagged needs-hardware-validation until validated on
+real hardware).
+
+**Every new surface stages through the one change engine.** AI-proposed
+changesets (MCP), plugin-staged changesets, and tenant request-changesets
+are all ordinary changesets — staged, validated, diffed, applied, and
+confirmed/rolled-back exactly like every mutation since v0.5. No card in
+this arc introduced a second mutation path, and this release **freezes** the
+new programmable surfaces as stable, versioned compatibility contracts. DB
+migrations remain forward-only; a v2.x install upgrades in place.
+
+### Added
+
+- **MCP server for AI operators (read + stage only).** A first-class Model
+  Context Protocol server exposes vnprox's read surfaces (topology, findings,
+  flows, IPAM, path simulation, diagnostics) and lets an AI operator *stage*
+  a draft changeset — and nothing else. No apply/confirm/rollback verb is
+  reachable through MCP by any tool or combination; a human remains the sole
+  apply authority. Every AI-originated changeset is unerasably labelled
+  `origin: "mcp"` and every tool call is audited with an `mcp:<token-name>`
+  actor, so an operator can always tell an AI action from a human one. Off by
+  default (`[mcp] enabled`), authenticated with a capability-scoped
+  automation token.
+- **Plugin SDK.** Stable, versioned extension points third parties can
+  implement — switch drivers, flow/telemetry ingestors, finding packs,
+  ingress discoverers, and dashboard tiles — with an in-process and a
+  supervised out-of-process option, each plugin declaring a capability scope
+  that is a server-enforced *ceiling*, never a grant. A plugin can stage a
+  changeset for a human to apply but is never itself a mutation path. Install/
+  enable/disable/uninstall are all audited with the recorded scope.
+- **Multi-tenancy & self-service.** Delegated, server-side-scoped views: a
+  tenant sees only its own guests/VLANs/subnets and *requests* changes
+  through request-changesets that route to an approver, with scoped
+  dashboards and alert routes. Scoping is enforced at the data-access layer
+  (an out-of-scope lookup is a `404`, never confirming existence); a member
+  can never approve, and an approver can never approve their own request.
+- **vnproxd high availability (active/standby).** An optional active/standby
+  daemon pair with state replication and VIP-or-DNS failover, so the network
+  tool is not itself a single point of failure. Commit-confirm timers and
+  scheduled applies survive failover — re-armed to their original absolute
+  deadlines — governed by a fenced single-writer lease with explicit
+  split-brain handling. Off by default; a single-daemon install is unchanged.
+- **Blueprint & plugin hub.** An opt-in client for a public registry of
+  signed blueprint bundles and SDK plugins — browse and install with
+  Ed25519 signature verification, a per-installation trust decision, and an
+  informational "vetted" tier that never substitutes for that decision.
+- **Embeddable views & Grafana panels.** Read-only, token-scoped embeds of
+  the map, dashboards, and posture report for wikis/NOC screens, plus Grafana
+  panels backed by the Prometheus exporter and the event stream. An embed
+  token is hard-restricted to read-only scopes at mint and can never exceed
+  its minting user.
+
+### Changed
+
+- **Platform API freeze.** The MCP tool surface, the plugin SDK interfaces,
+  and the WebSocket `"events"` stream schema are now stable, documented
+  compatibility contracts with the same deprecation policy the changeset API
+  adopted at v1.7 (additive-only within a version; a breaking change mints a
+  new version, keeping the old accepted for ≥1 minor release). See
+  `docs/architecture.md` §13.
+- Compatibility target advanced to Proxmox VE 10.x and 11.x for this arc
+  (8.2+/9.x still supported); real-hardware validation is tracked as a
+  needs-hardware-validation item.
+
+### Security
+
+- Every new credential/write-adjacent surface across the v2.0 → v3.0 arc is
+  covered in `docs/security.md`'s threat-model summary: packet-capture files
+  (Phase 13), WireGuard tunnel keys (Phase 14), the MCP AI-operator
+  write-adjacent surface, plugin capability grants and the out-of-process
+  plugin boundary, tenant credentials/isolation, and the HA replication
+  channel. Every new at-rest credential class is sealed with the single
+  AES-256-GCM session key vnprox already uses, never a second cipher or key,
+  and each has a targeted encrypted-at-rest test.
 
 ## [2.0.0] - 2026-07-20
 

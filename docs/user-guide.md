@@ -119,3 +119,37 @@ Proxmox Backup Server hosts now appear on the map with their interfaces, and the
 For larger, multi-cluster setups, an administrator can enable **OIDC login** alongside the normal Proxmox login (**Settings → Authentication**). You log in through your identity provider, and your group memberships map to a vnprox role.
 
 Note the boundary: OIDC signs you in to vnprox, but your **Proxmox permissions still decide what you can do in each cluster**. An OIDC role never grants more than your real PVE ACLs allow, and if there's no PVE linkage for a cluster, you can read it (subject to that cluster's rules) but hold no write capability there from the OIDC role alone.
+
+## 8. The open platform (v3.0)
+
+v3.0 opens vnprox up as infrastructure other tools build on — an AI-operator surface, an extension SDK, delegated multi-tenant views, a redundant daemon pair, and a plugin/blueprint hub. Every one of these is opt-in and dormant until you configure it: an install that leaves them alone behaves exactly as it did in v2.x. The single rule that makes all of them safe is unchanged — **nothing here is a new way to change your network.** AI proposals, plugins, and tenant requests all produce ordinary changesets that a human still reviews and applies through the same change drawer, with the same diff, confirm, and auto-rollback you already use.
+
+### 8.1 AI operators (MCP)
+
+vnprox can expose its **read** surfaces (topology, findings, flows, IPAM, path simulation, diagnostics) and a **stage-only** draft-changeset surface to an AI assistant that speaks the Model Context Protocol — for example, an on-call assistant that triages an alert, runs the diagnosis ladder, and *drafts* a failover changeset for you to confirm from your phone. It is **off by default** (`[mcp] enabled` in the daemon config) and authenticated with a capability-scoped automation token you mint under **Settings → Tokens** (the same tokens automation already uses).
+
+The boundary is the whole point: **an AI can read and can draft, but can never apply, confirm, or roll back** — there is no MCP tool, and no combination of tools, that touches the apply path. A human (or your scheduled-confirm machinery) is always the one who commits. Every AI-drafted changeset is stamped `origin: mcp` with the token that created it, and every AI action writes its own audit row with an `mcp:<token-name>` actor — so in the audit log you can always tell an AI-originated change from one a person made.
+
+### 8.2 Plugins (extension SDK)
+
+Third parties can extend five surfaces — switch drivers, flow/telemetry ingestors, finding packs, ingress discoverers, and dashboard tiles — through a stable, versioned SDK. An administrator sees installed plugins under **Settings → Plugins**, each showing the extension points it implements and the **capability scope** it declared. That scope is a *ceiling*: a plugin can only ever do what its declared capabilities already allow, and — like everything else — a plugin can *stage* a changeset for you to apply but is never itself a way to apply one. Out-of-process plugins run as supervised, sandboxed subprocesses with no access to vnprox's database or files; if one crashes, its tile or finding pack simply drops out rather than taking the daemon down. Install, enable, disable, and uninstall are all audited with the plugin's scope.
+
+### 8.3 Multi-tenancy & self-service
+
+For shared clusters, an administrator can define **tenants** (**Settings → Tenants**) scoped to a specific set of guests, VLANs, or subnets, with members and approvers. A tenant member sees only their own slice of the topology, findings, and IPAM — everything outside their scope is not just hidden but genuinely invisible (a lookup of something out of scope returns "not found," never confirming it exists).
+
+A member doesn't edit directly; they **request** a change, which becomes a request-changeset routed to their tenant's approver (via your normal alert routing). An approver reviews and approves it — which turns it into an ordinary draft — and then applies it through the usual review → confirm flow. Two guardrails hold: a plain member can never approve, and an approver can never approve their **own** request. Approval isn't the same as applying — the ordinary confirm/rollback safety still gates the real change.
+
+### 8.4 High availability (active/standby)
+
+Because vnprox itself holds the safety timers that roll a bad change back, you can run it as an **active/standby pair** so the tool isn't a single point of failure. It's **off by default**; a single daemon needs none of this. An administrator adds an `[ha]` section to both daemons' config (see `docs/deployment.md`), picks a failover mechanism (a VIP-move script or a DNS-repoint webhook — you provide the mechanism, vnprox just triggers it on promotion), and sets one of the pair to bootstrap.
+
+The important property: **in-flight commit-confirm timers and scheduled applies survive a failover.** If the active dies mid-change, the standby takes over and re-arms the *same* rollback deadline — so a change that would have auto-rolled-back at 12:03:30 still does, on the standby, at 12:03:30. A fenced lease guarantees only one daemon ever drives a change, even during a network partition. **Status → HA** shows each daemon's role, lease term, and replication lag. When you upgrade an HA pair, upgrade the **standby first**, let it catch up, then upgrade the active (it hands over cleanly as its lease lapses).
+
+### 8.5 The hub
+
+The **Hub** (browse under **Settings → Hub**, available once an administrator points `[hub] registry_url` at a registry) is an opt-in catalog of signed blueprint bundles and SDK plugins you can browse and install. Every install goes through the same trust gate a direct import does: the artifact's signature is verified against your trust store, and an unsigned or unfamiliar-signer artifact still requires you to explicitly say "trust this" — the hub never installs anything on implicit trust. A **"vetted"** badge means the registry recognizes the signer, but it's informational only: it never replaces your own trust decision. Installing a plugin shows you its declared capability scope before you confirm.
+
+### 8.6 Embeddable views
+
+You can put a read-only, live view of the map, a dashboard, or the posture report on a wiki page or NOC screen. Mint an **embed link** under **Settings → Tokens → Embed**: it is read-only by construction (you cannot mint a write-capable embed, even as an admin), never exceeds your own permissions, and authenticates only by its own token — a logged-in browser session is never silently used to authenticate an embed. There are also Grafana panels backed by vnprox's metrics exporter and event stream for teams that live in Grafana.
