@@ -3,8 +3,9 @@
 ## Supported platforms
 
 - Proxmox VE 8.2+ (Debian 12) and 9.x (Debian 13), amd64 and arm64.
+- **PVE 10.x** is the forward compatibility target for the v2.0 arc (docs/roadmap-next.md, "Compatibility & versioning"): no PVE-10-specific API break is known against the surfaces vnprox reads/writes, and every Phase 12 feature was developed mock-first so CI never needs hardware — but a real PVE 10.x node has not been exercised in this environment. PVE 10.x support is therefore a stated target, flagged **needs-hardware-validation** (`planning/reports/needs-hardware-validation.md`) until validated on real hardware, exactly as each prior PVE major got a validation task within one phase of its release in v1.
 - Install **on every node** of the cluster (the installer handles this). Single-node installs are fully supported.
-- Not supported: running vnprox off-cluster (a management VM elsewhere) — v1 requires on-node deployment for host access and rollback safety.
+- Not supported: running vnprox off-cluster (a management VM elsewhere) — vnprox requires on-node deployment for host access and rollback safety. **Federation (v2.0) does not change this:** a designated *primary* vnprox instance attaches other clusters as app-owned registry entries and aggregates their *reads*, but each attached cluster still runs its own on-node vnprox for host-level operations and rollback safety — federation federates views and workflows, never config ownership (docs/security.md, "Cluster-registry credentials").
 
 ## Ports
 
@@ -79,6 +80,20 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 # key_file = "/etc/vnprox/keys/metrics.key"   # default
 # allow_from = ["10.0.0.0/8"]                 # optional source-CIDR allowlist; default: allow any source
 
+# [oidc]                           # T-1207: OIDC SSO alongside the PVE ticket bridge (federated deployments)
+# issuer = "https://idp.example.com/realms/vnprox"
+# client_id = "vnprox"
+# client_secret_file = "/etc/vnprox/keys/oidc-client-secret"   # root:root 0600, never inlined here
+# redirect_url = "https://<node>:8007/auth/oidc/callback"
+# scopes = ["openid", "profile", "groups"]
+# groups_claim = "groups"          # ID-token claim carrying group memberships; mapped to vnprox caps,
+#                                  # then intersected with the linked PVE identity's real ACLs (never additive)
+
+# [switches]                       # T-1205: guarded switch-config push — ships DARK by construction
+# enabled = false                  # daemon-level master switch; a push also needs the specific switch's own
+#                                  # `enabled` row true (registered via /switches). Scoped to PVE-facing ports
+#                                  # only (VLAN membership / description / LACP); every push is a changeset.
+
 # [flows]                          # T-1002/T-1004: every source below is off by default, opt-in per node
 # sflow_enabled = false            # UDP :6343
 # netflow_enabled = false          # UDP :2055 (v5 and v9 share one port)
@@ -107,6 +122,12 @@ apt update && apt install vnprox        # per node; any order
 - DB migrations run automatically on daemon start; forward-only.
 - Mixed versions during rolling upgrade: daemons serve, but changeset coordination involving an incompatible peer is refused with an upgrade prompt (architecture §5). Upgrade all nodes promptly.
 - Config file changes are documented in release notes; unknown keys are warnings, not fatals.
+
+### Upgrading a v1.x install to v2.0
+
+- **The v2.0 schema is a forward-only superset of v1.x's.** The federation arc adds migrations `0021_clusters` … `0024_oidc` (cluster registry, switches, external subnets, OIDC links) on top of the v1.x schema; they run automatically on first v2.0 daemon start and touch **only** the new app-owned tables — no existing v1.x row is rewritten. This is pinned by `internal/store`'s `TestMigrate_FromEachPriorSchemaVersion`, which freezes a DB at each prior schema version (including the last pre-federation one), migrates it to the current version, and asserts every pre-existing row survives byte-for-byte.
+- **Federation is additive, not a fork.** A v1.x single-cluster install that upgrades to v2.0 **with zero clusters attached** keeps serving its existing single-cluster experience unchanged: the global cluster-capsule view is skipped entirely until a *second* cluster is attached (T-1202's single-cluster-regression bar), and none of DNS/switch-push/OIDC is active unless explicitly configured (switch push additionally ships dark behind its daemon flag). Attaching federation, enabling OIDC, or registering a switch are all opt-in post-upgrade steps.
+- New v2.0 config stanzas (`[oidc]`, `[switches]`) are optional; omitting them preserves v1.x behavior exactly (unknown/absent keys are warnings, not fatals).
 
 ## Uninstall
 

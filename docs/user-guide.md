@@ -73,3 +73,49 @@ You see and can do exactly what your Proxmox permissions allow. Read-only PVE us
 `/` search · `1–4` toggle layers · `f` VLAN filter · `g` then `t/s/f/i` go to Topology/SDN/Firewall/IPAM · `⌘K`/`Ctrl+K` command palette · `?` full list.
 
 **Command palette (`⌘K`/`Ctrl+K`)**: one dialog, reachable from any page, merging the same fuzzy entity search `/` opens with every action the current page(s) have registered — "edit vmbr0", "new VLAN zone", "open drafts", "simulate path from <entity>", and more as pages add their own verbs. Arrow keys move through the merged list; Enter/click runs the highlighted entry. On the topology map itself, arrow keys also move focus between entities (roving focus, in on-screen left-to-right/top-to-bottom order) once an entity has focus; Enter activates the focused one exactly like a click.
+
+## 7. Beyond one cluster (v2.0)
+
+Everything above works the same whether you run one cluster or ten. The features in this section only appear when you use them — if you run a single cluster and never attach a second, vnprox looks and behaves exactly as it did before v2.0.
+
+### 7.1 Federation — many clusters, one pane
+
+An administrator attaches other PVE clusters under **Settings → Clusters** (name, API URL, and a read credential for that cluster). Each cluster's credential is sealed at rest with the same encryption vnprox uses for Proxmox tickets, and is never shown again.
+
+Once a **second** cluster is attached, the map gains a **Global** view at its outermost zoom: one capsule per cluster showing its name, open-findings count, drift status, and a greyed-out "unreachable" indicator if a cluster is momentarily unreachable (its capsule degrades; the others are unaffected — you never lose the whole view because one cluster is down). Click a capsule to drill into that cluster's ordinary topology, unchanged from the single-cluster experience.
+
+Search and the command palette (`/`, `⌘K`) span every attached cluster: results are grouped by cluster and namespaced, and the palette gains a **"switch to cluster X"** action to change context. The **Audit** view merges rows across clusters newest-first, each tagged with its cluster (with the same "partial results" indicator you already know from unreachable peers).
+
+**What federation does *not* do:** it never changes another cluster's config for you. Each cluster stays the source of truth for its own network; a changeset always belongs to exactly one cluster and is rejected if an edit would reach across the boundary. Federation federates *views and workflows*, not ownership.
+
+### 7.2 Cross-cluster IPAM & external subnets
+
+**IPAM → Cross-cluster** surfaces any subnet (or overlapping CIDR) allocated in two attached clusters as a **conflict finding** naming both clusters — the "we used 10.20.0.0/24 in two places" problem is finally visible.
+
+You can also record **external subnets** — office LANs, upstream transit, colo ranges that PVE itself doesn't manage — as first-class IPAM records (**IPAM → External subnets → Add**), so your address plan is complete, not just the PVE-managed part. External subnets are plain records; they are never staged as PVE SDN changes.
+
+If you run NetBox or phpIPAM, the bridge is now **two-way**. **IPAM → External sync → Preview** shows a dry run of what would change on either side (additions, removals, conflicts) and writes nothing. Only **Apply** (with an explicit confirm) performs the sync, and every write is recorded in the audit log with before/after. A disagreement between vnprox and the external system on a specific address shows up as a finding, not a silent overwrite.
+
+### 7.3 DNS management
+
+If your SDN uses the DNS plugin (PowerDNS), **SDN → DNS** now shows your zones and records — both the authoritative config and, where reachable, what PowerDNS is actually serving (the same config-vs-live duality you see for DHCP reservations vs. leases). Guests whose IP matches a DNS record get a **name badge** on the map.
+
+Editing a record or zone is an ordinary change: it collects in the change drawer and goes through the same review → apply → confirm flow as any SDN edit (deleting a zone that still has records makes you remove the records in the same change). Nothing here is a separate, un-audited mechanism.
+
+### 7.4 Switch config push (guarded, opt-in)
+
+This is the one read-write step onto your physical switches, and it is deliberately the most guarded feature in the product. It is **off by default** and must be enabled twice: once at the daemon level, and again for each specific switch you register (**Settings → Switches**). Until both are on, no switch write is possible.
+
+When enabled, vnprox can push **only** to switch ports that LLDP confirms are facing your PVE nodes, and **only** VLAN membership, port descriptions, and LACP settings — never a full-config push. Every push is an ordinary changeset with a diff and a confirm step, and immediately before each write vnprox re-checks that the port's neighbor is still the PVE node it expects (if a cable moved, the push aborts).
+
+Read the residual-risk note before you enable it: unlike a node-side change, a switch that a bad push makes unreachable **cannot be rolled back remotely** — there is no vnprox agent living on the switch. vnprox extends its management-path guardrails onto the uplink port carrying a node's management VLAN (a push that would strip it is hard-blocked, no override), and if it can't reach a switch to revert a change, it marks that changeset "rollback incomplete — needs manual intervention" rather than pretending it rolled back.
+
+### 7.5 Backup network awareness (PBS)
+
+Proxmox Backup Server hosts now appear on the map with their interfaces, and the **Backup path** paint mode lights up the node → PBS traffic path for nodes with a backup job targeting that storage. The inspector adds a plain-English datastore-network sizing hint (based on your backup schedule/volume and the resolved link speed). This is entirely read-only — vnprox stores no PBS credentials and makes no changes here.
+
+### 7.6 Single sign-on (OIDC)
+
+For larger, multi-cluster setups, an administrator can enable **OIDC login** alongside the normal Proxmox login (**Settings → Authentication**). You log in through your identity provider, and your group memberships map to a vnprox role.
+
+Note the boundary: OIDC signs you in to vnprox, but your **Proxmox permissions still decide what you can do in each cluster**. An OIDC role never grants more than your real PVE ACLs allow, and if there's no PVE linkage for a cluster, you can read it (subject to that cluster's rules) but hold no write capability there from the OIDC role alone.
