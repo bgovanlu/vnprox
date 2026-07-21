@@ -326,6 +326,11 @@ type Options struct {
 	// cmd/vnproxd's *cephProviderAdapter (cephwire.go) — read-only, exactly
 	// like every other field in this list.
 	Ceph CephService
+	// Failsim backs T-1604's Failure-impact-simulation routes (GET
+	// /failsim/spof-score, POST /changesets/{id}/preflight-impact). Nil skips
+	// mounting them. Typically cmd/vnproxd's failsim adapter — read-only,
+	// pure over the live inventory snapshot.
+	Failsim FailsimService
 	// WireGuard backs T-1401's GET /wireguard/tunnels + /{id}/pubkey +
 	// /{id}/peer-config (docs/api.md's WireGuard section); nil skips mounting
 	// every /wireguard route. Read-only — WireGuard is mutated only through
@@ -497,6 +502,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLatMeshRoutes(r, opts.LatMesh, opts.Auth)
 		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
 		mountCephRoutes(r, opts.Ceph, opts.Auth)
+		mountFailsimRoutes(r, opts.Failsim, opts.Auth)
 		mountWireGuardRoutes(r, opts.WireGuard, opts.Auth)
 		mountWanRoutes(r, opts.Wan, opts.Findings, opts.LocalNode, opts.WanAudit, opts.Auth)
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)

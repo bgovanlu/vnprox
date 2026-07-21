@@ -417,6 +417,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// and returns the CephProvider findings.Config.Ceph wires in below —
 	// see cephwire.go's own doc comment for the full picture.
 	cephAdapter := setupCeph(ctx, sdnPVEClient, graph, flowClassifier, logger)
+	// T-1604: failure-impact simulator adapter — reuses cephAdapter's already-
+	// read corosync/Ceph side-tables plus the live graph. Its changeset seam
+	// is filled once changeSvc is built (mirrors scheduleAdapter below).
+	failsimSvc := newFailsimAdapter(graph, cephAdapter)
 	// T-1005: alert_rules/alert_deliveries repos + the webhook Notifier,
 	// composed alongside PVE's own notification-target hook via
 	// multiNotifier — independent delivery paths, per that task's card, not
@@ -703,6 +707,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// wrapping the real time.Now() Config.Now itself falls back to, since
 		// this daemon has no reason to inject a fake one in production).
 		Schedules: store.NewChangeScheduleRepo(db),
+		// T-1604: additive failure-impact pre-flight on unattended applies —
+		// the scheduler consults this at windowStart on top of (never instead
+		// of) its existing touchesMgmtPath exclusion.
+		ImpactPreflight: failsimSvc,
 	})
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)
@@ -714,6 +722,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// now-real change.Service (see scheduleAdapter's construction/doc
 	// comment above).
 	scheduleAdapter.set(changeSvc)
+	// T-1604: point the failure-impact adapter's changeset lookup at the
+	// now-real change.Service (its scheduler-facing PreflightImpact needs no
+	// change.Service, so only the HTTP preflight-impact path is late-bound).
+	failsimSvc.set(changeSvc)
 	// Re-arm commit-confirm rollback timers persisted across a restart, and
 	// recover any apply interrupted by a crash (docs/development.md: "Rollback
 	// timers must survive daemon restart ... re-armed on startup").
@@ -1043,6 +1055,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LatMesh:             latMeshSvc,
 		MTUProbe:            mtuProbeSvc,
 		Ceph:                cephAdapter,
+		Failsim:             failsimSvc,
 		WireGuard:           wgReadSvc,
 		WgCarriers:          wgReadSvc,
 		Wan:                 wanSvc,

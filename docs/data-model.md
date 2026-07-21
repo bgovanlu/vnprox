@@ -564,3 +564,25 @@ type Overlay struct {
 ```
 
 `Status` (`internal/ceph.Discover`'s output — `PublicNetwork`, `ClusterNetwork`, `[]OSD`) is read once at daemon startup (a Ceph network declaration changes on the order of a cluster's lifetime, the same rationale `cmd/vnproxd/serviceclassify.go` already documents for corosync's ring addresses); `Overlay` (`Project`'s output, above) is recomputed against the graph's *current* snapshot on every read — "continuously computed" means re-projecting fresh topology, not re-polling PVE's Ceph config every cycle. `PublicNetwork`/`ClusterNetwork` are registered with T-1504's `internal/flow.Classifier` (`flow.NewCIDRSource`, `NetworkSourceKindCeph`) so `GET /flows`'s `serviceClass` tags `ceph-public`/`ceph-cluster` traffic — T-1503 supplies network declarations, it implements no classification logic of its own (§ "Flows" in `docs/api.md`).
+
+## 12. Failure-impact simulation (`internal/failsim`, T-1604)
+
+Not app-owned data at all — **no new SQLite table**. `Impact` and `SPOFEntry` are pure functions of the live inventory snapshot (plus the corosync/Ceph/tunnel side-tables read live elsewhere), recomputed fresh on every `GET /failsim/spof-score` / `POST /changesets/{id}/preflight-impact` call — nothing here is persisted or cached as authoritative, the same `docs/architecture.md` §7 new-domain invariant Ceph (§11) follows. **Pure simulation forever**: no `failsim.*` changeset op exists anywhere in `internal/change` (§3's op-group table); the package never induces a failure, only predicts one.
+
+```go
+type Impact struct { // computed, never stored
+    Target             inventory.Ref
+    DisconnectedGuests []inventory.Ref // guests that lose their uplink
+    StrandedVlans      []inventory.Ref // SDN vnets stranded everywhere they were realized
+    MgmtPathLoss       []string        // node names losing their management path (shared ResolveMgmtPaths, post-failure)
+    NotEvaluated       []string        // honesty channel: "quorum"|"ceph"|"tunnels"|"guest-connectivity" — dimensions that could not be assessed, never a false "no impact"
+    Severity           string          // none|info|warning|critical (coarse rollup of the fields above)
+    QuorumRisk         bool            // reachable corosync voters drop below floor(N/2)+1
+    CephRisk           bool            // an OSD-hosting node loses its Ceph public/cluster carrier
+}
+
+type SPOFEntry struct { Ref inventory.Ref; Impact Impact } // one element whose removal has nonzero known impact
+type SPOFScore struct { Entries []SPOFEntry; Score int }    // Inventory + overall resilience score
+```
+
+The management-path and quorum dimensions deliberately reuse the same shared resolver/classifier the T-703 mgmt-path interlock uses (`internal/topology.ResolveMgmtPaths`, `change.DetectProtectedRoles`) so the simulator's notion of "management connectivity" and "quorum voter" can never silently diverge from the interlock's own. See `docs/api.md`'s "Failure-impact simulation" section for the route/response contract and the T-1103 pre-flight integration.

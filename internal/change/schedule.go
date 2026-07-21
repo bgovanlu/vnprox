@@ -451,6 +451,17 @@ func (s *Service) fireSchedule(ctx context.Context, row store.ChangesetSchedule,
 		return
 	}
 
+	// T-1604: additive failure-impact pre-flight, weighed only after (never
+	// instead of) the unconditional mgmt-path exclusion above. A changeset
+	// whose touched entities put quorum or a management path at risk is
+	// aborted with a distinct audit reason. A clean verdict here changes
+	// nothing about the gates already passed.
+	if block, reason := s.preflightImpactBlocks(ctx, cs.Ops); block {
+		s.resolveSchedule(ctx, row, store.ScheduleStatusBlocked)
+		s.appendAudit(ctx, systemScheduleActor, "changeset.schedule_fire_blocked", reason, row.ChangesetID, nil)
+		return
+	}
+
 	if planNeedsPVEGateway(cs.Ops) {
 		s.resolveSchedule(ctx, row, store.ScheduleStatusBlocked)
 		s.appendAudit(ctx, systemScheduleActor, "changeset.schedule_fire_blocked", "pve_session_required", row.ChangesetID, nil)
