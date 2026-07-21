@@ -331,6 +331,11 @@ type Options struct {
 	// mounting them. Typically cmd/vnproxd's failsim adapter — read-only,
 	// pure over the live inventory snapshot.
 	Failsim FailsimService
+	// Microseg backs T-1602's Microsegmentation routes (POST
+	// /microseg/propose, POST /microseg/dry-run). Nil skips mounting them.
+	// Typically cmd/vnproxd's microseg adapter — read-only synthesis over the
+	// live flow corpus + firewall state; the planner never applies.
+	Microseg MicrosegService
 	// WireGuard backs T-1401's GET /wireguard/tunnels + /{id}/pubkey +
 	// /{id}/peer-config (docs/api.md's WireGuard section); nil skips mounting
 	// every /wireguard route. Read-only — WireGuard is mutated only through
@@ -503,6 +508,7 @@ func NewRouter(opts Options) http.Handler {
 		mountMTUProbeRoutes(r, opts.MTUProbe, opts.Auth)
 		mountCephRoutes(r, opts.Ceph, opts.Auth)
 		mountFailsimRoutes(r, opts.Failsim, opts.Auth)
+		mountMicrosegRoutes(r, opts.Microseg, opts.Auth)
 		mountWireGuardRoutes(r, opts.WireGuard, opts.Auth)
 		mountWanRoutes(r, opts.Wan, opts.Findings, opts.LocalNode, opts.WanAudit, opts.Auth)
 		mountCaptureRoutes(r, opts.Captures, opts.Auth)

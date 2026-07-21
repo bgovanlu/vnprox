@@ -86,7 +86,7 @@ func (e *Engine) enforceGuest(ep resolvedEP, fl flow, dir, point string, res *Re
 	}
 
 	lk := e.lookupFor(guest)
-	dec := e.decideDirection(view, dir, fl, lk)
+	dec := decideDirection(view, dir, fl, lk)
 
 	// Surface T-501's cluster→guest simplification when it was decisive.
 	if dec.origin == fw.OriginCluster {
@@ -147,7 +147,12 @@ type decision struct {
 // decideDirection walks view's rules for direction dir, returning the first
 // definitive match, or the direction's default policy on fallthrough. An
 // undecidable rule short-circuits to decisionUnknown (never guessed past).
-func (e *Engine) decideDirection(view fw.ResolvedView, dir string, fl flow, lk fwLookup) decision {
+//
+// It is a free function (it reads only its arguments, never Engine state) so
+// the exported EvaluateFirewall wrapper (eval.go) — the microsegmentation
+// dry-run's evaluator (T-1602) — reuses this exact rule-walk rather than
+// re-deriving a second, divergent firewall evaluator.
+func decideDirection(view fw.ResolvedView, dir string, fl flow, lk fwLookup) decision {
 	ifaceSeen := false
 	for _, rr := range view.Rules {
 		r := rr.Rule

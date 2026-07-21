@@ -510,6 +510,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// mirroring flowClassifyAdapterVal's identical two-step wiring above.
 	baselineProfileRepo := store.NewBaselineProfileRepo(db)
 	baselineSvcVal := newBaselineService(baselineProfileRepo, cfg.Baseline, logger)
+	// T-1602: microsegmentation planner adapter — reads the guest's observed
+	// flow corpus, its learned baseline (baselineProfileRepo, for anomaly
+	// exclusion), and its live firewall view. Its flow_samples source is
+	// late-bound via set() once setupFlows returns (mirrors baselineSvcVal).
+	microsegSvc := newMicrosegAdapter(graph, baselineProfileRepo)
 	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
@@ -789,6 +794,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// flow_samples source now that flowRepo exists (baseline.go's own doc
 	// comment) — mirrors flowClassifyAdapterVal.set above.
 	baselineSvcVal.set(flowRepo)
+	// T-1602: give the microseg planner its flow_samples source now that
+	// flowRepo exists (mirrors baselineSvcVal.set above).
+	microsegSvc.set(flowRepo)
 
 	// T-1004: host-local flow sampling (conntrack/eBPF) — both strictly
 	// opt-in per node via [flows] conntrack_sampling_enabled/
@@ -1056,6 +1064,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		MTUProbe:            mtuProbeSvc,
 		Ceph:                cephAdapter,
 		Failsim:             failsimSvc,
+		Microseg:            microsegSvc,
 		WireGuard:           wgReadSvc,
 		WgCarriers:          wgReadSvc,
 		Wan:                 wanSvc,
