@@ -220,6 +220,25 @@ CREATE TABLE posture_scores (  -- T-1607: internal/store/migrations/0027_posture
     -- (400) by age, whichever is smaller, pruned on the same tick-based cadence
     -- finding_events/metric_samples establish. See §2's posture_scores prose note.
 
+CREATE TABLE plugins (  -- T-1702: internal/store/migrations/0029_plugins.sql
+  id TEXT PRIMARY KEY,                    -- stable plugin id (reverse-dns style)
+  name TEXT NOT NULL,
+  version TEXT NOT NULL DEFAULT '',       -- plugin's own version (opaque to vnprox)
+  api_version TEXT NOT NULL,              -- frozen SDK interface version built against ("v1")
+  extension_points_json TEXT NOT NULL,    -- serialized []string of attached extension points
+  capabilities_json TEXT NOT NULL,        -- serialized []string capability scope (the ceiling)
+  transport TEXT NOT NULL,                -- "in-process" | "grpc" (out-of-process subprocess)
+  endpoint TEXT NOT NULL DEFAULT '',      -- out-of-process launch hint; '' for in-process
+  enabled INTEGER NOT NULL DEFAULT 1,
+  installed_by TEXT NOT NULL,             -- identity that installed it (for the audit trail)
+  installed_at INTEGER NOT NULL           -- unix seconds, UTC
+);  -- App-owned registry of vnprox's own extension points, never a shadow of PVE
+    -- config. The capability scope recorded here is a CEILING: a plugin can only
+    -- reach the seams its capabilities cover and never an apply/confirm/rollback
+    -- path (docs/security.md's plugin capability-scope model). Both JSON columns
+    -- are validated against fixed vocabularies (auth AllCaps; the five extension
+    -- points) on install before a row is written.
+
 CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 
 CREATE TABLE alert_rules (            -- T-1005: webhook routing rules

@@ -63,6 +63,34 @@ Two enforcement layers, both required:
 
    **Packet capture — `capture` capability (T-1301).** The distributed packet-capture surface (`POST /captures` and the peer routes it fans out to) is gated on a **dedicated** `capture` capability, distinct from `netRead`/`netWrite`. It is deliberately **at least as strict as `netWrite`'s** gate: `capture` is derived only from `Sys.Modify` **and** `Sys.Console` held together on `/nodes/{node}` (the same root-shell-equivalent access class needed to run `tcpdump` on the host by hand). Holding `netRead`/`netWrite` alone — even every read/write privilege short of `Sys.Console` — therefore **never** grants capture; a session must hold `capture` explicitly. Rationale: capture exposes raw payload bytes, a materially stronger read than any config counter, so a wrong permission decision here is a data-exposure incident that cannot be retrofitted. Every `/captures` route requires both `netRead` and `capture`. When `[server] read_only = true` (docs/features/blueprints.md §3's "observe-only until you trust it" toggle), every derived capability's write flags are additionally forced false regardless of the user's PVE ACLs (`internal/auth.forceReadOnly`, applied inside `deriveCapabilities`) — since every `RequireCap`-gated mutating route in `internal/api` gates on these same flags, this makes `read_only` a real, server-enforced restriction, not merely a UI affordance the frontend is trusted to hide.
 
+   **Plugin capability scope (T-1702).** An installed extension plugin (`internal/plugin`)
+   declares a **capability scope** drawn entirely from the `internal/auth/caps.go` vocabulary
+   above — the SDK introduces **no new privilege** of its own. The scope is a **ceiling, not a
+   grant**, enforced server-side and structurally:
+
+   - **Stage-only, never apply.** The only change-engine surface handed to plugin code is
+     `plugin.Stager` (Create/Validate). No Apply/Confirm/Rollback method is reachable from a
+     plugin — in-process or over the out-of-process transport — so a plugin can stage a draft
+     changeset for a human to apply but is never itself a mutation path. This is the same
+     apply-only-through-the-change-engine guarantee every mutation has had since T-205, and it
+     is verified by an interface-surface test, not by convention.
+   - **The scope caps what a plugin can construct.** Every op a plugin tries to stage is mapped
+     (`plugin.RequiredCap`) to the capability that op class already requires (`fw.*`→`fwWrite`,
+     `sdn.*`→`sdnWrite`, `guest.nic.update`→`guestNet`, everything else→`netWrite`, fail-safe
+     default `netWrite` for any unmapped op). If the plugin's declared scope does not cover an
+     op's required capability, the op is rejected **before it ever reaches `internal/change`** —
+     a plugin whose scope excludes `netWrite` cannot construct a `netWrite`-class op. A plugin
+     also cannot *register* an extension point whose entry ceiling its scope does not meet (the
+     write-adjacent `switchDriver` point requires `netWrite`; the four read-only points require
+     `netRead`).
+   - **Audited and bounded.** Install/enable/disable/uninstall each write an audit row recording
+     the plugin's capability scope, so `GET /audit` always shows what a plugin may touch and who
+     installed it. An out-of-process plugin runs as a supervised subprocess (`procshim`) with no
+     DB/file access; its only channel back into vnprox is the capability-scoped `Stager`. Residual
+     risk: the subprocess can make unconstrained OS-level network calls from its own process — a
+     stated-not-hidden risk (mirroring T-1205's switch-rollback residual-risk stance), to be
+     bounded operationally (systemd sandboxing / netns) rather than by the SDK.
+
 There is **one privileged internal identity**: a PVE API token `vnprox@pve!daemon` (created at install, stored root-only) used exclusively for *read* polling by collectors — never for writes. Writes without a user context do not exist, with one exception: automatic rollback of an unconfirmed changeset, which restores from snapshot using host-level file operations and is attributed in the audit log to `system:rollback` with the originating user recorded.
 
 ## Transport
@@ -110,5 +138,6 @@ Every mutation attempt (including denied and rolled-back) is written to the audi
 | OIDC token forgery / IdP-response tampering (T-1207) | RS256-only ID-token verification against the IdP's published JWKS (issuer/audience/expiry/nonce checked; `alg:none`/HS* rejected — no alg-confusion downgrade), PKCE (S256) + single-use state/nonce on every auth request, mapped-PVE credentials encrypted at rest (`oidc_pve_links.credential_enc`), OIDC caps intersected with (never additive to) the linked PVE identity's real ACLs |
 | Over-privileged OIDC group mapping (T-1207) | group→role bundle is always intersected with the linked PVE identity's live-derived ACLs (`IntersectCaps`); no PVE linkage → zero cluster-scoped capability; `[server] read_only` still forces every OIDC session read-only server-side |
 | Cluster-registry credential theft (T-1201) | per-cluster PVE credential sealed in `clusters.credential_enc` with the one AES-256-GCM session key (never a new secret), never returned by any API/log/audit, ciphertext-vs-plaintext regression-tested; no cross-cluster mutation primitive exists, so a leaked credential cannot be used to write another cluster |
+| Malicious/over-reaching extension plugin (T-1702) | plugin capability scope is a server-enforced ceiling drawn from the existing `caps.go` vocabulary (no new privilege); the only change-engine seam a plugin holds is stage-only `Stager` (no Apply/Confirm/Rollback reachable, verified by an interface-surface test); an op whose required capability the scope excludes is rejected before reaching `internal/change`; out-of-process plugins run as supervised subprocesses with no DB/file access and degrade gracefully when killed; install/enable/disable/uninstall are audited with the recorded scope |
 | Rogue / compromised attached cluster (T-1201) | config ownership stays strictly per-cluster; a changeset's ops are validated to belong to its own `clusterId` (cross-cluster op rejected); an unreachable/misbehaving cluster is failure-isolated (`partial`/`failedClusters`) and never blanks or errors the aggregate response for the healthy clusters — a hostile cluster degrades only its own capsule, not the federation |
 | Switch-driver credential theft / errant push (T-1205) | `switches.credentials_enc` sealed with the same session cipher, never returned, ciphertext-vs-plaintext regression-tested; push ships dark (daemon flag **and** per-switch `enabled` both required); every push is a change-engine changeset scoped to PVE-facing ports only, with a mandatory pre-write LLDP-neighbor identity re-check (hard abort on mismatch) and mgmt-path interlock (`safety.protected_switch_port`, no override); unrevertable-after-push risk surfaced as a distinguishable "rollback incomplete" state |
