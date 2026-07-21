@@ -389,6 +389,13 @@ func (s *Service) TickSchedules(ctx context.Context) {
 	if !s.scheduleConfigured() {
 		return
 	}
+	// T-1704 single-writer fence: a standby must not fire scheduled applies —
+	// only the current HA leader ticks. A demoted former-active whose ticker
+	// still fires no-ops here; the leader's own scheduler drives the window
+	// from the same persisted, absolute windowStart/windowEnd. (See mayLead.)
+	if !s.mayLead() {
+		return
+	}
 	pending, err := s.schedules.ListByStatus(ctx, store.ScheduleStatusPending)
 	if err != nil {
 		s.log.Error("change: listing pending changeset schedules", "error", err)

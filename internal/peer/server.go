@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -231,6 +232,18 @@ type LLDPInstaller interface {
 	InstallLLDPD(ctx context.Context) error
 }
 
+// ReplicationSink is the peer-server-side dependency for
+// POST /api/peer/ha/replicate (T-1704): it receives one HA replication batch
+// as an opaque, already-HMAC-authenticated JSON payload and returns the ack
+// payload. Declared against raw bytes (not internal/ha's Batch/Ack) so
+// internal/peer never imports internal/ha or internal/store — the same
+// import-direction discipline AuditReader/FlowReader follow; cmd/vnproxd wires
+// an internal/ha adapter that marshals/unmarshals. Optional (nil-safe): a
+// daemon with HA disabled 503s this route.
+type ReplicationSink interface {
+	Replicate(ctx context.Context, payload []byte) ([]byte, error)
+}
+
 // ServerOptions configures a Server.
 type ServerOptions struct {
 	Reader    HostReader
@@ -253,7 +266,11 @@ type ServerOptions struct {
 	// (nil-safe, the same 503-not-panic treatment as every other optional
 	// dependency): a daemon with no capture agent wired can't capture on
 	// behalf of a coordinating peer.
-	Capture      CaptureAgent
+	Capture CaptureAgent
+	// Replication backs POST /api/peer/ha/replicate (T-1704). Optional
+	// (nil-safe, 503 when unset): a daemon with HA disabled has no standby to
+	// receive replication for.
+	Replication  ReplicationSink
 	Secrets      *SecretStore
 	Logger       *slog.Logger
 	Now          func() time.Time
@@ -332,7 +349,33 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Post("/capture/stop", s.handleCaptureStop)
 		r.Get("/capture/status", s.handleCaptureStatus)
 		r.Get("/capture/download", s.handleCaptureDownload)
+
+		r.Post("/ha/replicate", s.handleReplicate)
 	})
+}
+
+// handleReplicate implements POST /api/peer/ha/replicate (T-1704): the active
+// daemon pushes one HA replication batch (opaque JSON) to the standby. The
+// body is already HMAC-authenticated and body-size-capped by authMiddleware;
+// this handler hands it verbatim to the sink and returns the ack payload.
+func (s *Server) handleReplicate(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Replication == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "HA replication not configured")
+		return
+	}
+	payload, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "reading replication payload: "+err.Error())
+		return
+	}
+	ack, err := s.opts.Replication.Replicate(r.Context(), payload)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "replication_failed", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(ack)
 }
 
 // handleCaptureStart implements POST /api/peer/capture/start (T-1301): a

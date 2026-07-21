@@ -21,6 +21,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/capture"
 	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/flow/hostsample"
+	"github.com/bgovanlu/vnprox/internal/ha"
 	"github.com/bgovanlu/vnprox/internal/latmesh"
 	"github.com/bgovanlu/vnprox/internal/mtuprobe"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -138,16 +139,40 @@ type Config struct {
 	OIDC        OIDCConfig
 	Server      ServerConfig
 	Metrics     MetricsConfig
+	HA          HAConfig
 	Capture     CaptureConfig
 	Flows       FlowsConfig
 	Wan         WanConfig
 	Collect     CollectConfig
 	Latmesh     LatmeshConfig
 	Retention   RetentionConfig
-	MTUProbe    MTUProbeConfig
-	Switches    SwitchesConfig
 	Capacity    CapacityConfig
 	Baseline    BaselineConfig
+	MTUProbe    MTUProbeConfig
+	Switches    SwitchesConfig
+}
+
+// HAConfig is the [ha] section (T-1704: active/standby daemon high
+// availability). Disabled by default (Enabled false) — a single-daemon
+// deployment behaves exactly as it did pre-T-1704. When enabled, exactly one
+// daemon in the pair sets bootstrap = true so a first boot never has both
+// claim term 1. PeerAddr is the standby's host:port for the replication push;
+// Mode selects the failover-announce mechanism ("vip" runs VipCommand, "dns"
+// posts to DNSWebhook). Lease timings default sensibly (see internal/ha) when
+// unset.
+type HAConfig struct {
+	InstanceID    string
+	Mode          string
+	PeerNode      string
+	PeerAddr      string
+	VipCommand    string
+	DNSWebhook    string
+	LeaseTTL      time.Duration
+	RenewInterval time.Duration
+	FencingMargin time.Duration
+	LagThreshold  int
+	Enabled       bool
+	Bootstrap     bool
 }
 
 // SecurityConfig is the [security] section (T-1605: rogue-service detection).
@@ -463,16 +488,32 @@ type rawConfig struct {
 	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
 	Security    rawSecurity    `toml:"security"`
+	HA          rawHA          `toml:"ha"`
 	Server      rawServer      `toml:"server"`
 	Capture     rawCapture     `toml:"capture"`
 	Flows       rawFlows       `toml:"flows"`
 	Wan         rawWan         `toml:"wan"`
 	Latmesh     rawLatmesh     `toml:"latmesh"`
 	Retention   rawRetention   `toml:"retention"`
-	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
-	Switches    rawSwitches    `toml:"switches"`
 	Capacity    rawCapacity    `toml:"capacity"`
 	Baseline    rawBaseline    `toml:"baseline"`
+	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
+	Switches    rawSwitches    `toml:"switches"`
+}
+
+type rawHA struct {
+	InstanceID    string `toml:"instance_id"`
+	Mode          string `toml:"mode"`
+	PeerNode      string `toml:"peer_node"`
+	PeerAddr      string `toml:"peer_address"`
+	VipCommand    string `toml:"vip_command"`
+	DNSWebhook    string `toml:"dns_webhook"`
+	LeaseTTL      string `toml:"lease_ttl"`
+	RenewInterval string `toml:"renew_interval"`
+	FencingMargin string `toml:"fencing_margin"`
+	LagThreshold  int    `toml:"replication_lag_threshold"`
+	Enabled       bool   `toml:"enabled"`
+	Bootstrap     bool   `toml:"bootstrap"`
 }
 
 type rawCapacity struct {
@@ -646,6 +687,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	haCfg, err := resolveHAConfig(raw.HA)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg := &Config{
 		Server: ServerConfig{
@@ -680,6 +725,7 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		Peer: PeerConfig{
 			SecretPath: firstNonEmpty(raw.Peer.SecretPath, peer.DefaultSecretPath),
 		},
+		HA: haCfg,
 		Retention: RetentionConfig{
 			SnapshotKeepDays: firstNonZeroInt(raw.Retention.SnapshotKeepDays, DefaultSnapshotKeepDays),
 			SnapshotPinDays:  firstNonZeroInt(raw.Retention.SnapshotPinDays, DefaultSnapshotPinDays),
@@ -879,6 +925,41 @@ func resolveTLSPaths(certOverride, keyOverride string) (certPath, keyPath string
 		}
 		return certOverride, keyOverride, nil
 	}
+}
+
+// resolveHAConfig maps the raw [ha] section to HAConfig, parsing its duration
+// fields and validating the mode. HA disabled (the default) skips all
+// validation. When enabled, mode must be "vip" or "dns" and a peer address is
+// required (there is no active/standby pair without a peer to replicate to).
+func resolveHAConfig(raw rawHA) (HAConfig, error) {
+	if !raw.Enabled {
+		return HAConfig{}, nil
+	}
+	if !ha.ValidMode(raw.Mode) {
+		return HAConfig{}, fmt.Errorf("%w: ha.mode %q must be %q or %q", ErrInvalidConfig, raw.Mode, ha.ModeVIP, ha.ModeDNS)
+	}
+	if raw.PeerAddr == "" {
+		return HAConfig{}, fmt.Errorf("%w: ha.peer_address is required when ha.enabled = true", ErrInvalidConfig)
+	}
+	leaseTTL, err := parseDurationOrDefault(raw.LeaseTTL, ha.DefaultLeaseTTL, "ha.lease_ttl")
+	if err != nil {
+		return HAConfig{}, err
+	}
+	renew, err := parseDurationOrDefault(raw.RenewInterval, ha.DefaultRenewInterval, "ha.renew_interval")
+	if err != nil {
+		return HAConfig{}, err
+	}
+	margin, err := parseDurationOrDefault(raw.FencingMargin, ha.DefaultFencingMargin, "ha.fencing_margin")
+	if err != nil {
+		return HAConfig{}, err
+	}
+	return HAConfig{
+		Enabled: true, InstanceID: raw.InstanceID, Mode: raw.Mode,
+		PeerNode: raw.PeerNode, PeerAddr: raw.PeerAddr,
+		VipCommand: raw.VipCommand, DNSWebhook: raw.DNSWebhook,
+		LeaseTTL: leaseTTL, RenewInterval: renew, FencingMargin: margin,
+		LagThreshold: raw.LagThreshold, Bootstrap: raw.Bootstrap,
+	}, nil
 }
 
 func resolveCollectConfig(raw rawCollect) (CollectConfig, error) {

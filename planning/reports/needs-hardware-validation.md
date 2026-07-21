@@ -792,3 +792,28 @@ _(surfaced during the T-1208 v2.0 docs-freeze audit — OIDC is tested against a
       packaging/upgrade tests run on the dev host (podman + `packaging/test/upgrade.sh`), not here —
       run the real apt upgrade against a v1.x-schema DB and confirm the single-cluster surface serves
       unchanged with zero clusters attached.
+
+## T-1704 — vnproxd HA (active/standby failover)
+
+The failover/split-brain logic is fully covered by the deterministic two-daemon harness
+(`internal/ha`, injected `Clock` + injectable partition switch, no real sleeps/VIP/network).
+These need real multi-instance/hardware validation beyond the injected-fault harness:
+
+- [ ] **Real VIP/ARP failover timing.** The `[ha] mode = "vip"` path only *triggers* an operator
+      command; the actual virtual-IP move + gratuitous ARP convergence time (and how it interacts
+      with switch MAC-aging and any upstream router's ARP cache) is unmeasured here. Validate on a
+      real two-node pair behind a real switch.
+- [ ] **Real DNS TTL propagation.** The `[ha] mode = "dns"` webhook path's end-to-end client
+      cutover time depends on the operator's DNS automation and record TTLs — unmeasured; validate
+      against a real resolver chain.
+- [ ] **Real partition behavior.** The harness models a partition as a boolean switch on the
+      replication link. Real behavior (asymmetric partitions, half-open TCP, TLS handshake stalls,
+      clock skew between the two hosts beyond the ±30s peer replay window) needs a real pair —
+      confirm the fencing margin + self-demotion timing prevents any window in which both drive a
+      commit-confirm rollback, and that a healed old-active demotes before its re-armed deadline.
+- [ ] **Replication throughput / lag under load.** The `ha_replication_degraded` threshold and the
+      full-changesets/snapshots-each-pass replication cost are untuned against a real busy cluster's
+      changeset/audit volume — measure lag and push latency on the dev host / a real pair.
+- [ ] **HA-pair apt upgrade (standby-first).** The forward-only migration adds `0031_ha.sql`; the
+      standby-first-then-active upgrade sequence (docs/deployment.md) is smoke-tested only against
+      the injected harness — run the real apt upgrade on a two-node pair.

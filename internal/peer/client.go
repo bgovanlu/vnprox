@@ -780,6 +780,23 @@ func (c *Client) CaptureDownload(ctx context.Context, p Peer, sessionID string) 
 	return out.Content, nil
 }
 
+// Replicate pushes one HA replication batch (opaque JSON) to peer p and
+// returns the ack payload (T-1704). The batch/ack shapes are internal/ha's
+// concern — this method carries them as raw bytes so internal/peer stays free
+// of an internal/ha or internal/store import, the same decoupling AuditReader/
+// FlowReader use on the server side.
+func (c *Client) Replicate(ctx context.Context, p Peer, payload []byte) ([]byte, error) {
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/ha/replicate", payload)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, decodeInto(resp, nil)
+	}
+	return io.ReadAll(resp.Body)
+}
+
 // Health checks peer p's /api/peer/health.
 func (c *Client) Health(ctx context.Context, p Peer) error {
 	resp, err := c.do(ctx, p, http.MethodGet, "/api/peer/health", nil)
