@@ -36,3 +36,18 @@ Tail per-node firewall logs (peer API), parsed and filterable (guest, direction,
 ## 6. Simulator engine notes
 
 Lives in `internal/sim`, pure functions over an inventory snapshot: `Simulate(graph, src, dst, proto, port) Result`. Must be exhaustively table-test-covered — this feature's value collapses if it lies. Every supported PVE firewall feature is either correctly evaluated or explicitly reported as "not evaluated: <feature>" in the result caveats. No silent approximations.
+
+## 7. Microsegmentation (T-1602 core / T-1603 review UX)
+
+The microsegmentation planner proposes the **minimal** firewall policy that preserves a guest's observed-good traffic ("these N rules cover 30 days of traffic; everything else was noise"), lets a reviewer dry-run it in monitor-only mode, and — only if the reviewer is satisfied — stages it as an ordinary changeset. It never enforces anything itself. Synthesis and dry-run soundness live in `internal/microseg` (T-1602); the review surface lives in `web/src/microseg/` (T-1603), launched from a guest's firewall inspector (the Guests tab).
+
+**propose → dry-run → stage flow:**
+
+1. **Propose** (`POST /microseg/propose`) — `MicrosegPlanner.tsx` renders the proposed policy as "*N rules cover X% of this guest's observed-good traffic*", with the uncovered-flow count stated **plainly** next to it. Coverage is the exact fraction of observed-good bytes the rules cover (default threshold 99.5%) and is **never rounded up to "everything"**: a 99.53% coverage reads "99.53%", and the deliberately-uncovered long-tail flow count is shown as its own number, never hidden. Flows T-1601's baseline detector flagged as anomalous are excluded from what counts as observed-good (a transient compromise inside the training window can never legitimize itself into an allow rule); that excluded count is surfaced too.
+
+2. **Dry-run** (`POST /microseg/dry-run`) — `DryRunReport.tsx` replays a flow corpus against the proposed policy using `internal/sim`'s own firewall evaluator and sorts every flow into **four honest buckets**. Two of them are surfaced first and most prominently, because a reviewer relies on seeing exactly what a proposal would break before enforcing it:
+   - **Would-have-blocked** — observed-good flows the policy would have dropped. Zero here is the goal; any entry is shown in a flagged section with the offending flows in the same table format as the Flow Explorer (T-1003). The section is always present, showing zero rows when empty rather than disappearing (so "checked, none" is unmistakable, never confused with "not checked").
+   - **Cannot-determine** — flows the evaluator could not prove stay permitted. These are **never** folded into "would-allow"; they are surfaced loudly with the evaluator's own reason, and treated as potential breaks until resolved.
+   - **Would-allow** and **Ungoverned** are the reassuring buckets and sit below, collapsed by default. A held-out dry-run (`heldOut: true`) replays a trailing window excluded from the training window — an independent proof point whose bounded would-block tail is labelled as such.
+
+3. **Stage as changeset** — hands the server-computed `fw.rule.create` ops (the proposal's `stagedOps`) into the ordinary ChangesetDrawer (§8 of `docs/architecture.md`) via the same draft-accumulation path every other editor uses — **no bespoke apply affordance**. Staging is disabled until the current proposal has been dry-run at least once, and re-proposing invalidates that enablement (no one stages a policy no one has dry-run). Review and apply happen entirely through the normal changeset lifecycle (stage → validate → diff → apply → confirm/rollback); the planner owns no enforcement path outside it.
