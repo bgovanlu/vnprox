@@ -36,6 +36,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/plugin"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
+	"github.com/bgovanlu/vnprox/internal/tenant"
 	"github.com/bgovanlu/vnprox/internal/topology"
 	webui "github.com/bgovanlu/vnprox/web"
 )
@@ -952,6 +953,24 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		fwLogAPI = fwlogSvc
 	}
 
+	// T-1703: multi-tenancy & self-service. The tenant service resolves each
+	// caller's server-side scope against the tenants/tenant_scopes/
+	// tenant_members tables, expanding coarse scopes (a VLAN/VNet) to their
+	// member guests/subnets live against the same shared inventory graph. It is
+	// always wired but inert until an admin creates a tenant (no membership =>
+	// unscoped reads), so a single-tenant deployment is unaffected.
+	tenantRepo := store.NewTenantRepo(db)
+	tenantSvc, err := tenant.NewService(tenant.Config{
+		Store:    tenantRepo,
+		Expander: tenant.NewGraphExpander(graph),
+	})
+	if err != nil {
+		return fmt.Errorf("setting up tenant service: %w", err)
+	}
+	// Approval routing reuses T-1005's alert plumbing: a pending
+	// request-changeset raises a routed finding to the tenant's approver group.
+	tenantNotifier := tenantApprovalNotifier{notifier: webhookNotifier, logger: logger}
+
 	apiOpts := api.Options{
 		Version: version,
 		// Non-secret operational config for the Settings page's Instance
@@ -1005,6 +1024,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// ipam.ClusterSubnets shape.
 		FederationIPAM: federationIPAMAdapter{agg: federationAgg},
 		Changesets:     changeSvc,
+		Tenant:         tenantSvc,
+		TenantStore:    tenantRepo,
+		TenantNotifier: tenantNotifier,
 		Snapshots:      changeSvc,
 		Audit:          auditRepo,
 		// T-1007: GET /history/events merges the same audit_log (narrowed to

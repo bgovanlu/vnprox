@@ -117,13 +117,16 @@ type flowListResponse struct {
 // classifier is T-1504's optional serviceClass attribution (nil-safe: every
 // item's serviceClass field is simply omitted — see flowRecordResponse's
 // doc comment).
-func mountFlowRoutes(r chi.Router, svc FlowLocalSource, auth AuthService, peers PeerFlowSource, classifier *flow.Classifier) {
+func mountFlowRoutes(r chi.Router, svc FlowLocalSource, auth AuthService, peers PeerFlowSource, classifier *flow.Classifier, scopeMW func(http.Handler) http.Handler) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
+		if scopeMW != nil {
+			r.Use(scopeMW)
+		}
 		r.Get("/flows", handleListFlows(svc, peers, classifier))
 	})
 }
@@ -203,6 +206,9 @@ func handleListFlows(svc FlowLocalSource, peers PeerFlowSource, classifier *flow
 			for i, s := range samples {
 				items[i] = toFlowRecordResponse(s, classifier)
 			}
+			if scope, scoped := scopeFromContext(r.Context()); scoped {
+				items = filterFlowsForScope(items, scope)
+			}
 			writeJSON(w, http.StatusOK, flowListResponse{Items: items, NextCursor: next})
 			return
 		}
@@ -214,6 +220,10 @@ func handleListFlows(svc FlowLocalSource, peers PeerFlowSource, classifier *flow
 		}
 		if items == nil {
 			items = []flowRecordResponse{}
+		}
+		// T-1703: a tenant sees only flows touching one of its visible refs.
+		if scope, scoped := scopeFromContext(r.Context()); scoped {
+			items = filterFlowsForScope(items, scope)
 		}
 		writeJSON(w, http.StatusOK, flowListResponse{Items: items, NextCursor: next, Partial: partial, FailedNodes: failed})
 	}

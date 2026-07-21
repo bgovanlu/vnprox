@@ -43,6 +43,13 @@ type ChangesetService interface {
 	Discard(ctx context.Context, id, author string) error
 	Validate(ctx context.Context, id, author string) (change.Changeset, error)
 
+	// T-1703 request-changesets: CreateRequest creates a changeset in
+	// StatusRequested (a tenant member's request, blocked from apply until an
+	// approver converts it); Approve converts a requested changeset to an
+	// ordinary draft.
+	CreateRequest(ctx context.Context, author, title string, ops []change.Op) (change.Changeset, error)
+	Approve(ctx context.Context, id, approver string) (change.Changeset, error)
+
 	// T-205 apply engine.
 	Diff(ctx context.Context, id string) (*ifaces.ChangesetDiff, error)
 	Apply(ctx context.Context, id, author string, pveGW change.PVEGateway, confirmTimeout time.Duration) (change.Changeset, error)
@@ -182,7 +189,7 @@ func redactOpSecrets(ops []change.Op) []change.Op {
 // mounted — same reasoning as mountLayoutsRoutes: there would be no safe
 // way to attribute a created/discarded changeset to a user for the
 // audit trail docs/security.md requires.
-func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService, gateways PVEGatewayProvider, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) {
+func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService, gateways PVEGatewayProvider, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource, scoper TenantScoper, notifier ApprovalNotifier, adminStore TenantAdminStore) {
 	if svc == nil || auth == nil {
 		return
 	}
@@ -213,7 +220,7 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 			r.Use(csrf.CSRFMiddleware)
 		}
 		r.Use(auth.RequireCap(capNetWrite))
-		r.Post("/changesets", handleCreateChangeset(svc, lookup, mgmt, wgCarriers))
+		r.Post("/changesets", handleCreateChangeset(svc, lookup, mgmt, wgCarriers, scoper, notifier, adminStore))
 		r.Put("/changesets/{id}", handleUpdateChangeset(svc, lookup, mgmt, wgCarriers))
 		r.Delete("/changesets/{id}", handleDiscardChangeset(svc, lookup))
 		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup, mgmt, wgCarriers))
@@ -642,13 +649,16 @@ func (o *opsField) UnmarshalJSON(data []byte) error {
 }
 
 // createChangesetRequest is docs/api.md's POST /changesets body:
-// `{title, ops:[Op]}`.
+// `{title, ops:[Op]}`. TenantId (T-1703) is optional: when present the body
+// creates a request-changeset (StatusRequested) owned by that tenant, subject
+// to the tenant scope check, rather than an ordinary draft.
 type createChangesetRequest struct {
-	Title string   `json:"title"`
-	Ops   opsField `json:"ops"`
+	Title    string   `json:"title"`
+	TenantId string   `json:"tenantId,omitempty"`
+	Ops      opsField `json:"ops"`
 }
 
-func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
+func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource, scoper TenantScoper, notifier ApprovalNotifier, adminStore TenantAdminStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -659,6 +669,18 @@ func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mgm
 		req, decErr := decodeChangesetRequest(w, r)
 		if decErr != nil {
 			writeOpDecodeError(w, decErr)
+			return
+		}
+
+		// T-1703: a body carrying tenantId is a request-changeset. It requires
+		// the tenant scoping service to be wired; without it, the field is
+		// rejected rather than silently creating an ordinary (unscoped) draft.
+		if req.TenantId != "" {
+			if scoper == nil {
+				writeJSONError(w, http.StatusBadRequest, "validation_failed", "multi-tenancy is not enabled on this deployment")
+				return
+			}
+			createRequestChangeset(w, r, svc, scoper, notifier, adminStore, username, req.TenantId, req.Title, req.Ops)
 			return
 		}
 

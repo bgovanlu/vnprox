@@ -27,13 +27,16 @@ type FindingsService interface {
 // (mountDriftRoutes) — those keep working entirely unchanged for any
 // existing caller that only cares about drift-family findings; /findings is
 // the new unified superset spanning drift+lldp+ipam+health.
-func mountFindingsRoutes(r chi.Router, svc FindingsService, changesets ChangesetService, auth AuthService) {
+func mountFindingsRoutes(r chi.Router, svc FindingsService, changesets ChangesetService, auth AuthService, scopeMW func(http.Handler) http.Handler) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
+		if scopeMW != nil {
+			r.Use(scopeMW)
+		}
 		r.Get("/findings", handleFindings(svc))
 	})
 
@@ -83,6 +86,11 @@ func handleFindings(svc FindingsService) http.HandlerFunc {
 				continue
 			}
 			items = append(items, f)
+		}
+		// T-1703: a tenant sees only findings that reference one of its own
+		// visible resources (never cluster-wide/node-wide findings).
+		if scope, scoped := scopeFromContext(r.Context()); scoped {
+			items = filterFindingsForScope(items, scope)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	}

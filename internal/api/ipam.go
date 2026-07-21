@@ -58,13 +58,16 @@ const v6PlanSuffix = "/v6-plan"
 // issue — see topology.go's handleInventoryDetail doc comment), which chi
 // params cannot span. handleIPAMAllocations splits the wildcard's trailing
 // "/allocations" segment off itself.
-func mountIPAMRoutes(r chi.Router, svc IPAMService, auth AuthService) {
+func mountIPAMRoutes(r chi.Router, svc IPAMService, auth AuthService, scopeMW func(http.Handler) http.Handler) {
 	if svc == nil || auth == nil {
 		return
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capIPAMRead))
+		if scopeMW != nil {
+			r.Use(scopeMW)
+		}
 		r.Get("/ipam/subnets", handleIPAMSubnets(svc))
 		r.Get("/ipam/subnets/*", handleIPAMAllocations(svc))
 	})
@@ -76,6 +79,10 @@ func handleIPAMSubnets(svc IPAMService) http.HandlerFunc {
 		if err != nil {
 			writeJSONError(w, http.StatusServiceUnavailable, "pve_unreachable", "could not read IPAM subnets from PVE")
 			return
+		}
+		// T-1703: a tenant sees only subnets within its scope.
+		if scope, scoped := scopeFromContext(r.Context()); scoped {
+			resp = filterSubnetsForScope(resp, scope)
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}
@@ -98,6 +105,13 @@ func handleIPAMAllocations(svc IPAMService) http.HandlerFunc {
 		}
 		if cidrPart == "" {
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", "subnet cidr is required")
+			return
+		}
+		// T-1703: a tenant may only read allocations for a subnet within its
+		// scope; an out-of-scope subnet is 404 (existence not confirmed).
+		if scope, scoped := scopeFromContext(r.Context()); scoped &&
+			!scope.VisibleAny(cidrPart, "sdn-subnet::"+cidrPart) {
+			writeJSONError(w, http.StatusNotFound, "not_found", "no such subnet")
 			return
 		}
 

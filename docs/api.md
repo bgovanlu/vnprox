@@ -895,6 +895,37 @@ Read-only, token-scoped embeds of the map, home dashboard, and posture report fo
 **Auth/gating.** `POST /embed/tokens` requires only an authenticated session (cookie or bearer) plus CSRF like every other cookie-authenticated write — the real bound is the read-only-scope restriction above. The `GET /embed/{view}` shell routes are a **distinct middleware path** from every session-cookie route: they authenticate the embed token from the **`?token=` query parameter only** (an `<iframe>` cannot set an `Authorization` header, and a first-party session cookie is never accepted in its place — this is enforced, not conventional), never the session cookie. A missing/unknown/revoked token is `401`; a token that carries any non-read-only scope is `403` (a write-capable automation token is not an embed token). The embedded view then calls the ordinary `netRead`/`sdnRead`/… -gated read routes with the same token as an `Authorization: Bearer` credential (the Tokens section's bearer path), so an embed token scoped narrower than its minting user never surfaces data above its own scopes — no parallel read path exists.
 
 **Grafana panels.** The panel *render components* and their data contracts live in this repo (`web/src/grafana/`, tested against fixture scrapes/event streams with no live Grafana); the packaged/signed Grafana plugin (`plugin.json`, `module.ts`) lives in an external repo per the "contract not source" boundary T-1106/T-1705 use — see `web/grafana-panel/README.md`. The metrics panel consumes the Metrics-exporter subsection's `GET /metrics` body; the live event-annotation panel consumes the WS `"events"` topic.
+## Tenants & self-service (T-1703)
+
+Delegated, server-side-scoped views on the federation-era permission model: a tenant sees only its own guests/VLANs/subnets and its members can **request** changes that route to an approver. Tenant scoping is enforced server-side at the data-access layer (docs/security.md's Tenant-authorization note) — it only ever narrows a member's view, and it adds no mutation path around the change engine.
+
+**Tenant management (admin).** Reads require `netRead`; mutations require `netWrite` + CSRF.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/tenants` | create a tenant: `{id?, name}` → `201` `Tenant` (id defaults to a ULID) |
+| GET | `/tenants` | list tenants: `{items: [Tenant]}` |
+| GET | `/tenants/{id}` | one tenant incl. its `scopes` and `members` |
+| DELETE | `/tenants/{id}` | delete a tenant (cascades scopes/members/request linkages); `204` |
+| PUT | `/tenants/{id}/scopes` | add a visible-resource ref: `{scopeRef}`; `204` |
+| DELETE | `/tenants/{id}/scopes?scopeRef=` | remove a scope ref; `204` |
+| PUT | `/tenants/{id}/members` | add/promote a member: `{identity, role}` (`member`\|`approver`); `204` |
+| DELETE | `/tenants/{id}/members/{identity}` | remove a member; `204` |
+
+**`Tenant`**: `{id, name, createdBy, createdAt, scopes: [string], members: [{identity, role}]}`. `scopes[]` are inventory Ref strings (a guest/subnet, or a coarse VLAN/VNet expanded to its members live at read time).
+
+**Request-changesets & approval.** A tenant member requests a change instead of writing directly:
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/changesets` (with `tenantId`) | create a request-changeset: `{tenantId, title, ops:[Op]}` → `201` `Changeset` with `status: "requested"`. Every op must target a Ref within the tenant's scope (else `403`); a non-member's `tenantId` is `404` (existence not confirmed). Raises a routed approval notification to the tenant's approver group (via alert routing, T-1005). |
+| POST | `/changesets/{id}/approve` | an **approver** of the owning tenant converts a `requested` changeset to an ordinary `draft` (`200` `Changeset`). A plain member gets `403`; an approver approving **their own** request gets `403`; a nonexistent/non-request changeset is `404`. Approval is not apply — the approver then drives the ordinary draft → apply → confirm/rollback flow. |
+
+The `requested` status is additive to the changeset lifecycle (docs/architecture §4): its only transitions are to `draft` (approve) or `discarded` (reject) — there is no path from `requested` to `applying`, so no request-changeset can ever reach apply without an approver first converting it.
+
+**Scoped dashboard.** `GET /dashboard?tenantId=` (`netRead`) returns the caller's scoped tile counts `{tenantId, visibleRefs, guests, subnets, vnets}`, computed only from the caller's own tenant scope. Asking for a tenant the caller doesn't belong to is `404`.
+
+**Scoped reads.** For a caller who is a tenant member, `GET /topology`, `/findings`, `/ipam/subnets`, `/flows`, `/inventory/search`, and `GET /inventory/{ref}` are all filtered server-side to the tenant's scope; an out-of-scope `GET /inventory/{ref}` (or `/ipam/subnets/{cidr}/allocations`) is `404`. An ordinary (non-tenant) caller is unaffected.
 
 ## Ceph (T-1503)
 

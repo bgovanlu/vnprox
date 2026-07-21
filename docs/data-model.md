@@ -392,7 +392,41 @@ CREATE TABLE external_subnets (       -- T-1203: internal/store/migrations/0023_
   description TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE tenants (                -- T-1703: internal/store/migrations/0030_tenants.sql
+  id TEXT PRIMARY KEY,                -- ULID
+  name TEXT NOT NULL,
+  created_by TEXT NOT NULL,           -- the admin identity that created the tenant
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE tenant_scopes (          -- T-1703: one row per resource a tenant may see
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  scope_ref TEXT NOT NULL,            -- inventory Ref string (a guest/subnet, or a coarse
+                                      -- VLAN/VNet expanded to its members live at read time)
+  PRIMARY KEY (tenant_id, scope_ref)
+);
+
+CREATE TABLE tenant_members (         -- T-1703: one row per (tenant, identity)
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  identity  TEXT NOT NULL,            -- the authenticated principal (username or OIDC-derived)
+  role      TEXT NOT NULL,            -- member|approver
+  PRIMARY KEY (tenant_id, identity)
+);
+
+CREATE TABLE changeset_requests (     -- T-1703: the tenant linkage of a request-changeset
+  changeset_id TEXT PRIMARY KEY,      -- changesets.id (a changeset in status 'requested')
+  tenant_id    TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  requested_by TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  approved_by  TEXT NOT NULL DEFAULT '',  -- set when an approver converts it to a draft
+  approved_at  INTEGER NOT NULL DEFAULT 0
+);
 ```
+
+> **Migration numbering (T-1703).** `0030_tenants.sql` is numbered 30 by orchestration assignment even though this branch's own base tops out at `0027` — sibling Phase-17 tasks claim `0028`/`0029` and `0031`/`0032` on their branches, so this card takes `0030` to avoid a merge-time collision. `loadMigrations`/`migrate` key off each file's own version prefix, never contiguity, so the gap is harmless (the same convention T-1201's note below establishes).
+
+**`tenants` / `tenant_scopes` / `tenant_members` / `changeset_requests` (T-1703: multi-tenancy & self-service, docs/api.md's "Tenants & self-service" section, docs/security.md's "Tenant authorization").** All app-owned per this doc's top-level rule — vnprox's own delegation model (who may see and request what), never a shadow copy of any PVE-authoritative config. `tenant_scopes.scope_ref` names visible resources by inventory Ref string; a coarse scope (a VLAN/VNet) is expanded to its member guests/subnets live against the inventory graph at read time (`internal/tenant.GraphExpander`), never frozen here — so a guest moving onto/off a scoped VNet is reflected immediately. `tenant_members.role` distinguishes a `member` (may request changes, sees the scoped view) from an `approver` (may additionally approve another member's request-changeset — never their own). `changeset_requests` carries the tenant linkage the changesets table has no column for: a request-changeset is an ordinary `changesets` row in the new `requested` status (docs/architecture §4's lifecycle, additive), gated from apply until an approver converts it to a `draft`. Server-side tenant scoping is enforced at the data-access layer (`internal/tenant.Service` + the `internal/api` scoping middleware) — see docs/security.md's Tenant-authorization note for the enforcement-point guarantee.
 
 > **Migration numbering (T-1201).** `0021_clusters.sql` is numbered 21 by orchestration assignment even though this branch's own base tops out at `0010` — sibling Phase-11/12 tasks claim `0011`–`0020` on their branches, so this card takes `0021` to avoid a merge-time collision. `loadMigrations`/`migrate` key off each file's own version prefix, never contiguity, so a gap in one branch's sequence is harmless and closes once the siblings land.
 

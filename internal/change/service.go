@@ -424,6 +424,71 @@ func (s *Service) create(ctx context.Context, author, title string, ops []Op, or
 	return c, nil
 }
 
+// CreateRequest creates a T-1703 request-changeset: identical to Create (ops
+// are sealed and validated exactly like a draft's, findings attached) except
+// the changeset enters StatusRequested rather than StatusDraft, so it is
+// blocked from apply until an approver calls Approve. The tenant linkage
+// (which tenant owns the request, who raised it) is recorded by the caller in
+// the changeset_requests table — this package deliberately holds no tenant
+// knowledge; it only owns the changeset lifecycle. The audit row carries
+// origin "request" so a reviewer can always tell a tenant-requested changeset
+// from an ordinary draft.
+func (s *Service) CreateRequest(ctx context.Context, author, title string, ops []Op) (Changeset, error) {
+	if ops == nil {
+		ops = []Op{}
+	}
+	if err := s.sealOpSecrets(ops); err != nil {
+		return Changeset{}, err
+	}
+	nowUnix := s.now().Unix()
+	findings := s.validateScoped(ctx, s.localClusterID, ops)
+	c := Changeset{
+		ID: store.NewULID(), Title: title, Author: author, Status: StatusRequested, ClusterID: s.localClusterID,
+		Ops: ops, Findings: findings, CreatedAt: nowUnix, UpdatedAt: nowUnix,
+	}
+	row, err := toStoreRow(c)
+	if err != nil {
+		return Changeset{}, err
+	}
+	if err := s.repo.Insert(ctx, row); err != nil {
+		return Changeset{}, fmt.Errorf("change: creating request-changeset %s: %w", c.ID, err)
+	}
+	s.appendAudit(ctx, author, "changeset.request", "success", c.ID, map[string]any{"title": title, "opCount": len(ops)})
+	s.auditSafetyOverride(ctx, author, c.ID, findings)
+	s.broadcastStatus(c)
+	return c, nil
+}
+
+// Approve converts a StatusRequested changeset into an ordinary StatusDraft
+// (T-1703): the request-changeset gate. It re-validates the ops against the
+// current inventory snapshot (the state may have moved since the request was
+// raised) and returns *ErrIllegalTransition if the changeset is not currently
+// in StatusRequested. Approval is NOT apply — the approver still drives the
+// ordinary draft -> validate -> apply -> confirm flow afterward. The
+// server-side "an approver, not the requester" role check lives in the tenant
+// layer that owns the tenant/role model; this method only performs the
+// lifecycle transition once that check has passed.
+func (s *Service) Approve(ctx context.Context, id, approver string) (Changeset, error) {
+	c, err := s.Get(ctx, id)
+	if err != nil {
+		return Changeset{}, err
+	}
+	if transErr := c.Transition(StatusDraft, s.now().Unix()); transErr != nil {
+		return Changeset{}, transErr
+	}
+	c.Findings = s.validateScoped(ctx, c.ClusterID, c.Ops)
+	row, err := toStoreRow(c)
+	if err != nil {
+		return Changeset{}, err
+	}
+	if err := s.repo.Update(ctx, row); err != nil {
+		return Changeset{}, fmt.Errorf("change: approving request-changeset %s: %w", id, err)
+	}
+	s.appendAudit(ctx, approver, "changeset.approve", "success", id, nil)
+	s.broadcastStatus(c)
+	return c, nil
+}
+
 // UpdateDraft replaces a draft or validated changeset's ops (docs/api.md:
 // "PUT /changesets/{id} — replace ops on a draft (revalidates)"). Editing a
 // validated changeset invalidates it back to draft (its findings, computed

@@ -34,6 +34,10 @@ func wantTransitions() map[[2]Status]bool {
 	set(StatusAwaitingConfirm, StatusRolledBack)
 	set(StatusAwaitingConfirm, StatusFailed)
 	// committed/rolled_back/failed/discarded: terminal, no outgoing edges.
+	// requested (T-1703): an approver converts it to a draft, or it is
+	// rejected to discarded — never straight to applying/validated.
+	set(StatusRequested, StatusDraft)
+	set(StatusRequested, StatusDiscarded)
 
 	return want
 }
@@ -43,8 +47,8 @@ func wantTransitions() map[[2]Status]bool {
 // statuses, i.e. 64 combinations — is asserted allowed or denied.
 func TestChangeset_StateMachine_ExhaustiveTable(t *testing.T) {
 	want := wantTransitions()
-	if len(AllStatuses) != 8 {
-		t.Fatalf("AllStatuses has %d entries, want 8 — this test assumes exactly the 8 documented statuses", len(AllStatuses))
+	if len(AllStatuses) != 9 {
+		t.Fatalf("AllStatuses has %d entries, want 9 — this test assumes exactly the 9 documented statuses (8 core + T-1703's requested)", len(AllStatuses))
 	}
 
 	for _, from := range AllStatuses {
@@ -90,6 +94,9 @@ func TestChangeset_Editable(t *testing.T) {
 		StatusApplying: false, StatusAwaitingConfirm: false,
 		StatusCommitted: false, StatusRolledBack: false,
 		StatusFailed: false, StatusDiscarded: false,
+		// requested is not freely editable: a tenant's request has fixed ops
+		// until an approver converts it to a draft (where it becomes editable).
+		StatusRequested: false,
 	}
 	for _, s := range AllStatuses {
 		c := Changeset{Status: s}
