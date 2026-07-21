@@ -92,25 +92,38 @@ type ClusterMembershipSource interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Clock              Clock
-	Timers             NodeTimerAgent
-	Qos                QosGateway
-	WG                 WGGateway
-	Sealer             SecretSealer
-	WgCarriers         WgCarrierSource
-	Switches           SwitchGateway
-	SwitchScope        SwitchScopeSource
-	Nodes              NodeAgent
-	Refresher          InventoryRefresher
-	WS                 Broadcaster
-	Inventory          InventorySource
-	Allocations        AllocationsSource
-	ClusterMembership  ClusterMembershipSource
-	ImpactPreflight    ImpactPreflighter
-	Snapshots          *store.SnapshotRepo
-	Schedules          *store.ChangeScheduleRepo
-	Logger             *slog.Logger
-	Now                func() time.Time
+	Clock             Clock
+	Timers            NodeTimerAgent
+	Qos               QosGateway
+	WG                WGGateway
+	Sealer            SecretSealer
+	WgCarriers        WgCarrierSource
+	Switches          SwitchGateway
+	SwitchScope       SwitchScopeSource
+	Nodes             NodeAgent
+	Refresher         InventoryRefresher
+	WS                Broadcaster
+	Inventory         InventorySource
+	Allocations       AllocationsSource
+	ClusterMembership ClusterMembershipSource
+	ImpactPreflight   ImpactPreflighter
+	Snapshots         *store.SnapshotRepo
+	Schedules         *store.ChangeScheduleRepo
+	Logger            *slog.Logger
+	Now               func() time.Time
+	// LeaderGuard, when set, is consulted immediately before any UNATTENDED,
+	// timer-driven apply/confirm/rollback decision this daemon would make on
+	// its own (the commit-confirm auto-rollback timer and the scheduler's
+	// fire tick) — T-1704's single-writer fencing hook. It returns true only
+	// while this daemon currently holds the HA leader lease; a false answer
+	// makes the callback a logged no-op, so a demoted or fenced former-active
+	// never drives a rollback/apply the current lease-term holder is (or will
+	// be) responsible for. nil (the default, and every non-HA deployment)
+	// means "always this daemon" — behaviour is identical to pre-T-1704.
+	// Interactive, human-initiated Apply/Confirm/Rollback API calls are NOT
+	// gated here: those flow through the API's own auth/role checks and the
+	// single active daemon is the only one serving the API behind the VIP.
+	LeaderGuard        func() bool
 	Blobs              *store.BlobRepo
 	Changesets         *store.ChangesetRepo
 	TimerFunc          TimerFunc
@@ -168,6 +181,7 @@ type Service struct {
 	log                *slog.Logger
 	newTimer           TimerFunc
 	now                func() time.Time
+	leaderGuard        func() bool
 	lockHeldBy         string
 	corosyncPath       string
 	protectedPath      string
@@ -242,6 +256,7 @@ func NewService(cfg Config) (*Service, error) {
 		newTimer:           timerFunc,
 		schedules:          cfg.Schedules,
 		clock:              clock,
+		leaderGuard:        cfg.LeaderGuard,
 		scheduleSecret:     newScheduleSecret(logger),
 	}, nil
 }
@@ -255,6 +270,18 @@ func clampConfirmTimeout(d time.Duration) time.Duration {
 		return MaxConfirmTimeout
 	}
 	return d
+}
+
+// mayLead reports whether this daemon is currently permitted to make an
+// unattended, timer-driven apply/confirm/rollback decision (T-1704's
+// single-writer fence). A nil LeaderGuard — every non-HA deployment — always
+// permits, so behaviour is identical to pre-T-1704. When a guard is wired, it
+// returns true only while this daemon holds the HA leader lease; the fail-safe
+// stance is that an ambiguous/false answer withholds the action (a withheld
+// auto-rollback simply leaves the changeset awaiting_confirm for the true
+// leader's own re-armed timer to resolve — never a double-drive).
+func (s *Service) mayLead() bool {
+	return s.leaderGuard == nil || s.leaderGuard()
 }
 
 // applyConfigured reports whether the apply-engine dependencies are wired.

@@ -286,6 +286,76 @@ func (r *AuditRepo) ListActionsInRange(ctx context.Context, actions []string, fr
 	return out, nil
 }
 
+// UpsertReplicated inserts an audit row with its ORIGINAL id preserved, doing
+// nothing if a row with that id already exists — the id-preserving,
+// append-only write T-1704's HA replication uses to mirror the active's audit
+// log onto the standby. The audit log is immutable (docs/security.md's Audit
+// section — no Update/Delete), so a re-replicated row is a no-op rather than
+// an overwrite; the standby's copy therefore converges to the active's without
+// ever mutating or re-ordering an already-present entry. It deliberately does
+// NOT fire the onAppend hook (that hook is T-1104's live event producer for
+// this daemon's OWN mutations — a standby must not re-emit the active's events
+// as if it had just performed them).
+func (r *AuditRepo) UpsertReplicated(ctx context.Context, e AuditEntry) error {
+	_, err := r.db.sqlDB.ExecContext(ctx, `
+		INSERT INTO audit_log (id, at, username, action, target, changeset_id, result, detail_json, cluster_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO NOTHING`,
+		e.ID, e.At, e.Username, e.Action, e.Target, e.ChangesetID, e.Result, e.DetailJSON, e.ClusterID,
+	)
+	if err != nil {
+		return fmt.Errorf("store: upserting replicated audit entry %d: %w", e.ID, err)
+	}
+	return nil
+}
+
+// MaxAuditID returns the highest audit_log id present, or 0 if the log is
+// empty — T-1704's HA replication reads it to request only rows the standby
+// has not yet seen (an incremental audit cursor), rather than re-shipping the
+// whole log every pass.
+func (r *AuditRepo) MaxAuditID(ctx context.Context) (int64, error) {
+	var max sql.NullInt64
+	err := r.db.sqlDB.QueryRowContext(ctx, `SELECT MAX(id) FROM audit_log`).Scan(&max)
+	if err != nil {
+		return 0, fmt.Errorf("store: reading max audit id: %w", err)
+	}
+	if !max.Valid {
+		return 0, nil
+	}
+	return max.Int64, nil
+}
+
+// ListSince returns audit rows with id greater than sinceID, oldest id first,
+// capped at limit (limit <= 0 means the default page size) — T-1704's HA
+// replication feed. Ordered by id ascending so the standby applies them in the
+// same order the active wrote them.
+func (r *AuditRepo) ListSince(ctx context.Context, sinceID int64, limit int) ([]AuditEntry, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	rows, err := r.db.sqlDB.QueryContext(ctx, `
+		SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id
+		FROM audit_log WHERE id > ? ORDER BY id ASC LIMIT ?`, sinceID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: listing audit entries since %d: %w", sinceID, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []AuditEntry
+	for rows.Next() {
+		e, err := scanAuditEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: listing audit entries since %d: %w", sinceID, err)
+	}
+	return out, nil
+}
+
 func encodeAuditCursor(at, id int64) string {
 	return strconv.FormatInt(at, 10) + ":" + strconv.FormatInt(id, 10)
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/evpn"
 	"github.com/bgovanlu/vnprox/internal/federation"
 	"github.com/bgovanlu/vnprox/internal/findings"
+	"github.com/bgovanlu/vnprox/internal/ha"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/ingress"
 	"github.com/bgovanlu/vnprox/internal/inventory"
@@ -404,6 +405,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// constructed before change.Service exists, below) and filled in with
 	// its real target once changeSvc is built — mirrors mgmtAdapter above.
 	scheduleAdapter := &scheduleMissedAdapter{}
+	// T-1704: the HA leader guard (fences change.Service's unattended
+	// apply/confirm/rollback timers) and the ha_replication_degraded findings
+	// provider are both late-bound — the ha.Manager is constructed after both
+	// change.Service and the findings engine. Until set (or when HA is
+	// disabled) the guard reports leader=true, so single-daemon behaviour is
+	// unchanged.
+	haGuard := &haLeaderGuard{}
+	haFindAdapter := &haFindingsAdapter{}
 	// T-1504: flowClassifier is built now (it only needs corosync.conf,
 	// already readable) and registered into api.Options.FlowClassifier
 	// below; flowClassifyAdapterVal is wired in now (findings.Engine is
@@ -517,7 +526,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// exclusion), and its live firewall view. Its flow_samples source is
 	// late-bound via set() once setupFlows returns (mirrors baselineSvcVal).
 	microsegSvc := newMicrosegAdapter(graph, baselineProfileRepo)
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, logger)
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -727,6 +736,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// the scheduler consults this at windowStart on top of (never instead
 		// of) its existing touchesMgmtPath exclusion.
 		ImpactPreflight: failsimSvc,
+		// T-1704: single-writer fence. haGuard.IsLeader gates the unattended
+		// auto-rollback timer and the scheduler tick on this daemon holding the
+		// HA leader lease; nil-until-set / HA-disabled reports leader=true, so
+		// non-HA deployments behave exactly as before.
+		LeaderGuard: haGuard.IsLeader,
 	})
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)
@@ -767,6 +781,25 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// immediately rather than waiting for RunScheduler's first real tick
 	// (safety-analysis scenario 1, "daemon down mid-window").
 	changeSvc.TickSchedules(ctx)
+
+	// T-1704: active/standby HA. Disabled by default (single daemon) — when
+	// [ha] enabled = true, build the fenced-lease manager, point the leader
+	// guard and findings provider at it, and establish this daemon's initial
+	// role from the persisted lease (a still-valid lease it holds resumes
+	// active, re-arming timers from the same absolute deadlines). The manager's
+	// renew/replicate loop is added to the run group far below.
+	var haMgr *ha.Manager
+	if cfg.HA.Enabled {
+		haMgr, err = buildHAManager(cfg.HA, db, changeSvc, coordPeerClient, logger)
+		if err != nil {
+			return fmt.Errorf("initializing HA manager: %w", err)
+		}
+		haGuard.set(haMgr)
+		haFindAdapter.set(haMgr)
+		if startErr := haMgr.Start(ctx); startErr != nil {
+			logger.Error("ha: establishing initial HA role at startup", "error", startErr)
+		}
+	}
 
 	// T-505: the firewall log viewer's cluster-wide tailer/correlator.
 	// Built before peerSrv below so the same local log source
@@ -852,6 +885,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	captureCoord := setupCapture(cfg, db, auditRepo, coordPeerClient, localNode, logger)
 	defer captureCoord.StopAll(context.Background())
 
+	// T-1704: the standby side of HA replication — the active pushes batches to
+	// POST /api/peer/ha/replicate. Left nil (503) when HA is disabled, avoiding
+	// the typed-nil-interface trap.
+	var replicationSink peer.ReplicationSink
+	if haMgr != nil {
+		replicationSink = ha.NewReceiveSink(haMgr)
+	}
 	peerSrv := peer.NewServer(peer.ServerOptions{
 		Secrets:       peerSecrets,
 		Reader:        realHost,
@@ -863,6 +903,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		FirewallLog:   fwLogReader,
 		Flows:         flowPeerAdapter{repo: flowRepo},
 		Capture:       capturePeerAdapter{coord: captureCoord},
+		Replication:   replicationSink,
 		Version:       version,
 		Logger:        logger,
 	})
@@ -971,6 +1012,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// request-changeset raises a routed finding to the tenant's approver group.
 	tenantNotifier := tenantApprovalNotifier{notifier: webhookNotifier, logger: logger}
 
+	// T-1704: pass the HA manager to GET /ha/status as a clean nil interface
+	// when HA is disabled (a typed-nil *ha.Manager would defeat the route's own
+	// nil check and panic on Status()).
+	var haStatus api.HAStatusService
+	if haMgr != nil {
+		haStatus = haMgr
+	}
 	apiOpts := api.Options{
 		Version: version,
 		// Non-secret operational config for the Settings page's Instance
@@ -1029,6 +1077,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		TenantNotifier: tenantNotifier,
 		Snapshots:      changeSvc,
 		Audit:          auditRepo,
+		// T-1704: GET /ha/status (role/lease/replication-lag). haStatus is a
+		// clean nil interface when HA is disabled (avoiding the typed-nil trap),
+		// so the route simply isn't mounted.
+		HA: haStatus,
 		// T-1007: GET /history/events merges the same audit_log (narrowed to
 		// the changeset-lifecycle action set) with finding_events.
 		History:              auditRepo,
@@ -1275,6 +1327,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	g.add(func(ctx context.Context) error {
 		return changeSvc.RunScheduler(ctx, change.DefaultScheduleCheckInterval)
 	})
+	// T-1704: the HA manager's renew/replicate/promote loop — owned and shut
+	// down here like every other actor. Only added when HA is enabled.
+	if haMgr != nil {
+		g.add(haMgr.RunLoop)
+	}
 	if fwlogSvc != nil {
 		// T-505: continuously merges the local + every peer's pve-firewall
 		// log into the shared, rate-capped buffer GET /firewall/log and the

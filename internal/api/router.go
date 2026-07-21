@@ -106,6 +106,9 @@ type Options struct {
 	Changesets    ChangesetService
 	Snapshots     SnapshotService
 	Audit         AuditService
+	// HA backs T-1704's GET /ha/status (role/lease/replication-lag). Nil (HA
+	// disabled — a single-daemon deployment) skips mounting the route.
+	HA HAStatusService
 	// History/HistoryFindingEvents back T-1007's `GET /history/events`
 	// (web/src/topology/history/HistoryTimeline.tsx's event-marker feed):
 	// History is the same *store.AuditRepo Audit above wires in, narrowed
@@ -533,6 +536,7 @@ func NewRouter(opts Options) http.Handler {
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		mountHistoryRoutes(r, opts.History, opts.HistoryFindingEvents, opts.Auth)
+		mountHARoutes(r, opts.HA, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountSDNDNSRoutes(r, opts.SDNDNS, opts.Auth)

@@ -361,6 +361,19 @@ func (s *Service) Rollback(ctx context.Context, id, author string, pveGW PVEGate
 func (s *Service) autoRollback(ctx context.Context, id string) {
 	s.applyMu.Lock()
 	delete(s.timers, id)
+	// T-1704 single-writer fence: only the current HA lease-term holder may
+	// drive this unattended rollback decision. A demoted/fenced former-active
+	// whose timer still fires (e.g. a partition that healed after the standby
+	// promoted) no-ops here — the changeset stays awaiting_confirm and the
+	// true leader's own re-armed timer, keyed to the same absolute deadline,
+	// resolves it exactly once. Fail-safe: withholding is always the safe
+	// choice (a missed confirm just means the changeset keeps waiting for the
+	// leader), never a double-rollback.
+	if !s.mayLead() {
+		s.applyMu.Unlock()
+		s.log.Info("change: auto-rollback skipped — not the current HA leader", "changeset_id", id)
+		return
+	}
 	cs, err := s.Get(ctx, id)
 	if err != nil {
 		s.applyMu.Unlock()

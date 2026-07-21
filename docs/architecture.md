@@ -239,3 +239,40 @@ transport (D4 holds for plugins too). A plugin's declared capabilities are a *ce
 checked against `internal/auth`'s existing vocabulary — the SDK adds no new privilege.
 Out-of-process plugins (`internal/plugin/procshim`) run as supervised subprocesses with
 no DB/file access, speaking a length-delimited JSON wire protocol over stdio.
+## 11. HA topology (active/standby)
+
+T-1704 adds an **optional** active/standby daemon pair so vnproxd itself is not the single
+point of failure a failure simulation would flag. It is disabled by default (`[ha] enabled =
+false`); a single-daemon deployment behaves exactly as before.
+
+**Single-writer via a fenced lease.** An `ha_lease` singleton row (`holder`, `term`,
+`expiresAt` — see `docs/data-model.md`) is the sole source of truth for who may drive
+apply/confirm/rollback. The active renews it on a short interval; a standby promotes **only**
+after the last-observed lease has expired past a fencing margin — never on a transient
+replication blip. `term` is a monotonic fencing token: a promotion always writes a
+strictly-higher term, an isolated active that cannot confirm its lease with the peer for a
+whole lease TTL self-demotes (fail-safe), and a demoted former-active that later observes a
+newer term takes no apply/confirm/rollback action. `change.Service`'s unattended timer
+callbacks consult a `LeaderGuard` (the manager's `IsLeader`) and fire as no-ops off the leader,
+so two daemons can never both drive the same changeset.
+
+**State replication.** The active pushes changesets, `changeset_schedules`, `api_tokens`, the
+audit log, and the in-flight pre-apply snapshots a rollback depends on (`snapshots` +
+`snapshot_files` + `blobs`) to the standby over `internal/peer`'s existing TLS+HMAC channel
+(`POST /api/peer/ha/replicate`). Metrics rings are excluded (bounded/ephemeral). Because
+`confirm_deadline` and the schedule windows are absolute unix timestamps, they replicate
+verbatim; on promotion the new active re-arms every timer **through T-205/T-1103's existing
+`ArmPendingRollbacks`/`TickSchedules` re-arm path** — reproducing the same absolute deadline,
+never a fresh one — and reconciles with T-304's node-local rollback timers rather than fighting
+them.
+
+**Failover trigger.** `[ha] mode = "vip"|"dns"` selects an operator-provided integration point
+vnprox merely triggers on promotion: VIP mode runs an operator command (e.g. a script that moves
+a virtual IP with a gratuitous ARP); DNS mode POSTs to an operator webhook that repoints a
+service record. vnprox neither ships nor manages the VIP/ARP/DNS mechanism itself — no new
+daemon dependency. `GET /ha/status` reports role/term/lease-expiry/replication-lag, and a
+standby lagging past a configured threshold raises the `ha_replication_degraded` finding.
+
+**Relationship to D6.** This does not reintroduce a cluster leader: D6's peerless symmetric
+model still governs cluster-wide read/write coordination. The HA lease governs only *daemon*
+failover within an optional active/standby pair.

@@ -118,6 +118,37 @@ func (r *ChangesetRepo) Update(ctx context.Context, c Changeset) error {
 	return checkRowAffected(res, "store: updating changeset %s", c.ID)
 }
 
+// Upsert inserts c, or fully overwrites the existing row with the same id —
+// the id-preserving write T-1704's HA replication uses to mirror the active's
+// changesets onto the standby verbatim (a normal Insert would collide on a
+// row the standby already has from an earlier replication pass, and Update
+// would miss a row it has never seen). Every column including created_at is
+// replicated so the standby's copy is byte-identical to the active's, never a
+// re-timestamped local variant.
+func (r *ChangesetRepo) Upsert(ctx context.Context, c Changeset) error {
+	_, err := r.db.sqlDB.ExecContext(ctx, `
+		INSERT INTO changesets (id, title, author, status, cluster_id, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			title            = excluded.title,
+			author           = excluded.author,
+			status           = excluded.status,
+			cluster_id       = excluded.cluster_id,
+			ops_json         = excluded.ops_json,
+			findings_json    = excluded.findings_json,
+			plan_json        = excluded.plan_json,
+			apply_log_json   = excluded.apply_log_json,
+			confirm_deadline = excluded.confirm_deadline,
+			created_at       = excluded.created_at,
+			updated_at       = excluded.updated_at`,
+		c.ID, c.Title, c.Author, c.Status, c.ClusterID, c.OpsJSON, c.FindingsJSON, c.PlanJSON, c.ApplyLogJSON, c.ConfirmDeadline, c.CreatedAt, c.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("store: upserting changeset %s: %w", c.ID, err)
+	}
+	return nil
+}
+
 func scanChangeset(row rowScanner) (Changeset, error) {
 	var c Changeset
 	err := row.Scan(&c.ID, &c.Title, &c.Author, &c.Status, &c.ClusterID, &c.Origin, &c.OriginTokenID, &c.OpsJSON, &c.FindingsJSON, &c.PlanJSON, &c.ApplyLogJSON, &c.ConfirmDeadline, &c.CreatedAt, &c.UpdatedAt)

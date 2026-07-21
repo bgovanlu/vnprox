@@ -133,6 +133,32 @@ func (r *APITokenRepo) UpdateLastUsed(ctx context.Context, id string, now int64)
 	return nil
 }
 
+// Upsert inserts t, or fully overwrites the existing row with the same id —
+// the id-preserving write T-1704's HA replication uses to mirror the active's
+// api_tokens onto the standby verbatim (including revoked_at, so a revocation
+// on the active propagates on the next replication pass). Tokens persist only
+// a hash, never a plaintext secret, so no cipher is involved in replicating
+// them.
+func (r *APITokenRepo) Upsert(ctx context.Context, t APIToken) error {
+	_, err := r.db.sqlDB.ExecContext(ctx, `
+		INSERT INTO api_tokens (id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			name         = excluded.name,
+			token_hash   = excluded.token_hash,
+			scopes_json  = excluded.scopes_json,
+			created_by   = excluded.created_by,
+			created_at   = excluded.created_at,
+			last_used_at = excluded.last_used_at,
+			revoked_at   = excluded.revoked_at`,
+		t.ID, t.Name, t.TokenHash, t.ScopesJSON, t.CreatedBy, t.CreatedAt, t.LastUsedAt, t.RevokedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("store: upserting api token %s: %w", t.ID, err)
+	}
+	return nil
+}
+
 func scanAPIToken(row rowScanner) (APIToken, error) {
 	var t APIToken
 	err := row.Scan(&t.ID, &t.Name, &t.TokenHash, &t.ScopesJSON, &t.CreatedBy, &t.CreatedAt, &t.LastUsedAt, &t.RevokedAt)

@@ -51,6 +51,10 @@ type Config struct {
 	// that check entirely, same degradation as every other optional Config
 	// field.
 	Schedule ScheduleMissedProvider
+	// HA is T-1704's HA-replication-health seam (*ha.Manager.Status), backing
+	// the ha_replication_degraded health check. Nil (HA disabled) skips that
+	// check entirely, same degradation as every other optional Config field.
+	HA HAReplicationProvider
 	// Webhooks is T-1104's webhook-health seam, backing the
 	// webhook_unhealthy finding (source health) — N consecutive delivery
 	// failures on a registered webhook. Nil skips that check entirely,
@@ -140,6 +144,7 @@ type Engine struct {
 	corosyncSvc      CorosyncProvider
 	fwAnalytics      FwAnalyticsProvider
 	scheduleSvc      ScheduleMissedProvider
+	haSvc            HAReplicationProvider
 	webhooksSvc      WebhookProvider
 	probeSvc         ProbeProvider
 	latMeshSvc       LatMeshProvider
@@ -218,6 +223,7 @@ func New(cfg Config) *Engine {
 		corosyncSvc:      cfg.Corosync,
 		fwAnalytics:      cfg.FwAnalytics,
 		scheduleSvc:      cfg.Schedule,
+		haSvc:            cfg.HA,
 		webhooksSvc:      cfg.Webhooks,
 		probeSvc:         cfg.Probe,
 		latMeshSvc:       cfg.LatMesh,
@@ -337,6 +343,7 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkCephFootguns(e.cephSvc, snap, e.cephDB)...)
 	out = append(out, checkFwRuleUnused(e.fwAnalytics, now)...)
 	out = append(out, checkScheduleMissed(e.scheduleSvc)...)
+	out = append(out, checkHAReplicationDegraded(e.haSvc)...)
 	out = append(out, checkPathLatencyDegraded(e.latMeshSvc, e.latRttDB, e.thresholds)...)
 	out = append(out, checkPathLoss(e.latMeshSvc, e.latLossDB, e.thresholds)...)
 	out = append(out, checkDualstackDrift(snap)...)

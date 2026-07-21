@@ -185,3 +185,45 @@ from `planning/tasks/phase-11.md`'s Phase 11 intro: a PR to a spec repo →
 `vnproxctl apply spec.yaml --plan` in CI → merge schedules/applies during a
 maintenance window → `vnproxctl remote changesets get`/`remote drift`
 confirms a clean result the next morning.
+
+## High availability (active/standby, T-1704)
+
+vnproxd can run as an **optional** active/standby pair so the daemon is not itself a single
+point of failure. It is off by default; a single-daemon install needs none of this.
+
+Add an `[ha]` section to `/etc/vnprox/vnprox.toml` on **both** daemons. Exactly one of them sets
+`bootstrap = true` so a first boot never has both claim the initial term:
+
+```toml
+[ha]
+enabled = true
+instance_id = "node-a"          # unique per daemon; defaults to the hostname
+peer_node = "node-b"            # the standby's PVE node name (informational)
+peer_address = "10.0.0.2:8007"  # the standby's host:port for the replication push
+bootstrap = true                # set true on exactly ONE of the pair
+mode = "vip"                    # "vip" | "dns" — the failover-announce mechanism
+vip_command = "/etc/vnprox/ha-vip.sh"   # mode=vip: run on every role change, arg = "active"|"standby"
+# dns_webhook = "https://dns-automation.example/repoint"  # mode=dns: POST {role,at} on role change
+# lease_ttl = "15s"             # optional; sensible defaults otherwise
+# renew_interval = "5s"
+# fencing_margin = "15s"
+# replication_lag_threshold = 500   # audit rows behind before ha_replication_degraded fires
+```
+
+Both daemons share the same cluster secret (`[peer] secret_path`) — replication rides
+`internal/peer`'s existing TLS+HMAC channel — and, if any replicated state is sealed (WireGuard
+keys, webhook secrets), the **same** session key file (`[storage] session_key_file`), since that
+ciphertext only decrypts on the standby under the identical key.
+
+**VIP mode** triggers `vip_command "<role>"` on every transition; the operator's script owns the
+actual IP move (e.g. `ip addr add`/`del` plus a gratuitous ARP). **DNS mode** POSTs
+`{"role","at"}` to `dns_webhook`; the operator's automation repoints the service record. vnprox
+neither ships nor manages the VIP/ARP/DNS mechanism — it only triggers the operator-provided one.
+
+`GET /ha/status` reports the daemon's role, lease term, lease expiry, and replication lag.
+
+**Upgrading an HA pair:** upgrade the **standby first** (it holds no lease and drives nothing),
+let it rejoin and catch up, then upgrade the active (its lease lapses and the freshly-upgraded
+standby promotes, re-arming any in-flight commit-confirm timers to their original absolute
+deadlines). Migrations are forward-only, so a newer standby reading the pair's replicated state
+is safe; never point an older binary at a store a newer one has migrated.
