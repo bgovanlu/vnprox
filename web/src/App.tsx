@@ -17,6 +17,7 @@ import { IpamPage } from "./pages/IpamPage";
 import { ManagementPage } from "./pages/ManagementPage";
 import { PortsPage } from "./pages/PortsPage";
 import { BlueprintsPage } from "./pages/BlueprintsPage";
+import { HubPage } from "./hub/HubPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { AuditPage } from "./pages/AuditPage";
 import { ToolsPage } from "./pages/ToolsPage";
@@ -176,6 +177,14 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Blueprints">
                   <BlueprintsPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/hub"
+              element={
+                <DesktopOnlyRoute pageLabel="Hub">
+                  <HubPage />
                 </DesktopOnlyRoute>
               }
             />

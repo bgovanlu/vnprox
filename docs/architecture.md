@@ -239,3 +239,12 @@ transport (D4 holds for plugins too). A plugin's declared capabilities are a *ce
 checked against `internal/auth`'s existing vocabulary — the SDK adds no new privilege.
 Out-of-process plugins (`internal/plugin/procshim`) run as supervised subprocesses with
 no DB/file access, speaking a length-delimited JSON wire protocol over stdio.
+
+**Hub install path (T-1705).** The Blueprint & plugin hub (`internal/hub`, §Hub in `docs/api.md`)
+is how a plugin is installed from a public registry. It is a catalog/install-orchestration
+layer, not a widening of this boundary: it downloads a `{manifest, signature}` artifact,
+verifies the Ed25519 signature against the same trust store blueprint bundles use, and only
+then installs the manifest through **this** registry's `Install` — which re-validates the
+capability scope. No Hub path reaches `Registry.Install` without that scope check, and only
+out-of-process (`grpc`) plugins are installable this way (an in-process plugin is build-time
+Go code that cannot be materialized from a downloaded manifest).

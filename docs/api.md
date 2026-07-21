@@ -962,6 +962,31 @@ Installing a plugin (loading code / spawning a subprocess) is a config-time / Hu
 
 **`Plugin`** (JSON): `{id, name, version, apiVersion, transport, extensionPoints, capabilities, installedBy, installedAt, enabled}`. `apiVersion` is the frozen SDK interface version the plugin was built against (`"v1"`); `transport` is `"in-process"` or `"grpc"` (an out-of-process supervised subprocess); `extensionPoints` is a subset of `switchDriver`/`flowIngestor`/`findingProducer`/`ingressDiscoverer`/`dashboardTile`; `capabilities` is the declared capability scope (a subset of the `caps.go` vocabulary) — the **ceiling** on which seams the plugin may touch and which change-engine op classes it may stage. The internal launch `endpoint` is deliberately omitted from the response.
 
+### Hub (T-1705)
+
+The Hub install path (`POST /hub/install` with `type: "plugin"`) is how a plugin is installed from the public registry. It verifies the downloaded manifest's Ed25519 signature against the same trust store blueprint bundles use, then registers it through this exact plugin registry (`Registry.Install`, which independently re-validates the capability scope) — the Hub adds no bypass around the scope check. See the **Hub (T-1705)** section below for the routes and the trust gate.
+
+## Hub (T-1705)
+
+Added by T-1705 (`internal/hub`, `internal/api/hub.go`). An **opt-in client** for a public registry of signed blueprint bundles (T-1107) and SDK plugins (T-1702): browse, then install with signature verification and a per-installation trust decision. **This repo ships the client and the registry-index contract, not the registry service** — the registry (index + artifact hosting) lives in a separate repo (mirrors T-1106's provider/collection-source boundary). The Hub is a catalog/install-orchestration layer, **not a new trust boundary**: it inherits T-1107's signature + trust-store gate and T-1702's capability-scoped registry wholesale; it never introduces an implicit-trust path.
+
+The Hub is off unless `[hub] registry_url` is configured (`packaging/config/vnprox.toml`); with no registry configured its routes are not mounted.
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| GET | `/hub/index` | `netRead` | proxy/cache the registry index; `?type=blueprint\|plugin` filters. Returns `{items: [HubEntry]}`. `400 validation_failed` for an unknown `type`; `502 registry_unavailable` if the registry can't be reached |
+| POST | `/hub/install` | `netWrite` + CSRF | download and install the named entry: `{type, id, version?, trustUnsigned?, trustNewKey?}` |
+
+**Registry index contract** (`GET <registry>/index.json`, the shape this card specifies but does not host): `{schemaVersion: 1, entries: [{type, id, name, version, publisher?, description?, artifactUrl, signature?, transport?, capabilities?, extensionPoints?}]}`. `artifactUrl` must resolve to the registry's own host (an off-host artifact URL is refused — the fetched index is not signed as a whole, so it can never redirect an install off-origin). `signature` is the publisher's signer identity for display/vetted-badge; the **authoritative** signature gate is the downloaded artifact's own signature.
+
+**`HubEntry`** (JSON): `{type, id, name, version, publisher?, description?, artifactUrl, signerFingerprint?, transport?, capabilities?, extensionPoints?, signed, vetted}`. `vetted` means the entry's signer fingerprint is in this node's `[hub] vetted_signers` allowlist — **purely informational**; it never bypasses the trust decision (a vetted-but-untrusted signer still requires an explicit trust step). `capabilities`/`extensionPoints`/`transport` are populated for plugins so an operator can review a plugin's declared capability scope before confirming an install.
+
+**`POST /hub/install`** — the install runs the same gate as a direct import/plugin-install:
+- **blueprint**: downloads the bundle and runs it through T-1107's *exact* `POST /blueprints/import` path (verify → trust decision → save), reused not duplicated. Response mirrors that route: `{type: "blueprint", status: "imported"|"unsigned"|"untrustedSignature"|"invalidSignature", blueprint?, signer?}`. An unsigned or untrusted-signer bundle returns the corresponding status (a normal `200`) and is **not** installed unless the request sets `trustUnsigned: true` / `trustNewKey: true`. Audited as `blueprint.import` (identical shape to a direct import).
+- **plugin**: downloads the `{manifest, signature}` artifact, verifies the Ed25519 signature over the canonical manifest against the same trust store, applies the identical unsigned/untrusted/invalid gate, then — only once trust permits — installs the manifest through T-1702's registry (which re-validates the capability scope). Response: `{type: "plugin", status: "installed"|"unsigned"|"untrustedSignature"|"invalidSignature", plugin?, signer?}` where `plugin` is `{id, name, version, capabilities, extensionPoints}`. Audited as `hub.install`.
+
+`404 not_found` if no index entry matches `type`+`id` (+`version` when given). `501 not_available` if the node isn't configured for that install type (blueprint installs need the blueprint service + trust store; plugin installs need the plugin installer + trust store). Only out-of-process (`grpc`) plugins are installable from the Hub — an in-process plugin is build-time Go code and cannot be materialized from a downloaded manifest.
+
 ## Kubernetes (T-1501)
 
 Added by T-1501 (`internal/k8s`, `internal/api/k8s.go`, `internal/store/k8sclusters.go`). **Read-only forever** (carried-forward invariant, `docs/roadmap-universal.md`'s Phase 15 Invariants section): a minimal, hand-rolled kubeconfig parser + `net/http`-only REST client (deliberately not `client-go` — see `internal/k8s`'s package doc comment for the flagged new-dependency decision) that issues exclusively `GET` requests against a registered cluster's `/api/v1/nodes`, `/api/v1/pods`, `/api/v1/services`, and `/apis/apps/v1/namespaces/kube-system/daemonsets`. There is no route anywhere in this section, and no code path anywhere in `internal/k8s`, that can write to a k8s cluster — POST/DELETE below only ever add/remove vnprox's own *local* registration row.

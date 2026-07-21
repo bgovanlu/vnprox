@@ -399,6 +399,17 @@ type Options struct {
 	// (enable/disable/uninstall); nil skips mounting them, matching every other
 	// optional Options field.
 	Plugins PluginService
+	// HubClient/HubVetting/PluginInstaller back T-1705's Blueprint & plugin
+	// hub (GET /hub/index, POST /hub/install). HubClient nil skips mounting the
+	// whole family; a blueprint install additionally needs Blueprints +
+	// BlueprintTrust (reused above) and a plugin install needs PluginInstaller +
+	// BlueprintTrust — a type whose backing dependency is absent returns 501.
+	// HubVetting (the informational vetted-badge allowlist) is optional. Hub
+	// installs reuse BlueprintSignersAudit for their audit trail, the same
+	// shared *store.AuditRepo every other audited route family uses.
+	HubClient       HubClient
+	HubVetting      HubVetting
+	PluginInstaller PluginInstaller
 	// LLDPInstaller/LLDPPeerInstaller/LLDPAudit/LocalNode back T-605's
 	// POST /lldp/install (the onboarding walkthrough's "LLDP offer" step,
 	// docs/user-guide.md §1.3); LLDPInstaller nil skips mounting the route.
@@ -528,6 +539,7 @@ func NewRouter(opts Options) http.Handler {
 		mountCapacityRoutes(r, opts.Capacity, opts.Auth)
 		mountPostureRoutes(r, opts.Posture, opts.Auth)
 		mountPluginRoutes(r, opts.Plugins, opts.Auth)
+		mountHubRoutes(r, opts.HubClient, opts.HubVetting, opts.Blueprints, opts.BlueprintTrust, opts.PluginInstaller, opts.BlueprintSignersAudit, opts.Auth)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountEmbedTokenRoute(r, opts.Tokens, opts.TokenAudit, opts.Auth)
