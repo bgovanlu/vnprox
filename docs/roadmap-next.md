@@ -1,13 +1,15 @@
 # Next-gen roadmap — v1.4 → v2.0
 
-The v1 roadmap (`docs/roadmap.md`, Phases 0–7) is complete and shipped; the current release
-line is v1.3.x. This document is the second arc: five phases that turn vnprox from "the visual
-network manager for a PVE cluster" into **the all-in-one visual networking tool for Proxmox** —
-one pane of glass where you *see*, *understand*, *change*, *verify*, and *automate* every layer
-of a Proxmox network, across any number of clusters.
+**This arc (Phases 8–12) is shipped**, cut as `v2.0.0` — see `CHANGELOG.md`'s `[2.0.0]` entry
+(note that tag also absorbed Phases 13–15 of the arc after this one, since it was applied after
+those phases had already merged onto the same branch). The v1 roadmap (`docs/roadmap.md`,
+Phases 0–7) shipped before it. This document describes the second arc: five phases that turn
+vnprox from "the visual network manager for a PVE cluster" into **the all-in-one visual
+networking tool for Proxmox** — one pane of glass where you *see*, *understand*, *change*,
+*verify*, and *automate* every layer of a Proxmox network, across any number of clusters.
 
 The arc after this one — Phases 13–17, v2.1 → v3.0, the *universal* networking tool — lives in
-[`roadmap-universal.md`](roadmap-universal.md).
+[`roadmap-universal.md`](roadmap-universal.md); it too is shipped, as of `v3.0.2`.
 
 Inputs: the Post-1.0 (P2) backlog in `docs/roadmap.md`, the gaps flagged at T-607, and field
 feedback since v1.0 (Phase 7's origin). Every item below either extends a feature already in

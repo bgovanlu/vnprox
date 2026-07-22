@@ -8,7 +8,14 @@ It runs as a single service on your PVE nodes and serves its UI at **`https://<n
 
 ## Status
 
-**Planning complete — implementation not started.** This repository currently contains the full product blueprint: architecture, feature specifications, API and data-model design, deployment/user documentation, and a phased implementation plan with exact task cards written for AI sub-agents (Claude Sonnet 5). See [`planning/implementation-plan.md`](planning/implementation-plan.md).
+**Shipped through v3.0.2.** All three implementation arcs are complete — the core product
+([`planning/implementation-plan.md`](planning/implementation-plan.md)), multi-cluster federation
+([`planning/implementation-plan-next.md`](planning/implementation-plan-next.md)), and the open
+platform arc ([`planning/implementation-plan-universal.md`](planning/implementation-plan-universal.md))
+— per the phased task cards executed by AI sub-agents. See [`CHANGELOG.md`](CHANGELOG.md) for
+what shipped in each release, and
+[`planning/reports/needs-hardware-validation.md`](planning/reports/needs-hardware-validation.md)
+for the items still awaiting validation on real Proxmox hardware.
 
 ## Why vnprox
 

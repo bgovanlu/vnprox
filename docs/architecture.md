@@ -36,6 +36,8 @@ graph TB
 
 **Key property:** any node's UI can view and manage the whole cluster. Cluster-wide config (SDN, firewall, VM NICs) goes through the PVE API from whichever node the user hit; node-local operations (ifreload, LLDP reads, stats) are proxied to the owning node's vnproxd via the peer API.
 
+**Multi-cluster federation (Phase 12, T-1201, `internal/federation/`):** the diagram and description above are the single-cluster topology, which is still what every install runs by default. Optionally, one vnprox instance can be designated **primary** and have any number of *other* PVE clusters' vnprox instances **attached** to it — each attached cluster keeps its own independent peer mesh internally (unchanged from the diagram above) and is reached by the primary over the same kind of authenticated API call, not a new protocol. The primary aggregates reads (topology, audit, IPAM) across all attached clusters into one global view, with per-cluster failure isolation: an unreachable attached cluster is greyed out and flagged `partial`, never blanking or erroring the whole view. Federation is strictly additive — config ownership and all mutation stay per-cluster, there is no cross-cluster write path, and a zero-clusters-attached install is indistinguishable from pre-federation vnprox. A federated cluster can optionally be reached over a `internal/wireguard`-managed tunnel instead of a direct route; tying that tunnel's health into federation's own unreachability handling was specced as T-1407 but was not implemented (see the package layout note below) — today a down tunnel surfaces as ordinary per-surface unreachability, not a single collapsed finding.
+
 ## 2. Component architecture (inside vnproxd)
 
 ```mermaid
@@ -78,6 +80,8 @@ graph LR
 
 ### Package layout (Go)
 
+Core packages (Phases 0–7):
+
 ```
 cmd/vnproxd/            main: flags, config load, wiring, graceful shutdown
 internal/api/           HTTP router, handlers, WS hub, middleware
@@ -95,9 +99,79 @@ internal/metrics/       interface counters, rate computation, history rings
 internal/peer/          intra-cluster API (client + server, shared secret)
 internal/store/         SQLite (schema, migrations, repositories)
 internal/config/        daemon config file parsing/validation
-web/                    React SPA (see docs/development.md)
-packaging/              deb packaging, systemd unit, installer script
+internal/sdn/           zone -> vnet -> subnet SDN cockpit projection
+internal/fw/            pure, I/O-free firewall resolution engine (T-501)
+internal/evpn/          EVPN/BGP observability (peering, VNIs, exit nodes)
+internal/drift/         cross-node config-consistency (drift) engine
+internal/neighbor/      ARP/neighbor-table fan-out
+internal/dhcp/          dnsmasq lease-file reader fan-out
+internal/blueprint/     parameterized topology templates
+internal/findings/      unified findings stream (drift, LLDP, IPAM, health)
+internal/fwlog/         cluster-wide pve-firewall log viewer
 ```
+
+Phase 8–12 additions ("Beyond the cluster" — `docs/roadmap-next.md`):
+
+```
+internal/collect/       poll loops: PVE poller + host reader fan-out
+internal/flow/          flow ingestion engine (stdlib-only wire parsing)
+internal/spec/          declarative cluster network spec (T-1101)
+internal/probe/         guest-agent live path probe engine
+internal/pbs/           Proxmox Backup Server network awareness
+internal/switchdrv/     driver abstraction for guarded switch config push
+internal/switchmock/    in-memory SwitchDriver test double
+internal/federation/    multi-cluster registry, fan-out, failure isolation
+internal/apicontract/   T-1106 API-conformance suite (drives the real router)
+internal/automation/    webhook half of the automation surface
+```
+
+Phase 13–15 additions ("The open platform" arc, part 1 — deep-sight
+diagnostics, edge networking, workload awareness):
+
+```
+internal/capture/       distributed packet-capture engine (T-1301)
+internal/capturemock/   scripted, hardware-free capture agent double
+internal/latmesh/       continuous latency & loss mesh (T-1303)
+internal/guestinterior/ guest network interior inspector (T-1304)
+internal/mtuprobe/      active per-path MTU discovery (T-1306)
+internal/diagnose/      guided diagnosis ladder over the above (T-1307)
+internal/wireguard/     WireGuard tunnel engine core: app-owned key custody,
+                        changeset-integrated apply (T-1401)
+internal/edge/          Edge & NAT cockpit projection (T-1403)
+internal/ipv6/          IPv6 enablement suite, read side (T-1404)
+internal/wan/           WAN & upstream health, per-uplink (T-1405)
+internal/ingress/       read-only reverse-proxy discovery (T-1406)
+internal/k8s/           Kubernetes overlay mapping engine, read-only (T-1501)
+internal/k8smock/       hardware-free k8s API server double
+internal/ceph/          Ceph network awareness (T-1503)
+internal/qos/           bridge-level per-service traffic shaping (T-1505)
+internal/migration/     migration network planner (T-1507)
+```
+
+> Note: T-1407 ("tunnel-aware federation transport," linking `internal/federation`
+> and `internal/wireguard`) is specced in `planning/tasks/phase-14.md` but was
+> **not implemented** — there is no corresponding package.
+
+Phase 16–17 additions ("The open platform" arc, part 2 — findings depth and
+the platform surface):
+
+```
+internal/baseline/      per-guest/segment traffic baselining (T-1601)
+internal/microseg/      microsegmentation planner core (T-1602)
+internal/failsim/       failure-impact simulation core (T-1604)
+internal/capacity/      capacity forecasting (T-1606)
+internal/posture/       cluster-wide security/health posture score (T-1607)
+internal/mcp/           read-only Model Context Protocol server (T-1701)
+internal/plugin/        capability-scoped extension SDK (T-1702)
+internal/tenant/        multi-tenancy & self-service (T-1703)
+internal/ha/            active/standby vnproxd HA, lease fencing (T-1704)
+internal/hub/           client for the public blueprint/plugin registry (T-1705)
+internal/docexport/     "as-built" config documentation export
+internal/xnode/         pure cross-node comparison families (drift/apicontract)
+```
+
+`web/` — React SPA (see docs/development.md). `packaging/` — deb packaging,
+systemd unit, installer script.
 
 ## 3. Data flow — read path
 

@@ -1,7 +1,13 @@
 # Universal networking roadmap — v2.1 → v3.0
 
+**This arc (Phases 13–17) is shipped**, cut as `v3.0.0` (patched to `v3.0.2` for a packaging
+fix) — see `CHANGELOG.md`'s `[3.0.0]`/`[2.0.0]` entries; Phases 13–15 actually landed under the
+`v2.0.0` tag (applied after they'd already merged), Phases 16–17 under `v3.0.0`. One exception:
+**T-1407 ("tunnel-aware federation transport") was not implemented** — see
+`planning/tasks/phase-14.md` — and remains open, tracked as P1 below.
+
 The first arc (`roadmap.md`, Phases 0–7) made vnprox the visual network manager for a PVE
-cluster. The second arc (`roadmap-next.md`, Phases 8–12) is making it the all-in-one visual
+cluster. The second arc (`roadmap-next.md`, Phases 8–12) made it the all-in-one visual
 networking tool for Proxmox — verified, observable, automatable, multi-cluster. This document
 is the third arc: five phases that make vnprox **the universal networking tool for Proxmox** —
 covering every network a Proxmox shop actually runs, not just the one PVE's config files

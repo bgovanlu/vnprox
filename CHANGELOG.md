@@ -17,6 +17,13 @@ v0.8 below, alongside that release's SDN/IPAM work.
 Precise dates are given for the v1.0.0, v2.0.0, and v3.0.0 release cuts;
 earlier milestones predate this file and are dated only by year.
 
+**Note on v1.1.0–v1.3.6:** these tags (2026-07-12 to 2026-07-15) were interim
+development checkpoints cut while the v1.4 → v2.0 arc was in progress; they
+don't have dedicated entries below because the `v2.0.0` tag wasn't applied
+until the whole arc — including phases 13–15 of the *next* arc, see the note
+on `[2.0.0]` below — had already merged onto the same branch. Their
+functionality is folded into `[2.0.0]`.
+
 ## [3.0.2] - 2026-07-22
 
 Packaging patch — no code or schema change (schema stays 31; a v3.0.0/v3.0.1
@@ -65,12 +72,15 @@ install upgrades in place).
 ## [3.0.0] - 2026-07-21
 
 The platform release — the cut where vnprox stops being only a product and
-becomes infrastructure other tools build on. v3.0 caps the v2.0 → v3.0 arc
-(deep-sight diagnostics, edge/WireGuard, Kubernetes/Ceph/QoS visibility,
-microsegmentation & failure simulation, and — this phase — an AI-operator
-MCP surface, a plugin SDK, multi-tenancy, daemon HA, a blueprint/plugin hub,
-and embeddable views). Target platforms: Proxmox VE 8.2+ and 9.x; **PVE
-10.x and 11.x** are the forward compatibility targets for this arc (see
+becomes infrastructure other tools build on. v3.0 caps the v2.0 → v3.0 arc:
+deep-sight diagnostics, edge/WireGuard, and Kubernetes/Ceph/QoS visibility
+(phases 13–15) shipped earlier, under the `[2.0.0]` cut below — see that
+entry's note. This release adds phase 16 (flow baselining, microsegmentation
+planning, failure-impact simulation, rogue-service detection, capacity
+forecasting, and a posture score) plus phase 17: an AI-operator MCP surface,
+a plugin SDK, multi-tenancy, daemon HA, a blueprint/plugin hub, and
+embeddable views. Target platforms: Proxmox VE 8.2+ and 9.x; **PVE 10.x and
+11.x** are the forward compatibility targets for this arc (see
 `docs/deployment.md`, flagged needs-hardware-validation until validated on
 real hardware).
 
@@ -84,6 +94,17 @@ migrations remain forward-only; a v2.x install upgrades in place.
 
 ### Added
 
+- **Flow baselining, microsegmentation, and failure simulation.** Automatic
+  per-guest traffic baselines with anomaly findings when observed flow
+  deviates from the learned norm; a microsegmentation planner that proposes
+  least-privilege firewall rules from observed flow history with a
+  dry-run/review step before any rule is staged; a failure-impact simulator
+  that answers "what breaks if this bridge/bond/link goes down" before it
+  happens; rogue-service detection (unexpected listeners, unauthorized DHCP/
+  DNS servers on the network); capacity forecasting for VLANs, subnets, and
+  link utilization trending toward exhaustion; and a cluster-wide posture
+  score rolling up firewall coverage, drift, and findings into one number
+  with a point-in-time report.
 - **MCP server for AI operators (read + stage only).** A first-class Model
   Context Protocol server exposes vnprox's read surfaces (topology, findings,
   flows, IPAM, path simulation, diagnostics) and lets an AI operator *stage*
@@ -155,6 +176,15 @@ OIDC SSO). Target platforms: Proxmox VE 8.2+ and 9.x; PVE 10.x is the
 forward compatibility target (see `docs/deployment.md`, flagged
 needs-hardware-validation until validated on real hardware).
 
+**Note:** this tag was applied after phases 13–15 of the *next* arc
+(`docs/roadmap-universal.md`) had already merged onto the same branch, so
+this release also includes deep-sight diagnostics (Phase 13), edge/WireGuard
+networking (Phase 14, excluding T-1407 — see below), and Kubernetes/Ceph/QoS
+workload visibility (Phase 15) — listed under "Added" below alongside the
+v1.4 → v2.0 federation work they shipped together with. Phase 14's T-1407
+("tunnel-aware federation transport") was **not** implemented and is not
+included; it remains open, tracked as P1 in `docs/roadmap-universal.md`.
+
 **Federation is additive, not a fork:** a v1.x single-cluster install that
 upgrades with zero clusters attached keeps serving its existing
 single-cluster experience unchanged — the global cluster view only appears
@@ -200,6 +230,41 @@ until explicitly configured. DB migrations remain forward-only.
   OIDC authenticates you to vnprox; your Proxmox permissions still gate every
   cluster-scoped action per cluster, and an OIDC role can never grant a
   capability your real PVE ACLs don't already allow.
+- **Distributed packet capture, with a permission model and in-browser
+  decode.** Capture on any node/interface, build filters with a guided BPF
+  builder, decode packets in the browser, and download a `.pcap` — gated by
+  a dedicated capability so capture access is granted independently of
+  general admin rights.
+- **Latency & loss mesh, guest network interior inspector, and conntrack/NAT
+  table explorer.** A continuously-probed latency/loss heatmap across the
+  cluster; a live view into a guest's own interfaces/routes/DNS via the
+  guest agent; and a searchable connection-tracking/NAT table explorer per
+  node.
+- **Path MTU prober and guided diagnosis flows.** Active end-to-end MTU
+  discovery feeding the existing `vxlan_underlay_mtu` finding, and
+  guided, honesty-contract-preserving diagnosis flows that walk a user from
+  symptom ("can't reach X") through the capture/latency/conntrack/interior
+  tools above to a root cause.
+- **WireGuard tunnel engine.** First-class WireGuard tunnels — key
+  generation and custody, changeset-integrated apply (`wg.*` ops through the
+  ordinary stage/validate/diff/apply/confirm flow), map edges for
+  tunnel-connected clusters, and a "connect two clusters" wizard.
+- **Edge & NAT cockpit, IPv6 enablement, WAN/upstream health, and ingress
+  visibility.** A dedicated view for edge routing/NAT configuration; a
+  guided IPv6 enablement suite; upstream/WAN link health monitoring; and
+  visibility into ingress paths reaching the cluster from outside.
+- **Kubernetes overlay mapping (read-only, CNI-aware) and Ceph network
+  awareness.** A read-only Kubernetes overlay layer on the topology map with
+  service-flow attribution, and Ceph's own network topology (public/cluster
+  networks, OSD/mon placement) surfaced without new credentials — both
+  follow the "read the owning system's own knowledge, zero new write
+  surface" pattern PBS awareness established in this same release.
+- **Service-network attribution, QoS & traffic shaping, SR-IOV lifecycle,
+  and a migration network planner.** Flow records classified against known
+  services (including Ceph/PBS/K8s traffic); `qos.*` changeset ops for
+  traffic shaping; real SR-IOV VF lifecycle management; and a planner that
+  recommends the least-disruptive network path/timing for a live migration
+  using the latency mesh's data.
 
 ### Changed
 
