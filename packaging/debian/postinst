@@ -36,6 +36,7 @@ set -e
 
 VAR_LIB_DIR=/var/lib/vnprox
 KEYS_DIR=/etc/vnprox/keys
+WIREGUARD_DIR=/etc/wireguard
 SESSION_KEY_FILE="$KEYS_DIR/session.key"
 CONFIG_FILE=/etc/vnprox/vnprox.toml
 EBPF_DROPIN_DIR=/etc/systemd/system/vnprox.service.d
@@ -92,6 +93,14 @@ case "$1" in
   configure)
     install -d -m 0700 -o root -g root "$VAR_LIB_DIR"
     install -d -m 0700 -o root -g root "$KEYS_DIR"
+    # (v3.0.2) Ensure /etc/wireguard exists so the unit's
+    # ReadWritePaths=... /etc/wireguard ... entry always has a bind target:
+    # ProtectSystem=strict makes it read-only otherwise, and a WireGuard
+    # changeset apply (cmd/vnproxd/wireguard.go) writes wg-quick configs
+    # there. 0700 root:root is wireguard-tools' own convention; idempotent
+    # and harmless on nodes that never use WireGuard. If wireguard-tools is
+    # later installed it reuses this same dir/mode.
+    install -d -m 0700 -o root -g root "$WIREGUARD_DIR"
 
     if [ -s "$SESSION_KEY_FILE" ]; then
       echo "vnprox: session encryption key already present at $SESSION_KEY_FILE, leaving it untouched"

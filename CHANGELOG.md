@@ -17,6 +17,30 @@ v0.8 below, alongside that release's SDN/IPAM work.
 Precise dates are given for the v1.0.0, v2.0.0, and v3.0.0 release cuts;
 earlier milestones predate this file and are dated only by year.
 
+## [3.0.2] - 2026-07-22
+
+Packaging patch — no code or schema change (schema stays 31; a v3.0.0/v3.0.1
+install upgrades in place). Completes the `ProtectSystem=strict` fix begun in
+v3.0.1, which covered only the first-boot key writes.
+
+### Fixed
+
+- **WireGuard apply fails `read-only file system` on a hardened host.**
+  Applying a WireGuard changeset op writes each tunnel's wg-quick config under
+  `/etc/wireguard` (`cmd/vnproxd/wireguard.go`'s `hostWGGateway` — `MkdirAll`
+  `0700` + `WriteFile` `0600`), but the hardened unit's `ProtectSystem=strict`
+  left `/etc/wireguard` read-only, so every WireGuard apply on a hardened node
+  failed — the same crash class as the v3.0.1 keys bug, missed because that
+  fix only added `/etc/vnprox/keys`. `ReadWritePaths` now also includes
+  `/etc/wireguard`, and `postinst` creates that directory (`0700 root:root`,
+  wireguard-tools' own convention) so the sandbox bind target always exists
+  even on nodes without `wireguard-tools` installed. The rest of `/etc` stays
+  read-only. The cluster secret's fallback generate-if-absent write to
+  `/etc/pve/priv/vnprox/` is deliberately not added: `/etc/pve` is a pmxcfs
+  FUSE mount that `vnprox-setup` pre-seeds, and whether `ProtectSystem=strict`
+  even makes it read-only is unconfirmed — tracked in
+  `planning/reports/needs-hardware-validation.md`.
+
 ## [3.0.1] - 2026-07-21
 
 Packaging patch — no code or schema change (schema stays 31; a v3.0.0

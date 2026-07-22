@@ -40,7 +40,19 @@ ProtectSystem=strict
 # crash-loops on the first upgrade from a release predating them (found on
 # real hardware upgrading 1.3.6 -> 3.0.0). The rest of /etc stays read-only
 # and the key files keep their 0600 root:root perms.
-ReadWritePaths=/var/lib/vnprox /etc/vnprox/keys /etc/network /run
+#
+# /etc/wireguard must also be writable: applying a WireGuard changeset op
+# writes each tunnel's wg-quick config there (cmd/vnproxd/wireguard.go's
+# hostWGGateway: MkdirAll 0700 + WriteFile 0600 under /etc/wireguard). Under
+# ProtectSystem=strict this path was read-only, so every WireGuard apply on a
+# hardened host failed with `... read-only file system` — the same crash class
+# as the keys bug above, missed by the v3.0.1 fix because it only covered the
+# first-boot key writes. Added in v3.0.2. (The cluster secret's fallback
+# generate-if-absent write to /etc/pve/priv/vnprox/ is deliberately NOT added
+# here: /etc/pve is a pmxcfs FUSE mount that vnprox-setup pre-seeds, and
+# whether ProtectSystem=strict even makes it read-only is pending hardware
+# validation — see planning/reports/needs-hardware-validation.md.)
+ReadWritePaths=/var/lib/vnprox /etc/vnprox/keys /etc/wireguard /etc/network /run
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes

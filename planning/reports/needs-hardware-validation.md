@@ -87,6 +87,24 @@ Check items off with the PVE version tested.
 
 - [ ] **`systemctl start vnprox` from the .deb** on a real PVE node (the container test script
       cannot run systemd as PID 1 — `packaging/test/deb-install.sh` documents the gap).
+- [ ] **WireGuard changeset apply under `ProtectSystem=strict` (v3.0.2).** `cmd/vnproxd/wireguard.go`'s
+      `hostWGGateway` writes each tunnel's wg-quick config under `/etc/wireguard` (`MkdirAll` 0700 +
+      `WriteFile` 0600). v3.0.2 adds `/etc/wireguard` to the unit's `ReadWritePaths` and creates the
+      directory in `postinst` (0700 root:root) so the sandbox bind target always exists. Confirmed by
+      code inspection only — a real WireGuard apply on a hardened node (secret sealed, `wg`/`wg-quick`
+      present, tunnel brought up) has never run against real hardware. Root cause was inferred from the
+      identical v3.0.1 keys crash, not reproduced. Validate that a WG apply now succeeds *and* that a
+      node with no `/etc/wireguard` and no wireguard-tools still starts the unit (the bind target is
+      postinst-created, so `ReadWritePaths` should not fail unit start).
+- [ ] **Is `/etc/pve` (pmxcfs FUSE) even read-only under `ProtectSystem=strict`? (v3.0.2).** The cluster
+      secret's fallback generate-if-absent write targets `/etc/pve/priv/vnprox/cluster.secret`
+      (`internal/peer.DefaultSecretPath`), which is normally pre-seeded by `vnprox-setup` (so the daemon
+      only reads it in practice). It is deliberately **not** in `ReadWritePaths` — bind-mounting a FUSE
+      submount RW under a sandbox is dubious, and it's unconfirmed whether systemd's `ProtectSystem=strict`
+      remount even makes a pmxcfs FUSE mount read-only in the service namespace. Validate on a real node:
+      does the fallback secret-generation path (delete the secret, restart the daemon) work or hit
+      `read-only file system` under the hardened unit? If it fails, the fix is to ensure `vnprox-setup`/
+      `postinst` always pre-seeds it (not to widen the sandbox onto pmxcfs).
 - [ ] **Real netlink/LLDP/bonding readers** on a PVE node with bonds, VLAN-aware bridges, and
       lldpd running (`internal/host` integration tests skip without privileges/peers;
       `TestReal_LLDP` and bond-detail tests have never run against real hardware).
