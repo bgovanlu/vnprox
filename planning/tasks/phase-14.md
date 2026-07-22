@@ -321,17 +321,14 @@ guest.
 
 ---
 
-## T-1407 · Tunnel-aware federation transport — **NOT IMPLEMENTED**
+## T-1407 · Tunnel-aware federation transport
 
-> **Status: cut, not shipped.** Unlike every other card in this file, T-1407 was never executed —
-> there is no `planning/reports/T-1407.md`, and none of its deliverables (`wgTunnelId` on
-> `clusters`, the `tunnel_down_peer_unreachable` finding, the aggregator suppression logic) exist
-> in code as of v3.0.2. It is tracked as priority P1 ("ships as capacity allows") in
-> `docs/roadmap-universal.md`, not a committed v3.0 deliverable. Downstream reports
-> (`planning/reports/T-1401.md`, `planning/reports/T-1402.md`) and `docs/features/topology.md`
-> already note the gap; this header makes it explicit at the card itself so a reader of this file
-> alone doesn't assume it shipped alongside its six siblings. If picked up later, treat the
-> acceptance criteria below as still valid and dispatch it as an ordinary task.
+> **Status: implemented post-v3.0.2** (not part of the original v2.0.0/v3.0.0 cuts — see
+> `planning/reports/T-1407.md`). This card sat unimplemented through v3.0.2 (no report, no code —
+> see that report's own note on how the gap was found and closed) despite six sibling phase-14
+> cards shipping around it; downstream reports/docs that flagged the gap
+> (`planning/reports/T-1401.md`, `planning/reports/T-1402.md`, `docs/features/topology.md`) should
+> be read as historical context for *why* the gap existed, not current state.
 
 **model:** sonnet-5 · **size:** S · **depends:** T-1401, T-1201 (federation core) · **context:** `planning/tasks/phase-12.md` T-1201 (cluster registry, `partial`/`failedClusters` fan-out convention), T-1401's tunnel findings
 

@@ -544,7 +544,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// exclusion), and its live firewall view. Its flow_samples source is
 	// late-bound via set() once setupFlows returns (mirrors baselineSvcVal).
 	microsegSvc := newMicrosegAdapter(graph, baselineProfileRepo)
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
+	// T-1407: federationTunnelAdapter is wired in with its targets unset —
+	// federation.NewService/NewAggregator are constructed further below,
+	// after the findings engine — and filled in via set() once they exist
+	// (fedTunnelAdapter.set below), mirroring baselineSvcVal/
+	// flowClassifyAdapterVal's identical two-step wiring in this function.
+	fedTunnelAdapter := &federationTunnelAdapter{baseCtx: ctx}
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -645,7 +651,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if err != nil {
 		return fmt.Errorf("initializing federation service: %w", err)
 	}
-	federationAgg := federation.NewAggregator(federationSvc)
+	// T-1407: point the tunnel adapter at the now-built federation service +
+	// WireGuard store repo, then hand it to the Aggregator as its
+	// TunnelHealth seam — a cluster whose linked tunnel is down is excluded
+	// from every aggregate read below rather than counted as an ordinary
+	// unreachable cluster (see federationtunnel.go's doc comment).
+	fedTunnelAdapter.set(federationSvc, wgRepo, wgReadSvc)
+	federationAgg := federation.NewAggregator(federationSvc, federation.WithTunnelHealth(fedTunnelAdapter))
 
 	// T-304: the local-timer protocol's node-side agent — every daemon runs
 	// one, independent of whether it ends up coordinating anything, so it

@@ -107,6 +107,31 @@ func checkWgEndpointDrift(state []wireguard.ObservedTunnel, db *debouncer) []Fin
 	return out
 }
 
+// WgTunnelHasFreshHandshake reports whether the WireGuard interface (node,
+// ifName) has at least one peer whose last handshake is within
+// WgHandshakeStaleThreshold of now — the single "is this tunnel currently
+// passing traffic" definition both wg_handshake_stale and T-1407's
+// tunnel_down_peer_unreachable key off (health_federation_tunnel.go),
+// exported so cmd/vnproxd's federation.TunnelHealth adapter uses the
+// identical definition the Aggregator's own suppression logic needs — the
+// two can never disagree about which tunnels are down (T-1407 AC2). An
+// interface absent from state entirely (down at the OS level, or this
+// daemon simply isn't the node hosting it) is "no fresh handshake", the
+// same as every peer failing the threshold.
+func WgTunnelHasFreshHandshake(state []wireguard.ObservedTunnel, node, ifName string, now time.Time) bool {
+	for _, tun := range state {
+		if tun.Node != node || tun.IfName != ifName {
+			continue
+		}
+		for _, p := range tun.Peers {
+			if age, ok := p.HandshakeAge(now); ok && age <= WgHandshakeStaleThreshold {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // wgPeerKey is the stable, content-derived debounce/finding key for one peer:
 // node, interface, and the peer's public key.
 func wgPeerKey(tun wireguard.ObservedTunnel, peer wireguard.ObservedPeer) string {

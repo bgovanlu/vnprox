@@ -26,6 +26,7 @@ type Cluster struct {
 	APIURL        string
 	Status        string
 	AddedBy       string
+	WgTunnelID    string
 	CredentialEnc []byte
 	AddedAt       int64
 }
@@ -45,9 +46,9 @@ func (r *ClusterRepo) Insert(ctx context.Context, c Cluster) error {
 		c.Status = "unknown"
 	}
 	_, err := r.db.sqlDB.ExecContext(ctx, `
-		INSERT INTO clusters (id, name, api_url, credential_enc, status, added_by, added_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.Name, c.APIURL, c.CredentialEnc, c.Status, c.AddedBy, c.AddedAt,
+		INSERT INTO clusters (id, name, api_url, credential_enc, status, added_by, added_at, wg_tunnel_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.ID, c.Name, c.APIURL, c.CredentialEnc, c.Status, c.AddedBy, c.AddedAt, c.WgTunnelID,
 	)
 	if err != nil {
 		return fmt.Errorf("store: inserting cluster %s: %w", c.ID, err)
@@ -58,7 +59,7 @@ func (r *ClusterRepo) Insert(ctx context.Context, c Cluster) error {
 // Get returns one cluster by id, or ErrNotFound.
 func (r *ClusterRepo) Get(ctx context.Context, id string) (Cluster, error) {
 	row := r.db.sqlDB.QueryRowContext(ctx, `
-		SELECT id, name, api_url, credential_enc, status, added_by, added_at
+		SELECT id, name, api_url, credential_enc, status, added_by, added_at, wg_tunnel_id
 		FROM clusters WHERE id = ?`, id)
 	c, err := scanCluster(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -71,7 +72,7 @@ func (r *ClusterRepo) Get(ctx context.Context, id string) (Cluster, error) {
 // stable listing.
 func (r *ClusterRepo) List(ctx context.Context) ([]Cluster, error) {
 	rows, err := r.db.sqlDB.QueryContext(ctx, `
-		SELECT id, name, api_url, credential_enc, status, added_by, added_at
+		SELECT id, name, api_url, credential_enc, status, added_by, added_at, wg_tunnel_id
 		FROM clusters ORDER BY added_at ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing clusters: %w", err)
@@ -93,17 +94,18 @@ func (r *ClusterRepo) List(ctx context.Context) ([]Cluster, error) {
 }
 
 // Update rewrites a cluster's mutable fields (name, api_url, credential_enc,
-// status). It returns ErrNotFound if the cluster doesn't exist. A caller
-// re-sealing an unchanged credential passes the existing CredentialEnc back
-// through; there is no partial update.
+// status, wg_tunnel_id). It returns ErrNotFound if the cluster doesn't
+// exist. A caller re-sealing an unchanged credential passes the existing
+// CredentialEnc back through (same for WgTunnelID); there is no partial
+// update.
 func (r *ClusterRepo) Update(ctx context.Context, c Cluster) error {
 	if c.Status == "" {
 		c.Status = "unknown"
 	}
 	res, err := r.db.sqlDB.ExecContext(ctx, `
-		UPDATE clusters SET name = ?, api_url = ?, credential_enc = ?, status = ?
+		UPDATE clusters SET name = ?, api_url = ?, credential_enc = ?, status = ?, wg_tunnel_id = ?
 		WHERE id = ?`,
-		c.Name, c.APIURL, c.CredentialEnc, c.Status, c.ID,
+		c.Name, c.APIURL, c.CredentialEnc, c.Status, c.WgTunnelID, c.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("store: updating cluster %s: %w", c.ID, err)
@@ -135,7 +137,7 @@ func (r *ClusterRepo) Delete(ctx context.Context, id string) error {
 
 func scanCluster(row rowScanner) (Cluster, error) {
 	var c Cluster
-	if err := row.Scan(&c.ID, &c.Name, &c.APIURL, &c.CredentialEnc, &c.Status, &c.AddedBy, &c.AddedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.Name, &c.APIURL, &c.CredentialEnc, &c.Status, &c.AddedBy, &c.AddedAt, &c.WgTunnelID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Cluster{}, err
 		}

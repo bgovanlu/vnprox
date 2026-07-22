@@ -46,6 +46,7 @@ type Aggregator struct {
 	svc          *Service
 	newReader    ReaderFactory
 	newProjector ProjectorFactory
+	tunnelHealth TunnelHealth
 	log          *slog.Logger
 	timeout      time.Duration
 }
@@ -54,6 +55,29 @@ type Aggregator struct {
 // wider PVE read surface a lazy drill-down projection needs; default:
 // Service.ClientFor). A test seam, mirroring ReaderFactory.
 type ProjectorFactory func(ctx context.Context, c Cluster) (TopologyProjector, error)
+
+// TunnelHealth is the Aggregator's seam onto live WireGuard tunnel state
+// (T-1407) — just enough to answer "is the tunnel a cluster is linked to
+// currently down". It carries no import of internal/wireguard or
+// internal/findings: cmd/vnproxd's concrete adapter does that work (reading
+// the live wg-show-dump poll and resolving Cluster.WgTunnelID to a tunnel's
+// node/interface), keeping this package's only knowledge of WireGuard to
+// "some opaque tunnel id string". A nil TunnelHealth (the default) means
+// every cluster is treated as not tunnel-linked-down — the feature quietly
+// no-ops, the same degradation every other optional Aggregator/Engine seam
+// in this codebase uses.
+type TunnelHealth interface {
+	// TunnelDown reports whether the tunnel identified by tunnelID
+	// (Cluster.WgTunnelID) is currently down — no live peer of that tunnel
+	// has handshaked within the staleness threshold
+	// findings.WgHandshakeStaleThreshold also uses, so the Aggregator's
+	// suppression and the tunnel_down_peer_unreachable finding can never
+	// disagree about which tunnels are down (T-1407 AC2). An unresolvable
+	// tunnelID (e.g. deleted after linking) should report false — a
+	// dangling link degrades to ordinary PVE-reachability handling rather
+	// than silently and permanently hiding a cluster's data.
+	TunnelDown(tunnelID string) bool
+}
 
 // WithProjectorFactory overrides how per-cluster TopologyProjectors are built
 // (default: Service.ClientFor). Primarily a test seam.
@@ -80,6 +104,12 @@ func WithTimeout(d time.Duration) AggregatorOption {
 	}
 }
 
+// WithTunnelHealth wires T-1407's tunnel-liveness seam (default: nil, which
+// treats every cluster as not tunnel-linked-down).
+func WithTunnelHealth(h TunnelHealth) AggregatorOption {
+	return func(a *Aggregator) { a.tunnelHealth = h }
+}
+
 // NewAggregator builds an Aggregator over svc's registered clusters.
 func NewAggregator(svc *Service, opts ...AggregatorOption) *Aggregator {
 	a := &Aggregator{svc: svc, log: svc.log, timeout: DefaultAggregateTimeout}
@@ -93,6 +123,33 @@ func NewAggregator(svc *Service, opts ...AggregatorOption) *Aggregator {
 		o(a)
 	}
 	return a
+}
+
+// splitTunnelDown partitions clusters into those to fan reads out to
+// normally and those whose linked WireGuard tunnel is currently down
+// (T-1407). A tunnel-down cluster is not attempted at all — it contributes
+// no data to the caller's aggregate, but (unlike an ordinary unreachable
+// cluster) is deliberately NOT added to that caller's partial/failedClusters
+// envelope: the one tunnel_down_peer_unreachable finding (computed
+// independently by internal/findings from the identical TunnelHealth
+// definition) already names it, so three separate per-surface "unreachable"
+// flags across topology/audit/IPAM-conflict reads would just be redundant
+// noise for the same root cause (T-1407 AC2). A cluster with no WgTunnelID
+// set, or when tunnelHealth is nil, always falls through to the ordinary
+// path (T-1407 AC3's regression case).
+func (a *Aggregator) splitTunnelDown(clusters []Cluster) (reachable []Cluster, tunnelDown []Cluster) {
+	if a.tunnelHealth == nil {
+		return clusters, nil
+	}
+	reachable = make([]Cluster, 0, len(clusters))
+	for _, c := range clusters {
+		if c.WgTunnelID != "" && a.tunnelHealth.TunnelDown(c.WgTunnelID) {
+			tunnelDown = append(tunnelDown, c)
+			continue
+		}
+		reachable = append(reachable, c)
+	}
+	return reachable, tunnelDown
 }
 
 // NodeInfo is one cluster member node as observed via GET /cluster/status.
@@ -160,6 +217,10 @@ func (a *Aggregator) ClusterNodesAll(ctx context.Context) (results []ClusterNode
 	clusters, err := a.svc.List(ctx)
 	if err != nil {
 		return nil, false, nil, err
+	}
+	clusters, tunnelDown := a.splitTunnelDown(clusters)
+	for _, c := range tunnelDown {
+		a.log.Debug("federation: cluster excluded from aggregation, linked tunnel is down", "cluster", c.ID, "tunnel", c.WgTunnelID)
 	}
 	raw := fanOut(ctx, a, clusters, func(ctx context.Context, r PVEReader) ([]NodeInfo, error) {
 		status, serr := r.ClusterStatus(ctx)
@@ -260,6 +321,7 @@ func (a *Aggregator) IPAMSubnets(ctx context.Context) (results []ClusterSubnets,
 	if err != nil {
 		return nil, false, nil, err
 	}
+	clusters, _ = a.splitTunnelDown(clusters)
 	raw := fanOut(ctx, a, clusters, func(ctx context.Context, r PVEReader) ([]string, error) {
 		return sdnSubnetCIDRs(ctx, r)
 	})
@@ -351,6 +413,7 @@ func (a *Aggregator) Audit(ctx context.Context, src AuditSource, filter store.Au
 	if err != nil {
 		return nil, false, nil, err
 	}
+	clusters, _ = a.splitTunnelDown(clusters)
 
 	reach := fanOut(ctx, a, clusters, func(ctx context.Context, r PVEReader) (struct{}, error) {
 		_, serr := r.ClusterStatus(ctx)

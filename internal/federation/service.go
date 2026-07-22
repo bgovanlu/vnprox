@@ -81,16 +81,17 @@ func (c Credential) validate() error {
 // GET /federation/clusters may report. The sealed credential never appears
 // here.
 type Cluster struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	APIURL  string `json:"apiUrl"`
-	Status  string `json:"status"`
-	AddedBy string `json:"addedBy"`
-	AddedAt int64  `json:"addedAt"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	APIURL     string `json:"apiUrl"`
+	Status     string `json:"status"`
+	AddedBy    string `json:"addedBy"`
+	WgTunnelID string `json:"wgTunnelId,omitempty"`
+	AddedAt    int64  `json:"addedAt"`
 }
 
 func toCluster(row store.Cluster) Cluster {
-	return Cluster{ID: row.ID, Name: row.Name, APIURL: row.APIURL, Status: row.Status, AddedBy: row.AddedBy, AddedAt: row.AddedAt}
+	return Cluster{ID: row.ID, Name: row.Name, APIURL: row.APIURL, Status: row.Status, AddedBy: row.AddedBy, AddedAt: row.AddedAt, WgTunnelID: row.WgTunnelID}
 }
 
 // ClusterRepo is the subset of *store.ClusterRepo the Service needs.
@@ -200,9 +201,12 @@ func (s *Service) List(ctx context.Context) ([]Cluster, error) {
 // Update rewrites a cluster's name/apiUrl, and — only when cred is non-nil —
 // re-seals a replacement credential. A nil cred leaves the existing sealed
 // credential untouched (an edit that just renames the cluster must never
-// force the operator to re-enter the token). Returns store.ErrNotFound if the
-// cluster doesn't exist.
-func (s *Service) Update(ctx context.Context, id, name, apiURL string, cred *Credential) (Cluster, error) {
+// force the operator to re-enter the token). wgTunnelID follows the same
+// nil-leaves-unchanged convention (T-1407): nil leaves the existing linkage
+// untouched, a non-nil pointer (including one pointing at "") replaces it —
+// so clearing the linkage is an explicit `&""`, not "omit the field".
+// Returns store.ErrNotFound if the cluster doesn't exist.
+func (s *Service) Update(ctx context.Context, id, name, apiURL string, cred *Credential, wgTunnelID *string) (Cluster, error) {
 	row, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return Cluster{}, fmt.Errorf("federation: getting cluster %s for update: %w", id, err)
@@ -222,6 +226,9 @@ func (s *Service) Update(ctx context.Context, id, name, apiURL string, cred *Cre
 			return Cluster{}, err
 		}
 		row.CredentialEnc = enc
+	}
+	if wgTunnelID != nil {
+		row.WgTunnelID = strings.TrimSpace(*wgTunnelID)
 	}
 	if err := s.repo.Update(ctx, row); err != nil {
 		return Cluster{}, fmt.Errorf("federation: updating cluster %s: %w", id, err)

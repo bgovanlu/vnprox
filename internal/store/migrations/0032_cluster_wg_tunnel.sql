@@ -1,0 +1,21 @@
+-- 0032_cluster_wg_tunnel.sql — T-1407 "Tunnel-aware federation transport":
+-- an additive, optional linkage marking an attached federation cluster as
+-- reachable via a specific T-1401-managed WireGuard tunnel, so a down
+-- tunnel can be reported as one tunnel_down_peer_unreachable finding
+-- instead of the per-surface partial/failedClusters noise plain PVE-API
+-- unreachability would otherwise raise across topology, audit, and
+-- IPAM-conflict reads simultaneously (internal/federation.Aggregator).
+--
+-- '' (the default) means "not tunnel-linked" — the cluster's reachability
+-- is judged purely by live PVE API reachability, unchanged from T-1201.
+-- This column deliberately does NOT declare a foreign key against
+-- wireguard_tunnels(id): this store does not enable SQLite FK enforcement
+-- (see internal/store/db.go), and a dangling reference (the linked tunnel
+-- later deleted) must degrade to "treat as not tunnel-linked", never break
+-- cluster reads — enforced in code (cmd/vnproxd's federationTunnelAdapter),
+-- not the schema.
+--
+-- Migrations are forward-only: once released, never edit this file; a
+-- schema change lands as a new NNNN_*.sql with a higher version.
+
+ALTER TABLE clusters ADD COLUMN wg_tunnel_id TEXT NOT NULL DEFAULT '';

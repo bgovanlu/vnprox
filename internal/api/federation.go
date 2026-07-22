@@ -4,7 +4,8 @@
 //   - GET    /federation/clusters       — list attached clusters (credential never echoed back)
 //   - POST   /federation/clusters       — attach a cluster {name, apiUrl, credential} → 201
 //   - GET    /federation/clusters/{id}  — one attached cluster (credential-free)
-//   - PUT    /federation/clusters/{id}  — edit name/apiUrl and optionally re-seal the credential
+//   - PUT    /federation/clusters/{id}  — edit name/apiUrl, optionally re-seal the
+//     credential, and optionally set/clear the T-1407 wgTunnelId linkage
 //   - DELETE /federation/clusters/{id}  — detach a cluster; 204 whether or not it existed
 //
 // GET routes are netRead-gated; POST/PUT/DELETE are netWrite+CSRF, matching
@@ -51,7 +52,7 @@ type FederationService interface {
 	Add(ctx context.Context, name, apiURL string, cred federation.Credential, addedBy string) (federation.Cluster, error)
 	Get(ctx context.Context, id string) (federation.Cluster, error)
 	List(ctx context.Context) ([]federation.Cluster, error)
-	Update(ctx context.Context, id, name, apiURL string, cred *federation.Credential) (federation.Cluster, error)
+	Update(ctx context.Context, id, name, apiURL string, cred *federation.Credential, wgTunnelID *string) (federation.Cluster, error)
 	Delete(ctx context.Context, id string) error
 }
 
@@ -63,16 +64,17 @@ type federationAuditWriter interface {
 }
 
 type federationClusterResponse struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	APIURL  string `json:"apiUrl"`
-	Status  string `json:"status"`
-	AddedBy string `json:"addedBy"`
-	AddedAt int64  `json:"addedAt"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	APIURL     string `json:"apiUrl"`
+	Status     string `json:"status"`
+	AddedBy    string `json:"addedBy"`
+	WgTunnelID string `json:"wgTunnelId,omitempty"`
+	AddedAt    int64  `json:"addedAt"`
 }
 
 func toFederationClusterResponse(c federation.Cluster) federationClusterResponse {
-	return federationClusterResponse{ID: c.ID, Name: c.Name, APIURL: c.APIURL, Status: c.Status, AddedBy: c.AddedBy, AddedAt: c.AddedAt}
+	return federationClusterResponse{ID: c.ID, Name: c.Name, APIURL: c.APIURL, Status: c.Status, AddedBy: c.AddedBy, AddedAt: c.AddedAt, WgTunnelID: c.WgTunnelID}
 }
 
 type federationClustersListResponse struct {
@@ -103,9 +105,12 @@ type federationClusterCreateRequest struct {
 
 // federationClusterUpdateRequest is PUT /federation/clusters/{id}'s body. An
 // absent/null credential leaves the stored one untouched (a rename must not
-// force re-entering the token).
+// force re-entering the token). wgTunnelId follows the identical
+// absent-leaves-unchanged convention (T-1407): omit the field to leave the
+// tunnel linkage untouched, or send `""` explicitly to clear it.
 type federationClusterUpdateRequest struct {
 	Credential *federationCredentialRequest `json:"credential"`
+	WgTunnelID *string                      `json:"wgTunnelId"`
 	Name       string                       `json:"name"`
 	APIURL     string                       `json:"apiUrl"`
 }
@@ -216,7 +221,7 @@ func handleUpdateFederationCluster(svc FederationService, audit federationAuditW
 			c := req.Credential.toCredential()
 			cred = &c
 		}
-		updated, err := svc.Update(r.Context(), id, req.Name, req.APIURL, cred)
+		updated, err := svc.Update(r.Context(), id, req.Name, req.APIURL, cred, req.WgTunnelID)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				writeJSONError(w, http.StatusNotFound, "not_found", "no such cluster")
@@ -225,7 +230,7 @@ func handleUpdateFederationCluster(svc FederationService, audit federationAuditW
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", "could not update cluster: "+err.Error())
 			return
 		}
-		auditFederationAction(r.Context(), audit, username, "federation.cluster.update", id, map[string]any{"name": updated.Name})
+		auditFederationAction(r.Context(), audit, username, "federation.cluster.update", id, map[string]any{"name": updated.Name, "wgTunnelId": updated.WgTunnelID})
 		writeJSON(w, http.StatusOK, toFederationClusterResponse(updated))
 	}
 }

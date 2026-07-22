@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -49,7 +50,7 @@ func (f *fakeFederationService) List(context.Context) ([]federation.Cluster, err
 	return out, nil
 }
 
-func (f *fakeFederationService) Update(_ context.Context, id, name, apiURL string, cred *federation.Credential) (federation.Cluster, error) {
+func (f *fakeFederationService) Update(_ context.Context, id, name, apiURL string, cred *federation.Credential, wgTunnelID *string) (federation.Cluster, error) {
 	c, ok := f.items[id]
 	if !ok {
 		return federation.Cluster{}, store.ErrNotFound
@@ -62,6 +63,9 @@ func (f *fakeFederationService) Update(_ context.Context, id, name, apiURL strin
 	}
 	if cred != nil {
 		f.lastCred = *cred
+	}
+	if wgTunnelID != nil {
+		c.WgTunnelID = *wgTunnelID
 	}
 	f.items[id] = c
 	return c, nil
@@ -181,5 +185,87 @@ func TestFederationRoutes_CredentialNeverEchoed(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("delete status = %d, want 204", rec.Code)
+	}
+}
+
+// TestFederationRoutes_UpdateWgTunnelID is T-1407: PUT can set and clear the
+// wgTunnelId linkage independently of name/apiUrl/credential, following the
+// same "absent leaves unchanged, explicit value replaces" convention
+// credential already uses.
+func TestFederationRoutes_UpdateWgTunnelID(t *testing.T) {
+	svc := newFakeFederationService()
+	r := newFederationTestRouter(map[string]bool{"netRead": true, "netWrite": true}, svc)
+
+	body := bytes.NewBufferString(`{"name":"east","apiUrl":"https://east:8006","credential":{"kind":"token","token":"t"}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/federation/clusters", body)
+	req.Header.Set("X-VNPROX-CSRF", "test-csrf-token")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var created federationClusterResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decoding create response: %v", err)
+	}
+	if created.WgTunnelID != "" {
+		t.Fatalf("newly-created cluster wgTunnelId = %q, want empty", created.WgTunnelID)
+	}
+
+	// Set the linkage.
+	body = bytes.NewBufferString(`{"wgTunnelId":"tun-1"}`)
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/federation/clusters/"+created.ID, body)
+	req.Header.Set("X-VNPROX-CSRF", "test-csrf-token")
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var updated federationClusterResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decoding update response: %v", err)
+	}
+	if updated.WgTunnelID != "tun-1" {
+		t.Fatalf("wgTunnelId = %q, want tun-1", updated.WgTunnelID)
+	}
+	if updated.Name != "east" {
+		t.Fatalf("name = %q, want unchanged (east) — setting wgTunnelId must not disturb other fields", updated.Name)
+	}
+
+	// A PUT that omits wgTunnelId entirely leaves it untouched.
+	body = bytes.NewBufferString(`{"name":"east-renamed"}`)
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/federation/clusters/"+created.ID, body)
+	req.Header.Set("X-VNPROX-CSRF", "test-csrf-token")
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rename status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decoding rename response: %v", err)
+	}
+	if updated.WgTunnelID != "tun-1" {
+		t.Fatalf("wgTunnelId after unrelated rename = %q, want unchanged tun-1", updated.WgTunnelID)
+	}
+
+	// An explicit empty string clears it.
+	body = bytes.NewBufferString(`{"wgTunnelId":""}`)
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/federation/clusters/"+created.ID, body)
+	req.Header.Set("X-VNPROX-CSRF", "test-csrf-token")
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	// omitempty means a cleared "" is absent from the JSON body entirely —
+	// asserted directly on the raw body rather than by decoding into
+	// `updated` again, which would otherwise keep its previous "tun-1" value
+	// for a key the response no longer sends (json.Unmarshal only touches
+	// keys present in the payload).
+	if strings.Contains(rec.Body.String(), "wgTunnelId") {
+		t.Fatalf("clear response still mentions wgTunnelId (want the key omitted entirely): %s", rec.Body.String())
+	}
+	if svc.items[created.ID].WgTunnelID != "" {
+		t.Fatalf("stored wgTunnelId after explicit clear = %q, want empty", svc.items[created.ID].WgTunnelID)
 	}
 }

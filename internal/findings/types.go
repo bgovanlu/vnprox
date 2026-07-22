@@ -65,6 +65,13 @@ const (
 	// a polled host/PVE seam. Checks are new_port|volume_spike|new_subnet
 	// (adapt_baseline.go).
 	SourceBaseline Source = "baseline"
+	// SourceFederation (T-1407) marks a finding computed from
+	// internal/federation's cluster registry crossed with live WireGuard
+	// tunnel state — its own top-level source (like SourceFlow/SourceProbe),
+	// since it names a federation cluster rather than a node/interface the
+	// inventory graph knows about. Currently the sole producer is
+	// tunnel_down_peer_unreachable (health_federation_tunnel.go).
+	SourceFederation Source = "federation"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

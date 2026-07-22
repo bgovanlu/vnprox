@@ -64,7 +64,7 @@ func TestService_CRUD(t *testing.T) {
 	}
 
 	// Update rename only (nil credential) keeps working.
-	if _, err = svc.Update(ctx, c.ID, "east-renamed", "", nil); err != nil {
+	if _, err = svc.Update(ctx, c.ID, "east-renamed", "", nil, nil); err != nil {
 		t.Fatalf("Update rename: %v", err)
 	}
 	got, _ = svc.Get(ctx, c.ID)
