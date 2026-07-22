@@ -17,6 +17,27 @@ v0.8 below, alongside that release's SDN/IPAM work.
 Precise dates are given for the v1.0.0, v2.0.0, and v3.0.0 release cuts;
 earlier milestones predate this file and are dated only by year.
 
+## [3.0.1] - 2026-07-21
+
+Packaging patch — no code or schema change (schema stays 31; a v3.0.0
+install upgrades in place).
+
+### Fixed
+
+- **Service crash-loop on first upgrade to the v1.4→v3.0 key-generating
+  releases.** The hardened systemd unit's `ProtectSystem=strict` made
+  `/etc/vnprox` read-only, but the daemon generates first-run secrets under
+  `/etc/vnprox/keys/` on startup — the Prometheus metrics scrape token
+  (`metrics.key`) and the blueprint signing key (`blueprint-signing.key`) —
+  which `postinst` does not pre-seed (only `session.key` is). On a node
+  upgrading from a release that predates those keys, the first boot failed
+  with `open /etc/vnprox/keys/…: read-only file system` and the service
+  restart-looped. `ReadWritePaths` now includes `/etc/vnprox/keys` so the
+  daemon can create its own first-run secrets (still `0600 root:root`; the
+  rest of `/etc` stays read-only). Found on real hardware upgrading
+  1.3.6 → 3.0.0; no sandboxed or fresh-`vnprox-setup` test caught it because
+  setup had already created the key files.
+
 ## [3.0.0] - 2026-07-21
 
 The platform release — the cut where vnprox stops being only a product and

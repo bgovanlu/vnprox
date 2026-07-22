@@ -29,7 +29,18 @@ TimeoutStopSec=15s
 # (netlink admin, ifreload, and reading root:root 0600 key/DB files
 # currently all assume root).
 ProtectSystem=strict
-ReadWritePaths=/var/lib/vnprox /etc/network /run
+# /etc/vnprox/keys must be writable: several first-run secrets are generated
+# by the daemon on first boot under this directory — the session AES key
+# (cipher.go), the Prometheus metrics scrape token (T-1001,
+# /etc/vnprox/keys/metrics.key) and the blueprint signing key (T-1705,
+# /etc/vnprox/keys/blueprint-signing.key) — each written 0600 root:root if
+# absent, then loaded verbatim on every subsequent boot. postinst only
+# pre-seeds session.key, so without this path the metrics/blueprint keys hit
+# `open ...: read-only file system` under ProtectSystem=strict and the daemon
+# crash-loops on the first upgrade from a release predating them (found on
+# real hardware upgrading 1.3.6 -> 3.0.0). The rest of /etc stays read-only
+# and the key files keep their 0600 root:root perms.
+ReadWritePaths=/var/lib/vnprox /etc/vnprox/keys /etc/network /run
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
