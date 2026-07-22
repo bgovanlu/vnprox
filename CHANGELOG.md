@@ -24,6 +24,27 @@ until the whole arc — including phases 13–15 of the *next* arc, see the note
 on `[2.0.0]` below — had already merged onto the same branch. Their
 functionality is folded into `[2.0.0]`.
 
+## [3.0.3] - 2026-07-22
+
+Completes phase 14 (`docs/roadmap-universal.md`): T-1407, the one card from that phase
+that shipped no code in v2.0.0/v3.0.0/v3.0.1/v3.0.2 despite its six siblings landing
+around it (found by a docs/plans-vs-implementation audit; see
+`planning/reports/T-1407.md`). Schema 32 (forward-only migration from 31; a v2.0.0+
+install upgrades in place).
+
+### Added
+
+- **Tunnel-aware federation transport.** An attached federation cluster can now declare
+  itself reachable only via a specific WireGuard tunnel this daemon manages
+  (`PUT /federation/clusters/{id}`'s new optional `wgTunnelId`). When that tunnel's live
+  handshake goes stale, the cluster is excluded from the global topology, audit, and
+  cross-cluster IPAM-conflict reads — but, unlike an ordinary unreachable cluster, it no
+  longer raises three redundant per-surface `partial`/`failedClusters` flags for the same
+  root cause. In their place, one named finding — `tunnel_down_peer_unreachable`
+  (`source: "federation"`) — points at the down tunnel. No auto-remediation: the only
+  action is a link to the tunnel's own changeset editor; a human fixes it through an
+  ordinary `wg.*` change.
+
 ## [3.0.2] - 2026-07-22
 
 Packaging patch — no code or schema change (schema stays 31; a v3.0.0/v3.0.1
