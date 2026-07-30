@@ -6,14 +6,17 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchFederationClusterTopology,
+  fetchFederationClusters,
   fetchFederationSearch,
   fetchFederationTopology,
+  type FederationCluster,
   type FederationSearchResponse,
   type FederationTopologyResponse,
 } from "../../api/federation";
 import type { TopologyResponse } from "../../api/types";
 
 export const FEDERATION_TOPOLOGY_QUERY_KEY = ["federation", "topology"] as const;
+export const FEDERATION_CLUSTERS_QUERY_KEY = ["federation", "clusters"] as const;
 export const federationClusterTopologyKey = (id: string) => ["federation", "topology", "cluster", id] as const;
 export const federationSearchKey = (q: string) => ["federation", "search", q] as const;
 
@@ -26,6 +29,23 @@ export function useFederationTopologyQuery(enabled = true) {
     queryKey: FEDERATION_TOPOLOGY_QUERY_KEY,
     queryFn: fetchFederationTopology,
     staleTime: 15_000,
+    enabled,
+    retry: false,
+  });
+}
+
+/** GET /federation/clusters — the attached-cluster registry (names + their
+ * effective WireGuard tunnel linkage), for surfaces that need to *name* a
+ * cluster rather than summarize it: the connect-clusters wizard's optional
+ * "this peer is cluster X" tagging. `retry: false` plus the 404-to-empty
+ * normalization in the fetcher means a daemon with no federation wired, or a
+ * session without netRead, degrades to "no attached clusters" instead of an
+ * error state. */
+export function useFederationClustersQuery(enabled = true) {
+  return useQuery<FederationCluster[]>({
+    queryKey: FEDERATION_CLUSTERS_QUERY_KEY,
+    queryFn: fetchFederationClusters,
+    staleTime: 30_000,
     enabled,
     retry: false,
   });

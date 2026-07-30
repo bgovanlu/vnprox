@@ -77,21 +77,61 @@ func (c Credential) validate() error {
 	return nil
 }
 
+// How a Cluster's WgTunnelID was arrived at — see Service.resolveLinkage.
+const (
+	// TunnelLinkExplicit: the operator set clusters.wg_tunnel_id directly
+	// (PUT /federation/clusters/{id}'s wgTunnelId). Always wins.
+	TunnelLinkExplicit = "explicit"
+	// TunnelLinkPeer: derived from a WireGuard peer annotated with this
+	// cluster (wireguard_peers.cluster_id), staged through an ordinary
+	// wg.peer.add changeset — the wizard path.
+	TunnelLinkPeer = "peer"
+)
+
 // Cluster is the app-facing, credential-free registry entry — everything
 // GET /federation/clusters may report. The sealed credential never appears
 // here.
+//
+// WgTunnelID is the cluster's *effective* tunnel linkage, not necessarily the
+// stored clusters.wg_tunnel_id column: an empty column is filled in from the
+// peer-level wireguard_peers.cluster_id annotation when a TunnelLinker is
+// configured (see resolveLinkage). WgTunnelSource says which of the two it
+// came from, so a reader can tell an operator override from a derived link;
+// it is empty exactly when WgTunnelID is.
 type Cluster struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	APIURL     string `json:"apiUrl"`
-	Status     string `json:"status"`
-	AddedBy    string `json:"addedBy"`
-	WgTunnelID string `json:"wgTunnelId,omitempty"`
-	AddedAt    int64  `json:"addedAt"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	APIURL         string `json:"apiUrl"`
+	Status         string `json:"status"`
+	AddedBy        string `json:"addedBy"`
+	WgTunnelID     string `json:"wgTunnelId,omitempty"`
+	WgTunnelSource string `json:"wgTunnelSource,omitempty"`
+	AddedAt        int64  `json:"addedAt"`
 }
 
 func toCluster(row store.Cluster) Cluster {
-	return Cluster{ID: row.ID, Name: row.Name, APIURL: row.APIURL, Status: row.Status, AddedBy: row.AddedBy, AddedAt: row.AddedAt, WgTunnelID: row.WgTunnelID}
+	c := Cluster{ID: row.ID, Name: row.Name, APIURL: row.APIURL, Status: row.Status, AddedBy: row.AddedBy, AddedAt: row.AddedAt, WgTunnelID: row.WgTunnelID}
+	if c.WgTunnelID != "" {
+		c.WgTunnelSource = TunnelLinkExplicit
+	}
+	return c
+}
+
+// TunnelLinker resolves the peer-level half of the tunnel<->cluster linkage:
+// which WireGuard tunnel carries a peer annotated as this federated cluster
+// (*store.WireGuardRepo.TunnelIDForCluster satisfies it). Optional — a nil
+// linker means only the explicit clusters.wg_tunnel_id column is consulted,
+// which is exactly T-1407's shipped behaviour.
+//
+// This seam is what keeps the two columns from drifting. They record the same
+// fact at different granularities (a peer *is* a cluster; a cluster is
+// *reached over* a tunnel), so rather than letting an operator set both and
+// pick a winner per read site, there is one effective answer resolved here and
+// consumed by everything downstream — internal/federation.Aggregator's
+// splitTunnelDown and internal/findings' tunnel_down_peer_unreachable producer
+// both read Cluster.WgTunnelID and therefore cannot disagree.
+type TunnelLinker interface {
+	TunnelIDForCluster(ctx context.Context, clusterID string) (string, error)
 }
 
 // ClusterRepo is the subset of *store.ClusterRepo the Service needs.
@@ -113,6 +153,7 @@ type Config struct {
 	Cipher            Cipher
 	Logger            *slog.Logger
 	Now               func() time.Time
+	TunnelLinker      TunnelLinker
 	TLS               pve.TLSConfig
 	PVERequestTimeout time.Duration
 }
@@ -125,6 +166,7 @@ type Service struct {
 	cipher  Cipher
 	log     *slog.Logger
 	now     func() time.Time
+	linker  TunnelLinker
 	tls     pve.TLSConfig
 	timeout time.Duration
 }
@@ -146,7 +188,35 @@ func NewService(cfg Config) (*Service, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{repo: cfg.Clusters, cipher: cfg.Cipher, log: logger, now: now, tls: cfg.TLS, timeout: cfg.PVERequestTimeout}, nil
+	return &Service{repo: cfg.Clusters, cipher: cfg.Cipher, log: logger, now: now, linker: cfg.TunnelLinker, tls: cfg.TLS, timeout: cfg.PVERequestTimeout}, nil
+}
+
+// resolveLinkage fills c's effective WireGuard tunnel linkage. An explicit
+// clusters.wg_tunnel_id (already set by toCluster) always wins: it is the
+// operator's deliberate override, including for a tunnel that has no peer
+// annotated for this cluster at all. Otherwise the linkage is derived from the
+// peer-level wireguard_peers.cluster_id annotation — which is how the ordinary
+// path sets it, since the connect-clusters wizard tags the peer inside the same
+// changeset that creates the tunnel (one mutation path, no side-channel write
+// to the clusters table).
+//
+// A linker error is logged and swallowed: an unresolvable linkage degrades to
+// "not tunnel-linked", the same fail-open direction every other T-1407 path
+// takes (a dangling link must never hide a cluster's data or break a cluster
+// read).
+func (s *Service) resolveLinkage(ctx context.Context, c Cluster) Cluster {
+	if s.linker == nil || c.WgTunnelID != "" {
+		return c
+	}
+	tunnelID, err := s.linker.TunnelIDForCluster(ctx, c.ID)
+	if err != nil {
+		s.log.Debug("federation: resolving peer-derived tunnel linkage", "cluster", c.ID, "error", err)
+		return c
+	}
+	if tunnelID != "" {
+		c.WgTunnelID, c.WgTunnelSource = tunnelID, TunnelLinkPeer
+	}
+	return c
 }
 
 // Add validates and seals cred, then registers a new attached cluster. The
@@ -175,17 +245,18 @@ func (s *Service) Add(ctx context.Context, name, apiURL string, cred Credential,
 	return toCluster(row), nil
 }
 
-// Get returns one registered cluster (credential-free), wrapping
-// store.ErrNotFound.
+// Get returns one registered cluster (credential-free), with its effective
+// tunnel linkage resolved (resolveLinkage), wrapping store.ErrNotFound.
 func (s *Service) Get(ctx context.Context, id string) (Cluster, error) {
 	row, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return Cluster{}, fmt.Errorf("federation: getting cluster %s: %w", id, err)
 	}
-	return toCluster(row), nil
+	return s.resolveLinkage(ctx, toCluster(row)), nil
 }
 
-// List returns every registered cluster (credential-free).
+// List returns every registered cluster (credential-free), each with its
+// effective tunnel linkage resolved (resolveLinkage).
 func (s *Service) List(ctx context.Context) ([]Cluster, error) {
 	rows, err := s.repo.List(ctx)
 	if err != nil {
@@ -193,7 +264,7 @@ func (s *Service) List(ctx context.Context) ([]Cluster, error) {
 	}
 	out := make([]Cluster, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toCluster(row))
+		out = append(out, s.resolveLinkage(ctx, toCluster(row)))
 	}
 	return out, nil
 }
@@ -205,6 +276,14 @@ func (s *Service) List(ctx context.Context) ([]Cluster, error) {
 // nil-leaves-unchanged convention (T-1407): nil leaves the existing linkage
 // untouched, a non-nil pointer (including one pointing at "") replaces it —
 // so clearing the linkage is an explicit `&""`, not "omit the field".
+//
+// wgTunnelID writes the *explicit override* column only. Clearing it therefore
+// does not necessarily leave the cluster unlinked: the returned Cluster runs
+// through resolveLinkage, so a cluster that still has a WireGuard peer tagged
+// with its id comes back linked with WgTunnelSource == TunnelLinkPeer. Undoing
+// a peer-derived link means removing (or retagging) that peer through an
+// ordinary wg.peer.* changeset, not editing the cluster.
+//
 // Returns store.ErrNotFound if the cluster doesn't exist.
 func (s *Service) Update(ctx context.Context, id, name, apiURL string, cred *Credential, wgTunnelID *string) (Cluster, error) {
 	row, err := s.repo.Get(ctx, id)
@@ -233,7 +312,7 @@ func (s *Service) Update(ctx context.Context, id, name, apiURL string, cred *Cre
 	if err := s.repo.Update(ctx, row); err != nil {
 		return Cluster{}, fmt.Errorf("federation: updating cluster %s: %w", id, err)
 	}
-	return toCluster(row), nil
+	return s.resolveLinkage(ctx, toCluster(row)), nil
 }
 
 // Delete deregisters a cluster (idempotent — deleting an absent cluster is

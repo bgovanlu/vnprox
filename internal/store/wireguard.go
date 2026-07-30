@@ -226,6 +226,38 @@ func (r *WireGuardRepo) ListPeers(ctx context.Context, tunnelID string) ([]WireG
 	return out, nil
 }
 
+// TunnelIDForCluster returns the id of the tunnel carrying a peer annotated as
+// federation cluster clusterID (`wireguard_peers.cluster_id`) — the peer-level
+// half of the tunnel<->cluster linkage whose cluster-level half is
+// `clusters.wg_tunnel_id`. `internal/federation.Service` uses this to derive a
+// cluster's effective linkage when no explicit `wg_tunnel_id` override is
+// stored, so the two columns can never disagree about which tunnel a federated
+// cluster is reached over (see docs/data-model.md's `clusters` entry).
+//
+// Returns ("", nil) — not an error — when no peer carries the annotation: "not
+// tunnel-linked" is an ordinary state, not a failure. An empty clusterID never
+// matches, since ” is also the default for untagged peers. When more than one
+// tunnel carries a peer for the same cluster (an operator having tagged the
+// same far side on two tunnels, e.g. mid-migration), the lowest tunnel id wins
+// — arbitrary but deterministic, so the derived linkage never flaps between
+// reads; an operator who needs the other one sets the explicit override.
+func (r *WireGuardRepo) TunnelIDForCluster(ctx context.Context, clusterID string) (string, error) {
+	if clusterID == "" {
+		return "", nil
+	}
+	var tunnelID string
+	err := r.db.sqlDB.QueryRowContext(ctx, `
+		SELECT tunnel_id FROM wireguard_peers
+		WHERE cluster_id = ? ORDER BY tunnel_id ASC LIMIT 1`, clusterID).Scan(&tunnelID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("store: resolving wireguard tunnel for cluster %s: %w", clusterID, err)
+	}
+	return tunnelID, nil
+}
+
 func scanTunnel(row rowScanner) (WireGuardTunnel, error) {
 	var t WireGuardTunnel
 	var addrsJSON string

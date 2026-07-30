@@ -66,9 +66,23 @@ func (f *fakeFederationService) Update(_ context.Context, id, name, apiURL strin
 	}
 	if wgTunnelID != nil {
 		c.WgTunnelID = *wgTunnelID
+		c.WgTunnelSource = ""
+		if c.WgTunnelID != "" {
+			c.WgTunnelSource = federation.TunnelLinkExplicit
+		}
 	}
 	f.items[id] = c
 	return c, nil
+}
+
+// seedPeerLinked injects a cluster whose tunnel linkage was derived from a
+// WireGuard peer's cluster_id annotation rather than set through this route —
+// what the real federation.Service returns once resolveLinkage has run.
+func (f *fakeFederationService) seedPeerLinked(id, tunnelID string) {
+	f.items[id] = federation.Cluster{
+		ID: id, Name: "east", APIURL: "https://east:8006", Status: "ok", AddedBy: "admin@pam",
+		AddedAt: 1700000000, WgTunnelID: tunnelID, WgTunnelSource: federation.TunnelLinkPeer,
+	}
 }
 
 func (f *fakeFederationService) Delete(_ context.Context, id string) error {
@@ -267,5 +281,56 @@ func TestFederationRoutes_UpdateWgTunnelID(t *testing.T) {
 	}
 	if svc.items[created.ID].WgTunnelID != "" {
 		t.Fatalf("stored wgTunnelId after explicit clear = %q, want empty", svc.items[created.ID].WgTunnelID)
+	}
+}
+
+// TestFederationRoutes_WgTunnelSource: the read surface distinguishes an
+// operator-set linkage from one derived off a WireGuard peer's cluster_id
+// annotation, so a UI can show *why* a cluster is tunnel-linked (and that
+// clearing wgTunnelId won't unlink a peer-derived one). GET and PUT report the
+// same field; PUT always writes the explicit override.
+func TestFederationRoutes_WgTunnelSource(t *testing.T) {
+	svc := newFakeFederationService()
+	svc.seedPeerLinked("cl-peer", "tun-from-peer")
+	r := newFederationTestRouter(map[string]bool{"netRead": true, "netWrite": true}, svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/federation/clusters/cl-peer", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var got federationClusterResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding get response: %v", err)
+	}
+	if got.WgTunnelID != "tun-from-peer" || got.WgTunnelSource != federation.TunnelLinkPeer {
+		t.Fatalf("GET linkage = (%q, %q), want (tun-from-peer, %s)", got.WgTunnelID, got.WgTunnelSource, federation.TunnelLinkPeer)
+	}
+
+	// Overriding it through PUT flips the reported source to "explicit".
+	body := bytes.NewBufferString(`{"wgTunnelId":"tun-override"}`)
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/federation/clusters/cl-peer", body)
+	req.Header.Set("X-VNPROX-CSRF", "test-csrf-token")
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding update response: %v", err)
+	}
+	if got.WgTunnelID != "tun-override" || got.WgTunnelSource != federation.TunnelLinkExplicit {
+		t.Fatalf("PUT linkage = (%q, %q), want (tun-override, %s)", got.WgTunnelID, got.WgTunnelSource, federation.TunnelLinkExplicit)
+	}
+
+	// An unlinked cluster reports neither field (both are omitempty).
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/federation/clusters", nil)
+	rec = httptest.NewRecorder()
+	svc.seedPeerLinked("cl-peer", "")
+	svc.items["cl-peer"] = federation.Cluster{ID: "cl-peer", Name: "east"}
+	r.ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), "wgTunnelSource") {
+		t.Errorf("unlinked cluster leaked wgTunnelSource: %s", rec.Body.String())
 	}
 }

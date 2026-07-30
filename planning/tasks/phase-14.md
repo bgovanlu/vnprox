@@ -329,6 +329,12 @@ guest.
 > cards shipping around it; downstream reports/docs that flagged the gap
 > (`planning/reports/T-1401.md`, `planning/reports/T-1402.md`, `docs/features/topology.md`) should
 > be read as historical context for *why* the gap existed, not current state.
+>
+> **Follow-ups closed in v3.0.4** (`planning/reports/T-1407-followups.md`): the two items that
+> report left for the next agent — `wireguard_peers.cluster_id` reconciled with
+> `clusters.wg_tunnel_id` (one effective linkage resolved on read, explicit override wins,
+> otherwise derived from the peer annotation) and a UI for the linkage (the connect-clusters
+> wizard's optional "Federated cluster" field, tagging the peer inside the same changeset).
 
 **model:** sonnet-5 · **size:** S · **depends:** T-1401, T-1201 (federation core) · **context:** `planning/tasks/phase-12.md` T-1201 (cluster registry, `partial`/`failedClusters` fan-out convention), T-1401's tunnel findings
 

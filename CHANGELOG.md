@@ -24,6 +24,39 @@ until the whole arc — including phases 13–15 of the *next* arc, see the note
 on `[2.0.0]` below — had already merged onto the same branch. Their
 functionality is folded into `[2.0.0]`.
 
+## [3.0.4] - 2026-07-30
+
+Closes T-1407's two deferred follow-ups (see `planning/reports/T-1407-followups.md`).
+No schema change (stays 32).
+
+### Added
+
+- **Name the cluster on the other side of a tunnel.** The "connect two clusters" wizard's
+  *Other side* step gains an optional **Federated cluster** field. Picking one of your
+  attached clusters tags the tunnel's peer as that cluster, inside the very same changeset
+  that creates the tunnel — no extra step, and nothing is linked unless you actually apply
+  the changeset. That tag is what makes the cluster count as reachable over the tunnel, so
+  a tunnel outage shows up as one finding naming the cluster instead of every cross-cluster
+  view reporting it separately as unreachable. The field is disabled with an explanation
+  when no clusters are attached.
+
+### Changed
+
+- **A cluster's tunnel linkage now has one answer, not two.** The peer-level tag above and
+  the cluster-level `wgTunnelId` recorded the same fact from opposite ends and could
+  disagree. Every read now resolves a single effective linkage: an explicitly-set
+  `wgTunnelId` always wins, otherwise it is derived from a tagged peer. `GET`/`PUT
+  /federation/clusters` report the new read-only `wgTunnelSource` (`"explicit"` or
+  `"peer"`) saying which applied. One behaviour change worth noting: clearing `wgTunnelId`
+  no longer necessarily unlinks a cluster — if a tagged peer still exists the cluster stays
+  linked, now sourced `"peer"`. Removing a peer-derived link means retiring or retagging
+  that peer through an ordinary WireGuard changeset.
+
+### Fixed
+
+- `docs/roadmap-universal.md` still described T-1407 as unimplemented and open, three
+  releases after it shipped.
+
 ## [3.0.3] - 2026-07-22
 
 Completes phase 14 (`docs/roadmap-universal.md`): T-1407, the one card from that phase

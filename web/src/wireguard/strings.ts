@@ -28,7 +28,11 @@ export const wgWizardStrings = {
     allowedIps: "Comma-separated addresses/ranges reachable through this tunnel, e.g. 10.10.0.2/32.",
     presharedKey: "Optional extra symmetric key for post-quantum resistance — leave blank if the far side doesn't have one.",
     keepalive: "Optional — send a keepalive every N seconds (useful behind NAT). Leave blank to disable.",
+    federatedCluster:
+      "Optional — if the far side is a Proxmox cluster you have already attached here, name it. vnprox then treats that cluster as reachable only over this tunnel: when the tunnel goes down you get one finding naming it, instead of every cross-cluster view reporting it separately as unreachable.",
   },
+  federatedClusterNone: "Not a federated cluster",
+  federatedClusterEmpty: "No attached clusters — nothing to link. Attach one first, or leave this tunnel untagged.",
   firewallHelp: {
     source: "Restrict the allowed source to the peer's own address for a tighter rule — leave blank to allow from anywhere (appropriate for a peer with no fixed endpoint).",
   },

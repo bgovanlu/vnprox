@@ -16,6 +16,7 @@ function params(overrides: Partial<ConnectClustersParams> = {}): ConnectClusters
     peerAllowedIps: ["10.10.0.2/32"],
     presharedKey: "",
     keepaliveSec: 0,
+    peerClusterId: "",
     fwSourceCidr: "203.0.113.10/32",
     ...overrides,
   };
@@ -50,6 +51,17 @@ describe("buildConnectClustersOps", () => {
     expect(fwOp?.op).toBe("fw.rule.create");
     expect(fwOp?.target).toBe(fwNodeRulesetTarget("pve1"));
     expect(fwOp?.params).toMatchObject({ direction: "in", action: "ACCEPT", proto: "udp", dport: "51820", source: "203.0.113.10/32", pos: 3 });
+  });
+
+  it("tags the peer with the chosen federated cluster, on the ordinary wg.peer.add op — no extra op, no second route", () => {
+    const ops = buildConnectClustersOps(params({ peerClusterId: "cl-east" }), TUNNEL_ID, 0);
+    expect(ops.map((o) => o.op)).toEqual(["wg.tunnel.create", "wg.peer.add", "fw.rule.create"]);
+    expect(ops[1]?.params).toMatchObject({ clusterId: "cl-east" });
+  });
+
+  it("omits clusterId entirely when the peer isn't tagged, rather than sending an empty string", () => {
+    const [, peerOp] = buildConnectClustersOps(params({ peerClusterId: "" }), TUNNEL_ID, 0);
+    expect(JSON.stringify(peerOp?.params)).not.toContain("clusterId");
   });
 
   it("omits optional tunnel fields (carrier/mtu) when left unset rather than sending empty strings/zeros", () => {

@@ -2,6 +2,7 @@ package federation
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/bgovanlu/vnprox/internal/pvemock"
@@ -152,3 +153,152 @@ func TestAggregator_TunnelDown_IPAMAndAudit(t *testing.T) {
 		t.Fatalf("Audit rows = %+v, want just east's row", rows)
 	}
 }
+
+// fakeLinker is a scripted TunnelLinker: clusterID -> derived tunnel id, with
+// an optional error for the degradation case.
+type fakeLinker struct {
+	err   error
+	links map[string]string
+}
+
+func (f fakeLinker) TunnelIDForCluster(_ context.Context, clusterID string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.links[clusterID], nil
+}
+
+// newLinkedService is newTestService with a TunnelLinker wired in — the
+// production shape (cmd/vnproxd passes *store.WireGuardRepo).
+func newLinkedService(t *testing.T, linker TunnelLinker) *Service {
+	t.Helper()
+	svc, _, _ := newTestService(t)
+	svc.linker = linker
+	return svc
+}
+
+// TestService_PeerDerivedLinkage: with no explicit clusters.wg_tunnel_id, a
+// cluster tagged on a WireGuard peer comes back linked, sourced "peer" — this
+// is what keeps wireguard_peers.cluster_id and clusters.wg_tunnel_id from
+// drifting, since every downstream consumer (Aggregator.splitTunnelDown,
+// internal/findings' tunnel_down_peer_unreachable producer) reads the one
+// effective Cluster.WgTunnelID.
+func TestService_PeerDerivedLinkage(t *testing.T) {
+	ctx := context.Background()
+	svc := newLinkedService(t, fakeLinker{links: map[string]string{}})
+	linked, err := svc.Add(ctx, "east", "https://east:8006", Credential{Kind: CredentialToken, Token: "t"}, "admin@pam")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	untagged, err := svc.Add(ctx, "west", "https://west:8006", Credential{Kind: CredentialToken, Token: "t"}, "admin@pam")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	svc.linker = fakeLinker{links: map[string]string{linked.ID: "tun-peer"}}
+
+	got, err := svc.Get(ctx, linked.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.WgTunnelID != "tun-peer" || got.WgTunnelSource != TunnelLinkPeer {
+		t.Errorf("Get() linkage = (%q, %q), want (tun-peer, %s)", got.WgTunnelID, got.WgTunnelSource, TunnelLinkPeer)
+	}
+	if got, err = svc.Get(ctx, untagged.ID); err != nil || got.WgTunnelID != "" || got.WgTunnelSource != "" {
+		t.Errorf("untagged cluster linkage = (%q, %q), %v; want unlinked", got.WgTunnelID, got.WgTunnelSource, err)
+	}
+
+	list, err := svc.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, c := range list {
+		want := ""
+		if c.ID == linked.ID {
+			want = "tun-peer"
+		}
+		if c.WgTunnelID != want {
+			t.Errorf("List() cluster %s linkage = %q, want %q", c.Name, c.WgTunnelID, want)
+		}
+	}
+}
+
+// TestService_ExplicitLinkageWins: an explicit clusters.wg_tunnel_id override
+// beats the peer-derived link and is reported as such; clearing the override
+// falls back to the derived one rather than unlinking (the Update doc
+// comment's contract — undoing a peer-derived link means retiring the peer
+// through an ordinary wg.peer.* changeset, not editing the cluster).
+func TestService_ExplicitLinkageWins(t *testing.T) {
+	ctx := context.Background()
+	svc := newLinkedService(t, fakeLinker{})
+	c, err := svc.Add(ctx, "east", "https://east:8006", Credential{Kind: CredentialToken, Token: "t"}, "admin@pam")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	svc.linker = fakeLinker{links: map[string]string{c.ID: "tun-peer"}}
+
+	updated, err := svc.Update(ctx, c.ID, "", "", nil, ptr("tun-explicit"))
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.WgTunnelID != "tun-explicit" || updated.WgTunnelSource != TunnelLinkExplicit {
+		t.Errorf("Update() linkage = (%q, %q), want (tun-explicit, %s)", updated.WgTunnelID, updated.WgTunnelSource, TunnelLinkExplicit)
+	}
+	got, err := svc.Get(ctx, c.ID)
+	if err != nil || got.WgTunnelID != "tun-explicit" || got.WgTunnelSource != TunnelLinkExplicit {
+		t.Errorf("Get() after explicit link = (%q, %q), %v", got.WgTunnelID, got.WgTunnelSource, err)
+	}
+
+	cleared, err := svc.Update(ctx, c.ID, "", "", nil, ptr(""))
+	if err != nil {
+		t.Fatalf("Update clearing: %v", err)
+	}
+	if cleared.WgTunnelID != "tun-peer" || cleared.WgTunnelSource != TunnelLinkPeer {
+		t.Errorf("after clearing the override, linkage = (%q, %q), want the peer-derived (tun-peer, %s)", cleared.WgTunnelID, cleared.WgTunnelSource, TunnelLinkPeer)
+	}
+}
+
+// TestService_LinkerErrorDegradesToUnlinked: a linker failure must never fail
+// a cluster read — it degrades to "not tunnel-linked", the same fail-open
+// direction every other T-1407 path takes (a resolution problem must not hide
+// a cluster's data or break the registry).
+func TestService_LinkerErrorDegradesToUnlinked(t *testing.T) {
+	ctx := context.Background()
+	svc := newLinkedService(t, fakeLinker{err: errLinker})
+	c, err := svc.Add(ctx, "east", "https://east:8006", Credential{Kind: CredentialToken, Token: "t"}, "admin@pam")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	got, err := svc.Get(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("Get with a failing linker must not error: %v", err)
+	}
+	if got.WgTunnelID != "" || got.WgTunnelSource != "" {
+		t.Errorf("Get() linkage = (%q, %q), want unlinked", got.WgTunnelID, got.WgTunnelSource)
+	}
+	if list, listErr := svc.List(ctx); listErr != nil || len(list) != 1 || list[0].WgTunnelID != "" {
+		t.Errorf("List() = %+v, %v; want one unlinked cluster", list, listErr)
+	}
+}
+
+// TestService_NilLinkerIsShippedBehaviour: without a TunnelLinker the service
+// consults only the explicit column — T-1407's v3.0.3 behaviour, unchanged.
+func TestService_NilLinkerIsShippedBehaviour(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _ := newTestService(t)
+	c, err := svc.Add(ctx, "east", "https://east:8006", Credential{Kind: CredentialToken, Token: "t"}, "admin@pam")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	got, err := svc.Get(ctx, c.ID)
+	if err != nil || got.WgTunnelID != "" || got.WgTunnelSource != "" {
+		t.Errorf("Get() with nil linker = (%q, %q), %v; want unlinked", got.WgTunnelID, got.WgTunnelSource, err)
+	}
+	linkTunnel(t, svc, c.ID, "tun-explicit")
+	if got, err = svc.Get(ctx, c.ID); err != nil || got.WgTunnelID != "tun-explicit" || got.WgTunnelSource != TunnelLinkExplicit {
+		t.Errorf("Get() after explicit link = (%q, %q), %v", got.WgTunnelID, got.WgTunnelSource, err)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+var errLinker = errors.New("linker unavailable")

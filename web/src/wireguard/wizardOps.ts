@@ -21,6 +21,12 @@
 // pasted in here). T-1407 (tunnel-aware federation transport) is the
 // follow-up that can automate that key exchange once federation exists;
 // nothing here blocks on it.
+//
+// What T-1407 *did* add here is `peerClusterId`: the operator can name which
+// attached federation cluster the far side is, and that annotation rides the
+// same wg.peer.add op — still one changeset, still no second mutation path.
+// Key exchange remains manual; only the "which cluster is this" linkage is
+// automated.
 import type { Op, WgPeerAddParams, WgTunnelCreateParams } from "../api/types";
 import { buildFwRuleCreateOp, type RuleFormValues } from "../firewall/opBuilders";
 
@@ -49,6 +55,19 @@ export interface ConnectClustersParams {
   presharedKey: string;
   /** 0 means unset (no persistent keepalive). */
   keepaliveSec: number;
+  /** Optional: the attached federation cluster this peer *is*
+   * (wireguard_peers.cluster_id). "" means "untagged" — an ordinary external
+   * peer, the shape this wizard staged before the linkage existed.
+   *
+   * Tagging is what links the federated cluster to this tunnel: the daemon
+   * derives clusters.wg_tunnel_id from the annotation when no explicit
+   * override is stored (internal/federation.TunnelLinker), so a tunnel-down
+   * peer collapses into the one tunnel_down_peer_unreachable finding instead
+   * of three per-surface "unreachable" flags. Deliberately carried on the
+   * ordinary wg.peer.add op rather than a side-channel PUT to
+   * /federation/clusters: the linkage lands when — and only when — the
+   * changeset that creates the tunnel is actually applied. */
+  peerClusterId: string;
   /** CIDR/IP the firewall rule allows the tunnel's UDP port from — "" means
    * "any" (0.0.0.0/0), appropriate for a peer with no fixed endpoint. */
   fwSourceCidr: string;
@@ -96,6 +115,7 @@ export function buildConnectClustersOps(p: ConnectClustersParams, tunnelId: stri
     presharedKey: p.presharedKey || undefined,
     allowedIps: p.peerAllowedIps.length > 0 ? p.peerAllowedIps : undefined,
     keepaliveSec: p.keepaliveSec || undefined,
+    clusterId: p.peerClusterId || undefined,
     // Always true: see this file's federation-seam doc comment — the far
     // side is never vnprox's own to apply against, whether it's a genuinely
     // external install or another vnprox cluster/node reached via a

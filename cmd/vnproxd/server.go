@@ -647,6 +647,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		Clusters: store.NewClusterRepo(db),
 		Cipher:   sessionCipher,
 		Logger:   logger,
+		// Resolves a cluster's effective tunnel linkage from the peer-level
+		// wireguard_peers.cluster_id annotation whenever no explicit
+		// clusters.wg_tunnel_id override is stored, so the connect-clusters
+		// wizard's tagged peer links the cluster without a second write path
+		// into the clusters table (federation.TunnelLinker's doc comment).
+		TunnelLinker: wgRepo,
 	})
 	if err != nil {
 		return fmt.Errorf("initializing federation service: %w", err)

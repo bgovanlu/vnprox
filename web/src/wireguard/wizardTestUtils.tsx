@@ -11,6 +11,7 @@ import { render } from "@testing-library/react";
 import { vi } from "vitest";
 import { ToastProvider } from "../components/Toast";
 import type { Changeset, MeResponse, Op, RulesetView, TopologyResponse } from "../api/types";
+import type { FederationCluster } from "../api/federation";
 
 export const sessionWithNetWrite: MeResponse = {
   user: { username: "root", realm: "pam" },
@@ -50,7 +51,10 @@ export interface WgWizardFetchStub {
   requestedUrls: { url: string; method: string }[];
 }
 
-export function stubWgWizardFetch(): WgWizardFetchStub {
+/** GET /federation/clusters' payload for the wizard's optional "the far side
+ * is this federated cluster" tagging. Defaults to none attached — the
+ * single-cluster deployment every other test in this file assumes. */
+export function stubWgWizardFetch(federationClusters: FederationCluster[] = []): WgWizardFetchStub {
   const stub: WgWizardFetchStub = { postedChangesets: [], requestedUrls: [] };
   const topology = oneNodeTopology();
 
@@ -63,6 +67,11 @@ export function stubWgWizardFetch(): WgWizardFetchStub {
 
       if (url.includes("/auth/me")) {
         return Promise.resolve(jsonResponse(sessionWithNetWrite));
+      }
+      // Checked before /topology, since /federation/topology would otherwise
+      // match that branch — this one is the registry, not the aggregate.
+      if (url.includes("/federation/clusters")) {
+        return Promise.resolve(jsonResponse({ items: federationClusters }));
       }
       if (url.includes("/topology")) {
         return Promise.resolve(jsonResponse(topology));

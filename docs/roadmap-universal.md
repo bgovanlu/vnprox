@@ -2,9 +2,12 @@
 
 **This arc (Phases 13–17) is shipped**, cut as `v3.0.0` (patched to `v3.0.2` for a packaging
 fix) — see `CHANGELOG.md`'s `[3.0.0]`/`[2.0.0]` entries; Phases 13–15 actually landed under the
-`v2.0.0` tag (applied after they'd already merged), Phases 16–17 under `v3.0.0`. One exception:
-**T-1407 ("tunnel-aware federation transport") was not implemented** — see
-`planning/tasks/phase-14.md` — and remains open, tracked as P1 below.
+`v2.0.0` tag (applied after they'd already merged), Phases 16–17 under `v3.0.0`. One card landed
+late: **T-1407 ("tunnel-aware federation transport")** shipped post-v3.0.2 as `v3.0.3`, after a
+docs/plans-vs-implementation audit found it was the one phase-14 card with no code — see
+`planning/reports/T-1407.md`. Its two flagged follow-ups (reconciling the peer-level
+`wireguard_peers.cluster_id` annotation with `clusters.wg_tunnel_id`, and giving the linkage a UI)
+shipped as `v3.0.4` — see `planning/reports/T-1407-followups.md`. The arc is now complete.
 
 The first arc (`roadmap.md`, Phases 0–7) made vnprox the visual network manager for a PVE
 cluster. The second arc (`roadmap-next.md`, Phases 8–12) made it the all-in-one visual

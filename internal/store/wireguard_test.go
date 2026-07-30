@@ -87,6 +87,83 @@ func TestWireGuardRepo_TunnelLifecycle(t *testing.T) {
 	}
 }
 
+// TestWireGuardRepo_TunnelIDForCluster covers the peer-level half of the
+// tunnel<->cluster linkage internal/federation.Service derives a cluster's
+// effective wg_tunnel_id from: an untagged peer never matches, a tagged one
+// resolves to its tunnel, an unknown/empty cluster id is a clean ("", nil)
+// miss rather than an error, and a cluster tagged on two tunnels resolves
+// deterministically to the lowest tunnel id (so the derived link can't flap
+// between reads).
+func TestWireGuardRepo_TunnelIDForCluster(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	repo := NewWireGuardRepo(db)
+
+	mkTunnel := func(id, ifName string) {
+		t.Helper()
+		if err := repo.InsertTunnel(ctx, WireGuardTunnel{
+			ID: id, Node: "pve1", IfName: ifName, PrivateKeyEnc: []byte{0x01},
+			PublicKey: "PUB" + id, CreatedBy: "root@pam", CreatedAt: 100,
+		}); err != nil {
+			t.Fatalf("InsertTunnel(%s): %v", id, err)
+		}
+	}
+	// Deliberately inserted out of id order, so "lowest id wins" can't pass by
+	// accident through insertion order.
+	mkTunnel("tun-b", "wg1")
+	mkTunnel("tun-a", "wg0")
+
+	// An untagged peer must never link a cluster — '' is also the column's
+	// default, so an empty cluster id must not match it either.
+	if err := repo.AddPeer(ctx, WireGuardPeer{TunnelID: "tun-a", PublicKey: "PEERplain"}); err != nil {
+		t.Fatalf("AddPeer: %v", err)
+	}
+	for _, id := range []string{"", "cl-east"} {
+		got, err := repo.TunnelIDForCluster(ctx, id)
+		if err != nil {
+			t.Fatalf("TunnelIDForCluster(%q): %v", id, err)
+		}
+		if got != "" {
+			t.Errorf("TunnelIDForCluster(%q) = %q, want \"\" (no tagged peer)", id, got)
+		}
+	}
+
+	// A tagged peer resolves to its tunnel.
+	if err := repo.AddPeer(ctx, WireGuardPeer{TunnelID: "tun-b", PublicKey: "PEERb", ClusterID: "cl-east"}); err != nil {
+		t.Fatalf("AddPeer tagged: %v", err)
+	}
+	got, err := repo.TunnelIDForCluster(ctx, "cl-east")
+	if err != nil {
+		t.Fatalf("TunnelIDForCluster: %v", err)
+	}
+	if got != "tun-b" {
+		t.Errorf("TunnelIDForCluster(cl-east) = %q, want tun-b", got)
+	}
+
+	// Same cluster tagged on a second tunnel: lowest tunnel id wins.
+	if err = repo.AddPeer(ctx, WireGuardPeer{TunnelID: "tun-a", PublicKey: "PEERa", ClusterID: "cl-east"}); err != nil {
+		t.Fatalf("AddPeer second: %v", err)
+	}
+	if got, err = repo.TunnelIDForCluster(ctx, "cl-east"); err != nil || got != "tun-a" {
+		t.Errorf("TunnelIDForCluster(cl-east) = %q, %v; want tun-a, nil", got, err)
+	}
+
+	// Removing the winning peer falls back to the remaining tagged tunnel;
+	// removing the last one unlinks the cluster entirely.
+	if err = repo.RemovePeer(ctx, "tun-a", "PEERa"); err != nil {
+		t.Fatalf("RemovePeer: %v", err)
+	}
+	if got, err = repo.TunnelIDForCluster(ctx, "cl-east"); err != nil || got != "tun-b" {
+		t.Errorf("after removing tun-a's peer = %q, %v; want tun-b, nil", got, err)
+	}
+	if err = repo.DeleteTunnel(ctx, "tun-b"); err != nil {
+		t.Fatalf("DeleteTunnel: %v", err)
+	}
+	if got, err = repo.TunnelIDForCluster(ctx, "cl-east"); err != nil || got != "" {
+		t.Errorf("after cascade-deleting the last tagged peer = %q, %v; want \"\", nil", got, err)
+	}
+}
+
 // TestWireGuardRepo_PrivateKeyEncryptedAtRest is the T-1707 v3.0 security-pass
 // targeted encrypted-at-rest test for the WireGuard tunnel private key (a
 // Phase-14 credential class, docs/security.md "WireGuard tunnel keys"): a

@@ -86,6 +86,48 @@ describe("ConnectClustersWizard", () => {
     expect(match).not.toBeNull();
   }, 15000);
 
+  it("tags the peer with the chosen federated cluster on the same wg.peer.add op — still exactly one changeset, no extra write", async () => {
+    const user = userEvent.setup();
+    const stub = stubWgWizardFetch([
+      { id: "cl-east", name: "east", apiUrl: "https://east:8006", status: "ok", addedBy: "root@pam", addedAt: 1_752_000_000 },
+    ]);
+    renderWithProviders(<ConnectClustersWizard open onOpenChange={() => undefined} />);
+
+    await fillSourceStep(user);
+    await waitFor(() => { expect(screen.getByRole("option", { name: "east" })).toBeInTheDocument(); });
+    await user.selectOptions(screen.getByRole("combobox", { name: /Federated cluster/ }), "cl-east");
+    await fillPeerStep(user);
+    await fillFirewallStep(user);
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+
+    await waitFor(() => { expect(stub.postedChangesets).toHaveLength(1); });
+    const { ops } = stub.postedChangesets[0] ?? { ops: [] };
+    expect(ops.map((o) => o.op)).toEqual(["wg.tunnel.create", "wg.peer.add", "fw.rule.create"]);
+    expect(ops.find((o) => o.op === "wg.peer.add")?.params).toMatchObject({ clusterId: "cl-east" });
+
+    // The linkage rides the changeset — it must not be a side-channel PUT to
+    // /federation/clusters/{id} alongside it.
+    const mutations = stub.requestedUrls.filter((r) => r.method !== "GET" && r.method !== "HEAD");
+    expect(mutations).toHaveLength(1);
+    expect(mutations[0]?.url).toContain("/changesets");
+  }, 15000);
+
+  it("leaves the peer untagged when no clusters are attached — the select is disabled and no clusterId is sent", async () => {
+    const user = userEvent.setup();
+    const stub = stubWgWizardFetch();
+    renderWithProviders(<ConnectClustersWizard open onOpenChange={() => undefined} />);
+
+    await fillSourceStep(user);
+    expect(screen.getByRole("combobox", { name: /Federated cluster/ })).toBeDisabled();
+    await fillPeerStep(user);
+    await fillFirewallStep(user);
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+
+    await waitFor(() => { expect(stub.postedChangesets).toHaveLength(1); });
+    const { ops } = stub.postedChangesets[0] ?? { ops: [] };
+    expect(JSON.stringify(ops.find((o) => o.op === "wg.peer.add")?.params)).not.toContain("clusterId");
+  }, 15000);
+
   it("cancelling mid-flow (before the final step) never posts anything — no half-open tunnel-without-firewall state", async () => {
     const user = userEvent.setup();
     const stub = stubWgWizardFetch();

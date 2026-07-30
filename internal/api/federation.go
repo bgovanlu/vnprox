@@ -63,18 +63,28 @@ type federationAuditWriter interface {
 	Append(ctx context.Context, e store.AuditEntry) (int64, error)
 }
 
+// federationClusterResponse is one registry entry. wgTunnelId is the cluster's
+// *effective* WireGuard tunnel linkage and wgTunnelSource says where it came
+// from — "explicit" (the operator set clusters.wg_tunnel_id through this
+// route's PUT) or "peer" (derived from a WireGuard peer tagged with this
+// cluster, the connect-clusters wizard's path). Both are read-only outputs:
+// PUT always writes the explicit override, never the derived link.
 type federationClusterResponse struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	APIURL     string `json:"apiUrl"`
-	Status     string `json:"status"`
-	AddedBy    string `json:"addedBy"`
-	WgTunnelID string `json:"wgTunnelId,omitempty"`
-	AddedAt    int64  `json:"addedAt"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	APIURL         string `json:"apiUrl"`
+	Status         string `json:"status"`
+	AddedBy        string `json:"addedBy"`
+	WgTunnelID     string `json:"wgTunnelId,omitempty"`
+	WgTunnelSource string `json:"wgTunnelSource,omitempty"`
+	AddedAt        int64  `json:"addedAt"`
 }
 
 func toFederationClusterResponse(c federation.Cluster) federationClusterResponse {
-	return federationClusterResponse{ID: c.ID, Name: c.Name, APIURL: c.APIURL, Status: c.Status, AddedBy: c.AddedBy, AddedAt: c.AddedAt, WgTunnelID: c.WgTunnelID}
+	return federationClusterResponse{
+		ID: c.ID, Name: c.Name, APIURL: c.APIURL, Status: c.Status, AddedBy: c.AddedBy,
+		AddedAt: c.AddedAt, WgTunnelID: c.WgTunnelID, WgTunnelSource: c.WgTunnelSource,
+	}
 }
 
 type federationClustersListResponse struct {

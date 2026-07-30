@@ -67,6 +67,46 @@ export function fetchFederationClusterTopology(id: string): Promise<TopologyResp
   return apiFetch<TopologyResponse>(`/federation/topology/clusters/${encodeURIComponent(id)}`);
 }
 
+/** One attached cluster's registry entry — GET /federation/clusters' item
+ * shape (internal/api's federationClusterResponse). The credential is never
+ * part of it.
+ *
+ * `wgTunnelId` is the cluster's *effective* WireGuard tunnel linkage and
+ * `wgTunnelSource` says where it came from: "explicit" (an operator set it
+ * through PUT /federation/clusters/{id}) or "peer" (derived from a WireGuard
+ * peer tagged with this cluster — what the connect-clusters wizard stages).
+ * Both are absent on a cluster that isn't tunnel-linked. */
+export interface FederationCluster {
+  id: string;
+  name: string;
+  apiUrl: string;
+  status: string;
+  addedBy: string;
+  addedAt: number;
+  wgTunnelId?: string;
+  wgTunnelSource?: "explicit" | "peer";
+}
+
+export interface FederationClustersResponse {
+  items: FederationCluster[];
+}
+
+/** GET /federation/clusters — the attached-cluster registry. Like the other
+ * federation reads here, a 404 (federation isn't wired on this daemon) is
+ * normalized to an empty list rather than an error, so a single-cluster
+ * deployment just sees "no attached clusters" wherever this is offered. */
+export async function fetchFederationClusters(): Promise<FederationCluster[]> {
+  try {
+    const res = await apiFetch<FederationClustersResponse>("/federation/clusters");
+    return res.items;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return [];
+    }
+    throw err;
+  }
+}
+
 /** GET /federation/search?q= — cluster-namespaced global entity search.
  * Returns an empty set (no request) for a blank query, mirroring
  * searchInventory's own "nothing typed yet" short-circuit. A 404 (federation

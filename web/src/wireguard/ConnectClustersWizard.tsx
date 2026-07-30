@@ -40,6 +40,7 @@ import { useNodeRulesetQuery } from "../firewall/queries";
 import { WizardPreviewPane } from "../sdn/wizards/WizardPreviewPane";
 import { WizardShell, type WizardStep } from "../sdn/wizards/WizardShell";
 import { useClusterNodes } from "../sdn/wizards/useClusterNodes";
+import { useFederationClustersQuery } from "../topology/federation/federationQueries";
 import { buildConnectClustersPreview } from "./previewGraph";
 import { wgWizardStrings as S } from "./strings";
 import { buildConnectClustersOps, type ConnectClustersParams } from "./wizardOps";
@@ -63,6 +64,7 @@ const DEFAULT_PARAMS: Omit<ConnectClustersParams, "sourceNode"> = {
   peerAllowedIps: [],
   presharedKey: "",
   keepaliveSec: 0,
+  peerClusterId: "",
   fwSourceCidr: "",
 };
 
@@ -98,8 +100,15 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
   const [peerAllowedIpsRaw, setPeerAllowedIpsRaw] = useState("");
   const [presharedKey, setPresharedKey] = useState(DEFAULT_PARAMS.presharedKey);
   const [keepaliveSec, setKeepaliveSec] = useState(DEFAULT_PARAMS.keepaliveSec);
+  const [peerClusterId, setPeerClusterId] = useState(DEFAULT_PARAMS.peerClusterId);
   const [fwSourceCidr, setFwSourceCidr] = useState(DEFAULT_PARAMS.fwSourceCidr);
   const [finishing, setFinishing] = useState(false);
+
+  // The attached-cluster registry, for the optional "the far side is this
+  // federated cluster" tagging on the peer step. Degrades to an empty list
+  // (no federation wired / no netRead), which renders the select disabled
+  // rather than hiding it — the tagging is optional either way.
+  const federationClusters = useFederationClustersQuery(open).data ?? [];
 
   // Generated once per wizard *instance* (remounted fresh whenever the
   // dialog reopens, since ConnectClustersWizardHost keys it — see that
@@ -122,9 +131,10 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
       peerAllowedIps: parseAllowedIps(peerAllowedIpsRaw),
       presharedKey,
       keepaliveSec,
+      peerClusterId,
       fwSourceCidr,
     }),
-    [sourceNode, ifName, listenPort, carrier, localAddress, mtu, peerPublicKey, peerEndpoint, peerAllowedIpsRaw, presharedKey, keepaliveSec, fwSourceCidr],
+    [sourceNode, ifName, listenPort, carrier, localAddress, mtu, peerPublicKey, peerEndpoint, peerAllowedIpsRaw, presharedKey, keepaliveSec, peerClusterId, fwSourceCidr],
   );
 
   const graph = useMemo(() => buildConnectClustersPreview(params, tunnelId), [params, tunnelId]);
@@ -240,6 +250,22 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
           <Field label="Keepalive (seconds)" help={S.peerHelp.keepalive}>
             <input type="number" className={inputClass} value={keepaliveSec || ""} onChange={(e) => { setKeepaliveSec(Number(e.target.value)); }} min={0} />
           </Field>
+          <Field label="Federated cluster" help={S.peerHelp.federatedCluster}>
+            <select
+              className={inputClass}
+              value={peerClusterId}
+              disabled={federationClusters.length === 0}
+              onChange={(e) => { setPeerClusterId(e.target.value); }}
+            >
+              <option value="">{federationClusters.length === 0 ? S.federatedClusterEmpty : S.federatedClusterNone}</option>
+              {federationClusters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.wgTunnelId ? " — already linked to a tunnel" : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
       ),
     },
@@ -276,6 +302,12 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
               {peerEndpoint ? ` at ${peerEndpoint}` : " (no fixed endpoint)"}, allowed {params.peerAllowedIps.join(", ") || "none"}
             </li>
             <li>Firewall rule on {sourceNode || "?"} allowing UDP {listenPort} in from {fwSourceCidr || "anywhere"}</li>
+            {peerClusterId ? (
+              <li>
+                Tags that peer as federated cluster &quot;{federationClusters.find((c) => c.id === peerClusterId)?.name ?? peerClusterId}&quot; — once
+                applied, that cluster counts as reachable over this tunnel
+              </li>
+            ) : null}
           </ul>
         </div>
       ),

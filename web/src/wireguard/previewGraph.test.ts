@@ -18,6 +18,7 @@ function params(overrides: Partial<ConnectClustersParams> = {}): ConnectClusters
     peerAllowedIps: ["10.10.0.2/32"],
     presharedKey: "",
     keepaliveSec: 0,
+    peerClusterId: "",
     fwSourceCidr: "203.0.113.10/32",
     ...overrides,
   };
