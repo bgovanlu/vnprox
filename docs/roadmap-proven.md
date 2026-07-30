@@ -40,7 +40,7 @@ that release as capacity allows; P2 = wanted, cut first under pressure.
 | # | Pri | Item | Phase |
 |---|-----|------|-------|
 | 1 | P0 | Hardware-validation burndown (105 open items) | 18 |
-| 2 | P0 | Real multi-node cluster validation | 18 |
+| 2 | P0 | Blocked register + multi-node mock fidelity | 18 |
 | 3 | P0 | Failure-injection proof of commit-confirm | 18 |
 | 4 | P0 | Close the unattended-rollback gap for `fw.*` / `sdn.apply` | 18 |
 | 5 | P0 | Trustworthy CI + branch protection | 18 |
@@ -95,11 +95,19 @@ evidence that the features already shipped do what their docs say on real Proxmo
   cluster, checking items off with the PVE version tested, and treat every divergence found
   as a bug card rather than a doc amendment. Prioritize the sections gating safety: PVE API
   behavior, the peer API, the distributed rollback/local-timer protocol, and the host writer.
-- **P0 — Real multi-node cluster validation.** Everything cluster-aware — peer discovery,
-  fan-out reads, cross-node changesets, distributed rollback timers, single-writer HA lease
-  fencing (T-1704) — has only ever run against a *single-node* cluster and mocks. pmxcfs
-  cross-node replication in particular is explicitly listed as not-yet-validated. A three-node
-  cluster is the minimum bar; HA lease fencing cannot be meaningfully tested below two.
+- **P0 — Face the multi-node gap honestly, and shrink it.** Everything cluster-aware — peer
+  discovery, fan-out reads, cross-node changesets, distributed rollback timers, single-writer
+  HA lease fencing (T-1704) — has only ever run against a *single-node* cluster and mocks, and
+  **that is not changing this arc** (decision D2: `pvecube` is the only hardware). Roughly 45 of
+  the 105 checklist items are therefore unreachable, all of them covering already-shipped
+  features. Two deliverables follow. First, a written **blocked register**: every unreachable
+  item, why it is blocked, what could plausibly be broken, and the severity if it is — so the
+  gap is a known quantity rather than an absence. Second, **make the mock worth trusting**
+  (decision D3): `internal/pvemock` gains genuine N-node cluster fixtures, pmxcfs replication
+  latency and partial-write failure modes, corosync quorum loss and partition, and slow or
+  unreachable peer daemons — then the cluster suites re-run against the harder mock. A mock that
+  models the failure modes hardware would exhibit is not a substitute for hardware, but it is
+  the difference between "untested" and "tested against something adversarial."
 - **P0 — Failure-injection proof of commit-confirm.** The product's central safety claim is
   "if the change locks you out, it reverts itself." That path has never been exercised on
   hardware against a real lockout: pull the management link mid-apply, kill `vnproxd` inside
@@ -112,11 +120,16 @@ evidence that the features already shipped do what their docs say on real Proxmo
   credential available to revert them. A `fw.*`-only changeset that reaches `awaiting_confirm`
   and then times out — or whose daemon crashes mid-window — **is not automatically reverted**,
   unlike node-file changes. This is a real hole in the core guarantee, spanning two op
-  families, that no single task felt entitled to fix. It needs an architectural decision
-  (a narrowly-scoped daemon-held PVE token? a pre-authorized revert ticket captured at apply
-  time? an explicit "this op family is confirm-only" contract surfaced in the UI?) and then
-  the implementation. Whatever the answer, the UI must stop implying a safety net that isn't
-  there for those ops.
+  families, that no single task felt entitled to fix. **Decided (D1): capture a revert ticket at
+  apply time.** The applying user's PVE ticket is sealed into the changeset for the duration of
+  the confirm window and used to revert unattended, then wiped on confirm, rollback, or expiry.
+  This keeps the revert acting under the same authority that made the change, adds no standing
+  privileged credential anywhere, and is naturally bounded by the window itself. The costs are
+  real and belong in the card: a new secret at rest (sealed with the existing `SessionCipher`,
+  never a second key pair), the ticket's own ~2h TTL bounding how long a confirm window can be
+  honored, and a crash-recovery path that must find and use the sealed ticket after a restart.
+  Where a ticket is unavailable or expired, the UI must stop implying a safety net that isn't
+  there.
 - **P0 — Trustworthy CI and branch protection.** The `check` and `fuzz` jobs fail
   independently of the diff, and `main` has no branch protection — so the signal everyone
   ignores is also the signal nothing enforces. Fix the flakes (or delete the jobs), pin the
@@ -133,9 +146,10 @@ evidence that the features already shipped do what their docs say on real Proxmo
   it against a real cluster's real config — projection time, payload size, first paint,
   interaction latency — and publish the numbers, including where they break down.
 
-Exit demo: the hardware checklist is majority-green with the PVE versions recorded; a
-three-node cluster survives a scripted lockout during an apply and heals itself unattended;
-CI is green, required, and believed.
+Exit demo: every `pvecube`-reachable checklist item is green with the PVE version recorded and
+its evidence blob committed; the blocked register accounts for the rest; a scripted management-
+path lockout during an apply heals itself unattended on real hardware — including for a
+firewall-only changeset, which today it would not; and CI is green, required, and believed.
 
 ## Phase 19 — Operable in the field → **v3.2**
 
@@ -240,10 +254,12 @@ none of them have anything on the other side yet.
   their CI to this repo's conformance tests so a contract break fails loudly.
 - **P0 — Signed apt repository and a trustworthy install path.** Today's install is
   "download a `.deb` from GitHub Releases and hope." For software that runs as root on a
-  hypervisor and rewrites its network config, that is not good enough. Stand up a signed apt
-  repository with a documented key, reproducible builds where practical, published checksums,
-  and an upgrade path `apt` can drive. Blueprint bundle signing (T-1107) already established
-  the key-handling conventions to reuse.
+  hypervisor and rewrites its network config, that is not good enough. **Decided (D6): a static
+  signed apt repository published from CI to GitHub Pages** — no infrastructure to run or patch,
+  works with plain `apt`, and the release workflow that already builds both architectures grows
+  the signing and index-generation steps. Ship a documented signing key, published checksums,
+  reproducible builds where practical, and an `apt`-driven upgrade path. Blueprint bundle
+  signing (T-1107) already established the key-handling conventions to reuse.
 - **P1 — PVE compatibility matrix and automated compat testing.** `docs/roadmap.md` commits
   to "a compatibility validation task within one phase of each new PVE release" — a promise
   with no mechanism behind it. Build a matrix (PVE 8.2 / 9.x / next), run the conformance and
@@ -277,14 +293,51 @@ same cluster is then described in Terraform, planned, and applied through the pr
   stays that way. If anything, this arc's evidence work is what would eventually justify
   trusting it further.
 
+## Decisions
+
+Settled before decomposition, 2026-07-30. Cards cite these IDs; changing one means reopening
+the cards that cite it.
+
+- **D1 — Unattended revert for `fw.*`/`sdn.apply`: capture a revert ticket at apply time.**
+  Seal the applying user's PVE ticket for the confirm window, revert with it, wipe it on
+  confirm/rollback/expiry. Rejected: a standing daemon-held scoped token (a permanent
+  privileged credential at rest, and a revert that acts as vnprox rather than as the user), and
+  confirm-only-with-a-warning (truthful, but leaves the core promise holed).
+- **D2 — Hardware for this arc is `pvecube` only, a single node.** No nested cluster, no
+  additional machines. ~60 of the 105 checklist items are reachable; the rest are registered as
+  blocked, not quietly skipped.
+- **D3 — The multi-node gap gets a blocked register *and* a harder mock.** `internal/pvemock`
+  grows real multi-node failure modes so the cluster suites are tested against something
+  adversarial rather than a stub.
+- **D4 — Decompose all four phases now**, matching how the prior three arcs were planned before
+  any of them started. Accepted risk: Phase 20–21 cards are written before validation findings
+  exist and may need revision after v3.1.
+- **D5 — Agents build harnesses; the human runs them.** `CLAUDE.md`'s no-live-PVE constraint
+  stands unchanged. No agent gets SSH to a Proxmox node, including `pvecube`. Blast radius of
+  unattended agent work stays zero.
+- **D6 — Distribution is a static signed apt repo on GitHub Pages.** No servers to run.
+- **D7 — Validation evidence protocol: scripts emit JSON, an agent triages.** Each validation
+  card ships one runnable script per checklist section that prints a machine-readable result
+  blob; the human runs it and returns the output; an agent diffs it against the card's expected
+  outcomes, ticks the checklist, and opens bug cards for divergences. This keeps the human turn
+  count at roughly one per section (~8) rather than one per item (~60).
+
 ## Decomposition
 
-Not yet decomposed into task cards. When it is, follow the established convention:
-`planning/implementation-plan-proven.md` for the dependency graph and model assignments, with
-per-phase card files `planning/tasks/phase-18.md` … `phase-21.md`.
+Decomposed into **26 task cards across 4 phases** — see
+[`planning/implementation-plan-proven.md`](../planning/implementation-plan-proven.md) for the
+dependency graph, model assignments, and review checkpoints, with per-phase card files
+`planning/tasks/phase-18.md` … `phase-21.md`. (26 cards for 25 roadmap items: Phase 18's
+validation burndown splits into a harness-and-protocol card and the burndown that consumes it,
+since the harness is a prerequisite deliverable in its own right.)
 
-One process note specific to this arc: Phase 18 cannot be executed by an implementation agent
-under `CLAUDE.md`'s current constraint that agents have no live PVE access. Its cards are
-**human-run validation** with agent support for building harnesses, fixtures, and the bug
-cards that fall out — the reverse of every prior phase's split, and worth stating in the
-cards so nobody tries to close a hardware item against a mock.
+Two process notes specific to this arc, both consequences of D5 and D7:
+
+- **Phase 18's validation cards invert the usual agent/human split.** An agent builds the
+  harness, writes the expected outcomes, and triages returned evidence into bug cards; the human
+  runs the harness against hardware. No card may be closed by an agent asserting a hardware
+  behavior it did not observe — an item is ticked only against a returned evidence blob, which
+  is committed alongside the tick.
+- **"Validated" and "mock-validated" are different words in this arc** and the cards use them
+  precisely. A checklist item closed against `internal/pvemock` — however faithful T-1803 makes
+  it — is mock-validated, and the blocked register says so.
