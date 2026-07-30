@@ -81,6 +81,9 @@ export function entityAriaLabel(data: EntityNodeData): string {
   if (data.isGuestGroup) {
     parts.push("guest group");
     parts.push(typeof data.collapsedCount === "number" ? `${String(data.collapsedCount)} guests` : data.label);
+  } else if (data.isPhysGroup) {
+    parts.push("physical NIC group");
+    parts.push(typeof data.collapsedCount === "number" ? `${String(data.collapsedCount)} NICs` : data.label);
   } else {
     parts.push(`${data.kind} ${data.label}`);
   }

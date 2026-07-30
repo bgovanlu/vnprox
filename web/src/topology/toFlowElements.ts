@@ -7,7 +7,7 @@ import type { Edge as FlowEdge, Node as FlowNode } from "@xyflow/react";
 import type { Layer, TopologyEdge, TopologyNode } from "../api/types";
 import type { EntityEdgeData } from "./EntityEdge";
 import type { EntityNodeData } from "./EntityNode";
-import { computeHoverHighlight, computeVlanMatch, filterByLayers, isGuestGroupId } from "./projection";
+import { computeHoverHighlight, computeVlanMatch, filterByLayers, isGuestGroupId, isPhysGroupId } from "./projection";
 import { resolveEdgeUtilizationRef } from "./trafficMode";
 import type { XYPosition } from "./layout";
 import type { PathHighlight } from "../simulator/pathHighlight";
@@ -136,6 +136,7 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
         stale: staleNodeGroups?.has(n.nodeGroup) ?? false,
         highlighted,
         isGuestGroup: isGuestGroupId(n.id),
+        isPhysGroup: isPhysGroupId(n.id),
         collapsedCount: n.collapsedCount,
         simVerdict: onPath || isMissing ? pathHighlight?.verdict : undefined,
         simRole: isMissing ? "missing" : isBlocking ? "blocking" : onPath ? "path" : undefined,

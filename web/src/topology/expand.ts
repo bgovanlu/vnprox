@@ -19,7 +19,7 @@
 // this pill's node, then fetch each one's own detail (already-normalized
 // label/fields) to synthesize a node + attachment edge for it.
 import type { EntityDetail, TopologyEdge, TopologyNode } from "../api/types";
-import { parseGuestGroupId } from "./projection";
+import { isPhysGroupId, parseGuestGroupId } from "./projection";
 
 /** A ref string's node segment, per inventory.Ref's "kind:node:id" encoding
  * (ParseRef splits on only the first two ':', so this must too — a plain
@@ -122,6 +122,104 @@ export async function expandGuestGroup(
     const { node, edge } = nicDetailToTopologyElements(result.value, parsed.targetRef);
     nodes.push(node);
     edges.push(edge);
+  }
+  return { nodes, edges };
+}
+
+// --- Physical-layer ("phys-group:<node>") pill expand logic (T-1907) -----
+//
+// internal/topology/collapse_physical.go drops a collapsed node's individual
+// PhysNic entries entirely from GET /topology's response, same as
+// collapseGuests does for guests — they are absent, not merely hidden. But
+// a phys-group pill has no single shared attachment target the way a
+// guest-group's bridge/VNet does (a node's NICs fan out to whichever
+// bonds/bridges happen to be configured, or nowhere at all), so there is no
+// analog of guestNicRefsForGroup's "ask the target who's attached" trick.
+// Instead, the pill carries its member refs directly (TopologyNode.members
+// — see that field's doc comment), and expansion is: for each member ref,
+// fetch its own /inventory/{ref} detail (same building block, still
+// unaffected by collapse) to synthesize its node + whatever enslaved-by/
+// port-of edges it had before it collapsed.
+
+const PHYS_ATTACH_EDGE_KINDS = new Set(["enslaved-by", "port-of"]);
+
+/** Synthesizes a rendered TopologyNode + its structural attachment
+ * TopologyEdges for one expanded PhysNic, from its own /inventory/{ref}
+ * detail — the same shape internal/topology/project.go's buildNodes/
+ * buildEdges would have produced had it not been collapsed. Mirrors
+ * nicDetailToTopologyElements's approximation of using the reconstructed
+ * node's own status for each edge (project.go actually takes the worst of
+ * both endpoints — see buildEdges — but the target's own status is already
+ * visible on its own rendered node, so this stays a reasonable, existing-
+ * pattern-consistent approximation rather than a second fetch per edge). */
+export function physNicDetailToTopologyElements(nicDetail: EntityDetail): {
+  node: TopologyNode;
+  edges: TopologyEdge[];
+} {
+  const linkUpSet = nicDetail.fields.LinkUpSet === true;
+  const linkUp = nicDetail.fields.LinkUp === true;
+  const status: TopologyNode["status"] = !linkUpSet ? "unknown" : linkUp ? "ok" : "down";
+
+  const node: TopologyNode = {
+    id: nicDetail.ref,
+    kind: nicDetail.kind,
+    label: nicDetail.label,
+    layer: "phys",
+    nodeGroup: nicDetail.node,
+    status,
+    badges: [],
+  };
+  const edges: TopologyEdge[] = nicDetail.related
+    .filter((r) => r.direction === "to" && PHYS_ATTACH_EDGE_KINDS.has(r.edgeKind))
+    .map((r) => ({
+      from: nicDetail.ref,
+      to: r.ref,
+      kind: r.edgeKind,
+      status,
+      badges: [],
+    }));
+  return { node, edges };
+}
+
+/** True error type distinguishing "not a phys-group id at all" (caller bug)
+ * from ordinary fetch failures, which callers surface as a toast — mirrors
+ * InvalidGuestGroupIdError exactly. */
+export class InvalidPhysGroupIdError extends Error {
+  constructor(id: string) {
+    super(`not a phys-group id: ${id}`);
+    this.name = "InvalidPhysGroupIdError";
+  }
+}
+
+export interface ExpandPhysicalGroupDeps {
+  fetchDetail: (ref: string) => Promise<EntityDetail>;
+}
+
+/** Expands one phys-group pill: fetches each of its member refs' own detail
+ * (in parallel) and synthesizes their node + edges — mirroring
+ * expandGuestGroup's shape, minus the target-lookup first phase a
+ * phys-group pill has no use for (see this section's doc comment). `node`
+ * is the pill's own TopologyNode (its `members` list lives there, not
+ * recoverable from the id alone); individual per-NIC fetch failures are
+ * collected rather than failing the whole expansion, so one bad ref doesn't
+ * hide the rest. */
+export async function expandPhysicalGroup(
+  node: TopologyNode,
+  deps: ExpandPhysicalGroupDeps,
+): Promise<{ nodes: TopologyNode[]; edges: TopologyEdge[] }> {
+  if (!isPhysGroupId(node.id)) {
+    throw new InvalidPhysGroupIdError(node.id);
+  }
+  const memberRefs = node.members ?? [];
+
+  const settled = await Promise.allSettled(memberRefs.map((ref) => deps.fetchDetail(ref)));
+  const nodes: TopologyNode[] = [];
+  const edges: TopologyEdge[] = [];
+  for (const result of settled) {
+    if (result.status !== "fulfilled") continue;
+    const { node: n, edges: es } = physNicDetailToTopologyElements(result.value);
+    nodes.push(n);
+    edges.push(...es);
   }
   return { nodes, edges };
 }

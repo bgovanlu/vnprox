@@ -109,7 +109,35 @@ function NeighborTag({ neighbor }: { neighbor: SwitchPortNic["neighbor"] }) {
   );
 }
 
-function NicPort({ nic, onSelect }: { nic: SwitchPortNic; onSelect: (ref: string) => void }) {
+function NicPort({
+  nic,
+  onSelect,
+  onExpandGroup,
+}: {
+  nic: SwitchPortNic;
+  onSelect: (ref: string) => void;
+  onExpandGroup: (groupId: string) => void;
+}) {
+  // T-1907: a collapsed phys-group pill standing in for `count` real NICs —
+  // same "dashed border, click to expand" affordance as a guest-group
+  // access port, reusing onExpandGroup instead of onSelect.
+  if (nic.isGroup) {
+    return (
+      <button
+        type="button"
+        aria-label={`Expand ${String(nic.count ?? "")} collapsed NICs`}
+        data-entity-ref={nic.ref}
+        onClick={() => {
+          onExpandGroup(nic.ref);
+        }}
+        className="flex items-center gap-1.5 rounded border border-dashed border-slate-400 bg-slate-100 px-2 py-1 text-left text-xs text-slate-600 hover:border-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500"
+      >
+        <Led status={nic.status} />
+        <span className="font-mono font-medium">{nic.label}</span>
+        <span className="text-[9px] uppercase tracking-wide">click to expand</span>
+      </button>
+    );
+  }
   const onMgmtPath = nic.badges.includes("mgmt-path");
   const descId = `${nic.ref}-a11y-desc`;
   return (
@@ -148,12 +176,22 @@ function NicPort({ nic, onSelect }: { nic: SwitchPortNic; onSelect: (ref: string
   );
 }
 
-function UplinkModule({ uplink, onSelect }: { uplink: SwitchUplink; onSelect: (ref: string) => void }) {
-  // A bare NIC uplink (single member, itself a NIC) renders as one port chip;
-  // a bond renders as a labeled bay wrapping its member NICs.
+function UplinkModule({
+  uplink,
+  onSelect,
+  onExpandGroup,
+}: {
+  uplink: SwitchUplink;
+  onSelect: (ref: string) => void;
+  onExpandGroup: (groupId: string) => void;
+}) {
+  // A bare NIC uplink (single member, itself a NIC) renders as one port chip
+  // — this includes a T-1907 phys-group pill directly port-of the bridge,
+  // which is never a bond, so it always takes this branch too; a bond
+  // renders as a labeled bay wrapping its member NICs.
   const bareNic = uplink.members[0];
   if (!BOND_KINDS.has(uplink.kind) && bareNic) {
-    return <NicPort nic={bareNic} onSelect={onSelect} />;
+    return <NicPort nic={bareNic} onSelect={onSelect} onExpandGroup={onExpandGroup} />;
   }
   const uplinkDescId = `${uplink.ref}-a11y-desc`;
   return (
@@ -188,7 +226,7 @@ function UplinkModule({ uplink, onSelect }: { uplink: SwitchUplink; onSelect: (r
       <A11yDesc id={uplinkDescId} text={switchAriaDescription(uplink.kind, uplink.status, uplink.badges)} />
       <div className="flex flex-wrap gap-1">
         {uplink.members.map((m) => (
-          <NicPort key={m.ref} nic={m} onSelect={onSelect} />
+          <NicPort key={m.ref} nic={m} onSelect={onSelect} onExpandGroup={onExpandGroup} />
         ))}
       </div>
     </div>
@@ -347,7 +385,7 @@ export function SwitchFaceplate({
         <Section label="Uplink">
           <div className="flex flex-wrap gap-1.5">
             {model.uplinks.map((u) => (
-              <UplinkModule key={u.ref} uplink={u} onSelect={onSelect} />
+              <UplinkModule key={u.ref} uplink={u} onSelect={onSelect} onExpandGroup={onExpandGroup} />
             ))}
           </div>
         </Section>

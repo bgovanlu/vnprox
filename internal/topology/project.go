@@ -66,6 +66,8 @@ func Project(snap inventory.Snapshot, f Filter) Topology {
 
 	nodes, groups := buildNodes(snap, byRef, candidate)
 	nodes, groupEdges := collapseGuests(nodes, groups, byRef)
+	nodes, physGroupEdges := collapsePhysical(nodes, snap.Edges())
+	groupEdges = append(groupEdges, physGroupEdges...)
 
 	nodeSet := make(map[string]bool, len(nodes))
 	for _, n := range nodes {

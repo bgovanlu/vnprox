@@ -24,7 +24,36 @@ export interface SwitchViewProps {
 
 /** A lone free port rendered outside any switch (an unattached NIC/bond) —
  * reuses the same look as an uplink module so it reads consistently. */
-function FreePort({ port, onSelect }: { port: SwitchUplink; onSelect: (ref: string) => void }) {
+function FreePort({
+  port,
+  onSelect,
+  onExpandGroup,
+}: {
+  port: SwitchUplink;
+  onSelect: (ref: string) => void;
+  onExpandGroup: (groupId: string) => void;
+}) {
+  // T-1907: a phys-group pill can end up here too, when every one of its
+  // collapsed NICs was genuinely unattached (no bond/bridge edge survived
+  // to synthesize a group edge) — same dashed "click to expand" affordance
+  // SwitchFaceplate.tsx's own NicPort gives it inside an uplink bay.
+  if (port.isGroup) {
+    return (
+      <button
+        type="button"
+        aria-label={`Expand ${String(port.count ?? "")} collapsed NICs`}
+        data-entity-ref={port.ref}
+        onClick={() => {
+          onExpandGroup(port.ref);
+        }}
+        className="flex items-center gap-1.5 rounded border border-dashed border-slate-400 bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:border-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+      >
+        <span className="h-2 w-2 rounded-full bg-slate-400" />
+        <span className="font-mono">{port.label}</span>
+        <span className="text-[9px] uppercase tracking-wide">click to expand</span>
+      </button>
+    );
+  }
   const isBond = BOND_KINDS.has(port.kind);
   return (
     <button
@@ -119,7 +148,7 @@ export function SwitchView({
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {group.freePorts.map((p) => (
-                      <FreePort key={p.ref} port={p} onSelect={onSelect} />
+                      <FreePort key={p.ref} port={p} onSelect={onSelect} onExpandGroup={onExpandGroup} />
                     ))}
                   </div>
                 </div>

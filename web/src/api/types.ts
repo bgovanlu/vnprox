@@ -87,8 +87,15 @@ export interface TopologyNode {
   nodeGroup: string;
   status: EntityStatus;
   badges: string[];
-  /** Present only on synthetic "guest-group" pill nodes. */
+  /** Present only on synthetic "guest-group"/"phys-group" pill nodes. */
   collapsedCount?: number;
+  /** Present only on synthetic "phys-group:<node>" per-node physical-layer
+   * summary pills (T-1907, internal/topology/collapse_physical.go): the Ref
+   * strings of every entity this pill absorbed. A guest-group pill has no
+   * such field — its single shared attachment target already gives the
+   * frontend a place to discover membership (see expand.ts) — so this is
+   * the phys-group-only exception to that pattern. */
+  members?: string[];
 }
 
 export interface TopologyEdge {

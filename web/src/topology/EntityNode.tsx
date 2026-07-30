@@ -30,6 +30,13 @@ export interface EntityNodeData extends Record<string, unknown> {
   stale?: boolean;
   highlighted: boolean;
   isGuestGroup: boolean;
+  /** T-1907: true for a synthetic "phys-group:<node>" per-node physical-
+   * layer summary pill — reuses the exact same pill rendering as
+   * isGuestGroup (see `isPill` below) rather than a second look. Optional
+   * (unlike isGuestGroup) so every pre-existing EntityNodeData literal
+   * across the codebase — none of which know about phys-group pills —
+   * keeps compiling unchanged; falsy/undefined reads exactly like `false`. */
+  isPhysGroup?: boolean;
   collapsedCount?: number;
   /** Path simulator overlay (see toFlowElements.ts's `pathHighlight` param)
    * — undefined leaves this node's normal status/hover rendering alone. */
@@ -70,6 +77,7 @@ const KIND_ACCENT: Record<string, string> = {
   guest: "bg-emerald-50 dark:bg-emerald-950",
   "guest-nic": "bg-emerald-50 dark:bg-emerald-950",
   "guest-group": "bg-emerald-100 dark:bg-emerald-900",
+  "phys-group": "bg-slate-200 dark:bg-slate-700",
   "lldp-neighbor": "bg-slate-100 dark:bg-slate-800",
 };
 
@@ -146,7 +154,7 @@ function isQosShapedBadge(badge: string): boolean {
 }
 
 export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
-  const isPill = data.isGuestGroup;
+  const isPill = data.isGuestGroup || data.isPhysGroup;
   const simVerdict = data.simVerdict;
   const simRole = data.simRole;
   const verifyOutcome = data.verifyOutcome;

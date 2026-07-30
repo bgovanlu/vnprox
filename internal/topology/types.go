@@ -69,14 +69,30 @@ func worstStatus(a, b Status) Status {
 // inventory Refs — the frontend must special-case ids with that prefix as
 // "expand this pill" rather than "open the inspector".
 type Node struct {
-	ID             string   `json:"id"`
-	Kind           string   `json:"kind"`
-	Label          string   `json:"label"`
-	Layer          Layer    `json:"layer"`
-	NodeGroup      string   `json:"nodeGroup"`
-	Status         Status   `json:"status"`
-	DnsName        string   `json:"dnsName,omitempty"`
-	Badges         []string `json:"badges"`
+	ID        string   `json:"id"`
+	Kind      string   `json:"kind"`
+	Label     string   `json:"label"`
+	Layer     Layer    `json:"layer"`
+	NodeGroup string   `json:"nodeGroup"`
+	Status    Status   `json:"status"`
+	DnsName   string   `json:"dnsName,omitempty"`
+	Badges    []string `json:"badges"`
+	// Members lists the Ref strings of every entity this synthetic
+	// collapse node absorbed (T-1907's physical-layer "phys-group:<node>"
+	// per-node summary — see collapsePhysical). Unlike a "guest-group:
+	// <node>:<targetRef>" pill (whose single shared attachment target
+	// already gives the frontend a place to ask "who's collapsed here" via
+	// that target's own GET /inventory/{ref} `related` list — see
+	// web/src/topology/expand.ts's doc comment), a per-node physical-layer
+	// summary has no single such target: a node's NICs fan out to several
+	// different bonds/bridges, or none. So the member refs are carried
+	// directly on the node instead, and the frontend's expand path
+	// (expandPhysicalGroup) fetches each one's own GET /inventory/{ref}
+	// detail to reconstruct it — still zero backend round trips beyond
+	// what Detail() already answers, same as the guest-group path. Omitted
+	// (nil) on every other node kind, including guest-group pills, which
+	// keep their existing target-lookup expansion unchanged (AC3).
+	Members        []string `json:"members,omitempty"`
 	CollapsedCount int      `json:"collapsedCount,omitempty"`
 }
 
@@ -172,6 +188,37 @@ func (f Filter) hasLayer(l Layer) bool {
 // bridge at max scale) while still leaving small clusters (the golden test
 // fixtures included) fully expanded.
 const DefaultCollapseThreshold = 8
+
+// DefaultPhysicalCollapseThreshold is the physical-NIC-per-node count above
+// which the projection collapses that node's individual PhysNic entities
+// into one "N NICs" per-node summary pill (docs/features/topology.md §4: "physical
+// layer collapses to per-node summary" — T-1907, closing the gap T-607's
+// docs audit flagged and docs/performance.md §4 tracked). Mirrors
+// DefaultCollapseThreshold's own reasoning, applied to the physical layer
+// instead of the guest layer:
+//
+//   - At the documented §4 scale target (8 nodes x 6 NICs/node), every
+//     node's physical layer sits at 6 — comfortably under this threshold —
+//     so collapsing never engages at the scale the product is verified
+//     against; T-607/docs/performance.md §4 already established the
+//     physical layer is only ~50-65 elements cluster-wide there, nowhere
+//     near the ~2,000-element render cap the guest layer alone exists to
+//     protect.
+//   - 8 is the same magnitude DefaultCollapseThreshold already established
+//     as "small enough to read as individual chips, large enough that a
+//     summary earns its keep" for the analogous guest-per-bridge case;
+//     reusing it keeps one mental model ("more than 8 of the same kind of
+//     thing in one place collapses") rather than inventing an unrelated
+//     second number.
+//
+// **Provisional**, same as DefaultCollapseThreshold was originally: T-1808
+// (real-hardware scale validation) had not landed when this was chosen. If
+// real per-node physical port counts (large chassis, many bonds, SR-IOV PFs
+// each carrying their own PhysNic entity) turn out to run materially higher
+// than the documented target under real deployments, revisit this number
+// against T-1808's actual measurements rather than this target-scale
+// argument alone.
+const DefaultPhysicalCollapseThreshold = 8
 
 // EntityDetail is the GET /inventory/{ref} response: the resolved entity's
 // canonical fields, per-field provenance, and the raw source text behind it

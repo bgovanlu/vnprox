@@ -95,6 +95,7 @@ const KIND_ACCENT: Record<string, string> = {
   guest: "#10b981",
   "guest-nic": "#10b981",
   "guest-group": "#10b981",
+  "phys-group": "#64748b",
   "lldp-neighbor": "#64748b",
 };
 
@@ -212,7 +213,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
     // pulseAlpha to its default 1 (a plain static look).
     ctx.globalAlpha = dimmed ? 0.25 : d.stale ? 0.6 : driftingNode ? pulseAlpha : 1;
 
-    const isPill = d.isGuestGroup;
+    const isPill = d.isGuestGroup || d.isPhysGroup;
     const radius = isPill ? h / 2 : 6;
     // Fill
     roundRectPath(ctx, tl.x, tl.y, w, h, radius);

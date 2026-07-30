@@ -5,7 +5,9 @@ import {
   computeVlanMatch,
   filterByLayers,
   isGuestGroupId,
+  isPhysGroupId,
   parseGuestGroupId,
+  parsePhysGroupId,
 } from "./projection";
 
 function node(partial: Partial<TopologyNode> & Pick<TopologyNode, "id" | "kind" | "layer">): TopologyNode {
@@ -40,6 +42,25 @@ describe("isGuestGroupId / parseGuestGroupId", () => {
     const id = "bridge:pve1:vmbr0";
     expect(isGuestGroupId(id)).toBe(false);
     expect(parseGuestGroupId(id)).toBeUndefined();
+  });
+});
+
+describe("isPhysGroupId / parsePhysGroupId", () => {
+  it("recognizes the phys-group prefix and parses the node name", () => {
+    const id = "phys-group:pve1";
+    expect(isPhysGroupId(id)).toBe(true);
+    expect(parsePhysGroupId(id)).toEqual({ node: "pve1" });
+  });
+
+  it("is not a phys-group id for a guest-group id or an ordinary inventory ref", () => {
+    for (const id of ["guest-group:pve1:bridge:pve1:vmbr0", "physnic:pve1:eno1", "bridge:pve1:vmbr0"]) {
+      expect(isPhysGroupId(id)).toBe(false);
+      expect(parsePhysGroupId(id)).toBeUndefined();
+    }
+  });
+
+  it("rejects a malformed id with an empty node name", () => {
+    expect(parsePhysGroupId("phys-group:")).toBeUndefined();
   });
 });
 
