@@ -603,6 +603,21 @@ func (p Plan) affectedNodes() []string {
 	return out
 }
 
+// hasFw reports whether the plan carries any firewall step — the gate for
+// whether the apply/rollback engine snapshots and restores firewall-ruleset
+// pre-images alongside node interface files (apply_snapshot.go's
+// captureSnapshotFull, apply.go's doRollbackLocked), and half of
+// needsRevertTicket's answer (reverticket.go: firewall writes need the user's
+// PVE ticket, so an unattended revert of them needs a sealed one).
+func (p Plan) hasFw() bool {
+	for _, s := range p.Steps {
+		if s.Kind == StepFwApply {
+			return true
+		}
+	}
+	return false
+}
+
 // fwTargets returns, in first-appearance order, every firewall ruleset Ref
 // this plan's StepFwApply steps touch — undoFwTargets' same-request
 // rollback iteration set.

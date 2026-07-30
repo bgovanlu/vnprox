@@ -1,0 +1,39 @@
+-- 0033_changeset_revert_ticket.sql — T-1805 "Unattended revert for fw.*
+-- and sdn.apply via an apply-time revert ticket" (roadmap-proven D1).
+--
+-- PVE firewall and SDN writes are performed with the *user's own* ticket
+-- (docs/architecture.md §6). Once the HTTP request that started an apply
+-- has ended there is no such credential left in the process, so a
+-- fw.*-only changeset that reached awaiting_confirm and then timed out was
+-- never reverted, unlike a node-file change (which the daemon can restore
+-- itself). D1's answer: seal the applying user's PVE ticket for the
+-- duration of the commit-confirm window, revert with it, and wipe it the
+-- moment the changeset leaves awaiting_confirm by any path.
+--
+--   revert_ticket_enc        AES-256-GCM ciphertext (nonce||ct||tag) of a
+--                            JSON {ticket, csrf, expiresAt} document,
+--                            sealed with the SAME internal/store.SessionCipher
+--                            primitive sessions.pve_ticket_enc and
+--                            clusters.credential_enc use — never a second
+--                            cipher or key pair (docs/security.md).
+--                            NULL means "no sealed ticket" — the normal,
+--                            steady state for every changeset that is not
+--                            currently mid-apply / awaiting confirmation.
+--   revert_ticket_expires_at Unix seconds at which the sealed ticket stops
+--                            being usable (PVE tickets live ~2h). NOT a
+--                            secret: it is the input to the apply-time
+--                            "unattended revert is available until X"
+--                            report (docs/api.md's changesets section), so
+--                            it is readable alongside the ordinary
+--                            changeset columns while the ciphertext above
+--                            is reachable only through the dedicated
+--                            ChangesetRepo.RevertTicket accessor.
+--
+-- Both columns are nullable and carry no default: an existing row migrates
+-- to "no sealed ticket", which is exactly the pre-T-1805 behaviour.
+--
+-- Migrations are forward-only: once released, never edit this file; a
+-- schema change lands as a new NNNN_*.sql with a higher version.
+
+ALTER TABLE changesets ADD COLUMN revert_ticket_enc BLOB;
+ALTER TABLE changesets ADD COLUMN revert_ticket_expires_at INTEGER;

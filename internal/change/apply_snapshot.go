@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
@@ -61,6 +62,23 @@ const wgStateSnapshotPath = "/var/lib/vnprox/wireguard.state"
 // what lets the unattended commit-confirm-timeout rollback restore a switch
 // port with no live session (T-1205 AC6).
 const switchStateSnapshotPath = "/var/lib/vnprox/switches.state"
+
+// fwStateSnapshotPath is the synthetic, cluster-scoped (Node="")
+// snapshotFile path holding T-1805's firewall pre-apply state: a JSON object
+// mapping each touched firewall-ruleset Ref string to its opaque
+// PVEGateway.SnapshotFirewallScope pre-image. Cluster-scoped (Node="") for
+// the same reason the SDN/QoS/switch snapshot files are — restoreAll keys
+// per-node snapshotFile entries by node, and a node-scope firewall ruleset
+// would collide with that node's own interfaces file.
+//
+// Before T-1805 the firewall pre-image lived **only** in the executor's
+// in-memory `fwPre` map, which is why a `fw.*` changeset could be reverted
+// within the apply request that made it and never afterwards. Persisting it
+// into the pre-apply snapshot is what lets the commit-confirm-timeout and
+// crash-recovery reverts restore a firewall scope with no live session — the
+// same move T-1205 made for switch ports (switchStateSnapshotPath above),
+// for the same reason.
+const fwStateSnapshotPath = "/var/lib/vnprox/firewall.state"
 
 // Snapshot kinds (store.Snapshot.Kind, docs/data-model.md §2: pre|post|
 // manual|scheduled).
@@ -150,6 +168,22 @@ func (s *Service) captureSnapshotFull(ctx context.Context, changesetID, kind str
 			return nil, err
 		}
 		files = append(files, sdnFiles...)
+	}
+
+	// T-1805: the firewall pre-image, persisted (not only executor-resident)
+	// so an unattended revert can restore it. Like the SDN block above it
+	// needs the user's ticket to read, so a nil gateway is a hard error for a
+	// plan that carries firewall steps — apply refuses before any mutation
+	// rather than proceeding with a changeset it could never revert.
+	if plan.hasFw() {
+		if pveGW == nil {
+			return nil, fmt.Errorf("change: snapshotting %s changeset %s: no PVE gateway available for firewall scopes (no user session)", kind, changesetID)
+		}
+		fwFile, err := s.fwStateSnapshotFile(ctx, pveGW, plan.fwTargets())
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, fwFile)
 	}
 
 	if plan.hasQos() && s.qos != nil {
@@ -243,6 +277,47 @@ func (s *Service) switchStateSnapshotFile(ctx context.Context, portRefs []string
 		return snapshotFile{}, fmt.Errorf("change: storing switch state snapshot blob: %w", err)
 	}
 	return snapshotFile{Path: switchStateSnapshotPath, SHA256: hash, Content: content}, nil
+}
+
+// fwStateSnapshotFile captures each touched firewall ruleset's pre-image
+// (PVEGateway.SnapshotFirewallScope) into one cluster-scoped snapshotFile
+// (fwStateSnapshotPath), stored in the blob store like every other snapshot
+// file. Keyed by the ruleset's Ref string, matching Plan.fwTargets().
+func (s *Service) fwStateSnapshotFile(ctx context.Context, pveGW PVEGateway, targets []inventory.Ref) (snapshotFile, error) {
+	state := make(map[string]string, len(targets))
+	for _, target := range targets {
+		pre, err := pveGW.SnapshotFirewallScope(ctx, target)
+		if err != nil {
+			return snapshotFile{}, fmt.Errorf("change: snapshotting firewall scope %s: %w", target, err)
+		}
+		state[target.String()] = pre
+	}
+	b, err := json.Marshal(state)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: encoding firewall state snapshot: %w", err)
+	}
+	content := string(b)
+	hash, err := s.blobs.Put(ctx, content)
+	if err != nil {
+		return snapshotFile{}, fmt.Errorf("change: storing firewall state snapshot blob: %w", err)
+	}
+	return snapshotFile{Path: fwStateSnapshotPath, SHA256: hash, Content: content}, nil
+}
+
+// fwStateFromSnapshot decodes the per-ruleset firewall pre-image map out of a
+// loaded pre-snapshot's file list. ok is false if the snapshot carries no
+// firewall state file (a changeset with no fw.* ops, or one applied before
+// T-1805 added the file — such a changeset's firewall portion simply has no
+// persisted pre-image to restore from, exactly as before).
+func fwStateFromSnapshot(files []snapshotFile) (state map[string]string, ok bool) {
+	for _, f := range files {
+		if f.Path == fwStateSnapshotPath {
+			if json.Unmarshal([]byte(f.Content), &state) == nil {
+				return state, true
+			}
+		}
+	}
+	return nil, false
 }
 
 // switchStateFromSnapshot decodes the per-port switch pre-image map out of a

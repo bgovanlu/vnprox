@@ -99,8 +99,9 @@ type QosGateway interface {
 // because it needs no user ticket, its rollback works on the unattended
 // commit-confirm-timeout / crash-recovery paths too, so a wg.tunnel.create
 // that times out un-confirmed reverts fully (tunnel + generated keypair
-// removed, no orphaned key material — T-1401 AC6), unlike the PVEGateway
-// families' same-request-only rollback.
+// removed, no orphaned key material — T-1401 AC6). The PVEGateway families
+// reach the same unattended paths only via T-1805's sealed apply-time ticket;
+// this one needs no credential at all.
 //
 // A nil WGGateway makes wg.* ops unexecutable (execStep errors), the same
 // "nil dependency -> that op family isn't wired" degradation the other seams
@@ -183,25 +184,33 @@ type SwitchGateway interface {
 // nodeFileOpTypes/sdnStageOpTypes/fwOpTypes/ipamOpTypes and the T-205
 // report's residual-risk list.
 //
-// IMPORTANT, flagged limitation shared by sdn.apply and every fw.* method
-// (see T-502's completion report for the full discussion): every PVE-API
-// method on this interface runs under the *user's* PVE ticket, which only
-// exists for the duration of the synchronous Apply()/Rollback() call that
-// received a live pveGW. Unlike NodeAgent (root-level host access, callable
-// by the daemon at any time — including the unattended commit-confirm-
-// timeout and crash-recovery paths), these methods cannot be invoked by the
-// *unattended* rollback paths (autoRollback, ArmPendingRollbacks'
-// interrupted-apply recovery): there is no live ticket to authenticate with
-// once the originating HTTP request has ended. Both SDN and fw.* therefore
-// only implement SAME-REQUEST rollback (a later step's failure rolls back
-// an earlier SDN/fw.* step within the same Apply() call, while pveGW is
-// still valid — see apply_exec.go's rollbackAfterFailure/undoFwTargets/
-// restoreSDN) — an SDN- or fw.*-only changeset that reaches
-// awaiting_confirm and then times out (or the daemon crashes mid-window) is
-// NOT automatically reverted. This is a pre-existing architectural gap
-// neither task introduces, only inherits and makes more visible; see the
-// T-502 report for the flagged follow-up (e.g. a narrowly-scoped
-// daemon-level PVE token for unattended firewall/SDN rollback).
+// CREDENTIAL NOTE, shared by sdn.apply and every fw.* method: every PVE-API
+// method on this interface runs under the *user's* PVE ticket
+// (docs/architecture.md §6), unlike NodeAgent's root-level host access which
+// the daemon can invoke at any time. Historically that meant SDN and fw.*
+// implemented SAME-REQUEST rollback only — an SDN- or fw.*-only changeset
+// that reached awaiting_confirm and then timed out (or whose daemon crashed
+// mid-window) was NOT automatically reverted, the gap
+// planning/reports/T-502.md flagged.
+//
+// **Closed by T-1805 (roadmap-proven D1).** The applying user's ticket is now
+// sealed into the changeset row before the first mutating step
+// (reverticket.go), and the unattended paths — autoRollback and
+// ArmPendingRollbacks' interrupted-apply recovery — rebuild a PVEGateway from
+// it through Config.RevertGateways, so those paths do have a credential.
+// Consequences for an implementer of this interface:
+//
+//   - Every method here may now be called with **no live HTTP request**, from
+//     a client the daemon constructed itself. Implementations must therefore
+//     hold no request-scoped state and must not assume an ambient session.
+//   - A gateway built from a live session should also implement
+//     RevertTicketSource so its ticket can be sealed; one that cannot (an
+//     API-token identity) simply reports no ticket and the apply response
+//     says unattended revert is unavailable.
+//   - Coverage is still bounded by the PVE ticket's own ~2h lifetime, and
+//     the sealed-ticket client never renews. A revert attempted after that
+//     fails visibly (reported as a failed rollback action, changeset lands in
+//     "rollback incomplete") rather than silently doing nothing.
 type PVEGateway interface {
 	// SDNStageOp performs one cluster-scope sdn.zone/vnet/subnet
 	// create/update/delete op against PVE's staged (pending) SDN config —
@@ -256,9 +265,13 @@ type PVEGateway interface {
 	// firewall files" snapshot and as RestoreFirewallScope's input.
 	SnapshotFirewallScope(ctx context.Context, ref inventory.Ref) (string, error)
 
-	// RestoreFirewallScope reconciles ref's live ruleset back to a
-	// snapshot SnapshotFirewallScope captured earlier (same-request
-	// rollback only — see this interface's doc comment above).
+	// RestoreFirewallScope reconciles ref's live ruleset back to a snapshot
+	// SnapshotFirewallScope captured earlier. Since T-1805 that snapshot is
+	// persisted in the changeset's pre-apply snapshot row
+	// (fwStateSnapshotPath), not only held in the executor, so this is called
+	// from the unattended commit-confirm-timeout and crash-recovery reverts
+	// too — under the sealed apply-time ticket (see the credential note on
+	// this interface).
 	RestoreFirewallScope(ctx context.Context, ref inventory.Ref, snapshot string) error
 
 	// FirewallCompileStatus reports node's current pve-firewall compiled

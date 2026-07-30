@@ -1081,6 +1081,34 @@ export interface Changeset {
    * into a mandatory acknowledgement block and the apply enforces a
    * confirm-window floor. Absent on older responses (treated as false). */
   touchesMgmtPath?: boolean;
+  /** T-1805: whether this changeset reverts itself with no live session, and
+   * until when. Present on the apply response and on a read of an
+   * `awaiting_confirm` changeset; absent otherwise (and on older responses,
+   * which the UI treats as "unknown" and says nothing about). It carries a
+   * coverage bound only — never the sealed PVE ticket the coverage rests on. */
+  unattendedRevert?: UnattendedRevert;
+}
+
+/** T-1805 (`unattendedRevert` on a changeset response): the server's answer to
+ * "if this change locks me out, will it revert itself — and for how long?".
+ *
+ * PVE firewall and SDN writes are performed with the *user's* ticket, so
+ * reverting them without a session requires the ticket vnprox sealed at apply
+ * time. `required` is false for a changeset with no such op, in which case the
+ * daemon-level rollback machinery covers the whole window on its own. */
+export interface UnattendedRevert {
+  /** Does anything in this changeset need the user's PVE ticket to revert? */
+  required: boolean;
+  /** Is unattended revert of that portion possible at all? */
+  available: boolean;
+  /** Unix seconds past which the ticket-scoped portion can no longer revert
+   * unattended: min(confirm deadline, PVE ticket expiry). */
+  coversUntil?: number;
+  /** Does `coversUntil` reach the confirm deadline? false is the reduced-
+   * coverage case the operator must be told about at apply time. */
+  fullWindow: boolean;
+  /** Operator-facing explanation whenever coverage is absent or partial. */
+  reason?: string;
 }
 
 /** POST /changesets body. */

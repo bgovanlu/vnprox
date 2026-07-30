@@ -100,10 +100,19 @@ type changesetResponse struct {
 	Plan            json.RawMessage `json:"plan,omitempty"`
 	ApplyLog        json.RawMessage `json:"applyLog,omitempty"`
 	ConfirmDeadline *int64          `json:"confirmDeadline,omitempty"`
-	ID              string          `json:"id"`
-	Title           string          `json:"title"`
-	Author          string          `json:"author"`
-	Status          string          `json:"status"`
+	// UnattendedRevert (T-1805) reports whether this changeset will revert
+	// itself with no live session, and until when — present on the apply
+	// response and on a read of an awaiting_confirm changeset, omitted
+	// otherwise. It carries a coverage *bound*, never the sealed PVE ticket
+	// the coverage rests on: that credential has no representation in
+	// change.Changeset at all (see change.Changeset.RevertTicketExpiresAt),
+	// so no response built from one can leak it — a structural guarantee
+	// rather than redactOpSecrets' field-by-field stripping.
+	UnattendedRevert *change.UnattendedRevert `json:"unattendedRevert,omitempty"`
+	ID               string                   `json:"id"`
+	Title            string                   `json:"title"`
+	Author           string                   `json:"author"`
+	Status           string                   `json:"status"`
 	// Origin (T-1701) is 'ui'|'mcp'|'cli': who staged this changeset, so the
 	// review UI can badge an AI-staged draft distinctly from a human one.
 	// OriginTokenID names the staging automation token (present only for a
@@ -143,6 +152,7 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 		Origin: origin, OriginTokenID: c.OriginTokenID,
 		Ops: ops, Findings: findings, Plan: c.Plan, ApplyLog: c.ApplyLog,
 		ConfirmDeadline: c.ConfirmDeadline, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		UnattendedRevert: c.UnattendedRevert,
 	}
 }
 
