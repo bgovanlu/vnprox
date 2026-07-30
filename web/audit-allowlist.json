@@ -1,0 +1,26 @@
+[
+  {
+    "id": "GHSA-mh99-v99m-4gvg",
+    "package": "brace-expansion",
+    "rationale": "Transitive dev-tooling dependency (pulled in via eslint's glob chain, not a runtime dependency of the shipped SPA). The advisory is a DoS via unbounded brace-expansion length; the only input it ever processes here is our own repo's file-glob patterns during `eslint .`, never attacker-controlled data. No non-breaking fix is available upstream yet (`npm audit fix` has nothing to apply). Revisit at expiry: re-run `npm audit` and drop this entry once a transitive bump resolves it.",
+    "expires": "2026-10-30"
+  },
+  {
+    "id": "GHSA-r28c-9q8g-f849",
+    "package": "postcss",
+    "rationale": "Transitive dependency of the Tailwind v4 build pipeline (`@tailwindcss/vite`). The advisory is a path-traversal in postcss's own `sourceMappingURL` auto-loading of local .map files during a build; vnprox's build never processes untrusted CSS, and the affected code path only runs against our own repo's source during `vite build`/`vite dev`. Fixing requires a Tailwind v4 release that bumps its pinned postcss range past 8.5.17. Revisit at expiry.",
+    "expires": "2026-10-30"
+  },
+  {
+    "id": "GHSA-c2j3-45gr-mqc4",
+    "package": "dompurify",
+    "rationale": "Transitive dependency of monaco-editor (the raw interfaces editor, lazy-loaded). The advisory only affects DOMPurify's `CUSTOM_ELEMENT_HANDLING` allow-list bypass for custom elements; vnprox never configures or relies on DOMPurify's custom-element allow-listing, and monaco-editor doesn't sanitize user-supplied HTML through this path. `npm audit fix --force` would downgrade monaco-editor to 0.53.0, a breaking change. Revisit at expiry — re-check whether a newer monaco-editor release bundles a patched dompurify.",
+    "expires": "2026-10-30"
+  },
+  {
+    "id": "GHSA-qwww-vcr4-c8h2",
+    "package": "react-router",
+    "rationale": "Transitive advisory surfaced via react-router-dom. The CSRF bypass only affects React Router's RSC (React Server Components) mode; vnprox is a client-only SPA built with Vite (no SSR/RSC), so the affected request path is never reachable. `npm audit fix --force` would downgrade react-router-dom to 7.11.0, a breaking change. Revisit at expiry once a non-breaking react-router-dom release moves past 8.3.0.",
+    "expires": "2026-10-30"
+  }
+]

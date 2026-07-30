@@ -35,7 +35,7 @@ make build      # vnproxd binary with embedded SPA (runs web build first)
 make dev        # backend against pvemock + Vite dev server, hot reload
 make test       # go test ./... && vitest run
 make lint       # golangci-lint + eslint + tsc --noEmit
-make check      # lint + test + govulncheck + npm audit --audit-level=high
+make check      # lint + test + govulncheck + npm audit (gated by web/audit-allowlist.json)
 make deb        # build the .deb into dist/
 make mockpve    # run the mock PVE server standalone on :8006
 ```
@@ -62,9 +62,90 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
 - Components: function components only; server state via TanStack Query only (no fetch in components); canvas state in zustand.
 - Testing: Vitest + Testing Library on logic-bearing components (drawer, validators display, simulator result rendering); Playwright smoke suite (P6) against `make dev` + mock PVE.
 
+  **`web/e2e/` is currently unenforced (T-1806-bug-01, `planning/tasks/phase-18.md`).** 31 specs
+  exist, run only via `npm run e2e` by hand — no `make` target and no CI job (`ci.yml`,
+  `packaging-matrix.yml`, `release.yml`) invokes Playwright. Do not assume a task's report citing
+  a passing e2e spec means that spec still passes today, or that it runs anywhere but a
+  developer's own machine at the moment they wrote it. A future card decides where this belongs
+  (a dedicated required CI job vs. a nightly) and fixes what it finds; until then, treat `web/e2e/`
+  as a manual, opt-in smoke suite only.
+
 ## CI (GitHub Actions)
 
-`ci.yml`: on PR/push — `make check` matrix (amd64; arm64 build-only), a 60s `FuzzParse` run over the interfaces(5) parser (`./internal/host/`), and a package job (`make build` production frontend + `make deb` with the .deb uploaded as an artifact). `release.yml`: on tag — build, sign .deb, publish to the apt repo, GitHub release with changelog. Keep runtimes <10 min; cache Go/npm.
+`ci.yml` runs four jobs on every PR and push to `main`:
+
+| Job | What it does | Required? |
+|---|---|---|
+| `check` | `make check` (gofmt, go vet, golangci-lint, go test, vitest, govulncheck, npm audit — see below) | **Required** |
+| `cross-arm64` | `GOOS=linux GOARCH=arm64 go build ./...` — build-only; internal/host's netlink/ioctl code must at least compile for arm64 Proxmox nodes even though the CI fleet is amd64-only | **Required** |
+| `fuzz` | Every untrusted-input parser's fuzz target, 60s each (T-604) — see `docs/security-verification.md`'s fuzz inventory | **Required** |
+| `package` | `make build` (production frontend) + `make deb`, artifact uploaded | **Required** |
+
+`release.yml`: on tag — build, sign .deb, publish to the apt repo, GitHub release with changelog. Keep runtimes <10 min; cache Go/npm.
+
+### Toolchain pinning
+
+Every job pins the same versions so a CI run is reproducible and a local `make check` matches it exactly:
+
+- **Go**: `1.26.5` (`actions/setup-go`'s `go-version`, identical across `ci.yml`, `packaging-matrix.yml`, `release.yml`); `go.mod` floors at `go 1.25.0`.
+- **Node**: `22` (`actions/setup-node`'s `node-version`, identical across all workflows); `web/package.json`'s `engines.node` floors at `>=20.19.0`.
+- **golangci-lint**: `v2.12.2` (`Makefile`'s `GOLANGCI_LINT_VERSION`, invoked via `go run .../golangci-lint@$(GOLANGCI_LINT_VERSION)` when no local binary is on `PATH` — same version locally and in CI).
+- **govulncheck**: `v1.5.0` (`Makefile`'s `GOVULNCHECK_VERSION`, same `go run ...@version` pattern).
+
+To bump any of these: change the one place listed above (Makefile variable or the `go-version`/`node-version` fields — `grep` the repo for the old value to catch every workflow file) and re-run the acceptance check below.
+
+### The `fuzz` job's anchored `-fuzz` regexes
+
+`go test -fuzz=<pattern>` matches every fuzz target *in the package under test* whose name matches `<pattern>` as an **unanchored** regexp, and refuses to fuzz at all if more than one matches ("will not fuzz, -fuzz matches more than one fuzz test"). `internal/host` alone has five fuzz targets (`FuzzParse`, `FuzzParseBGPSummary`, `FuzzParseEVPNVNI`, `FuzzParseLLDP`, `FuzzParseDHCPLeases`); an unanchored `-fuzz=FuzzParse` matched all five and failed the job on every run, independent of the diff. Every `fuzz` job step now anchors its pattern (`-fuzz='^FuzzParse$'`, etc.) — including steps whose package currently has only one match, so a future sibling fuzz target can't silently break it again. When adding a new fuzz target, anchor its CI invocation the same way.
+
+### `npm audit`: allowlisted advisories, not a permanent red X
+
+`make check`'s web step no longer runs bare `npm audit --audit-level=high` — vnprox's transitive dependency tree carries several high-severity advisories with no available non-breaking fix (see `web/audit-allowlist.json`), so that command failed the build on every run regardless of the diff, which is worse than not running it: a permanent red X trains everyone to ignore CI.
+
+Instead, `web/scripts/check-audit-allowlist.mjs` runs `npm audit --json`, extracts every high/critical **root** advisory (a package the advisory names directly, not one merely depending on a vulnerable package), and checks each against `web/audit-allowlist.json`. The build fails if:
+
+- a high/critical advisory is found that **is not** in the allowlist (a genuinely new vulnerability), or
+- an allowlisted advisory's `expires` date has passed (forces the entry to be revisited, not accumulate forever).
+
+Each allowlist entry is `{id, package, rationale, expires}` — `id` is the GHSA identifier, `rationale` argues concretely why the advisory doesn't apply to vnprox's usage (or why no non-breaking fix exists yet), `expires` is an ISO date (`YYYY-MM-DD`) after which the entry stops being honored. **To accept a new advisory**: add an entry with a real rationale and a near-term expiry (few months out, not years). **To renew one that's about to expire**: re-confirm the rationale still holds and bump `expires`; don't just push the date out reflexively. **To remove one**: delete the entry once `npm audit` stops reporting it (the script warns — non-fatally — about stale entries it can no longer find, as a nudge to clean up).
+
+The pure matching/expiry logic lives in `web/scripts/auditAllowlist.mjs` and is unit-tested (`web/scripts/auditAllowlist.test.mjs`) against fixture JSON, independent of a real `npm audit` invocation — including the case of an expired entry failing the build.
+
+### Branch protection on `main` — requires repo-admin action
+
+CI being green is only a gate if the platform enforces it. As of this writing `main` has **no branch protection** (`gh api repos/bgovanlu/vnprox/branches/main/protection` returns 404) — any push bypasses required checks entirely. This requires a repo admin to apply; no CI workflow or agent can do it from within the repo. Run:
+
+```sh
+gh api --method PUT repos/bgovanlu/vnprox/branches/main/protection \
+  --input - <<'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["check", "cross-arm64", "fuzz", "package"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+EOF
+```
+
+This requires all four `ci.yml` job names as required status checks (`strict: true` means the branch must be up to date with `main` before merging, so a required check can't be satisfied by a stale run), forbids force-push and branch deletion, and applies status-check requirements to admins too (`enforce_admins`) so the rule can't be quietly bypassed. Adjust `required_approving_review_count` to the team's actual review process — 1 is a floor, not a recommendation. Verify afterwards with `gh api repos/bgovanlu/vnprox/branches/main/protection` (should return 200, not 404).
+
+### Adding a new required or advisory check
+
+- **Required** (blocks merge): add a step to an existing `ci.yml` job, or a new job whose name is added to `required_status_checks.contexts` above (needs a repeat of the branch-protection call). Keep the job deterministic — see the `fuzz`-job anchoring above for what "independent of the diff" looks like when it goes wrong.
+- **Advisory** (visible, doesn't block): add a job without adding its name to `required_status_checks.contexts`. Say so in the job's own comment, so the next person doesn't assume it gates merges.
+
+### `make check` and concurrent worktrees on one machine
+
+`golangci-lint` acquires a file lock on start and, by default, **exits with a hard error** ("parallel golangci-lint is running") if another instance already holds it, instead of waiting. This repo's own orchestration convention (`planning/implementation-plan-proven.md` and prior arcs' plans) explicitly tells the orchestrator to run concurrent tasks in **separate git worktrees**, each running its own `make check` — a sanctioned pattern that collides with golangci-lint's default lock behavior every time two such `make check` runs overlap in wall-clock time, independent of anything in either task's diff (T-1806 found this as a real collision between two sibling agents' worktrees, not a repo test flake).
+
+The fix: `make lint`/`make check` now invoke `golangci-lint run --allow-serial-runners ./...` (both the local-binary and `go run ...@version` code paths in the `lint` target) instead of the default `--allow-parallel-runners=false` behavior. `--allow-serial-runners` makes a second concurrent invocation **wait for the lock and then run**, rather than erroring out immediately — verified locally by launching two `golangci-lint run --allow-serial-runners ./...` invocations against this repo at the same time and confirming both exit 0 (the second's start is simply delayed until the first releases the lock). If you see the old "parallel golangci-lint is running" error, you're on a golangci-lint invocation that bypassed this flag (e.g. calling the binary directly outside `make lint`).
 
 ## Definition of done (every task)
 

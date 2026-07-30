@@ -77,26 +77,36 @@ jobs:
           go-version: "1.26.5"
           cache: true
 
+      # T-1806: `-fuzz` takes an unanchored regexp match against every fuzz
+      # target *in the package under test*. `internal/host` alone has five
+      # (FuzzParse, FuzzParseBGPSummary, FuzzParseEVPNVNI, FuzzParseLLDP,
+      # FuzzParseDHCPLeases), so an unanchored `-fuzz=FuzzParse` matched all
+      # five and `go test` refused to run any of them ("will not fuzz, -fuzz
+      # matches more than one fuzz test") — 100% reproducible, independent of
+      # the diff, on every push. Anchoring with `^...$` selects exactly one
+      # target per step; every step below is anchored on the same principle
+      # even where today's package only has one match, so a future sibling
+      # fuzz target added to that package can't silently break it again.
       - name: Fuzz the interfaces(5) parser
-        run: go test -run='^$' -fuzz=FuzzParse -fuzztime=60s ./internal/host/
+        run: go test -run='^$' -fuzz='^FuzzParse$' -fuzztime=60s ./internal/host/
 
       - name: Fuzz the peer HMAC signature parser/verifier
-        run: go test -run='^$' -fuzz=FuzzPeerAuth -fuzztime=60s ./internal/peer/
+        run: go test -run='^$' -fuzz='^FuzzPeerAuth$' -fuzztime=60s ./internal/peer/
 
       - name: Fuzz the FRR `show bgp summary json` parser
-        run: go test -run='^$' -fuzz=FuzzParseBGPSummary -fuzztime=60s ./internal/host/
+        run: go test -run='^$' -fuzz='^FuzzParseBGPSummary$' -fuzztime=60s ./internal/host/
 
       - name: Fuzz the FRR `show evpn vni json` parser
-        run: go test -run='^$' -fuzz=FuzzParseEVPNVNI -fuzztime=60s ./internal/host/
+        run: go test -run='^$' -fuzz='^FuzzParseEVPNVNI$' -fuzztime=60s ./internal/host/
 
       - name: Fuzz the lldpctl JSON parser
-        run: go test -run='^$' -fuzz=FuzzParseLLDP -fuzztime=60s ./internal/host/
+        run: go test -run='^$' -fuzz='^FuzzParseLLDP$' -fuzztime=60s ./internal/host/
 
       - name: Fuzz the dnsmasq DHCP lease-file parser
-        run: go test -run='^$' -fuzz=FuzzParseDHCPLeases -fuzztime=60s ./internal/host/
+        run: go test -run='^$' -fuzz='^FuzzParseDHCPLeases$' -fuzztime=60s ./internal/host/
 
       - name: Fuzz the PVE firewall log-line parser
-        run: go test -run='^$' -fuzz=FuzzParseAll -fuzztime=60s ./internal/fwlog/
+        run: go test -run='^$' -fuzz='^FuzzParseAll$' -fuzztime=60s ./internal/fwlog/
 
   package:
     # Production build + .deb artifact per docs/development.md ("frontend
