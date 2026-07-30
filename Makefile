@@ -91,10 +91,19 @@ lint: ## golangci-lint + eslint + tsc --noEmit
 	@echo ">> go: go vet ./..."
 	$(GO) vet ./...
 	@echo ">> go: golangci-lint run"
+	@# --allow-serial-runners (T-1806): golangci-lint acquires a file lock on
+	@# start and, by default, exits with a hard error ("parallel golangci-lint
+	@# is running") if another instance holds it, rather than waiting. This
+	@# repo's own orchestration convention (planning/implementation-plan-
+	@# proven.md) runs concurrent tasks in separate git worktrees, each with
+	@# its own `make check` — a legitimate, sanctioned way to collide with
+	@# this lock, not a bug in the task under test. Serializing around the
+	@# lock instead of erroring turns that collision into "wait your turn"
+	@# instead of a spurious CI/local failure.
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./...; \
+		golangci-lint run --allow-serial-runners ./...; \
 	else \
-		$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...; \
+		$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --allow-serial-runners ./...; \
 	fi
 	@if [ -n "$(WEB_READY)" ]; then \
 		echo ">> web: eslint"; \
@@ -107,7 +116,7 @@ lint: ## golangci-lint + eslint + tsc --noEmit
 
 # --- check ---------------------------------------------------------------
 
-check: lint test ## lint + test + govulncheck + npm audit --audit-level=high
+check: lint test ## lint + test + govulncheck + npm audit (gated by web/audit-allowlist.json)
 	@echo ">> go: govulncheck ./..."
 	@if command -v govulncheck >/dev/null 2>&1; then \
 		govulncheck ./...; \
@@ -115,8 +124,8 @@ check: lint test ## lint + test + govulncheck + npm audit --audit-level=high
 		$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...; \
 	fi
 	@if [ -n "$(WEB_READY)" ]; then \
-		echo ">> web: npm audit --audit-level=high"; \
-		cd $(WEB_DIR) && npm audit --audit-level=high; \
+		echo ">> web: npm audit (gated by web/audit-allowlist.json — see docs/development.md)"; \
+		(cd $(WEB_DIR) && node scripts/check-audit-allowlist.mjs); \
 	else \
 		echo ">> web: not yet implemented (T-005), skipping npm audit"; \
 	fi

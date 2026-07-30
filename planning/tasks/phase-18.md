@@ -286,6 +286,78 @@ green, deterministic, and required.
 
 ---
 
+### T-1806-bug-01 · The Playwright e2e suite has never been run by anything
+
+**Severity:** High — this is the largest CI-trustworthiness gap found in this card, squarely
+inside T-1806's objective ("make CI green, deterministic, and required"). It doesn't fail CI
+(nothing invokes it, so there's nothing to go red); it silently doesn't exist as a check at all,
+while being cited as evidence across the project as if it did.
+
+**Finding:** `web/e2e/` holds **31** `*.spec.ts` files (`find web/e2e -name '*.spec.ts' | wc -l`)
+plus `helpers.ts` and a `topology.spec.ts-snapshots/` baseline-image directory. **14** task cards
+across three shipped arcs (`grep -rl 'Playwright\|web/e2e' planning/tasks/*.md | wc -l`) cite
+Playwright/`web/e2e` as acceptance evidence. **43** implementation reports
+(`grep -ril 'playwright\|e2e' planning/reports/*.md | wc -l`) claim e2e coverage. **Zero** CI jobs
+invoke Playwright: `ci.yml` runs `make check` (lint/test/govulncheck/npm audit) and `make build`
++ `make deb`; `packaging-matrix.yml` and `release.yml` run builds and packaging only — grepped all
+three workflow files for `e2e`/`playwright`, no hits. **No** `make` target runs it either
+(`grep -n 'e2e\|playwright' Makefile` — no hits); it is reachable only via `npm run e2e` inside
+`web/`, run by hand.
+
+**What this implies for the 43 reports:** every one of them that cites a passing e2e spec as
+acceptance evidence is citing a run that happened, if at all, on that task's author's own machine
+at that moment — never reproduced, never re-verified, never gated on again since. There is no
+evidence any of the 31 specs, individually or as a suite, currently passes against today's `main`
+build, only that a person once believed one did.
+
+**Investigation performed this card** (characterization only, per this card's scope — repairing
+the suite is its own card, not attempted here):
+- The harness itself is not broken. In a quiet environment (verified: nothing on ports
+  8006-8008/18006-18007/28006-28007/38006-38007/48006-48007/58006-58007, no stray
+  `pvemock`/`vnproxd`/`k8smock` processes), `cd web && npm run build` succeeds, and Playwright's
+  `webServer` array boots all eight mock-PVE/vnproxd/k8smock backend pairs it defines regardless
+  of which single spec is targeted (confirmed via the server logs' distinct listening ports) —
+  running even one spec pays the full fleet's startup cost.
+- Two representative specs were run individually against this cost's base commit (`0029eb9`,
+  pre-T-1805/T-1907): `npx playwright test e2e/dashboard.spec.ts` (2 passed, 33.7s) and
+  `npx playwright test e2e/mgmt-redundancy.spec.ts` (2 passed, 33.2s). Both green on first
+  attempt.
+- This does **not** contradict a separate, independently-reported finding (from a sibling task's
+  investigation, via a controlled A/B test) that `mgmt-redundancy.spec.ts` fails on a clean
+  checkout of current `main` — that `main` has since merged T-1805 (schema migration 33,
+  unattended-revert ticket) and T-1907 (physical-layer collapse) past this worktree's branch
+  point, either of which could plausibly be the source of a regression this worktree's stale
+  commit wouldn't show. The two facts together are the actual characterization: the harness
+  mechanics work, but the suite is unenforced, unreproduced-by-CI, and now has at least one
+  concretely reported failure against current `main` with no CI in place to have caught it at
+  merge time — exactly the failure mode "43 reports claim e2e coverage" should have prevented.
+
+**Recommendation (not implemented here — a future card's decision):**
+- e2e does **not** belong in `make check`'s required, every-push gate as currently shaped: it
+  needs a downloaded Chromium, boots eight full mock-PVE/vnproxd/k8smock backend pairs per run
+  (real Go processes, real ports, real timeouts up to 120-180s each), and the existing specs
+  total well over the "<10 min" runtime `docs/development.md` asks of `ci.yml`. Folding it into
+  `check` would make the fixed, deterministic gate this card just built slow and flaky by
+  association.
+- The two realistic homes are **a dedicated required `e2e` CI job** (parallel to `check`, `fuzz`,
+  `package`, added to branch protection's required contexts once it's proven stable) or **a
+  nightly/scheduled workflow** that doesn't block individual PRs but reports failures where a
+  human will see them. Given 31 specs have never been verified in aggregate even once, a nightly
+  first — to establish an honest baseline pass rate and burn down whatever it finds — is the
+  lower-risk sequencing; promoting to a required per-PR job is the second step once that baseline
+  is credible. Either way, the job needs its own budget analysis (how long does the full suite
+  actually take, cold and warm) that this card did not attempt, since running all 31 specs was
+  explicitly out of scope here.
+- Whichever path is chosen, it should fix `mgmt-redundancy.spec.ts` against current `main` first
+  (a currently-known-red spec is not a good baseline to inherit) and should treat "does the
+  aggregate 31-spec run pass at all" as its own acceptance criterion, since that has never once
+  been established.
+
+`docs/development.md` now states plainly that `web/e2e/` is currently unenforced, so the next
+author doesn't assume otherwise.
+
+---
+
 ## T-1807 · Migration upgrade-chain testing ★
 **model:** sonnet-5 · **size:** M · **depends:** T-1806 · **context:** `internal/store/migrations/`, `internal/store/` (migration runner), `internal/migration/`, `docs/data-model.md`, `packaging/debian/`
 

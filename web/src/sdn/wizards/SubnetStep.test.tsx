@@ -202,8 +202,20 @@ describe("SubnetStep (T-701)", () => {
 
     await user.type(screen.getByRole("textbox", { name: /^Address range/ }), "10.60.0.0/24");
 
-    await waitFor(() => { expect(last?.gateway).toBe("10.60.0.3"); });
-    expect(screen.getByRole("textbox", { name: /^Gateway/ })).toHaveValue("10.60.0.3");
+    // Both assertions belong inside the same retried `waitFor`: `last` is a
+    // plain variable the onChange callback assigns synchronously, but the
+    // gateway <input>'s DOM value only reflects that same onChange once
+    // React has committed the Harness's setValue re-render. Checking the
+    // DOM with a bare `expect` right after a `waitFor` on `last` alone races
+    // the commit — `last` can flip a tick before the DOM catches up,
+    // especially under the CPU contention of a full parallel test-suite
+    // run (T-1806: this was an intermittent ~1-in-10 CI flake). Retrying
+    // both together lets `waitFor` re-poll until the DOM has actually caught
+    // up, rather than sampling it exactly once.
+    await waitFor(() => {
+      expect(last?.gateway).toBe("10.60.0.3");
+      expect(screen.getByRole("textbox", { name: /^Gateway/ })).toHaveValue("10.60.0.3");
+    });
   });
 
   it("never overwrites a gateway the user typed themselves, even once the grid resolves", async () => {
