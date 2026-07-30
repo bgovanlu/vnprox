@@ -8,13 +8,39 @@
 # §4's own scale target is only 6 NICs/node, by design under the
 # threshold — see that constant's doc comment).
 #
-# NIC layout on pve1 (10 physnics total):
+# NIC layout on pve1 (10 physnics declared here):
 #   eno1        — port-of vmbr0 (the management bridge), so the collapsed
 #                 pill still ends up with a real port-of connectivity edge
 #                 to prove the group->target synthesis (web/e2e/
 #                 physical-collapse.spec.ts).
 #   eno2..eno10 — genuinely free/unconfigured (9 NICs) — the "some of a
 #                 node's physical NICs have no bond/bridge at all" case.
+#
+# IMPORTANT (found the hard way, see planning/reports/T-1907.md): pve1 here
+# is also whatever *real* machine `cmd/vnproxd` happens to run on for this
+# dev/e2e stack — the local node's host-interfaces collector always reads
+# real netlink (`internal/host/netlink_linux.go`'s `netlink.LinkList()`,
+# unconditionally, no dev-mode simulation knob), and PhysNic.linkUp/mac/
+# driver/etc. are exclusively host-netlink-owned (internal/inventory/
+# merge.go's ownership table — PVE-declared `link_up:` values below are
+# never used to resolve status). Two consequences, both by design of this
+# repo's architecture rather than a fixture bug:
+#   1. The *real* running machine's own interfaces (e.g. "lo", a real
+#      ethN/ensN) merge into pve1's physical layer alongside these 10
+#      declared ones — the collapsed pill's actual count is "10 + however
+#      many real interfaces this host has", not exactly 10. Comfortably
+#      over DefaultPhysicalCollapseThreshold (8) either way, so collapse
+#      still always engages — web/e2e/physical-collapse.spec.ts asserts
+#      the pill generically ("some N over threshold"), never an exact
+#      count, for exactly this reason.
+#   2. A declared `link_up: false` below can never surface as this NIC's
+#      resolved status in a live run — host-netlink has no observation at
+#      all for a name that doesn't exist on the real machine, so it resolves
+#      "unknown" (never-reported), not "down". Status-painting-on-down is
+#      still verified in `internal/topology/collapse_physical_test.go`
+#      (hand-built inventory.Graph, no live host collector involved) —
+#      this fixture's own `link_up: false` below is kept for documentation/
+#      parity with other fixtures' style, not because it's e2e-observable.
 #
 # Deliberately a single connectivity target (not also an enslaved-by-a-bond
 # chain): collapsePhysical groups strictly per node, so a node whose
@@ -119,8 +145,10 @@ nodes:
       eno5: {mac: "bc:24:12:00:00:05", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:02:00.0"}
       eno6: {mac: "bc:24:12:00:00:06", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:02:00.1"}
       eno7: {mac: "bc:24:12:00:00:07", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:02:00.2"}
-      # eno8 deliberately link-down: proves the collapsed pill's status
-      # painting (worst-of) without needing a whole second scenario.
+      # eno8: link_up: false kept for parity with other fixtures' style —
+      # see this file's header comment for why it does NOT actually
+      # resolve to a "down" status in a live run (host-netlink exclusively
+      # owns linkUp and has no observation for a name it's never heard of).
       eno8: {mac: "bc:24:12:00:00:08", driver: igb, speed_mbps: 1000, duplex: full, link_up: false, pci_addr: "0000:02:00.3"}
       eno9: {mac: "bc:24:12:00:00:09", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:03:00.0"}
       eno10: {mac: "bc:24:12:00:00:10", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:03:00.1"}
