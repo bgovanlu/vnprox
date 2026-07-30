@@ -1,5 +1,5 @@
 # T-1907's own dev config: identical shape to testdata/dev.toml, on a
-# distinct port pair (68006/68007) and pointed at the phys-collapse fixture
+# distinct port pair (61006/61007) and pointed at the phys-collapse fixture
 # — the physical-layer-collapse case (10 NICs on one node, over
 # topology.DefaultPhysicalCollapseThreshold) web/e2e/physical-collapse.spec.ts
 # drives: the "phys-group:pve1" pill renders by default, and expanding it
@@ -7,14 +7,14 @@
 # without collision (see web/playwright.config.ts).
 
 [server]
-listen = "127.0.0.1:68007"
+listen = "127.0.0.1:61007"
 tls_cert = "testdata/certs/dev-cert.pem"
 tls_key = "testdata/certs/dev-key.pem"
 read_only = false
 confirm_timeout_default = 120
 
 [pve]
-api_url = "http://127.0.0.1:68006"
+api_url = "http://127.0.0.1:61006"
 token_file = "/etc/vnprox/keys/pve-token"
 dev_ticket_username = "root@pam"
 dev_ticket_password = "vnprox-mock"

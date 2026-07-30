@@ -13,12 +13,12 @@
 // expands in both the default Switch view and the Graph view — the latter
 // keyboard-only, no mouse input, mirroring a11y.spec.ts's own AC3 pattern).
 //
-// This spec runs against its OWN vnproxd+pvemock pair (ports 68006/68007) —
+// This spec runs against its OWN vnproxd+pvemock pair (ports 61006/61007) —
 // see web/playwright.config.ts's webServer array and
 // testdata/dev-physcollapse.toml.
 import { expect, test, type Page } from "@playwright/test";
 
-test.use({ baseURL: "https://127.0.0.1:68007" });
+test.use({ baseURL: "https://127.0.0.1:61007" });
 
 // Mirrors mgmt-redundancy.spec.ts's identical onboarding-banner suppression
 // (a CSS-via-.style approach, since the style-src CSP blocks an injected
