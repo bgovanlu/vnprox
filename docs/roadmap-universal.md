@@ -9,6 +9,12 @@ docs/plans-vs-implementation audit found it was the one phase-14 card with no co
 `wireguard_peers.cluster_id` annotation with `clusters.wg_tunnel_id`, and giving the linkage a UI)
 shipped as `v3.0.4` — see `planning/reports/T-1407-followups.md`. The arc is now complete.
 
+The arc after this one — Phases 18–21, v3.1 → v4.0 — lives in
+[`roadmap-proven.md`](roadmap-proven.md). It is **proposed, not started**, and is deliberately
+not another feature arc: with all three shipped arcs' cards implemented, the binding constraint
+is no longer capability but evidence (105 open items in
+`planning/reports/needs-hardware-validation.md` against 1 validated), operability, and reach.
+
 The first arc (`roadmap.md`, Phases 0–7) made vnprox the visual network manager for a PVE
 cluster. The second arc (`roadmap-next.md`, Phases 8–12) made it the all-in-one visual
 networking tool for Proxmox — verified, observable, automatable, multi-cluster. This document

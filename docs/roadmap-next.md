@@ -9,7 +9,9 @@ networking tool for Proxmox** — one pane of glass where you *see*, *understand
 *verify*, and *automate* every layer of a Proxmox network, across any number of clusters.
 
 The arc after this one — Phases 13–17, v2.1 → v3.0, the *universal* networking tool — lives in
-[`roadmap-universal.md`](roadmap-universal.md); it too is shipped, as of `v3.0.2`.
+[`roadmap-universal.md`](roadmap-universal.md); it too is shipped, complete as of `v3.0.4`. The
+fourth arc — Phases 18–21, v3.1 → v4.0, hardware validation, operability, and distribution —
+lives in [`roadmap-proven.md`](roadmap-proven.md) and is proposed, not started.
 
 Inputs: the Post-1.0 (P2) backlog in `docs/roadmap.md`, the gaps flagged at T-607, and field
 feedback since v1.0 (Phase 7's origin). Every item below either extends a feature already in
