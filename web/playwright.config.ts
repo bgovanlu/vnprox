@@ -190,5 +190,29 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
+    // T-1907's own stack (physical-collapse.spec.ts), additive: a seventh
+    // mock PVE + vnproxd pair on ports 68006/68007 serving testdata/clusters/
+    // phys-collapse.yaml — a single node with 10 physical NICs (over
+    // topology.DefaultPhysicalCollapseThreshold), purpose-built to exercise
+    // the physical-layer collapse pill and its expand affordance end to end,
+    // since none of the other fixtures' nodes get anywhere near that NIC
+    // count (the documented scale target is only 6/node, deliberately under
+    // the threshold — see that constant's doc comment).
+    {
+      command: "go run ./cmd/pvemock --addr 127.0.0.1:68006 --fixture testdata/clusters/phys-collapse.yaml",
+      cwd: "..",
+      port: 68006,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command:
+        "sh -c 'rm -f var/dev-physcollapse-vnprox.db && rm -rf var/dev-physcollapse-host && exec go run ./cmd/vnproxd --config testdata/dev-physcollapse.toml'",
+      cwd: "..",
+      url: "https://127.0.0.1:68007/api/v1/health",
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
   ],
 });

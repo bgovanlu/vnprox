@@ -1,0 +1,162 @@
+# phys-collapse.yaml — T-1907's own fixture: a single node with 10 physical
+# NICs, comfortably over topology.DefaultPhysicalCollapseThreshold (8), so
+# GET /topology's physical layer collapses to one "phys-group:pve1" pill by
+# default (internal/topology/collapse_physical.go). Mirrors single-node.yaml
+# for everything else (baseline user set, one mgmt bridge, one guest) —
+# deliberately not reusing three-node-vlan.yaml/scale-lab.yaml, neither of
+# which has a node anywhere near this NIC count (docs/features/topology.md
+# §4's own scale target is only 6 NICs/node, by design under the
+# threshold — see that constant's doc comment).
+#
+# NIC layout on pve1 (10 physnics total):
+#   eno1        — port-of vmbr0 (the management bridge), so the collapsed
+#                 pill still ends up with a real port-of connectivity edge
+#                 to prove the group->target synthesis (web/e2e/
+#                 physical-collapse.spec.ts).
+#   eno2..eno10 — genuinely free/unconfigured (9 NICs) — the "some of a
+#                 node's physical NICs have no bond/bridge at all" case.
+#
+# Deliberately a single connectivity target (not also an enslaved-by-a-bond
+# chain): collapsePhysical groups strictly per node, so a node whose
+# collapsed NICs fan out to *two* distinct targets (e.g. one port-of a
+# bridge, another enslaved-by an unrelated bond) makes the same "phys-
+# group:pve1" pill carry edges into both — internal/topology/
+# collapse_physical_test.go proves that data-layer case directly. The
+# Switch faceplate, though, assumes each rendered "port" belongs to exactly
+# one uplink bay/bond (a real physnic only ever has one real target); a
+# multi-target group pill would therefore render once per target there — a
+# known, narrow, cosmetic limitation (T-1907's report), not a data-loss bug
+# (either instance expands to the identical member set). This fixture
+# sticks to one target so the e2e flow stays unambiguous.
+cluster:
+  name: pve-physcollapse
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 192.168.2.10
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 7c2e9a41-5d6b-4f80-9e13-2b6a8c40d715
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno3
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno4
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno5
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno6
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno7
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno8
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno9
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno10
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 192.168.2.10/24
+        gateway: 192.168.2.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: false
+        comments: "management bridge"
+    links:
+      eno1: {mac: "bc:24:12:00:00:01", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
+      eno2: {mac: "bc:24:12:00:00:02", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
+      eno3: {mac: "bc:24:12:00:00:03", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:01:00.2"}
+      eno4: {mac: "bc:24:12:00:00:04", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:01:00.3"}
+      eno5: {mac: "bc:24:12:00:00:05", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:02:00.0"}
+      eno6: {mac: "bc:24:12:00:00:06", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:02:00.1"}
+      eno7: {mac: "bc:24:12:00:00:07", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:02:00.2"}
+      # eno8 deliberately link-down: proves the collapsed pill's status
+      # painting (worst-of) without needing a whole second scenario.
+      eno8: {mac: "bc:24:12:00:00:08", driver: igb, speed_mbps: 1000, duplex: full, link_up: false, pci_addr: "0000:02:00.3"}
+      eno9: {mac: "bc:24:12:00:00:09", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:03:00.0"}
+      eno10: {mac: "bc:24:12:00:00:10", driver: igb, speed_mbps: 1000, duplex: full, link_up: true, pci_addr: "0000:03:00.1"}
+      vmbr0: {mac: "bc:24:12:00:00:01", link_up: true, mtu: 1500}
+    stats:
+      vmbr0:
+        rx_bytes: 1048576000
+        tx_bytes: 524288000
+        rx_packets: 900000
+        tx_packets: 450000
+    qemu:
+      "100":
+        name: web01
+        status: running
+        config:
+          name: web01
+          cores: "2"
+          memory: "2048"
+          net0: "virtio=BC:24:12:AA:00:64,bridge=vmbr0,firewall=1"
+          ostype: l26
+    firewall:
+      enabled: false
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []

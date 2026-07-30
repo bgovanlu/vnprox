@@ -240,3 +240,97 @@ describe("buildSwitchModel — synthetic edge cases", () => {
     expect(must(model.nodes[0], "group").freePorts).toEqual([]);
   });
 });
+
+// T-1907: a "phys-group:<node>" pill (internal/topology/collapse_physical.go)
+// stands in for real NIC nodes throughout buildSwitchModel's generic
+// byId-lookup rendering — no dedicated component was needed for it (see
+// docs/features/topology.md §4), but it does need the two spots that
+// otherwise assume a real "physnic"/bond kind: the free-ports scan (a pill
+// with no synthesized connectivity edge must not silently disappear) and
+// the isGroup/count flags NicPort/UplinkModule (SwitchFaceplate.tsx) use to
+// render its "click to expand" affordance instead of a real port chip.
+describe("buildSwitchModel — T-1907 phys-group pill", () => {
+  it("renders a phys-group pill port-of a bridge as a one-member uplink flagged isGroup, consumed (not a free port)", () => {
+    const nodes = [
+      node({ id: "bridge:pve1:vmbr0", kind: "bridge", layer: "l2", label: "vmbr0" }),
+      node({
+        id: "phys-group:pve1",
+        kind: "phys-group",
+        layer: "phys",
+        label: "10 NICs",
+        collapsedCount: 10,
+        badges: ["count=10"],
+      }),
+    ];
+    const edges = [edge("phys-group:pve1", "bridge:pve1:vmbr0", "port-of", ["count=1"])];
+    const model = buildSwitchModel(nodes, edges);
+    const sw = switchFor(model, "pve1");
+    expect(sw.uplinks).toHaveLength(1);
+    const uplink = must(sw.uplinks[0], "uplink");
+    expect(uplink.isGroup).toBe(true);
+    expect(uplink.count).toBe(10);
+    expect(uplink.members).toHaveLength(1);
+    expect(must(uplink.members[0], "member").isGroup).toBe(true);
+    expect(must(model.nodes[0], "group").freePorts).toEqual([]);
+  });
+
+  it("renders a phys-group pill enslaved-by a bond as one flagged bond member", () => {
+    const nodes = [
+      node({ id: "bridge:pve1:vmbr0", kind: "bridge", layer: "l2", label: "vmbr0" }),
+      node({ id: "bond:pve1:bond0", kind: "bond", layer: "l2", label: "bond0" }),
+      node({
+        id: "phys-group:pve1",
+        kind: "phys-group",
+        layer: "phys",
+        label: "10 NICs",
+        collapsedCount: 10,
+        badges: ["count=10"],
+      }),
+    ];
+    const edges = [
+      edge("bond:pve1:bond0", "bridge:pve1:vmbr0", "port-of"),
+      edge("phys-group:pve1", "bond:pve1:bond0", "enslaved-by", ["count=2"]),
+    ];
+    const model = buildSwitchModel(nodes, edges);
+    const sw = switchFor(model, "pve1");
+    const bond = must(sw.uplinks[0], "bond uplink");
+    expect(bond.isGroup).toBeFalsy();
+    const member = must(bond.members[0], "group member");
+    expect(member.ref).toBe("phys-group:pve1");
+    expect(member.isGroup).toBe(true);
+    expect(member.count).toBe(10);
+  });
+
+  it("lists a fully-unattached phys-group pill (no surviving connectivity edge) as a free port, flagged isGroup", () => {
+    const nodes = [
+      node({
+        id: "phys-group:pve1",
+        kind: "phys-group",
+        layer: "phys",
+        label: "9 NICs",
+        collapsedCount: 9,
+        badges: ["count=9"],
+      }),
+    ];
+    const model = buildSwitchModel(nodes, []);
+    const group = must(model.nodes[0], "group");
+    expect(group.switches).toEqual([]);
+    expect(group.freePorts).toHaveLength(1);
+    const port = must(group.freePorts[0], "free port");
+    expect(port.isGroup).toBe(true);
+    expect(port.count).toBe(9);
+    expect(port.ref).toBe("phys-group:pve1");
+  });
+
+  it("never flags a real NIC/bond as isGroup", () => {
+    const nodes = [
+      node({ id: "physnic:pve1:eno1", kind: "physnic", layer: "phys", label: "eno1" }),
+      node({ id: "bond:pve1:bond1", kind: "bond", layer: "l2", label: "bond1" }),
+    ];
+    const model = buildSwitchModel(nodes, []);
+    const group = must(model.nodes[0], "group");
+    for (const p of group.freePorts) {
+      expect(p.isGroup).toBeFalsy();
+    }
+  });
+});

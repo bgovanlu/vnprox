@@ -19,15 +19,17 @@ import type {
   SearchResult,
   TopologyDeltaEvent,
   TopologyLayoutPayload,
+  TopologyNode,
   TopologyResponse,
 } from "../api/types";
-import { expandGuestGroup } from "./expand";
-import { isGuestGroupId } from "./projection";
+import { expandGuestGroup, expandPhysicalGroup } from "./expand";
+import { isGuestGroupId, isPhysGroupId } from "./projection";
 
 export const TOPOLOGY_QUERY_KEY = ["topology"] as const;
 export const inventoryDetailKey = (ref: string) => ["inventory", ref] as const;
 export const searchKey = (q: string) => ["inventory-search", q] as const;
 export const guestGroupExpandKey = (groupId: string) => ["guest-group-expand", groupId] as const;
+export const physGroupExpandKey = (groupId: string) => ["phys-group-expand", groupId] as const;
 export const LAYOUT_NAME = "topology";
 export const layoutKey = (name: string) => ["layouts", name] as const;
 export const MGMT_STATUS_QUERY_KEY = ["protected-interfaces", "status"] as const;
@@ -66,15 +68,15 @@ export function useTopologyQuery(clusterId?: string) {
   });
 }
 
-/** ref may be a guest-group synthetic id (not a real inventory ref) or
- * undefined (nothing selected); the query is simply disabled in both cases
- * — callers must route a guest-group click to expand/collapse instead of
- * the inspector (see TopologyPage). */
+/** ref may be a guest-group/phys-group synthetic id (not a real inventory
+ * ref) or undefined (nothing selected); the query is simply disabled in
+ * every such case — callers must route a group click to expand/collapse
+ * instead of the inspector (see TopologyPage). */
 export function useInventoryDetailQuery(ref: string | undefined) {
   return useQuery<EntityDetail>({
     queryKey: inventoryDetailKey(ref ?? ""),
     queryFn: () => fetchInventoryDetail(ref ?? ""),
-    enabled: ref !== undefined && !isGuestGroupId(ref),
+    enabled: ref !== undefined && !isGuestGroupId(ref) && !isPhysGroupId(ref),
     staleTime: 10_000,
   });
 }
@@ -98,6 +100,30 @@ export function useGuestGroupExpandQuery(groupId: string, enabled: boolean) {
     queryKey: guestGroupExpandKey(groupId),
     queryFn: () => expandGuestGroup(groupId, { fetchDetail: fetchInventoryDetail }),
     enabled,
+    staleTime: 15_000,
+  });
+}
+
+/** Expands one phys-group pill (T-1907; see expand.ts's doc comment for why
+ * this needs the pill's own TopologyNode, not just its id — its member refs
+ * live in `node.members`, not recoverable from the id alone). Disabled
+ * unless the pill is actually toggled open, mirroring
+ * useGuestGroupExpandQuery exactly. `node` may be undefined for one render
+ * (e.g. the pill just vanished from the topology query's cache); the query
+ * is simply disabled in that case rather than throwing. */
+export function usePhysGroupExpandQuery(node: TopologyNode | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: physGroupExpandKey(node?.id ?? ""),
+    queryFn: () => {
+      if (!node) {
+        // Unreachable in practice: `enabled` below is false whenever node is
+        // undefined, so TanStack Query never actually invokes this — but the
+        // hook still needs a well-typed queryFn reference regardless.
+        return Promise.reject(new Error("usePhysGroupExpandQuery: no node to expand"));
+      }
+      return expandPhysicalGroup(node, { fetchDetail: fetchInventoryDetail });
+    },
+    enabled: enabled && node !== undefined,
     staleTime: 15_000,
   });
 }
@@ -172,8 +198,11 @@ export function applyTopologyDelta(queryClient: QueryClient, evt: TopologyDeltaE
   }
   // A guest-group pill's membership can shift on any guest add/remove/move;
   // cheap enough to invalidate every open expansion rather than compute
-  // which specific pill(s) are affected.
+  // which specific pill(s) are affected. A phys-group pill's membership can
+  // shift the same way on any NIC add/remove (e.g. a bond created from
+  // formerly-free NICs), so its own open expansions get the same treatment.
   void queryClient.invalidateQueries({ queryKey: ["guest-group-expand"] });
+  void queryClient.invalidateQueries({ queryKey: ["phys-group-expand"] });
 }
 
 let sharedWsClient: WsClient | undefined;

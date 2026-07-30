@@ -57,10 +57,11 @@ import { ViewModeToggle } from "./ViewModeToggle";
 import { VlanFilterInput } from "./VlanFilterInput";
 import { computeLayout, type XYPosition } from "./layout";
 import { useReducedMotion, motionConfig } from "../lib/useReducedMotion";
-import { isGuestGroupId } from "./projection";
+import { isGuestGroupId, isPhysGroupId } from "./projection";
 import {
   useGuestGroupExpandQuery,
   useLayoutQuery,
+  usePhysGroupExpandQuery,
   useSaveLayoutMutation,
   useTopologyQuery,
   useTopologyWsBridge,
@@ -105,6 +106,29 @@ function GuestGroupExpansion({
   onData: (groupId: string, nodes: TopologyNode[], edges: TopologyEdge[]) => void;
 }) {
   const { data } = useGuestGroupExpandQuery(groupId, true);
+  useEffect(() => {
+    if (data) onData(groupId, data.nodes, data.edges);
+  }, [groupId, data, onData]);
+  return null;
+}
+
+/** T-1907's counterpart to GuestGroupExpansion, for a "phys-group:<node>"
+ * per-node physical-layer summary pill: same one-query-per-expanded-pill
+ * shape, but usePhysGroupExpandQuery needs the pill's own TopologyNode (its
+ * `members` list lives there, not recoverable from the id alone) rather
+ * than just the id — see expand.ts's doc comment. `node` is undefined for
+ * one render if the pill briefly isn't in the current topology snapshot
+ * (e.g. mid-poll); the query hook disables itself in that case. */
+function PhysGroupExpansion({
+  groupId,
+  node,
+  onData,
+}: {
+  groupId: string;
+  node: TopologyNode | undefined;
+  onData: (groupId: string, nodes: TopologyNode[], edges: TopologyEdge[]) => void;
+}) {
+  const { data } = usePhysGroupExpandQuery(node, true);
   useEffect(() => {
     if (data) onData(groupId, data.nodes, data.edges);
   }, [groupId, data, onData]);
@@ -700,7 +724,7 @@ function TopologyPageContent() {
   }
 
   function handleNodeClick(id: string): void {
-    if (isGuestGroupId(id)) {
+    if (isGuestGroupId(id) || isPhysGroupId(id)) {
       toggleExpanded(id);
       return;
     }
@@ -1088,9 +1112,18 @@ function TopologyPageContent() {
       )}
       <CaptureDialog />
 
-      {Array.from(expandedGroups).map((id) => (
-        <GuestGroupExpansion key={id} groupId={id} onData={handleExpandedData} />
-      ))}
+      {Array.from(expandedGroups).map((id) =>
+        isPhysGroupId(id) ? (
+          <PhysGroupExpansion
+            key={id}
+            groupId={id}
+            node={topology?.nodes.find((n) => n.id === id)}
+            onData={handleExpandedData}
+          />
+        ) : (
+          <GuestGroupExpansion key={id} groupId={id} onData={handleExpandedData} />
+        ),
+      )}
 
       <SpotlightSearch open={spotlightOpen} onOpenChange={setSpotlightOpen} onSelect={handleSearchSelect} />
       <EditorLauncher />
@@ -1100,7 +1133,7 @@ function TopologyPageContent() {
        * above (AC3: "toolbar/drawer chrome is hidden"). */}
       <div className="print:hidden">
         <InspectorStack
-          selectedRef={selectedId && !isGuestGroupId(selectedId) ? selectedId : undefined}
+          selectedRef={selectedId && !isGuestGroupId(selectedId) && !isPhysGroupId(selectedId) ? selectedId : undefined}
           onAllClosed={() => {
             select(undefined);
           }}

@@ -186,3 +186,65 @@ describe("toFlowElements", () => {
     expect(flowNodes.every((n) => n.data.verifyOutcome === undefined && n.data.verifyDiverges === false)).toBe(true);
   });
 });
+
+// T-1907: a "phys-group:<node>" pill flows through the exact same generic
+// expand/collapse mechanism a guest-group pill already uses (mergedNodes/
+// mergedEdges just check expandedGroups.has(id), regardless of prefix) — the
+// only thing toFlowElements itself needs to add is the isPhysGroup data flag
+// EntityNode/canvasDraw key their pill styling off (AC3: this must not
+// perturb the isGuestGroup flag or guest-group's own expand behavior above).
+describe("toFlowElements — T-1907 phys-group pill", () => {
+  const physNodes: TopologyNode[] = [
+    node({ id: "bond:pve1:bond0", kind: "bond", layer: "l2", nodeGroup: "pve1" }),
+    node({
+      id: "phys-group:pve1",
+      kind: "phys-group",
+      layer: "phys",
+      nodeGroup: "pve1",
+      collapsedCount: 10,
+      badges: ["count=10"],
+    }),
+  ];
+  const physEdges: TopologyEdge[] = [
+    { from: "phys-group:pve1", to: "bond:pve1:bond0", kind: "enslaved-by", status: "ok", badges: ["count=2"] },
+  ];
+  const allLayers = new Set(["phys", "l2", "sdn", "guest"] as const);
+
+  it("flags the phys-group pill's node data isPhysGroup (and never isGuestGroup)", () => {
+    const { nodes } = toFlowElements({
+      nodes: physNodes,
+      edges: physEdges,
+      expandedGroups: new Set(),
+      activeLayers: allLayers,
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+    const byId = new Map(nodes.map((n) => [n.id, n.data]));
+    expect(byId.get("phys-group:pve1")?.isPhysGroup).toBe(true);
+    expect(byId.get("phys-group:pve1")?.isGuestGroup).toBe(false);
+    expect(byId.get("bond:pve1:bond0")?.isPhysGroup).toBe(false);
+  });
+
+  it("replaces the pill + its edge with the expanded member NICs once expanded", () => {
+    const extraNodes: TopologyNode[] = [
+      node({ id: "physnic:pve1:eno1", kind: "physnic", layer: "phys", nodeGroup: "pve1" }),
+    ];
+    const extraEdges: TopologyEdge[] = [
+      { from: "physnic:pve1:eno1", to: "bond:pve1:bond0", kind: "enslaved-by", status: "ok", badges: [] },
+    ];
+    const { nodes, edges } = toFlowElements({
+      nodes: physNodes,
+      edges: physEdges,
+      extraNodes,
+      extraEdges,
+      expandedGroups: new Set(["phys-group:pve1"]),
+      activeLayers: allLayers,
+      layoutPositions: new Map(),
+      manualPositions: {},
+    });
+    expect(nodes.map((n) => n.id)).not.toContain("phys-group:pve1");
+    expect(nodes.map((n) => n.id)).toContain("physnic:pve1:eno1");
+    expect(edges.some((e) => e.source === "phys-group:pve1")).toBe(false);
+    expect(edges.some((e) => e.source === "physnic:pve1:eno1" && e.target === "bond:pve1:bond0")).toBe(true);
+  });
+});

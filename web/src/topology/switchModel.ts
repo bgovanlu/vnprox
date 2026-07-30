@@ -17,7 +17,7 @@
 // exhaustively Vitest-able without rendering — the same discipline
 // projection.ts follows. SwitchView.tsx is the only consumer.
 import type { EntityStatus, TopologyEdge, TopologyNode } from "../api/types";
-import { badgeCarriesVlan, isGuestGroupId } from "./projection";
+import { badgeCarriesVlan, isGuestGroupId, isPhysGroupId } from "./projection";
 
 // Edge/entity kind vocabularies mirror internal/inventory/link.go and the
 // Kind constants exactly (this module reads the strings the backend emits,
@@ -43,6 +43,13 @@ export interface SwitchPortNic {
    * docs/features/topology.md §3), so the faceplate can mark uplink-bay
    * ports on the management path without a second data fetch. */
   badges: string[];
+  /** T-1907: true when this "port" is actually a collapsed phys-group pill
+   * standing in for `count` real NICs (isPhysGroupId(ref)) — the faceplate's
+   * uplink-bay equivalent of SwitchAccessPort.isGroup. Its click expands,
+   * reusing the same onExpandGroup callback the guest-group access port
+   * already uses. */
+  isGroup?: boolean;
+  count?: number;
 }
 
 /** One uplink module on the faceplate: a bond (with its member NICs) or a
@@ -56,6 +63,12 @@ export interface SwitchUplink {
   /** For a bond: its member NICs. For a bare NIC uplink: a single entry for
    * the NIC itself, so the faceplate can render every uplink uniformly. */
   members: SwitchPortNic[];
+  /** T-1907: true when this whole uplink module is itself a collapsed
+   * phys-group pill directly `port-of` the bridge (never a bond — a group
+   * pill is never a bond member of *itself*), mirroring SwitchPortNic's own
+   * isGroup flag for the "bare NIC uplink" rendering branch. */
+  isGroup?: boolean;
+  count?: number;
 }
 
 /** One access port: a guest NIC, or the collapsed-guests "+N" pill. */
@@ -223,6 +236,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
   function nicPort(ref: string, active: boolean): SwitchPortNic {
     consumed.add(ref);
     const n = byId.get(ref);
+    const isGroup = isPhysGroupId(ref);
     return {
       ref,
       label: n?.label ?? ref,
@@ -230,6 +244,8 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
       active,
       neighbor: neighborOfNic.get(ref),
       badges: n?.badges ?? [],
+      isGroup,
+      count: isGroup ? n?.collapsedCount : undefined,
     };
   }
 
@@ -243,10 +259,21 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
         .sort((a, b) => a.label.localeCompare(b.label));
       return { ref, label: n.label, kind: n.kind, status: n.status, badges: n.badges, members };
     }
-    // A bare NIC uplink: render it as a one-member uplink so the faceplate
-    // treats every uplink uniformly (active is always true for a NIC that is
-    // itself the bridge port — there is no slave-state concept).
-    return { ref, label: n.label, kind: n.kind, status: n.status, badges: n.badges, members: [nicPort(ref, true)] };
+    // A bare NIC (or T-1907 phys-group pill) uplink: render it as a
+    // one-member uplink so the faceplate treats every uplink uniformly
+    // (active is always true — there is no slave-state concept outside a
+    // real bond).
+    const isGroup = isPhysGroupId(ref);
+    return {
+      ref,
+      label: n.label,
+      kind: n.kind,
+      status: n.status,
+      badges: n.badges,
+      members: [nicPort(ref, true)],
+      isGroup,
+      count: isGroup ? n.collapsedCount : undefined,
+    };
   }
 
   const bridges = nodes.filter((n) => BRIDGE_KINDS.has(n.kind));
@@ -331,11 +358,16 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
   // Free ports: bonds and NICs that no faceplate consumed. A NIC enslaved to
   // a bond, or that is itself a bridge port, was consumed above; what remains
   // is genuinely unattached. Bonds not port-of any bridge are surfaced too
-  // (their member NICs get consumed as we build them).
+  // (their member NICs get consumed as we build them). A T-1907 phys-group
+  // pill counts as a NIC here too: if every one of its collapsed NICs was
+  // free (no bond/bridge edge survived to synthesize a group edge — see
+  // collapse_physical.go), the pill is never "consumed" by any uplink/bond
+  // scan above and must still surface somewhere, rather than silently
+  // vanishing from the faceplate entirely.
   const freeByNode = new Map<string, SwitchUplink[]>();
   for (const n of nodes) {
     if (consumed.has(n.id)) continue;
-    if (!BOND_KINDS.has(n.kind) && n.kind !== "physnic") continue;
+    if (!BOND_KINDS.has(n.kind) && n.kind !== "physnic" && n.kind !== "phys-group") continue;
     const uplink = uplinkFrom(n.id);
     if (!uplink) continue;
     const list = freeByNode.get(n.nodeGroup);

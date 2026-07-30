@@ -35,6 +35,33 @@ export function parseGuestGroupId(id: string): ParsedGuestGroup | undefined {
   return { node, targetRef };
 }
 
+export const PHYS_GROUP_PREFIX = "phys-group:";
+
+/** Physical-layer-collapse synthetic node ids look like "phys-group:<node>"
+ * (internal/topology/collapse_physical.go, T-1907) and are NOT valid
+ * inventory.Ref strings — clicking one must expand/toggle rather than open
+ * the inspector, exactly like a guest-group id. Unlike a guest-group id,
+ * there is no further ":<targetRef>" suffix to parse: physical-layer
+ * collapse groups strictly per node (docs/features/topology.md §4's "a
+ * per-node summary"), not per attachment point, so the node name is the
+ * entire remainder of the id. */
+export function isPhysGroupId(id: string): boolean {
+  return id.startsWith(PHYS_GROUP_PREFIX);
+}
+
+export interface ParsedPhysGroup {
+  node: string;
+}
+
+/** Parses a phys-group id, returning its node name (undefined if malformed
+ * or empty). */
+export function parsePhysGroupId(id: string): ParsedPhysGroup | undefined {
+  if (!isPhysGroupId(id)) return undefined;
+  const node = id.slice(PHYS_GROUP_PREFIX.length);
+  if (!node) return undefined;
+  return { node };
+}
+
 // --- Layer visibility ------------------------------------------------------
 
 /** Splits nodeGroup === "" (the cluster-spanning SDN band) out of a node's
