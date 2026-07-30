@@ -16,6 +16,7 @@ import { opKindLabel, refNode, summarizeOp } from "./opSummary";
 import { buildPlanPreview } from "./planPreview";
 import { useChangesetDiffQuery, useValidateChangesetMutation, useApplyChangesetMutation } from "./queries";
 import { useChangesetDrawerStore } from "./store";
+import { preApplyRevertNotice } from "./revertCoverage";
 import { mgmtStrings } from "../mgmt/strings";
 
 export interface ReviewApplyScreenProps {
@@ -86,6 +87,15 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   const planPreview = useMemo(() => buildPlanPreview(changeset.ops), [changeset.ops]);
   const planSteps = changeset.plan && changeset.plan.steps.length > 0 ? changeset.plan.steps : planPreview.plan.steps;
   const planIsPreview = !(changeset.plan && changeset.plan.steps.length > 0);
+
+  // T-1805: state plainly, before apply, which parts of this changeset depend
+  // on the sealed PVE ticket to undo themselves and for how long — no
+  // changeset may imply a safety net it does not have. Recomputed as the
+  // operator adjusts the confirm window, since the window is half the promise.
+  const revertNotice = useMemo(
+    () => preApplyRevertNotice(changeset.ops, confirmTimeoutSec),
+    [changeset.ops, confirmTimeoutSec],
+  );
 
   async function handleApply(): Promise<void> {
     try {
@@ -223,6 +233,18 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
               />
               Apply with warnings
             </label>
+          </div>
+        )}
+
+        {revertNotice.show && (
+          <div
+            className="mt-3 rounded-md border border-sky-300 bg-sky-50 p-3 text-xs text-sky-900 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100"
+            role="note"
+            aria-label="Unattended revert coverage"
+            data-testid="revert-coverage-notice"
+          >
+            <p className="font-medium">{revertNotice.heading}</p>
+            <p className="mt-1">{revertNotice.body}</p>
           </div>
         )}
 

@@ -16,6 +16,7 @@ import { useToast } from "../components/Toast";
 import type { Changeset } from "../api/types";
 import { useReducedMotion } from "../lib/useReducedMotion";
 import { useChangesetDrawerStore } from "./store";
+import { revertCoverageBanner } from "./revertCoverage";
 import { useConfirmChangesetMutation, useRollbackChangesetMutation } from "./queries";
 
 function secondsRemaining(confirmDeadline: number | undefined, nowMs: number): number {
@@ -61,6 +62,11 @@ export function CountdownBanner({ changeset }: CountdownBannerProps) {
   if (changeset.status === "awaiting_confirm") {
     const remaining = secondsRemaining(changeset.confirmDeadline, nowMs);
     const expired = changeset.confirmDeadline !== undefined && remaining <= 0;
+    // T-1805: the server's own unattended-revert coverage report. Only shown
+    // for a changeset whose revert actually depends on the sealed PVE ticket;
+    // for everything else the safety net is unconditional and saying so would
+    // be noise.
+    const coverage = revertCoverageBanner(changeset, nowMs);
     return (
       <div
         role="alert"
@@ -106,6 +112,19 @@ export function CountdownBanner({ changeset }: CountdownBannerProps) {
         >
           Roll back now
         </Button>
+        {coverage.show && (
+          <span
+            data-testid="revert-coverage-status"
+            className={clsx(
+              "w-full text-center text-xs",
+              coverage.tone === "ok" && "text-amber-700 dark:text-amber-300",
+              coverage.tone === "partial" && "text-orange-700 dark:text-orange-300",
+              coverage.tone === "none" && "font-medium text-red-700 dark:text-red-300",
+            )}
+          >
+            {coverage.text}
+          </span>
+        )}
       </div>
     );
   }

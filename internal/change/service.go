@@ -92,11 +92,18 @@ type ClusterMembershipSource interface {
 // Now/Logger default sensibly when zero, mirroring internal/auth.Config's
 // same conventions.
 type Config struct {
-	Clock             Clock
-	Timers            NodeTimerAgent
-	Qos               QosGateway
-	WG                WGGateway
-	Sealer            SecretSealer
+	Clock  Clock
+	Timers NodeTimerAgent
+	Qos    QosGateway
+	WG     WGGateway
+	Sealer SecretSealer
+	// RevertGateways (T-1805 / D1) rebuilds a PVEGateway from the ticket
+	// sealed at apply time, so the unattended commit-confirm-timeout and
+	// crash-recovery reverts can restore a changeset's `fw.*`/`sdn.*` portion
+	// with no live user session. nil disables sealing entirely: nothing is
+	// captured, and the apply response reports unattended revert as
+	// unavailable — the pre-T-1805 behaviour, stated rather than implied.
+	RevertGateways    RevertGatewayFactory
 	WgCarriers        WgCarrierSource
 	Switches          SwitchGateway
 	SwitchScope       SwitchScopeSource
@@ -162,6 +169,7 @@ type Service struct {
 	qos                QosGateway
 	wg                 WGGateway
 	sealer             SecretSealer
+	revertGateways     RevertGatewayFactory
 	wgCarriers         WgCarrierSource
 	switches           SwitchGateway
 	allocations        AllocationsSource
@@ -248,7 +256,7 @@ func NewService(cfg Config) (*Service, error) {
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,
-		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
+		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, revertGateways: cfg.RevertGateways, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
 		switches: cfg.Switches, switchScope: cfg.SwitchScope, switchPushEnabled: cfg.SwitchPushEnabled,
 		confirmTimeout:     clampConfirmTimeout(confirmTimeout),
 		rollbackWindowDays: rollbackWindowDays,
@@ -393,7 +401,16 @@ func (s *Service) Get(ctx context.Context, id string) (Changeset, error) {
 	if err != nil {
 		return Changeset{}, fmt.Errorf("change: getting changeset %s: %w", id, err)
 	}
-	return fromStoreRow(row)
+	c, err := fromStoreRow(row)
+	if err != nil {
+		return Changeset{}, err
+	}
+	// T-1805: recompute the unattended-revert coverage report so a reload of
+	// GET /changesets/{id} shows the same promise the apply response made,
+	// rather than losing it with the response body. Pure computation over
+	// {ops, confirm deadline, sealed-ticket expiry} — no credential is read.
+	c.UnattendedRevert = s.unattendedRevertFor(c)
+	return c, nil
 }
 
 // Create persists a new draft changeset authored by author, audits the
@@ -589,6 +606,12 @@ func (s *Service) Discard(ctx context.Context, id, author string) error {
 	if err := s.repo.Update(ctx, row); err != nil {
 		return fmt.Errorf("change: discarding changeset %s: %w", id, err)
 	}
+	// T-1805: deleting a changeset (docs/api.md: "DELETE /changesets/{id} —
+	// discard draft") must not leave a credential behind. A discardable
+	// changeset is a draft and so should never hold a sealed ticket at all —
+	// which is precisely why the wipe is unconditional here rather than
+	// conditional on a state check that could one day stop holding.
+	s.wipeRevertTicket(ctx, id)
 	s.appendAudit(ctx, author, "changeset.discard", "success", id, nil)
 	s.broadcastStatus(c)
 	return nil
@@ -946,6 +969,13 @@ func fromStoreRow(row store.Changeset) (Changeset, error) {
 	if row.ConfirmDeadline.Valid {
 		d := row.ConfirmDeadline.Int64
 		c.ConfirmDeadline = &d
+	}
+	// T-1805: the sealed ticket's expiry (a bound, not the credential — see
+	// Changeset.RevertTicketExpiresAt). toStoreRow deliberately has no inverse
+	// for this: SealRevertTicket/WipeRevertTicket are the only writers, so an
+	// ordinary persist can never clobber or resurrect a ticket.
+	if row.RevertTicketExpiresAt.Valid {
+		c.RevertTicketExpiresAt = row.RevertTicketExpiresAt.Int64
 	}
 	return c, nil
 }

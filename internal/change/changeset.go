@@ -139,9 +139,15 @@ type Finding struct {
 // service.go's toStoreRow/fromStoreRow).
 type Changeset struct {
 	ConfirmDeadline *int64
-	ID              string
-	Title           string
-	Author          string
+	// UnattendedRevert (T-1805) is the computed, never-persisted answer to
+	// "will this changeset revert itself if it locks me out, and until when?"
+	// Set on the Apply response and on a read of an awaiting_confirm
+	// changeset; nil otherwise. It carries a coverage bound, never the sealed
+	// PVE ticket the coverage rests on.
+	UnattendedRevert *UnattendedRevert
+	ID               string
+	Title            string
+	Author           string
 	// ClusterID (T-1201) scopes this changeset to a single attached cluster.
 	// '' is the implicit default/local cluster, so a single-cluster
 	// deployment's changesets keep working unchanged. Set once at Create and
@@ -166,8 +172,16 @@ type Changeset struct {
 	Findings      []Finding
 	Plan          json.RawMessage
 	ApplyLog      json.RawMessage
-	CreatedAt     int64
-	UpdatedAt     int64
+	// RevertTicketExpiresAt (T-1805) is when the sealed apply-time revert
+	// ticket stops being usable (unix seconds), or 0 when none is sealed. It
+	// is a **bound, not a credential**: the sealed ticket itself never enters
+	// this struct, so nothing that renders a Changeset — no API response, no
+	// MCP tool result, no plugin-visible value — can carry it. This timestamp
+	// is what UnattendedRevert's coverage report is recomputed from after a
+	// reload.
+	RevertTicketExpiresAt int64
+	CreatedAt             int64
+	UpdatedAt             int64
 }
 
 // Origin values for Changeset.Origin (T-1701). OriginUI is the default for any

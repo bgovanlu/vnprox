@@ -24,10 +24,12 @@ type executor struct {
 	log     *ApplyLog
 	stageIx map[string]int
 	loadIx  map[string]int
-	// fwPre caches each fw target's pre-mutation snapshot (T-502's
-	// same-request rollback source — see PVEGateway's doc comment on the
-	// unattended-rollback limitation), keyed by Ref.String(), populated
-	// lazily the first time that target's StepFwApply step runs.
+	// fwPre caches each fw target's pre-mutation snapshot — the executor's
+	// same-request rollback source, keyed by Ref.String(). Since T-1805 it is
+	// seeded from the persisted pre-apply snapshot (fwStateSnapshotPath), which
+	// is also what the unattended commit-confirm-timeout and crash-recovery
+	// reverts restore from; execFwApply's lazy capture remains as a fallback
+	// for a snapshot that carries no firewall file.
 	// undoFwTargets restores every key present here regardless of whether
 	// its StepFwApply step fully completed: the snapshot is taken before
 	// the step's *first* op, so a step that errored partway through still
@@ -75,6 +77,16 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		}
 	}
 	sdnPre, hasSDNPre := sdnConfigFromSnapshot(pre)
+	// T-1805: the firewall pre-image now lives in the persisted pre-snapshot,
+	// so seed the executor's own same-request rollback cache from it rather
+	// than re-reading each scope from PVE at step time. execFwApply's lazy
+	// capture stays as the fallback for a plan whose snapshot has no firewall
+	// file (nothing produces one today, but the guard costs nothing and keeps
+	// that method self-sufficient).
+	fwPre, _ := fwStateFromSnapshot(pre)
+	if fwPre == nil {
+		fwPre = map[string]string{}
+	}
 	qosPre, hasQosPre := qosStateFromSnapshot(pre)
 	wgPre, hasWgPre := wgStateFromSnapshot(pre)
 	switchPre, hasSwitchPre := switchStateFromSnapshot(pre)
@@ -95,7 +107,7 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		qosPre: qosPre, hasQosPre: hasQosPre, wgPre: wgPre, hasWgPre: hasWgPre,
 		switchPre: switchPre, hasSwitchPre: hasSwitchPre, pveGW: pveGW, deadline: deadline,
 		log:     &ApplyLog{Steps: steps},
-		stageIx: stageIx, loadIx: loadIx, fwPre: map[string]string{},
+		stageIx: stageIx, loadIx: loadIx, fwPre: fwPre,
 	}
 }
 
@@ -279,10 +291,10 @@ func (s *Service) subnetVnet(subnetRef inventory.Ref) (string, error) {
 }
 
 // execFwApply runs every op targeting one firewall ruleset (T-502). Before
-// the first mutating call it snapshots the target's current content
-// (e.fwPre) for same-request rollback (see PVEGateway's doc comment on why
-// this can't also cover the unattended commit-confirm-timeout/crash-restart
-// paths), then executes each op in order. An fw.rule.move op with a
+// the first mutating call it ensures the target's pre-mutation content is
+// cached in e.fwPre for same-request rollback — normally already seeded from
+// the persisted pre-apply snapshot (T-1805), captured live here otherwise —
+// then executes each op in order. An fw.rule.move op with a
 // non-nil Expect is revalidated against a live re-fetch of its FromPos
 // immediately before moving — acceptance criterion 3's "no silent
 // misplacement" guarantee.
@@ -354,7 +366,8 @@ func (e *executor) execFwVerify(ctx context.Context, st Step) error {
 // so it can only ever happen here or in a manual/auto rollback that itself
 // has a gateway (see doRollbackLocked). It also reverts any firewall
 // ruleset whose StepFwApply step had already completed (T-502's
-// same-request rollback — see PVEGateway's doc comment). Rollback is
+// same-request rollback; the unattended paths restore the same content from
+// the persisted pre-apply snapshot instead, see restoreFwState). Rollback is
 // best-effort across nodes/targets/SDN config — an error restoring one is
 // logged but does not abort restoring the rest.
 func (e *executor) rollbackAfterFailure(ctx context.Context) {
@@ -475,6 +488,51 @@ func (s *Service) restoreWgState(ctx context.Context, state map[string]string) [
 		if err := s.wg.RestoreWg(ctx, node, state[node]); err != nil {
 			rb.Status = StepFailed
 			rb.Error = err.Error()
+		}
+		logs = append(logs, rb)
+	}
+	return logs
+}
+
+// restoreFwState restores every captured firewall ruleset back to its
+// pre-apply pre-image via pveGW (T-1805). Unlike the QoS/WireGuard/switch
+// restores above, this one needs a PVE gateway — firewall writes are performed
+// with the *user's* ticket (docs/architecture.md §6) and there is no
+// daemon-level equivalent. On the unattended paths that gateway comes from the
+// ticket sealed at apply time (reverticket.go); a nil gateway there means no
+// ticket was available or it had already expired, which is reported as a
+// failed rollback action naming the un-reverted scopes rather than passed over
+// in silence — the changeset then lands in the distinguishable
+// "rollback incomplete" state, the same stance T-1205 takes for an
+// unreachable switch.
+//
+// Best-effort per ruleset: an error restoring one is recorded but does not
+// abort the rest.
+func (s *Service) restoreFwState(ctx context.Context, pveGW PVEGateway, state map[string]string) []RollbackLog {
+	targets := make([]string, 0, len(state))
+	for target := range state {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+	logs := make([]RollbackLog, 0, len(targets))
+	for _, target := range targets {
+		rb := RollbackLog{
+			At:      s.now().Unix(),
+			Status:  StepOK,
+			Summary: fmt.Sprintf("Restore firewall scope %s from pre-apply snapshot", target),
+		}
+		ref, err := inventory.ParseRef(target)
+		switch {
+		case err != nil:
+			rb.Status, rb.Error = StepFailed, fmt.Sprintf("parsing firewall target %q: %v", target, err)
+		case pveGW == nil:
+			rb.Status = StepFailed
+			rb.Error = "no PVE credential available to restore this firewall scope (no live user session, and no usable sealed revert ticket)"
+		default:
+			rb.Node = ref.Node
+			if rerr := pveGW.RestoreFirewallScope(ctx, ref, state[target]); rerr != nil {
+				rb.Status, rb.Error = StepFailed, rerr.Error()
+			}
 		}
 		logs = append(logs, rb)
 	}

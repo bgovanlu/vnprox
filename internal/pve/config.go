@@ -36,6 +36,16 @@ const (
 // happen (T-101 acceptance criterion 1).
 const DefaultTicketRenewAfter = 90 * time.Minute
 
+// TicketLifetime is how long a PVE ticket stays valid after issue
+// (docs/security.md: "PVE tickets expire at 2h"). It is the basis for the
+// expiry stamped on T-1805's sealed revert ticket, and therefore for the
+// apply-time report of how much of a commit-confirm window unattended
+// revert can actually cover. **Needs hardware validation**: real PVE's
+// exact behaviour near the boundary (whether a ticket in its final minutes
+// is still accepted for a mutating call) has never been observed on iron —
+// see planning/reports/needs-hardware-validation.md.
+const TicketLifetime = 2 * time.Hour
+
 // DefaultHTTPTimeout bounds a single PVE HTTP request (not task waits,
 // which have their own WaitOptions.Timeout).
 const DefaultHTTPTimeout = 30 * time.Second
@@ -99,6 +109,21 @@ type Config struct {
 	Username string
 	Password string
 	Realm    string
+	// Ticket/CSRFToken build a **sealed-ticket** client: one that
+	// authenticates with an already-issued PVE ticket and its CSRF token and
+	// **never renews and never logs in**. It is the credential form T-1805's
+	// unattended revert uses — the applying user's ticket, unsealed from
+	// changesets.revert_ticket_enc long after the request that issued it
+	// ended, with no password anywhere in the process to fall back on.
+	//
+	// Set both together, with Auth == AuthTicket and Password empty. Once the
+	// ticket expires PVE rejects the request (surfacing as *ErrPVEAuth) —
+	// deliberately, rather than the client silently re-authenticating: a
+	// daemon that could mint fresh tickets from a sealed one would be able to
+	// extend a user's credential lifetime indefinitely, which is exactly the
+	// standing-privileged-credential property D1 rejected.
+	Ticket    string
+	CSRFToken string
 	// OTP is a one-time TOTP/U2F code passed through to PVE on the
 	// initial login (docs/security.md "OTP/second factor passthrough").
 	// It is not sent on ticket-as-password renewals (the normal renewal
@@ -145,6 +170,20 @@ func (cfg Config) validate() error {
 	}
 	switch cfg.Auth {
 	case AuthTicket:
+		// Sealed-ticket mode (T-1805): an already-issued ticket + CSRF token
+		// and no credentials at all. Both halves are required — a ticket
+		// without its CSRF token cannot perform the mutating calls a revert is
+		// made of, so accepting one alone would build a client that silently
+		// fails every write it exists to make.
+		if cfg.Ticket != "" || cfg.CSRFToken != "" {
+			if cfg.Ticket == "" || cfg.CSRFToken == "" {
+				return fmt.Errorf("pve: Config.Ticket and Config.CSRFToken must be set together for a sealed-ticket client")
+			}
+			if cfg.Password != "" {
+				return fmt.Errorf("pve: Config.Password must be empty for a sealed-ticket client (it never renews)")
+			}
+			return nil
+		}
 		if cfg.Username == "" {
 			return fmt.Errorf("pve: Config.Username is required for AuthTicket")
 		}
@@ -195,6 +234,10 @@ func New(cfg Config) (*Client, error) {
 
 	switch cfg.Auth {
 	case AuthTicket:
+		if cfg.Ticket != "" {
+			c.auth = &ticketAuth{ticket: cfg.Ticket, csrf: cfg.CSRFToken, sealed: true}
+			break
+		}
 		renewAfter := cfg.TicketRenewAfter
 		if renewAfter <= 0 {
 			renewAfter = DefaultTicketRenewAfter

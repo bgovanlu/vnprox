@@ -63,7 +63,16 @@ type ticketAuth struct {
 	csrf     string
 
 	renewAfter time.Duration
-	mu         sync.Mutex
+	// sealed marks a T-1805 sealed-ticket client: the ticket was issued
+	// elsewhere (a user's live session, sealed into a changeset for its
+	// commit-confirm window) and this client must use it exactly as-is —
+	// never renewing, never logging in, holding no password to fall back on.
+	// When the ticket expires the next call fails with PVE's own 401, which
+	// is the intended, visible outcome: the unattended revert path reports
+	// "the sealed ticket is no longer valid" rather than the daemon quietly
+	// minting itself a fresh credential.
+	sealed bool
+	mu     sync.Mutex
 }
 
 type ticketLoginResponse struct {
@@ -76,10 +85,29 @@ func (a *ticketAuth) prepare(ctx context.Context, c *Client) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	if a.sealed {
+		if a.ticket == "" {
+			return &ErrPVEAuth{Message: "sealed-ticket client has no ticket"}
+		}
+		return nil
+	}
 	if a.ticket != "" && time.Since(a.issuedAt) < a.renewAfter {
 		return nil
 	}
 	return a.login(ctx, c)
+}
+
+// credentials returns the current ticket/CSRF pair and the instant the
+// ticket was issued. ok is false when no ticket has been obtained yet.
+// Caller-facing access goes through Client.RevertCredentials, which is the
+// single, documented, deliberately narrow accessor for this material.
+func (a *ticketAuth) credentials() (ticket, csrf string, issuedAt time.Time, ok bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.ticket == "" {
+		return "", "", time.Time{}, false
+	}
+	return a.ticket, a.csrf, a.issuedAt, true
 }
 
 // login performs (or renews) POST /access/ticket: ticket-as-password
@@ -174,6 +202,38 @@ func (a *ticketAuth) apply(req *http.Request) {
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
 		req.Header.Set("CSRFPreventionToken", csrf)
 	}
+}
+
+// RevertCredentials returns this client's live PVE ticket, its CSRF token,
+// and the instant the ticket was issued — the credential internal/change
+// seals into a changeset for the duration of its commit-confirm window so an
+// unattended revert of that changeset's `fw.*`/`sdn.*` ops can act as the
+// applying user (T-1805 / roadmap-proven D1).
+//
+// It is the **only** accessor for a ticket value anywhere in this package's
+// exported surface, and it exists for exactly that one caller. Two properties
+// are load-bearing:
+//
+//   - ok is false for any non-ticket client (the daemon's read-only
+//     `vnprox@pve!daemon` API-token identity has no ticket to seal, and must
+//     never be substituted for one — a revert that acted as vnprox rather
+//     than as the user is precisely the design D1 rejected).
+//   - It performs the client's ordinary lazy login first, so a session whose
+//     first PVE call is the apply itself still yields a real ticket rather
+//     than an empty string.
+//
+// Callers must treat the returned values as credentials: never log them,
+// never place them in an API response or audit detail. internal/change seals
+// them with the shared AES-256-GCM SessionCipher before they touch the store.
+func (c *Client) RevertCredentials(ctx context.Context) (ticket, csrf string, issuedAt time.Time, ok bool) {
+	ta, isTicket := c.auth.(*ticketAuth)
+	if !isTicket {
+		return "", "", time.Time{}, false
+	}
+	if err := ta.prepare(ctx, c); err != nil {
+		return "", "", time.Time{}, false
+	}
+	return ta.credentials()
 }
 
 // --- API token auth ------------------------------------------------------

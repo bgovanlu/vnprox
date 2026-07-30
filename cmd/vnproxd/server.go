@@ -751,6 +751,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// stage/create time with the same session cipher, so the plaintext PSK
 		// never lands in changesets.ops_json or a read response.
 		Sealer: sessionCipher,
+		// T-1805 / D1: the same session cipher also seals (and unseals) the
+		// apply-time revert ticket — one key, one primitive, for every at-rest
+		// credential class in this product (docs/security.md). RevertGateways
+		// turns an unsealed ticket back into a non-renewing PVE client so the
+		// commit-confirm-timeout and crash-recovery reverts can restore a
+		// changeset's firewall/SDN portion with no live user session.
+		RevertGateways: revertGatewayFactory{apiURL: cfg.PVE.APIURL, tls: revertTLSConfig(cfg)},
 		// T-1401 Finding 2: resolve an existing tunnel's stored carrier so a
 		// carrier-less wg op (peer add/remove, delete, MTU-only update) on a
 		// mgmt-path tunnel is caught by the scheduling gate the same way the

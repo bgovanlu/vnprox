@@ -60,12 +60,22 @@ func (s *Service) Apply(ctx context.Context, id, author string, pveGW PVEGateway
 	deadline := s.now().Add(confirmTimeout).Unix()
 
 	// --- pre-state snapshot: before any mutation (docs/data-model.md §2).
-	// captureSnapshotFull additionally captures SDN config (T-402) when the
-	// plan carries any sdn.* step, in the same snapshot row.
+	// captureSnapshotFull additionally captures SDN config (T-402) and, since
+	// T-1805, every touched firewall ruleset's pre-image, in the same snapshot
+	// row.
 	pre, err := s.captureSnapshotFull(ctx, id, snapshotKindPre, plan, pveGW)
 	if err != nil {
 		return s.finishFailedApply(ctx, cs, plan, author, &ApplyLog{}, err)
 	}
+
+	// --- T-1805 / D1: seal the applying user's PVE ticket for this window,
+	// BEFORE the first mutating step. Sealing here rather than at
+	// finishAwaitingConfirm means a daemon killed mid-apply
+	// (recoverInterruptedApply) also finds the credential, not only one killed
+	// mid-window. Never fatal: a changeset whose ticket could not be sealed
+	// still applies, but its apply response says plainly that its firewall/SDN
+	// portion will not self-revert.
+	revert := s.sealRevertTicket(ctx, id, plan, pveGW, deadline)
 
 	// --- execute the plan ---
 	ex := s.newExecutor(cs, plan, pre, pveGW, deadline)
@@ -75,7 +85,7 @@ func (s *Service) Apply(ctx context.Context, id, author string, pveGW PVEGateway
 	}
 
 	// --- success: arm the commit-confirm window ---
-	return s.finishAwaitingConfirm(ctx, cs, plan, author, ex.log, deadline)
+	return s.finishAwaitingConfirm(ctx, cs, plan, author, ex.log, deadline, revert)
 }
 
 // beginApply performs the locked prologue of Apply: acquire the advisory
@@ -192,6 +202,11 @@ func (s *Service) finishFailedApply(ctx context.Context, cs Changeset, plan Plan
 	_ = cs.Transition(StatusFailed, s.now().Unix())
 	cs.ConfirmDeadline = nil
 	_ = s.persist(ctx, cs)
+	// T-1805: a failed apply never enters the commit-confirm window, so the
+	// ticket sealed at the top of Apply has nothing left to authorize — wipe
+	// it here, unconditionally, alongside the terminal transition.
+	s.wipeRevertTicket(ctx, cs.ID)
+	cs.RevertTicketExpiresAt = 0
 	s.lockHeldBy = ""
 	s.applyMu.Unlock()
 
@@ -211,7 +226,7 @@ func (s *Service) finishFailedApply(ctx context.Context, cs Changeset, plan Plan
 // held for the duration of the window). deadline is the same value every
 // affected node's local timer (T-304) was already armed with during
 // execution (apply_exec.go's execStep).
-func (s *Service) finishAwaitingConfirm(ctx context.Context, cs Changeset, plan Plan, author string, log *ApplyLog, deadline int64) (Changeset, error) {
+func (s *Service) finishAwaitingConfirm(ctx context.Context, cs Changeset, plan Plan, author string, log *ApplyLog, deadline int64, revert UnattendedRevert) (Changeset, error) {
 	s.applyMu.Lock()
 	if s.nodeTimers != nil {
 		for _, node := range plan.affectedNodes() {
@@ -232,8 +247,27 @@ func (s *Service) finishAwaitingConfirm(ctx context.Context, cs Changeset, plan 
 	s.armTimerLocked(cs.ID, deadline)
 	s.applyMu.Unlock()
 
+	// T-1805: report unattended-revert coverage on the apply response
+	// (docs/api.md's changesets section). Computed, never persisted, and
+	// carrying no credential material — only whether one was sealed and the
+	// instant its coverage lapses.
+	r := revert
+	cs.UnattendedRevert = &r
+
 	s.broadcastStatus(cs)
-	s.appendAudit(ctx, author, "changeset.apply", "awaiting_confirm", cs.ID, map[string]any{"confirmDeadline": deadline})
+	detail := map[string]any{"confirmDeadline": deadline}
+	if r.Required {
+		// The audit trail records the *coverage decision*, never the
+		// credential: whether a sealed ticket exists and until when it helps.
+		detail["unattendedRevertAvailable"] = r.Available
+		detail["unattendedRevertCoversUntil"] = r.CoversUntil
+		detail["unattendedRevertFullWindow"] = r.FullWindow
+	}
+	s.appendAudit(ctx, author, "changeset.apply", "awaiting_confirm", cs.ID, detail)
+	if r.Required && !r.FullWindow {
+		s.log.Warn("change: unattended revert does not cover the whole confirm window",
+			"changeset_id", cs.ID, "covers_until", r.CoversUntil, "confirm_deadline", deadline, "reason", r.Reason)
+	}
 	return cs, nil
 }
 
@@ -266,6 +300,12 @@ func (s *Service) Confirm(ctx context.Context, id, author string) (Changeset, er
 		s.applyMu.Unlock()
 		return Changeset{}, err
 	}
+	// T-1805: confirm ends the commit-confirm window, so the sealed revert
+	// ticket has nothing left to authorize. Wiped inside the same lock hold as
+	// the status transition, before the lock is released and before any of the
+	// best-effort post-confirm work below — a wipe is not best-effort.
+	s.wipeRevertTicket(ctx, id)
+	cs.RevertTicketExpiresAt = 0
 	s.lockHeldBy = ""
 	plan := decodePlan(cs.Plan)
 	log := decodeApplyLog(cs.ApplyLog)
@@ -385,11 +425,12 @@ func (s *Service) autoRollback(ctx context.Context, id string) {
 		return
 	}
 	// The confirm-timeout timer fires with no live user session at all
-	// (docs/features/change-management.md §4: "the rollback timer runs on
-	// the node's daemon") — no PVEGateway is available here by
-	// construction, so an SDN-carrying changeset's SDN portion cannot be
-	// reverted on this path (see Rollback's doc comment and the T-402
-	// report's flagged gap); the node-file portion still rolls back.
+	// (docs/features/change-management.md §4: "the rollback timer runs on the
+	// node's daemon"), so no PVEGateway is passed here. Since T-1805 that is
+	// no longer the end of the story: doRollbackLocked falls back to the
+	// ticket sealed at apply time, so a firewall/SDN-carrying changeset's
+	// ticket-scoped portion reverts on this path too — the gap T-402 and
+	// T-502 both flagged.
 	plan, rbErr := s.doRollbackLocked(ctx, &cs, systemRollbackActor, nil)
 	s.applyMu.Unlock()
 	if rbErr != nil {
@@ -410,6 +451,21 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 	plan := decodePlan(cs.Plan)
 	log := decodeApplyLog(cs.ApplyLog)
 
+	// T-1805 / D1: when the caller has no live PVE credential (the
+	// commit-confirm-timeout timer, and crash recovery — both run with no user
+	// session at all) but this changeset's revert needs one, unseal the ticket
+	// captured at apply time. This is the *only* place a sealed ticket is
+	// turned back into a gateway, and only ever for the changeset being
+	// reverted. sealedGW is tracked separately so the wipe below runs whether
+	// or not it was actually used.
+	usedSealedTicket := false
+	if pveGW == nil && plan.needsRevertTicket() {
+		if gw, ok := s.revertGatewayFor(ctx, cs.ID); ok {
+			pveGW = gw
+			usedSealedTicket = true
+		}
+	}
+
 	pre, err := s.loadPreSnapshot(ctx, cs.ID)
 	if err != nil {
 		s.log.Error("change: rollback: loading pre-snapshot", "changeset_id", cs.ID, "error", err)
@@ -418,6 +474,8 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 		_ = cs.Transition(StatusFailed, s.now().Unix())
 		cs.ConfirmDeadline = nil
 		_ = s.persist(ctx, *cs)
+		s.wipeRevertTicket(ctx, cs.ID)
+		cs.RevertTicketExpiresAt = 0
 		s.lockHeldBy = ""
 		s.broadcastStatus(*cs)
 		s.appendAudit(ctx, actor, "changeset.rollback", "error", cs.ID, map[string]any{"error": err.Error()})
@@ -441,6 +499,24 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 				anyFailed = true
 			}
 			rbLogs = append(rbLogs, sdnLog)
+		}
+	}
+
+	// T-1805: firewall-ruleset restore. Like SDN (and unlike the node-file,
+	// QoS, WireGuard and switch restores) this needs the user's PVE ticket —
+	// supplied either by an interactive rollback's own live session or, on the
+	// unattended paths, by the ticket sealed at apply time above. Before this
+	// card a fw.* changeset reaching this point was simply never reverted, on
+	// any path including a manual rollback; that is the hole D1 closes.
+	if plan.hasFw() {
+		if fwPre, ok := fwStateFromSnapshot(pre); ok {
+			fwLogs := s.restoreFwState(ctx, pveGW, fwPre)
+			for _, l := range fwLogs {
+				if l.Status != StepOK {
+					anyFailed = true
+				}
+			}
+			rbLogs = append(rbLogs, fwLogs...)
 		}
 	}
 
@@ -512,13 +588,26 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor str
 		result = "rollback_incomplete"
 	}
 	_ = cs.Transition(target, s.now().Unix())
-	if err := s.persist(ctx, *cs); err != nil {
+	persistErr := s.persist(ctx, *cs)
+	// T-1805: the changeset has now left awaiting_confirm by this path, so the
+	// sealed ticket is wiped — unconditionally, including when the persist
+	// above failed. A wipe that only happened on the happy path would be
+	// exactly the best-effort behaviour this card forbids.
+	s.wipeRevertTicket(ctx, cs.ID)
+	cs.RevertTicketExpiresAt = 0
+	if persistErr != nil {
 		s.lockHeldBy = ""
-		return plan, err
+		return plan, persistErr
 	}
 	s.lockHeldBy = ""
 	s.broadcastStatus(*cs)
-	s.appendAudit(ctx, actor, "changeset.rollback", result, cs.ID, map[string]any{"nodes": plan.affectedNodes()})
+	s.appendAudit(ctx, actor, "changeset.rollback", result, cs.ID, map[string]any{
+		"nodes": plan.affectedNodes(),
+		// Records *that* a sealed credential was used, never anything about
+		// its value — so an auditor can tell an unattended firewall/SDN revert
+		// from an interactive one.
+		"sealedRevertTicketUsed": usedSealedTicket,
+	})
 	if anyFailed {
 		return plan, fmt.Errorf("change: rollback of changeset %s did not fully restore every node", cs.ID)
 	}
@@ -584,6 +673,12 @@ func (s *Service) ArmPendingRollbacks(ctx context.Context) error {
 		return nil
 	}
 
+	// T-1805: a PVE ticket sealed before the daemon went down may well have
+	// expired while it was down. Clear those first, so no dead credential
+	// survives a restart and so the re-armed timers below see an accurate
+	// picture of what they can still revert.
+	s.SweepExpiredRevertTickets(ctx)
+
 	awaiting, err := s.List(ctx, string(StatusAwaitingConfirm))
 	if err != nil {
 		return fmt.Errorf("change: listing awaiting-confirm changesets on startup: %w", err)
@@ -621,12 +716,33 @@ func (s *Service) recoverInterruptedApply(ctx context.Context, cs Changeset) {
 		if _, anyFailed := s.restoreAll(ctx, plan, pre); anyFailed {
 			s.log.Error("change: recovery of interrupted apply did not fully restore", "changeset_id", cs.ID)
 		}
+		// T-1805: the ticket is sealed *before* the first mutating step, so a
+		// daemon killed part-way through an apply — not only one killed during
+		// the confirm window — can still revert the firewall/SDN portion of
+		// what it had already done.
+		if plan.needsRevertTicket() {
+			if gw, ok := s.revertGatewayFor(ctx, cs.ID); ok {
+				if sdnPre, hasSDN := sdnConfigFromSnapshot(pre); hasSDN {
+					if l := s.restoreSDN(ctx, gw, sdnPre); l.Status != StepOK {
+						s.log.Error("change: recovery: SDN restore of interrupted apply failed", "changeset_id", cs.ID, "error", l.Error)
+					}
+				}
+				if fwPre, hasFw := fwStateFromSnapshot(pre); hasFw {
+					for _, l := range s.restoreFwState(ctx, gw, fwPre) {
+						if l.Status != StepOK {
+							s.log.Error("change: recovery: firewall restore of interrupted apply failed", "changeset_id", cs.ID, "error", l.Error)
+						}
+					}
+				}
+			}
+		}
 	} else {
 		s.log.Warn("change: recovery: no pre-snapshot for interrupted apply", "changeset_id", cs.ID, "error", err)
 	}
 	_ = cs.Transition(StatusFailed, s.now().Unix())
 	cs.ConfirmDeadline = nil
 	_ = s.persist(ctx, cs)
+	s.wipeRevertTicket(ctx, cs.ID)
 	if s.lockHeldBy == cs.ID {
 		s.lockHeldBy = ""
 	}

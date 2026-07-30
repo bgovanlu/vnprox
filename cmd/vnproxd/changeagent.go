@@ -228,6 +228,67 @@ func (p pveGatewayProvider) GatewayFor(ctx context.Context) (change.PVEGateway, 
 	return &pveGateway{client: client}, true
 }
 
+// RevertTicket implements change.RevertTicketSource (T-1805 / roadmap-proven
+// D1): it hands the change engine the applying user's own PVE ticket so the
+// engine can seal it for the duration of the commit-confirm window and revert
+// this changeset's `fw.*`/`sdn.*` ops with it if the window closes
+// unconfirmed.
+//
+// ok is false for any client with no user ticket to give — notably the
+// daemon's read-only `vnprox@pve!daemon` API-token identity, which must never
+// be substituted for one: a revert performed as vnprox rather than as the user
+// is the standing-privileged-credential design D1 explicitly rejected. The
+// change engine's only response to false is to report unattended revert as
+// unavailable, which is the pre-T-1805 behaviour stated out loud.
+func (g *pveGateway) RevertTicket(ctx context.Context) (change.RevertTicket, bool) {
+	ticket, csrf, issuedAt, ok := g.client.RevertCredentials(ctx)
+	if !ok || ticket == "" || csrf == "" {
+		return change.RevertTicket{}, false
+	}
+	return change.RevertTicket{
+		Ticket:    ticket,
+		CSRF:      csrf,
+		ExpiresAt: change.TicketExpiryFrom(issuedAt, pve.TicketLifetime),
+	}, true
+}
+
+// revertGatewayFactory rebuilds a change.PVEGateway from a sealed revert
+// ticket, for the unattended revert paths (commit-confirm timeout, crash
+// recovery) which by construction hold no live session. It satisfies
+// change.RevertGatewayFactory.
+//
+// The client it builds is a **sealed-ticket** client (pve.Config.Ticket/
+// CSRFToken): it authenticates with exactly the unsealed ticket and never
+// renews and never logs in, so the daemon cannot use a sealed credential to
+// mint itself a fresh, longer-lived one. When the ticket has expired PVE
+// answers 401 and the revert reports the firewall/SDN scopes it could not
+// restore — the changeset then lands in the distinguishable "rollback
+// incomplete" state rather than a silent `rolled_back`.
+//
+// tls mirrors the login client's own trust decision (cmd/vnproxd/auth.go):
+// pinned to the node's pveproxy certificate in a real deployment, unpinned
+// against a plain-HTTP pvemock in dev/test.
+type revertGatewayFactory struct {
+	apiURL string
+	tls    pve.TLSConfig
+}
+
+func (f revertGatewayFactory) GatewayForRevertTicket(_ context.Context, t change.RevertTicket) (change.PVEGateway, error) {
+	client, err := pve.New(pve.Config{
+		APIURL:    f.apiURL,
+		Auth:      pve.AuthTicket,
+		Ticket:    t.Ticket,
+		CSRFToken: t.CSRF,
+		TLS:       f.tls,
+	})
+	if err != nil {
+		// Deliberately no ticket material in the error: this string reaches
+		// the daemon log.
+		return nil, fmt.Errorf("building sealed-ticket PVE client for unattended revert: %w", err)
+	}
+	return &pveGateway{client: client}, nil
+}
+
 // probeClientProvider builds a probe.PVEExecer from the requesting
 // session's own PVE client (T-802: guest-agent live path probes reach into
 // a guest under the user's own ticket, the same docs/architecture.md §6

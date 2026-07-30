@@ -53,6 +53,25 @@ import (
 // already trusted the node's own certificate. Every real deployment's
 // login flow was completely broken until this was caught by actually
 // logging in against a real node.
+// revertTLSConfig is the TLS trust decision every PVE client built from a
+// *user's* credential shares: pinned to the node's own pveproxy certificate in
+// a real deployment, unpinned for a dev/test harness talking to a plain-HTTP
+// pvemock (which sets dev_ticket_username and has no node certificate to
+// trust). It mirrors buildCollectorPVEClient's own branching exactly.
+//
+// Factored out for T-1805: the sealed-ticket client that performs an
+// unattended revert (revertGatewayFactory) must make the *same* trust decision
+// as the login client whose ticket it is reusing — two copies of this
+// branching drifting apart is how a revert would start failing TLS on real
+// hardware while every test kept passing.
+func revertTLSConfig(cfg *config.Config) pve.TLSConfig {
+	tls := pve.TLSConfig{}
+	if cfg.PVE.TicketUsername == "" {
+		tls.CACertFile = config.DefaultPVECertPath
+	}
+	return tls
+}
+
 func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo *store.AuditRepo, tokens *store.APITokenRepo) (*auth.Service, *store.SessionCipher, error) {
 	if _, statErr := os.Stat(cfg.Storage.SessionKeyFile); errors.Is(statErr, os.ErrNotExist) {
 		logger.Info("auth: generating session key", "path", cfg.Storage.SessionKeyFile)
@@ -80,10 +99,7 @@ func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo 
 	// node certificate to trust; real deployments (no override) pin to the
 	// node's own pveproxy certificate the same way the collector client
 	// does.
-	loginTLS := pve.TLSConfig{}
-	if cfg.PVE.TicketUsername == "" {
-		loginTLS.CACertFile = config.DefaultPVECertPath
-	}
+	loginTLS := revertTLSConfig(cfg)
 	identityFactory := auth.NewClientIdentityFactory(pve.Config{
 		APIURL: cfg.PVE.APIURL,
 		TLS:    loginTLS,

@@ -653,10 +653,18 @@ type statusEvent struct {
 
 type fakeBroadcaster struct {
 	events []statusEvent
-	mu     sync.Mutex
+	// raw keeps every broadcast payload verbatim, for T-1805's
+	// "the sealed ticket appears on no surface" assertion over the WS stream
+	// (a decode-then-re-encode round trip could hide a field this struct
+	// doesn't know about; the raw bytes cannot).
+	raw [][]byte
+	mu  sync.Mutex
 }
 
 func (b *fakeBroadcaster) Broadcast(_ string, payload []byte) {
+	b.mu.Lock()
+	b.raw = append(b.raw, append([]byte(nil), payload...))
+	b.mu.Unlock()
 	var e statusEvent
 	if err := json.Unmarshal(payload, &e); err != nil {
 		return
@@ -664,6 +672,15 @@ func (b *fakeBroadcaster) Broadcast(_ string, payload []byte) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.events = append(b.events, e)
+}
+
+// messages returns every raw broadcast payload seen so far.
+func (b *fakeBroadcaster) messages() [][]byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([][]byte, len(b.raw))
+	copy(out, b.raw)
+	return out
 }
 
 func (b *fakeBroadcaster) statuses(id string) []string {
@@ -737,6 +754,10 @@ type applyHarness struct {
 	timers    *fakeTimers
 	ws        *fakeBroadcaster
 	refresher *fakeRefresher
+	// dbPath is the SQLite file backing db — T-1805 asserts the sealed PVE
+	// ticket's plaintext appears nowhere in these raw bytes, mirroring
+	// TestWireGuardRepo_PrivateKeyEncryptedAtRest's shape.
+	dbPath string
 }
 
 // newHarness wires a full apply-capable Service against a fresh SQLite DB and
@@ -763,7 +784,8 @@ func newHarness(t *testing.T, fixturePath string, opts ...func(*change.Config)) 
 		t.Fatalf("pve.New: %v", err)
 	}
 
-	db := openTestDB(t)
+	dbPath := filepath.Join(t.TempDir(), "vnprox.db")
+	db := openTestDBAt(t, dbPath)
 	csRepo := store.NewChangesetRepo(db)
 	auditRepo := store.NewAuditRepo(db)
 	snapRepo := store.NewSnapshotRepo(db)
@@ -786,7 +808,7 @@ func newHarness(t *testing.T, fixturePath string, opts ...func(*change.Config)) 
 	svc := newService(t, cfg)
 
 	return &applyHarness{
-		svc: svc, db: db, csRepo: csRepo, auditRepo: auditRepo, snapRepo: snapRepo, blobRepo: blobRepo,
+		svc: svc, db: db, dbPath: dbPath, csRepo: csRepo, auditRepo: auditRepo, snapRepo: snapRepo, blobRepo: blobRepo,
 		server: ts, client: client, agent: agent, timers: timers, ws: ws, refresher: refresher,
 	}
 }
@@ -802,7 +824,13 @@ func newService(t *testing.T, cfg change.Config) *change.Service {
 
 func openTestDB(t *testing.T) *store.DB {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "vnprox.db")
+	return openTestDBAt(t, filepath.Join(t.TempDir(), "vnprox.db"))
+}
+
+// openTestDBAt is openTestDB with a caller-chosen file path, so a test that
+// needs to inspect the raw database bytes knows where they are.
+func openTestDBAt(t *testing.T, path string) *store.DB {
+	t.Helper()
 	db, err := store.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)

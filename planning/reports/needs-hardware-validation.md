@@ -895,3 +895,36 @@ hardware and are flagged, not faked:
       expander is unit-tested against a hand-built inventory snapshot; confirm it resolves correctly
       against a live PVE topology at scale (the enforcement pipeline itself is proven independently
       with explicit refs).
+
+## T-1805 — apply-time revert ticket (unattended `fw.*`/`sdn.*` revert)
+
+The whole credential round trip — capture from the applying session, AES-256-GCM seal, SQLite row,
+unseal on the timeout/crash-recovery path, non-renewing sealed-ticket `*pve.Client`, real mutating
+firewall/SDN calls — is exercised end to end against `internal/pvemock` (which authenticates the
+`PVEAuthCookie`/`CSRFPreventionToken` pair against its own session table, so a wrong credential
+genuinely fails). These items are what only real PVE can settle:
+
+- [ ] **PVE ticket lifetime near the boundary.** `pve.TicketLifetime` is the documented 2h, and the
+      sealed ticket's `expiresAt` (and therefore the operator-facing `unattendedRevert.coversUntil`
+      report) is derived from it. Confirm on real PVE that (a) a ticket really is honoured for a
+      full 2h from issue, and (b) how it behaves in its final minutes for a *mutating* call —
+      whether it is accepted right up to the boundary, or rejected earlier. If real PVE is stricter
+      than 2h, `coversUntil` currently over-promises by that margin.
+- [ ] **A sealed ticket still authorizes a firewall/SDN write minutes-to-an-hour after issue, from
+      a different HTTP connection with no session cookie jar.** The unattended revert presents the
+      ticket on a brand-new client the daemon builds itself. pvemock accepts this; confirm real
+      `pveproxy` does not bind a ticket to anything connection- or client-scoped.
+- [ ] **The end-to-end firewall-only lockout heals on iron.** A `fw.*`-only changeset applied, the
+      management path then severed, the confirm window allowed to elapse with no session alive —
+      and the firewall ruleset observed back at its pre-apply content. This is T-1804 scenario 5 and
+      is this card's real acceptance test; it is proven here only against pvemock.
+- [ ] **The same after `vnproxd` is killed and restarted inside the window** (crash recovery
+      unseals from the DB and completes the revert), and after a node hard-reset.
+- [ ] **`RestoreFirewallScope`'s delete-all-then-recreate against a live `pve-firewall`.** The
+      firewall scope restore replays the whole ruleset; confirm real PVE tolerates the intermediate
+      empty-ruleset state (and that `pve-firewall` does not compile-and-apply a wide-open or
+      fully-closed ruleset in the gap) — this is the one step of the revert that is not idempotent
+      in isolation. If it does, the restore needs to be reordered or bracketed.
+- [ ] **Reduced-coverage reporting matches reality.** Apply a firewall changeset with a 600s confirm
+      window from a session whose ticket has < 600s left, and confirm the operator-visible
+      `unattendedRevert.fullWindow: false` cut-off is where the revert actually stops working.
