@@ -1,0 +1,4 @@
+This directory holds committed evidence blobs from real hardware runs, named
+<section>-<pve-version>-<date>.json (see ../README.md). Empty until T-1802's
+first run against pvecube — this placeholder exists only so git tracks the
+directory before that.

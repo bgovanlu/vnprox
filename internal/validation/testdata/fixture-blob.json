@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "harness_version": "1.0.0",
+  "section": "fixture",
+  "generated_at": "2026-07-30T12:00:00Z",
+  "mutates": false,
+  "node": { "hostname": "pve1.example", "identity": "pve1.example" },
+  "pve_version": { "source": "pveversion", "raw": "pve-manager/9.2.4" },
+  "items": [
+    {
+      "id": "a",
+      "checklist_ref": "fixture > item a",
+      "command": "true",
+      "raw": "ok",
+      "exit_code": 0,
+      "verdict_inputs": { "http_status": 200 }
+    },
+    {
+      "id": "b",
+      "checklist_ref": "fixture > item b",
+      "command": "true",
+      "raw": "forbidden",
+      "exit_code": 0,
+      "verdict_inputs": { "http_status": 403 }
+    }
+  ]
+}
