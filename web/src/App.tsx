@@ -23,6 +23,7 @@ import { AuditPage } from "./pages/AuditPage";
 import { ToolsPage } from "./pages/ToolsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AlertRulesPage } from "./pages/AlertRulesPage";
+import { FederationClustersPage } from "./pages/FederationClustersPage";
 import { EmbedFrame } from "./embed/EmbedFrame";
 import { EmbedMap } from "./embed/EmbedMap";
 import { EmbedDashboard } from "./embed/EmbedDashboard";
@@ -218,6 +219,14 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Alert rules">
                   <AlertRulesPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/settings/federation"
+              element={
+                <DesktopOnlyRoute pageLabel="Federated clusters">
+                  <FederationClustersPage />
                 </DesktopOnlyRoute>
               }
             />
