@@ -229,6 +229,14 @@ export function SettingsPage() {
         </Link>
       </Section>
 
+      <Section title="Federation" description="Attach other Proxmox clusters for aggregated views and cross-cluster IPAM conflict detection.">
+        <Link to="/settings/federation">
+          <Button size="sm" variant="secondary">
+            Manage federated clusters
+          </Button>
+        </Link>
+      </Section>
+
       <Section title="About">
         <Row label="vnprox">{config?.version ? `v${config.version}` : "visual networking add-on for Proxmox VE"}</Row>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
