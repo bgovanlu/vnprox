@@ -95,7 +95,7 @@ NEW_VERSION="${VNPROX_TEST_NEW_VERSION:-1.0.0}"
 # Deliberately outside the whole "N8006/N8007" family (8006-8008,
 # 18006-18008, 28006-28007, 38006-38007, 48006-48007, 58006-58007) — see the
 # port-choice note above.
-TEST_PORT="${VNPROX_TEST_SERVICE_PORT:-61007}"
+TEST_PORT="${VNPROX_TEST_SERVICE_PORT:-62007}"
 CONTAINER_NAME="vnprox-upgrade-service-test-$$"
 SYSTEMD_IMAGE_TAG="vnprox-upgrade-service-test-image-$$"
 
