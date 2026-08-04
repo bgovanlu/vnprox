@@ -447,7 +447,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, logger *slog.Logger) *findings.Engine {
+func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
@@ -509,6 +509,11 @@ func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc finding
 		// tunnel_down_peer_unreachable — nil-safe, same degraded-mode
 		// convention every other producer here uses.
 		Federation: federationSvc,
+		// T-1906: peerTrustAdapter (peertrust.go) reports the peer client's
+		// own TLS trust posture and per-peer verdicts, backing
+		// peer_untrusted / peer_unreachable / peer_trust_degraded — nil-safe,
+		// same degraded-mode convention every other producer here uses.
+		PeerTrust:  peerTrustSvc,
 		Thresholds: thresholds,
 		Logger:     logger,
 		Notifier:   notifier,

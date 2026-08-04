@@ -52,9 +52,18 @@ type ClusterStatusSource interface {
 
 // ClientOptions configures a Client.
 type ClientOptions struct {
-	ClusterStatus           ClusterStatusSource
-	Secrets                 *SecretStore
-	HTTPClient              *http.Client
+	ClusterStatus ClusterStatusSource
+	Secrets       *SecretStore
+	// HTTPClient, when set, is used verbatim and Trust is ignored — the
+	// caller has taken full responsibility for this client's TLS trust
+	// decision. Production wiring must not use it (Client.TrustReport reports
+	// such a client as TrustExternal/unpinned, which raises a
+	// peer_trust_degraded finding); it exists for tests that point a peer
+	// client at an httptest server.
+	HTTPClient *http.Client
+	// Trust pins peer TLS to the cluster's own CA (T-1906). Nil means the
+	// pinned default (DefaultClusterCAPath) — never the system trust store.
+	Trust                   *Trust
 	Logger                  *slog.Logger
 	Now                     func() time.Time
 	Scheme                  string
@@ -64,10 +73,12 @@ type ClientOptions struct {
 	BreakerResetTimeout     time.Duration
 }
 
-// Client is the peer API client: discovery, HMAC signing, and a per-peer
-// circuit breaker. Safe for concurrent use.
+// Client is the peer API client: discovery, HMAC signing, cluster-CA-pinned
+// TLS, and a per-peer circuit breaker. Safe for concurrent use.
 type Client struct {
 	httpClient *http.Client
+	trust      *Trust
+	statuses   *peerStatusStore
 	breakers   map[string]*circuitBreaker
 	opts       ClientOptions
 	mu         sync.Mutex
@@ -99,11 +110,29 @@ func NewClient(opts ClientOptions) *Client {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	// TLS trust (T-1906). A caller-supplied HTTPClient wins, but *nothing*
+	// else falls back to net/http's default system trust store: an
+	// unconfigured Client pins DefaultClusterCAPath, exactly like a configured
+	// production daemon. This is the one line that decides whether a
+	// certificate from any publicly-trusted CA can impersonate a peer daemon.
+	trust := opts.Trust
 	hc := opts.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: opts.RequestTimeout}
+		if trust == nil {
+			trust = newPinnedTrust(opts.Logger)
+			opts.Trust = trust
+		}
+		hc = &http.Client{Timeout: opts.RequestTimeout, Transport: trust}
+	} else {
+		trust = nil
 	}
-	return &Client{opts: opts, httpClient: hc, breakers: make(map[string]*circuitBreaker)}
+	return &Client{
+		opts:       opts,
+		httpClient: hc,
+		trust:      trust,
+		statuses:   newPeerStatusStore(),
+		breakers:   make(map[string]*circuitBreaker),
+	}
 }
 
 // Peers returns the current cluster member list (excluding this node
@@ -140,15 +169,27 @@ func (c *Client) breakerFor(node string) *circuitBreaker {
 }
 
 // do sends a signed request to peer and returns the raw response for the
-// caller to decode. The circuit breaker fast-fails (ErrPeerUnreachable,
-// without attempting the network) when peer's breaker is open; a
-// transport-level failure (dial/timeout/TLS) records a breaker failure and
-// also returns ErrPeerUnreachable, while any received HTTP response
-// (whatever its status) records a breaker success — the breaker tracks
-// reachability, not application-level correctness.
+// caller to decode. The circuit breaker fast-fails (without attempting the
+// network) when peer's breaker is open; a transport-level failure records a
+// breaker failure, while any received HTTP response (whatever its status)
+// records a breaker success — the breaker tracks reachability, not
+// application-level correctness.
+//
+// Transport failures are classified two ways (T-1906 AC5). A certificate that
+// does not verify against the pinned cluster CA yields an error wrapping
+// ErrPeerUntrusted (and, so existing degradation paths are unchanged, also
+// ErrPeerUnreachable — see that sentinel's doc comment); anything else
+// (refused, timed out, no route) yields ErrPeerUnreachable alone. The
+// distinction survives the circuit breaker: once a peer has failed
+// verification, the breaker's own fast-fail keeps reporting *untrusted*
+// instead of flattening it back to "unreachable", so an impersonation attempt
+// does not disappear behind an open breaker after three attempts.
 func (c *Client) do(ctx context.Context, p Peer, method, path string, body []byte) (*http.Response, error) {
 	breaker := c.breakerFor(p.Node)
 	if !breaker.allow() {
+		if last, ok := c.statuses.get(p.Node); ok && last.State == PeerTrustUntrusted {
+			return nil, fmt.Errorf("peer: %s: %w (%w): circuit open after a certificate verification failure: %s", p.Node, ErrPeerUntrusted, ErrPeerUnreachable, last.Error)
+		}
 		return nil, fmt.Errorf("peer: %s: %w: circuit open", p.Node, ErrPeerUnreachable)
 	}
 
@@ -176,9 +217,23 @@ func (c *Client) do(ctx context.Context, p Peer, method, path string, body []byt
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		breaker.recordFailure()
-		return nil, fmt.Errorf("peer: %s: %w: %v", p.Node, ErrPeerUnreachable, err)
+		if isTrustFailure(err) {
+			// %w on the transport error too, so a caller can reach the
+			// underlying cause (ErrTrustAnchorUnavailable, an
+			// *x509.UnknownAuthorityError) through errors.Is/As rather than
+			// having to substring-match a message.
+			untrusted := fmt.Errorf("peer: %s: %w: certificate verification failed, treating the peer as unreachable (%w): %w", p.Node, ErrPeerUntrusted, ErrPeerUnreachable, err)
+			c.statuses.record(p, PeerTrustUntrusted, c.opts.Now(), untrusted)
+			c.opts.Logger.Error("peer: refusing a peer whose TLS certificate did not verify against the pinned cluster CA",
+				"node", p.Node, "addr", p.Addr, "error", err)
+			return nil, untrusted
+		}
+		unreachable := fmt.Errorf("peer: %s: %w: %w", p.Node, ErrPeerUnreachable, err)
+		c.statuses.record(p, PeerTrustUnreachable, c.opts.Now(), unreachable)
+		return nil, unreachable
 	}
 	breaker.recordSuccess()
+	c.statuses.record(p, PeerTrustOK, c.opts.Now(), nil)
 	return resp, nil
 }
 

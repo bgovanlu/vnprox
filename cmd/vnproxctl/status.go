@@ -298,11 +298,23 @@ func printPeerReachability(ctx context.Context, stdout io.Writer, cfg *config.Co
 		}
 	}
 
+	// T-1906: probe peers through the exact same cluster-CA-pinned trust the
+	// daemon uses. `vnproxctl status` reporting a peer as reachable over a
+	// certificate vnproxd itself would refuse would be worse than useless.
+	trust, err := statusPeerTrust(cfg)
+	if err != nil {
+		_, _ = fmt.Fprintf(stdout, "  peer TLS trust is misconfigured: %v\n", err)
+		return
+	}
+	_, _ = fmt.Fprintf(stdout, "  %s\n", describePeerTrust(trust.Status()))
+
 	peerClient := peer.NewClient(peer.ClientOptions{
 		ClusterStatus:  pveClient,
 		Secrets:        secrets,
 		Port:           port,
 		RequestTimeout: timeout,
+		Trust:          trust,
+		Logger:         discardLogger(),
 	})
 	peers, err := peerClient.Peers(ctx)
 	if err != nil {

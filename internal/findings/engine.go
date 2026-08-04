@@ -119,7 +119,13 @@ type Config struct {
 	// live WireGuard state), backing tunnel_down_peer_unreachable (source
 	// "federation"). Nil skips that check entirely, same degradation as
 	// every other optional Config field.
-	Federation      FederationProvider
+	Federation FederationProvider
+	// PeerTrust is T-1906's peer-API TLS posture seam (cmd/vnproxd's
+	// peerTrustAdapter over *peer.Client.TrustReport), backing
+	// peer_untrusted / peer_unreachable / peer_trust_degraded (source
+	// "peer"). Nil skips all three, same degradation as every other optional
+	// Config field.
+	PeerTrust       PeerTrustProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -169,6 +175,8 @@ type Engine struct {
 	baselineDB       *debouncer
 	federationSvc    FederationProvider
 	federationDB     *debouncer
+	peerTrustSvc     PeerTrustProvider
+	peerUnreachDB    *debouncer
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
 	arpChurnDB       *arpChurnTracker
@@ -274,6 +282,8 @@ func New(cfg Config) *Engine {
 		baselineDB:       newDebouncer(),
 		federationSvc:    cfg.Federation,
 		federationDB:     newDebouncer(),
+		peerTrustSvc:     cfg.PeerTrust,
+		peerUnreachDB:    newDebouncer(),
 	}
 }
 
@@ -305,6 +315,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, capacityFindings(e.capacitySvc)...)
 	out = append(out, checkBaselineAnomalies(e.baselineSvc, e.baselineDB)...)
 	out = append(out, federationTunnelFindings(e.federationSvc, e.wgSvc, e.federationDB, e.now())...)
+	out = append(out, peerTrustFindings(e.peerTrustSvc, e.peerUnreachDB)...)
 	out = append(out, e.healthFindings()...)
 	out = append(out, e.rogueFindings()...)
 	sortFindings(out)

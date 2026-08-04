@@ -31,13 +31,52 @@ Check items off with the PVE version tested.
 
 ## Peer API (T-301)
 
-- [ ] **Peer TLS trust**: real peer daemons present the node's PVE
-      certificate (docs/architecture.md §9), typically chained to
-      `/etc/pve/pve-root-ca.pem`; `internal/peer.Client` does not yet pin
-      that CA (it inherits `net/http`'s default trust store unless a caller
-      supplies `ClientOptions.HTTPClient`). Confirm the right pinning
-      strategy against a real cluster before T-303/T-304 rely on it beyond
-      the plain-HTTP test harness this task used.
+- [~] **Peer TLS trust — pinning implemented (T-1906), the real chain's shape
+      still unverified.** The original item read "`internal/peer.Client` does
+      not yet pin that CA (it inherits `net/http`'s default trust store)".
+      That is fixed: `internal/peer.Trust` pins `/etc/pve/pve-root-ca.pem`
+      (`[peer] ca_file`) as the sole anchor, never consults the system pool,
+      fails closed with no anchor, re-reads on a 30 s cadence for rotation,
+      and classifies a verification failure as `peer_untrusted` rather than
+      `peer_unreachable` (see `planning/reports/T-1906.md`). Every test CA and
+      certificate is built in-process with `crypto/x509`, so what remains
+      genuinely unknown is the **real chain's shape**, and that still needs a
+      cluster. **T-1801's harness (`planning/validation/`) does not exist
+      yet**, so these live here, phrased as harness steps ready to be lifted
+      into it verbatim when it lands. Capture on hardware:
+      - [ ] The **actual certificate chain** `pveproxy`/vnproxd serves on
+            8007 on a real node: is the leaf (`/etc/pve/local/pve-ssl.pem`)
+            issued *directly* by `pve-root-ca.pem`, or is there an
+            intermediate? Does the served chain include the issuer, or only
+            the leaf? Pinning a root works either way only if the peer sends
+            enough of the chain — capture it (`openssl s_client -connect
+            <node>:8007 -showcerts`) and keep it as a fixture.
+      - [ ] The leaf's **SANs**: peers are dialled by IP
+            (`https://<node-ip>:8007`, `Client.Peers` builds the address from
+            `GET /cluster/status`). Confirm PVE's generated certificate
+            carries the node's management **IP** in its SAN list and not only
+            the hostname. If it is hostname-only, hostname verification will
+            fail on every peer and the client needs an explicit
+            `ServerName`/name-resolution step — this is the single most
+            likely way pinning breaks on iron, and it fails *closed*, so it
+            would present as every peer becoming `peer_untrusted` at once.
+      - [ ] Behaviour with a **custom certificate** installed
+            (`pveproxy-ssl.pem`, e.g. a Let's Encrypt / enterprise-CA cert):
+            such a node's peer certificate is *not* issued by
+            `pve-root-ca.pem`, so pinning will reject it. Confirm and
+            document the intended posture (`[peer] ca_file` pointed at the
+            operator's own CA bundle is the designed answer).
+      - [ ] **Rotation on iron**: `pvecm updatecerts -f`, then confirm peers
+            recover within one reload interval with no daemon restart, and
+            that the WARN/INFO log transitions look right.
+      - [ ] `/etc/pve/pve-root-ca.pem` **availability** during a
+            `pve-cluster` restart: how long it is absent, and that the
+            last-known-good behaviour (keep verifying against the previously
+            loaded anchor, WARN) is what actually happens rather than a
+            fail-closed blip.
+      - [ ] **Mixed-version rollout**: a node still running a pre-T-1906
+            build serving traffic to a pinned peer — the pinned side is the
+            client, so this should be unaffected, but confirm no asymmetry.
 - [x] **`/etc/pve/priv/vnprox/cluster.secret` under pmxcfs (T-608, validated
       2026-07-12 against a real PVE 9.2.4 node, "pvecube")**: found two real
       bugs, both fixed. (1) pmxcfs rejects `link(2)` outright with `EPERM`

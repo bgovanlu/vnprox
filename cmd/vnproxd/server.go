@@ -116,6 +116,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return fmt.Errorf("initializing peer cluster secret: %w", err)
 	}
 
+	// T-1906: the peer API's TLS trust anchor. One *peer.Trust per daemon,
+	// shared by every peer client below, so there is exactly one trust
+	// decision, one CA re-read cadence, and one startup banner per process.
+	// Construction fails only on a config this daemon must not run with (an
+	// unknown [peer] tls_trust, or an escape hatch without its exact
+	// acknowledgement) — the same fatal treatment the cluster secret above
+	// gets, and unreachable for a production node, which sets neither key.
+	peerTrust, err := newPeerTrust(cfg, logger)
+	if err != nil {
+		return fmt.Errorf("initializing peer TLS trust: %w", err)
+	}
+
 	distFS, err := distRootFS()
 	if err != nil {
 		return err
@@ -245,7 +257,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// non-nil — see setupCollect's doc comment — so every peerClient use
 	// below is already guarded by the same "collectors initialized OK"
 	// nil-safety collector's own uses need.
-	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, onServices, peerSecrets)
+	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, onServices, peerSecrets, peerTrust)
 	if collectErr != nil {
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling or cluster fan-out", "error", collectErr)
 	}
@@ -550,7 +562,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// (fedTunnelAdapter.set below), mirroring baselineSvcVal/
 	// flowClassifyAdapterVal's identical two-step wiring in this function.
 	fedTunnelAdapter := &federationTunnelAdapter{baseCtx: ctx}
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
+	// T-1906: same two-step wiring — the coordinator's peer client is built
+	// further below, so the peer-TLS-posture adapter is passed in unset and
+	// pointed at that client via set() once it exists.
+	peerTrustAdapterVal := &peerTrustAdapter{}
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -715,7 +731,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		ClusterStatus: clusterStatusSource,
 		Secrets:       peerSecrets,
 		Logger:        logger,
+		// T-1906: the shared, cluster-CA-pinned trust anchor. This is the
+		// client that carries cross-node changeset application and
+		// distributed rollback timers, so it is the one that must not accept
+		// an arbitrary publicly-trusted certificate.
+		Trust: peerTrust,
 	})
+	peerTrustAdapterVal.set(coordPeerClient, localNode)
 	// localNode is the same closure already built up above (before
 	// dhcpSvc/ipamSvc) — reused here, not redeclared, so every one of its
 	// callers throughout this function shares one variable.
