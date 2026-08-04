@@ -2,19 +2,55 @@
   {
     "id": "GHSA-mh99-v99m-4gvg",
     "package": "brace-expansion",
-    "rationale": "Transitive dev-tooling dependency (pulled in via eslint's glob chain, not a runtime dependency of the shipped SPA). The advisory is a DoS via unbounded brace-expansion length; the only input it ever processes here is our own repo's file-glob patterns during `eslint .`, never attacker-controlled data. No non-breaking fix is available upstream yet (`npm audit fix` has nothing to apply). Revisit at expiry: re-run `npm audit` and drop this entry once a transitive bump resolves it.",
+    "rationale": "Transitive dev-tooling dependency (pulled in via eslint's glob chain — `eslint > minimatch > brace-expansion`; eslint is a devDependency and brace-expansion is verifiably absent from the built bundle in web/dist). The advisory is a DoS via unbounded brace-expansion length; the only input it ever processes here is our own repo's file-glob patterns during `eslint .`, never attacker-controlled data. No non-breaking fix is available upstream yet (`npm audit fix` has nothing to apply). Revisit at expiry: re-run `npm audit` and drop this entry once a transitive bump resolves it.",
+    "expires": "2026-10-30"
+  },
+  {
+    "id": "GHSA-rgw5-rvv9-x895",
+    "package": "brace-expansion",
+    "rationale": "Follow-up advisory to GHSA-mh99-v99m-4gvg above: a second unbounded-expansion DoS that bypasses the CVE-2026-14257 mitigation applied for the first one. Same dependency path (`eslint > minimatch > brace-expansion`, devDependency only, absent from the built bundle) and therefore the same reachability argument: the only input is this repo's own glob patterns during `eslint .`. Accepted on identical grounds to its predecessor and deliberately given the same expiry, so both are re-reviewed together — if a transitive bump ever fixes one it should clear both.",
     "expires": "2026-10-30"
   },
   {
     "id": "GHSA-r28c-9q8g-f849",
     "package": "postcss",
-    "rationale": "Transitive dependency of the Tailwind v4 build pipeline (`@tailwindcss/vite`). The advisory is a path-traversal in postcss's own `sourceMappingURL` auto-loading of local .map files during a build; vnprox's build never processes untrusted CSS, and the affected code path only runs against our own repo's source during `vite build`/`vite dev`. Fixing requires a Tailwind v4 release that bumps its pinned postcss range past 8.5.17. Revisit at expiry.",
+    "rationale": "Build-time-only transitive dependency (`vite > postcss`; vite is a devDependency, and postcss runs during `vite build`/`vite dev`, never in the browser — verifiably absent from the built bundle). The advisory is a path traversal in postcss's `sourceMappingURL` auto-loading of local .map files; vnprox's build only ever processes its own repo's CSS, never untrusted stylesheets. Revisit at expiry once a vite release pins a patched postcss.",
     "expires": "2026-10-30"
   },
   {
-    "id": "GHSA-c2j3-45gr-mqc4",
-    "package": "dompurify",
-    "rationale": "Transitive dependency of monaco-editor (the raw interfaces editor, lazy-loaded). The advisory only affects DOMPurify's `CUSTOM_ELEMENT_HANDLING` allow-list bypass for custom elements; vnprox never configures or relies on DOMPurify's custom-element allow-listing, and monaco-editor doesn't sanitize user-supplied HTML through this path. `npm audit fix --force` would downgrade monaco-editor to 0.53.0, a breaking change. Revisit at expiry — re-check whether a newer monaco-editor release bundles a patched dompurify.",
+    "id": "GHSA-fxqj-rqcc-2cmp",
+    "package": "postcss",
+    "rationale": "Follow-up advisory to GHSA-r28c-9q8g-f849 above, disclosed as an incomplete fix of GHSA-6g55-p6wh-862q: an attacker-controlled `sourceMappingURL` can read arbitrary .map files when postcss's `from` option is unset. Same dependency path and same reachability argument — it is reachable only from a build that processes attacker-supplied CSS, and vnprox's build processes only its own repo's source. Accepted on identical grounds to its predecessor, same expiry so both are re-reviewed together.",
+    "expires": "2026-10-30"
+  },
+  {
+    "id": "GHSA-8xcm-r25x-g524",
+    "package": "undici",
+    "rationale": "Test-environment-only transitive dependency (`jsdom > undici`; jsdom is a devDependency supplying Vitest's DOM environment, and undici is verifiably absent from the built bundle in web/dist). The advisory is a downstream response desynchronization via undici's retry interceptor, which requires undici to be acting as an HTTP client against an attacker-influenced server. vnprox ships no Node HTTP client at all — the SPA uses the browser's own fetch — so this code path exists only inside the test runner, where the suite stubs fetch rather than making real requests. Revisit at expiry once jsdom pins a patched undici.",
+    "expires": "2026-10-30"
+  },
+  {
+    "id": "GHSA-4cwx-7wf7-3272",
+    "package": "undici",
+    "rationale": "Test-environment-only transitive dependency (`jsdom > undici`, devDependency, absent from the built bundle). Cross-user information disclosure and a parse-time crash triggered by degenerate private cache directives in a response — reachable only when undici parses responses from an attacker-influenced server. vnprox ships no Node HTTP client; undici exists here solely inside Vitest's jsdom environment. Same grounds and expiry as the sibling undici entries so all five are re-reviewed together.",
+    "expires": "2026-10-30"
+  },
+  {
+    "id": "GHSA-m8rv-5g2x-5cg5",
+    "package": "undici",
+    "rationale": "Test-environment-only transitive dependency (`jsdom > undici`, devDependency, absent from the built bundle). CRLF injection via a blob-like body's `type` property, requiring the application to pass attacker-controlled data as a request body type through undici. vnprox never constructs undici requests — it exists only inside Vitest's jsdom environment. Same grounds and expiry as the sibling undici entries.",
+    "expires": "2026-10-30"
+  },
+  {
+    "id": "GHSA-jr45-8vmc-qm54",
+    "package": "undici",
+    "rationale": "Test-environment-only transitive dependency (`jsdom > undici`, devDependency, absent from the built bundle). Cross-user information disclosure via mishandled whitespace around equals signs in Cache-Control directives — reachable only when undici parses responses from an attacker-influenced server, and only where a shared cache is in play. Neither condition exists in a test runner with stubbed fetch. Same grounds and expiry as the sibling undici entries.",
+    "expires": "2026-10-30"
+  },
+  {
+    "id": "GHSA-v3r7-h72x-cjcm",
+    "package": "undici",
+    "rationale": "Test-environment-only transitive dependency (`jsdom > undici`, devDependency, absent from the built bundle). Cookie attribute injection via an unsanitized domain and unparsed setCookie fields, requiring the application to drive undici's cookie handling with attacker-controlled values. vnprox does no such thing — undici exists only inside Vitest's jsdom environment. Same grounds and expiry as the sibling undici entries.",
     "expires": "2026-10-30"
   },
   {
