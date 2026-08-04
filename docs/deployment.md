@@ -139,6 +139,33 @@ apt update && apt install vnprox        # per node; any order
 - Mixed versions during rolling upgrade: daemons serve, but changeset coordination involving an incompatible peer is refused with an upgrade prompt (architecture §5). Upgrade all nodes promptly.
 - Config file changes are documented in release notes; unknown keys are warnings, not fatals.
 
+### Supported upgrade path
+
+**Every schema version vnprox has ever shipped (1 through the current latest, 33) can upgrade
+directly to current in a single `apt install vnprox` — no intermediate hop through an in-between
+release is ever required.** Schema version 1 (`0001_init.sql`) is the very first release's schema;
+there is no vnprox install older than that, so "how far back is upgrading-directly supported"
+has one answer: **all the way**, for every install that has ever run a real vnprox build.
+`internal/store`'s `TestMigrate_FromEachPriorSchemaVersion` (T-1807) proves this directly rather
+than by induction over intermediate hops: it freezes a database at **each** of schema versions
+0 (a brand-new file, i.e. a fresh install) through 32, seeds every one of them with representative
+rows in that version's own on-disk shape, migrates straight to 33, and asserts — per table, not
+just "migrate() returned nil" — that every seeded row is still present and correct afterward. A
+second test, `TestMigrate_DestructiveMigrationIsCaught`, injects a synthetic migration that
+deliberately deletes rows and confirms the same assertions notice — evidence the data-preservation
+checks above have teeth, not just that they run.
+
+If an install predates schema tracking entirely (a database not created by a real vnproxd build —
+this has never shipped, but would show up as `schema_version` being unreadable or the `kv` table
+missing in a way `currentSchemaVersion` cannot resolve to a sane prior value), that database is
+unsupported: back up `/var/lib/vnprox/vnprox.db` for forensics, then reinstall fresh
+(`apt purge vnprox && apt install vnprox` and re-run `vnprox-setup`) — vnprox's own store is
+disposable app state per the Backup section above, and Proxmox itself (the actual network
+configuration) is never touched by this. The one direction that is refused outright, loudly and
+by design, is pointing an **older** vnproxd binary at a database a newer build already migrated
+(`ErrSchemaTooNew` — see `TestOpen_RefusesNewerSchema`): downgrading the binary without restoring
+a pre-upgrade backup of the database is not supported.
+
 ### Upgrading a v1.x install to v2.0
 
 - **The v2.0 schema is a forward-only superset of v1.x's.** The federation arc adds migrations `0021_clusters` … `0024_oidc` (cluster registry, switches, external subnets, OIDC links) on top of the v1.x schema; they run automatically on first v2.0 daemon start and touch **only** the new app-owned tables — no existing v1.x row is rewritten. This is pinned by `internal/store`'s `TestMigrate_FromEachPriorSchemaVersion`, which freezes a DB at each prior schema version (including the last pre-federation one), migrates it to the current version, and asserts every pre-existing row survives byte-for-byte.
@@ -149,11 +176,16 @@ apt update && apt install vnprox        # per node; any order
 
 - **The v3.0 schema is a forward-only superset of v2.x's.** The v2.0 → v3.0 arc adds migrations
   `0025_flow_baselines` … `0031_ha` (flow baselines, capacity samples, posture scores, changeset
-  origin, plugins, tenants, and the `ha_lease` singleton) on top of the v2.x schema; they run
-  automatically on first v3.0 daemon start and touch **only** new app-owned tables/columns — no
-  existing v2.x row is rewritten. This is pinned by `internal/store`'s
-  `TestMigrate_FromEachPriorSchemaVersion` (freezes a DB at each prior schema version, migrates to
-  the current version — **31** — and asserts every pre-existing row survives byte-for-byte).
+  origin, plugins, tenants, and the `ha_lease` singleton) on top of the v2.x schema, followed by
+  `0032_cluster_wg_tunnel` (v3.0.2, tunnel-aware federation reachability) and
+  `0033_changeset_revert_ticket` (v3.0.3, sealed apply-time revert ticket for unattended
+  `fw.*`/`sdn.apply` rollback) landing within the v3.0 line itself; they all run automatically on
+  first daemon start at or after the release that introduced them and touch **only** new app-owned
+  tables/columns — no existing row from an earlier schema is ever rewritten. This is pinned by
+  `internal/store`'s `TestMigrate_FromEachPriorSchemaVersion` (freezes a DB at **every** prior
+  schema version 0 through latest-1, migrates each to the current version — **33** as of this
+  writing — and asserts every pre-existing row survives, per table; see "Supported upgrade path"
+  above for the full guarantee this test backs).
 - **Every v3.0 platform feature is opt-in / dormant until configured.** A v2.x install that upgrades
   to v3.0 keeps behaving exactly as before: the MCP server stays unmounted unless `[mcp] enabled =
   true`; the plugin registry holds no plugins until one is installed; multi-tenancy narrows nothing
