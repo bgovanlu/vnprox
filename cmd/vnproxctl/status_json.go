@@ -144,11 +144,17 @@ func probePeersJSON(ctx context.Context, cfg *config.Config, cfgErr error, timeo
 			port = p
 		}
 	}
+	trust, err := statusPeerTrust(cfg)
+	if err != nil {
+		return nil
+	}
 	peerClient := peer.NewClient(peer.ClientOptions{
 		ClusterStatus:  pveClient,
 		Secrets:        secrets,
 		Port:           port,
 		RequestTimeout: timeout,
+		Trust:          trust,
+		Logger:         discardLogger(),
 	})
 	peers, err := peerClient.Peers(ctx)
 	if err != nil || len(peers) == 0 {

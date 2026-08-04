@@ -71,6 +71,22 @@ pve_interval = "10s"
 host_interval = "5s"
 lldp_interval = "30s"
 
+# [peer]                           # T-301/T-1906: the cluster-internal peer API
+# secret_path = "/etc/pve/priv/vnprox/cluster.secret"   # default (pmxcfs, root-only)
+# ca_file = "/etc/pve/pve-root-ca.pem"  # default: peer TLS is PINNED to the cluster's own root CA.
+#                                       # The system trust store is never consulted. Nothing below is
+#                                       # needed on a real PVE node — and if the file is missing, peer
+#                                       # TLS fails CLOSED (every peer unverifiable) rather than
+#                                       # falling back to the system pool.
+# tls_trust = "cluster-ca"         # "cluster-ca" (default) | "system" | "insecure". The last two are
+#                                  # escape hatches for a host that genuinely has no /etc/pve. Each
+#                                  # ALSO requires its own exact tls_trust_ack literal below — one edit
+#                                  # is never enough — logs a WARN naming what was given up on every
+#                                  # startup, and raises a standing peer_trust_degraded finding.
+#                                  # A wrong/missing ack, or an unknown value, is a fatal config error.
+# tls_trust_ack = "i-accept-unpinned-peer-tls"     # required by tls_trust = "system"
+# tls_trust_ack = "i-accept-unverified-peer-tls"   # required by tls_trust = "insecure"
+
 [retention]
 snapshot_keep_days = 90    # committed-changeset snapshots are pinned a minimum of snapshot_pin_days regardless
 snapshot_pin_days = 7

@@ -8,6 +8,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/url"
@@ -358,6 +359,27 @@ type PeerConfig struct {
 	// writable path instead, mirroring the precedent [storage]'s db_path/
 	// session_key_file set for T-105's own app-owned files.
 	SecretPath string
+
+	// CAFile is the trust anchor peer-API TLS pins (T-1906), defaulting to
+	// peer.DefaultClusterCAPath (`/etc/pve/pve-root-ca.pem`) — the CA that
+	// issues the PVE certificates real peer daemons serve
+	// (docs/architecture.md §9). TOML key `ca_file`.
+	CAFile string
+
+	// TLSTrust is `tls_trust`: how a peer daemon's TLS certificate is
+	// verified. The zero value is peer.TrustClusterCA — pinned. The two
+	// non-default values are escape hatches for a host that genuinely has no
+	// /etc/pve, and each requires its own exact TLSTrustAck literal, so no
+	// single edit, unset key, absent file, or environment variable can turn
+	// pinning off (T-1906 AC3). Load fails outright on an unknown value or a
+	// missing/mismatched ack rather than quietly picking either the requested
+	// or the safe mode.
+	TLSTrust peer.TrustMode
+
+	// TLSTrustAck is `tls_trust_ack`: the mode-specific acknowledgement
+	// literal (peer.AckSystem / peer.AckInsecure) a non-default TLSTrust
+	// requires.
+	TLSTrustAck string
 }
 
 // StorageConfig is the [storage] section: paths for vnprox's own app-owned
@@ -633,7 +655,10 @@ type rawRetention struct {
 }
 
 type rawPeer struct {
-	SecretPath string `toml:"secret_path"`
+	SecretPath  string `toml:"secret_path"`
+	CAFile      string `toml:"ca_file"`
+	TLSTrust    string `toml:"tls_trust"`
+	TLSTrustAck string `toml:"tls_trust_ack"`
 }
 
 type rawFirewallLog struct {
@@ -737,6 +762,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	peerCfg, err := resolvePeerConfig(raw.Peer)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg := &Config{
 		Server: ServerConfig{
@@ -768,10 +797,8 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			DBPath:         firstNonEmpty(raw.Storage.DBPath, DefaultDBPath),
 			SessionKeyFile: firstNonEmpty(raw.Storage.SessionKeyFile, DefaultSessionKeyFile),
 		},
-		Peer: PeerConfig{
-			SecretPath: firstNonEmpty(raw.Peer.SecretPath, peer.DefaultSecretPath),
-		},
-		HA: haCfg,
+		Peer: peerCfg,
+		HA:   haCfg,
 		Retention: RetentionConfig{
 			SnapshotKeepDays: firstNonZeroInt(raw.Retention.SnapshotKeepDays, DefaultSnapshotKeepDays),
 			SnapshotPinDays:  firstNonZeroInt(raw.Retention.SnapshotPinDays, DefaultSnapshotPinDays),
@@ -1055,6 +1082,59 @@ func resolveMetricsConfig(raw rawMetrics) (MetricsConfig, error) {
 		KeyFile:   firstNonEmpty(raw.KeyFile, DefaultMetricsKeyFile),
 		AllowFrom: allowFrom,
 	}, nil
+}
+
+// resolvePeerConfig defaults and validates [peer] (T-1906).
+//
+// The default is the secure one and needs no keys at all: peer TLS is pinned
+// to `/etc/pve/pve-root-ca.pem`. `tls_trust` is only ever needed to *weaken*
+// that, and weakening it is a two-key interlock — the mode plus its own exact
+// `tls_trust_ack` literal, which differs per mode so copying a "system" config
+// and editing only the mode line does not produce an unverified one.
+//
+// Every failure here is fatal to Load, i.e. the daemon refuses to start:
+//
+//   - An unknown `tls_trust` value must not silently become the safe mode,
+//     because an operator who asked for something and got something else
+//     learns nothing.
+//   - A missing or wrong `tls_trust_ack` must not silently become the safe
+//     mode either, for the same reason, and obviously must not become the
+//     requested one.
+//
+// Neither failure can affect a production node, which sets no `[peer]`
+// tls_trust key at all.
+func resolvePeerConfig(raw rawPeer) (PeerConfig, error) {
+	mode, err := peer.ParseTrustMode(strings.TrimSpace(raw.TLSTrust))
+	if err != nil {
+		return PeerConfig{}, fmt.Errorf("%w: peer.tls_trust: %v", ErrInvalidConfig, err)
+	}
+	cfg := PeerConfig{
+		SecretPath:  firstNonEmpty(raw.SecretPath, peer.DefaultSecretPath),
+		CAFile:      firstNonEmpty(raw.CAFile, peer.DefaultClusterCAPath),
+		TLSTrust:    mode,
+		TLSTrustAck: raw.TLSTrustAck,
+	}
+	// The library (peer.NewTrust) is the enforcement point for the
+	// acknowledgement, not this function — so a caller that builds a Trust
+	// without going through config gets the identical interlock. Calling it
+	// here just moves the failure to config-load time, where it belongs.
+	if _, err := peer.NewTrust(peer.TrustOptions{
+		Mode:   cfg.TLSTrust,
+		CAFile: cfg.CAFile,
+		Ack:    cfg.TLSTrustAck,
+		Logger: discardingLogger(),
+	}); err != nil {
+		return PeerConfig{}, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	return cfg, nil
+}
+
+// discardingLogger silences the validation-only peer.NewTrust call above: the
+// real, operator-visible escape-hatch banner is emitted by the daemon's own
+// Trust, once per startup, and must not be duplicated (or, worse, be emitted
+// only here and then forgotten) by config parsing.
+func discardingLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 // parseCIDRList parses [metrics] allow_from's string entries into *net.IPNet

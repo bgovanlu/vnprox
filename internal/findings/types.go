@@ -72,6 +72,13 @@ const (
 	// inventory graph knows about. Currently the sole producer is
 	// tunnel_down_peer_unreachable (health_federation_tunnel.go).
 	SourceFederation Source = "federation"
+	// SourcePeer (T-1906) marks a finding about the peer API's own TLS trust
+	// posture — peer_untrusted / peer_unreachable / peer_trust_degraded. Its
+	// own top-level source (like SourceFederation), since it describes the
+	// cluster's peer transport rather than a node/interface the inventory
+	// graph knows about, and because the untrusted case must be legible as a
+	// security signal rather than buried in generic "health".
+	SourcePeer Source = "peer"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's
