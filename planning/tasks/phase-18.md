@@ -389,6 +389,70 @@ that path untested.
 
 ---
 
+### T-1807-bug-01 · vnprox's own test tooling assumes exclusive use of the machine
+
+**Severity:** Medium — not a product defect, but a recurring, now three-times-confirmed source of
+false "product is broken" signals inside exactly the kind of concurrent-worktree development this
+project's own orchestration convention (`planning/implementation-plan-proven.md`) runs by design.
+
+**Finding:** T-1807's own AC4 packaging test (`packaging/test/upgrade-service.sh`, new this card)
+needs a real running `vnprox.service` under systemd to verify "the service comes back up" for
+real (not a proxy like "the binary didn't crash when invoked manually" — see the file's own doc
+comment for why `deb-install.sh`/`upgrade.sh` explicitly punted on this). Built and first run
+against vnprox's shipped default port 8007 with `--network=host` (required in this sandbox: no
+pasta/slirp4netns for rootless `podman run`'s network stack, so a bridge network can't reach
+`deb.debian.org` — see `port-conflict.sh`'s identical note). Result: `vnproxd` failed to bind and
+the test failed with a confusing "systemd reports the unit active(running) but nothing is
+listening" symptom — root-caused (by the orchestrator, mid-card) to a concurrent Playwright run
+of the coordinator's own `webServer` fleet (T-2001 verification) holding `127.0.0.1:8007` at the
+same moment. This is the exact failure mode `web/e2e`'s own port scheme already had to solve for
+itself: `web/playwright.config.ts` and `web/e2e/*.spec.ts` claim the entire "N8006/N8007" family
+(8006-8008, 18006-18008, 28006-28007, 38006-38007, 48006-48007, 58006-58007) specifically so its
+own eight concurrently-running mock-PVE/vnproxd/k8smock fixture pairs don't collide with each
+other — but nothing stopped a ninth, unrelated piece of test tooling (this card's packaging test,
+`make dev`, or a developer's own manual `systemctl start vnprox`) from independently reaching for
+the one port every one of those schemes treats as "the" vnprox port, 8007 itself.
+
+**Same class of finding, third occurrence this arc:**
+- T-1806 hit it with `golangci-lint`'s file lock (`parallel golangci-lint is running` hard error)
+  — fixed with `--allow-serial-runners`.
+- T-1806-bug-01 documents the e2e fleet's own port scheme as evidence a "quiet machine" is already
+  a precondition its 31 specs assume, without ever stating that requirement anywhere a human or
+  agent would see it before running them.
+- This card is the third: a packaging test built with the same "the machine is mine alone"
+  assumption every prior one made, caught immediately because the coordinator's own concurrent
+  verification made the collision impossible to miss.
+
+**Fixed in this card, for this one script** (not a general fix — see below): `TEST_PORT`
+(`packaging/test/upgrade-service.sh`) is now `61007`, chosen outside the entire "N8006/N8007"
+family rather than merely a different member of it, plus an explicit preflight check
+(`ss -tln | grep ":${TEST_PORT}"`) that fails with a clear "port already in use, set
+`VNPROX_TEST_SERVICE_PORT`" message instead of reproducing the confusing service-start-looking
+failure a second time.
+
+**Not fixed, and out of this card's scope:**
+- No repo-wide port registry exists. `web/e2e`'s family, `make dev`'s 8007, `make mockpve`'s 8006,
+  and now this script's 61007 are each self-consistent in isolation but only because every author
+  so far has happened to pick something that doesn't collide with what came before — there is
+  nothing that would catch two future additions choosing the same port independently, the same
+  way this card's first draft (8007, then briefly 28017 — close enough to the e2e fleet's own
+  28006/28007 to raise the question even though it didn't actually collide) had to be caught by
+  hand both times.
+- `packaging/test/deb-install.sh` and `packaging/test/port-conflict.sh` also use `--network=host`
+  and, in port-conflict.sh's case, deliberately bind 8007 as its own test subject (a fake listener
+  to prove install.sh's conflict detection) — a genuinely fixed requirement there, not something
+  to move, but one more reason two of these scripts can never safely run concurrently against each
+  other either.
+
+**Recommendation (not implemented here — a future card's decision):** a single source of truth
+for "which ports does this repo's tooling ever bind during development/test" (a doc table, or a
+generated `lsof`/`ss` preflight helper every script sources) would turn this class of failure from
+"confusing, root-caused by hand each time" into "caught at the first line of the offending
+script's own output." Given this is the third occurrence in one phase, it is worth its own small
+card rather than a fourth ad hoc fix.
+
+---
+
 ## T-1808 · Scale validation on real cluster data ★
 **model:** sonnet-5 · **kind:** validation · **size:** M · **depends:** T-1801 · **context:** `docs/features/topology.md` §4 (the documented scale target), `docs/testing/topology-performance.md` (the synthetic measurement), `internal/topology/`, `web/src/topology/`
 

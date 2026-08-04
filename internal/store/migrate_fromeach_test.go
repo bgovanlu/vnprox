@@ -1,34 +1,52 @@
 package store
 
-// T-606 (planning/tasks/phase-6.md#T-606): "upgrade path: migration tests
-// from each prior tagged schema". This repository has not cut any git tags
-// yet (pre-1.0: `git tag -l` is empty), so "each prior tagged schema" is,
-// today, exactly "each prior schema_version that has ever shipped" — 0
-// (a brand-new, pre-0001 database; i.e. a fresh install of the very first
-// release) through latest-1. Once real release tags exist, each of them
-// pins one of these version numbers (a tag's go.mod-embedded migrations
-// determine the schema_version its build understood), so this harness stays
-// meaningful without depending on tag names at all: it is parameterized
-// purely over schema_version, which is what "an install upgrading from an
-// older release" actually differs by. As new migrations land, this test
-// automatically grows an additional prior-version case with no edits
-// needed.
+// T-606 (planning/tasks/phase-6.md#T-606) established this harness: "upgrade
+// path: migration tests from each prior tagged schema". This repository has
+// cut no release tags (`git tag -l` is empty as of T-1807), so "each prior
+// tagged schema" is, in practice, exactly "each prior schema_version that
+// has ever shipped" — 0 (a brand-new, pre-0001 database; i.e. a fresh
+// install of the very first release) through latest-1. Once real release
+// tags exist, each of them pins one of these version numbers (a tag's
+// go.mod-embedded migrations determine the schema_version its build
+// understood), so this harness stays meaningful without depending on tag
+// names at all: it is parameterized purely over schema_version, which is
+// what "an install upgrading from an older release" actually differs by.
 //
-// Each case: build a database frozen at schema_version V (by applying only
-// migrations 1..V, exactly what an old vnproxd build left on disk), seed it
-// with representative data in that version's shape, then run this build's
-// full migrate() over it (what happens on `apt install` upgrading vnprox on
-// that node) and assert: (1) the DB ends at this build's latest
-// schema_version, (2) every pre-existing row survived byte-for-byte
-// untouched, (3) tables/columns added by later migrations are present and
-// usable. This is the "DB migrations run automatically on daemon start;
-// forward-only" contract (docs/deployment.md "Upgrade") pinned per prior
-// version rather than only ever tested from an always-empty database, which
-// is all TestOpen_CreatesAllTables and friends exercise.
+// T-1807 ("Migration upgrade-chain testing") extended this from the original
+// two hand-written cases (versions 1 and 2) to every shipped version (1
+// through the current latest-1, 32 as of schema 33): a v1.0-era database had
+// never actually been walked all the way up to current. versionSeeds below
+// is the fixture corpus — generated REPRODUCIBLY (freeze at version V by
+// replaying migrations/*.sql 1..V exactly as an old vnproxd build left them,
+// then execute this file's own seed function for that version), never a
+// committed binary blob. Each entry seeds ONLY the rows/columns that
+// version's own migration introduced; freezeAndSeed composes every
+// registered version 1..V in order to build any version's full cumulative
+// on-disk shape, exactly what a real node upgrading from that version would
+// have accumulated release over release.
+//
+// Each test case: build a database frozen at schema_version V (openFrozenAt,
+// migrations 1..V only — what an old vnproxd build left on disk), seed it
+// with representative data in that version's shape (freezeAndSeed), then run
+// this build's full migrate() over it (what happens on `apt install`
+// upgrading vnprox on that node) and assert every table's data survived
+// (assertSeededThrough) — per table, with real column values checked, not
+// just "migrate() returned nil". TestMigrate_FromEachPriorSchemaVersion below
+// fails loudly at setup if any version in 1..latest-1 has no versionSeeds
+// entry, so a new migration landing without a matching seed/assert pair is a
+// build failure, not a silent coverage gap.
+//
+// TestMigrate_DestructiveMigrationIsCaught (below) proves these assertions
+// have teeth (AC3): it injects a synthetic, deliberately data-dropping extra
+// migration on top of the real chain and confirms the SAME assertion
+// (assertV1) used throughout this file actually fails when rows are lost —
+// i.e. that a green TestMigrate_FromEachPriorSchemaVersion is real evidence
+// of data preservation, not a tautology.
 
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/url"
 	"path/filepath"
 	"testing"
@@ -73,59 +91,92 @@ func openFrozenAt(t *testing.T, version int) *sql.DB {
 	return db
 }
 
-// seedAtVersion1 inserts one representative row per 0001_init.sql table —
-// the shape every column in that file's schema documents — using values a
-// real T-1xx/T-2xx-era vnproxd could actually have written.
-func seedAtVersion1(t *testing.T, db *sql.DB) {
+// mustExec runs a seed INSERT/UPDATE and fails the test immediately if it
+// errors — every versionSeeds seed function below is built from these, one
+// statement per row, so a constraint violation (a bad fixture) points
+// straight at the offending statement.
+func mustExec(t *testing.T, db *sql.DB, query string, args ...any) {
 	t.Helper()
-	ctx := context.Background()
-	exec := func(query string, args ...any) {
-		t.Helper()
-		if _, err := db.ExecContext(ctx, query, args...); err != nil {
-			t.Fatalf("seeding at v1 (%s): %v", query, err)
-		}
+	if _, err := db.ExecContext(context.Background(), query, args...); err != nil {
+		t.Fatalf("seed exec failed (%s): %v", query, err)
 	}
-	exec(`INSERT INTO sessions (id, username, realm, pve_ticket_enc, csrf_token_enc, caps_json, created_at, expires_at)
-	      VALUES ('sess-1', 'root@pam', 'pam', x'01020304', x'05060708', '{"sysModify":true}', 1700000000, 1700007200)`)
-	exec(`INSERT INTO changesets (id, title, author, status, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at)
-	      VALUES ('cs-v1', 'pre-upgrade change', 'root@pam', 'committed', '[]', '[]', '{}', '{}', NULL, 1700000000, 1700000100)`)
-	exec(`INSERT INTO snapshots (id, changeset_id, taken_at, kind, files_json)
-	      VALUES ('snap-v1', 'cs-v1', 1700000000, 'pre', '[{"node":"pve1","path":"/etc/network/interfaces","sha256":"deadbeef"}]')`)
-	exec(`INSERT INTO audit_log (at, username, action, target, changeset_id, result, detail_json)
-	      VALUES (1700000000, 'root@pam', 'changeset.apply', NULL, 'cs-v1', 'success', '{}')`)
-	exec(`INSERT INTO layouts (username, name, layout_json, updated_at)
-	      VALUES ('root@pam', 'default', '{"nodes":[]}', 1700000000)`)
-	exec(`INSERT INTO metric_samples (ref, at, rx_bytes, tx_bytes, rx_pkts, tx_pkts, rx_errs, tx_errs, rx_drop, tx_drop)
-	      VALUES ('iface:pve1:vmbr0', 1700000000, 100, 200, 1, 2, 0, 0, 0, 0)`)
-	exec(`INSERT INTO kv (k, v) VALUES ('install_id', 'test-install-v1')`)
 }
 
-// seedAtVersion2 adds 0002_snapshot_blobs.sql's tables (and its
-// snapshots.note column) on top of seedAtVersion1.
-func seedAtVersion2(t *testing.T, db *sql.DB) {
-	t.Helper()
-	seedAtVersion1(t, db)
-	ctx := context.Background()
-	exec := func(query string, args ...any) {
-		t.Helper()
-		if _, err := db.ExecContext(ctx, query, args...); err != nil {
-			t.Fatalf("seeding at v2 (%s): %v", query, err)
-		}
-	}
-	exec(`INSERT INTO blobs (sha256, content_zstd, size) VALUES ('deadbeef', x'28b52ffd', 42)`)
-	exec(`INSERT INTO snapshot_files (snapshot_id, node, path, sha256) VALUES ('snap-v1', 'pve1', '/etc/network/interfaces', 'deadbeef')`)
-	exec(`UPDATE snapshots SET note = 'manual pre-upgrade snapshot' WHERE id = 'snap-v1'`)
+// versionSeed pairs one schema version's own seed step (insert representative
+// rows into whatever that version's migration introduced — a new table, or a
+// value in a column an ALTER TABLE added) with the assertion that those rows
+// (and every earlier version's) survived a subsequent migrate-to-latest.
+type versionSeed struct {
+	seed   func(t *testing.T, db *sql.DB)
+	assert func(t *testing.T, db *sql.DB)
 }
 
-// migrateFromEachTestCase pins one prior schema_version to freeze at
-// (frozenVersion), a seeder that populates it in that version's shape, and
-// an assertion function that all seeded data survived the subsequent
-// migrate-to-latest.
-type migrateFromEachTestCase struct {
-	seed          func(t *testing.T, db *sql.DB)
-	assertSeeded  func(t *testing.T, db *sql.DB)
-	name          string
-	frozenVersion int
+// versionSeeds is the fixture corpus: one entry per shipped schema version.
+// TestMigrate_FromEachPriorSchemaVersion requires every version from 1 to
+// latest-1 to have an entry here (T-1807 AC1) — a new migration landing
+// without a matching entry fails that test at setup, loudly, rather than
+// silently narrowing coverage.
+var versionSeeds = map[int]versionSeed{
+	1:  {seedV1, assertV1},
+	2:  {seedV2, assertV2},
+	3:  {seedV3, assertV3},
+	4:  {seedV4, assertV4},
+	5:  {seedV5, assertV5},
+	6:  {seedV6, assertV6},
+	7:  {seedV7, assertV7},
+	8:  {seedV8, assertV8},
+	9:  {seedV9, assertV9},
+	10: {seedV10, assertV10},
+	11: {seedV11, assertV11},
+	12: {seedV12, assertV12},
+	13: {seedV13, assertV13},
+	14: {seedV14, assertV14},
+	15: {seedV15, assertV15},
+	16: {seedV16, assertV16},
+	17: {seedV17, assertV17},
+	18: {seedV18, assertV18},
+	19: {seedV19, assertV19},
+	20: {seedV20, assertV20},
+	21: {seedV21, assertV21},
+	22: {seedV22, assertV22},
+	23: {seedV23, assertV23},
+	24: {seedV24, assertV24},
+	25: {seedV25, assertV25},
+	26: {seedV26, assertV26},
+	27: {seedV27, assertV27},
+	28: {seedV28, assertV28},
+	29: {seedV29, assertV29},
+	30: {seedV30, assertV30},
+	31: {seedV31, assertV31},
+	32: {seedV32, assertV32},
+}
+
+// freezeAndSeed populates db (already frozen at schema_version upto via
+// openFrozenAt) with every registered version 1..upto's own representative
+// rows, in order — exactly the cumulative shape a real node would have
+// accumulated release over release.
+func freezeAndSeed(t *testing.T, db *sql.DB, upto int) {
+	t.Helper()
+	for v := 1; v <= upto; v++ {
+		vs, ok := versionSeeds[v]
+		if !ok || vs.seed == nil {
+			continue
+		}
+		vs.seed(t, db)
+	}
+}
+
+// assertSeededThrough asserts every registered version 1..upto's own rows
+// (per freezeAndSeed) are still present and correct.
+func assertSeededThrough(t *testing.T, db *sql.DB, upto int) {
+	t.Helper()
+	for v := 1; v <= upto; v++ {
+		vs, ok := versionSeeds[v]
+		if !ok || vs.assert == nil {
+			continue
+		}
+		vs.assert(t, db)
+	}
 }
 
 func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
@@ -138,53 +189,68 @@ func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
 		t.Fatal("no embedded migrations found — this test needs at least one to be meaningful")
 	}
 
-	cases := []migrateFromEachTestCase{
-		{
-			name:          "version 0 (fresh install, no schema at all)",
-			frozenVersion: 0,
-			seed:          nil,
-			assertSeeded:  func(t *testing.T, db *sql.DB) {},
-		},
-		{
-			name:          "version 1 (0001_init only)",
-			frozenVersion: 1,
-			seed:          seedAtVersion1,
-			assertSeeded:  assertVersion1Seeded,
-		},
-		{
-			name:          "version 2 (0001+0002, snapshot blobs added)",
-			frozenVersion: 2,
-			seed:          seedAtVersion2,
-			assertSeeded:  assertVersion2Seeded,
-		},
+	// AC1: every schema version from 1 to current must have a fixture. Fail
+	// setup loudly, for the whole test, if a version in range is missing an
+	// entry rather than quietly skipping it — this is what keeps the corpus
+	// honest as migrations accrue.
+	for v := 1; v < latest; v++ {
+		if _, ok := versionSeeds[v]; !ok {
+			t.Fatalf("no versionSeeds fixture registered for schema version %d — add seedV%d/assertV%d "+
+				"(see this file's package doc comment) and register it in versionSeeds; T-1807 AC1 requires "+
+				"every version 1..%d to have one", v, v, v, latest-1)
+		}
 	}
 
-	for _, tc := range cases {
-		tc := tc
-		if tc.frozenVersion >= latest {
-			continue // this version isn't "prior" for the current build; skip rather than fail as migrations accrue
+	t.Run("version 0 (fresh install, no schema at all)", func(t *testing.T) {
+		db := openFrozenAt(t, 0)
+		ctx := context.Background()
+
+		gotBefore, err := currentSchemaVersion(ctx, db)
+		if err != nil {
+			t.Fatalf("currentSchemaVersion before migrate: %v", err)
 		}
-		t.Run(tc.name, func(t *testing.T) {
-			db := openFrozenAt(t, tc.frozenVersion)
+		if gotBefore != 0 {
+			t.Fatalf("frozen schema_version = %d, want 0 (freezing helper bug)", gotBefore)
+		}
+
+		if migrateErr := migrate(ctx, db); migrateErr != nil {
+			t.Fatalf("migrate() from a brand-new file to latest: %v", migrateErr)
+		}
+
+		gotAfter, err := currentSchemaVersion(ctx, db)
+		if err != nil {
+			t.Fatalf("currentSchemaVersion after migrate: %v", err)
+		}
+		if gotAfter != latest {
+			t.Errorf("schema_version after migrate = %d, want latest (%d)", gotAfter, latest)
+		}
+
+		if migrateErr := migrate(ctx, db); migrateErr != nil {
+			t.Fatalf("re-running migrate() on an already-latest database: %v", migrateErr)
+		}
+	})
+
+	for v := 1; v < latest; v++ {
+		v := v
+		t.Run(fmt.Sprintf("version %d", v), func(t *testing.T) {
+			db := openFrozenAt(t, v)
 			ctx := context.Background()
 
 			gotBefore, err := currentSchemaVersion(ctx, db)
 			if err != nil {
 				t.Fatalf("currentSchemaVersion before seeding: %v", err)
 			}
-			if gotBefore != tc.frozenVersion {
-				t.Fatalf("frozen schema_version = %d, want %d (freezing helper bug)", gotBefore, tc.frozenVersion)
+			if gotBefore != v {
+				t.Fatalf("frozen schema_version = %d, want %d (freezing helper bug)", gotBefore, v)
 			}
 
-			if tc.seed != nil {
-				tc.seed(t, db)
-			}
+			freezeAndSeed(t, db, v)
 
 			// This is the actual thing being tested: the same migrate() an
 			// upgraded vnproxd runs against this node's existing database on
 			// startup (store.Open calls it unconditionally).
 			if migrateErr := migrate(ctx, db); migrateErr != nil {
-				t.Fatalf("migrate() from version %d to latest: %v", tc.frozenVersion, migrateErr)
+				t.Fatalf("migrate() from version %d to latest: %v", v, migrateErr)
 			}
 
 			gotAfter, err := currentSchemaVersion(ctx, db)
@@ -195,92 +261,197 @@ func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
 				t.Errorf("schema_version after migrate = %d, want latest (%d)", gotAfter, latest)
 			}
 
-			tc.assertSeeded(t, db)
+			// AC2: every row seeded at this version (and every version
+			// before it) must still be present and correct — per table.
+			assertSeededThrough(t, db, v)
 
 			// Migrating an already-latest DB again (the "every subsequent
 			// `apt install vnprox` on an already-current node" case, and
 			// simply restarting the daemon) must be a no-op, not an error —
 			// migrate()'s "skip if m.version <= current" loop guard is what
 			// this proves.
-			if err := migrate(ctx, db); err != nil {
-				t.Fatalf("re-running migrate() on an already-latest database: %v", err)
+			if migrateErr := migrate(ctx, db); migrateErr != nil {
+				t.Fatalf("re-running migrate() on an already-latest database: %v", migrateErr)
 			}
 		})
 	}
 }
 
-func assertVersion1Seeded(t *testing.T, db *sql.DB) {
-	t.Helper()
+// TestMigrate_DestructiveMigrationIsCaught is T-1807 AC3: a deliberately
+// destructive migration, added on top of the real chain, must be caught by
+// this file's own data-preservation assertions — proving those assertions
+// have teeth rather than being decorative "migrate() returned nil" checks.
+//
+// It works by seeding v1's data (seedV1), applying a synthetic extra
+// migration on top of the real chain that DELETEs some of those rows —
+// simulating a future release whose migration ships a bug that drops data
+// instead of only adding schema — and then running checkV1, the EXACT SAME
+// data-preservation logic assertV1 (used by every other case in this file)
+// wraps in t.Errorf calls. checkV1 returns problem strings instead of
+// calling t.Errorf itself specifically so this test can assert "the check
+// found problems" as an ordinary value, rather than needing the destructive
+// scenario to run inside a sub-test whose expected failure would otherwise
+// unconditionally fail this outer test too (t.Run's parent-fails-if-any-
+// subtest-fails behavior applies regardless of what the parent does with
+// the returned bool — there is no clean way to run a testing.T callback
+// that is SUPPOSED to fail without the enclosing test failing alongside
+// it). If checkV1 reports nothing wrong here, the destructive migration
+// went undetected — that is the actual failure this test exists to catch.
+func TestMigrate_DestructiveMigrationIsCaught(t *testing.T) {
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("loadMigrations: %v", err)
+	}
+	latest := latestSchemaVersion(migrations)
+
+	destructive := migration{
+		version: latest + 1,
+		name:    "9999_destructive_probe_TEST_ONLY.sql",
+		// A real destructive migration bug would rarely be this on-the-nose
+		// (more often a lossy CREATE-copy-DROP-rename table rebuild that
+		// forgets a column), but a bare DELETE against tables checkV1
+		// checks is the simplest thing that proves the point: if this goes
+		// unnoticed, nothing subtler would be caught either. sessions/kv
+		// only (not changesets): snapshots.changeset_id REFERENCES
+		// changesets(id) with foreign_keys=1 enforced (openFrozenAt's DSN),
+		// so deleting changesets while snap-v1 still references cs-v1 would
+		// fail on a FOREIGN KEY constraint rather than silently succeed —
+		// that would test SQLite's own FK enforcement, not this file's
+		// data-preservation assertions.
+		sql: `DELETE FROM sessions; DELETE FROM kv WHERE k = 'install_id';`,
+	}
+
+	db := openFrozenAt(t, 1)
 	ctx := context.Background()
+	seedV1(t, db)
+
+	if err := migrate(ctx, db); err != nil {
+		t.Fatalf("migrate() to latest: %v", err)
+	}
+	if err := applyMigration(ctx, db, destructive); err != nil {
+		t.Fatalf("applying synthetic destructive migration: %v", err)
+	}
+
+	problems := checkV1(db)
+	if len(problems) == 0 {
+		t.Fatal("TestMigrate_DestructiveMigrationIsCaught: checkV1 found NO problems after the synthetic " +
+			"destructive migration deleted sessions/kv rows — the data-preservation assertions failed to " +
+			"notice data loss. That means this file's assertions are decorative, not real (T-1807 AC3 failed).")
+	}
+	t.Logf("destructive migration correctly detected — data-preservation checks caught %d problem(s): %v", len(problems), problems)
+}
+
+// ---------------------------------------------------------------------
+// Version 1 — 0001_init.sql: sessions, changesets, snapshots, audit_log,
+// layouts, metric_samples, kv.
+// ---------------------------------------------------------------------
+
+func seedV1(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO sessions (id, username, realm, pve_ticket_enc, csrf_token_enc, caps_json, created_at, expires_at)
+	      VALUES ('sess-1', 'root@pam', 'pam', x'01020304', x'05060708', '{"sysModify":true}', 1700000000, 1700007200)`)
+	mustExec(t, db, `INSERT INTO changesets (id, title, author, status, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at)
+	      VALUES ('cs-v1', 'pre-upgrade change', 'root@pam', 'committed', '[]', '[]', '{}', '{}', NULL, 1700000000, 1700000100)`)
+	mustExec(t, db, `INSERT INTO snapshots (id, changeset_id, taken_at, kind, files_json)
+	      VALUES ('snap-v1', 'cs-v1', 1700000000, 'pre', '[{"node":"pve1","path":"/etc/network/interfaces","sha256":"deadbeef"}]')`)
+	mustExec(t, db, `INSERT INTO audit_log (at, username, action, target, changeset_id, result, detail_json)
+	      VALUES (1700000000, 'root@pam', 'changeset.apply', NULL, 'cs-v1', 'success', '{}')`)
+	mustExec(t, db, `INSERT INTO layouts (username, name, layout_json, updated_at)
+	      VALUES ('root@pam', 'default', '{"nodes":[]}', 1700000000)`)
+	mustExec(t, db, `INSERT INTO metric_samples (ref, at, rx_bytes, tx_bytes, rx_pkts, tx_pkts, rx_errs, tx_errs, rx_drop, tx_drop)
+	      VALUES ('iface:pve1:vmbr0', 1700000000, 100, 200, 1, 2, 0, 0, 0, 0)`)
+	mustExec(t, db, `INSERT INTO kv (k, v) VALUES ('install_id', 'test-install-v1')`)
+}
+
+func assertV1(t *testing.T, db *sql.DB) {
+	t.Helper()
+	for _, problem := range checkV1(db) {
+		t.Error(problem)
+	}
+}
+
+// checkV1 is assertV1's assertion logic pulled out into a plain function
+// that reports problems as returned strings instead of calling t.Errorf
+// directly. It exists so TestMigrate_DestructiveMigrationIsCaught can reuse
+// the EXACT SAME data-preservation checks every other case in this file
+// relies on, without tripping over a Go testing.T quirk: a subtest's
+// failure (t.Errorf/t.Fatalf inside a t.Run callback) always marks the
+// PARENT test as failed too, regardless of what the parent does with
+// t.Run's returned bool afterward — there is no way to run a testing.T
+// callback that is "expected to fail" without the outer test failing right
+// alongside it. Routing through a plain function sidesteps that entirely:
+// the destructive-migration test calls checkV1 directly and asserts
+// len(problems) > 0 itself, so the outer test's own pass/fail reflects only
+// its own explicit check, not a fight against the testing package's
+// subtest-propagation behavior.
+func checkV1(db *sql.DB) []string {
+	ctx := context.Background()
+	var problems []string
 
 	var username, status string
 	if err := db.QueryRowContext(ctx, `SELECT username FROM sessions WHERE id = 'sess-1'`).Scan(&username); err != nil {
-		t.Errorf("sessions row lost across migration: %v", err)
+		problems = append(problems, fmt.Sprintf("sessions row lost across migration: %v", err))
 	} else if username != "root@pam" {
-		t.Errorf("sessions.username = %q, want root@pam", username)
+		problems = append(problems, fmt.Sprintf("sessions.username = %q, want root@pam", username))
 	}
 	if err := db.QueryRowContext(ctx, `SELECT status FROM changesets WHERE id = 'cs-v1'`).Scan(&status); err != nil {
-		t.Errorf("changesets row lost across migration: %v", err)
+		problems = append(problems, fmt.Sprintf("changesets row lost across migration: %v", err))
 	} else if status != "committed" {
-		t.Errorf("changesets.status = %q, want committed", status)
+		problems = append(problems, fmt.Sprintf("changesets.status = %q, want committed", status))
 	}
 
 	var filesJSON string
 	if err := db.QueryRowContext(ctx, `SELECT files_json FROM snapshots WHERE id = 'snap-v1'`).Scan(&filesJSON); err != nil {
-		t.Errorf("snapshots row lost across migration: %v", err)
+		problems = append(problems, fmt.Sprintf("snapshots row lost across migration: %v", err))
 	}
 
 	var auditCount int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM audit_log WHERE changeset_id = 'cs-v1'`).Scan(&auditCount); err != nil {
-		t.Errorf("audit_log query failed: %v", err)
+		problems = append(problems, fmt.Sprintf("audit_log query failed: %v", err))
 	} else if auditCount != 1 {
-		t.Errorf("audit_log rows for cs-v1 = %d, want 1", auditCount)
+		problems = append(problems, fmt.Sprintf("audit_log rows for cs-v1 = %d, want 1", auditCount))
 	}
 
 	var layoutJSON string
 	if err := db.QueryRowContext(ctx, `SELECT layout_json FROM layouts WHERE username = 'root@pam' AND name = 'default'`).Scan(&layoutJSON); err != nil {
-		t.Errorf("layouts row lost across migration: %v", err)
+		problems = append(problems, fmt.Sprintf("layouts row lost across migration: %v", err))
 	}
 
 	var rxBytes int64
 	if err := db.QueryRowContext(ctx, `SELECT rx_bytes FROM metric_samples WHERE ref = 'iface:pve1:vmbr0' AND at = 1700000000`).Scan(&rxBytes); err != nil {
-		t.Errorf("metric_samples row lost across migration: %v", err)
+		problems = append(problems, fmt.Sprintf("metric_samples row lost across migration: %v", err))
 	} else if rxBytes != 100 {
-		t.Errorf("metric_samples.rx_bytes = %d, want 100", rxBytes)
+		problems = append(problems, fmt.Sprintf("metric_samples.rx_bytes = %d, want 100", rxBytes))
 	}
 
 	var installID string
 	if err := db.QueryRowContext(ctx, `SELECT v FROM kv WHERE k = 'install_id'`).Scan(&installID); err != nil {
-		t.Errorf("kv row lost across migration: %v", err)
+		problems = append(problems, fmt.Sprintf("kv row lost across migration: %v", err))
 	} else if installID != "test-install-v1" {
-		t.Errorf("kv install_id = %q, want test-install-v1", installID)
+		problems = append(problems, fmt.Sprintf("kv install_id = %q, want test-install-v1", installID))
 	}
 
-	// A table only 0002+ introduces must now exist and be usable — proves
-	// the migration actually ran forward, not just that old data survived.
-	if _, err := db.ExecContext(ctx, `INSERT INTO blobs (sha256, content_zstd, size) VALUES ('newblob', x'00', 1)`); err != nil {
-		t.Errorf("blobs table (added by 0002) not usable after migrating from v1: %v", err)
-	}
-	var note sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT note FROM snapshots WHERE id = 'snap-v1'`).Scan(&note); err != nil {
-		t.Errorf("snapshots.note column (added by 0002) missing after migrating from v1: %v", err)
-	}
-
-	// And a table only 0003+ introduces.
-	if _, err := db.ExecContext(ctx, `INSERT INTO node_timers (changeset_id, node, pre_content, deadline, status, armed_at)
-	                                   VALUES ('cs-v1', 'pve1', 'auto network eth0', 1700000200, 'armed', 1700000100)`); err != nil {
-		t.Errorf("node_timers table (added by 0003) not usable after migrating from v1: %v", err)
-	}
+	return problems
 }
 
-func assertVersion2Seeded(t *testing.T, db *sql.DB) {
+// ---------------------------------------------------------------------
+// Version 2 — 0002_snapshot_blobs.sql: blobs, snapshot_files, snapshots.note.
+// ---------------------------------------------------------------------
+
+func seedV2(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO blobs (sha256, content_zstd, size) VALUES ('deadbeef', x'28b52ffd', 42)`)
+	mustExec(t, db, `INSERT INTO snapshot_files (snapshot_id, node, path, sha256) VALUES ('snap-v1', 'pve1', '/etc/network/interfaces', 'deadbeef')`)
+	mustExec(t, db, `UPDATE snapshots SET note = 'manual pre-upgrade snapshot' WHERE id = 'snap-v1'`)
+}
+
+func assertV2(t *testing.T, db *sql.DB) {
 	t.Helper()
 	ctx := context.Background()
-	assertVersion1Seeded(t, db)
 
 	var size int64
 	if err := db.QueryRowContext(ctx, `SELECT size FROM blobs WHERE sha256 = 'deadbeef'`).Scan(&size); err != nil {
-		t.Errorf("blobs row (seeded pre-migration) lost across migration: %v", err)
+		t.Errorf("blobs row lost across migration: %v", err)
 	} else if size != 42 {
 		t.Errorf("blobs.size = %d, want 42", size)
 	}
@@ -294,9 +465,711 @@ func assertVersion2Seeded(t *testing.T, db *sql.DB) {
 
 	var note string
 	if err := db.QueryRowContext(ctx, `SELECT note FROM snapshots WHERE id = 'snap-v1'`).Scan(&note); err != nil {
-		t.Errorf("snapshots.note (seeded pre-migration) lost across migration: %v", err)
+		t.Errorf("snapshots.note lost across migration: %v", err)
 	} else if note != "manual pre-upgrade snapshot" {
 		t.Errorf("snapshots.note = %q, want %q", note, "manual pre-upgrade snapshot")
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 3 — 0003_node_timers.sql
+// ---------------------------------------------------------------------
+
+func seedV3(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO node_timers (changeset_id, node, pre_content, deadline, status, armed_at, resolved_at, error)
+	      VALUES ('cs-v1', 'pve1', 'auto vmbr0
+iface vmbr0 inet static
+	address 10.0.0.1/24', 1700000300, 'armed', 1700000100, NULL, NULL)`)
+}
+
+func assertV3(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var status string
+	if err := db.QueryRowContext(ctx, `SELECT status FROM node_timers WHERE changeset_id = 'cs-v1' AND node = 'pve1'`).Scan(&status); err != nil {
+		t.Errorf("node_timers row lost across migration: %v", err)
+	} else if status != "armed" {
+		t.Errorf("node_timers.status = %q, want armed", status)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 4 — 0004_blueprints.sql
+// ---------------------------------------------------------------------
+
+func seedV4(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO blueprints (id, name, blueprint_json, created_by, created_at, updated_at)
+	      VALUES ('bp-v4', 'Two-tier LAN', '{"id":"bp-v4","name":"Two-tier LAN"}', 'root@pam', 1700000400, 1700000400)`)
+}
+
+func assertV4(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var name string
+	if err := db.QueryRowContext(ctx, `SELECT name FROM blueprints WHERE id = 'bp-v4'`).Scan(&name); err != nil {
+		t.Errorf("blueprints row lost across migration: %v", err)
+	} else if name != "Two-tier LAN" {
+		t.Errorf("blueprints.name = %q, want Two-tier LAN", name)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 5 — 0005_sim_divergence_findings.sql
+// ---------------------------------------------------------------------
+
+func seedV5(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO sim_divergence_findings (id, src_ref, dst_kind, dst_ref, dst_ip, proto, port, simulated_verdict, observed_outcome, detail, created_at, updated_at)
+	      VALUES ('probe:sim_divergence|v5', 'guest:pve1:100', 'ip', '', '10.0.0.5', 'tcp', 443, 'allow', 'blocked', 'unexpected block', 1700000500, 1700000500)`)
+}
+
+func assertV5(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var outcome string
+	if err := db.QueryRowContext(ctx, `SELECT observed_outcome FROM sim_divergence_findings WHERE id = 'probe:sim_divergence|v5'`).Scan(&outcome); err != nil {
+		t.Errorf("sim_divergence_findings row lost across migration: %v", err)
+	} else if outcome != "blocked" {
+		t.Errorf("sim_divergence_findings.observed_outcome = %q, want blocked", outcome)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 6 — 0006_annotations.sql
+// ---------------------------------------------------------------------
+
+func seedV6(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO annotations (id, ref, content, created_by, created_at, updated_at)
+	      VALUES ('ann-v6', 'guest:pve1:100', 'needs review before next maintenance window', 'root@pam', 1700000600, 1700000600)`)
+}
+
+func assertV6(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var content string
+	if err := db.QueryRowContext(ctx, `SELECT content FROM annotations WHERE id = 'ann-v6'`).Scan(&content); err != nil {
+		t.Errorf("annotations row lost across migration: %v", err)
+	} else if content != "needs review before next maintenance window" {
+		t.Errorf("annotations.content = %q, unexpected", content)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 7 — 0007_flows.sql
+// ---------------------------------------------------------------------
+
+func seedV7(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO flow_samples (at, node, src_ip, dst_ip, src_port, dst_port, proto, bytes, packets, vlan, src_ref, dst_ref, ingress_if, egress_if, source)
+	      VALUES (1700000700, 'pve1', '10.0.0.5', '10.0.0.6', 51000, 443, 6, 1500, 10, 0, '', '', 0, 0, 'sflow')`)
+}
+
+func assertV7(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var bytesCount int64
+	if err := db.QueryRowContext(ctx, `SELECT bytes FROM flow_samples WHERE at = 1700000700 AND node = 'pve1'`).Scan(&bytesCount); err != nil {
+		t.Errorf("flow_samples row lost across migration: %v", err)
+	} else if bytesCount != 1500 {
+		t.Errorf("flow_samples.bytes = %d, want 1500", bytesCount)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 8 — 0008_alert_rules.sql
+// ---------------------------------------------------------------------
+
+func seedV8(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO alert_rules (id, name, enabled, source_filter_json, severity_filter_json, target_kind, target_url, target_secret_enc, created_at, updated_at)
+	      VALUES ('ar-v8', 'webhook rule', 1, NULL, NULL, 'generic', 'https://example.invalid/hook', NULL, 1700000800, 1700000800)`)
+	mustExec(t, db, `INSERT INTO alert_deliveries (id, rule_id, finding_id, at, attempt, status, error)
+	      VALUES ('ad-v8', 'ar-v8', 'finding-v8', 1700000800, 1, 'delivered', NULL)`)
+}
+
+func assertV8(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var enabled int
+	if err := db.QueryRowContext(ctx, `SELECT enabled FROM alert_rules WHERE id = 'ar-v8'`).Scan(&enabled); err != nil {
+		t.Errorf("alert_rules row lost across migration: %v", err)
+	} else if enabled != 1 {
+		t.Errorf("alert_rules.enabled = %d, want 1", enabled)
+	}
+	var status string
+	if err := db.QueryRowContext(ctx, `SELECT status FROM alert_deliveries WHERE id = 'ad-v8'`).Scan(&status); err != nil {
+		t.Errorf("alert_deliveries row lost across migration: %v", err)
+	} else if status != "delivered" {
+		t.Errorf("alert_deliveries.status = %q, want delivered", status)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 9 — 0009_finding_events.sql
+// ---------------------------------------------------------------------
+
+func seedV9(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO finding_events (finding_id, at, transition) VALUES ('finding-v9', 1700000900, 'new')`)
+}
+
+func assertV9(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var transition string
+	if err := db.QueryRowContext(ctx, `SELECT transition FROM finding_events WHERE finding_id = 'finding-v9' AND at = 1700000900`).Scan(&transition); err != nil {
+		t.Errorf("finding_events row lost across migration: %v", err)
+	} else if transition != "new" {
+		t.Errorf("finding_events.transition = %q, want new", transition)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 10 — 0010_changeset_schedules.sql
+// ---------------------------------------------------------------------
+
+func seedV10(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO changeset_schedules (changeset_id, window_start, window_end, confirm_timeout_sec, missed_window_policy, callback_token_hash, status, created_by, created_at, fired_at, cancelled_at)
+	      VALUES ('cs-v10', 1700001000, 1700001600, 120, 'skip', 'deadbeefcafe', 'pending', 'root@pam', 1700001000, NULL, NULL)`)
+}
+
+func assertV10(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var status string
+	if err := db.QueryRowContext(ctx, `SELECT status FROM changeset_schedules WHERE changeset_id = 'cs-v10'`).Scan(&status); err != nil {
+		t.Errorf("changeset_schedules row lost across migration: %v", err)
+	} else if status != "pending" {
+		t.Errorf("changeset_schedules.status = %q, want pending", status)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 11 — 0011_api_tokens.sql
+// ---------------------------------------------------------------------
+
+func seedV11(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO api_tokens (id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at)
+	      VALUES ('tok-v11', 'automation', 'abc123hash', '["automation"]', 'root@pam', 1700001100, NULL, NULL)`)
+	mustExec(t, db, `INSERT INTO webhooks (id, url, events_json, secret_enc, created_by, created_at, consecutive_failures, last_attempt_at, last_success_at, last_error)
+	      VALUES ('wh-v11', 'https://example.invalid/webhook', NULL, x'01', 'root@pam', 1700001100, 0, NULL, NULL, NULL)`)
+}
+
+func assertV11(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var name string
+	if err := db.QueryRowContext(ctx, `SELECT name FROM api_tokens WHERE id = 'tok-v11'`).Scan(&name); err != nil {
+		t.Errorf("api_tokens row lost across migration: %v", err)
+	} else if name != "automation" {
+		t.Errorf("api_tokens.name = %q, want automation", name)
+	}
+	var wURL string
+	if err := db.QueryRowContext(ctx, `SELECT url FROM webhooks WHERE id = 'wh-v11'`).Scan(&wURL); err != nil {
+		t.Errorf("webhooks row lost across migration: %v", err)
+	} else if wURL != "https://example.invalid/webhook" {
+		t.Errorf("webhooks.url = %q, unexpected", wURL)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 12 — 0012_pinned_spec.sql
+// ---------------------------------------------------------------------
+
+func seedV12(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO pinned_spec (id, content, pinned_by, pinned_at)
+	      VALUES (1, 'specVersion: 1
+nodes: []', 'root@pam', 1700001200)`)
+}
+
+func assertV12(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var pinnedBy string
+	if err := db.QueryRowContext(ctx, `SELECT pinned_by FROM pinned_spec WHERE id = 1`).Scan(&pinnedBy); err != nil {
+		t.Errorf("pinned_spec row lost across migration: %v", err)
+	} else if pinnedBy != "root@pam" {
+		t.Errorf("pinned_spec.pinned_by = %q, want root@pam", pinnedBy)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 13 — 0013_latency_samples.sql
+// ---------------------------------------------------------------------
+
+func seedV13(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO latency_samples (link_id, fabric, from_node, to_node, at, rtt_ms, loss_pct)
+	      VALUES ('corosync:ring0|pve1->pve2', 'corosync', 'pve1', 'pve2', 1700001300, 1.5, 0)`)
+}
+
+func assertV13(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var rtt float64
+	if err := db.QueryRowContext(ctx, `SELECT rtt_ms FROM latency_samples WHERE link_id = 'corosync:ring0|pve1->pve2' AND at = 1700001300`).Scan(&rtt); err != nil {
+		t.Errorf("latency_samples row lost across migration: %v", err)
+	} else if rtt != 1.5 {
+		t.Errorf("latency_samples.rtt_ms = %v, want 1.5", rtt)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 14 — 0014_capture_sessions.sql
+// ---------------------------------------------------------------------
+
+func seedV14(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO capture_sessions (id, group_id, target_ref, node, nodes_json, filter, caps_json, status, started_by, started_at, stopped_at, file_path, file_bytes, packets)
+	      VALUES ('cap-v14', 'grp-v14', 'guest:pve1:100', 'pve1', '["pve1"]', 'tcp port 443', '{"maxBytes":1000000}', 'completed', 'root@pam', 1700001400, 1700001500, '/var/lib/vnprox/captures/cap-v14.pcap', 2048, 20)`)
+}
+
+func assertV14(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var status string
+	if err := db.QueryRowContext(ctx, `SELECT status FROM capture_sessions WHERE id = 'cap-v14'`).Scan(&status); err != nil {
+		t.Errorf("capture_sessions row lost across migration: %v", err)
+	} else if status != "completed" {
+		t.Errorf("capture_sessions.status = %q, want completed", status)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 15 — 0015_guest_interior_toggles.sql
+// ---------------------------------------------------------------------
+
+func seedV15(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO guest_interior_toggles (ref, enabled, updated_by, updated_at)
+	      VALUES ('guest:pve1:100', 1, 'root@pam', 1700001500)`)
+}
+
+func assertV15(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var enabled int
+	if err := db.QueryRowContext(ctx, `SELECT enabled FROM guest_interior_toggles WHERE ref = 'guest:pve1:100'`).Scan(&enabled); err != nil {
+		t.Errorf("guest_interior_toggles row lost across migration: %v", err)
+	} else if enabled != 1 {
+		t.Errorf("guest_interior_toggles.enabled = %d, want 1", enabled)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 16 — 0016_wireguard.sql
+// ---------------------------------------------------------------------
+
+func seedV16(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO wireguard_tunnels (id, node, if_name, private_key_enc, public_key, listen_port, addresses_json, mtu, carrier, created_by, created_at)
+	      VALUES ('wg-v16', 'pve1', 'wg0', x'aa', 'pubkey-v16', 51820, '["10.10.0.1/24"]', 1420, 'vmbr0', 'root@pam', 1700001600)`)
+	mustExec(t, db, `INSERT INTO wireguard_peers (tunnel_id, public_key, endpoint, allowed_ips_json, preshared_key_enc, keepalive_sec, external, cluster_id)
+	      VALUES ('wg-v16', 'peerpub-v16', '203.0.113.5:51820', '["10.10.0.2/32"]', NULL, 25, 0, '')`)
+}
+
+func assertV16(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var pub string
+	if err := db.QueryRowContext(ctx, `SELECT public_key FROM wireguard_tunnels WHERE id = 'wg-v16'`).Scan(&pub); err != nil {
+		t.Errorf("wireguard_tunnels row lost across migration: %v", err)
+	} else if pub != "pubkey-v16" {
+		t.Errorf("wireguard_tunnels.public_key = %q, unexpected", pub)
+	}
+	var endpoint string
+	if err := db.QueryRowContext(ctx, `SELECT endpoint FROM wireguard_peers WHERE tunnel_id = 'wg-v16' AND public_key = 'peerpub-v16'`).Scan(&endpoint); err != nil {
+		t.Errorf("wireguard_peers row lost across migration: %v", err)
+	} else if endpoint != "203.0.113.5:51820" {
+		t.Errorf("wireguard_peers.endpoint = %q, unexpected", endpoint)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 17 — 0017_ingress_targets.sql
+// ---------------------------------------------------------------------
+
+func seedV17(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO ingress_targets (id, kind, address, credential_enc, added_by, added_at)
+	      VALUES ('ing-v17', 'haproxy', 'https://10.0.0.10:8404', NULL, 'root@pam', 1700001700)`)
+}
+
+func assertV17(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var kind string
+	if err := db.QueryRowContext(ctx, `SELECT kind FROM ingress_targets WHERE id = 'ing-v17'`).Scan(&kind); err != nil {
+		t.Errorf("ingress_targets row lost across migration: %v", err)
+	} else if kind != "haproxy" {
+		t.Errorf("ingress_targets.kind = %q, want haproxy", kind)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 18 — 0018_wan.sql
+// ---------------------------------------------------------------------
+
+func seedV18(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO wan_targets (node, uplink, host, created_at) VALUES ('pve1', 'vmbr0', '1.1.1.1', 1700001800)`)
+	mustExec(t, db, `INSERT INTO wan_probe_samples (link_id, from_node, uplink, to_node, at, rtt_ms, loss_pct)
+	      VALUES ('wan:vmbr0|pve1->1.1.1.1', 'pve1', 'vmbr0', '1.1.1.1', 1700001800, 8.2, 0)`)
+}
+
+func assertV18(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var host string
+	if err := db.QueryRowContext(ctx, `SELECT host FROM wan_targets WHERE node = 'pve1' AND uplink = 'vmbr0'`).Scan(&host); err != nil {
+		t.Errorf("wan_targets row lost across migration: %v", err)
+	} else if host != "1.1.1.1" {
+		t.Errorf("wan_targets.host = %q, want 1.1.1.1", host)
+	}
+	var rtt float64
+	if err := db.QueryRowContext(ctx, `SELECT rtt_ms FROM wan_probe_samples WHERE link_id = 'wan:vmbr0|pve1->1.1.1.1' AND at = 1700001800`).Scan(&rtt); err != nil {
+		t.Errorf("wan_probe_samples row lost across migration: %v", err)
+	} else if rtt != 8.2 {
+		t.Errorf("wan_probe_samples.rtt_ms = %v, want 8.2", rtt)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 19 — 0019_k8s_clusters.sql
+// ---------------------------------------------------------------------
+
+func seedV19(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO k8s_clusters (id, name, kubeconfig_enc, added_by, added_at, cni_detected, status)
+	      VALUES ('k8s-v19', 'prod-cluster', x'bb', 'root@pam', 1700001900, 'cilium', 'ok')`)
+}
+
+func assertV19(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var name string
+	if err := db.QueryRowContext(ctx, `SELECT name FROM k8s_clusters WHERE id = 'k8s-v19'`).Scan(&name); err != nil {
+		t.Errorf("k8s_clusters row lost across migration: %v", err)
+	} else if name != "prod-cluster" {
+		t.Errorf("k8s_clusters.name = %q, want prod-cluster", name)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 20 — 0020_qos.sql
+// ---------------------------------------------------------------------
+
+func seedV20(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO qos_shapes (id, node, bridge, match_cidr, match_vlan, rate_mbit, ceil_mbit, priority, created_by, created_at, updated_at)
+	      VALUES ('qos-v20', 'pve1', 'vmbr0', '', NULL, 100, 200, 1, 'root@pam', 1700002000, 1700002000)`)
+}
+
+func assertV20(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var rate int64
+	if err := db.QueryRowContext(ctx, `SELECT rate_mbit FROM qos_shapes WHERE id = 'qos-v20'`).Scan(&rate); err != nil {
+		t.Errorf("qos_shapes row lost across migration: %v", err)
+	} else if rate != 100 {
+		t.Errorf("qos_shapes.rate_mbit = %d, want 100", rate)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 21 — 0021_clusters.sql: clusters table, plus changesets.cluster_id
+// and audit_log.cluster_id (ALTER TABLE ADD COLUMN, applied to the existing
+// v1 rows).
+// ---------------------------------------------------------------------
+
+func seedV21(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO clusters (id, name, api_url, credential_enc, status, added_by, added_at)
+	      VALUES ('clus-v21', 'remote-dc', 'https://10.1.0.1:8006', x'cc', 'ok', 'root@pam', 1700002100)`)
+	mustExec(t, db, `UPDATE changesets SET cluster_id = 'clus-v21' WHERE id = 'cs-v1'`)
+	mustExec(t, db, `UPDATE audit_log SET cluster_id = 'clus-v21' WHERE changeset_id = 'cs-v1'`)
+}
+
+func assertV21(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var name string
+	if err := db.QueryRowContext(ctx, `SELECT name FROM clusters WHERE id = 'clus-v21'`).Scan(&name); err != nil {
+		t.Errorf("clusters row lost across migration: %v", err)
+	} else if name != "remote-dc" {
+		t.Errorf("clusters.name = %q, want remote-dc", name)
+	}
+	var csClusterID string
+	if err := db.QueryRowContext(ctx, `SELECT cluster_id FROM changesets WHERE id = 'cs-v1'`).Scan(&csClusterID); err != nil {
+		t.Errorf("changesets.cluster_id lost across migration: %v", err)
+	} else if csClusterID != "clus-v21" {
+		t.Errorf("changesets.cluster_id = %q, want clus-v21", csClusterID)
+	}
+	var auditClusterID string
+	if err := db.QueryRowContext(ctx, `SELECT cluster_id FROM audit_log WHERE changeset_id = 'cs-v1'`).Scan(&auditClusterID); err != nil {
+		t.Errorf("audit_log.cluster_id lost across migration: %v", err)
+	} else if auditClusterID != "clus-v21" {
+		t.Errorf("audit_log.cluster_id = %q, want clus-v21", auditClusterID)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 22 — 0022_switches.sql
+// ---------------------------------------------------------------------
+
+func seedV22(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO switches (id, name, mgmt_addr, driver_type, credentials_enc, enabled, added_by, added_at)
+	      VALUES ('sw-v22', 'core-switch-1', '10.2.0.1', 'openconfig', x'dd', 1, 'root@pam', 1700002200)`)
+}
+
+func assertV22(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var addr string
+	if err := db.QueryRowContext(ctx, `SELECT mgmt_addr FROM switches WHERE id = 'sw-v22'`).Scan(&addr); err != nil {
+		t.Errorf("switches row lost across migration: %v", err)
+	} else if addr != "10.2.0.1" {
+		t.Errorf("switches.mgmt_addr = %q, want 10.2.0.1", addr)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 23 — 0023_external_subnets.sql
+// ---------------------------------------------------------------------
+
+func seedV23(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO external_subnets (id, cidr, label, source, description, created_by, created_at, updated_at)
+	      VALUES ('ext-v23', '192.0.2.0/24', 'transit', 'manual', 'ISP transit block', 'root@pam', 1700002300, 1700002300)`)
+}
+
+func assertV23(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var label string
+	if err := db.QueryRowContext(ctx, `SELECT label FROM external_subnets WHERE id = 'ext-v23'`).Scan(&label); err != nil {
+		t.Errorf("external_subnets row lost across migration: %v", err)
+	} else if label != "transit" {
+		t.Errorf("external_subnets.label = %q, want transit", label)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 24 — 0024_oidc.sql
+// ---------------------------------------------------------------------
+
+func seedV24(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO oidc_pve_links (id, cluster_id, oidc_group, pve_username, credential_enc, created_by, created_at)
+	      VALUES ('oidc-v24', '', 'network-admins', 'automation@pve', x'ee', 'root@pam', 1700002400)`)
+}
+
+func assertV24(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var username string
+	if err := db.QueryRowContext(ctx, `SELECT pve_username FROM oidc_pve_links WHERE id = 'oidc-v24'`).Scan(&username); err != nil {
+		t.Errorf("oidc_pve_links row lost across migration: %v", err)
+	} else if username != "automation@pve" {
+		t.Errorf("oidc_pve_links.pve_username = %q, want automation@pve", username)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 25 — 0025_flow_baselines.sql
+// ---------------------------------------------------------------------
+
+func seedV25(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO baseline_profiles (ref, profile_json, window_start, window_end, updated_at)
+	      VALUES ('guest:pve1:100', '{"topTalkers":[]}', 1700000000, 1700002500, 1700002500)`)
+}
+
+func assertV25(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var profileJSON string
+	if err := db.QueryRowContext(ctx, `SELECT profile_json FROM baseline_profiles WHERE ref = 'guest:pve1:100'`).Scan(&profileJSON); err != nil {
+		t.Errorf("baseline_profiles row lost across migration: %v", err)
+	} else if profileJSON != `{"topTalkers":[]}` {
+		t.Errorf("baseline_profiles.profile_json = %q, unexpected", profileJSON)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 26 — 0026_capacity_samples.sql
+// ---------------------------------------------------------------------
+
+func seedV26(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO capacity_aggregates (ref, kind, bucket_at, avg_utilization, max_utilization, created_at)
+	      VALUES ('iface:pve1:vmbr0', 'link', 1700002600, 12.5, 45.0, 1700002600)`)
+}
+
+func assertV26(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var avg float64
+	if err := db.QueryRowContext(ctx, `SELECT avg_utilization FROM capacity_aggregates WHERE ref = 'iface:pve1:vmbr0' AND kind = 'link' AND bucket_at = 1700002600`).Scan(&avg); err != nil {
+		t.Errorf("capacity_aggregates row lost across migration: %v", err)
+	} else if avg != 12.5 {
+		t.Errorf("capacity_aggregates.avg_utilization = %v, want 12.5", avg)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 27 — 0027_posture_scores.sql
+// ---------------------------------------------------------------------
+
+func seedV27(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO posture_scores (computed_at, overall, qualified, factors_json)
+	      VALUES (1700002700, 82, 0, '[{"name":"segmentation","weight":1,"value":82}]')`)
+}
+
+func assertV27(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var overall int
+	if err := db.QueryRowContext(ctx, `SELECT overall FROM posture_scores WHERE computed_at = 1700002700`).Scan(&overall); err != nil {
+		t.Errorf("posture_scores row lost across migration: %v", err)
+	} else if overall != 82 {
+		t.Errorf("posture_scores.overall = %d, want 82", overall)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 28 — 0028_changeset_origin.sql: changesets.origin/origin_token_id
+// (ALTER TABLE ADD COLUMN, applied to the existing v1 row).
+// ---------------------------------------------------------------------
+
+func seedV28(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `UPDATE changesets SET origin = 'mcp', origin_token_id = 'tok-v28' WHERE id = 'cs-v1'`)
+}
+
+func assertV28(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var origin, tokenID string
+	if err := db.QueryRowContext(ctx, `SELECT origin, origin_token_id FROM changesets WHERE id = 'cs-v1'`).Scan(&origin, &tokenID); err != nil {
+		t.Errorf("changesets.origin/origin_token_id lost across migration: %v", err)
+	} else if origin != "mcp" || tokenID != "tok-v28" {
+		t.Errorf("changesets.origin/origin_token_id = %q/%q, want mcp/tok-v28", origin, tokenID)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 29 — 0029_plugins.sql
+// ---------------------------------------------------------------------
+
+func seedV29(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO plugins (id, name, version, api_version, extension_points_json, capabilities_json, transport, endpoint, enabled, installed_by, installed_at)
+	      VALUES ('com.acme.sonic-driver', 'Sonic Driver', '1.0.0', 'v1', '["switchDriver"]', '["netWrite"]', 'in-process', '', 1, 'root@pam', 1700002900)`)
+}
+
+func assertV29(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var name string
+	if err := db.QueryRowContext(ctx, `SELECT name FROM plugins WHERE id = 'com.acme.sonic-driver'`).Scan(&name); err != nil {
+		t.Errorf("plugins row lost across migration: %v", err)
+	} else if name != "Sonic Driver" {
+		t.Errorf("plugins.name = %q, want Sonic Driver", name)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 30 — 0030_tenants.sql
+// ---------------------------------------------------------------------
+
+func seedV30(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO tenants (id, name, created_by, created_at) VALUES ('ten-v30', 'Team A', 'root@pam', 1700003000)`)
+	mustExec(t, db, `INSERT INTO tenant_scopes (tenant_id, scope_ref) VALUES ('ten-v30', 'guest:pve1:100')`)
+	mustExec(t, db, `INSERT INTO tenant_members (tenant_id, identity, role) VALUES ('ten-v30', 'alice@pve', 'member')`)
+	mustExec(t, db, `INSERT INTO changeset_requests (changeset_id, tenant_id, requested_by, created_at, approved_by, approved_at)
+	      VALUES ('cs-v30', 'ten-v30', 'alice@pve', 1700003000, '', 0)`)
+}
+
+func assertV30(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var name string
+	if err := db.QueryRowContext(ctx, `SELECT name FROM tenants WHERE id = 'ten-v30'`).Scan(&name); err != nil {
+		t.Errorf("tenants row lost across migration: %v", err)
+	} else if name != "Team A" {
+		t.Errorf("tenants.name = %q, want Team A", name)
+	}
+	var scopeCount int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM tenant_scopes WHERE tenant_id = 'ten-v30'`).Scan(&scopeCount); err != nil {
+		t.Errorf("tenant_scopes query failed: %v", err)
+	} else if scopeCount != 1 {
+		t.Errorf("tenant_scopes rows for ten-v30 = %d, want 1", scopeCount)
+	}
+	var role string
+	if err := db.QueryRowContext(ctx, `SELECT role FROM tenant_members WHERE tenant_id = 'ten-v30' AND identity = 'alice@pve'`).Scan(&role); err != nil {
+		t.Errorf("tenant_members row lost across migration: %v", err)
+	} else if role != "member" {
+		t.Errorf("tenant_members.role = %q, want member", role)
+	}
+	var tenantID string
+	if err := db.QueryRowContext(ctx, `SELECT tenant_id FROM changeset_requests WHERE changeset_id = 'cs-v30'`).Scan(&tenantID); err != nil {
+		t.Errorf("changeset_requests row lost across migration: %v", err)
+	} else if tenantID != "ten-v30" {
+		t.Errorf("changeset_requests.tenant_id = %q, want ten-v30", tenantID)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 31 — 0031_ha.sql
+// ---------------------------------------------------------------------
+
+func seedV31(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO ha_lease (id, holder, term, expires_at, acquired_at, updated_at)
+	      VALUES ('singleton', 'node-a', 1, 1700003100, 1700003000, 1700003050)`)
+}
+
+func assertV31(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var holder string
+	if err := db.QueryRowContext(ctx, `SELECT holder FROM ha_lease WHERE id = 'singleton'`).Scan(&holder); err != nil {
+		t.Errorf("ha_lease row lost across migration: %v", err)
+	} else if holder != "node-a" {
+		t.Errorf("ha_lease.holder = %q, want node-a", holder)
+	}
+}
+
+// ---------------------------------------------------------------------
+// Version 32 — 0032_cluster_wg_tunnel.sql: clusters.wg_tunnel_id (ALTER
+// TABLE ADD COLUMN, applied to the v21 cluster row; needs both v16's
+// wireguard_tunnels row and v21's clusters row already seeded, which
+// freezeAndSeed guarantees by running every version in order).
+// ---------------------------------------------------------------------
+
+func seedV32(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `UPDATE clusters SET wg_tunnel_id = 'wg-v16' WHERE id = 'clus-v21'`)
+}
+
+func assertV32(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var tunnelID string
+	if err := db.QueryRowContext(ctx, `SELECT wg_tunnel_id FROM clusters WHERE id = 'clus-v21'`).Scan(&tunnelID); err != nil {
+		t.Errorf("clusters.wg_tunnel_id lost across migration: %v", err)
+	} else if tunnelID != "wg-v16" {
+		t.Errorf("clusters.wg_tunnel_id = %q, want wg-v16", tunnelID)
 	}
 }
 
@@ -304,3 +1177,12 @@ func assertVersion2Seeded(t *testing.T, db *sql.DB) {
 // *newer* than this build's embedded migrations understand (downgrading a
 // node) — is already covered by store_test.go's Open-with-a-future-
 // schema_version case (ErrSchemaTooNew); not duplicated here.
+//
+// Schema version 33 (0033_changeset_revert_ticket.sql, changesets.
+// revert_ticket_enc/revert_ticket_expires_at) has no versionSeeds entry
+// because it is the current latest, not a "prior" version any fixture in
+// this file freezes at — its own forward application (as part of every
+// case's migrate() call to latest) is exercised by every case above, and
+// TestOpen_CreatesAllTables (store_test.go) exercises it from a fresh
+// database. The next migration to land (0034) becomes the new latest and
+// picks up a version 33 entry in versionSeeds at that time.
