@@ -745,6 +745,63 @@ loss_warn_pct = 15
 	}
 }
 
+// TestLoad_ChangesetsDefaults is T-2003's zero-config guarantee: an omitted
+// [changesets] section leaves approval_required off (byte-identical apply
+// behavior to every pre-T-2003 deployment) and self-approval permitted
+// (matching the implicit single-admin workflow already true when there is
+// no approval gate at all).
+func TestLoad_ChangesetsDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "changesets-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Changesets.ApprovalRequired {
+		t.Error("Changesets.ApprovalRequired = true, want false (default) when [changesets] is omitted")
+	}
+	if !cfg.Changesets.AllowSelfApproval {
+		t.Error("Changesets.AllowSelfApproval = false, want true (default) when [changesets] is omitted")
+	}
+	if len(cfg.Changesets.Approvers) != 0 {
+		t.Errorf("Changesets.Approvers = %v, want empty (default: anyone with netWrite)", cfg.Changesets.Approvers)
+	}
+}
+
+// TestLoad_ChangesetsOverride covers an explicit [changesets] section:
+// approval required, self-approval forbidden, an explicit approvers list.
+func TestLoad_ChangesetsOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[changesets]
+approval_required = true
+allow_self_approval = false
+approvers = ["alice@pve", "bob@pve"]
+`
+	cfg, err := Load(writeTemp(t, "changesets-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if !cfg.Changesets.ApprovalRequired {
+		t.Error("Changesets.ApprovalRequired = false, want true (explicit override)")
+	}
+	if cfg.Changesets.AllowSelfApproval {
+		t.Error("Changesets.AllowSelfApproval = true, want false (explicit override)")
+	}
+	want := []string{"alice@pve", "bob@pve"}
+	if len(cfg.Changesets.Approvers) != len(want) || cfg.Changesets.Approvers[0] != want[0] || cfg.Changesets.Approvers[1] != want[1] {
+		t.Errorf("Changesets.Approvers = %v, want %v", cfg.Changesets.Approvers, want)
+	}
+}
+
 func mustParseIP(t *testing.T, s string) net.IP {
 	t.Helper()
 	ip := net.ParseIP(s)

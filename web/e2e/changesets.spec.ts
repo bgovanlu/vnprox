@@ -249,10 +249,30 @@ test("read-only capability user sees disabled editing affordances (spot-check)",
   await expect(inspector.getByRole("button", { name: "Edit" })).toBeDisabled();
   await expect(inspector.getByRole("button", { name: "Delete" })).toBeDisabled();
   await inspector.press("Escape");
+  // Radix's Dialog overlay (fixed inset-0, above the nav rail) can still be
+  // mounted for its exit animation for a moment after Escape — a click that
+  // lands on it during that window is swallowed rather than reaching the
+  // "Guests" nav link underneath, and the app never navigates (observed
+  // flake: nav stays on /topology). Wait for the dialog to be fully gone
+  // from the accessibility tree before clicking through it.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 
   // Guests view: per-row disconnect affordances are disabled too.
+  // Wait for the Guests page's own heading first — without this, the
+  // client-side route transition can still be in flight (this runs right
+  // after Escape-closing the inspector dialog) and the topology graph's own
+  // "app01/net0" node label, which is still in the DOM a moment longer, can
+  // satisfy a bare getByText assertion below and let the test race onto a
+  // page that never actually finished navigating (observed flake: 0
+  // Disconnect/Connect buttons found). Anchoring on the page-level heading
+  // makes the navigation itself part of what's asserted, not assumed.
   await page.getByRole("link", { name: "Guests" }).click();
-  await expect(page.getByText("app01/net0")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Guests", level: 1 })).toBeVisible();
+  // exact: true — the row's sr-only a11y description ("guest-nic app01/net0,
+  // status ok, badges: ...", EntityNode.tsx) also contains "app01/net0" as a
+  // substring, so a plain getByText match is ambiguous between it and the
+  // visible label; exact match picks only the visible span.
+  await expect(page.getByText("app01/net0", { exact: true })).toBeVisible();
   const disconnectButtons = page.getByRole("button", { name: /Disconnect|Connect/ });
   const n = await disconnectButtons.count();
   expect(n).toBeGreaterThan(0);

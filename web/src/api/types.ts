@@ -955,6 +955,13 @@ export interface Op {
   op: OpType;
   target?: string;
   params: OpParams;
+  /** T-2003: a stable, server-assigned id (empty/absent for an op not yet
+   * persisted — e.g. one just built by an editor and not yet saved). A
+   * review Comment attaches to this, not to the op's position in the array
+   * (which reordering/editing can change). Round-trips automatically as
+   * long as an unedited op's object is spread back in on save (every
+   * op-accumulating path in useDrawerActions.ts already does this). */
+  id?: string;
 }
 
 export type Severity = "error" | "warning" | "info";
@@ -1094,6 +1101,41 @@ export interface Changeset {
    * which the UI treats as "unknown" and says nothing about). It carries a
    * coverage bound only — never the sealed PVE ticket the coverage rests on. */
   unattendedRevert?: UnattendedRevert;
+  /** T-2003: per-op/changeset review comments and the current review-
+   * approval decision. Present only on the canonical `GET /changesets/{id}`
+   * read (internal/api's handleGetChangeset) — every other response
+   * (create/update/validate/apply/list/...) omits both, exactly like
+   * `touchesMgmtPath`'s own precedent for a field only the canonical read
+   * computes. */
+  comments?: ChangesetComment[];
+  approval?: ApprovalState;
+}
+
+/** One review comment (docs/api.md's changesets section, T-2003):
+ * `{id, opId?, author, body, createdAt}`. `opId` absent means a
+ * changeset-level comment; present, it names the commented `Op.id`. */
+export interface ChangesetComment {
+  id: string;
+  opId?: string;
+  author: string;
+  body: string;
+  createdAt: number;
+}
+
+export type ApprovalStatus = "none" | "approved" | "rejected";
+
+/** A changeset's review-approval state (T-2003): whether this deployment's
+ * policy currently requires approval before apply (`required`), and — once
+ * a decision exists — who made it, when, and (for a rejection) why.
+ * `required` is never inferred from the absence of an apply button in this
+ * UI: it is what the server tells us, and the server's own Apply refusal
+ * (the `approval_required` error code) is the actual enforcement. */
+export interface ApprovalState {
+  status: ApprovalStatus;
+  decidedBy?: string;
+  reason?: string;
+  decidedAt?: number;
+  required: boolean;
 }
 
 /** T-1805 (`unattendedRevert` on a changeset response): the server's answer to

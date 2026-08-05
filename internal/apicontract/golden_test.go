@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/bgovanlu/vnprox/internal/change"
 )
 
 // updateGolden regenerates testdata/golden/*.json from the real handlers'
@@ -71,6 +73,19 @@ func redactedChangeset(c changesetResponse) changesetResponse {
 	if c.ConfirmDeadline != nil {
 		zero := int64(0)
 		c.ConfirmDeadline = &zero
+	}
+	// T-2003: every op now carries a server-assigned, stable-but-random id
+	// (change.Op.ID, review.go's assignOpIDs) — as volatile run-to-run as the
+	// changeset's own id above, and redacted the same way so the golden
+	// fixture asserts on the documented op shape (op/target/params) without
+	// flaking on a fresh ULID each run.
+	if len(c.Ops) > 0 {
+		redacted := make([]change.Op, len(c.Ops))
+		copy(redacted, c.Ops)
+		for i := range redacted {
+			redacted[i].ID = "<op-id>"
+		}
+		c.Ops = redacted
 	}
 	return c
 }

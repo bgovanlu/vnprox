@@ -1,9 +1,12 @@
-// The review screen (docs/features/change-management.md §3: "three tabs:
-// Summary, File diff, Plan. Nothing applies until the user has seen this
-// screen."). Built on the modal <Drawer/> primitive (side="right", a full
-// height sheet) rather than the persistent bottom-right drawer panel — this
-// screen genuinely should block interaction with the rest of the app while
-// open, matching a Dialog's semantics.
+// The review screen (docs/features/change-management.md §3: "four tabs:
+// Summary, File diff, Plan, Discussion. Nothing applies until the user has
+// seen this screen."). Built on the modal <Drawer/> primitive (side="right",
+// a full height sheet) rather than the persistent bottom-right drawer panel
+// — this screen genuinely should block interaction with the rest of the app
+// while open, matching a Dialog's semantics. T-2003 added the review
+// surface (ApprovalPanel, CommentsPanel, the shareable review link) — see
+// approvalGate.ts's doc comment for why the Apply-button gating here is a
+// client-side echo, never the enforcement itself.
 import { useEffect, useMemo, useState } from "react";
 import * as RadixTabs from "@radix-ui/react-tabs";
 import { Button } from "../components/Button";
@@ -18,6 +21,10 @@ import { useChangesetDiffQuery, useValidateChangesetMutation, useApplyChangesetM
 import { useChangesetDrawerStore } from "./store";
 import { preApplyRevertNotice } from "./revertCoverage";
 import { mgmtStrings } from "../mgmt/strings";
+import { ApprovalPanel } from "./ApprovalPanel";
+import { CommentsPanel } from "./CommentsPanel";
+import { APPROVAL_REQUIRED_MESSAGE, blocksApply } from "./approvalGate";
+import { reviewLinkFor } from "./reviewLink";
 
 export interface ReviewApplyScreenProps {
   changeset: Changeset;
@@ -76,8 +83,13 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
 
   const errors = changeset.findings.filter((f) => f.severity === "error");
   const warnings = changeset.findings.filter((f) => f.severity === "warning");
+  // T-2003: a client-side echo of the server's review-approval gate —
+  // disables the button and explains why, but the server (beginApply)
+  // re-checks stored approval state on every apply attempt regardless of
+  // what this flag says (see approvalGate.ts's own doc comment).
+  const approvalBlocks = blocksApply(changeset.approval);
   const applyEnabled =
-    canApply(changeset, warningsAcknowledged) && ackSatisfied && !applyMutation.isPending;
+    canApply(changeset, warningsAcknowledged) && ackSatisfied && !approvalBlocks && !applyMutation.isPending;
 
   // Pre-apply the server hasn't built a plan yet (plan_json is written at
   // apply time) — show the client-side preview mirroring BuildPlan so the
@@ -110,14 +122,31 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
     }
   }
 
+  async function handleCopyReviewLink(): Promise<void> {
+    const link = reviewLinkFor(changeset.id);
+    try {
+      await navigator.clipboard.writeText(link);
+      toast({ title: "Review link copied", description: link });
+    } catch {
+      toast({ title: "Could not copy link", description: link, variant: "error" });
+    }
+  }
+
   return (
     <Drawer open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DrawerContent side="right" aria-describedby="review-apply-description" className="max-w-2xl">
-        <DrawerTitle>Review &amp; apply — {changeset.title || "Untitled draft"}</DrawerTitle>
+        <div className="flex items-start justify-between gap-2">
+          <DrawerTitle>Review &amp; apply — {changeset.title || "Untitled draft"}</DrawerTitle>
+          <Button variant="ghost" size="sm" onClick={() => void handleCopyReviewLink()}>
+            Copy review link
+          </Button>
+        </div>
         <DrawerDescription id="review-apply-description">
           {changeset.ops.length} operation{changeset.ops.length === 1 ? "" : "s"} across{" "}
           {new Set(changeset.ops.map((o) => (o.target ? refNode(o.target) : "cluster"))).size} node(s).
         </DrawerDescription>
+
+        <ApprovalPanel changesetId={changeset.id} approval={changeset.approval} />
 
         {errors.length > 0 && (
           <div className="mt-3 rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
@@ -143,6 +172,9 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             </RadixTabs.Trigger>
             <RadixTabs.Trigger value="plan" className={tabTriggerClass}>
               Plan
+            </RadixTabs.Trigger>
+            <RadixTabs.Trigger value="discussion" className={tabTriggerClass}>
+              Discussion{changeset.comments && changeset.comments.length > 0 ? ` (${String(changeset.comments.length)})` : ""}
             </RadixTabs.Trigger>
           </RadixTabs.List>
 
@@ -173,7 +205,11 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
                 {diff.files.map((f) => (
                   <section key={`${f.node}:${f.path}`}>
                     <h3 className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                      {f.node}: {f.path} {!f.changed && "(unchanged)"}
+                      {/* T-2003: SDN config diffs are cluster-scoped (no
+                       * single owning node — apply_snapshot.go's
+                       * sdn*SnapshotPath convention), unlike every
+                       * per-node interfaces-file entry. */}
+                      {f.node ? `${f.node}: ${f.path}` : f.path} {!f.changed && "(unchanged)"}
                     </h3>
                     <pre className="overflow-x-auto rounded border border-slate-200 bg-slate-50 p-2 font-mono text-[11px] leading-snug text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
                       {f.unified || "(no diff)"}
@@ -213,6 +249,10 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             ) : (
               <p className="text-xs text-slate-400">No executable steps for the current op list.</p>
             )}
+          </RadixTabs.Content>
+
+          <RadixTabs.Content value="discussion" className="mt-3 flex-1 overflow-y-auto">
+            <CommentsPanel changeset={changeset} />
           </RadixTabs.Content>
         </RadixTabs.Root>
 
@@ -292,18 +332,25 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
               className="w-16 rounded border border-slate-300 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800"
             />
           </label>
-          <div className="ml-auto flex gap-2">
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              Back to drafting
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={!applyEnabled}
-              onClick={() => void handleApply()}
-            >
-              Apply
-            </Button>
+          <div className="ml-auto flex flex-col items-end gap-1">
+            {approvalBlocks && (
+              <p className="max-w-xs text-right text-[11px] text-red-700 dark:text-red-300" role="alert">
+                {APPROVAL_REQUIRED_MESSAGE}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={onClose}>
+                Back to drafting
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!applyEnabled}
+                onClick={() => void handleApply()}
+              >
+                Apply
+              </Button>
+            </div>
           </div>
         </div>
       </DrawerContent>

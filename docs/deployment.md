@@ -132,6 +132,16 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 
 # [mtuprobe]                       # T-1306: always-on path MTU prober, built on [latmesh]'s own scheduler
 # probe_interval_sec = 300         # far coarser than [latmesh] — MTU rarely changes
+
+# [changesets]                     # T-2003: change review — approvals, comments, side-by-side diff.
+#                                   # Every key below defaults to the value shown; an omitted section
+#                                   # leaves apply behavior byte-identical to every pre-T-2003 deployment.
+# approval_required = false        # when true, POST .../apply refuses (422 approval_required) a
+#                                   # changeset with no stored "approved" review decision — see
+#                                   # docs/security.md's "Change review approval" note
+# allow_self_approval = true       # false forbids a changeset's own author from approving it
+# approvers = []                   # empty = anyone with netWrite may record a decision;
+#                                   # e.g. ["alice@pve", "bob@pve"] to name an explicit reviewer list
 ```
 
 ## Upgrade
@@ -146,15 +156,15 @@ apt update && apt install vnprox        # per node; any order
 
 ### Supported upgrade path
 
-**Every schema version vnprox has ever shipped (1 through the current latest, 33) can upgrade
+**Every schema version vnprox has ever shipped (1 through the current latest, 34) can upgrade
 directly to current in a single `apt install vnprox` — no intermediate hop through an in-between
 release is ever required.** Schema version 1 (`0001_init.sql`) is the very first release's schema;
 there is no vnprox install older than that, so "how far back is upgrading-directly supported"
 has one answer: **all the way**, for every install that has ever run a real vnprox build.
 `internal/store`'s `TestMigrate_FromEachPriorSchemaVersion` (T-1807) proves this directly rather
 than by induction over intermediate hops: it freezes a database at **each** of schema versions
-0 (a brand-new file, i.e. a fresh install) through 32, seeds every one of them with representative
-rows in that version's own on-disk shape, migrates straight to 33, and asserts — per table, not
+0 (a brand-new file, i.e. a fresh install) through 33, seeds every one of them with representative
+rows in that version's own on-disk shape, migrates straight to 34, and asserts — per table, not
 just "migrate() returned nil" — that every seeded row is still present and correct afterward. A
 second test, `TestMigrate_DestructiveMigrationIsCaught`, injects a synthetic migration that
 deliberately deletes rows and confirms the same assertions notice — evidence the data-preservation
@@ -182,13 +192,14 @@ a pre-upgrade backup of the database is not supported.
 - **The v3.0 schema is a forward-only superset of v2.x's.** The v2.0 → v3.0 arc adds migrations
   `0025_flow_baselines` … `0031_ha` (flow baselines, capacity samples, posture scores, changeset
   origin, plugins, tenants, and the `ha_lease` singleton) on top of the v2.x schema, followed by
-  `0032_cluster_wg_tunnel` (v3.0.2, tunnel-aware federation reachability) and
+  `0032_cluster_wg_tunnel` (v3.0.2, tunnel-aware federation reachability),
   `0033_changeset_revert_ticket` (v3.0.3, sealed apply-time revert ticket for unattended
-  `fw.*`/`sdn.apply` rollback) landing within the v3.0 line itself; they all run automatically on
+  `fw.*`/`sdn.apply` rollback), and `0034_changeset_review` (v3.3, T-2003: per-op/changeset review
+  comments and the review-approval gate) landing within the v3.0 line itself; they all run automatically on
   first daemon start at or after the release that introduced them and touch **only** new app-owned
   tables/columns — no existing row from an earlier schema is ever rewritten. This is pinned by
   `internal/store`'s `TestMigrate_FromEachPriorSchemaVersion` (freezes a DB at **every** prior
-  schema version 0 through latest-1, migrates each to the current version — **33** as of this
+  schema version 0 through latest-1, migrates each to the current version — **34** as of this
   writing — and asserts every pre-existing row survives, per table; see "Supported upgrade path"
   above for the full guarantee this test backs).
 - **Every v3.0 platform feature is opt-in / dormant until configured.** A v2.x install that upgrades

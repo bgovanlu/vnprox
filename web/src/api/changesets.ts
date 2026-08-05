@@ -5,7 +5,9 @@ import { apiFetch } from "./client";
 import { readCsrfCookie } from "./auth";
 import type {
   ApplyChangesetRequest,
+  ApprovalState,
   Changeset,
+  ChangesetComment,
   ChangesetDiff,
   CreateChangesetRequest,
   UpdateChangesetRequest,
@@ -89,6 +91,48 @@ export function confirmChangeset(id: string): Promise<Changeset> {
 export function rollbackChangeset(id: string): Promise<Changeset> {
   return apiFetch<Changeset>(`/changesets/${encodeURIComponent(id)}/rollback`, {
     method: "POST",
+    csrfToken: readCsrfCookie(),
+  });
+}
+
+/** POST /changesets/{id}/comments — add a review comment (T-2003). `opId`
+ * omitted attaches a changeset-level comment; otherwise it must name an
+ * `Op.id` currently on the changeset. */
+export function addChangesetComment(id: string, opId: string | undefined, body: string): Promise<ChangesetComment> {
+  return apiFetch<ChangesetComment>(`/changesets/${encodeURIComponent(id)}/comments`, {
+    method: "POST",
+    json: opId ? { opId, body } : { body },
+    csrfToken: readCsrfCookie(),
+  });
+}
+
+/** DELETE /changesets/{id}/comments/{commentId} (T-2003). */
+export async function deleteChangesetComment(id: string, commentId: string): Promise<void> {
+  await apiFetch(`/changesets/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}`, {
+    method: "DELETE",
+    csrfToken: readCsrfCookie(),
+  });
+}
+
+/** POST /changesets/{id}/review/approve (T-2003) — NOT the same route as
+ * the tenant request-changeset `/changesets/{id}/approve` (T-1703), which
+ * converts a `requested` changeset to a draft; this records a review
+ * decision on an ordinary draft/validated one. Whether apply actually
+ * requires this decision is decided server-side — this call only ever
+ * records state, never grants anything by itself. */
+export function reviewApproveChangeset(id: string): Promise<ApprovalState> {
+  return apiFetch<ApprovalState>(`/changesets/${encodeURIComponent(id)}/review/approve`, {
+    method: "POST",
+    csrfToken: readCsrfCookie(),
+  });
+}
+
+/** POST /changesets/{id}/review/reject (T-2003), with an optional
+ * human-readable reason. */
+export function reviewRejectChangeset(id: string, reason?: string): Promise<ApprovalState> {
+  return apiFetch<ApprovalState>(`/changesets/${encodeURIComponent(id)}/review/reject`, {
+    method: "POST",
+    json: reason ? { reason } : {},
     csrfToken: readCsrfCookie(),
   });
 }

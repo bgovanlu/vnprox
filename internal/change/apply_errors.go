@@ -132,6 +132,27 @@ func (e *ErrRollbackWindowExpired) Error() string {
 	return fmt.Sprintf("change: changeset %s was committed more than %d days ago; the manual-rollback window has expired (restore from a snapshot instead)", e.ID, e.WindowDays)
 }
 
+// ErrApprovalRequired is returned by Apply when this deployment's policy
+// ([changesets] approval_required = true) requires an explicit review
+// approval before a changeset may apply, and none is currently recorded
+// (never approved, awaiting a decision, or the last decision was a
+// rejection, or a subsequent edit cleared a prior approval — see
+// review.go's ApprovalConfig/ClearApproval doc comments). This is a new,
+// additive apply-refusal error, distinct from every existing one
+// (docs/api.md's changeset-apply error list): it does not repurpose
+// validation_failed (the changeset may be perfectly valid) or
+// invalid_transition (the ordinary status state machine is untouched by
+// approval — review.go's package doc comment) — approval is an orthogonal
+// gate the state machine doesn't know about. The API layer maps it to a
+// new, documented 422 with the stable code approval_required.
+type ErrApprovalRequired struct {
+	ID string
+}
+
+func (e *ErrApprovalRequired) Error() string {
+	return fmt.Sprintf("change: changeset %s requires review approval before it can be applied", e.ID)
+}
+
 // ErrSDNZoneUnhealthy is returned by the sdn_apply step when the underlying
 // PVE task itself succeeded but T-402's post-apply verification finds a
 // zone unhealthy on one of its member nodes (docs/features/sdn.md §4:

@@ -272,7 +272,22 @@ func KnownOpTypes() []OpType {
 // represented (see internal/topology/types.go's Node.ID / EntityDetail.Ref
 // / RelatedRef.Ref) — one encoding convention for Refs across the whole
 // API surface.
+//
+// ID (T-2003, added additively to the v1.7-frozen changeset wire contract —
+// docs/architecture.md §10/§13's "new optional fields may be added without a
+// version bump") is a stable, opaque identifier a review Comment attaches to
+// (review.go). It has no meaning to the change engine itself — ops are not
+// otherwise identified by anything stable (two bridge.update ops against the
+// same target are legitimately different edits) — and nothing in this
+// package ever assigns or reads it; Service.create/UpdateDraft (service.go's
+// assignOpIDs) stamp one onto every op that arrives without one, so it
+// survives a GET -> edit -> PUT round trip for any op the edit leaves
+// untouched (see useDrawerActions.ts's addOps/replaceOps, which always
+// re-submit the existing ops array verbatim aside from the ops actually
+// being added/removed). Omitted on the wire (never emitted as `""`) so a
+// pre-T-2003 caller's JSON is byte-identical.
 type Op struct {
+	ID     string
 	Params Params
 	Target inventory.Ref
 	Type   OpType
@@ -285,6 +300,7 @@ type Op struct {
 // than an empty-string sentinel.
 type opEnvelope struct {
 	Op     OpType          `json:"op"`
+	ID     string          `json:"id,omitempty"`
 	Target *string         `json:"target"`
 	Params json.RawMessage `json:"params"`
 }
@@ -306,7 +322,7 @@ func (o Op) MarshalJSON() ([]byte, error) {
 		target = &s
 	}
 
-	data, err := json.Marshal(opEnvelope{Op: o.Type, Target: target, Params: paramsJSON})
+	data, err := json.Marshal(opEnvelope{Op: o.Type, ID: o.ID, Target: target, Params: paramsJSON})
 	if err != nil {
 		return nil, fmt.Errorf("change: marshaling op %s: %w", o.Type, err)
 	}
@@ -368,6 +384,7 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	}
 
 	o.Type = env.Op
+	o.ID = env.ID
 	o.Target = target
 	o.Params = params
 	return nil

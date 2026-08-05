@@ -146,6 +146,26 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 		return Changeset{}, Plan{}, &ErrIllegalTransition{From: cs.Status, To: StatusApplying}
 	}
 
+	// T-2003: the review-approval gate. This is an AUTHORIZATION check, not
+	// a validation one — deliberately run before revalidation/snapshot/any
+	// mutation, and deliberately never satisfiable by anything the caller
+	// sends on this request: the ONLY way isApproved can return true is a
+	// prior, separately-audited changeset.review_approve call that wrote a
+	// changeset_approvals row this same server process can read back. A
+	// disabled/misconfigured approval store (isApproved's fail-closed
+	// contract) refuses apply exactly like an explicit rejection would —
+	// never fails open.
+	if s.approval.Required {
+		approved, aerr := s.isApproved(ctx, id)
+		if aerr != nil {
+			return Changeset{}, Plan{}, aerr
+		}
+		if !approved {
+			s.appendAudit(ctx, author, "changeset.apply", "approval_required", id, nil)
+			return Changeset{}, Plan{}, &ErrApprovalRequired{ID: id}
+		}
+	}
+
 	// Revalidate immediately before apply, through safetyOptions() so
 	// allow_dangerous_ops and the protected-interface set are honored (T-203
 	// deviation note 5a) — a bare Validate would silently drop them.
@@ -731,7 +751,19 @@ func (s *Service) Diff(ctx context.Context, id string) (*ifaces.ChangesetDiff, e
 	if err != nil {
 		return nil, err
 	}
-	return ifaces.DiffChangeset(ctx, nodeAgentReader{s.nodes}, ifOps, id)
+	diff, err := ifaces.DiffChangeset(ctx, nodeAgentReader{s.nodes}, ifOps, id)
+	if err != nil {
+		return nil, err
+	}
+	// T-2003: extend the config-diff tab with the SDN portion — operators
+	// reason in /etc/pve/sdn/*.cfg terms too, and a changeset mixing
+	// node-file and sdn.* ops previously rendered a config diff that
+	// silently covered only the interfaces-file half (acceptance criterion
+	// 4). Purely additive to ChangesetDiff.Files (more entries, same shape),
+	// so this is safe on the frozen changesets.diff MCP tool's response too
+	// (docs/architecture.md §13.1) — no field is renamed or removed.
+	diff.Files = append(diff.Files, sdnConfigDiffFiles(cs.Ops, s.inventorySnapshot())...)
+	return diff, nil
 }
 
 // ArmPendingRollbacks re-establishes apply-engine state from the DB at daemon

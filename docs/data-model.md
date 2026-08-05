@@ -126,6 +126,25 @@ CREATE TABLE changesets (
   created_at INTEGER, updated_at INTEGER
 );
 
+-- T-2003 (migration 0034): the change-review surface — per-op/changeset
+-- comments and the review-approval gate, generalizing T-1703's
+-- changeset_requests approval queue to every changeset rather than only
+-- tenant requests.
+CREATE TABLE changeset_comments (
+  id TEXT PRIMARY KEY,               -- ULID
+  changeset_id TEXT NOT NULL REFERENCES changesets(id) ON DELETE CASCADE,
+  op_id TEXT NOT NULL DEFAULT '',    -- matches an Op.id (§3); '' = changeset-level comment
+  author TEXT NOT NULL, body TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE changeset_approvals (
+  changeset_id TEXT PRIMARY KEY REFERENCES changesets(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,              -- approved|rejected (absent row = "none", the implicit default)
+  decided_by TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+  decided_at INTEGER NOT NULL
+);
+
 CREATE TABLE snapshots (
   id TEXT PRIMARY KEY, changeset_id TEXT REFERENCES changesets(id),
   taken_at INTEGER NOT NULL, kind TEXT NOT NULL,      -- pre|post|manual|scheduled

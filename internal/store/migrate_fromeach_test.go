@@ -158,6 +158,7 @@ var versionSeeds = map[int]versionSeed{
 	30: {seedV30, assertV30},
 	31: {seedV31, assertV31},
 	32: {seedV32, assertV32},
+	33: {seedV33, assertV33},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1186,12 +1187,35 @@ func assertV32(t *testing.T, db *sql.DB) {
 // *newer* than this build's embedded migrations understand (downgrading a
 // node) — is already covered by store_test.go's Open-with-a-future-
 // schema_version case (ErrSchemaTooNew); not duplicated here.
-//
-// Schema version 33 (0033_changeset_revert_ticket.sql, changesets.
-// revert_ticket_enc/revert_ticket_expires_at) has no versionSeeds entry
-// because it is the current latest, not a "prior" version any fixture in
-// this file freezes at — its own forward application (as part of every
-// case's migrate() call to latest) is exercised by every case above, and
-// TestOpen_CreatesAllTables (store_test.go) exercises it from a fresh
-// database. The next migration to land (0034) becomes the new latest and
-// picks up a version 33 entry in versionSeeds at that time.
+
+// ---------------------------------------------------------------------
+// Version 33 — 0033_changeset_revert_ticket.sql: changesets.
+// revert_ticket_enc/revert_ticket_expires_at (ALTER TABLE ADD COLUMN,
+// applied to v1's own cs-v1 changeset row, which freezeAndSeed guarantees
+// is already seeded by the time this runs).
+// ---------------------------------------------------------------------
+
+func seedV33(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `UPDATE changesets SET revert_ticket_enc = x'0a0b0c0d', revert_ticket_expires_at = 1700099999 WHERE id = 'cs-v1'`)
+}
+
+func assertV33(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var expiresAt int64
+	if err := db.QueryRowContext(ctx, `SELECT revert_ticket_expires_at FROM changesets WHERE id = 'cs-v1'`).Scan(&expiresAt); err != nil {
+		t.Errorf("changesets.revert_ticket_expires_at lost across migration: %v", err)
+	} else if expiresAt != 1700099999 {
+		t.Errorf("changesets.revert_ticket_expires_at = %d, want 1700099999", expiresAt)
+	}
+}
+
+// Schema version 34 (0034_changeset_review.sql, changeset_comments /
+// changeset_approvals — T-2003) has no versionSeeds entry because it is the
+// current latest, not a "prior" version any fixture in this file freezes
+// at — its own forward application (as part of every case's migrate() call
+// to latest) is exercised by every case above, and TestOpen_CreatesAllTables
+// (store_test.go) exercises it from a fresh database. The next migration to
+// land becomes the new latest and picks up a version 34 entry in
+// versionSeeds at that time.

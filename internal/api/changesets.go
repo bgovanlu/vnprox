@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -63,6 +64,19 @@ type ChangesetService interface {
 	// against (see the raw-editor routes mounted alongside the changeset
 	// CRUD routes below).
 	ReadRawInterfaces(ctx context.Context, node string) (content, hash string, err error)
+
+	// T-2003 review surface: per-op/changeset comments and the
+	// review-approval gate, generalizing T-1703's tenant approval queue.
+	// AddComment/ReviewApprove/ReviewReject are AUTHORIZATION-relevant
+	// mutations (docs/security.md) — Apply itself (above) is what actually
+	// enforces the gate server-side; these three only ever record state it
+	// reads.
+	ListComments(ctx context.Context, changesetID string) ([]change.Comment, error)
+	AddComment(ctx context.Context, changesetID, author, opID, body string) (change.Comment, error)
+	DeleteComment(ctx context.Context, changesetID, commentID, author string) error
+	GetApproval(ctx context.Context, changesetID string) (change.ApprovalState, error)
+	ReviewApprove(ctx context.Context, changesetID, approver string) (change.Changeset, error)
+	ReviewReject(ctx context.Context, changesetID, rejecter, reason string) (change.Changeset, error)
 }
 
 // PVEGatewayProvider supplies a change.PVEGateway bound to the requesting
@@ -96,6 +110,8 @@ type CSRFEnforcer interface {
 // findings, plan, apply log"). Findings is never emitted as a JSON null
 // (an empty array instead) so frontend code can always range over it
 // without a nil check.
+//
+//nolint:govet // fieldalignment: response DTO; field order is the JSON shape, not packing (matches internal/api/spec.go's identical precedent).
 type changesetResponse struct {
 	Plan            json.RawMessage `json:"plan,omitempty"`
 	ApplyLog        json.RawMessage `json:"applyLog,omitempty"`
@@ -123,6 +139,15 @@ type changesetResponse struct {
 	Findings      []change.Finding `json:"findings"`
 	CreatedAt     int64            `json:"createdAt"`
 	UpdatedAt     int64            `json:"updatedAt"`
+	// Comments and Approval (T-2003) are the review surface: per-op/
+	// changeset comments and the current review-approval decision,
+	// respectively. Both are additive fields (docs/architecture.md §10/§13's
+	// deprecation policy) — omitted (nil) everywhere except the canonical
+	// GET /changesets/{id} read (handleGetChangeset), which decorates them,
+	// exactly like TouchesMgmtPath's own "canonical read computes it" note
+	// below; every other response's byte shape is completely unaffected.
+	Comments []commentResponse `json:"comments,omitempty"`
+	Approval *approvalResponse `json:"approval,omitempty"`
 	// TouchesMgmtPath is T-703's server-computed flag (docs/api.md's
 	// changesets section): the ops intersect a node's resolved management
 	// path (change.TouchesMgmtPath over the same MgmtStatus computation
@@ -132,6 +157,38 @@ type changesetResponse struct {
 	// restore, blueprint instantiate) return it as false — the canonical
 	// GET /changesets/{id} read those flows all funnel into computes it.
 	TouchesMgmtPath bool `json:"touchesMgmtPath"`
+}
+
+// commentResponse is one review Comment's wire shape (docs/api.md's
+// changesets section): `{id, opId?, author, body, createdAt}`.
+type commentResponse struct {
+	ID        string `json:"id"`
+	OpID      string `json:"opId,omitempty"`
+	Author    string `json:"author"`
+	Body      string `json:"body"`
+	CreatedAt int64  `json:"createdAt"`
+}
+
+func toCommentResponse(c change.Comment) commentResponse {
+	return commentResponse{ID: c.ID, OpID: c.OpID, Author: c.Author, Body: c.Body, CreatedAt: c.CreatedAt}
+}
+
+// approvalResponse is a changeset's review-approval state's wire shape:
+// `{status, decidedBy?, reason?, decidedAt?, required}`. status is
+// "none"|"approved"|"rejected"; required reports whether THIS deployment's
+// policy currently gates apply on approval — a client must never infer that
+// from the absence of an apply button; Apply's own refusal
+// (approval_required, see writeApplyError below) is the actual enforcement.
+type approvalResponse struct {
+	Status    string `json:"status"`
+	DecidedBy string `json:"decidedBy,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	DecidedAt int64  `json:"decidedAt,omitempty"`
+	Required  bool   `json:"required"`
+}
+
+func toApprovalResponse(a change.ApprovalState) approvalResponse {
+	return approvalResponse{Status: string(a.Status), DecidedBy: a.DecidedBy, Reason: a.Reason, DecidedAt: a.DecidedAt, Required: a.Required}
 }
 
 func toChangesetResponse(c change.Changeset) changesetResponse {
@@ -237,6 +294,17 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		r.Post("/changesets/{id}/apply", handleApplyChangeset(svc, lookup, gateways, mgmt, wgCarriers))
 		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup, mgmt, wgCarriers))
 		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup, gateways, mgmt, wgCarriers))
+
+		// T-2003: the review surface — per-op/changeset comments and the
+		// review-approval gate. /review/approve and /review/reject are
+		// deliberately NOT /changesets/{id}/approve: that route already
+		// exists (T-1703, mountTenantRoutes below) and means something
+		// different — converting a tenant's request-changeset to a draft.
+		// This is a new, additive route family, not a repurposing of it.
+		r.Post("/changesets/{id}/comments", handleAddComment(svc, lookup))
+		r.Delete("/changesets/{id}/comments/{commentId}", handleDeleteComment(svc, lookup))
+		r.Post("/changesets/{id}/review/approve", handleReviewApprove(svc, lookup))
+		r.Post("/changesets/{id}/review/reject", handleReviewReject(svc, lookup))
 	})
 
 	// T-1103: scheduled changesets & maintenance windows. Mounted alongside
@@ -398,6 +466,7 @@ func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways 
 		}
 		resp := toChangesetResponse(c)
 		resp.TouchesMgmtPath = touchesMgmt
+		resp = withReview(r.Context(), svc, resp)
 		writeJSON(w, http.StatusAccepted, resp)
 	}
 }
@@ -415,7 +484,7 @@ func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mg
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
+		writeJSON(w, http.StatusOK, withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
 	}
 }
 
@@ -436,7 +505,7 @@ func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gatewa
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
+		writeJSON(w, http.StatusOK, withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
 	}
 }
 
@@ -549,6 +618,11 @@ func writeApplyError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusUnprocessableEntity, "unsupported_op", err.Error())
 		return
 	}
+	var approvalRequired *change.ErrApprovalRequired
+	if errors.As(err, &approvalRequired) {
+		writeJSONError(w, http.StatusUnprocessableEntity, "approval_required", err.Error())
+		return
+	}
 	var sdnUnhealthy *change.ErrSDNZoneUnhealthy
 	if errors.As(err, &sdnUnhealthy) {
 		writeJSONErrorDetails(w, http.StatusUnprocessableEntity, "sdn_zone_unhealthy", err.Error(), map[string]any{
@@ -620,8 +694,184 @@ func handleGetChangeset(svc ChangesetService, mgmt MgmtStatusService, wgCarriers
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
+		resp := withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers))
+		writeJSON(w, http.StatusOK, resp)
 	}
+}
+
+// withReview decorates resp with T-2003's review surface (comments,
+// approval state). Called from EVERY route that returns a single
+// changesetResponse — not only GET — because the frontend's TanStack Query
+// cache for a changeset (changesetKey(id)) is repopulated wholesale from
+// whichever response arrives last (create/update/validate/apply/confirm/
+// rollback/get all call queryClient.setQueryData with their own response
+// body): if only GET carried these fields, the very next mutation (e.g. the
+// review screen's own re-validate-on-open) would silently overwrite them
+// back to absent in the client's cache, even though the server-side data
+// never changed. Mirrors withMgmtFlag's identical "every route decorates
+// this" precedent for touchesMgmtPath. Best-effort: a read failure degrades
+// to omitting the field rather than failing the whole response (the same
+// tolerance mgmtPathsFor already applies).
+func withReview(ctx context.Context, svc ChangesetService, resp changesetResponse) changesetResponse {
+	if comments, err := svc.ListComments(ctx, resp.ID); err == nil {
+		out := make([]commentResponse, len(comments))
+		for i, cm := range comments {
+			out[i] = toCommentResponse(cm)
+		}
+		resp.Comments = out
+	}
+	if approval, err := svc.GetApproval(ctx, resp.ID); err == nil {
+		ar := toApprovalResponse(approval)
+		resp.Approval = &ar
+	}
+	return resp
+}
+
+// addCommentRequest is `POST /changesets/{id}/comments`'s body:
+// `{opId?, body}`. opId, when present, must name an op currently on the
+// changeset (*change.ErrCommentOpNotFound otherwise); omitted attaches a
+// changeset-level comment.
+type addCommentRequest struct {
+	OpID string `json:"opId,omitempty"`
+	Body string `json:"body"`
+}
+
+func handleAddComment(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+		dec.DisallowUnknownFields()
+		var req addCommentRequest
+		if err := dec.Decode(&req); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "malformed request body")
+			return
+		}
+		if strings.TrimSpace(req.Body) == "" {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "comment body is required")
+			return
+		}
+
+		c, err := svc.AddComment(r.Context(), id, username, req.OpID, req.Body)
+		if err != nil {
+			writeReviewError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, toCommentResponse(c))
+	}
+}
+
+func handleDeleteComment(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+		commentID := chi.URLParam(r, "commentId")
+
+		if err := svc.DeleteComment(r.Context(), id, commentID, username); err != nil {
+			writeReviewError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleReviewApprove(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+
+		if _, err := svc.ReviewApprove(r.Context(), id, username); err != nil {
+			writeReviewError(w, err)
+			return
+		}
+		approval, err := svc.GetApproval(r.Context(), id)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal_error", "approval recorded but could not be read back")
+			return
+		}
+		writeJSON(w, http.StatusOK, toApprovalResponse(approval))
+	}
+}
+
+// reviewRejectRequest is `POST /changesets/{id}/review/reject`'s body:
+// `{reason?}`.
+type reviewRejectRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+func handleReviewReject(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+
+		var req reviewRejectRequest
+		if r.ContentLength != 0 {
+			dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&req); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "validation_failed", "malformed request body")
+				return
+			}
+		}
+
+		if _, err := svc.ReviewReject(r.Context(), id, username, req.Reason); err != nil {
+			writeReviewError(w, err)
+			return
+		}
+		approval, err := svc.GetApproval(r.Context(), id)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal_error", "rejection recorded but could not be read back")
+			return
+		}
+		writeJSON(w, http.StatusOK, toApprovalResponse(approval))
+	}
+}
+
+// writeReviewError maps T-2003 review-surface errors (comments/approval) to
+// docs/api.md's error envelope + stable codes.
+func writeReviewError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrNotFound) {
+		writeJSONError(w, http.StatusNotFound, "not_found", "no such changeset or comment")
+		return
+	}
+	var opNotFound *change.ErrCommentOpNotFound
+	if errors.As(err, &opNotFound) {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+	var selfForbidden *change.ErrSelfApprovalForbidden
+	if errors.As(err, &selfForbidden) {
+		writeJSONError(w, http.StatusForbidden, "self_approval_forbidden", err.Error())
+		return
+	}
+	var notApprover *change.ErrNotAnApprover
+	if errors.As(err, &notApprover) {
+		writeJSONError(w, http.StatusForbidden, "not_an_approver", err.Error())
+		return
+	}
+	var notConfigured *change.ErrReviewNotConfigured
+	if errors.As(err, &notConfigured) {
+		writeJSONError(w, http.StatusServiceUnavailable, "review_unavailable", err.Error())
+		return
+	}
+	writeJSONError(w, http.StatusInternalServerError, "internal_error", "review operation failed")
 }
 
 // opsField decodes a JSON `ops` array one element at a time so any
@@ -700,7 +950,7 @@ func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mgm
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		writeJSON(w, http.StatusCreated, withMgmtFlag(c, paths, carriers))
+		writeJSON(w, http.StatusCreated, withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
 	}
 }
 
@@ -743,7 +993,7 @@ func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mgm
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
+		writeJSON(w, http.StatusOK, withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
 	}
 }
 
@@ -782,7 +1032,7 @@ func handleValidateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt M
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		writeJSON(w, http.StatusOK, withMgmtFlag(c, paths, carriers))
+		writeJSON(w, http.StatusOK, withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
 	}
 }
 

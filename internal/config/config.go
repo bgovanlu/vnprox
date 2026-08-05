@@ -162,16 +162,17 @@ const (
 // Config is the fully parsed, defaulted, and validated daemon configuration.
 type Config struct {
 	PVE         PVEConfig
+	Peer        PeerConfig
 	Storage     StorageConfig
 	FirewallLog FirewallLogConfig
 	Blueprint   BlueprintConfig
-	Hub         HubConfig
-	Peer        PeerConfig
 	Safety      SafetyConfig
+	Hub         HubConfig
 	Security    SecurityConfig
 	OIDC        OIDCConfig
 	Server      ServerConfig
 	Metrics     MetricsConfig
+	Changesets  ChangesetsConfig
 	HA          HAConfig
 	Capture     CaptureConfig
 	Flows       FlowsConfig
@@ -184,6 +185,32 @@ type Config struct {
 	MTUProbe    MTUProbeConfig
 	Switches    SwitchesConfig
 	MCP         MCPConfig
+}
+
+// ChangesetsConfig is the [changesets] section (T-2003: change review —
+// approvals, comments, side-by-side diff), generalizing T-1703's
+// tenant-scoped request-changeset approval queue to every changeset. The
+// zero value (ApprovalRequired false) is a complete no-op: every pre-T-2003
+// deployment's apply behavior is byte-identical, since nothing gates apply
+// on approval state unless an admin explicitly opts in.
+type ChangesetsConfig struct {
+	// Approvers, when non-empty, restricts who may record a review decision
+	// to this exact list of identities (usernames). Empty (the default)
+	// means anyone who can reach the route (i.e. anyone with netWrite) may
+	// decide.
+	Approvers []string
+	// ApprovalRequired, when true, blocks POST /changesets/{id}/apply
+	// server-side (change.Service's approval gate, apply.go's beginApply)
+	// until the changeset carries a recorded "approved" review decision.
+	ApprovalRequired bool
+	// AllowSelfApproval, when false, refuses a review-approval decision made
+	// by the changeset's own author (change.ErrSelfApprovalForbidden) —
+	// mirrors internal/tenant's separation-of-duties rule for request-
+	// changesets, generalized to every changeset. Defaults to true (self-
+	// approval permitted) when the config file omits the key — the implicit
+	// single-admin workflow every pre-T-2003 deployment already has, where
+	// "the approver" and "the author" are routinely the same person.
+	AllowSelfApproval bool
 }
 
 // MCPConfig is the [mcp] section (T-1701): the read-only/stage-only MCP server
@@ -574,14 +601,15 @@ type CapacityConfig struct {
 // before defaulting/validation/type conversion.
 type rawConfig struct {
 	PVE         rawPVE         `toml:"pve"`
+	Peer        rawPeer        `toml:"peer"`
 	Collect     rawCollect     `toml:"collect"`
-	Storage     rawStorage     `toml:"storage"`
+	Changesets  rawChangesets  `toml:"changesets"`
 	FirewallLog rawFirewallLog `toml:"firewalllog"`
 	Blueprint   rawBlueprint   `toml:"blueprint"`
-	Hub         rawHub         `toml:"hub"`
-	Peer        rawPeer        `toml:"peer"`
+	Storage     rawStorage     `toml:"storage"`
 	OIDC        rawOIDC        `toml:"oidc"`
 	Metrics     rawMetrics     `toml:"metrics"`
+	Hub         rawHub         `toml:"hub"`
 	Safety      rawSafety      `toml:"safety"`
 	Security    rawSecurity    `toml:"security"`
 	HA          rawHA          `toml:"ha"`
@@ -596,6 +624,17 @@ type rawConfig struct {
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
 	Switches    rawSwitches    `toml:"switches"`
 	MCP         rawMCP         `toml:"mcp"`
+}
+
+// rawChangesets mirrors [changesets] (T-2003). AllowSelfApproval is a *bool
+// (not a plain bool) for the same reason rawMetrics.Enabled is: Load must
+// distinguish "not set in the file" (default true — self-approval permitted)
+// from an explicit "allow_self_approval = false", which a plain bool
+// (defaulting to false either way) can't do.
+type rawChangesets struct {
+	AllowSelfApproval *bool    `toml:"allow_self_approval"`
+	Approvers         []string `toml:"approvers"`
+	ApprovalRequired  bool     `toml:"approval_required"`
 }
 
 type rawMCP struct {
@@ -829,6 +868,11 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		},
 		Switches: SwitchesConfig{
 			Enabled: raw.Switches.Enabled,
+		},
+		Changesets: ChangesetsConfig{
+			ApprovalRequired:  raw.Changesets.ApprovalRequired,
+			AllowSelfApproval: raw.Changesets.AllowSelfApproval == nil || *raw.Changesets.AllowSelfApproval,
+			Approvers:         raw.Changesets.Approvers,
 		},
 		Security: SecurityConfig{
 			ProtectedSegments: raw.Security.ProtectedSegments,

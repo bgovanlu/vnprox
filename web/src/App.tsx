@@ -24,6 +24,7 @@ import { ToolsPage } from "./pages/ToolsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AlertRulesPage } from "./pages/AlertRulesPage";
 import { FederationClustersPage } from "./pages/FederationClustersPage";
+import { ChangesetReviewPage } from "./changesets/ChangesetReviewPage";
 import { EmbedFrame } from "./embed/EmbedFrame";
 import { EmbedMap } from "./embed/EmbedMap";
 import { EmbedDashboard } from "./embed/EmbedDashboard";
@@ -206,6 +207,12 @@ export function App() {
               }
             />
             <Route path="/tools" element={<ToolsPage />} />
+            {/* T-2003: the shareable review link. Deliberately NOT wrapped in
+             * DesktopOnlyRoute — the exit demo requires this to work "from a
+             * phone" (planning/tasks/phase-20.md), matching the narrow-
+             * viewport-reachable precedent T-909 already set for the
+             * changeset confirm/rollback overlay. */}
+            <Route path="/changesets/:id/review" element={<ChangesetReviewPage />} />
             <Route
               path="/settings"
               element={

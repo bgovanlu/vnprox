@@ -39,9 +39,10 @@ Things to try first:
 vnprox never applies anything as you click. Edits collect in the **change drawer** (bottom right):
 
 1. Make edits anywhere — drag a NIC into a bond, edit a bridge, retag a guest NIC. Each becomes a line in the drawer.
-2. Hit **Review & apply**. You'll see a plain summary, the exact file diffs per node, and the ordered plan.
-3. Apply. A **countdown banner** appears (default 2 minutes). vnprox has applied your change — now it wants proof you still have connectivity.
-4. Click **Confirm** — done. If you *can't* click (the change cut you off), vnprox automatically rolls everything back at the deadline. Reconnect and read what happened.
+2. Hit **Review & apply**. You'll see a plain summary, the exact file diffs per node (interfaces, and SDN config for SDN ops), and the ordered plan.
+3. **Discuss it.** Leave a comment on the whole changeset or on one specific operation — useful when a colleague is reviewing your work, not just applying it yourself. If your deployment requires sign-off before apply, an approver **Approve**s or **Reject**s it right there; a review link ("Copy review link") lets you send it to someone else to look at, including from their phone.
+4. Apply. A **countdown banner** appears (default 2 minutes). vnprox has applied your change — now it wants proof you still have connectivity.
+5. Click **Confirm** — done. If you *can't* click (the change cut you off), vnprox automatically rolls everything back at the deadline. Reconnect and read what happened.
 
 Every applied change is snapshotted. **Time machine** (History → Snapshots) lets you diff any two points and restore any of them — restores go through the same review flow.
 
