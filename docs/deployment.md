@@ -88,8 +88,13 @@ lldp_interval = "30s"
 # tls_trust_ack = "i-accept-unverified-peer-tls"   # required by tls_trust = "insecure"
 
 [retention]
-snapshot_keep_days = 90    # committed-changeset snapshots are pinned a minimum of snapshot_pin_days regardless
+snapshot_keep_days = 90    # committed-changeset snapshots are pinned a minimum of snapshot_pin_days regardless;
+                           # a snapshot backing an applying/awaiting_confirm changeset is NEVER pruned, regardless
+                           # of age (T-1905) — see docs/data-model.md §13
 snapshot_pin_days = 7
+audit_keep_days = 730      # T-1905: audit_log is a compliance artifact — see docs/data-model.md §13 for the argument
+store_warn_bytes = 4294967296   # T-1905: 4 GiB — store_near_capacity finding threshold (store.DB.SizeBytes(),
+                                 # main file + WAL/SHM); see "Sizing and retention" below
 
 [metrics]
 enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); token generated on first start
@@ -352,6 +357,57 @@ trail, layouts, tenants, blueprints, and every app-owned table.
 vnprox's store is disposable app state, by design (decision D5): reinstalling loses history, never
 configuration. Proxmox itself — the actual network configuration — is untouched by any of this and
 keeps working exactly as configured.
+
+## Sizing and retention
+
+`/var/lib/vnprox/vnprox.db` accrues data with no natural ceiling of its own — audit rows, snapshots,
+flow/latency/WAN samples, capacity aggregates, and `.pcap` captures all grow unless something bounds
+them. `vnproxd` bounds every one of them itself (a "no operator action required" default), and warns
+before the disk actually fills. Full per-class defaults and the argument for each are in
+`docs/data-model.md` §13 ("Retention, rotation, and compaction"); this section is the operator-facing
+summary of what to expect and what to tune.
+
+**Defaults, at a glance:**
+
+| Class | Kept for | Tunable |
+|---|---|---|
+| Audit log | 2 years | `[retention] audit_keep_days` |
+| Rollback snapshots | 90 days (7-day floor for a committed changeset's manual-rollback window; **never** pruned while a changeset is still `applying`/`awaiting_confirm`, regardless of age) | `[retention] snapshot_keep_days` / `snapshot_pin_days` |
+| Flow / latency / WAN samples | 60 minutes or a hard row cap, whichever is smaller | `[flows]`/`[latmesh]`/`[wan] retention_minutes`/`max_rows` |
+| Capacity forecasting data | ~13 months (a downsampled daily rollup, not raw samples) | `[capacity] aggregate_retention_days` |
+| Packet captures (`.pcap`) | 6 hours | `[capture] retention_hours` |
+
+**How much disk vnprox itself needs:** for a typical single-cluster deployment with default
+retention, the store (`vnprox.db` plus its `-wal`/`-shm` sidecars) is expected to stay in the low
+hundreds of megabytes to low single-digit gigabytes — dominated by snapshot content (each apply's
+pre/post file captures, content-addressed so identical content across snapshots is stored once) and,
+if flow ingestion is enabled, the flow-sample ring at its row cap. Packet captures live as separate
+`.pcap` files under `[capture] root`, purged independently of the store and not counted in the
+store's own footprint — budget for these separately if capture is used routinely (a single busy
+session can be tens of MB before it hits its own caps).
+
+**The `store_near_capacity` finding** (`internal/findings`, source `store`) warns in the findings
+stream once the store's own on-disk size (main file + WAL/SHM, the same figure `GET /metrics`'s
+`vnprox_store_size_bytes` reports) reaches `[retention] store_warn_bytes` (default 4 GiB). This is a
+warning about vnprox's own footprint specifically, not a general disk-space check — an operator
+concerned about the root filesystem as a whole should also monitor it independently (e.g. node
+exporter's `node_filesystem_avail_bytes`), since vnprox's own store is rarely the only thing writing
+to `/`.
+
+**Compaction:** pruning stops the store from growing further; a separate background compaction pass
+(`internal/store`'s `EnsureIncrementalVacuum`/`Compact`, SQLite's incremental auto-vacuum) reclaims
+the space pruning frees, without blocking reads. On first startup after upgrading to a version that
+includes this, an **existing** store pays a one-time cost proportional to its current on-disk size (a
+single `VACUUM` to enable incremental auto-vacuum, logged at `INFO` with how long it took) — a fresh
+or already-converted store sees no delay. If your store is unusually large (tens of GB — well outside
+the sizing expectations above, and worth investigating on its own), consider timing an upgrade for a
+maintenance window rather than an unattended `apt upgrade`.
+
+**If you need to tune retention down** (a smaller root partition, tighter compliance minimums that
+happen to be shorter, or the reverse — a longer audit requirement): edit `[retention]`/`[flows]`/
+`[latmesh]`/`[wan]`/`[capacity]`/`[capture]` in `vnprox.toml` and restart. There is no "0 = keep
+forever" value for any of these — an unbounded table is exactly the failure mode this exists to
+prevent, so "keep longer" always means configuring a larger, still-finite number.
 
 ## Firewalling vnprox itself
 

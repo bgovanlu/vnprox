@@ -130,7 +130,12 @@ CREATE TABLE snapshots (
   id TEXT PRIMARY KEY, changeset_id TEXT REFERENCES changesets(id),
   taken_at INTEGER NOT NULL, kind TEXT NOT NULL,      -- pre|post|manual|scheduled
   files_json TEXT NOT NULL           -- [{node,path,sha256,content_zstd}]
-);
+);  -- THE ROLLBACK SAFETY NET (T-1905): pruned to [retention]
+    -- snapshot_keep_days (default 90) UNLESS the linked changeset is
+    -- currently applying/awaiting_confirm (never pruned, regardless of
+    -- age — the in-flight guardrail, internal/store.SnapshotRepo.Prune's
+    -- own doc comment) or committed and taken within
+    -- snapshot_pin_days (default 7, the manual-rollback window). See §13.
 
 CREATE TABLE audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
@@ -139,7 +144,11 @@ CREATE TABLE audit_log (
   cluster_id TEXT NOT NULL DEFAULT ''   -- T-1201: attached cluster the action targeted;
                                         -- '' = implicit default/local cluster. GET /audit's
                                         -- cluster dimension (docs/architecture §7) filters/tags on this.
-);
+);  -- COMPLIANCE ARTIFACT (T-1905): pruned by age only to [retention]
+    -- audit_keep_days (default 730d/2y — internal/store.
+    -- DefaultAuditRetentionDays' own doc comment has the argument); no
+    -- in-flight/pin guardrail (contrast snapshots above) — an audit row is
+    -- a historical record no live rollback reads back from. See §13.
 
 CREATE TABLE layouts (
   username TEXT NOT NULL, name TEXT NOT NULL,
@@ -287,7 +296,9 @@ CREATE TABLE capture_sessions (        -- T-1301: internal/store/migrations/0014
   file_path TEXT NOT NULL DEFAULT '',  -- on-disk .pcap path on `node`
   file_bytes INTEGER NOT NULL DEFAULT 0, packets INTEGER NOT NULL DEFAULT 0  -- accounting only
 );  -- app-owned intent + accounting ONLY; captured payload lives solely in the
-    -- bounded file_path .pcap, auto-purged past [capture] retention_hours.
+    -- bounded file_path .pcap, auto-purged past [capture] retention_hours
+    -- (T-1301) — the shortest-lived and, in raw bytes, largest of every
+    -- retention class this arc bounds. See §13.
 
 CREATE TABLE changeset_schedules (     -- T-1103: internal/store/migrations/0010_changeset_schedules.sql
   changeset_id TEXT PRIMARY KEY,
@@ -684,3 +695,156 @@ type SPOFScore struct { Entries []SPOFEntry; Score int }    // Inventory + overa
 ```
 
 The management-path and quorum dimensions deliberately reuse the same shared resolver/classifier the T-703 mgmt-path interlock uses (`internal/topology.ResolveMgmtPaths`, `change.DetectProtectedRoles`) so the simulator's notion of "management connectivity" and "quorum voter" can never silently diverge from the interlock's own. See `docs/api.md`'s "Failure-impact simulation" section for the route/response contract and the T-1103 pre-flight integration.
+
+## 13. Retention, rotation, and compaction (T-1905)
+
+Every bounded table in §2 above accrues data with no natural ceiling of its own — audit rows on
+every mutation attempt, flow/latency/WAN samples on every probe tick, capacity aggregates daily,
+snapshots on every apply, `.pcap` bytes on every capture. Left alone, the failure mode is a full
+root filesystem on a hypervisor — an outage caused by the tool meant to prevent one. This section
+is the single place every class's policy is stated together; each table's own `CREATE TABLE`
+comment in §2 points back here.
+
+### Per-class policy, and the argument for each default
+
+| Class | Table(s) | Bound | Default | Config key | Argument |
+|---|---|---|---|---|---|
+| Audit | `audit_log` | age only | 730d (2y) | `[retention] audit_keep_days` | Compliance/forensic record — "who did what, was it allowed" (docs/security.md's Audit section). Common regimes a vnprox deployment plausibly falls under (SOC 2, PCI-DSS) ask for a 1-year floor; 2 years gives margin over an annual audit cycle without treating the table as a literal warehouse. No "0 = forever" escape hatch — an unbounded table is exactly the failure this card exists to prevent, so "keep longer" means configuring a larger number, never disabling the ceiling. No in-flight/pin guardrail (contrast snapshots below) — an audit row is a historical record nothing live reads back from. |
+| Snapshots | `snapshots`, `snapshot_files`, `blobs` | age + pin + **in-flight guardrail** | 90d keep, 7d pin | `[retention] snapshot_keep_days`/`snapshot_pin_days` | **The rollback safety net — bounded by count-of-days and age, never destroyed while it might still be needed.** T-206's original policy (90d keep, 7d pin floor for a committed changeset within its manual-rollback window) is unchanged by this card. T-1905 closes a real gap in it: a snapshot backing a changeset currently `applying` or `awaiting_confirm` is now **never** pruned, regardless of age — see the guardrail paragraph below, this is the card's own AC2. |
+| Flows | `flow_samples` | age + row cap, downsampled onward | 60min / 2M rows | `[flows] retention_minutes`/`max_rows` | Short raw-sample ring by design (internal/flow's own doc comment: "explicitly not a long-term flow warehouse"), whichever bound is smaller prunes first. The "downsample then expire" half of the card's guidance: `internal/baseline`'s learned per-Ref traffic shape (`baseline_profiles`, 90d) is computed from this window and deliberately **outlives** it, so a summary survives long after the raw flows it was learned from have expired. |
+| Latency/WAN samples | `latency_samples`, `wan_probe_samples` | age + row cap | 60min / 500k rows | `[latmesh]`/`[wan] retention_minutes`/`max_rows` | Same short-ring shape as flows, same reasoning — a continuous probe ring, not a warehouse. |
+| Capacity | `capacity_aggregates` | age only, already downsampled | 400d (~13mo) | `[capacity] aggregate_retention_days` | The arc's one deliberate long-horizon exception (§2's own note): a **daily rollup**, not raw samples, kept long enough to fit a year-over-year growth curve for the capacity-forecast findings. This *is* the "downsample then expire" pattern already applied — capacity_aggregates is the downsampled tier flow_samples/metric_samples feed. |
+| Captures | `capture_sessions` row + `.pcap` files | age only (file), intent-only (row) | 6h | `[capture] retention_hours` | Shortest-lived and, in raw bytes, the largest class here (a `.pcap` can be many MB/session; the row itself is accounting-only, never payload). T-1301's existing auto-purge sweep (`internal/capture.Coordinator.Sweep`), unchanged by this card. |
+| Store size (finding, not a table) | — | — | 4 GiB warn | `[retention] store_warn_bytes` | Not a data class — a **derived signal**: `store_near_capacity` (internal/findings) warns when the store's total on-disk footprint (`store.DB.SizeBytes()`, T-1903's existing size source) crosses this threshold, so a filling disk is visible in the findings stream before it becomes an incident. See "The `store_near_capacity` finding" below. |
+
+Every prune loop above (`internal/store`'s `*RunPruneLoop`/`RunSnapshotRetentionLoop` functions) is
+wired into `cmd/vnproxd`'s supervised run group, logging and continuing on failure rather than
+taking the daemon down over one bad prune pass — the same "log and keep going" contract every
+periodic actor in that run group follows.
+
+### AC2's guardrail: a snapshot can never be pruned out from under a live rollback
+
+**This is the load-bearing part of this card.** `SnapshotRepo.Prune` (`internal/store/snapshots.go`)
+enforces, in the same query that decides what to delete:
+
+> A snapshot linked to a changeset currently `applying` or `awaiting_confirm` is never a pruning
+> candidate, no matter how old — not "protected for N days", not "protected unless keepDays is
+> configured very aggressively". Regardless of age.
+
+Why both statuses, not just `awaiting_confirm` (which is what the card names explicitly): a
+changeset can sit in either status far longer than any `keepDays` if the daemon is down —
+`awaiting_confirm`'s rollback timer only runs while `vnproxd` is up, and `applying` is exactly the
+window `recoverInterruptedApply` resumes from after a crash mid-apply. Both are "in flight" in the
+sense that matters here (`internal/change/apply_errors.go`'s own vocabulary: "in flight (status
+applying or awaiting_confirm) cluster-wide"), and both depend on the pre-apply snapshot to restore
+from — a manual rollback, an unattended timeout rollback, and T-1805's sealed-revert-ticket path
+(below) all read it.
+
+Once a changeset leaves those two states (`committed`, `rolled_back`, `failed`, `discarded`), the
+ordinary policy applies: a `committed` changeset's snapshot is additionally floored at
+`snapshot_pin_days` (the manual-rollback-offer window, docs/features/change-management.md §4); every
+other terminal state has no floor beyond `snapshot_keep_days` itself.
+
+`internal/store/retention_test.go`'s `TestSnapshotRetention_AC2_InFlightChangesetNeverPruned` is
+this guardrail's own test, built to be impossible to pass by accident: an **extremely** old
+snapshot (500 days) against the **most aggressive possible** retention config (1-day keep, 1-day
+pin) for each in-flight status, plus two controls proving the harness isn't simply "never deletes
+anything" — an equally-old snapshot for a *terminal*-status changeset, and an equally-old
+*committed* changeset past its pin window, are both pruned under the identical config.
+
+### Interaction with T-1805's sealed revert ticket
+
+T-1805 added a sealed PVE revert ticket (`changesets.revert_ticket_enc`/`revert_ticket_expires_at`)
+that lets an `awaiting_confirm` `fw.*`/`sdn.apply` changeset revert itself unattended, with no live
+session. That ticket is **wiped** (not pruned — an explicit column update, `ChangesetRepo.
+WipeRevertTicket`) on every terminal transition: confirm, rollback, expiry-sweep, or deletion — see
+`planning/reports/T-1805.md` §2 Claim 2. Retention in this card does not touch `changesets` rows at
+all (they are not one of the classes this card bounds — see "What this card deliberately does not
+prune" below), so there is no path where a prune could race the ticket's own wipe.
+
+What retention *does* interact with is the **snapshot** an unattended revert restores from — SDN and
+firewall pre-state (`fwStateSnapshotPath`, joined into the same pre-apply snapshot row T-1805's
+report describes) live in exactly the `snapshots`/`snapshot_files`/`blobs` rows this card prunes.
+The in-flight guardrail above is precisely what stops a prune from deleting that restore material
+while a sealed ticket might still need to spend itself on it: as long as the changeset is
+`awaiting_confirm`, its snapshot (and transitively, via `BlobRepo.PruneOrphans`'s "still
+referenced" check, its blobs) is untouched regardless of the ticket's own expiry. The two
+mechanisms are deliberately independent — the ticket's lifecycle is column-level and secret-scoped,
+the snapshot's is row-level and content-scoped — but both converge on the same invariant: nothing
+a pending revert might need is destroyed before that revert's window closes.
+
+### Interaction with T-1901's backup and restore
+
+T-1901's `store.SnapshotTo` (`VACUUM INTO`) is retention's own safety net one level up: before a
+prune pass ever runs against a store an operator is nervous about, `vnproxctl backup` takes a
+consistent, restorable copy without stopping the daemon (docs/deployment.md's Backup and disaster
+recovery section). The two features stay deliberately separate (T-1901's report, §6 "For the next
+agents — T-1905"): backup-archive retention (`backup.Prune`, filename-timestamp ordering) governs
+how many `.tar.gz` files an operator keeps on disk, is driven by `vnproxctl`/cron, and never touches
+a live row; store-row retention (this card) governs what stays *inside* the live database and is
+driven by `cmd/vnproxd`'s own run group. A restored store's snapshots/audit rows are exactly as old
+as they were when the backup was taken — restore does not re-arm or reset any retention clock — so
+a store restored from a very old backup may immediately have rows past today's configured
+`audit_keep_days`/`snapshot_keep_days`; the next scheduled prune pass simply catches up, the same
+as it would for a store that had been offline that whole time. T-1901's liveness lock (`<db>.lock`,
+`store.RuntimeLock`) is not read by anything in this card — compaction and retention both run as
+ordinary daemon-internal loops against the live, running store, never as a daemon-independent CLI
+command the lock would need to arbitrate.
+
+### Compaction
+
+Pruning bounds *growth*; it does not by itself shrink the file that growth already produced.
+`internal/store/compact.go` adds the other half:
+
+- **`store.EnsureIncrementalVacuum`** — a one-time, explicit conversion of the store to SQLite's
+  `auto_vacuum=INCREMENTAL` mode, run once by `cmd/vnproxd` at startup, before the daemon begins
+  serving (the same timing class as schema migrations). A brand-new store converts near-instantly;
+  an **existing** pre-T-1905 store pays a one-time full-`VACUUM` cost proportional to its on-disk
+  size on the first startup after upgrading past this card — logged (`took` duration) rather than
+  silent. See "Sizing" in docs/deployment.md for what to expect.
+- **`store.Compact`/`RunCompactionLoop`** — once converted, a periodic `PRAGMA incremental_vacuum(N)`
+  call (bounded batch size, `DefaultCompactionMaxPages` = 2,000 pages/~8MB per tick, every
+  `DefaultCompactionInterval` = 6h) reclaims freed pages as an ordinary write transaction. Under WAL
+  mode (`internal/store.Open`'s `journal_mode(WAL)`) a writer never blocks a reader — every
+  concurrent `SELECT` continues against its own snapshot for the whole call, the identical
+  non-blocking property T-1901's `VACUUM INTO`-based `SnapshotTo` already relies on. This is why
+  compaction never needs the daemon to stop serving, unlike the one-time conversion above.
+- A plain `VACUUM` (not `INTO`, not incremental) was deliberately rejected: it rebuilds the whole
+  file under one exclusive lock, blocking every reader and writer for its duration — precisely the
+  wrong shape for a live daemon. Swapping a `VACUUM INTO` copy into place for the live file while
+  the daemon's connection pool still holds it open was also rejected — existing pooled connections
+  keep their file descriptors on the old (renamed-away) inode, so a live swap would strand writes on
+  an inode nothing ever reads again. That swap *is* what `vnproxctl restore` does, deliberately
+  requiring the daemon to be stopped first (T-1901) — compaction must not require that.
+
+### The `store_near_capacity` finding
+
+`internal/findings/health_storecapacity.go`'s `store_near_capacity` check (source `store`) fires
+when `store.DB.SizeBytes()` — the exact size series `GET /metrics`'s `vnprox_store_size_bytes`
+already renders (T-1903) — meets or exceeds `[retention] store_warn_bytes` (default 4 GiB, argued in
+`config.DefaultStoreWarnBytes`'s doc comment: a PVE node's root filesystem, shared with pmxcfs and
+the hypervisor's own writes, is commonly provisioned in the tens of gigabytes, so a vnprox store
+crossing several GiB is already a strong signal regardless of the specific partition size).
+Deliberately reuses that one size source rather than a second measurement (e.g. `statfs` on the
+underlying filesystem) — the task's own instruction, and consistent with T-1903's "mirror, don't
+invent a second notion" precedent for every other daemon self-observability signal. Hysteresis-
+debounced exactly like every other continuously-recomputed finding in this package (2 consecutive
+findings-cycle observations to fire, 2 to clear — `storeCapacityRise`/`Fall`, the same shape
+`peerUnreachableRise`/`Fall` uses), so a single noisy reading (e.g. a `stat()` racing a WAL
+checkpoint mid-compaction) never flaps it.
+
+### What this card deliberately does not prune
+
+- **`changesets`** — not one of the classes T-1905's card names, and every retention primitive this
+  card adds treats the table as a read-only reference (the in-flight guardrail *queries* `status`,
+  never writes it). A changeset's own row is comparably small (no packet/sample payload) and is the
+  audit trail's own join target; a future card may choose to bound it, but doing so here would have
+  been unreviewed scope creep on a card whose whole point is not to be casual about deleting
+  history.
+- **`metric_samples`, `finding_events`, `posture_scores`, `baseline_profiles`** — already had their
+  own retention before this card (T-601/T-1007/T-1607/T-1601 respectively) and are unchanged by it;
+  listed in §2 alongside everything else for completeness.
+
+See docs/deployment.md's "Sizing and retention" section for what an operator should expect on disk,
+and docs/security.md for nothing new here — retention deletes app-owned history, never a live
+mutation path, so it carries no new credential or trust-boundary surface.

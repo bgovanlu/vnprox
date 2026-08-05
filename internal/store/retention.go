@@ -19,10 +19,12 @@ const (
 
 // SnapshotRetention runs one retention pass: delete snapshot rows (and their
 // snapshot_files) older than keepDays, honoring the pinDays floor for
-// committed-changeset snapshots (SnapshotRepo.Prune), then reclaim any blob
-// storage no longer referenced by a surviving snapshot (BlobRepo.
-// PruneOrphans). It returns the number of snapshot rows and blob rows
-// deleted.
+// committed-changeset snapshots AND — regardless of keepDays/pinDays, T-1905
+// AC2 — never touching a snapshot linked to a changeset still `applying` or
+// `awaiting_confirm` (SnapshotRepo.Prune's own doc comment has the full
+// guardrail rationale), then reclaim any blob storage no longer referenced
+// by a surviving snapshot (BlobRepo.PruneOrphans). It returns the number of
+// snapshot rows and blob rows deleted.
 func SnapshotRetention(ctx context.Context, snapshots *SnapshotRepo, blobs *BlobRepo, now time.Time, keepDays, pinDays int) (snapshotsDeleted, blobsDeleted int64, err error) {
 	if keepDays <= 0 {
 		keepDays = DefaultSnapshotRetentionDays

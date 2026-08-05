@@ -73,6 +73,24 @@ const capacityPruneInterval = 6 * time.Hour
 // keep the "keep N days" window accurate to within a day.
 const snapshotRetentionInterval = 6 * time.Hour
 
+// auditPruneInterval is how often the audit_log retention prune loop
+// (T-1905) enforces [retention] audit_keep_days. Audit rows accrue on
+// every mutation attempt, more often than snapshots but far less often
+// than metric samples, and the window is measured in years, not hours — a
+// daily cadence keeps the table within a day of the configured ceiling at
+// negligible cost.
+const auditPruneInterval = 24 * time.Hour
+
+// compactionInterval is how often the store compaction loop (T-1905)
+// reclaims a batch of freed pages via PRAGMA incremental_vacuum. Coarser
+// than the retention loops that feed it freed space — compaction is
+// housekeeping over whatever those already freed, not something that needs
+// to race them. Mirrors store.DefaultCompactionInterval, named as its own
+// constant here for the same reason every other interval in this file is:
+// so cmd/vnproxd's own cadence choices are visible together, independent
+// of internal/store's own default.
+const compactionInterval = store.DefaultCompactionInterval
+
 // shutdownGrace bounds how long the HTTP server's graceful Shutdown may
 // take; it is a safety net, not the expected duration — acceptance
 // criterion 3 requires the whole process to exit within 3s of SIGTERM even
@@ -180,6 +198,24 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	db.SetQueryObserver(func(op string, dur time.Duration, _ error) {
 		selfMetrics.ObserveStoreQuery(op, dur)
 	})
+
+	// T-1905: one-time conversion to SQLite incremental auto-vacuum mode,
+	// so RunCompactionLoop (registered with the run group below) has a free
+	// list to reclaim from. Deliberately run here, before the daemon starts
+	// serving (the same timing class as the schema migrations store.Open
+	// already ran) rather than from a periodic loop against a live store —
+	// see internal/store/compact.go's package doc comment for why: a store
+	// already converted (every store this function has ever run against
+	// before, and any store created fresh) is a fast no-op; an EXISTING
+	// pre-T-1905 store pays a one-time full-VACUUM cost proportional to its
+	// size on this first startup after upgrading — logged here so it is
+	// not a silent stall, and documented in docs/deployment.md's sizing
+	// section so it is not a surprise.
+	if vacConverted, vacTook, vacErr := store.EnsureIncrementalVacuum(ctx, db); vacErr != nil {
+		logger.Warn("store: could not enable incremental auto-vacuum; periodic compaction will stay a no-op until this succeeds", "error", vacErr)
+	} else if vacConverted {
+		logger.Info("store: enabled incremental auto-vacuum (one-time compaction)", "took", vacTook)
+	}
 
 	auditRepo := store.NewAuditRepo(db)
 	apiTokenRepo := store.NewAPITokenRepo(db)
@@ -560,6 +596,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	wanSvc, wanLossWarnPct, wanActors := setupWan(cfg, db, localNode, logger)
 	wanThresholds := findings.DefaultThresholds
 	wanThresholds.WanLossWarnPct = wanLossWarnPct
+	// T-1905: [retention] store_warn_bytes threaded into the same shared
+	// HealthThresholds passed to setupFindings below, mirroring
+	// wanLossWarnPct's identical wiring immediately above.
+	wanThresholds.StoreCapacityWarnBytes = cfg.Retention.StoreWarnBytes
 	// T-1501: the read-only Kubernetes overlay engine — the cluster registry
 	// (app-owned kubeconfig targets) and the poller whose cached
 	// NodePort-exposure findings feed the findings engine below and whose
@@ -598,7 +638,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// further below, so the peer-TLS-posture adapter is passed in unset and
 	// pointed at that client via set() once it exists.
 	peerTrustAdapterVal := &peerTrustAdapter{}
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
+	// T-1905: storeCapacityAdapter reports the app store's own on-disk size
+	// (SizeBytes, T-1903's existing source) for store_near_capacity.
+	storeCapacitySvc := storeCapacityAdapter{db: db, localNode: localNode}
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -1436,6 +1479,26 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 			cfg.Retention.SnapshotKeepDays, cfg.Retention.SnapshotPinDays, func(err error) {
 				logger.Error("store: snapshot retention failed", "error", err)
 			})
+	})
+	// audit_log retention (T-1905): enforces [retention] audit_keep_days
+	// (default 730d — internal/store.DefaultAuditRetentionDays's own doc
+	// comment has the argument). No pin/in-flight guardrail here, unlike
+	// snapshots — an audit row carries no rollback dependency.
+	g.add(func(ctx context.Context) error {
+		return auditRepo.RunPruneLoop(ctx, auditPruneInterval, cfg.Retention.AuditKeepDays, func(err error) {
+			logger.Error("store: audit_log retention failed", "error", err)
+		})
+	})
+	// Store compaction (T-1905): reclaims a bounded batch of freed pages
+	// each tick via SQLite incremental auto-vacuum — see
+	// internal/store/compact.go's package doc comment for why this never
+	// blocks a concurrent reader (WAL mode) and never does the expensive
+	// one-time full-VACUUM conversion itself (that already ran once above,
+	// before this run group started).
+	g.add(func(ctx context.Context) error {
+		return store.RunCompactionLoop(ctx, db, compactionInterval, store.DefaultCompactionMaxPages, func(err error) {
+			logger.Error("store: compaction failed", "error", err)
+		})
 	})
 	if collector != nil {
 		g.add(collector.RunPVELoop)

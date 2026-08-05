@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // AuditEntry is one row of the audit_log table (docs/data-model.md §2).
@@ -354,6 +355,84 @@ func (r *AuditRepo) ListSince(ctx context.Context, sinceID int64, limit int) ([]
 		return nil, fmt.Errorf("store: listing audit entries since %d: %w", sinceID, err)
 	}
 	return out, nil
+}
+
+// DefaultAuditRetentionDays is T-1905's documented audit_log age cap
+// ([retention] audit_keep_days). Every other bounded table in this arc is a
+// short operational ring (metric_samples 24h, flow/latency/wan samples
+// 60m) or a downsampled long-horizon rollup (capacity_aggregates ~13
+// months); audit_log is neither — it is the compliance/forensic record of
+// "who did what to the network, and was it allowed" (docs/security.md's
+// Audit section: "every mutation attempt, including denied and rolled
+// back"), the exact artifact an operator reaches for after an incident or
+// a compliance review, often long after the changeset itself is history.
+//
+// 730 days (2 years) is chosen deliberately, not guessed: common
+// compliance regimes vnprox deployments plausibly fall under ask for
+// 1 year of change-control history as a floor (SOC 2, PCI-DSS), some ask
+// for longer; 2 years gives an operator margin over an annual audit cycle
+// without treating the table as a literal forever-warehouse, which is
+// exactly the unbounded-growth failure mode this whole card exists to
+// close (a full root filesystem is a worse audit story than a pruned
+// year-three row). Unlike RetentionConfig's snapshot fields, there is no
+// separate "pin" floor here: audit rows carry no rollback dependency (see
+// SnapshotRepo.Prune's AC2 guardrail for the table that does), so age
+// alone decides. An operator under a longer regulatory retention
+// requirement configures a larger audit_keep_days; there is no "0 =
+// forever" escape hatch (config.Validate requires a positive value,
+// matching RetentionConfig's existing snapshot fields) — an unbounded
+// table is exactly what this card was written to prevent, so "keep
+// forever" is expressed by configuring a very large number, not by
+// disabling the ceiling.
+const DefaultAuditRetentionDays = 730
+
+// Prune deletes audit_log rows older than the given cutoff (unix seconds),
+// returning the number of rows removed. Callers/tests should compute
+// cutoff themselves; PruneRetention wraps this with the configured
+// audit_keep_days window and wall-clock time. There is no in-flight/pin
+// guardrail here (contrast SnapshotRepo.Prune) — an audit row is a
+// historical record of an already-attempted action, never something a live
+// rollback reads back from, so age alone is safe to prune on.
+func (r *AuditRepo) Prune(ctx context.Context, cutoff int64) (int64, error) {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM audit_log WHERE at < ?`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("store: pruning audit_log older than %d: %w", cutoff, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("store: counting pruned audit_log rows: %w", err)
+	}
+	return n, nil
+}
+
+// PruneRetention deletes audit_log rows older than keepDays (falling back
+// to DefaultAuditRetentionDays if keepDays <= 0), measured from now.
+func (r *AuditRepo) PruneRetention(ctx context.Context, now time.Time, keepDays int) (int64, error) {
+	if keepDays <= 0 {
+		keepDays = DefaultAuditRetentionDays
+	}
+	cutoff := now.AddDate(0, 0, -keepDays).Unix()
+	return r.Prune(ctx, cutoff)
+}
+
+// RunPruneLoop runs PruneRetention every interval until ctx is cancelled,
+// logging failures via logFn (nil discards them) rather than stopping the
+// loop, matching MetricSampleRepo.RunPruneLoop's contract
+// (func(ctx context.Context) error, suitable for cmd/vnproxd's runGroup).
+func (r *AuditRepo) RunPruneLoop(ctx context.Context, interval time.Duration, keepDays int, logFn func(err error)) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case now := <-ticker.C:
+			if _, err := r.PruneRetention(ctx, now, keepDays); err != nil && logFn != nil {
+				logFn(fmt.Errorf("store: pruning audit_log: %w", err))
+			}
+		}
+	}
 }
 
 func encodeAuditCursor(at, id int64) string {

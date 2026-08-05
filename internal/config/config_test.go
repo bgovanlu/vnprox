@@ -753,3 +753,106 @@ func mustParseIP(t *testing.T, s string) net.IP {
 	}
 	return ip
 }
+
+// TestLoad_RetentionDefaults covers T-1905's additions to [retention]:
+// audit_keep_days and store_warn_bytes default to their documented
+// constants when omitted, alongside the pre-existing T-206 snapshot fields.
+func TestLoad_RetentionDefaults(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	cfg, err := Load(writeTemp(t, "retention-default.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Retention.SnapshotKeepDays != DefaultSnapshotKeepDays {
+		t.Errorf("Retention.SnapshotKeepDays = %d, want default %d", cfg.Retention.SnapshotKeepDays, DefaultSnapshotKeepDays)
+	}
+	if cfg.Retention.SnapshotPinDays != DefaultSnapshotPinDays {
+		t.Errorf("Retention.SnapshotPinDays = %d, want default %d", cfg.Retention.SnapshotPinDays, DefaultSnapshotPinDays)
+	}
+	if cfg.Retention.AuditKeepDays != DefaultAuditKeepDays {
+		t.Errorf("Retention.AuditKeepDays = %d, want default %d", cfg.Retention.AuditKeepDays, DefaultAuditKeepDays)
+	}
+	if cfg.Retention.StoreWarnBytes != DefaultStoreWarnBytes {
+		t.Errorf("Retention.StoreWarnBytes = %d, want default %d", cfg.Retention.StoreWarnBytes, DefaultStoreWarnBytes)
+	}
+}
+
+// TestLoad_RetentionOverride covers explicit [retention] values for T-1905's
+// two new fields.
+func TestLoad_RetentionOverride(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[retention]
+snapshot_keep_days = 30
+snapshot_pin_days = 3
+audit_keep_days = 365
+store_warn_bytes = 1073741824
+`
+	cfg, err := Load(writeTemp(t, "retention-override.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	if cfg.Retention.AuditKeepDays != 365 {
+		t.Errorf("Retention.AuditKeepDays = %d, want 365", cfg.Retention.AuditKeepDays)
+	}
+	if cfg.Retention.StoreWarnBytes != 1<<30 {
+		t.Errorf("Retention.StoreWarnBytes = %d, want %d", cfg.Retention.StoreWarnBytes, int64(1)<<30)
+	}
+}
+
+// TestLoad_RetentionAuditKeepDaysMustBePositive covers T-1905's validation:
+// a zero or negative audit_keep_days is refused rather than silently
+// disabling the ceiling (there is no "0 = forever" escape hatch — see
+// DefaultAuditKeepDays's doc comment).
+func TestLoad_RetentionAuditKeepDaysMustBePositive(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[retention]
+audit_keep_days = -1
+`
+	_, err := Load(writeTemp(t, "retention-badaudit.toml", toml), discardLogger())
+	if err == nil {
+		t.Fatal("expected an error for a non-positive audit_keep_days, got nil")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("expected ErrInvalidConfig, got: %v", err)
+	}
+}
+
+// TestLoad_RetentionStoreWarnBytesMustBePositive mirrors the audit test
+// above for store_warn_bytes. A negative value, not zero: firstNonZeroInt64
+// treats an explicit 0 as "not set" and substitutes DefaultStoreWarnBytes
+// (the same "0 means use the default" convention every other *_days/*_rows
+// field in this file already uses), so a negative value is the only input
+// that actually reaches validate() as non-positive.
+func TestLoad_RetentionStoreWarnBytesMustBePositive(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[retention]
+store_warn_bytes = -1
+`
+	_, err := Load(writeTemp(t, "retention-badwarnbytes.toml", toml), discardLogger())
+	if err == nil {
+		t.Fatal("expected an error for a non-positive store_warn_bytes, got nil")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("expected ErrInvalidConfig, got: %v", err)
+	}
+}
