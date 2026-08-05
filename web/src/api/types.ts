@@ -1616,6 +1616,18 @@ export interface RulesetListResponse {
   items: RulesetView[];
 }
 
+/** GET /firewall/rulesets?scope=group&name=... response (T-2002): a
+ * security group's own name/comment/rule list — the group inspector's read
+ * side. Distinct shape from RulesetView: a security group has no ref/
+ * scope/enabled/defaultIn/defaultOut of its own (it's a named rule list
+ * referenced by a `direction: "group"` rule elsewhere, never a ruleset in
+ * its own right). */
+export interface GroupRulesetResponse {
+  name: string;
+  comment?: string;
+  rules: RuleView[];
+}
+
 export interface RuleRefView {
   scope: FwScope;
   ref: string;
@@ -2037,8 +2049,15 @@ export type SimRuleOrigin = "cluster" | "group" | "guest";
 
 /** Present only for `verdict: "deny"` — the exact rule that produced it,
  * with enough identity for the one-click deep link into the firewall
- * editor: `rulesetRef` + `pos` + `origin` (never DOM position), mirroring
- * `ruleDeepLinkPath`'s (web/src/fwlog/deeplink.ts) established contract. */
+ * editor: `pos` + `origin` + `groupName?` (never DOM position), mirroring
+ * `ruleDeepLinkPath`'s (web/src/fwlog/deeplink.ts) established contract.
+ * `rulesetRef` (populated for every origin as of T-2002 — the ruleset the
+ * matched rule is literally defined in) is part of this frozen shape too
+ * (this type also serializes verbatim as the `simulate.path` MCP tool's
+ * payload, docs/architecture.md §13.1 decision D10 — additive-only, never
+ * removed) but is deliberately NOT what the deep link itself uses: see
+ * web/src/simulator/deeplink.ts's doc comment for why the deep link always
+ * derives the guest to open from the endpoint instead. */
 export interface SimBlockingRule {
   enforcementPoint: "source-guest-out" | "dest-guest-in";
   rulesetRef: string;

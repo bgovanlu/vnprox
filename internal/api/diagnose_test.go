@@ -13,6 +13,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/diagnose"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/host"
+	"github.com/bgovanlu/vnprox/internal/store"
 )
 
 // --- test doubles --------------------------------------------------------
@@ -210,6 +211,104 @@ func TestDiagnose_AllStepsEligible_GuestNicTarget(t *testing.T) {
 	r.ServeHTTP(fixRec, fixReq)
 	if fixRec.Code != http.StatusCreated {
 		t.Fatalf("POST /findings/%s/fix status = %d, want 201, body: %s", res.Verdict.SuggestedFixRef, fixRec.Code, fixRec.Body.String())
+	}
+}
+
+// TestDiagnose_PerStepAuditRows is T-2002's regression for the gap
+// T-1307's own report flagged: a diagnose.run row alone can't tell a
+// reviewer which step reached which conclusion after the fact. One
+// diagnose.step audit row per ladder step must be recoverable, each tagged
+// with the parent diagnose.run row's own audit id (runId) and carrying
+// that step's own status/summary.
+func TestDiagnose_PerStepAuditRows(t *testing.T) {
+	h := newSimLabHarness(t)
+	toggles := &fakeGuestInteriorToggleStore{enabled: map[string]bool{"guest:pve1:300": true}}
+	conntrackSrc := &fakeConntrackLocalSource{byNode: map[string][]host.ConntrackEntry{
+		"": {{SrcIP: "10.20.0.11", DstIP: "10.20.0.1", Proto: 1}},
+	}}
+	capSvc := &spyCaptureService{}
+
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth:      diagnoseTestAuth(map[string]bool{"netRead": true, "netWrite": true}, true),
+		Simulator: fakeInv{g: h.graph}, ProbeClients: h.fixedProbeClients(), ProbeAudit: h.audit, SimDivergence: h.divergence,
+		GuestInteriorToggles: toggles, Conntrack: conntrackSrc, Captures: capSvc,
+	})
+
+	rec, res := postDiagnose(t, r, "guest-nic:pve1:300/net0", true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if len(res.Steps) != 5 {
+		t.Fatalf("len(steps) = %d, want 5", len(res.Steps))
+	}
+
+	entries, err := h.audit.List(context.Background(), "", 20)
+	if err != nil {
+		t.Fatalf("audit.List: %v", err)
+	}
+
+	var runRow *store.AuditEntry
+	var stepRows []store.AuditEntry
+	for i := range entries {
+		switch entries[i].Action {
+		case "diagnose.run":
+			e := entries[i]
+			runRow = &e
+		case "diagnose.step":
+			stepRows = append(stepRows, entries[i])
+		}
+	}
+	if runRow == nil {
+		t.Fatal("no diagnose.run row found")
+	}
+	if len(stepRows) != 5 {
+		t.Fatalf("diagnose.step rows = %d, want 5 (got %+v)", len(stepRows), stepRows)
+	}
+
+	// Every step row names a real ladder step, carries the run row's own
+	// id, and its status/summary match the response's own StepResult for
+	// that step — a reviewer must be able to reconstruct exactly what the
+	// response said, from audit rows alone.
+	seen := make(map[string]bool, len(stepRows))
+	for _, row := range stepRows {
+		if !row.Target.Valid || row.Target.String != "guest-nic:pve1:300/net0" {
+			t.Errorf("step row target = %+v, want the diagnosed target", row.Target)
+		}
+		if !row.DetailJSON.Valid {
+			t.Fatalf("step row has no detail JSON: %+v", row)
+		}
+		var detail struct {
+			Step    string `json:"step"`
+			Status  string `json:"status"`
+			Summary string `json:"summary"`
+			RunID   int64  `json:"runId"`
+		}
+		if err := json.Unmarshal([]byte(row.DetailJSON.String), &detail); err != nil {
+			t.Fatalf("decode step detail: %v", err)
+		}
+		if detail.RunID != runRow.ID {
+			t.Errorf("step %q runId = %d, want the diagnose.run row's own id %d", detail.Step, detail.RunID, runRow.ID)
+		}
+		want := stepByName(res, detail.Step)
+		if want.Name == "" {
+			t.Fatalf("step row names unknown step %q", detail.Step)
+		}
+		if detail.Status != string(want.Status) {
+			t.Errorf("step %q audited status = %q, want %q", detail.Step, detail.Status, want.Status)
+		}
+		if detail.Summary != want.Summary {
+			t.Errorf("step %q audited summary = %q, want %q", detail.Step, detail.Summary, want.Summary)
+		}
+		if want.Status == diagnose.StatusRan && row.Result != "ok" {
+			t.Errorf("step %q (ran) audit result = %q, want ok", detail.Step, row.Result)
+		}
+		seen[detail.Step] = true
+	}
+	for _, name := range []string{stepConfigCheck, stepLiveProbe, stepGuestInterior, stepConntrack, stepCapture} {
+		if !seen[name] {
+			t.Errorf("no diagnose.step row for step %q", name)
+		}
 	}
 }
 

@@ -92,16 +92,12 @@ describe("ResultPanel caveats", () => {
 });
 
 describe("ResultPanel blocking rule card", () => {
-  it("deep-links via the destination guest's ref for a dest-guest-in block, ignoring rulesetRef (AC1)", () => {
-    // rulesetRef is deliberately left empty here, mirroring the real
-    // internal/sim behavior for origin: "guest" (see deeplink.ts's doc
-    // comment: internal/sim/firewall.go's ruleRef only populates
-    // RulesetRef for cluster/group origins) — the link must still work.
+  it("deep-links via the destination guest's ref for a dest-guest-in block (AC1)", () => {
     const result = baseResult({
       verdict: "deny",
       blockingRule: {
         enforcementPoint: "dest-guest-in",
-        rulesetRef: "",
+        rulesetRef: "fw-ruleset:pve2:guest/qemu/101",
         origin: "guest",
         direction: "in",
         action: "DROP",
@@ -116,12 +112,12 @@ describe("ResultPanel blocking rule card", () => {
     expect(link).toHaveAttribute("href", "/firewall?scope=guest&ref=guest%3Apve2%3A101&pos=0&origin=guest");
   });
 
-  it("deep-links via the source guest's ref for a source-guest-out block", () => {
+  it("deep-links via the source guest's ref for a source-guest-out block, ignoring rulesetRef even though populated (AC1)", () => {
     const result = baseResult({
       verdict: "deny",
       blockingRule: {
         enforcementPoint: "source-guest-out",
-        rulesetRef: "",
+        rulesetRef: "fw-ruleset::cluster",
         origin: "cluster",
         direction: "out",
         action: "DROP",

@@ -181,7 +181,30 @@ type Hop struct {
 }
 
 // RuleRef points at the exact firewall rule that produced a deny verdict,
-// with enough context for T-504's "one click to the rule editor" deep link.
+// with enough context for T-504's "one click to the rule editor" deep link
+// AND — since cmd/vnproxd/mcpwire.go's mcpSimulatePath returns sim.Result
+// verbatim as the frozen `simulate.path` MCP tool's payload
+// (docs/architecture.md §13.1, decision D10) — for an MCP automation
+// client that wants to target a fw.rule.* changeset op precisely.
+//
+// T-2002 note: RulesetRef (the ref of the ruleset the matched rule
+// literally lives in — the cluster ruleset for origin cluster/group, the
+// guest's own ruleset for origin guest) was previously left unpopulated
+// for origin: "guest", the single most common deny case. That was found
+// and fixed here: it is now populated for all three origins (see
+// internal/sim/firewall.go's ruleRef). It was initially *removed* from
+// this type instead of fixed, on the reasoning that the deep link never
+// needed it (web/src/simulator/deeplink.ts's blockingRuleGuestRef derives
+// the guest to open from ResolvedEndpoint.guest, not from this field,
+// since for origin cluster/group the ruleset that owns the rule and the
+// guest whose resolved view to open are different things) — but removal
+// broke the frozen `simulate.path` MCP payload's additive-only contract
+// (§13's deprecation policy: no field is ever removed without minting a
+// new version), caught in review before merge. Restored and populated
+// instead: the field is genuinely useful to a different, real consumer
+// (an MCP client constructing a fw.rule.* op target) even though the deep
+// link still deliberately ignores it. See planning/reports/T-504.md and
+// planning/reports/T-2002.md.
 type RuleRef struct {
 	EnforcementPoint string           `json:"enforcementPoint"`
 	RulesetRef       string           `json:"rulesetRef"`

@@ -20,7 +20,8 @@ import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { FirewallBanners } from "./Banner";
 import type { FocusRule } from "./focusRule";
-import { parseFirewallDeepLink } from "./focusRule";
+import { matchesFocus, parseFirewallDeepLink } from "./focusRule";
+import { GroupInspector } from "./GroupInspector";
 import { MicrosegPlanner } from "../microseg/MicrosegPlanner";
 import { ObjectsPanel } from "./ObjectsPanel";
 import { ResolvedViewTable } from "./ResolvedViewTable";
@@ -36,7 +37,11 @@ import {
 } from "./queries";
 import { guestRefFromFwRulesetRef, type FwRulesetLocation } from "./refs";
 
-type Scope = "cluster" | "node" | "guest" | "objects";
+// "group" (T-2002) is reached only via the Objects tab's per-group
+// "Inspect" action, never a top-level tab (TABS below stays at four) — a
+// security group isn't a hierarchy level the way Datacenter/Nodes/Guests
+// are, it's an object drilled into from the Objects list.
+type Scope = "cluster" | "node" | "guest" | "objects" | "group";
 
 const TABS: { scope: Scope; label: string }[] = [
   { scope: "cluster", label: "Datacenter" },
@@ -136,6 +141,13 @@ interface GuestPanelProps {
 function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
   const { data: list, isLoading: listLoading } = useGuestRulesetsQuery();
   const { data: objects } = useFirewallObjectsQuery();
+  // T-2002 AC1's graceful-degrade case: a deep link naming a rule that no
+  // longer exists (deleted, reordered elsewhere, or the referencing group
+  // was removed) must say so, not silently render an unfocused table —
+  // "an empty highlight" is exactly the bug the source report (T-505)
+  // flagged. Checked once `detail` (the guest's current resolved view) is
+  // in hand, against the same identity triple ResolvedViewTable itself
+  // matches on.
   // The list endpoint's items carry each ruleset's *own* Ref
   // (fw-ruleset:<node>:guest/<kind>/<vmid>"), not the guest's own Ref the
   // detail endpoint's `ref` query param requires (docs/api.md: "a
@@ -154,7 +166,15 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
     }
   }, [guests, selected, onSelect]);
 
-  const { data: detail, isLoading: detailLoading } = useGuestRulesetQuery(selected);
+  const { data: detail, isLoading: detailLoading, error: detailError } = useGuestRulesetQuery(selected);
+
+  // A deep link's guest may itself no longer exist (the guest was removed
+  // since the link was created/shared) — degrade with a message rather
+  // than silently showing nothing, the same honesty this task's AC1 asks
+  // for one level down (the rule itself).
+  const deepLinkGuestMissing = focusRule !== undefined && !detailLoading && Boolean(detailError) && !detail;
+  const focusRuleMissing =
+    focusRule !== undefined && detail !== undefined && !detail.resolved.rules.some((r) => matchesFocus(r, focusRule));
 
   if (listLoading) return <p className="text-sm text-slate-400">Loading guests…</p>;
   if (guests.length === 0) {
@@ -175,6 +195,20 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
         ))}
       </select>
       {detailLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {deepLinkGuestMissing && (
+        <EmptyState
+          title="Linked guest not found"
+          description="This deep link points at a guest that no longer exists (or is no longer observed). Pick a guest above to continue."
+        />
+      )}
+      {focusRuleMissing && (
+        <div
+          role="status"
+          className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          The linked rule no longer exists — it may have been deleted, reordered, or its security group removed. Showing this guest's current firewall configuration instead.
+        </div>
+      )}
       {detail && (
         <div className="flex flex-col gap-4">
           <div>
@@ -211,15 +245,16 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
 
 interface ObjectsTabProps {
   onNavigate: (loc: FwRulesetLocation) => void;
+  onInspectGroup: (name: string) => void;
 }
 
-function ObjectsTab({ onNavigate }: ObjectsTabProps) {
+function ObjectsTab({ onNavigate, onInspectGroup }: ObjectsTabProps) {
   const { data, isLoading, error } = useFirewallObjectsQuery();
   if (isLoading) return <p className="text-sm text-slate-400">Loading objects…</p>;
   if (error || !data) {
     return <EmptyState title="Could not load objects" description="Try again in a moment." />;
   }
-  return <ObjectsPanel objects={data} onNavigate={onNavigate} />;
+  return <ObjectsPanel objects={data} onNavigate={onNavigate} onInspectGroup={onInspectGroup} />;
 }
 
 export function FirewallPage() {
@@ -235,6 +270,10 @@ export function FirewallPage() {
   const [selectedGuestRef, setSelectedGuestRef] = useState<string | undefined>(
     deepLink.scope === "guest" ? deepLink.ref : undefined,
   );
+  // T-2002: which security group the Objects tab's "Inspect" action last
+  // opened. Cleared (not required to be) when navigating away — reopening
+  // the same group re-fetches, which is fine at this data size/staleness.
+  const [inspectedGroup, setInspectedGroup] = useState<string | undefined>(undefined);
 
   // Acceptance criterion 2's "deep-links work": jumping from an object's
   // "referenced by" list to the referencing rule's own scope/selection.
@@ -247,13 +286,23 @@ export function FirewallPage() {
     if (loc.scope === "guest" && loc.guestRef) setSelectedGuestRef(loc.guestRef);
   }
 
+  function inspectGroup(name: string): void {
+    setInspectedGroup(name);
+    setScope("group");
+  }
+
   return (
     <div className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Firewall</h1>
         <div className="flex gap-1">
           {TABS.map((t) => (
-            <TabButton key={t.scope} active={scope === t.scope} label={t.label} onClick={() => { setScope(t.scope); }} />
+            <TabButton
+              key={t.scope}
+              active={scope === t.scope || (t.scope === "objects" && scope === "group")}
+              label={t.label}
+              onClick={() => { setScope(t.scope); }}
+            />
           ))}
         </div>
       </div>
@@ -263,7 +312,10 @@ export function FirewallPage() {
       {scope === "guest" && (
         <GuestPanel selected={selectedGuestRef} onSelect={setSelectedGuestRef} focusRule={deepLink.focusRule} />
       )}
-      {scope === "objects" && <ObjectsTab onNavigate={navigateToRuleset} />}
+      {scope === "objects" && <ObjectsTab onNavigate={navigateToRuleset} onInspectGroup={inspectGroup} />}
+      {scope === "group" && inspectedGroup && (
+        <GroupInspector name={inspectedGroup} onBack={() => { setScope("objects"); }} />
+      )}
     </div>
   );
 }

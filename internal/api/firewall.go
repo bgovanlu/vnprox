@@ -167,6 +167,23 @@ type guestRulesetView struct {
 	Ruleset  rulesetView      `json:"ruleset"`
 }
 
+// groupRulesetView is scope=group's response (T-2002): a security group's
+// own name/comment/rule list — the policy a group actually carries, for
+// the group inspector surface T-1603's report flagged as missing. Distinct
+// shape from rulesetView (not a *inventory.FwRuleset — a security group
+// has no Ref/Scope/Enabled/DefaultIn/DefaultOut of its own; it is a named
+// rule list referenced by a "type: group" rule elsewhere, see
+// inventory.FwGroup's doc comment).
+type groupRulesetView struct {
+	Name    string     `json:"name"`
+	Comment string     `json:"comment,omitempty"`
+	Rules   []ruleView `json:"rules"`
+}
+
+func toGroupRulesetView(g inventory.FwGroup) groupRulesetView {
+	return groupRulesetView{Name: g.Name, Comment: g.Comment, Rules: toRuleViews(g.Rules)}
+}
+
 // handleFirewallRulesets implements `GET /firewall/rulesets?scope=`.
 //
 //   - scope=cluster: the single datacenter-wide ruleset.
@@ -177,6 +194,11 @@ type guestRulesetView struct {
 //     resolved view; without it, every observed guest's ruleset (raw
 //     only — computing every guest's resolved view on a list call is
 //     unnecessary work the per-guest call already covers).
+//   - scope=group (T-2002): with `?name=<group>`, that security group's
+//     own rule list — the group inspector's read side. Security groups
+//     have no "list every group" branch here (GET /firewall/objects
+//     already lists every group by name via its usage-tracking response;
+//     this scope is for drilling into one).
 func handleFirewallRulesets(graph FirewallGraph) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		snap := firewallSnapshot(graph)
@@ -239,8 +261,21 @@ func handleFirewallRulesets(graph FirewallGraph) http.HandlerFunc {
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"items": out})
 
+		case "group":
+			name := r.URL.Query().Get("name")
+			if name == "" {
+				writeJSONError(w, http.StatusBadRequest, "validation_failed", "name is required")
+				return
+			}
+			group, ok := snap.Group(name)
+			if !ok {
+				writeJSONError(w, http.StatusNotFound, "not_found", "no security group observed with that name")
+				return
+			}
+			writeJSON(w, http.StatusOK, toGroupRulesetView(group))
+
 		default:
-			writeJSONError(w, http.StatusBadRequest, "validation_failed", "scope must be one of cluster, node, guest")
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "scope must be one of cluster, node, guest, group")
 		}
 	}
 }

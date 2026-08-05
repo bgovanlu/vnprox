@@ -7,6 +7,7 @@ import {
   fetchClusterRuleset,
   fetchFirewallEffects,
   fetchFirewallObjects,
+  fetchGroupRuleset,
   fetchGuestRuleset,
   fetchGuestRulesets,
   fetchNodeRuleset,
@@ -59,6 +60,17 @@ export function useFirewallObjectsQuery() {
   return useQuery({
     queryKey: ["firewall", "objects"],
     queryFn: fetchFirewallObjects,
+    staleTime: 15_000,
+  });
+}
+
+/** T-2002: a security group's own rule list, for the group inspector.
+ * `name` undefined disables the query (nothing to inspect yet). */
+export function useGroupRulesetQuery(name: string | undefined) {
+  return useQuery({
+    queryKey: ["firewall", "ruleset", "group", name],
+    queryFn: () => fetchGroupRuleset(name ?? ""),
+    enabled: name !== undefined && name !== "",
     staleTime: 15_000,
   });
 }

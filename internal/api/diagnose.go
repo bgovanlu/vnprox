@@ -124,10 +124,14 @@ func buildDiagnoseLadder(opts Options, lookup UsernameLookup, capChecker Diagnos
 
 // handleDiagnose implements `POST /diagnose`: runs the ladder, correlates
 // the result against the live findings stream (linkedFindingIds/
-// suggestedFixRef), audits exactly one `diagnose.run` row per call (T-1307's
-// card — unlike the live-probe step's own underlying /simulate/verify
-// route, the ladder itself is audited once as a whole, not per reached-
-// into-a-guest sub-step), and returns the diagnose.Result verbatim.
+// suggestedFixRef), audits one `diagnose.run` row summarizing the whole
+// call PLUS one `diagnose.step` row per ladder step (T-2002 — closing the
+// gap T-1307's own report flagged: "which step reached which conclusion is
+// not recoverable afterwards"), and returns the diagnose.Result verbatim.
+// The per-step rows carry the parent `diagnose.run` row's own audit id
+// (`runId` in their detail JSON) so a reviewer can group them back
+// together; this is additive to the run-level row, not a replacement —
+// existing "browse by diagnose.run" queries are unaffected.
 func handleDiagnose(ladder *diagnose.Ladder, findingsSvc FindingsService, graph SimulatorGraph, audit simulateVerifyAuditor, lookup UsernameLookup) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
@@ -162,7 +166,8 @@ func handleDiagnose(ladder *diagnose.Ladder, findingsSvc FindingsService, graph 
 			}
 		}
 
-		auditDiagnoseRun(r.Context(), audit, username, req.TargetRef, result)
+		runID := auditDiagnoseRun(r.Context(), audit, username, req.TargetRef, result)
+		auditDiagnoseSteps(r.Context(), audit, username, req.TargetRef, runID, result)
 		writeJSON(w, http.StatusOK, result)
 	}
 }
@@ -173,10 +178,14 @@ func handleDiagnose(ladder *diagnose.Ladder, findingsSvc FindingsService, graph 
 // "result reflects whether anything actually failed" convention. audit ==
 // nil (no audit repo wired, e.g. a bare test router) skips logging, the
 // same degraded-mode treatment every other optional audit seam in this
-// package gets.
-func auditDiagnoseRun(ctx context.Context, audit simulateVerifyAuditor, username, targetRef string, result diagnose.Result) {
+// package gets. Returns the appended row's own audit id (0, ok if audit is
+// nil or the append itself failed — Append's error is deliberately
+// swallowed here exactly as every other audit call site in this package
+// does, since a failed audit write must never fail the request it's
+// auditing) so auditDiagnoseSteps can tag each per-step row with it.
+func auditDiagnoseRun(ctx context.Context, audit simulateVerifyAuditor, username, targetRef string, result diagnose.Result) int64 {
 	if audit == nil {
-		return
+		return 0
 	}
 	resultStr := "ok"
 	stepSummary := make(map[string]string, len(result.Steps))
@@ -194,7 +203,47 @@ func auditDiagnoseRun(ctx context.Context, audit simulateVerifyAuditor, username
 	entry := store.AuditEntry{At: time.Now().Unix(), Username: username, Action: "diagnose.run", Result: resultStr}
 	entry.Target.String, entry.Target.Valid = targetRef, true
 	entry.DetailJSON.String, entry.DetailJSON.Valid = string(detail), true
-	_, _ = audit.Append(ctx, entry)
+	id, _ := audit.Append(ctx, entry)
+	return id
+}
+
+// auditDiagnoseSteps appends one diagnose.step audit_log row per ladder
+// step (T-2002, closing the gap T-1307's own report flagged: a diagnose.run
+// row alone tells a reviewer "5 steps ran, verdict X" but not which step
+// concluded what — reconstructing that meant re-running the ladder and
+// hoping the target's state hadn't changed). Additive to auditDiagnoseRun's
+// single summary row, never a replacement: `runId` in each step row's
+// detail JSON is that summary row's own audit id, so `GET /audit` can group
+// a run's steps back together without a second correlation mechanism.
+// `result` is "skipped"\|"error"\|"ok" (StatusSkipped/StatusError/StatusRan
+// respectively) — a step that never applied to this target is not an
+// error, and the audit row says so plainly rather than looking like every
+// other "ok". audit == nil skips logging, matching auditDiagnoseRun.
+func auditDiagnoseSteps(ctx context.Context, audit simulateVerifyAuditor, username, targetRef string, runID int64, result diagnose.Result) {
+	if audit == nil {
+		return
+	}
+	for _, s := range result.Steps {
+		resultStr := "ok"
+		switch s.Status {
+		case diagnose.StatusError:
+			resultStr = "error"
+		case diagnose.StatusSkipped:
+			resultStr = "skipped"
+		case diagnose.StatusRan:
+			// resultStr already "ok".
+		}
+		detail, _ := json.Marshal(map[string]any{
+			"runId":   runID,
+			"step":    s.Name,
+			"status":  string(s.Status),
+			"summary": s.Summary,
+		})
+		entry := store.AuditEntry{At: s.RanAt, Username: username, Action: "diagnose.step", Result: resultStr}
+		entry.Target.String, entry.Target.Valid = targetRef, true
+		entry.DetailJSON.String, entry.DetailJSON.Valid = string(detail), true
+		_, _ = audit.Append(ctx, entry)
+	}
 }
 
 // --- target resolution -----------------------------------------------

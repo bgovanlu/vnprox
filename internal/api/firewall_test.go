@@ -102,6 +102,66 @@ func TestFirewallRulesets_InvalidScope400(t *testing.T) {
 	}
 }
 
+func TestFirewallRulesets_GroupScope(t *testing.T) {
+	cluster := &inventory.FwRuleset{
+		Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}, Scope: inventory.FwScopeCluster, Enabled: true,
+		Groups: []inventory.FwGroup{{
+			Name: "base-services", Comment: "common inbound",
+			Rules: []inventory.FwRule{{Pos: 0, Enabled: true, Direction: "in", Action: "ACCEPT", Dport: "80"}},
+		}},
+	}
+	graph := buildTestGraph(t, cluster)
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: firewallTestAuth(map[string]bool{"netRead": true}), Firewall: graph,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/rulesets?scope=group&name=base-services", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var got groupRulesetView
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Name != "base-services" || got.Comment != "common inbound" || len(got.Rules) != 1 {
+		t.Fatalf("got %+v, want the base-services group's own rule list", got)
+	}
+}
+
+func TestFirewallRulesets_GroupScope_MissingName400(t *testing.T) {
+	graph := buildTestGraph(t)
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: firewallTestAuth(map[string]bool{"netRead": true}), Firewall: graph,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/rulesets?scope=group", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestFirewallRulesets_GroupScope_UnknownGroup404(t *testing.T) {
+	cluster := &inventory.FwRuleset{
+		Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}, Scope: inventory.FwScopeCluster, Enabled: true,
+	}
+	graph := buildTestGraph(t, cluster)
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: firewallTestAuth(map[string]bool{"netRead": true}), Firewall: graph,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/rulesets?scope=group&name=does-not-exist", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
 func TestFirewallRulesets_GuestScope_ResolvedView(t *testing.T) {
 	cluster := &inventory.FwRuleset{
 		Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}, Scope: inventory.FwScopeCluster, Enabled: true,

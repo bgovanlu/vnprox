@@ -479,6 +479,57 @@ cluster's real config and publish the numbers — including where they break dow
 
 ---
 
+## T-2002-bug-01 · Frozen MCP tool payloads have no field-removal regression guard
+
+**Severity:** Medium — caught in review before merge this time (T-2002's coordinator noticed the
+coupling by hand), but the mechanism that let it get that far — a well-reasoned, fully-tested,
+zero-repo-consumer removal of a field from a type that also happens to be a frozen MCP tool's
+wire payload — will recur for any of the other eight tools unless something other than a human's
+memory of `docs/architecture.md` §13 catches it.
+
+**Finding:** T-2002 (phase 20, `planning/reports/T-2002.md`) removed `internal/sim.RuleRef
+.RulesetRef` — unpopulated for `origin: "guest"`, the single most common deny case, and grepped
+to have zero consumers anywhere in `internal/`, `cmd/`, or `web/src/`. The reasoning was sound on
+every axis it checked. What it didn't check: `cmd/vnproxd/mcpwire.go`'s `mcpSimulatePath` returns
+`sim.Result` **verbatim** as the `simulate.path` MCP tool's payload — one of the nine tools in the
+**frozen v1 MCP manifest** (`docs/architecture.md` §13.1, decision D10), whose deprecation policy
+is explicit: "no field/tool/event is ever renamed or removed... without a version bump." An
+external MCP client (a T-1701 AI operator, exactly who this surface exists for) may read
+`rulesetRef` today; that client's code cannot appear in this repo's own grep results, so "no
+consumer found" was true and insufficient at the same time. Nothing in `internal/apicontract` (the
+repo's existing contract-test package) covers MCP tool payloads at all — it is scoped to the
+changeset/store lifecycle contract, a different surface entirely.
+
+**What T-2002 did once this was flagged:** restored the field (populated correctly for all three
+`RuleRef.Origin` values instead of removed — see the report), and added two narrow regression
+tests: `internal/sim.TestRuleRef_JSONSchema_Stable` (golden-marshals a `RuleRef`, asserts every
+documented field name survives) and `cmd/vnproxd.TestMCPSimulatePath_FrozenPayloadFields` (drives
+a real deny scenario through `mcpSimulatePath` end to end and asserts the same on the actual wire
+JSON). Both guard `simulate.path` specifically. Neither guards the other eight frozen tools
+(`topology.get`, `findings.list`, `flows.query`, `ipam.subnets.list`, `diagnose.run`,
+`changesets.diff`, `changesets.create`, `changesets.validate`), the plugin SDK's five frozen `v1`
+extension-point interfaces (§13.2), or the event-stream schema (§13.3) — none of which have an
+equivalent golden-shape test today, confirmed by grepping `internal/mcp`, `cmd/vnproxd/mcpwire*`,
+and `internal/plugin` for `JSONSchema_Stable`/`FrozenPayload`-style test names (no hits beyond the
+two this bugfix added).
+
+**Recommendation (not implemented here — a future card's decision):**
+- A systematic version of the two ad hoc tests above: one golden-shape test per frozen MCP tool
+  (nine total) asserting its payload's documented field set survives a real invocation, living
+  somewhere both discoverable and hard to skip — `internal/apicontract` (extended to cover MCP,
+  not just changesets) or a new `internal/mcp/frozen_test.go` are both plausible homes; the choice
+  is the future card's to make.
+- Consider whether the plugin SDK's five §13.2 interfaces and the §13.3 event-stream schema need
+  the analogous guard, or whether their existing coverage (if any) already serves this purpose —
+  not verified here, out of this bug card's own scope.
+- A cheaper, complementary option worth considering alongside (not instead of) the tests: a
+  `docs/architecture.md` §13 cross-reference comment convention on every frozen type/field (this
+  bugfix added one to `sim.RuleRef` and `simBlockingRule` by hand) — greppable, but relies on a
+  human reading it before deleting the field, exactly the step that failed here. Tests don't have
+  that failure mode.
+
+---
+
 ## Card-author notes
 
 - **These cards were written before any of them ran** (D4). T-1802 and T-1804 are expected to
