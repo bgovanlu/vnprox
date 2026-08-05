@@ -144,6 +144,25 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if err = os.MkdirAll(filepath.Dir(cfg.Storage.DBPath), 0o750); err != nil {
 		return fmt.Errorf("creating storage directory for %s: %w", cfg.Storage.DBPath, err)
 	}
+	// T-1901: advertise, for this process's whole lifetime, that this
+	// daemon owns this store, so `vnproxctl restore` refuses to swap the
+	// file out from under it. The lock is advisory and released by the
+	// kernel however the process ends, so it cannot go stale and block a
+	// later recovery.
+	//
+	// Deliberately NON-FATAL: this exists to make a restore safe, and must
+	// not become a new way for the daemon to refuse to start. Failing to
+	// take it (a read-only /var/lib, an exotic filesystem with no flock,
+	// or genuinely a second daemon on the same store — already a bug
+	// today, and one this does not newly enforce) logs a warning and
+	// carries on exactly as before this landed.
+	if runtimeLock, lockErr := store.AcquireRuntimeLock(cfg.Storage.DBPath); lockErr != nil {
+		logger.Warn("could not take the store runtime lock; `vnproxctl restore` will fall back to its listen-address probe to detect this daemon",
+			"path", store.RuntimeLockPath(cfg.Storage.DBPath), "error", lockErr)
+	} else {
+		defer func() { _ = runtimeLock.Release() }()
+	}
+
 	db, err := store.Open(ctx, cfg.Storage.DBPath)
 	if err != nil {
 		return fmt.Errorf("opening store: %w", err)

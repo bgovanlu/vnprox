@@ -60,7 +60,16 @@ import (
 // vnproxd build would have left behind.
 func openFrozenAt(t *testing.T, version int) *sql.DB {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "vnprox.db")
+	return openFrozenAtPath(t, filepath.Join(t.TempDir(), "vnprox.db"), version)
+}
+
+// openFrozenAtPath is openFrozenAt with a caller-chosen file path. Split out
+// by T-1901, whose backup/restore-across-a-schema-upgrade test needs the
+// frozen database to live at a path it can hand to internal/backup rather
+// than in an anonymous t.TempDir(). openFrozenAt's own behaviour is
+// unchanged — it is now a one-line wrapper.
+func openFrozenAtPath(t *testing.T, path string, version int) *sql.DB {
+	t.Helper()
 	dsn := "file:" + url.PathEscape(path) +
 		"?_pragma=busy_timeout(5000)" +
 		"&_pragma=journal_mode(WAL)" +

@@ -205,9 +205,153 @@ apt purge vnprox           # removes those too
 
 Uninstalling never touches network configuration — Proxmox remains the source of truth and keeps working exactly as configured (decision D5). The PVE token, `/etc/pve/priv/vnprox/` (cluster secret), and `/etc/pve/vnprox/` (protected-interface config) are removed on purge of the last node (prompted).
 
-## Backup
+## Backup and disaster recovery
 
-Back up `/var/lib/vnprox/vnprox.db` (snapshots/audit/layouts) and `/etc/vnprox/` per node. Network config itself is in `/etc/network/interfaces` and `/etc/pve` — covered by normal PVE backup practice. vnprox is stateless enough that reinstall + re-setup loses only history, never configuration.
+Network configuration itself is never vnprox's — `/etc/network/interfaces` and `/etc/pve` belong
+to Proxmox and are covered by ordinary PVE backup practice. What only vnprox holds is its own
+app-owned state: **every changeset and its diff, every pre/post rollback snapshot, the full audit
+trail, saved layouts, tenants and blueprint state** — precisely the artifacts you most want *after*
+an incident. Lose the box and you lose the record of what was changed and every snapshot you would
+have rolled back to.
+
+`vnproxctl backup` and `vnproxctl restore` (T-1901) are the supported way to keep and recover that.
+Like `status`/`snapshots`/`rollback-now`, they are **daemon-independent**: they read `vnprox.toml`
+and touch SQLite directly, with no HTTP API involved, so they work when the daemon (or its
+certificate, or the UI) is the broken thing.
+
+### Taking a backup
+
+```bash
+vnproxctl backup                                   # -> /var/lib/vnprox/backups/vnprox-backup-<node>-<UTC>.tar.gz
+vnproxctl backup --out /mnt/nas/pve1-vnprox.tar.gz # exact path
+vnproxctl backup --keep 14                         # also prune to the newest 14 archives here
+vnproxctl backup -o json                           # machine-readable result
+```
+
+**Safe to run against a running daemon.** The store copy is taken with SQLite's `VACUUM INTO`, a
+consistent point-in-time snapshot from a second connection — not `cp vnprox.db`, which in WAL mode
+silently omits every commit still sitting in `vnprox.db-wal`.
+
+The archive is a gzipped tar whose first entry is a manifest recording the format version, the
+node, the UTC timestamp, the store's **schema version**, whether key material is included, and a
+SHA-256 for every entry. It is written `0600`.
+
+**What is in it**
+
+| Entry | Contents |
+|---|---|
+| `store/vnprox.db` | the consistent store snapshot |
+| `config/vnprox.toml` | this node's config, verbatim |
+| `keys/…` | **only** with `--include-keys` (see below) |
+| `readme.txt` | a plain-text description of the archive for whoever finds it later |
+| `manifest.json` | format/version/node/schema/digests |
+
+### Key material is opt-in, and loud
+
+A backup taken **without** `--include-keys` contains **no key material at all**. Every credential
+vnprox holds lives in the store as AES-256-GCM ciphertext sealed with
+`/etc/vnprox/keys/session.key` (docs/security.md, "Authentication"), and that key is *not* in the
+archive — so the archive is safe to copy to a NAS, an object store, or a colleague's laptop, and is
+useless to anyone who obtains it. **This is the right default and should stay the default.**
+
+`--include-keys` produces something categorically different: an archive that, on its own, is a
+complete compromise of every PVE credential, federation credential, WireGuard private key, webhook
+secret and sealed revert ticket this installation holds. It therefore:
+
+- prints a warning **naming every class** it is about to include, before writing anything;
+- requires an interactive `include-keys` confirmation (or an explicit `--yes` for automation, which
+  still prints the warning);
+- marks the manifest `includesKeyMaterial: true`; and
+- names the file `…-with-keys.tar.gz`, so the marking is visible in an `ls` without opening it.
+
+Treat such a file exactly as you treat `/etc/vnprox/keys` itself.
+
+The **peer cluster secret** (`/etc/pve/priv/vnprox/`) is never collected under any flag: it is
+cluster-shared state that pmxcfs replicates, not this node's to hand out.
+
+### Scheduled backups
+
+vnprox ships a systemd timer, **installed but not enabled**:
+
+```bash
+systemctl enable --now vnprox-backup.timer     # daily 02:30 ±30m, keeps 14 archives
+systemctl list-timers vnprox-backup.timer
+```
+
+It runs `vnproxctl backup --out-dir /var/lib/vnprox/backups --keep 14` — no `--include-keys`, on
+purpose. The randomised delay matters on a cluster: without it every node would snapshot its store
+at the same instant. A cron line is equivalent if you prefer one:
+
+```cron
+30 2 * * *  /usr/bin/vnproxctl backup --out-dir /var/lib/vnprox/backups --keep 14
+```
+
+There is deliberately **no scheduler inside vnproxd**: a daemon that schedules its own backups
+cannot back itself up when the daemon is the thing that is broken. `/var/lib/vnprox/backups` is
+local storage on a hypervisor's root filesystem — replicate it somewhere else (PBS, rsync, an
+object store) if you want it to survive the node.
+
+### Restoring
+
+```bash
+systemctl stop vnprox                                     # required — see below
+vnproxctl restore --dry-run /path/to/vnprox-backup-….tar.gz   # decide first
+vnproxctl restore          /path/to/vnprox-backup-….tar.gz
+systemctl start vnprox
+```
+
+`--dry-run` validates the archive completely, prints exactly what would happen, and changes
+nothing. Its plan is generated by the same code path as the real run, so the two cannot drift.
+
+Four refusals, all of them deliberate:
+
+1. **A running daemon.** Restoring would swap the store file out from under a daemon holding open
+   descriptors onto it. Detected two ways — an advisory lock the daemon holds on
+   `/var/lib/vnprox/vnprox.db.lock` for its whole lifetime, and a probe of `[server] listen` (which
+   also catches a pre-v3.2 daemon that takes no lock). Either one refuses.
+2. **A store from a newer vnprox.** Forward migration is supported and runs automatically; the
+   downgrade direction is refused with a message naming both versions. Install the newer vnprox
+   first, then restore. The check is made against the archive's manifest *and* re-made against the
+   store actually inside it, so an edited manifest cannot smuggle a newer store past it.
+3. **A support bundle.** `vnproxctl support-bundle`'s output shares this archive format but is
+   redacted by construction; restoring one would install a deliberately incomplete store.
+4. **A malformed or hostile archive.** The archive is untrusted input: entry names come from a
+   strict allowlist, only regular files are accepted (no symlinks, hardlinks or devices), every
+   read is bounded by absolute byte and entry-count budgets, and every entry must match the
+   manifest's declared size and SHA-256. All of this is checked in a pass that writes nothing to
+   disk at all, before extraction begins.
+
+**The restore is atomic.** The archive is extracted into a private directory *next to* the target
+store, forward-migrated there, and only then swapped in by two renames within one directory. If
+anything fails at any point, the live store is untouched — and if the swap itself fails, the
+previous store is put back. On success the previous store is **kept**, not deleted, at
+`/var/lib/vnprox/vnprox.db.pre-restore-<UTC>`; remove it by hand once you are satisfied.
+
+### Restoring onto different hardware
+
+Supported and expected — the archive is not tied to the machine it came from.
+
+**Carries over:** every changeset and diff, every pre/post rollback snapshot, the whole audit
+trail, layouts, tenants, blueprints, and every app-owned table.
+
+**Must be re-established:**
+
+| Thing | Why, and what to do |
+|---|---|
+| Node identity (hostname) | Snapshots are keyed per node name. `vnproxctl snapshots restore` resolves the local host's name against what the snapshot captured, so if the replacement host has a different name, pass `--node`. |
+| Peer cluster secret | Lives on pmxcfs (`/etc/pve/priv/vnprox/`) and is never in the archive. It reappears when the node rejoins a cluster; a standalone rebuild regenerates one on first start. |
+| Sealed credentials | Unless the archive was taken with `--include-keys` **and** restored with `--restore-keys`, the store's sealed columns will not decrypt under the new node's own session key. Re-enter PVE credentials, federation cluster credentials, switch credentials, webhook secrets, and re-create WireGuard tunnels (rotation is delete-and-recreate by design — docs/security.md). |
+| PVE API token | Re-created by `vnprox-setup`, or restored with the keys. |
+| `vnprox.toml` | **Not** installed unless you pass `--restore-config`: an archive from another node carries that node's listen address and certificate paths. The archived copy is always available inside the tarball for you to diff. |
+
+`--restore-config` and `--restore-keys` both move any existing file aside to
+`<path>.pre-restore-<UTC>` rather than overwriting it.
+
+### If you cannot restore
+
+vnprox's store is disposable app state, by design (decision D5): reinstalling loses history, never
+configuration. Proxmox itself — the actual network configuration — is untouched by any of this and
+keeps working exactly as configured.
 
 ## Firewalling vnprox itself
 
@@ -219,6 +363,7 @@ Restrict 8007 to management networks like you (should) restrict 8006. Peer traff
 - `vnproxctl status` — local daemon, peer reachability, PVE API health, collector ages.
 - `vnproxctl rollback-now <changeset-id>` — CLI escape hatch to trigger rollback when the UI is unreachable.
 - UI unreachable after a bad change *you confirmed*: SSH in and restore the pre-snapshot: `vnproxctl snapshots list` / `vnproxctl snapshots restore <id>` (applies locally with ifreload, bypassing confirm — it *is* the recovery path).
+- `vnproxctl backup` / `vnproxctl restore` — vnprox's own state (changesets, snapshots, audit, layouts). See "Backup and disaster recovery" above; `restore` refuses to run while the daemon is up.
 
 ## `vnproxctl remote`/`apply` — HTTP-backed CLI parity (T-1105)
 

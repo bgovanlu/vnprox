@@ -64,6 +64,72 @@ This does not weaken the model above: every other route in this document still r
 
 **Switch-driver credentials (T-1205, addition).** The guarded switch-config-push surface stores each registered switch's driver credential (gNMI/OpenConfig auth) in `switches.credentials_enc`, sealed with the **same** `internal/store.SessionCipher` primitive as every credential class above — not a second cipher or key pair (`TestSwitchRepo_CredentialsEncryptedAtRest` asserts the stored bytes never contain the plaintext credential and only the cipher recovers it). The plaintext is never returned by any API response, log line, or audit detail. Switch push **ships dark by construction**: no push is possible unless both the daemon-level `[switches] enabled` flag *and* the specific switch's `enabled` row are true, and every push is an ordinary change-engine changeset (`switch.port.update`, VLAN-membership/description/LACP only) — the mgmt-path interlocks extend one LLDP hop onto the uplink port carrying a node's management path, hard-blocked (`safety.protected_switch_port`, no override) if a push's net effect would strip that port's management VLAN. A switch that becomes unreachable after a push cannot be remotely reverted (there is no recovery agent living on the switch): that residual risk is stated plainly to the operator, and such a changeset lands in a distinguishable "rollback incomplete — needs manual intervention" state rather than being silently marked `rolled_back`.
 
+## Backup archives (T-1901)
+
+`vnproxctl backup` produces a file that leaves the hypervisor — to a NAS, an object store, a
+colleague's laptop, a support ticket. That makes the archive its own trust boundary, and this
+section is its threat model. The deployment-facing description is in `docs/deployment.md`,
+"Backup and disaster recovery".
+
+**The archive's contents are exactly two things**: a consistent copy of vnprox's own SQLite store
+(`VACUUM INTO`, not a file copy — WAL mode means `cp vnprox.db` silently drops committed
+transactions) and `vnprox.toml`. It contains **no** Proxmox configuration: `/etc/network/interfaces`
+and `/etc/pve` are PVE's, and vnprox never shadows them.
+
+- **A default backup carries no secret in the clear, and that is a structural property, not a
+  policy.** Every credential class in this document is either a `*_enc` column (AES-256-GCM
+  ciphertext under `internal/store.SessionCipher`) or a `*_hash` column (one-way SHA-256) — there is
+  no plaintext secret column anywhere in the schema. The session key that opens the sealed columns
+  lives in `/etc/vnprox/keys/session.key` and is **not collected**. So an attacker holding a default
+  archive holds ciphertext and hashes: the store's whole history, and nothing they can authenticate
+  with. `internal/backup`'s declared secret-class inventory is checked against the real migrations
+  by a test, so a new sealed column landing without an inventory entry fails the build rather than
+  silently escaping this claim.
+- **`--include-keys` is a categorically different artifact, and is marked as one.** It adds the
+  session key, the PVE API token, the metrics scrape token, the blueprint signing key and the OIDC
+  client secret in the clear — which, because the session key is among them, makes every sealed
+  column readable too: PVE tickets, federation credentials, OIDC-mapped PVE credentials, switch
+  credentials, WireGuard private and preshared keys, Kubernetes kubeconfigs, webhook and alert
+  secrets, ingress credentials, and T-1805's sealed revert tickets. It therefore prints a warning
+  naming each of those classes before writing anything, requires an interactive confirmation (or an
+  explicit `--yes`, which still prints the warning), sets `includesKeyMaterial: true` in the archive
+  manifest, and suffixes the filename `-with-keys` so the marking survives an `ls`, an rsync log, or
+  a filename pasted into a chat window. Such an archive is equivalent to `/etc/vnprox/keys` and must
+  be stored the same way. Every archive is written `0600` regardless.
+- **The peer cluster secret is never collected**, under any flag. It is cluster-shared state on
+  pmxcfs (`/etc/pve/priv/vnprox/`), replicated by Proxmox itself — not this node's to hand out.
+- **On restore, the archive is hostile input.** It is whatever file an operator was handed, and the
+  extraction target is a root-owned directory on a hypervisor. The reader enforces, in a pass that
+  writes nothing to disk at all: an allowlisted entry-name vocabulary (traversal, absolute paths and
+  backslashes are not *expressible*, rather than filtered); regular files only (a symlink or hardlink
+  entry — the standard way to redirect a later "safe" write — is refused outright); absolute,
+  streamed budgets on manifest size, per-entry size, total size and entry count, so a decompression
+  bomb is stopped at the tar header that declares it rather than after it has filled the disk; and
+  an exact match between every entry and the manifest's declared name, order, size and SHA-256, with
+  the gzip checksum verified at the end. Undeclared, duplicate and trailing entries are all
+  refusals.
+- **A restore is a mutation of the daemon's own authoritative state.** It refuses to run against a
+  live daemon — detected both by an advisory lock vnproxd holds on `<db>.lock` for its lifetime and
+  by probing `[server] listen`, so a pre-v3.2 daemon that takes no lock is still caught — and it
+  refuses a store from a **newer** schema than the running binary understands (forward migration is
+  supported and automatic; downgrade is not). That version check is made against the manifest *and*
+  re-made against the store actually inside the archive, so an edited manifest cannot smuggle a
+  newer store past it. The swap itself is atomic: extract and migrate in a private directory beside
+  the target, then two renames within one directory, with the previous store put back if the second
+  fails and **kept** at `<db>.pre-restore-<UTC>` on success.
+- **Residual risks, stated rather than papered over.** (1) The archive is not encrypted and not
+  signed: integrity is per-entry SHA-256 against a manifest that travels inside the same file, which
+  detects corruption and casual tampering but is not an authenticity control — an attacker who can
+  rewrite the archive can rewrite the manifest with it. Use the transport and storage you would use
+  for any other root-owned artifact, and note that the store it installs is app-owned history, not a
+  mutation path: restoring a forged archive cannot by itself change the cluster's network, because
+  every mutation still flows through the change engine. (2) A default archive still exposes
+  *metadata* — node names, interface names, IP addressing, changeset titles, the audit trail's
+  usernames and actions. That is not a secret class, but it is a map of the network, and it should
+  be treated as sensitive even though it carries no credential. (3) `--restore-keys` overwrites this
+  node's key material with another node's; existing files are moved aside rather than deleted, but
+  the operator owns that decision.
+
 ## Authorization
 
 Two enforcement layers, both required:
@@ -170,6 +236,9 @@ Every mutation attempt (including denied and rolled-back) is written to the audi
 | Peer-daemon impersonation with a publicly-trusted certificate (T-1906) | peer TLS is pinned to the cluster's own root CA (`/etc/pve/pve-root-ca.pem`, `[peer] ca_file`) and the system trust store is never consulted, so a certificate from any public CA plus a management-network position is no longer sufficient; unpinning is a two-key, per-mode-acknowledged config change that `WARN`s on every startup and raises a standing `peer_trust_degraded` finding; a missing anchor fails **closed** (no peer reachable, never a silent fallback); a rotated cluster CA is picked up within 30 s without a restart, including dropping keep-alive connections verified under the old anchor; a peer that fails verification raises `peer_untrusted` (error) rather than being flattened into the ordinary `peer_unreachable` (warning), so an impersonation attempt is legible as one |
 | Malicious/buggy change bricks cluster | validators + safety interlocks + commit-confirm rollback + time machine |
 | Sealed apply-time revert ticket theft / misuse (T-1805) | the applying user's PVE ticket is sealed in `changesets.revert_ticket_enc` with the **one** AES-256-GCM session key — not a second cipher or key pair — only while that changeset is mid-apply or awaiting confirmation, and wiped on confirm/rollback/timeout/failed-apply/discard/expiry, whichever comes first (wipe asserted directly against the stored row in every case); it has **no field on any read model**, so no API response, MCP tool result, or plugin-visible value can carry it (verified by enumeration over the real route/tool/extension-point registries, plus per-surface and raw-DB-bytes non-leak tests); it is reachable only from that one changeset's own revert path, acts through a **non-renewing** sealed-ticket PVE client so the daemon can never mint a longer-lived credential from it, is bounded by the ticket's own ~2h life with reduced coverage reported to the operator **at apply time**, and is never replicated to an HA standby |
+| Backup archive theft (T-1901) | a default `vnproxctl backup` archive contains **no key material**: every credential class in the store is a `*_enc` (AES-256-GCM) or `*_hash` (one-way) column and the session key that opens them is not collected, so a stolen archive yields ciphertext and hashes, not credentials (table-driven, one case per secret class, scanning the whole decompressed archive, with an unsealed-value control proving the scan works); `--include-keys` is the only way to include key material and it warns naming every class, requires an interactive confirmation, sets `includesKeyMaterial` in the manifest, and suffixes the filename `-with-keys`; every archive is `0600`; the peer cluster secret is never collected under any flag; residual: the archive is unencrypted and unsigned and still exposes network *metadata* — see "Backup archives" above |
+| Malicious restore archive (T-1901) | the archive is parsed as hostile input in a pass that writes **nothing** to disk: allowlisted entry-name vocabulary (traversal/absolute/backslash names inexpressible), regular files only (symlink/hardlink/device entries refused), absolute streamed budgets on manifest/entry/total bytes and entry count (a decompression bomb is stopped at the header declaring it), and an exact match to the manifest's declared name, order, size and SHA-256 with the gzip checksum verified; undeclared, duplicate and trailing entries are refusals; table-driven with a benign-archive control proving the reader is not simply rejecting everything |
+| Restore against a live daemon / schema downgrade (T-1901) | `vnproxctl restore` refuses while a daemon owns the store — an advisory `flock` vnproxd holds for its lifetime on `<db>.lock`, **plus** a probe of `[server] listen` so a pre-v3.2 daemon that takes no lock is caught too — and refuses a store from a newer schema than the running binary understands, checked against the manifest *and* re-checked against the store inside the archive so a forged manifest cannot smuggle one past; the swap is atomic (stage + forward-migrate beside the target, then two renames in one directory, with the previous store put back on failure and kept at `<db>.pre-restore-<UTC>` on success), proved by injecting a failure at each of three points and asserting the original store is byte-identical afterwards |
 | Supply chain | pinned deps, `make check` includes `govulncheck` + `npm audit` gates in CI |
 | XSS → config change | strict CSP, no inline script, CSRF header, framework-escaped rendering only |
 | Metrics scrape token theft (T-1001) | token is separate from the session cookie (theft of one doesn't grant the other), constant-time compare, optional source-CIDR allowlist, route is read-only and exports no secret |

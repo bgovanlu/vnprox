@@ -10,6 +10,10 @@ case "$1" in
   remove|deconfigure)
     if [ -d /run/systemd/system ]; then
       systemctl stop vnprox.service >/dev/null 2>&1 || true
+      # T-1901: the optional scheduled-backup timer ships disabled, but an
+      # operator may have enabled it. Disable it before its unit files are
+      # removed, or systemd is left with a dangling enablement symlink.
+      systemctl disable --now vnprox-backup.timer >/dev/null 2>&1 || true
     fi
     ;;
   upgrade|failed-upgrade)
