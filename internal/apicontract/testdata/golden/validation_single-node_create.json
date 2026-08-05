@@ -6,6 +6,7 @@
   "ops": [
     {
       "op": "bridge.create",
+      "id": "\u003cop-id\u003e",
       "target": "bridge:pve1:vmbr0",
       "params": {
         "comments": "should fail: vmbr0 already exists"

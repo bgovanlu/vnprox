@@ -846,6 +846,20 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// T-1903: apply/confirm/rollback/unattended-revert outcomes and
 		// awaiting_confirm duration.
 		Metrics: selfMetrics,
+		// T-2003: change review — per-op/changeset comments and the
+		// review-approval gate, generalizing T-1703's tenant approval queue.
+		// Comments/Approvals are always wired (cheap, app-owned tables on the
+		// same shared db every other repo here uses); Approval carries the
+		// deployment's actual policy from [changesets], off by default so an
+		// upgrading install's apply behavior is unchanged until an admin
+		// opts in.
+		Comments:  store.NewChangesetCommentRepo(db),
+		Approvals: store.NewChangesetApprovalRepo(db),
+		Approval: change.ApprovalConfig{
+			Required:          cfg.Changesets.ApprovalRequired,
+			AllowSelfApproval: cfg.Changesets.AllowSelfApproval,
+			Approvers:         cfg.Changesets.Approvers,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)

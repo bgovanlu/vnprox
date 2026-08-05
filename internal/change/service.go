@@ -135,14 +135,18 @@ type Config struct {
 	Allocations       AllocationsSource
 	ClusterMembership ClusterMembershipSource
 	ImpactPreflight   ImpactPreflighter
-	Snapshots         *store.SnapshotRepo
-	Schedules         *store.ChangeScheduleRepo
-	Logger            *slog.Logger
-	Now               func() time.Time
 	// Metrics (T-1903) is the self-observability recorder for apply/confirm/
 	// rollback/unattended-revert outcomes and awaiting_confirm duration.
 	// Nil disables recording.
 	Metrics MetricsRecorder
+	Logger  *slog.Logger
+	// Comments (T-2003) backs the review surface's per-op/changeset comments.
+	// Optional (nil-safe, review.go's ErrReviewNotConfigured/no-op
+	// convention): a Service built without it behaves exactly like a
+	// pre-T-2003 one.
+	Comments  *store.ChangesetCommentRepo
+	Now       func() time.Time
+	Snapshots *store.SnapshotRepo
 	// LeaderGuard, when set, is consulted immediately before any UNATTENDED,
 	// timer-driven apply/confirm/rollback decision this daemon would make on
 	// its own (the commit-confirm auto-rollback timer and the scheduler's
@@ -155,14 +159,24 @@ type Config struct {
 	// Interactive, human-initiated Apply/Confirm/Rollback API calls are NOT
 	// gated here: those flow through the API's own auth/role checks and the
 	// single active daemon is the only one serving the API behind the VIP.
-	LeaderGuard        func() bool
-	Blobs              *store.BlobRepo
-	Changesets         *store.ChangesetRepo
-	TimerFunc          TimerFunc
-	Audit              *store.AuditRepo
-	ProtectedPath      string
-	CorosyncPath       string
-	LocalClusterID     string
+	LeaderGuard func() bool
+	Blobs       *store.BlobRepo
+	Changesets  *store.ChangesetRepo
+	TimerFunc   TimerFunc
+	Audit       *store.AuditRepo
+	Schedules   *store.ChangeScheduleRepo
+	// Approvals (T-2003) backs the review surface's approval gate — see
+	// Approval's own doc comment below. Optional/nil-safe like Comments
+	// above.
+	Approvals      *store.ChangesetApprovalRepo
+	ProtectedPath  string
+	CorosyncPath   string
+	LocalClusterID string
+	// Approval (T-2003) is the deployment-wide review-approval policy —
+	// see ApprovalConfig's own doc comment (review.go). Its zero value is a
+	// complete no-op, so every pre-T-2003 deployment's apply behavior is
+	// byte-identical until an admin opts in.
+	Approval           ApprovalConfig
 	RollbackWindowDays int
 	ConfirmTimeout     time.Duration
 	SwitchPushEnabled  bool
@@ -189,38 +203,43 @@ type Stopper interface {
 // draft<->validated status transition. Diff/Apply/Confirm/Rollback are
 // T-205's responsibility — see doc.go.
 type Service struct {
-	ws                 Broadcaster
-	nodes              NodeAgent
-	qos                QosGateway
-	wg                 WGGateway
-	sealer             SecretSealer
-	revertGateways     RevertGatewayFactory
-	wgCarriers         WgCarrierSource
-	switches           SwitchGateway
-	allocations        AllocationsSource
-	inv                InventorySource
-	refresher          InventoryRefresher
-	nodeTimers         NodeTimerAgent
-	clock              Clock
-	switchScope        SwitchScopeSource
-	membership         ClusterMembershipSource
-	impactPreflight    ImpactPreflighter
-	schedules          *store.ChangeScheduleRepo
-	timers             map[string]Stopper
-	repo               *store.ChangesetRepo
-	snapshots          *store.SnapshotRepo
-	blobs              *store.BlobRepo
-	audit              *store.AuditRepo
+	ws              Broadcaster
+	nodes           NodeAgent
+	qos             QosGateway
+	wg              WGGateway
+	sealer          SecretSealer
+	revertGateways  RevertGatewayFactory
+	wgCarriers      WgCarrierSource
+	switches        SwitchGateway
+	allocations     AllocationsSource
+	inv             InventorySource
+	refresher       InventoryRefresher
+	nodeTimers      NodeTimerAgent
+	clock           Clock
+	switchScope     SwitchScopeSource
+	membership      ClusterMembershipSource
+	impactPreflight ImpactPreflighter
+	metrics         MetricsRecorder
+	blobs           *store.BlobRepo
+	schedules       *store.ChangeScheduleRepo
+	snapshots       *store.SnapshotRepo
+	timers          map[string]Stopper
+	audit           *store.AuditRepo
+	// comments/approvals/approval (T-2003): see Config.Comments/Approvals/
+	// Approval's doc comments — nil-safe, review.go owns all access.
+	comments           *store.ChangesetCommentRepo
+	approvals          *store.ChangesetApprovalRepo
+	leaderGuard        func() bool
 	log                *slog.Logger
 	newTimer           TimerFunc
 	now                func() time.Time
-	metrics            MetricsRecorder
-	leaderGuard        func() bool
+	repo               *store.ChangesetRepo
 	lockHeldBy         string
 	corosyncPath       string
 	protectedPath      string
 	localClusterID     string
 	scheduleSecret     []byte
+	approval           ApprovalConfig
 	confirmTimeout     time.Duration
 	rollbackWindowDays int
 	applyMu            sync.Mutex
@@ -280,6 +299,7 @@ func NewService(cfg Config) (*Service, error) {
 	}
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
+		comments: cfg.Comments, approvals: cfg.Approvals, approval: cfg.Approval,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,
 		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, revertGateways: cfg.RevertGateways, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,
@@ -472,6 +492,7 @@ func (s *Service) create(ctx context.Context, author, title string, ops []Op, or
 	if origin == "" {
 		origin = OriginUI
 	}
+	assignOpIDs(ops) // T-2003: every persisted op gets a stable id a review Comment can attach to.
 	if err := s.sealOpSecrets(ops); err != nil {
 		return Changeset{}, err
 	}
@@ -508,6 +529,7 @@ func (s *Service) CreateRequest(ctx context.Context, author, title string, ops [
 	if ops == nil {
 		ops = []Op{}
 	}
+	assignOpIDs(ops) // T-2003: every persisted op gets a stable id a review Comment can attach to.
 	if err := s.sealOpSecrets(ops); err != nil {
 		return Changeset{}, err
 	}
@@ -588,6 +610,13 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 	if ops == nil {
 		ops = []Op{}
 	}
+	// T-2003: capture the outgoing op-id set BEFORE assigning ids to the
+	// incoming ops, so a stale id an edit re-submits unchanged is still
+	// counted as "kept" (assignOpIDs never touches an op that already
+	// carries one) and only a genuinely-vanished id is later reported as
+	// removed.
+	previousOpIDs := opIDSet(c.Ops)
+	assignOpIDs(ops)
 	if err = s.sealOpSecrets(ops); err != nil {
 		return Changeset{}, err
 	}
@@ -607,6 +636,22 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 		return Changeset{}, fmt.Errorf("change: updating changeset %s: %w", id, err)
 	}
 	s.auditSafetyOverride(ctx, author, id, findings)
+
+	// T-2003: the ops just changed — any comment attached to an op that no
+	// longer exists is explicitly cleaned up (never silently orphaned), and
+	// any prior review-approval decision (made against the old ops) is
+	// cleared, requiring a fresh decision against the new ones.
+	newOpIDs := opIDSet(ops)
+	var removed []string
+	for opID := range previousOpIDs {
+		if !newOpIDs[opID] {
+			removed = append(removed, opID)
+		}
+	}
+	sort.Strings(removed)
+	s.cleanupOrphanedComments(ctx, id, author, removed)
+	s.clearApproval(ctx, id)
+
 	if prevStatus != c.Status {
 		s.broadcastStatus(c)
 	}

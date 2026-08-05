@@ -25,7 +25,15 @@ Findings carry optional machine-applicable `fix` patches (API doc). Errors block
 
 ## 3. Diff & plan review
 
-The review screen shows three tabs: **Summary** (op cards), **File diff** (unified diffs of every file the change touches, per node — `/etc/network/interfaces`, SDN configs, firewall files), and **Plan** (the exact ordered steps: which PVE API calls, which nodes reload, in what order). Nothing applies until the user has seen this screen.
+The review screen shows four tabs: **Summary** (op cards), **File diff** (unified diffs of every file the change touches — `/etc/network/interfaces` per node, and, since T-2003, SDN config, cluster-scoped), **Plan** (the exact ordered steps: which PVE API calls, which nodes reload, in what order), and **Discussion** (T-2003, below). Nothing applies until the user has seen this screen. The config (File diff) tab is deliberately literal — operators reason in `/etc/network/interfaces` terms even where the Summary tab's semantic op cards are more precise — and it renders exactly what apply would write: the same parse → mutate → unified-diff pipeline apply's own staging step uses for node files, and the same net-effect projection over live inventory for SDN config.
+
+### 3.1 Review, comments, and approval (T-2003)
+
+The changeset is this product's unit of work, and review is where a *team*, not just a single admin, actually lives — generalizing T-1703's tenant self-service request-changeset approval queue (docs/api.md's "Tenants & self-service" section) into a mechanism every changeset can use, not only tenant requests.
+
+- **Comments.** Any changeset (not only a tenant request) can carry review comments, either attached to one op or to the changeset as a whole, each attributed and timestamped. Comments survive validate/diff (neither ever touches the ops a comment is keyed to). Deleting an op deletes its comment explicitly — audited, never silently orphaned — while an edit that leaves an op untouched keeps its comments attached.
+- **Approval.** A deployment can require an explicit approval before a changeset applies ([changesets] section, docs/deployment.md), with self-approval permitted or forbidden and an optional named-approvers list, all admin-configured. **This is an authorization surface, not a UI affordance**: whether apply is permitted is decided server-side from the stored approval decision on every apply attempt, never inferred from a client request field and never merely by the frontend declining to render an Apply button — an unapproved apply attempt is refused with a documented error regardless of caller (UI, direct API call, or `vnproxctl`). Editing a changeset's ops clears any prior approval decision, the same way it demotes a stale `validated` status back to `draft` — a decision made against one set of ops must never silently authorize a different one.
+- **Shareable review link.** Every changeset has a stable URL (`/changesets/{id}/review` in the SPA) that opens it directly in the review screen — the exit demo's "a colleague reviews and comments on the resulting changeset from a phone." Opening it still requires an authenticated session with the ordinary read capability; the link carries no credential of its own.
 
 ## 4. Apply, confirm, rollback
 

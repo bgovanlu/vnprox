@@ -5,13 +5,17 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addChangesetComment,
   applyChangeset,
   confirmChangeset,
   createChangeset,
+  deleteChangesetComment,
   diffChangeset,
   discardChangeset,
   getChangeset,
   listChangesets,
+  reviewApproveChangeset,
+  reviewRejectChangeset,
   rollbackChangeset,
   updateChangeset,
   validateChangeset,
@@ -130,6 +134,51 @@ export function useRollbackChangesetMutation() {
     mutationFn: (id: string) => rollbackChangeset(id),
     onSuccess: (c) => {
       queryClient.setQueryData(changesetKey(c.id), c);
+    },
+  });
+}
+
+/** T-2003 review surface: comments and approve/reject all invalidate the
+ * canonical changeset query (the only response that carries `comments`/
+ * `approval`) so the review screen's next read reflects the change —
+ * simpler and safer than trying to hand-patch the nested array/object in
+ * place from each mutation's own narrow response shape. */
+export function useAddCommentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, opId, body }: { id: string; opId?: string; body: string }) => addChangesetComment(id, opId, body),
+    onSuccess: (_comment, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: changesetKey(id) });
+    },
+  });
+}
+
+export function useDeleteCommentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, commentId }: { id: string; commentId: string }) => deleteChangesetComment(id, commentId),
+    onSuccess: (_void, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: changesetKey(id) });
+    },
+  });
+}
+
+export function useReviewApproveMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => reviewApproveChangeset(id),
+    onSuccess: (_approval, id) => {
+      void queryClient.invalidateQueries({ queryKey: changesetKey(id) });
+    },
+  });
+}
+
+export function useReviewRejectMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => reviewRejectChangeset(id, reason),
+    onSuccess: (_approval, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: changesetKey(id) });
     },
   });
 }
