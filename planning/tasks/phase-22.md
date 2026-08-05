@@ -136,3 +136,31 @@ instead of reporting full coverage of an empty set.
 - Playwright spec for the panel, alongside the vitest coverage (noting
   `T-1806-bug-01`: the e2e suite is not run by any automated gate, so vitest
   carries the enforcement).
+
+---
+
+## Status — shipped 2026-08-05 (`4f88325`, deployed as 3.0.4+40+g4f88325)
+
+All five cards complete. 60 topics registered; `make check` green (216 files /
+1492 tests). Coverage gate verified by mutation, not just by passing: deleting
+the `/ipam` mapping, adding an unmapped route to `App.tsx`, and typoing an
+`<HelpAnchor topic>` each failed the suite naming the offender.
+
+**Scope boundary, stated plainly.** "100% coverage" here means every routed
+screen and every placed panel anchor. It does **not** mean every form field has
+inline help — `docs/features/change-management.md` §5 already asks for
+per-field guidance in the entity editors ("every field has inline help written
+for non-networking-experts"), and that is a separate, larger piece of work this
+phase did not do. The gate makes no claim about it either way.
+
+**Follow-ups.**
+
+- `T-2202-followup-01` — extend anchors beyond the six placed here. The panel
+  topics exist for the zone wizards, redundancy wizard, bulk reattach, IPAM
+  address list/external sync/cross-cluster, blueprint import, snapshot restore,
+  history playback, scheduled apply, capture, and the WireGuard wizard; each is
+  currently reachable only via `seeAlso` or the browse index, not from a `?`
+  next to its own heading.
+- `T-2202-followup-02` — field-level help in the entity editors, per
+  `docs/features/change-management.md` §5. Consider whether the gate should grow
+  a field-coverage dimension, or whether that belongs to the editors' own tests.
