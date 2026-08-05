@@ -6,6 +6,7 @@ import { apiFetch } from "./client";
 import type {
   FirewallEffectsResponse,
   FirewallObjectsResponse,
+  GroupRulesetResponse,
   GuestRulesetResponse,
   RulesetListResponse,
   RulesetView,
@@ -36,6 +37,12 @@ export function fetchGuestRuleset(ref: string): Promise<GuestRulesetResponse> {
 
 export function fetchGuestRulesets(): Promise<RulesetListResponse> {
   return apiFetch<RulesetListResponse>("/firewall/rulesets?scope=guest");
+}
+
+/** GET /firewall/rulesets?scope=group&name=... — that security group's own
+ * rule list, for the group inspector surface (T-2002). */
+export function fetchGroupRuleset(name: string): Promise<GroupRulesetResponse> {
+  return apiFetch<GroupRulesetResponse>(`/firewall/rulesets?scope=group&name=${encodeURIComponent(name)}`);
 }
 
 /** GET /firewall/objects — every alias/ipset/security-group visible

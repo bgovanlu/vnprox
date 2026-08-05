@@ -6,12 +6,27 @@
 // same contract (guestRef/rulesetRef + pos + origin — never DOM position)
 // specifically so this one consuming module could read either's link the
 // same way; FirewallPage.tsx is the only caller.
-import type { FwOrigin } from "../api/types";
+import type { FwOrigin, ResolvedRuleView } from "../api/types";
 
 export interface FocusRule {
   pos: number;
   origin: FwOrigin;
   groupName?: string;
+}
+
+/** Whether `entry` is the exact rule `focusRule` names — position alone
+ * isn't quite enough to disambiguate origin/group in principle, so this
+ * checks the full identity triple the deep link carries. Shared by
+ * ResolvedViewTable (which row to highlight/scroll to) and FirewallPage
+ * (T-2002 AC1: whether the deep link's target still exists at all, so a
+ * rule that's been deleted/reordered/moved degrades with a message instead
+ * of a silent empty highlight). Lives here rather than in
+ * ResolvedViewTable.tsx so this module — already the "no components, just
+ * the deep-link contract" file — stays the one place either consumer
+ * imports the matching logic from. */
+export function matchesFocus(entry: ResolvedRuleView, focusRule: FocusRule | undefined): boolean {
+  if (!focusRule) return false;
+  return entry.pos === focusRule.pos && entry.origin === focusRule.origin && (entry.groupName ?? "") === (focusRule.groupName ?? "");
 }
 
 export interface FirewallDeepLinkParams {

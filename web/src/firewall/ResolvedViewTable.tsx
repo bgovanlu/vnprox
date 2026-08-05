@@ -19,6 +19,7 @@ import type { DefaultPolicyView, FwOrigin, ResolvedRuleView, ResolvedView } from
 import { scrollIntoViewIfSupported } from "../lib/scrollIntoView";
 import { ruleMatchLabel } from "./format";
 import type { FocusRule } from "./focusRule";
+import { matchesFocus } from "./focusRule";
 
 const ORIGIN_LABEL: Record<FwOrigin, string> = {
   cluster: "Cluster",
@@ -40,14 +41,6 @@ export function OriginBadge({ origin, groupName }: { origin: FwOrigin; groupName
       {groupName ? `${ORIGIN_LABEL[origin]}: ${groupName}` : ORIGIN_LABEL[origin]}
     </span>
   );
-}
-
-/** Whether `entry` is the exact rule `focusRule` names — position alone
- * isn't quite enough to disambiguate origin/group in principle, so this
- * checks the full identity triple the deep link carries. */
-function matchesFocus(entry: ResolvedRuleView, focusRule: FocusRule | undefined): boolean {
-  if (!focusRule) return false;
-  return entry.pos === focusRule.pos && entry.origin === focusRule.origin && (entry.groupName ?? "") === (focusRule.groupName ?? "");
 }
 
 function ResolvedRuleRow({ entry, focused }: { entry: ResolvedRuleView; focused: boolean }) {

@@ -34,9 +34,13 @@ function buildDeleteOp(kind: ObjectUsageView["kind"], name: string) {
 interface UsageTableProps {
   items: ObjectUsageView[];
   onNavigate?: (loc: FwRulesetLocation, pos: number) => void;
+  /** Only meaningful for the security-groups table (T-2002): opens the
+   * group inspector for that row's name. Omitted for aliases/ipsets, which
+   * have no inspector surface of their own. */
+  onInspect?: (name: string) => void;
 }
 
-function UsageTable({ items, onNavigate }: UsageTableProps) {
+function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
   const [expanded, setExpanded] = useState<string | undefined>(undefined);
   const { addOps } = useDrawerActions();
   const { toast } = useToast();
@@ -128,25 +132,38 @@ function UsageTable({ items, onNavigate }: UsageTableProps) {
                 )}
               </TableCell>
               <TableCell>
-                {item.scope === "cluster" ? (
-                  <button
-                    type="button"
-                    disabled={fwWriteDisabled}
-                    onClick={() => { handleDelete(item); }}
-                    className="text-xs text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 dark:text-red-400"
-                    title={
-                      fwWriteDisabled
-                        ? fwWriteTooltip
-                        : item.count > 0
-                          ? `Referenced by ${String(item.count)} rule(s) — cannot delete`
-                          : undefined
-                    }
-                  >
-                    Delete
-                  </button>
-                ) : (
-                  <span className="text-xs text-slate-300 dark:text-slate-600" title="Delete node/guest-scope objects from that scope's own rule table">—</span>
-                )}
+                <div className="flex items-center gap-3">
+                  {onInspect && (
+                    <button
+                      type="button"
+                      onClick={() => { onInspect(item.name); }}
+                      className="text-xs text-accent-700 hover:underline dark:text-accent-400"
+                    >
+                      Inspect
+                    </button>
+                  )}
+                  {item.scope === "cluster" ? (
+                    <button
+                      type="button"
+                      disabled={fwWriteDisabled}
+                      onClick={() => { handleDelete(item); }}
+                      className="text-xs text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 dark:text-red-400"
+                      title={
+                        fwWriteDisabled
+                          ? fwWriteTooltip
+                          : item.count > 0
+                            ? `Referenced by ${String(item.count)} rule(s) — cannot delete`
+                            : undefined
+                      }
+                    >
+                      Delete
+                    </button>
+                  ) : (
+                    !onInspect && (
+                      <span className="text-xs text-slate-300 dark:text-slate-600" title="Delete node/guest-scope objects from that scope's own rule table">—</span>
+                    )
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           );
@@ -191,9 +208,12 @@ export interface ObjectsPanelProps {
    * "referenced by" entry names (acceptance criterion 2). Omit to render
    * the reference list as plain text (e.g. in isolation/tests). */
   onNavigate?: (loc: FwRulesetLocation, pos: number) => void;
+  /** T-2002: opens the security-group inspector for a group row. Omit to
+   * render the groups table without an Inspect action (e.g. in tests). */
+  onInspectGroup?: (name: string) => void;
 }
 
-export function ObjectsPanel({ objects, onNavigate }: ObjectsPanelProps) {
+export function ObjectsPanel({ objects, onNavigate, onInspectGroup }: ObjectsPanelProps) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
@@ -206,7 +226,7 @@ export function ObjectsPanel({ objects, onNavigate }: ObjectsPanelProps) {
       </div>
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold">Security groups</h3>
-        <UsageTable items={objects.groups} onNavigate={onNavigate} />
+        <UsageTable items={objects.groups} onNavigate={onNavigate} onInspect={onInspectGroup} />
       </div>
       <MacroCatalog macros={objects.macros} />
     </div>

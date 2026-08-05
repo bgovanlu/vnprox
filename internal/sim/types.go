@@ -182,9 +182,22 @@ type Hop struct {
 
 // RuleRef points at the exact firewall rule that produced a deny verdict,
 // with enough context for T-504's "one click to the rule editor" deep link.
+//
+// T-2002 note: this type used to also carry RulesetRef (the ref of the
+// ruleset the matched rule literally lives in). It was removed rather than
+// fixed: the deep link's actual target is never "the ruleset that owns
+// this rule" — it's always "the guest whose resolved view to open" (see
+// web/src/simulator/deeplink.ts's blockingRuleGuestRef, which derives that
+// from ResolvedEndpoint.guest, not from this type). For origin: "guest"
+// those two happen to coincide; for origin: "cluster"/"group" they never
+// do (RulesetRef would have named the cluster ruleset, not the guest being
+// evaluated) — so even a fully-populated RulesetRef could never replace
+// blockingRuleGuestRef's derivation, and nothing else in the codebase read
+// the field. Keeping a half-true field around that no consumer could ever
+// fully rely on was worse than deleting it; see planning/reports/T-504.md
+// and planning/reports/T-2002.md.
 type RuleRef struct {
 	EnforcementPoint string           `json:"enforcementPoint"`
-	RulesetRef       string           `json:"rulesetRef"`
 	Origin           string           `json:"origin"`
 	GroupName        string           `json:"groupName,omitempty"`
 	Direction        string           `json:"direction"`

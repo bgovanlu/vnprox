@@ -22,7 +22,6 @@ describe("parseFirewallDeepLink", () => {
   it("parses T-504's simulator blocking-rule deep link (blockingRuleDeepLinkPath)", () => {
     const blockingRule: SimBlockingRule = {
       enforcementPoint: "dest-guest-in",
-      rulesetRef: "guest:pve1:100",
       origin: "group",
       groupName: "webservers",
       direction: "in",

@@ -1616,6 +1616,18 @@ export interface RulesetListResponse {
   items: RulesetView[];
 }
 
+/** GET /firewall/rulesets?scope=group&name=... response (T-2002): a
+ * security group's own name/comment/rule list — the group inspector's read
+ * side. Distinct shape from RulesetView: a security group has no ref/
+ * scope/enabled/defaultIn/defaultOut of its own (it's a named rule list
+ * referenced by a `direction: "group"` rule elsewhere, never a ruleset in
+ * its own right). */
+export interface GroupRulesetResponse {
+  name: string;
+  comment?: string;
+  rules: RuleView[];
+}
+
 export interface RuleRefView {
   scope: FwScope;
   ref: string;
@@ -2037,11 +2049,14 @@ export type SimRuleOrigin = "cluster" | "group" | "guest";
 
 /** Present only for `verdict: "deny"` — the exact rule that produced it,
  * with enough identity for the one-click deep link into the firewall
- * editor: `rulesetRef` + `pos` + `origin` (never DOM position), mirroring
- * `ruleDeepLinkPath`'s (web/src/fwlog/deeplink.ts) established contract. */
+ * editor: `pos` + `origin` + `groupName?` (never DOM position, never a
+ * `rulesetRef` — removed T-2002; see web/src/simulator/deeplink.ts's doc
+ * comment for why the deep link's real target is always the guest's own
+ * resolved view, derived from the endpoint, not from the rule's owning
+ * ruleset), mirroring `ruleDeepLinkPath`'s (web/src/fwlog/deeplink.ts)
+ * established contract. */
 export interface SimBlockingRule {
   enforcementPoint: "source-guest-out" | "dest-guest-in";
-  rulesetRef: string;
   origin: SimRuleOrigin;
   groupName?: string;
   direction: string;

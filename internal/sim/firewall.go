@@ -200,16 +200,8 @@ func actionKind(action string) decisionKind {
 }
 
 func (e *Engine) ruleRef(point, dir string, dec decision) *RuleRef {
-	rulesetRef := ""
-	switch dec.origin {
-	case fw.OriginCluster, fw.OriginGroup:
-		if e.fw.Cluster != nil {
-			rulesetRef = e.fw.Cluster.GetRef().String()
-		}
-	}
 	return &RuleRef{
 		EnforcementPoint: point,
-		RulesetRef:       rulesetRef,
 		Origin:           string(dec.origin),
 		GroupName:        dec.groupName,
 		Pos:              dec.pos,

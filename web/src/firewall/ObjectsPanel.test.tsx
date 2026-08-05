@@ -47,12 +47,16 @@ function at<T>(arr: T[], i: number): T {
 // delete), which needs useDrawerActions' QueryClient and useToast's
 // ToastProvider — the same wrapping every other op-staging component's
 // tests use (e.g. changesets/CountdownBanner.test.tsx).
-function renderPanel(objects: FirewallObjectsResponse, onNavigate?: (loc: FwRulesetLocation, pos: number) => void) {
+function renderPanel(
+  objects: FirewallObjectsResponse,
+  onNavigate?: (loc: FwRulesetLocation, pos: number) => void,
+  onInspectGroup?: (name: string) => void,
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <ObjectsPanel objects={objects} onNavigate={onNavigate} />
+        <ObjectsPanel objects={objects} onNavigate={onNavigate} onInspectGroup={onInspectGroup} />
       </ToastProvider>
     </QueryClientProvider>,
   );
@@ -157,5 +161,24 @@ describe("ObjectsPanel usage-guarded delete (acceptance criterion 2)", () => {
     const rows = screen.getAllByRole("row");
     const unusedRow = rows.find((r) => r.textContent.includes("unused_alias"));
     expect(unusedRow?.textContent ?? "").not.toContain("Delete");
+  });
+});
+
+// T-2002: the security-group inspector's launch point.
+describe("ObjectsPanel security-group Inspect action", () => {
+  it("offers Inspect only for the groups table, and calls onInspectGroup with the group's name", async () => {
+    const user = userEvent.setup();
+    const onInspectGroup = vi.fn();
+    renderPanel(objects, undefined, onInspectGroup);
+
+    const inspectButtons = screen.getAllByText("Inspect");
+    expect(inspectButtons).toHaveLength(1); // only the one group row, not aliases/ipsets
+    await user.click(at(inspectButtons, 0));
+    expect(onInspectGroup).toHaveBeenCalledWith("webservers");
+  });
+
+  it("renders no Inspect action when onInspectGroup is omitted", () => {
+    renderPanel(objects);
+    expect(screen.queryByText("Inspect")).not.toBeInTheDocument();
   });
 });

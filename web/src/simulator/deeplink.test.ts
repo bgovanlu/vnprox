@@ -8,7 +8,6 @@ const dst: SimResolvedEndpoint = { kind: "guest-nic", guest: "guest:pve2:101", n
 function rule(overrides: Partial<SimBlockingRule>): SimBlockingRule {
   return {
     enforcementPoint: "dest-guest-in",
-    rulesetRef: "",
     origin: "guest",
     direction: "in",
     action: "DROP",
@@ -27,8 +26,8 @@ describe("blockingRuleGuestRef", () => {
     expect(blockingRuleGuestRef(rule({ enforcementPoint: "source-guest-out" }), src, dst)).toBe("guest:pve1:100");
   });
 
-  it("ignores rulesetRef entirely, even when the engine did populate it (cluster/group origin)", () => {
-    const r = rule({ enforcementPoint: "dest-guest-in", origin: "cluster", rulesetRef: "fw-ruleset::cluster" });
+  it("always derives from the resolved endpoint, never from the rule's own scope (cluster/group origin)", () => {
+    const r = rule({ enforcementPoint: "dest-guest-in", origin: "cluster" });
     expect(blockingRuleGuestRef(r, src, dst)).toBe("guest:pve2:101");
   });
 

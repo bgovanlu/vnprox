@@ -45,6 +45,8 @@ vi.mock("../api/firewall", () => ({
   fetchGuestRuleset: vi.fn((ref: string) => (ref === "guest:pve1:102" ? Promise.resolve(guestDetail) : Promise.reject(new Error("unexpected ref")))),
   fetchGuestRulesets: vi.fn(() => Promise.resolve(guestRulesetsResponse)),
   fetchFirewallObjects: vi.fn(() => Promise.resolve({ aliases: [], ipsets: [], groups: [], macros: [] })),
+  fetchFirewallEffects: vi.fn(() => Promise.resolve({ group: "", guests: [] })),
+  fetchGroupRuleset: vi.fn(() => Promise.reject(new Error("not used in this test"))),
 }));
 
 // FirewallPage now renders T-502's editable ScopeToggle/RuleEditor (which
@@ -86,5 +88,26 @@ describe("FirewallPage deep link (T-504 AC1)", () => {
   it("defaults to the Datacenter tab when no deep-link params are present", () => {
     renderAt("/firewall");
     expect(screen.getByRole("button", { name: "Datacenter" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("FirewallPage deep link graceful degrade (T-2002 AC1)", () => {
+  it("shows a message, not an empty highlight, when the linked rule no longer exists", async () => {
+    // guest:pve1:102 exists, but pos 9/origin guest names no rule in its
+    // resolved view (guestDetail only has pos 0 (cluster) and pos 1
+    // (guest)) — simulates a rule that was deleted or reordered after the
+    // link was created/shared.
+    renderAt("/firewall?scope=guest&ref=guest%3Apve1%3A102&pos=9&origin=guest");
+
+    await screen.findByText("override"); // the guest's ruleset rendered normally
+    await screen.findByText(/linked rule no longer exists/i);
+    // Never an empty highlight: nothing in the resolved view is marked
+    // focused when the target wasn't found.
+    expect(document.querySelectorAll('[data-focused="true"]').length).toBe(0);
+  });
+
+  it("shows a message when the linked guest itself no longer exists", async () => {
+    renderAt("/firewall?scope=guest&ref=guest%3Apve1%3A999&pos=0&origin=guest");
+    await screen.findByText("Linked guest not found");
   });
 });
