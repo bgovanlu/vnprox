@@ -547,3 +547,48 @@ two this bugfix added).
   excluded from `rollbackAfterFailure`'s node iteration for reasons that may be independent of
   credential availability. The card requires either equal treatment or a concrete argument for
   why not — it does not assume the answer.
+
+---
+
+## T-1806-bug-02 · Packaging matrix `cluster-ssh` fails on the GitHub runner but passes everywhere else
+
+**Severity:** High — a second CI signal has gone red and is *not* explained. `T-1806-bug-01` exists
+because this project spent 30 consecutive runs ignoring a red signal; leaving this one unexplained
+restarts that habit. The packaging matrix is what proves the `.deb` actually installs, so it must
+be trustworthy before any release is cut.
+
+**Symptom** (job `cluster-ssh`, the 3-container SSH cluster simulation):
+
+```
+packaging/test/cluster-ssh.sh: line 197: echo: write error: Broken pipe
+cluster-ssh.sh: error: cluster detection did not find all three nodes
+```
+
+**What is established:**
+- **Deterministic on the runner, not flaky.** Re-running the failed job on identical code failed
+  identically.
+- **Passes locally.** `bash packaging/test/cluster-ssh.sh` against a `.deb` built from the same
+  commit prints `ALL CHECKS PASSED`, with all three nodes detected and matching ports.
+- **The sibling jobs pass.** `matrix (debian:12)` and `matrix (debian:13)` are green in the same run.
+- **No packaging code changed.** `packaging/install.sh`, `packaging/bin/`, and
+  `packaging/test/cluster-ssh.sh` are untouched since the last green packaging run (`9047685`).
+- **It began** with the push containing T-1901, T-1903, T-2002 — none of which touch packaging.
+- Package size grew 10.7 MB → 11.0 MB (~3%) across the batch, which is a weak candidate for a
+  timing cliff but is the only material difference found.
+
+**A theory that was tested and does NOT hold.** `cluster-ssh.sh` runs under `set -euo pipefail`
+and line 197 is `echo "$OUT" | grep -q "..." || die`. The obvious story is a SIGPIPE race — `grep
+-q` exits on first match, `echo` is still writing, dies 141, and `pipefail` reports the pipeline
+failed *because the match succeeded*. **This was reproduced against and could not be confirmed:** a
+minimal harness at 100 KB, 1 MB and 5 MB all returned `pipeline_rc=0`. Do not assume this
+explanation without new evidence; a speculative rewrite to here-strings was prepared and then
+deliberately reverted rather than committed as an unverified fix.
+
+**Suggested next steps:** reproduce under runner-like conditions (constrained CPU, the runner's
+podman version) rather than on a developer workstation; instrument line 194-197 to dump `$OUT`
+verbatim and its length on failure, so the next occurrence shows whether the expected
+`cluster nodes detected:` line is actually absent from `$OUT` or merely not matched; and check
+whether `install.sh` step 1 is being truncated rather than the grep misbehaving. If it does turn
+out to be the `pipefail`/`grep -q` interaction, the fix is a here-string (`grep -q PATTERN
+<<<"$OUT"`), which removes the pipe entirely — there are 7 instances of the pattern across
+`cluster-ssh.sh` and `port-conflict.sh`.
