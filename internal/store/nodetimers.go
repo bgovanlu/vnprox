@@ -45,7 +45,7 @@ func NewNodeTimerRepo(db *DB) *NodeTimerRepo { return &NodeTimerRepo{db: db} }
 // state — re-arming (the same coordinator retrying, or a fresh arm after an
 // earlier one on the same key resolved) simply replaces the prior record.
 func (r *NodeTimerRepo) Arm(ctx context.Context, t NodeTimer) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO node_timers (changeset_id, node, pre_content, deadline, status, armed_at, resolved_at, error)
 		VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
 		ON CONFLICT (changeset_id, node) DO UPDATE SET
@@ -72,7 +72,7 @@ func (r *NodeTimerRepo) Resolve(ctx context.Context, changesetID, node, status s
 	if errDetail != "" {
 		errArg = sql.NullString{String: errDetail, Valid: true}
 	}
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		UPDATE node_timers SET status = ?, resolved_at = ?, error = ?
 		WHERE changeset_id = ? AND node = ?`,
 		status, resolvedAt, errArg, changesetID, node,
@@ -86,7 +86,7 @@ func (r *NodeTimerRepo) Resolve(ctx context.Context, changesetID, node, status s
 // Get returns the timer row for (changesetID, node), or ErrNotFound if this
 // node was never asked to arm one.
 func (r *NodeTimerRepo) Get(ctx context.Context, changesetID, node string) (NodeTimer, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT changeset_id, node, pre_content, deadline, status, armed_at, resolved_at, error
 		FROM node_timers WHERE changeset_id = ? AND node = ?`, changesetID, node,
 	)
@@ -102,7 +102,7 @@ func (r *NodeTimerRepo) Get(ctx context.Context, changesetID, node string) (Node
 // mirroring change.Service.ArmPendingRollbacks) and by coordinator-side
 // reconciliation scans.
 func (r *NodeTimerRepo) ListByStatus(ctx context.Context, status string) ([]NodeTimer, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT changeset_id, node, pre_content, deadline, status, armed_at, resolved_at, error
 		FROM node_timers WHERE status = ? ORDER BY armed_at ASC`, status,
 	)

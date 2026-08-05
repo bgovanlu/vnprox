@@ -54,7 +54,7 @@ func (r *AuditRepo) SetOnAppend(fn func(AuditEntry)) { r.onAppend = fn }
 
 // Append inserts a new audit entry and returns its assigned id.
 func (r *AuditRepo) Append(ctx context.Context, e AuditEntry) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		INSERT INTO audit_log (at, username, action, target, changeset_id, result, detail_json, cluster_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.At, e.Username, e.Action, e.Target, e.ChangesetID, e.Result, e.DetailJSON, e.ClusterID,
@@ -75,7 +75,7 @@ func (r *AuditRepo) Append(ctx context.Context, e AuditEntry) (int64, error) {
 
 // Get returns the audit entry with the given id, or ErrNotFound.
 func (r *AuditRepo) Get(ctx context.Context, id int64) (AuditEntry, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id
 		FROM audit_log WHERE id = ?`, id,
 	)
@@ -102,7 +102,7 @@ func (r *AuditRepo) List(ctx context.Context, changesetID string, limit int) ([]
 		args = append(args, limit)
 	}
 
-	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing audit entries: %w", err)
 	}
@@ -194,7 +194,7 @@ func (r *AuditRepo) ListPage(ctx context.Context, filter AuditFilter, cursor str
 	query += ` ORDER BY at DESC, id DESC LIMIT ?`
 	args = append(args, limit+1)
 
-	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("store: listing audit page: %w", err)
 	}
@@ -266,7 +266,7 @@ func (r *AuditRepo) ListActionsInRange(ctx context.Context, actions []string, fr
 	}
 	query += ` ORDER BY at ASC, id ASC`
 
-	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing audit entries by action in range: %w", err)
 	}
@@ -297,7 +297,7 @@ func (r *AuditRepo) ListActionsInRange(ctx context.Context, actions []string, fr
 // this daemon's OWN mutations — a standby must not re-emit the active's events
 // as if it had just performed them).
 func (r *AuditRepo) UpsertReplicated(ctx context.Context, e AuditEntry) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO audit_log (id, at, username, action, target, changeset_id, result, detail_json, cluster_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO NOTHING`,
@@ -315,7 +315,7 @@ func (r *AuditRepo) UpsertReplicated(ctx context.Context, e AuditEntry) error {
 // whole log every pass.
 func (r *AuditRepo) MaxAuditID(ctx context.Context) (int64, error) {
 	var max sql.NullInt64
-	err := r.db.sqlDB.QueryRowContext(ctx, `SELECT MAX(id) FROM audit_log`).Scan(&max)
+	err := r.db.QueryRowContext(ctx, `SELECT MAX(id) FROM audit_log`).Scan(&max)
 	if err != nil {
 		return 0, fmt.Errorf("store: reading max audit id: %w", err)
 	}
@@ -333,7 +333,7 @@ func (r *AuditRepo) ListSince(ctx context.Context, sinceID int64, limit int) ([]
 	if limit <= 0 {
 		limit = 500
 	}
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id
 		FROM audit_log WHERE id > ? ORDER BY id ASC LIMIT ?`, sinceID, limit,
 	)

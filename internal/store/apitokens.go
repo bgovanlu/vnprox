@@ -35,7 +35,7 @@ func NewAPITokenRepo(db *DB) *APITokenRepo { return &APITokenRepo{db: db} }
 
 // Create inserts a new token row.
 func (r *APITokenRepo) Create(ctx context.Context, t APIToken) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO api_tokens (id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.Name, t.TokenHash, t.ScopesJSON, t.CreatedBy, t.CreatedAt, t.LastUsedAt, t.RevokedAt,
@@ -48,7 +48,7 @@ func (r *APITokenRepo) Create(ctx context.Context, t APIToken) error {
 
 // Get returns the token with the given id, or ErrNotFound.
 func (r *APITokenRepo) Get(ctx context.Context, id string) (APIToken, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at
 		FROM api_tokens WHERE id = ?`, id,
 	)
@@ -62,7 +62,7 @@ func (r *APITokenRepo) Get(ctx context.Context, id string) (APIToken, error) {
 // GetByHash returns the token whose token_hash matches hash, or
 // ErrNotFound — the bearer-auth middleware's lookup path.
 func (r *APITokenRepo) GetByHash(ctx context.Context, hash string) (APIToken, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at
 		FROM api_tokens WHERE token_hash = ?`, hash,
 	)
@@ -76,7 +76,7 @@ func (r *APITokenRepo) GetByHash(ctx context.Context, hash string) (APIToken, er
 // List returns every token (including revoked ones — GET /tokens shows
 // revocation status rather than hiding history), newest-first.
 func (r *APITokenRepo) List(ctx context.Context) ([]APIToken, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at
 		FROM api_tokens ORDER BY created_at DESC`,
 	)
@@ -102,7 +102,7 @@ func (r *APITokenRepo) List(ctx context.Context) ([]APIToken, error) {
 // Revoke sets revoked_at for id, if not already revoked. Returns
 // ErrNotFound if no such token exists.
 func (r *APITokenRepo) Revoke(ctx context.Context, id string, now int64) error {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE api_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`, now, id)
 	if err != nil {
 		return fmt.Errorf("store: revoking api token %s: %w", id, err)
@@ -126,7 +126,7 @@ func (r *APITokenRepo) Revoke(ctx context.Context, id string, now int64) error {
 // perspective (internal/auth's bearer middleware logs, never fails the
 // request, if this errors) — see that package's doc comment.
 func (r *APITokenRepo) UpdateLastUsed(ctx context.Context, id string, now int64) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `UPDATE api_tokens SET last_used_at = ? WHERE id = ?`, now, id)
+	_, err := r.db.ExecContext(ctx, `UPDATE api_tokens SET last_used_at = ? WHERE id = ?`, now, id)
 	if err != nil {
 		return fmt.Errorf("store: updating api token %s last_used_at: %w", id, err)
 	}
@@ -140,7 +140,7 @@ func (r *APITokenRepo) UpdateLastUsed(ctx context.Context, id string, now int64)
 // a hash, never a plaintext secret, so no cipher is involved in replicating
 // them.
 func (r *APITokenRepo) Upsert(ctx context.Context, t APIToken) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO api_tokens (id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET

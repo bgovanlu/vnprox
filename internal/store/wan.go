@@ -30,7 +30,7 @@ func NewWanTargetRepo(db *DB) *WanTargetRepo { return &WanTargetRepo{db: db} }
 // ListByNode returns every configured target for node, ordered by uplink
 // then host for deterministic responses.
 func (r *WanTargetRepo) ListByNode(ctx context.Context, node string) ([]WanTarget, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, node, uplink, host, created_at FROM wan_targets
 		WHERE node = ? ORDER BY uplink ASC, host ASC`, node)
 	if err != nil {
@@ -47,7 +47,7 @@ func (r *WanTargetRepo) ListByNode(ctx context.Context, node string) ([]WanTarge
 // per uplink) and PUT /wan/targets is always a full-set replace, never a
 // partial patch.
 func (r *WanTargetRepo) ReplaceForNode(ctx context.Context, node string, targets []WanTarget, now int64) error {
-	tx, err := r.db.sqlDB.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: beginning wan targets replace: %w", err)
 	}
@@ -149,7 +149,7 @@ func (r *WanProbeSampleRepo) InsertBatch(ctx context.Context, samples []LatencyS
 	if len(samples) == 0 {
 		return nil
 	}
-	tx, err := r.db.sqlDB.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: beginning wan probe sample batch insert: %w", err)
 	}
@@ -177,7 +177,7 @@ func (r *WanProbeSampleRepo) InsertBatch(ctx context.Context, samples []LatencyS
 
 // QueryRange implements internal/latmesh.Ring.
 func (r *WanProbeSampleRepo) QueryRange(ctx context.Context, linkID string, fromTs, toTs int64) ([]LatencySample, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, link_id, from_node, to_node, at, rtt_ms, loss_pct
 		FROM wan_probe_samples WHERE link_id = ? AND at BETWEEN ? AND ?
 		ORDER BY at ASC`, linkID, fromTs, toTs)
@@ -190,7 +190,7 @@ func (r *WanProbeSampleRepo) QueryRange(ctx context.Context, linkID string, from
 
 // LatestPerLink implements internal/latmesh.Ring.
 func (r *WanProbeSampleRepo) LatestPerLink(ctx context.Context) ([]LatencySample, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT s.id, s.link_id, s.from_node, s.to_node, s.at, s.rtt_ms, s.loss_pct
 		FROM wan_probe_samples s
 		INNER JOIN (
@@ -210,7 +210,7 @@ func (r *WanProbeSampleRepo) LatestPerLink(ctx context.Context) ([]LatencySample
 
 // PruneOlderThan implements internal/latmesh.Ring.
 func (r *WanProbeSampleRepo) PruneOlderThan(ctx context.Context, cutoff int64) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM wan_probe_samples WHERE at < ?`, cutoff)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM wan_probe_samples WHERE at < ?`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("store: pruning wan probe samples older than %d: %w", cutoff, err)
 	}
@@ -222,7 +222,7 @@ func (r *WanProbeSampleRepo) PruneToCap(ctx context.Context, maxRows int64) (int
 	if maxRows <= 0 {
 		return 0, nil
 	}
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		DELETE FROM wan_probe_samples WHERE id IN (
 			SELECT id FROM wan_probe_samples ORDER BY at DESC, id DESC LIMIT -1 OFFSET ?
 		)`, maxRows)
@@ -236,7 +236,7 @@ func (r *WanProbeSampleRepo) PruneToCap(ctx context.Context, maxRows int64) (int
 // LatencySampleRepo.Count).
 func (r *WanProbeSampleRepo) Count(ctx context.Context) (int64, error) {
 	var n int64
-	if err := r.db.sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM wan_probe_samples`).Scan(&n); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM wan_probe_samples`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("store: counting wan probe samples: %w", err)
 	}
 	return n, nil
@@ -254,7 +254,7 @@ func (r *WanProbeSampleRepo) QueryAll(ctx context.Context, limit int64) ([]WanPr
 	if limit <= 0 {
 		limit = 10_000
 	}
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, link_id, from_node, uplink, to_node, at, rtt_ms, loss_pct
 		FROM wan_probe_samples ORDER BY at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {

@@ -90,3 +90,77 @@ Its probe loop is literally `internal/latmesh.Service` reused (§7's own precede
 
 **WireGuard hook (declared, not wired)**: `Service.ProbeWireGuardLink(ctx, tunnelRef)` is a capability-gated seam that always returns `mtuprobe.ErrWireGuardNotAvailable` today (`mtuprobe.WireGuardCapability` defaults false — there is no WireGuard tunnel entity kind in `internal/inventory` yet). Phase 14's T-1401 is the task expected to introduce that capability flag and wire a real implementation into this exact method; see `planning/reports/T-1306.md`.
 **`service_traffic_on_wrong_network` (T-1504).** Source `flow` — its own top-level source, not `health` (fed by `internal/flow.Classifier`-classified flow-sample metadata rather than the inventory graph or a polled host/PVE seam). Severity `warning`, standard hysteresis (2 cycles each way, the same window `corosync_link_degraded` uses). One finding per `(serviceClass, vlan)` pair with at least one currently-observed flow record whose own VLAN falls outside its matching `NetworkSource`'s declared VLAN set — e.g. Ceph-classified traffic observed riding the guest VLAN instead of Ceph's own declared public/cluster network ("storage traffic is eating the guest VLAN"). Detection-only (`docsLink` always set, never `fixable` — moving traffic onto the right network is an administrative/config decision, not a computable patch; no `flow.*` changeset op exists or ever will). Silent whenever a classified record's VLAN matches its declared network, or the matching `NetworkSource` declares no VLANs to compare against at all (nothing to judge — see §3's `serviceClass` note above for exactly which sources are wired with a declared VLAN set in production today). See docs/api.md's `GET /findings` section for the full shape/id scheme.
+
+## 9. Daemon self-observability (T-1903)
+
+§4's exporter reports the *cluster* vnprox observes; this section is the daemon observing *itself* — the same `GET /metrics` response, a second family of series alongside §4's. Scope discipline still applies: this is RED-shaped operational telemetry for an operator's own Prometheus/Grafana, not a second findings/audit surface — a change-engine outcome is a counter here and a full record in `GET /audit` there, and the two are not meant to answer the same question.
+
+**Cardinality discipline (the hazard this section exists to prevent).** A metric label populated from a raw request path, a changeset ULID, or a guest name turns one series into an unbounded number of series — the single most common way to melt a self-hosted Prometheus. Every series below is labeled only from a small, compile-time-fixed vocabulary; each entry states its bound explicitly. Two backstops enforce this even if a future change gets it wrong: `internal/api/redmetrics.go`'s HTTP middleware sources its `route` label exclusively from chi's own matched route *pattern* (`chi.RouteContext(r.Context()).RoutePattern()`) — which is built by joining each matched sub-router's literal pattern string, never a URL parameter's resolved value, so there is no code path that could leak a raw ID even by mistake (a request no route matches collapses to the single label `"unmatched"`, not the raw path) — and, belt-and-suspenders, every series in `internal/metrics/self.go`'s registry caps its own distinct label-combination count (4,000) and folds anything beyond that into one `cardinality_overflow` bucket, logging once at `WARN` rather than growing unboundedly. `internal/api/redmetrics_test.go`'s `TestHTTPRED_RouteLabelNeverLeaksRawID` drives a real request through the real router with a concrete changeset ULID in the URL and asserts that ID string appears nowhere in the scrape body — the regression test a future author who reintroduces `r.URL.Path` here would trip.
+
+**Push vs. pull.** Most series below are *push*-model: `internal/metrics.Registry` (a small hand-rolled counter/histogram implementation — see its own doc comment for why this doesn't pull in a Prometheus client library dependency) is updated in-process as HTTP requests/collector polls/change-engine operations/store queries/peer RPCs happen, and rendered verbatim at scrape time. A handful are *pull*-model: collector consecutive-failure counts, store size/schema version, and the live WebSocket connection count are read fresh from their existing source of truth at scrape time rather than shadow-tracked — collector consecutive-failures in particular deliberately **mirrors** `GET /health`'s existing `collect.Collector.Status()` bookkeeping rather than inventing a second notion of collector staleness (this task's card, verbatim).
+
+### HTTP RED
+
+| Name | Type | Labels | Cardinality bound |
+|---|---|---|---|
+| `vnprox_http_requests_total` | counter | `route`, `method`, `status_class` | `route`: the chi-matched route *pattern* (e.g. `/api/v1/changesets/{id}`) or the literal `unmatched` — bounded by this daemon's own registered route table (a few hundred, fixed at build time) plus one. `method`: the HTTP methods this codebase's routes actually use (≤6: GET/POST/PUT/PATCH/DELETE). `status_class`: `1xx`\|`2xx`\|`3xx`\|`4xx`\|`5xx`\|`other` (6, never a raw status code). |
+| `vnprox_http_request_duration_seconds` | histogram (11 buckets, 5ms–10s) | `route`, `method` | Same bound as above. |
+
+Recorded by `internal/api/redmetrics.go`'s `redMetricsMiddleware`, mounted first in `NewRouter`'s middleware stack so it wraps every request this daemon serves, including `GET /metrics` itself and the embedded-SPA fallback.
+
+### Collector
+
+| Name | Type | Labels | Cardinality bound |
+|---|---|---|---|
+| `vnprox_collector_polls_total` | counter | `source`, `node`, `outcome` | `source`: `pve`\|`host`\|`lldp` (3, `collect.Collector`'s own closed source-name vocabulary). `node`: `""` for the cluster-wide `pve` source, else the polled node's name — bounded by cluster size (a real PVE cluster's node count, typically well under 50). `outcome`: `success`\|`failure` (2). |
+| `vnprox_collector_poll_duration_seconds` | histogram (11 buckets, 10ms–30s) | `source`, `node` | Same bound as above (minus the `outcome` factor). |
+| `vnprox_collector_consecutive_failures` | gauge (pull) | `source`, `node` | Same bound as above. Pulled from `collect.Collector.Status()` — the exact bookkeeping `GET /health`'s `collectors` field already exposes, not a second tracker. |
+
+`vnprox_collector_polls_total`/`_poll_duration_seconds` are new signal `Status()` never carried (cumulative counts and durations, as opposed to only "last attempt"/"last success" timestamps and a live failure streak) — added via `collect.Config.OnPoll`, a nil-safe optional hook mirroring `OnStats`/`OnServices`'s existing shape, called once per poll attempt at exactly the same call sites `recordResult`/`recordNodeResult` already instrument. It never changes what `Status()` itself tracks.
+
+### Change engine
+
+| Name | Type | Labels | Cardinality bound |
+|---|---|---|---|
+| `vnprox_change_outcomes_total` | counter | `op`, `outcome` | `op`: `apply`\|`confirm`\|`rollback`\|`unattended_revert` (4, closed). `outcome`: `success`\|`failure` (2). Fixed at 8 series, always. |
+| `vnprox_change_awaiting_confirm_seconds` | histogram (11 buckets, 1s–1h) | `outcome` | `outcome`: `committed`\|`rolled_back`\|`failed` (3, closed — the three ways a changeset leaves `awaiting_confirm`). Fixed at 3 series, always. |
+
+Recorded by `internal/change.Service` (`Config.Metrics`, nil-safe/optional). Scoping is deliberate: **only a call that passed its state-machine precondition check and attempted a real transition is recorded** — a rejection for "wrong status", "not found", "locked", or "validation blocked" is visible via the HTTP layer's own `status_class` above and the full audit trail (`GET /audit`) already, not duplicated here. Concretely: `Apply` records at its two terminal points (`finishFailedApply`/`finishAwaitingConfirm`), never at `beginApply`'s early rejections; `Confirm` records at its own transition/persist failures and its success return, never at the initial status check; `Rollback`'s `awaiting_confirm` branch and the commit-confirm-timeout timer's own unattended revert (`autoRollback`) both funnel through one shared function (`doRollbackLocked`), so its outcome/duration recording — via a single `defer`, covering every one of that function's several return points — cannot miss a case; `Rollback`'s `committed` branch (creating a restoring draft) is recorded as `op=rollback` too, since from an operator's perspective calling `POST /rollback` against a committed changeset *is* a rollback regardless of its two different implementations. `unattended_revert` is the direct answer to this task's card naming T-1805's commit-confirm-timeout path explicitly.
+
+### Store
+
+| Name | Type | Labels | Cardinality bound |
+|---|---|---|---|
+| `vnprox_store_query_duration_seconds` | histogram (11 buckets, 0.1ms–1s) | `op` | `op`: `select`\|`insert`\|`update`\|`delete`\|`tx`\|`other` (6, closed — a SQL statement's leading verb, or `tx` for a `BeginTx` call; never the query text itself, which would be ~200 distinct literal strings across this codebase's repositories). |
+| `vnprox_store_size_bytes` | gauge (pull) | *(none)* | 1 series. Main database file plus its WAL/SHM sidecars, summed. |
+| `vnprox_store_schema_version` | gauge (pull) | *(none)* | 1 series. Currently-applied schema version. |
+| `vnprox_store_schema_migration_pending` | gauge (pull) | *(none)* | 1 series. `1` if this binary's embedded migrations are newer than the store's applied version, else `0` — always `0` in steady state, since `store.Open` always migrates to latest before the daemon serves anything; a nonzero reading is itself a signal something is wrong. Also the seam T-1904's `vnproxctl doctor` schema-vs-binary check reuses rather than re-deriving. |
+
+Query duration is instrumented once, transparently, at `store.DB`'s own `ExecContext`/`QueryContext`/`QueryRowContext`/`BeginTx` methods (added by this task) rather than at each of this package's ~200 individual call sites — every repository's call sites were mechanically changed from `r.db.sqlDB.Foo(...)` to `r.db.Foo(...)`, a pure timing wrapper around the identical underlying `*sql.DB` call, so behavior is unchanged for every caller that doesn't care about the new series. `QueryRowContext`'s own error is not observable synchronously (`database/sql` defers it until `Scan`), so that path's observation always reports a nil error — its duration is still accurate, since the query itself already executed by the time `QueryRowContext` returns.
+
+### Peer RPC
+
+| Name | Type | Labels | Cardinality bound |
+|---|---|---|---|
+| `vnprox_peer_calls_total` | counter | `node`, `endpoint`, `outcome` | `node`: bounded by cluster size. `endpoint`: the request path with its query string stripped — every `peer.Client` call site builds its path from a literal template (e.g. `/api/peer/host/stats`), with any dynamic value (node name, changeset id, session id, ...) always appended as a query parameter, never spliced into the path — so this is already a small, compile-time-bounded vocabulary (~30 RPC kinds) without needing every call site to pass its own label. `outcome`: `ok`\|`unreachable`\|`untrusted` (3, `peer.PeerTrustState`'s own closed vocabulary). |
+| `vnprox_peer_call_duration_seconds` | histogram (11 buckets, 5ms–10s) | `node`, `endpoint` | Same bound as above (minus the `outcome` factor). |
+
+**T-1906 distinction, carried through.** `outcome=untrusted` is a peer whose certificate did not chain to the pinned cluster CA — a *different* failure mode from `outcome=unreachable` (nothing answered at all), exactly as `peer.PeerTrustState` already distinguishes them for the `peer_untrusted`/`peer_unreachable` findings. Both the circuit breaker's fast-fail path (no network attempt at all — a stale `untrusted` verdict from a prior attempt still reports `untrusted`, not a collapsed-back-to-`unreachable` reading) and a live transport failure are recorded, so an impersonation attempt does not disappear from this series after the breaker opens either.
+
+### WebSocket
+
+| Name | Type | Labels | Cardinality bound |
+|---|---|---|---|
+| `vnprox_ws_connections` | gauge (pull) | *(none)* | 1 series. Live `/api/ws` client count, read from `topology.Hub`'s own connection map (`Hub.ConnCount`, already existed for tests) at scrape time — no push instrumentation added. |
+
+### Testing
+
+`internal/metrics/self_test.go` covers the registry primitives directly (cumulative histogram bucket math, the cardinality-cap overflow bucket). `internal/api/redmetrics_test.go` and `internal/api/selfmetrics_reality_test.go` cover this task's AC1 (the route-pattern-not-raw-path test above) and AC2 (driving real HTTP traffic, a failing collector, and a rolled-back changeset through a real router/service and asserting the expected series move) respectively. `internal/collect`, `internal/change`, `internal/store`, and `internal/peer` each carry their own package-local tests for their one new hook/wrapper (`OnPoll`, `MetricsRecorder`, the query-duration wrapper, `do`'s outcome classification).
+
+### Dashboard
+
+`web/src/grafana/DaemonMetricsPanel.tsx` ships alongside the existing cluster `MetricsPanel.tsx` (§4, `web/grafana-panel/README.md`'s "contract not source" boundary — the packaged/signed Grafana plugin wrapper lives in an external repo; this component and the data contract live here). It renders the flat counter/gauge families as a label/value table exactly like `MetricsPanel`, and reduces each histogram family to one `count`/`avg` row per label combination (a full per-bucket view belongs in a real Grafana heatmap panel against the raw series, not this summary table) — tested against a fixture scrape in `DaemonMetricsPanel.test.tsx`, no live Grafana instance.
+
+### Scrape overhead
+
+Measured (not estimated, per this task's card) against a scrape carrying a representative full series set (every family above populated, plus a realistic cluster-derived `vnprox_iface_*`/findings/changesets body from §4): see `planning/reports/T-1903.md` for the measured `GET /metrics` handler latency and the stated budget it is well under.

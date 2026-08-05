@@ -39,7 +39,7 @@ func NewWebhookRepo(db *DB) *WebhookRepo { return &WebhookRepo{db: db} }
 
 // Create inserts a new webhook registration.
 func (r *WebhookRepo) Create(ctx context.Context, w Webhook) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO webhooks (id, url, events_json, secret_enc, created_by, created_at, consecutive_failures, last_attempt_at, last_success_at, last_error)
 		VALUES (?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL)`,
 		w.ID, w.URL, w.EventsJSON, w.SecretEnc, w.CreatedBy, w.CreatedAt,
@@ -52,7 +52,7 @@ func (r *WebhookRepo) Create(ctx context.Context, w Webhook) error {
 
 // Get returns the webhook with the given id, or ErrNotFound.
 func (r *WebhookRepo) Get(ctx context.Context, id string) (Webhook, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, url, events_json, secret_enc, created_by, created_at, consecutive_failures, last_attempt_at, last_success_at, last_error
 		FROM webhooks WHERE id = ?`, id,
 	)
@@ -65,7 +65,7 @@ func (r *WebhookRepo) Get(ctx context.Context, id string) (Webhook, error) {
 
 // List returns every registered webhook, newest-first.
 func (r *WebhookRepo) List(ctx context.Context) ([]Webhook, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, url, events_json, secret_enc, created_by, created_at, consecutive_failures, last_attempt_at, last_success_at, last_error
 		FROM webhooks ORDER BY created_at DESC`,
 	)
@@ -91,7 +91,7 @@ func (r *WebhookRepo) List(ctx context.Context) ([]Webhook, error) {
 // Delete removes a webhook registration. Not an error to delete an
 // already-absent one (matches LayoutRepo.Delete's convention).
 func (r *WebhookRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM webhooks WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM webhooks WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting webhook %s: %w", id, err)
 	}
 	return nil
@@ -102,7 +102,7 @@ func (r *WebhookRepo) Delete(ctx context.Context, id string) error {
 // received a 2xx response. Returns ErrNotFound if id doesn't exist (e.g. it
 // was deleted mid-delivery).
 func (r *WebhookRepo) RecordSuccess(ctx context.Context, id string, now int64) error {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE webhooks SET consecutive_failures = 0, last_attempt_at = ?, last_success_at = ?, last_error = NULL WHERE id = ?`,
 		now, now, id,
 	)
@@ -118,7 +118,7 @@ func (r *WebhookRepo) RecordSuccess(ctx context.Context, id string, now int64) e
 // caller (internal/automation's dispatcher) can log/trace it without a
 // second round trip; ok is false if id doesn't exist.
 func (r *WebhookRepo) RecordFailure(ctx context.Context, id string, now int64, errMsg string) (count int, err error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE webhooks SET consecutive_failures = consecutive_failures + 1, last_attempt_at = ?, last_error = ? WHERE id = ?`,
 		now, errMsg, id,
 	)

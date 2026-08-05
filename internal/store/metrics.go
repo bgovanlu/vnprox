@@ -37,7 +37,7 @@ func NewMetricSampleRepo(db *DB) *MetricSampleRepo { return &MetricSampleRepo{db
 // duplicate replaces the existing row rather than erroring, since collectors
 // may occasionally re-sample the same tick after a retry.
 func (r *MetricSampleRepo) Insert(ctx context.Context, s MetricSample) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO metric_samples (ref, at, rx_bytes, tx_bytes, rx_pkts, tx_pkts, rx_errs, tx_errs, rx_drop, tx_drop)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (ref, at) DO UPDATE SET
@@ -55,7 +55,7 @@ func (r *MetricSampleRepo) Insert(ctx context.Context, s MetricSample) error {
 
 // Get returns the sample for (ref, at), or ErrNotFound.
 func (r *MetricSampleRepo) Get(ctx context.Context, ref string, at int64) (MetricSample, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT ref, at, rx_bytes, tx_bytes, rx_pkts, tx_pkts, rx_errs, tx_errs, rx_drop, tx_drop
 		FROM metric_samples WHERE ref = ? AND at = ?`, ref, at,
 	)
@@ -69,7 +69,7 @@ func (r *MetricSampleRepo) Get(ctx context.Context, ref string, at int64) (Metri
 // List returns samples for ref within [since, until] (inclusive), ordered by
 // at ascending.
 func (r *MetricSampleRepo) List(ctx context.Context, ref string, since, until int64) ([]MetricSample, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT ref, at, rx_bytes, tx_bytes, rx_pkts, tx_pkts, rx_errs, tx_errs, rx_drop, tx_drop
 		FROM metric_samples WHERE ref = ? AND at BETWEEN ? AND ? ORDER BY at ASC`,
 		ref, since, until,
@@ -98,7 +98,7 @@ func (r *MetricSampleRepo) List(ctx context.Context, ref string, since, until in
 // PruneRetention wraps this with the documented 24h retention window and
 // wall-clock time.
 func (r *MetricSampleRepo) Prune(ctx context.Context, cutoff int64) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM metric_samples WHERE at < ?`, cutoff)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM metric_samples WHERE at < ?`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("store: pruning metric samples older than %d: %w", cutoff, err)
 	}

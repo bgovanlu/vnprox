@@ -44,6 +44,11 @@ type TopologyService interface {
 	// request tick (see internal/topology.Hub.CloseByTokenID's doc
 	// comment).
 	CloseByTokenID(id string) int
+	// ConnCount reports the current live WS client count (T-1903's
+	// GET /metrics vnprox_ws_connections gauge, metrics_exporter.go's
+	// WSConnCounter) — topology.Service.ConnCount already existed for
+	// tests; this just exposes it through the interface too.
+	ConnCount() int
 }
 
 // mountTopologyRoutes registers docs/api.md's topology/inventory routes and

@@ -42,22 +42,29 @@ func (c *Collector) RefreshNow(ctx context.Context, scope inventory.Scope) (inve
 
 	var errs []error
 
+	pveStart := time.Now()
 	pveErr := c.refreshPVE(ctx, scope)
 	c.recordResult("pve", now, pveErr)
+	c.reportPoll("pve", "", time.Since(pveStart), pveErr)
 	if pveErr != nil {
 		errs = append(errs, pveErr)
 	}
 
 	local := c.getLocalNode()
 	if local != "" && (scope.Node == "" || scope.Node == local) {
+		// hostErr/lldpErr's own OnPoll reporting happens inside
+		// hostPollOnce/lldpPollOnce's per-node call sites (host.go), same as
+		// the regular RunHostLoop/RunLLDPLoop path — not duplicated here.
 		hostErr := c.hostPollOnce(ctx)
 		c.recordResult("host", now, hostErr)
 		if hostErr != nil {
 			errs = append(errs, hostErr)
 		}
 
+		lldpStart := time.Now()
 		lldpErr := c.lldpPollOnce(ctx)
 		c.recordResult("lldp", now, lldpErr)
+		c.reportPoll("lldp", local, time.Since(lldpStart), lldpErr)
 		if lldpErr != nil {
 			errs = append(errs, lldpErr)
 		}

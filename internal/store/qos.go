@@ -57,7 +57,7 @@ func nullToIntPtr(n sql.NullInt64) *int {
 // Insert creates a new qos_shapes row (ID is caller-assigned, typically the
 // changeset op's own target id).
 func (r *QosShapeRepo) Insert(ctx context.Context, s QosShape) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO qos_shapes
 			(id, node, bridge, match_cidr, match_vlan, rate_mbit, ceil_mbit, priority, created_by, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -72,7 +72,7 @@ func (r *QosShapeRepo) Insert(ctx context.Context, s QosShape) error {
 
 // Get returns one shape by id, or ErrNotFound.
 func (r *QosShapeRepo) Get(ctx context.Context, id string) (QosShape, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, node, bridge, match_cidr, match_vlan, rate_mbit, ceil_mbit, priority, created_by, created_at, updated_at
 		FROM qos_shapes WHERE id = ?`, id)
 	s, err := scanQosShape(row)
@@ -93,7 +93,7 @@ func (r *QosShapeRepo) List(ctx context.Context, node string) ([]QosShape, error
 		args = append(args, node)
 	}
 	q += ` ORDER BY node ASC, bridge ASC, id ASC`
-	rows, err := r.db.sqlDB.QueryContext(ctx, q, args...)
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing qos shapes: %w", err)
 	}
@@ -116,7 +116,7 @@ func (r *QosShapeRepo) List(ctx context.Context, node string) ([]QosShape, error
 // those are the row's identity). Returns ErrNotFound if the shape doesn't
 // exist.
 func (r *QosShapeRepo) Update(ctx context.Context, s QosShape) error {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE qos_shapes SET
 			bridge = ?, match_cidr = ?, match_vlan = ?, rate_mbit = ?, ceil_mbit = ?, priority = ?, updated_at = ?
 		WHERE id = ?`,
@@ -132,7 +132,7 @@ func (r *QosShapeRepo) Update(ctx context.Context, s QosShape) error {
 // one — rollback of a create must converge even if a prior step already
 // removed it.
 func (r *QosShapeRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM qos_shapes WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM qos_shapes WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting qos shape %s: %w", id, err)
 	}
 	return nil

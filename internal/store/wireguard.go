@@ -82,7 +82,7 @@ func (r *WireGuardRepo) InsertTunnel(ctx context.Context, t WireGuardTunnel) err
 	if err != nil {
 		return err
 	}
-	_, err = r.db.sqlDB.ExecContext(ctx, `
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO wireguard_tunnels
 			(id, node, if_name, private_key_enc, public_key, listen_port, addresses_json, mtu, carrier, created_by, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -96,7 +96,7 @@ func (r *WireGuardRepo) InsertTunnel(ctx context.Context, t WireGuardTunnel) err
 
 // GetTunnel returns one tunnel by id, or ErrNotFound.
 func (r *WireGuardRepo) GetTunnel(ctx context.Context, id string) (WireGuardTunnel, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, node, if_name, private_key_enc, public_key, listen_port, addresses_json, mtu, carrier, created_by, created_at
 		FROM wireguard_tunnels WHERE id = ?`, id)
 	t, err := scanTunnel(row)
@@ -117,7 +117,7 @@ func (r *WireGuardRepo) ListTunnels(ctx context.Context, node string) ([]WireGua
 		args = append(args, node)
 	}
 	q += ` ORDER BY node ASC, if_name ASC`
-	rows, err := r.db.sqlDB.QueryContext(ctx, q, args...)
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing wireguard tunnels: %w", err)
 	}
@@ -140,7 +140,7 @@ func (r *WireGuardRepo) ListTunnels(ctx context.Context, node string) ([]WireGua
 // error to delete an already-absent one — rollback of a create must converge
 // even if a prior step already removed it.
 func (r *WireGuardRepo) DeleteTunnel(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM wireguard_tunnels WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM wireguard_tunnels WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting wireguard tunnel %s: %w", id, err)
 	}
 	return nil
@@ -154,7 +154,7 @@ func (r *WireGuardRepo) UpdateTunnel(ctx context.Context, t WireGuardTunnel) err
 	if err != nil {
 		return err
 	}
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE wireguard_tunnels SET
 			listen_port = ?, addresses_json = ?, mtu = ?, carrier = ?
 		WHERE id = ?`,
@@ -172,7 +172,7 @@ func (r *WireGuardRepo) AddPeer(ctx context.Context, p WireGuardPeer) error {
 	if err != nil {
 		return err
 	}
-	_, err = r.db.sqlDB.ExecContext(ctx, `
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO wireguard_peers
 			(tunnel_id, public_key, endpoint, allowed_ips_json, preshared_key_enc, keepalive_sec, external, cluster_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -191,7 +191,7 @@ func (r *WireGuardRepo) AddPeer(ctx context.Context, p WireGuardPeer) error {
 // RemovePeer deletes one peer by (tunnel_id, public_key). Not an error if
 // absent (rollback convergence).
 func (r *WireGuardRepo) RemovePeer(ctx context.Context, tunnelID, publicKey string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM wireguard_peers WHERE tunnel_id = ? AND public_key = ?`, tunnelID, publicKey); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM wireguard_peers WHERE tunnel_id = ? AND public_key = ?`, tunnelID, publicKey); err != nil {
 		return fmt.Errorf("store: removing wireguard peer %s from tunnel %s: %w", publicKey, tunnelID, err)
 	}
 	return nil
@@ -199,7 +199,7 @@ func (r *WireGuardRepo) RemovePeer(ctx context.Context, tunnelID, publicKey stri
 
 // ListPeers returns every peer of a tunnel, ordered by public_key.
 func (r *WireGuardRepo) ListPeers(ctx context.Context, tunnelID string) ([]WireGuardPeer, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT tunnel_id, public_key, endpoint, allowed_ips_json, preshared_key_enc, keepalive_sec, external, cluster_id
 		FROM wireguard_peers WHERE tunnel_id = ? ORDER BY public_key ASC`, tunnelID)
 	if err != nil {
@@ -246,7 +246,7 @@ func (r *WireGuardRepo) TunnelIDForCluster(ctx context.Context, clusterID string
 		return "", nil
 	}
 	var tunnelID string
-	err := r.db.sqlDB.QueryRowContext(ctx, `
+	err := r.db.QueryRowContext(ctx, `
 		SELECT tunnel_id FROM wireguard_peers
 		WHERE cluster_id = ? ORDER BY tunnel_id ASC LIMIT 1`, clusterID).Scan(&tunnelID)
 	if errors.Is(err, sql.ErrNoRows) {

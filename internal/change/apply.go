@@ -13,6 +13,42 @@ import (
 	"github.com/bgovanlu/vnprox/internal/peer"
 )
 
+// Change-engine op labels for MetricsRecorder.ObserveChangeOutcome
+// (docs/features/monitoring.md §9's closed vocabulary for
+// vnprox_change_outcomes_total's "op" label) — must match
+// internal/metrics.ChangeOp* exactly; duplicated here (rather than
+// importing internal/metrics's constants) so this package's dependency on
+// that one stays the MetricsRecorder interface seam above, not a second
+// concrete import. change_test.go's TestChangeOpLabelsMatchMetricsPackage
+// pins the two in sync.
+const (
+	ChangeOpApply            = "apply"
+	ChangeOpConfirm          = "confirm"
+	ChangeOpRollback         = "rollback"
+	ChangeOpUnattendedRevert = "unattended_revert"
+)
+
+// recordChangeOutcome is a nil-safe wrapper around s.metrics.ObserveChangeOutcome.
+func (s *Service) recordChangeOutcome(op string, success bool) {
+	if s.metrics != nil {
+		s.metrics.ObserveChangeOutcome(op, success)
+	}
+}
+
+// recordAwaitingConfirmDuration is a nil-safe wrapper around
+// s.metrics.ObserveAwaitingConfirmDuration, computing the duration from
+// enteredAtUnix (the changeset's awaiting_confirm-entry UpdatedAt) to now.
+func (s *Service) recordAwaitingConfirmDuration(outcome string, enteredAtUnix int64) {
+	if s.metrics == nil {
+		return
+	}
+	dur := time.Duration(s.now().Unix()-enteredAtUnix) * time.Second
+	if dur < 0 {
+		dur = 0
+	}
+	s.metrics.ObserveAwaitingConfirmDuration(outcome, dur)
+}
+
 // ErrValidationBlocked is returned by Apply when the pre-apply revalidation
 // (docs/features/change-management.md §2: validation "runs ... again
 // immediately before apply") finds a blocking error — apply refuses and no
@@ -210,6 +246,7 @@ func (s *Service) finishFailedApply(ctx context.Context, cs Changeset, plan Plan
 	s.lockHeldBy = ""
 	s.applyMu.Unlock()
 
+	s.recordChangeOutcome(ChangeOpApply, false)
 	s.broadcastStatus(cs)
 	detail := map[string]any{"error": cause.Error()}
 	if log.FailedStep != nil {
@@ -254,6 +291,7 @@ func (s *Service) finishAwaitingConfirm(ctx context.Context, cs Changeset, plan 
 	r := revert
 	cs.UnattendedRevert = &r
 
+	s.recordChangeOutcome(ChangeOpApply, true)
 	s.broadcastStatus(cs)
 	detail := map[string]any{"confirmDeadline": deadline}
 	if r.Required {
@@ -290,14 +328,21 @@ func (s *Service) Confirm(ctx context.Context, id, author string) (Changeset, er
 		s.applyMu.Unlock()
 		return Changeset{}, &ErrNotConfirmable{ID: id, Status: cs.Status}
 	}
+	// The changeset's current UpdatedAt is its awaiting_confirm-entry
+	// timestamp (finishAwaitingConfirm stamped it there and nothing has
+	// transitioned it since) — captured before Transition below overwrites
+	// it, for vnprox_change_awaiting_confirm_seconds.
+	enteredAt := cs.UpdatedAt
 	s.cancelTimerLocked(id)
 	if err := cs.Transition(StatusCommitted, s.now().Unix()); err != nil {
 		s.applyMu.Unlock()
+		s.recordChangeOutcome(ChangeOpConfirm, false)
 		return Changeset{}, err
 	}
 	cs.ConfirmDeadline = nil
 	if err := s.persist(ctx, cs); err != nil {
 		s.applyMu.Unlock()
+		s.recordChangeOutcome(ChangeOpConfirm, false)
 		return Changeset{}, err
 	}
 	// T-1805: confirm ends the commit-confirm window, so the sealed revert
@@ -311,6 +356,8 @@ func (s *Service) Confirm(ctx context.Context, id, author string) (Changeset, er
 	log := decodeApplyLog(cs.ApplyLog)
 	s.applyMu.Unlock()
 
+	s.recordChangeOutcome(ChangeOpConfirm, true)
+	s.recordAwaitingConfirmDuration("committed", enteredAt)
 	s.broadcastStatus(cs)
 	s.appendAudit(ctx, author, "changeset.confirm", "committed", id, nil)
 
@@ -371,7 +418,7 @@ func (s *Service) Rollback(ctx context.Context, id, author string, pveGW PVEGate
 	switch cs.Status {
 	case StatusAwaitingConfirm:
 		s.cancelTimerLocked(id)
-		plan, rbErr := s.doRollbackLocked(ctx, &cs, author, pveGW)
+		plan, rbErr := s.doRollbackLocked(ctx, &cs, author, ChangeOpRollback, pveGW)
 		s.applyMu.Unlock()
 		s.refreshAfterTerminal(ctx, plan)
 		return cs, rbErr
@@ -387,7 +434,9 @@ func (s *Service) Rollback(ctx context.Context, id, author string, pveGW PVEGate
 			s.appendAudit(ctx, author, "changeset.rollback", "window_expired", cs.ID, map[string]any{"committedAt": cs.UpdatedAt, "windowDays": s.rollbackWindowDays})
 			return Changeset{}, &ErrRollbackWindowExpired{ID: cs.ID, CommittedAt: cs.UpdatedAt, WindowDays: s.rollbackWindowDays}
 		}
-		return s.createRestoringDraft(ctx, author, cs)
+		draft, draftErr := s.createRestoringDraft(ctx, author, cs)
+		s.recordChangeOutcome(ChangeOpRollback, draftErr == nil)
+		return draft, draftErr
 	default:
 		s.applyMu.Unlock()
 		return Changeset{}, &ErrNotConfirmable{ID: id, Status: cs.Status}
@@ -431,7 +480,7 @@ func (s *Service) autoRollback(ctx context.Context, id string) {
 	// ticket sealed at apply time, so a firewall/SDN-carrying changeset's
 	// ticket-scoped portion reverts on this path too — the gap T-402 and
 	// T-502 both flagged.
-	plan, rbErr := s.doRollbackLocked(ctx, &cs, systemRollbackActor, nil)
+	plan, rbErr := s.doRollbackLocked(ctx, &cs, systemRollbackActor, ChangeOpUnattendedRevert, nil)
 	s.applyMu.Unlock()
 	if rbErr != nil {
 		s.log.Error("change: auto-rollback failed", "changeset_id", id, "error", rbErr)
@@ -447,7 +496,32 @@ func (s *Service) autoRollback(ctx context.Context, id string) {
 // StatusFailed doc distinguishes). It releases the apply lock. Caller must
 // hold applyMu; it does NOT refresh inventory (the caller does, after
 // unlocking).
-func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor string, pveGW PVEGateway) (Plan, error) {
+// op is the change-engine metrics label this call should be attributed to
+// (ChangeOpRollback for a manual, interactive rollback; ChangeOpUnattendedRevert
+// for the commit-confirm-timeout timer's own call) — see this file's
+// ChangeOp* doc comment for why doRollbackLocked's two callers being the
+// only two op values that ever reach here makes this the single right
+// place to record both the outcome counter and the awaiting_confirm
+// duration histogram, regardless of which of doRollbackLocked's several
+// return points is taken.
+func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor, op string, pveGW PVEGateway) (retPlan Plan, retErr error) {
+	// cs.UpdatedAt is still its awaiting_confirm-entry timestamp here —
+	// nothing has transitioned it since finishAwaitingConfirm — captured
+	// before this function's own cs.Transition calls (both the early
+	// failure path and the normal one below) overwrite it.
+	enteredAt := cs.UpdatedAt
+	defer func() {
+		if s.metrics == nil {
+			return
+		}
+		outcome := "rolled_back"
+		if cs.Status == StatusFailed {
+			outcome = "failed"
+		}
+		s.metrics.ObserveChangeOutcome(op, retErr == nil)
+		s.recordAwaitingConfirmDuration(outcome, enteredAt)
+	}()
+
 	plan := decodePlan(cs.Plan)
 	log := decodeApplyLog(cs.ApplyLog)
 

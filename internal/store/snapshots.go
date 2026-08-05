@@ -42,7 +42,7 @@ func NewSnapshotRepo(db *DB) *SnapshotRepo { return &SnapshotRepo{db: db} }
 
 // Insert creates a new, immutable snapshot row.
 func (r *SnapshotRepo) Insert(ctx context.Context, s Snapshot) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO snapshots (id, changeset_id, taken_at, kind, files_json, note)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		s.ID, s.ChangesetID, s.TakenAt, s.Kind, s.FilesJSON, s.Note,
@@ -60,7 +60,7 @@ func (r *SnapshotRepo) InsertFiles(ctx context.Context, refs []SnapshotFileRef) 
 	if len(refs) == 0 {
 		return nil
 	}
-	tx, err := r.db.sqlDB.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: beginning snapshot_files insert: %w", err)
 	}
@@ -86,7 +86,7 @@ func (r *SnapshotRepo) InsertFiles(ctx context.Context, refs []SnapshotFileRef) 
 
 // Get returns the snapshot with the given id, or ErrNotFound.
 func (r *SnapshotRepo) Get(ctx context.Context, id string) (Snapshot, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, changeset_id, taken_at, kind, files_json, note FROM snapshots WHERE id = ?`, id,
 	)
 	s, err := scanSnapshot(row)
@@ -107,7 +107,7 @@ func (r *SnapshotRepo) List(ctx context.Context, changesetID string) ([]Snapshot
 	}
 	query += ` ORDER BY taken_at DESC`
 
-	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing snapshots: %w", err)
 	}
@@ -152,7 +152,7 @@ func (r *SnapshotRepo) ListPage(ctx context.Context, cursor string, limit int) (
 	query += ` ORDER BY taken_at DESC, id DESC LIMIT ?`
 	args = append(args, limit+1)
 
-	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("store: listing snapshots page: %w", err)
 	}
@@ -204,7 +204,7 @@ func decodeSnapshotCursor(cursor string) (int64, string, error) {
 // returns the number of snapshot rows deleted; callers should follow up
 // with BlobRepo.PruneOrphans to reclaim the now-unreferenced blob storage.
 func (r *SnapshotRepo) Prune(ctx context.Context, cutoff, pinCutoff int64) (int64, error) {
-	tx, err := r.db.sqlDB.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("store: beginning snapshot prune: %w", err)
 	}

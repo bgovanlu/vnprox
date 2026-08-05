@@ -45,7 +45,7 @@ func (r *ClusterRepo) Insert(ctx context.Context, c Cluster) error {
 	if c.Status == "" {
 		c.Status = "unknown"
 	}
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO clusters (id, name, api_url, credential_enc, status, added_by, added_at, wg_tunnel_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Name, c.APIURL, c.CredentialEnc, c.Status, c.AddedBy, c.AddedAt, c.WgTunnelID,
@@ -58,7 +58,7 @@ func (r *ClusterRepo) Insert(ctx context.Context, c Cluster) error {
 
 // Get returns one cluster by id, or ErrNotFound.
 func (r *ClusterRepo) Get(ctx context.Context, id string) (Cluster, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, api_url, credential_enc, status, added_by, added_at, wg_tunnel_id
 		FROM clusters WHERE id = ?`, id)
 	c, err := scanCluster(row)
@@ -71,7 +71,7 @@ func (r *ClusterRepo) Get(ctx context.Context, id string) (Cluster, error) {
 // List returns every registered cluster, ordered by added_at then id for a
 // stable listing.
 func (r *ClusterRepo) List(ctx context.Context) ([]Cluster, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, api_url, credential_enc, status, added_by, added_at, wg_tunnel_id
 		FROM clusters ORDER BY added_at ASC, id ASC`)
 	if err != nil {
@@ -102,7 +102,7 @@ func (r *ClusterRepo) Update(ctx context.Context, c Cluster) error {
 	if c.Status == "" {
 		c.Status = "unknown"
 	}
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE clusters SET name = ?, api_url = ?, credential_enc = ?, status = ?, wg_tunnel_id = ?
 		WHERE id = ?`,
 		c.Name, c.APIURL, c.CredentialEnc, c.Status, c.WgTunnelID, c.ID,
@@ -118,7 +118,7 @@ func (r *ClusterRepo) Update(ctx context.Context, c Cluster) error {
 // exists (an aggregation pass racing a concurrent delete should not itself
 // fail), mirroring K8sClusterRepo.UpdateStatus's convention.
 func (r *ClusterRepo) UpdateStatus(ctx context.Context, id, status string) error {
-	_, err := r.db.sqlDB.ExecContext(ctx,
+	_, err := r.db.ExecContext(ctx,
 		`UPDATE clusters SET status = ? WHERE id = ?`, status, id)
 	if err != nil {
 		return fmt.Errorf("store: updating cluster %s status: %w", id, err)
@@ -129,7 +129,7 @@ func (r *ClusterRepo) UpdateStatus(ctx context.Context, id, status string) error
 // Delete removes a cluster by id. Not an error to delete an already-absent
 // one (mirrors IngressTargetRepo/K8sClusterRepo.Delete's convention).
 func (r *ClusterRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM clusters WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM clusters WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting cluster %s: %w", id, err)
 	}
 	return nil

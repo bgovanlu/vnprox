@@ -46,7 +46,7 @@ func (r *BlobRepo) Put(ctx context.Context, plaintext string) (string, error) {
 		return "", fmt.Errorf("store: closing zstd writer for blob %s: %w", hash, err)
 	}
 
-	_, err = r.db.sqlDB.ExecContext(ctx, `
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO blobs (sha256, content_zstd, size) VALUES (?, ?, ?)
 		ON CONFLICT (sha256) DO NOTHING`,
 		hash, buf.Bytes(), len(plaintext),
@@ -61,7 +61,7 @@ func (r *BlobRepo) Put(ctx context.Context, plaintext string) (string, error) {
 // given sha256 hex digest, or ErrNotFound.
 func (r *BlobRepo) Get(ctx context.Context, hash string) (string, error) {
 	var compressed []byte
-	err := r.db.sqlDB.QueryRowContext(ctx, `SELECT content_zstd FROM blobs WHERE sha256 = ?`, hash).Scan(&compressed)
+	err := r.db.QueryRowContext(ctx, `SELECT content_zstd FROM blobs WHERE sha256 = ?`, hash).Scan(&compressed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -86,7 +86,7 @@ func (r *BlobRepo) Get(ctx context.Context, hash string) (string, error) {
 // expired snapshot rows (and their snapshot_files) so storage is actually
 // reclaimed, not just the index rows.
 func (r *BlobRepo) PruneOrphans(ctx context.Context) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		DELETE FROM blobs WHERE sha256 NOT IN (SELECT DISTINCT sha256 FROM snapshot_files)`,
 	)
 	if err != nil {

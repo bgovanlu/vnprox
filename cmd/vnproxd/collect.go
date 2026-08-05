@@ -11,6 +11,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/inventory"
+	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/pve"
 )
@@ -42,7 +43,7 @@ import (
 // building a second client — the same "returned alongside the collector so
 // callers can reuse it" pattern peerClient already established for T-303's
 // cluster fan-out.
-func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta), onStats func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats), onServices func(node string, status map[string]bool), peerSecrets *peer.SecretStore, peerTrust *peer.Trust) (*collect.Collector, *peer.Client, *pve.Client, error) {
+func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta), onStats func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats), onServices func(node string, status map[string]bool), peerSecrets *peer.SecretStore, peerTrust *peer.Trust, selfMetrics *metrics.Registry) (*collect.Collector, *peer.Client, *pve.Client, error) {
 	pveClient, err := buildCollectorPVEClient(cfg)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("building collectors' PVE client: %w", err)
@@ -58,6 +59,11 @@ func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logge
 			// (runDaemon's peerTrust) — the collectors' fan-out makes the same
 			// trust decision as the coordinator's client, never its own.
 			Trust: peerTrust,
+			// T-1903: this client's own RPCs (fetching each peer's host state
+			// every host-loop tick) are exactly as much "a peer call" as
+			// change/HA's coordination traffic — recorded through the same
+			// registry as everything else.
+			Metrics: peerMetricsRecorder(selfMetrics),
 		})
 	}
 
@@ -78,11 +84,44 @@ func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logge
 		// T-602: the findings engine's service-status hook, piggybacked on
 		// this same host-loop poll exactly like OnStats above.
 		OnServices: onServices,
+		// T-1903: poll duration/outcome per source+node, mirroring (not
+		// duplicating) Status()'s own last_success/last_attempt/
+		// consecutive_failures bookkeeping — see collect.Config.OnPoll's
+		// doc comment.
+		OnPoll: pollMetricsHook(selfMetrics),
 	})
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("constructing collector: %w", err)
 	}
 	return c, peerClient, pveClient, nil
+}
+
+// pollMetricsHook returns a collect.Config.OnPoll closure recording
+// through reg, or nil if reg is nil (a test caller of setupCollect that
+// doesn't wire T-1903's registry) — collect.Collector's own onPoll is
+// already nil-safe (reportPoll), so a nil return here is exactly "not
+// observed", not a missing feature.
+func pollMetricsHook(reg *metrics.Registry) func(source, node string, dur time.Duration, err error) {
+	if reg == nil {
+		return nil
+	}
+	return func(source, node string, dur time.Duration, err error) {
+		reg.ObserveCollectorPoll(source, node, dur, err)
+	}
+}
+
+// peerMetricsRecorder adapts reg to peer.MetricsRecorder, returning a
+// genuinely nil interface value when reg is nil. Assigning a nil
+// *metrics.Registry straight into an interface-typed field would instead
+// produce a non-nil interface wrapping a nil pointer (Go's classic typed-
+// nil footgun) — peer.Client's own `if c.opts.Metrics != nil` guard would
+// then evaluate true and panic on first use. This adapter is the one place
+// that decision is made correctly.
+func peerMetricsRecorder(reg *metrics.Registry) peer.MetricsRecorder {
+	if reg == nil {
+		return nil
+	}
+	return reg
 }
 
 // buildCollectorPVEClient constructs the collectors' own PVE API client.

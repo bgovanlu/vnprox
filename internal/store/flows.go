@@ -55,7 +55,7 @@ func (r *FlowSampleRepo) InsertBatch(ctx context.Context, samples []FlowSample) 
 	if len(samples) == 0 {
 		return nil
 	}
-	tx, err := r.db.sqlDB.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: beginning flow sample batch insert: %w", err)
 	}
@@ -191,7 +191,7 @@ func (r *FlowSampleRepo) Query(ctx context.Context, filter FlowFilter, cursor st
 	query += ` ORDER BY at DESC, id DESC LIMIT ?`
 	args = append(args, scanLimit+1)
 
-	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("store: querying flow samples: %w", err)
 	}
@@ -250,7 +250,7 @@ func subnetContains(n *net.IPNet, ipStr string) bool {
 // /flows itself never needs an unbounded count).
 func (r *FlowSampleRepo) Count(ctx context.Context) (int64, error) {
 	var n int64
-	if err := r.db.sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM flow_samples`).Scan(&n); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM flow_samples`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("store: counting flow samples: %w", err)
 	}
 	return n, nil
@@ -259,7 +259,7 @@ func (r *FlowSampleRepo) Count(ctx context.Context) (int64, error) {
 // PruneOlderThan deletes rows with at < cutoff, returning the number
 // removed — the retention-window half of internal/flow's bound.
 func (r *FlowSampleRepo) PruneOlderThan(ctx context.Context, cutoff int64) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM flow_samples WHERE at < ?`, cutoff)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM flow_samples WHERE at < ?`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("store: pruning flow samples older than %d: %w", cutoff, err)
 	}
@@ -274,7 +274,7 @@ func (r *FlowSampleRepo) PruneToCap(ctx context.Context, maxRows int64) (int64, 
 	if maxRows <= 0 {
 		return 0, nil
 	}
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		DELETE FROM flow_samples WHERE id IN (
 			SELECT id FROM flow_samples ORDER BY at DESC, id DESC LIMIT -1 OFFSET ?
 		)`, maxRows)

@@ -36,7 +36,7 @@ func (r *LatencySampleRepo) InsertBatch(ctx context.Context, samples []LatencySa
 	if len(samples) == 0 {
 		return nil
 	}
-	tx, err := r.db.sqlDB.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: beginning latency sample batch insert: %w", err)
 	}
@@ -66,7 +66,7 @@ func (r *LatencySampleRepo) InsertBatch(ctx context.Context, samples []LatencySa
 // convention), ascending by at — the shape both Service.History and
 // Service.rollingStats/Baseline read from.
 func (r *LatencySampleRepo) QueryRange(ctx context.Context, linkID string, fromTs, toTs int64) ([]LatencySample, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, link_id, fabric, from_node, to_node, at, rtt_ms, loss_pct
 		FROM latency_samples WHERE link_id = ? AND at BETWEEN ? AND ?
 		ORDER BY at ASC`, linkID, fromTs, toTs)
@@ -86,7 +86,7 @@ func (r *LatencySampleRepo) QueryRange(ctx context.Context, linkID string, fromT
 // duplicate here would double-increment the findings engine's hysteresis
 // counters and emit duplicate same-ID findings.
 func (r *LatencySampleRepo) LatestPerLink(ctx context.Context) ([]LatencySample, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT s.id, s.link_id, s.fabric, s.from_node, s.to_node, s.at, s.rtt_ms, s.loss_pct
 		FROM latency_samples s
 		INNER JOIN (
@@ -123,7 +123,7 @@ func scanLatencySamples(rows *sql.Rows) ([]LatencySample, error) {
 // removed — the retention-window half of internal/latmesh's bound (mirrors
 // FlowSampleRepo.PruneOlderThan exactly).
 func (r *LatencySampleRepo) PruneOlderThan(ctx context.Context, cutoff int64) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM latency_samples WHERE at < ?`, cutoff)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM latency_samples WHERE at < ?`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("store: pruning latency samples older than %d: %w", cutoff, err)
 	}
@@ -138,7 +138,7 @@ func (r *LatencySampleRepo) PruneToCap(ctx context.Context, maxRows int64) (int6
 	if maxRows <= 0 {
 		return 0, nil
 	}
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		DELETE FROM latency_samples WHERE id IN (
 			SELECT id FROM latency_samples ORDER BY at DESC, id DESC LIMIT -1 OFFSET ?
 		)`, maxRows)
@@ -152,7 +152,7 @@ func (r *LatencySampleRepo) PruneToCap(ctx context.Context, maxRows int64) (int6
 // FlowSampleRepo.Count).
 func (r *LatencySampleRepo) Count(ctx context.Context) (int64, error) {
 	var n int64
-	if err := r.db.sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM latency_samples`).Scan(&n); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM latency_samples`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("store: counting latency samples: %w", err)
 	}
 	return n, nil

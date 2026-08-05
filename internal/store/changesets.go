@@ -57,7 +57,7 @@ func (r *ChangesetRepo) Insert(ctx context.Context, c Changeset) error {
 	if origin == "" {
 		origin = "ui" // never write an unlabelled row (mirrors change.OriginUI)
 	}
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO changesets (id, title, author, status, cluster_id, origin, origin_token_id, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Title, c.Author, c.Status, c.ClusterID, origin, sql.NullString{String: c.OriginTokenID, Valid: c.OriginTokenID != ""}, c.OpsJSON, c.FindingsJSON, c.PlanJSON, c.ApplyLogJSON, c.ConfirmDeadline, c.CreatedAt, c.UpdatedAt,
@@ -70,7 +70,7 @@ func (r *ChangesetRepo) Insert(ctx context.Context, c Changeset) error {
 
 // Get returns the changeset with the given id, or ErrNotFound.
 func (r *ChangesetRepo) Get(ctx context.Context, id string) (Changeset, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, title, author, status, cluster_id, origin, COALESCE(origin_token_id, ''), ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, revert_ticket_expires_at, created_at, updated_at
 		FROM changesets WHERE id = ?`, id,
 	)
@@ -93,7 +93,7 @@ func (r *ChangesetRepo) List(ctx context.Context, status string) ([]Changeset, e
 	}
 	query += ` ORDER BY created_at DESC`
 
-	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing changesets: %w", err)
 	}
@@ -118,7 +118,7 @@ func (r *ChangesetRepo) List(ctx context.Context, status string) ([]Changeset, e
 // through stage -> validate -> diff -> apply -> confirm/rollback. It returns
 // ErrNotFound if the changeset doesn't exist.
 func (r *ChangesetRepo) Update(ctx context.Context, c Changeset) error {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE changesets
 		SET title = ?, status = ?, ops_json = ?, findings_json = ?, plan_json = ?, apply_log_json = ?, confirm_deadline = ?, updated_at = ?
 		WHERE id = ?`,
@@ -138,7 +138,7 @@ func (r *ChangesetRepo) Update(ctx context.Context, c Changeset) error {
 // replicated so the standby's copy is byte-identical to the active's, never a
 // re-timestamped local variant.
 func (r *ChangesetRepo) Upsert(ctx context.Context, c Changeset) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO changesets (id, title, author, status, cluster_id, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
@@ -171,7 +171,7 @@ func (r *ChangesetRepo) SealRevertTicket(ctx context.Context, id string, sealed 
 	if len(sealed) == 0 {
 		return fmt.Errorf("store: sealing revert ticket for changeset %s: empty ciphertext", id)
 	}
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE changesets SET revert_ticket_enc = ?, revert_ticket_expires_at = ? WHERE id = ?`,
 		sealed, sql.NullInt64{Int64: expiresAt, Valid: expiresAt > 0}, id,
 	)
@@ -192,7 +192,7 @@ func (r *ChangesetRepo) SealRevertTicket(ctx context.Context, id string, sealed 
 func (r *ChangesetRepo) RevertTicket(ctx context.Context, id string) (sealed []byte, expiresAt int64, err error) {
 	var enc []byte
 	var exp sql.NullInt64
-	row := r.db.sqlDB.QueryRowContext(ctx,
+	row := r.db.QueryRowContext(ctx,
 		`SELECT revert_ticket_enc, revert_ticket_expires_at FROM changesets WHERE id = ?`, id)
 	if scanErr := row.Scan(&enc, &exp); scanErr != nil {
 		if errors.Is(scanErr, sql.ErrNoRows) {
@@ -209,7 +209,7 @@ func (r *ChangesetRepo) RevertTicket(ctx context.Context, id string) (sealed []b
 // failed apply, discard, expiry sweep) and must never be the reason one of
 // those fails — "the ticket is gone" is the only outcome that matters.
 func (r *ChangesetRepo) WipeRevertTicket(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `
+	if _, err := r.db.ExecContext(ctx, `
 		UPDATE changesets SET revert_ticket_enc = NULL, revert_ticket_expires_at = NULL WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: wiping revert ticket for changeset %s: %w", id, err)
 	}
@@ -222,7 +222,7 @@ func (r *ChangesetRepo) WipeRevertTicket(ctx context.Context, id string) error {
 // sealed for — so it is removed rather than left at rest until the changeset
 // happens to reach a terminal state (T-1805's "wiped on expiry").
 func (r *ChangesetRepo) WipeExpiredRevertTickets(ctx context.Context, now int64) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE changesets SET revert_ticket_enc = NULL, revert_ticket_expires_at = NULL
 		WHERE revert_ticket_enc IS NOT NULL AND revert_ticket_expires_at IS NOT NULL AND revert_ticket_expires_at <= ?`, now)
 	if err != nil {

@@ -55,7 +55,7 @@ func (r *PluginRepo) Upsert(ctx context.Context, p PluginRow) error {
 	if err != nil {
 		return fmt.Errorf("store: encoding plugin capabilities: %w", err)
 	}
-	_, err = r.db.sqlDB.ExecContext(ctx, `
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO plugins
 		  (id, name, version, api_version, extension_points_json, capabilities_json,
 		   transport, endpoint, enabled, installed_by, installed_at)
@@ -83,7 +83,7 @@ func (r *PluginRepo) Upsert(ctx context.Context, p PluginRow) error {
 // SetEnabled flips a plugin's enabled state without otherwise rewriting the row.
 // Returns ErrNotFound when no plugin with id exists.
 func (r *PluginRepo) SetEnabled(ctx context.Context, id string, enabled bool) error {
-	res, err := r.db.sqlDB.ExecContext(ctx,
+	res, err := r.db.ExecContext(ctx,
 		`UPDATE plugins SET enabled = ? WHERE id = ?`, boolToInt(enabled), id)
 	if err != nil {
 		return fmt.Errorf("store: setting plugin %q enabled=%v: %w", id, enabled, err)
@@ -101,7 +101,7 @@ func (r *PluginRepo) SetEnabled(ctx context.Context, id string, enabled bool) er
 // Delete uninstalls a plugin row. Returns ErrNotFound when no plugin with id
 // exists so the caller can distinguish a no-op from a real uninstall.
 func (r *PluginRepo) Delete(ctx context.Context, id string) error {
-	res, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM plugins WHERE id = ?`, id)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM plugins WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("store: deleting plugin %q: %w", id, err)
 	}
@@ -117,7 +117,7 @@ func (r *PluginRepo) Delete(ctx context.Context, id string) error {
 
 // Get returns one plugin row, or ErrNotFound.
 func (r *PluginRepo) Get(ctx context.Context, id string) (PluginRow, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, version, api_version, extension_points_json, capabilities_json,
 		       transport, endpoint, enabled, installed_by, installed_at
 		FROM plugins WHERE id = ?`, id)
@@ -133,7 +133,7 @@ func (r *PluginRepo) Get(ctx context.Context, id string) (PluginRow, error) {
 
 // List returns every installed plugin, newest-first.
 func (r *PluginRepo) List(ctx context.Context) ([]PluginRow, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, version, api_version, extension_points_json, capabilities_json,
 		       transport, endpoint, enabled, installed_by, installed_at
 		FROM plugins ORDER BY installed_at DESC, id ASC`)

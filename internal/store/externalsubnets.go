@@ -50,7 +50,7 @@ func (r *ExternalSubnetRepo) Insert(ctx context.Context, e ExternalSubnet) error
 	if e.Source == "" {
 		e.Source = ExternalSubnetSourceManual
 	}
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO external_subnets (id, cidr, label, source, description, created_by, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.ID, e.CIDR, e.Label, e.Source, e.Description, e.CreatedBy, e.CreatedAt, e.UpdatedAt,
@@ -63,7 +63,7 @@ func (r *ExternalSubnetRepo) Insert(ctx context.Context, e ExternalSubnet) error
 
 // Get returns one external subnet by id, or ErrNotFound.
 func (r *ExternalSubnetRepo) Get(ctx context.Context, id string) (ExternalSubnet, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, cidr, label, source, description, created_by, created_at, updated_at
 		FROM external_subnets WHERE id = ?`, id)
 	e, err := scanExternalSubnet(row)
@@ -75,7 +75,7 @@ func (r *ExternalSubnetRepo) Get(ctx context.Context, id string) (ExternalSubnet
 
 // List returns every external subnet, ordered by cidr for a stable listing.
 func (r *ExternalSubnetRepo) List(ctx context.Context) ([]ExternalSubnet, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, cidr, label, source, description, created_by, created_at, updated_at
 		FROM external_subnets ORDER BY cidr ASC, id ASC`)
 	if err != nil {
@@ -103,7 +103,7 @@ func (r *ExternalSubnetRepo) Update(ctx context.Context, e ExternalSubnet) error
 	if e.Source == "" {
 		e.Source = ExternalSubnetSourceManual
 	}
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE external_subnets SET cidr = ?, label = ?, source = ?, description = ?, updated_at = ?
 		WHERE id = ?`,
 		e.CIDR, e.Label, e.Source, e.Description, e.UpdatedAt, e.ID,
@@ -117,7 +117,7 @@ func (r *ExternalSubnetRepo) Update(ctx context.Context, e ExternalSubnet) error
 // Delete removes an external subnet by id. Not an error to delete an
 // already-absent one (mirrors ClusterRepo/K8sClusterRepo.Delete's convention).
 func (r *ExternalSubnetRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM external_subnets WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM external_subnets WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting external subnet %s: %w", id, err)
 	}
 	return nil

@@ -57,7 +57,7 @@ func (r *CaptureRepo) Upsert(ctx context.Context, s CaptureSession) error {
 	if err != nil {
 		return fmt.Errorf("store: encoding capture session caps: %w", err)
 	}
-	_, err = r.db.sqlDB.ExecContext(ctx, `
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO capture_sessions
 			(id, group_id, target_ref, node, nodes_json, filter, caps_json, status, started_by, started_at, stopped_at, file_path, file_bytes, packets)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -80,7 +80,7 @@ const captureCols = `id, group_id, target_ref, node, nodes_json, filter, caps_js
 
 // Get returns one capture session by id, or ErrNotFound.
 func (r *CaptureRepo) Get(ctx context.Context, id string) (CaptureSession, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `SELECT `+captureCols+` FROM capture_sessions WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT `+captureCols+` FROM capture_sessions WHERE id = ?`, id)
 	s, err := scanCaptureSession(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return CaptureSession{}, ErrNotFound
@@ -100,7 +100,7 @@ func (r *CaptureRepo) List(ctx context.Context) ([]CaptureSession, error) {
 
 // ListGroups returns the distinct group ids, newest first.
 func (r *CaptureRepo) ListGroups(ctx context.Context) ([]string, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `SELECT group_id, MAX(started_at) AS m FROM capture_sessions GROUP BY group_id ORDER BY m DESC`)
+	rows, err := r.db.QueryContext(ctx, `SELECT group_id, MAX(started_at) AS m FROM capture_sessions GROUP BY group_id ORDER BY m DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing capture groups: %w", err)
 	}
@@ -121,7 +121,7 @@ func (r *CaptureRepo) ListGroups(ctx context.Context) ([]string, error) {
 // the row is no longer needed; the sweep itself keeps rows and marks them
 // purged, so this is for explicit cleanup only).
 func (r *CaptureRepo) Delete(ctx context.Context, id string) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM capture_sessions WHERE id = ?`, id)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM capture_sessions WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("store: deleting capture session %s: %w", id, err)
 	}
@@ -129,7 +129,7 @@ func (r *CaptureRepo) Delete(ctx context.Context, id string) error {
 }
 
 func (r *CaptureRepo) query(ctx context.Context, q string, args ...any) ([]CaptureSession, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, q, args...)
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: querying capture sessions: %w", err)
 	}

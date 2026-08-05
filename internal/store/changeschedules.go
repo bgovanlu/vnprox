@@ -54,7 +54,7 @@ func NewChangeScheduleRepo(db *DB) *ChangeScheduleRepo { return &ChangeScheduleR
 // resolved replaces that row). Callers are responsible for refusing to
 // upsert over a still-pending row (change.Service.Schedule does, via Get).
 func (r *ChangeScheduleRepo) Upsert(ctx context.Context, s ChangesetSchedule) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO changeset_schedules (
 			changeset_id, window_start, window_end, confirm_timeout_sec, missed_window_policy,
 			callback_token_hash, status, created_by, created_at, fired_at, cancelled_at
@@ -81,7 +81,7 @@ func (r *ChangeScheduleRepo) Upsert(ctx context.Context, s ChangesetSchedule) er
 
 // Get returns the schedule row for changesetID, or ErrNotFound.
 func (r *ChangeScheduleRepo) Get(ctx context.Context, changesetID string) (ChangesetSchedule, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT changeset_id, window_start, window_end, confirm_timeout_sec, missed_window_policy,
 			callback_token_hash, status, created_by, created_at, fired_at, cancelled_at
 		FROM changeset_schedules WHERE changeset_id = ?`, changesetID,
@@ -97,7 +97,7 @@ func (r *ChangeScheduleRepo) Get(ctx context.Context, changesetID string) (Chang
 // window_start first — the scheduler's own per-tick scan (change.Service.
 // TickSchedules) lists ScheduleStatusPending this way.
 func (r *ChangeScheduleRepo) ListByStatus(ctx context.Context, status string) ([]ChangesetSchedule, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT changeset_id, window_start, window_end, confirm_timeout_sec, missed_window_policy,
 			callback_token_hash, status, created_by, created_at, fired_at, cancelled_at
 		FROM changeset_schedules WHERE status = ? ORDER BY window_start ASC`, status,
@@ -128,7 +128,7 @@ func (r *ChangeScheduleRepo) ListByStatus(ctx context.Context, status string) ([
 // hypothetical concurrent resolve idempotent rather than clobbering an
 // already-resolved row's status.
 func (r *ChangeScheduleRepo) Resolve(ctx context.Context, changesetID, status string, firedAt int64) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		UPDATE changeset_schedules SET status = ?, fired_at = ?
 		WHERE changeset_id = ? AND status = ?`,
 		status, firedAt, changesetID, ScheduleStatusPending,
@@ -145,7 +145,7 @@ func (r *ChangeScheduleRepo) Resolve(ctx context.Context, changesetID, status st
 // resolved/cancelled) — the API layer's "DELETE .../schedule before
 // windowStart" contract (docs/api.md).
 func (r *ChangeScheduleRepo) Cancel(ctx context.Context, changesetID string, cancelledAt int64) error {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE changeset_schedules SET status = ?, cancelled_at = ?
 		WHERE changeset_id = ? AND status = ?`,
 		ScheduleStatusCancelled, cancelledAt, changesetID, ScheduleStatusPending,

@@ -68,7 +68,19 @@ type Config struct {
 	// see internal/findings/health_service.go). Nil (the default) simply
 	// skips the Services() read entirely — the same "no hook, no work"
 	// contract OnStats already establishes for reader.Stats.
-	OnServices   func(node string, status map[string]bool)
+	OnServices func(node string, status map[string]bool)
+	// OnPoll is T-1903's self-observability hook: called once per poll
+	// attempt (RunPVELoop/RunHostLoop/RunLLDPLoop's ticks, plus RefreshNow's
+	// on-demand ones), with the same (source, node) scoping
+	// collect.SourceStatus already uses ("pve"/""; "host"/<node>; "lldp"/
+	// <localNode>) and the attempt's own duration/outcome. It is purely
+	// additive to — never a replacement for — recordResult/recordNodeResult's
+	// existing lastSuccess/lastAttempt/consecutiveFailures bookkeeping
+	// (Status(), consumed by GET /health): that bookkeeping is unchanged by
+	// this field's presence. Nil (the default) is a no-op, the same
+	// nil-safe-optional-hook convention OnStats/OnServices/OnDelta already
+	// establish.
+	OnPoll       func(source, node string, dur time.Duration, err error)
 	LocalNode    string
 	PVEInterval  time.Duration
 	HostInterval time.Duration
@@ -97,6 +109,7 @@ type Collector struct {
 	onDelta    func(inventory.Delta)
 	onStats    func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats)
 	onServices func(node string, status map[string]bool)
+	onPoll     func(source, node string, dur time.Duration, err error)
 	status     map[string]*sourceState
 	// hostNodeStatus is the per-cluster-node staleness/backoff bookkeeping
 	// for the "host" source (T-303: unlike "pve" and "lldp", which stay a
@@ -166,6 +179,7 @@ func New(cfg Config) (*Collector, error) {
 		onDelta:      cfg.OnDelta,
 		onStats:      cfg.OnStats,
 		onServices:   cfg.OnServices,
+		onPoll:       cfg.OnPoll,
 		localNode:    cfg.LocalNode,
 		status: map[string]*sourceState{
 			"pve":  {},
@@ -284,6 +298,16 @@ func (c *Collector) recordResult(name string, attemptTime time.Time, err error) 
 	// the log rate out as failures accumulate (10s -> 20s -> ... ->
 	// 60s-capped retries), so this does not "spam" in practice.
 	c.log.Warn("collect: poll failed", "source", name, "consecutive_failures", st.consecutiveFailures, "error", err)
+}
+
+// reportPoll invokes onPoll (T-1903), if configured. Called alongside — but
+// independently of — recordResult/recordNodeResult at every poll call site,
+// so a change here can never affect Status()'s existing staleness/backoff
+// bookkeeping.
+func (c *Collector) reportPoll(source, node string, dur time.Duration, err error) {
+	if c.onPoll != nil {
+		c.onPoll(source, node, dur, err)
+	}
 }
 
 // consecutiveFailures reports the named loop's current failure streak.

@@ -42,7 +42,7 @@ func (r *K8sClusterRepo) Insert(ctx context.Context, c K8sCluster) error {
 	if c.Status == "" {
 		c.Status = "unpolled"
 	}
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO k8s_clusters (id, name, kubeconfig_enc, added_by, added_at, cni_detected, status)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Name, c.KubeconfigEnc, c.AddedBy, c.AddedAt, c.CNIDetected, c.Status,
@@ -55,7 +55,7 @@ func (r *K8sClusterRepo) Insert(ctx context.Context, c K8sCluster) error {
 
 // Get returns one cluster by id, or ErrNotFound.
 func (r *K8sClusterRepo) Get(ctx context.Context, id string) (K8sCluster, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, kubeconfig_enc, added_by, added_at, cni_detected, status
 		FROM k8s_clusters WHERE id = ?`, id)
 	c, err := scanK8sCluster(row)
@@ -68,7 +68,7 @@ func (r *K8sClusterRepo) Get(ctx context.Context, id string) (K8sCluster, error)
 // List returns every registered cluster, ordered by added_at then id for a
 // stable listing.
 func (r *K8sClusterRepo) List(ctx context.Context) ([]K8sCluster, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, kubeconfig_enc, added_by, added_at, cni_detected, status
 		FROM k8s_clusters ORDER BY added_at ASC, id ASC`)
 	if err != nil {
@@ -93,7 +93,7 @@ func (r *K8sClusterRepo) List(ctx context.Context) ([]K8sCluster, error) {
 // Delete removes a cluster by id. Not an error to delete an already-absent
 // one (mirrors IngressTargetRepo.Delete's convention).
 func (r *K8sClusterRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM k8s_clusters WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM k8s_clusters WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting k8s cluster %s: %w", id, err)
 	}
 	return nil
@@ -103,7 +103,7 @@ func (r *K8sClusterRepo) Delete(ctx context.Context, id string) error {
 // only — never touches kubeconfig_enc. Not an error if id no longer
 // exists (a poll racing a concurrent delete should not itself fail).
 func (r *K8sClusterRepo) UpdateStatus(ctx context.Context, id, cniDetected, status string) error {
-	_, err := r.db.sqlDB.ExecContext(ctx,
+	_, err := r.db.ExecContext(ctx,
 		`UPDATE k8s_clusters SET cni_detected = ?, status = ? WHERE id = ?`,
 		cniDetected, status, id,
 	)

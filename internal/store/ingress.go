@@ -38,7 +38,7 @@ func NewIngressTargetRepo(db *DB) *IngressTargetRepo { return &IngressTargetRepo
 // Insert creates a new ingress_targets row (ID is caller-assigned,
 // typically store.NewULID()).
 func (r *IngressTargetRepo) Insert(ctx context.Context, t IngressTarget) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO ingress_targets (id, kind, address, credential_enc, added_by, added_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		t.ID, t.Kind, t.Address, t.CredentialEnc, t.AddedBy, t.AddedAt,
@@ -51,7 +51,7 @@ func (r *IngressTargetRepo) Insert(ctx context.Context, t IngressTarget) error {
 
 // Get returns one target by id, or ErrNotFound.
 func (r *IngressTargetRepo) Get(ctx context.Context, id string) (IngressTarget, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, kind, address, credential_enc, added_by, added_at
 		FROM ingress_targets WHERE id = ?`, id)
 	t, err := scanIngressTarget(row)
@@ -64,7 +64,7 @@ func (r *IngressTargetRepo) Get(ctx context.Context, id string) (IngressTarget, 
 // List returns every ingress target, ordered by added_at then id for a
 // stable listing.
 func (r *IngressTargetRepo) List(ctx context.Context) ([]IngressTarget, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, kind, address, credential_enc, added_by, added_at
 		FROM ingress_targets ORDER BY added_at ASC, id ASC`)
 	if err != nil {
@@ -89,7 +89,7 @@ func (r *IngressTargetRepo) List(ctx context.Context) ([]IngressTarget, error) {
 // Delete removes an ingress target by id. It is not an error to delete an
 // already-absent one (mirrors AlertRuleRepo.Delete's convention).
 func (r *IngressTargetRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM ingress_targets WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM ingress_targets WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting ingress target %s: %w", id, err)
 	}
 	return nil

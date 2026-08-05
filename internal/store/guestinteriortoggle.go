@@ -23,7 +23,7 @@ func NewGuestInteriorToggleRepo(db *DB) *GuestInteriorToggleRepo {
 // with no row at all (never toggled) is false — off by default, matching
 // docs/api.md's Guest interior section, not an error.
 func (r *GuestInteriorToggleRepo) Get(ctx context.Context, ref string) (bool, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `SELECT enabled FROM guest_interior_toggles WHERE ref = ?`, ref)
+	row := r.db.QueryRowContext(ctx, `SELECT enabled FROM guest_interior_toggles WHERE ref = ?`, ref)
 	var enabled int
 	err := row.Scan(&enabled)
 	switch {
@@ -41,7 +41,7 @@ func (r *GuestInteriorToggleRepo) Set(ctx context.Context, ref string, enabled b
 	if enabled {
 		e = 1
 	}
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO guest_interior_toggles (ref, enabled, updated_by, updated_at) VALUES (?, ?, ?, ?)
 		ON CONFLICT (ref) DO UPDATE SET enabled = excluded.enabled, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
 		ref, e, updatedBy, at,

@@ -101,5 +101,23 @@ func (c *Collector) attempt(ctx context.Context, name string, fn pollFunc) {
 	after := c.graph.Snapshot()
 
 	c.recordResult(name, start, err)
+	// T-1903: "host" reports its own per-node OnPoll calls from inside
+	// hostPollOnce (host.go) — one call here too would double-report the
+	// same cycle at two different granularities, so it's skipped here.
+	// "pve" is cluster-wide (node ""); "lldp" polls only the local node.
+	if name != "host" {
+		c.reportPoll(name, pollScopeNode(name, c), time.Since(start), err)
+	}
 	c.emitDelta(name, diffSnapshots(before, after))
+}
+
+// pollScopeNode returns the node an OnPoll observation for the named
+// cluster-wide/local-scoped source should carry: "" for "pve" (cluster-
+// wide), the currently-known local node for anything else ("lldp") — the
+// same scoping collect.SourceStatus already documents.
+func pollScopeNode(name string, c *Collector) string {
+	if name == "pve" {
+		return ""
+	}
+	return c.getLocalNode()
 }

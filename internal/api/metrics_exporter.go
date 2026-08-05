@@ -34,6 +34,31 @@ import (
 	"github.com/bgovanlu/vnprox/internal/metrics"
 )
 
+// StoreInfoProvider is T-1903's pull-model seam onto the store's own
+// on-disk footprint and schema state — *store.DB satisfies this directly
+// (internal/store/instrument.go's SizeBytes/SchemaVersion). Declared here
+// (rather than importing internal/store's concrete type into Options)
+// keeps this package's dependency on that package a two-method seam, the
+// same pattern every other *Service/*Store interface in this file follows.
+type StoreInfoProvider interface {
+	// SizeBytes returns the current on-disk size of the store's main
+	// database file plus its WAL/SHM sidecars, in bytes.
+	SizeBytes() (int64, error)
+	// SchemaVersion returns the store's currently-applied schema version
+	// and the highest version this binary's embedded migrations know
+	// about ("latest"). They differ only if a migration failed to run at
+	// startup — Open() always migrates to latest before returning — so in
+	// steady state current == latest always.
+	SchemaVersion(ctx context.Context) (current, latest int, err error)
+}
+
+// WSConnCounter is T-1903's pull-model seam onto the live WebSocket
+// connection count. topology.Service.ConnCount (already exposed for tests)
+// satisfies this via the TopologyService interface (topology.go).
+type WSConnCounter interface {
+	ConnCount() int
+}
+
 // MetricsCounterService is the exporter's dependency on *metrics.Sampler:
 // raw, not-yet-rated per-ref counters (Prometheus does its own
 // rate()/increase() over successive scrapes) — unlike MetricsService.Live
@@ -50,7 +75,23 @@ type MetricsCounterService interface {
 // mounting the route entirely (the same nil-safe convention every other
 // Options field gets) — e.g. when `[metrics] enabled = false` in
 // vnprox.toml, cmd/vnproxd never loads/generates a token to begin with.
+//
+// Self, Collectors, Store, and WS are T-1903's self-observability sources,
+// each independently nil-safe: a nil one simply omits its families from
+// the scrape rather than mounting failing or erroring. Self holds the
+// push-model series (HTTP RED, collector poll duration/counters,
+// change-engine outcomes, store query duration, peer RPCs —
+// internal/metrics.Registry); Collectors/Store/WS are pull-model reads of
+// state that already exists elsewhere (mirroring GET /health's collector
+// staleness rather than duplicating it, per this task's card). NewRouter
+// fills these four fields in from the matching top-level Options fields
+// (opts.SelfMetrics/opts.Collectors/opts.Store/opts.Topology) rather than
+// requiring cmd/vnproxd to wire them twice.
 type MetricsExporterConfig struct {
+	Collectors   CollectorHealth
+	Store        StoreInfoProvider
+	WS           WSConnCounter
+	Self         *metrics.Registry
 	BuildVersion string
 	Token        []byte
 	AllowFrom    []*net.IPNet
@@ -114,7 +155,7 @@ func mountMetricsExporterRoutes(r chi.Router, counters MetricsCounterService, fi
 	}
 	r.Group(func(r chi.Router) {
 		r.Use(metricsExporterAuth(cfg))
-		r.Get("/metrics", handleMetricsExport(counters, findingsSvc, driftSvc, changesets, cfg.BuildVersion))
+		r.Get("/metrics", handleMetricsExport(counters, findingsSvc, driftSvc, changesets, cfg))
 	})
 }
 
@@ -188,16 +229,22 @@ func metricsTokenValid(r *http.Request, token []byte) bool {
 
 // handleMetricsExport renders the full scrape body: the eight per-ref
 // interface counter families, findings-open-by-severity, drift-open,
-// changesets-by-status, and vnprox_build_info — in that order, matching
-// docs/api.md's Metrics-exporter table.
-func handleMetricsExport(counters MetricsCounterService, findingsSvc FindingsService, driftSvc DriftService, changesets ChangesetService, version string) http.HandlerFunc {
+// changesets-by-status, and vnprox_build_info (docs/api.md's Metrics-
+// exporter table), followed by T-1903's daemon self-observability families
+// (docs/features/monitoring.md §9) — cfg.Self's push-model series, then
+// the pull-model collector/store/WS gauges, each independently nil-safe.
+func handleMetricsExport(counters MetricsCounterService, findingsSvc FindingsService, driftSvc DriftService, changesets ChangesetService, cfg MetricsExporterConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var buf bytes.Buffer
 		writeIfaceCounterFamilies(&buf, counters)
 		writeFindingsOpenFamily(&buf, findingsSvc)
 		writeDriftOpenFamily(&buf, driftSvc)
 		writeChangesetsFamily(&buf, r.Context(), changesets)
-		writeBuildInfoFamily(&buf, version)
+		writeBuildInfoFamily(&buf, cfg.BuildVersion)
+		writeSelfMetrics(&buf, cfg.Self)
+		writeCollectorFailureGauge(&buf, cfg.Collectors)
+		writeStoreMetrics(&buf, r.Context(), cfg.Store)
+		writeWSConnectionsGauge(&buf, cfg.WS)
 
 		// text/plain with the Prometheus exposition-format version
 		// parameter (the same content type the reference Go client library
@@ -268,4 +315,82 @@ func writeBuildInfoFamily(buf *bytes.Buffer, version string) {
 	buf.WriteString("# HELP vnprox_build_info vnproxd build info; the sample value is always 1.\n")
 	buf.WriteString("# TYPE vnprox_build_info gauge\n")
 	fmt.Fprintf(buf, "vnprox_build_info{version=%q} 1\n", version)
+}
+
+// --- T-1903: daemon self-observability (docs/features/monitoring.md §9) ---
+
+// writeSelfMetrics renders every push-model series reg holds (HTTP RED,
+// collector poll duration/counters, change-engine outcomes, store query
+// duration, peer RPC duration/counters). reg nil (metrics disabled, or a
+// router built without SelfMetrics wired) omits this section entirely.
+func writeSelfMetrics(buf *bytes.Buffer, reg *metrics.Registry) {
+	if reg == nil {
+		return
+	}
+	reg.WriteTo(buf)
+}
+
+// writeCollectorFailureGauge renders vnprox_collector_consecutive_failures,
+// a pull-model read of collect.Collector's own existing per-source/per-node
+// staleness bookkeeping (the same CollectorHealth seam GET /health already
+// uses) — this task's card: "mirror what /health already tracks rather
+// than inventing a second notion". ch nil, or reporting zero sources
+// (nothing has been polled yet), omits the family entirely rather than
+// emitting an empty HELP/TYPE header with no samples.
+func writeCollectorFailureGauge(buf *bytes.Buffer, ch CollectorHealth) {
+	if ch == nil {
+		return
+	}
+	statuses := ch.CollectorStatus()
+	if len(statuses) == 0 {
+		return
+	}
+	buf.WriteString("# HELP vnprox_collector_consecutive_failures Current consecutive poll failure count, by source and node.\n")
+	buf.WriteString("# TYPE vnprox_collector_consecutive_failures gauge\n")
+	for _, s := range statuses {
+		fmt.Fprintf(buf, "vnprox_collector_consecutive_failures{source=%q,node=%q} %d\n", s.Name, s.Node, s.ConsecutiveFailures)
+	}
+}
+
+// writeStoreMetrics renders the store's on-disk size and schema-version
+// gauges, pulled live from store at scrape time (no push instrumentation —
+// there is nothing to duplicate here, store already knows its own size and
+// version on request). store nil (no store wired — most router tests)
+// omits the whole section; a size or version read that itself errors (a
+// removed/unreadable database file mid-scrape) omits just that family
+// rather than failing the scrape.
+func writeStoreMetrics(buf *bytes.Buffer, ctx context.Context, store StoreInfoProvider) {
+	if store == nil {
+		return
+	}
+	if size, err := store.SizeBytes(); err == nil {
+		buf.WriteString("# HELP vnprox_store_size_bytes Current SQLite store size on disk, in bytes (main file plus WAL/SHM sidecars).\n")
+		buf.WriteString("# TYPE vnprox_store_size_bytes gauge\n")
+		fmt.Fprintf(buf, "vnprox_store_size_bytes %d\n", size)
+	}
+	if current, latest, err := store.SchemaVersion(ctx); err == nil {
+		buf.WriteString("# HELP vnprox_store_schema_version Currently-applied SQLite schema version.\n")
+		buf.WriteString("# TYPE vnprox_store_schema_version gauge\n")
+		fmt.Fprintf(buf, "vnprox_store_schema_version %d\n", current)
+
+		pending := 0
+		if latest > current {
+			pending = 1
+		}
+		buf.WriteString("# HELP vnprox_store_schema_migration_pending Whether this binary's embedded schema is newer than the store's applied version (1) or not (0); always 0 in steady state, since Open() migrates to latest before serving.\n")
+		buf.WriteString("# TYPE vnprox_store_schema_migration_pending gauge\n")
+		fmt.Fprintf(buf, "vnprox_store_schema_migration_pending %d\n", pending)
+	}
+}
+
+// writeWSConnectionsGauge renders vnprox_ws_connections, pulled live from
+// ws.ConnCount() (topology.Hub's own connection map) at scrape time. ws
+// nil omits the family.
+func writeWSConnectionsGauge(buf *bytes.Buffer, ws WSConnCounter) {
+	if ws == nil {
+		return
+	}
+	buf.WriteString("# HELP vnprox_ws_connections Current live WebSocket client connections on /api/ws.\n")
+	buf.WriteString("# TYPE vnprox_ws_connections gauge\n")
+	fmt.Fprintf(buf, "vnprox_ws_connections %d\n", ws.ConnCount())
 }

@@ -23,6 +23,15 @@ builds against, plus the in-repo, unit-tested render logic.
   payload fields) and renders each event as a timeline annotation. Tested
   against a fixture event stream with the transport mocked in
   `web/src/grafana/EventAnnotationsPanel.test.tsx` (AC4).
+- `web/src/grafana/DaemonMetricsPanel.tsx` (T-1903) — the render body of the
+  **daemon self-observability panel**, shipped alongside the cluster
+  MetricsPanel above. Same `GET /metrics` exposition text and the same
+  `promParse.ts` parser; the difference is scope (HTTP RED, collector poll
+  health, change-engine outcomes, store query duration, peer-RPC latency,
+  WS connection count — docs/features/monitoring.md §9) and that several of
+  those series are histograms, reduced to a `count`/`avg` summary row per
+  label combination rather than one row per `_bucket`. Tested against a
+  fixture scrape in `web/src/grafana/DaemonMetricsPanel.test.tsx`.
 
 These components are deliberately framework-agnostic React (no `@grafana/*`
 dependency is added to this repo — see `docs/development.md`'s

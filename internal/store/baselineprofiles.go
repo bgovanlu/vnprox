@@ -41,7 +41,7 @@ func NewBaselineProfileRepo(db *DB) *BaselineProfileRepo { return &BaselineProfi
 // accumulating history, mirroring BlueprintRepo.Put/LayoutRepo.Put's
 // idempotent-by-key convention (baseline_profiles is not a time-series ring).
 func (r *BaselineProfileRepo) Put(ctx context.Context, p BaselineProfile) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO baseline_profiles (ref, profile_json, window_start, window_end, updated_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (ref) DO UPDATE SET
@@ -59,7 +59,7 @@ func (r *BaselineProfileRepo) Put(ctx context.Context, p BaselineProfile) error 
 
 // Get returns the current baseline for ref, or ErrNotFound.
 func (r *BaselineProfileRepo) Get(ctx context.Context, ref string) (BaselineProfile, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT ref, profile_json, window_start, window_end, updated_at
 		FROM baseline_profiles WHERE ref = ?`, ref,
 	)
@@ -72,7 +72,7 @@ func (r *BaselineProfileRepo) Get(ctx context.Context, ref string) (BaselineProf
 
 // List returns every stored baseline, ordered by ref for a stable listing.
 func (r *BaselineProfileRepo) List(ctx context.Context) ([]BaselineProfile, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT ref, profile_json, window_start, window_end, updated_at
 		FROM baseline_profiles ORDER BY ref ASC`,
 	)
@@ -98,7 +98,7 @@ func (r *BaselineProfileRepo) List(ctx context.Context) ([]BaselineProfile, erro
 // Count returns the total row count (test/observability helper).
 func (r *BaselineProfileRepo) Count(ctx context.Context) (int64, error) {
 	var n int64
-	if err := r.db.sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM baseline_profiles`).Scan(&n); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM baseline_profiles`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("store: counting baseline profiles: %w", err)
 	}
 	return n, nil
@@ -108,7 +108,7 @@ func (r *BaselineProfileRepo) Count(ctx context.Context) (int64, error) {
 // number removed. Callers/tests compute cutoff themselves; PruneRetention
 // wraps this with the documented [baseline] profile_retention_days window.
 func (r *BaselineProfileRepo) Prune(ctx context.Context, cutoff int64) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM baseline_profiles WHERE updated_at < ?`, cutoff)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM baseline_profiles WHERE updated_at < ?`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("store: pruning baseline profiles older than %d: %w", cutoff, err)
 	}

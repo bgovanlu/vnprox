@@ -46,7 +46,7 @@ func (r *AlertDeliveryRepo) Insert(ctx context.Context, d AlertDelivery) error {
 	if d.Error != "" {
 		errCol = sql.NullString{String: d.Error, Valid: true}
 	}
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO alert_deliveries (id, rule_id, finding_id, at, attempt, status, error)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		d.ID, d.RuleID, d.FindingID, d.At, d.Attempt, d.Status, errCol,
@@ -76,7 +76,7 @@ func (r *AlertDeliveryRepo) List(ctx context.Context, ruleID, status string) ([]
 	}
 	b.WriteString(` ORDER BY at DESC, id DESC`)
 
-	rows, err := r.db.sqlDB.QueryContext(ctx, b.String(), args...)
+	rows, err := r.db.QueryContext(ctx, b.String(), args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing alert deliveries: %w", err)
 	}

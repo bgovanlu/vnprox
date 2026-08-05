@@ -35,7 +35,7 @@ func NewBlueprintRepo(db *DB) *BlueprintRepo { return &BlueprintRepo{db: db} }
 // List returns every saved blueprint, ordered by name then id for a
 // stable listing.
 func (r *BlueprintRepo) List(ctx context.Context) ([]Blueprint, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, blueprint_json, created_by, created_at, updated_at
 		FROM blueprints ORDER BY name ASC, id ASC`,
 	)
@@ -60,7 +60,7 @@ func (r *BlueprintRepo) List(ctx context.Context) ([]Blueprint, error) {
 
 // Get returns one saved blueprint by id, or ErrNotFound.
 func (r *BlueprintRepo) Get(ctx context.Context, id string) (Blueprint, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, blueprint_json, created_by, created_at, updated_at
 		FROM blueprints WHERE id = ?`, id,
 	)
@@ -74,7 +74,7 @@ func (r *BlueprintRepo) Get(ctx context.Context, id string) (Blueprint, error) {
 // Put upserts a blueprint (insert if absent, overwrite if present) — the
 // save path is idempotent by id, mirroring LayoutRepo.Put's convention.
 func (r *BlueprintRepo) Put(ctx context.Context, b Blueprint) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO blueprints (id, name, blueprint_json, created_by, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
@@ -90,7 +90,7 @@ func (r *BlueprintRepo) Put(ctx context.Context, b Blueprint) error {
 // Delete removes a saved blueprint. It is not an error to delete an
 // already-absent one.
 func (r *BlueprintRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM blueprints WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM blueprints WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting blueprint %s: %w", id, err)
 	}
 	return nil
