@@ -57,6 +57,11 @@ deb:
 
 	install -m 0755 bin/vnprox-setup $(PKG_ROOT)/usr/bin/vnprox-setup
 	install -m 0644 systemd/vnprox.service $(PKG_ROOT)/lib/systemd/system/vnprox.service
+	# T-1901: the optional scheduled-backup timer. Installed but never
+	# enabled by postinst — see the unit's own header and
+	# docs/deployment.md's "Backup and disaster recovery" section.
+	install -m 0644 systemd/vnprox-backup.service $(PKG_ROOT)/lib/systemd/system/vnprox-backup.service
+	install -m 0644 systemd/vnprox-backup.timer $(PKG_ROOT)/lib/systemd/system/vnprox-backup.timer
 	install -m 0644 config/vnprox.toml $(PKG_ROOT)/etc/vnprox/vnprox.toml
 
 	sed -e 's/@VERSION@/$(VERSION)/' -e 's/@ARCH@/$(ARCH)/' debian/control.tmpl > $(PKG_ROOT)/DEBIAN/control

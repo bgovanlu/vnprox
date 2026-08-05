@@ -69,6 +69,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runSnapshots(args[1:], stdout, stderr)
 	case "rollback-now":
 		return runRollbackNow(args[1:], stdout, stderr)
+	case "backup":
+		return runBackup(args[1:], stdout, stderr)
+	case "restore":
+		return runRestore(args[1:], stdout, stderr)
 	case "remote":
 		return runRemote(args[1:], stdout, stderr)
 	case "apply":
@@ -91,6 +95,12 @@ Usage:
                                        documented disaster-recovery path, works daemon-down)
   vnproxctl rollback-now <changeset>   Force rollback of an in-flight (awaiting-confirm/applying)
                                        changeset from its pre-apply snapshot (root only, daemon-down)
+  vnproxctl backup                     Write an integrity-checked archive of vnprox's own state
+                                       (consistent store snapshot + config). Safe with the daemon
+                                       running. Key material ONLY with --include-keys.
+  vnproxctl restore <archive>          Replace this node's store from a backup archive: refuses
+                                       against a running daemon, refuses a store from a newer
+                                       vnprox, forward-migrates, and swaps atomically.
 
 HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
 (a T-1104 bearer token; never a PVE username/password from this CLI):
@@ -126,6 +136,23 @@ snapshots/rollback-now flags:
   --node <name>     which captured node's file to restore (default: this host's name)
   --limit <n>       snapshots list: maximum rows (default 50)
   -o <table|json>   output format (default table)
+
+backup flags:
+  --config <path>   vnprox.toml to read paths from (default /etc/vnprox/vnprox.toml)
+  --out-dir <dir>   where to write the archive (default /var/lib/vnprox/backups)
+  --out <path>      exact archive path, overriding --out-dir
+  --include-keys    ALSO archive key material — prints a warning naming exactly what that
+                    means and requires an interactive confirmation (or --yes)
+  --yes             skip --include-keys' interactive confirmation (the warning still prints)
+  --keep <n>        after writing, keep only the newest n archives in the output directory
+  -o <table|json>   output format (default table)
+
+restore flags:
+  --config <path>     vnprox.toml to read storage.db_path and server.listen from
+  --dry-run           validate the archive and print the plan; change nothing
+  --restore-config    also install the archive's vnprox.toml (current one moved aside)
+  --restore-keys      also install the archive's key files (needs an --include-keys archive)
+  -o <table|json>     output format (default table)
 
 remote/apply flags (every command in this family):
   --config <path>          vnprox.toml to read the listen address from, absent --url

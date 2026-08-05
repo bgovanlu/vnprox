@@ -1,0 +1,51 @@
+[Unit]
+# T-1901. Shipped but NOT enabled: `apt install vnprox` installs this unit
+# and its timer and leaves both inactive, exactly as it leaves
+# vnprox.service inactive on a fresh install. An operator opts in with
+#
+#   systemctl enable --now vnprox-backup.timer
+#
+# See docs/deployment.md, "Backup and disaster recovery".
+#
+# This is deliberately a systemd timer (or a cron line — the command is the
+# same either way) rather than a scheduler inside vnproxd: a daemon that
+# schedules its own backups is a daemon that cannot back itself up when it
+# is the thing that is broken.
+Description=vnprox state backup
+Documentation=file:///usr/share/doc/vnprox/README.md
+After=vnprox.service
+
+[Service]
+Type=oneshot
+
+# --keep 14 is the retention ceiling, applied by the command itself after
+# each successful run: with the daily timer below that is a fortnight of
+# daily archives. A vnprox store is small (tens of MiB on a busy cluster),
+# so 14 is cheap; raise it if /var/lib has room and you want longer.
+#
+# NO --include-keys. That is the point: this archive is safe to replicate
+# off the box, and the sealed credentials inside it are unreadable without
+# /etc/vnprox/keys/session.key, which stays where it is. Adding
+# --include-keys here would turn every scheduled backup into a copy of every
+# credential this installation holds — if you need that for a
+# bare-metal-rebuild plan, take it by hand, deliberately, and store it where
+# you store your other key material.
+ExecStart=/usr/bin/vnproxctl backup --out-dir /var/lib/vnprox/backups --keep 14
+
+# The backup reads the store and writes into /var/lib/vnprox; it needs
+# neither the network nor anything under /etc beyond reading the config.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vnprox
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectKernelLogs=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

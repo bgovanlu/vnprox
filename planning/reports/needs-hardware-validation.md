@@ -967,3 +967,24 @@ genuinely fails). These items are what only real PVE can settle:
 - [ ] **Reduced-coverage reporting matches reality.** Apply a firewall changeset with a 600s confirm
       window from a session whose ticket has < 600s left, and confirm the operator-visible
       `unattendedRevert.fullWindow: false` cut-off is where the revert actually stops working.
+
+## T-1901 — backup, restore and disaster recovery
+
+Everything on this card runs against real SQLite, real archives, a real `flock`, a real bound
+listener and a real `runDaemon`; nothing needed a Proxmox cluster. Two items are genuinely about
+iron rather than about correctness:
+
+- [ ] **`VACUUM INTO` against a months-old store on a real node.** `internal/store.SnapshotTo` is
+      verified here against a concurrently-written store, but a real node's store is larger and its
+      root filesystem is shared with pmxcfs and PVE's own I/O. Measure: wall time and peak extra
+      disk usage for a `VACUUM INTO` of a real store, and whether the daemon's own writes visibly
+      stall during it (they should not — the vacuum holds a read transaction, not a write lock).
+      If the transient double-disk-usage is material on a small root filesystem, `docs/deployment.md`'s
+      sizing guidance needs a number.
+- [ ] **`vnprox-backup.service`/`.timer` under the real unit sandbox.** The unit runs with
+      `ProtectSystem=strict`, `ReadWritePaths=/var/lib/vnprox`, `PrivateNetwork=yes` and a
+      two-capability bounding set. That composition is checked here only by `systemd-analyze verify`
+      (whose sole complaint is that `/usr/bin/vnproxctl` does not exist on the dev host). Confirm on
+      a PVE node that `systemctl start vnprox-backup.service` writes an archive, that `--keep`'s
+      prune works inside the sandbox, and that the timer's `Persistent=true` catch-up fires after a
+      node was powered off across the scheduled time.

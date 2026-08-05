@@ -1,0 +1,19 @@
+[Unit]
+# T-1901. Shipped disabled; enable with:
+#   systemctl enable --now vnprox-backup.timer
+Description=Daily vnprox state backup
+Documentation=file:///usr/share/doc/vnprox/README.md
+
+[Timer]
+# Daily, at a randomised time in the small hours. RandomizedDelaySec matters
+# on a cluster: without it every node in a cluster would snapshot its store
+# at the same instant, which is a self-inflicted I/O spike on shared
+# storage for no benefit.
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=30m
+# Catch up after a node was powered off over the scheduled time, rather
+# than silently skipping a day.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
