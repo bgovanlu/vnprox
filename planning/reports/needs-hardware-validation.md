@@ -5,6 +5,34 @@ confirm before v1.0 ships. Per CLAUDE.md, implementation agents have no live PVE
 the accumulating checklist for the first hardware pass (owner: T-6xx hardening/validation work).
 Check items off with the PVE version tested.
 
+## Deploy-time validation, 2026-08-05 (pvecube, pve-manager/9.2.4, kernel 7.0.14-4-pve, single node)
+
+Obtained while deploying this arc's merged work, not through T-1801's harness. Single node, so
+nothing cross-node is covered.
+
+- [x] **`/etc/pve/pve-root-ca.pem` exists at the documented path and loads as a trust anchor**
+      (T-1906). Daemon logged `peer: cluster CA trust anchor loaded; peer TLS is pinned to it`.
+      `openssl verify -CAfile /etc/pve/pve-root-ca.pem /etc/pve/local/pve-ssl.pem` → OK.
+- [x] **The peer leaf certificate's SAN list does NOT necessarily cover the node's actual address**
+      — and this is a **failure**, filed as `T-1906-bug-01`. This node's only address is
+      `192.168.1.9` (vmbr0); its `pve-ssl.pem` carries `IP 192.168.100.99` (stale), plus
+      `DNS pvecube`/`pvecube.localdomain`. A peer dialled by IP would fail pinned hostname
+      verification. Corrects the assumption in T-1906's report that the open question was
+      "hostname-only SANs" — the real hazard is a *stale* IP SAN.
+- [x] **The forward-only migration chain runs on a real store with real data** (T-1807): an
+      in-place `apt install` upgraded schema 32 → 34 (T-1805's 33 and T-2003's 34) against a
+      3.7 MB production store, service came back active, all three collectors reporting success.
+- [x] **`vnproxctl backup` works against a real store** (T-1901): wrote a 637.6 KiB archive,
+      schema 34, 3 entries, correctly reporting that no key material was included.
+- [x] **`vnproxctl support-bundle` leaks no real credential** (T-1902). Built from this live
+      install and scanned decompressed: the session key (first 16 bytes, base64) and the PVE API
+      token tail are both absent. **Scan validated by a control first** — the same scan finds
+      `pvecube` in the bundle, so the negatives mean something. This is stronger evidence than
+      the fixture-based tests, because the credentials were real.
+- [ ] **Still not covered on hardware**: anything cross-node (peer API round trips, pmxcfs
+      replication, distributed rollback, HA lease fencing), and `T-1906-bug-01`'s actual failure
+      mode, which needs a second node to observe rather than infer.
+
 ## PVE API behavior
 
 - [ ] **API-token auth**: real PVE accepts `Authorization: PVEAPIToken=user@realm!tokenid=secret`

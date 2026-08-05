@@ -284,3 +284,51 @@ ever built. Four releases of documented behavior that does not exist.
 - **T-1907's threshold is the one number this phase cannot invent.** If T-1808 has not run when
   T-1907 executes, pick a defensible default, state it as provisional in the report, and file a
   follow-up to revisit it against real numbers.
+
+---
+
+## T-1906-bug-01 · Pinned peer TLS can fail closed against a stale IP SAN
+
+**Severity:** High — on a multi-node cluster this makes **every peer unreachable at once**, on
+upgrade, with no config change by the operator. Peer-API traffic carries cross-node changeset
+application and distributed rollback, so this degrades the cluster to single-node behaviour.
+
+**Found on real hardware** during the deploy of this arc's work to `pvecube`
+(pve-manager/9.2.4, kernel 7.0.14-4-pve, single node).
+
+T-1906 pins `/etc/pve/pve-root-ca.pem` as the sole trust anchor for peer TLS and fails closed by
+design. Its report flagged the top risk as "peers are dialled by IP; if real PVE's `pve-ssl.pem`
+carries only hostname SANs, pinning fails closed on every peer at once." The hardware answer is
+worse than that framing:
+
+```
+node addresses:   vmbr0: 192.168.1.9/24        (the only real address)
+pve-ssl.pem SANs: IP 127.0.0.1, IP ::1, IP 192.168.100.99,
+                  DNS localhost, DNS pvecube, DNS pvecube.localdomain
+```
+
+The certificate **does** carry an IP SAN — so the flagged "hostname-only" case does not apply —
+but it is a **stale** address (`192.168.100.99`) that the node no longer has. The node's actual
+address is absent from the SAN list. Pinned verification of a peer dialled at `192.168.1.9` would
+therefore fail hostname validation and be rejected as untrusted.
+
+This node is single-node, so nothing is currently broken here; the finding is that the *assumption*
+"a PVE leaf cert covers the address vnprox will dial" is false in practice. PVE generates
+`pve-ssl.pem` at cluster/cert-creation time and does not necessarily regenerate it when a node's
+management address changes.
+
+**What was verified working** (same host, same session): `/etc/pve/pve-root-ca.pem` exists at the
+documented path and loads as a trust anchor (`peer: cluster CA trust anchor loaded; peer TLS is
+pinned to it`), and `openssl verify -CAfile /etc/pve/pve-root-ca.pem /etc/pve/local/pve-ssl.pem`
+returns OK. The chain is sound; only the address coverage is not.
+
+**Scope for whoever picks this up:**
+- Decide the policy deliberately. Options include dialling peers by **name** rather than IP where a
+  DNS SAN exists (this cert carries `pvecube`/`pvecube.localdomain`), setting `ServerName`
+  explicitly from the PVE node name while still pinning the CA, or detecting the mismatch at
+  startup and raising a named finding *before* the first peer call fails.
+- Whatever is chosen, do **not** relax to the system trust pool — that reinstates the
+  vulnerability T-1906 closed.
+- Add a startup preflight: compare the local node's addresses against its own `pve-ssl.pem` SANs
+  and warn loudly on a mismatch. `vnproxctl doctor` (T-1904) is the natural home; this is exactly
+  the class of "it will fail later, for a knowable reason" check that card exists for.
