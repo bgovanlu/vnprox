@@ -71,9 +71,22 @@ You see and can do exactly what your Proxmox permissions allow. Read-only PVE us
 
 ## 6. Keyboard reference
 
-`/` search · `1–4` toggle layers · `f` VLAN filter · `g` then `t/s/f/i` go to Topology/SDN/Firewall/IPAM · `⌘K`/`Ctrl+K` command palette · `?` full list.
+`/` search · `1–4` toggle layers · `f` VLAN filter · `g` then `t/s/f/i` go to Topology/SDN/Firewall/IPAM · `⌘K`/`Ctrl+K` command palette · `?` full list · `F1` help for the current screen.
 
 **Command palette (`⌘K`/`Ctrl+K`)**: one dialog, reachable from any page, merging the same fuzzy entity search `/` opens with every action the current page(s) have registered — "edit vmbr0", "new VLAN zone", "open drafts", "simulate path from <entity>", and more as pages add their own verbs. Arrow keys move through the merged list; Enter/click runs the highlighted entry. On the topology map itself, arrow keys also move focus between entities (roving focus, in on-screen left-to-right/top-to-bottom order) once an entity has focus; Enter activates the focused one exactly like a click.
+
+## 6a. Online help
+
+Every screen in vnprox explains itself, without leaving the browser.
+
+- **`F1`, or the `Help` button** in the top bar, opens the help panel on whatever screen you're looking at — what it's for, how to read it, and what the safe way to change something here is.
+- **The `?` next to a panel heading** opens help for that specific surface, not the whole page. The path simulator's four verdicts, what microsegmentation's "cannot-determine" bucket means, what unattended rollback actually covers — each is one click from where you're standing.
+- **Search** inside the panel covers every topic's full text, not just titles. **See also** links move between related topics, and **Back** returns.
+- **`?`** still opens the keyboard-shortcut list, unchanged. Two different questions, two different affordances.
+
+Help topics cover the concepts the UI assumes you hold (the change engine, commit-confirm, protected interfaces, drift, permissions), every routed screen, the panels and wizards inside them, and the v2.0/v3.0 opt-ins — federation, AI operators, plugins, tenants, HA, switch push, embeds.
+
+Coverage is enforced, not asserted: `web/src/help/coverage.test.ts` derives the screen inventory from `App.tsx` and `NavRail.tsx` themselves, so a route that ships without help fails the build. See `docs/development.md`.
 
 ## 7. Beyond one cluster (v2.0)
 

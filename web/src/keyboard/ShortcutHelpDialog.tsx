@@ -23,7 +23,8 @@ export function ShortcutHelpDialog({ open, onOpenChange }: ShortcutHelpDialogPro
       <DialogContent aria-describedby="shortcut-help-description">
         <DialogTitle>Keyboard shortcuts</DialogTitle>
         <DialogDescription id="shortcut-help-description">
-          Press <kbd className="rounded border px-1">Esc</kbd> to close.
+          Press <kbd className="rounded border px-1">Esc</kbd> to close. For help with what a screen does
+          rather than which keys it takes, press <kbd className="rounded border px-1">F1</kbd>.
         </DialogDescription>
         <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           {SHORTCUTS.map((shortcut) => (

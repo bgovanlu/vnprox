@@ -29,7 +29,8 @@ export type ShortcutAction =
   | { readonly type: "topology-vlan-filter" }
   | { readonly type: "topology-search" }
   | { readonly type: "command-palette" }
-  | { readonly type: "help" };
+  | { readonly type: "help" }
+  | { readonly type: "page-help" };
 
 export interface ShortcutDef {
   readonly id: string;
@@ -92,6 +93,16 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     action: { type: "command-palette" },
   },
   { id: "help", keys: "?", description: "Show this help", action: { type: "help" } },
+  // T-2204: like "command-palette" above, useKeyboardShortcuts intercepts
+  // this key before the generic single-key SHORTCUTS lookup runs — the row
+  // exists so ShortcutHelpDialog reads the binding from the one canonical
+  // place rather than hard-coding it a second time.
+  {
+    id: "page-help",
+    keys: "F1",
+    description: "Help for this screen",
+    action: { type: "page-help" },
+  },
 ] as const;
 
 /** The `t/s/f/i` half of a `g` chord, mapped straight to SHORTCUTS'

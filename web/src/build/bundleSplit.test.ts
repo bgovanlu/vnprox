@@ -72,7 +72,16 @@ describe("production bundle: Monaco code-split (T-208 AC4)", () => {
         // not a byte-count comparison against the Monaco chunk (the rest
         // of the app growing over time shouldn't make an unrelated bundle
         // test flaky).
-        expect(mainSize).toBeLessThan(3_500_000);
+        // T-2202 raised this from 3_500_000: the online-help content
+        // (src/help/content/*.ts, ~110KB of prose across ~60 topics) is
+        // bundled deliberately rather than fetched, so it costs main-chunk
+        // bytes. Measured over the wire it's ~33KB gzipped, which did not
+        // justify code-splitting the registry and losing synchronous topic
+        // lookup in <HelpAnchor>'s accessible name. Raised once, with the
+        // reason recorded — this ceiling exists to catch an accidental
+        // dependency landing in the wrong chunk, not to ratchet quietly
+        // every time content grows.
+        expect(mainSize).toBeLessThan(3_800_000);
 
         // The load-bearing check: Monaco's own distinctive runtime marker
         // must appear in the Monaco chunk and must NOT appear in the main

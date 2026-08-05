@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import clsx from "clsx";
 import type { FwLogEntry } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { AnalyticsTab } from "./AnalyticsTab";
 import { ruleDeepLinkPath } from "./deeplink";
@@ -173,7 +174,10 @@ export function FwLogViewer() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-base font-semibold">Firewall log</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            Firewall log
+            <HelpAnchor topic="fwlog-viewer" />
+          </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Cluster-wide pve-firewall log, live-following via WebSocket. Lines are correlated to the configured rule where
             determinable; ambiguous or unrecognized lines are labeled honestly rather than guessed (real pve-firewall log

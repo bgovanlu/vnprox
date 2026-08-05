@@ -70,6 +70,29 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
   (a dedicated required CI job vs. a nightly) and fixes what it finds; until then, treat `web/e2e/`
   as a manual, opt-in smoke suite only.
 
+### Online help — a new screen ships with its help topic
+
+Every route in `web/src/App.tsx` must map to a registered help topic in
+`web/src/help/routeTopics.ts`. This is enforced by `web/src/help/coverage.test.ts`, which parses
+`App.tsx` and `layout/NavRail.tsx` for the routes and destinations they actually declare rather
+than trusting a hand-maintained list — so adding a route without help is a **failing test naming
+the path**, not a documentation debt someone notices later. The same test rejects stale mappings
+for deleted routes, `<HelpAnchor topic="…">` values that resolve to nothing, unresolvable
+`seeAlso` ids, orphaned topics unreachable from any screen, and content below a quality floor
+(summary ≥ 60 chars, ≥ 2 sections, no placeholder prose).
+
+When you add a screen:
+
+1. Write the topic in `web/src/help/content/pages.ts`, citing the repo doc you wrote it from in
+   `docRef` — the gate checks that file exists. Help that invents behaviour is worse than none.
+2. Add the route → topic mapping to `ROUTE_HELP`.
+3. If the screen has a panel or wizard with its own vocabulary or its own risk, give it a topic in
+   `content/panels.ts` and place a `<HelpAnchor topic="…">` next to that panel's heading.
+
+Note the anti-vacuity assertions at the top of the coverage test: each source parse asserts a floor
+on what it found and that a known sentinel is among the results. A regex that stops matching after
+a refactor must fail loudly, not certify full coverage of an empty set.
+
 ## CI (GitHub Actions)
 
 `ci.yml` runs four jobs on every PR and push to `main`:

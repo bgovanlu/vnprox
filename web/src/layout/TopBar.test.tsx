@@ -17,7 +17,7 @@ function renderTopBar() {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <TopBar onOpenHelp={() => undefined} />
+        <TopBar onOpenHelp={() => undefined} onOpenPageHelp={() => undefined} />
       </MemoryRouter>
     </QueryClientProvider>,
   );

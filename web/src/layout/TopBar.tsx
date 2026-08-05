@@ -9,10 +9,13 @@ import { logout } from "../api/auth";
 import { useTopologyStore } from "../topology/store";
 
 export interface TopBarProps {
+  /** The `?` keyboard-shortcut list (ShortcutHelpDialog). */
   onOpenHelp: () => void;
+  /** T-2204: contextual online help for the current screen (F1). */
+  onOpenPageHelp: () => void;
 }
 
-export function TopBar({ onOpenHelp }: TopBarProps) {
+export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
   const { data: session } = useSession();
   const demoSession = useDemoSessionStore((s) => s.demoSession);
   const exitDemoMode = useDemoSessionStore((s) => s.exitDemoMode);
@@ -69,6 +72,13 @@ export function TopBar({ onOpenHelp }: TopBarProps) {
       </button>
 
       <div className="ml-auto flex items-center gap-2">
+        {/* T-2204: two distinct affordances, deliberately not merged into
+         * one menu — "what does this screen do" and "what are the keys"
+         * are different questions, and burying the first behind a dropdown
+         * is how help ends up unused. */}
+        <Button variant="ghost" size="sm" onClick={onOpenPageHelp} aria-label="Help" title="Help for this screen (F1)">
+          Help
+        </Button>
         <Button variant="ghost" size="sm" onClick={onOpenHelp} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
           ?
         </Button>

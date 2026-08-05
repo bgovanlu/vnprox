@@ -24,6 +24,7 @@ import { ApiError } from "../api/client";
 import { DryRunReport } from "./DryRunReport";
 import { useMicrosegDryRunMutation, useMicrosegProposeMutation } from "./queries";
 import { formatCoveragePct } from "./format";
+import { HelpAnchor } from "../help/HelpAnchor";
 
 interface MicrosegPlannerProps {
   /** The guest whose observed flows drive synthesis — its own inventory Ref
@@ -137,7 +138,10 @@ export function MicrosegPlanner({ guestRef }: MicrosegPlannerProps) {
     <div className="flex flex-col gap-4" data-testid="microseg-planner">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold">Microsegmentation planner</h3>
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            Microsegmentation planner
+            <HelpAnchor topic="microseg-planner" />
+          </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Proposes the minimal firewall policy that preserves this guest&apos;s observed-good traffic, then dry-runs it
             before you enforce. Read-only until you stage it as a changeset.

@@ -11,6 +11,8 @@ import { OnboardingWalkthrough } from "../onboarding/OnboardingWalkthrough";
 import { MgmtWizardHost } from "../mgmt/MgmtWizardHost";
 import { MgmtProtectedRefreshPrompt } from "../mgmt/MgmtProtectedRefreshPrompt";
 import { ConnectClustersWizardHost } from "../wireguard/ConnectClustersWizardHost";
+import { HelpPanel } from "../help/HelpPanel";
+import { useHelpForRoute } from "../help/useHelpForRoute";
 
 /** Top-level layout for every authenticated route: nav rail + top bar
  * around a routed <Outlet/>, with the keyboard-shortcut framework wired
@@ -19,17 +21,22 @@ export function AppShell() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const location = useLocation();
+  // T-2204: contextual online help for whatever screen is routed right now.
+  // Separate from `helpOpen`/ShortcutHelpDialog above, which stays exactly
+  // what it was — the `?` keyboard-shortcut list.
+  const openPageHelp = useHelpForRoute();
 
   useKeyboardShortcuts({
     onOpenHelp: () => { setHelpOpen(true); },
     onOpenPalette: () => { setPaletteOpen(true); },
+    onOpenPageHelp: openPageHelp,
   });
 
   return (
     <div className="flex h-dvh w-full bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
       <NavRail />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar onOpenHelp={() => { setHelpOpen(true); }} />
+        <TopBar onOpenHelp={() => { setHelpOpen(true); }} onOpenPageHelp={openPageHelp} />
         {/* Rendered in normal document flow, between TopBar and <main> —
          * not a fixed overlay — so it pushes page content down instead of
          * floating on top of it. Every page's own top-row controls (the
@@ -76,6 +83,7 @@ export function AppShell() {
         </main>
       </div>
       <ShortcutHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+      <HelpPanel />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <ChangesetDrawer />
       <MgmtWizardHost />

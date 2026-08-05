@@ -9,11 +9,13 @@ import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 function Harness({
   onOpenHelp = vi.fn(),
   onOpenPalette = vi.fn(),
+  onOpenPageHelp = vi.fn(),
 }: {
   onOpenHelp?: () => void;
   onOpenPalette?: () => void;
+  onOpenPageHelp?: () => void;
 }) {
-  useKeyboardShortcuts({ onOpenHelp, onOpenPalette });
+  useKeyboardShortcuts({ onOpenHelp, onOpenPalette, onOpenPageHelp });
   return <div>harness</div>;
 }
 
@@ -182,5 +184,65 @@ describe("useKeyboardShortcuts — topology bindings", () => {
     await user.keyboard("k");
 
     expect(onOpenPalette).not.toHaveBeenCalled();
+  });
+});
+
+// T-2204: F1 is the online-help binding, deliberately separate from `?`
+// (the keyboard-shortcut list) so neither displaces the other.
+describe("useKeyboardShortcuts — F1 contextual help", () => {
+  it("opens page help on F1, and does not open the shortcut dialog", async () => {
+    const onOpenPageHelp = vi.fn();
+    const onOpenHelp = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <Harness onOpenPageHelp={onOpenPageHelp} onOpenHelp={onOpenHelp} />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+
+    await user.keyboard("{F1}");
+
+    expect(onOpenPageHelp).toHaveBeenCalledTimes(1);
+    expect(onOpenHelp).not.toHaveBeenCalled();
+  });
+
+  it("opens page help on F1 even while focus is in a text input", async () => {
+    const onOpenPageHelp = vi.fn();
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <input aria-label="some field" />
+          <Harness onOpenPageHelp={onOpenPageHelp} />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("some field"));
+
+    await user.keyboard("{F1}");
+
+    expect(onOpenPageHelp).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves `?` bound to the shortcut dialog, not to page help", async () => {
+    const onOpenPageHelp = vi.fn();
+    const onOpenHelp = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <Harness onOpenPageHelp={onOpenPageHelp} onOpenHelp={onOpenHelp} />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      await user.keyboard("?");
+    });
+
+    expect(onOpenHelp).toHaveBeenCalledTimes(1);
+    expect(onOpenPageHelp).not.toHaveBeenCalled();
   });
 });

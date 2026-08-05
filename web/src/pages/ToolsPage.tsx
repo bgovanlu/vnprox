@@ -22,6 +22,7 @@ import { RawEditorPanel } from "../changesets/rawEditor/RawEditorPanel";
 import { EmptyState } from "../components/EmptyState";
 import { FindingsStreamPanel } from "../findings/FindingsStreamPanel";
 import { FwLogViewer } from "../fwlog/FwLogViewer";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { SimulatorPage } from "../simulator/SimulatorPage";
 import { MacFdbBrowser } from "../tools/MacFdbBrowser";
@@ -47,7 +48,10 @@ export function ToolsPage() {
     return (
       <div className="flex h-full flex-col gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Findings</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            Findings
+            <HelpAnchor topic="findings-stream" />
+          </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Drift, LLDP VLAN mismatches, IPAM conflicts, and continuous health checks, read-only from here.
           </p>
@@ -71,7 +75,10 @@ export function ToolsPage() {
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Tools</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            Tools
+            <HelpAnchor topic="tools-page" />
+          </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Path simulator, the raw <code>/etc/network/interfaces</code> editor, drift findings, MAC/FDB search, and
             the firewall log viewer. The node picker below applies to the raw editor only — saving there still goes
@@ -111,7 +118,10 @@ export function ToolsPage() {
       <hr className="border-slate-200 dark:border-slate-800" />
 
       <div>
-        <h2 className="text-lg font-semibold">Findings</h2>
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          Findings
+          <HelpAnchor topic="findings-stream" />
+        </h2>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
           One stream for drift, LLDP VLAN mismatches, IPAM conflicts, and continuous health checks
           (docs/features/monitoring.md §5), re-evaluated on a ~30s cycle. Affected entities are also outlined with a
@@ -131,7 +141,10 @@ export function ToolsPage() {
       <hr className="border-slate-200 dark:border-slate-800" />
 
       <div>
-        <h2 className="text-lg font-semibold">Export documentation</h2>
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          Export documentation
+          <HelpAnchor topic="doc-export" />
+        </h2>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
           A timestamped as-built document of the cluster network (docs/features/blueprints.md §4): rendered topology,
           per-node interface tables, VLAN matrix, SDN inventory, firewall summaries, and the LLDP wiring table. This

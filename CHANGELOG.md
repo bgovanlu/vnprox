@@ -24,6 +24,47 @@ until the whole arc — including phases 13–15 of the *next* arc, see the note
 on `[2.0.0]` below — had already merged onto the same branch. Their
 functionality is folded into `[2.0.0]`.
 
+## [Unreleased]
+
+### Added
+
+- **Online help, on every screen.** vnprox previously had one in-app help surface: a dialog
+  listing keyboard shortcuts. Everything else a user might need to know lived in `docs/` — on
+  disk, in a git repo, on a machine they are probably not looking at while a commit-confirm
+  countdown is running. There is now a help panel that answers "what is this, and what do I do
+  here?" from wherever you are. Press **F1** or the **Help** button in the top bar for the screen
+  you're on; click the **?** next to a panel heading for that specific surface. The panel carries
+  full-text search across every topic, **See also** links between related ones, and Back to
+  retrace. `?` still opens the keyboard-shortcut list, unchanged — two different questions, two
+  different affordances.
+
+  Coverage spans the concepts the UI assumes you hold (the change engine, commit-confirm,
+  protected interfaces, drift, findings, permissions, read-only mode, cluster awareness), every
+  routed screen, the panels and wizards inside them, and the v2.0/v3.0 opt-ins — federation, AI
+  operators, plugins, tenants, HA, switch push, embeds, OIDC, PBS. Topics state the safety
+  boundaries where they apply: that an AI operator can draft but never apply, that a switch push
+  cannot be rolled back remotely, that unattended rollback covers interface changes always and
+  firewall/SDN changes only for as long as your sealed PVE ticket lasts.
+
+  Help content is bundled into the SPA rather than fetched, so it adds no API surface. Every topic
+  cites the repo doc it was written from.
+
+- **The coverage claim is enforced, not asserted.** `web/src/help/coverage.test.ts` derives the
+  screen inventory by parsing `App.tsx` and `NavRail.tsx` for the routes they actually declare,
+  then requires each to resolve to a substantial topic. It also rejects stale mappings for deleted
+  routes, `<HelpAnchor>` values that resolve to nothing, unresolvable `seeAlso` ids, orphaned
+  topics unreachable from any screen, `docRef`s naming a file that doesn't exist, and content below
+  a quality floor. Adding a route without help is a failing test naming the path. Each source parse
+  asserts a floor on what it found and that a known sentinel is among the results, so a regex that
+  stops matching after a refactor fails loudly instead of certifying full coverage of an empty set.
+
+### Fixed
+
+- **Closing a dialog no longer drops keyboard focus to nowhere.** Radix restores focus to a
+  `DialogTrigger`; the help panel is opened programmatically and has none, so closing it would have
+  left focus on `<body>`. The panel now returns focus to whatever opened it — the top-bar button,
+  or the specific `?` anchor you clicked.
+
 ## [3.0.4] - 2026-07-30
 
 Closes T-1407's two deferred follow-ups (see `planning/reports/T-1407-followups.md`).

@@ -28,6 +28,7 @@ import { isTraceableEntityKind } from "./traceLink";
 import { decodeSimState, encodeSimState, simUrlStatePath, simUrlStateToRequest, type SimUrlState } from "./urlState";
 import { VerifyLiveButton } from "./VerifyLiveButton";
 import { VerifyPanel } from "./VerifyPanel";
+import { HelpAnchor } from "../help/HelpAnchor";
 
 const PROTO_OPTIONS = ["", "tcp", "udp", "icmp"] as const;
 
@@ -171,7 +172,10 @@ export function SimulatorPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold">Path simulator</h2>
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            Path simulator
+            <HelpAnchor topic="path-simulator" />
+          </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             "Why can't VM A reach VM B?" — static analysis over configured state (docs/features/firewall.md §5). Every
             result below is labeled Simulated and lists what wasn't (or couldn't be) evaluated.

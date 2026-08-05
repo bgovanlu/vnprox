@@ -6,6 +6,7 @@ import { Suspense, lazy } from "react";
 import { useSession } from "../../api/useSession";
 import { Button } from "../../components/Button";
 import { Tooltip } from "../../components/Tooltip";
+import { HelpAnchor } from "../../help/HelpAnchor";
 import { capsForNode } from "../capabilities";
 import { useRawEditor } from "./useRawEditor";
 
@@ -29,6 +30,7 @@ export function RawEditorPanel({ node }: RawEditorPanelProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
+        <HelpAnchor topic="raw-editor" />
         <p className="text-sm text-slate-500 dark:text-slate-400" role="status">
           {state.loading
             ? "Loading /etc/network/interfaces…"

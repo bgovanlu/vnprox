@@ -23,7 +23,14 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * registered (any other route), they show a toast explaining the shortcut
  * only works on the Topology view, rather than silently doing nothing.
  */
-export function useKeyboardShortcuts(options: { onOpenHelp: () => void; onOpenPalette: () => void }): void {
+export function useKeyboardShortcuts(options: {
+  onOpenHelp: () => void;
+  onOpenPalette: () => void;
+  /** T-2204: `F1` — contextual online help for the current screen. Distinct
+   * from `?`/onOpenHelp, which keeps its existing meaning (the keyboard
+   * shortcut list). */
+  onOpenPageHelp: () => void;
+}): void {
   const navigate = useNavigate();
   const { toast } = useToast();
   const pendingChord = useRef<string | undefined>(undefined);
@@ -62,6 +69,18 @@ export function useKeyboardShortcuts(options: { onOpenHelp: () => void; onOpenPa
       if (isPaletteChord) {
         event.preventDefault();
         optionsRef.current.onOpenPalette();
+        return;
+      }
+
+      // T-2204: F1 opens contextual help for the current screen. Checked
+      // alongside the palette chord, above the "unmodified single key"
+      // guards below, for the same reason: a function key can't collide
+      // with typing, so help stays reachable mid-edit — which is exactly
+      // when someone is most likely to want it (halfway through a form
+      // they don't understand).
+      if (event.key === "F1") {
+        event.preventDefault();
+        optionsRef.current.onOpenPageHelp();
         return;
       }
 
