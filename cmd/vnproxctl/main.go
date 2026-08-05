@@ -73,6 +73,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runBackup(args[1:], stdout, stderr)
 	case "restore":
 		return runRestore(args[1:], stdout, stderr)
+	case "support-bundle":
+		return runSupportBundle(args[1:], stdout, stderr)
 	case "remote":
 		return runRemote(args[1:], stdout, stderr)
 	case "apply":
@@ -101,6 +103,10 @@ Usage:
   vnproxctl restore <archive>          Replace this node's store from a backup archive: refuses
                                        against a running daemon, refuses a store from a newer
                                        vnprox, forward-migrates, and swaps atomically.
+  vnproxctl support-bundle             Write a REDACTED diagnostic archive meant to be attached to
+                                       a support thread: environment, allowlisted config, store
+                                       facts (never the store), redacted changesets, scrubbed logs,
+                                       peer reachability and live probes. Contains no credential.
 
 HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
 (a T-1104 bearer token; never a PVE username/password from this CLI):
@@ -152,6 +158,20 @@ restore flags:
   --dry-run           validate the archive and print the plan; change nothing
   --restore-config    also install the archive's vnprox.toml (current one moved aside)
   --restore-keys      also install the archive's key files (needs an --include-keys archive)
+  -o <table|json>     output format (default table)
+
+support-bundle flags:
+  --config <path>     vnprox.toml to read paths from (default /etc/vnprox/vnprox.toml)
+  --out-dir <dir>     where to write the bundle (default /var/lib/vnprox/support)
+  --out <path>        exact archive path, overriding --out-dir
+  --dry-run           collect exactly as a real run does, print the contents, write nothing
+  --no-probe          make no outbound connection at all
+  --changesets <n>    how many recent changesets to include (default 20)
+  --log-lines <n>     how many journal lines to include (default 2000)
+  --log-file <path>   read the daemon log from a file instead of journalctl
+  --log-unit <name>   systemd unit to read the log from (default vnprox)
+  --interfaces <path> interfaces(5) to parse (never included verbatim)
+  --corosync <path>   corosync.conf to discover peers from
   -o <table|json>     output format (default table)
 
 remote/apply flags (every command in this family):

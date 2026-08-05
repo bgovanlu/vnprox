@@ -353,6 +353,71 @@ vnprox's store is disposable app state, by design (decision D5): reinstalling lo
 configuration. Proxmox itself — the actual network configuration — is untouched by any of this and
 keeps working exactly as configured.
 
+## Support bundles (T-1902)
+
+`vnproxctl support-bundle` produces **one redacted archive that lets someone diagnose this install
+without logging into it.** It is the thing to attach to a bug report, a forum thread, or a message
+to whoever is helping you.
+
+```bash
+vnproxctl support-bundle --dry-run       # print exactly what would be collected; write nothing
+vnproxctl support-bundle                 # -> /var/lib/vnprox/support/vnprox-support-<node>-<UTC>.tar.gz
+vnproxctl support-bundle --no-probe      # make no outbound connection at all
+vnproxctl support-bundle -o json         # machine-readable
+```
+
+Like `backup`/`restore`, it is **daemon-independent** — that is the point. A bundle is most needed
+when vnproxd will not start, so nothing in it requires a healthy daemon: the store is read
+**read-only** (SQLite `query_only`, so inspecting a store with a failed migration cannot migrate
+it), peers come from `corosync.conf` rather than from a live peer client, and the daemon's own
+`/api/v1/health` is one probe among many rather than the source of everything.
+
+### What is in a bundle
+
+| Entry | Contents | Redaction |
+|---|---|---|
+| `readme.txt` | what this bundle holds and what it deliberately omits — generated from the code, not written by hand | generated text |
+| `environment.json` | node, build, kernel, OS, clock/UTC offset, and the existence + mode of every path vnprox depends on | typed fields, allowlisted |
+| `config/vnprox.redacted.json` | `vnprox.toml` **key by key**; a key not on the bundle's allowlist keeps its name and loses its value | per-key allowlist |
+| `store/summary.json` | schema version vs. this binary's, migration state, size, `integrity_check`, per-table row counts | derived facts only |
+| `changesets/recent.json` | the last N changesets with ops, plan and apply log | typed fields + JSON key-walk redaction |
+| `findings/events.json` | stored finding transitions (new/escalated/resolved) | typed fields, scrubbed |
+| `host/network.json` | `/etc/network/interfaces` as **structure** — stanzas and allowlisted options | per-option allowlist |
+| `peers.json` | cluster peers from `corosync.conf`, each `ok` / `unreachable` / `untrusted` | typed fields, scrubbed |
+| `probes.json` | is the listen port taken, is the daemon answering, do the declared key files exist and with what mode | typed fields, scrubbed |
+| `logs/daemon.log`, `logs/summary.json` | the tail of `journalctl -u vnprox` (or `--log-file`) | every line through the redactor |
+
+### What is deliberately not in a bundle
+
+- **The store itself.** `store/vnprox.db` is never included: it carries the whole audit trail,
+  every rollback snapshot, and the ciphertext of every sealed credential. Derived facts only.
+- **`vnprox.toml` verbatim** and **`/etc/network/interfaces` verbatim.** Both are re-emitted through
+  explicit allowlists — an interfaces(5) file can legitimately carry a WireGuard private key.
+- **Any key file's contents.** The declared key files are reported by existence and mode only; the
+  bundle never opens them.
+- **Anything matching a credential shape** in a log line, an error string, a changeset title or a
+  changeset's ops — replaced with `[REDACTED-BY-VNPROXCTL-SUPPORT-BUNDLE]`, so you can grep for what
+  was removed rather than wondering whether it was removed or simply never there.
+
+There is **no `--include-keys` and no equivalent.** A bundle's collectors implement an interface
+with no way to declare an emitted secret class at all, so `secretClasses` in its manifest is empty
+by construction rather than by default. See `docs/security.md`, "Support bundles".
+
+`vnproxctl restore` **refuses** a support bundle: it shares the archive format but is deliberately
+incomplete, and restoring one would install a store with no history in it.
+
+### Decide before you produce one
+
+`--dry-run` runs the identical collection, prints exactly what the archive would contain, and then
+throws the staging area away without writing anything. It is the same code path as a real run — the
+plan is built from what was actually collected, not from a prediction of it — so what it prints
+cannot disagree with what a real bundle holds.
+
+### It is still a map of your network
+
+A bundle contains no credential. It does describe node names, interface names, IP addressing, VLAN
+ids and changeset titles. **Read `readme.txt` inside it before you attach it to anything public.**
+
 ## Firewalling vnprox itself
 
 Restrict 8007 to management networks like you (should) restrict 8006. Peer traffic uses the same port between node IPs — allow node↔node on 8007. **Correction (flagged, T-607):** the install checklist prints a generic prose reminder to do this (pointing at `docs/security.md`), not ready-to-apply pve-firewall rule syntax as this line previously implied — `install.sh`/`vnprox-setup` don't generate actual rule text. Follow-up: print copy-pasteable rule syntax if this becomes a real operator pain point.
@@ -364,6 +429,7 @@ Restrict 8007 to management networks like you (should) restrict 8006. Peer traff
 - `vnproxctl rollback-now <changeset-id>` — CLI escape hatch to trigger rollback when the UI is unreachable.
 - UI unreachable after a bad change *you confirmed*: SSH in and restore the pre-snapshot: `vnproxctl snapshots list` / `vnproxctl snapshots restore <id>` (applies locally with ifreload, bypassing confirm — it *is* the recovery path).
 - `vnproxctl backup` / `vnproxctl restore` — vnprox's own state (changesets, snapshots, audit, layouts). See "Backup and disaster recovery" above; `restore` refuses to run while the daemon is up.
+- `vnproxctl support-bundle` — one redacted archive someone else can diagnose this install from without SSH. Works with the daemon down. `--dry-run` first if you want to see what it collects. See "Support bundles" above.
 
 ## `vnproxctl remote`/`apply` — HTTP-backed CLI parity (T-1105)
 

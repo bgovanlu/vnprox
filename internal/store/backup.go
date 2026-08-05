@@ -52,6 +52,35 @@ func rawDSN(path string, extra ...string) string {
 	return dsn
 }
 
+// InspectReadOnly opens the SQLite database at path with query_only(1) —
+// no migration, no write of any kind — and hands the connection to fn.
+//
+// It is the generalisation of InspectSchemaVersion below, extracted for
+// T-1902: a support bundle has to read *derived facts* out of a store it
+// must not touch (row counts, the last N changesets, finding history) and
+// it may well be pointed at a store this binary is too old, or too new, to
+// migrate — a failed migration being one of the exact situations a support
+// bundle exists to diagnose. Open() would migrate it; this cannot.
+//
+// query_only(1) is the load-bearing pragma: any statement fn issues that
+// would write returns an error from SQLite rather than silently mutating a
+// database nobody has decided to trust yet.
+func InspectReadOnly(ctx context.Context, path string, fn func(*sql.DB) error) error {
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("store: inspecting %s: %w", path, err)
+	}
+	db, err := sql.Open("sqlite", rawDSN(path, "_pragma=query_only(1)"))
+	if err != nil {
+		return fmt.Errorf("store: opening %s for inspection: %w", path, err)
+	}
+	defer func() { _ = db.Close() }()
+
+	if pingErr := db.PingContext(ctx); pingErr != nil {
+		return fmt.Errorf("store: opening %s for inspection: %w", path, pingErr)
+	}
+	return fn(db)
+}
+
 // InspectSchemaVersion opens the SQLite database at path read-only and
 // returns the schema version recorded in its kv table, WITHOUT applying any
 // migration. It returns 0 for a database that has never had a migration
@@ -61,26 +90,19 @@ func rawDSN(path string, extra ...string) string {
 // store copy: it must be able to say "this database is from a newer build"
 // without becoming the thing that migrates it.
 func InspectSchemaVersion(ctx context.Context, path string) (int, error) {
-	if _, err := os.Stat(path); err != nil {
-		return 0, fmt.Errorf("store: inspecting schema version of %s: %w", path, err)
-	}
-	// query_only(1) makes any accidental write from this connection an
-	// error rather than a silent mutation of a file we have not yet
-	// decided to trust.
-	db, err := sql.Open("sqlite", rawDSN(path, "_pragma=query_only(1)"))
+	var version int
+	err := InspectReadOnly(ctx, path, func(db *sql.DB) error {
+		v, err := currentSchemaVersion(ctx, db)
+		if err != nil {
+			// currentSchemaVersion's first statement reads sqlite_master,
+			// so a file that is not a SQLite database at all lands here
+			// rather than being mistaken for an empty one.
+			return err
+		}
+		version = v
+		return nil
+	})
 	if err != nil {
-		return 0, fmt.Errorf("store: opening %s for inspection: %w", path, err)
-	}
-	defer func() { _ = db.Close() }()
-
-	if pingErr := db.PingContext(ctx); pingErr != nil {
-		return 0, fmt.Errorf("store: opening %s for inspection: %w", path, pingErr)
-	}
-	version, err := currentSchemaVersion(ctx, db)
-	if err != nil {
-		// currentSchemaVersion's first statement reads sqlite_master, so a
-		// file that is not a SQLite database at all lands here rather than
-		// being mistaken for an empty one.
 		return 0, fmt.Errorf("store: inspecting schema version of %s: %w", path, err)
 	}
 	return version, nil
