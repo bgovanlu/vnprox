@@ -232,3 +232,36 @@ screen added — this is a card whose cost rises monotonically until it is done.
 - **T-2006 is sized L and is mostly mechanical**, but the framework choice is a real dependency
   decision under `CLAUDE.md`'s "no new major dependencies without a note" rule. The executor should
   raise it in the report rather than deciding silently.
+
+---
+
+## T-2003-bug-01 · Nav-rail navigation silently stops working after the inspector closes
+
+**Severity:** High — a user-facing dead end in the primary navigation, reachable by an ordinary
+sequence, with no error shown. The user clicks a nav item, the URL changes, and the page simply
+does not.
+
+**Found by:** T-2003, while hardening a `changesets.spec.ts` locator. Its original
+`getByText("app01/net0")` assertion could false-positive-match a stale Topology graph node label
+instead of the Guests page it meant to assert on — so the bug had been masked by a weak locator.
+Tightening it to a heading-based assertion exposed the real failure. See
+`planning/reports/T-2003.md` §4 and §6.
+
+**Reproduction:** spotlight search → open an entity inspector → `Escape` to dismiss it → click any
+nav-rail `<Link>`. `window.location` updates, but `<Routes>`'s rendered `Outlet` content does not
+swap; the DOM keeps showing the previous page (Topology). Root-caused with a throwaway debug spec.
+
+**Not caused by T-2003** — independently verified to reproduce on pristine `main` via `git stash`,
+and none of the involved files are touched by that card. It is pre-existing and of unknown age.
+
+**Why it survived this long:** nothing in CI runs the Playwright suite (`T-1806-bug-01`), and the
+one spec that traversed this path asserted on text loose enough to match the *stale* page it was
+supposed to have navigated away from. A test that passes because the app did not navigate is worse
+than no test — this is a concrete instance of that failure mode, and worth remembering when
+`T-1806-bug-01` is addressed: turning the suite on is necessary but not sufficient if the
+assertions are this weak.
+
+**Scope for whoever picks this up:** find why the route change does not re-render (a likely
+candidate is focus/portal state left behind by the inspector dialog interfering with router
+context, but that is a hypothesis, not a diagnosis). Fix the cause, add a regression spec that
+asserts on a *heading*, and audit sibling specs for the same too-loose-locator pattern.
