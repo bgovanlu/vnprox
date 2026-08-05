@@ -49,7 +49,7 @@ func NewHALeaseRepo(db *DB) *HALeaseRepo { return &HALeaseRepo{db: db} }
 // recorded one (a fresh install that has not yet acquired or observed a
 // lease).
 func (r *HALeaseRepo) Get(ctx context.Context) (HALease, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT holder, term, expires_at, acquired_at, updated_at
 		FROM ha_lease WHERE id = ?`, haLeaseSingletonID,
 	)
@@ -70,7 +70,7 @@ func (r *HALeaseRepo) Get(ctx context.Context) (HALease, error) {
 // peer — the state-machine correctness of *which* lease to write lives in
 // internal/ha, never here.
 func (r *HALeaseRepo) Set(ctx context.Context, l HALease) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO ha_lease (id, holder, term, expires_at, acquired_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET

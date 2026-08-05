@@ -32,7 +32,7 @@ func NewPinnedSpecRepo(db *DB) *PinnedSpecRepo { return &PinnedSpecRepo{db: db} 
 // Get returns the current pin, or ErrNotFound if nothing is pinned.
 func (r *PinnedSpecRepo) Get(ctx context.Context) (PinnedSpec, error) {
 	var ps PinnedSpec
-	err := r.db.sqlDB.QueryRowContext(ctx,
+	err := r.db.QueryRowContext(ctx,
 		`SELECT content, pinned_by, pinned_at FROM pinned_spec WHERE id = 1`,
 	).Scan(&ps.Content, &ps.PinnedBy, &ps.PinnedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -48,7 +48,7 @@ func (r *PinnedSpecRepo) Get(ctx context.Context) (PinnedSpec, error) {
 // pinned (POST /spec/pin re-pins in place rather than requiring an explicit
 // unpin first).
 func (r *PinnedSpecRepo) Set(ctx context.Context, ps PinnedSpec) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO pinned_spec (id, content, pinned_by, pinned_at) VALUES (1, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			content    = excluded.content,
@@ -64,7 +64,7 @@ func (r *PinnedSpecRepo) Set(ctx context.Context, ps PinnedSpec) error {
 
 // Clear removes the pin. Not an error to clear when nothing is pinned.
 func (r *PinnedSpecRepo) Clear(ctx context.Context) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM pinned_spec WHERE id = 1`); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM pinned_spec WHERE id = 1`); err != nil {
 		return fmt.Errorf("store: clearing pinned spec: %w", err)
 	}
 	return nil

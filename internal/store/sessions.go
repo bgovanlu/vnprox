@@ -45,7 +45,7 @@ func (r *SessionRepo) Insert(ctx context.Context, s Session) error {
 		return fmt.Errorf("store: encrypting session %s csrf token: %w", s.ID, err)
 	}
 
-	_, err = r.db.sqlDB.ExecContext(ctx, `
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO sessions (id, username, realm, pve_ticket_enc, csrf_token_enc, caps_json, created_at, expires_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Username, s.Realm, ticketEnc, csrfEnc, s.CapsJSON, s.CreatedAt, s.ExpiresAt,
@@ -59,7 +59,7 @@ func (r *SessionRepo) Insert(ctx context.Context, s Session) error {
 // Get returns the session with the given id, decrypting its secrets. It
 // returns ErrNotFound if no such session exists.
 func (r *SessionRepo) Get(ctx context.Context, id string) (Session, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, username, realm, pve_ticket_enc, csrf_token_enc, caps_json, created_at, expires_at
 		FROM sessions WHERE id = ?`, id,
 	)
@@ -68,7 +68,7 @@ func (r *SessionRepo) Get(ctx context.Context, id string) (Session, error) {
 
 // List returns all sessions ordered by created_at ascending.
 func (r *SessionRepo) List(ctx context.Context) ([]Session, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, username, realm, pve_ticket_enc, csrf_token_enc, caps_json, created_at, expires_at
 		FROM sessions ORDER BY created_at ASC`,
 	)
@@ -105,7 +105,7 @@ func (r *SessionRepo) Update(ctx context.Context, s Session) error {
 		return fmt.Errorf("store: encrypting session %s csrf token: %w", s.ID, err)
 	}
 
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE sessions SET pve_ticket_enc = ?, csrf_token_enc = ?, caps_json = ?, expires_at = ?
 		WHERE id = ?`,
 		ticketEnc, csrfEnc, s.CapsJSON, s.ExpiresAt, s.ID,
@@ -119,7 +119,7 @@ func (r *SessionRepo) Update(ctx context.Context, s Session) error {
 // Delete removes a session (logout, expiry sweep). It is not an error to
 // delete an already-absent session.
 func (r *SessionRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting session %s: %w", id, err)
 	}
 	return nil

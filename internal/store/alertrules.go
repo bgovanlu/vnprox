@@ -82,7 +82,7 @@ func (r *AlertRuleRepo) Insert(ctx context.Context, a AlertRule) error {
 	if err != nil {
 		return err
 	}
-	_, err = r.db.sqlDB.ExecContext(ctx, `
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO alert_rules
 			(id, name, enabled, source_filter_json, severity_filter_json, target_kind, target_url, target_secret_enc, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -96,7 +96,7 @@ func (r *AlertRuleRepo) Insert(ctx context.Context, a AlertRule) error {
 
 // Get returns one alert rule by id, or ErrNotFound.
 func (r *AlertRuleRepo) Get(ctx context.Context, id string) (AlertRule, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, enabled, source_filter_json, severity_filter_json, target_kind, target_url, target_secret_enc, created_at, updated_at
 		FROM alert_rules WHERE id = ?`, id,
 	)
@@ -110,7 +110,7 @@ func (r *AlertRuleRepo) Get(ctx context.Context, id string) (AlertRule, error) {
 // List returns every alert rule, ordered by name then id for a stable
 // listing.
 func (r *AlertRuleRepo) List(ctx context.Context) ([]AlertRule, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, enabled, source_filter_json, severity_filter_json, target_kind, target_url, target_secret_enc, created_at, updated_at
 		FROM alert_rules ORDER BY name ASC, id ASC`,
 	)
@@ -144,7 +144,7 @@ func (r *AlertRuleRepo) Update(ctx context.Context, a AlertRule) error {
 	if err != nil {
 		return err
 	}
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE alert_rules SET
 			name = ?, enabled = ?, source_filter_json = ?, severity_filter_json = ?,
 			target_kind = ?, target_url = ?, target_secret_enc = ?, updated_at = ?
@@ -160,7 +160,7 @@ func (r *AlertRuleRepo) Update(ctx context.Context, a AlertRule) error {
 // Delete removes an alert rule by id. It is not an error to delete an
 // already-absent one (mirrors AnnotationRepo.Delete's convention).
 func (r *AlertRuleRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM alert_rules WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM alert_rules WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting alert rule %s: %w", id, err)
 	}
 	return nil

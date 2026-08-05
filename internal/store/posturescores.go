@@ -47,7 +47,7 @@ const (
 
 // Insert records one posture computation, returning the assigned id.
 func (r *PostureScoreRepo) Insert(ctx context.Context, s PostureScore) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		INSERT INTO posture_scores (computed_at, overall, qualified, factors_json)
 		VALUES (?, ?, ?, ?)`,
 		s.ComputedAt, s.Overall, boolToInt(s.Qualified), s.FactorsJSON,
@@ -65,7 +65,7 @@ func (r *PostureScoreRepo) Insert(ctx context.Context, s PostureScore) (int64, e
 // Latest returns the most recent posture computation, or ErrNotFound when the
 // table is empty (no computation has run yet). GET /posture serves it.
 func (r *PostureScoreRepo) Latest(ctx context.Context) (PostureScore, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, computed_at, overall, qualified, factors_json
 		FROM posture_scores ORDER BY computed_at DESC, id DESC LIMIT 1`)
 	s, err := scanPostureScore(row)
@@ -85,7 +85,7 @@ func (r *PostureScoreRepo) History(ctx context.Context, limit int) ([]PostureSco
 	if limit <= 0 {
 		limit = DefaultPostureKeepCount
 	}
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, computed_at, overall, qualified, factors_json
 		FROM posture_scores ORDER BY computed_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
@@ -110,7 +110,7 @@ func (r *PostureScoreRepo) History(ctx context.Context, limit int) ([]PostureSco
 // Count returns the total number of stored computations.
 func (r *PostureScoreRepo) Count(ctx context.Context) (int64, error) {
 	var n int64
-	if err := r.db.sqlDB.QueryRowContext(ctx, `SELECT count(*) FROM posture_scores`).Scan(&n); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT count(*) FROM posture_scores`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("store: counting posture scores: %w", err)
 	}
 	return n, nil
@@ -122,7 +122,7 @@ func (r *PostureScoreRepo) Count(ctx context.Context) (int64, error) {
 // fresh one, so re-running the day's computation never duplicates a row
 // (T-1607 AC5).
 func (r *PostureScoreRepo) DeleteInRange(ctx context.Context, from, to int64) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx,
+	res, err := r.db.ExecContext(ctx,
 		`DELETE FROM posture_scores WHERE computed_at >= ? AND computed_at < ?`, from, to)
 	if err != nil {
 		return 0, fmt.Errorf("store: deleting posture scores in [%d,%d): %w", from, to, err)
@@ -145,7 +145,7 @@ func (r *PostureScoreRepo) PruneRetention(ctx context.Context, now time.Time, ke
 
 	var removed int64
 	cutoff := now.AddDate(0, 0, -keepDays).Unix()
-	ageRes, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM posture_scores WHERE computed_at < ?`, cutoff)
+	ageRes, err := r.db.ExecContext(ctx, `DELETE FROM posture_scores WHERE computed_at < ?`, cutoff)
 	if err != nil {
 		return removed, fmt.Errorf("store: pruning posture scores older than %d: %w", cutoff, err)
 	}
@@ -156,7 +156,7 @@ func (r *PostureScoreRepo) PruneRetention(ctx context.Context, now time.Time, ke
 	removed += n
 
 	// Count bound: keep only the newest keepCount by computed_at.
-	countRes, err := r.db.sqlDB.ExecContext(ctx, `
+	countRes, err := r.db.ExecContext(ctx, `
 		DELETE FROM posture_scores WHERE id NOT IN (
 			SELECT id FROM posture_scores ORDER BY computed_at DESC, id DESC LIMIT ?
 		)`, keepCount)

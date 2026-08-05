@@ -27,7 +27,7 @@ func NewLayoutRepo(db *DB) *LayoutRepo { return &LayoutRepo{db: db} }
 // Insert creates a new layout row. It fails if (username, name) already
 // exists; use Update to modify an existing layout.
 func (r *LayoutRepo) Insert(ctx context.Context, l Layout) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO layouts (username, name, layout_json, updated_at) VALUES (?, ?, ?, ?)`,
 		l.Username, l.Name, l.LayoutJSON, l.UpdatedAt,
 	)
@@ -39,7 +39,7 @@ func (r *LayoutRepo) Insert(ctx context.Context, l Layout) error {
 
 // Get returns the named layout for username, or ErrNotFound.
 func (r *LayoutRepo) Get(ctx context.Context, username, name string) (Layout, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT username, name, layout_json, updated_at FROM layouts WHERE username = ? AND name = ?`,
 		username, name,
 	)
@@ -52,7 +52,7 @@ func (r *LayoutRepo) Get(ctx context.Context, username, name string) (Layout, er
 
 // List returns all layouts saved by username, ordered by name.
 func (r *LayoutRepo) List(ctx context.Context, username string) ([]Layout, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT username, name, layout_json, updated_at FROM layouts WHERE username = ? ORDER BY name ASC`,
 		username,
 	)
@@ -78,7 +78,7 @@ func (r *LayoutRepo) List(ctx context.Context, username string) ([]Layout, error
 // Update overwrites the layout_json/updated_at of an existing (username,
 // name) layout. It returns ErrNotFound if the layout doesn't exist.
 func (r *LayoutRepo) Update(ctx context.Context, l Layout) error {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE layouts SET layout_json = ?, updated_at = ? WHERE username = ? AND name = ?`,
 		l.LayoutJSON, l.UpdatedAt, l.Username, l.Name,
 	)
@@ -92,7 +92,7 @@ func (r *LayoutRepo) Update(ctx context.Context, l Layout) error {
 // convenience most callers (e.g. the "save layout" API handler) want, since
 // UI layout saves are naturally idempotent.
 func (r *LayoutRepo) Put(ctx context.Context, l Layout) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO layouts (username, name, layout_json, updated_at) VALUES (?, ?, ?, ?)
 		ON CONFLICT (username, name) DO UPDATE SET layout_json = excluded.layout_json, updated_at = excluded.updated_at`,
 		l.Username, l.Name, l.LayoutJSON, l.UpdatedAt,
@@ -106,7 +106,7 @@ func (r *LayoutRepo) Put(ctx context.Context, l Layout) error {
 // Delete removes a saved layout. It is not an error to delete an
 // already-absent layout.
 func (r *LayoutRepo) Delete(ctx context.Context, username, name string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM layouts WHERE username = ? AND name = ?`, username, name); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM layouts WHERE username = ? AND name = ?`, username, name); err != nil {
 		return fmt.Errorf("store: deleting layout %s/%s: %w", username, name, err)
 	}
 	return nil

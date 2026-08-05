@@ -39,7 +39,7 @@ func NewSwitchRepo(db *DB) *SwitchRepo { return &SwitchRepo{db: db} }
 
 // Insert creates a new switches row. ID is caller-assigned (store.NewULID()).
 func (r *SwitchRepo) Insert(ctx context.Context, s Switch) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO switches (id, name, mgmt_addr, driver_type, credentials_enc, enabled, added_by, added_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Name, s.MgmtAddr, s.DriverType, s.CredentialsEnc, boolToInt(s.Enabled), s.AddedBy, s.AddedAt,
@@ -52,7 +52,7 @@ func (r *SwitchRepo) Insert(ctx context.Context, s Switch) error {
 
 // Get returns one switch by id, or ErrNotFound.
 func (r *SwitchRepo) Get(ctx context.Context, id string) (Switch, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, mgmt_addr, driver_type, credentials_enc, enabled, added_by, added_at
 		FROM switches WHERE id = ?`, id)
 	s, err := scanSwitch(row)
@@ -64,7 +64,7 @@ func (r *SwitchRepo) Get(ctx context.Context, id string) (Switch, error) {
 
 // List returns every switch, ordered by name for a stable listing.
 func (r *SwitchRepo) List(ctx context.Context) ([]Switch, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, mgmt_addr, driver_type, credentials_enc, enabled, added_by, added_at
 		FROM switches ORDER BY name ASC`)
 	if err != nil {
@@ -87,7 +87,7 @@ func (r *SwitchRepo) List(ctx context.Context) ([]Switch, error) {
 
 // Update overwrites a switch's mutable fields. Returns ErrNotFound if absent.
 func (r *SwitchRepo) Update(ctx context.Context, s Switch) error {
-	res, err := r.db.sqlDB.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE switches SET name = ?, mgmt_addr = ?, driver_type = ?, credentials_enc = ?, enabled = ?
 		WHERE id = ?`,
 		s.Name, s.MgmtAddr, s.DriverType, s.CredentialsEnc, boolToInt(s.Enabled), s.ID,
@@ -100,7 +100,7 @@ func (r *SwitchRepo) Update(ctx context.Context, s Switch) error {
 
 // Delete removes a switch by id. Not an error if already absent.
 func (r *SwitchRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM switches WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM switches WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting switch %s: %w", id, err)
 	}
 	return nil

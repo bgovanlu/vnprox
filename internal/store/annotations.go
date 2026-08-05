@@ -31,7 +31,7 @@ func NewAnnotationRepo(db *DB) *AnnotationRepo { return &AnnotationRepo{db: db} 
 // Insert creates a new annotation row (ID is caller-assigned, typically
 // store.NewULID()).
 func (r *AnnotationRepo) Insert(ctx context.Context, a Annotation) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO annotations (id, ref, content, created_by, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		a.ID, a.Ref, a.Content, a.CreatedBy, a.CreatedAt, a.UpdatedAt,
@@ -44,7 +44,7 @@ func (r *AnnotationRepo) Insert(ctx context.Context, a Annotation) error {
 
 // Get returns one annotation by id, or ErrNotFound.
 func (r *AnnotationRepo) Get(ctx context.Context, id string) (Annotation, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, ref, content, created_by, created_at, updated_at FROM annotations WHERE id = ?`, id,
 	)
 	a, err := scanAnnotation(row)
@@ -59,7 +59,7 @@ func (r *AnnotationRepo) Get(ctx context.Context, id string) (Annotation, error)
 // a shared team scratchpad (docs/data-model.md §2), so this is never
 // scoped to one user.
 func (r *AnnotationRepo) List(ctx context.Context) ([]Annotation, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, ref, content, created_by, created_at, updated_at FROM annotations ORDER BY created_at ASC, id ASC`,
 	)
 	if err != nil {
@@ -85,7 +85,7 @@ func (r *AnnotationRepo) List(ctx context.Context) ([]Annotation, error) {
 // already-absent one (mirrors LayoutRepo.Delete/BlueprintRepo.Delete's
 // convention).
 func (r *AnnotationRepo) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM annotations WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM annotations WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting annotation %s: %w", id, err)
 	}
 	return nil

@@ -168,6 +168,19 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return fmt.Errorf("opening store: %w", err)
 	}
 	defer func() { _ = db.Close() }()
+
+	// T-1903: the daemon's own self-observability registry — HTTP RED,
+	// collector poll duration/counters, change-engine outcomes, store
+	// query duration, and peer-RPC duration/counters all funnel through
+	// this one *metrics.Registry, rendered by GET /metrics alongside the
+	// existing cluster-derived families (docs/features/monitoring.md §9).
+	// Wired to db immediately so every store call from here on (including
+	// ones made during the rest of this function's setup) is observed.
+	selfMetrics := metrics.NewRegistry(logger)
+	db.SetQueryObserver(func(op string, dur time.Duration, _ error) {
+		selfMetrics.ObserveStoreQuery(op, dur)
+	})
+
 	auditRepo := store.NewAuditRepo(db)
 	apiTokenRepo := store.NewAPITokenRepo(db)
 	webhookRepo := store.NewWebhookRepo(db)
@@ -276,7 +289,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// non-nil — see setupCollect's doc comment — so every peerClient use
 	// below is already guarded by the same "collectors initialized OK"
 	// nil-safety collector's own uses need.
-	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, onServices, peerSecrets, peerTrust)
+	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, onServices, peerSecrets, peerTrust, selfMetrics)
 	if collectErr != nil {
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling or cluster fan-out", "error", collectErr)
 	}
@@ -755,6 +768,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// distributed rollback timers, so it is the one that must not accept
 		// an arbitrary publicly-trusted certificate.
 		Trust: peerTrust,
+		// T-1903: coordination-path peer RPC latency/outcome — selfMetrics is
+		// always non-nil here (constructed unconditionally at the top of this
+		// function), so no nil-guard adapter is needed the way setupCollect's
+		// standalone-function call site needs one.
+		Metrics: selfMetrics,
 	})
 	peerTrustAdapterVal.set(coordPeerClient, localNode)
 	// localNode is the same closure already built up above (before
@@ -825,6 +843,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// HA leader lease; nil-until-set / HA-disabled reports leader=true, so
 		// non-HA deployments behave exactly as before.
 		LeaderGuard: haGuard.IsLeader,
+		// T-1903: apply/confirm/rollback/unattended-revert outcomes and
+		// awaiting_confirm duration.
+		Metrics: selfMetrics,
 	})
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)
@@ -1147,6 +1168,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 			AllowFrom:    cfg.Metrics.AllowFrom,
 			BuildVersion: version,
 		},
+		// T-1903: the daemon's own self-observability registry (HTTP RED via
+		// this router's own redMetricsMiddleware, plus whatever collect/
+		// change/store/peer wiring above fed the same *Registry into) and the
+		// store's pull-model size/schema-version seam — both rendered by
+		// GET /metrics alongside the cluster-derived families above.
+		SelfMetrics:       selfMetrics,
+		Store:             db,
 		Layouts:           store.NewLayoutRepo(db),
 		Annotations:       store.NewAnnotationRepo(db),
 		AlertRules:        alertRuleRepo,

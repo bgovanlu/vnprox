@@ -21,7 +21,7 @@ func NewKVRepo(db *DB) *KVRepo { return &KVRepo{db: db} }
 // Insert creates a new key. It fails if the key already exists; use Set to
 // upsert.
 func (r *KVRepo) Insert(ctx context.Context, k, v string) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `INSERT INTO kv (k, v) VALUES (?, ?)`, k, v)
+	_, err := r.db.ExecContext(ctx, `INSERT INTO kv (k, v) VALUES (?, ?)`, k, v)
 	if err != nil {
 		return fmt.Errorf("store: inserting kv key %q: %w", k, err)
 	}
@@ -31,7 +31,7 @@ func (r *KVRepo) Insert(ctx context.Context, k, v string) error {
 // Get returns the value for k, or ErrNotFound.
 func (r *KVRepo) Get(ctx context.Context, k string) (string, error) {
 	var v string
-	err := r.db.sqlDB.QueryRowContext(ctx, `SELECT v FROM kv WHERE k = ?`, k).Scan(&v)
+	err := r.db.QueryRowContext(ctx, `SELECT v FROM kv WHERE k = ?`, k).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -43,7 +43,7 @@ func (r *KVRepo) Get(ctx context.Context, k string) (string, error) {
 
 // List returns every key/value pair, ordered by key.
 func (r *KVRepo) List(ctx context.Context) (map[string]string, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `SELECT k, v FROM kv ORDER BY k ASC`)
+	rows, err := r.db.QueryContext(ctx, `SELECT k, v FROM kv ORDER BY k ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing kv: %w", err)
 	}
@@ -66,7 +66,7 @@ func (r *KVRepo) List(ctx context.Context) (map[string]string, error) {
 // Update overwrites the value of an existing key. It returns ErrNotFound if
 // the key doesn't exist.
 func (r *KVRepo) Update(ctx context.Context, k, v string) error {
-	res, err := r.db.sqlDB.ExecContext(ctx, `UPDATE kv SET v = ? WHERE k = ?`, v, k)
+	res, err := r.db.ExecContext(ctx, `UPDATE kv SET v = ? WHERE k = ?`, v, k)
 	if err != nil {
 		return fmt.Errorf("store: updating kv key %q: %w", k, err)
 	}
@@ -75,7 +75,7 @@ func (r *KVRepo) Update(ctx context.Context, k, v string) error {
 
 // Set upserts k to v: insert if absent, otherwise overwrite.
 func (r *KVRepo) Set(ctx context.Context, k, v string) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v`, k, v)
 	if err != nil {
 		return fmt.Errorf("store: setting kv key %q: %w", k, err)
@@ -85,7 +85,7 @@ func (r *KVRepo) Set(ctx context.Context, k, v string) error {
 
 // Delete removes a key. It is not an error to delete an already-absent key.
 func (r *KVRepo) Delete(ctx context.Context, k string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM kv WHERE k = ?`, k); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM kv WHERE k = ?`, k); err != nil {
 		return fmt.Errorf("store: deleting kv key %q: %w", k, err)
 	}
 	return nil

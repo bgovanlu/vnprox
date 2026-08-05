@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sync"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 )
@@ -13,6 +14,9 @@ import (
 // DB is an opened, migrated app store database.
 type DB struct {
 	sqlDB *sql.DB
+	obs   QueryObserver
+	path  string
+	obsMu sync.RWMutex
 }
 
 // dbFilePerm is the file mode enforced on the SQLite database file and its
@@ -59,7 +63,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 		return nil, err
 	}
 
-	return &DB{sqlDB: sqlDB}, nil
+	return &DB{sqlDB: sqlDB, path: path}, nil
 }
 
 // enforceDBFilePerms chmods the main database file and its WAL/SHM sidecars

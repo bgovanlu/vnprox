@@ -133,6 +133,7 @@ func (c *Collector) hostPollOnce(ctx context.Context) error {
 	start := time.Now()
 	localErr := c.hostPollStateFor(ctx, localNode, c.host)
 	c.recordNodeResult(localNode, start, localErr)
+	c.reportPoll("host", localNode, time.Since(start), localErr)
 
 	if c.peerClient != nil {
 		for _, p := range c.getPeers() {
@@ -143,6 +144,7 @@ func (c *Collector) hostPollOnce(ctx context.Context) error {
 			reader := peerHostReader{client: c.peerClient, peer: p}
 			err := c.hostPollStateFor(ctx, p.Node, reader)
 			c.recordNodeResult(p.Node, pStart, err)
+			c.reportPoll("host", p.Node, time.Since(pStart), err)
 			if err != nil {
 				c.log.Warn("collect: peer host poll failed, keeping last-known state", "node", p.Node, "peer_addr", p.Addr, "error", err)
 			}

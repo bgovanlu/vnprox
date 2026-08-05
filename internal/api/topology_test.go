@@ -46,6 +46,10 @@ type fakeTopologyService struct {
 	nodes     []topology.Node
 	detail    topology.EntityDetail
 	detailOK  bool
+	// connCount backs ConnCount (T-1903's vnprox_ws_connections gauge
+	// seam) — zero by default, matching every pre-T-1903 test's
+	// expectations.
+	connCount int
 }
 
 func (f fakeTopologyService) Topology(fl topology.Filter) topology.Topology {
@@ -70,6 +74,7 @@ func (f fakeTopologyService) ServeWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f fakeTopologyService) CloseByTokenID(string) int { return 0 }
+func (f fakeTopologyService) ConnCount() int            { return f.connCount }
 
 // TestTopologyRoutes_Unauthenticated401 is T-106 acceptance criterion 5:
 // GET /api/v1/topology (and, in the next test, a WS upgrade) with no

@@ -41,7 +41,7 @@ func NewSimDivergenceRepo(db *DB) *SimDivergenceRepo { return &SimDivergenceRepo
 // POST /simulate/verify's handler exactly once per request whose response
 // carries `diverges: true`.
 func (r *SimDivergenceRepo) Upsert(ctx context.Context, f SimDivergenceFinding) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO sim_divergence_findings
 			(id, src_ref, dst_kind, dst_ref, dst_ip, proto, port, simulated_verdict, observed_outcome, detail, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -64,7 +64,7 @@ func (r *SimDivergenceRepo) Upsert(ctx context.Context, f SimDivergenceFinding) 
 // finding should not keep claiming a divergence that's no longer true of
 // the most recent live check). Not an error to clear an already-absent id.
 func (r *SimDivergenceRepo) Clear(ctx context.Context, id string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM sim_divergence_findings WHERE id = ?`, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM sim_divergence_findings WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: clearing sim_divergence_finding %s: %w", id, err)
 	}
 	return nil
@@ -75,7 +75,7 @@ func (r *SimDivergenceRepo) Clear(ctx context.Context, id string) error {
 // the unified stream anyway, but a stable order here keeps this repo's own
 // tests/behavior deterministic on its own).
 func (r *SimDivergenceRepo) List(ctx context.Context) ([]SimDivergenceFinding, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, src_ref, dst_kind, dst_ref, dst_ip, proto, port, simulated_verdict, observed_outcome, detail, created_at, updated_at
 		FROM sim_divergence_findings ORDER BY id ASC`,
 	)

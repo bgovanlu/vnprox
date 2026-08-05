@@ -86,6 +86,27 @@ type ClusterMembershipSource interface {
 	NodeClusters(ctx context.Context) (map[string]string, error)
 }
 
+// MetricsRecorder is T-1903's self-observability seam onto the change
+// engine: *metrics.Registry satisfies it. Nil (the default) disables
+// recording entirely — the same nil-safe-optional-dependency convention
+// every other Config seam in this file already follows.
+//
+// Scoping note (see apply.go's ChangeOp* constants and their call sites):
+// this only fires for a call that passed its state-machine precondition
+// check and attempted a real mutation — a rejection for "wrong status" /
+// "not found" / "locked" / "validation blocked" is visible via the HTTP
+// layer's own RED status-class metric and the audit trail already, not
+// duplicated here.
+type MetricsRecorder interface {
+	// ObserveChangeOutcome records one change-engine operation's terminal
+	// outcome, op one of the ChangeOp* constants.
+	ObserveChangeOutcome(op string, success bool)
+	// ObserveAwaitingConfirmDuration records how long a changeset spent in
+	// awaiting_confirm before leaving it, outcome one of "committed",
+	// "rolled_back", "failed".
+	ObserveAwaitingConfirmDuration(outcome string, dur time.Duration)
+}
+
 // Config configures a Service. Changesets and Audit are required; WS and
 // Inventory are optional (nil disables WS broadcasting / validates against
 // an empty snapshot, respectively — e.g. in tests that don't need them) and
@@ -118,6 +139,10 @@ type Config struct {
 	Schedules         *store.ChangeScheduleRepo
 	Logger            *slog.Logger
 	Now               func() time.Time
+	// Metrics (T-1903) is the self-observability recorder for apply/confirm/
+	// rollback/unattended-revert outcomes and awaiting_confirm duration.
+	// Nil disables recording.
+	Metrics MetricsRecorder
 	// LeaderGuard, when set, is consulted immediately before any UNATTENDED,
 	// timer-driven apply/confirm/rollback decision this daemon would make on
 	// its own (the commit-confirm auto-rollback timer and the scheduler's
@@ -189,6 +214,7 @@ type Service struct {
 	log                *slog.Logger
 	newTimer           TimerFunc
 	now                func() time.Time
+	metrics            MetricsRecorder
 	leaderGuard        func() bool
 	lockHeldBy         string
 	corosyncPath       string
@@ -266,6 +292,7 @@ func NewService(cfg Config) (*Service, error) {
 		clock:              clock,
 		leaderGuard:        cfg.LeaderGuard,
 		scheduleSecret:     newScheduleSecret(logger),
+		metrics:            cfg.Metrics,
 	}, nil
 }
 

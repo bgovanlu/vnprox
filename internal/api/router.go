@@ -22,6 +22,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/ingress"
+	"github.com/bgovanlu/vnprox/internal/metrics"
 	"github.com/bgovanlu/vnprox/internal/migration"
 )
 
@@ -62,6 +63,7 @@ type PeerServer interface {
 
 // Options configures the router built by NewRouter.
 type Options struct {
+	MetricsExporter       MetricsExporterConfig
 	SimDivergence         simDivergenceRecorder
 	IngressTargets        IngressTargetStore
 	Collectors            CollectorHealth
@@ -148,38 +150,32 @@ type Options struct {
 	Capacity              CapacityService
 	Posture               PostureService
 	Plugins               PluginService
-	// HubClient/HubVetting/PluginInstaller back T-1705's Blueprint & plugin
-	// hub (GET /hub/index, POST /hub/install). HubClient nil skips mounting the
-	// whole family; a blueprint install additionally needs Blueprints +
-	// BlueprintTrust (reused above) and a plugin install needs PluginInstaller +
-	// BlueprintTrust — a type whose backing dependency is absent returns 501.
-	// HubVetting (the informational vetted-badge allowlist) is optional. Hub
-	// installs reuse BlueprintSignersAudit for their audit trail.
-	HubClient           HubClient
-	HubVetting          HubVetting
-	PluginInstaller     PluginInstaller
-	LLDPInstaller       LocalLLDPInstaller
-	LLDPPeerInstaller   PeerLLDPInstaller
-	LLDPAudit           lldpInstallAuditor
-	Tenant              TenantScoper
-	Tokens              APITokenStore
-	TokenAudit          tokenAuditor
-	Webhooks            WebhookStore
-	WebhookSecretCipher SecretCipher
-	K8sClusters         K8sClusterStore
-	K8sSecretCipher     SecretCipher
-	K8sPoller           K8sPoller
-	K8sGraph            K8sGraph
-	K8sIPAM             K8sIPAMSource
-	K8sAudit            k8sAuditWriter
-	Migration           *migration.Planner
-	LocalNode           func() string
-	FlowClassifier      *flow.Classifier
-	Logger              *slog.Logger
-	Version             string
-	MetricsExporter     MetricsExporterConfig
-	BlueprintSigningKey ed25519.PrivateKey
-	Instance            InstanceInfo
+	HubClient             HubClient
+	HubVetting            HubVetting
+	PluginInstaller       PluginInstaller
+	LLDPInstaller         LocalLLDPInstaller
+	LLDPPeerInstaller     PeerLLDPInstaller
+	LLDPAudit             lldpInstallAuditor
+	Tenant                TenantScoper
+	Tokens                APITokenStore
+	TokenAudit            tokenAuditor
+	Webhooks              WebhookStore
+	WebhookSecretCipher   SecretCipher
+	K8sClusters           K8sClusterStore
+	K8sSecretCipher       SecretCipher
+	K8sPoller             K8sPoller
+	K8sGraph              K8sGraph
+	K8sIPAM               K8sIPAMSource
+	K8sAudit              k8sAuditWriter
+	Store                 StoreInfoProvider
+	Migration             *migration.Planner
+	LocalNode             func() string
+	FlowClassifier        *flow.Classifier
+	Logger                *slog.Logger
+	SelfMetrics           *metrics.Registry
+	Version               string
+	BlueprintSigningKey   ed25519.PrivateKey
+	Instance              InstanceInfo
 }
 
 // DefaultMCPPath is the fixed mount path (under /api/v1) for the MCP transport
@@ -201,6 +197,11 @@ func NewRouter(opts Options) http.Handler {
 	r.Use(requestLoggerMiddleware(logger))
 	r.Use(recovererMiddleware(logger))
 	r.Use(securityHeadersMiddleware)
+	// T-1903: RED metrics for every request this router handles, including
+	// /metrics itself and the SPA fallback — registered before routing so
+	// chi's route-pattern accumulates over the whole request (see
+	// redmetrics.go's routeLabel doc comment).
+	r.Use(redMetricsMiddleware(opts.SelfMetrics))
 
 	// T-1703: the server-side tenant-scoping middleware, built once and shared
 	// by every tenant-scoped read route. nil when multi-tenancy is disabled
@@ -238,7 +239,17 @@ func NewRouter(opts Options) http.Handler {
 		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth, scopeMW)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
-		mountMetricsExporterRoutes(r, opts.MetricsCounters, opts.Findings, opts.Drift, opts.Changesets, opts.MetricsExporter)
+		// T-1903: the exporter config's pull-model sources (Self/
+		// Collectors/Store/WS) are filled in here from the same Options
+		// fields the rest of the router already wires, rather than
+		// requiring cmd/vnproxd to duplicate that wiring into
+		// opts.MetricsExporter itself.
+		mex := opts.MetricsExporter
+		mex.Self = opts.SelfMetrics
+		mex.Collectors = opts.Collectors
+		mex.Store = opts.Store
+		mex.WS = opts.Topology
+		mountMetricsExporterRoutes(r, opts.MetricsCounters, opts.Findings, opts.Drift, opts.Changesets, mex)
 		mountLayoutsRoutes(r, opts.Layouts, opts.Auth)
 		mountAnnotationsRoutes(r, opts.Annotations, opts.Auth)
 		mountAlertRulesRoutes(r, opts.AlertRules, opts.AlertDeliveries, opts.AlertSecretCipher, opts.Auth)

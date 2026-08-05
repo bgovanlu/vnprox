@@ -56,7 +56,7 @@ const DefaultCapacityRetentionDays = 400
 // day that was already computed overwrites it with the recomputed values
 // rather than inserting a duplicate (T-1606 AC5).
 func (r *CapacityAggregateRepo) Upsert(ctx context.Context, a CapacityAggregate) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO capacity_aggregates (ref, kind, bucket_at, avg_utilization, max_utilization, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (ref, kind, bucket_at) DO UPDATE SET
@@ -76,7 +76,7 @@ func (r *CapacityAggregateRepo) Upsert(ctx context.Context, a CapacityAggregate)
 // summarized (a cheaper idempotency guard than recomputing and upserting).
 func (r *CapacityAggregateRepo) Exists(ctx context.Context, ref, kind string, bucketAt int64) (bool, error) {
 	var n int
-	err := r.db.sqlDB.QueryRowContext(ctx,
+	err := r.db.QueryRowContext(ctx,
 		`SELECT count(*) FROM capacity_aggregates WHERE ref = ? AND kind = ? AND bucket_at = ?`,
 		ref, kind, bucketAt,
 	).Scan(&n)
@@ -89,7 +89,7 @@ func (r *CapacityAggregateRepo) Exists(ctx context.Context, ref, kind string, bu
 // ListAll returns every aggregate row, ordered by (ref, kind, bucket_at) —
 // the shape the forecast producer folds by ref before fitting a trend line.
 func (r *CapacityAggregateRepo) ListAll(ctx context.Context) ([]CapacityAggregate, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT ref, kind, bucket_at, avg_utilization, max_utilization, created_at
 		FROM capacity_aggregates ORDER BY ref ASC, kind ASC, bucket_at ASC`)
 	if err != nil {
@@ -105,7 +105,7 @@ func (r *CapacityAggregateRepo) ListAll(ctx context.Context) ([]CapacityAggregat
 // older than aggregate_retention_days even in the window between prune ticks
 // (T-1606 AC4).
 func (r *CapacityAggregateRepo) ListByRefSince(ctx context.Context, ref, kind string, since int64) ([]CapacityAggregate, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT ref, kind, bucket_at, avg_utilization, max_utilization, created_at
 		FROM capacity_aggregates WHERE ref = ? AND kind = ? AND bucket_at >= ?
 		ORDER BY bucket_at ASC`, ref, kind, since)
@@ -120,7 +120,7 @@ func (r *CapacityAggregateRepo) ListByRefSince(ctx context.Context, ref, kind st
 // rows removed. Callers/tests compute cutoff; PruneRetention wraps this with
 // the documented age cap and wall-clock time.
 func (r *CapacityAggregateRepo) Prune(ctx context.Context, cutoff int64) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM capacity_aggregates WHERE bucket_at < ?`, cutoff)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM capacity_aggregates WHERE bucket_at < ?`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("store: pruning capacity aggregates older than %d: %w", cutoff, err)
 	}

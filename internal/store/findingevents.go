@@ -33,7 +33,7 @@ func NewFindingEventRepo(db *DB) *FindingEventRepo { return &FindingEventRepo{db
 // dedup key (the same finding id legitimately transitions more than once
 // within the retention window), so every call always inserts a new row.
 func (r *FindingEventRepo) Insert(ctx context.Context, e FindingEvent) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO finding_events (finding_id, at, transition) VALUES (?, ?, ?)`,
 		e.FindingID, e.At, e.Transition,
 	)
@@ -61,7 +61,7 @@ func (r *FindingEventRepo) ListByTimeRange(ctx context.Context, from, to int64) 
 	}
 	query += ` ORDER BY at ASC, id ASC`
 
-	rows, err := r.db.sqlDB.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: listing finding events: %w", err)
 	}
@@ -84,7 +84,7 @@ func (r *FindingEventRepo) ListByTimeRange(ctx context.Context, from, to int64) 
 // PruneOlderThan deletes rows with at < cutoff, returning the number
 // removed.
 func (r *FindingEventRepo) PruneOlderThan(ctx context.Context, cutoff int64) (int64, error) {
-	res, err := r.db.sqlDB.ExecContext(ctx, `DELETE FROM finding_events WHERE at < ?`, cutoff)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM finding_events WHERE at < ?`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("store: pruning finding events older than %d: %w", cutoff, err)
 	}

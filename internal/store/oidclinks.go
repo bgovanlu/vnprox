@@ -43,7 +43,7 @@ func NewOIDCPVELinkRepo(db *DB) *OIDCPVELinkRepo { return &OIDCPVELinkRepo{db: d
 // linking a group replaces its credential rather than erroring on the unique
 // index, so an admin rotating a mapped token just re-links it.
 func (r *OIDCPVELinkRepo) Upsert(ctx context.Context, l OIDCPVELink) error {
-	_, err := r.db.sqlDB.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO oidc_pve_links (id, cluster_id, oidc_group, pve_username, credential_enc, created_by, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (cluster_id, oidc_group) DO UPDATE SET
@@ -62,7 +62,7 @@ func (r *OIDCPVELinkRepo) Upsert(ctx context.Context, l OIDCPVELink) error {
 // GetByGroup returns the linkage for one (cluster_id, oidc_group), or
 // ErrNotFound if the group has no mapping on that cluster.
 func (r *OIDCPVELinkRepo) GetByGroup(ctx context.Context, clusterID, group string) (OIDCPVELink, error) {
-	row := r.db.sqlDB.QueryRowContext(ctx, `
+	row := r.db.QueryRowContext(ctx, `
 		SELECT id, cluster_id, oidc_group, pve_username, credential_enc, created_by, created_at
 		FROM oidc_pve_links WHERE cluster_id = ? AND oidc_group = ?`, clusterID, group)
 	l, err := scanOIDCPVELink(row)
@@ -75,7 +75,7 @@ func (r *OIDCPVELinkRepo) GetByGroup(ctx context.Context, clusterID, group strin
 // ListByCluster returns every linkage registered for one cluster, ordered by
 // group for a stable listing.
 func (r *OIDCPVELinkRepo) ListByCluster(ctx context.Context, clusterID string) ([]OIDCPVELink, error) {
-	rows, err := r.db.sqlDB.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, cluster_id, oidc_group, pve_username, credential_enc, created_by, created_at
 		FROM oidc_pve_links WHERE cluster_id = ? ORDER BY oidc_group ASC`, clusterID)
 	if err != nil {
@@ -100,7 +100,7 @@ func (r *OIDCPVELinkRepo) ListByCluster(ctx context.Context, clusterID string) (
 // Delete removes one linkage by (cluster_id, oidc_group). Deleting an absent
 // mapping is not an error, mirroring the other registry repos' convention.
 func (r *OIDCPVELinkRepo) Delete(ctx context.Context, clusterID, group string) error {
-	if _, err := r.db.sqlDB.ExecContext(ctx,
+	if _, err := r.db.ExecContext(ctx,
 		`DELETE FROM oidc_pve_links WHERE cluster_id = ? AND oidc_group = ?`, clusterID, group); err != nil {
 		return fmt.Errorf("store: deleting oidc link %s/%s: %w", clusterID, group, err)
 	}

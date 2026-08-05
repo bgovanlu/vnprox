@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,14 +64,27 @@ type ClientOptions struct {
 	HTTPClient *http.Client
 	// Trust pins peer TLS to the cluster's own CA (T-1906). Nil means the
 	// pinned default (DefaultClusterCAPath) — never the system trust store.
-	Trust                   *Trust
-	Logger                  *slog.Logger
-	Now                     func() time.Time
+	Trust  *Trust
+	Logger *slog.Logger
+	Now    func() time.Time
+	// Metrics (T-1903) records every peer RPC's outcome and duration
+	// (vnprox_peer_calls_total / vnprox_peer_call_duration_seconds) —
+	// *metrics.Registry satisfies this. Nil (the default) disables
+	// recording, the same nil-safe-optional-dependency convention every
+	// other ClientOptions field here follows.
+	Metrics                 MetricsRecorder
 	Scheme                  string
 	Port                    int
 	RequestTimeout          time.Duration
 	BreakerFailureThreshold int
 	BreakerResetTimeout     time.Duration
+}
+
+// MetricsRecorder is T-1903's self-observability seam for peer RPCs.
+// outcome is PeerTrustState's own closed vocabulary ("ok"|"unreachable"|
+// "untrusted" — see do's doc comment).
+type MetricsRecorder interface {
+	ObservePeerCall(node, endpoint, outcome string, dur time.Duration)
 }
 
 // Client is the peer API client: discovery, HMAC signing, cluster-CA-pinned
@@ -185,11 +199,24 @@ func (c *Client) breakerFor(node string) *circuitBreaker {
 // instead of flattening it back to "unreachable", so an impersonation attempt
 // does not disappear behind an open breaker after three attempts.
 func (c *Client) do(ctx context.Context, p Peer, method, path string, body []byte) (*http.Response, error) {
+	// T-1903: endpoint is path with its query string (if any) stripped —
+	// every call site above builds path from a literal template
+	// ("/api/peer/host/stats", ...) with any dynamic value (node name,
+	// changeset id, session id, ...) always appended as a query parameter,
+	// never spliced into the path itself, so this is already a small,
+	// compile-time-bounded vocabulary (see docs/features/monitoring.md
+	// §9's cardinality note for this series) without needing every one of
+	// this file's ~30 call sites to pass their own label explicitly.
+	endpoint, _, _ := strings.Cut(path, "?")
+	start := time.Now()
+
 	breaker := c.breakerFor(p.Node)
 	if !breaker.allow() {
 		if last, ok := c.statuses.get(p.Node); ok && last.State == PeerTrustUntrusted {
+			c.recordCall(p.Node, endpoint, string(PeerTrustUntrusted), start)
 			return nil, fmt.Errorf("peer: %s: %w (%w): circuit open after a certificate verification failure: %s", p.Node, ErrPeerUntrusted, ErrPeerUnreachable, last.Error)
 		}
+		c.recordCall(p.Node, endpoint, string(PeerTrustUnreachable), start)
 		return nil, fmt.Errorf("peer: %s: %w: circuit open", p.Node, ErrPeerUnreachable)
 	}
 
@@ -226,15 +253,25 @@ func (c *Client) do(ctx context.Context, p Peer, method, path string, body []byt
 			c.statuses.record(p, PeerTrustUntrusted, c.opts.Now(), untrusted)
 			c.opts.Logger.Error("peer: refusing a peer whose TLS certificate did not verify against the pinned cluster CA",
 				"node", p.Node, "addr", p.Addr, "error", err)
+			c.recordCall(p.Node, endpoint, string(PeerTrustUntrusted), start)
 			return nil, untrusted
 		}
 		unreachable := fmt.Errorf("peer: %s: %w: %w", p.Node, ErrPeerUnreachable, err)
 		c.statuses.record(p, PeerTrustUnreachable, c.opts.Now(), unreachable)
+		c.recordCall(p.Node, endpoint, string(PeerTrustUnreachable), start)
 		return nil, unreachable
 	}
 	breaker.recordSuccess()
 	c.statuses.record(p, PeerTrustOK, c.opts.Now(), nil)
+	c.recordCall(p.Node, endpoint, string(PeerTrustOK), start)
 	return resp, nil
+}
+
+// recordCall is a nil-safe wrapper around opts.Metrics.ObservePeerCall.
+func (c *Client) recordCall(node, endpoint, outcome string, start time.Time) {
+	if c.opts.Metrics != nil {
+		c.opts.Metrics.ObservePeerCall(node, endpoint, outcome, time.Since(start))
+	}
 }
 
 // decodeInto reads and closes resp.Body, decoding it into out on a 2xx
