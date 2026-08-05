@@ -130,6 +130,80 @@ and `/etc/pve` are PVE's, and vnprox never shadows them.
   node's key material with another node's; existing files are moved aside rather than deleted, but
   the operator owns that decision.
 
+## Support bundles (T-1902)
+
+A backup archive is something an operator stores. **A support bundle is something an operator
+posts.** It is going to be attached to a forum thread, a GitHub issue, or a mail to a stranger who
+offered to help — so its threat model is not "someone steals it", it is "it was published on
+purpose, by someone who trusted us to have removed the credentials". The deployment-facing
+description is in `docs/deployment.md`, "Support bundles".
+
+The design rule is **redacted by construction, not by review**:
+
+- **A bundle's collectors cannot declare a secret class, structurally.** `internal/backup`'s
+  `Collector` interface (which a *backup*'s collectors implement) has an `Emits() []SecretClass`
+  method precisely so `--include-keys` can print an honest warning. A bundle's collectors implement
+  a different, narrower interface with **no `Emits` method at all**, adapted by a single wrapper
+  whose `Emits()` returns nil unconditionally. There is therefore nowhere for a bundle collector to
+  declare an emitted secret, and consequently no flag, environment variable or config value that
+  makes `secretClasses` in a bundle's manifest non-empty or `includesKeyMaterial` true. That the
+  empty declaration is also *honest* is a separate claim, proved by a table-driven scan (below).
+- **Every emitted field is declared, and the declaration is enforced by reflection.** Each
+  structured document a bundle emits is a Go type whose every exported field is declared with a
+  disposition (`emit` / `scrub` / `redact-json` / `allowlist`) and a written reason it is safe to
+  publish. A test walks the real types and fails in both directions: an undeclared field is a value
+  nobody decided was publishable, and a declaration with no field behind it means the inventory has
+  stopped describing the code. Critically, a field whose type reflection cannot see through — a
+  `json.RawMessage`, an `any`, a map — **may not be declared as plainly emitted at all**; it has to
+  name a redactor. That is "an explicit allowlist or a redactor" made mechanical.
+- **The store is not in a bundle.** `store/vnprox.db` holds the full audit trail, every rollback
+  snapshot, and the ciphertext of every sealed credential. A bundle carries derived facts instead —
+  schema version, migration state, `integrity_check`, per-table row counts, and the last N redacted
+  changesets — read through a `query_only` connection so that inspecting a store whose migration
+  failed cannot become the thing that migrates it.
+- **Two open-ended file formats are re-emitted through allowlists rather than copied.**
+  `vnprox.toml` is rendered key by key (a key not on the allowlist keeps its *name* — knowing
+  `[oidc]` is configured is diagnostic — and loses its value, so `[pve] dev_ticket_password` is
+  redacted whether or not anyone remembers it exists). `/etc/network/interfaces` is parsed with
+  vnprox's existing AST and re-emitted option by option: an operator's interfaces(5) file can
+  legitimately carry `wireguard-private-key`, and emitting that file verbatim would be the single
+  most damaging thing this feature could do.
+- **Free-form text passes a value redactor.** Log lines, changeset titles, apply-log output,
+  certificate subjects and validation errors have no finite field set to allowlist against, so they
+  are matched against credential *shapes* rather than known values: PVE tickets, `PVEAPIToken=`
+  headers, `Authorization:` headers of any scheme, URL userinfo, `<named-key> = <value>`
+  assignments, bare 43-character base64 (the wire form of a WireGuard private key, a preshared key,
+  and vnprox's own session key), and PEM private-key blocks. Everything removed is replaced with a
+  single fixed marker, so a reader can grep for what is missing. The redactor is idempotent and is
+  tested in both directions — it must remove the credential *and* leave the surrounding diagnostic
+  intact, because a bundle that redacts everything is useless and would pass a naive leak test.
+- **Changeset ops are walked by key name, not by known field.** `internal/api`'s `redactOpSecrets`
+  strips one known field from one known op type, which is right for a `[]change.Op` response and
+  wrong for an archive that must be safe against the op type that lands next phase. The bundle walks
+  the stored JSON and redacts any value under a key matching the credential vocabulary, plus
+  `*_enc` / `*_hash` suffixes, so a sealed field invented later is covered the day it appears.
+  Unparsable JSON is replaced wholesale: "I could not parse it" and "I know it is safe" are not the
+  same statement.
+- **The leak test is the one that matters, and it has controls.** A bundle is produced from an
+  installation seeded with one marker per declared secret class — and, crucially, with those markers
+  planted in the places a bundle *actually reads* (the interfaces file, the log, `vnprox.toml`, a
+  changeset's four JSON columns), because seeding them only into the store would make every
+  assertion pass trivially. The whole decompressed archive is then scanned, one case per class.
+  Four controls run first — a changeset title, an allowlisted interfaces option, an allowlisted
+  config value and an ordinary log line, each of which **must** be found — so that a scan looking in
+  the wrong place, a collector that did not run, or a redactor that ate everything fails loudly
+  instead of producing green subtests that assert nothing.
+- **Residual risks.** (1) A bundle is not encrypted or signed; it is meant to be published, so
+  confidentiality is not its property — but note that means a bundle you receive is not proof of
+  anything about the machine it claims to come from. (2) A bundle still exposes *metadata*: node
+  names, interface names, IP addressing, VLAN ids, changeset titles and authors. That is a map of
+  the network, it is the price of being diagnosable, and the generated `readme.txt` says so in the
+  file itself. (3) The local `/api/v1/health` read and the peer reachability probe do not verify
+  TLS — they send nothing and no credential, and exist to *report* the certificate they were shown,
+  but a machine-in-the-middle on the management network could therefore influence the reported
+  health status and certificate metadata in a bundle. `--no-probe` makes a bundle from local files
+  only.
+
 ## Authorization
 
 Two enforcement layers, both required:
@@ -237,6 +311,7 @@ Every mutation attempt (including denied and rolled-back) is written to the audi
 | Malicious/buggy change bricks cluster | validators + safety interlocks + commit-confirm rollback + time machine |
 | Sealed apply-time revert ticket theft / misuse (T-1805) | the applying user's PVE ticket is sealed in `changesets.revert_ticket_enc` with the **one** AES-256-GCM session key — not a second cipher or key pair — only while that changeset is mid-apply or awaiting confirmation, and wiped on confirm/rollback/timeout/failed-apply/discard/expiry, whichever comes first (wipe asserted directly against the stored row in every case); it has **no field on any read model**, so no API response, MCP tool result, or plugin-visible value can carry it (verified by enumeration over the real route/tool/extension-point registries, plus per-surface and raw-DB-bytes non-leak tests); it is reachable only from that one changeset's own revert path, acts through a **non-renewing** sealed-ticket PVE client so the daemon can never mint a longer-lived credential from it, is bounded by the ticket's own ~2h life with reduced coverage reported to the operator **at apply time**, and is never replicated to an HA standby |
 | Backup archive theft (T-1901) | a default `vnproxctl backup` archive contains **no key material**: every credential class in the store is a `*_enc` (AES-256-GCM) or `*_hash` (one-way) column and the session key that opens them is not collected, so a stolen archive yields ciphertext and hashes, not credentials (table-driven, one case per secret class, scanning the whole decompressed archive, with an unsealed-value control proving the scan works); `--include-keys` is the only way to include key material and it warns naming every class, requires an interactive confirmation, sets `includesKeyMaterial` in the manifest, and suffixes the filename `-with-keys`; every archive is `0600`; the peer cluster secret is never collected under any flag; residual: the archive is unencrypted and unsigned and still exposes network *metadata* — see "Backup archives" above |
+| Credential published in a support bundle (T-1902) | a bundle is *designed* to be posted publicly, so it is redacted by construction: its collectors implement an interface with **no `Emits` method**, so no flag or config can make it declare or carry a secret class (`includesKeyMaterial` is structurally false); the SQLite store is never included (derived facts only, read `query_only` so diagnosing a failed migration cannot migrate it); `vnprox.toml` and `/etc/network/interfaces` are re-emitted through per-key/per-option allowlists rather than copied (an interfaces(5) file can carry `wireguard-private-key`); every structured field is declared with a disposition and a written justification, enforced by a reflection walk that **refuses** to let a `json.RawMessage`/`any`/map field be declared plainly emitted; free-form text (logs, changeset titles, apply output, cert subjects) passes a shape-matching redactor covering PVE tickets, `PVEAPIToken=`, `Authorization:`, URL userinfo, named-key assignments, bare 43-char base64 and PEM private keys; changeset ops are walked by key name (not by known field) so a sealed field invented next phase is covered on arrival; proved by a table-driven scan of the whole decompressed archive, one case per secret class, with the markers planted in the inputs a bundle actually reads and **four** must-be-found controls so the scan cannot pass vacuously; `vnproxctl restore` refuses a bundle outright; residual: a bundle still exposes network *metadata* and is neither signed nor encrypted — see "Support bundles" above |
 | Malicious restore archive (T-1901) | the archive is parsed as hostile input in a pass that writes **nothing** to disk: allowlisted entry-name vocabulary (traversal/absolute/backslash names inexpressible), regular files only (symlink/hardlink/device entries refused), absolute streamed budgets on manifest/entry/total bytes and entry count (a decompression bomb is stopped at the header declaring it), and an exact match to the manifest's declared name, order, size and SHA-256 with the gzip checksum verified; undeclared, duplicate and trailing entries are refusals; table-driven with a benign-archive control proving the reader is not simply rejecting everything |
 | Restore against a live daemon / schema downgrade (T-1901) | `vnproxctl restore` refuses while a daemon owns the store — an advisory `flock` vnproxd holds for its lifetime on `<db>.lock`, **plus** a probe of `[server] listen` so a pre-v3.2 daemon that takes no lock is caught too — and refuses a store from a newer schema than the running binary understands, checked against the manifest *and* re-checked against the store inside the archive so a forged manifest cannot smuggle one past; the swap is atomic (stage + forward-migrate beside the target, then two renames in one directory, with the previous store put back on failure and kept at `<db>.pre-restore-<UTC>` on success), proved by injecting a failure at each of three points and asserting the original store is byte-identical afterwards |
 | Supply chain | pinned deps, `make check` includes `govulncheck` + `npm audit` gates in CI |

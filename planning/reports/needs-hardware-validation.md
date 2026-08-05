@@ -988,3 +988,39 @@ iron rather than about correctness:
       a PVE node that `systemctl start vnprox-backup.service` writes an archive, that `--keep`'s
       prune works inside the sandbox, and that the timer's `Persistent=true` catch-up fires after a
       node was powered off across the scheduled time.
+
+## T-1902 — support bundle export
+
+Every collector is exercised here against real files, a real (read-only) SQLite store, real bound
+listeners and a real archive; nothing needed a Proxmox cluster. Four items are about what a *real*
+node's inputs look like, and each of them is a place where a redaction allowlist could turn out to
+be too narrow (a useless bundle) or too wide (a leak):
+
+- [ ] **A real `/etc/network/interfaces` from a production PVE node, especially an SDN one.**
+      `host/network.json` re-emits option values through `ifaceOptionAllowlist`. The list was
+      built from `internal/host`'s parser fixtures and from PVE's own rendering, not from a survey
+      of real files. What to check on iron: produce a bundle on a node with OVS, bonds, VLAN-aware
+      bridges, a VXLAN/EVPN SDN zone and (ideally) a hand-edited stanza, then read
+      `host/network.json` and confirm (a) you could still draw the network from it, and (b) nothing
+      credential-shaped survived. Anything genuinely diagnostic that came back `[REDACTED-…]` is an
+      allowlist gap; anything credential-shaped that came back in the clear is a bug to fix before
+      the next release.
+- [ ] **`journalctl -u vnprox` on a real node.** The log collector shells out to `journalctl`
+      (`-n <log-lines>`), which exists on this dev host but has never been pointed at a real vnprox
+      unit's journal. Confirm the tail is what you expect, that a multi-line Go panic survives
+      readably, that the byte budget truncates at a line boundary, and that `logs/summary.json`'s
+      `scrubbed` count is non-zero on a node that has actually talked to PVE (a zero there on a real
+      node would mean either nothing sensitive is being logged — good — or the redactor's patterns
+      do not match vnproxd's real log format, which is the thing to find out).
+- [ ] **Peer reachability against real peer daemons.** `peers.json` discovers nodes from
+      `/etc/pve/corosync.conf` and does a bare TLS handshake against each one's `[server] listen`
+      port, reporting `ok` / `unreachable` / `untrusted` and the certificate it was shown. Tested
+      here against loopback (refused connections) only. On a real cluster, confirm a healthy peer
+      reports `ok` with the cluster CA as issuer, a firewalled peer reports `unreachable`, and a
+      peer presenting an unrelated certificate reports `untrusted` — the T-1906 trichotomy is only
+      useful if all three actually occur.
+- [ ] **The `--dry-run`-to-real-run size relationship on a busy node.** A bundle is meant to be
+      attachable to a forum post. The budgets (20 changesets, 200 finding events, 2000 log lines /
+      1 MiB) were chosen for that, not measured against a months-old cluster. Produce one on a real
+      node and record the resulting archive size in `docs/deployment.md` if it is materially more
+      than a few hundred kilobytes.
