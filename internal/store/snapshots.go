@@ -196,12 +196,31 @@ func decodeSnapshotCursor(cursor string) (int64, string, error) {
 }
 
 // Prune deletes every snapshot row (and its snapshot_files) taken before
-// cutoff, except a snapshot linked to a `committed` changeset taken on or
-// after pinCutoff (docs/features/change-management.md §4's 7-day manual-
-// rollback window: "committed-changeset snapshots pinned 7d minimum" per
-// T-206's card, so a shorter configured retention can never delete a
-// committed changeset's restore point before that window closes). It
-// returns the number of snapshot rows deleted; callers should follow up
+// cutoff, with two guardrails that hold regardless of cutoff/age (T-1905
+// AC2 — "a snapshot required by a changeset in awaiting_confirm, or within
+// its rollback window, is never pruned regardless of age"; this is the
+// dangerous case the card names first, so read this comment before editing
+// this query):
+//
+//  1. A snapshot linked to a changeset currently `applying` or
+//     `awaiting_confirm` is NEVER a candidate, no matter how old. These are
+//     the two in-flight statuses (internal/change/apply_errors.go's own
+//     "in flight (status applying or awaiting_confirm) cluster-wide") — an
+//     `awaiting_confirm` changeset's snapshot is exactly what a manual
+//     rollback or T-1805's unattended sealed-revert-ticket path restores
+//     from, and `applying` covers the narrower window
+//     `recoverInterruptedApply` resumes from after a crash mid-apply. A
+//     changeset can sit in either status far longer than any keepDays if
+//     the daemon is down (no rollback timer runs while stopped) — that is
+//     precisely the scenario this guardrail exists for, not a
+//     hypothetical.
+//  2. A snapshot linked to a `committed` changeset taken on or after
+//     pinCutoff (docs/features/change-management.md §4's 7-day manual-
+//     rollback window: "committed-changeset snapshots pinned 7d minimum"
+//     per T-206's card, so a shorter configured retention can never delete
+//     a committed changeset's restore point before that window closes).
+//
+// It returns the number of snapshot rows deleted; callers should follow up
 // with BlobRepo.PruneOrphans to reclaim the now-unreferenced blob storage.
 func (r *SnapshotRepo) Prune(ctx context.Context, cutoff, pinCutoff int64) (int64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -215,7 +234,11 @@ func (r *SnapshotRepo) Prune(ctx context.Context, cutoff, pinCutoff int64) (int6
 		WHERE s.taken_at < ?
 		AND NOT EXISTS (
 			SELECT 1 FROM changesets c
-			WHERE c.id = s.changeset_id AND c.status = 'committed' AND s.taken_at >= ?
+			WHERE c.id = s.changeset_id
+			AND (
+				c.status IN ('applying', 'awaiting_confirm')
+				OR (c.status = 'committed' AND s.taken_at >= ?)
+			)
 		)`, cutoff, pinCutoff)
 	if err != nil {
 		return 0, fmt.Errorf("store: selecting expired snapshots: %w", err)

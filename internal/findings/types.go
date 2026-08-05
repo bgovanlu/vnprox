@@ -79,6 +79,13 @@ const (
 	// graph knows about, and because the untrusted case must be legible as a
 	// security signal rather than buried in generic "health".
 	SourcePeer Source = "peer"
+	// SourceStore (T-1905) marks a finding about vnproxd's own app store —
+	// currently the sole producer is store_near_capacity
+	// (health_storecapacity.go). Its own top-level source (like
+	// SourcePeer/SourceFederation), since it describes this daemon's own
+	// on-disk footprint rather than a node/interface the inventory graph
+	// knows about or the cluster's peer transport.
+	SourceStore Source = "store"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

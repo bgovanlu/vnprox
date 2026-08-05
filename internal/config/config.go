@@ -77,6 +77,30 @@ const (
 	DefaultSnapshotKeepDays = 90
 	DefaultSnapshotPinDays  = 7
 
+	// DefaultAuditKeepDays mirrors store.DefaultAuditRetentionDays (T-1905:
+	// 730 days/2 years, argued in that constant's own doc comment — audit
+	// is the compliance/forensic record, so its ceiling is deliberately far
+	// longer than every other bounded table in this arc) — the same
+	// mirror-not-import convention DefaultSnapshotKeepDays above uses.
+	DefaultAuditKeepDays = 730
+
+	// DefaultStoreWarnBytes is [retention] store_warn_bytes' default: the
+	// on-disk size (internal/store.DB.SizeBytes — main file + WAL/SHM
+	// sidecars, T-1903's existing size source) at which the
+	// store_near_capacity finding (internal/findings) starts warning.
+	// 4 GiB is chosen deliberately: vnprox runs on a PVE node's root
+	// filesystem, shared with pmxcfs and the hypervisor's own writes, and
+	// root partitions on real installs are commonly provisioned in the
+	// tens of gigabytes, not hundreds — a vnprox store crossing several GiB
+	// is already a strong signal that retention isn't keeping up,
+	// regardless of how large the specific partition happens to be. An
+	// operator with an unusually small or large root partition tunes this
+	// directly; there is no attempt to introspect the actual filesystem
+	// (statfs) here — that would be a second measurement of disk pressure
+	// alongside the store's own size, which the task card explicitly asks
+	// this finding to avoid ("reuse T-1903's size source").
+	DefaultStoreWarnBytes int64 = 4 << 30 // 4 GiB
+
 	// DefaultCapacityAggregateRetentionDays and
 	// DefaultCapacityForecastHorizonDays are T-1606's documented [capacity]
 	// defaults — mirror store.DefaultCapacityRetentionDays (400) and
@@ -392,10 +416,24 @@ type StorageConfig struct {
 }
 
 // RetentionConfig is the [retention] section: the snapshot pruning policy
-// T-206's retention job enforces (internal/store.SnapshotRetention).
+// T-206's retention job enforces (internal/store.SnapshotRetention), plus
+// T-1905's audit_log age ceiling and the store_near_capacity finding's
+// warning threshold.
 type RetentionConfig struct {
 	SnapshotKeepDays int
 	SnapshotPinDays  int
+	// AuditKeepDays bounds audit_log by age (internal/store.AuditRepo.
+	// PruneRetention); no separate pin floor, unlike snapshots — an audit
+	// row carries no rollback dependency (docs/data-model.md's retention
+	// section). Must be positive; there is no "0 = forever" escape hatch,
+	// matching SnapshotKeepDays/SnapshotPinDays's existing validation
+	// stance — see DefaultAuditKeepDays for the argument.
+	AuditKeepDays int
+	// StoreWarnBytes is the app store's on-disk size (main file + WAL/SHM,
+	// internal/store.DB.SizeBytes) at or above which the
+	// store_near_capacity finding fires (internal/findings). See
+	// DefaultStoreWarnBytes for the argument.
+	StoreWarnBytes int64
 }
 
 // FirewallLogConfig is the [firewalllog] section (T-505): where this
@@ -650,8 +688,10 @@ type rawStorage struct {
 }
 
 type rawRetention struct {
-	SnapshotKeepDays int `toml:"snapshot_keep_days"`
-	SnapshotPinDays  int `toml:"snapshot_pin_days"`
+	SnapshotKeepDays int   `toml:"snapshot_keep_days"`
+	SnapshotPinDays  int   `toml:"snapshot_pin_days"`
+	AuditKeepDays    int   `toml:"audit_keep_days"`
+	StoreWarnBytes   int64 `toml:"store_warn_bytes"`
 }
 
 type rawPeer struct {
@@ -802,6 +842,8 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		Retention: RetentionConfig{
 			SnapshotKeepDays: firstNonZeroInt(raw.Retention.SnapshotKeepDays, DefaultSnapshotKeepDays),
 			SnapshotPinDays:  firstNonZeroInt(raw.Retention.SnapshotPinDays, DefaultSnapshotPinDays),
+			AuditKeepDays:    firstNonZeroInt(raw.Retention.AuditKeepDays, DefaultAuditKeepDays),
+			StoreWarnBytes:   firstNonZeroInt64(raw.Retention.StoreWarnBytes, DefaultStoreWarnBytes),
 		},
 		FirewallLog: FirewallLogConfig{
 			Path:          firstNonEmpty(raw.FirewallLog.Path, DefaultFirewallLogPath),
@@ -937,6 +979,12 @@ func (c *Config) validate() error {
 	}
 	if c.Retention.SnapshotPinDays <= 0 {
 		return fmt.Errorf("%w: retention.snapshot_pin_days must be positive, got %d", ErrInvalidConfig, c.Retention.SnapshotPinDays)
+	}
+	if c.Retention.AuditKeepDays <= 0 {
+		return fmt.Errorf("%w: retention.audit_keep_days must be positive, got %d", ErrInvalidConfig, c.Retention.AuditKeepDays)
+	}
+	if c.Retention.StoreWarnBytes <= 0 {
+		return fmt.Errorf("%w: retention.store_warn_bytes must be positive, got %d", ErrInvalidConfig, c.Retention.StoreWarnBytes)
 	}
 
 	certPath, keyPath, err := resolveTLSPaths(c.Server.TLSCert, c.Server.TLSKey)

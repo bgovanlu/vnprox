@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestAuditRepo_OnAppendHookFiresWithAssignedID(t *testing.T) {
@@ -168,4 +169,124 @@ func TestAuditRepo_ListActionsInRange(t *testing.T) {
 			t.Errorf("ListActionsInRange(nil actions) = %+v, want nil", got)
 		}
 	})
+}
+
+// TestAuditRepo_PruneRetention exercises T-1905's audit_log ceiling with a
+// synthetic "now" (no wall-clock dependency): rows older than keepDays are
+// removed, rows within the window survive untouched, and an unset/invalid
+// keepDays falls back to DefaultAuditRetentionDays (730d) rather than
+// pruning everything or nothing.
+func TestAuditRepo_PruneRetention(t *testing.T) {
+	db := openTestDB(t)
+	repo := NewAuditRepo(db)
+	ctx := context.Background()
+
+	now := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	day := int64(24 * 60 * 60)
+	nowUnix := now.Unix()
+
+	seed := func(t *testing.T, at int64, action string) {
+		t.Helper()
+		if _, err := repo.Append(ctx, AuditEntry{At: at, Username: "root@pam", Action: action, Result: "success"}); err != nil {
+			t.Fatalf("seed audit row at %d: %v", at, err)
+		}
+	}
+
+	seed(t, nowUnix-400*day, "changeset.apply") // within a 730d window
+	seed(t, nowUnix-800*day, "changeset.apply") // past a 730d window
+	seed(t, nowUnix-1*day, "changeset.confirm") // recent
+
+	deleted, err := repo.PruneRetention(ctx, now, 730)
+	if err != nil {
+		t.Fatalf("PruneRetention: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1 (only the 800-day-old row)", deleted)
+	}
+	remaining, err := repo.List(ctx, "", 0)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(remaining) != 2 {
+		t.Fatalf("remaining rows = %d, want 2", len(remaining))
+	}
+
+	t.Run("aggressive keepDays prunes the rest", func(t *testing.T) {
+		deleted, err := repo.PruneRetention(ctx, now, 300)
+		if err != nil {
+			t.Fatalf("PruneRetention: %v", err)
+		}
+		if deleted != 1 {
+			t.Fatalf("deleted = %d, want 1 (the 400-day-old row, now past a 300d window)", deleted)
+		}
+	})
+
+	t.Run("keepDays<=0 falls back to the documented default", func(t *testing.T) {
+		db := openTestDB(t)
+		repo := NewAuditRepo(db)
+		seed := func(t *testing.T, at int64) {
+			t.Helper()
+			if _, err := repo.Append(ctx, AuditEntry{At: at, Username: "root@pam", Action: "changeset.apply", Result: "success"}); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+		}
+		seed(t, nowUnix-(DefaultAuditRetentionDays-1)*day) // inside the 730d default
+		seed(t, nowUnix-(DefaultAuditRetentionDays+1)*day) // outside it
+
+		deleted, err := repo.PruneRetention(ctx, now, 0)
+		if err != nil {
+			t.Fatalf("PruneRetention(keepDays=0): %v", err)
+		}
+		if deleted != 1 {
+			t.Fatalf("deleted = %d, want 1 (only the row past the 730d default)", deleted)
+		}
+	})
+}
+
+// TestAuditRepo_RunPruneLoop drives one real tick of the supervised loop
+// against a live ticker (mirrors the store package's other RunPruneLoop
+// tests) and asserts it actually prunes, then that ctx cancellation returns
+// cleanly.
+func TestAuditRepo_RunPruneLoop(t *testing.T) {
+	db := openTestDB(t)
+	repo := NewAuditRepo(db)
+	ctx := context.Background()
+
+	old := time.Now().Add(-800 * 24 * time.Hour).Unix()
+	if _, err := repo.Append(ctx, AuditEntry{At: old, Username: "root@pam", Action: "changeset.apply", Result: "success"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	loopCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- repo.RunPruneLoop(loopCtx, 10*time.Millisecond, DefaultAuditRetentionDays, func(err error) {
+			t.Errorf("unexpected prune error: %v", err)
+		})
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		rows, err := repo.List(ctx, "", 0)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if len(rows) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for RunPruneLoop to prune the old row")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("RunPruneLoop returned %v, want nil after cancellation", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunPruneLoop did not return after ctx cancellation")
+	}
 }

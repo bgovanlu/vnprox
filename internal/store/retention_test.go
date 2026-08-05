@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 )
@@ -106,6 +107,244 @@ func TestSnapshotRetention_PinFloor(t *testing.T) {
 	if deleted != 0 {
 		t.Fatalf("snapshots deleted = %d, want 0 (pin floor must protect it)", deleted)
 	}
+}
+
+// TestSnapshotRetention_AC2_InFlightChangesetNeverPruned is T-1905 AC2's own
+// test, written first and explicit per the task card: "a snapshot required
+// by a changeset in awaiting_confirm, or within its rollback window, is
+// never pruned regardless of age". This is deliberately the dangerous case
+// — the daemon's entire rollback safety net is the thing under test — so it
+// is built to be impossible to pass by accident:
+//
+//   - the snapshot is made EXTREMELY old (500 days, versus a keepDays of 1
+//     and a pinDays of 1 — the most aggressive possible retention config, so
+//     nothing about the *numbers* could accidentally save it);
+//   - both in-flight statuses (awaiting_confirm and applying) are exercised
+//     as their own subtests, since AC2's wording names awaiting_confirm
+//     explicitly but the same in-flight danger applies to applying
+//     (recoverInterruptedApply's crash-recovery window, internal/change/
+//     apply_errors.go's "in flight (status applying or awaiting_confirm)");
+//   - a CONTROL subtest proves the harness can actually delete an
+//     equally-old snapshot once its changeset is no longer in flight
+//     (rolled_back) — without this, all the "protected" subtests could be
+//     passing because Prune deletes nothing at this age for an unrelated
+//     reason, which would make the whole test vacuous;
+//   - and a second control proves the *pinned* committed case behaves as
+//     T-206 already established (a courtesy re-assertion, not new ground),
+//     so a future edit that broke ONLY the new in-flight guardrail while
+//     leaving the pin logic intact is still caught by the right subtest.
+func TestSnapshotRetention_AC2_InFlightChangesetNeverPruned(t *testing.T) {
+	const (
+		aggressiveKeepDays = 1
+		aggressivePinDays  = 1
+		veryOldDays        = 500
+	)
+
+	newFixture := func(t *testing.T) (*SnapshotRepo, *BlobRepo, *ChangesetRepo, context.Context, time.Time) {
+		t.Helper()
+		db := openTestDB(t)
+		return NewSnapshotRepo(db), NewBlobRepo(db), NewChangesetRepo(db), context.Background(), time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	}
+
+	seedChangeset := func(t *testing.T, ctx context.Context, changesets *ChangesetRepo, id, status string) {
+		t.Helper()
+		if err := changesets.Insert(ctx, Changeset{ID: id, Author: "root@pam", Status: status, OpsJSON: "[]", CreatedAt: 1, UpdatedAt: 1}); err != nil {
+			t.Fatalf("seed %s changeset: %v", status, err)
+		}
+	}
+
+	for _, status := range []string{"awaiting_confirm", "applying"} {
+		t.Run(status, func(t *testing.T) {
+			snapshots, blobs, changesets, ctx, now := newFixture(t)
+			day := 24 * time.Hour
+
+			seedChangeset(t, ctx, changesets, "cs-inflight", status)
+			seedSnapshotAt(t, ctx, snapshots, blobs, "inflight-ancient", now.Add(-veryOldDays*day).Unix(), "cs-inflight")
+
+			deleted, _, err := SnapshotRetention(ctx, snapshots, blobs, now, aggressiveKeepDays, aggressivePinDays)
+			if err != nil {
+				t.Fatalf("SnapshotRetention: %v", err)
+			}
+			if deleted != 0 {
+				t.Fatalf("snapshots deleted = %d, want 0 (a %s changeset's snapshot must never be pruned, regardless of age)", deleted, status)
+			}
+			remaining, err := snapshots.Get(ctx, "inflight-ancient")
+			if err != nil {
+				t.Fatalf("snapshot must still exist: %v", err)
+			}
+			if remaining.ID != "inflight-ancient" {
+				t.Fatalf("unexpected surviving snapshot: %+v", remaining)
+			}
+		})
+	}
+
+	// Control: the harness is not simply "never deletes anything" — an
+	// equally ancient snapshot linked to a changeset that has LEFT the
+	// in-flight statuses (rolled_back is terminal, not pinned) is pruned
+	// under the same aggressive config. Without this subtest, the two
+	// subtests above could be passing for the wrong reason.
+	t.Run("control_terminal_status_is_pruned", func(t *testing.T) {
+		snapshots, blobs, changesets, ctx, now := newFixture(t)
+		day := 24 * time.Hour
+
+		seedChangeset(t, ctx, changesets, "cs-terminal", "rolled_back")
+		seedSnapshotAt(t, ctx, snapshots, blobs, "terminal-ancient", now.Add(-veryOldDays*day).Unix(), "cs-terminal")
+
+		deleted, _, err := SnapshotRetention(ctx, snapshots, blobs, now, aggressiveKeepDays, aggressivePinDays)
+		if err != nil {
+			t.Fatalf("SnapshotRetention: %v", err)
+		}
+		if deleted != 1 {
+			t.Fatalf("snapshots deleted = %d, want 1 (a terminal changeset's ancient snapshot is not protected)", deleted)
+		}
+		if _, err := snapshots.Get(ctx, "terminal-ancient"); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("expected the terminal-changeset snapshot to be gone, got err=%v", err)
+		}
+	})
+
+	// Control: a committed changeset's ancient snapshot is deleted once it
+	// falls outside pinDays too — re-asserting T-206's existing behavior so
+	// a future edit that accidentally widened the NEW in-flight guardrail to
+	// also swallow the pin case is caught here, not just by omission.
+	t.Run("control_committed_past_pin_window_is_pruned", func(t *testing.T) {
+		snapshots, blobs, changesets, ctx, now := newFixture(t)
+		day := 24 * time.Hour
+
+		seedChangeset(t, ctx, changesets, "cs-committed", "committed")
+		seedSnapshotAt(t, ctx, snapshots, blobs, "committed-ancient", now.Add(-veryOldDays*day).Unix(), "cs-committed")
+
+		deleted, _, err := SnapshotRetention(ctx, snapshots, blobs, now, aggressiveKeepDays, aggressivePinDays)
+		if err != nil {
+			t.Fatalf("SnapshotRetention: %v", err)
+		}
+		if deleted != 1 {
+			t.Fatalf("snapshots deleted = %d, want 1 (a committed changeset's snapshot past the pin window is not protected)", deleted)
+		}
+	})
+}
+
+// TestRetention_T1805_PrunedStoreStillPermitsUnattendedRevertOfInFlightChangeset
+// closes the interaction this card's dispatch specifically asked to be
+// stated AND tested, not left implicit: since T-1805, an awaiting_confirm
+// fw.*/sdn.apply changeset can hold a sealed PVE revert ticket
+// (changesets.revert_ticket_enc/revert_ticket_expires_at) that the daemon
+// uses to revert it unattended after a confirm timeout or a crash-restart
+// (internal/change.Service.doRollbackLocked / recoverInterruptedApply,
+// planning/reports/T-1805.md §2 Claim 2/3). Everything an unattended revert
+// needs must survive a retention pass while the changeset is still in
+// flight:
+//
+//  1. the sealed ticket itself (ChangesetRepo.RevertTicket) — retention
+//     never touches the changesets table at all (§13 of docs/data-model.md,
+//     "what this card deliberately does not prune"), so this is really
+//     "retention doesn't delete the changeset row out from under it", but
+//     it is asserted directly against the ticket accessor rather than left
+//     as an inference from "the table wasn't touched";
+//  2. the pre-apply snapshot the revert restores SDN/firewall state from
+//     (SnapshotRepo.Prune's in-flight guardrail, T-1905 AC2, tested above)
+//     — a live ticket with nothing to restore from would authorize a
+//     revert that has nothing to revert with.
+//
+// Both are driven through the real retention entry points (SnapshotRetention
+// AND AuditRepo.PruneRetention — audit is exercised too since it is the
+// other class this card adds a ceiling for, even though it has no
+// changeset-linkage of its own) under the same maximally-aggressive
+// configuration the guardrail test above uses, so a real prune pass
+// genuinely ran and had every opportunity to strand or destroy this state.
+func TestRetention_T1805_PrunedStoreStillPermitsUnattendedRevertOfInFlightChangeset(t *testing.T) {
+	db := openTestDB(t)
+	snapshots := NewSnapshotRepo(db)
+	blobs := NewBlobRepo(db)
+	changesets := NewChangesetRepo(db)
+	audit := NewAuditRepo(db)
+	ctx := context.Background()
+
+	now := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	day := 24 * time.Hour
+
+	// A fw.*-only changeset that reached awaiting_confirm, sealed a revert
+	// ticket at apply time (T-1805), and then sat there for a very long
+	// time — the daemon-was-down-for-months scenario the in-flight
+	// guardrail exists for, not a hypothetical.
+	const changesetID = "cs-awaiting-with-ticket"
+	if err := changesets.Insert(ctx, Changeset{
+		ID: changesetID, Author: "root@pam", Status: "awaiting_confirm",
+		OpsJSON: "[]", CreatedAt: 1, UpdatedAt: 1,
+	}); err != nil {
+		t.Fatalf("seed awaiting_confirm changeset: %v", err)
+	}
+
+	sealedTicket := []byte("sealed-pve-ticket-ciphertext-not-actually-encrypted-in-this-test")
+	ticketExpiresAt := now.Add(2 * time.Hour).Unix() // still live, PVE ticket's ~2h lifetime
+	if err := changesets.SealRevertTicket(ctx, changesetID, sealedTicket, ticketExpiresAt); err != nil {
+		t.Fatalf("SealRevertTicket: %v", err)
+	}
+
+	const snapshotID = "pre-apply-ancient"
+	seedSnapshotAt(t, ctx, snapshots, blobs, snapshotID, now.Add(-500*day).Unix(), changesetID)
+
+	// Also seed an ancient, unrelated audit row so a real audit prune pass
+	// (this card's other new retention path) actually deletes something —
+	// audit has no changeset linkage/guardrail of its own (§13), so this is
+	// a control that the audit prune ran for real, not a no-op.
+	if _, err := audit.Append(ctx, AuditEntry{
+		At: now.Add(-500 * day).Unix(), Username: "root@pam",
+		Action: "changeset.apply", Result: "success",
+	}); err != nil {
+		t.Fatalf("seed ancient audit row: %v", err)
+	}
+
+	// The most aggressive retention configuration available: a 1-day
+	// snapshot keep/pin window and a 1-day audit window, against a
+	// changeset/snapshot/audit-row that are all 500 days old.
+	const aggressiveKeepDays = 1
+	if _, _, err := SnapshotRetention(ctx, snapshots, blobs, now, aggressiveKeepDays, aggressiveKeepDays); err != nil {
+		t.Fatalf("SnapshotRetention: %v", err)
+	}
+	auditDeleted, err := audit.PruneRetention(ctx, now, aggressiveKeepDays)
+	if err != nil {
+		t.Fatalf("AuditRepo.PruneRetention: %v", err)
+	}
+	if auditDeleted != 1 {
+		t.Fatalf("audit rows deleted = %d, want 1 (the audit prune must have run for real)", auditDeleted)
+	}
+
+	// 1. The changeset row and its sealed ticket both survive, unchanged.
+	cs, err := changesets.Get(ctx, changesetID)
+	if err != nil {
+		t.Fatalf("changeset must still exist after retention: %v", err)
+	}
+	if cs.Status != "awaiting_confirm" {
+		t.Fatalf("changeset status = %q, want awaiting_confirm (retention must never touch changesets)", cs.Status)
+	}
+	gotTicket, gotExpiry, err := changesets.RevertTicket(ctx, changesetID)
+	if err != nil {
+		t.Fatalf("RevertTicket after retention: %v", err)
+	}
+	if string(gotTicket) != string(sealedTicket) {
+		t.Fatalf("sealed ticket after retention = %q, want the original %q — retention must never strand or corrupt it", gotTicket, sealedTicket)
+	}
+	if gotExpiry != ticketExpiresAt {
+		t.Fatalf("ticket expiry after retention = %d, want %d unchanged", gotExpiry, ticketExpiresAt)
+	}
+
+	// 2. The pre-apply snapshot an unattended revert restores SDN/firewall
+	// state from also survives — a live ticket with nothing to restore
+	// from would be a revert that can authenticate but has nothing to do.
+	snap, err := snapshots.Get(ctx, snapshotID)
+	if err != nil {
+		t.Fatalf("pre-apply snapshot must still exist after retention: %v", err)
+	}
+	if snap.ID != snapshotID {
+		t.Fatalf("unexpected surviving snapshot: %+v", snap)
+	}
+
+	// Conclusion: both preconditions for change.Service.doRollbackLocked's
+	// unattended-revert path (an unsealable ticket, an unattended.
+	// restorable snapshot) hold after a real retention pass ran and pruned
+	// something else in every table it touches — a pending unattended
+	// revert of this changeset is exactly as possible after retention as
+	// before it.
 }
 
 func TestSnapshotRepo_ListPage_Cursor(t *testing.T) {

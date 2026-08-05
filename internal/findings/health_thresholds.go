@@ -59,18 +59,27 @@ type HealthThresholds struct {
 	// path's baseline jitter/loss to an external reference target is
 	// inherently higher than a LAN/corosync link's. Default: 20%.
 	WanLossWarnPct float64
+	// StoreCapacityWarnBytes (T-1905) is the threshold
+	// health_storecapacity.go's store_near_capacity check compares the app
+	// store's on-disk size against — [retention] store_warn_bytes, mirrored
+	// here the same way wanLossWarnPct is threaded into this struct by
+	// cmd/vnproxd rather than read from config directly (internal/findings
+	// never imports internal/config). See config.DefaultStoreWarnBytes for
+	// the argued default (4 GiB).
+	StoreCapacityWarnBytes int64
 }
 
 // DefaultThresholds is applied by Engine's constructor when Config.Thresholds
 // is the zero value.
 var DefaultThresholds = HealthThresholds{
-	ErrorRatePerSec: 1,
-	DropRatePerSec:  1,
-	RiseCycles:      3,
-	FallCycles:      2,
-	LatRttWarnMs:    80,
-	LatLossWarnPct:  2,
-	WanLossWarnPct:  20,
+	ErrorRatePerSec:        1,
+	DropRatePerSec:         1,
+	RiseCycles:             3,
+	FallCycles:             2,
+	LatRttWarnMs:           80,
+	LatLossWarnPct:         2,
+	WanLossWarnPct:         20,
+	StoreCapacityWarnBytes: 4 << 30, // 4 GiB — mirrors config.DefaultStoreWarnBytes
 }
 
 // sampleableKinds is the same Kind set internal/metrics samples (see its

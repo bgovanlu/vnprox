@@ -125,7 +125,12 @@ type Config struct {
 	// peer_untrusted / peer_unreachable / peer_trust_degraded (source
 	// "peer"). Nil skips all three, same degradation as every other optional
 	// Config field.
-	PeerTrust       PeerTrustProvider
+	PeerTrust PeerTrustProvider
+	// StoreCapacity is T-1905's app-store size seam (cmd/vnproxd's
+	// storeCapacityAdapter over *store.DB.SizeBytes), backing
+	// store_near_capacity (source "store"). Nil skips that check entirely,
+	// same degradation as every other optional Config field.
+	StoreCapacity   StoreCapacityProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -177,6 +182,8 @@ type Engine struct {
 	federationDB     *debouncer
 	peerTrustSvc     PeerTrustProvider
 	peerUnreachDB    *debouncer
+	storeCapacitySvc StoreCapacityProvider
+	storeCapacityDB  *debouncer
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
 	arpChurnDB       *arpChurnTracker
@@ -284,6 +291,8 @@ func New(cfg Config) *Engine {
 		federationDB:     newDebouncer(),
 		peerTrustSvc:     cfg.PeerTrust,
 		peerUnreachDB:    newDebouncer(),
+		storeCapacitySvc: cfg.StoreCapacity,
+		storeCapacityDB:  newDebouncer(),
 	}
 }
 
@@ -316,6 +325,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, checkBaselineAnomalies(e.baselineSvc, e.baselineDB)...)
 	out = append(out, federationTunnelFindings(e.federationSvc, e.wgSvc, e.federationDB, e.now())...)
 	out = append(out, peerTrustFindings(e.peerTrustSvc, e.peerUnreachDB)...)
+	out = append(out, storeCapacityFindings(e.storeCapacitySvc, e.thresholds.StoreCapacityWarnBytes, e.storeCapacityDB)...)
 	out = append(out, e.healthFindings()...)
 	out = append(out, e.rogueFindings()...)
 	sortFindings(out)
