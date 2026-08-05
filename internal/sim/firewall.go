@@ -108,7 +108,7 @@ func (e *Engine) enforceGuest(ep resolvedEP, fl flow, dir, point string, res *Re
 		}
 		return fwOutcome{state: fwIndeterminate}
 	case decisionDeny:
-		rr := e.ruleRef(point, dir, dec)
+		rr := e.ruleRef(point, dir, guest, dec)
 		e.addHop(res, Hop{Kind: "firewall", Node: ep.node,
 			Label:  fmt.Sprintf("firewall (%s): %s", point, dec.action),
 			Detail: describeDecision(dec)})
@@ -199,9 +199,35 @@ func actionKind(action string) decisionKind {
 	}
 }
 
-func (e *Engine) ruleRef(point, dir string, dec decision) *RuleRef {
+// ruleRef builds the RuleRef the frozen `simulate.path` MCP tool
+// (cmd/vnproxd/mcpwire.go's mcpSimulatePath returns sim.Result verbatim,
+// docs/architecture.md §13.1's decision D10) and POST /simulate/path's own
+// blockingRule both surface. RulesetRef names the ruleset the matched rule
+// is literally defined in — the cluster ruleset for origin cluster/group,
+// or guest's own ruleset for origin guest — populated for all three cases
+// (T-2002 fixed the guest-origin gap this had before). This is deliberately
+// NOT what web/src/simulator/deeplink.ts's deep link uses (it derives the
+// guest to open from ResolvedEndpoint.guest instead, since the link's
+// target — "which guest's resolved view to open" — differs from "which
+// ruleset owns this rule" whenever origin is cluster/group); RulesetRef
+// exists for a different, still-genuine consumer: an MCP automation client
+// that wants to target a fw.rule.* changeset op at the exact ruleset the
+// blocking rule lives in.
+func (e *Engine) ruleRef(point, dir string, guest inventory.Ref, dec decision) *RuleRef {
+	rulesetRef := ""
+	switch dec.origin {
+	case fw.OriginCluster, fw.OriginGroup:
+		if e.fw.Cluster != nil {
+			rulesetRef = e.fw.Cluster.GetRef().String()
+		}
+	case fw.OriginGuest:
+		if rs, ok := e.fw.Guests[guest]; ok && rs != nil {
+			rulesetRef = rs.GetRef().String()
+		}
+	}
 	return &RuleRef{
 		EnforcementPoint: point,
+		RulesetRef:       rulesetRef,
 		Origin:           string(dec.origin),
 		GroupName:        dec.groupName,
 		Pos:              dec.pos,

@@ -238,11 +238,15 @@ func (s endpointSpec) toEndpoint() (sim.Endpoint, string) {
 // simBlockingRule is the API shape of a deny's blocking rule: the sim
 // RuleRef with the matched rule rendered in the same camelCase ruleView
 // (macro expansion included) the firewall routes use, for T-504's deep
-// link. No rulesetRef field (removed T-2002; see sim.RuleRef's doc
-// comment) — the deep link always targets the guest's resolved view
-// (src/dst's own ResolvedEndpoint.guest), never the rule's owning ruleset.
+// link. `rulesetRef` (populated for all three origins as of T-2002, see
+// sim.RuleRef's doc comment) is part of this route's response AND the
+// frozen `simulate.path` MCP tool's payload (docs/architecture.md §13.1) —
+// the deep link itself still ignores it (it always targets the guest's
+// resolved view via src/dst's own ResolvedEndpoint.guest, never the rule's
+// owning ruleset), but an MCP client targeting a fw.rule.* op needs it.
 type simBlockingRule struct {
 	EnforcementPoint string   `json:"enforcementPoint"`
+	RulesetRef       string   `json:"rulesetRef"`
 	Origin           string   `json:"origin"`
 	GroupName        string   `json:"groupName,omitempty"`
 	Direction        string   `json:"direction"`
@@ -274,8 +278,8 @@ func toSimulateResponse(res sim.Result) simulateResponse {
 	if res.BlockingRule != nil {
 		br := res.BlockingRule
 		out.BlockingRule = &simBlockingRule{
-			EnforcementPoint: br.EnforcementPoint,
-			Origin:           br.Origin, GroupName: br.GroupName, Direction: br.Direction,
+			EnforcementPoint: br.EnforcementPoint, RulesetRef: br.RulesetRef,
+			Origin: br.Origin, GroupName: br.GroupName, Direction: br.Direction,
 			Action: br.Action, Pos: br.Pos, Rule: toRuleView(br.Rule),
 		}
 	}

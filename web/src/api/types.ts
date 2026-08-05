@@ -2049,14 +2049,18 @@ export type SimRuleOrigin = "cluster" | "group" | "guest";
 
 /** Present only for `verdict: "deny"` — the exact rule that produced it,
  * with enough identity for the one-click deep link into the firewall
- * editor: `pos` + `origin` + `groupName?` (never DOM position, never a
- * `rulesetRef` — removed T-2002; see web/src/simulator/deeplink.ts's doc
- * comment for why the deep link's real target is always the guest's own
- * resolved view, derived from the endpoint, not from the rule's owning
- * ruleset), mirroring `ruleDeepLinkPath`'s (web/src/fwlog/deeplink.ts)
- * established contract. */
+ * editor: `pos` + `origin` + `groupName?` (never DOM position), mirroring
+ * `ruleDeepLinkPath`'s (web/src/fwlog/deeplink.ts) established contract.
+ * `rulesetRef` (populated for every origin as of T-2002 — the ruleset the
+ * matched rule is literally defined in) is part of this frozen shape too
+ * (this type also serializes verbatim as the `simulate.path` MCP tool's
+ * payload, docs/architecture.md §13.1 decision D10 — additive-only, never
+ * removed) but is deliberately NOT what the deep link itself uses: see
+ * web/src/simulator/deeplink.ts's doc comment for why the deep link always
+ * derives the guest to open from the endpoint instead. */
 export interface SimBlockingRule {
   enforcementPoint: "source-guest-out" | "dest-guest-in";
+  rulesetRef: string;
   origin: SimRuleOrigin;
   groupName?: string;
   direction: string;

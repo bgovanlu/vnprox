@@ -97,6 +97,7 @@ describe("ResultPanel blocking rule card", () => {
       verdict: "deny",
       blockingRule: {
         enforcementPoint: "dest-guest-in",
+        rulesetRef: "fw-ruleset:pve2:guest/qemu/101",
         origin: "guest",
         direction: "in",
         action: "DROP",
@@ -111,11 +112,12 @@ describe("ResultPanel blocking rule card", () => {
     expect(link).toHaveAttribute("href", "/firewall?scope=guest&ref=guest%3Apve2%3A101&pos=0&origin=guest");
   });
 
-  it("deep-links via the source guest's ref for a source-guest-out block", () => {
+  it("deep-links via the source guest's ref for a source-guest-out block, ignoring rulesetRef even though populated (AC1)", () => {
     const result = baseResult({
       verdict: "deny",
       blockingRule: {
         enforcementPoint: "source-guest-out",
+        rulesetRef: "fw-ruleset::cluster",
         origin: "cluster",
         direction: "out",
         action: "DROP",

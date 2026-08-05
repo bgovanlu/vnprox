@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/api"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
+	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
@@ -50,5 +52,94 @@ func TestSetupMCPBuildsServer(t *testing.T) {
 	}
 	if srv.HTTPHandler() == nil {
 		t.Fatalf("setupMCP returned a server with a nil HTTP handler")
+	}
+}
+
+// TestMCPSimulatePath_FrozenPayloadFields is a regression guard against the
+// exact mistake T-2002 almost shipped (see planning/reports/T-2002.md):
+// mcpSimulatePath returns sim.Result **verbatim** as the frozen
+// `simulate.path` MCP tool's payload (docs/architecture.md §13.1, decision
+// D10 — additive-only, no field ever removed/renamed without a version
+// bump). A change to internal/sim's types that looks like a safe internal
+// cleanup (no Go/TypeScript consumer left in this repo) can silently break
+// an external MCP client reading the wire JSON, since that client's code
+// never appears in this repo to grep for. This test drives a real
+// guest-origin deny through mcpSimulatePath end to end and asserts the
+// marshaled JSON still carries every documented field, including
+// `blockingRule.rulesetRef` — the field this task originally removed and
+// then had to restore.
+func TestMCPSimulatePath_FrozenPayloadFields(t *testing.T) {
+	g := inventory.NewGraph()
+	bridge := &inventory.Bridge{
+		Ref:  inventory.Ref{Kind: inventory.KindBridge, Node: "pve1", ID: "vmbr0"},
+		Name: "vmbr0", Virt: inventory.BridgeLinux, VlanAware: true, VlanAwareSet: true, Gateway: "10.0.0.1",
+	}
+	g.ApplyPoll(inventory.SourceHostNetlink, inventory.Scope{Node: "pve1"}, []inventory.Entity{bridge})
+	g.ApplyPoll(inventory.SourcePVENetwork, inventory.Scope{Node: "pve1"}, []inventory.Entity{bridge})
+
+	guests := []inventory.Entity{
+		&inventory.Guest{Ref: inventory.Ref{Kind: inventory.KindGuest, Node: "pve1", ID: "100"}, VMID: 100, Name: "a", Node: "pve1", Type: "qemu"},
+		&inventory.GuestNic{Ref: inventory.Ref{Kind: inventory.KindGuestNic, Node: "pve1", ID: "100/net0"},
+			Guest: inventory.Ref{Kind: inventory.KindGuest, Node: "pve1", ID: "100"}, Key: "net0", TargetName: "vmbr0", Firewall: true},
+		&inventory.Guest{Ref: inventory.Ref{Kind: inventory.KindGuest, Node: "pve1", ID: "101"}, VMID: 101, Name: "b", Node: "pve1", Type: "qemu"},
+		&inventory.GuestNic{Ref: inventory.Ref{Kind: inventory.KindGuestNic, Node: "pve1", ID: "101/net0"},
+			Guest: inventory.Ref{Kind: inventory.KindGuest, Node: "pve1", ID: "101"}, Key: "net0", TargetName: "vmbr0", Firewall: true},
+	}
+	g.ApplyPoll(inventory.SourcePVEGuest, inventory.Scope{Kinds: []inventory.Kind{inventory.KindGuest, inventory.KindGuestNic}}, guests)
+
+	fwEnts := []inventory.Entity{
+		&inventory.FwRuleset{Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}, Scope: inventory.FwScopeCluster,
+			Enabled: true, DefaultIn: "ACCEPT", DefaultOut: "ACCEPT"},
+		&inventory.FwRuleset{Ref: inventory.Ref{Kind: inventory.KindFwRuleset, Node: "pve1", ID: "guest/qemu/100"}, Scope: inventory.FwScopeGuest, Enabled: true},
+		// guest 101's own ruleset DROPs inbound tcp/22 — a guest-origin
+		// deny, the case RulesetRef used to be left empty for.
+		&inventory.FwRuleset{Ref: inventory.Ref{Kind: inventory.KindFwRuleset, Node: "pve1", ID: "guest/qemu/101"}, Scope: inventory.FwScopeGuest, Enabled: true,
+			Rules: []inventory.FwRule{{Pos: 0, Enabled: true, Direction: "in", Action: "DROP", Proto: "tcp", Dport: "22"}}},
+	}
+	g.ApplyPoll(inventory.SourcePVEFirewall, inventory.Scope{Kinds: []inventory.Kind{inventory.KindFwRuleset}}, fwEnts)
+
+	args, err := json.Marshal(map[string]any{
+		"src":   map[string]any{"kind": "guest-nic", "nicRef": "guest-nic:pve1:100/net0"},
+		"dst":   map[string]any{"kind": "guest-nic", "nicRef": "guest-nic:pve1:101/net0"},
+		"proto": "tcp",
+		"port":  22,
+	})
+	if err != nil {
+		t.Fatalf("marshal args: %v", err)
+	}
+
+	res, err := mcpSimulatePath(g, args)
+	if err != nil {
+		t.Fatalf("mcpSimulatePath: %v", err)
+	}
+
+	payload, err := json.Marshal(res)
+	if err != nil {
+		t.Fatalf("marshal result: %v", err)
+	}
+	var generic map[string]any
+	if err := json.Unmarshal(payload, &generic); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+
+	if generic["verdict"] != "deny" {
+		t.Fatalf("verdict = %v, want deny (payload: %s)", generic["verdict"], payload)
+	}
+	for _, field := range []string{"verdict", "src", "dst", "hops", "caveats", "blockingRule"} {
+		if _, ok := generic[field]; !ok {
+			t.Errorf("simulate.path payload missing frozen top-level field %q (payload: %s)", field, payload)
+		}
+	}
+	blockingRule, ok := generic["blockingRule"].(map[string]any)
+	if !ok {
+		t.Fatalf("blockingRule is not an object: %v", generic["blockingRule"])
+	}
+	for _, field := range []string{"enforcementPoint", "rulesetRef", "origin", "direction", "action", "rule", "pos"} {
+		if _, ok := blockingRule[field]; !ok {
+			t.Errorf("simulate.path payload's blockingRule missing frozen field %q (payload: %s)", field, payload)
+		}
+	}
+	if rulesetRef, _ := blockingRule["rulesetRef"].(string); rulesetRef == "" {
+		t.Errorf("blockingRule.rulesetRef is empty for a guest-origin deny — the exact regression this test guards against")
 	}
 }
