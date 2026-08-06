@@ -47,7 +47,7 @@ function TopicBody({ topic }: { topic: HelpTopic }) {
 
       {topic.seeAlso && topic.seeAlso.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             See also
           </h3>
           <ul className="mt-2 flex flex-wrap gap-2">
@@ -74,7 +74,7 @@ function TopicBody({ topic }: { topic: HelpTopic }) {
         </section>
       )}
 
-      <p className="border-t border-slate-200 pt-3 text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
+      <p className="border-t border-slate-200 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
         Written from <code className="font-mono">{topic.docRef}</code> in the vnprox repository.
       </p>
     </div>
@@ -112,7 +112,7 @@ function SearchResults({ query }: { query: string }) {
               {hit.topic.summary}
             </span>
             {hit.matchedIn !== undefined && (
-              <span className="mt-1 block text-xs text-slate-400 dark:text-slate-500">
+              <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
                 matched in “{hit.matchedIn}”
               </span>
             )}
@@ -144,7 +144,7 @@ function BrowseIndex() {
         }
         return (
           <section key={surface}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               {SURFACE_LABEL[surface]}
             </h3>
             <ul className="mt-2 space-y-0.5">
@@ -262,7 +262,7 @@ export function HelpPanel() {
             <button
               type="button"
               onClick={browseIndex}
-              className="text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+              className="text-xs font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             >
               Browse all help topics →
             </button>

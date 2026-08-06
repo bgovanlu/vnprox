@@ -61,7 +61,7 @@ function CertRow({ cert }: { cert: Certificate }) {
     <tr className="border-t border-slate-200 align-top dark:border-slate-800">
       <td className="py-2 pr-4 text-sm text-slate-900 dark:text-slate-100">
         {CERT_KIND_LABEL[cert.kind]}
-        <div className="font-mono text-xs text-slate-400 dark:text-slate-500">{cert.path}</div>
+        <div className="font-mono text-xs text-slate-500 dark:text-slate-400">{cert.path}</div>
       </td>
       <td className="py-2 pr-4 text-sm text-slate-700 dark:text-slate-200">{cert.subject}</td>
       <td className={`py-2 pr-4 text-sm ${expiryTone(cert.notAfter)}`}>
@@ -71,11 +71,11 @@ function CertRow({ cert }: { cert: Certificate }) {
       <td className="py-2 pr-4 text-sm text-slate-600 dark:text-slate-300">
         {cert.keyAlgorithm}
         {cert.keyBits > 0 ? `-${String(cert.keyBits)}` : ""}
-        <div className="text-xs text-slate-400 dark:text-slate-500">{cert.signatureAlgorithm}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">{cert.signatureAlgorithm}</div>
       </td>
       <td className="py-2 text-sm text-slate-600 dark:text-slate-300">
         {cert.sans.length === 0 ? (
-          <span className="text-slate-400 dark:text-slate-500">none</span>
+          <span className="text-slate-500 dark:text-slate-400">none</span>
         ) : (
           <ul className="flex flex-wrap gap-1">
             {cert.sans.map((san) => (
@@ -184,7 +184,7 @@ export function CertificatesPage() {
           <div className="mt-2 overflow-x-auto">
             <table className="w-full table-auto text-left">
               <thead>
-                <tr className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                <tr className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   <th className="pb-1 pr-4 font-semibold">Certificate</th>
                   <th className="pb-1 pr-4 font-semibold">Subject</th>
                   <th className="pb-1 pr-4 font-semibold">Expires</th>
@@ -203,7 +203,7 @@ export function CertificatesPage() {
       ))}
 
       {data?.inventory.scannedAt !== undefined && (
-        <p className="text-xs text-slate-400 dark:text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           Read from /etc/pve at {new Date(data.inventory.scannedAt).toLocaleString()}. vnprox never renews or
           replaces a certificate — Proxmox owns that, and each problem above names the command that does it.
         </p>

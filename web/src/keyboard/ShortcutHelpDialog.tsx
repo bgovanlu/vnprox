@@ -40,7 +40,7 @@ export function ShortcutHelpDialog({ open, onOpenChange }: ShortcutHelpDialogPro
         </dl>
         {paletteActions.length > 0 && (
           <>
-            <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Available now, via the command palette
             </h3>
             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">

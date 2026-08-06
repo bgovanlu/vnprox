@@ -313,3 +313,89 @@ worktree and 90 seconds.
 1. `make e2e` is green locally and in CI.
 2. The `e2e` job is required, not observe-only.
 3. Any product defect found is fixed with its own regression assertion, not by loosening a locator.
+
+---
+
+## Triage, 2026-08-06 — full run on a quiet machine
+
+Scope items 1 and 2 are done. The first table above was gathered while a second project's CI was
+loading the machine; this one was not, and the numbers moved.
+
+| | First run (under load) | **This run (quiet)** |
+|---|---|---|
+| Failed | 29 | **23** → **22** after the a11y fix below |
+| Passed | 59 | **64** → 65 |
+| Skipped / did not run | 0 | 2 / 1 |
+| `a11y` | 9 failed | **0 failed** |
+
+### The method that mattered: suite vs. standalone
+
+Every failing spec was re-run **standalone** on the same build. That splits the failures into two
+classes that need completely different work, and which are indistinguishable from the suite log
+alone:
+
+| Class | Count | Meaning |
+|---|---|---|
+| **Reproduces standalone** | **17** | A real defect or a genuinely stale spec. Fix the spec or the product. |
+| **Suite-context only** | **6** | Passes alone, fails in the suite. Not a feature defect — shared state or ordering across a single-worker suite sharing one `vnproxd`. |
+
+**Suite-context-only failures** — `saved-views` (3), `nav-after-inspector` (1), `map-export` (1),
+`changesets` (1). These are the ones to chase as *one* problem, not six.
+
+Corroborating signal: **16 of the 23 failures were 120-second timeouts**, three of them stuck in a
+login helper at `waitForURL("**/topology")` — a login that works in every standalone run.
+
+### Correction: `T-2003-bug-01` **does** reproduce
+
+`docs/status-matrix.md` and `docs/project-status.md` recorded it as *unreproducible* on the strength
+of `nav-after-inspector.spec.ts` passing. That verdict was reached by running the spec **standalone**,
+and it was wrong:
+
+| Context | Result |
+|---|---|
+| Standalone | passes, 3.9s |
+| Full suite | **fails** |
+
+It fails inside `openInspectorViaSpotlight` (line 60) — during *setup*, before reaching the nav-rail
+assertion at line 79. The card's status is corrected to open, in the suite-context-only class above.
+The methodological point generalises: **a regression spec verified only in isolation has not been
+verified**, because isolation is the one condition the reported bug did not occur under.
+
+### A real defect found and fixed: WCAG AA contrast, second instance
+
+`axe: IPAM` failed on `dark:text-slate-500` over `dark:bg-slate-900` — **3.74:1**, below AA's 4.5:1.
+The light-mode half of the same pairing (`text-slate-400` on `bg-slate-100`, ~2.4:1) fails too; axe
+could not see it because the sweep runs in dark mode.
+
+`src/layout/TopBar.tsx` already carried a comment describing **this exact defect and this exact
+fix** from `T-905` — applied to one element and never generalised. 19 sites still had the original
+pairing; the repo already used the corrected pairing in 196 places, so the 19 were the outliers.
+
+**One of the 19 was not like the others, and the fix was wrong for it.** `topology/EntityNode.tsx`'s
+kind badge sits on per-kind *tinted* backgrounds, not neutral slate; swapping it moved `axe:
+Topology` from passing to 80 violations. Reverted that single site and kept the other 18 —
+`a11y` then went to **10/10 passed**. Recorded because "apply the established pattern everywhere it
+appears" is exactly the sort of change that looks safe and is not, and the only reason it was caught
+is that the sweep was re-run rather than assumed.
+
+### Remaining 17, by failure mode
+
+| Spec | Fails | Dies on |
+|---|---|---|
+| `simulator` | 3 | `getByLabel('Port')`; verdict text never appears |
+| `help` | 2 | help panel `toBeHidden`; search hit never visible |
+| `user-guide-tasks` | 2 | `getByRole('button', {name:'Next'})`; `'10.100.0.51: Free'` |
+| `changesets` | 1 | `getByRole('heading', {name:'Guests', level:1})` |
+| `command-palette` | 1 | `dialog "Keyboard shortcuts"` — **pre-existing, predates phase 22** (proven by worktree experiment at `5019c45`) |
+| `conntrack` | 1 | `[data-entity-ref="bridge:pve1:vmbr0"]` |
+| `diagnose` | 1 | `dialog` → `button "app01 guest"` |
+| `guest-interior` | 1 | `dialog` → `button "app01 guest"` — **same locator as `diagnose`; likely one cause, two specs** |
+| `federation` | 1 | `region "Global cluster map"` |
+| `flows` | 1 | edge-paint assertion `isLightBg \|\| isDarkBg` |
+| `history` | 1 | boolean assertion returns `false` |
+| `topology` | 1 | screenshot **1158×740 expected vs 1158×574 received** — a stale snapshot or a real layout change |
+
+**Next**, in this order: (1) the six suite-context-only failures as a single shared-state
+investigation, since it is one cause and the largest single group; (2) `diagnose`+`guest-interior`,
+which share a locator; (3) the topology snapshot, which is a yes/no question about whether the
+layout legitimately changed.

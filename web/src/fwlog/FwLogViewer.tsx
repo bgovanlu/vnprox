@@ -229,7 +229,7 @@ export function FwLogViewer() {
             </p>
           )}
           {trimmedFromView > 0 && (
-            <p className="text-xs text-slate-400 dark:text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Showing the most recent {RENDER_CAP.toLocaleString()} of {visible.length.toLocaleString()} matching lines.
             </p>
           )}

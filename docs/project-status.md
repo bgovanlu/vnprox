@@ -18,7 +18,7 @@ vnprox is **feature-complete against three shipped arcs and materially under-val
 | **API surface** | **100%** | Contract frozen at v3.0, additive-only since |
 | **Docs currency** | **100%** | `features.md` refreshed 2026-08-06 (`T-2107`) |
 | **Automated test gate** | **100%** | `make ci` green locally: 4,058 tests, lint, vet, arm64 cross-build, 7 fuzz targets, package. **GitHub Actions is unfunded and runs nothing** — the gate is the dev host |
-| **E2E gate** | **observe-only** | Gate landed 2026-08-06; the suite is red and `T-2108` tracks triage |
+| **E2E gate** | **observe-only** | Gate landed 2026-08-06. Baseline on a quiet machine: **22 failed / 65 passed**, triaged into 17 genuine + 6 suite-context-only (`T-2108`). `a11y` is now 10/10 after a second real WCAG AA defect was fixed |
 | **Hardware validation** | **5%** | **6 of 123 items validated on real PVE** |
 
 The first six rows describe a mature product. The last two are why the current arc exists. **The gap between "our tests pass" and "this works on your cluster" is the project's dominant risk, and it is not shrinking quickly** — five of the six validated items were validated a day ago; before that the number was one.
@@ -72,7 +72,7 @@ Ranked by *what it costs to leave this alone*, not by effort.
 
 | # | Item | Card | Note |
 |---|---|---|---|
-| 7 | Nav-rail dead-end after inspector close | `T-2003-bug-01` | High severity, ordinary user path |
+| 7 | Nav-rail dead-end after inspector close | `T-2003-bug-01` | High severity, ordinary user path. **Correction 2026-08-06:** previously logged as unreproducible; it reproduces in the full e2e suite and only passes standalone |
 | 8 | ~~`vnproxctl doctor`~~ | `T-1904` | **Closed 2026-08-06** — ten checks, each with a broken fixture proving it can fail; remediation enforced structurally by `Report.Validate()`, not merely asserted. Four checks await a live-daemon wiring (`T-1904-followup-02`), which is also where the certificate/SAN preflight belongs |
 | 9 | ~~`docs/features.md` is stale~~ | `T-2107` | **Closed 2026-08-06** — rewritten to cover all four arcs; the non-goals section now states what is genuinely still out of scope |
 | 10 | Accessibility second pass | `T-2004` | Pass 1 shipped (WCAG AA, axe-gated) |

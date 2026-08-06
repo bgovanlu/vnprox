@@ -83,7 +83,7 @@ export function PortsPage() {
                   key={`${row.node}/${row.nic}/${String(i)}`}
                   className={
                     "border-b border-slate-100 last:border-b-0 dark:border-slate-800 " +
-                    (row.stale ? "text-slate-400 dark:text-slate-500" : "text-slate-700 dark:text-slate-200")
+                    (row.stale ? "text-slate-500 dark:text-slate-400" : "text-slate-700 dark:text-slate-200")
                   }
                 >
                   <td className={td}>{row.node}</td>

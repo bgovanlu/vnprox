@@ -108,7 +108,7 @@ export function WizardShell({ open, onOpenChange, title, intro, steps, preview, 
           </div>
         </div>
 
-        <p className="mt-4 text-[11px] text-slate-400 dark:text-slate-500">{wizardStrings.common.draftNotice}</p>
+        <p className="mt-4 text-[11px] text-slate-500 dark:text-slate-400">{wizardStrings.common.draftNotice}</p>
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <Button

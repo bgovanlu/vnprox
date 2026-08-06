@@ -117,7 +117,7 @@ function FilterCheckboxGroup<T extends string>({
           </label>
         ))}
       </div>
-      <p className="text-[11px] text-slate-400 dark:text-slate-500">None selected matches every value.</p>
+      <p className="text-[11px] text-slate-500 dark:text-slate-400">None selected matches every value.</p>
     </fieldset>
   );
 }

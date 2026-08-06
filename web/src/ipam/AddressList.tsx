@@ -127,13 +127,13 @@ function EntryRow({ cell, onOpen }: { cell: IpamCell; onOpen: (cell: IpamCell) =
         {cell.hostname ? (
           <>
             {cell.hostname}
-            {desc && <span className="text-slate-400 dark:text-slate-500"> · {desc}</span>}
+            {desc && <span className="text-slate-500 dark:text-slate-400"> · {desc}</span>}
           </>
         ) : (
-          <span className="text-slate-400 dark:text-slate-500">{cell.state === "observed" ? "unknown host — not in IPAM" : desc || "—"}</span>
+          <span className="text-slate-500 dark:text-slate-400">{cell.state === "observed" ? "unknown host — not in IPAM" : desc || "—"}</span>
         )}
       </span>
-      <span className="hidden justify-end font-mono text-[11px] text-slate-400 sm:flex dark:text-slate-500">
+      <span className="hidden justify-end font-mono text-[11px] text-slate-500 sm:flex dark:text-slate-400">
         {cell.mac ?? (cell.sources && cell.sources.length > 0 ? cell.sources.join(" · ") : "")}
       </span>
     </button>

@@ -198,7 +198,7 @@ It still describes the v1.0 feature set and lists as **explicit non-goals** five
 
 | ID | Severity | Area | Summary |
 |---|---|---|---|
-| `T-2003-bug-01` | High → **unreproducible** | GUI | The documented reproduction now passes under a tightened regression spec (`web/e2e/nav-after-inspector.spec.ts`). Nothing was changed to make it pass; either it was fixed incidentally or the real precondition differs from the documented one. Card stays open with the evidence |
+| `T-2003-bug-01` | High → **reproduces (correction, 2026-08-06)** | GUI | Previously recorded as unreproducible. That verdict came from running `nav-after-inspector.spec.ts` **standalone**; in the full suite it **fails**. A regression spec verified only in isolation has not been verified, because isolation is the one condition the reported bug did not occur under. See `T-2108` triage |
 | `T-2002-bug-01` | Medium | API | Frozen MCP payloads had no field-removal regression guard (guards added; card open for the general pattern) |
 | `T-1807-bug-01` | Medium → **closed 2026-08-06** | Tooling | Test tooling assumed exclusive use of the machine. Closed by `T-1807-bug-02`'s enforced port registry — see §5.9 |
 | `T-1806-bug-01` | High → **partially closed** | Process | Gate landed; backlog triage is `T-2108`. See §5.1 |

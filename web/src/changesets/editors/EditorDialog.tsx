@@ -32,7 +32,7 @@ export interface EditorDialogProps {
  * change-management.md §5: "inline help written for non-networking-experts,
  * e.g. bond modes explained with 'use this when...'"). */
 export function FieldHelp({ children }: { children: ReactNode }) {
-  return <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">{children}</p>;
+  return <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{children}</p>;
 }
 
 export function EditorDialog({
