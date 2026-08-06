@@ -6,6 +6,15 @@
 # comment and web/playwright.config.ts's webServer array.
 
 [server]
+# T-2108: the Playwright suite logs in ~82 times against one daemon from
+# 127.0.0.1 as the same user, which exceeds the production limiter's refill
+# rate (10 attempts, one token back every 30s) and earns HTTP 429s partway
+# through a full-suite run — surfacing as specs that time out waiting for a
+# post-login navigation, and only ever in full-suite runs. The limiter is
+# correct; a real operator logs in once and keeps a session. Raised HERE only,
+# so every shipped config keeps the production brute-force protection.
+dev_login_rate_capacity = 500
+dev_login_rate_refill_seconds = 1
 listen = "127.0.0.1:18007"
 tls_cert = "testdata/certs/dev-cert.pem"
 tls_key = "testdata/certs/dev-key.pem"

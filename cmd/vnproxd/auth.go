@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/auth"
 	"github.com/bgovanlu/vnprox/internal/config"
@@ -124,6 +125,14 @@ func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo 
 		// §3) forces every derived capability read-only, server-side, not
 		// just in the UI — see auth.Config.ReadOnly's doc comment.
 		ReadOnly: cfg.Server.ReadOnly,
+		// Dev/testing-only login-limiter override (T-2108). Zero values are
+		// left zero so auth.Config falls back to DefaultRateLimitConfig —
+		// every shipped config keeps the production 10-attempts/30s
+		// brute-force protection untouched.
+		RateLimit: auth.RateLimitConfig{
+			Capacity:    cfg.Server.DevLoginRateCapacity,
+			RefillEvery: time.Duration(cfg.Server.DevLoginRateRefillSeconds) * time.Second,
+		},
 	})
 	if err != nil {
 		return nil, nil, err

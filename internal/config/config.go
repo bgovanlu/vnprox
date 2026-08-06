@@ -341,7 +341,29 @@ type ServerConfig struct {
 	TLSCertPath           string
 	TLSKeyPath            string
 	ConfirmTimeoutDefault int
-	ReadOnly              bool
+
+	// DevLoginRateCapacity and DevLoginRateRefillSeconds are a
+	// dev/testing-only override for the login brute-force limiter
+	// (internal/auth.DefaultRateLimitConfig: 10 attempts, one token back
+	// every 30s). Zero means "use the production default", so no shipped
+	// config is affected.
+	//
+	// This exists for the Playwright suite (T-2108). Its 89 specs log in
+	// ~82 times against one daemon from 127.0.0.1 as the same user, which
+	// exceeds the refill rate and earns three HTTP 429s partway through the
+	// run — surfacing as specs that time out waiting for a post-login
+	// navigation, and *only* in full-suite runs. The limiter is behaving
+	// correctly; a real operator logs in once and keeps a session. Rather
+	// than weaken the production default or make 36 spec files share a
+	// storageState, the e2e config raises it and everything else keeps the
+	// shipped behaviour.
+	//
+	// Deliberately prefixed `dev_` like [pve]'s dev_ticket_* overrides, so
+	// it reads as what it is in any config it appears in.
+	DevLoginRateCapacity      int
+	DevLoginRateRefillSeconds int
+
+	ReadOnly bool
 }
 
 // PVEConfig is the [pve] section.
@@ -725,11 +747,13 @@ type rawSwitches struct {
 }
 
 type rawServer struct {
-	Listen                string `toml:"listen"`
-	TLSCert               string `toml:"tls_cert"`
-	TLSKey                string `toml:"tls_key"`
-	ReadOnly              bool   `toml:"read_only"`
-	ConfirmTimeoutDefault int    `toml:"confirm_timeout_default"`
+	Listen                    string `toml:"listen"`
+	TLSCert                   string `toml:"tls_cert"`
+	TLSKey                    string `toml:"tls_key"`
+	ReadOnly                  bool   `toml:"read_only"`
+	ConfirmTimeoutDefault     int    `toml:"confirm_timeout_default"`
+	DevLoginRateCapacity      int    `toml:"dev_login_rate_capacity"`
+	DevLoginRateRefillSeconds int    `toml:"dev_login_rate_refill_seconds"`
 }
 
 type rawPVE struct {
@@ -883,6 +907,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			ConfirmTimeoutDefault: firstNonZeroInt(raw.Server.ConfirmTimeoutDefault, DefaultConfirmTimeoutDefault),
 			TLSCert:               raw.Server.TLSCert,
 			TLSKey:                raw.Server.TLSKey,
+			// Zero stays zero: internal/auth falls back to its production
+			// default, so omitting these keys changes nothing.
+			DevLoginRateCapacity:      raw.Server.DevLoginRateCapacity,
+			DevLoginRateRefillSeconds: raw.Server.DevLoginRateRefillSeconds,
 		},
 		PVE: PVEConfig{
 			APIURL:         firstNonEmpty(raw.PVE.APIURL, DefaultPVEAPIURL),

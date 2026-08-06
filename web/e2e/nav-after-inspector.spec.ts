@@ -57,7 +57,7 @@ async function expectOnPage(page: Page, heading: string): Promise<void> {
 /** Opens spotlight from the top bar (the affordance that works from any
  * page), searches, and opens the first result's inspector. */
 async function openInspectorViaSpotlight(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
 
   const spotlight = page.getByRole("dialog");
   await expect(spotlight).toBeVisible();

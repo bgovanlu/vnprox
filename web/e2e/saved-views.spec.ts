@@ -48,7 +48,7 @@ test.describe("T-907 saved views", () => {
     await expect(sdnToggle).toHaveAttribute("aria-pressed", "false");
 
     await page.getByLabel("VLAN", { exact: true }).fill("20");
-    await page.getByRole("button", { name: "Apply" }).click();
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
     await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
 
     // Save it as a named view.
@@ -92,7 +92,7 @@ test.describe("T-907 saved views", () => {
     await physToggle.click();
     await expect(physToggle).toHaveAttribute("aria-pressed", "false");
     await page.getByLabel("VLAN", { exact: true }).fill("20");
-    await page.getByRole("button", { name: "Apply" }).click();
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
 
     // Copy the share link — never saved under a name, so no `layouts` row
     // exists anywhere for this exact state; the URL alone must carry it.

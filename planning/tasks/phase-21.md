@@ -399,3 +399,44 @@ is that the sweep was re-run rather than assumed.
 investigation, since it is one cause and the largest single group; (2) `diagnose`+`guest-interior`,
 which share a locator; (3) the topology snapshot, which is a yes/no question about whether the
 layout legitimately changed.
+
+### Root cause of the suite-context-only class — found, 2026-08-06
+
+Two mechanisms, both shared-state, both invisible in a standalone run. Neither is a product defect.
+
+**1. The suite exhausts vnprox's own login brute-force limiter.**
+
+`internal/auth.DefaultRateLimitConfig` is 10 attempts with one token back every 30s, keyed per-IP
+*and* per-username. The suite performs **82 logins in ~30 minutes** against one daemon, all from
+127.0.0.1 as the same user — above the refill rate. The baseline log contains exactly **three
+`/api/v1/auth/login` responses with status 429**, matching the three specs stuck at
+`waitForURL("**/topology")`.
+
+The limiter is behaving correctly; a real operator logs in once and keeps a session. Fixed by adding
+`dev_login_rate_capacity` / `dev_login_rate_refill_seconds` under `[server]` — zero means "use the
+production default", so **no shipped config changes** — and raising it in the seven `testdata/dev*.toml`
+e2e configs only. Named `dev_`-prefixed to match `[pve]`'s existing `dev_ticket_*` overrides.
+
+**2. Specs mutate the shared daemon store, changing what later specs render.**
+
+`web/playwright.config.ts` removes `var/dev-vnprox.db` once per *run*, not per spec, and the suite is
+single-worker against one `vnproxd`. So writes accumulate. Caught red-handed:
+`saved-views.spec.ts`'s `getByRole("button", {name: "Apply"})` resolved to **four** elements — the
+VLAN filter's Apply button, plus three history-timeline event buttons with aria-labels like
+`Changeset event: changeset.apply at 8/6/2026, 4:04:52 PM`, left behind by `changesets.spec.ts`
+earlier in the same run.
+
+Fixed by **tightening** the locators (`exact: true`), not loosening them — these were always
+ambiguous and merely latent while nothing else on the page happened to match. Same for
+`nav-after-inspector.spec.ts`'s `{name: "Search"}`, which matched both the top-bar search button and
+a `Search ( / )` button.
+
+**Result on the four specs in that class:** 4 failed → **1 failed, 9 passed**. The one remaining
+(`changesets.spec.ts:231`, read-only affordances) fails standalone too, so it was misclassified here
+and belongs in the genuine group.
+
+**Not fixed, and worth its own decision:** per-spec store isolation. Cause 2 is structural — any
+future spec that writes to the store can perturb any later spec, and the next occurrence will again
+look like a product defect. Options are a fresh DB per spec file (slow, and the fixture reseed is
+not free) or a convention that specs clean up after themselves (easy to forget, which is how this
+arose). Filed as `T-2108-followup-01` rather than decided here.
