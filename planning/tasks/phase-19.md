@@ -173,6 +173,75 @@ it observes itself.
 4. Exit code is non-zero iff at least one check fails; `install.sh` aborts on it.
 5. `make check` green; `docs/deployment.md` documents `doctor`.
 
+**Status: ● Done 2026-08-06** — `internal/doctor` + `cmd/vnproxctl/doctorcmd.go`, ten checks.
+
+| AC | Met | Evidence |
+|---|---|---|
+| 1 — every check has a broken fixture proving it fails | ✅ | `TestEachCheckFailsOnBrokenInput` (16 cases) plus `TestEveryCheckHasABrokenFixture`, which re-derives coverage by running each mutation and recording which check left `pass` — so a check with no fixture is a build failure, not an oversight. `TestHealthyInstallPassesEverything` is the control. |
+| 2 — every fail/warn carries a remediation | ✅ | Enforced structurally by `Report.Validate()`, not only asserted: a `fail` or `warn` with an empty remediation is a malformed report and the CLI exits `ExitError` rather than printing it. `TestValidateCatchesMissingRemediation` proves the guard, with a control. |
+| 3 — `-o json` schema-stable | ✅ | `TestDoctorJSONIsWellFormed` round-trips real CLI output into `doctor.Report` and re-validates it. |
+| 4 — non-zero iff a check fails | ✅ | `TestDoctorExitsNonZeroOnFailure`. Warnings deliberately do not gate. |
+| 5 — `make check` green, docs | ✅ | `docs/deployment.md` gains a `vnproxctl doctor` section with the check table, the exit-code contract, and the limitations below. |
+
+**A design decision worth recording: `skip` is a distinct status from `pass`.** A probe that cannot
+run reports why. Conflating "we did not look" with "we looked and it was fine" is how a diagnostic
+starts lying, and doctor's whole value is being believed. `TestSkipIsNotPass` pins it.
+
+**A real finding from building the install gate.** The first version failed a *correct* install:
+immediately after `apt install`, `/etc/vnprox/keys/session.key` does not exist — the daemon
+generates it on first start — and the key check called that fatal. Made state-aware: a store on disk
+means the daemon has run, so a missing key is real; no store means the key is simply not created
+yet, which is a `warn`. `TestSessionKeyAbsentBeforeFirstStartIsNotAFailure` covers both directions
+with a control.
+
+**Deviations from the card, with reasons:**
+
+1. **`install.sh` reports rather than aborts (AC4's second clause).** Two reasons. Aborting *after*
+   the package is installed and the SSH rollout has run leaves a half-configured cluster and no way
+   back — the operator is better served by a complete install plus an accurate problem list. And
+   `packaging/test/cluster-ssh.sh` and `port-conflict.sh` drive `install.sh` in plain Debian
+   containers where `pmxcfs` legitimately fails; making doctor fatal would fail those tests for a
+   correct reason *and* change the behaviour of the script that is the subject of the still-open
+   `T-1806-bug-02`. Tracked as **`T-1904-followup-01`**.
+2. **Four checks currently `skip` from the CLI.** `pve_reachable`, `pve_privileges`, `clock_skew`
+   and `peer_secret` need an authenticated PVE client and a peer view only the running daemon holds,
+   and doctor's contract is that it works daemon-down. Their logic is complete and fully tested
+   against fakes; only the live wiring is missing. Tracked as **`T-1904-followup-02`**.
+3. **`capture_root` and the PVE API URL come from packaged defaults**, not the config, because
+   neither is in `config.RecoveryConfig` — the daemon-independent subset doctor loads. Widening that
+   type is a change to the backup/restore path and out of scope here. Stated in
+   `docs/deployment.md` rather than left silently wrong.
+
+**Not duplicated: the privilege list.** `pve_privileges` names privileges from
+`auth.RequiredPrivileges()`, added to `internal/auth` in this card, rather than keeping its own
+copy. `TestRequiredPrivilegesCoversMapping` reads the privileges `DeriveCapabilities` actually
+consults out of `caps.go` and fails if the two drift in either direction — a privilege the mapping
+uses that doctor never mentions (an operator grants everything doctor asked for and it still does
+not work), or one doctor asks for that vnprox no longer uses. Proven by mutation.
+
+---
+
+### T-1904-followup-01 · Make `install.sh` abort on a failing `doctor`
+
+**Severity:** Low · **Blocked by:** `T-1806-bug-02`
+
+AC4's second clause. Requires first deciding which checks are install-blocking (`pmxcfs` yes,
+`disk_headroom` warn-only?) and reworking `packaging/test/`'s containers so a correct test install
+does not trip them. Should not land while `cluster-ssh.sh` is an unexplained failure.
+
+### T-1904-followup-02 · Wire `doctor`'s four daemon-dependent checks to a live daemon
+
+**Severity:** Medium
+
+`pve_reachable`, `pve_privileges`, `clock_skew` and `peer_secret` are implemented and tested but
+report `skip` from the CLI, because each needs an authenticated PVE client or a peer view only the
+daemon holds. The natural shape is an optional `--token` path that asks the running daemon (as the
+`remote` family already does) and keeps the current daemon-down behaviour when it is absent — so
+doctor never *stops* working with the daemon down, it only learns more when it is up.
+
+Note the certificate/SAN preflight `T-1906-bug-01` wanted lives here too: `internal/certs` already
+computes it, and `doctor` is the place an operator would look for it.
+
 ---
 
 ## T-1905 · Retention, rotation, and compaction ★

@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"os"
 	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/bgovanlu/vnprox/internal/pve"
@@ -174,5 +176,73 @@ func TestDeriveCapabilities_NeverGrantsAutomation(t *testing.T) {
 	caps := DeriveCapabilities(newPrivilegeSet([]string{"*"}))
 	if caps.Automation {
 		t.Error("DeriveCapabilities with wildcard privilege set Automation = true, want false (never PVE-derived)")
+	}
+}
+
+// TestRequiredPrivilegesCoversMapping keeps RequiredPrivileges honest against
+// DeriveCapabilities.
+//
+// `vnproxctl doctor` (T-1904) tells an operator which PVE privileges to grant.
+// If the mapping starts consulting a privilege that RequiredPrivileges does not
+// list, doctor stays silent about a privilege whose absence genuinely breaks
+// vnprox — the operator grants everything doctor asked for and it still does
+// not work. So this reads the privileges DeriveCapabilities actually consults
+// out of caps.go itself, rather than trusting a second hand-written list.
+func TestRequiredPrivilegesCoversMapping(t *testing.T) {
+	src, err := os.ReadFile("caps.go")
+	if err != nil {
+		t.Fatalf("reading caps.go: %v", err)
+	}
+	body := string(src)
+
+	// Constant name -> privilege string, from the const block.
+	constRe := regexp.MustCompile(`(priv[A-Za-z]+)\s*=\s*"([^"]+)"`)
+	values := make(map[string]string)
+	for _, m := range constRe.FindAllStringSubmatch(body, -1) {
+		values[m[1]] = m[2]
+	}
+	if len(values) < 5 {
+		t.Fatalf("found only %d priv* constants in caps.go; the scan is broken, not the mapping", len(values))
+	}
+
+	// Every privilege DeriveCapabilities consults.
+	useRe := regexp.MustCompile(`privs\.has\((priv[A-Za-z]+)\)`)
+	consulted := make(map[string]bool)
+	for _, m := range useRe.FindAllStringSubmatch(body, -1) {
+		name, ok := values[m[1]]
+		if !ok {
+			t.Errorf("DeriveCapabilities consults %s, which has no constant definition", m[1])
+			continue
+		}
+		consulted[name] = true
+	}
+	if len(consulted) < 5 {
+		t.Fatalf("found only %d consulted privileges; the scan is broken, not the mapping", len(consulted))
+	}
+	// Control: a privilege known to be in the mapping must have been found.
+	if !consulted["Sys.Modify"] {
+		t.Fatal("the scan did not find Sys.Modify, which DeriveCapabilities certainly consults")
+	}
+
+	listed := make(map[string]bool)
+	for _, rp := range RequiredPrivileges() {
+		if rp.Name == "" || rp.Unlocks == "" {
+			t.Errorf("RequiredPrivileges entry %+v is missing a name or an explanation", rp)
+		}
+		if listed[rp.Name] {
+			t.Errorf("RequiredPrivileges lists %s twice", rp.Name)
+		}
+		listed[rp.Name] = true
+	}
+
+	for priv := range consulted {
+		if !listed[priv] {
+			t.Errorf("DeriveCapabilities consults %q but RequiredPrivileges does not list it: `vnproxctl doctor` would never tell an operator to grant it", priv)
+		}
+	}
+	for priv := range listed {
+		if !consulted[priv] {
+			t.Errorf("RequiredPrivileges lists %q but the mapping no longer consults it: doctor would ask for a privilege vnprox does not use", priv)
+		}
 	}
 }

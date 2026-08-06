@@ -75,6 +75,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runRestore(args[1:], stdout, stderr)
 	case "certs":
 		return runCerts(args[1:], stdout, stderr)
+	case "doctor":
+		return runDoctor(args[1:], stdout, stderr)
 	case "support-bundle":
 		return runSupportBundle(args[1:], stdout, stderr)
 	case "remote":
@@ -105,6 +107,12 @@ Usage:
   vnproxctl restore <archive>          Replace this node's store from a backup archive: refuses
                                        against a running daemon, refuses a store from a newer
                                        vnprox, forward-migrates, and swaps atomically.
+  vnproxctl doctor                     Preflight and self-check: config, key permissions, pmxcfs,
+                                       schema version, disk headroom, port conflicts, and (when the
+                                       daemon is reachable) PVE access, privileges, peer-secret
+                                       agreement and clock skew. Every problem names what to do
+                                       about it. Read-only; works before install and daemon-down.
+                                       Exits non-zero if any check FAILS (warnings do not gate).
   vnproxctl support-bundle             Write a REDACTED diagnostic archive meant to be attached to
                                        a support thread: environment, allowlisted config, store
                                        facts (never the store), redacted changesets, scrubbed logs,

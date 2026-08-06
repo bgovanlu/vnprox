@@ -488,8 +488,55 @@ ids and changeset titles. **Read `readme.txt` inside it before you attach it to 
 
 Restrict 8007 to management networks like you (should) restrict 8006. Peer traffic uses the same port between node IPs — allow node↔node on 8007. **Correction (flagged, T-607):** the install checklist prints a generic prose reminder to do this (pointing at `docs/security.md`), not ready-to-apply pve-firewall rule syntax as this line previously implied — `install.sh`/`vnprox-setup` don't generate actual rule text. Follow-up: print copy-pasteable rule syntax if this becomes a real operator pain point.
 
+## `vnproxctl doctor` — self-check (T-1904)
+
+Start here when something is wrong and you do not yet know what. `doctor` runs ten checks and, for
+anything that is not healthy, names the file, port, privilege, or command involved.
+
+```
+vnproxctl doctor                        # human-readable, worst first
+vnproxctl doctor -o json                # schema-stable, for CI and support bundles
+vnproxctl doctor --config /path/to.toml # point at a config before it is installed
+```
+
+It is **read-only** — safe to run as root, mid-incident, against a live daemon — and it works with
+the daemon **down** and before first setup.
+
+| Check | What it catches |
+|---|---|
+| `config` | Missing or unparseable `vnprox.toml`; a listen address that is not `host:port` |
+| `key_files` | Session key or PVE token absent, or readable beyond its owner |
+| `pmxcfs` | `/etc/pve` missing — usually `pve-cluster` is not running, and nothing else will work |
+| `schema_version` | Store written by a **newer** vnprox (fail — downgrade is unsupported), or behind (warn — the daemon migrates on start) |
+| `disk_headroom` | Snapshot/capture growth heading toward a full filesystem on a hypervisor |
+| `port_conflict` | Something else on the listen port — including Proxmox Backup Server's own 8007, which it names |
+| `pve_reachable` | pveproxy down, wrong API URL, expired token |
+| `pve_privileges` | The token is missing a privilege vnprox uses, with what each one unlocks |
+| `peer_secret` | Nodes disagree on the cluster secret — why peer calls 401 while every node looks healthy alone |
+| `clock_skew` | Drift against PVE past half (warn) or all (fail) of the ±30s peer replay window |
+
+**Exit code:** non-zero if any check **fails**. Warnings do not gate — a two-node cluster with one
+node down for maintenance should not fail a script.
+
+**`skip` is not `pass`.** A check that could not run says so, with the reason. Before first setup
+most of the PVE checks skip, which is correct and expected — "we did not look" and "we looked and
+it was fine" are different facts.
+
+**Known limitations, stated rather than hidden:**
+
+- The `pve_reachable`, `pve_privileges`, `clock_skew` and `peer_secret` checks need an
+  authenticated PVE client and a peer view that only the running daemon holds. They currently
+  report `skip` from the CLI. Wiring them to a live daemon is `T-1904-followup-02`.
+- `capture_root` and the PVE API URL are read from the packaged defaults rather than the config,
+  because they are outside the daemon-independent config subset `doctor` loads. If you have moved
+  either, the disk check reports on the default location.
+- `install.sh` runs `doctor` as a post-install verification and prints its report, but does **not**
+  abort on failure — aborting after the package and cluster rollout have run would leave a
+  half-configured cluster. Making it a hard gate is `T-1904-followup-01`.
+
 ## Troubleshooting quick refs
 
+- `vnproxctl doctor` — **start here.** Ten checks, each failure naming its own fix. Read-only; works daemon-down.
 - `journalctl -u vnprox` — daemon logs (structured).
 - `vnproxctl status` — local daemon, peer reachability, PVE API health, collector ages.
 - `vnproxctl rollback-now <changeset-id>` — CLI escape hatch to trigger rollback when the UI is unreachable.

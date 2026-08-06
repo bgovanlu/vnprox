@@ -1,6 +1,6 @@
 # vnprox — project status
 
-**As of:** 2026-08-06 · **Commit:** `6c0957e` (§3 rows 4/5/9 updated post-audit) · **Latest release:** `v3.0.4` · **Deployed:** `3.0.4+43+g6c0957e`
+**As of:** 2026-08-06 · **Commit:** `e8de0b7`+ (phase 19 complete; `T-1807-bug-02`, `T-1904`) · **Latest release:** `v3.0.4` · **Deployed:** `3.0.4+46+gcceb795`
 
 Companion documents: [`status-matrix.md`](status-matrix.md) (the per-feature audit grid and its method) and [`datasheet.md`](datasheet.md) (shipped capability, for external readers).
 
@@ -12,7 +12,7 @@ vnprox is **feature-complete against three shipped arcs and materially under-val
 
 | Dimension | Complete | Basis |
 |---|---|---|
-| **Feature delivery** | **92%** | 144 of 157 feature cards shipped |
+| **Feature delivery** | **92%** | 145 of 157 feature cards shipped |
 | **Backend implementation** | **97%** | 68 of 77 feature areas complete, 6 partial, 3 not started |
 | **GUI coverage** | **99%** | 26 of 26 screens, all with help; 1 open navigation defect |
 | **API surface** | **100%** | Contract frozen at v3.0, additive-only since |
@@ -32,19 +32,20 @@ The first six rows describe a mature product. The last two are why the current a
 | 1 — Visual network manager | 0–7 | v1.0 | 49 | 49 | ● Shipped |
 | 2 — Beyond the cluster | 8–12 | v2.0 | 37 | 37 | ● Shipped |
 | 3 — Universal networking tool | 13–17 | v3.0 | 35 | 35 | ● Shipped |
-| 4 — **Proven, not just built** | 18–21 | v3.1 → v4.0 | 26 | 13 | ◐ **50%** |
+| 4 — **Proven, not just built** | 18–21 | v3.1 → v4.0 | 26 | 14 | ◐ **54%** |
 | 22 — Online help | 22 | — | 5 | 5 | ● Shipped (unreleased) |
 | 23 — Certificate management | 23 | — | 5 | 5 | ● Shipped (unreleased) |
-| **Total** | | | **157** | **144** | **92%** |
+| **Total** | | | **157** | **145** | **92%** |
 
-Six defect cards (`*-bug-*`) sit outside this table; five are open — see §3.
+Defect cards (`*-bug-*`) sit outside this table; four are open — see §3. `T-1807-bug-01` closed
+2026-08-06 (by `T-1807-bug-02`), as did `T-2106` and `T-2107`.
 
 ### Arc 4 detail — the only arc in flight
 
 | Phase | Theme | Cards | Done | Open |
 |---|---|---|---|---|
 | 18 | Prove it on hardware | 8 | 4 | `T-1802`, `T-1803`, `T-1804`, `T-1808` — **all human-blocked** |
-| 19 | Operate it | 7 | 6 | `T-1904` (`vnproxctl doctor`) |
+| 19 | Operate it | 7 | 7 | — **complete 2026-08-06** |
 | 20 | Finish the product | 6 | 3 | `T-2004` (a11y pass 2), `T-2005` (PWA), `T-2006` (i18n) |
 | 21 | Distribute it | 5 | 0 | `T-2101`…`T-2105` — none started |
 
@@ -72,7 +73,7 @@ Ranked by *what it costs to leave this alone*, not by effort.
 | # | Item | Card | Note |
 |---|---|---|---|
 | 7 | Nav-rail dead-end after inspector close | `T-2003-bug-01` | High severity, ordinary user path |
-| 8 | `vnproxctl doctor` | `T-1904` | Natural home for the certificate/SAN preflight; the "it will fail later for a knowable reason" checks |
+| 8 | ~~`vnproxctl doctor`~~ | `T-1904` | **Closed 2026-08-06** — ten checks, each with a broken fixture proving it can fail; remediation enforced structurally by `Report.Validate()`, not merely asserted. Four checks await a live-daemon wiring (`T-1904-followup-02`), which is also where the certificate/SAN preflight belongs |
 | 9 | ~~`docs/features.md` is stale~~ | `T-2107` | **Closed 2026-08-06** — rewritten to cover all four arcs; the non-goals section now states what is genuinely still out of scope |
 | 10 | Accessibility second pass | `T-2004` | Pass 1 shipped (WCAG AA, axe-gated) |
 | 11 | Terraform provider + Ansible collection | `T-2101` | API contract and conformance suite already exist |
@@ -110,26 +111,39 @@ Worth stating plainly, because an audit that only lists gaps misrepresents the a
 
 ### 5.1 The one thing that changes the risk profile
 
-Arc 4 is titled *"proven, not just built"* and is **50% complete by card count but ~5% complete by its own premise.** Phase 19 and 20 delivered agent-completable operability work; phase 18's four hardware cards — the reason the arc exists — remain untouched because no agent can touch them.
+Arc 4 is titled *"proven, not just built"* and is **54% complete by card count but ~5% complete by its own premise.** Phases 19 and 20 delivered agent-completable operability work — phase 19 is now **complete** — but phase 18's four hardware cards, the reason the arc exists, remain untouched because no agent can touch them.
 
-`T-1801` shipped the machinery for this: eight harness scripts, an evidence schema, and a standalone runbook at `planning/validation/README.md`, designed to cost roughly **eight human turns rather than sixty**. It has been ready since before the last two phases were built.
+`T-1801` shipped the machinery for this: eight harness scripts, an evidence schema, and a standalone runbook at `planning/validation/README.md`, designed to cost roughly **eight human turns rather than sixty**. It has been ready since before the last three phases were built.
 
 ### 5.2 Recommended order
 
-1. **Decide the license.** One decision, unblocks phase 21 entirely, costs nothing to make.
-2. **Run the phase-18 validation loop** (`T-1802`, then `T-1804`). Turns ~100 mock-validated claims into evidence, and is the only work that improves the headline number.
-3. **Gate the e2e suite** (`T-1806-bug-01`) and **fix the nav dead-end** (`T-2003-bug-01`). Both agent-completable, both remove a class of false confidence.
-4. **Refresh `docs/features.md`.** Small, and it is currently the one document that would actively mislead a new reader.
-5. **Phase 21**, starting with `T-2102` (signed apt repo) and `T-2101` (Terraform/Ansible) — the two items that make vnprox consumable by anyone who is not building it.
-6. Multi-node work (`T-1803`) whenever a second node exists.
+Revised 2026-08-06. Items 1, 4, and half of 3 from the previous list are done; what remains is
+almost entirely the same shape as before, which is the point — the agent-completable backlog keeps
+shrinking while the hardware number does not move.
+
+1. **Run the phase-18 validation loop** (`T-1802`, then `T-1804`). **This is now the only item on
+   this list that improves the headline number, and the only one no agent can do.** Turns ~100
+   mock-validated claims into evidence.
+2. **Triage the e2e backlog** (`T-2108`) and make the gate blocking. The suite runs but is red, so
+   today it buys visibility rather than protection.
+3. **Explain `T-1806-bug-02`.** The packaging matrix is what proves the `.deb` installs; a release
+   cut over an unexplained red signal is the habit `T-1806-bug-01` exists to break.
+4. **Phase 21**, starting with `T-2102` (signed apt repo) and `T-2101` (Terraform/Ansible) — the two
+   items that make vnprox consumable by anyone who is not building it. Now unblocked in every
+   respect: its licence dependency closed with `T-2106`.
+5. Multi-node work (`T-1803`) whenever a second node exists.
+
+Closed since the previous revision: the licence decision (`T-2106`), the e2e gate landing
+(`T-1806-bug-01`), `docs/features.md` (`T-2107`), the port-collision class (`T-1807-bug-02`), and
+`vnproxctl doctor` (`T-1904`).
 
 ### 5.3 Release readiness
 
 | Cut | Ready? | Blocking |
 |---|---|---|
-| `v3.1` (help + certificates) | **Nearly** | `Packaging matrix` red; would ship with a known nav defect |
+| `v3.1` (help + certificates + doctor) | **Nearly** | `Packaging matrix` red (`T-1806-bug-02`); e2e suite red (`T-2108`) |
 | `v4.0` (arc 4 complete) | No | Phase 21 not started; phase 18 unvalidated |
-| Public/community release | No | No license; no signed repository; no compatibility matrix |
+| Public/community release | No | ~~No license~~ (closed); no signed repository; no compatibility matrix |
 
 A `v3.1` tag is defensible today if `T-1806-bug-02` is understood and `T-2003-bug-01` is fixed first. Both are agent-completable.
 
@@ -146,3 +160,4 @@ A `v3.1` tag is defensible today if `T-1806-bug-02` is understood and `T-2003-bu
 | 2026-08-06 | This audit: `LICENSE` gap and `docs/features.md` staleness identified — neither previously tracked |
 | 2026-08-06 | `T-2106` (Apache-2.0 + attribution) and `T-2107` (`features.md`) closed; e2e gate landed observe-only, `T-2108` filed |
 | 2026-08-06 | `T-1807-bug-02`: enforced port registry closes the collision class that had recurred five times in one phase. Also eliminated two candidate explanations for `T-1806-bug-02` (recorded on that card so they are not re-derived) |
+| 2026-08-06 | `T-1904` (`vnproxctl doctor`) shipped — **phase 19 complete**. Ten checks, remediation structurally enforced; two follow-ups filed rather than left implicit |

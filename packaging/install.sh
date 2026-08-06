@@ -450,9 +450,37 @@ else
 	fi
 fi
 
-# --- step 9: URL + checklist -----------------------------------------------
+# --- step 9: self-check + URL + checklist -----------------------------------
 
-log "step 9/9: done"
+# `vnproxctl doctor` (T-1904) verifies what this installer just did: config
+# sanity, key-file permissions, pmxcfs, schema version, disk headroom, and the
+# listen port. It ships in the package, so it only exists from step 3 onward —
+# this is a post-install verification, not a pre-install preflight.
+#
+# It reports; it does not abort. Two reasons, both deliberate:
+#
+#  1. Aborting *after* the package is installed and the cluster rollout has run
+#     would leave a half-configured cluster and no clear way back. The operator
+#     is better served by a complete install plus an accurate list of what is
+#     wrong.
+#  2. `packaging/test/cluster-ssh.sh` and `port-conflict.sh` drive this script
+#     inside plain Debian containers where some checks legitimately fail (no
+#     pmxcfs). Making doctor fatal here would fail those tests for a correct
+#     reason and change the behaviour of a script that is currently the subject
+#     of an open, unexplained CI failure (T-1806-bug-02) — see that card on why
+#     the subject of an unexplained failure is not perturbed mid-investigation.
+#
+# Turning this into a hard gate is tracked as T-1904-followup-01.
+if command -v vnproxctl >/dev/null 2>&1; then
+	log "step 9/9: verifying this install (vnproxctl doctor)"
+	if vnproxctl doctor; then
+		log "self-check passed"
+	else
+		warn "self-check reported problems — see the report above. vnprox is installed; each line names what to do."
+	fi
+else
+	log "step 9/9: done"
+fi
 cat <<EOF
 
 vnprox installed on $(hostname -f 2>/dev/null || hostname).

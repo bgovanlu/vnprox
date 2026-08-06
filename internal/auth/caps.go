@@ -136,6 +136,39 @@ const (
 	privSysConsole = "Sys.Console"
 )
 
+// RequiredPrivilege is one PVE privilege vnprox reads, paired with what is
+// lost without it. Consumed by `vnproxctl doctor` (T-1904), whose job is to
+// say "your token is missing X, so Y will not work" in the operator's words.
+type RequiredPrivilege struct {
+	// Name is the PVE privilege as PVE itself spells it ("Sys.Modify").
+	Name string
+	// Unlocks names, in operator terms, what holding it enables.
+	Unlocks string
+	// Optional marks a privilege whose absence degrades vnprox rather than
+	// breaking it — a warn, not a fail.
+	Optional bool
+}
+
+// RequiredPrivileges returns the privileges vnprox's capability mapping
+// actually consults, in the order an operator should grant them.
+//
+// It is derived from the same constants DeriveCapabilities uses, on purpose:
+// a diagnostic that checks a hand-maintained second list would eventually
+// report on privileges the product no longer uses, or stay silent about ones
+// it started using — the failure mode docs/security.md's "single source of
+// truth" note exists to prevent. Adding a privilege to the mapping without
+// adding it here fails TestRequiredPrivilegesCoversMapping.
+func RequiredPrivileges() []RequiredPrivilege {
+	return []RequiredPrivilege{
+		{Name: privSysAudit, Unlocks: "reading node network config, firewall rules, and vnprox's own audit log — without it vnprox shows nothing"},
+		{Name: privSysModify, Unlocks: "staging and applying node network and firewall changes — without it vnprox is read-only"},
+		{Name: privSDNAudit, Unlocks: "reading SDN zones, VNets, and subnets"},
+		{Name: privSDNAllocate, Unlocks: "creating and modifying SDN objects"},
+		{Name: privVMConfigNet, Unlocks: "editing guest NICs"},
+		{Name: privSysConsole, Unlocks: "packet capture, which additionally requires Sys.Modify (root-shell-equivalent access, deliberately)", Optional: true},
+	}
+}
+
 // DeriveCapabilities maps one node's effective PVE privilege set to vnprox
 // capability flags. This is docs/security.md's documented mapping table,
 // the single source of truth (docs/security.md: "The mapping table lives

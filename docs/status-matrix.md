@@ -253,6 +253,33 @@ binds host sshd on 2201-2203 and asserts a fallback onto **8008**, the e2e suite
 port; and `answers-parity.sh` depends in its own comment on 8007 being free while running
 `--network=host`. Both now preflight.
 
+### 5.10 Operator self-check — shipped 2026-08-06 (`T-1904`)
+
+`vnproxctl doctor` closes the last agent-completable card in phase 19. Ten checks — config, key-file
+permissions, pmxcfs, schema version, disk headroom, port conflicts, PVE reachability and
+privileges, peer-secret agreement, clock skew — each of which names the file, port, privilege, or
+command to fix. Read-only, and works with the daemon down.
+
+Two properties are worth recording because they are the difference between a diagnostic and a
+decoration:
+
+- **A remediation is structurally required.** A `fail` or `warn` with no remediation is a malformed
+  report; the CLI refuses to print it and exits with an internal error. It is not merely asserted in
+  a test.
+- **`skip` is not `pass`.** A check that could not run says why. Conflating "we did not look" with
+  "we looked and it was fine" is how a green report hides a problem.
+
+Building the install gate found a real defect in the first version: it failed every *correct*
+install, because the session key does not exist until the daemon's first start. The check is now
+state-aware, with a control test proving the same missing key after the daemon has run is still a
+failure.
+
+Four checks (`pve_reachable`, `pve_privileges`, `clock_skew`, `peer_secret`) are implemented and
+tested but report `skip` from the CLI pending live-daemon wiring (`T-1904-followup-02` — also the
+home for `T-1906-bug-01`'s certificate/SAN preflight), and `install.sh` reports rather than aborts
+(`T-1904-followup-01`, deliberately blocked on `T-1806-bug-02`). Both stated in
+`docs/deployment.md` rather than left to be discovered.
+
 ---
 
 ## 6. Method
