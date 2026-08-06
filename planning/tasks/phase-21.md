@@ -525,3 +525,30 @@ and hydration. The specs now wait for the shell to be interactive before sending
 **Result:** `command-palette` and `help` fully green; `simulator` 3 failed → 1.
 
 Cumulative across the three passes: **29 → 23 → 18 → 15 → ~9 failing.**
+
+### Fourth pass, 2026-08-06 — 10 failing, and a stale visual baseline
+
+Full suite: **10 failed / 78 passed**, 17.0m. Six cleared (`command-palette`, `help` ×3,
+`simulator` ×2). One regression, `conntrack:60`, which had passed in the previous run — genuinely
+flaky, not fixed: its inner click waits for a React Flow node to be *stable* on a 5s budget while
+the rest of the suite loads the machine. Raised to 12s inside a 90s `toPass` — deliberately under
+the 120s per-test timeout, since a retry budget that cannot fit inside the test timeout only
+converts one failure mode into another.
+
+**`topology.spec.ts:136` — visual baseline was never regenerated, and nothing was watching.**
+
+The snapshot expects 1158×740; the render is 1158×574, and the actual image contains an `eno3`
+physnic node the baseline does not. `eno3` is a legitimate fixture entity — three-node-vlan.yaml
+documents it as "a spare, unconfigured, link-up NIC on pve1 only", added by T-703 for the
+mgmt-path bond wizard.
+
+`git log -S'eno3'` puts the fixture change and the last snapshot update in the **same commit**
+(`5909807`), so the baseline was simply never regenerated after the entity was added. The spec has
+therefore been failing continuously since that commit — which is entirely consistent with the suite
+having run in **no gate for three arcs**. A permanently red screenshot test is invisible when
+nothing looks at it.
+
+Regenerated, but only after **visually inspecting the new render** rather than trusting the diff
+percentage: all four layer bands present, correct entities, correct relationships. Recorded here
+because blindly re-baselining a screenshot is the single easiest way to erase a real regression, and
+"the diff is only 25%" is not evidence of anything.

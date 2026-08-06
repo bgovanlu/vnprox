@@ -75,9 +75,16 @@ test("Conntrack explorer: map right-click drills into a node-scoped live view, f
     await page.keyboard.press("Escape"); // close any menu a previous failed attempt left open
     panAttempt = (panAttempt % 4) + 1; // cycle through 4 pan distances rather than growing unbounded off-screen
     await panCanvasPane(page, -200 - panAttempt * 60, -200 - panAttempt * 60);
-    await pve1Bridge.click({ button: "right", timeout: 5_000 });
-    await page.getByRole("menuitem", { name: "View live connections" }).click({ timeout: 5_000 });
-  }).toPass({ timeout: 60_000 });
+    // 12s, not 5s: the click waits for the node to be "stable" (not moving),
+    // and React Flow keeps re-laying-out while the rest of the suite loads the
+    // machine. At 5s this passed in isolation and in some full runs but not
+    // others — flaky in exactly the direction that erodes trust in the gate.
+    // The outer toPass budget grows with it, but stays under the 120s
+    // per-test timeout in playwright.config.ts — a retry budget that cannot
+    // fit inside the test timeout just converts one failure mode into another.
+    await pve1Bridge.click({ button: "right", timeout: 12_000 });
+    await page.getByRole("menuitem", { name: "View live connections" }).click({ timeout: 12_000 });
+  }).toPass({ timeout: 90_000 });
 
   await page.waitForURL("**/conntrack?node=pve1");
   // The client-side route swap normally renders immediately; under a very
