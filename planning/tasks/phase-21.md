@@ -263,3 +263,40 @@ document in `docs/` is current.
 2. No shipped capability appears under "non-goals".
 3. `README.md`'s stale-file warning is removed once this is true.
 4. The relationship to `docs/datasheet.md` is stated, so the two cannot silently diverge again.
+
+### T-2108 · Triage the e2e backlog and make the suite blocking
+
+**kind:** validation
+**depends on:** T-1806-bug-01 (the `make e2e` target and CI job, landed)
+**Severity:** High — until this closes, a green `CI` badge does not mean the e2e suite passed.
+
+Turning the Playwright suite on (T-1806-bug-01) ended three arcs of it running nowhere. It also
+revealed that it is red. The job is `continue-on-error: true` so that it *runs and is visible*
+today rather than being deleted for wedging every PR; this card is what stops "temporarily"
+becoming "permanently".
+
+**First full local run, 2026-08-06** (90 tests, 1 worker) — failures observed in the first 32:
+
+| Spec | Count | First diagnosis |
+|---|---|---|
+| `a11y` | 9 | **Real defect, fixed in this change**: the nav-rail findings badge rendered white on `bg-amber-500/90` at 2.61:1 against WCAG AA's 4.5:1. It lives in the chrome, so it failed on every page — one fix, nine specs. Re-run needed to confirm all nine clear. |
+| `changesets` | 2 | Untriaged |
+| `conntrack` | 1 | Untriaged — locator waits on `[data-entity-ref="bridge:pve1:vmbr0"]` |
+| `diagnose` | 1 | Untriaged — waits on a guest button inside a dialog |
+| `federation` | 1 | Untriaged — waits on `region "Global cluster map"` |
+| `command-palette` | 1 | Untriaged — `?` should open `dialog "Keyboard shortcuts"`. **Check T-2201..T-2205 first**: phase 22 touched `ShortcutHelpDialog` and added a second top-bar button, so this may be a regression that phase shipped. It was not caught because this suite was not running. |
+
+**Scope**
+
+1. Complete the run and record the full failure list — the table above stops at 32 of 90.
+2. For each: decide *product defect* vs *stale spec*, and say which. A stale spec gets a fixed
+   locator; a product defect gets a fix and keeps the spec.
+3. Audit every spec for the two patterns that let `T-2003-bug-01` hide: assertions loose enough to
+   match the page you should have left, and conditional steps that turn a regression into a skip.
+4. Flip `continue-on-error` off in `ci.yml` and update the job table in `docs/development.md`.
+
+**Acceptance**
+
+1. `make e2e` is green locally and in CI.
+2. The `e2e` job is required, not observe-only.
+3. Any product defect found is fixed with its own regression assertion, not by loosening a locator.

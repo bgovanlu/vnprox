@@ -55,7 +55,15 @@ function FindingsCountBadge() {
   return (
     <span
       aria-label={`${String(count)} finding${count === 1 ? "" : "s"}`}
-      className="ml-auto hidden shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-semibold text-white sm:inline-block"
+      // T-2004-fix: white on `bg-amber-500/90` measured 2.61:1 against the
+      // nav rail — well below WCAG AA's 4.5:1 for this 10px text, and it
+      // failed axe on every single page because the badge lives in the
+      // chrome. Dark text on the same amber measures ~9.7:1, which keeps the
+      // badge's warning colour and visual weight rather than darkening it
+      // into something that reads as an error. The opacity is dropped too:
+      // `/90` let the rail's background bleed through and shift the
+      // effective ratio depending on theme.
+      className="ml-auto hidden shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-slate-900 sm:inline-block"
     >
       {count}
     </span>

@@ -119,6 +119,7 @@ Every network change follows the same five steps, with no path around them — t
 | **State** | SQLite at `/var/lib/vnprox`, root-owned `0600`. App-owned data only: sessions, changesets, snapshots, audit, layout. Never a shadow copy of PVE config |
 | **Runtime deps** | None required. `lldpd` recommended (physical discovery), `ifupdown2` recommended |
 | **Third-party Go modules** | 8 direct |
+| **Licence** | Apache-2.0 — freely redistributable, attribution via `NOTICE` |
 
 ---
 
@@ -164,6 +165,6 @@ A datasheet that lists only strengths is marketing. These are the boundaries as 
 | **Switch push** | A switch made unreachable by a bad push cannot be rolled back remotely — there is no agent on the switch |
 | **Retention** | Short-horizon by design: 24 h metrics, bounded flow and latency rings. Export to real observability for anything longer |
 | **Not yet shipped** | `vnproxctl doctor`, localization, mobile PWA, Terraform/Ansible artifacts, signed apt repository, PVE compatibility matrix |
-| **Licensing** | The repository currently carries **no license file**. This must be resolved before any external distribution |
+| **Licensing** | Apache-2.0. See `LICENSE`, `NOTICE`, and `THIRD-PARTY-LICENSES.md` — the last enumerates every bundled third-party component, notably `elkjs` (EPL-2.0) which ships inside the SPA |
 
 Current status, open items and roadmap: [`project-status.md`](project-status.md). Full audit grid and method: [`status-matrix.md`](status-matrix.md).

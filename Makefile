@@ -151,6 +151,10 @@ deb: ## build the .deb into dist/ (builds the frontend first — see below)
 MOCKPVE_ADDR    ?= :8006
 MOCKPVE_FIXTURE ?= testdata/clusters/single-node.yaml
 
+e2e: ## Playwright end-to-end suite against pvemock + vnproxd + the production SPA
+	@echo ">> e2e: building the SPA (vnproxd embeds web/dist) and running Playwright"
+	cd $(WEB_DIR) && npm run e2e
+
 mockpve: ## run the mock PVE server standalone on :8006
 	@if [ -n "$(MOCKPVE_READY)" ]; then \
 		echo ">> internal/pvemock: starting mock PVE server on $(MOCKPVE_ADDR) (fixture: $(MOCKPVE_FIXTURE))"; \

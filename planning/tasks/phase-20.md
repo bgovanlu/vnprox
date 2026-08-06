@@ -265,3 +265,30 @@ assertions are this weak.
 candidate is focus/portal state left behind by the inspector dialog interfering with router
 context, but that is a hypothesis, not a diagnosis). Fix the cause, add a regression spec that
 asserts on a *heading*, and audit sibling specs for the same too-loose-locator pattern.
+
+---
+
+**Update, 2026-08-06 — the documented reproduction no longer reproduces.**
+
+Re-checked as part of landing the e2e gate (`T-1806-bug-01`). A regression spec now exercises the
+exact sequence this card describes — top-bar Search → type `vmbr0` → click the first result →
+assert the inspector really opened (`dialog "vmbr0"`, not merely "a dialog is visible") → `Escape`
+→ click a nav-rail link — and asserts on **headings**, including that Topology's heading is *gone*:
+`web/e2e/nav-after-inspector.spec.ts`.
+
+It passes. Navigation works, twice in a row, on `6c0957e`.
+
+**This is a finding, not a fix — nothing here was changed to make it pass.** Two readings remain
+open, and this card stays open until one is settled:
+
+1. It was fixed incidentally between being filed and now (phase 22 touched `AppShell` and Radix
+   focus handling; phase 23 did not).
+2. The real precondition differs from the documented one. The card notes it was found inside
+   `changesets.spec.ts`, so the trigger may involve the changeset drawer rather than spotlight
+   alone — and this card's root cause was never actually recorded, only hypothesised
+   ("focus/portal state ... but that is a hypothesis, not a diagnosis").
+
+Whoever picks it up should try reading 2 first, from the `changesets.spec.ts` context. Two locator
+mistakes were made and corrected while writing the spec above, both worth avoiding: the inspector
+in this flow exposes **no** close button (its `Close <entity>` control belongs to the stacked-pane
+variant), and it is *not* reliably the only element with `role="dialog"` on the page.

@@ -1,6 +1,6 @@
 # vnprox — project status
 
-**As of:** 2026-08-06 · **Commit:** `6c0957e` · **Latest release:** `v3.0.4` · **Deployed:** `3.0.4+43+g6c0957e`
+**As of:** 2026-08-06 · **Commit:** `6c0957e` (§3 rows 4/5/9 updated post-audit) · **Latest release:** `v3.0.4` · **Deployed:** `3.0.4+43+g6c0957e`
 
 Companion documents: [`status-matrix.md`](status-matrix.md) (the per-feature audit grid and its method) and [`datasheet.md`](datasheet.md) (shipped capability, for external readers).
 
@@ -16,9 +16,9 @@ vnprox is **feature-complete against three shipped arcs and materially under-val
 | **Backend implementation** | **97%** | 68 of 77 feature areas complete, 6 partial, 3 not started |
 | **GUI coverage** | **99%** | 26 of 26 screens, all with help; 1 open navigation defect |
 | **API surface** | **100%** | Contract frozen at v3.0, additive-only since |
-| **Docs currency** | **96%** | 23 of 24 files current; `features.md` materially stale |
+| **Docs currency** | **100%** | `features.md` refreshed 2026-08-06 (`T-2107`) |
 | **Automated test gate** | **100%** | `make check` green: 4,058 tests, lint, vet, govulncheck, audit |
-| **E2E gate** | **0%** | 35 specs exist; **no gate runs them** |
+| **E2E gate** | **observe-only** | Gate landed 2026-08-06; the suite is red and `T-2108` tracks triage |
 | **Hardware validation** | **5%** | **6 of 123 items validated on real PVE** |
 
 The first six rows describe a mature product. The last two are why the current arc exists. **The gap between "our tests pass" and "this works on your cluster" is the project's dominant risk, and it is not shrinking quickly** — five of the six validated items were validated a day ago; before that the number was one.
@@ -63,8 +63,8 @@ Ranked by *what it costs to leave this alone*, not by effort.
 | 1 | **Hardware-validation burndown** — 117 unvalidated items | `T-1802` | Every behavioural claim rests on a mock | **Human only** (needs real PVE) |
 | 2 | **Multi-node proof**: apply, distributed rollback, drift, federation, HA failover | `T-1803` | The product's core safety guarantee is unproven where it matters | **Human only** (needs 2+ nodes) |
 | 3 | **Failure-injection proof of commit-confirm** | `T-1804` | "It rolls back if it cuts you off" has never been observed doing so on hardware | **Human only** |
-| 4 | **No `LICENSE` file** | *untracked* | No one can legally redistribute or contribute; blocks phases 21's whole premise | Human decision, then trivial |
-| 5 | **E2E suite runs in no gate** | `T-1806-bug-01` | 35 specs' worth of claimed evidence is stale by construction | Agent-completable |
+| 4 | ~~No `LICENSE` file~~ | `T-2106` | **Closed 2026-08-06** — Apache-2.0, with `NOTICE`, a generated `THIRD-PARTY-LICENSES.md`, Debian `copyright`, and a test that fails if any of them is dropped | Done |
+| 5 | ~~E2E suite runs in no gate~~ → **triage the backlog** | `T-1806-bug-01` → `T-2108` | **Gate landed 2026-08-06** (`make e2e` + a CI job). It immediately showed the suite is red — one real WCAG AA defect (fixed) plus an untriaged backlog. Job is observe-only until `T-2108` clears it | Agent-completable |
 | 6 | **Packaging matrix red** (`cluster-ssh`) | `T-1806-bug-02` | Cannot tag a release with a red pipeline in good conscience | Agent-completable |
 
 ### P1 — user-visible or operationally important
@@ -73,7 +73,7 @@ Ranked by *what it costs to leave this alone*, not by effort.
 |---|---|---|---|
 | 7 | Nav-rail dead-end after inspector close | `T-2003-bug-01` | High severity, ordinary user path |
 | 8 | `vnproxctl doctor` | `T-1904` | Natural home for the certificate/SAN preflight; the "it will fail later for a knowable reason" checks |
-| 9 | `docs/features.md` is stale | *untracked* | Lists five shipped capabilities as non-goals |
+| 9 | ~~`docs/features.md` is stale~~ | `T-2107` | **Closed 2026-08-06** — rewritten to cover all four arcs; the non-goals section now states what is genuinely still out of scope |
 | 10 | Accessibility second pass | `T-2004` | Pass 1 shipped (WCAG AA, axe-gated) |
 | 11 | Terraform provider + Ansible collection | `T-2101` | API contract and conformance suite already exist |
 | 12 | Signed apt repository | `T-2102` | Decision made (GitHub Pages); unimplemented |

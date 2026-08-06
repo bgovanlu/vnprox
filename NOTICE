@@ -1,0 +1,37 @@
+vnprox — visual networking for Proxmox VE
+Copyright 2026 Brian Govanlu
+
+This product includes software developed as part of the vnprox project
+(https://github.com/bgovanlu/vnprox).
+
+Licensed under the Apache License, Version 2.0. You may obtain a copy of
+the License in the LICENSE file distributed with this work, or at
+http://www.apache.org/licenses/LICENSE-2.0.
+
+--------------------------------------------------------------------------
+
+Attribution requirement
+-----------------------
+
+Section 4 of the Apache License requires that this NOTICE file be included
+in any redistribution, in the documentation and/or other materials provided
+with the distribution. Keeping this file intact is the whole of the
+attribution vnprox asks for.
+
+--------------------------------------------------------------------------
+
+Third-party components
+----------------------
+
+vnprox is not affiliated with, endorsed by, or sponsored by Proxmox Server
+Solutions GmbH. "Proxmox" and "Proxmox VE" are trademarks of Proxmox Server
+Solutions GmbH and are used here only to describe compatibility.
+
+vnprox interoperates with Proxmox VE exclusively over its published HTTP API
+and its on-disk configuration files. It links against no Proxmox source
+code, and therefore carries no obligation under Proxmox VE's own AGPL-3.0
+licence.
+
+The distributed artifacts bundle third-party open-source components. Their
+copyright notices and licence texts are reproduced in
+THIRD-PARTY-LICENSES.md, which ships alongside this file.

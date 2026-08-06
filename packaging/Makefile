@@ -64,6 +64,17 @@ deb:
 	install -m 0644 systemd/vnprox-backup.timer $(PKG_ROOT)/lib/systemd/system/vnprox-backup.timer
 	install -m 0644 config/vnprox.toml $(PKG_ROOT)/etc/vnprox/vnprox.toml
 
+	# T-2106: licence and attribution. Debian policy requires a copyright
+	# file at /usr/share/doc/<pkg>/copyright; LICENSE/NOTICE/THIRD-PARTY
+	# ship alongside it because Apache-2.0 §4 requires the NOTICE to travel
+	# with any redistribution, and the bundled SPA includes EPL-2.0 code
+	# (elkjs) whose recipients must be able to find its licence and source.
+	install -d -m 0755 $(PKG_ROOT)/usr/share/doc/vnprox
+	install -m 0644 $(ROOT_DIR)/packaging/debian/copyright $(PKG_ROOT)/usr/share/doc/vnprox/copyright
+	install -m 0644 $(ROOT_DIR)/LICENSE $(PKG_ROOT)/usr/share/doc/vnprox/LICENSE
+	install -m 0644 $(ROOT_DIR)/NOTICE $(PKG_ROOT)/usr/share/doc/vnprox/NOTICE
+	install -m 0644 $(ROOT_DIR)/THIRD-PARTY-LICENSES.md $(PKG_ROOT)/usr/share/doc/vnprox/THIRD-PARTY-LICENSES.md
+
 	sed -e 's/@VERSION@/$(VERSION)/' -e 's/@ARCH@/$(ARCH)/' debian/control.tmpl > $(PKG_ROOT)/DEBIAN/control
 	install -m 0644 debian/conffiles $(PKG_ROOT)/DEBIAN/conffiles
 	install -m 0755 debian/postinst $(PKG_ROOT)/DEBIAN/postinst

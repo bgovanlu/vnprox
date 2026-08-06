@@ -62,40 +62,30 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
 - Components: function components only; server state via TanStack Query only (no fetch in components); canvas state in zustand.
 - Testing: Vitest + Testing Library on logic-bearing components (drawer, validators display, simulator result rendering); Playwright smoke suite (P6) against `make dev` + mock PVE.
 
-  **`web/e2e/` is currently unenforced (T-1806-bug-01, `planning/tasks/phase-18.md`).** 31 specs
-  exist, run only via `npm run e2e` by hand — no `make` target and no CI job (`ci.yml`,
-  `packaging-matrix.yml`, `release.yml`) invokes Playwright. Do not assume a task's report citing
-  a passing e2e spec means that spec still passes today, or that it runs anywhere but a
-  developer's own machine at the moment they wrote it. A future card decides where this belongs
-  (a dedicated required CI job vs. a nightly) and fixes what it finds; until then, treat `web/e2e/`
-  as a manual, opt-in smoke suite only.
+  **`web/e2e/` now runs in CI, observe-first (T-1806-bug-01, partially closed).** For three
+  arcs the 35-spec Playwright suite was run by nothing: no `make` target, no CI job. Task reports
+  across those arcs cite passing e2e specs as evidence, and none of those claims had been
+  re-checked since the day it was written.
 
-### Online help — a new screen ships with its help topic
+  There is now a `make e2e` target and an `e2e` job in `ci.yml`. The job is deliberately
+  **`continue-on-error: true`** for the moment: turning the suite on revealed it is red — a first
+  full run found 15+ failures across `a11y`, `changesets`, `conntrack`, `diagnose`, `federation`
+  and `command-palette`. One was a real WCAG AA defect in the nav rail (white-on-amber at 2.61:1,
+  fixed); the rest are untriaged. Blocking on that today would wedge every PR or get the job
+  deleted. **`T-2108` tracks triaging the backlog and flipping the job to blocking** — read that
+  card before treating a green `CI` badge as meaning the e2e suite passed.
 
-Every route in `web/src/App.tsx` must map to a registered help topic in
-`web/src/help/routeTopics.ts`. This is enforced by `web/src/help/coverage.test.ts`, which parses
-`App.tsx` and `layout/NavRail.tsx` for the routes and destinations they actually declare rather
-than trusting a hand-maintained list — so adding a route without help is a **failing test naming
-the path**, not a documentation debt someone notices later. The same test rejects stale mappings
-for deleted routes, `<HelpAnchor topic="…">` values that resolve to nothing, unresolvable
-`seeAlso` ids, orphaned topics unreachable from any screen, and content below a quality floor
-(summary ≥ 60 chars, ≥ 2 sections, no placeholder prose).
+  Two lessons from how this was found, worth carrying into the triage:
 
-When you add a screen:
-
-1. Write the topic in `web/src/help/content/pages.ts`, citing the repo doc you wrote it from in
-   `docRef` — the gate checks that file exists. Help that invents behaviour is worse than none.
-2. Add the route → topic mapping to `ROUTE_HELP`.
-3. If the screen has a panel or wizard with its own vocabulary or its own risk, give it a topic in
-   `content/panels.ts` and place a `<HelpAnchor topic="…">` next to that panel's heading.
-
-Note the anti-vacuity assertions at the top of the coverage test: each source parse asserts a floor
-on what it found and that a known sentinel is among the results. A regex that stops matching after
-a refactor must fail loudly, not certify full coverage of an empty set.
+  - A spec that passes because the app *did not* navigate is worse than no spec. `T-2003-bug-01`
+    hid behind exactly that — a `getByText` loose enough to match the stale page. Assert on
+    headings, and assert the origin's heading is *gone*.
+  - A conditional step (`if (await x.isVisible())`) turns a regression into a silent skip. Every
+    step in a spec should be unconditional, or the spec is lying about its coverage.
 
 ## CI (GitHub Actions)
 
-`ci.yml` runs four jobs on every PR and push to `main`:
+`ci.yml` runs five jobs on every PR and push to `main`:
 
 | Job | What it does | Required? |
 |---|---|---|
@@ -103,6 +93,7 @@ a refactor must fail loudly, not certify full coverage of an empty set.
 | `cross-arm64` | `GOOS=linux GOARCH=arm64 go build ./...` — build-only; internal/host's netlink/ioctl code must at least compile for arm64 Proxmox nodes even though the CI fleet is amd64-only | **Required** |
 | `fuzz` | Every untrusted-input parser's fuzz target, 60s each (T-604) — see `docs/security-verification.md`'s fuzz inventory | **Required** |
 | `package` | `make build` (production frontend) + `make deb`, artifact uploaded | **Required** |
+| `e2e` | `make e2e` — Playwright against pvemock + vnproxd + the production SPA. Uploads traces on failure | **Observe-only** (`continue-on-error`, see above and `T-2108`) |
 
 `release.yml`: on tag — build, sign .deb, publish to the apt repo, GitHub release with changelog. Keep runtimes <10 min; cache Go/npm.
 
