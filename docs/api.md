@@ -546,6 +546,35 @@ A qemu guest whose read could not even be attempted (no live PVE session, guest 
 
 **Needs hardware validation** (`planning/reports/needs-hardware-validation.md`): the exact in-guest/in-container command set (`ip -j addr show`, `ip -j route show`, `cat /etc/resolv.conf`, `ss -H -tuln`) per guest OS/toolchain, and the lxc pid-resolution mechanism (`/sys/fs/cgroup/lxc/<vmid>/cgroup.procs`) — both follow T-802's own "one deliberately narrow target profile, not a portable guess" precedent (`internal/probe/command.go`).
 
+## Certificates (T-2304)
+
+`GET /certs` — the cluster's TLS certificate inventory and everything currently wrong with it. Read-only, gated on ordinary network read (`netRead`). There is deliberately **no write route**: vnprox does not renew or reissue certificates (docs/security.md's Certificates section says why), so each problem carries the PVE command that fixes it instead.
+
+The inventory is built from a **local** read of `/etc/pve` — pmxcfs, so every node's `pve-ssl.pem` and the cluster CA are already on this node's disk. No peer fan-out, which is what makes this route answerable when peers are unreachable, i.e. exactly when a certificate problem is the likely cause.
+
+```
+{
+  "inventory": {
+    "scannedAt": "2026-08-06T14:02:11Z",
+    "clusterCA": { <certificate> },
+    "certificates": [ { <certificate> }, ... ],
+    "errors": [ {"path": "...", "node": "...", "error": "..."} ]
+  },
+  "issues": [
+    {"check": "cert_san_mismatch", "severity": "error", "node": "pve2",
+     "path": "/etc/pve/nodes/pve2/pve-ssl.pem",
+     "detail": "...covers neither this node's peer address (10.0.0.2) nor its node name (pve2)...",
+     "remediation": "on pve2: pvecm updatecerts -f, then systemctl restart pveproxy vnprox"}
+  ]
+}
+```
+
+**Certificate shape**: `{kind, node?, path, subject, issuer, serial, notBefore, notAfter, fingerprint, keyAlgorithm, keyBits, signatureAlgorithm, sans: [{type, value}], isCA, selfSigned}`. `kind` is `cluster-ca`\|`node-leaf`\|`custom`\|`daemon`; `san.type` is `dns`\|`ip`; `fingerprint` is the lowercase-hex SHA-256 of the DER (what `openssl x509 -fingerprint -sha256` prints). Every field is *derived* — there is no field carrying PEM, DER, or file bytes anywhere in this response, and the Go type has none either, so key material cannot reach a client by construction rather than by filtering.
+
+**Issue shape**: `{check, severity, node?, path?, detail, remediation}`. `severity` is `error`\|`warning`; `remediation` is always non-empty. The same issues also flow into `GET /findings` as `source: "cert"` (checks `cert_expired`, `cert_expiring`, `cert_san_mismatch`, `cert_not_chained`, `cert_ca_mismatch`, `cert_weak_key`, `cert_missing`, `cert_unreadable`), all `fixable: false` and all hysteresis-exempt — an expiry date and a SAN list are facts read from a file, not sampled measurements, so there is no noise to debounce. Finding `id` is `"cert:<check>|<node>[|<path>]"`.
+
+`vnproxctl certs [--json] [--root DIR] [--expiry-warn-days N]` renders the same view from pmxcfs directly, without the daemon — exit 0 when clean or warning-only, 1 when any error-severity problem exists. Warnings alone deliberately do not fail, so a scheduled check does not train operators to ignore it.
+
 ## Metrics
 
 | Method | Path | Purpose |

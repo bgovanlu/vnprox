@@ -28,6 +28,7 @@ export const ROUTE_HELP: Readonly<Record<string, string>> = {
   "/changesets/:id/review": "changeset-review-page",
   "/settings": "settings-page",
   "/settings/alert-rules": "alert-rules-page",
+  "/settings/certificates": "certificates-page",
   "/settings/federation": "settings-federation-page",
   "/embed/map": "embed-map-page",
   "/embed/dashboard": "embed-dashboard-page",

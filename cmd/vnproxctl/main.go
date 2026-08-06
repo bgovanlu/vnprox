@@ -73,6 +73,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runBackup(args[1:], stdout, stderr)
 	case "restore":
 		return runRestore(args[1:], stdout, stderr)
+	case "certs":
+		return runCerts(args[1:], stdout, stderr)
 	case "support-bundle":
 		return runSupportBundle(args[1:], stdout, stderr)
 	case "remote":
@@ -128,6 +130,9 @@ HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
   vnproxctl apply <spec.yaml> --apply    ...then apply + poll to committed + auto-confirm
 
   vnproxctl --version                  Print the vnproxctl version
+  vnproxctl certs                      Cluster TLS certificate inventory and problems
+                                       (direct pmxcfs read; works daemon-down — which is when a
+                                       certificate problem has usually taken the API with it)
   vnproxctl --help                     Show this help
 
 status flags:

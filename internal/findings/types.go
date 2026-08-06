@@ -86,6 +86,14 @@ const (
 	// on-disk footprint rather than a node/interface the inventory graph
 	// knows about or the cluster's peer transport.
 	SourceStore Source = "store"
+	// SourceCert (T-2302) marks a finding about the PVE cluster's own TLS
+	// certificates — expiry, SAN coverage, chain to the cluster CA, key
+	// strength. Its own top-level source (like SourcePeer, whose transport
+	// these certificates authenticate), because a certificate is neither a
+	// node/interface the inventory graph knows about nor a live measurement:
+	// it is a fact read from pmxcfs, and every check on it is
+	// hysteresis-exempt for that reason.
+	SourceCert Source = "cert"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

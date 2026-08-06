@@ -229,6 +229,17 @@ export function SettingsPage() {
         </Link>
       </Section>
 
+      <Section
+        title="Certificates"
+        description="Expiry, name coverage, and chain to the cluster CA for every node's TLS certificate — what cross-node traffic depends on."
+      >
+        <Link to="/settings/certificates">
+          <Button size="sm" variant="secondary">
+            View certificates
+          </Button>
+        </Link>
+      </Section>
+
       <Section title="Federation" description="Attach other Proxmox clusters for aggregated views and cross-cluster IPAM conflict detection.">
         <Link to="/settings/federation">
           <Button size="sm" variant="secondary">

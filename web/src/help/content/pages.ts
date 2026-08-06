@@ -516,6 +516,7 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
       "switch-push",
       "oidc-sso",
       "ha-pair",
+      "certificates-page",
     ],
   },
   {
@@ -565,6 +566,38 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
       },
     ],
     seeAlso: ["federation", "cluster-awareness", "ipam-cross-cluster", "settings-page"],
+  },
+  {
+    id: "certificates-page",
+    title: "Certificates",
+    surface: "page",
+    summary:
+      "Every TLS certificate your cluster's nodes present — to each other and to you — with expiry, the names each one covers, and whether it still chains to the cluster CA.",
+    docRef: "docs/security.md",
+    keywords: ["certificate", "tls", "ssl", "expiry", "san", "ca", "pve-ssl", "x509", "pem", "chain"],
+    sections: [
+      {
+        heading: "Why this matters more on a multi-node cluster",
+        body: "Everything vnprox does across nodes — applying a changeset, arming a distributed rollback timer, reading a peer's state — rides peer-API TLS, which is pinned to your cluster's own CA and **fails closed**. A certificate that has expired, that was issued by a different CA, or that doesn't cover the address its peers reach it at will take that node out of the cluster's peer mesh entirely. This screen is where you see that coming.",
+      },
+      {
+        heading: "One node shows you the whole cluster",
+        body: "`/etc/pve` is pmxcfs, Proxmox's own distributed filesystem, so every node's certificate is already present on every other node. vnprox reads them locally — no peer connection needed. That's deliberate: a certificate problem is exactly the thing that makes peers unreachable, so an inventory that needed the peer API to diagnose a peer-API failure would be useless at the only moment it mattered.",
+      },
+      {
+        heading: "Problems come first",
+        body: "The list at the top is what's actually wrong, each with the command that fixes it. **Expired** and **expiring** are self-explanatory. **Name mismatch** means the certificate covers neither the node's peer address nor its node name — pinned verification has nothing to check against. **CA mismatch** usually means a `pvecm updatecerts` that regenerated the CA without reissuing this node's certificate. **Weak key** flags anything below RSA-2048 or a SHA-1 signature.",
+      },
+      {
+        heading: "Reading the names column",
+        body: "These are the certificate's subject alternative names — the identities it can prove. A node dialled at an address that isn't in this list, and whose node name isn't either, cannot be authenticated. vnprox prefers to verify a peer by its node name where the certificate covers it, precisely because Proxmox does not reliably keep a node's current IP in there.",
+      },
+      {
+        heading: "vnprox does not renew certificates",
+        body: "That's Proxmox's job, and it does it well: `pvecm updatecerts -f` reissues a node's certificate from the cluster CA, and `pvenode acme cert order` drives ACME. Both restart `pveproxy`. Putting a hypervisor-restarting action behind a button here would add risk without adding capability — so each problem names the exact command instead. When the UI itself is unreachable, `vnproxctl certs` on the node shows you this same view.",
+      },
+    ],
+    seeAlso: ["settings-page", "cluster-awareness", "findings-stream", "cli-escape-hatch"],
   },
   {
     id: "embed-map-page",

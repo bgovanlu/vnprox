@@ -28,6 +28,25 @@ functionality is folded into `[2.0.0]`.
 
 ### Added
 
+- **Certificate management for the cluster.** Every cross-node thing vnprox does — applying a
+  changeset, arming a distributed rollback timer, reading a peer's state — rides peer-API TLS,
+  which is pinned to your cluster's own CA and fails closed. Until now there was no way to see
+  those certificates, no warning before one expired, and one confirmed latent failure. There is
+  now a **Settings → Certificates** screen, a `GET /certs` API, a `vnproxctl certs` command, and a
+  `cert` family of findings covering expiry, name coverage, chain to the cluster CA, key strength,
+  and missing or unreadable certificates. Each finding names the exact PVE command that fixes it.
+
+  The inventory is cluster-wide from a **local** read: `/etc/pve` is pmxcfs, so every node's
+  certificate is already on every node's disk. That is deliberate rather than incidental — a
+  certificate problem is precisely what makes peers unreachable, so an inventory that needed the
+  peer API to diagnose a peer-API failure would be useless at the only moment it mattered.
+  `vnproxctl certs` reads the same data with the daemon down.
+
+  Private keys live in the same pmxcfs directory as the certificates. The scanner only ever
+  constructs paths from a fixed filename allowlist rather than listing a directory and filtering,
+  and the certificate type carries no raw-bytes field at all — so "this cannot leak key material"
+  is a property of the types, not of care taken at each call site.
+
 - **Online help, on every screen.** vnprox previously had one in-app help surface: a dialog
   listing keyboard shortcuts. Everything else a user might need to know lived in `docs/` — on
   disk, in a git repo, on a machine they are probably not looking at while a commit-confirm
@@ -59,6 +78,24 @@ functionality is folded into `[2.0.0]`.
   stops matching after a refactor fails loudly instead of certifying full coverage of an empty set.
 
 ### Fixed
+
+- **Pinned peer TLS no longer fails against a certificate that doesn't list the node's IP**
+  (`T-1906-bug-01`, found on real hardware). Peers are dialled by IP, and Proxmox does not
+  necessarily regenerate a node's `pve-ssl.pem` when its management address changes — the node
+  this was found on carried a **stale** IP SAN (`192.168.100.99`) for a machine now at
+  `192.168.1.9`. Pinned verification against the dial address therefore failed closed on a
+  correctly configured cluster: correct components, no operator error, **every peer down at once
+  on upgrade**.
+
+  vnprox now verifies a peer against its PVE node name where the certificate covers it, while
+  still dialling the IP and still pinning the cluster CA — what `curl --resolve` does. No network
+  round trip is needed, because pmxcfs already holds every node's certificate locally. Three
+  properties are held by adversarial tests: the CA pin is untouched (a certificate from another CA
+  is still rejected), candidate names come from PVE's authoritative node name rather than from the
+  presented certificate, and an FQDN candidate must be rooted at the node name — so node A's
+  certificate cannot authenticate node B even though the same CA issued both. Where nothing is
+  covered, the handshake still fails closed, but `cert_san_mismatch` is now raised at **startup**,
+  before the first peer call, instead of surfacing as an opaque handshake error later.
 
 - **Closing a dialog no longer drops keyboard focus to nowhere.** Radix restores focus to a
   `DialogTrigger`; the help panel is opened programmatically and has none, so closing it would have

@@ -71,6 +71,7 @@ type Options struct {
 	LLDP                  LLDPService
 	Drift                 DriftService
 	Findings              FindingsService
+	Certs                 CertsService
 	FDB                   FDBService
 	Layouts               LayoutStore
 	Annotations           AnnotationStore
@@ -237,6 +238,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLLDPRoutes(r, opts.LLDP, opts.Auth)
 		mountDriftRoutes(r, opts.Drift, opts.Changesets, opts.Auth)
 		mountFindingsRoutes(r, opts.Findings, opts.Changesets, opts.Auth, scopeMW)
+		mountCertsRoutes(r, opts.Certs, opts.Auth, scopeMW)
 		mountFDBRoutes(r, opts.FDB, opts.Auth)
 		mountMetricsRoutes(r, opts.Metrics, opts.Auth)
 		// T-1903: the exporter config's pull-model sources (Self/

@@ -146,6 +146,20 @@ type TrustOptions struct {
 	// inherit" deterministically, and must never become a configurable way to
 	// substitute a trust store from outside the package.
 	systemPool func() (*x509.CertPool, error)
+	// VerifyName maps a peer's dial host (the IP or hostname in its Addr) to
+	// the identity its certificate should be verified as. Returning "" — or
+	// leaving this nil — keeps crypto/tls's default, which verifies against
+	// the dial host itself.
+	//
+	// This exists because real PVE node certificates do not reliably carry
+	// the node's current address as a SAN (T-1906-bug-01: found on hardware
+	// carrying a *stale* IP SAN), so pinned verification against the dial IP
+	// fails closed on a correctly configured cluster. internal/certs supplies
+	// the mapping from pmxcfs, which already holds every node's certificate
+	// locally. See certs.ResolveVerifyName for why this does not weaken the
+	// pin: the CA anchor is unchanged, and candidate names are derived from
+	// PVE's authoritative node name, never from the presented certificate.
+	VerifyName func(dialHost string) string
 	// Mode selects verification behaviour. Zero value is TrustClusterCA.
 	Mode TrustMode
 	// CAFile is the pinned trust anchor for TrustClusterCA. Empty means
@@ -168,10 +182,21 @@ type TrustOptions struct {
 // daemon so there is exactly one trust decision, one file read cadence, and
 // one startup banner per process.
 type Trust struct {
-	now         func() time.Time
-	systemPool  func() (*x509.CertPool, error)
-	log         *slog.Logger
-	rt          *http.Transport
+	now        func() time.Time
+	systemPool func() (*x509.CertPool, error)
+	log        *slog.Logger
+	rt         *http.Transport
+	// byName holds one transport per resolved verification name, cloned from
+	// rt with TLSClientConfig.ServerName set.
+	//
+	// One transport per name rather than a DialTLSContext hook that varies
+	// ServerName per connection: a custom dial hook takes ALPN/HTTP-2
+	// negotiation out of net/http's hands, and this file has no business
+	// changing the peer API's protocol as a side effect of fixing hostname
+	// verification. A cluster has a handful of nodes, so the map is tiny, and
+	// connection pooling is per (transport, address) either way.
+	byName      map[string]*http.Transport
+	verifyName  func(string) string
 	loadErr     error
 	caFile      string
 	fingerprint string
@@ -261,7 +286,23 @@ func newTrust(mode TrustMode, opts TrustOptions) *Trust {
 		log:            logger,
 		now:            now,
 		systemPool:     sysPool,
+		verifyName:     opts.VerifyName,
 	}
+}
+
+// SetVerifyNameResolver installs (or replaces) the dial-host to
+// verification-name mapping. Safe to call while the daemon is running: the
+// certificate inventory that produces it is refreshed periodically, and a node
+// that renews its certificate can change which name is usable.
+//
+// Replacing the resolver drops the per-name transports so the next request
+// re-derives its name; without that, an already-pooled connection keeps
+// serving requests under the *previous* mapping.
+func (t *Trust) SetVerifyNameResolver(fn func(dialHost string) string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.verifyName = fn
+	t.dropNamedTransportsLocked()
 }
 
 // Mode reports the configured verification mode.
@@ -312,21 +353,58 @@ func (t *Trust) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.URL == nil || req.URL.Scheme != "https" {
 		return http.DefaultTransport.RoundTrip(req)
 	}
-	rt, err := t.transport()
+	rt, err := t.transport(req.URL.Hostname())
 	if err != nil {
 		return nil, err
 	}
 	return rt.RoundTrip(req)
 }
 
-func (t *Trust) transport() (http.RoundTripper, error) {
+// transport returns the transport to use for a request to dialHost: the
+// shared pinned one, or a per-name clone when a verification name has been
+// resolved for that host.
+func (t *Trust) transport(dialHost string) (http.RoundTripper, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.refreshLocked(false)
 	if t.loadErr != nil {
 		return nil, t.loadErr
 	}
-	return t.rt, nil
+	if t.rt == nil {
+		return nil, t.loadErr
+	}
+
+	// Only the pinned mode resolves names. In TrustSystem the host's own pool
+	// decides, and in TrustInsecure nothing is verified at all, so overriding
+	// ServerName there would change what is checked without changing whether
+	// it is checked — confusing, and pointless.
+	if !t.mode.Pinned() || t.verifyName == nil || dialHost == "" {
+		return t.rt, nil
+	}
+	name := t.verifyName(dialHost)
+	if name == "" || name == dialHost {
+		return t.rt, nil
+	}
+	if named, ok := t.byName[name]; ok {
+		return named, nil
+	}
+
+	base := t.rt.Clone()
+	if base.TLSClientConfig == nil {
+		// Unreachable in practice (newTLSTransport always sets one), but a nil
+		// config here would silently mean "verify against the dial host",
+		// which is the bug this whole path exists to fix.
+		return t.rt, nil
+	}
+	base.TLSClientConfig = base.TLSClientConfig.Clone()
+	base.TLSClientConfig.ServerName = name
+	if t.byName == nil {
+		t.byName = map[string]*http.Transport{}
+	}
+	t.byName[name] = base
+	t.log.Debug("peer: verifying this peer's certificate against a resolved name rather than its dial address",
+		"dial_host", dialHost, "server_name", name)
+	return base, nil
 }
 
 // refreshLocked re-evaluates the trust anchor when the reload cadence has
@@ -442,7 +520,20 @@ func (t *Trust) swapTransportLocked(next *http.Transport) {
 	if t.rt != nil {
 		t.rt.CloseIdleConnections()
 	}
+	t.dropNamedTransportsLocked()
 	t.rt = next
+}
+
+// dropNamedTransportsLocked retires every per-verification-name transport.
+// Called on CA rotation and on resolver replacement, for the same reason
+// swapTransportLocked closes idle connections: a pooled connection was
+// verified under the old anchor or the old name mapping and would otherwise
+// keep serving requests the new one might reject.
+func (t *Trust) dropNamedTransportsLocked() {
+	for _, tr := range t.byName {
+		tr.CloseIdleConnections()
+	}
+	t.byName = nil
 }
 
 // logOnceLocked emits msg only when the trust state actually changed, so a

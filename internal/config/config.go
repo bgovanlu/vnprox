@@ -161,6 +161,7 @@ const (
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
 type Config struct {
+	Certs       CertsConfig
 	PVE         PVEConfig
 	Peer        PeerConfig
 	Storage     StorageConfig
@@ -597,9 +598,33 @@ type CapacityConfig struct {
 	ForecastHorizonDays    int
 }
 
+// CertsConfig is the [certs] section (T-2301): the cluster certificate
+// inventory's own knobs. Both have safe defaults and exist mainly so a dev
+// daemon with no /etc/pve, and a deployment with a different renewal cadence,
+// need no code change.
+type CertsConfig struct {
+	// Root is the pmxcfs mount the inventory reads. Empty means
+	// certs.DefaultRoot (/etc/pve). TOML key `root`.
+	Root string
+	// ExpiryWarnDays is how far ahead cert_expiring looks. Zero means
+	// certs.DefaultExpiryWarn (30 days). TOML key `expiry_warn_days`.
+	ExpiryWarnDays int
+}
+
+// ExpiryWarn converts ExpiryWarnDays to a duration; zero stays zero so the
+// certs package applies its own default rather than this one silently
+// deciding the policy in two places.
+func (c CertsConfig) ExpiryWarn() time.Duration {
+	if c.ExpiryWarnDays <= 0 {
+		return 0
+	}
+	return time.Duration(c.ExpiryWarnDays) * 24 * time.Hour
+}
+
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
+	Certs       rawCerts       `toml:"certs"`
 	PVE         rawPVE         `toml:"pve"`
 	Peer        rawPeer        `toml:"peer"`
 	Collect     rawCollect     `toml:"collect"`
@@ -796,6 +821,11 @@ type rawMTUProbe struct {
 	ProbeIntervalSec int `toml:"probe_interval_sec"`
 }
 
+type rawCerts struct {
+	Root           string `toml:"root"`
+	ExpiryWarnDays int    `toml:"expiry_warn_days"`
+}
+
 type rawWan struct {
 	ProbeIntervalSec int     `toml:"probe_interval_sec"`
 	RetentionMinutes int     `toml:"retention_minutes"`
@@ -931,6 +961,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		},
 		MTUProbe: MTUProbeConfig{
 			ProbeIntervalSec: firstNonZeroInt(raw.MTUProbe.ProbeIntervalSec, mtuprobe.DefaultProbeIntervalSec),
+		},
+		Certs: CertsConfig{
+			Root:           raw.Certs.Root,
+			ExpiryWarnDays: raw.Certs.ExpiryWarnDays,
 		},
 		Wan: WanConfig{
 			ProbeIntervalSec: firstNonZeroInt(raw.Wan.ProbeIntervalSec, wan.DefaultProbeIntervalSec),
