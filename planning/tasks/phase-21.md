@@ -219,3 +219,47 @@ strong and currently reaches nobody — it lives in a repo, in markdown, unindex
   or the blocked register materially changes what can honestly be claimed about cluster behavior,
   T-2105's announcement copy and T-2103's matrix semantics are the two places that must be
   revisited before publishing anything.
+
+---
+
+## Audit-raised items — 2026-08-06
+
+Filed by the full-stack audit (`docs/status-matrix.md`). Neither was tracked by any existing
+card, and both were found by sweeping the artifact rather than by reading a report.
+
+### T-2106 · The repository has no license
+
+**kind:** decision, then trivial implementation
+**Severity:** High — blocks this whole phase in practice.
+
+There is no `LICENSE` file. `T-2102` (public apt repository) and `T-2105` (Proxmox-community
+distribution) both assume the software can be redistributed; without a license nobody legally
+can, and no external contribution can be accepted on any settled terms. It costs one decision
+and one file, and until it is made every distribution card in this phase is building a road to
+somewhere no one may drive.
+
+**Acceptance**
+
+1. A `LICENSE` file exists at the repository root.
+2. `README.md` and `docs/datasheet.md` state the license.
+3. The packaging metadata (`packaging/debian/control`, `copyright`) matches it.
+4. If any third-party dependency's license constrains the choice, that is recorded rather than
+   assumed away — there are 8 direct Go modules and the full npm tree to check.
+
+### T-2107 · `docs/features.md` describes a product that no longer exists
+
+**kind:** documentation
+**Severity:** Medium — it is the one document that would actively mislead a new reader.
+
+The file still describes the v1.0 feature set and, under "Explicit non-goals for v1", lists five
+capabilities that have since shipped: NetFlow/sFlow collection, Proxmox Backup Server networking,
+multi-cluster federation, physical switch config push, and the Prometheus exporter. Every other
+document in `docs/` is current.
+
+**Acceptance**
+
+1. The feature tables cover what actually ships, or the file is explicitly re-scoped as a
+   historical v1.0 record and says so in its first line.
+2. No shipped capability appears under "non-goals".
+3. `README.md`'s stale-file warning is removed once this is true.
+4. The relationship to `docs/datasheet.md` is stated, so the two cannot silently diverge again.

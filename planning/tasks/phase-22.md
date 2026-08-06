@@ -141,7 +141,7 @@ instead of reporting full coverage of an empty set.
 
 ## Status — shipped 2026-08-05 (`4f88325`, deployed as 3.0.4+40+g4f88325)
 
-All five cards complete. 60 topics registered; `make check` green (216 files /
+All five cards complete. 72 topics registered; `make check` green (216 files /
 1492 tests). Coverage gate verified by mutation, not just by passing: deleting
 the `/ipam` mapping, adding an unmapped route to `App.tsx`, and typoing an
 `<HelpAnchor topic>` each failed the suite naming the offender.

@@ -45,11 +45,14 @@ Full list: [`docs/features.md`](docs/features.md).
 
 | Document | Contents |
 |---|---|
+| [`docs/datasheet.md`](docs/datasheet.md) | **Shipped capability, requirements, and stated limits — start here** |
+| [`docs/project-status.md`](docs/project-status.md) | Percent complete, open items ranked, recommended sequence |
+| [`docs/status-matrix.md`](docs/status-matrix.md) | Full-stack audit grid (feature × backend × GUI × API × docs × tests × validation) |
 | [`docs/architecture.md`](docs/architecture.md) | System architecture, components, diagrams, key design decisions |
 | [`docs/data-model.md`](docs/data-model.md) | Core entities and persistence design |
 | [`docs/api.md`](docs/api.md) | REST + WebSocket API design |
 | [`docs/security.md`](docs/security.md) | AuthN/AuthZ, TLS, threat model |
-| [`docs/features.md`](docs/features.md) | Feature matrix and priorities; per-feature specs in [`docs/features/`](docs/features/) |
+| [`docs/features.md`](docs/features.md) | v1.0 feature matrix and priorities; per-feature specs in [`docs/features/`](docs/features/). **Stale — describes the v1.0 scope and lists since-shipped capabilities as non-goals; use `datasheet.md` for current capability** |
 | [`docs/roadmap.md`](docs/roadmap.md) | Release phases and milestones |
 | [`docs/deployment.md`](docs/deployment.md) | Install, upgrade, uninstall, port-conflict handling |
 | [`docs/user-guide.md`](docs/user-guide.md) | End-user guide (first run, common tasks) |
