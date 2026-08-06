@@ -169,12 +169,31 @@ No invariant failed. This is the strongest part of the codebase and it is strong
 35 Playwright specs existed with no `make` target and no CI job. There is now `make e2e` and an
 `e2e` CI job, so the three-arc period where nothing ran them is over.
 
-Turning it on immediately paid for itself and immediately showed the cost: a full run found **29 failures against 59
-passes**, across 14 spec files. One was a **real WCAG AA defect** — the nav-rail findings badge
-rendered white on amber at 2.61:1 against a 4.5:1 requirement, on every page, which is why nine
-`a11y` specs failed identically; fixed. The rest are untriaged, so the job is `continue-on-error`
-until `T-2108` clears the backlog and flips it to required. **Until then, a green `CI` badge still
-does not mean the e2e suite passed.**
+Turning it on immediately paid for itself. A full run found **29 failures against 59 passes**; five
+triage passes took that to **9 failures against 78 passes**, with run time down from 29.6 to 16.1
+minutes.
+
+**Four real product defects were found, all of which had been invisible while the suite ran in no
+gate:**
+
+| Defect | Detail |
+|---|---|
+| WCAG AA contrast, nav rail | Findings badge white on amber, **2.61:1** against a 4.5:1 requirement — on every page, which is why nine `a11y` specs failed identically |
+| WCAG AA contrast, muted text | `dark:text-slate-500` on `dark:bg-slate-900`, **3.74:1**. `TopBar.tsx` already carried a comment describing this exact fix from `T-905`, applied once and never generalised |
+| Spotlight results announce as one word | The kind badge was separated by an `ml-2` *margin*, which puts no whitespace in the accessible name: `"app01guest· pve1 name"` |
+| Entity-node badge unreadable on tinted nodes | Contrast is measured against the node's own tint, not the page. Both halves of the usual muted pairing fail there — 1.84:1 and 3.7-4.4:1 |
+
+Plus a **stale visual baseline** that had been failing since the commit that created it (`5909807`
+added an `eno3` fixture NIC and never regenerated the snapshot) — the clearest possible evidence
+that nothing was watching.
+
+Two of the causes were the harness, not the product: the suite exhausts vnprox's own login
+brute-force limiter (82 logins, three HTTP 429s), and specs mutate a shared daemon store, which
+made previously-latent ambiguous locators start matching the wrong elements. Both fixed; the
+structural half of the second is `T-2108-followup-01`.
+
+Nine failures remain and the job is still `continue-on-error`. **Until it is required, a green `CI`
+badge still does not mean the e2e suite passed.**
 
 ### 5.2 `Packaging matrix / cluster-ssh` is red on the runner only — `T-1806-bug-02`
 

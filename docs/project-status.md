@@ -18,7 +18,7 @@ vnprox is **feature-complete against three shipped arcs and materially under-val
 | **API surface** | **100%** | Contract frozen at v3.0, additive-only since |
 | **Docs currency** | **100%** | `features.md` refreshed 2026-08-06 (`T-2107`) |
 | **Automated test gate** | **100%** | `make ci` green locally: 4,058 tests, lint, vet, arm64 cross-build, 7 fuzz targets, package. **GitHub Actions is unfunded and runs nothing** — the gate is the dev host |
-| **E2E gate** | **observe-only** | Gate landed 2026-08-06. Baseline on a quiet machine: **22 failed / 65 passed**, triaged into 17 genuine + 6 suite-context-only (`T-2108`). `a11y` is now 10/10 after a second real WCAG AA defect was fixed |
+| **E2E gate** | **observe-only** | Gate landed 2026-08-06. Triaged from **29 failed / 59 passed** to **9 failed / 78 passed**, run time 29.6m → 16.1m. Four real product defects fixed along the way; 9 remain (`T-2108`). Still `continue-on-error` — the job is not required until the suite is green |
 | **Hardware validation** | **5%** | **6 of 123 items validated on real PVE** |
 
 The first six rows describe a mature product. The last two are why the current arc exists. **The gap between "our tests pass" and "this works on your cluster" is the project's dominant risk, and it is not shrinking quickly** — five of the six validated items were validated a day ago; before that the number was one.
@@ -65,7 +65,7 @@ Ranked by *what it costs to leave this alone*, not by effort.
 | 2 | **Multi-node proof**: apply, distributed rollback, drift, federation, HA failover | `T-1803` | The product's core safety guarantee is unproven where it matters | **Human only** (needs 2+ nodes) |
 | 3 | **Failure-injection proof of commit-confirm** | `T-1804` | "It rolls back if it cuts you off" has never been observed doing so on hardware | **Human only** |
 | 4 | ~~No `LICENSE` file~~ | `T-2106` | **Closed 2026-08-06** — Apache-2.0, with `NOTICE`, a generated `THIRD-PARTY-LICENSES.md`, Debian `copyright`, and a test that fails if any of them is dropped | Done |
-| 5 | ~~E2E suite runs in no gate~~ → **triage the backlog** | `T-1806-bug-01` → `T-2108` | **Gate landed 2026-08-06** (`make e2e` + a CI job). It immediately showed the suite is red — **29 failed / 59 passed** — including one real WCAG AA defect (fixed). Job is observe-only until `T-2108` clears it | Agent-completable |
+| 5 | ~~E2E suite runs in no gate~~ → **triage the backlog** | `T-1806-bug-01` → `T-2108` | **29 → 9 failures, 78 passing** (2026-08-06). Found and fixed 4 real product defects: two WCAG AA contrast failures, spotlight results announcing as one word, and a stale visual baseline nobody had regenerated. Two shared-state harness causes fixed (login rate limiter, store pollution). Job stays observe-only until green | Agent-completable |
 | 6 | **Packaging matrix red** (`cluster-ssh`) | `T-1806-bug-02` | Cannot tag a release with a red pipeline in good conscience | Agent-completable |
 
 ### P1 — user-visible or operationally important
