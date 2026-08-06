@@ -1,0 +1,48 @@
+# dev-ports.tsv — the single source of truth for every TCP/UDP port this
+# repository's development and test tooling binds on a developer's machine.
+#
+# T-1807-bug-02. Read docs/testing/port-registry.md before adding a row.
+#
+# Why this file exists: four times in one phase, two independent pieces of
+# this repo's own tooling reached for the same port and produced a failure
+# that looked like a product defect. The fourth time was the fix for the
+# third: T-1807-bug-01 moved packaging/test/upgrade-service.sh to 61007
+# "chosen outside the entire N8006/N8007 family" — and 61007 is the
+# phys-collapse e2e stack's own vnproxd. Commit 9047685 had to move it
+# again. A doc table would not have caught that; a test that reads this
+# file and refuses an unregistered or double-claimed port does.
+#
+# Format: port <TAB> proto <TAB> owner <TAB> binder <TAB> purpose
+#   port    decimal, 1-65535
+#   proto   tcp | udp
+#   owner   short stable label, unique per port
+#   binder  repo-relative path of the file that binds it (the authority)
+#   purpose one line, why this port and not another
+#
+# Consumed by:
+#   internal/devports          (Go: parse + the make-check enforcement test)
+#   packaging/test/lib/ports.sh (shell: ports_require_free preflight)
+#
+# Lines starting with # and blank lines are ignored.
+
+2201	tcp	sshd-clusterssh-pve1	packaging/test/cluster-ssh.sh	sshd for the fake pve1 node. The cluster-SSH test runs --network=host (no rootless bridge in this sandbox), so these container sshds bind on the host.
+2202	tcp	sshd-clusterssh-pve2	packaging/test/cluster-ssh.sh	sshd for the fake pve2 node; the coordinator reaches it as an ssh_config host alias on 127.0.0.1.
+2203	tcp	sshd-clusterssh-pve3	packaging/test/cluster-ssh.sh	sshd for the fake pve3 node; same aliasing as pve2.
+8006	tcp	pvemock-default	web/playwright.config.ts	Mock PVE for the default e2e stack and `make mockpve`; the three-node-vlan fixture.
+8007	tcp	vnproxd-default	testdata/dev.toml	The vnprox port. `make dev`, the shipped package default, and the default e2e stack all use it — which is exactly why nothing else may.
+8008	tcp	k8smock	web/playwright.config.ts	Mock Kubernetes API for k8s-overlay.spec.ts, alongside the default stack.
+8009	tcp	install-portconflict	packaging/test/port-conflict.sh	The alternative port a human types when install.sh reports 8007 busy; the script asserts install.sh honours it.
+18006	tcp	pvemock-sim	web/playwright.config.ts	Mock PVE for the simulator stack (sim-lab fixture).
+18007	tcp	vnproxd-sim	testdata/dev-sim.toml	vnproxd for the simulator stack.
+28006	tcp	pvemock-scale	web/playwright.config.ts	Mock PVE for the scale stack (scale-lab fixture).
+28007	tcp	vnproxd-scale	testdata/dev-scale.toml	vnproxd for the scale stack; scale.spec.ts and user-guide-tasks.spec.ts both drive it.
+38006	tcp	pvemock-mgmt	web/playwright.config.ts	Mock PVE for the management-redundancy and federation-peer stacks (single-node fixture).
+38007	tcp	vnproxd-mgmt	testdata/dev-mgmt.toml	vnproxd for the management-redundancy stack; also the federation peer.
+48006	tcp	pvemock-alert	web/playwright.config.ts	Mock PVE for the alert-rules stack (sim-lab fixture).
+48007	tcp	vnproxd-alert	testdata/dev-alert.toml	vnproxd for the alert-rules stack.
+52055	udp	netflow-flow	testdata/dev-flow.toml	NetFlow ingest for the flow stack. Non-privileged and off the 2055 default so it never competes with a real collector on the dev host.
+58006	tcp	pvemock-flow	web/playwright.config.ts	Mock PVE for the flow stack (flow-lab fixture).
+58007	tcp	vnproxd-flow	testdata/dev-flow.toml	vnproxd for the flow stack; pairs with the 52055 NetFlow listener in the same config.
+61006	tcp	pvemock-physcollapse	web/playwright.config.ts	Mock PVE for the physical-collapse stack (phys-collapse fixture).
+61007	tcp	vnproxd-physcollapse	testdata/dev-physcollapse.toml	vnproxd for the physical-collapse stack.
+62007	tcp	packaging-upgrade-service	packaging/test/upgrade-service.sh	Real systemd service under podman --network=host, so it shares the host's port namespace. Moved here from 61007 by 9047685 after colliding with vnproxd-physcollapse — the incident this registry exists to prevent.

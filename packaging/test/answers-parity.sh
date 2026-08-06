@@ -23,6 +23,14 @@ die() {
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${VNPROX_TEST_IMAGE:-debian:12}"
 
+# Port preflight (T-1807-bug-02). Runs --network=host. This test's interactive
+# branch depends on 8007 being free — see its own comment below: "No port
+# conflict in a clean container, so resolve_port() never prompts". A busy host
+# 8007 makes that false, resolve_port() prompts, and the two branches stop
+# being comparable — a parity failure caused entirely by the machine.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ports.sh"
+ports_require_free 8007 || die "port preflight failed — this test needs a quiet machine (T-1807-bug-01); see 'make ports'"
+
 echo ">> testing vnprox-setup --answers vs. interactive parity in $IMAGE"
 
 run_setup() {

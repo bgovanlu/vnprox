@@ -52,6 +52,20 @@ die() {
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${VNPROX_TEST_IMAGE:-debian:12}"
 
+# Port preflight (T-1807-bug-02). Every port below is bound on the *host*,
+# because this script runs --network=host (see the networking note above), and
+# every one of them is registered in testdata/dev-ports.tsv.
+#
+# 8008 is the one that matters. This test forces install.sh's port-conflict
+# fallback by occupying 8007, then asserts every node lands on 8008 — which is
+# also the e2e suite's k8smock port. If anything else already holds 8008 the
+# fallback goes somewhere else entirely and the assertion below fails with
+# "expected the coordinator's own URL to report the fallback port 8008", which
+# reads like an install.sh defect and is not one. Preflighting turns that into
+# a named holder before any container starts.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ports.sh"
+ports_require_free 2201 2202 2203 8007 8008 || die "port preflight failed — this test needs a quiet machine (T-1807-bug-01); see 'make ports'"
+
 DEB_FILE="$(ls "$REPO_ROOT"/dist/vnprox_*.deb 2>/dev/null | head -1 || true)"
 [ -n "$DEB_FILE" ] || die "no .deb found in $REPO_ROOT/dist — run 'make deb' first"
 DEB_BASENAME="$(basename "$DEB_FILE")"

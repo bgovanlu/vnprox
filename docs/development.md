@@ -38,7 +38,20 @@ make lint       # golangci-lint + eslint + tsc --noEmit
 make check      # lint + test + govulncheck + npm audit (gated by web/audit-allowlist.json)
 make deb        # build the .deb into dist/
 make mockpve    # run the mock PVE server standalone on :8006
+make ports      # every port this repo's tooling binds, and what is holding them now
 ```
+
+### Ports
+
+This repo's dev and test tooling binds ~21 ports, and it assumes it has them to itself. Before
+adding a bind — a new e2e stack, a packaging test, a mock server — register it in
+[`testdata/dev-ports.tsv`](../testdata/dev-ports.tsv); `make check` fails on an unregistered or
+double-claimed port. See [`docs/testing/port-registry.md`](testing/port-registry.md) for the policy
+and `make ports` for live status with the holding PID.
+
+Why it is enforced rather than documented: five collisions in a single phase, the fourth of which
+was the fix for the third (`T-1807-bug-01` → `T-1807-bug-02`). Each one first presented as a
+product defect.
 
 ## The mock PVE server (`internal/pvemock`)
 

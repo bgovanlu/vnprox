@@ -17,6 +17,16 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${VNPROX_TEST_IMAGE:-debian:12}"
 
+# Port preflight (T-1807-bug-02). This test runs --network=host and binds 8007
+# itself as a fake listener — that occupied port *is* the test subject — then
+# expects install.sh to offer 8008 and honour a typed 8009. All three are host
+# binds, and all three are registered in testdata/dev-ports.tsv. If any is
+# already held (by `make dev`, the e2e suite's own stacks, or a leftover
+# process from a dead session), this test asserts against the wrong fallback
+# and fails looking like an install.sh defect.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ports.sh"
+ports_require_free 8007 8008 8009 || { echo "port preflight failed — this test needs a quiet machine (T-1807-bug-01); see 'make ports'" >&2; exit 1; }
+
 DEB_FILE="$(ls "$REPO_ROOT"/dist/vnprox_*.deb 2>/dev/null | head -1 || true)"
 if [ -z "$DEB_FILE" ]; then
 	echo "no .deb found in $REPO_ROOT/dist — run 'make deb' first" >&2

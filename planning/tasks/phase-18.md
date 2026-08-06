@@ -451,6 +451,76 @@ generated `lsof`/`ss` preflight helper every script sources) would turn this cla
 script's own output." Given this is the third occurrence in one phase, it is worth its own small
 card rather than a fourth ad hoc fix.
 
+**Closed 2026-08-06 by `T-1807-bug-02`**, which implemented that recommendation — and immediately
+proved this card's own fix was wrong. `61007` above, "chosen outside the entire N8006/N8007 family",
+*is* the phys-collapse e2e stack's vnproxd. Commit `9047685` had already had to move it again, to
+`62007`. The fourth occurrence was this card's fix for the third.
+
+---
+
+### T-1807-bug-02 · No repo-wide port registry — implemented
+
+**kind:** infrastructure · **depends on:** T-1807-bug-01 (the finding) · **Status:** ● Done 2026-08-06
+**Severity:** Medium — five occurrences of one collision class in a single phase, the fourth of
+which was the third's fix.
+
+**What this card exists to answer.** `T-1807-bug-01` recommended "a doc table, or a generated
+preflight helper". A doc table alone was rejected on the evidence: the author of the 61007 fix
+*was* being careful, wrote a paragraph justifying the choice, and still collided — because there
+was no list to check and nothing that would have made them check it. So the registry is enforced,
+not merely written.
+
+**Delivered:**
+- `testdata/dev-ports.tsv` — the single source of truth. 21 rows: port, proto, owner, binder,
+  purpose. Duplicate ports and duplicate owners fail to parse rather than letting a later row win.
+- `internal/devports` — parser plus the enforcement suite that runs in `make check`:
+
+  | Test | Catches |
+  |---|---|
+  | `TestScanFindsKnownPorts` | The scan breaking. The control: a dead glob or dead regex fails here, so nothing below can pass by looking at nothing. Five sentinels, one per extraction shape. |
+  | `TestEveryBoundPortIsRegistered` | A bind with no row. |
+  | `TestEveryRegisteredPortIsStillBound` | A stale row reserving a port nothing uses. |
+  | `TestNoAdjacentPortCollisions` | A half-claimed `NNN006`/`NNN007` pair — the trap that made `28017` look free. |
+  | `TestPackagingTestsDoNotBindE2EPorts` | **The actual historical bug.** A *known* port claimed by another family of tooling — which the "is it registered?" check cannot see, because 61007 was registered. |
+  | `TestExemptedPortsHavePreflight` | A script binding a deliberately-shared port without calling `ports_require_free`. |
+  | `TestParseRejectsBadRegistries` | The parser's own guards, with a control row so the eight negative cases cannot pass vacuously. |
+
+- `packaging/test/lib/ports.sh` — `ports_require_free`, which names the **owner and the holding
+  PID/cmdline**, and `ports_report`, behind `make ports`.
+- `docs/testing/port-registry.md` — the policy and how to add a port.
+- Preflight wired into all five `--network=host` packaging tests: `cluster-ssh.sh`,
+  `port-conflict.sh`, `upgrade-service.sh`, `pve-token.sh`, `answers-parity.sh`.
+
+**Proven, not assumed.** Four mutations, each reverted after confirming it fails:
+
+| Mutation | Result |
+|---|---|
+| A new unregistered bind (`19999` in `dev-sim.toml`) | Caught by the forward check *and* the stale-row check |
+| Two rows claiming `8007` | Rejected at parse — every dependent test fails |
+| Delete the `28007` row | Caught as both unregistered and a half-claimed pair |
+| **Replay `9047685`: `TEST_PORT` back to `61007`** | `packaging/test/upgrade-service.sh binds port 61007, which belongs to "vnproxd-physcollapse"` |
+
+The last row is the point of the card: the historical bug is now a `make check` failure.
+
+**Findings surfaced while building it** — the scan found binds nobody had written down:
+
+1. `cluster-ssh.sh` binds sshd on **2201/2202/2203** on the host (`--network=host`), unregistered.
+2. `cluster-ssh.sh` deliberately occupies **8007**, then asserts every node falls back to **8008** —
+   which is the e2e suite's own `k8smock` port. **If anything else holds 8008, the fallback lands
+   elsewhere and the test fails with `expected the coordinator's own URL to report the fallback port
+   8008`, which reads like an install.sh defect and is not one.** See `T-1806-bug-02`.
+3. `answers-parity.sh` states in its own comment that "no port conflict in a clean container" means
+   `resolve_port()` never prompts — an assumption that is simply false if the *host* holds 8007,
+   since it runs `--network=host`. Its two branches then stop being comparable and it fails as a
+   parity error caused entirely by the machine.
+
+Findings 2 and 3 were latent: both scripts would fail confusingly rather than tell you why. Both
+now preflight.
+
+**Deliberately out of scope:** `planning/validation/harness/**` is not scanned. Those scripts run
+against a real PVE node where `:8006` is pveproxy's own port — a remote endpoint they connect to,
+not a local port they bind. Scanning them would make the registry claim a port it does not own.
+
 ---
 
 ## T-1808 · Scale validation on real cluster data ★
@@ -592,3 +662,27 @@ whether `install.sh` step 1 is being truncated rather than the grep misbehaving.
 out to be the `pipefail`/`grep -q` interaction, the fix is a here-string (`grep -q PATTERN
 <<<"$OUT"`), which removes the pipe entirely — there are 7 instances of the pattern across
 `cluster-ssh.sh` and `port-conflict.sh`.
+
+**2026-08-06, from `T-1807-bug-02` (port registry): two candidate explanations examined and
+eliminated, and a third hazard found that is real but is not this.** Recorded so the next person
+does not re-derive them.
+
+- The registry work established that this script binds **2201/2202/2203** (node sshd) and **8007**
+  (a deliberate fake listener) on the *host*, because it runs `--network=host`, and that it then
+  asserts every node falls back to **8008** — which is the e2e suite's own `k8smock` port. A host
+  already holding 8008 would send the fallback elsewhere and fail that assertion. **This does not
+  explain the observed failure:** the reported symptom is at line 197 (`cluster detection did not
+  find all three nodes`), which runs *before* the 8008 assertion, and the SSH infra sanity check
+  that would catch a 2201-2203 collision passes earlier still.
+- Concurrent runs colliding over the fixed container names `pve1`/`pve2`/`pve3` (not `$$`-suffixed,
+  unlike `VOL`) is a genuine local hazard, but is **not available as an explanation here either**:
+  `packaging-matrix.yml` is `runs-on: ubuntu-latest`, a fresh VM per job.
+
+**Deliberately not changed:** the fixed container names were left alone. Perturbing the subject of
+an unexplained, deterministic failure while it is still unexplained destroys the ability to compare
+the next run against the previous ones. Worth fixing *after* this card closes, not during.
+
+**What did change:** the script now preflights `2201 2202 2203 8007 8008` via `ports_require_free`,
+so any *local* reproduction attempt that fails for machine reasons says so by name instead of
+adding a fourth unexplained symptom to this card. That is the value here — not a root cause, but a
+guarantee the next investigation is not unknowingly chasing a collision.

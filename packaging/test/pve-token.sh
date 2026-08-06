@@ -19,6 +19,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${VNPROX_TEST_IMAGE:-debian:12}"
 
+# Port preflight (T-1807-bug-02). Runs --network=host, and the answers file
+# below pins ANSWER_PORT=8007 — vnprox-setup's resolve_port() checks whether
+# that port is free and diverges if it is not, so a busy host 8007 changes what
+# this test is exercising rather than failing it honestly.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ports.sh"
+ports_require_free 8007 || { echo "port preflight failed — this test needs a quiet machine (T-1807-bug-01); see 'make ports'" >&2; exit 1; }
+
 echo ">> testing vnprox-setup PVE token provisioning (fakepveum) in $IMAGE"
 
 podman run --rm --network=host \

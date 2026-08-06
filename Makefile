@@ -176,6 +176,9 @@ e2e: ## Playwright end-to-end suite against pvemock + vnproxd + the production S
 	@echo ">> e2e: building the SPA (vnproxd embeds web/dist) and running Playwright"
 	cd $(WEB_DIR) && npm run e2e
 
+ports: ## show every port this repo's tooling binds, and what is holding them now
+	@. packaging/test/lib/ports.sh && ports_report
+
 mockpve: ## run the mock PVE server standalone on :8006
 	@if [ -n "$(MOCKPVE_READY)" ]; then \
 		echo ">> internal/pvemock: starting mock PVE server on $(MOCKPVE_ADDR) (fixture: $(MOCKPVE_FIXTURE))"; \

@@ -77,7 +77,7 @@ Ranked by *what it costs to leave this alone*, not by effort.
 | 10 | Accessibility second pass | `T-2004` | Pass 1 shipped (WCAG AA, axe-gated) |
 | 11 | Terraform provider + Ansible collection | `T-2101` | API contract and conformance suite already exist |
 | 12 | Signed apt repository | `T-2102` | Decision made (GitHub Pages); unimplemented |
-| 13 | Test tooling assumes an exclusive machine | `T-1807-bug-01` | Confirmed 3×; costs an agent-hour every time it recurs |
+| 13 | ~~Test tooling assumes an exclusive machine~~ | `T-1807-bug-01` → `T-1807-bug-02` | **Closed 2026-08-06** — enforced port registry (`testdata/dev-ports.tsv` + `internal/devports` + `make ports`). Proven against the real historical collision: replaying commit `9047685` now fails `make check`. Surfaced 3 unregistered binds nobody had written down |
 | 14 | Extend help anchors beyond the 6 placed | `T-2202-followup-01` | 20+ panel topics reachable only via search/index |
 | 15 | Field-level inline help in editors | `T-2202-followup-02` | `change-management.md` §5 asks for it |
 
@@ -144,3 +144,5 @@ A `v3.1` tag is defensible today if `T-1806-bug-02` is understood and `T-2003-bu
 | 2026-08-05 | Phase 22 shipped: online help on all 26 screens, with an enforced coverage gate |
 | 2026-08-06 | Phase 23 shipped: certificate management, and `T-1906-bug-01` **fixed** |
 | 2026-08-06 | This audit: `LICENSE` gap and `docs/features.md` staleness identified — neither previously tracked |
+| 2026-08-06 | `T-2106` (Apache-2.0 + attribution) and `T-2107` (`features.md`) closed; e2e gate landed observe-only, `T-2108` filed |
+| 2026-08-06 | `T-1807-bug-02`: enforced port registry closes the collision class that had recurred five times in one phase. Also eliminated two candidate explanations for `T-1806-bug-02` (recorded on that card so they are not re-derived) |

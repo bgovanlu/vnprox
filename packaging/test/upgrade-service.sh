@@ -109,11 +109,13 @@ trap cleanup EXIT
 
 # Fail fast and clearly (not as a confusing service-start failure — see the
 # port-choice note above) if something on this machine already holds
-# TEST_PORT. Best-effort: ss may not be installed on every dev host, so a
-# missing ss is not itself fatal.
-if command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -q ":${TEST_PORT} "; then
-	die "port ${TEST_PORT} is already in use on this host — set VNPROX_TEST_SERVICE_PORT to a free port and retry (this test uses --network=host, so container and host ports are the same namespace; see this script's port-choice comment)"
-fi
+# TEST_PORT. This used to be an inline `ss | grep` here; it is now the shared
+# helper (T-1807-bug-02), which additionally names the holding PID and command
+# line — the thing the original root-cause investigation had to work out by
+# hand. Best-effort: ss may not be installed on every dev host, so a missing ss
+# is not itself fatal.
+. "$(dirname "${BASH_SOURCE[0]}")/lib/ports.sh"
+ports_require_free "$TEST_PORT" || die "port ${TEST_PORT} is already in use on this host — set VNPROX_TEST_SERVICE_PORT to a free port and retry (this test uses --network=host, so container and host ports are the same namespace; see this script's port-choice comment)"
 
 log "building $OLD_VERSION and $NEW_VERSION .debs from the current source tree into $SCRATCH"
 make -C "$REPO_ROOT/packaging" deb DIST_DIR="$SCRATCH/debs" VERSION="$OLD_VERSION" >/dev/null

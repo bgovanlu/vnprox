@@ -200,7 +200,7 @@ It still describes the v1.0 feature set and lists as **explicit non-goals** five
 |---|---|---|---|
 | `T-2003-bug-01` | High → **unreproducible** | GUI | The documented reproduction now passes under a tightened regression spec (`web/e2e/nav-after-inspector.spec.ts`). Nothing was changed to make it pass; either it was fixed incidentally or the real precondition differs from the documented one. Card stays open with the evidence |
 | `T-2002-bug-01` | Medium | API | Frozen MCP payloads had no field-removal regression guard (guards added; card open for the general pattern) |
-| `T-1807-bug-01` | Medium | Tooling | Test tooling assumes exclusive use of the machine (fixed ports); confirmed 3× |
+| `T-1807-bug-01` | Medium → **closed 2026-08-06** | Tooling | Test tooling assumed exclusive use of the machine. Closed by `T-1807-bug-02`'s enforced port registry — see §5.9 |
 | `T-1806-bug-01` | High → **partially closed** | Process | Gate landed; backlog triage is `T-2108`. See §5.1 |
 | `T-1806-bug-02` | Medium | CI | See §5.2 |
 
@@ -233,6 +233,25 @@ e2e` is the live path, and the suite it runs is red (§5.1).
 ### 5.8 Partial implementations, honestly labelled
 
 Six features are `◐` because a real backend is deliberately absent, and each says so in its own docs rather than pretending otherwise: external-IPAM production write client, eBPF flow sampler (probe + capability scaffolding only), packet-capture AF_PACKET backend, switch-driver hardware path, SR-IOV VF lifecycle, and the hub's hosted registry. None is mislabelled as complete anywhere in the shipped docs.
+
+### 5.9 Port collisions — resolved 2026-08-06 (`T-1807-bug-02`)
+
+One collision class produced five failures in a single phase, each first presenting as a product
+defect. The fourth was the fix for the third: `T-1807-bug-01` moved a packaging test to 61007
+"chosen outside the entire N8006/N8007 family", and 61007 is the phys-collapse e2e stack's vnproxd.
+Commit `9047685` had to move it again.
+
+That history is why the registry is **enforced, not documented**. `testdata/dev-ports.tsv` holds 21
+rows; `internal/devports` runs seven checks in `make check`, including one that catches the case a
+registry alone cannot — a *known* port bound by a second, independently-authored family of tooling,
+which is exactly what `9047685` was. Replaying that commit's change now fails the build with a
+message naming the owner. `packaging/test/lib/ports.sh` names the holding PID at runtime, and
+`make ports` reports live status.
+
+Building it surfaced three binds nobody had written down, two of them latent traps: `cluster-ssh.sh`
+binds host sshd on 2201-2203 and asserts a fallback onto **8008**, the e2e suite's own `k8smock`
+port; and `answers-parity.sh` depends in its own comment on 8007 being free while running
+`--network=host`. Both now preflight.
 
 ---
 
