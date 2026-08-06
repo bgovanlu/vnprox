@@ -12,6 +12,14 @@ async function logIn(page: Page): Promise<void> {
   await page.getByLabel("Realm").fill("pam");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/topology");
+  // waitForURL resolves when the navigation completes, which is BEFORE React
+  // has mounted useKeyboardShortcuts' window keydown listener. A key pressed
+  // in that gap is dropped on the floor — deterministically, in this app —
+  // which is why `?` looked like a permanent product defect that reproduced
+  // even at commits predating the help work (T-2108). Waiting for a piece of
+  // the app shell to be interactive closes the gap. Proven by experiment:
+  // pressing immediately yields 0 dialogs, pressing after this yields 1.
+  await expect(page.getByRole("button", { name: "Keyboard shortcuts" })).toBeVisible();
 }
 
 test("Ctrl+K opens the command palette and running a registered action opens the bridge editor", async ({ page }) => {

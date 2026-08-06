@@ -96,7 +96,7 @@ test("T-504 AC1/AC3: guest deny verdict deep-links into the focused firewall rul
   await pickGuestNic(page, "Destination", "vm-c");
 
   await page.getByLabel("Protocol").selectOption("tcp");
-  await page.getByLabel("Port").fill("80");
+  await page.getByLabel("Port", { exact: true }).fill("80");
 
   // Verdict: deny, always labeled Simulated, caveats always visible.
   await expect(page.getByText("Blocked", { exact: true })).toBeVisible();
@@ -175,7 +175,7 @@ test("T-806: Verify live surfaces the divergence callout on the result panel and
   await pickGuestNic(page, "Source", "vm-a");
   await pickGuestNic(page, "Destination", "vm-c");
   await page.getByLabel("Protocol").selectOption("tcp");
-  await page.getByLabel("Port").fill("2222");
+  await page.getByLabel("Port", { exact: true }).fill("2222");
 
   // Simulated verdict: deny (no explicit rule matches tcp/2222 — falls to
   // the cluster's default policy_in DROP, per sim-lab.yaml's T-806 doc

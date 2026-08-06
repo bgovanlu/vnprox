@@ -38,6 +38,14 @@ async function logIn(page: Page): Promise<void> {
   await page.getByLabel("Realm").fill("pam");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/topology");
+  // waitForURL resolves when the navigation completes, which is BEFORE React
+  // has mounted useKeyboardShortcuts' window keydown listener. A key pressed
+  // in that gap is dropped on the floor — deterministically, in this app —
+  // which is why `?` looked like a permanent product defect that reproduced
+  // even at commits predating the help work (T-2108). Waiting for a piece of
+  // the app shell to be interactive closes the gap. Proven by experiment:
+  // pressing immediately yields 0 dialogs, pressing after this yields 1.
+  await expect(page.getByRole("button", { name: "Keyboard shortcuts" })).toBeVisible();
 }
 
 test("the Help button opens help for the screen you're on, and F1 does the same", async ({ page }) => {
@@ -46,7 +54,11 @@ test("the Help button opens help for the screen you're on, and F1 does the same"
   await page.getByRole("button", { name: "Help", exact: true }).click();
   const panel = page.getByRole("dialog");
   await expect(panel.getByText("Topology", { exact: true })).toBeVisible();
-  await expect(panel.getByText("Switch view")).toBeVisible();
+  // The heading, not any text mentioning the phrase: the panel's own summary
+  // paragraph also contains "Switch view", so a bare getByText is a strict-mode
+  // violation. Tightened rather than relaxed — the section heading is what this
+  // assertion was always about.
+  await expect(panel.getByRole("heading", { name: "Switch view" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
 

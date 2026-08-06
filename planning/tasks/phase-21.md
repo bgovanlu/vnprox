@@ -485,3 +485,43 @@ directions.
 because the tinted nodes that expose the defect only exist once earlier specs have written state.
 That is the same store-pollution mechanism as `T-2108-followup-01`, and it means **an a11y sweep
 that only ever runs standalone will not see this class of defect at all.**
+
+### Third pass, 2026-08-06 — the `?` binding was never a product defect
+
+Full suite after the second pass: **15 failed / 73 passed** (from 18/69), no new failures, 19.4m
+(from 24.3m). `conntrack`, `diagnose` and `flows` cleared as side effects of the spotlight and
+contrast fixes.
+
+**Correction to this card's own first triage table.** It recorded the `?` shortcut as
+*"pre-existing, not caused by phase 22 — settled by experiment"*, on the evidence that
+`command-palette.spec.ts:48` fails identically at `5019c45`. That evidence was real and the
+conclusion drawn from it was still wrong: it is not a product defect at all.
+
+Established by direct probe, not inference:
+
+| Experiment | Result |
+|---|---|
+| Does the keydown event reach the page? | Yes — `key: "?"`, `code: "Slash"`, `target: BODY`, `defaultPrevented: false` |
+| Does a dialog open at all? | **Yes** — one dialog, `aria-labelledby` resolving to text `"Keyboard shortcuts…"` |
+| Press immediately after `waitForURL("**/topology")` | **0 dialogs** |
+| Press after waiting for the shell's own "Keyboard shortcuts" button | **1 dialog** |
+
+`waitForURL` resolves when the navigation completes, which is *before* React mounts
+`useKeyboardShortcuts`' window keydown listener. A key pressed in that gap is dropped. The race is
+**deterministic** in this app — it always loses — which is exactly why it presented as a permanent
+product defect and why it "reproduced" at a commit predating the help work. A flaky race would have
+been recognised as one; a reliably-lost one looks like a broken feature.
+
+Not treated as a product defect: a real user cannot press a key in the window between navigation
+and hydration. The specs now wait for the shell to be interactive before sending keys.
+
+**Also fixed, all ambiguous-locator (strict-mode) failures — tightened, never loosened:**
+
+| Spec | Locator | Also matched |
+|---|---|---|
+| `help.spec.ts` | `getByText("Switch view")` | the panel's own summary paragraph, which contains the phrase |
+| `simulator.spec.ts` ×2 | `getByLabel("Port")` | the "**Port**s" nav link, and "Documentation ex**port**"'s help button — the latter added by phase 22 |
+
+**Result:** `command-palette` and `help` fully green; `simulator` 3 failed → 1.
+
+Cumulative across the three passes: **29 → 23 → 18 → 15 → ~9 failing.**
