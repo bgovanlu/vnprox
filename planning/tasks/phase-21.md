@@ -552,3 +552,32 @@ Regenerated, but only after **visually inspecting the new render** rather than t
 percentage: all four layer bands present, correct entities, correct relationships. Recorded here
 because blindly re-baselining a screenshot is the single easiest way to erase a real regression, and
 "the diff is only 25%" is not evidence of anything.
+
+### Fifth pass — 9 failing. `flows:185`: two hypotheses tested, both refuted, change reverted
+
+Full suite: **9 failed / 78 passed**, 16.1m. `conntrack:60` and `topology:136` confirmed fixed.
+
+`flows.spec.ts:185` is **intermittent**, not newly broken: it failed in runs 2 and 5, passed in runs
+3 and 4, and fails standalone. Its assertion samples the canvas at the geometric midpoint of a flow
+edge's two endpoints and requires that pixel not to be the background colour.
+
+| Hypothesis | Experiment | Result |
+|---|---|---|
+| Sub-pixel fragility — a 1px probe on a thin anti-aliased curve | Widened to an 11×11 neighbourhood | **Refuted** — still no non-background pixel |
+| The paint is asynchronous; the assertion runs too early | Wrapped in `expect.poll`, 30s budget | **Refuted** — still false after 30s |
+
+So the edge genuinely is not painted anywhere near that point in the failing runs. The most likely
+remaining explanation is geometric rather than temporal: the edge is a **bezier**, and the
+straight-line midpoint of its endpoints does not lie on the curve. How far the curve bows depends on
+the layout, which varies between runs — which fits "intermittent and layout-dependent" exactly,
+where neither probe width nor time would help.
+
+**Both changes were reverted rather than committed.** Neither fixed the failure, and leaving a
+speculative change in a spec that still fails implies it did something. This is the same discipline
+`T-1806-bug-02` applied when its own speculative `pipefail` fix could not be reproduced at three
+sizes and was reverted rather than shipped.
+
+**Next approach for whoever picks this up:** sample along the edge's *actual* rendered geometry —
+read the path element's own points, or scan the corridor between the two nodes excluding the node
+rectangles — instead of assuming a straight-line midpoint. Do not simply widen the probe further;
+that has been tried and it does not work.
