@@ -55,9 +55,18 @@ export function SpotlightSearch({ open, onOpenChange, onSelect }: SpotlightSearc
                 }}
                 className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800"
               >
+                {/* The separating spaces are text nodes, not just `ml-*`
+                    margins. Margins position the badges visually but put no
+                    whitespace in the accessible name, so this button used to
+                    announce as "app01guest· pve1 name" — a screen reader reads
+                    "app01guest" as one word, and the entity name and its kind
+                    are run together. Found by T-2108: diagnose.spec.ts and
+                    guest-interior.spec.ts both look for the button by its
+                    accessible name "app01 guest", which is what it should have
+                    been announcing all along. */}
                 <span className="truncate">
-                  <span className="font-medium text-slate-800 dark:text-slate-100">{r.label}</span>
-                  <span className="ml-2 text-xs text-slate-400">{r.kind}</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-100">{r.label}</span>{" "}
+                  <span className="ml-2 text-xs text-slate-400">{r.kind}</span>{" "}
                   {r.node && <span className="ml-1 text-xs text-slate-400">· {r.node}</span>}
                 </span>
                 <span className="shrink-0 text-xs text-slate-400">{r.matchedField}</span>

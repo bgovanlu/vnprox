@@ -263,7 +263,16 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-medium text-slate-800 dark:text-slate-100">{data.label}</span>
         {!isPill && (
-          <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          // Contrast here is measured against the *node's own tint*, not the
+          // page background: entity nodes carry per-kind and per-state
+          // background tints, and this badge sits on top of them. Both halves
+          // of the usual muted pairing fail against those tints —
+          // `dark:text-slate-500` measured 1.84:1 and `dark:text-slate-400`
+          // 3.7-4.4:1, either side of WCAG AA's 4.5:1 but neither above it
+          // (T-2108). So this uses a step darker in light mode and lighter in
+          // dark mode than muted text elsewhere, which is the only way to
+          // clear 4.5:1 across every tint a node can take.
+          <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-300">
             {data.kind}
           </span>
         )}

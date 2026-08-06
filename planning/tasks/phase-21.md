@@ -440,3 +440,48 @@ future spec that writes to the store can perturb any later spec, and the next oc
 look like a product defect. Options are a fresh DB per spec file (slow, and the fixture reseed is
 not free) or a convention that specs clean up after themselves (easy to forget, which is how this
 arose). Filed as `T-2108-followup-01` rather than decided here.
+
+### Second pass, 2026-08-06 — verification and two more product defects
+
+Full suite after the shared-state fixes: **18 failed / 69 passed** (from 23/64), zero 429s, and 5
+minutes faster (24.3m vs 29.6m). Diff of the failure lists, not just the totals:
+
+| Change | Specs |
+|---|---|
+| **Fixed** | `saved-views` ×3, `nav-after-inspector`, `map-export`, `a11y: IPAM` |
+| **New** | `help.spec.ts:61` |
+
+`help.spec.ts:61` is the `?`-shortcut test — the same binding `command-palette.spec.ts:48` fails on.
+**It is not caused by the changes in this pass**: run standalone with every change in place it
+passes, exactly as it did before. It joins the suite-context class.
+
+#### Product defect: spotlight results announce as one word
+
+`diagnose` and `guest-interior` both timed out on
+`getByRole("button", {name: "app01 guest"})`. The accessibility snapshot showed the button's real
+accessible name was **`app01guest· pve1 name`** — no space. `SpotlightSearch.tsx` separated the
+entity label from its kind badge with an `ml-2` *margin*, which positions the badge visually but
+puts no whitespace in the accessible name. A screen reader reads "app01guest" as one word.
+
+The specs were right and the DOM was wrong, so the fix is text-node spacing in the component, not a
+loosened locator. `diagnose` passes; `guest-interior` now gets **past** the search and fails deeper,
+at `tabpanel "Interior"` → `interior-view` — a genuine feature-level failure that is now visible
+because the earlier one stopped masking it.
+
+#### Product defect: entity-node kind badge fails AA on every node tint
+
+The badge's contrast is measured against the **node's own tint**, not the page background — entity
+nodes carry per-kind and per-state background tints and the badge sits on them. Both halves of the
+usual muted pairing fail there: `dark:text-slate-500` measured **1.84:1** and `dark:text-slate-400`
+**3.7–4.4:1**, either side of 4.5:1 but neither above it. Changed to
+`text-slate-600 dark:text-slate-300`, a step further from the background than muted text elsewhere,
+which is the only way to clear AA across every tint a node can take.
+
+This is also why the earlier bulk contrast sweep had to exclude this one site: it is not a
+neutral-background element, and the "obvious" repo-wide pattern is wrong for it in **both**
+directions.
+
+**Method note for the next pass.** `axe: Topology` passes standalone and fails in a mini-suite,
+because the tinted nodes that expose the defect only exist once earlier specs have written state.
+That is the same store-pollution mechanism as `T-2108-followup-01`, and it means **an a11y sweep
+that only ever runs standalone will not see this class of defect at all.**
