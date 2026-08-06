@@ -81,6 +81,10 @@ type Config struct {
 	// skips that check entirely, same degradation as every other optional
 	// Config field.
 	Wan WanProvider
+	// Cert is T-2302's certificate seam (*certs.Service via a cmd/vnproxd
+	// adapter), backing the cert_* checks (source "cert"). Nil skips them
+	// entirely, same degradation as every other optional Config field.
+	Cert CertProvider
 	// Flow is T-1504's classified-flow seam (internal/flow.Classifier via a
 	// cmd/vnproxd adapter over recent flow_samples), backing the
 	// service_traffic_on_wrong_network finding (source "flow", not
@@ -168,6 +172,7 @@ type Engine struct {
 	mtuSvc           MTUProvider
 	wgSvc            WGProvider
 	wanSvc           WanProvider
+	certSvc          CertProvider
 	flowSvc          FlowProvider
 	k8sSvc           K8sProvider
 	cephSvc          CephProvider
@@ -253,6 +258,7 @@ func New(cfg Config) *Engine {
 		mtuSvc:           cfg.MTU,
 		wgSvc:            cfg.WG,
 		wanSvc:           cfg.Wan,
+		certSvc:          cfg.Cert,
 		log:              logger,
 		now:              now,
 		onChange:         cfg.OnChange,
@@ -326,6 +332,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, federationTunnelFindings(e.federationSvc, e.wgSvc, e.federationDB, e.now())...)
 	out = append(out, peerTrustFindings(e.peerTrustSvc, e.peerUnreachDB)...)
 	out = append(out, storeCapacityFindings(e.storeCapacitySvc, e.thresholds.StoreCapacityWarnBytes, e.storeCapacityDB)...)
+	out = append(out, checkCertificates(e.certSvc)...)
 	out = append(out, e.healthFindings()...)
 	out = append(out, e.rogueFindings()...)
 	sortFindings(out)

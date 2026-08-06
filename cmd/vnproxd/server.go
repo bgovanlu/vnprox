@@ -17,6 +17,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/api"
 	"github.com/bgovanlu/vnprox/internal/blueprint"
+	"github.com/bgovanlu/vnprox/internal/certs"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/dhcp"
@@ -641,7 +642,30 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// T-1905: storeCapacityAdapter reports the app store's own on-disk size
 	// (SizeBytes, T-1903's existing source) for store_near_capacity.
 	storeCapacitySvc := storeCapacityAdapter{db: db, localNode: localNode}
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
+
+	// T-2301..T-2303: the cluster certificate inventory. Reads pmxcfs, which
+	// already holds every node's certificate locally, so this needs no peer
+	// fan-out — and is therefore available precisely when peers are
+	// unreachable, which is when a certificate problem is the likely cause.
+	//
+	// Wiring order matters: the service scans once during construction, so
+	// attachCertVerifyNames below hands peerTrust a usable mapping before the
+	// first peer request, and Preflight reports any blocking problem at
+	// startup rather than letting it surface as an opaque handshake error
+	// later (T-1906-bug-01's "warn before the first peer call" requirement).
+	certSvc := certs.NewService(certs.ServiceOptions{
+		Logger:         logger.With("component", "certs"),
+		Facts:          certClusterFacts(sdnPVEClient),
+		Root:           cfg.Certs.Root,
+		DaemonCertPath: cfg.Server.TLSCertPath,
+		LocalNode:      localNode(),
+		ExpiryWarn:     cfg.Certs.ExpiryWarn(),
+	})
+	attachCertVerifyNames(peerTrust, certSvc)
+	certSvc.Preflight()
+	go certSvc.Run(ctx)
+	certFindings := certFindingsAdapter{svc: certSvc}
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -1214,6 +1238,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LLDP:       topoSvc,
 		Drift:      driftSvc,
 		Findings:   findingsEngine,
+		Certs:      certSvc,
 		FDB:        topoSvc,
 		Metrics:    metricsSampler,
 		// T-1001: metricsSampler also satisfies MetricsCounterService

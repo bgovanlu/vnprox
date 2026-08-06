@@ -24,6 +24,7 @@ import { ToolsPage } from "./pages/ToolsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AlertRulesPage } from "./pages/AlertRulesPage";
 import { FederationClustersPage } from "./pages/FederationClustersPage";
+import { CertificatesPage } from "./pages/CertificatesPage";
 import { ChangesetReviewPage } from "./changesets/ChangesetReviewPage";
 import { EmbedFrame } from "./embed/EmbedFrame";
 import { EmbedMap } from "./embed/EmbedMap";
@@ -226,6 +227,14 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Alert rules">
                   <AlertRulesPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/settings/certificates"
+              element={
+                <DesktopOnlyRoute pageLabel="Certificates">
+                  <CertificatesPage />
                 </DesktopOnlyRoute>
               }
             />
