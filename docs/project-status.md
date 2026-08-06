@@ -17,7 +17,7 @@ vnprox is **feature-complete against three shipped arcs and materially under-val
 | **GUI coverage** | **99%** | 26 of 26 screens, all with help; 1 open navigation defect |
 | **API surface** | **100%** | Contract frozen at v3.0, additive-only since |
 | **Docs currency** | **100%** | `features.md` refreshed 2026-08-06 (`T-2107`) |
-| **Automated test gate** | **100%** | `make check` green: 4,058 tests, lint, vet, govulncheck, audit |
+| **Automated test gate** | **100%** | `make ci` green locally: 4,058 tests, lint, vet, arm64 cross-build, 7 fuzz targets, package. **GitHub Actions is unfunded and runs nothing** — the gate is the dev host |
 | **E2E gate** | **observe-only** | Gate landed 2026-08-06; the suite is red and `T-2108` tracks triage |
 | **Hardware validation** | **5%** | **6 of 123 items validated on real PVE** |
 
@@ -64,7 +64,7 @@ Ranked by *what it costs to leave this alone*, not by effort.
 | 2 | **Multi-node proof**: apply, distributed rollback, drift, federation, HA failover | `T-1803` | The product's core safety guarantee is unproven where it matters | **Human only** (needs 2+ nodes) |
 | 3 | **Failure-injection proof of commit-confirm** | `T-1804` | "It rolls back if it cuts you off" has never been observed doing so on hardware | **Human only** |
 | 4 | ~~No `LICENSE` file~~ | `T-2106` | **Closed 2026-08-06** — Apache-2.0, with `NOTICE`, a generated `THIRD-PARTY-LICENSES.md`, Debian `copyright`, and a test that fails if any of them is dropped | Done |
-| 5 | ~~E2E suite runs in no gate~~ → **triage the backlog** | `T-1806-bug-01` → `T-2108` | **Gate landed 2026-08-06** (`make e2e` + a CI job). It immediately showed the suite is red — one real WCAG AA defect (fixed) plus an untriaged backlog. Job is observe-only until `T-2108` clears it | Agent-completable |
+| 5 | ~~E2E suite runs in no gate~~ → **triage the backlog** | `T-1806-bug-01` → `T-2108` | **Gate landed 2026-08-06** (`make e2e` + a CI job). It immediately showed the suite is red — **29 failed / 59 passed** — including one real WCAG AA defect (fixed). Job is observe-only until `T-2108` clears it | Agent-completable |
 | 6 | **Packaging matrix red** (`cluster-ssh`) | `T-1806-bug-02` | Cannot tag a release with a red pipeline in good conscience | Agent-completable |
 
 ### P1 — user-visible or operationally important

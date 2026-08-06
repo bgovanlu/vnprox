@@ -14,6 +14,7 @@ DIST_DIR    := dist
 WEB_DIR     := web
 PACKAGING_DIR := packaging
 
+FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
@@ -150,6 +151,26 @@ deb: ## build the .deb into dist/ (builds the frontend first — see below)
 
 MOCKPVE_ADDR    ?= :8006
 MOCKPVE_FIXTURE ?= testdata/clusters/single-node.yaml
+
+ci: ## everything GitHub Actions would run, locally (check + cross-arm64 + fuzz + package)
+	@echo ">> ci: this is the CI-equivalent gate. GitHub Actions is currently"
+	@echo ">> ci: unfunded for this repository, so THIS is the gate that matters."
+	@echo ">> ci: [1/4] make check"
+	@$(MAKE) check
+	@echo ">> ci: [2/4] cross-compile for linux/arm64 (build-only, matches the cross-arm64 job)"
+	GOOS=linux GOARCH=arm64 $(GO) build ./...
+	@echo ">> ci: [3/4] fuzz every untrusted-input parser ($(FUZZTIME) each, matches the fuzz job)"
+	$(GO) test -run='^$$' -fuzz='^FuzzParse$$'           -fuzztime=$(FUZZTIME) ./internal/host/
+	$(GO) test -run='^$$' -fuzz='^FuzzPeerAuth$$'        -fuzztime=$(FUZZTIME) ./internal/peer/
+	$(GO) test -run='^$$' -fuzz='^FuzzParseBGPSummary$$' -fuzztime=$(FUZZTIME) ./internal/host/
+	$(GO) test -run='^$$' -fuzz='^FuzzParseEVPNVNI$$'    -fuzztime=$(FUZZTIME) ./internal/host/
+	$(GO) test -run='^$$' -fuzz='^FuzzParseLLDP$$'       -fuzztime=$(FUZZTIME) ./internal/host/
+	$(GO) test -run='^$$' -fuzz='^FuzzParseDHCPLeases$$' -fuzztime=$(FUZZTIME) ./internal/host/
+	$(GO) test -run='^$$' -fuzz='^FuzzParseAll$$'        -fuzztime=$(FUZZTIME) ./internal/fwlog/
+	@echo ">> ci: [4/4] package"
+	@$(MAKE) deb
+	@echo ">> ci: PASSED. Note: make e2e is NOT included — the Playwright"
+	@echo ">> ci: suite is currently red (29 failed / 59 passed, see T-2108)."
 
 e2e: ## Playwright end-to-end suite against pvemock + vnproxd + the production SPA
 	@echo ">> e2e: building the SPA (vnproxd embeds web/dist) and running Playwright"

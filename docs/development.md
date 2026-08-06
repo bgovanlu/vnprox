@@ -68,9 +68,8 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
   re-checked since the day it was written.
 
   There is now a `make e2e` target and an `e2e` job in `ci.yml`. The job is deliberately
-  **`continue-on-error: true`** for the moment: turning the suite on revealed it is red — a first
-  full run found 15+ failures across `a11y`, `changesets`, `conntrack`, `diagnose`, `federation`
-  and `command-palette`. One was a real WCAG AA defect in the nav rail (white-on-amber at 2.61:1,
+  **`continue-on-error: true`** for the moment: turning the suite on revealed it is red — a first full
+  run found **29 failures against 59 passes**, spread across 14 spec files. One was a real WCAG AA defect in the nav rail (white-on-amber at 2.61:1,
   fixed); the rest are untriaged. Blocking on that today would wedge every PR or get the job
   deleted. **`T-2108` tracks triaging the backlog and flipping the job to blocking** — read that
   card before treating a green `CI` badge as meaning the e2e suite passed.
@@ -83,7 +82,20 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
   - A conditional step (`if (await x.isVisible())`) turns a regression into a silent skip. Every
     step in a spec should be unconditional, or the spec is lying about its coverage.
 
-## CI (GitHub Actions)
+## CI
+
+> **GitHub Actions is currently unfunded for this repository, so no workflow runs.** The
+> `.github/workflows/` definitions below are kept accurate and will run again when funding is
+> restored, but **today the gate that matters is `make ci` on a development host** — it runs the
+> exact same four jobs (`make check`, the arm64 cross-build, all seven fuzz targets, and the
+> package build). Treat a red `make ci` the way you would treat a red pipeline. Do not read the
+> absence of a failing check on a commit as evidence that anything passed.
+>
+> `make e2e` is deliberately **not** part of `make ci`: the Playwright suite is currently red
+> (29 failed / 59 passed — `T-2108`), and folding a known-red suite into the gate would either
+> stop all work or train people to ignore the gate.
+
+### Workflow definitions (GitHub Actions)
 
 `ci.yml` runs five jobs on every PR and push to `main`:
 
@@ -94,6 +106,14 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
 | `fuzz` | Every untrusted-input parser's fuzz target, 60s each (T-604) — see `docs/security-verification.md`'s fuzz inventory | **Required** |
 | `package` | `make build` (production frontend) + `make deb`, artifact uploaded | **Required** |
 | `e2e` | `make e2e` — Playwright against pvemock + vnproxd + the production SPA. Uploads traces on failure | **Observe-only** (`continue-on-error`, see above and `T-2108`) |
+
+Local equivalents, in the order of decreasing frequency you should run them:
+
+```
+make check   # every change — lint, typecheck, 4,058 tests, govulncheck, npm audit
+make ci      # before pushing — check + arm64 cross-build + 7 fuzz targets + package
+make e2e     # when touching UI flows — Playwright; currently red, see T-2108
+```
 
 `release.yml`: on tag — build, sign .deb, publish to the apt repo, GitHub release with changelog. Keep runtimes <10 min; cache Go/npm.
 

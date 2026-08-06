@@ -275,16 +275,29 @@ revealed that it is red. The job is `continue-on-error: true` so that it *runs a
 today rather than being deleted for wedging every PR; this card is what stops "temporarily"
 becoming "permanently".
 
-**First full local run, 2026-08-06** (90 tests, 1 worker) — failures observed in the first 32:
+**First full local run, 2026-08-06** — complete: **29 failed, 59 passed** in 30 minutes
+(1 worker, `three-node-vlan` fixture).
 
-| Spec | Count | First diagnosis |
+| Spec | Fails | Diagnosis |
 |---|---|---|
-| `a11y` | 9 | **Real defect, fixed in this change**: the nav-rail findings badge rendered white on `bg-amber-500/90` at 2.61:1 against WCAG AA's 4.5:1. It lives in the chrome, so it failed on every page — one fix, nine specs. Re-run needed to confirm all nine clear. |
+| `a11y` | 9 | **Real defect, fixed in this change.** The nav-rail findings badge rendered white on `bg-amber-500/90` at 2.61:1 against WCAG AA's 4.5:1. It lives in the chrome, so it failed on every page — one cause, nine specs. Re-run to confirm all nine clear. |
+| `simulator` | 3 | Untriaged |
+| `help` | 3 | One is a **bad locator in our own spec** (`getByText("Switch view")` matches two elements — strict-mode violation); one is the `?` failure below; one probably cascades from it. |
+| `user-guide-tasks` | 2 | Untriaged |
+| `saved-views` | 2 | Untriaged |
 | `changesets` | 2 | Untriaged |
-| `conntrack` | 1 | Untriaged — locator waits on `[data-entity-ref="bridge:pve1:vmbr0"]` |
-| `diagnose` | 1 | Untriaged — waits on a guest button inside a dialog |
+| `topology` | 1 | Untriaged |
+| `microseg` | 1 | Untriaged |
+| `history` | 1 | Untriaged |
+| `guest-interior` | 1 | Untriaged |
 | `federation` | 1 | Untriaged — waits on `region "Global cluster map"` |
-| `command-palette` | 1 | Untriaged — `?` should open `dialog "Keyboard shortcuts"`. **Check T-2201..T-2205 first**: phase 22 touched `ShortcutHelpDialog` and added a second top-bar button, so this may be a regression that phase shipped. It was not caught because this suite was not running. |
+| `diagnose` | 1 | Untriaged — waits on a guest button inside a dialog |
+| `conntrack` | 1 | Untriaged — waits on `[data-entity-ref="bridge:pve1:vmbr0"]` |
+| `command-palette` | 1 | **Pre-existing, not caused by phase 22 — settled by experiment.** Pressing `?` does not open `dialog "Keyboard shortcuts"`. Phase 22 modified `useKeyboardShortcuts` and `ShortcutHelpDialog`, making it the obvious suspect, so the spec was re-run in a worktree at `5019c45` (the commit immediately before phase 22): **it fails there identically**. Whatever breaks `?` in a real browser predates that work and is still unfound — note the vitest coverage of the same binding passes, so the divergence is browser-vs-jsdom, not handler logic. |
+
+**Method note.** That last row is the shape triage should take: name the suspect, then run the
+experiment that could exonerate or convict it, rather than reasoning from plausibility. It cost one
+worktree and 90 seconds.
 
 **Scope**
 

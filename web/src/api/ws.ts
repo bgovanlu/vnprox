@@ -124,6 +124,18 @@ export function createWsClient(options: WsClientOptions): WsClient {
 
   function connect(): void {
     if (closedByCaller) return;
+    // A scheduled reconnect can outlive the document it belongs to: under
+    // Vitest, a jittered timer fires after the jsdom environment has been
+    // torn down, `defaultWsUrl()` dereferences a `window` that no longer
+    // exists, and the whole run exits non-zero with every test passing —
+    // an intermittently red primary gate for a reason unrelated to any
+    // change under test. Reconnecting into a destroyed environment is
+    // never right in production either, so this bails rather than being
+    // suppressed at the call site.
+    if (typeof window === "undefined") {
+      closedByCaller = true;
+      return;
+    }
     setStatus(reconnectAttempt === 0 ? "connecting" : "reconnecting");
 
     const ws = new WebSocketImpl(resolveUrl());
