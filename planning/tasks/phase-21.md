@@ -818,3 +818,41 @@ back on the threshold.
 
 Worth noting for its own sake: this is the gate catching a real accessibility regression *by
 itself*, on a run whose purpose was to confirm unrelated fixes. That is the argument for AC2.
+
+---
+
+### T-2108 · **CLOSED 2026-08-07**
+
+**Final: 89 passed / 0 failed / 2 skipped**, ~10 minutes. The two skips are `microseg.spec.ts`'s own
+`test.skip`s, which need a seeded NAS corpus and say so in the file.
+
+| Acceptance criterion | Status |
+|---|---|
+| 1. `make e2e` green locally and in CI | ✅ green locally, four consecutive full runs converging to zero |
+| 2. The `e2e` job is required, not observe-only | ✅ `continue-on-error` removed from `ci.yml`; `docs/development.md`'s job table updated |
+| 3. Every product defect fixed with its own regression assertion, not a loosened locator | ✅ ten defects, each with a pinning test; every new guard mutation-checked against the pre-fix code |
+
+**The ten product defects the gate found**, none of which any unit test could see:
+
+1. `T-1304`'s guest interior returned **400 to every request a browser ever made**.
+2. **The app could not navigate away from the Topology page** (`T-2003-bug-01`).
+3. The **VXLAN zone wizard could not be completed** — peer auto-suggest read a field shape the API
+   has never sent.
+4. The **VLAN wizard's LLDP trunk check warned on every neighbour**, naming a blank switch and
+   port — same wrong-shape bug, second site.
+5. Flow records ingested during the daemon's cold start are **unattributable forever**.
+6. A **decorative timeline marker swallowed changeset clicks**.
+7. WCAG AA: findings badge, white on amber at **2.61:1**, on every page.
+8. WCAG AA: muted text at **3.74:1**.
+9. WCAG AA: entity-node label unreadable on tinted nodes (**1.84:1**).
+10. WCAG AA: entity-node badge chip at **4.35–4.39:1**.
+
+**Four of those ten had green unit tests** sitting on fixtures that invented the shape the code
+expected (#3 and #4 explicitly; #1's tests spelled the ref raw; #2's regression spec exercised the
+wrong precondition). That is the argument for this gate in one line: *a fixture written by the same
+person who wrote the bug agrees with the bug.*
+
+**Deferred, with cards:** `T-2108-followup-01` (per-spec store isolation — specs share one
+`vnproxd`, which is what makes drawer/marker state leak across files). `simulator.spec.ts`'s
+`traceFromContextMenu` still retries a right-click with no pan and carries the same off-screen
+exposure `conntrack` had; convert it the next time it flakes.

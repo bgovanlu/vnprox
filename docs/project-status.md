@@ -18,7 +18,7 @@ vnprox is **feature-complete against three shipped arcs and materially under-val
 | **API surface** | **100%** | Contract frozen at v3.0, additive-only since |
 | **Docs currency** | **100%** | `features.md` refreshed 2026-08-06 (`T-2107`) |
 | **Automated test gate** | **100%** | `make ci` green locally: 4,058 tests, lint, vet, arm64 cross-build, 7 fuzz targets, package. **GitHub Actions is unfunded and runs nothing** — the gate is the dev host |
-| **E2E gate** | **observe-only** | Gate landed 2026-08-06. Triaged from **29 failed / 59 passed** to **9 failed / 78 passed**, run time 29.6m → 16.1m. Four real product defects fixed along the way; 9 remain (`T-2108`). Still `continue-on-error` — the job is not required until the suite is green |
+| **E2E gate** | **required** | Gate landed 2026-08-06, green and blocking 2026-08-07. **29 failed / 59 passed → 89 passed / 0 failed / 2 skipped**, run time 29.6m → ~10m. **Ten real product defects** fixed along the way, four of them with green unit tests sitting on fixtures that invented the shape the code expected (`T-2108`, closed) |
 | **Hardware validation** | **5%** | **6 of 123 items validated on real PVE** |
 
 The first six rows describe a mature product. The last two are why the current arc exists. **The gap between "our tests pass" and "this works on your cluster" is the project's dominant risk, and it is not shrinking quickly** — five of the six validated items were validated a day ago; before that the number was one.
@@ -65,7 +65,7 @@ Ranked by *what it costs to leave this alone*, not by effort.
 | 2 | **Multi-node proof**: apply, distributed rollback, drift, federation, HA failover | `T-1803` | The product's core safety guarantee is unproven where it matters | **Human only** (needs 2+ nodes) |
 | 3 | **Failure-injection proof of commit-confirm** | `T-1804` | "It rolls back if it cuts you off" has never been observed doing so on hardware | **Human only** |
 | 4 | ~~No `LICENSE` file~~ | `T-2106` | **Closed 2026-08-06** — Apache-2.0, with `NOTICE`, a generated `THIRD-PARTY-LICENSES.md`, Debian `copyright`, and a test that fails if any of them is dropped | Done |
-| 5 | ~~E2E suite runs in no gate~~ → **triage the backlog** | `T-1806-bug-01` → `T-2108` | **29 → 9 failures, 78 passing** (2026-08-06). Found and fixed 4 real product defects: two WCAG AA contrast failures, spotlight results announcing as one word, and a stale visual baseline nobody had regenerated. Two shared-state harness causes fixed (login rate limiter, store pollution). Job stays observe-only until green | Agent-completable |
+| 5 | ~~E2E suite runs in no gate~~ → ~~triage the backlog~~ | `T-1806-bug-01` → `T-2108` | **Closed 2026-08-07: 29 failed / 59 passed → 89 passed / 0 failed**, and the job is required. Ten real product defects found and fixed, including a feature that returned 400 to every browser request since it shipped, an app-wide navigation dead end, and two SDN wizards reading a field shape the API has never sent | Done |
 | 6 | **Packaging matrix red** (`cluster-ssh`) | `T-1806-bug-02` | Cannot tag a release with a red pipeline in good conscience | Agent-completable |
 
 ### P1 — user-visible or operationally important
@@ -124,8 +124,8 @@ shrinking while the hardware number does not move.
 1. **Run the phase-18 validation loop** (`T-1802`, then `T-1804`). **This is now the only item on
    this list that improves the headline number, and the only one no agent can do.** Turns ~100
    mock-validated claims into evidence.
-2. **Triage the e2e backlog** (`T-2108`) and make the gate blocking. The suite runs but is red, so
-   today it buys visibility rather than protection.
+2. ~~**Triage the e2e backlog** (`T-2108`) and make the gate blocking.~~ **Done 2026-08-07** — the
+   suite is green and the job is required.
 3. **Explain `T-1806-bug-02`.** The packaging matrix is what proves the `.deb` installs; a release
    cut over an unexplained red signal is the habit `T-1806-bug-01` exists to break.
 4. **Phase 21**, starting with `T-2102` (signed apt repo) and `T-2101` (Terraform/Ansible) — the two
@@ -141,7 +141,7 @@ Closed since the previous revision: the licence decision (`T-2106`), the e2e gat
 
 | Cut | Ready? | Blocking |
 |---|---|---|
-| `v3.1` (help + certificates + doctor) | **Nearly** | `Packaging matrix` red (`T-1806-bug-02`); e2e suite red (`T-2108`) |
+| `v3.1` (help + certificates + doctor) | **Nearly** | `Packaging matrix` red (`T-1806-bug-02`) is the only remaining blocker; the e2e suite is green and required |
 | `v4.0` (arc 4 complete) | No | Phase 21 not started; phase 18 unvalidated |
 | Public/community release | No | ~~No license~~ (closed); no signed repository; no compatibility matrix |
 
@@ -159,5 +159,6 @@ A `v3.1` tag is defensible today once `T-1806-bug-02` is understood. `T-2003-bug
 | 2026-08-06 | Phase 23 shipped: certificate management, and `T-1906-bug-01` **fixed** |
 | 2026-08-06 | This audit: `LICENSE` gap and `docs/features.md` staleness identified — neither previously tracked |
 | 2026-08-06 | `T-2106` (Apache-2.0 + attribution) and `T-2107` (`features.md`) closed; e2e gate landed observe-only, `T-2108` filed |
+| 2026-08-07 | `T-2108` and `T-1806-bug-01` closed: e2e suite green (89 passed / 0 failed) and the job is required. `T-2003-bug-01` root-caused and fixed. Ten product defects found by the gate, four of which had green unit tests over invented fixtures |
 | 2026-08-06 | `T-1807-bug-02`: enforced port registry closes the collision class that had recurred five times in one phase. Also eliminated two candidate explanations for `T-1806-bug-02` (recorded on that card so they are not re-derived) |
 | 2026-08-06 | `T-1904` (`vnproxctl doctor`) shipped — **phase 19 complete**. Ten checks, remediation structurally enforced; two follow-ups filed rather than left implicit |

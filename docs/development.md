@@ -75,25 +75,34 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
 - Components: function components only; server state via TanStack Query only (no fetch in components); canvas state in zustand.
 - Testing: Vitest + Testing Library on logic-bearing components (drawer, validators display, simulator result rendering); Playwright smoke suite (P6) against `make dev` + mock PVE.
 
-  **`web/e2e/` now runs in CI, observe-first (T-1806-bug-01, partially closed).** For three
-  arcs the 35-spec Playwright suite was run by nothing: no `make` target, no CI job. Task reports
+  **`web/e2e/` runs in CI and is BLOCKING (T-1806-bug-01 and T-2108, both closed 2026-08-07).**
+  For three arcs the Playwright suite was run by nothing: no `make` target, no CI job. Task reports
   across those arcs cite passing e2e specs as evidence, and none of those claims had been
   re-checked since the day it was written.
 
-  There is now a `make e2e` target and an `e2e` job in `ci.yml`. The job is deliberately
-  **`continue-on-error: true`** for the moment: turning the suite on revealed it is red — a first full
-  run found **29 failures against 59 passes**, spread across 14 spec files. One was a real WCAG AA defect in the nav rail (white-on-amber at 2.61:1,
-  fixed); the rest are untriaged. Blocking on that today would wedge every PR or get the job
-  deleted. **`T-2108` tracks triaging the backlog and flipping the job to blocking** — read that
-  card before treating a green `CI` badge as meaning the e2e suite passed.
+  Turning it on found **29 failures against 59 passes** across 14 spec files. Triaging that backlog
+  took the suite to **89 passed / 0 failed / 2 skipped** (the two skips are `microseg`'s own
+  documented `test.skip`s), and the `e2e` job is now required like every other.
 
-  Two lessons from how this was found, worth carrying into the triage:
+  What the backlog actually contained is the argument for keeping it that way. It was not 29 stale
+  locators: it included `T-1304`'s guest-interior API rejecting **every request a browser ever
+  made**, a render loop that left the app unable to navigate away from the Topology page at all,
+  an SDN zone wizard that could not be completed, an LLDP trunk check that warned on every
+  neighbour while naming none of them, and four WCAG AA contrast defects. Several of those had
+  **green unit tests sitting on top of fixtures that invented the shape the code expected** — which
+  is the failure mode no amount of unit testing can catch, and the reason this suite exists.
+
+  Three lessons from how these were found, worth carrying into any future spec:
 
   - A spec that passes because the app *did not* navigate is worse than no spec. `T-2003-bug-01`
     hid behind exactly that — a `getByText` loose enough to match the stale page. Assert on
     headings, and assert the origin's heading is *gone*.
   - A conditional step (`if (await x.isVisible())`) turns a regression into a silent skip. Every
     step in a spec should be unconditional, or the spec is lying about its coverage.
+  - A regression spec that does not actually reproduce the bug is not evidence the bug is gone.
+    `T-2003-bug-01`'s first regression spec passed against the live defect for two months because
+    it exercised the wrong precondition — the one the *report* named, not the one that mattered.
+    Reproduce first, then assert.
 
 ## CI
 
@@ -104,9 +113,10 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
 > package build). Treat a red `make ci` the way you would treat a red pipeline. Do not read the
 > absence of a failing check on a commit as evidence that anything passed.
 >
-> `make e2e` is deliberately **not** part of `make ci`: the Playwright suite is currently red
-> (29 failed / 59 passed — `T-2108`), and folding a known-red suite into the gate would either
-> stop all work or train people to ignore the gate.
+> `make e2e` is still deliberately **not** part of `make ci`: it needs a downloaded Chromium and a
+> set of free ports (`make ports`), so a developer running `make ci` on a laptop should not pay for
+> it. It is green (89 passed / 0 failed / 2 skipped) and is a required job in `ci.yml`; run it
+> locally when touching UI flows.
 
 ### Workflow definitions (GitHub Actions)
 
@@ -118,14 +128,14 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
 | `cross-arm64` | `GOOS=linux GOARCH=arm64 go build ./...` — build-only; internal/host's netlink/ioctl code must at least compile for arm64 Proxmox nodes even though the CI fleet is amd64-only | **Required** |
 | `fuzz` | Every untrusted-input parser's fuzz target, 60s each (T-604) — see `docs/security-verification.md`'s fuzz inventory | **Required** |
 | `package` | `make build` (production frontend) + `make deb`, artifact uploaded | **Required** |
-| `e2e` | `make e2e` — Playwright against pvemock + vnproxd + the production SPA. Uploads traces on failure | **Observe-only** (`continue-on-error`, see above and `T-2108`) |
+| `e2e` | `make e2e` — Playwright against pvemock + vnproxd + the production SPA. Uploads traces on failure | **Required** (blocking since 2026-08-07, `T-2108`) |
 
 Local equivalents, in the order of decreasing frequency you should run them:
 
 ```
 make check   # every change — lint, typecheck, 4,058 tests, govulncheck, npm audit
 make ci      # before pushing — check + arm64 cross-build + 7 fuzz targets + package
-make e2e     # when touching UI flows — Playwright; currently red, see T-2108
+make e2e     # when touching UI flows — Playwright; green, and required in CI
 ```
 
 `release.yml`: on tag — build, sign .deb, publish to the apt repo, GitHub release with changelog. Keep runtimes <10 min; cache Go/npm.

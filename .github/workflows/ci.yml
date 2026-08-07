@@ -50,19 +50,22 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # NON-BLOCKING FOR NOW, deliberately and temporarily.
+    # BLOCKING as of 2026-08-07 (T-2108 AC2). It was `continue-on-error: true`
+    # from the day the job landed, while the suite was red: 29 failures on the
+    # first full run. That backlog is now triaged and closed — the suite runs
+    # 89 passed / 0 failed / 2 skipped, the two skips being microseg's own
+    # documented `test.skip`s.
     #
-    # Turning the suite on revealed that it is red: a first full local run
-    # found 15+ failures across a11y, changesets, conntrack, diagnose,
-    # federation and command-palette. One was a genuine WCAG AA defect in the
-    # nav rail (fixed in this same change); the rest are untriaged.
+    # The failures were worth the trouble. They included the guest-interior
+    # API rejecting every request a browser ever made, a render loop that made
+    # the whole app unable to navigate away from the Topology page, an SDN
+    # wizard that could not be completed, an LLDP check that warned on every
+    # neighbour, and four WCAG AA contrast defects — none of which any unit
+    # test could see, several of which had green unit tests sitting on top of
+    # fixtures that invented the shape the code expected.
     #
-    # Making this blocking today would either wedge every PR or push someone
-    # to delete the job. Making it *run and be visible* today is what ends the
-    # three-arc period where nothing executed these specs at all. T-2108
-    # tracks triaging the backlog and flipping this to blocking; that card is
-    # the thing that stops "temporarily" becoming "permanently".
-    continue-on-error: true
+    # If this job goes red, the fix is to fix it. Re-adding continue-on-error
+    # puts the suite back in the state that let all of the above ship.
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

@@ -164,16 +164,17 @@ No invariant failed. This is the strongest part of the codebase and it is strong
 
 ## 5. Open defects and structural gaps
 
-### 5.1 The e2e suite — gated 2026-08-06, and it is red (`T-1806-bug-01` → `T-2108`)
+### 5.1 The e2e suite — gated 2026-08-06, green and **required** 2026-08-07 (`T-1806-bug-01` → `T-2108`, both closed)
 
 35 Playwright specs existed with no `make` target and no CI job. There is now `make e2e` and an
 `e2e` CI job, so the three-arc period where nothing ran them is over.
 
-Turning it on immediately paid for itself. A full run found **29 failures against 59 passes**; five
-triage passes took that to **9 failures against 78 passes**, with run time down from 29.6 to 16.1
-minutes.
+Turning it on immediately paid for itself. A full run found **29 failures against 59 passes**;
+eleven triage passes took that to **89 passed / 0 failed / 2 skipped** (the two skips are
+`microseg`'s own documented `test.skip`s), with run time down from 29.6 to ~10 minutes. The `e2e`
+job is now required.
 
-**Four real product defects were found, all of which had been invisible while the suite ran in no
+**Ten real product defects were found, all of which had been invisible while the suite ran in no
 gate:**
 
 | Defect | Detail |
@@ -182,6 +183,13 @@ gate:**
 | WCAG AA contrast, muted text | `dark:text-slate-500` on `dark:bg-slate-900`, **3.74:1**. `TopBar.tsx` already carried a comment describing this exact fix from `T-905`, applied once and never generalised |
 | Spotlight results announce as one word | The kind badge was separated by an `ml-2` *margin*, which puts no whitespace in the accessible name: `"app01guest· pve1 name"` |
 | Entity-node badge unreadable on tinted nodes | Contrast is measured against the node's own tint, not the page. Both halves of the usual muted pairing fail there — 1.84:1 and 3.7-4.4:1 |
+| Entity-node **badge chip** at 4.35–4.39:1 | `dark:text-slate-300` on a translucent `slate-700/70` over a tinted node. Under 4.5:1 on some tints only, which is why it surfaced on the third full run and not the two before it |
+| **Guest interior returned 400 to every browser request** | `T-1304`'s feature was unreachable from the SPA since the day it shipped: the only ref-taking handler that never `PathUnescape`d, while its own tests spelled the ref raw and stayed green |
+| **The app could not navigate away from the Topology page** | `T-2003-bug-01`. A fresh `[]` literal per render fed an effect that set state upward — an unbreakable render loop that starved the `startTransition` react-router v7 wraps navigation in. URL changed, page did not, forever. Sole cause of three separate e2e failures |
+| **The VXLAN zone wizard could not be completed** | Peer auto-suggest read a `fields` key and type the API has never sent, so every address input stayed empty and Next was permanently disabled — under copy promising the addresses were suggested automatically |
+| **The VLAN wizard's LLDP trunk check warned on every neighbour** | Same wrong-field-shape bug, second site. Every neighbour reported an empty trunk, so the check reported the chosen VID as un-trunked everywhere, naming a blank switch and port. A false alarm is worse than no check |
+| Flow records ingested at daemon start are unattributable **forever** | Resolution happens once, at ingest, with no retry, against an index that is empty until the first inventory poll lands — a silent up-to-15s hole after every restart |
+| A decorative timeline marker swallowed changeset clicks | `disabled` finding markers share one 3px track with changeset markers and, being later in the DOM, painted over them — making the timeline's only actionable control unclickable |
 
 Plus a **stale visual baseline** that had been failing since the commit that created it (`5909807`
 added an `eno3` fixture NIC and never regenerated the snapshot) — the clearest possible evidence
@@ -192,8 +200,9 @@ brute-force limiter (82 logins, three HTTP 429s), and specs mutate a shared daem
 made previously-latent ambiguous locators start matching the wrong elements. Both fixed; the
 structural half of the second is `T-2108-followup-01`.
 
-Nine failures remain and the job is still `continue-on-error`. **Until it is required, a green `CI`
-badge still does not mean the e2e suite passed.**
+**Four of those ten had green unit tests sitting on top of fixtures that invented the shape the code
+expected.** That is the failure mode no amount of unit testing can catch, and the clearest argument
+for keeping this job required.
 
 ### 5.2 `Packaging matrix / cluster-ssh` is red on the runner only — `T-1806-bug-02`
 
@@ -220,7 +229,7 @@ It still describes the v1.0 feature set and lists as **explicit non-goals** five
 | `T-2003-bug-01` | High → **FIXED 2026-08-07** | GUI | Root cause: an infinite render loop in `HistoryTimeline` (fed by a fresh `[]` literal per render from `useLiveFlowRecords`) starved the `startTransition` react-router v7 wraps navigation in — the URL changed and the page never did, for as long as the Graph view was mounted. The reported reproduction named the wrong trigger (the inspector is irrelevant), which is why the first regression spec passed against the live bug. Fixed, mutation-checked, and pinned at three levels; also the sole cause of three e2e failures. See `phase-20.md` |
 | `T-2002-bug-01` | Medium | API | Frozen MCP payloads had no field-removal regression guard (guards added; card open for the general pattern) |
 | `T-1807-bug-01` | Medium → **closed 2026-08-06** | Tooling | Test tooling assumed exclusive use of the machine. Closed by `T-1807-bug-02`'s enforced port registry — see §5.9 |
-| `T-1806-bug-01` | High → **partially closed** | Process | Gate landed; backlog triage is `T-2108`. See §5.1 |
+| `T-1806-bug-01` | High → **closed 2026-08-07** | Process | Gate landed and the backlog is triaged; the `e2e` job is required. See §5.1 |
 | `T-1806-bug-02` | Medium | CI | See §5.2 |
 
 ### 5.6 Licensing — resolved 2026-08-06 (`T-2106`)
