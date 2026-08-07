@@ -622,3 +622,33 @@ have a real stale window (`onSettled` clears the optimistic value while `invalid
 *scheduled* a refetch). The change closes it — but the e2e spec passes with or without it, tested
 both ways. The code comment says so explicitly. Attributing a change to a bug it did not fix is
 worse than not making it.
+
+### Seventh pass, 2026-08-07 — `conntrack`: three hypotheses, three refutations
+
+Suite: **9 failed / 79 passed**. `guest-interior` and `flows` cleared. `conntrack:60` returned,
+having now alternated pass/fail across six consecutive full runs.
+
+| # | Hypothesis | Experiment | Result |
+|---|---|---|---|
+| 1 | The 5s click budget is too short | Raised to 12s (shipped in `ec89355`) | **Refuted** — failed again at 12s in run 6 |
+| 2 | A drifting node's never-ending `animate-pulse` makes Playwright's stability check unsatisfiable | Emulate `prefers-reduced-motion` | **Refuted** — the pulse *is* removed (verified: class gone, `transition-none` present) and the click still times out |
+| 3 | Both together | Reduced motion + 12s | **Refuted** — failed 3/3 |
+
+**A methodological trap worth recording.** The first attempt at hypothesis 2 put `reducedMotion` at
+the top level of `use` in `playwright.config.ts`. That is the wrong nesting — it belongs under
+`contextOptions` — and Playwright **silently ignores** it there. `conntrack` then "passed twice in a
+row", which read as confirmation. It was not: the setting was doing nothing. `tsc` caught the
+mistake, and a probe (`matchMedia("(prefers-reduced-motion: reduce)").matches`) was added before
+re-testing. With the emulation genuinely in effect the spec failed **3/3** — the opposite of the
+"confirmation". *An option that is silently ignored produces evidence that looks exactly like a
+successful fix.*
+
+**Everything from this line of attack is reverted**, including the 12s raise shipped in `ec89355`,
+whose commit message claimed it stabilised the spec. It did not. An inflated timeout that does not
+fix the flake only hides the next genuine slowdown behind it.
+
+**What the evidence actually points at:** the node never becomes *stable* — never stops moving —
+and this spec's retry loop pans the canvas on every attempt, which moves it, while React Flow
+re-lays-out. The next attempt should look at the interaction between the pan loop and layout
+settling, not at budgets or animations. Both of those have now been ruled out by experiment.
+

@@ -75,16 +75,26 @@ test("Conntrack explorer: map right-click drills into a node-scoped live view, f
     await page.keyboard.press("Escape"); // close any menu a previous failed attempt left open
     panAttempt = (panAttempt % 4) + 1; // cycle through 4 pan distances rather than growing unbounded off-screen
     await panCanvasPane(page, -200 - panAttempt * 60, -200 - panAttempt * 60);
-    // 12s, not 5s: the click waits for the node to be "stable" (not moving),
-    // and React Flow keeps re-laying-out while the rest of the suite loads the
-    // machine. At 5s this passed in isolation and in some full runs but not
-    // others — flaky in exactly the direction that erodes trust in the gate.
-    // The outer toPass budget grows with it, but stays under the 120s
-    // per-test timeout in playwright.config.ts — a retry budget that cannot
-    // fit inside the test timeout just converts one failure mode into another.
-    await pve1Bridge.click({ button: "right", timeout: 12_000 });
-    await page.getByRole("menuitem", { name: "View live connections" }).click({ timeout: 12_000 });
-  }).toPass({ timeout: 90_000 });
+    // KNOWN FLAKY, cause not established — see planning/tasks/phase-21.md
+    // (T-2108). This has alternated pass/fail across six full-suite runs. Three
+    // hypotheses were tested and all three were refuted:
+    //
+    //   1. Too short a budget. Raised 5s -> 12s; it failed again at 12s.
+    //   2. The never-ending `animate-pulse` on a drifting node makes Playwright's
+    //      stability check unsatisfiable. Emulating prefers-reduced-motion does
+    //      remove the pulse (verified: the class is gone, `transition-none` is
+    //      present) and the click STILL times out — so the pulse was not it.
+    //   3. Combining the two. With reduced motion in effect it failed 3/3.
+    //
+    // What the failure actually shows is the node never becoming *stable*, i.e.
+    // never stopping moving — and this loop pans the canvas on every attempt,
+    // which moves it. The next attempt should look there, not at the budget.
+    //
+    // Left at the original 5s deliberately: an inflated timeout that does not
+    // fix the flake only hides the next genuine slowdown behind it.
+    await pve1Bridge.click({ button: "right", timeout: 5_000 });
+    await page.getByRole("menuitem", { name: "View live connections" }).click({ timeout: 5_000 });
+  }).toPass({ timeout: 60_000 });
 
   await page.waitForURL("**/conntrack?node=pve1");
   // The client-side route swap normally renders immediately; under a very
