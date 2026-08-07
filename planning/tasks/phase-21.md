@@ -581,3 +581,44 @@ sizes and was reverted rather than shipped.
 read the path element's own points, or scan the corridor between the two nodes excluding the node
 rectangles — instead of assuming a straight-line midpoint. Do not simply widen the probe further;
 that has been tried and it does not work.
+
+### Sixth pass, 2026-08-07 — a shipped feature was unreachable from the browser
+
+**`guest-interior` was not a test problem. `T-1304`'s guest network interior inspector has never
+worked in a browser.**
+
+Every request the SPA made to the three guest-interior routes returned **400**:
+
+```
+"path":"/api/v1/guests/guest:pve1:200/interior-toggle","status":400
+"path":"/api/v1/guests/guest:pve1:200/interior","status":400
+```
+
+chi routes on `r.URL.RawPath` when it is non-empty, so `chi.URLParam` returns the still-encoded
+segment. The frontend builds these URLs with `encodeURIComponent`, so the ref arrives as
+`guest%3Apve1%3A200`, and `inventory.ParseRef` rejects it. `internal/api/guestinterior.go` was the
+**only** ref-taking handler in the package that did not `url.PathUnescape` first — `topology.go`'s
+entity lookup and `ipam.go`'s CIDR params both already did, with a comment explaining exactly this
+hazard.
+
+**Why nothing caught it.** Every existing test in `guestinterior_test.go` spells the ref raw
+(`guest:pve1:200`), which is what curl sends and what chi passes through untouched. The package's
+tests were green throughout. The e2e suite would have caught it — but only once `T-2108` fixed the
+spotlight accessible-name defect that was failing the spec earlier, at the search step, before it
+ever reached the toggle. **One masked defect was hiding another.**
+
+Fixed with `url.PathUnescape` matching the established pattern, plus
+`TestGuestInteriorRoutes_PercentEncodedRef`, which sends `encodeURIComponent`'s exact form.
+Proven by mutation: removing the unescape returns the test to `400, want 200`.
+
+A note on that test: its first draft used Go's `url.PathEscape`, which **does not escape `:`** in a
+path segment — the encoded and raw forms came out identical and the test proved nothing. Its own
+anti-vacuity guard caught that (`"contains no ':' to escape, so this test proves nothing"`) before
+it could be committed as coverage that never exercised the bug.
+
+**Also in this pass, and deliberately NOT credited with the fix:** a `setQueryData` change in
+`guestInteriorQueries.ts`. While investigating, the toggle's optimistic-state handling was found to
+have a real stale window (`onSettled` clears the optimistic value while `invalidateQueries` has only
+*scheduled* a refetch). The change closes it — but the e2e spec passes with or without it, tested
+both ways. The code comment says so explicitly. Attributing a change to a bug it did not fix is
+worse than not making it.

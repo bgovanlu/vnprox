@@ -341,7 +341,15 @@ func checkPortConflict(f Facts, env Env) Result {
 
 func checkPVEReachable(ctx context.Context, f Facts, env Env) Result {
 	if env.PVE == nil {
-		return skip(CheckPVEReachable, "no PVE credentials configured yet (expected before first setup — run vnprox-setup)")
+		// Deliberately does NOT claim why. `vnproxctl doctor` has no
+		// authenticated PVE client of its own (T-1904-followup-02), so from
+		// here "not configured" and "configured and working" are
+		// indistinguishable — and asserting the former on a node that is
+		// perfectly set up is exactly the kind of confident-and-wrong output
+		// that makes an operator stop trusting the whole report. Observed on
+		// real hardware: pvecube runs this check as a skip while its
+		// collectors are polling PVE successfully.
+		return skip(CheckPVEReachable, "not checked from the CLI — this needs the daemon's authenticated PVE client. Use `vnproxctl status` for live PVE health, or see the daemon's own logs")
 	}
 	if _, err := env.PVE.Ping(ctx); err != nil {
 		target := f.PVEAPIURL
@@ -359,7 +367,7 @@ func checkPVEReachable(ctx context.Context, f Facts, env Env) Result {
 // internal/auth's mapping rather than a second list of its own.
 func checkPVEPrivileges(ctx context.Context, f Facts, env Env) Result {
 	if env.PVE == nil {
-		return skip(CheckPVEPrivileges, "no PVE credentials configured yet (expected before first setup — run vnprox-setup)")
+		return skip(CheckPVEPrivileges, "not checked from the CLI — this needs the daemon's authenticated PVE client. The privileges vnprox uses are listed in docs/deployment.md")
 	}
 	held, err := env.PVE.Privileges(ctx)
 	if err != nil {
@@ -404,7 +412,7 @@ func checkPVEPrivileges(ctx context.Context, f Facts, env Env) Result {
 // healthy — the failure that is hardest to diagnose from any single node.
 func checkPeerSecret(ctx context.Context, f Facts, env Env) Result {
 	if env.Peers == nil {
-		return skip(CheckPeerSecret, "no peer probe configured (single-node install, or the daemon is not running)")
+		return skip(CheckPeerSecret, "not checked from the CLI — comparing the secret across nodes needs the daemon's peer client")
 	}
 	digests, err := env.Peers.SecretDigests(ctx)
 	if err != nil {
@@ -438,7 +446,7 @@ func checkPeerSecret(ctx context.Context, f Facts, env Env) Result {
 // authentication failures rather than as a clock problem.
 func checkClockSkew(ctx context.Context, f Facts, env Env, localNow time.Time) Result {
 	if env.PVE == nil {
-		return skip(CheckClockSkew, "no PVE credentials configured yet, so there is no reference clock to compare against")
+		return skip(CheckClockSkew, "not checked from the CLI — there is no reference clock without the daemon's PVE client. `timedatectl` shows whether NTP is active")
 	}
 	serverTime, err := env.PVE.Ping(ctx)
 	if err != nil {

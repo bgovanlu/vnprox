@@ -662,3 +662,54 @@ func TestSessionKeyAbsentBeforeFirstStartIsNotAFailure(t *testing.T) {
 		t.Errorf("key_files = %s after the daemon has run; a deleted session key must fail", after.Status)
 	}
 }
+
+// TestSkipReasonsDoNotDiagnose pins a lesson learned on real hardware.
+//
+// The first version of these messages said "no PVE credentials configured yet
+// (expected before first setup — run vnprox-setup)". Deployed to a live PVE
+// node that was fully set up and actively polling PVE, doctor printed exactly
+// that — a confident diagnosis of a condition it had never checked, on a node
+// where it was false. A `skip` means "this was not checked"; the moment it also
+// asserts *why*, it is making a claim it did not verify, which is precisely
+// what StatusSkip exists to avoid.
+func TestSkipReasonsDoNotDiagnose(t *testing.T) {
+	// Phrases that assert a cause rather than reporting the absence of a check.
+	banned := []string{
+		"not configured yet",
+		"credentials configured",
+		"before first setup",
+		"run vnprox-setup",
+		"daemon is not running",
+		"single-node install",
+	}
+
+	facts := healthyFacts()
+	env := Env{Now: time.Now} // every probe absent, so every skippable check skips
+
+	rep := Run(context.Background(), facts, env)
+
+	skipped := 0
+	for _, res := range rep.Results {
+		if res.Status != StatusSkip {
+			continue
+		}
+		skipped++
+		lower := strings.ToLower(res.Detail)
+		for _, phrase := range banned {
+			if strings.Contains(lower, phrase) {
+				t.Errorf("check %q skipped with a diagnosis it did not verify (%q): %s",
+					res.Check, phrase, res.Detail)
+			}
+		}
+		// A skip must still be useful: say it was not checked, and ideally what
+		// to do instead.
+		if !strings.Contains(lower, "not checked") && !strings.Contains(lower, "no ") {
+			t.Errorf("check %q skipped without explaining that it was not checked: %s", res.Check, res.Detail)
+		}
+	}
+
+	// Anti-vacuity: if nothing skipped, the loop above asserted nothing.
+	if skipped < 4 {
+		t.Fatalf("only %d checks skipped with every probe absent; expected at least 4, so this test is looking at almost nothing", skipped)
+	}
+}

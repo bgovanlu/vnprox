@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -435,5 +436,76 @@ func TestGuestInteriorInterior_NotMountedWithoutUsernameLookup(t *testing.T) {
 	r.ServeHTTP(toggleRec, toggleReq)
 	if toggleRec.Code != http.StatusOK {
 		t.Errorf("GET /interior-toggle status = %d, want 200 (mounted even without UsernameLookup)", toggleRec.Code)
+	}
+}
+
+// TestGuestInteriorRoutes_PercentEncodedRef pins the encoding the SPA actually
+// uses.
+//
+// Every other test in this file spells the ref raw ("guest:pve1:200"), which is
+// what curl sends and what chi hands back unchanged. The browser does not: the
+// frontend builds these URLs with encodeURIComponent, so the wire form is
+// "guest%3Apve1%3A200". chi routes on r.URL.RawPath when it is non-empty, so
+// URLParam returned the still-encoded string and ParseRef rejected it — every
+// request the SPA has ever made to these three routes got a 400, and the guest
+// interior feature was unreachable from the UI while this package's own tests
+// stayed green. Found via the e2e suite (T-2108).
+func TestGuestInteriorRoutes_PercentEncodedRef(t *testing.T) {
+	h := newThreeNodeVlanHarness(t)
+	r := h.router(nil, nil, localNodePve1)
+
+	// encodeURIComponent's encoding, not Go's url.PathEscape: Go leaves ":"
+	// alone in a path segment, the browser does not. Reproducing the browser's
+	// form exactly is the whole point — the raw form already worked, which is
+	// why every other test here passed while the feature was broken.
+	encoded := strings.ReplaceAll(app01Ref, ":", "%3A")
+	if encoded == app01Ref {
+		t.Fatalf("app01Ref %q contains no ':' to escape, so this test proves nothing", app01Ref)
+	}
+	if strings.Contains(encoded, ":") {
+		t.Fatalf("encoded ref %q still contains a raw ':'", encoded)
+	}
+
+	// GET the toggle with the encoded ref.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/guests/"+encoded+"/interior-toggle", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET toggle with percent-encoded ref = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// PUT the toggle with the encoded ref.
+	body := strings.NewReader(`{"enabled":true}`)
+	putReq := httptest.NewRequest(http.MethodPut, "/api/v1/guests/"+encoded+"/interior-toggle", body)
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	r.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT toggle with percent-encoded ref = %d, want 200; body: %s", putRec.Code, putRec.Body.String())
+	}
+
+	// And the state actually changed — a 200 that did nothing would be worse
+	// than the 400 it replaced.
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/guests/"+encoded+"/interior-toggle", nil)
+	getRec := httptest.NewRecorder()
+	r.ServeHTTP(getRec, getReq)
+	var got guestInteriorToggleResponse
+	if err := json.Unmarshal(getRec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if !got.Enabled {
+		t.Error("toggle still reports disabled after a PUT with a percent-encoded ref")
+	}
+	if got.Ref != app01Ref {
+		t.Errorf("Ref = %q, want the decoded %q", got.Ref, app01Ref)
+	}
+
+	// The interior read must accept the same encoding. With the toggle now on,
+	// a 400 here would mean the third route still rejects the SPA's form.
+	intReq := httptest.NewRequest(http.MethodGet, "/api/v1/guests/"+encoded+"/interior", nil)
+	intRec := httptest.NewRecorder()
+	r.ServeHTTP(intRec, intReq)
+	if intRec.Code == http.StatusBadRequest {
+		t.Errorf("GET interior with percent-encoded ref = 400 (ref rejected); body: %s", intRec.Body.String())
 	}
 }

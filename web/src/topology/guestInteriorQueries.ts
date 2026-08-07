@@ -32,7 +32,26 @@ export function useSetGuestInteriorToggleMutation(ref: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (enabled: boolean) => setGuestInteriorToggle(ref, enabled),
-    onSuccess: () => {
+    // Write the known-new value into the cache BEFORE invalidating.
+    //
+    // NOT the fix for T-2108's guest-interior failure — that was a 400 from the
+    // API (see internal/api/guestinterior.go's parseGuestRef), and the e2e spec
+    // passes with or without this change. Recorded plainly because attributing
+    // it to the bug it did not fix would be worse than not making it.
+    //
+    // It is still correct on its own terms. InteriorTab holds an optimistic
+    // `pendingToggle` and clears it in the mutation's `onSettled`, while
+    // `invalidateQueries` only *schedules* a refetch. Between those two there
+    // is a window where the optimistic value is gone and `toggleQuery.data`
+    // still holds the old state, so the checkbox renders its previous value
+    // before flipping back. setQueryData closes that window deterministically;
+    // the invalidate still runs, to reconcile against what the server stored.
+    //
+    // The window is real by construction but was never observed to be
+    // user-visible — React may batch it away entirely. Left in as a correctness
+    // improvement, not as a fix for a reported symptom.
+    onSuccess: (_result, enabled) => {
+      queryClient.setQueryData<GuestInteriorToggle>(guestInteriorToggleKey(ref), { ref, enabled });
       void queryClient.invalidateQueries({ queryKey: guestInteriorToggleKey(ref) });
       void queryClient.invalidateQueries({ queryKey: guestInteriorKey(ref) });
     },

@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -188,6 +189,21 @@ func handlePutGuestInteriorToggle(toggles GuestInteriorToggleStore, lookup Usern
 
 // parseGuestRef validates refStr as a "guest:<node>:<vmid>" Ref.
 func parseGuestRef(refStr string) (inventory.Ref, string) {
+	// chi routes on r.URL.RawPath when it is non-empty, so URLParam hands back
+	// the still-percent-encoded segment: a browser calling
+	// encodeURIComponent("guest:pve1:200") arrives here as
+	// "guest%3Apve1%3A200", which ParseRef rejects. Every other ref-taking
+	// route in this package already unescapes (topology.go's entity lookup,
+	// ipam.go's CIDR params); these three did not, which made the entire guest
+	// interior feature unreachable from the SPA — both the GET and the PUT
+	// returned 400 for every real request the frontend has ever sent. Found by
+	// the e2e suite once T-2108 stopped an earlier failure from masking it.
+	//
+	// On a bad escape sequence, fall through to the raw form so an unescaped
+	// ref (curl, a script) keeps working exactly as before.
+	if unescaped, uerr := url.PathUnescape(refStr); uerr == nil {
+		refStr = unescaped
+	}
 	ref, err := inventory.ParseRef(refStr)
 	if err != nil || ref.Kind != inventory.KindGuest {
 		return inventory.Ref{}, "ref must be a valid guest ref (guest:node:vmid)"

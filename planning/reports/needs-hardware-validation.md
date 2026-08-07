@@ -33,6 +33,40 @@ nothing cross-node is covered.
       replication, distributed rollback, HA lease fencing), and `T-1906-bug-01`'s actual failure
       mode, which needs a second node to observe rather than infer.
 
+## Deploy-time validation, 2026-08-07 (pvecube, same node) — `vnproxctl doctor` (T-1904)
+
+Obtained by running the new command on the real node immediately after `apt install`. Result:
+**6 passed, 0 warned, 0 failed, 4 skipped, exit 0.** Each pass below is a check whose logic had
+only ever been exercised against fakes.
+
+- [x] **`pmxcfs` check reads a real `/etc/pve`** — passes against the live pmxcfs mount, not a
+      fixture directory.
+- [x] **`schema_version` reads a real store** — reported "database schema 34 matches the binary"
+      against the production SQLite file, via `store.InspectSchemaVersion` with the daemon
+      running. Confirms the read is safe against a live, locked store.
+- [x] **`port_conflict` correctly recognises vnprox itself** — reported "port 8007 is held by
+      vnprox itself" rather than a conflict. This is the branch that distinguishes a real
+      collision from the normal post-install state, and it depends on `ss -tlnpH` output parsing
+      that no fixture can prove. **Validated on the one host where getting it wrong would make
+      doctor cry wolf on every healthy install.**
+- [x] **`key_files` against real permissions** — `/etc/vnprox/keys/session.key` and the PVE token
+      file both present at 0600 as the packaging intends.
+- [x] **`disk_headroom` against a real filesystem** — `syscall.Statfs` path, including the
+      walk-up-to-an-existing-ancestor logic for the not-yet-created capture directory.
+- [x] **`config` against the packaged config** — parses `/etc/vnprox/vnprox.toml` as installed.
+
+**A defect in doctor itself, found by this deploy and fixed the same day.** The four skipped
+checks originally printed *"no PVE credentials configured yet (expected before first setup — run
+vnprox-setup)"*. pvecube **is** fully set up and its collectors were polling PVE successfully at
+that moment, so the message was a confident diagnosis of a condition doctor had never checked, and
+it was false. A `skip` means "not checked"; asserting a cause turns it into an unverified claim —
+the exact failure `StatusSkip` exists to prevent. Reworded to state what was not checked and what
+to use instead, with `TestSkipReasonsDoNotDiagnose` (proven by mutation) to stop it recurring.
+
+- [ ] **Still not covered**: the four skipped checks themselves (`pve_reachable`,
+      `pve_privileges`, `peer_secret`, `clock_skew`) — they need the daemon's authenticated
+      clients, which is `T-1904-followup-02`. `peer_secret` additionally needs a second node.
+
 ## PVE API behavior
 
 - [ ] **API-token auth**: real PVE accepts `Authorization: PVEAPIToken=user@realm!tokenid=secret`
