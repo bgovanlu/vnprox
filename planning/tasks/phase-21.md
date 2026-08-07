@@ -805,3 +805,16 @@ the timeline offers. Fixed by stacking changeset markers above finding markers (
 Unrelated but blocking `make check`: two new high-severity `nanoid` advisories
 (GHSA-28wg-ghj8-5hjv, GHSA-2v37-7h3g-55p8) appeared in the audit database. Resolved properly —
 `nanoid` 3.3.15 → 3.3.18 via the existing `vite > postcss` chain — rather than allowlisted.
+
+**Eleventh pass, 2026-08-07 — the axe gate earning its place**
+
+Third full run: **88 passed / 1 failed**, and the one failure was `axe: Topology (Graph view, v1)` —
+a genuine WCAG AA shortfall the two previous full runs had passed. Entity-node badges
+(`text-[10px]`, below the large-text threshold, so the full 4.5:1 applies) rendered
+`dark:text-slate-300` on a translucent `dark:bg-slate-700/70` over a tinted node and measured
+**4.35–4.39:1** on some tints and not others — which is why it surfaced on one run and not the two
+before it. Raised to `dark:text-slate-200`, which clears every tint with margin instead of landing
+back on the threshold.
+
+Worth noting for its own sake: this is the gate catching a real accessibility regression *by
+itself*, on a run whose purpose was to confirm unrelated fixes. That is the argument for AC2.

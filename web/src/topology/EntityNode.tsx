@@ -289,7 +289,15 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
                   ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
                   : isQosShapedBadge(b)
                     ? "bg-blue-200/70 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
-                    : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-300",
+                    // dark:text-slate-200, not -300. At 10px these badges need
+                    // the full 4.5:1 (they are below the 18.66px large-text
+                    // threshold), and slate-300 over a translucent
+                    // slate-700/70 sitting on a tinted node measured 4.35–4.39
+                    // — under, but only just, and only on some tints, so the
+                    // axe gate caught it on one run and not the two before it
+                    // (T-2108). slate-200 clears it on every tint with margin
+                    // rather than landing on the threshold again.
+                    : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-200",
               )}
             >
               {b}
