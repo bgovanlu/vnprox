@@ -725,3 +725,60 @@ removed grid too, and is corrected.
 rather than reading code: four runs of the same navigation with the graph view and the inspector
 varied independently. Reading the component tree first would have kept pointing at the inspector,
 which the original card, its 2026-08-06 update, and its regression spec all did.
+
+---
+
+### Ninth pass, 2026-08-07 — `conntrack`, and a correction to the seventh pass
+
+**Suite: 86 passed / 3 failed / 2 skipped** (the 2 skips are `microseg`'s two `test.skip`s, which
+need a seeded NAS corpus and are marked as such in the file). All six specs from the eighth pass
+passed. The three failures were `changesets:108`, `inspector-compare:32` and `conntrack:60` — all
+three now fixed, none of them a product defect.
+
+**`conntrack:60` — the seventh pass read the evidence wrong, and this pass corrects it.**
+
+That pass concluded: *"the node never becomes stable — never stops moving"*, and sent two rounds of
+work at click budgets and CSS animations. Both were refuted by experiment, correctly. But the
+conclusion drawn from the refutations was also wrong. Playwright's own call log says:
+
+```
+- element is visible, enabled and stable
+- scrolling into view if needed
+- done scrolling
+- element is outside of the viewport
+```
+
+**`stable`** — explicitly. The node is not moving. It is simply *off-screen*, and
+`scrollIntoViewIfNeeded` cannot bring it back, because a React Flow node is positioned by a CSS
+transform on the canvas, not by document scroll: there is nothing to scroll. The spec's retry loop
+then panned by a *fixed* offset, always up-and-left, cycling four magnitudes — so when the node
+started off the top-left, every retry pushed it further away. That is why the pass/fail alternated
+with layout: it depended on which side of the viewport elk happened to leave the node on.
+
+The pan is now computed from the node's own bounding box against the pane's, centring it. Four
+consecutive runs pass in 11–13 s each, against a spec that previously either burned the full 60 s
+retry window or timed out.
+
+*The lesson is about reading logs, not about React Flow.* Two hypotheses were tested rigorously and
+refuted rigorously, and the write-up of those refutations restated a claim ("never stops moving")
+that the same log had already contradicted, one line above the line being quoted.
+
+**`changesets:108`** — the final assertion required the change drawer region to be *hidden* after
+committing. `ChangesetDrawer` only unmounts when there is no active draft **and** no other parked
+draft to resume, so a draft left by any earlier spec in the single-worker run (`a11y.spec.ts:148`
+deliberately creates one — "axe: changeset drawer (open, with a drafted op)") keeps a collapsed
+launcher on screen. Rewritten to assert what the step means — the committed changeset is no longer
+active — using `toHaveCount(0)`, which holds whether or not the region is rendered. The underlying
+cross-spec store sharing remains `T-2108-followup-01`.
+
+**`inspector-compare:32`** — waited for `compare.or(mismatch)` and then branched on a *separately
+evaluated* `compare.isVisible()`. Under load that second read could land while the panes were still
+settling, sending the test into the mismatched-kind branch to assert on an element that was never
+going to exist. Both selections are `bond0`, so the aligned compare grid is the only outcome the
+scenario has; the branch is gone. This is the same conditional-step pattern
+`nav-after-inspector.spec.ts`'s header warns about, and it produced exactly the promised confusion.
+
+**Latent, not fixed:** `simulator.spec.ts`'s `traceFromContextMenu` retries a right-click on a map
+node with no pan at all. It passes consistently today, but it has the same off-screen exposure
+`conntrack` had — retrying cannot move a node into the viewport. Worth converting to the same
+geometry-driven pan the next time it flakes.

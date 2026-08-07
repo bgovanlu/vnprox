@@ -59,13 +59,23 @@ test("pinning bond0's inspector and selecting a second node's bond0 opens both, 
   // Both bond0 panes are visible: either the aligned compare grid (both are
   // bonds, so same-kind) or, degrading honestly, two independent panes —
   // either way, never a broken layout.
+  // Unconditional. Both selections are bond0 — same kind — so the aligned
+  // compare grid is the ONE outcome this scenario has, and asserting it
+  // directly is what makes the test able to fail. The previous form waited
+  // for `compare.or(mismatch)` and then branched on a second, separately
+  // evaluated `compare.isVisible()`; under load that second read could land
+  // while the panes were still settling, sending the test down the
+  // mismatched-kind branch to assert on an element that was never going to
+  // exist. A conditional step turns a regression into a silent skip — and
+  // here it turned a timing wobble into a confusing failure about
+  // mismatched kinds. The mismatched-kind fallback copy is covered where it
+  // belongs, as a pure render: src/topology/InspectorCompareView.test.tsx.
   const compare = panes.getByTestId("inspector-compare");
-  const mismatch = panes.getByTestId("inspector-compare-mismatch");
-  await expect(compare.or(mismatch)).toBeVisible();
+  await expect(compare).toBeVisible();
 
   const closeButtons = panes.getByRole("button", { name: /^Close bond0/ });
 
-  if (await compare.isVisible()) {
+  {
     // Same-kind aligned compare: one shared Metrics tab, two independently
     // mounted MetricsTab instances underneath (docs/features/monitoring.md
     // §1-2's per-entity live rate + history) — distinct per-pane wiring,
@@ -76,12 +86,6 @@ test("pinning bond0's inspector and selecting a second node's bond0 opens both, 
     const headings = await compare.getByRole("heading", { level: 3 }).allTextContents();
     expect(headings).toHaveLength(2);
     expect(headings[0]).not.toEqual(headings[1]);
-  } else {
-    // Mismatched-kind fallback path wasn't expected here (both selections
-    // were bond0), but if search ever returns a differently-kinded top
-    // match, the fallback still must state why rather than break — assert
-    // that contract instead of failing outright.
-    await expect(mismatch.getByRole("status")).toContainText(/only available for two entities of the same kind/);
   }
 
   // Closing one pane leaves the other intact (acceptance criterion 1).

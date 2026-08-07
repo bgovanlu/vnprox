@@ -29,7 +29,7 @@
 // internal/host/fixture_test.go, internal/api/conntrack_test.go (all three
 // go through FixtureReader, never the real kernel path) and
 // ConntrackExplorer.test.tsx (a seeded fixture set, no network at all).
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { switchToGraphView } from "./helpers";
 
 async function logIn(page: Page): Promise<void> {
@@ -57,6 +57,43 @@ async function panCanvasPane(page: Page, dx: number, dy: number): Promise<void> 
   await page.mouse.up();
 }
 
+/** Pans the canvas so `node` sits at the centre of the React Flow pane.
+ *
+ * T-2108, eighth pass. This spec's previous loop panned by a *fixed* offset,
+ * always up-and-left, cycling four magnitudes. Playwright's own call log says
+ * why that could not work:
+ *
+ *     - element is visible, enabled and stable
+ *     - scrolling into view if needed
+ *     - done scrolling
+ *     - element is outside of the viewport
+ *
+ * The node is **stable** — it is simply off-screen, and `scrollIntoViewIfNeeded`
+ * cannot fix that, because a React Flow node's position comes from a CSS
+ * transform on the canvas, not from document scroll. There is nothing to
+ * scroll. If the node happened to be off the top-left, every retry panned it
+ * further away.
+ *
+ * This corrects the diagnosis recorded on the card, which read the same log as
+ * "the node never becomes stable, never stops moving", and sent two rounds of
+ * work at timeouts and CSS animations. Both were refuted by experiment; neither
+ * was ever the cause.
+ *
+ * Computing the pan from the node's actual box means one attempt is normally
+ * enough, and the retry loop stays only for the case where elk re-lays-out
+ * between measuring and clicking. */
+async function panNodeIntoView(page: Page, node: Locator): Promise<void> {
+  const pane = await page.locator(".react-flow__pane").boundingBox();
+  const box = await node.boundingBox();
+  if (!pane || !box) return;
+  const dx = pane.x + pane.width / 2 - (box.x + box.width / 2);
+  const dy = pane.y + pane.height / 2 - (box.y + box.height / 2);
+  // Sub-pixel deltas are not worth a drag gesture, and dragging by ~0 can
+  // register as a pane click that clears the selection.
+  if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+  await panCanvasPane(page, dx, dy);
+}
+
 test("Conntrack explorer: map right-click drills into a node-scoped live view, filters round-trip through the URL, and a permission-denied read degrades honestly", async ({ page }) => {
   await logIn(page);
   await switchToGraphView(page);
@@ -70,28 +107,9 @@ test("Conntrack explorer: map right-click drills into a node-scoped live view, f
   // the node has since moved back under the same corner.
   const pve1Bridge = page.locator('[data-entity-ref="bridge:pve1:vmbr0"]');
   await expect(pve1Bridge).toBeVisible({ timeout: 15_000 });
-  let panAttempt = 0;
   await expect(async () => {
     await page.keyboard.press("Escape"); // close any menu a previous failed attempt left open
-    panAttempt = (panAttempt % 4) + 1; // cycle through 4 pan distances rather than growing unbounded off-screen
-    await panCanvasPane(page, -200 - panAttempt * 60, -200 - panAttempt * 60);
-    // KNOWN FLAKY, cause not established — see planning/tasks/phase-21.md
-    // (T-2108). This has alternated pass/fail across six full-suite runs. Three
-    // hypotheses were tested and all three were refuted:
-    //
-    //   1. Too short a budget. Raised 5s -> 12s; it failed again at 12s.
-    //   2. The never-ending `animate-pulse` on a drifting node makes Playwright's
-    //      stability check unsatisfiable. Emulating prefers-reduced-motion does
-    //      remove the pulse (verified: the class is gone, `transition-none` is
-    //      present) and the click STILL times out — so the pulse was not it.
-    //   3. Combining the two. With reduced motion in effect it failed 3/3.
-    //
-    // What the failure actually shows is the node never becoming *stable*, i.e.
-    // never stopping moving — and this loop pans the canvas on every attempt,
-    // which moves it. The next attempt should look there, not at the budget.
-    //
-    // Left at the original 5s deliberately: an inflated timeout that does not
-    // fix the flake only hides the next genuine slowdown behind it.
+    await panNodeIntoView(page, pve1Bridge);
     await pve1Bridge.click({ button: "right", timeout: 5_000 });
     await page.getByRole("menuitem", { name: "View live connections" }).click({ timeout: 5_000 });
   }).toPass({ timeout: 60_000 });

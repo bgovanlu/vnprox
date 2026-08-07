@@ -77,48 +77,53 @@ export function bridgeAddress(node: string): string {
   return `10.10.0.1${node.slice(-1)}/24`;
 }
 
-// `Addresses`, capitalised, holding an ARRAY — because that is what
-// GET /inventory/{ref} actually returns (topology.Detail runs
-// json.Marshal over the entity, and inventory.Bridge.Addresses is a
-// tagless []string). This fixture used to say `{ addresses: "<cidr>" }`,
-// a key and a type the API has never produced, so every peer-suggest test
-// passed against a shape that does not exist while the real wizard could
-// not suggest a single address (T-2108). internal/topology's
-// TestDetailBridgeAddressesShape pins the server half of this pair.
+// Go field names holding Go types, because that is what
+// GET /inventory/{ref} actually returns: topology.Detail runs
+// json.Marshal over the inventory struct, so inventory.Bridge.Addresses
+// ([]string) arrives as `Addresses: [...]` and LldpNeighbor.TaggedVLANs
+// ([]int) as `TaggedVLANs: [...]`.
+//
+// This fixture used to say `{ addresses: "<cidr>" }` and
+// `{ chassisName, portId, taggedVlans: "100,200,300" }` — keys and types
+// the server has never produced. Both wizards read the map the same wrong
+// way, so both were broken in production while every test here passed
+// (T-2108). A fixture that invents the shape the code expects tests
+// nothing. internal/topology's TestDetailFieldShapes pins the server half
+// of this pair; api/entityFields.ts is the one place that reads it.
 const inventoryFixture: Record<string, EntityDetail> = {
   "bridge:pve1:vmbr0": entityDetail("bridge:pve1:vmbr0", "bridge", { Addresses: [bridgeAddress("pve1")] }),
   "bridge:pve2:vmbr0": entityDetail("bridge:pve2:vmbr0", "bridge", { Addresses: [bridgeAddress("pve2")] }),
   "bridge:pve3:vmbr0": entityDetail("bridge:pve3:vmbr0", "bridge", { Addresses: [bridgeAddress("pve3")] }),
   "lldp-neighbor:pve1:eno1/sw1": entityDetail("lldp-neighbor:pve1:eno1/sw1", "lldp-neighbor", {
-    chassisName: "sw-core-01",
-    portId: "Te1/0/1",
-    taggedVlans: "100,200,300",
+    ChassisName: "sw-core-01",
+    PortID: "Te1/0/1",
+    TaggedVLANs: [100, 200, 300],
   }),
   "lldp-neighbor:pve1:eno2/sw2": entityDetail("lldp-neighbor:pve1:eno2/sw2", "lldp-neighbor", {
-    chassisName: "sw-core-02",
-    portId: "Te1/0/1",
-    taggedVlans: "100,200,300",
+    ChassisName: "sw-core-02",
+    PortID: "Te1/0/1",
+    TaggedVLANs: [100, 200, 300],
   }),
   "lldp-neighbor:pve2:eno1/sw1": entityDetail("lldp-neighbor:pve2:eno1/sw1", "lldp-neighbor", {
-    chassisName: "sw-core-01",
-    portId: "Te1/0/2",
-    taggedVlans: "100,200,300",
+    ChassisName: "sw-core-01",
+    PortID: "Te1/0/2",
+    TaggedVLANs: [100, 200, 300],
   }),
   "lldp-neighbor:pve2:eno2/sw2": entityDetail("lldp-neighbor:pve2:eno2/sw2", "lldp-neighbor", {
-    chassisName: "sw-core-02",
-    portId: "Te1/0/2",
-    taggedVlans: "100,200,300",
+    ChassisName: "sw-core-02",
+    PortID: "Te1/0/2",
+    TaggedVLANs: [100, 200, 300],
   }),
   // pve3 is missing VID 300 on both switch ports — the AC2 scenario.
   "lldp-neighbor:pve3:eno1/sw1": entityDetail("lldp-neighbor:pve3:eno1/sw1", "lldp-neighbor", {
-    chassisName: "sw-core-01",
-    portId: "Te1/0/3",
-    taggedVlans: "100,200",
+    ChassisName: "sw-core-01",
+    PortID: "Te1/0/3",
+    TaggedVLANs: [100, 200],
   }),
   "lldp-neighbor:pve3:eno2/sw2": entityDetail("lldp-neighbor:pve3:eno2/sw2", "lldp-neighbor", {
-    chassisName: "sw-core-02",
-    portId: "Te1/0/3",
-    taggedVlans: "100,200",
+    ChassisName: "sw-core-02",
+    PortID: "Te1/0/3",
+    TaggedVLANs: [100, 200],
   }),
 };
 

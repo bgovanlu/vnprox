@@ -5,6 +5,7 @@
 // typically only a handful (one or two per member node's uplink), not a
 // cluster-wide fetch.
 import { useQuery } from "@tanstack/react-query";
+import { readNumberList, readString } from "../../api/entityFields";
 import { fetchInventoryDetail } from "../../api/topology";
 import { useTopologyQuery } from "../../topology/queries";
 import {
@@ -12,7 +13,6 @@ import {
   checkVlanTrunk,
   findBridgeRef,
   lldpNeighborRefsForPhysNics,
-  parseTaggedVlans,
   type LldpNeighborTrunkInfo,
   type TrunkWarning,
 } from "./lldpTrunkCheck";
@@ -55,9 +55,14 @@ export function useLldpTrunkCheck(bridgeName: string, memberNodes: readonly stri
       const details = await Promise.all(neighborRefs.map((ref) => fetchInventoryDetail(ref)));
       return details.map((d) => ({
         ref: d.ref,
-        chassisName: typeof d.fields.chassisName === "string" ? d.fields.chassisName : "",
-        portId: typeof d.fields.portId === "string" ? d.fields.portId : "",
-        taggedVlans: parseTaggedVlans(typeof d.fields.taggedVlans === "string" ? d.fields.taggedVlans : undefined),
+        // Go field names, Go types — see api/entityFields.ts. These three
+        // were read as `chassisName`/`portId`/comma-joined `taggedVlans`,
+        // none of which the API sends, so every neighbour reported an empty
+        // trunk and the wizard warned that the chosen VID was not trunked
+        // anywhere, naming a blank switch and port (T-2108).
+        chassisName: readString(d.fields, "ChassisName") ?? "",
+        portId: readString(d.fields, "PortID") ?? "",
+        taggedVlans: readNumberList(d.fields, "TaggedVLANs"),
       }));
     },
     enabled,

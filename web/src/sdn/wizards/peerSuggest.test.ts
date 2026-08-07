@@ -48,11 +48,11 @@ describe("addressesField", () => {
     expect(addressesField({ Addresses: ["10.10.0.11/24"], Name: "vmbr0" })).toEqual(["10.10.0.11/24"]);
   });
 
-  it("also accepts a lowercase `addresses` key", () => {
-    expect(addressesField({ addresses: "10.10.0.11/24" })).toBe("10.10.0.11/24");
+  it("also accepts a lowercase, comma-joined `addresses` key", () => {
+    expect(addressesField({ addresses: "10.10.0.11/24,fd00::1/64" })).toEqual(["10.10.0.11/24", "fd00::1/64"]);
   });
 
-  it("returns undefined when neither spelling is present", () => {
-    expect(addressesField({ Name: "vmbr0" })).toBeUndefined();
+  it("is empty when neither spelling is present", () => {
+    expect(addressesField({ Name: "vmbr0" })).toEqual([]);
   });
 });

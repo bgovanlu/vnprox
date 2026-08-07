@@ -21,6 +21,8 @@
 // the comma-joined string, so a caller reading a fieldMap-derived value is
 // still served correctly.
 
+import { readStringList } from "../../api/entityFields";
+
 /** Extracts the first host address (address without its CIDR prefix) from an
  * entity-detail `Addresses` value — either the API's array of CIDR strings
  * (`["10.10.0.11/24", "fd00::1/64"]` -> `"10.10.0.11"`) or a comma-joined
@@ -39,10 +41,8 @@ export function firstHostAddress(addressesField: unknown): string | undefined {
 }
 
 /** Reads the `Addresses` field off a GET /inventory/{ref} `fields` map.
- * Tolerates the lowercase spelling too rather than assuming one: `fields` is
- * an untyped `map[string]any` reflected straight off the Go entity, so a
- * future json tag on the struct would change the key without any type error
- * here to catch it. */
-export function addressesField(fields: Record<string, unknown>): unknown {
-  return fields.Addresses ?? fields.addresses;
+ * See api/entityFields.ts for why reading that map needs a dedicated,
+ * tested helper rather than a property access and a type guard. */
+export function addressesField(fields: Record<string, unknown>): string[] {
+  return readStringList(fields, "Addresses");
 }

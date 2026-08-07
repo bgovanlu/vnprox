@@ -154,47 +154,98 @@ func rawSourceKeys(m map[string]string) []string {
 	return out
 }
 
-// TestDetailBridgeAddressesShape pins the wire shape of a bridge's addresses
-// in GET /inventory/{ref}.
+// TestDetailFieldShapes pins the wire shape of the GET /inventory/{ref}
+// `fields` entries the SDN wizards read.
 //
-// This is a contract test with a specific consumer: the SDN VXLAN zone
-// wizard's peer auto-suggest (web/src/sdn/wizards/peerSuggest.ts) reads this
-// field to prefill each member node's underlay address. It read a lowercase
-// `addresses` key and type-guarded the value to `string`, on the strength of
-// a code comment citing inventory.Bridge's `fieldMap` — which is the
-// merge/provenance table, not this projection. `fields` is built by
-// json.Marshal over the entity, so the key is the Go field name and the
-// value is an array. The lookup therefore missed on every node, the wizard
-// could never be completed, and its own unit tests passed because their
-// fixture invented the shape the code expected (T-2108).
+// `fields` is built by json.Marshal over the inventory struct, so the keys
+// are Go field names and the values are Go types. Nothing on the TypeScript
+// side types it, so reading the wrong key or type-guarding the wrong type is
+// silent there: the caller just gets undefined and falls back. Two shipped
+// wizards did exactly that, for months, with green unit tests on both sides
+// because their fixtures invented the shape the code expected (T-2108):
 //
-// Assert on both halves — key spelling AND element type — because getting
-// either wrong is silent on this side and fatal on the other.
-func TestDetailBridgeAddressesShape(t *testing.T) {
+//   - the VXLAN wizard's peer auto-suggest read `addresses` as a string, so
+//     it suggested nothing and its Next button was permanently disabled;
+//   - the VLAN wizard's LLDP trunk check read `chassisName`, `portId` and a
+//     comma-joined `taggedVlans`, so every neighbour reported an empty
+//     trunk and it warned that the chosen VID was not trunked anywhere,
+//     naming a blank switch and port.
+//
+// Assert key spelling AND element type for each: getting either wrong is
+// invisible on this side and wrong on the other. The frontend half lives in
+// web/src/api/entityFields.test.ts.
+func TestDetailFieldShapes(t *testing.T) {
 	graph, _, _ := buildGraph(t, fixtureThreeNodeVlan)
-	d, ok := topology.Detail(graph.Snapshot(), inventory.Ref{Kind: inventory.KindBridge, Node: "pve1", ID: "vmbr0"})
-	if !ok {
-		t.Fatal("expected bridge:pve1:vmbr0 in the three-node-vlan fixture")
-	}
+	snap := graph.Snapshot()
 
-	raw, present := d.Fields["Addresses"]
+	t.Run("bridge addresses", func(t *testing.T) {
+		d, ok := topology.Detail(snap, inventory.Ref{Kind: inventory.KindBridge, Node: "pve1", ID: "vmbr0"})
+		if !ok {
+			t.Fatal("expected bridge:pve1:vmbr0 in the three-node-vlan fixture")
+		}
+		list := requireArray(t, d.Fields, "Addresses")
+		first, isStr := list[0].(string)
+		if !isStr {
+			t.Fatalf("Fields[\"Addresses\"][0] is %T, want a CIDR string", list[0])
+		}
+		if !strings.Contains(first, "/") {
+			t.Errorf("Fields[\"Addresses\"][0] = %q, want a CIDR (the consumer strips the prefix to get a host address)", first)
+		}
+	})
+
+	t.Run("lldp neighbour trunk fields", func(t *testing.T) {
+		ref, ok := anyLldpNeighbour(snap)
+		if !ok {
+			t.Skip("fixture has no LLDP neighbour; nothing to pin here")
+		}
+		d, ok := topology.Detail(snap, ref)
+		if !ok {
+			t.Fatalf("expected %s in the snapshot", ref)
+		}
+		for _, key := range []string{"ChassisName", "PortID"} {
+			v, present := d.Fields[key]
+			if !present {
+				t.Errorf("Fields has no %q key; keys = %v", key, fieldKeys(d.Fields))
+				continue
+			}
+			if _, isStr := v.(string); !isStr {
+				t.Errorf("Fields[%q] is %T, want a string", key, v)
+			}
+		}
+		list := requireArray(t, d.Fields, "TaggedVLANs")
+		if _, isNum := list[0].(float64); !isNum {
+			t.Errorf("Fields[\"TaggedVLANs\"][0] is %T, want a JSON number — the consumer compares it to a VID", list[0])
+		}
+	})
+}
+
+// requireArray fails unless fields[key] is a non-empty JSON array. Empty is
+// a failure, not a pass: a consumer reading an always-empty list is exactly
+// the silent breakage these tests exist to catch.
+func requireArray(t *testing.T, fields map[string]any, key string) []any {
+	t.Helper()
+	raw, present := fields[key]
 	if !present {
-		t.Fatalf("Fields has no \"Addresses\" key; keys = %v", fieldKeys(d.Fields))
+		t.Fatalf("Fields has no %q key; keys = %v", key, fieldKeys(fields))
 	}
 	list, isSlice := raw.([]any)
 	if !isSlice {
-		t.Fatalf("Fields[\"Addresses\"] is %T, want a JSON array — the frontend's peer-suggest parses it as a list", raw)
+		t.Fatalf("Fields[%q] is %T, want a JSON array", key, raw)
 	}
 	if len(list) == 0 {
-		t.Fatal("Fields[\"Addresses\"] is empty for a bridge the fixture gives an address; nothing downstream could suggest a peer address from this")
+		t.Fatalf("Fields[%q] is empty in a fixture that populates it; nothing downstream could read anything from this", key)
 	}
-	first, isStr := list[0].(string)
-	if !isStr {
-		t.Fatalf("Fields[\"Addresses\"][0] is %T, want a CIDR string", list[0])
+	return list
+}
+
+func anyLldpNeighbour(snap inventory.Snapshot) (inventory.Ref, bool) {
+	for _, e := range snap.All() {
+		n, ok := e.(*inventory.LldpNeighbor)
+		if ok && n.ChassisName != "" && len(n.TaggedVLANs) > 0 {
+			return n.Ref, true
+		}
 	}
-	if !strings.Contains(first, "/") {
-		t.Errorf("Fields[\"Addresses\"][0] = %q, want a CIDR (the consumer strips the prefix to get a host address)", first)
-	}
+	return inventory.Ref{}, false
 }
 
 func fieldKeys(fields map[string]any) []string {
