@@ -22,6 +22,21 @@ import (
 // intervals already make throughout this codebase.
 const flowResolverRefreshInterval = 15 * time.Second
 
+// flowResolverColdStartInterval is the cadence used before the resolver has
+// indexed anything at all.
+//
+// The 15s steady-state tick above is a deliberate decoupling, and the
+// tradeoff it documents — "a bridge added moments ago resolves from the next
+// tick" — is fine. Daemon start is not that case: the very first
+// RefreshFromGraph runs before internal/collect has polled anything, so the
+// index is EMPTY, and resolution happens once at ingest and is never
+// retried. Every flow record arriving in that window is therefore
+// permanently unattributed, silently, with no way for an operator to tell it
+// apart from an address that genuinely matches nothing. Polling a second
+// apart until there is an index to resolve against closes that hole without
+// touching the steady-state behaviour.
+const flowResolverColdStartInterval = time.Second
+
 // setupFlows builds T-1002's flow.Service — resolving srcRef/dstRef against
 // graph, persisting to the bounded flow_samples ring (store.FlowSampleRepo),
 // and pushing docs/api.md's `flow.batch` WS event — plus a supervised actor
@@ -58,7 +73,7 @@ func setupFlows(cfg *config.Config, db *store.DB, graph *inventory.Graph, ws flo
 	// Keeps the resolver's subnet/vnet index current without coupling flow
 	// ingestion to topology's own delta push.
 	actors = append(actors, func(ctx context.Context) error {
-		return runFlowResolverRefreshLoop(ctx, resolver, graph, flowResolverRefreshInterval)
+		return runFlowResolverRefreshLoop(ctx, resolver, graph, flowResolverRefreshInterval, flowResolverColdStartInterval)
 	})
 
 	ingest := func(ctx context.Context, records []flow.Record) {
@@ -107,18 +122,30 @@ func flowListenerActor(l *flow.Listener, ingest func(context.Context, []flow.Rec
 }
 
 // runFlowResolverRefreshLoop re-indexes resolver from graph's live snapshot
-// every interval until ctx is cancelled, priming immediately so the first
-// datagrams ingested after startup already have a populated index to
-// resolve against.
-func runFlowResolverRefreshLoop(ctx context.Context, resolver *flow.GraphResolver, graph *inventory.Graph, interval time.Duration) error {
+// until ctx is cancelled, priming immediately so the first datagrams
+// ingested after startup already have a populated index to resolve against.
+//
+// The cadence is coldStart until the resolver has indexed something, and
+// interval from then on — see flowResolverColdStartInterval for why the
+// startup window is treated differently from the steady state.
+// graph is taken as flow.InventoryGraph rather than *inventory.Graph so a
+// test can observe when a refresh has actually happened — the priming
+// refresh on an empty graph leaves the index empty, which is otherwise
+// indistinguishable from "the loop has not started yet", and a cold-start
+// test that cannot tell those apart silently passes with the bug present.
+func runFlowResolverRefreshLoop(ctx context.Context, resolver *flow.GraphResolver, graph flow.InventoryGraph, interval, coldStart time.Duration) error {
 	resolver.RefreshFromGraph(graph)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
 	for {
+		wait := interval
+		if resolver.Indexed() == 0 {
+			wait = coldStart
+		}
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return nil
-		case <-ticker.C:
+		case <-timer.C:
 			resolver.RefreshFromGraph(graph)
 		}
 	}

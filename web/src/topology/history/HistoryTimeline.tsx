@@ -14,7 +14,7 @@
 // FindingsStreamPanel.tsx's "Fix" flow already deep-links into) at whatever
 // state that changeset is actually in; it never calls apply/confirm/
 // rollback itself.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchMetricsHistory, fetchMetricsLive } from "../../api/metrics";
 import { fetchFlows } from "../../api/flows";
@@ -71,6 +71,11 @@ export interface HistoryTimelineProps {
   now?: () => number;
 }
 
+/** Shared empty buffer, for the same reason flowsQueries.ts has one: a `[]`
+ * literal is a new identity every time it is evaluated, and this value is
+ * compared by identity below to decide whether anything actually changed. */
+const NO_FLOW_RECORDS: readonly FlowRecord[] = [];
+
 const NOW_REFRESH_MS = 30_000;
 const HISTORY_EVENTS_REFETCH_MS = 30_000;
 
@@ -80,6 +85,39 @@ function defaultNow(): number {
 
 function formatAt(at: number): string {
   return new Date(at * 1000).toLocaleString();
+}
+
+function sameEntries<K, V>(a: ReadonlyMap<K, V>, b: ReadonlyMap<K, V>): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const [k, v] of a) {
+    if (!b.has(k) || !Object.is(b.get(k), v)) return false;
+  }
+  return true;
+}
+
+function sameItems<T>(a: readonly T[], b: readonly T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((item, i) => Object.is(item, b[i]));
+}
+
+/** Whether two playback states say the same thing, comparing the two
+ * collections by CONTENT rather than by identity.
+ *
+ * Identity comparison would be cheaper and would not help: the whole point
+ * of the guard this backs is to absorb a caller that hands over a freshly
+ * built (but unchanged) map or array on every render — which is exactly the
+ * shape of the defect it exists to contain. The scan is O(n), and it only
+ * runs when some dependency identity actually changed. */
+function samePlayback(prev: HistoryPlaybackState | undefined, next: HistoryPlaybackState): boolean {
+  return (
+    prev?.scrubbing === next.scrubbing &&
+    prev.at === next.at &&
+    prev.flowsAvailable === next.flowsAvailable &&
+    sameEntries(prev.utilizationByRef, next.utilizationByRef) &&
+    sameItems(prev.flowRecords, next.flowRecords)
+  );
 }
 
 export function HistoryTimeline({
@@ -166,24 +204,37 @@ export function HistoryTimeline({
     refetchInterval: HISTORY_EVENTS_REFETCH_MS,
   });
 
+  // Defence in depth against T-2003-bug-01. This effect's dependency list
+  // includes props whose identity the caller controls, and it reports
+  // upwards into the caller's own state — so an unstable identity on ANY of
+  // them turns "notify the parent" into render -> effect -> setState ->
+  // render, a loop with no exit. That is not hypothetical: `liveFlowRecords`
+  // was a fresh `[]` literal per render while the Flows layer was off
+  // (flowsQueries.ts), and the resulting loop starved React Router v7's
+  // navigation transition so that the whole app could not leave the
+  // Topology page. The identity bug is fixed at its source; this guard makes
+  // the next one a no-op instead of a dead end, by never re-emitting a
+  // playback state that is field-for-field the one already reported.
+  const lastEmitted = useRef<HistoryPlaybackState | undefined>(undefined);
   useEffect(() => {
-    if (scrubbing) {
-      onPlaybackChange({
-        scrubbing: true,
-        at,
-        utilizationByRef: historicalUtilization,
-        flowRecords: flowsAvailable ? (historicalFlows?.items ?? []) : [],
-        flowsAvailable,
-      });
-    } else {
-      onPlaybackChange({
-        scrubbing: false,
-        at: undefined,
-        utilizationByRef: liveUtilizationByRef,
-        flowRecords: liveFlowRecords,
-        flowsAvailable: true,
-      });
-    }
+    const next: HistoryPlaybackState = scrubbing
+      ? {
+          scrubbing: true,
+          at,
+          utilizationByRef: historicalUtilization,
+          flowRecords: flowsAvailable ? (historicalFlows?.items ?? NO_FLOW_RECORDS) : NO_FLOW_RECORDS,
+          flowsAvailable,
+        }
+      : {
+          scrubbing: false,
+          at: undefined,
+          utilizationByRef: liveUtilizationByRef,
+          flowRecords: liveFlowRecords,
+          flowsAvailable: true,
+        };
+    if (samePlayback(lastEmitted.current, next)) return;
+    lastEmitted.current = next;
+    onPlaybackChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrubbing, at, historicalUtilization, historicalFlows, flowsAvailable, liveUtilizationByRef, liveFlowRecords]);
 

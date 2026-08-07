@@ -86,6 +86,23 @@ export interface LiveFlowRecordsResult {
   isLoading: boolean;
 }
 
+/** The single empty buffer handed back while the Flows layer is off.
+ *
+ * This MUST be a module-level constant, not a `[]` literal in the return
+ * below. A fresh literal is a new identity on every render, and this hook's
+ * result feeds `HistoryTimeline`'s `liveFlowRecords` prop, which is a
+ * dependency of the effect that calls `onPlaybackChange` -> `setPlayback` in
+ * TopologyPage. New identity every render => that effect re-fires every
+ * render => setState => render => new identity: an unbreakable render loop
+ * that ran for the whole time the Graph view was mounted (T-2003-bug-01).
+ *
+ * The visible symptom was not a slow map. React Router v7 wraps location
+ * updates in `startTransition`, and a transition can never commit while the
+ * tree it is rendering re-invalidates itself every frame — so clicking any
+ * nav-rail link changed the URL and left the Topology page on screen
+ * forever. See web/e2e/nav-after-inspector.spec.ts. */
+const NO_FLOW_RECORDS: FlowRecord[] = [];
+
 export function useLiveFlowRecords(enabled: boolean, limit = 500, client?: WsClient): LiveFlowRecordsResult {
   const [state, dispatch] = useReducer(flowReducer, initialFlowViewState);
   const { data, isLoading } = useFlowsQuery({ limit }, enabled);
@@ -102,6 +119,6 @@ export function useLiveFlowRecords(enabled: boolean, limit = 500, client?: WsCli
     enabled,
   );
 
-  if (!enabled) return { records: [], isLoading: false };
+  if (!enabled) return { records: NO_FLOW_RECORDS, isLoading: false };
   return { records: state.records, isLoading };
 }

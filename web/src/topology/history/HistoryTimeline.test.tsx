@@ -180,6 +180,52 @@ describe("HistoryTimeline", () => {
     });
   });
 
+  // T-2003-bug-01 regression. The defect: the caller handed this component a
+  // freshly built `liveFlowRecords` array on every render, this effect saw a
+  // changed dependency, called back into the caller's setState, and the
+  // caller re-rendered — forever. That loop is what starved React Router
+  // v7's navigation transition and left the app unable to leave the Topology
+  // page. The source of the unstable identity is fixed in flowsQueries.ts;
+  // this asserts the component itself no longer amplifies one into a loop.
+  it("does not re-notify the caller when a re-render brings equal-but-freshly-built live values", async () => {
+    const onPlaybackChange = vi.fn();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const timeline = (util: ReadonlyMap<string, number>, records: readonly FlowRecord[]) => (
+      <QueryClientProvider client={queryClient}>
+        <HistoryTimeline
+          metricsRefs={[REF]}
+          liveUtilizationByRef={util}
+          liveFlowRecords={records}
+          flowRetentionMinutes={60}
+          onPlaybackChange={onPlaybackChange}
+          now={() => NOW}
+        />
+      </QueryClientProvider>
+    );
+
+    const { rerender } = render(timeline(new Map([[REF, 5]]), [LIVE_FLOW_RECORD]));
+    await waitFor(() => {
+      expect(onPlaybackChange).toHaveBeenCalledTimes(1);
+    });
+
+    // Every rerender passes brand-new Map/array objects holding exactly the
+    // same contents — the identity churn the defect was made of.
+    for (let i = 0; i < 5; i++) {
+      rerender(timeline(new Map([[REF, 5]]), [LIVE_FLOW_RECORD]));
+    }
+    await waitFor(() => {
+      expect(screen.getByLabelText("Scrub map history")).toBeInTheDocument();
+    });
+    expect(onPlaybackChange).toHaveBeenCalledTimes(1);
+
+    // ...and a real change still gets through, so the guard is not simply
+    // muting the component.
+    rerender(timeline(new Map([[REF, 42]]), [LIVE_FLOW_RECORD]));
+    await waitFor(() => {
+      expect(onPlaybackChange).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("never renders any apply/confirm/rollback affordance", () => {
     renderTimeline({ onPlaybackChange: vi.fn() });
     for (const verb of ["Apply", "Confirm", "Rollback"]) {

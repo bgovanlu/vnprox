@@ -292,3 +292,47 @@ Whoever picks it up should try reading 2 first, from the `changesets.spec.ts` co
 mistakes were made and corrected while writing the spec above, both worth avoiding: the inspector
 in this flow exposes **no** close button (its `Close <entity>` control belongs to the stacked-pane
 variant), and it is *not* reliably the only element with `role="dialog"` on the page.
+
+---
+
+**RESOLVED, 2026-08-07 (T-2108). Reading 2 was right: the reproduction named the wrong trigger.**
+
+The inspector has nothing to do with it. Bisecting the four combinations settled it in one run:
+
+| | Switch view | Graph view |
+|---|---|---|
+| **inspector opened + Escaped** | navigates | **stuck** |
+| **no inspector at all** | navigates | **stuck** |
+
+The precondition is simply *the Graph view is mounted*. That is why the regression spec written for
+this card in the 2026-08-06 update passed while the bug was still live — it never left the Switch
+view, so it never met the precondition. **A regression spec that does not reproduce the bug is not
+evidence the bug is gone.**
+
+**Root cause.** `useLiveFlowRecords` (`web/src/flows/flowsQueries.ts`) returned `{ records: [] }`
+— a *fresh array literal* — on every render while the Flows layer was off. `TopologyPage` passes
+that into `HistoryTimeline`'s `liveFlowRecords` prop; that prop is a dependency of the effect that
+calls `onPlaybackChange` → `setPlayback` back in `TopologyPage`. New identity every render therefore
+meant render → effect → setState → render, forever, for as long as the Graph view was mounted.
+`HistoryTimeline` is rendered **only** in the Graph view (`viewMode === "graph" &&` in
+TopologyPage.tsx), which is the whole of the view-dependence.
+
+**Why an infinite render loop presented as a navigation bug.** react-router-dom v7's
+`<BrowserRouter>` wraps every location update in `React.startTransition`. A transition cannot
+commit while the tree it is rendering keeps invalidating itself, so `history.pushState` ran (URL
+changed) and the committed UI never did. It never recovered — measured out to 125 s — and a
+sync state update elsewhere in the tree did not flush it. Confirmed two ways: passing
+`useTransitions={false}` to `<BrowserRouter>` made navigation work with the loop still present, and
+a development-React build printed `Maximum update depth exceeded` with `HistoryTimeline` at the top
+of the stack. (Production React prints nothing, which is why the console was silent for months.)
+
+**Fixed by** a module-level `NO_FLOW_RECORDS` constant in flowsQueries.ts, plus a content-equality
+guard in `HistoryTimeline` so the next unstable identity is a no-op rather than a dead end.
+
+**Pinned by** `flowsQueries.stability.test.tsx` (identity, `toBe` not `toEqual`),
+`HistoryTimeline.test.tsx`'s re-notification case, and a second `nav-after-inspector.spec.ts` test
+that mounts the Graph view and navigates away **with no dialog involved** — the reproduction that
+actually reproduces. All three were mutation-checked against the pre-fix code.
+
+**This one bug was the whole cause of three separate e2e failures** (`changesets:231`,
+`federation:109`, `simulator:138`), each of which had been triaged separately.

@@ -64,7 +64,7 @@ Companion documents: [`project-status.md`](project-status.md) (open items, perce
 | 36 | Audit log | ● | ● | ● | ● | ● | ● | ● | M | |
 | 37 | History timeline + playback | ● | ● | ● | ● | ● | ● | ● | M | |
 | 38 | Doc export (Markdown/HTML) | ● | ● | ● | ● | ● | ● | ● | M | |
-| 39 | Changeset review (comments, approval, share link) | ● | ◐ | ● | ● | ● | ● | ● | M | `T-2003-bug-01`: nav dead-end after inspector close |
+| 39 | Changeset review (comments, approval, share link) | ● | ● | ● | ● | ● | ● | ● | M | |
 | 40 | Scheduled apply / maintenance windows | ● | ● | ● | ● | ● | ● | ○ | M | |
 | 41 | Federation (multi-cluster) | ● | ● | ● | ● | ● | ● | ● | **B** | Never run against 2 real clusters |
 | 42 | Cross-cluster IPAM conflicts | ● | ● | ● | ● | ● | ● | ○ | **B** | |
@@ -217,7 +217,7 @@ It still describes the v1.0 feature set and lists as **explicit non-goals** five
 
 | ID | Severity | Area | Summary |
 |---|---|---|---|
-| `T-2003-bug-01` | High → **reproduces (correction, 2026-08-06)** | GUI | Previously recorded as unreproducible. That verdict came from running `nav-after-inspector.spec.ts` **standalone**; in the full suite it **fails**. A regression spec verified only in isolation has not been verified, because isolation is the one condition the reported bug did not occur under. See `T-2108` triage |
+| `T-2003-bug-01` | High → **FIXED 2026-08-07** | GUI | Root cause: an infinite render loop in `HistoryTimeline` (fed by a fresh `[]` literal per render from `useLiveFlowRecords`) starved the `startTransition` react-router v7 wraps navigation in — the URL changed and the page never did, for as long as the Graph view was mounted. The reported reproduction named the wrong trigger (the inspector is irrelevant), which is why the first regression spec passed against the live bug. Fixed, mutation-checked, and pinned at three levels; also the sole cause of three e2e failures. See `phase-20.md` |
 | `T-2002-bug-01` | Medium | API | Frozen MCP payloads had no field-removal regression guard (guards added; card open for the general pattern) |
 | `T-1807-bug-01` | Medium → **closed 2026-08-06** | Tooling | Test tooling assumed exclusive use of the machine. Closed by `T-1807-bug-02`'s enforced port registry — see §5.9 |
 | `T-1806-bug-01` | High → **partially closed** | Process | Gate landed; backlog triage is `T-2108`. See §5.1 |

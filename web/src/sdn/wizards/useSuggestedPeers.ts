@@ -7,7 +7,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchInventoryDetail } from "../../api/topology";
 import { useTopologyQuery } from "../../topology/queries";
-import { firstHostAddress } from "./peerSuggest";
+import { addressesField, firstHostAddress } from "./peerSuggest";
 
 const ADDRESSABLE_KINDS = new Set(["bridge", "ovs-bridge", "vlan"]);
 
@@ -47,7 +47,7 @@ export function useSuggestedPeers(memberNodes: readonly string[]): SuggestedPeer
           // costs 1 request in the common case (first bridge is the
           // management/addressed one).
           const detail = await fetchInventoryDetail(ref);
-          const addr = firstHostAddress(typeof detail.fields.addresses === "string" ? detail.fields.addresses : undefined);
+          const addr = firstHostAddress(addressesField(detail.fields));
           if (addr) found = addr;
         }
         out[node] = found;

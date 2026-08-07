@@ -652,3 +652,76 @@ and this spec's retry loop pans the canvas on every attempt, which moves it, whi
 re-lays-out. The next attempt should look at the interaction between the pan loop and layout
 settling, not at budgets or animations. Both of those have now been ruled out by experiment.
 
+
+---
+
+### Eighth pass, 2026-08-07 — the six remaining feature failures, all closed
+
+Six specs were failing at the start of this pass: `changesets:231`, `federation:109`, `history:233`,
+`simulator:138`, `user-guide-tasks:139`, `user-guide-tasks:176`. Every one is now passing. Three of
+them turned out to be **the same bug**.
+
+| Spec | Verdict | Cause |
+|---|---|---|
+| `changesets:231` | **product defect** | `T-2003-bug-01` — see below |
+| `federation:109` | **product defect** | same bug |
+| `simulator:138` | **product defect** | same bug |
+| `user-guide-tasks:139` | **product defect** | VXLAN wizard's peer auto-suggest read a field shape the API has never sent |
+| `history:233` | **product defect + two spec bugs** | flow refs unresolvable during the daemon's cold start; plus a dashed-line pixel probe and a substring locator |
+| `user-guide-tasks:176` | **stale spec + stale doc** | the IPAM per-address grid was replaced by a collapsed address list |
+
+**1. Three failures, one bug.** `T-2003-bug-01`, root-caused at last — an infinite render loop in
+`HistoryTimeline` starving react-router v7's navigation transition. Full write-up on the card in
+`phase-20.md`. The reported reproduction (spotlight → inspector → Escape → nav) named the wrong
+trigger; the actual precondition is *the Graph view is mounted*, which is why the regression spec
+written for that card passed against the live bug.
+
+**2. The VXLAN wizard could never be completed.** `peerSuggest.ts` read `fields.addresses` and
+type-guarded it to `string`, citing `inventory.Bridge`'s `fieldMap`. But `fieldMap` is the
+merge/provenance table — `topology.Detail` builds `fields` with `json.Marshal`, so the key is
+`Addresses` and the value is an array. The lookup missed on every node, every time, so all three
+peer address inputs stayed empty behind "An address is required." and **Next was permanently
+disabled** — while the wizard's own copy promised "vnprox suggests each node's own address
+automatically".
+
+Its unit tests passed throughout, because `wizardTestUtils.tsx` fixed up `{ addresses: "<cidr>" }`
+— a key and a type the server has never produced. *A fixture that invents the shape the code
+expects tests nothing.* The fix accepts both shapes, and the two halves of the contract are now
+pinned on both sides: `internal/topology.TestDetailBridgeAddressesShape` asserts the wire shape in
+Go, and the TS fixture was corrected to match it.
+
+Two further failures in the same spec were the *test's* fault, not the product's, and only became
+visible once step 1 could be passed at all: `vnet-overlay1` contains a hyphen (SDN names are
+alphanumeric), and VNI `10001` exceeds `VNI_MAX` (4094, matching `internal/change.maxVID`).
+
+**3. Flow records ingested during the daemon's cold start are unattributable forever.**
+`GET /flows` was returning the seeded record with no `srcRef`/`dstRef`, so the Flows overlay had no
+edge to paint. `flow.GraphResolver` is refreshed from the inventory graph every 15 s and resolution
+happens **once, at ingest, with no retry** — so the daemon's first 15 s, during which the index is
+empty because nothing has been collected yet, silently drop attribution for every record that
+arrives. The steady-state 15 s decoupling is a documented, deliberate tradeoff and is unchanged;
+the *cold start* now polls at 1 s until the index is non-empty (`cmd/vnproxd/flows.go`), which is
+the only window this changes. Two Go tests pin both halves — that it catches up quickly while
+empty, and that it settles back to the steady interval afterwards.
+
+The same spec also had two genuine test bugs, each of which had been masking the next:
+- The paint probe sampled **one pixel at the segment midpoint**, but `drawFlowOverlay` strokes a
+  *dashed* line (`setLineDash([8, 6])`): 6 px in every 14 are legitimately blank, so the probe was
+  a ~43% coin flip that `expect.poll` could not fix — with the dash animation paused the gap does
+  not move. It also only asked "is this pixel not the background colour", which any node border or
+  label satisfies. It now walks the whole segment, skips node rectangles, and tests for the
+  overlay's own cyan.
+- `getByText("Live")` is a case-insensitive substring match, so it also matched the **"Back to
+  live"** button that exists *only while scrubbing*. The assertion "we have left live mode" was
+  satisfied by the very control proving we had left it, and could never pass.
+
+**4. The IPAM grid does not exist any more.** `AddressList.tsx` replaced the per-address grid with a
+NetBox-style list that collapses contiguous free space into "N addresses free" range rows. There is
+no `10.100.0.51: Free` button to click. The spec now reserves from the range that starts at .51, so
+it still asserts on the same concrete address. `docs/user-guide.md`'s task table described the
+removed grid too, and is corrected.
+
+**Method note.** Three of the six were fixed by one change, but only after bisecting *preconditions*
+rather than reading code: four runs of the same navigation with the graph view and the inspector
+varied independently. Reading the component tree first would have kept pointing at the inspector,
+which the original card, its 2026-08-06 update, and its regression spec all did.

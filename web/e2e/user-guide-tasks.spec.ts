@@ -152,8 +152,16 @@ test.describe("SDN zone wizards, IPAM reserve, firewall macro rule", () => {
     // address (three-node-vlan.yaml: 10.10.0.11/.12/.13) — nothing to fill.
     await page.getByRole("button", { name: "Next" }).click();
 
-    await page.getByLabel("VNet name").fill("vnet-overlay1");
-    await page.getByLabel("VNI").fill("10001");
+    // Both values here used to be rejected by the wizard's own validation,
+    // which is why this step could never be reached, let alone passed:
+    //   - "vnet-overlay1" contains a hyphen; SDN names are letters and
+    //     digits only, starting with a letter (Proxmox's own rule).
+    //   - 10001 is outside the accepted VNI range. validation.ts caps VNIs
+    //     at VNI_MAX (4094) to match internal/change.maxVID; widening that
+    //     to VXLAN's full 16777215 is a documented follow-up there, not
+    //     something this test gets to assume.
+    await page.getByLabel("VNet name").fill("vnetov1");
+    await page.getByLabel("VNI").fill("4001");
     await page.getByRole("button", { name: "Next" }).click();
 
     await page.getByLabel("Address range (CIDR)").fill("10.90.0.0/24");
@@ -169,11 +177,11 @@ test.describe("SDN zone wizards, IPAM reserve, firewall macro rule", () => {
 
     const drawer = page.getByRole("region", { name: "Change drawer" });
     await expect(drawer).toContainText("Create sdn zone overlay1");
-    await expect(drawer).toContainText("vnet-overlay1");
+    await expect(drawer).toContainText("vnetov1");
     await expect(drawer).toContainText("Create sdn subnet 10.90.0.0/24");
   });
 
-  test("IPAM -> subnet -> grid -> Reserve: reserving a free IP lands an ipam.alloc.create draft naming the address", async ({
+  test("IPAM -> subnet -> address list -> Reserve: reserving a free IP lands an ipam.alloc.create draft naming the address", async ({
     page,
   }) => {
     await logIn(page);
@@ -181,7 +189,17 @@ test.describe("SDN zone wizards, IPAM reserve, firewall macro rule", () => {
     // three-node-vlan.yaml's vnet100 subnet: only .1 (gateway) and .50
     // (app01) are allocated — .51 is genuinely free.
     await page.getByRole("button", { name: /10\.100\.0\.0\/24/ }).click();
-    await page.getByRole("button", { name: "10.100.0.51: Free" }).click();
+    // The per-address "grid" of clickable cells this test was written
+    // against is gone: AddressList.tsx replaced it with a NetBox-style list
+    // that collapses contiguous free space into "N addresses free" range
+    // rows, precisely so a /16 reads like a /30. There is no
+    // "10.100.0.51: Free" button to click any more — free space is reserved
+    // from the range that contains it. Anchoring on the range whose start
+    // IS .51 keeps this test asserting on the same concrete address it
+    // always did. docs/user-guide.md's task table was stale in the same way
+    // and is corrected alongside this.
+    const freeRange = page.locator("div", { hasText: /^10\.100\.0\.51 – 10\.100\.0\.254/ }).last();
+    await freeRange.getByRole("button", { name: "Reserve first free →" }).click();
     await page.getByPlaceholder("Hostname (optional)").fill("web02");
     await page.getByRole("button", { name: "Reserve 10.100.0.51" }).click();
 

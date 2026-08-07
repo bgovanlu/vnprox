@@ -3,6 +3,7 @@ package topology_test
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -150,5 +151,57 @@ func rawSourceKeys(m map[string]string) []string {
 	for k := range m {
 		out = append(out, k)
 	}
+	return out
+}
+
+// TestDetailBridgeAddressesShape pins the wire shape of a bridge's addresses
+// in GET /inventory/{ref}.
+//
+// This is a contract test with a specific consumer: the SDN VXLAN zone
+// wizard's peer auto-suggest (web/src/sdn/wizards/peerSuggest.ts) reads this
+// field to prefill each member node's underlay address. It read a lowercase
+// `addresses` key and type-guarded the value to `string`, on the strength of
+// a code comment citing inventory.Bridge's `fieldMap` — which is the
+// merge/provenance table, not this projection. `fields` is built by
+// json.Marshal over the entity, so the key is the Go field name and the
+// value is an array. The lookup therefore missed on every node, the wizard
+// could never be completed, and its own unit tests passed because their
+// fixture invented the shape the code expected (T-2108).
+//
+// Assert on both halves — key spelling AND element type — because getting
+// either wrong is silent on this side and fatal on the other.
+func TestDetailBridgeAddressesShape(t *testing.T) {
+	graph, _, _ := buildGraph(t, fixtureThreeNodeVlan)
+	d, ok := topology.Detail(graph.Snapshot(), inventory.Ref{Kind: inventory.KindBridge, Node: "pve1", ID: "vmbr0"})
+	if !ok {
+		t.Fatal("expected bridge:pve1:vmbr0 in the three-node-vlan fixture")
+	}
+
+	raw, present := d.Fields["Addresses"]
+	if !present {
+		t.Fatalf("Fields has no \"Addresses\" key; keys = %v", fieldKeys(d.Fields))
+	}
+	list, isSlice := raw.([]any)
+	if !isSlice {
+		t.Fatalf("Fields[\"Addresses\"] is %T, want a JSON array — the frontend's peer-suggest parses it as a list", raw)
+	}
+	if len(list) == 0 {
+		t.Fatal("Fields[\"Addresses\"] is empty for a bridge the fixture gives an address; nothing downstream could suggest a peer address from this")
+	}
+	first, isStr := list[0].(string)
+	if !isStr {
+		t.Fatalf("Fields[\"Addresses\"][0] is %T, want a CIDR string", list[0])
+	}
+	if !strings.Contains(first, "/") {
+		t.Errorf("Fields[\"Addresses\"][0] = %q, want a CIDR (the consumer strips the prefix to get a host address)", first)
+	}
+}
+
+func fieldKeys(fields map[string]any) []string {
+	out := make([]string, 0, len(fields))
+	for k := range fields {
+		out = append(out, k)
+	}
+	sort.Strings(out)
 	return out
 }

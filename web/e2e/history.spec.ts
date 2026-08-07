@@ -267,35 +267,107 @@ test("History playback: scrubbing the timeline changes the map's flow paint and 
 
   const canvas = page.getByTestId("topology-canvas-v2").locator("canvas").first();
 
-  async function edgeMidpointPixelIsPainted(): Promise<boolean> {
+  /** Whether the Flows overlay has painted its edge between SRC_REF and
+   * DST_REF right now.
+   *
+   * Two things this deliberately does NOT do, both of which the previous
+   * single-pixel version did and both of which made it wrong:
+   *
+   *  1. It does not sample only the midpoint. `drawFlowOverlay`
+   *     (src/topology/canvas/canvasDraw.ts) strokes the edge **dashed** —
+   *     `setLineDash([8, 6])` — so 6 px in every 14 along the line are
+   *     legitimately unpainted. The midpoint landing in a gap is a ~43%
+   *     coin flip that has nothing to do with whether the overlay rendered,
+   *     and it is not self-correcting under `expect.poll`: with the dash
+   *     animation paused the gap stays exactly where it is forever. This
+   *     walks the whole segment instead and asks whether ANY sample is on a
+   *     dash.
+   *  2. It does not test for "not the background colour". Anything drawn
+   *     over that pixel — a base topology edge, a node border, a label —
+   *     satisfied that, so a true result was not evidence of the flow
+   *     overlay specifically. This tests for the overlay's own fixed cyan
+   *     (FLOW_EDGE_COLOR `#06b6d4`, which canvasDraw.ts documents as chosen
+   *     to collide with no other palette in the app), which is what the
+   *     assertion actually means. Samples that fall inside a node's own
+   *     rectangle are skipped, since a node's tint is not the edge. */
+  async function flowEdgeIsPainted(): Promise<boolean> {
     const srcBox = await srcProxy.boundingBox();
     const dstBox = await dstProxy.boundingBox();
     const canvasBox = await canvas.boundingBox();
     if (!srcBox || !dstBox || !canvasBox) return false;
-    const midX = (srcBox.x + srcBox.width / 2 + dstBox.x + dstBox.width / 2) / 2;
-    const midY = (srcBox.y + srcBox.height / 2 + dstBox.y + dstBox.height / 2) / 2;
-    const localX = midX - canvasBox.x;
-    const localY = midY - canvasBox.y;
-    const pixel = await canvas.evaluate(
-      (el, [x, y]) => {
+    const nodeBoxes = await region.locator("[data-entity-id]").evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      }),
+    );
+
+    const a = { x: srcBox.x + srcBox.width / 2 - canvasBox.x, y: srcBox.y + srcBox.height / 2 - canvasBox.y };
+    const b = { x: dstBox.x + dstBox.width / 2 - canvasBox.x, y: dstBox.y + dstBox.height / 2 - canvasBox.y };
+    const boxes = nodeBoxes.map((n) => ({ x: n.x - canvasBox.x, y: n.y - canvasBox.y, w: n.width, h: n.height }));
+
+    return canvas.evaluate(
+      (el, { a: from, b: to, boxes: skip }) => {
         const c = el as HTMLCanvasElement;
         const ctx2d = c.getContext("2d");
-        if (!ctx2d) return null;
+        if (!ctx2d) return false;
         const dpr = c.width / c.clientWidth;
-        const data = ctx2d.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data;
-        return Array.from(data);
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1) return false;
+        // Every 2 px along the line: finer than the 6 px dash gap, so a
+        // painted edge cannot be stepped over.
+        for (let d = 0; d <= len; d += 2) {
+          const x = from.x + (dx * d) / len;
+          const y = from.y + (dy * d) / len;
+          if (skip.some((s) => x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h)) continue;
+          // A 3x3 patch absorbs sub-pixel placement and antialiasing of a
+          // thin stroke without widening what counts as "cyan".
+          const px = Math.round(x * dpr);
+          const py = Math.round(y * dpr);
+          if (px < 1 || py < 1 || px >= c.width - 1 || py >= c.height - 1) continue;
+          const patch = ctx2d.getImageData(px - 1, py - 1, 3, 3).data;
+          for (let i = 0; i < patch.length; i += 4) {
+            const r = patch[i] ?? 0;
+            const g = patch[i + 1] ?? 0;
+            const bl = patch[i + 2] ?? 0;
+            // #06b6d4 at alpha 0.9 over either theme background: strongly
+            // blue+green dominant over red. Both backgrounds, every slate
+            // stroke, and the status palette fail this.
+            if (bl - r > 60 && g - r > 40 && bl > 100) return true;
+          }
+        }
+        return false;
       },
-      [localX, localY] as [number, number],
+      { a, b, boxes },
     );
-    if (!pixel) return false;
-    const [r, g, b] = pixel;
-    const isLightBg = r === 0xf8 && g === 0xfa && b === 0xfc;
-    const isDarkBg = r === 0x0f && g === 0x17 && b === 0x2a;
-    return !(isLightBg || isDarkBg);
   }
 
+  // The overlay can only paint an edge between two entities if the daemon
+  // resolved this record's addresses to those entities' refs in the first
+  // place (internal/flow.GraphResolver). Resolution happens once, at ingest,
+  // and is never retried — so assert it actually happened before asserting
+  // on pixels. Without this the test's real failure ("the record was
+  // ingested before the resolver had indexed anything, and is therefore
+  // unattributed forever") shows up as the far less legible "a pixel is not
+  // cyan". Found exactly that way under T-2108; the daemon-side fix is in
+  // cmd/vnproxd/flows.go's cold-start refresh cadence.
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async () => {
+          const resp = await fetch("/api/v1/flows?limit=50", { credentials: "include" });
+          if (!resp.ok) return [] as { srcRef?: string; dstRef?: string }[];
+          const body = (await resp.json()) as { items?: { srcRef?: string; dstRef?: string }[] };
+          return body.items ?? [];
+        }),
+      { timeout: 20_000 },
+    )
+    .toContainEqual(expect.objectContaining({ srcRef: SRC_REF, dstRef: DST_REF }));
+
   // Live: the just-arrived record paints an edge right now.
-  await expect.poll(edgeMidpointPixelIsPainted, { timeout: 15_000 }).toBe(true);
+  await expect.poll(flowEdgeIsPainted, { timeout: 15_000 }).toBe(true);
 
   // Scrub the HistoryTimeline back to well before the flow record's own
   // timestamp — AC5's "visibly changes the map's ... paint": the overlay
@@ -305,14 +377,28 @@ test("History playback: scrubbing the timeline changes the map's flow paint and 
   const timeline = page.getByTestId("history-timeline");
   const slider = page.getByLabel("Scrub map history");
   await expect(slider).toBeVisible();
-  const beforeFlowAt = flowSentAt - 600; // 10 minutes before the flow arrived
+  // `fill()` on <input type="range"> rejects any value that is not exactly
+  // on the step grid ("Malformed value") — and this slider's grid is
+  // `min + 30k` where `min` is a live unix timestamp, so an arbitrary
+  // "ten minutes ago" almost never lands on it. A real user never hits this:
+  // dragging the thumb snaps to the grid for them. Snap here the same way,
+  // reading min/step off the element rather than assuming them, so the test
+  // keeps working if the range's own definition changes.
+  const grid = await slider.evaluate((el: HTMLInputElement) => ({ min: Number(el.min), step: Number(el.step) }));
+  const beforeFlowAt = // 10 minutes before the flow arrived, snapped down onto the step grid
+    grid.min + Math.floor((flowSentAt - 600 - grid.min) / grid.step) * grid.step;
   await slider.fill(String(beforeFlowAt));
-  await expect(timeline.getByText("Live")).toHaveCount(0);
-  await expect.poll(edgeMidpointPixelIsPainted, { timeout: 15_000 }).toBe(false);
+  // exact: true. A bare getByText("Live") is a case-insensitive substring
+  // match, so it also matches the "Back to live" button that only exists
+  // WHILE scrubbing — i.e. the assertion "we left live mode" was satisfied
+  // by the very control that proves we left it, and could never pass.
+  await expect(timeline.getByText("Live", { exact: true })).toHaveCount(0);
+  await expect(timeline.getByRole("button", { name: "Back to live" })).toBeVisible();
+  await expect.poll(flowEdgeIsPainted, { timeout: 15_000 }).toBe(false);
 
   // Scrub forward to "now" again (back to live) — the edge reappears.
   await page.getByRole("button", { name: "Back to live" }).click();
-  await expect.poll(edgeMidpointPixelIsPainted, { timeout: 15_000 }).toBe(true);
+  await expect.poll(flowEdgeIsPainted, { timeout: 15_000 }).toBe(true);
 
   // Changeset marker: appears on the timeline and deep-links to the
   // existing changeset drawer — never re-applies/re-confirms anything.

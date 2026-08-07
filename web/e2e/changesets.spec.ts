@@ -191,10 +191,20 @@ test("T-207 walkthrough: bridge editor, reload survival, bulk guests, review tab
 
   // --- 7. Apply of the node-file-only changeset --------------------------
   // Remove the two guest ops, leaving just the bridge create.
+  // Removing a row re-renders the whole op list, so the *next* iteration's
+  // "first row" is a different element than the one this iteration resolved.
+  // Waiting for the count to actually drop before looking again is what
+  // makes that safe: the previous form of this loop resolved a Remove
+  // button, then clicked it while the list was still settling, and failed
+  // with "element is not stable" / "element was detached from the DOM"
+  // whenever the machine was loaded enough for the re-render to land inside
+  // the click's actionability window. Anchoring each step on the observable
+  // state change instead of on a toast that may already have expired removes
+  // the race rather than widening a timeout around it.
   const guestRows = page.locator("li", { hasText: "Update guest NIC" });
-  while ((await guestRows.count()) > 0) {
+  for (let remaining = await guestRows.count(); remaining > 0; remaining--) {
     await guestRows.first().getByRole("button", { name: "Remove" }).click();
-    await expect(page.getByText("Added to changeset").last()).toBeHidden({ timeout: 10_000 }).catch(() => undefined);
+    await expect(guestRows).toHaveCount(remaining - 1);
   }
   await expect(drawerOnGuests).not.toContainText("Update guest NIC");
 

@@ -72,7 +72,7 @@ Ranked by *what it costs to leave this alone*, not by effort.
 
 | # | Item | Card | Note |
 |---|---|---|---|
-| 7 | Nav-rail dead-end after inspector close | `T-2003-bug-01` | High severity, ordinary user path. **Correction 2026-08-06:** previously logged as unreproducible; it reproduces in the full e2e suite and only passes standalone |
+| 7 | ~~Nav-rail dead-end from the Graph view~~ | `T-2003-bug-01` | **Closed 2026-08-07** — an infinite render loop in `HistoryTimeline` starved react-router v7's navigation transition, so the URL changed and the page never did. Not the inspector, as reported and twice re-reported: the precondition is the Graph view being mounted, which is why the original regression spec passed against the live bug. It was also the single cause of three separate e2e failures |
 | 8 | ~~`vnproxctl doctor`~~ | `T-1904` | **Closed 2026-08-06** — ten checks, each with a broken fixture proving it can fail; remediation enforced structurally by `Report.Validate()`, not merely asserted. Four checks await a live-daemon wiring (`T-1904-followup-02`), which is also where the certificate/SAN preflight belongs |
 | 9 | ~~`docs/features.md` is stale~~ | `T-2107` | **Closed 2026-08-06** — rewritten to cover all four arcs; the non-goals section now states what is genuinely still out of scope |
 | 10 | Accessibility second pass | `T-2004` | Pass 1 shipped (WCAG AA, axe-gated) |
@@ -145,7 +145,7 @@ Closed since the previous revision: the licence decision (`T-2106`), the e2e gat
 | `v4.0` (arc 4 complete) | No | Phase 21 not started; phase 18 unvalidated |
 | Public/community release | No | ~~No license~~ (closed); no signed repository; no compatibility matrix |
 
-A `v3.1` tag is defensible today if `T-1806-bug-02` is understood and `T-2003-bug-01` is fixed first. Both are agent-completable.
+A `v3.1` tag is defensible today once `T-1806-bug-02` is understood. `T-2003-bug-01` is fixed (2026-08-07).
 
 ---
 

@@ -1,11 +1,26 @@
-// T-2003-bug-01 regression: nav-rail navigation must keep working after the
-// entity inspector has been opened and dismissed.
+// T-2003-bug-01 regression: nav-rail navigation must keep working from the
+// Topology page — including after the entity inspector has been opened and
+// dismissed.
 //
-// The original defect: spotlight search → open an inspector → Escape → click
-// any nav-rail link. The URL changed, the rendered page did not. It survived
-// because nothing ran this suite (T-1806-bug-01) and the one spec that
-// crossed this path asserted on text loose enough to match the *stale* page
-// it should have navigated away from.
+// The defect as originally reported: spotlight search → open an inspector →
+// Escape → click any nav-rail link. The URL changed, the rendered page did
+// not. It survived because nothing ran this suite (T-1806-bug-01) and the
+// one spec that crossed this path asserted on text loose enough to match the
+// *stale* page it should have navigated away from.
+//
+// **The reported reproduction named the wrong trigger** (settled 2026-08-07,
+// under T-2108). The inspector is irrelevant. Bisecting the four
+// combinations showed Switch-view + inspector navigates fine and Graph-view
+// with *no* inspector at all is broken, so the precondition is simply "the
+// Graph view is mounted" — which is why the first regression spec written
+// for this card passed while the bug was still live: it never left the
+// Switch view. Cause: `HistoryTimeline` (Graph-view-only) received a
+// freshly-built `liveFlowRecords` array on every render from
+// `useLiveFlowRecords(false)`, re-fired the effect that calls back into
+// TopologyPage's `setPlayback`, and looped forever — starving the
+// `startTransition` React Router v7 wraps every location update in. Fixed in
+// src/flows/flowsQueries.ts, with unit-level pins in
+// flowsQueries.stability.test.tsx and HistoryTimeline.test.tsx.
 //
 // Two rules this file follows, both learned from that:
 //
@@ -93,4 +108,41 @@ test("nav-rail still navigates after the inspector is opened and dismissed", asy
   await page.getByRole("link", { name: "IPAM" }).click();
   await page.waitForURL("**/ipam");
   await expectOnPage(page, "IPAM");
+});
+
+/** Switches to the Graph view and waits for the async elkjs layout to have
+ * actually spread the nodes out — the same readiness signal topology.spec.ts
+ * uses. Mounting React Flow is the real precondition for this bug, so a spec
+ * that clicks "Graph" and navigates immediately could pass without ever
+ * having reproduced it. */
+async function waitForGraphLayout(page: Page): Promise<void> {
+  await page.getByRole("radio", { name: "Graph" }).click();
+  await expect(page.locator(".react-flow")).toBeVisible();
+  await page.waitForFunction(() => {
+    const nodes = Array.from(document.querySelectorAll(".react-flow__node"));
+    const transforms = new Set(nodes.map((n) => (n instanceof HTMLElement ? n.style.transform : "")));
+    return nodes.length >= 10 && transforms.size > nodes.length / 2;
+  });
+}
+
+test("nav-rail still navigates once the Graph view is mounted, with no inspector involved", async ({ page }) => {
+  await logIn(page);
+  await waitForGraphLayout(page);
+
+  // No dialog is opened anywhere in this test. Before the fix this failed
+  // exactly as the card describes — URL updated, page did not — which is how
+  // the inspector was ruled out as the cause.
+  await page.getByRole("link", { name: "Guests" }).click();
+  await page.waitForURL("**/guests");
+  await expectOnPage(page, "Guests");
+
+  // Return to Topology, re-mount the graph, and leave again: the loop was
+  // re-armed every time the Graph view mounted, so one successful departure
+  // is not enough to call it fixed.
+  await page.getByRole("link", { name: "Topology" }).click();
+  await page.waitForURL("**/topology");
+  await waitForGraphLayout(page);
+  await page.getByRole("link", { name: "Audit" }).click();
+  await page.waitForURL("**/audit");
+  await expectOnPage(page, "Audit");
 });

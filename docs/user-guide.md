@@ -55,7 +55,7 @@ Every applied change is snapshotted. **Time machine** (History → Snapshots) le
 | Move 12 VMs to another bridge | Guests view → filter by bridge → select all → Reattach |
 | Create an isolated test network on all nodes | SDN → New zone → Simple → wizard |
 | Stretch a network across nodes with VXLAN | SDN → New zone → VXLAN → wizard (it does the MTU math) |
-| Reserve an IP for a VM | IPAM → subnet → grid → click a free cell → Reserve |
+| Reserve an IP for a VM | IPAM → subnet → address list → "Reserve first free →" on a free range (or click an existing address) → Reserve |
 | Allow only web traffic to a VM | Firewall → guest → builder row (macro: HTTP/HTTPS) |
 | "Why can't VM A reach VM B?" | Tools → Path simulator — it names the blocking rule or missing link |
 

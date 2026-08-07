@@ -125,6 +125,17 @@ func (g *GraphResolver) Refresh(entities []inventory.Entity) {
 	g.mu.Unlock()
 }
 
+// Indexed reports how many CIDRs the resolver currently knows about. Zero
+// means every Resolve call is guaranteed to miss — the state the resolver
+// starts in, and the state it stays in until the inventory graph has been
+// collected at least once. Callers driving the refresh cadence use this to
+// tell "nothing to index yet" apart from "indexed, nothing matched".
+func (g *GraphResolver) Indexed() int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return len(g.subnets)
+}
+
 // Resolve implements Resolver: the first indexed CIDR (bridges before SDN
 // subnets, in Refresh's own build order) containing ip wins — an address
 // legitimately inside two overlapping subnets is not expected in a
