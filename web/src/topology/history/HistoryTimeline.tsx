@@ -298,9 +298,18 @@ export function HistoryTimeline({
               }
             }}
             disabled={evt.kind === "finding"}
+            // z-10 on the changeset marker: every marker is absolutely
+            // positioned on the same 3px-tall track, so two events seconds
+            // apart overlap, and without an explicit order the one later in
+            // DOM (later in time) paints on top. A *finding* marker is
+            // decorative — it is `disabled` and does nothing on click — so
+            // when it lands on top of a changeset marker it silently makes
+            // the one actionable thing on the timeline unclickable. Found by
+            // T-2108: a finding raised six seconds after a changeset was
+            // confirmed sat over its marker and swallowed the click.
             className={
               evt.kind === "changeset"
-                ? "absolute top-0 h-3 w-1.5 -translate-x-1/2 rounded-sm bg-accent-500 hover:bg-accent-700"
+                ? "absolute top-0 z-10 h-3 w-1.5 -translate-x-1/2 rounded-sm bg-accent-500 hover:bg-accent-700"
                 : "absolute top-0 h-3 w-1.5 -translate-x-1/2 cursor-default rounded-sm bg-amber-400"
             }
             style={{ left: `${String(positionPct(evt.at))}%` }}

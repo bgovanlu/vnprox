@@ -244,35 +244,73 @@ test("Flows layer: toggling it paints a real ingested cross-entity flow as an ed
   const midX = (srcBox.x + srcBox.width / 2 + dstBox.x + dstBox.width / 2) / 2;
   const midY = (srcBox.y + srcBox.height / 2 + dstBox.y + dstBox.height / 2) / 2;
 
-  // A pixel sampled at the overlay edge's own midpoint must differ from
-  // BOTH of canvasDraw.ts's plain light/dark background colors (#f8fafc /
-  // #0f172a — themeColors' `background` field, whichever theme this
-  // browser context happens to render in) — direct proof something was
-  // actually painted there (the cyan overlay stroke), independent of the
-  // click-driven assertions below (which only prove the *geometry*
-  // resolves, not that pixels were drawn).
+  // Proof that the Flows overlay actually PAINTED, independent of the
+  // click-driven assertions below (which only prove the geometry resolves).
+  //
+  // Two things this deliberately does not do, both of which the previous
+  // single-pixel version did, and both of which made it wrong (T-2108):
+  //
+  //  1. It does not sample only the midpoint. drawFlowOverlay
+  //     (src/topology/canvas/canvasDraw.ts) strokes this edge **dashed** —
+  //     setLineDash([8, 6]) — so 6 px in every 14 along it are legitimately
+  //     unpainted. Whether the midpoint lands on a dash is a ~43% coin flip
+  //     with nothing to do with whether the overlay rendered, and it does
+  //     not self-correct on a retry: with the dash animation paused the gap
+  //     stays exactly where it is. This walks the whole segment.
+  //  2. It does not test for "not the background colour". A base topology
+  //     edge, a node border or a label all satisfy that, so a pass was not
+  //     evidence of the flow overlay specifically. This tests for the
+  //     overlay's own fixed cyan (FLOW_EDGE_COLOR #06b6d4, which
+  //     canvasDraw.ts documents as colliding with no other palette), and
+  //     skips samples inside a node's own rectangle.
   const canvas = page.getByTestId("topology-canvas-v2").locator("canvas").first();
   const canvasBox = await canvas.boundingBox();
   expect(canvasBox).not.toBeNull();
   if (canvasBox) {
-    const localX = midX - canvasBox.x;
-    const localY = midY - canvasBox.y;
-    const pixel = await canvas.evaluate(
-      (el, [x, y]) => {
+    const nodeBoxes = await region.locator("[data-entity-id]").evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      }),
+    );
+    const a = { x: srcBox.x + srcBox.width / 2 - canvasBox.x, y: srcBox.y + srcBox.height / 2 - canvasBox.y };
+    const b = { x: dstBox.x + dstBox.width / 2 - canvasBox.x, y: dstBox.y + dstBox.height / 2 - canvasBox.y };
+    const boxes = nodeBoxes.map((n) => ({ x: n.x - canvasBox.x, y: n.y - canvasBox.y, w: n.width, h: n.height }));
+
+    const painted = await canvas.evaluate(
+      (el, { a: from, b: to, boxes: skip }) => {
         const c = el as HTMLCanvasElement;
         const ctx2d = c.getContext("2d");
-        if (!ctx2d) return null;
+        if (!ctx2d) return false;
         const dpr = c.width / c.clientWidth;
-        const data = ctx2d.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data;
-        return Array.from(data);
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1) return false;
+        // Every 2 px: finer than the 6 px dash gap, so a painted edge
+        // cannot be stepped over.
+        for (let d = 0; d <= len; d += 2) {
+          const x = from.x + (dx * d) / len;
+          const y = from.y + (dy * d) / len;
+          if (skip.some((s) => x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h)) continue;
+          const px = Math.round(x * dpr);
+          const py = Math.round(y * dpr);
+          if (px < 1 || py < 1 || px >= c.width - 1 || py >= c.height - 1) continue;
+          // A 3x3 patch absorbs sub-pixel placement and antialiasing of a
+          // thin stroke without widening what counts as cyan.
+          const patch = ctx2d.getImageData(px - 1, py - 1, 3, 3).data;
+          for (let i = 0; i < patch.length; i += 4) {
+            const r = patch[i] ?? 0;
+            const g = patch[i + 1] ?? 0;
+            const bl = patch[i + 2] ?? 0;
+            if (bl - r > 60 && g - r > 40 && bl > 100) return true;
+          }
+        }
+        return false;
       },
-      [localX, localY] as [number, number],
+      { a, b, boxes },
     );
-    expect(pixel).not.toBeNull();
-    const [r, g, b] = pixel ?? [0, 0, 0];
-    const isLightBg = r === 0xf8 && g === 0xfa && b === 0xfc;
-    const isDarkBg = r === 0x0f && g === 0x17 && b === 0x2a;
-    expect(isLightBg || isDarkBg).toBe(false);
+    expect(painted, "the Flows overlay painted no cyan anywhere along the edge between the two entities").toBe(true);
   }
 
   await page.mouse.click(midX, midY);

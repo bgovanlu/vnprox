@@ -782,3 +782,26 @@ scenario has; the branch is gone. This is the same conditional-step pattern
 node with no pan at all. It passes consistently today, but it has the same off-screen exposure
 `conntrack` had — retrying cannot move a node into the viewport. Worth converting to the same
 geometry-driven pan the next time it flakes.
+
+**Tenth pass, 2026-08-07 — `flows`, and one more product defect on the history timeline**
+
+Second full run: **87 passed / 1 failed** (`flows:185`). Third-pass fixes below.
+
+`flows:185` carried the *same* single-pixel-midpoint probe on the *same* dashed edge as
+`history:233` — the eighth pass fixed one and left its twin. Both now walk the segment and test for
+the overlay's own cyan. This is the concrete answer to the sixth pass's open note ("sample along the
+edge's actual rendered geometry ... do not simply widen the probe"): the geometry is a straight line
+between node centres and always was; what defeats a point sample is the **dash pattern**, not the
+path shape.
+
+Fixing that surfaced a real defect underneath. `history:233`'s changeset-marker click then failed
+with `<button disabled ... aria-label="Finding new ...">` **intercepts pointer events**. Every
+timeline marker is absolutely positioned on the same 3px track, so two events seconds apart overlap,
+and with no explicit stacking order the later one in the DOM — later in time — wins. A *finding*
+marker is decorative: it is `disabled` and its onClick does nothing. So a finding raised six seconds
+after a changeset was confirmed sat on top of that changeset's marker and swallowed the only click
+the timeline offers. Fixed by stacking changeset markers above finding markers (`z-10`).
+
+Unrelated but blocking `make check`: two new high-severity `nanoid` advisories
+(GHSA-28wg-ghj8-5hjv, GHSA-2v37-7h3g-55p8) appeared in the audit database. Resolved properly —
+`nanoid` 3.3.15 → 3.3.18 via the existing `vite > postcss` chain — rather than allowlisted.

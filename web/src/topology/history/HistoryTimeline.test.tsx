@@ -226,6 +226,30 @@ describe("HistoryTimeline", () => {
     });
   });
 
+  // T-2108. Markers share one 3px track and are positioned absolutely, so
+  // two events seconds apart overlap. A finding marker is decorative — it is
+  // `disabled` and its onClick does nothing — but being later in the DOM it
+  // painted over the changeset marker and swallowed the only click the
+  // timeline offers. jsdom does no layout, so the stacking order itself
+  // cannot be asserted here; the class that establishes it can be, and the
+  // real check is history.spec.ts clicking the marker for real.
+  it("stacks the actionable changeset marker above the decorative finding markers", async () => {
+    fetchHistoryEventsMock.mockImplementation(
+      (): Promise<HistoryEvent[]> =>
+        Promise.resolve([
+          { at: NOW - 500, kind: "changeset", action: "changeset.confirm", result: "committed", changesetId: "cs-42" },
+          // Six seconds later: close enough to land on the same pixels.
+          { at: NOW - 494, kind: "finding", findingId: "f1", transition: "new" },
+        ]),
+    );
+    renderTimeline({ onPlaybackChange: vi.fn() });
+
+    const changesetMarker = await screen.findByRole("button", { name: /Changeset event: changeset\.confirm/ });
+    const findingMarker = await screen.findByRole("button", { name: /Finding new/ });
+    expect(changesetMarker.className).toContain("z-10");
+    expect(findingMarker.className).not.toContain("z-10");
+  });
+
   it("never renders any apply/confirm/rollback affordance", () => {
     renderTimeline({ onPlaybackChange: vi.fn() });
     for (const verb of ["Apply", "Confirm", "Rollback"]) {
