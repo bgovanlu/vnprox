@@ -40,6 +40,11 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	var (
 		configPath = fset.String("config", defaultConfigPath, "path to vnprox.toml")
 		outputFmt  = fset.String("o", defaultOutputFormat, outputFlagUsage)
+		// T-2406. Without it, behaviour is exactly as before: the
+		// daemon-dependent checks report `skip` with their reason.
+		live      = fset.Bool("live", false, "ask the running daemon for the checks that need its credentials (pve_reachable, pve_privileges)")
+		liveURL   = fset.String("url", "", "with --live: the daemon's /api/v1 base URL (default: derived from --config)")
+		liveToken = fset.String("token", "", "with --live: bearer token (falls back to "+remoteTokenEnvVar+")")
 	)
 	if err := fset.Parse(args); err != nil {
 		return ExitUsage
@@ -53,6 +58,16 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	ctx := context.Background()
 	facts, env := collectEnvironment(ctx, *configPath)
 	report := doctor.Run(ctx, facts, env)
+
+	// T-2406: merge the daemon's verdicts over the local skips.
+	//
+	// A daemon that cannot be reached yields `skip` results naming the daemon,
+	// NEVER `fail`. A stopped service does not mean PVE is unreachable or that
+	// the token is wrong, and reporting failure here would send an operator to
+	// look at the wrong thing — doctor's whole value is not doing that.
+	if *live {
+		report = doctor.MergeLive(report, fetchLiveResults(ctx, *configPath, *liveURL, *liveToken, stderr))
+	}
 
 	// A malformed report is a bug in a check, not an operator problem. Say so
 	// loudly rather than printing something that looks authoritative.
@@ -277,3 +292,57 @@ func parsePort(addr string) (int, bool) {
 	}
 	return p, true
 }
+
+// doctorLiveResponse mirrors internal/api's `GET /doctor/live` body.
+type doctorLiveResponse struct {
+	Results []doctor.Result `json:"results"`
+}
+
+// fetchLiveResults asks the running daemon for the checks it alone can answer.
+//
+// Every failure path — no token, no reachable daemon, an error status, a
+// malformed body — resolves to `skip` results naming the daemon, and the
+// reason is written to stderr so it is visible in a terminal without polluting
+// the report (which may be JSON on stdout). Nothing here can turn into a
+// `fail`: see the merge site's comment.
+func fetchLiveResults(ctx context.Context, configPath, urlOverride, tokenOverride string, stderr io.Writer) []doctor.Result {
+	rf := &remoteFlags{
+		configPath: &configPath,
+		url:        &urlOverride,
+		token:      &tokenOverride,
+		timeout:    ptrDuration(10 * time.Second),
+		insecure:   ptrBool(true),
+		output:     ptrString(defaultOutputFormat),
+	}
+	client, code := buildRemoteClient(rf, "doctor --live", io.Discard)
+	if code != ExitSuccess || client == nil {
+		reason := "no bearer token (--token or " + remoteTokenEnvVar + "), or the daemon's URL could not be determined"
+		_, _ = fmt.Fprintf(stderr, "vnproxctl doctor: --live skipped: %s\n", reason)
+		return doctor.UnreachableDaemonResults(reason)
+	}
+
+	var body doctorLiveResponse
+	status, apiErr, err := client.doJSON(ctx, "GET", "/doctor/live", nil, &body)
+	switch {
+	case err != nil:
+		reason := "could not reach the daemon: " + err.Error()
+		_, _ = fmt.Fprintf(stderr, "vnproxctl doctor: --live skipped: %s\n", reason)
+		return doctor.UnreachableDaemonResults(reason)
+	case status >= 400:
+		reason := fmt.Sprintf("the daemon answered %d", status)
+		if apiErr != nil && apiErr.Message != "" {
+			reason += ": " + apiErr.Message
+		}
+		_, _ = fmt.Fprintf(stderr, "vnproxctl doctor: --live skipped: %s\n", reason)
+		return doctor.UnreachableDaemonResults(reason)
+	case len(body.Results) == 0:
+		reason := "the daemon returned no live results"
+		_, _ = fmt.Fprintf(stderr, "vnproxctl doctor: --live skipped: %s\n", reason)
+		return doctor.UnreachableDaemonResults(reason)
+	}
+	return body.Results
+}
+
+func ptrDuration(d time.Duration) *time.Duration { return &d }
+func ptrBool(b bool) *bool                       { return &b }
+func ptrString(s string) *string                 { return &s }

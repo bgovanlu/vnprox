@@ -504,6 +504,7 @@ anything that is not healthy, names the file, port, privilege, or command involv
 vnproxctl doctor                        # human-readable, worst first
 vnproxctl doctor -o json                # schema-stable, for CI and support bundles
 vnproxctl doctor --config /path/to.toml # point at a config before it is installed
+vnproxctl doctor --live                 # T-2406: also ask the running daemon (needs --token/VNPROX_TOKEN)
 ```
 
 It is **read-only** — safe to run as root, mid-incident, against a live daemon — and it works with
@@ -529,11 +530,31 @@ node down for maintenance should not fail a script.
 most of the PVE checks skip, which is correct and expected — "we did not look" and "we looked and
 it was fine" are different facts.
 
+**`--live` (T-2406).** Four checks need a credential only the running daemon holds. `--live` asks
+it (`GET /doctor/live`, bearer token, `audit` capability) and merges the verdicts over the local
+skips. Without the flag, behaviour is unchanged.
+
+| Check | With `--live` |
+|---|---|
+| `pve_reachable` | **Answered.** The daemon makes a real authenticated call, so a pass means "reachable *and* the token authenticates" — not merely that a port is open |
+| `pve_privileges` | **Answered**, against the same privilege list `internal/auth` uses, so the two cannot drift |
+| `clock_skew` | Still skips — see below |
+| `peer_secret` | Still skips — see below |
+
+**If the daemon cannot be reached, `--live` reports `skip`, never `fail.`** A stopped service does
+not mean PVE is unreachable or that the token is wrong, and a `fail` here would send you to look at
+the wrong thing. The reason names the daemon, and is also written to stderr so it is visible when
+the report itself is JSON on stdout.
+
 **Known limitations, stated rather than hidden:**
 
-- The `pve_reachable`, `pve_privileges`, `clock_skew` and `peer_secret` checks need an
-  authenticated PVE client and a peer view that only the running daemon holds. They currently
-  report `skip` from the CLI. Wiring them to a live daemon is `T-1904-followup-02`.
+- `clock_skew` needs PVE's own clock, and neither the `internal/pve` client nor `internal/pvemock`
+  exposes a server-time surface today. `--live` therefore still skips it. `T-2406-followup-01`.
+- `peer_secret` compares the cluster secret **across nodes**, and no peer-API route reports another
+  node's digest. A probe returning only the local digest would be **worse** than skipping: the
+  check reads a one-entry map as "single-node cluster; nothing to agree with" and would report
+  **pass** on a five-node cluster whose secrets disagree. `T-2406-followup-02`.
+- With `--live` on a single node, `doctor` therefore answers **8 of 10** checks rather than 6.
 - `capture_root` and the PVE API URL are read from the packaged defaults rather than the config,
   because they are outside the daemon-independent config subset `doctor` loads. If you have moved
   either, the disk check reports on the default location.
