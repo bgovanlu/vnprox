@@ -274,3 +274,46 @@ this card.
 3. The job green on three consecutive runs after it.
 4. If it remains unexplained: say so plainly on the card, record what was excluded, and **do not**
    close it. An unexplained green is what `T-1806-bug-01` exists to prevent.
+
+
+---
+
+## Phase 24 — delivery record (2026-08-08)
+
+| Card | State | Note |
+|---|---|---|
+| `T-2401` | ● Shipped | Off by default; content-de-duplicated; retention scoped to the `scheduled` kind in SQL |
+| `T-2402` | ● Shipped | Reason required, expiry evaluated at read time, `vnprox_findings_acked` added |
+| `T-2403` | ● Shipped | `GET /inventory/history?ref=` — query param, not a path segment; `truncated` in the contract |
+| `T-2404` | ● Shipped | `GET /changesets/{id}/impact`; every verdict carries its reason |
+| `T-2405` | ○ **Not started** | OpenAPI + completeness gate. Deferred, not attempted |
+| `T-2406` | ◐ **Partial** | `pve_reachable` + `pve_privileges` closed (6→8 of 10 answered). `clock_skew` and `peer_secret` still skip — `T-2406-followup-01/02` |
+| `T-2407` | ○ **Not started** | Alert quiet hours. Deferred, not attempted |
+| `T-2408` | ● Shipped | All-or-nothing batch; conflicts name both findings |
+| `T-2409` | ○ **Not started** | Per-spec e2e store isolation. Deferred, not attempted |
+| `T-2410` | ● **Root-caused and fixed** | Closes `T-1806-bug-02`. AC3 (three green runner runs) outstanding |
+
+Six shipped, one partial, three not started. The three untouched cards are recorded as untouched
+rather than downscoped — a card marked done at 30% is how a backlog stops meaning anything.
+
+### Two defects the work itself produced, both caught by a gate
+
+Recorded because both are the kind that would otherwise be silently fixed and forgotten:
+
+- **The daemon exited at boot.** `T-2401` registered the snapshot scheduler unconditionally, and
+  `runGroup.run` cancels every actor as soon as ANY actor returns — so the disabled scheduler's
+  immediate return shut the daemon down at startup. Caught by `cmd/vnproxd`'s own daemon tests.
+- **`ComputeImpact` dropped guests on a non-delete op.** `carrierSet` stored `deleting` as the map
+  VALUE while `guestsOnCarriers` tested membership BY value, so an update on a bridge with two
+  guests reported zero. Caught by the deliberate control test (`update on a USED bridge`) that
+  exists alongside the `unused bridge` case for exactly this reason.
+
+### Two audit corrections
+
+- **GitHub Actions was never unfunded.** `status-matrix.md` §5.7, `development.md`, and
+  `project-status.md` all said no workflow ran. `gh run list` shows CI and Packaging matrix on
+  every push. The cost was concrete: `T-1806-bug-02` sat unexplained for two days with "reproduce
+  under runner-like conditions" as its next step, while the runner's own log held the answer.
+- **`vnproxd` and `vnproxctl` (53 MB of build artifacts) are tracked in git.** Pre-existing, not
+  introduced here, but every commit that rebuilds them adds a fresh multi-megabyte blob to history.
+  Worth a `git rm --cached` + `.gitignore` in its own change; filed as `T-2411`.
