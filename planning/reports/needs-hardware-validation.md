@@ -1086,3 +1086,17 @@ be too narrow (a useless bundle) or too wide (a leak):
       1 MiB) were chosen for that, not measured against a months-old cluster. Produce one on a real
       node and record the resulting archive size in `docs/deployment.md` if it is materially more
       than a few hundred kilobytes.
+
+## T-2406 — `vnproxctl doctor --live` (2026-08-08)
+
+- [x] **The fail-safe path is correct on real hardware.** `vnproxctl doctor --live` with no bearer
+      token on `pvecube` (3.0.4+71+gc551b11) reports all four daemon-dependent checks as **skip**,
+      each naming what was missing ("no bearer token (--token or VNPROX_TOKEN), or the daemon's URL
+      could not be determined"), writes the same reason to stderr, and **exits 0**. That is the
+      property that matters most: a stopped or unreachable daemon must never be reported as a PVE
+      failure, a bad token, or a wrong clock.
+- [ ] **The happy path is mock-validated only.** Verifying that `--live` returns real `pass`
+      verdicts needs a T-1104 bearer token, which is minted through the SPA's Settings screen and
+      therefore needs an interactive PVE login. `internal/doctor`'s tests cover the merge, the
+      capability gate, and a broken fixture per check; none of that is the same as watching the real
+      daemon answer. Run on hardware with a token and record the output.
