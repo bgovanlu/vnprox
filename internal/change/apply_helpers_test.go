@@ -944,3 +944,15 @@ func hasAudit(entries []store.AuditEntry, action, username string) bool {
 	}
 	return false
 }
+
+// setCommittedOutOfBand replaces a node's on-disk interfaces content WITHOUT
+// going through stage/reload — the fake's stand-in for someone editing
+// /etc/network/interfaces over ssh and running `ifreload -a`. That is the exact
+// class of change T-2401's scheduled snapshots exist to give a restore point
+// for, so the test needs a way to produce it that does not involve the change
+// engine.
+func (a *fakeNodeAgent) setCommittedOutOfBand(node, content string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.committed[node] = content
+}

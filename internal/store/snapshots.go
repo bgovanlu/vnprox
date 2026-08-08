@@ -297,3 +297,99 @@ func scanSnapshot(row rowScanner) (Snapshot, error) {
 	}
 	return s, nil
 }
+
+// LatestOfKind returns the newest snapshot of the given kind, or ErrNotFound
+// if there is none. T-2401 uses it to compare a freshly-read cluster state
+// against the last scheduled capture, so an idle cluster records nothing.
+func (r *SnapshotRepo) LatestOfKind(ctx context.Context, kind string) (Snapshot, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, changeset_id, taken_at, kind, files_json, note
+		FROM snapshots WHERE kind = ?
+		ORDER BY taken_at DESC, id DESC LIMIT 1`, kind)
+	s, err := scanSnapshot(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Snapshot{}, ErrNotFound
+	}
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return s, nil
+}
+
+// PruneKindKeepNewest deletes all but the newest `keep` snapshots OF THE GIVEN
+// KIND, oldest first, and returns how many rows it removed (T-2401's
+// count-based retention for scheduled captures).
+//
+// This is deliberately narrower than Prune, in two ways that matter:
+//
+//   - It is scoped to ONE kind. A `pre`, `post`, or `manual` snapshot belongs
+//     to a changeset or to a human and is never this function's business; a
+//     retention policy for automatic captures must not be able to delete
+//     someone's restore point. The kind predicate is in the SQL, not in a
+//     caller's discipline.
+//   - It counts rather than ages. "Keep the last N automatic captures" is the
+//     policy an operator can reason about for something that fires on a timer;
+//     Prune's age-based cutoff stays the policy for everything else.
+//
+// keep <= 0 is a no-op returning 0, not "delete everything" — an unset or
+// misparsed config value must never be an instruction to erase history.
+// Callers should follow up with BlobRepo.PruneOrphans, as with Prune.
+func (r *SnapshotRepo) PruneKindKeepNewest(ctx context.Context, kind string, keep int) (int64, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("store: beginning %s snapshot prune: %w", kind, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id FROM snapshots WHERE kind = ?
+		ORDER BY taken_at DESC, id DESC
+		LIMIT -1 OFFSET ?`, kind, keep)
+	if err != nil {
+		return 0, fmt.Errorf("store: selecting surplus %s snapshots: %w", kind, err)
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if scanErr := rows.Scan(&id); scanErr != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("store: scanning surplus %s snapshot id: %w", kind, scanErr)
+		}
+		ids = append(ids, id)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		_ = rows.Close()
+		return 0, fmt.Errorf("store: selecting surplus %s snapshots: %w", kind, rowsErr)
+	}
+	_ = rows.Close()
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	inClause := "(" + strings.Join(placeholders, ",") + ")"
+
+	if _, delErr := tx.ExecContext(ctx, `DELETE FROM snapshot_files WHERE snapshot_id IN `+inClause, args...); delErr != nil {
+		return 0, fmt.Errorf("store: deleting snapshot_files for pruned %s snapshots: %w", kind, delErr)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM snapshots WHERE id IN `+inClause, args...)
+	if err != nil {
+		return 0, fmt.Errorf("store: deleting pruned %s snapshots: %w", kind, err)
+	}
+	if commitErr := tx.Commit(); commitErr != nil {
+		return 0, fmt.Errorf("store: committing %s snapshot prune: %w", kind, commitErr)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("store: reading %s snapshot prune count: %w", kind, err)
+	}
+	return n, nil
+}

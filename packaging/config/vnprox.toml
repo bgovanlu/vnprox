@@ -44,6 +44,20 @@ lldp_interval = "30s"
 snapshot_keep_days = 90
 snapshot_pin_days = 7
 
+# Automatic config snapshots (T-2401) — OFF by default.
+#
+# vnprox already snapshots around every change IT makes. This covers the
+# changes it does not: someone editing /etc/network/interfaces over ssh and
+# running `ifreload -a`. Without it, the drift checker will tell you what
+# changed and you will have no restore point from before it.
+#
+# Captures are de-duplicated by content, so an idle cluster accumulates one
+# row no matter how often the timer fires. snapshot_schedule_keep bounds the
+# rest, oldest pruned first, and can only ever delete `scheduled` snapshots —
+# never a changeset's rollback point or a manual snapshot.
+# snapshot_schedule_interval = "1h"
+# snapshot_schedule_keep = 48
+
 # Flow ingestion/sampling (T-1002/T-1004) — every source below is off by
 # default and opt-in per node; uncomment to enable on this node only.
 # [flows]

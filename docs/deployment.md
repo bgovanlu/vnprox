@@ -95,6 +95,12 @@ snapshot_pin_days = 7
 audit_keep_days = 730      # T-1905: audit_log is a compliance artifact — see docs/data-model.md §13 for the argument
 store_warn_bytes = 4294967296   # T-1905: 4 GiB — store_near_capacity finding threshold (store.DB.SizeBytes(),
                                  # main file + WAL/SHM); see "Sizing and retention" below
+# snapshot_schedule_interval = "1h"  # T-2401: automatic config snapshots. OFF by default (0/absent). Covers changes
+                                     # vnprox did NOT make — an ssh + vi + `ifreload -a`. Captures are de-duplicated
+                                     # by content, so an idle cluster stores one row however often the timer fires.
+# snapshot_schedule_keep = 48        # count-based ceiling for the above, oldest pruned first. Scoped to the
+                                     # `scheduled` kind in SQL: never deletes a changeset's rollback point or a
+                                     # manual snapshot.
 
 [metrics]
 enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); token generated on first start
@@ -384,6 +390,7 @@ summary of what to expect and what to tune.
 |---|---|---|
 | Audit log | 2 years | `[retention] audit_keep_days` |
 | Rollback snapshots | 90 days (7-day floor for a committed changeset's manual-rollback window; **never** pruned while a changeset is still `applying`/`awaiting_confirm`, regardless of age) | `[retention] snapshot_keep_days` / `snapshot_pin_days` |
+| Automatic config snapshots (T-2401) | **off by default**; when enabled, the newest 48 captures | `[retention] snapshot_schedule_interval` / `snapshot_schedule_keep` |
 | Flow / latency / WAN samples | 60 minutes or a hard row cap, whichever is smaller | `[flows]`/`[latmesh]`/`[wan] retention_minutes`/`max_rows` |
 | Capacity forecasting data | ~13 months (a downsampled daily rollup, not raw samples) | `[capacity] aggregate_retention_days` |
 | Packet captures (`.pcap`) | 6 hours | `[capture] retention_hours` |

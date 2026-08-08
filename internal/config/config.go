@@ -84,6 +84,17 @@ const (
 	// mirror-not-import convention DefaultSnapshotKeepDays above uses.
 	DefaultAuditKeepDays = 730
 
+	// DefaultSnapshotScheduleKeep is [retention] snapshot_schedule_keep's
+	// default: how many automatic `scheduled` captures (T-2401) to retain.
+	// 48 is chosen against the natural hourly cadence — two days of history
+	// at one capture an hour — but the number that matters is not the
+	// interval: captures are de-duplicated by content, so a stable cluster
+	// holds one row no matter how often the timer fires, and 48 distinct
+	// rows means 48 genuine config changes went unrecorded by a changeset.
+	// That is already far more out-of-band editing than a healthy install
+	// does.
+	DefaultSnapshotScheduleKeep = 48
+
 	// DefaultStoreWarnBytes is [retention] store_warn_bytes' default: the
 	// on-disk size (internal/store.DB.SizeBytes — main file + WAL/SHM
 	// sidecars, T-1903's existing size source) at which the
@@ -484,6 +495,23 @@ type RetentionConfig struct {
 	// store_near_capacity finding fires (internal/findings). See
 	// DefaultStoreWarnBytes for the argument.
 	StoreWarnBytes int64
+	// SnapshotScheduleInterval (T-2401) is how often vnprox captures an
+	// automatic `scheduled` snapshot of every node's interfaces file — the
+	// restore point for a change vnprox did NOT make (an `ssh node && vi
+	// /etc/network/interfaces && ifreload -a`).
+	//
+	// ZERO MEANS OFF, and that is the default. Unlike every other value in
+	// this struct, 0 is a legitimate setting rather than a validation
+	// failure: a capture is a full read of every node's config file, so the
+	// operator opts in. See internal/change/snapshots_scheduled.go.
+	SnapshotScheduleInterval time.Duration
+	// SnapshotScheduleKeep bounds how many automatic captures are retained,
+	// oldest pruned first. Count-based rather than age-based because "keep
+	// the last N automatic captures" is the policy an operator can reason
+	// about for something that fires on a timer. Scoped to the `scheduled`
+	// kind in SQL: it can never delete a changeset's rollback point or a
+	// human's manual snapshot.
+	SnapshotScheduleKeep int
 }
 
 // FirewallLogConfig is the [firewalllog] section (T-505): where this
@@ -776,10 +804,12 @@ type rawStorage struct {
 }
 
 type rawRetention struct {
-	SnapshotKeepDays int   `toml:"snapshot_keep_days"`
-	SnapshotPinDays  int   `toml:"snapshot_pin_days"`
-	AuditKeepDays    int   `toml:"audit_keep_days"`
-	StoreWarnBytes   int64 `toml:"store_warn_bytes"`
+	SnapshotKeepDays         int    `toml:"snapshot_keep_days"`
+	SnapshotPinDays          int    `toml:"snapshot_pin_days"`
+	AuditKeepDays            int    `toml:"audit_keep_days"`
+	StoreWarnBytes           int64  `toml:"store_warn_bytes"`
+	SnapshotScheduleInterval string `toml:"snapshot_schedule_interval"`
+	SnapshotScheduleKeep     int    `toml:"snapshot_schedule_keep"`
 }
 
 type rawPeer struct {
@@ -899,6 +929,18 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	// T-2401: absent/"" means OFF (the default), so this cannot go through
+	// parseDurationOrDefault, which treats a non-positive duration as an
+	// error. A malformed string is still fatal — an operator who wrote
+	// "1hour" must not silently get "disabled".
+	var snapshotScheduleInterval time.Duration
+	if raw.Retention.SnapshotScheduleInterval != "" {
+		snapshotScheduleInterval, err = time.ParseDuration(raw.Retention.SnapshotScheduleInterval)
+		if err != nil {
+			return nil, fmt.Errorf("%w: retention.snapshot_schedule_interval %q: %v",
+				ErrInvalidConfig, raw.Retention.SnapshotScheduleInterval, err)
+		}
+	}
 
 	cfg := &Config{
 		Server: ServerConfig{
@@ -946,6 +988,12 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			SnapshotPinDays:  firstNonZeroInt(raw.Retention.SnapshotPinDays, DefaultSnapshotPinDays),
 			AuditKeepDays:    firstNonZeroInt(raw.Retention.AuditKeepDays, DefaultAuditKeepDays),
 			StoreWarnBytes:   firstNonZeroInt64(raw.Retention.StoreWarnBytes, DefaultStoreWarnBytes),
+			// T-2401: deliberately NOT run through parseDurationOrDefault,
+			// which refuses a non-positive duration — here 0/absent is the
+			// documented "off" default, not an error. A malformed string is
+			// still fatal (validate()).
+			SnapshotScheduleInterval: snapshotScheduleInterval,
+			SnapshotScheduleKeep:     firstNonZeroInt(raw.Retention.SnapshotScheduleKeep, DefaultSnapshotScheduleKeep),
 		},
 		FirewallLog: FirewallLogConfig{
 			Path:          firstNonEmpty(raw.FirewallLog.Path, DefaultFirewallLogPath),
@@ -1091,6 +1139,16 @@ func (c *Config) validate() error {
 	}
 	if c.Retention.StoreWarnBytes <= 0 {
 		return fmt.Errorf("%w: retention.store_warn_bytes must be positive, got %d", ErrInvalidConfig, c.Retention.StoreWarnBytes)
+	}
+	// T-2401: interval 0 is "off" and is fine. A NEGATIVE interval is not —
+	// it can only come from a hand-written config and means something the
+	// operator did not intend, so it fails loudly rather than being silently
+	// treated as off.
+	if c.Retention.SnapshotScheduleInterval < 0 {
+		return fmt.Errorf("%w: retention.snapshot_schedule_interval must not be negative, got %s", ErrInvalidConfig, c.Retention.SnapshotScheduleInterval)
+	}
+	if c.Retention.SnapshotScheduleKeep <= 0 {
+		return fmt.Errorf("%w: retention.snapshot_schedule_keep must be positive, got %d", ErrInvalidConfig, c.Retention.SnapshotScheduleKeep)
 	}
 
 	certPath, keyPath, err := resolveTLSPaths(c.Server.TLSCert, c.Server.TLSKey)

@@ -1564,6 +1564,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	g.add(func(ctx context.Context) error {
 		return changeSvc.RunScheduler(ctx, change.DefaultScheduleCheckInterval)
 	})
+	// T-2401: automatic `scheduled` snapshots — the restore point for a
+	// change vnprox did NOT make. Registered unconditionally; the actor
+	// itself returns immediately when the interval is 0 (the default, i.e.
+	// the feature is off), so no ticker is started in that case. See
+	// internal/change/snapshots_scheduled.go.
+	g.add(func(ctx context.Context) error {
+		return changeSvc.RunSnapshotScheduler(ctx,
+			cfg.Retention.SnapshotScheduleInterval, cfg.Retention.SnapshotScheduleKeep, logger)
+	})
 	// T-1704: the HA manager's renew/replicate/promote loop — owned and shut
 	// down here like every other actor. Only added when HA is enabled.
 	if haMgr != nil {
