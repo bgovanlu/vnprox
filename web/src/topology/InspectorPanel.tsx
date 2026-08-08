@@ -1,5 +1,6 @@
 import * as RadixDropdown from "@radix-ui/react-dropdown-menu";
 import * as RadixTabs from "@radix-ui/react-tabs";
+import { EntityHistoryTab } from "./EntityHistoryTab";
 import clsx from "clsx";
 import { useNavigate } from "react-router-dom";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "../components/Drawer";
@@ -420,6 +421,9 @@ export function InspectorPanel({
               <RadixTabs.Trigger value="related" className={tabTriggerClass}>
                 Related ({data.related.length})
               </RadixTabs.Trigger>
+              <RadixTabs.Trigger value="history" className={tabTriggerClass}>
+                History
+              </RadixTabs.Trigger>
               <RadixTabs.Trigger value="notes" className={tabTriggerClass}>
                 Notes ({notes.length})
               </RadixTabs.Trigger>
@@ -464,6 +468,14 @@ export function InspectorPanel({
                   </div>
                 ))}
               </dl>
+            </RadixTabs.Content>
+
+            {/* T-2403: the audit trail, changesets and snapshots re-sliced by
+                this entity. The fetch is deliberately NOT made until the tab
+                is opened — the inspector is opened constantly, and a history
+                query on every click would be a scan nobody asked for. */}
+            <RadixTabs.Content value="history" className="mt-3 flex-1 overflow-y-auto">
+              <EntityHistoryTab entityRef={selectedRef ?? ""} />
             </RadixTabs.Content>
 
             <RadixTabs.Content value="raw" className="mt-3 flex-1 overflow-y-auto">

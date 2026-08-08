@@ -1033,6 +1033,28 @@ export interface FindingAck {
   expiresAt?: number;
 }
 
+/** T-2403: one row of an entity's change history (`GET /inventory/history`,
+ * `internal/change.EntityHistoryEntry`) — the audit trail, changesets, and
+ * snapshots merged and re-sliced by entity. */
+export interface EntityHistoryEntry {
+  kind: "changeset" | "audit" | "snapshot";
+  at: number;
+  actor?: string;
+  summary: string;
+  changesetId?: string;
+  snapshotId?: string;
+  opId?: string;
+  result?: string;
+}
+
+/** `truncated` is part of the contract, not an implementation detail: the
+ * changeset scan is bounded, and a silently short history is
+ * indistinguishable from a genuinely short one. */
+export interface EntityHistoryPage {
+  items: EntityHistoryEntry[];
+  truncated: boolean;
+}
+
 /** T-2404: what an operator would NOTICE if a changeset were applied
  * (`GET /changesets/{id}/impact`, `internal/change.Impact`). Computed
  * server-side; there is no request field a client could use to influence it. */

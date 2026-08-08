@@ -98,7 +98,7 @@ describe("FindingsList — batch selection (T-2408)", () => {
     );
     const boxes = screen.getAllByRole("checkbox");
     expect(boxes).toHaveLength(1);
-    expect(boxes[0]).toHaveAccessibleName(`Select finding: ${String(open.detail)}`);
+    expect(boxes[0]).toHaveAccessibleName(`Select finding: ${open.detail}`);
   });
 
   it("reflects and toggles the caller's selection", async () => {

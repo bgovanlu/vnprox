@@ -72,6 +72,8 @@ type Options struct {
 	Drift                 DriftService
 	Findings              FindingsService
 	FindingAcks           FindingAckService
+	EntityHistory         EntityHistoryService
+	DoctorLive            DoctorLiveService
 	FindingAudit          findingsAuditWriter
 	Certs                 CertsService
 	FDB                   FDBService
@@ -263,6 +265,11 @@ func NewRouter(opts Options) http.Handler {
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers, opts.Tenant, opts.TenantNotifier, opts.TenantStore)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
+		// T-2403: the audit trail re-sliced by entity. Same capability as
+		// /audit — see mountEntityHistoryRoutes.
+		mountEntityHistoryRoutes(r, opts.EntityHistory, opts.Auth)
+		// T-2406: the four self-check verdicts only the daemon can produce.
+		mountDoctorRoutes(r, opts.DoctorLive, opts.Auth)
 		mountHistoryRoutes(r, opts.History, opts.HistoryFindingEvents, opts.Auth)
 		mountHARoutes(r, opts.HA, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)

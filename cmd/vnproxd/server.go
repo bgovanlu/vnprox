@@ -1248,7 +1248,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// T-2402: acknowledgement is app-owned triage state, so it needs the
 		// store. The ack routes mount only when this is non-nil; GET
 		// /findings behaves exactly as it did before when it is not.
-		FindingAcks:  findingAcks,
+		FindingAcks: findingAcks,
+		// T-2403: entity change history, served by the change service (which
+		// already owns the changeset, audit, and snapshot repos this merges).
+		EntityHistory: changeSvc,
+		// T-2406: the checks vnproxctl cannot answer without the daemon's
+		// authenticated PVE client. See cmd/vnproxd/doctorlive.go for which
+		// two this closes and which two it deliberately does not.
+		DoctorLive:   newDoctorLiveRunner(cfg.PVE.APIURL, cfg.PVE.TokenFile, sdnPVEClient),
 		FindingAudit: auditRepo,
 		Certs:        certSvc,
 		FDB:          topoSvc,
@@ -1565,14 +1572,20 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return changeSvc.RunScheduler(ctx, change.DefaultScheduleCheckInterval)
 	})
 	// T-2401: automatic `scheduled` snapshots — the restore point for a
-	// change vnprox did NOT make. Registered unconditionally; the actor
-	// itself returns immediately when the interval is 0 (the default, i.e.
-	// the feature is off), so no ticker is started in that case. See
-	// internal/change/snapshots_scheduled.go.
-	g.add(func(ctx context.Context) error {
-		return changeSvc.RunSnapshotScheduler(ctx,
-			cfg.Retention.SnapshotScheduleInterval, cfg.Retention.SnapshotScheduleKeep, logger)
-	})
+	// change vnprox did NOT make.
+	//
+	// Registered ONLY when enabled. runGroup.run cancels every other actor as
+	// soon as ANY actor returns, so an actor that returns immediately (which
+	// RunSnapshotScheduler does at interval 0, the default) shuts the whole
+	// daemon down at startup. Registering it unconditionally did exactly that
+	// and was caught by cmd/vnproxd's own daemon tests, which is why the
+	// guard is here at the registration site rather than only inside the loop.
+	if cfg.Retention.SnapshotScheduleInterval > 0 {
+		g.add(func(ctx context.Context) error {
+			return changeSvc.RunSnapshotScheduler(ctx,
+				cfg.Retention.SnapshotScheduleInterval, cfg.Retention.SnapshotScheduleKeep, logger)
+		})
+	}
 	// T-1704: the HA manager's renew/replicate/promote loop — owned and shut
 	// down here like every other actor. Only added when HA is enabled.
 	if haMgr != nil {
