@@ -106,12 +106,16 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
 
 ## CI
 
-> **GitHub Actions is currently unfunded for this repository, so no workflow runs.** The
-> `.github/workflows/` definitions below are kept accurate and will run again when funding is
-> restored, but **today the gate that matters is `make ci` on a development host** — it runs the
-> exact same four jobs (`make check`, the arm64 cross-build, all seven fuzz targets, and the
-> package build). Treat a red `make ci` the way you would treat a red pipeline. Do not read the
-> absence of a failing check on a commit as evidence that anything passed.
+> **Correction, 2026-08-08 (T-2410): GitHub Actions IS running.** This note previously said it was
+> unfunded and that no workflow ran. That was wrong, and it was expensive: `T-1806-bug-02` sat
+> unexplained for two days with "reproduce under runner-like conditions" as its next step, while the
+> runner's own log — one `gh api .../jobs/<id>/logs` call away — contained the answer. Before
+> writing off a CI signal as absent, run `gh run list`.
+>
+> Both `CI` and `Packaging matrix` run on every push to `main` and on pull requests. `make ci` on a
+> development host remains the fastest gate for a working tree — it runs the same four jobs
+> (`make check`, the arm64 cross-build, all seven fuzz targets, and the package build) — but it is
+> now a complement to the pipeline rather than a replacement for it.
 >
 > `make e2e` is still deliberately **not** part of `make ci`: it needs a downloaded Chromium and a
 > set of free ports (`make ports`), so a developer running `make ci` on a laptop should not pay for

@@ -46,21 +46,21 @@ apt-get install -y -qq netcat-traditional >/dev/null
 
 echo "=== no conflict: resolves to the default port 8007 ==="
 OUT="$(bash /packaging/install.sh --skip-pve-check --yes --offline "/dist/'"$DEB_BASENAME"'" 2>&1)"
-echo "$OUT" | grep -q "resolved listen port: 8007" || { echo "FAIL: expected port 8007 with no conflict"; echo "$OUT"; exit 1; }
+grep -q "resolved listen port: 8007" <<<"$OUT" || { echo "FAIL: expected port 8007 with no conflict"; echo "$OUT"; exit 1; }
 dpkg -r vnprox >/dev/null 2>&1 || true
 
 echo "=== conflict present (fake listener on 8007): non-interactive falls back to 8008 ==="
 (nc -l -p 8007 >/dev/null 2>&1 &)
 sleep 1
 OUT="$(bash /packaging/install.sh --skip-pve-check --yes --offline "/dist/'"$DEB_BASENAME"'" 2>&1)"
-echo "$OUT" | grep -qi "something is already listening on port 8007" || { echo "FAIL: conflict not detected"; echo "$OUT"; exit 1; }
-echo "$OUT" | grep -q "resolved listen port: 8008" || { echo "FAIL: expected fallback to 8008"; echo "$OUT"; exit 1; }
+grep -qi "something is already listening on port 8007" <<<"$OUT" || { echo "FAIL: conflict not detected"; echo "$OUT"; exit 1; }
+grep -q "resolved listen port: 8008" <<<"$OUT" || { echo "FAIL: expected fallback to 8008"; echo "$OUT"; exit 1; }
 dpkg -r vnprox >/dev/null 2>&1 || true
 
 echo "=== conflict present: interactive prompt accepts an operator-typed port ==="
 OUT="$(echo "8009" | bash /packaging/install.sh --skip-pve-check --offline "/dist/'"$DEB_BASENAME"'" 2>&1)"
-echo "$OUT" | grep -qi "something is already listening on port 8007" || { echo "FAIL: conflict not detected"; echo "$OUT"; exit 1; }
-echo "$OUT" | grep -q "resolved listen port: 8009" || { echo "FAIL: expected the typed port 8009"; echo "$OUT"; exit 1; }
+grep -qi "something is already listening on port 8007" <<<"$OUT" || { echo "FAIL: conflict not detected"; echo "$OUT"; exit 1; }
+grep -q "resolved listen port: 8009" <<<"$OUT" || { echo "FAIL: expected the typed port 8009"; echo "$OUT"; exit 1; }
 
 echo "ALL CHECKS PASSED"
 '

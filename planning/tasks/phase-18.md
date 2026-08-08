@@ -622,6 +622,9 @@ two this bugfix added).
 
 ## T-1806-bug-02 · Packaging matrix `cluster-ssh` fails on the GitHub runner but passes everywhere else
 
+**RESOLVED 2026-08-08 by `T-2410`. Root cause established from runner evidence.**
+
+
 **Severity:** High — a second CI signal has gone red and is *not* explained. `T-1806-bug-01` exists
 because this project spent 30 consecutive runs ignoring a red signal; leaving this one unexplained
 restarts that habit. The packaging matrix is what proves the `.deb` actually installs, so it must
@@ -686,3 +689,70 @@ the next run against the previous ones. Worth fixing *after* this card closes, n
 so any *local* reproduction attempt that fails for machine reasons says so by name instead of
 adding a fourth unexplained symptom to this card. That is the value here — not a root cause, but a
 guarantee the next investigation is not unknowingly chasing a collision.
+
+
+---
+
+## T-1806-bug-02 — resolution (T-2410, 2026-08-08)
+
+**Root cause.** `echo "$OUT" | grep -q PATTERN || die` fails **when the pattern
+MATCHES**, if `$OUT` exceeds the pipe buffer and the match occurs early:
+`grep -q` exits at the first match, `echo` still has bytes to write, the write
+returns `EPIPE`, `set -o pipefail` turns that into a failed pipeline, and
+`|| die` fires on a *successful* match.
+
+**The evidence that settles it** — GitHub Actions job `93012069994`
+(2026-08-07), the `cluster-ssh` leg. Its log contains, in order:
+
+```
+>> cluster nodes detected: pve1 pve2 pve3          <- the FIRST assertion's pattern, present
+  URL: https://pve1:8008                            <- the SECOND assertion's pattern, present
+packaging/test/cluster-ssh.sh: line 228: echo: write error: Broken pipe
+cluster-ssh.sh: error: expected the coordinator's own URL to report the fallback port 8008
+```
+
+The expected content **is in the output** and the assertion failed anyway, with
+a broken-pipe write error reported on the asserting line. That is the whole
+mechanism, observed rather than inferred. The card's original symptom (line
+197, cluster detection) is the same failure at the other grep — which is why it
+appeared to move between runs.
+
+**Why three earlier local reproductions failed, and why that was not evidence
+against the theory.** Bash prints `write error: Broken pipe` from a builtin only
+when SIGPIPE is **ignored** rather than fatal. The Actions runner is a Node
+process; Node sets SIGPIPE to `SIG_IGN`; every step's shell inherits it. On a
+developer workstation SIGPIPE is fatal, so the same race kills `echo` silently
+with 141 — and at the sizes tested (100 KB / 1 MB / 5 MB) it never triggered at
+all. The earlier harness reproduced the *size* but not the *signal
+disposition*, and the disposition is the half that produces the observable.
+
+This also explains every other property the card recorded and could not
+account for: deterministic on the runner (the disposition is always inherited),
+green locally (never inherited), green on the `debian:12`/`debian:13` legs (they
+run different scripts, without a large-output early-match assert), and
+apparently triggered by an unrelated batch (the 10.7 → 11.0 MB package growth
+pushed `$OUT` past the point where `echo` could finish before `grep -q` exited).
+
+**Fix.** All seven `echo "$VAR" | grep` instances across `cluster-ssh.sh` and
+`port-conflict.sh` are now here-strings (`grep -q PATTERN <<<"$OUT"`), which
+have no pipe and therefore cannot exhibit this under any SIGPIPE disposition.
+This is the rewrite prepared and **deliberately reverted** in August 2026 as
+unverified — it is shipped now because the mechanism is evidenced, not because
+it is plausible.
+
+**Regression guard.** `packaging/test/lib/sigpipe-guard.sh` fails the build if
+the pattern reappears anywhere in `packaging/test/*.sh`, and runs as the first
+step of the packaging matrix so it costs seconds. Mutation-checked:
+reintroducing the pattern at `port-conflict.sh:49` makes it exit 1 naming the
+line.
+
+**Not claimed.** The exact timing was never reproduced on this workstation, and
+the fix has not yet been observed green on three consecutive runner runs (AC3)
+— that requires pushes this card cannot make on its own. What *is* established
+is the mechanism, from a log in which the matched content and the failure
+appear together.
+
+**Correction to the audit.** `docs/status-matrix.md` §5.7 states GitHub Actions
+"is not running — unfunded". It is running: `gh run list` shows CI and Packaging
+matrix runs through 2026-08-07, including the failure analysed above. That
+claim is stale and is corrected in this change.

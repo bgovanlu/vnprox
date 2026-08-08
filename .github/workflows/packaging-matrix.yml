@@ -50,6 +50,12 @@ jobs:
       - name: make deb
         run: make deb
 
+      # T-2410: refuse the `echo "$OUT" | grep -q` pattern, which fails when
+      # the pattern MATCHES under the runner's inherited SIGPIPE=SIG_IGN.
+      # Cheap, and placed before the container legs so it fails in seconds.
+      - name: Guard against SIGPIPE-fragile assertions (T-2410)
+        run: bash packaging/test/lib/sigpipe-guard.sh
+
       - name: Install/remove/purge semantics (AC1)
         run: bash packaging/test/deb-install.sh
 

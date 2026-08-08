@@ -1,6 +1,6 @@
 # vnprox — project status
 
-**As of:** 2026-08-06 · **Commit:** `e8de0b7`+ (phase 19 complete; `T-1807-bug-02`, `T-1904`) · **Latest release:** `v3.0.4` · **Deployed:** `3.0.4+46+gcceb795`
+**As of:** 2026-08-08 · **Commit:** phase 24 in flight (7 of 10 cards) · **Latest release:** `v3.0.4` · **Deployed:** `3.0.4+62+g7a8ef6d`
 
 Companion documents: [`status-matrix.md`](status-matrix.md) (the per-feature audit grid and its method) and [`datasheet.md`](datasheet.md) (shipped capability, for external readers).
 
@@ -12,14 +12,14 @@ vnprox is **feature-complete against three shipped arcs and materially under-val
 
 | Dimension | Complete | Basis |
 |---|---|---|
-| **Feature delivery** | **92%** | 145 of 157 feature cards shipped |
+| **Feature delivery** | **91%** | 152 of 167 feature cards shipped (phase 24 added 10) |
 | **Backend implementation** | **97%** | 68 of 77 feature areas complete, 6 partial, 3 not started |
 | **GUI coverage** | **99%** | 26 of 26 screens, all with help; 1 open navigation defect |
 | **API surface** | **100%** | Contract frozen at v3.0, additive-only since |
 | **Docs currency** | **100%** | `features.md` refreshed 2026-08-06 (`T-2107`) |
-| **Automated test gate** | **100%** | `make ci` green locally: 4,058 tests, lint, vet, arm64 cross-build, 7 fuzz targets, package. **GitHub Actions is unfunded and runs nothing** — the gate is the dev host |
+| **Automated test gate** | **100%** | `make check` green: 2,594 Go tests + 1,520 web tests, lint, vet, govulncheck, npm audit. **GitHub Actions IS running** — the earlier "unfunded" claim was wrong and is corrected in `status-matrix.md` §5.7; it cost two days on `T-1806-bug-02` |
 | **E2E gate** | **required** | Gate landed 2026-08-06, green and blocking 2026-08-07. **29 failed / 59 passed → 89 passed / 0 failed / 2 skipped**, run time 29.6m → ~10m. **Ten real product defects** fixed along the way, four of them with green unit tests sitting on fixtures that invented the shape the code expected (`T-2108`, closed) |
-| **Hardware validation** | **5%** | **6 of 123 items validated on real PVE** |
+| **Hardware validation** | **9%** | **12 of 130 items validated on real PVE** (was 6 of 123; the `doctor` deploy run added six) |
 
 The first six rows describe a mature product. The last two are why the current arc exists. **The gap between "our tests pass" and "this works on your cluster" is the project's dominant risk, and it is not shrinking quickly** — five of the six validated items were validated a day ago; before that the number was one.
 
@@ -162,3 +162,56 @@ A `v3.1` tag is defensible today once `T-1806-bug-02` is understood. `T-2003-bug
 | 2026-08-07 | `T-2108` and `T-1806-bug-01` closed: e2e suite green (89 passed / 0 failed) and the job is required. `T-2003-bug-01` root-caused and fixed. Ten product defects found by the gate, four of which had green unit tests over invented fixtures |
 | 2026-08-06 | `T-1807-bug-02`: enforced port registry closes the collision class that had recurred five times in one phase. Also eliminated two candidate explanations for `T-1806-bug-02` (recorded on that card so they are not re-derived) |
 | 2026-08-06 | `T-1904` (`vnproxctl doctor`) shipped — **phase 19 complete**. Ten checks, remediation structurally enforced; two follow-ups filed rather than left implicit |
+
+
+---
+
+## 7. Phase 24 — operator leverage (added 2026-08-08)
+
+A full-stack audit at `7a8ef6d` found the binding constraint had moved from *"can vnprox do this"*
+to *"can one operator stay on top of what vnprox is telling them"*. Ten cards follow —
+[`docs/roadmap-leverage.md`](roadmap-leverage.md), [`planning/tasks/phase-24.md`](../planning/tasks/phase-24.md).
+
+**Three candidates were dropped on contact with the code, and that is worth recording** because
+each had a plausible-sounding case for existing:
+
+| Dropped | Why |
+|---|---|
+| Post-confirm revert of a committed changeset | **Already ships** — `Service.Rollback` builds a restoring draft from the changeset's own pre-apply snapshot (`apply_restore.go`) |
+| Standalone map SVG/PNG export | **Already ships** — `web/src/topology/ExportMapMenu.tsx`. `features.md` still calls it a known gap at T-607; that line is stale, not the product |
+| Four-eyes approval | **Already ships** — `ApprovalPolicy.AllowSelfApproval`, enforced server-side |
+
+### Delivery
+
+| Card | Item | State |
+|---|---|---|
+| `T-2401` | Scheduled automatic config snapshots | ● Shipped |
+| `T-2402` | Finding acknowledgement and mute | ● Shipped |
+| `T-2403` | Entity change history ("blame") | ● Shipped |
+| `T-2404` | Blast-radius preview before apply | ● Shipped |
+| `T-2405` | OpenAPI 3.1 document + completeness gate | ○ **Not started** |
+| `T-2406` | `vnproxctl doctor --live` | ◐ **Partial** — 2 of 4 checks closed; see below |
+| `T-2407` | Alert quiet hours and digest coalescing | ○ **Not started** |
+| `T-2408` | Batch-fix findings into one changeset | ● Shipped |
+| `T-2409` | Per-spec e2e store isolation | ○ **Not started** |
+| `T-2410` | Packaging matrix `cluster-ssh` root cause | ● **Root-caused and fixed** |
+
+**`T-2406` is partial, deliberately and on the record.** `--live` closes `pve_reachable` and
+`pve_privileges`, taking a single-node install from 6 of 10 checks answered to 8. `clock_skew` needs
+a PVE server-time surface neither `internal/pve` nor `internal/pvemock` exposes
+(`T-2406-followup-01`). `peer_secret` needs a peer route reporting another node's digest, which does
+not exist and cannot be validated on one node — and a local-only probe would be **worse than
+skipping**, because `checkPeerSecret` reads a one-entry map as "single-node cluster; nothing to
+agree with" and would report **pass** on a five-node cluster whose secrets disagree
+(`T-2406-followup-02`).
+
+### What T-2410 changed beyond the packaging job
+
+`T-1806-bug-02` was the last blocker on a `v3.1` tag and had been unexplained for two days. The
+root cause — `echo "$OUT" | grep -q` failing *when the pattern matches*, because the runner's shell
+inherits `SIGPIPE=SIG_IGN` from the Node-based Actions runner — was sitting in a job log the whole
+time. **The reason nobody read it is that this project's own docs said CI was not running.** That
+claim is now corrected in three places, and the lesson is recorded in `development.md`: before
+writing off a CI signal as absent, run `gh run list`.
+
+Three consecutive green runner runs (the card's AC3) are still outstanding.

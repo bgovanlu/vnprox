@@ -208,7 +208,7 @@ set -e
 echo "$OUT"
 [ "$INSTALL_RC" -eq 0 ] || die "install.sh exited $INSTALL_RC on pve1 (see output above)"
 
-echo "$OUT" | grep -q "cluster nodes detected: pve1 pve2 pve3" || die "cluster detection did not find all three nodes"
+grep -q "cluster nodes detected: pve1 pve2 pve3" <<<"$OUT" || die "cluster detection did not find all three nodes"
 # The port-conflict warn()/log() lines (install.sh step 2) are tiny stderr
 # writes immediately followed by a large stdout burst from apt-get's own
 # dependency-resolution output (step 3) — `podman exec`'s stream
@@ -225,7 +225,7 @@ echo "$OUT" | grep -q "cluster nodes detected: pve1 pve2 pve3" || die "cluster d
 # port), which is what's actually checked here — from the final printed
 # URL (reliably present) and, authoritatively, each node's own config
 # file below.
-echo "$OUT" | grep -q "URL: https://.*:8008" || die "expected the coordinator's own URL to report the fallback port 8008"
+grep -q "URL: https://.*:8008" <<<"$OUT" || die "expected the coordinator's own URL to report the fallback port 8008"
 # pve2/pve3's own "reachable over SSH, rolling out" / "- done" log() lines
 # (install.sh steps 8-9) are NOT asserted here, on purpose: they're subject
 # to the exact same podman-exec stdout/stderr stream-multiplexing drop this
