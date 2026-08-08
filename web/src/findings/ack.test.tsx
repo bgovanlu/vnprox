@@ -6,11 +6,23 @@
 // defeating the whole design, so the first test here asserts the finding is
 // still present, not merely that a badge appeared.
 import { render, screen, within } from "@testing-library/react";
+import type { BoundFunctions, queries } from "@testing-library/dom";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AckDialog } from "./AckDialog";
 import { expiryFromDays } from "./ackExpiry";
 import { FindingsList, type FindingItem } from "./FindingsList";
+
+/** Scopes queries to the nth rendered finding row, asserting the row exists.
+ * `getAllByRole()[n]` is `HTMLElement | undefined` under this project's strict
+ * TS settings, and a silent undefined here would turn a missing row into a
+ * confusing `within(undefined)` failure rather than a clear one. */
+function row(n: number): BoundFunctions<typeof queries> {
+  const items = screen.getAllByRole("listitem");
+  const el = items[n];
+  if (!el) throw new Error(`expected at least ${String(n + 1)} finding rows, got ${String(items.length)}`);
+  return within(el);
+}
 
 const acked: FindingItem = {
   id: "health:mtu_mismatch|bridge:pve1:vmbr0",
@@ -52,9 +64,8 @@ describe("FindingsList — acknowledgement (T-2402)", () => {
     const onUnack = vi.fn();
     render(<FindingsList findings={[acked, open]} onAck={onAck} onUnack={onUnack} />);
 
-    const items = screen.getAllByRole("listitem");
-    const ackedRow = within(items[0]);
-    const openRow = within(items[1]);
+    const ackedRow = row(0);
+    const openRow = row(1);
 
     expect(ackedRow.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
     expect(openRow.queryByRole("button", { name: "Un-acknowledge" })).not.toBeInTheDocument();
@@ -68,11 +79,10 @@ describe("FindingsList — acknowledgement (T-2402)", () => {
 
   it("hides the fix button on an acknowledged finding", () => {
     render(<FindingsList findings={[acked, open]} onFix={vi.fn()} />);
-    const items = screen.getAllByRole("listitem");
-    expect(within(items[0]).queryByRole("button", { name: /fixing changeset/i })).not.toBeInTheDocument();
+    expect(row(0).queryByRole("button", { name: /fixing changeset/i })).not.toBeInTheDocument();
     // Control: the un-acknowledged one still offers it, so this is not just a
     // test of a button that never renders.
-    expect(within(items[1]).getByRole("button", { name: /fixing changeset/i })).toBeInTheDocument();
+    expect(row(1).getByRole("button", { name: /fixing changeset/i })).toBeInTheDocument();
   });
 });
 
@@ -88,7 +98,7 @@ describe("FindingsList — batch selection (T-2408)", () => {
     );
     const boxes = screen.getAllByRole("checkbox");
     expect(boxes).toHaveLength(1);
-    expect(boxes[0]).toHaveAccessibleName(`Select finding: ${open.detail}`);
+    expect(boxes[0]).toHaveAccessibleName(`Select finding: ${String(open.detail)}`);
   });
 
   it("reflects and toggles the caller's selection", async () => {
@@ -130,7 +140,7 @@ describe("AckDialog", () => {
     expect(confirm).toBeEnabled();
     await user.click(confirm);
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onConfirm.mock.calls[0][0]).toBe("deliberate");
+    expect(onConfirm.mock.calls[0]?.[0]).toBe("deliberate");
   });
 
   it("passes a future expiry for a bounded choice and undefined for 'No expiry'", async () => {
@@ -140,7 +150,7 @@ describe("AckDialog", () => {
 
     await user.type(screen.getByRole("textbox"), "because");
     await user.click(screen.getByRole("button", { name: "Acknowledge" }));
-    const [, expiresAt] = onConfirm.mock.calls[0] as [string, number | undefined];
+    const [, expiresAt] = onConfirm.mock.calls[0] as unknown as [string, number | undefined];
     expect(expiresAt).toBeDefined();
     // The point of the default: it is in the future, so the server's
     // already-in-the-past refusal is unreachable from this dialog.
@@ -149,7 +159,7 @@ describe("AckDialog", () => {
     await user.selectOptions(screen.getByLabelText("Acknowledgement expiry"), "0");
     await user.type(screen.getByRole("textbox"), "because");
     await user.click(screen.getByRole("button", { name: "Acknowledge" }));
-    const [, noExpiry] = onConfirm.mock.calls[1] as [string, number | undefined];
+    const [, noExpiry] = onConfirm.mock.calls[1] as unknown as [string, number | undefined];
     expect(noExpiry).toBeUndefined();
   });
 

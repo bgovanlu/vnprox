@@ -674,11 +674,9 @@ func (c CertsConfig) ExpiryWarn() time.Duration {
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
-	Certs       rawCerts       `toml:"certs"`
 	PVE         rawPVE         `toml:"pve"`
 	Peer        rawPeer        `toml:"peer"`
 	Collect     rawCollect     `toml:"collect"`
-	Changesets  rawChangesets  `toml:"changesets"`
 	FirewallLog rawFirewallLog `toml:"firewalllog"`
 	Blueprint   rawBlueprint   `toml:"blueprint"`
 	Storage     rawStorage     `toml:"storage"`
@@ -687,13 +685,15 @@ type rawConfig struct {
 	Hub         rawHub         `toml:"hub"`
 	Safety      rawSafety      `toml:"safety"`
 	Security    rawSecurity    `toml:"security"`
+	Certs       rawCerts       `toml:"certs"`
 	HA          rawHA          `toml:"ha"`
+	Changesets  rawChangesets  `toml:"changesets"`
 	Server      rawServer      `toml:"server"`
+	Retention   rawRetention   `toml:"retention"`
 	Capture     rawCapture     `toml:"capture"`
 	Flows       rawFlows       `toml:"flows"`
 	Wan         rawWan         `toml:"wan"`
 	Latmesh     rawLatmesh     `toml:"latmesh"`
-	Retention   rawRetention   `toml:"retention"`
 	Capacity    rawCapacity    `toml:"capacity"`
 	Baseline    rawBaseline    `toml:"baseline"`
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
@@ -803,12 +803,15 @@ type rawStorage struct {
 	SessionKeyFile string `toml:"session_key_file"`
 }
 
+// Field order is packing-driven (govet's fieldalignment): the one
+// pointer-bearing field first, so the GC's scan prefix is 8 bytes rather than
+// 40. TOML decoding is key-based, so order here carries no meaning.
 type rawRetention struct {
+	SnapshotScheduleInterval string `toml:"snapshot_schedule_interval"`
+	StoreWarnBytes           int64  `toml:"store_warn_bytes"`
 	SnapshotKeepDays         int    `toml:"snapshot_keep_days"`
 	SnapshotPinDays          int    `toml:"snapshot_pin_days"`
 	AuditKeepDays            int    `toml:"audit_keep_days"`
-	StoreWarnBytes           int64  `toml:"store_warn_bytes"`
-	SnapshotScheduleInterval string `toml:"snapshot_schedule_interval"`
 	SnapshotScheduleKeep     int    `toml:"snapshot_schedule_keep"`
 }
 
