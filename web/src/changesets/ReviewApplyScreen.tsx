@@ -17,7 +17,13 @@ import { canApply } from "./drawerMachine";
 import { FixButton } from "./FixButton";
 import { opKindLabel, refNode, summarizeOp } from "./opSummary";
 import { buildPlanPreview } from "./planPreview";
-import { useChangesetDiffQuery, useValidateChangesetMutation, useApplyChangesetMutation } from "./queries";
+import { ImpactPanel } from "./ImpactPanel";
+import {
+  useChangesetDiffQuery,
+  useChangesetImpactQuery,
+  useValidateChangesetMutation,
+  useApplyChangesetMutation,
+} from "./queries";
 import { useChangesetDrawerStore } from "./store";
 import { preApplyRevertNotice } from "./revertCoverage";
 import { mgmtStrings } from "../mgmt/strings";
@@ -56,6 +62,10 @@ const DEFAULT_CONFIRM_TIMEOUT_SEC = 120;
 
 export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps) {
   const { data: diff, isLoading: diffLoading } = useChangesetDiffQuery(changeset.id, true);
+  // T-2404: the blast-radius preview. Fetched alongside the diff rather than
+  // lazily on tab open, so the headline verdict is available before the
+  // operator decides which tab to read.
+  const { data: impact, isLoading: impactLoading, isError: impactError } = useChangesetImpactQuery(changeset.id, true);
   const validateMutation = useValidateChangesetMutation();
   const applyMutation = useApplyChangesetMutation();
   const warningsAcknowledged = useChangesetDrawerStore((s) => s.warningsAcknowledged);
@@ -170,6 +180,9 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             <RadixTabs.Trigger value="filediff" className={tabTriggerClass}>
               File diff
             </RadixTabs.Trigger>
+            <RadixTabs.Trigger value="impact" className={tabTriggerClass}>
+              Blast radius
+            </RadixTabs.Trigger>
             <RadixTabs.Trigger value="plan" className={tabTriggerClass}>
               Plan
             </RadixTabs.Trigger>
@@ -190,6 +203,10 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
               ))}
               {changeset.ops.length === 0 && <li className="text-slate-400">No operations.</li>}
             </ul>
+          </RadixTabs.Content>
+
+          <RadixTabs.Content value="impact" className="mt-3 flex-1 overflow-y-auto">
+            <ImpactPanel impact={impact} loading={impactLoading} error={impactError} />
           </RadixTabs.Content>
 
           <RadixTabs.Content value="filediff" className="mt-3 flex-1 overflow-y-auto">

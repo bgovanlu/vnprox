@@ -271,6 +271,10 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		r.Get("/changesets", handleListChangesets(svc, mgmt, wgCarriers))
 		r.Get("/changesets/{id}", handleGetChangeset(svc, mgmt, wgCarriers))
 		r.Get("/changesets/{id}/diff", handleDiffChangeset(svc))
+		// T-2404: the blast-radius preview. A read, so it sits with the other
+		// netRead routes — knowing what a changeset would disrupt must never
+		// require the capability to apply it.
+		r.Get("/changesets/{id}/impact", handleChangesetImpact(svc, mgmt, wgCarriers))
 
 		// T-208 raw editor: the "open" call and its live syntax-lint
 		// round trip. Neither mutates server state (the lint endpoint
@@ -506,6 +510,42 @@ func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gatewa
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
 		writeJSON(w, http.StatusOK, withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
+	}
+}
+
+// ChangesetImpactService is the optional ChangesetService extension backing
+// T-2404's blast-radius preview (change.Service.Impact). Checked with a type
+// assertion, like MgmtAckRecorder above, so a test double that does not care
+// about impact need not grow a method.
+type ChangesetImpactService interface {
+	Impact(ctx context.Context, id string, mgmtPaths map[string][]topology.MgmtPath, tunnelCarriers map[string]change.WgTunnelCarrier, mgmtSwitchPorts map[string]bool) (change.Impact, error)
+}
+
+// handleChangesetImpact serves `GET /changesets/{id}/impact` (T-2404): which
+// nodes, carriers and guests this changeset would affect, and how badly.
+//
+// The management-path resolution is the SAME one the apply ceremony uses
+// (mgmtEval), rather than a second derivation, so the impact panel and the
+// mandatory-acknowledgement block can never disagree about whether a changeset
+// touches the management path.
+//
+// The impact is computed entirely server-side. Nothing in the request can
+// supply, weight, or override it — a client that could soften its own blast
+// radius would make the preview worthless precisely when it matters.
+func handleChangesetImpact(svc ChangesetService, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
+	impacter, ok := svc.(ChangesetImpactService)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !ok {
+			writeJSONError(w, http.StatusNotImplemented, "not_implemented", "impact preview is not available")
+			return
+		}
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
+		impact, err := impacter.Impact(r.Context(), chi.URLParam(r, "id"), paths, carriers, nil)
+		if err != nil {
+			writeApplyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, impact)
 	}
 }
 

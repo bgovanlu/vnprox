@@ -1033,6 +1033,40 @@ export interface FindingAck {
   expiresAt?: number;
 }
 
+/** T-2404: what an operator would NOTICE if a changeset were applied
+ * (`GET /changesets/{id}/impact`, `internal/change.Impact`). Computed
+ * server-side; there is no request field a client could use to influence it. */
+export interface ChangesetImpact {
+  nodes: string[];
+  carriers: string[];
+  guests: GuestImpact[];
+  ops: OpImpact[];
+  disruption: DisruptionClass;
+  touchesMgmtPath: boolean;
+}
+
+export type DisruptionClass = "none" | "brief" | "outage";
+
+export interface GuestImpact {
+  ref: string;
+  name: string;
+  node: string;
+  vmid: number;
+  nic: string;
+  carrier: string;
+}
+
+/** One op's contribution. `reason` is never empty: the server has no way to
+ * express a verdict without one, so the UI never has to render an unexplained
+ * warning. */
+export interface OpImpact {
+  opId?: string;
+  op: string;
+  target?: string;
+  disruption: DisruptionClass;
+  reason: string;
+}
+
 /** WS `findings.changed` payload (docs/api.md's WebSocket section). */
 export interface FindingsChangedEvent {
   count: number;

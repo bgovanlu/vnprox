@@ -10,6 +10,7 @@ import {
   confirmChangeset,
   createChangeset,
   deleteChangesetComment,
+  changesetImpact,
   diffChangeset,
   discardChangeset,
   getChangeset,
@@ -21,7 +22,7 @@ import {
   validateChangeset,
 } from "../api/changesets";
 import { createWsClient, defaultWsUrl, type WsClient, type WsServerEvent } from "../api/ws";
-import type { Changeset, ChangesetDiff, ChangesetStatusEvent, Op } from "../api/types";
+import type { Changeset, ChangesetDiff, ChangesetImpact, ChangesetStatusEvent, Op } from "../api/types";
 
 export const changesetKey = (id: string) => ["changesets", id] as const;
 export const changesetListKey = (status?: string) => ["changesets", "list", status ?? ""] as const;
@@ -57,6 +58,21 @@ export function useChangesetDiffQuery(id: string | undefined, enabled: boolean) 
   return useQuery<ChangesetDiff>({
     queryKey: changesetDiffKey(id ?? ""),
     queryFn: () => diffChangeset(id ?? ""),
+    enabled: enabled && id !== undefined,
+    staleTime: 5_000,
+  });
+}
+
+/** T-2404: the blast-radius preview for a changeset.
+ *
+ * Its own query rather than a field on the changeset, because it depends on
+ * the LIVE inventory graph — a guest attached since the changeset was staged
+ * changes the answer, and a cached changeset object would not reflect that.
+ * staleTime is deliberately short for the same reason. */
+export function useChangesetImpactQuery(id: string | undefined, enabled: boolean) {
+  return useQuery<ChangesetImpact>({
+    queryKey: ["changesets", id ?? "", "impact"],
+    queryFn: () => changesetImpact(id ?? ""),
     enabled: enabled && id !== undefined,
     staleTime: 5_000,
   });

@@ -9,6 +9,7 @@ import type {
   Changeset,
   ChangesetComment,
   ChangesetDiff,
+  ChangesetImpact,
   CreateChangesetRequest,
   UpdateChangesetRequest,
 } from "./types";
@@ -63,6 +64,15 @@ export function validateChangeset(id: string): Promise<Changeset> {
  * File diff / Summary tabs. */
 export function diffChangeset(id: string): Promise<ChangesetDiff> {
   return apiFetch<ChangesetDiff>(`/changesets/${encodeURIComponent(id)}/diff`);
+}
+
+/** GET /changesets/{id}/impact — T-2404's blast-radius preview: which nodes,
+ * carriers and guests this changeset would affect, and how badly.
+ *
+ * A read, deliberately: knowing what applying would break must never require
+ * the capability to apply it. */
+export function changesetImpact(id: string): Promise<ChangesetImpact> {
+  return apiFetch<ChangesetImpact>(`/changesets/${encodeURIComponent(id)}/impact`);
 }
 
 /** POST /changesets/{id}/apply — `{confirmTimeoutSec}` -> 202, status
