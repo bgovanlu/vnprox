@@ -19,15 +19,25 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { Button } from "../components/Button";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
 import type { FindingSource, Severity } from "../api/types";
 import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
 import { mgmtStrings } from "../mgmt/strings";
+import { AckDialog } from "./AckDialog";
 import { FindingsList } from "./FindingsList";
 import { EMPTY_FILTER, filterFindings, nodesIn, type FindingsFilterState } from "./filters";
-import { FINDINGS_QUERY_KEY, useFindingsQuery, useFindingsWsBridge, useFixFindingMutation } from "./queries";
+import {
+  FINDINGS_QUERY_KEY,
+  useAckFindingMutation,
+  useBatchFixFindingsMutation,
+  useFindingsQuery,
+  useFindingsWsBridge,
+  useFixFindingMutation,
+  useUnackFindingMutation,
+} from "./queries";
 
 const NARROW_FIX_DISABLED_REASON = "Open on desktop to create a fixing changeset.";
 
@@ -51,6 +61,9 @@ export function FindingsStreamPanel() {
   const narrow = useNarrowViewport();
   const { data: findings, isLoading, error } = useFindingsQuery();
   const fixMutation = useFixFindingMutation();
+  const batchFixMutation = useBatchFixFindingsMutation();
+  const ackMutation = useAckFindingMutation();
+  const unackMutation = useUnackFindingMutation();
   const navigate = useNavigate();
   const openMgmtWizard = useMgmtWizardStore((s) => s.open);
   const setActiveId = useChangesetDrawerStore((s) => s.setActiveId);
@@ -58,12 +71,70 @@ export function FindingsStreamPanel() {
   const { toast } = useToast();
   const [fixingId, setFixingId] = useState<string | undefined>(undefined);
   const [filter, setFilter] = useState<FindingsFilterState>(EMPTY_FILTER);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [ackTarget, setAckTarget] = useState<{ id: string; detail: string } | undefined>(undefined);
 
   useFindingsWsBridge();
 
   const all = useMemo(() => findings ?? [], [findings]);
   const filtered = useMemo(() => filterFindings(all, filter), [all, filter]);
   const availableNodes = useMemo(() => nodesIn(all), [all]);
+
+  function toggleSelected(id: string): void {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  /** T-2408. The batch is all-or-nothing server-side, so on failure the
+   * selection is deliberately KEPT: the operator has to change something (drop
+   * a conflicting finding, un-acknowledge one) and retry, and clearing their
+   * selection would make them rebuild it first. */
+  async function handleBatchFix(): Promise<void> {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    try {
+      const changeset = await batchFixMutation.mutateAsync(ids);
+      setActiveId(changeset.id);
+      setSelectedIds(new Set());
+      void queryClient.invalidateQueries({ queryKey: FINDINGS_QUERY_KEY });
+      toast({
+        title: `One changeset for ${String(ids.length)} findings`,
+        description: "Review it in the drawer before applying.",
+        variant: "success",
+      });
+    } catch (err) {
+      toast({
+        title: "Could not stage the batch",
+        description: err instanceof Error ? err.message : "Nothing was staged.",
+        variant: "error",
+      });
+    }
+  }
+
+  async function handleAck(reason: string, expiresAt?: number): Promise<void> {
+    const target = ackTarget;
+    if (!target) return;
+    try {
+      await ackMutation.mutateAsync({ id: target.id, reason, expiresAt });
+      setAckTarget(undefined);
+      toast({ title: "Finding acknowledged", description: "It stays in the stream, marked as deliberate.", variant: "success" });
+    } catch {
+      toast({ title: "Could not acknowledge the finding", variant: "error" });
+    }
+  }
+
+  async function handleUnack(id: string): Promise<void> {
+    try {
+      await unackMutation.mutateAsync(id);
+      toast({ title: "Acknowledgement cleared", variant: "success" });
+    } catch {
+      toast({ title: "Could not clear the acknowledgement", variant: "error" });
+    }
+  }
 
   async function handleFix(id: string): Promise<void> {
     setFixingId(id);
@@ -164,6 +235,41 @@ export function FindingsStreamPanel() {
         )}
       </div>
 
+      {selectedIds.size > 0 && (
+        <div
+          className="flex items-center justify-between gap-3 rounded-md border border-accent-300 bg-accent-50 px-3 py-2 text-sm dark:border-accent-700 dark:bg-accent-950"
+          role="status"
+        >
+          <span>
+            {selectedIds.size} finding{selectedIds.size === 1 ? "" : "s"} selected — these will be
+            staged into <strong>one</strong> changeset.
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setSelectedIds(new Set()); }}
+            >
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              disabled={batchFixMutation.isPending}
+              onClick={() => { void handleBatchFix(); }}
+            >
+              {batchFixMutation.isPending ? "Staging…" : "Create one fixing changeset"}
+            </Button>
+          </span>
+        </div>
+      )}
+
+      <AckDialog
+        finding={ackTarget}
+        pending={ackMutation.isPending}
+        onCancel={() => { setAckTarget(undefined); }}
+        onConfirm={(reason, expiresAt) => { void handleAck(reason, expiresAt); }}
+      />
+
       <FindingsList
         findings={filtered.map((f) => {
           // T-703: the mgmt_single_path finding (detection-only, so never
@@ -185,6 +291,7 @@ export function FindingsStreamPanel() {
             nodes: f.nodes,
             refs: f.refs,
             fixable: f.fixable,
+            ack: f.ack,
             category: `${SOURCE_LABELS[f.source]} · ${f.check}`,
             action: mgmtNode
               ? {
@@ -202,6 +309,15 @@ export function FindingsStreamPanel() {
         onFix={(id) => {
           void handleFix(id);
         }}
+        onAck={narrow ? undefined : (id) => {
+          const f = all.find((x) => x.id === id);
+          if (f) setAckTarget({ id, detail: f.detail });
+        }}
+        onUnack={narrow ? undefined : (id) => {
+          void handleUnack(id);
+        }}
+        selectedIds={narrow ? undefined : selectedIds}
+        onToggleSelected={narrow ? undefined : toggleSelected}
         fixDisabledReason={narrow ? NARROW_FIX_DISABLED_REASON : undefined}
         fixingId={fixingId}
         emptyTitle={all.length === 0 ? "No findings" : "No findings match this filter"}

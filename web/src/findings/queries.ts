@@ -7,7 +7,7 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
-import { fetchFindings, fixFinding } from "../api/findings";
+import { ackFinding, batchFixFindings, fetchFindings, fixFinding, unackFinding } from "../api/findings";
 import { createWsClient, defaultWsUrl, type WsClient, type WsServerEvent } from "../api/ws";
 import type { FindingsChangedEvent } from "../api/types";
 
@@ -27,6 +27,39 @@ export function useFindingsQuery() {
 export function useFixFindingMutation() {
   return useMutation({
     mutationFn: (id: string) => fixFinding(id),
+  });
+}
+
+/** T-2408: stages every selected fixable finding into ONE changeset. */
+export function useBatchFixFindingsMutation() {
+  return useMutation({
+    mutationFn: (ids: string[]) => batchFixFindings(ids),
+  });
+}
+
+/** T-2402: records an acknowledgement and refreshes the stream, so the
+ * acknowledged finding immediately renders with its badge rather than waiting
+ * for the next `findings.changed` push (acking is not a finding transition, so
+ * no such push is coming). */
+export function useAckFindingMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason, expiresAt }: { id: string; reason: string; expiresAt?: number }) =>
+      ackFinding(id, reason, expiresAt),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: FINDINGS_QUERY_KEY });
+    },
+  });
+}
+
+/** T-2402: clears an acknowledgement, with the same refresh reasoning. */
+export function useUnackFindingMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => unackFinding(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: FINDINGS_QUERY_KEY });
+    },
   });
 }
 

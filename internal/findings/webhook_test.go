@@ -224,19 +224,19 @@ func TestWebhookNotifier_RoutingFilters(t *testing.T) {
 	warningFinding := Finding{ID: "f2", Source: SourceDrift, Severity: SeverityWarning, Check: "c2", Detail: "d"}
 
 	tests := []struct {
+		finding Finding
 		name    string
 		rule    AlertRule
-		finding Finding
 		want    bool
 	}{
-		{"no filters matches anything", AlertRule{Enabled: true}, errorFinding, true},
-		{"severity filter matches", AlertRule{Enabled: true, SeverityFilter: []string{"error"}}, errorFinding, true},
-		{"severity filter excludes", AlertRule{Enabled: true, SeverityFilter: []string{"error"}}, warningFinding, false},
-		{"source filter matches", AlertRule{Enabled: true, SourceFilter: []string{"health"}}, errorFinding, true},
-		{"source filter excludes", AlertRule{Enabled: true, SourceFilter: []string{"health"}}, warningFinding, false},
-		{"both filters ANDed, both match", AlertRule{Enabled: true, SourceFilter: []string{"health"}, SeverityFilter: []string{"error"}}, errorFinding, true},
-		{"both filters ANDed, one mismatches", AlertRule{Enabled: true, SourceFilter: []string{"health"}, SeverityFilter: []string{"warning"}}, errorFinding, false},
-		{"disabled rule never matches", AlertRule{Enabled: false}, errorFinding, false},
+		{name: "no filters matches anything", rule: AlertRule{Enabled: true}, finding: errorFinding, want: true},
+		{name: "severity filter matches", rule: AlertRule{Enabled: true, SeverityFilter: []string{"error"}}, finding: errorFinding, want: true},
+		{name: "severity filter excludes", rule: AlertRule{Enabled: true, SeverityFilter: []string{"error"}}, finding: warningFinding, want: false},
+		{name: "source filter matches", rule: AlertRule{Enabled: true, SourceFilter: []string{"health"}}, finding: errorFinding, want: true},
+		{name: "source filter excludes", rule: AlertRule{Enabled: true, SourceFilter: []string{"health"}}, finding: warningFinding, want: false},
+		{name: "both filters ANDed, both match", rule: AlertRule{Enabled: true, SourceFilter: []string{"health"}, SeverityFilter: []string{"error"}}, finding: errorFinding, want: true},
+		{name: "both filters ANDed, one mismatches", rule: AlertRule{Enabled: true, SourceFilter: []string{"health"}, SeverityFilter: []string{"warning"}}, finding: errorFinding, want: false},
+		{name: "disabled rule never matches", rule: AlertRule{Enabled: false}, finding: errorFinding, want: false},
 	}
 
 	for _, tt := range tests {

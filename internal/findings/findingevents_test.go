@@ -32,10 +32,10 @@ func TestFindingEventsNotifier_Notify(t *testing.T) {
 	fixedNow := time.Unix(1_700_000_000, 0)
 
 	tests := []struct {
+		finding    Finding
 		name       string
 		transition TransitionKind
 		want       recordedEvent
-		finding    Finding
 	}{
 		{
 			name:       "new",

@@ -712,3 +712,49 @@ func setupAlertWebhookNotifier(alertRules *store.AlertRuleRepo, alertDeliveries 
 		Logger:   logger,
 	})
 }
+
+// findingAckStoreAdapter adapts *store.FindingAckRepo onto
+// findings.AckStore (T-2402) — the same "internal/findings never imports
+// internal/store, the composition root adapts" rule alertRuleProviderAdapter
+// and findingEventRecorder above already follow.
+//
+// It translates between store.FindingAck (five flat columns) and
+// findings.Ack (the same values minus the id, which is the map key on this
+// side). Nothing is filtered here: an expired row is passed straight through,
+// because whether an acknowledgement still applies is decided by
+// findings.AckService against a clock it is given, at read time. See
+// internal/findings/ack.go's own note on why that is not a sweeper.
+type findingAckStoreAdapter struct {
+	repo *store.FindingAckRepo
+}
+
+func (a findingAckStoreAdapter) ListAcks(ctx context.Context) (map[string]findings.Ack, error) {
+	rows, err := a.repo.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("findings: listing acknowledgements: %w", err)
+	}
+	out := make(map[string]findings.Ack, len(rows))
+	for id, row := range rows {
+		out[id] = findings.Ack{
+			Reason:    row.Reason,
+			AckedBy:   row.AckedBy,
+			AckedAt:   row.AckedAt,
+			ExpiresAt: row.ExpiresAt,
+		}
+	}
+	return out, nil
+}
+
+func (a findingAckStoreAdapter) UpsertAck(ctx context.Context, findingID string, ack findings.Ack) error {
+	return a.repo.Upsert(ctx, store.FindingAck{
+		FindingID: findingID,
+		Reason:    ack.Reason,
+		AckedBy:   ack.AckedBy,
+		AckedAt:   ack.AckedAt,
+		ExpiresAt: ack.ExpiresAt,
+	})
+}
+
+func (a findingAckStoreAdapter) DeleteAck(ctx context.Context, findingID string) error {
+	return a.repo.Delete(ctx, findingID)
+}

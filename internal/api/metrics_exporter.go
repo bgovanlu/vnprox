@@ -88,10 +88,15 @@ type MetricsCounterService interface {
 // (opts.SelfMetrics/opts.Collectors/opts.Store/opts.Topology) rather than
 // requiring cmd/vnproxd to wire them twice.
 type MetricsExporterConfig struct {
-	Collectors   CollectorHealth
-	Store        StoreInfoProvider
-	WS           WSConnCounter
-	Self         *metrics.Registry
+	Collectors CollectorHealth
+	Store      StoreInfoProvider
+	WS         WSConnCounter
+	Self       *metrics.Registry
+	// FindingAcks (T-2402) splits vnprox_findings_open from
+	// vnprox_findings_acked. Optional: nil counts every finding as open,
+	// which is exactly the pre-T-2402 behaviour, so a scraper's existing
+	// alerts keep their meaning if acknowledgement storage is unavailable.
+	FindingAcks  FindingAckService
 	BuildVersion string
 	Token        []byte
 	AllowFrom    []*net.IPNet
@@ -237,7 +242,7 @@ func handleMetricsExport(counters MetricsCounterService, findingsSvc FindingsSer
 	return func(w http.ResponseWriter, r *http.Request) {
 		var buf bytes.Buffer
 		writeIfaceCounterFamilies(&buf, counters)
-		writeFindingsOpenFamily(&buf, findingsSvc)
+		writeFindingsOpenFamily(&buf, r.Context(), findingsSvc, cfg.FindingAcks)
 		writeDriftOpenFamily(&buf, driftSvc)
 		writeChangesetsFamily(&buf, r.Context(), changesets)
 		writeBuildInfoFamily(&buf, cfg.BuildVersion)
@@ -271,17 +276,49 @@ func writeIfaceCounterFamilies(buf *bytes.Buffer, counters MetricsCounterService
 	}
 }
 
-func writeFindingsOpenFamily(buf *bytes.Buffer, svc FindingsService) {
-	buf.WriteString("# HELP vnprox_findings_open Current open finding count from the unified findings stream, by severity.\n")
-	buf.WriteString("# TYPE vnprox_findings_open gauge\n")
-	counts := make(map[string]int, len(findingsExportSeverities))
+// writeFindingsOpenFamily emits vnprox_findings_open and (T-2402)
+// vnprox_findings_acked.
+//
+// An acknowledged finding moves OUT of open and INTO acked; it is never
+// dropped from both, so open+acked always equals the stream's true size and a
+// dashboard cannot be made to show "nothing wrong" by acking things. That is
+// the metric-layer expression of the invariant that acknowledgement is not
+// suppression.
+//
+// With no ack service (nil, or a store error), every finding counts as open —
+// the pre-T-2402 behaviour — because under-reporting open findings is the one
+// failure mode that could hide a real problem.
+func writeFindingsOpenFamily(buf *bytes.Buffer, ctx context.Context, svc FindingsService, acks FindingAckService) {
+	var all []findings.Finding
 	if svc != nil {
-		for _, f := range svc.Findings() {
-			counts[f.Severity]++
+		all = svc.Findings()
+	}
+	if acks != nil {
+		if decorated, _, err := acks.Decorate(ctx, all); err == nil {
+			all = decorated
 		}
 	}
+
+	open := make(map[string]int, len(findingsExportSeverities))
+	acked := make(map[string]int, len(findingsExportSeverities))
+	for _, f := range all {
+		if f.Ack != nil {
+			acked[f.Severity]++
+			continue
+		}
+		open[f.Severity]++
+	}
+
+	buf.WriteString("# HELP vnprox_findings_open Current open finding count from the unified findings stream, by severity. Excludes acknowledged findings.\n")
+	buf.WriteString("# TYPE vnprox_findings_open gauge\n")
 	for _, sev := range findingsExportSeverities {
-		fmt.Fprintf(buf, "vnprox_findings_open{severity=%q} %d\n", sev, counts[sev])
+		fmt.Fprintf(buf, "vnprox_findings_open{severity=%q} %d\n", sev, open[sev])
+	}
+
+	buf.WriteString("# HELP vnprox_findings_acked Current acknowledged finding count from the unified findings stream, by severity.\n")
+	buf.WriteString("# TYPE vnprox_findings_acked gauge\n")
+	for _, sev := range findingsExportSeverities {
+		fmt.Fprintf(buf, "vnprox_findings_acked{severity=%q} %d\n", sev, acked[sev])
 	}
 }
 

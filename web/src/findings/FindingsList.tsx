@@ -10,7 +10,7 @@ import clsx from "clsx";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Tooltip } from "../components/Tooltip";
-import type { Severity } from "../api/types";
+import type { FindingAck, Severity } from "../api/types";
 
 /** The shape every findings-stream item needs — a structural subset both
  * DriftFinding (api/types.ts) and any future source can satisfy without
@@ -22,6 +22,9 @@ export interface FindingItem {
   nodes: string[];
   refs?: string[];
   fixable: boolean;
+  /** T-2402: this finding's currently-active acknowledgement, if any. The
+   * server evaluates expiry, so anything present here is still in force. */
+  ack?: FindingAck;
   /** Optional grouping/category label shown as a small pill (T-305's
    * `check` field; a future source's own category concept). */
   category?: string;
@@ -35,6 +38,19 @@ export interface FindingItem {
 
 export interface FindingsListProps {
   findings: FindingItem[];
+  /** T-2402: called with a finding's id when "Acknowledge" is clicked. The
+   * caller collects the reason (required) and the optional expiry — this
+   * component deliberately owns no dialog, matching its "presentational,
+   * source-agnostic" contract above. Omitted = no acknowledge affordance. */
+  onAck?: (id: string) => void;
+  /** T-2402: called with a finding's id when "Un-acknowledge" is clicked. */
+  onUnack?: (id: string) => void;
+  /** T-2408: when provided, each FIXABLE finding renders a checkbox and the
+   * caller drives a batch action. Acknowledged findings are never selectable —
+   * the server refuses them in a batch, so offering the checkbox would build
+   * a selection that can only fail. */
+  selectedIds?: ReadonlySet<string>;
+  onToggleSelected?: (id: string) => void;
   /** Called with a fixable finding's id when its "Create fixing changeset"
    * button is clicked. Omitted entirely (no button rendered) if the caller
    * has no fix action to offer. */
@@ -71,6 +87,10 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 export function FindingsList({
   findings,
   onFix,
+  onAck,
+  onUnack,
+  selectedIds,
+  onToggleSelected,
   fixingId,
   fixDisabledReason,
   emptyTitle = "No findings",
@@ -89,28 +109,57 @@ export function FindingsList({
           className={clsx("rounded-md border p-3 text-sm", SEVERITY_CLASSES[f.severity])}
         >
           <div className="flex items-start justify-between gap-3">
-            <div className="flex flex-col gap-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wide">
-                  {SEVERITY_LABEL[f.severity]}
-                </span>
-                {f.category && (
-                  <span className="rounded bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
-                    {f.category}
+            <div className="flex items-start gap-2">
+              {/* T-2408: only fixable, un-acknowledged findings are
+                  selectable. The server refuses an acknowledged finding in a
+                  batch, so offering its checkbox would only build a selection
+                  that fails on submit. */}
+              {onToggleSelected && f.fixable && !f.ack && (
+                <input
+                  type="checkbox"
+                  className="mt-1 h-3.5 w-3.5 shrink-0 accent-accent-600"
+                  checked={selectedIds?.has(f.id) ?? false}
+                  aria-label={`Select finding: ${f.detail}`}
+                  onChange={() => { onToggleSelected(f.id); }}
+                />
+              )}
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide">
+                    {SEVERITY_LABEL[f.severity]}
                   </span>
+                  {f.category && (
+                    <span className="rounded bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">
+                      {f.category}
+                    </span>
+                  )}
+                  {f.nodes.length > 0 && (
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      {f.nodes.join(", ")}
+                    </span>
+                  )}
+                  {f.ack && (
+                    <span className="rounded bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide dark:bg-white/15">
+                      Acknowledged
+                    </span>
+                  )}
+                </div>
+                <p>{f.detail}</p>
+                {f.refs && f.refs.length > 0 && (
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    {f.refs.join(" · ")}
+                  </p>
                 )}
-                {f.nodes.length > 0 && (
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                    {f.nodes.join(", ")}
-                  </span>
+                {/* The reason is shown, not just the fact — an
+                    acknowledgement with no visible justification is the
+                    unexplained silence T-2402 exists to avoid. */}
+                {f.ack && (
+                  <p className="text-[10px] text-slate-600 dark:text-slate-300">
+                    {f.ack.reason} — {f.ack.ackedBy}
+                    {f.ack.expiresAt ? `, until ${new Date(f.ack.expiresAt * 1000).toLocaleDateString()}` : ""}
+                  </p>
                 )}
               </div>
-              <p>{f.detail}</p>
-              {f.refs && f.refs.length > 0 && (
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                  {f.refs.join(" · ")}
-                </p>
-              )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {f.action && (
@@ -118,7 +167,21 @@ export function FindingsList({
                   {f.action.label}
                 </Button>
               )}
-              {f.fixable && onFix && (
+              {f.ack
+                ? onUnack && (
+                    <Button variant="secondary" size="sm" onClick={() => { onUnack(f.id); }}>
+                      Un-acknowledge
+                    </Button>
+                  )
+                : onAck && (
+                    <Button variant="secondary" size="sm" onClick={() => { onAck(f.id); }}>
+                      Acknowledge
+                    </Button>
+                  )}
+              {/* An acknowledged finding keeps no fix button: fixing what you
+                  have just declared intentional is a contradiction, and the
+                  server refuses it in a batch for the same reason. */}
+              {f.fixable && !f.ack && onFix && (
                 <Tooltip content={fixDisabledReason}>
                   <span>
                     <Button

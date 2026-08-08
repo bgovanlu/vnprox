@@ -145,6 +145,8 @@ func severityAtLeast(sev, threshold string) bool {
 // Never random or time-based, so re-evaluating unchanged state reproduces
 // byte-identical IDs — the property Engine's transition/notification
 // tracking (notify.go) and RunLoop's WS-change detection both depend on.
+//
+//nolint:govet // fieldalignment: wire shape; field order is the documented JSON contract (docs/api.md's GET /findings), not packing — the same precedent internal/api's response DTOs already set.
 type Finding struct {
 	ID       string   `json:"id"`
 	Source   Source   `json:"source"`
@@ -155,6 +157,14 @@ type Finding struct {
 	Nodes    []string `json:"nodes"`
 	Refs     []string `json:"refs,omitempty"`
 	Fixable  bool     `json:"fixable"`
+
+	// Ack is this finding's currently-active acknowledgement (T-2402), or
+	// nil. It is never set by a producer: AckService.Decorate attaches it at
+	// the API boundary, and an expired acknowledgement leaves it nil. It is
+	// deliberately not part of the finding's identity — sortFindings and
+	// Engine's transition tracking both ignore it, so acking a finding is not
+	// a state change that could fire a notification.
+	Ack *Ack `json:"ack,omitempty"`
 }
 
 // sortedUnique returns a sorted copy of ss with duplicates and empty

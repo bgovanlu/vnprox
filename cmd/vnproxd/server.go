@@ -1209,6 +1209,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if haMgr != nil {
 		haStatus = haMgr
 	}
+	// T-2402: one AckService, shared by GET /findings (which decorates each
+	// finding with its acknowledgement) and by the Prometheus exporter (which
+	// splits vnprox_findings_open from vnprox_findings_acked). Sharing one
+	// instance is what keeps the two surfaces from ever disagreeing about
+	// whether a given finding is currently acked.
+	findingAcks := findings.NewAckService(findingAckStoreAdapter{repo: store.NewFindingAckRepo(db)}, nil)
+
 	apiOpts := api.Options{
 		Version: version,
 		// Non-secret operational config for the Settings page's Instance
@@ -1238,9 +1245,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		LLDP:       topoSvc,
 		Drift:      driftSvc,
 		Findings:   findingsEngine,
-		Certs:      certSvc,
-		FDB:        topoSvc,
-		Metrics:    metricsSampler,
+		// T-2402: acknowledgement is app-owned triage state, so it needs the
+		// store. The ack routes mount only when this is non-nil; GET
+		// /findings behaves exactly as it did before when it is not.
+		FindingAcks:  findingAcks,
+		FindingAudit: auditRepo,
+		Certs:        certSvc,
+		FDB:          topoSvc,
+		Metrics:      metricsSampler,
 		// T-1001: metricsSampler also satisfies MetricsCounterService
 		// (AllCounters) — same underlying object as Metrics above, wired
 		// through the dedicated exporter seam GET /metrics uses.
@@ -1249,6 +1261,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 			Token:        metricsToken,
 			AllowFrom:    cfg.Metrics.AllowFrom,
 			BuildVersion: version,
+			FindingAcks:  findingAcks,
 		},
 		// T-1903: the daemon's own self-observability registry (HTTP RED via
 		// this router's own redMetricsMiddleware, plus whatever collect/

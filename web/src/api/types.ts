@@ -1018,6 +1018,19 @@ export interface StreamFinding {
   refs?: string[];
   fixable: boolean;
   docsLink?: string;
+  /** T-2402: this finding's currently-ACTIVE acknowledgement, or absent.
+   * The server evaluates expiry, so an expired acknowledgement arrives as
+   * `undefined` and the client never has to reason about a clock. */
+  ack?: FindingAck;
+}
+
+/** T-2402's acknowledgement (`internal/findings.Ack`). `expiresAt` is unix
+ * seconds; absent or 0 means "until explicitly un-acknowledged". */
+export interface FindingAck {
+  reason: string;
+  ackedBy: string;
+  ackedAt: number;
+  expiresAt?: number;
 }
 
 /** WS `findings.changed` payload (docs/api.md's WebSocket section). */

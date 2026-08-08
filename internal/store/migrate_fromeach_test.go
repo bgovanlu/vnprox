@@ -159,6 +159,7 @@ var versionSeeds = map[int]versionSeed{
 	31: {seedV31, assertV31},
 	32: {seedV32, assertV32},
 	33: {seedV33, assertV33},
+	34: {seedV34, assertV34},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1211,11 +1212,41 @@ func assertV33(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 34 (0034_changeset_review.sql, changeset_comments /
-// changeset_approvals — T-2003) has no versionSeeds entry because it is the
-// current latest, not a "prior" version any fixture in this file freezes
-// at — its own forward application (as part of every case's migrate() call
-// to latest) is exercised by every case above, and TestOpen_CreatesAllTables
-// (store_test.go) exercises it from a fresh database. The next migration to
-// land becomes the new latest and picks up a version 34 entry in
-// versionSeeds at that time.
+// ---------------------------------------------------------------------
+// Version 34 — 0034_changeset_review.sql: changeset_comments and
+// changeset_approvals (T-2003). Both reference changesets(id) ON DELETE
+// CASCADE, so both seed against v1's own cs-v1 row.
+// ---------------------------------------------------------------------
+
+func seedV34(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO changeset_comments (id, changeset_id, op_id, author, body, created_at)
+		VALUES ('cmt-v34', 'cs-v1', 'op-1', 'alice', 'why this MTU?', 1700100000)`)
+	mustExec(t, db, `INSERT INTO changeset_approvals (changeset_id, status, decided_by, reason, decided_at)
+		VALUES ('cs-v1', 'approved', 'brian', '', 1700100001)`)
+}
+
+func assertV34(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var body, opID string
+	if err := db.QueryRowContext(ctx, `SELECT body, op_id FROM changeset_comments WHERE id = 'cmt-v34'`).Scan(&body, &opID); err != nil {
+		t.Errorf("changeset_comments row lost across migration: %v", err)
+	} else if body != "why this MTU?" || opID != "op-1" {
+		t.Errorf("changeset_comments row = (%q, %q), want (\"why this MTU?\", \"op-1\")", body, opID)
+	}
+	var status, decidedBy string
+	if err := db.QueryRowContext(ctx, `SELECT status, decided_by FROM changeset_approvals WHERE changeset_id = 'cs-v1'`).Scan(&status, &decidedBy); err != nil {
+		t.Errorf("changeset_approvals row lost across migration: %v", err)
+	} else if status != "approved" || decidedBy != "brian" {
+		t.Errorf("changeset_approvals row = (%q, %q), want (\"approved\", \"brian\")", status, decidedBy)
+	}
+}
+
+// Schema version 35 (0035_finding_acks.sql, finding_acks — T-2402) has no
+// versionSeeds entry because it is the current latest, not a "prior" version
+// any fixture in this file freezes at — its own forward application (as part
+// of every case's migrate() call to latest) is exercised by every case above,
+// and TestOpen_CreatesAllTables (store_test.go) exercises it from a fresh
+// database. The next migration to land becomes the new latest and picks up a
+// version 35 entry in versionSeeds at that time.
