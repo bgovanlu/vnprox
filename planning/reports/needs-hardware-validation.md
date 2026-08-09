@@ -1100,3 +1100,27 @@ be too narrow (a useless bundle) or too wide (a leak):
       therefore needs an interactive PVE login. `internal/doctor`'s tests cover the merge, the
       capability gate, and a broken fixture per check; none of that is the same as watching the real
       daemon answer. Run on hardware with a token and record the output.
+
+## T-2405 / T-2407 — validated on `pvecube` (2026-08-09, 3.0.4+75+g60e7eec)
+
+- [x] **The OpenAPI document is served, and served without credentials.**
+      `GET /api/v1/openapi.json` returns **200** and 340,755 bytes with no cookie and no
+      Authorization header, `openapi: "3.1.0"`, `info.version` matching the running build. The same
+      request pattern against `GET /api/v1/topology` — a route the document describes — returns
+      **401**. Both halves of the claim are what make it meaningful; either alone is not.
+- [x] **Migration 0036 applied cleanly to a real store with real data.** `schema_version` 36,
+      `alert_pending` present, `alert_rules` carrying `quiet_start`/`quiet_end`/`quiet_tz`/
+      `quiet_bypass_error`/`digest_window_sec`, `alert_deliveries` carrying `detail`. Service
+      **active**, `NRestarts` **0**, `journalctl -p err` empty, SPA `GET /` 200, RSS 14 MB. The
+      pre-upgrade database is at `/var/lib/vnprox/backups/vnprox.db.pre-3.0.4+75`.
+- [ ] **Quiet hours and digest coalescing have not fired on hardware.** The node has **zero alert
+      rules**, so nothing has ever been deferred or coalesced there: `alert_pending` is empty and no
+      delivery has been written. Everything asserted about the *behaviour* — ten events becoming one
+      delivery, an event held at 23:00 arriving at 06:00, `error` bypassing the window, both DST
+      directions — comes from `internal/findings`' tests against a fake clock, not from this node.
+      Configure a rule with a short digest window against a local receiver and confirm one delivery
+      naming N, then a quiet window spanning a real night.
+- [ ] **The 30-second flush loop has not been observed doing work.** It is running (the daemon is
+      up and the actor is registered unconditionally), but with no rules it has had nothing to
+      flush, so "it wakes up, finds due deferrals, and delivers them" is untested outside the unit
+      suite on this host.
