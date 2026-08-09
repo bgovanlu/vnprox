@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve
+.PHONY: build dev test lint check deb mockpve openapi
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -78,6 +78,13 @@ test: ## go test ./... && vitest run
 	else \
 		echo ">> web: not yet implemented (T-005), skipping vitest"; \
 	fi
+
+# --- openapi -------------------------------------------------------------
+
+openapi: ## regenerate docs/openapi.json from the daemon's registered routes
+	@echo ">> openapi: bringing the daemon up and reading its generated document"
+	$(GO) test ./cmd/vnproxd/ -run TestOpenAPI_MatchesTheCommittedDocument -update -count=1
+	@echo ">> openapi: docs/openapi.json is up to date"
 
 # --- lint ----------------------------------------------------------------
 

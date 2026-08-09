@@ -2,6 +2,14 @@
 
 Base: `https://<node>:8007/api/v1`. JSON everywhere. This document is a **contract** — implementation tasks in different phases depend on these routes and shapes matching exactly.
 
+## Machine-readable contract (T-2405)
+
+`GET /api/v1/openapi.json` serves an **OpenAPI 3.1** document, unauthenticated — it is the contract, not the data, and requiring a session to read it would mean no client can be generated without one. The same document is committed at [`docs/openapi.json`](openapi.json) and regenerated with `make openapi`.
+
+It is **generated from the routes the router actually registers**, not from a hand-kept list, so it cannot describe a path vnproxd does not serve. Route metadata (summary, tag, auth scheme) lives in `internal/apidoc`'s `Operations` table, and a route with no entry there **fails the build** — `TestOpenAPI_EveryRouteIsDescribed` checks both directions, so an endpoint can neither ship undescribed nor stay described after being removed.
+
+**What it does and does not cover.** Every path, method, path parameter, security scheme and error response is complete and mechanically checked. Request and **response body schemas are not in it** — those live in the tables below, and 215 operations' worth of body schemas is separate work. A generated client from this document gets correct routes, parameters and auth; it does not get typed bodies. Query parameters are likewise documented here rather than there. Routes belonging to a subsystem that `testdata/dev.toml` leaves disabled (the MCP transport, the plugin hub) are outside the gate until that config enables them.
+
 ## Conventions
 
 - Auth: session cookie `vnprox_session` (HttpOnly, Secure, SameSite=Strict) + `X-VNPROX-CSRF` header on mutating requests. **Exception (T-1001):** `GET /metrics` (the Metrics-exporter subsection below) uses a separate bearer-token scheme instead — see that subsection and docs/security.md's Authentication section for the full auth story and why a Prometheus scraper can't carry a session cookie or CSRF header. **Addition (T-1104):** `Authorization: Bearer <token>` is accepted on *every* route in this document (not just `GET /metrics`), converging on the exact same session-derived request context a cookie does — see the Tokens section below and docs/security.md's Authentication section for the full model. A bearer-authenticated request skips CSRF (there is no cookie to double-submit) but is still rate-limited and audited (`token.use`) per use.

@@ -224,8 +224,16 @@ func NewRouter(opts Options) http.Handler {
 		}
 	}
 
+	// T-2405: the generated OpenAPI document. Registered here, populated at
+	// the bottom of this function once every route exists — see
+	// generateOpenAPI.
+	openAPI := &openAPIHolder{}
+
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", healthHandler(opts.Version, opts.Collectors))
+		// Unauthenticated by design: the contract, not the data. See
+		// handleOpenAPI.
+		r.Get("/openapi.json", handleOpenAPI(openAPI))
 		if opts.Auth != nil {
 			opts.Auth.MountRoutes(r)
 			// GET /config: non-secret instance config for the Settings page,
@@ -362,6 +370,10 @@ func NewRouter(opts Options) http.Handler {
 		}
 		spa.ServeHTTP(w, req)
 	})
+
+	// T-2405: every route now exists, so the document can describe all of
+	// them. Done last for that reason.
+	generateOpenAPI(r, opts.Version, openAPI)
 
 	return r
 }
