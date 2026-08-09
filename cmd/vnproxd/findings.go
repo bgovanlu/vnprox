@@ -643,6 +643,12 @@ func (a alertRuleProviderAdapter) AlertRules(ctx context.Context) ([]findings.Al
 			ID: row.ID, Name: row.Name, Enabled: row.Enabled,
 			SourceFilter: row.SourceFilter, SeverityFilter: row.SeverityFilter,
 			TargetKind: row.TargetKind, TargetURL: row.TargetURL, TargetSecret: secret,
+			// T-2407 delivery scheduling.
+			QuietHours: findings.QuietHours{
+				Start: row.QuietStart, End: row.QuietEnd, Zone: row.QuietTZ,
+			},
+			BypassQuietHoursOnError: row.QuietBypassError,
+			DigestWindow:            time.Duration(row.DigestWindowSec) * time.Second,
 		})
 	}
 	return out, nil
@@ -666,6 +672,7 @@ func (a alertDeliveryRecorderAdapter) RecordDelivery(ctx context.Context, d find
 	return a.repo.Insert(ctx, store.AlertDelivery{
 		ID: store.NewULID(), RuleID: d.RuleID, FindingID: d.FindingID,
 		At: d.At.Unix(), Attempt: d.Attempt, Status: d.Status, Error: d.Error,
+		Detail: d.Detail,
 	})
 }
 
@@ -705,12 +712,96 @@ func setupFindingEventsNotifier(repo *store.FindingEventRepo, logger *slog.Logge
 // configured rules, WebhookNotifier.Notify is a correct, harmless no-op
 // each cycle (matches PVENotifier's own "always constructed, does nothing
 // if nothing is configured" shape when there are no enabled targets).
-func setupAlertWebhookNotifier(alertRules *store.AlertRuleRepo, alertDeliveries *store.AlertDeliveryRepo, cipher *store.SessionCipher, logger *slog.Logger) findings.Notifier {
+// The T-2407 scheduler is wired in here rather than at the caller so that
+// every construction site gets deferral: a WebhookNotifier built without one
+// silently ignores every rule's quiet hours, which is the failure mode an
+// operator would discover at 3 a.m.
+func setupAlertWebhookNotifier(alertRules *store.AlertRuleRepo, alertDeliveries *store.AlertDeliveryRepo, alertPending *store.AlertPendingRepo, cipher *store.SessionCipher, logger *slog.Logger) *findings.WebhookNotifier {
+	recorder := alertDeliveryRecorderAdapter{repo: alertDeliveries}
 	return findings.NewWebhookNotifier(findings.WebhookNotifierConfig{
 		Rules:    alertRuleProviderAdapter{repo: alertRules, cipher: cipher, logger: logger},
-		Recorder: alertDeliveryRecorderAdapter{repo: alertDeliveries},
+		Recorder: recorder,
 		Logger:   logger,
+		Scheduler: findings.NewScheduler(findings.SchedulerConfig{
+			Store:    alertPendingStoreAdapter{repo: alertPending},
+			Recorder: recorder,
+			Logger:   logger,
+		}),
 	})
+}
+
+// alertPendingStore is the subset of *store.AlertPendingRepo the adapter
+// needs.
+type alertPendingStore interface {
+	Insert(ctx context.Context, p store.AlertPending) (string, error)
+	EarliestFlushAt(ctx context.Context, ruleID string) (int64, bool, error)
+	Due(ctx context.Context, now int64) ([]store.AlertPending, error)
+	DeleteByIDs(ctx context.Context, ids []string) error
+}
+
+// alertPendingStoreAdapter adapts *store.AlertPendingRepo onto
+// findings.PendingStore (T-2407) — the same composition-root conversion
+// alertRuleProviderAdapter and findingAckStoreAdapter perform, for the same
+// reason: internal/findings never imports internal/store.
+//
+// The Finding travels as JSON through the store layer. internal/store has no
+// business knowing the finding shape, and internal/findings owns its own
+// encoding (EncodePendingFinding), so the column is opaque to the half that
+// persists it and typed to the half that produced it.
+type alertPendingStoreAdapter struct {
+	repo alertPendingStore
+}
+
+func (a alertPendingStoreAdapter) AddPending(ctx context.Context, p findings.PendingDelivery) error {
+	encoded, err := findings.EncodePendingFinding(p.Finding)
+	if err != nil {
+		return err
+	}
+	if _, err := a.repo.Insert(ctx, store.AlertPending{
+		RuleID: p.RuleID, FindingID: p.Finding.ID, FindingJSON: encoded,
+		Kind: string(p.Kind), At: p.At.Unix(), FlushAt: p.FlushAt.Unix(), Reason: p.Reason,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a alertPendingStoreAdapter) PendingFlushAt(ctx context.Context, ruleID string) (time.Time, bool, error) {
+	at, ok, err := a.repo.EarliestFlushAt(ctx, ruleID)
+	if err != nil || !ok {
+		return time.Time{}, false, err
+	}
+	return time.Unix(at, 0), true, nil
+}
+
+func (a alertPendingStoreAdapter) DuePending(ctx context.Context, now time.Time) ([]findings.PendingDelivery, error) {
+	rows, err := a.repo.Due(ctx, now.Unix())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]findings.PendingDelivery, 0, len(rows))
+	for _, row := range rows {
+		f, decErr := findings.DecodePendingFinding(row.FindingJSON)
+		if decErr != nil {
+			// A row we cannot decode can never be delivered. Returning an
+			// error would wedge the whole flush behind it forever, so it is
+			// skipped — and it stays in the table, where it is visible,
+			// rather than being silently deleted.
+			return nil, fmt.Errorf("decoding deferred alert %s for rule %s: %w", row.ID, row.RuleID, decErr)
+		}
+		out = append(out, findings.PendingDelivery{
+			ID: row.ID, RuleID: row.RuleID, Finding: f,
+			Kind:    findings.TransitionKind(row.Kind),
+			At:      time.Unix(row.At, 0),
+			FlushAt: time.Unix(row.FlushAt, 0),
+			Reason:  row.Reason,
+		})
+	}
+	return out, nil
+}
+
+func (a alertPendingStoreAdapter) DeletePending(ctx context.Context, ids []string) error {
+	return a.repo.DeleteByIDs(ctx, ids)
 }
 
 // findingAckStoreAdapter adapts *store.FindingAckRepo onto

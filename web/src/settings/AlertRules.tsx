@@ -34,6 +34,13 @@ interface FormState {
   targetKind: AlertTargetKind;
   targetUrl: string;
   targetSecret: string;
+  /** T-2407 delivery scheduling. Held as strings because they are text
+   * inputs; converted at submit. */
+  quietStart: string;
+  quietEnd: string;
+  quietTz: string;
+  digestWindowMin: string;
+  bypassQuietHoursOnError: boolean;
   /** Whether the user touched the secret field this session — controls
    * whether an empty value means "leave unchanged" (untouched, editing an
    * existing rule) or "no secret" (touched-and-cleared, or a brand-new
@@ -49,6 +56,11 @@ const EMPTY_FORM: FormState = {
   targetKind: "generic",
   targetUrl: "",
   targetSecret: "",
+  quietStart: "",
+  quietEnd: "",
+  quietTz: "",
+  digestWindowMin: "",
+  bypassQuietHoursOnError: true,
   secretTouched: false,
 };
 
@@ -61,6 +73,11 @@ function toFormState(rule: AlertRule): FormState {
     targetKind: rule.targetKind,
     targetUrl: rule.targetUrl,
     targetSecret: "",
+    quietStart: rule.quietStart ?? "",
+    quietEnd: rule.quietEnd ?? "",
+    quietTz: rule.quietTz ?? "",
+    digestWindowMin: rule.digestWindowSec > 0 ? String(Math.round(rule.digestWindowSec / 60)) : "",
+    bypassQuietHoursOnError: rule.bypassQuietHoursOnError,
     secretTouched: false,
   };
 }
@@ -79,8 +96,33 @@ function validate(form: FormState): string | undefined {
   } catch {
     return "Target URL must be an absolute http(s) URL.";
   }
+  // T-2407. Mirrors internal/findings' QuietHours.Validate: a window is either
+  // fully set or fully unset, and a zero-length one is refused rather than
+  // guessed at.
+  const hasStart = form.quietStart.trim() !== "";
+  const hasEnd = form.quietEnd.trim() !== "";
+  if (hasStart !== hasEnd) return "Quiet hours needs both a start and an end.";
+  if (hasStart && hasEnd) {
+    if (!HHMM.test(form.quietStart.trim()) || !HHMM.test(form.quietEnd.trim())) {
+      return "Quiet hours must be HH:MM (24-hour).";
+    }
+    if (form.quietStart.trim() === form.quietEnd.trim()) {
+      return "Quiet hours start and end cannot be the same time.";
+    }
+  }
+  if (form.digestWindowMin.trim() !== "") {
+    const mins = Number(form.digestWindowMin);
+    if (!Number.isFinite(mins) || mins < 0 || !Number.isInteger(mins)) {
+      return "Digest window must be a whole number of minutes.";
+    }
+    if (mins > 24 * 60) return "Digest window must be at most 1440 minutes (24h).";
+  }
   return undefined;
 }
+
+/** 24-hour HH:MM, both parts two digits — the same shape
+ * internal/findings/quiethours.go's parseClock accepts. */
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -172,6 +214,11 @@ export function AlertRules() {
       targetKind: form.targetKind,
       targetUrl: form.targetUrl.trim(),
       ...(form.secretTouched ? { targetSecret: form.targetSecret } : {}),
+      quietStart: form.quietStart.trim() || undefined,
+      quietEnd: form.quietEnd.trim() || undefined,
+      quietTz: form.quietTz.trim() || undefined,
+      digestWindowSec: form.digestWindowMin.trim() === "" ? 0 : Number(form.digestWindowMin) * 60,
+      bypassQuietHoursOnError: form.bypassQuietHoursOnError,
     };
     try {
       if (creating) {
@@ -328,6 +375,86 @@ export function AlertRules() {
                   setForm({ ...form, severityFilter: next });
                 }}
               />
+
+              <fieldset className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+                <legend className="px-1 text-xs font-medium text-slate-600 dark:text-slate-300">Delivery schedule</legend>
+                <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                  Quiet hours defer deliveries — they are never dropped, and go out when the window ends. A digest window
+                  coalesces everything arriving inside it into one message.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="alert-rule-quiet-start" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      Quiet from (HH:MM)
+                    </label>
+                    <input
+                      id="alert-rule-quiet-start"
+                      type="text"
+                      placeholder="22:00"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      value={form.quietStart}
+                      onChange={(e) => {
+                        setForm({ ...form, quietStart: e.target.value });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="alert-rule-quiet-end" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      Quiet until (HH:MM)
+                    </label>
+                    <input
+                      id="alert-rule-quiet-end"
+                      type="text"
+                      placeholder="06:00"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      value={form.quietEnd}
+                      onChange={(e) => {
+                        setForm({ ...form, quietEnd: e.target.value });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="alert-rule-quiet-tz" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      Time zone
+                    </label>
+                    <input
+                      id="alert-rule-quiet-tz"
+                      type="text"
+                      placeholder="the daemon's own"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      value={form.quietTz}
+                      onChange={(e) => {
+                        setForm({ ...form, quietTz: e.target.value });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="alert-rule-digest" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      Digest window (minutes)
+                    </label>
+                    <input
+                      id="alert-rule-digest"
+                      type="text"
+                      placeholder="0 — send each"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                      value={form.digestWindowMin}
+                      onChange={(e) => {
+                        setForm({ ...form, digestWindowMin: e.target.value });
+                      }}
+                    />
+                  </div>
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={form.bypassQuietHoursOnError}
+                    onChange={(e) => {
+                      setForm({ ...form, bypassQuietHoursOnError: e.target.checked });
+                    }}
+                  />
+                  Deliver <span className="font-medium">error</span>-severity findings during quiet hours anyway
+                </label>
+              </fieldset>
 
               <div>
                 <label htmlFor="alert-rule-target-kind" className="text-xs font-medium text-slate-600 dark:text-slate-300">

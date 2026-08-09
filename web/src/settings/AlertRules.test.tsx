@@ -20,6 +20,8 @@ const RULE_A: AlertRule = {
   targetUrl: "https://hooks.slack.com/services/x",
   hasSecret: false,
   createdAt: 100,
+  digestWindowSec: 0,
+  bypassQuietHoursOnError: true,
   updatedAt: 100,
 };
 
@@ -32,6 +34,8 @@ const RULE_B: AlertRule = {
   targetUrl: "https://gotify.example/message",
   hasSecret: true,
   createdAt: 200,
+  digestWindowSec: 0,
+  bypassQuietHoursOnError: true,
   updatedAt: 200,
 };
 
@@ -202,5 +206,87 @@ describe("AlertRules delivery log", () => {
     expect(log).toHaveTextContent("retrying");
     expect(log).toHaveTextContent("delivered");
     expect(log).toHaveTextContent("http 500");
+  });
+});
+
+// T-2407: the delivery-scheduling fields. The point of these tests is that
+// the fields are reachable and enforced from the UI — an operator who cannot
+// set quiet hours without curl does not have quiet hours.
+describe("AlertRules delivery scheduling (T-2407)", () => {
+  it("populates the schedule fields from an existing rule", async () => {
+    const user = userEvent.setup();
+    rulesListResponse = {
+      items: [
+        {
+          ...RULE_A,
+          quietStart: "22:00",
+          quietEnd: "06:00",
+          quietTz: "Europe/Bucharest",
+          digestWindowSec: 300,
+          bypassQuietHoursOnError: false,
+        },
+      ],
+    };
+    renderPage();
+    await user.click(screen.getByRole("button", { name: /Errors to Slack/ }));
+
+    expect(screen.getByLabelText("Quiet from (HH:MM)")).toHaveValue("22:00");
+    expect(screen.getByLabelText("Quiet until (HH:MM)")).toHaveValue("06:00");
+    expect(screen.getByLabelText("Time zone")).toHaveValue("Europe/Bucharest");
+    // Seconds on the wire, minutes in the form — 300s is 5 minutes.
+    expect(screen.getByLabelText("Digest window (minutes)")).toHaveValue("5");
+    expect(screen.getByRole("checkbox", { name: /error.*severity findings during quiet hours/i })).not.toBeChecked();
+  });
+
+  it("refuses a half-configured quiet-hours window", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "New rule" }));
+    await user.type(screen.getByLabelText("Name"), "Night");
+    await user.type(screen.getByLabelText("Target URL"), "https://example.com/hook");
+    await user.type(screen.getByLabelText("Quiet from (HH:MM)"), "22:00");
+
+    expect(screen.getByText("Quiet hours needs both a start and an end.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Quiet until (HH:MM)"), "06:00");
+    expect(screen.getByRole("button", { name: "Create" })).toBeEnabled();
+  });
+
+  it("refuses a malformed clock time rather than sending it", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "New rule" }));
+    await user.type(screen.getByLabelText("Name"), "Night");
+    await user.type(screen.getByLabelText("Target URL"), "https://example.com/hook");
+    await user.type(screen.getByLabelText("Quiet from (HH:MM)"), "10pm");
+    await user.type(screen.getByLabelText("Quiet until (HH:MM)"), "06:00");
+
+    expect(screen.getByText("Quiet hours must be HH:MM (24-hour).")).toBeInTheDocument();
+    expect(createMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("sends the schedule with the create request, converting minutes to seconds", async () => {
+    const user = userEvent.setup();
+    createMutateAsync.mockResolvedValue({ ...RULE_A, id: "new" });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "New rule" }));
+    await user.type(screen.getByLabelText("Name"), "Night");
+    await user.type(screen.getByLabelText("Target URL"), "https://example.com/hook");
+    await user.type(screen.getByLabelText("Quiet from (HH:MM)"), "22:00");
+    await user.type(screen.getByLabelText("Quiet until (HH:MM)"), "06:00");
+    await user.type(screen.getByLabelText("Digest window (minutes)"), "10");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalled();
+    });
+    const req: unknown = createMutateAsync.mock.calls[0]?.[0];
+    expect(req).toMatchObject({
+      quietStart: "22:00",
+      quietEnd: "06:00",
+      digestWindowSec: 600,
+      bypassQuietHoursOnError: true,
+    });
   });
 });

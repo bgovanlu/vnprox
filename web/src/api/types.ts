@@ -2543,6 +2543,19 @@ export interface AlertRule {
   hasSecret: boolean;
   createdAt: number;
   updatedAt: number;
+  /** T-2407 delivery scheduling. `quietStart`/`quietEnd` are "HH:MM" local
+   * wall clock in `quietTz` (empty = the daemon's own zone); both absent
+   * means no quiet hours, and `quietStart > quietEnd` is a window crossing
+   * midnight. `digestWindowSec` 0 delivers each event on its own.
+   *
+   * `bypassQuietHoursOnError` delivers `error`-severity findings during
+   * quiet hours anyway, and defaults to true — vnprox has no `critical`
+   * severity, so `error` is the top tier this applies to. */
+  quietStart?: string;
+  quietEnd?: string;
+  quietTz?: string;
+  digestWindowSec: number;
+  bypassQuietHoursOnError: boolean;
 }
 
 export interface AlertRulesListResponse {
@@ -2562,6 +2575,14 @@ export interface AlertRuleRequest {
   targetKind: AlertTargetKind;
   targetUrl: string;
   targetSecret?: string;
+  /** T-2407; see AlertRule. `bypassQuietHoursOnError` is optional so that
+   * omitting it means "use the default" (true) rather than "false" — the
+   * difference between being paged for an outage at 3 a.m. and not being. */
+  quietStart?: string;
+  quietEnd?: string;
+  quietTz?: string;
+  digestWindowSec?: number;
+  bypassQuietHoursOnError?: boolean;
 }
 
 /** One row of the delivery log (internal/api/alertrules.go's
@@ -2574,8 +2595,11 @@ export interface AlertDelivery {
   findingId: string;
   at: number;
   attempt: number;
-  status: "retrying" | "delivered" | "failed";
+  status: "retrying" | "delivered" | "failed" | "deferred";
   error?: string;
+  /** T-2407: why a delivery was deferred, or what a coalesced one contained.
+   * Distinct from `error` — a deferral is not a failure. */
+  detail?: string;
 }
 
 export interface AlertDeliveriesListResponse {

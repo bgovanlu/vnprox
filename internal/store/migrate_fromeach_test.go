@@ -160,6 +160,7 @@ var versionSeeds = map[int]versionSeed{
 	32: {seedV32, assertV32},
 	33: {seedV33, assertV33},
 	34: {seedV34, assertV34},
+	35: {seedV35, assertV35},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1243,10 +1244,28 @@ func assertV34(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 35 (0035_finding_acks.sql, finding_acks — T-2402) has no
-// versionSeeds entry because it is the current latest, not a "prior" version
-// any fixture in this file freezes at — its own forward application (as part
-// of every case's migrate() call to latest) is exercised by every case above,
-// and TestOpen_CreatesAllTables (store_test.go) exercises it from a fresh
+func seedV35(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `INSERT INTO finding_acks (finding_id, reason, acked_by, acked_at, expires_at)
+		VALUES ('drift|pve1', 'known, tracked in TICKET-9', 'alice', 1700200000, 0)`)
+}
+
+func assertV35(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var reason, ackedBy string
+	if err := db.QueryRowContext(ctx, `SELECT reason, acked_by FROM finding_acks WHERE finding_id = 'drift|pve1'`).Scan(&reason, &ackedBy); err != nil {
+		t.Errorf("finding_acks row lost across migration: %v", err)
+	} else if reason != "known, tracked in TICKET-9" || ackedBy != "alice" {
+		t.Errorf("finding_acks row = (%q, %q), want (\"known, tracked in TICKET-9\", \"alice\")", reason, ackedBy)
+	}
+}
+
+// Schema version 36 (0036_alert_quiet_hours.sql, alert_pending plus the
+// alert_rules/alert_deliveries columns — T-2407) has no versionSeeds entry
+// because it is the current latest, not a "prior" version any fixture in this
+// file freezes at — its own forward application (as part of every case's
+// migrate() call to latest) is exercised by every case above, and
+// TestOpen_CreatesAllTables (store_test.go) exercises it from a fresh
 // database. The next migration to land becomes the new latest and picks up a
-// version 35 entry in versionSeeds at that time.
+// version 36 entry in versionSeeds at that time.

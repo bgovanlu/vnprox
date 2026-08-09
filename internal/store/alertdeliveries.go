@@ -27,8 +27,12 @@ type AlertDelivery struct {
 	FindingID string
 	Status    string
 	Error     string
-	At        int64
-	Attempt   int
+	// Detail says why a delivery was deferred, or what a coalesced one
+	// contained (T-2407). Separate from Error because a deferral is not a
+	// failure and must not read as one in the delivery log.
+	Detail  string
+	At      int64
+	Attempt int
 }
 
 // AlertDeliveryRepo is the alert_deliveries table repository.
@@ -47,9 +51,9 @@ func (r *AlertDeliveryRepo) Insert(ctx context.Context, d AlertDelivery) error {
 		errCol = sql.NullString{String: d.Error, Valid: true}
 	}
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO alert_deliveries (id, rule_id, finding_id, at, attempt, status, error)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		d.ID, d.RuleID, d.FindingID, d.At, d.Attempt, d.Status, errCol,
+		INSERT INTO alert_deliveries (id, rule_id, finding_id, at, attempt, status, error, detail)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ID, d.RuleID, d.FindingID, d.At, d.Attempt, d.Status, errCol, nullIfEmpty(d.Detail),
 	)
 	if err != nil {
 		return fmt.Errorf("store: inserting alert delivery %s: %w", d.ID, err)
@@ -64,7 +68,7 @@ func (r *AlertDeliveryRepo) Insert(ctx context.Context, d AlertDelivery) error {
 // ?source=&severity=).
 func (r *AlertDeliveryRepo) List(ctx context.Context, ruleID, status string) ([]AlertDelivery, error) {
 	var b strings.Builder
-	b.WriteString(`SELECT id, rule_id, finding_id, at, attempt, status, error FROM alert_deliveries WHERE 1=1`)
+	b.WriteString(`SELECT id, rule_id, finding_id, at, attempt, status, error, detail FROM alert_deliveries WHERE 1=1`)
 	args := make([]any, 0, 2)
 	if ruleID != "" {
 		b.WriteString(` AND rule_id = ?`)
@@ -98,13 +102,14 @@ func (r *AlertDeliveryRepo) List(ctx context.Context, ruleID, status string) ([]
 
 func scanAlertDelivery(row rowScanner) (AlertDelivery, error) {
 	var d AlertDelivery
-	var errCol sql.NullString
-	if err := row.Scan(&d.ID, &d.RuleID, &d.FindingID, &d.At, &d.Attempt, &d.Status, &errCol); err != nil {
+	var errCol, detailCol sql.NullString
+	if err := row.Scan(&d.ID, &d.RuleID, &d.FindingID, &d.At, &d.Attempt, &d.Status, &errCol, &detailCol); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AlertDelivery{}, err
 		}
 		return AlertDelivery{}, fmt.Errorf("store: scanning alert delivery: %w", err)
 	}
 	d.Error = errCol.String
+	d.Detail = detailCol.String
 	return d, nil
 }

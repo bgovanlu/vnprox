@@ -30,6 +30,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -88,16 +89,21 @@ type SecretCipher interface {
 }
 
 type alertRuleResponse struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	TargetKind     string   `json:"targetKind"`
-	TargetURL      string   `json:"targetUrl"`
-	SourceFilter   []string `json:"sourceFilter,omitempty"`
-	SeverityFilter []string `json:"severityFilter,omitempty"`
-	CreatedAt      int64    `json:"createdAt"`
-	UpdatedAt      int64    `json:"updatedAt"`
-	Enabled        bool     `json:"enabled"`
-	HasSecret      bool     `json:"hasSecret"`
+	QuietStart              string   `json:"quietStart,omitempty"`
+	ID                      string   `json:"id"`
+	TargetKind              string   `json:"targetKind"`
+	TargetURL               string   `json:"targetUrl"`
+	QuietTZ                 string   `json:"quietTz,omitempty"`
+	QuietEnd                string   `json:"quietEnd,omitempty"`
+	Name                    string   `json:"name"`
+	SourceFilter            []string `json:"sourceFilter,omitempty"`
+	SeverityFilter          []string `json:"severityFilter,omitempty"`
+	DigestWindowSec         int64    `json:"digestWindowSec"`
+	CreatedAt               int64    `json:"createdAt"`
+	UpdatedAt               int64    `json:"updatedAt"`
+	BypassQuietHoursOnError bool     `json:"bypassQuietHoursOnError"`
+	Enabled                 bool     `json:"enabled"`
+	HasSecret               bool     `json:"hasSecret"`
 }
 
 type alertRulesListResponse struct {
@@ -109,13 +115,18 @@ type alertRulesListResponse struct {
 // unchanged" (nil) from "clear" ("") from "replace" (non-empty) — see this
 // file's doc comment.
 type alertRuleRequest struct {
-	TargetSecret   *string  `json:"targetSecret,omitempty"`
-	Name           string   `json:"name"`
-	TargetKind     string   `json:"targetKind"`
-	TargetURL      string   `json:"targetUrl"`
-	SourceFilter   []string `json:"sourceFilter,omitempty"`
-	SeverityFilter []string `json:"severityFilter,omitempty"`
-	Enabled        bool     `json:"enabled"`
+	TargetSecret            *string  `json:"targetSecret,omitempty"`
+	BypassQuietHoursOnError *bool    `json:"bypassQuietHoursOnError,omitempty"`
+	Name                    string   `json:"name"`
+	TargetKind              string   `json:"targetKind"`
+	TargetURL               string   `json:"targetUrl"`
+	QuietStart              string   `json:"quietStart,omitempty"`
+	QuietEnd                string   `json:"quietEnd,omitempty"`
+	QuietTZ                 string   `json:"quietTz,omitempty"`
+	SourceFilter            []string `json:"sourceFilter,omitempty"`
+	SeverityFilter          []string `json:"severityFilter,omitempty"`
+	DigestWindowSec         int64    `json:"digestWindowSec,omitempty"`
+	Enabled                 bool     `json:"enabled"`
 }
 
 type alertDeliveryResponse struct {
@@ -124,8 +135,11 @@ type alertDeliveryResponse struct {
 	FindingID string `json:"findingId"`
 	Status    string `json:"status"`
 	Error     string `json:"error,omitempty"`
-	At        int64  `json:"at"`
-	Attempt   int    `json:"attempt"`
+	// Detail (T-2407) says why a delivery was deferred, or what a coalesced
+	// one contained. Distinct from error: a deferral is not a failure.
+	Detail  string `json:"detail,omitempty"`
+	At      int64  `json:"at"`
+	Attempt int    `json:"attempt"`
 }
 
 type alertDeliveriesListResponse struct {
@@ -144,13 +158,16 @@ func toAlertRuleResponse(a store.AlertRule) alertRuleResponse {
 		TargetKind: a.TargetKind, TargetURL: a.TargetURL,
 		HasSecret: len(a.TargetSecretEnc) > 0,
 		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
+		QuietStart: a.QuietStart, QuietEnd: a.QuietEnd, QuietTZ: a.QuietTZ,
+		DigestWindowSec:         a.DigestWindowSec,
+		BypassQuietHoursOnError: a.QuietBypassError,
 	}
 }
 
 func toAlertDeliveryResponse(d store.AlertDelivery) alertDeliveryResponse {
 	return alertDeliveryResponse{
 		ID: d.ID, RuleID: d.RuleID, FindingID: d.FindingID,
-		At: d.At, Attempt: d.Attempt, Status: d.Status, Error: d.Error,
+		At: d.At, Attempt: d.Attempt, Status: d.Status, Error: d.Error, Detail: d.Detail,
 	}
 }
 
@@ -163,6 +180,11 @@ func toFindingsAlertRule(a store.AlertRule, secret string) findings.AlertRule {
 		ID: a.ID, Name: a.Name, Enabled: a.Enabled,
 		SourceFilter: a.SourceFilter, SeverityFilter: a.SeverityFilter,
 		TargetKind: a.TargetKind, TargetURL: a.TargetURL, TargetSecret: secret,
+		QuietHours: findings.QuietHours{
+			Start: a.QuietStart, End: a.QuietEnd, Zone: a.QuietTZ,
+		},
+		BypassQuietHoursOnError: a.QuietBypassError,
+		DigestWindow:            time.Duration(a.DigestWindowSec) * time.Second,
 	}
 }
 
@@ -192,7 +214,32 @@ func validateAlertRuleRequest(req alertRuleRequest) string {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "targetUrl must be an absolute http(s) URL"
 	}
+	// T-2407. Validated here, at the boundary, rather than at delivery time:
+	// a window that only turns out to be unparseable at 22:00 has already
+	// cost the operator the night it was meant to protect.
+	if err := (findings.QuietHours{Start: req.QuietStart, End: req.QuietEnd, Zone: req.QuietTZ}).Validate(); err != nil {
+		return err.Error()
+	}
+	if req.DigestWindowSec < 0 {
+		return "digestWindowSec must not be negative"
+	}
+	if req.DigestWindowSec > maxDigestWindowSec {
+		return fmt.Sprintf("digestWindowSec must be at most %d (24h); a longer window is indistinguishable from silence", maxDigestWindowSec)
+	}
 	return ""
+}
+
+// maxDigestWindowSec caps the coalescing window at 24 hours. Beyond that a
+// "digest" is not a digest, and an operator who typed an extra zero should
+// find out from a 400 rather than from a week of unsent alerts.
+const maxDigestWindowSec = 24 * 60 * 60
+
+// bypassOrDefault resolves the optional bypassQuietHoursOnError field.
+func bypassOrDefault(v *bool) bool {
+	if v == nil {
+		return store.DefaultQuietBypassError
+	}
+	return *v
 }
 
 // mountAlertRulesRoutes registers the routes above. Nil-safe: any missing
@@ -281,6 +328,9 @@ func handleCreateAlertRule(rules AlertRuleStore, cipher SecretCipher) http.Handl
 			SourceFilter: req.SourceFilter, SeverityFilter: req.SeverityFilter,
 			TargetKind: req.TargetKind, TargetURL: req.TargetURL, TargetSecretEnc: secretEnc,
 			CreatedAt: now, UpdatedAt: now,
+			QuietStart: req.QuietStart, QuietEnd: req.QuietEnd, QuietTZ: req.QuietTZ,
+			DigestWindowSec:  req.DigestWindowSec,
+			QuietBypassError: bypassOrDefault(req.BypassQuietHoursOnError),
 		}
 		if err := rules.Insert(r.Context(), a); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not save alert rule")
@@ -329,6 +379,9 @@ func handleUpdateAlertRule(rules AlertRuleStore, cipher SecretCipher) http.Handl
 			SourceFilter: req.SourceFilter, SeverityFilter: req.SeverityFilter,
 			TargetKind: req.TargetKind, TargetURL: req.TargetURL, TargetSecretEnc: secretEnc,
 			CreatedAt: existing.CreatedAt, UpdatedAt: time.Now().Unix(),
+			QuietStart: req.QuietStart, QuietEnd: req.QuietEnd, QuietTZ: req.QuietTZ,
+			DigestWindowSec:  req.DigestWindowSec,
+			QuietBypassError: bypassOrDefault(req.BypassQuietHoursOnError),
 		}
 		if err := rules.Update(r.Context(), updated); err != nil {
 			writeAlertRuleError(w, err)

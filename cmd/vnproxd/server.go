@@ -539,7 +539,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// comment).
 	alertRuleRepo := store.NewAlertRuleRepo(db)
 	alertDeliveryRepo := store.NewAlertDeliveryRepo(db)
-	webhookNotifier := setupAlertWebhookNotifier(alertRuleRepo, alertDeliveryRepo, sessionCipher, logger)
+	// T-2407: the durable deferral queue behind quiet hours and digest
+	// coalescing. A table rather than memory, so an eight-hour quiet window
+	// survives a restart — see 0036_alert_quiet_hours.sql.
+	alertPendingRepo := store.NewAlertPendingRepo(db)
+	webhookNotifier := setupAlertWebhookNotifier(alertRuleRepo, alertDeliveryRepo, alertPendingRepo, sessionCipher, logger)
 	// T-1007: finding_events, populated from this exact Notifier fan-out
 	// (evaluateNotifications' existing transition detection, reused rather
 	// than duplicated) — see findings.go's setupFindingEventsNotifier doc
@@ -1586,6 +1590,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 				cfg.Retention.SnapshotScheduleInterval, cfg.Retention.SnapshotScheduleKeep, logger)
 		})
 	}
+	// T-2407: deliver alerts whose quiet-hours or digest hold has expired.
+	//
+	// Always registered, and RunFlushLoop always blocks until ctx is done —
+	// unlike the snapshot scheduler above, which returns immediately when
+	// disabled. The distinction matters because runGroup.run cancels every
+	// actor as soon as any actor returns: an actor must either block for the
+	// daemon's lifetime or not be registered at all.
+	g.add(func(ctx context.Context) error {
+		return webhookNotifier.RunFlushLoop(ctx, findings.DefaultFlushInterval, logger)
+	})
 	// T-1704: the HA manager's renew/replicate/promote loop — owned and shut
 	// down here like every other actor. Only added when HA is enabled.
 	if haMgr != nil {

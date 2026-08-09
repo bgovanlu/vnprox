@@ -64,14 +64,17 @@ const (
 // secret (a generic webhook with no auth, or a Slack incoming-webhook URL,
 // whose token already lives in the URL itself).
 type AlertRule struct {
-	ID             string
-	Name           string
-	TargetKind     string
-	TargetURL      string
-	TargetSecret   string
-	SourceFilter   []string
-	SeverityFilter []string
-	Enabled        bool
+	QuietHours              QuietHours
+	ID                      string
+	Name                    string
+	TargetKind              string
+	TargetURL               string
+	TargetSecret            string
+	SourceFilter            []string
+	SeverityFilter          []string
+	DigestWindow            time.Duration
+	BypassQuietHoursOnError bool
+	Enabled                 bool
 }
 
 // AlertRuleProvider supplies the current set of routing rules, decrypted
@@ -94,7 +97,12 @@ type AlertDelivery struct {
 	FindingID string
 	Status    string
 	Error     string
-	Attempt   int
+	// Detail says why a delivery was deferred or what a coalesced one
+	// contained (T-2407). Deliberately separate from Error: a deferral is not
+	// a failure, and an operator scanning the log for problems must not find
+	// quiet hours among them.
+	Detail  string
+	Attempt int
 }
 
 // DeliveryRecorder persists one delivery attempt for the Settings UI's
@@ -307,8 +315,11 @@ const (
 // time.Now in production) so webhook_test.go's retry/backoff tests run
 // without actually waiting seconds between attempts.
 type WebhookNotifierConfig struct {
-	Rules       AlertRuleProvider
-	Recorder    DeliveryRecorder
+	Rules    AlertRuleProvider
+	Recorder DeliveryRecorder
+	// Scheduler defers and coalesces deliveries (T-2407). Nil delivers every
+	// event immediately, which is exactly the pre-T-2407 behaviour.
+	Scheduler   *Scheduler
 	Client      *http.Client
 	Logger      *slog.Logger
 	Now         func() time.Time
@@ -326,6 +337,7 @@ type WebhookNotifierConfig struct {
 type WebhookNotifier struct {
 	rules       AlertRuleProvider
 	recorder    DeliveryRecorder
+	scheduler   *Scheduler
 	client      *http.Client
 	log         *slog.Logger
 	now         func() time.Time
@@ -369,6 +381,7 @@ func NewWebhookNotifier(cfg WebhookNotifierConfig) *WebhookNotifier {
 	return &WebhookNotifier{
 		rules:       cfg.Rules,
 		recorder:    cfg.Recorder,
+		scheduler:   cfg.Scheduler,
 		client:      client,
 		log:         logger,
 		now:         now,
@@ -458,6 +471,17 @@ func (w *WebhookNotifier) Notify(ctx context.Context, f Finding, kind Transition
 		if !rule.Enabled || !ruleMatches(rule, f) {
 			continue
 		}
+		if w.scheduler != nil {
+			deliverNow, decideErr := w.scheduler.Decide(ctx, rule, f, kind, w.now())
+			if decideErr != nil {
+				// Deferring failed. Deliver rather than lose the alert: a
+				// duplicate page is recoverable, a missing one is not.
+				w.log.Warn("findings: could not defer alert, delivering immediately",
+					"rule_id", rule.ID, "finding_id", f.ID, "error", decideErr)
+			} else if !deliverNow {
+				continue
+			}
+		}
 		wg.Add(1)
 		go func(rule AlertRule) {
 			defer wg.Done()
@@ -482,6 +506,10 @@ func (w *WebhookNotifier) Notify(ctx context.Context, f Finding, kind Transition
 // succeeds; returns the last attempt's error once w.maxAttempts is
 // exhausted (StatusFailed, never retried again after that).
 func (w *WebhookNotifier) deliverWithRetry(ctx context.Context, rule AlertRule, f Finding, kind TransitionKind) error {
+	return w.deliverWithRetryDetail(ctx, rule, f, kind, "")
+}
+
+func (w *WebhookNotifier) deliverWithRetryDetail(ctx context.Context, rule AlertRule, f Finding, kind TransitionKind, detail string) error {
 	var lastErr error
 	for attempt := 1; attempt <= w.maxAttempts; attempt++ {
 		deliverErr := Deliver(ctx, w.client, rule, f, kind)
@@ -497,7 +525,7 @@ func (w *WebhookNotifier) deliverWithRetry(ctx context.Context, rule AlertRule, 
 				status = StatusFailed
 			}
 		}
-		w.record(ctx, rule.ID, f.ID, attempt, status, errMsg)
+		w.record(ctx, rule.ID, f.ID, attempt, status, errMsg, detail)
 
 		if deliverErr == nil {
 			return nil
@@ -512,13 +540,13 @@ func (w *WebhookNotifier) deliverWithRetry(ctx context.Context, rule AlertRule, 
 	return lastErr
 }
 
-func (w *WebhookNotifier) record(ctx context.Context, ruleID, findingID string, attempt int, status, errMsg string) {
+func (w *WebhookNotifier) record(ctx context.Context, ruleID, findingID string, attempt int, status, errMsg, detail string) {
 	if w.recorder == nil {
 		return
 	}
 	d := AlertDelivery{
 		RuleID: ruleID, FindingID: findingID, At: w.now(),
-		Attempt: attempt, Status: status, Error: errMsg,
+		Attempt: attempt, Status: status, Error: errMsg, Detail: detail,
 	}
 	if err := w.recorder.RecordDelivery(ctx, d); err != nil {
 		w.log.Warn("findings: recording alert delivery failed", "rule_id", ruleID, "finding_id", findingID, "error", err)
