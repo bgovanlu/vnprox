@@ -327,19 +327,29 @@ AC1 and AC2 are met.
 
 AC3 and AC4 are not, and the figures are the point of reporting rather than a footnote:
 
-| | Baseline (shared store) | Per-file isolation | AC |
-|---|---|---|---|
-| Wall clock | **9.1 min** (91 tests) | **16.7 min** (93 tests) | ≤ +25%; actual **+83%** ✗ |
-| Result | 89 passed / 0 failed / 2 skipped | **88 passed / 3 failed** / 2 skipped | green ✗ |
-| `--repeat-each=2` | — | not run | ✗ |
+| | Baseline (shared store) | Isolation, run 1 | Isolation, run 2 (idle machine) | AC |
+|---|---|---|---|---|
+| Wall clock | **9.1 min** (91 tests) | 16.7 min (93) | **16.3 min** (93) | ≤ +25%; actual **+79%** ✗ |
+| Result | 89 pass / 0 fail / 2 skip | 88 / 3 / 2 | **87 / 4 / 2** | green ✗ |
+| `--repeat-each=2` | — | not run | not run | ✗ |
 
-The three failures are `scale.spec.ts › scale-lab (v2 canvas renderer)` (120s test timeout)
-and two `user-guide-tasks.spec.ts` cases (IPAM reserve, firewall macro rule). All three live
-in files that previously shared a long-lived, already-warm daemon on the `dev-scale` stack,
-so the cold start is the obvious suspect — but a targeted re-run after adding a
-"wait for the first successful PVE poll" gate to `startStack` did **not** fix the canvas
-timeout. That hypothesis is therefore recorded as *tried and insufficient*, not as the
-answer, and the remaining cause is unidentified.
+Run 2 was deliberately made on an otherwise-idle machine, because run 1 competed with other
+work and CPU contention was the obvious confound for a *frame-timing* test. It is not the
+explanation: the wall clock reproduced within 0.4 min, and the suite got **worse**, not
+better — `history.spec.ts › History playback` joined the three from run 1.
+
+So the failures are **reproducible and order-dependent, not load**:
+
+- `scale.spec.ts › scale-lab (v2 canvas renderer)` — 120s test timeout in the suite, but
+  **passes alone in 41.3s** on this same branch. Pass-alone/fail-in-suite is precisely the
+  signature this card was written to eliminate, now appearing in a different spec.
+- `user-guide-tasks.spec.ts` × 2 (IPAM reserve, firewall macro rule).
+- `history.spec.ts › History playback` (run 2 only).
+
+A cold-daemon warm-up gate — wait for the first successful PVE poll before any test runs —
+was implemented and is in the branch. It did **not** fix the canvas timeout. Recorded as
+*tried and insufficient* so the next person does not re-derive it and mistake it for the
+answer. The cause is unidentified.
 
 **Not committed to `main`.** The `e2e` job is required and blocking (`T-2108`); landing a
 change that takes the suite from 89/0 to 88/3 would make the branch red for everyone. The
