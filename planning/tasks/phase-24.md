@@ -291,7 +291,7 @@ this card.
 | `T-2407` | ○ **Not started** | Alert quiet hours. Deferred, not attempted |
 | `T-2408` | ● Shipped | All-or-nothing batch; conflicts name both findings |
 | `T-2409` | ○ **Not started** | Per-spec e2e store isolation. Deferred, not attempted (revisited 2026-08-09; see below) |
-| `T-2410` | ● **Root-caused and fixed** | Closes `T-1806-bug-02`. AC3 (three green runner runs) outstanding |
+| `T-2410` | ● **Root-caused, fixed, and closed** | Closes `T-1806-bug-02`. AC3 met 2026-08-09: three consecutive green runner runs — `c551b11`, `3133b55`, `60e7eec` |
 
 Six shipped, one partial, three not started. The three untouched cards are recorded as untouched
 rather than downscoped — a card marked done at 30% is how a backlog stops meaning anything.
