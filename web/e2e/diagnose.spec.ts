@@ -24,7 +24,10 @@
 // drawer" interaction at the component level
 // (web/src/diagnose/DiagnosisPage.test.tsx) — see this task's completion
 // report for the explicit note.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

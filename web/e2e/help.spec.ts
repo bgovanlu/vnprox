@@ -8,7 +8,10 @@
 // by any automated gate (T-1806-bug-01, docs/development.md). This spec
 // checks the surface actually works in a browser; it is not what backs the
 // coverage claim.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {

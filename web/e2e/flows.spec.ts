@@ -28,9 +28,11 @@
 // the flow overlay edge. Two same-layer bridges on different cluster nodes
 // sit in separate columns with clear space between them.)
 import dgram from "node:dgram";
-import { expect, request, test, type Page } from "@playwright/test";
+import { request, type Page } from "@playwright/test";
+import { expect, test, stackURL, isolatedStore } from "./isolated";
 
-const BASE = "https://127.0.0.1:58007";
+isolatedStore({ config: "testdata/dev-flow.toml" });
+
 const NETFLOW_HOST = "127.0.0.1";
 const NETFLOW_PORT = 52055;
 
@@ -143,7 +145,7 @@ async function enableV2Renderer(page: Page): Promise<void> {
 async function logIn(page: Page): Promise<void> {
   await suppressOnboardingWalkthrough(page);
   await enableV2Renderer(page);
-  await page.goto(BASE + "/login");
+  await page.goto(stackURL() + "/login");
   await page.getByLabel("Username").fill("root");
   await page.getByLabel("Password", { exact: true }).fill("vnprox-mock");
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -159,12 +161,12 @@ async function logIn(page: Page): Promise<void> {
 async function waitForBackendConverged(): Promise<void> {
   const ctx = await request.newContext({ ignoreHTTPSErrors: true });
   try {
-    const login = await ctx.post(BASE + "/api/v1/auth/login", { data: { username: "root@pam", password: "vnprox-mock" } });
+    const login = await ctx.post(stackURL() + "/api/v1/auth/login", { data: { username: "root@pam", password: "vnprox-mock" } });
     expect(login.ok()).toBe(true);
 
     const deadline = Date.now() + 60_000;
     for (;;) {
-      const resp = await ctx.get(BASE + "/api/v1/topology");
+      const resp = await ctx.get(stackURL() + "/api/v1/topology");
       if (resp.ok()) {
         const body = (await resp.json()) as { nodes: { id: string }[] };
         const ids = new Set(body.nodes.map((n) => n.id));

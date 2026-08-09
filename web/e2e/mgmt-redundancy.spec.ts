@@ -11,9 +11,11 @@
 // single-node fixture) — the suite's default three-node-vlan cluster is
 // already redundant and raises no mgmt_single_path finding. See
 // web/playwright.config.ts's webServer array and testdata/dev-mgmt.toml.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 
-test.use({ baseURL: "https://127.0.0.1:38007" });
+isolatedStore({ config: "testdata/dev-mgmt.toml" });
+
 
 // Hides the first-login onboarding walkthrough banner so it doesn't push
 // the finding/wizard affordances around (the exact CSS-via-.style approach

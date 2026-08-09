@@ -15,8 +15,11 @@
 //       scenario is driven against a page.route-mocked /captures response
 //       shaped exactly like a real two-node group; AC3 above exercises the
 //       real backend end to end for the single-point case.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

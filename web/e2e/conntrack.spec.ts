@@ -29,8 +29,11 @@
 // internal/host/fixture_test.go, internal/api/conntrack_test.go (all three
 // go through FixtureReader, never the real kernel path) and
 // ConntrackExplorer.test.tsx (a seeded fixture set, no network at all).
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

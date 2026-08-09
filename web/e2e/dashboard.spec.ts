@@ -17,7 +17,10 @@
 // report). This spec therefore logs in, then explicitly visits "/" (and
 // separately clicks the NavRail's Home entry) to verify the dashboard
 // itself, rather than asserting login redirects there.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {

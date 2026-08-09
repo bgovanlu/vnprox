@@ -32,9 +32,11 @@
 // This spec runs against its OWN vnproxd+pvemock pair (ports 61006/61007) —
 // see web/playwright.config.ts's webServer array and
 // testdata/dev-physcollapse.toml.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 
-test.use({ baseURL: "https://127.0.0.1:61007" });
+isolatedStore({ config: "testdata/dev-physcollapse.toml" });
+
 
 const FIXTURE_NIC_COUNT = 10;
 

@@ -18,9 +18,11 @@
 // the existing changeset drawer (never re-applies/re-confirms anything —
 // this is the read-only enforcement AC5 also calls out).
 import dgram from "node:dgram";
-import { expect, request, test, type Page } from "@playwright/test";
+import { request, type Page } from "@playwright/test";
+import { expect, test, stackURL, isolatedStore } from "./isolated";
 
-const BASE = "https://127.0.0.1:58007";
+isolatedStore({ config: "testdata/dev-flow.toml" });
+
 const NETFLOW_HOST = "127.0.0.1";
 const NETFLOW_PORT = 52055;
 
@@ -129,7 +131,7 @@ async function enableV2Renderer(page: Page): Promise<void> {
 async function logIn(page: Page): Promise<void> {
   await suppressOnboardingWalkthrough(page);
   await enableV2Renderer(page);
-  await page.goto(BASE + "/login");
+  await page.goto(stackURL() + "/login");
   await page.getByLabel("Username").fill("root");
   await page.getByLabel("Password", { exact: true }).fill("vnprox-mock");
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -141,12 +143,12 @@ async function logIn(page: Page): Promise<void> {
 async function waitForBackendConverged(): Promise<void> {
   const ctx = await request.newContext({ ignoreHTTPSErrors: true });
   try {
-    const login = await ctx.post(BASE + "/api/v1/auth/login", { data: { username: "root@pam", password: "vnprox-mock" } });
+    const login = await ctx.post(stackURL() + "/api/v1/auth/login", { data: { username: "root@pam", password: "vnprox-mock" } });
     expect(login.ok()).toBe(true);
 
     const deadline = Date.now() + 60_000;
     for (;;) {
-      const resp = await ctx.get(BASE + "/api/v1/topology");
+      const resp = await ctx.get(stackURL() + "/api/v1/topology");
       if (resp.ok()) {
         const body = (await resp.json()) as { nodes: { id: string }[] };
         const ids = new Set(body.nodes.map((n) => n.id));
@@ -189,11 +191,11 @@ async function csrfHeader(ctx: Awaited<ReturnType<typeof request.newContext>>): 
 async function seedCommittedChangeset(): Promise<string> {
   const ctx = await request.newContext({ ignoreHTTPSErrors: true });
   try {
-    const login = await ctx.post(BASE + "/api/v1/auth/login", { data: { username: "root@pam", password: "vnprox-mock" } });
+    const login = await ctx.post(stackURL() + "/api/v1/auth/login", { data: { username: "root@pam", password: "vnprox-mock" } });
     expect(login.ok()).toBe(true);
     const headers = await csrfHeader(ctx);
 
-    const create = await ctx.post(BASE + "/api/v1/changesets", {
+    const create = await ctx.post(stackURL() + "/api/v1/changesets", {
       headers,
       data: {
         title: "T-1007 e2e: history marker",
@@ -203,7 +205,7 @@ async function seedCommittedChangeset(): Promise<string> {
     expect(create.ok()).toBe(true);
     const created = (await create.json()) as { id: string };
 
-    const apply = await ctx.post(BASE + `/api/v1/changesets/${created.id}/apply`, {
+    const apply = await ctx.post(stackURL() + `/api/v1/changesets/${created.id}/apply`, {
       headers,
       data: { confirmTimeoutSec: 180 },
     });
@@ -211,7 +213,7 @@ async function seedCommittedChangeset(): Promise<string> {
 
     const deadline = Date.now() + 30_000;
     for (;;) {
-      const get = await ctx.get(BASE + `/api/v1/changesets/${created.id}`);
+      const get = await ctx.get(stackURL() + `/api/v1/changesets/${created.id}`);
       expect(get.ok()).toBe(true);
       const body = (await get.json()) as { status: string };
       if (body.status === "awaiting_confirm") break;
@@ -219,7 +221,7 @@ async function seedCommittedChangeset(): Promise<string> {
       await new Promise((r) => setTimeout(r, 250));
     }
 
-    const confirm = await ctx.post(BASE + `/api/v1/changesets/${created.id}/confirm`, { headers });
+    const confirm = await ctx.post(stackURL() + `/api/v1/changesets/${created.id}/confirm`, { headers });
     expect(confirm.ok()).toBe(true);
 
     return created.id;

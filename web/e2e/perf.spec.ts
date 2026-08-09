@@ -4,8 +4,11 @@
 // numbers). The sampler is requestAnimationFrame-based: each rAF callback
 // records the delta since the previous frame, so dropped/long frames show
 // up directly as deltas above ~16.7ms (60fps budget).
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 declare global {
   interface Window {

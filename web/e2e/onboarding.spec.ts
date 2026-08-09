@@ -36,7 +36,10 @@
 // task's report as a follow-up: a dev-sandboxed no-op InstallLLDPD
 // (mirroring dev_interfaces_dir's pattern) would let a future task
 // exercise the actual install path end-to-end.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

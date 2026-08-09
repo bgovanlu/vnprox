@@ -12,8 +12,11 @@
 // event) followed by a real `page.keyboard.press(...)`, exactly mirroring
 // how a keyboard-only user reaches and activates a control.
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {

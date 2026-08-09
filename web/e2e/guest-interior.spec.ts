@@ -9,7 +9,10 @@
 // pvemock's mocked HTTP API, never through the real dev machine's own
 // network state — the same reason POST /simulate/verify's own e2e
 // coverage (simulator.spec.ts) is deterministic against sim-lab.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

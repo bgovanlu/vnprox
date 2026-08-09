@@ -14,8 +14,11 @@
 // machine-dependent — regenerate with `npm run e2e:update` when running on
 // a different machine, and treat the committed baseline as this repo's
 // reference environment, not a universal truth.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 // T-605: a fresh-DB first login (every run here, per the shared webServer
 // command's own doc comment) shows the onboarding walkthrough banner

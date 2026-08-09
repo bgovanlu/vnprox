@@ -15,9 +15,11 @@
 // topology graph resolving app01's net0 -> vmbr0 -> bond0), not a
 // synthetic stand-in. See testdata/k8s/e2e-cluster.yaml's own doc comment
 // for why that specific IP was chosen.
-import { expect, request, test, type Page } from "@playwright/test";
+import { request, type Page } from "@playwright/test";
+import { expect, test, stackURL, isolatedStore } from "./isolated";
 
-const BASE = "https://127.0.0.1:8007";
+isolatedStore();
+
 const K8SMOCK_URL = "http://127.0.0.1:8008";
 
 const GUEST_REF = "guest:pve1:200";
@@ -56,7 +58,7 @@ async function enableV2Renderer(page: Page): Promise<void> {
 async function logIn(page: Page): Promise<void> {
   await suppressOnboardingWalkthrough(page);
   await enableV2Renderer(page);
-  await page.goto(BASE + "/login");
+  await page.goto(stackURL() + "/login");
   await page.getByLabel("Username").fill("root");
   await page.getByLabel("Password", { exact: true }).fill("vnprox-mock");
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -72,14 +74,14 @@ async function logIn(page: Page): Promise<void> {
 async function waitForBackendConverged(): Promise<void> {
   const ctx = await request.newContext({ ignoreHTTPSErrors: true });
   try {
-    const login = await ctx.post(BASE + "/api/v1/auth/login", {
+    const login = await ctx.post(stackURL() + "/api/v1/auth/login", {
       data: { username: "root@pam", password: "vnprox-mock" },
     });
     expect(login.ok()).toBe(true);
 
     const deadline = Date.now() + 60_000;
     for (;;) {
-      const resp = await ctx.get(BASE + "/api/v1/topology");
+      const resp = await ctx.get(stackURL() + "/api/v1/topology");
       if (resp.ok()) {
         const body = (await resp.json()) as { nodes: { id: string }[] };
         const ids = new Set(body.nodes.map((n) => n.id));
@@ -135,7 +137,7 @@ users:
  * adds one either, per AC4) and returns its assigned id. */
 async function registerK8sCluster(page: Page): Promise<string> {
   const csrf = await readCsrfCookie(page);
-  const res = await page.request.post(BASE + "/api/v1/k8s/clusters", {
+  const res = await page.request.post(stackURL() + "/api/v1/k8s/clusters", {
     headers: { "X-VNPROX-CSRF": csrf },
     data: { name: "e2e-cluster", kubeconfig: inlineKubeconfig() },
   });
@@ -146,7 +148,7 @@ async function registerK8sCluster(page: Page): Promise<string> {
 
 async function deregisterK8sCluster(page: Page, id: string): Promise<void> {
   const csrf = await readCsrfCookie(page);
-  await page.request.delete(BASE + `/api/v1/k8s/clusters/${id}`, { headers: { "X-VNPROX-CSRF": csrf } });
+  await page.request.delete(stackURL() + `/api/v1/k8s/clusters/${id}`, { headers: { "X-VNPROX-CSRF": csrf } });
 }
 
 test.describe.configure({ mode: "serial" });

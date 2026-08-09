@@ -16,8 +16,16 @@ export default defineConfig({
   fullyParallel: false,
   timeout: 120_000,
   expect: { timeout: 30_000 },
+  // T-2409: each spec file starts its own vnproxd (e2e/isolated.ts's
+  // isolatedStore), so there is no shared writable store to inherit state
+  // from. globalSetup compiles the daemon once; without it every file would
+  // pay `go run`'s link cost on every start.
+  globalSetup: "./e2e/globalSetup.ts",
   use: {
-    baseURL: "https://127.0.0.1:8007",
+    // No baseURL here on purpose. Each spec's isolated stack supplies its own
+    // through the `test` exported by e2e/isolated.ts, and a default here would
+    // silently "work" for a spec that forgot to opt in — pointing it at
+    // whatever daemon happened to be listening.
     // testdata/certs is a throwaway self-signed dev keypair (dev.toml).
     ignoreHTTPSErrors: true,
     viewport: { width: 1400, height: 900 },
@@ -31,22 +39,6 @@ export default defineConfig({
       command: "go run ./cmd/pvemock --addr 127.0.0.1:8006 --fixture testdata/clusters/three-node-vlan.yaml",
       cwd: "..",
       port: 8006,
-      reuseExistingServer: false,
-      timeout: 120_000,
-    },
-    {
-      // Fresh SQLite store AND fresh interfaces sandbox per run: e2e specs
-      // create/apply changesets (changesets.spec.ts, T-207). Stale drafts
-      // would pile up in the drawer's "resume parked drafts" list, and —
-      // now that the dev_interfaces_dir sandbox lets an apply actually
-      // succeed — a committed change (e.g. vmbr77) would persist in
-      // var/dev-host and pollute the next run's base file. The dev
-      // NodeAgent re-seeds var/dev-host's fixture when it is missing, so
-      // removing it restores a clean, deterministic starting state.
-      command: "sh -c 'rm -f var/dev-vnprox.db && rm -rf var/dev-host && exec go run ./cmd/vnproxd --config testdata/dev.toml'",
-      cwd: "..",
-      url: "https://127.0.0.1:8007/api/v1/health",
-      ignoreHTTPSErrors: true,
       reuseExistingServer: false,
       timeout: 120_000,
     },
@@ -88,15 +80,6 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
-    {
-      command:
-        "sh -c 'rm -f var/dev-sim-vnprox.db && rm -rf var/dev-sim-host && exec go run ./cmd/vnproxd --config testdata/dev-sim.toml'",
-      cwd: "..",
-      url: "https://127.0.0.1:18007/api/v1/health",
-      ignoreHTTPSErrors: true,
-      reuseExistingServer: false,
-      timeout: 120_000,
-    },
     // T-607's own stack (scale.spec.ts), additive: a third mock PVE + vnproxd
     // pair on ports 28006/28007 serving testdata/clusters/scale-lab.yaml (the
     // docs/features/topology.md §4 scale target — 8 nodes x 6 NICs, 4
@@ -112,15 +95,6 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
-    {
-      command:
-        "sh -c 'rm -f var/dev-scale-vnprox.db && rm -rf var/dev-scale-host && exec go run ./cmd/vnproxd --config testdata/dev-scale.toml'",
-      cwd: "..",
-      url: "https://127.0.0.1:28007/api/v1/health",
-      ignoreHTTPSErrors: true,
-      reuseExistingServer: false,
-      timeout: 180_000,
-    },
     // T-703's own stack (mgmt-redundancy.spec.ts), additive: a fourth mock
     // PVE + vnproxd pair on ports 38006/38007 serving the single-node
     // fixture — the management-path SPOF case the guided redundancy wizard
@@ -131,15 +105,6 @@ export default defineConfig({
       command: "go run ./cmd/pvemock --addr 127.0.0.1:38006 --fixture testdata/clusters/single-node.yaml",
       cwd: "..",
       port: 38006,
-      reuseExistingServer: false,
-      timeout: 120_000,
-    },
-    {
-      command:
-        "sh -c 'rm -f var/dev-mgmt-vnprox.db && rm -rf var/dev-mgmt-host && exec go run ./cmd/vnproxd --config testdata/dev-mgmt.toml'",
-      cwd: "..",
-      url: "https://127.0.0.1:38007/api/v1/health",
-      ignoreHTTPSErrors: true,
       reuseExistingServer: false,
       timeout: 120_000,
     },
@@ -158,15 +123,6 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
-    {
-      command:
-        "sh -c 'rm -f var/dev-alert-vnprox.db && rm -rf var/dev-alert-host && exec go run ./cmd/vnproxd --config testdata/dev-alert.toml'",
-      cwd: "..",
-      url: "https://127.0.0.1:48007/api/v1/health",
-      ignoreHTTPSErrors: true,
-      reuseExistingServer: false,
-      timeout: 120_000,
-    },
     // T-1003's own stack (flows.spec.ts), additive: a sixth mock PVE +
     // vnproxd pair on ports 58006/58007 serving testdata/clusters/
     // flow-lab.yaml (T-1002's flow ingestion fixture) with netflow_enabled
@@ -178,15 +134,6 @@ export default defineConfig({
       command: "go run ./cmd/pvemock --addr 127.0.0.1:58006 --fixture testdata/clusters/flow-lab.yaml",
       cwd: "..",
       port: 58006,
-      reuseExistingServer: false,
-      timeout: 120_000,
-    },
-    {
-      command:
-        "sh -c 'rm -f var/dev-flow-vnprox.db && rm -rf var/dev-flow-host && exec go run ./cmd/vnproxd --config testdata/dev-flow.toml'",
-      cwd: "..",
-      url: "https://127.0.0.1:58007/api/v1/health",
-      ignoreHTTPSErrors: true,
       reuseExistingServer: false,
       timeout: 120_000,
     },
@@ -202,15 +149,6 @@ export default defineConfig({
       command: "go run ./cmd/pvemock --addr 127.0.0.1:61006 --fixture testdata/clusters/phys-collapse.yaml",
       cwd: "..",
       port: 61006,
-      reuseExistingServer: false,
-      timeout: 120_000,
-    },
-    {
-      command:
-        "sh -c 'rm -f var/dev-physcollapse-vnprox.db && rm -rf var/dev-physcollapse-host && exec go run ./cmd/vnproxd --config testdata/dev-physcollapse.toml'",
-      cwd: "..",
-      url: "https://127.0.0.1:61007/api/v1/health",
-      ignoreHTTPSErrors: true,
       reuseExistingServer: false,
       timeout: 120_000,
     },

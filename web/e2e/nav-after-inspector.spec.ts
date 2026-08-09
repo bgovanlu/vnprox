@@ -30,7 +30,10 @@
 //  2. No step is conditional. A `if (await x.isVisible())` guard turns a
 //     regression into a silent skip, which is the same failure wearing a
 //     different hat.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {

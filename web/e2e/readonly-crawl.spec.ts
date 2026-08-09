@@ -42,10 +42,13 @@
 // reusing the resulting session cookie (via Playwright's `storageState`)
 // across every test in this file avoids that entirely, and is also just
 // faster.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import * as os from "node:os";
 import * as path from "node:path";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 const AUDITOR_STORAGE_STATE = path.join(os.tmpdir(), `vnprox-e2e-auditor-storage-state-${String(process.pid)}.json`);
 

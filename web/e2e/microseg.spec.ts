@@ -15,7 +15,10 @@
 // (axe: zero serious/critical), and that a guest with no observed flows
 // degrades honestly rather than erroring.
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 /** The guest whose flow-baseline corpus the AC4/AC5 tests expect seeded.
  * Overridable so the dev-host fixture can point at whichever guest carries

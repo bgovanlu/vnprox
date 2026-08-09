@@ -3,7 +3,10 @@
 // SPA build) — opened via keyboard only, merges a registered page verb with
 // the fuzzy entity search, and running the verb opens the same editor a
 // click on the map's own "Edit" button would.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

@@ -22,7 +22,10 @@
 // can substitute for), not exercising the hit-count/top-blocked math
 // itself (covered by internal/fwlog/analytics_test.go and
 // AnalyticsTab.test.tsx).
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

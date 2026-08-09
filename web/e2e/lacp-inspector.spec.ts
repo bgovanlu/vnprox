@@ -13,7 +13,10 @@
 // fixture data. This spec's job is "the tab exists and renders one of its
 // known states without error" — the state-specific rendering itself is
 // unit-tested.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

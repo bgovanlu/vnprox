@@ -17,8 +17,11 @@
 // documented task is reachable end-to-end against the real stack, not
 // exercising the (already covered elsewhere) apply/confirm machinery a
 // second time per task.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore({ config: "testdata/dev-scale.toml" });
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -68,7 +71,6 @@ async function waitForLayout(page: Page): Promise<void> {
 // (web/playwright.config.ts's third webServer pair, 28006/28007), whose
 // eno5/eno6 are free on every node.
 test.describe("bond creation via the New-menu form", () => {
-  test.use({ baseURL: "https://127.0.0.1:28007" });
 
   test("Node -> Bonds -> New: LACP bond from two free NICs lands a bond.create draft", async ({ page }) => {
     await logIn(page);

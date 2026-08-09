@@ -22,7 +22,10 @@
 // confirm it. mgmt-redundancy.spec.ts's narrow-viewport test covers the
 // touchesMgmtPath ack-block variant of this same ceremony, staged through
 // the real wizard at desktop width first.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 test.use({ viewport: { width: 390, height: 844 } });
 

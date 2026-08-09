@@ -16,9 +16,11 @@
 // three independent layers — internal/change (service-level, direct Apply
 // call), internal/api (HTTP, UI fully bypassed), and cmd/vnproxctl (CLI,
 // via a real change.Service) — see planning/reports/T-2003.md.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, stackURL, isolatedStore } from "./isolated";
 
-const BASE = "https://127.0.0.1:8007";
+isolatedStore();
+
 
 async function readCsrfCookie(page: Page): Promise<string> {
   const cookies = await page.context().cookies();
@@ -38,7 +40,7 @@ async function readCsrfCookie(page: Page): Promise<string> {
  * state leak this cleanup exists specifically to prevent. */
 async function discardChangeset(page: Page, id: string): Promise<void> {
   const csrf = await readCsrfCookie(page);
-  await page.request.delete(BASE + `/api/v1/changesets/${id}`, { headers: { "X-VNPROX-CSRF": csrf } });
+  await page.request.delete(stackURL() + `/api/v1/changesets/${id}`, { headers: { "X-VNPROX-CSRF": csrf } });
 }
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {

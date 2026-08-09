@@ -16,7 +16,10 @@
 // spec's job is proving the real POST/PUT/DELETE wiring, session/CSRF, and
 // capability gating end to end, which nothing else in this task's test
 // suite exercises against a live daemon.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 const CLUSTER_API_URL = "http://127.0.0.1:38006";
 

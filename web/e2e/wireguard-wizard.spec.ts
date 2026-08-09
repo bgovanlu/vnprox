@@ -31,8 +31,11 @@
 // flagged in planning/reports/T-1402.md rather than asserted here as if
 // it were the intended behavior on a host that DOES have wg-quick
 // installed.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {

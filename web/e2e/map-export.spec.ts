@@ -9,8 +9,11 @@
 // attributes, specifically so a test can assert "only the filtered/toggled
 // entity set" (AC1) without depending on visual layout.
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

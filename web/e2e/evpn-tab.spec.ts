@@ -4,7 +4,9 @@
 // directly (`for..of node.peers`, `node.vnis.map`) — an uncaught TypeError
 // that unmounted the whole page to a blank screen. This opens the tab and
 // asserts (a) no uncaught page error, and (b) real content renders.
-import { test, expect } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 test("EVPN/BGP tab renders on a no-FRR cluster without a page crash", async ({ page }) => {
   const pageErrors: string[] = [];

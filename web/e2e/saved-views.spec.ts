@@ -14,8 +14,11 @@
 // canvas hit-testing under headless Chromium is unreliable, the same
 // rationale inspector-compare.spec.ts and lacp-inspector.spec.ts document
 // for their own inspector-opening steps.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

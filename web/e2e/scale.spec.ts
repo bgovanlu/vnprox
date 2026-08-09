@@ -25,8 +25,11 @@
 // it" one (see web/src/topology/scaleLab.render.test.tsx for the
 // synthetic beyond-cap counterpart, which proves the prompt itself trips
 // correctly once the real 2,000-element arithmetic is exceeded).
-import { expect, request, test, type Page } from "@playwright/test";
+import { request, type Page } from "@playwright/test";
+import { expect, test, stackURL, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore({ config: "testdata/dev-scale.toml" });
 
 declare global {
   interface Window {
@@ -35,7 +38,6 @@ declare global {
   }
 }
 
-const BASE = "https://127.0.0.1:28007";
 
 // See perf.spec.ts's identical helper doc comment: suppressing the
 // onboarding walkthrough banner via a JS-set style property (CSP blocks an
@@ -63,7 +65,7 @@ async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
 
 async function logIn(page: Page): Promise<void> {
   await suppressOnboardingWalkthrough(page);
-  await page.goto(BASE + "/login");
+  await page.goto(stackURL() + "/login");
   await page.getByLabel("Username").fill("root");
   await page.getByLabel("Password", { exact: true }).fill("vnprox-mock");
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -79,14 +81,14 @@ async function logIn(page: Page): Promise<void> {
 async function waitForBackendConverged(minNodes: number): Promise<void> {
   const ctx = await request.newContext({ ignoreHTTPSErrors: true });
   try {
-    const login = await ctx.post(BASE + "/api/v1/auth/login", {
+    const login = await ctx.post(stackURL() + "/api/v1/auth/login", {
       data: { username: "root@pam", password: "vnprox-mock" },
     });
     expect(login.ok()).toBe(true);
 
     const deadline = Date.now() + 60_000;
     for (;;) {
-      const resp = await ctx.get(BASE + "/api/v1/topology");
+      const resp = await ctx.get(stackURL() + "/api/v1/topology");
       if (resp.ok()) {
         const body = (await resp.json()) as { nodes: unknown[] };
         if (body.nodes.length >= minNodes) return;
@@ -134,7 +136,7 @@ test("scale-lab: initial render time and progressive disclosure at the documente
 
   await suppressOnboardingWalkthrough(page);
   const start = Date.now();
-  await page.goto(BASE + "/login");
+  await page.goto(stackURL() + "/login");
   await page.getByLabel("Username").fill("root");
   await page.getByLabel("Password", { exact: true }).fill("vnprox-mock");
   await page.getByRole("button", { name: "Sign in" }).click();

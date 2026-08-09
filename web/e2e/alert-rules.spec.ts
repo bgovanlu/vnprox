@@ -18,9 +18,11 @@
 // nothing else in this task's test suite exercises against a live daemon.
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 
-test.use({ baseURL: "https://127.0.0.1:48007" });
+isolatedStore({ config: "testdata/dev-alert.toml" });
+
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

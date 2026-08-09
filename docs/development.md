@@ -84,6 +84,29 @@ Every feature must work against at least `single-node.yaml` and `three-node-vlan
   took the suite to **89 passed / 0 failed / 2 skipped** (the two skips are `microseg`'s own
   documented `test.skip`s), and the `e2e` job is now required like every other.
 
+  **Each spec file now gets its own store (T-2409).** 31 spec files shared one `vnproxd` and one
+  mutable SQLite database, so a spec that created a changeset, saved a layout or registered an alert
+  rule left it there for everything that ran afterwards — and a spec's result depended on which
+  specs ran before it. That is what turned latent ambiguous locators into failures during the
+  `T-2108` triage, and it is why `saved-views.spec.ts › annotations` failed once in three full runs
+  and passed in isolation.
+
+  Every spec file calls `isolatedStore()` (`web/e2e/isolated.ts`) at its top level, which starts a
+  dedicated daemon — its own database, session key, interfaces sandbox and port — in `beforeAll` and
+  stops it in `afterAll`. The pvemock fixture servers stay shared: they are read-only for the
+  duration of a run, so nothing can be contaminated through them. `globalSetup` compiles `vnproxd`
+  once, because `go run` would pay the link cost on every file.
+
+  The port is chosen at *import* time, not from the kernel, because Playwright resolves `baseURL`
+  before a file's `beforeAll` runs — a fixture that reads a stack started in `beforeAll` throws
+  every time. It is derived from the calling file's path so the assignment does not depend on import
+  order or worker count.
+
+  `isolation-a-writes.spec.ts` / `isolation-b-cannot-see.spec.ts` are the proof, and they are a test
+  of the harness rather than of a feature: the first creates a changeset, the second asserts it
+  cannot see it. Run them with `VNPROX_E2E_SHARED=1` and the second **fails** — that is the
+  arrangement the suite had before, and a pair that passed in both modes would prove nothing.
+
   What the backlog actually contained is the argument for keeping it that way. It was not 29 stale
   locators: it included `T-1304`'s guest-interior API rejecting **every request a browser ever
   made**, a render loop that left the app unable to navigate away from the Topology page at all,

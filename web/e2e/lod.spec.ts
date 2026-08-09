@@ -6,7 +6,10 @@
 // real browser: real pointer-drag geometry on the minimap's <canvas>
 // (jsdom has none), and a real wheel-driven zoom gesture landing the v2
 // canvas in the "capsule" band end to end.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 // Same CSP-safe suppression technique as perf.spec.ts/topology.spec.ts's
 // identical helper (see their doc comments): a <style> element is blocked

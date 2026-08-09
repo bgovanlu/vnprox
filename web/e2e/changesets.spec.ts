@@ -37,8 +37,11 @@
 //     addOps/replaceOps flow this spec drives through the editors below.
 //   - "Create bond from two NICs via drag" *succeeding*: needs a fixture
 //     with unenslaved NICs; three-node-vlan deliberately has none.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
+
+isolatedStore();
 
 // T-605: see topology.spec.ts's identical helper doc comment — suppressing
 // the onboarding walkthrough banner via an injected stylesheet (rather

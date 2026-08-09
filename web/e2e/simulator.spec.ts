@@ -21,10 +21,12 @@
 // policy_in DROP; the fixture scripts vm-a's live probe toward that exact
 // tuple as "reachable"), clicking Verify live surfaces the divergence
 // callout both in the result panel and on the embedded map overlay.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
 import { switchToGraphView } from "./helpers";
 
-test.use({ baseURL: "https://127.0.0.1:18007" });
+isolatedStore({ config: "testdata/dev-sim.toml" });
+
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

@@ -11,7 +11,10 @@
 // the Search button (behind a modal's full-screen overlay otherwise) stays
 // reachable for the second selection — see InspectorStack.tsx's doc
 // comment.
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test, isolatedStore } from "./isolated";
+
+isolatedStore();
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");
