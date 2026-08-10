@@ -197,6 +197,9 @@ var Operations = map[string]Operation{
 	"PUT /api/v1/wan/targets":                  {Summary: "Replace the WAN probe target list.", Tag: "wan", Auth: AuthSession},
 
 	// --- Safety, posture, capacity ------------------------------------------------------------------
+	"GET /api/v1/policies":                     {Summary: "Read the cluster's declarative policy rule set and per-rule statistics.", Tag: "policy", Auth: AuthSession},
+	"PUT /api/v1/policies":                     {Summary: "Replace the cluster's declarative policy rule set.", Tag: "policy", Auth: AuthSession},
+	"POST /api/v1/policies/test":               {Summary: "Evaluate a policy rule set against a changeset without staging it.", Tag: "policy", Auth: AuthSession},
 	"GET /api/v1/protected-interfaces":         {Summary: "List interfaces protected from modification.", Tag: "protected", Auth: AuthSession},
 	"PUT /api/v1/protected-interfaces":         {Summary: "Replace the protected-interface list.", Tag: "protected", Auth: AuthSession},
 	"GET /api/v1/protected-interfaces/status":  {Summary: "Report whether protection is currently effective.", Tag: "protected", Auth: AuthSession},

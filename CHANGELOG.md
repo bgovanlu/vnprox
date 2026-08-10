@@ -28,6 +28,40 @@ functionality is folded into `[2.0.0]`.
 
 ### Added
 
+- **Policy-as-code guardrails: the change engine can now say no.** Until now the engine's
+  guarantees were strong and *advisory* — it told you what would happen, but it refused only one
+  thing, hard-coded: cutting a node's management path. Every other rule an organisation has ("no
+  guest on VLAN 1", "a bridge carrying guests keeps two uplinks", "nobody touches `vmbr9` on the
+  storage nodes") lived in a wiki and was enforced by whoever happened to review the change.
+
+  You can now install a **declarative policy rule set** on the cluster. A rule is
+  `{id, description, severity, match, assert}`, and `severity: deny` blocks the changeset at the
+  validate stage — before any diff or plan is computed — with the rule's id and description in the
+  error. `severity: warn` annotates the changeset instead and travels with it to the review
+  screen without blocking anything.
+
+  Policies are **data, not a scripting language**: `match` and `assert` are lists of
+  `{field, op, value}` conditions over the ops and inventory the change engine already works in.
+  There is no embedded expression interpreter and no new dependency — a deliberate limit, not an
+  omission. Rules can assert over the changeset's *net effect* on the cluster (`target.guestCount`,
+  `target.uplinkCount`, `target.vlanAware`), which is what lets "a bridge carrying guests keeps two
+  uplinks" fire on a port removal that never mentions a guest.
+
+  A rule that can never match anything is refused at load, not silently ignored, and a rule that
+  has matched nothing for two weeks of real changesets is reported as probably-misconfigured. A
+  policy file the daemon cannot parse is fatal at startup: vnproxd will not come up quietly
+  enforcing a policy it could not read.
+
+  `vnproxctl policy test --policy=f.yaml --changeset=<id>` evaluates a candidate rule set against a
+  real changeset without staging anything, so a rule can be developed safely against the change it
+  was written for; `vnproxctl policy lint` validates a document with no daemon at all, and
+  `vnproxctl policy examples` prints a worked example set to start from. Rule sets are cluster-
+  scoped, versioned in the store, and every change is audited (`policy.update`) with the full
+  rule-set diff — both sides of every changed rule — so the audit entry alone reconstructs what
+  changed. New routes: `GET`/`PUT /policies` and `POST /policies/test`.
+
+  **The default policy set is empty, and an empty set changes nothing.**
+
 - **Certificate management for the cluster.** Every cross-node thing vnprox does — applying a
   changeset, arming a distributed rollback timer, reading a peer's state — rides peer-API TLS,
   which is pinned to your cluster's own CA and fails closed. Until now there was no way to see

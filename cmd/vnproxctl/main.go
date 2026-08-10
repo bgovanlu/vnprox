@@ -81,6 +81,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runSupportBundle(args[1:], stdout, stderr)
 	case "remote":
 		return runRemote(args[1:], stdout, stderr)
+	case "policy":
+		return runPolicy(args[1:], stdout, stderr)
 	case "apply":
 		return runApply(args[1:], stdout, stderr)
 	default:
@@ -136,12 +138,22 @@ HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
   vnproxctl remote audit                 GET /audit
   vnproxctl apply <spec.yaml> --plan     POST /spec/import, print diff, exit 3 if pending
   vnproxctl apply <spec.yaml> --apply    ...then apply + poll to committed + auto-confirm
+  vnproxctl policy lint --policy=f.yaml  validate a policy document locally (no daemon needed)
+  vnproxctl policy examples              print the shipped example policy document
+  vnproxctl policy test --policy=f.yaml --changeset=<id>
+                                         POST /policies/test — evaluate rules against a real
+                                         changeset without staging anything; exit 3 on a deny
 
   vnproxctl --version                  Print the vnproxctl version
   vnproxctl certs                      Cluster TLS certificate inventory and problems
                                        (direct pmxcfs read; works daemon-down — which is when a
                                        certificate problem has usually taken the API with it)
   vnproxctl --help                     Show this help
+
+policy flags:
+  --policy <path>   policy YAML document (test: default is the cluster's installed rule set)
+  --changeset <id>  changeset to evaluate against (test only, required)
+  --token/--url/--config/--timeout/--insecure/-o  as for the remote family (test only)
 
 status flags:
   --config <path>   vnprox.toml to read the listen address from (default /etc/vnprox/vnprox.toml)

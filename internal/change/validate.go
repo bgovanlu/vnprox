@@ -14,9 +14,23 @@ import (
 // reads) rather than read from disk/config inside this pure validation
 // package — see safetyValidate in validate_safety.go.
 type SafetyOptions struct {
-	Switches          SwitchSafetyInput
-	Protected         ProtectedSet
-	Allocations       []DHCPRangeAllocation
+	Switches  SwitchSafetyInput
+	Protected ProtectedSet
+	// PolicyReport, when non-nil, receives the full per-rule evaluation
+	// result the policy class produced. It is an optional out-parameter
+	// because ValidateWithSafety is a pure function and the "which rules
+	// matched" bookkeeping (Service.recordPolicyStats, which backs the
+	// probably-misconfigured report) is a Service concern, not a
+	// validator one — collecting it here rather than re-evaluating in the
+	// Service keeps exactly one evaluation per validate call.
+	PolicyReport *PolicyResult
+	Allocations  []DHCPRangeAllocation
+	// Policy (T-2601) is the cluster's declarative policy-as-code rule set
+	// (policy.go). Its zero value is an empty set, which evaluates to
+	// nothing at all — so every caller that does not know about policies
+	// gets byte-for-byte the pre-T-2601 findings, and the engine can run
+	// unconditionally in the pipeline rather than behind a flag.
+	Policy            PolicySet
 	AllowDangerousOps bool
 }
 
@@ -103,6 +117,27 @@ func ValidateWithSafety(ops []Op, snap inventory.Snapshot, safety SafetyOptions)
 	switchFindings := switchValidate(ops, safety.Switches)
 	findings = append(findings, switchFindings...)
 	if hasError(switchFindings) {
+		return findings
+	}
+
+	// T-2601's policy-as-code class. It runs here — after the classes that
+	// establish an op is well-formed and referentially coherent (a policy
+	// asserting over net-effect inventory facts would be reasoning about
+	// nonsense otherwise), and immediately BEFORE the safety class — so an
+	// organisation's own refusal is never masked by a built-in interlock
+	// firing on the same op. Conceptually it is the generalization of the
+	// single organisational rule protected.go hard-codes, so it sits
+	// adjacent to it.
+	//
+	// It is inside this function, not layered on by Service, precisely
+	// because this is the ONE entry point both the validate route and the
+	// pre-apply revalidation (apply.go's beginApply) share: a policy gate
+	// bolted on anywhere else would be bypassable by the other path, and
+	// CLAUDE.md's stage→validate→diff→apply→confirm sequence has no room
+	// for a second gate.
+	policyFindings := policyValidate(ops, snap, safety)
+	findings = append(findings, policyFindings...)
+	if hasError(policyFindings) {
 		return findings
 	}
 

@@ -169,10 +169,16 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 	// Revalidate immediately before apply, through safetyOptions() so
 	// allow_dangerous_ops and the protected-interface set are honored (T-203
 	// deviation note 5a) — a bare Validate would silently drop them.
-	safety := s.safetyOptions()
-	safety.Allocations = s.dhcpAllocations(ctx)
-	safety.Switches = s.switchSafetyInput(ctx)
-	findings := ValidateWithSafety(cs.Ops, s.inventorySnapshot(), safety)
+	//
+	// T-2601: validationInputs is the single assembly point for every
+	// validator input, including the cluster's policy set — so the
+	// pre-apply revalidation cannot end up enforcing a different rule set
+	// (or none) than the validate route did. Its policy findings are
+	// prepended to the pipeline's, exactly as Service.validate does.
+	var policyReport PolicyResult
+	safety, policyFindings := s.validationInputs(ctx, cs.ClusterID, &policyReport)
+	findings := append(policyFindings, ValidateWithSafety(cs.Ops, s.inventorySnapshot(), safety)...)
+	s.recordPolicyStats(ctx, cs.ClusterID, policyReport)
 	cs.Findings = findings
 	if hasError(findings) {
 		if cs.Status == StatusValidated {
@@ -741,6 +747,19 @@ func (s *Service) Diff(ctx context.Context, id string) (*ifaces.ChangesetDiff, e
 	if err != nil {
 		return nil, err
 	}
+
+	// T-2601 acceptance criterion 3: policy evaluation happens BEFORE diff.
+	// A changeset a `deny` rule refuses produces no diff at all — this
+	// returns before any node file is read, so the diff is never computed
+	// rather than computed and discarded. (The rest of the validator
+	// pipeline is deliberately NOT re-run here: diff has always been a read
+	// over whatever the draft currently says, and only the policy gate is
+	// specified to precede it.)
+	if blocked := s.policyDenial(ctx, cs); blocked != nil {
+		s.log.Info("change: refusing to diff a changeset a policy rule denies", "changeset_id", id)
+		return nil, blocked
+	}
+
 	fileOps := make([]Op, 0, len(cs.Ops))
 	for _, op := range cs.Ops {
 		if nodeFileOpTypes[op.Type] {

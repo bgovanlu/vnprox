@@ -148,6 +148,15 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 # allow_self_approval = true       # false forbids a changeset's own author from approving it
 # approvers = []                   # empty = anyone with netWrite may record a decision;
 #                                   # e.g. ["alice@pve", "bob@pve"] to name an explicit reviewer list
+# policy_file = ""                 # T-2601: a declarative policy-as-code document installed into the
+#                                   # cluster's policy set at startup (see docs/api.md's "Policy set"
+#                                   # section and `vnproxctl policy examples`). Empty = no policy file;
+#                                   # the cluster keeps whatever rule set is already installed, which
+#                                   # for a fresh deployment is none, and nothing is refused that was
+#                                   # not refused before. A file the daemon CANNOT PARSE IS FATAL at
+#                                   # startup: vnproxd must never come up quietly enforcing a policy it
+#                                   # could not read. Validate before deploying with
+#                                   # `vnproxctl policy lint --policy=<path>`.
 ```
 
 ## Upgrade

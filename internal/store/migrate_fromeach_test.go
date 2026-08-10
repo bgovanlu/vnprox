@@ -161,6 +161,7 @@ var versionSeeds = map[int]versionSeed{
 	33: {seedV33, assertV33},
 	34: {seedV34, assertV34},
 	35: {seedV35, assertV35},
+	36: {seedV36, assertV36},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1261,11 +1262,40 @@ func assertV35(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 36 (0036_alert_quiet_hours.sql, alert_pending plus the
-// alert_rules/alert_deliveries columns — T-2407) has no versionSeeds entry
-// because it is the current latest, not a "prior" version any fixture in this
-// file freezes at — its own forward application (as part of every case's
-// migrate() call to latest) is exercised by every case above, and
-// TestOpen_CreatesAllTables (store_test.go) exercises it from a fresh
-// database. The next migration to land becomes the new latest and picks up a
-// version 36 entry in versionSeeds at that time.
+func seedV36(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// The quiet-hours columns on the rule seeded at v8, plus a held event
+	// in the durable deferral queue 0036 introduced.
+	mustExec(t, db, `UPDATE alert_rules SET quiet_start = '22:00', quiet_end = '06:00', quiet_tz = 'Europe/Berlin',
+		quiet_bypass_error = 1, digest_window_sec = 300 WHERE id = 'ar-v8'`)
+	mustExec(t, db, `INSERT INTO alert_pending (id, rule_id, finding_id, finding_json, kind, at, flush_at, reason)
+		VALUES ('ap-v36', 'ar-v8', 'finding-v36', '{"id":"finding-v36"}', 'new', 1700003600, 1700010800, 'quiet hours')`)
+}
+
+func assertV36(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var quietStart, quietTZ string
+	var digestWindow int
+	if err := db.QueryRowContext(ctx, `SELECT quiet_start, quiet_tz, digest_window_sec FROM alert_rules WHERE id = 'ar-v8'`).
+		Scan(&quietStart, &quietTZ, &digestWindow); err != nil {
+		t.Errorf("alert_rules quiet-hours columns lost across migration: %v", err)
+	} else if quietStart != "22:00" || quietTZ != "Europe/Berlin" || digestWindow != 300 {
+		t.Errorf("alert_rules quiet-hours = (%q, %q, %d), want (\"22:00\", \"Europe/Berlin\", 300)", quietStart, quietTZ, digestWindow)
+	}
+
+	var ruleID, reason string
+	if err := db.QueryRowContext(ctx, `SELECT rule_id, reason FROM alert_pending WHERE id = 'ap-v36'`).Scan(&ruleID, &reason); err != nil {
+		t.Errorf("alert_pending row lost across migration: %v", err)
+	} else if ruleID != "ar-v8" || reason != "quiet hours" {
+		t.Errorf("alert_pending row = (%q, %q), want (\"ar-v8\", \"quiet hours\")", ruleID, reason)
+	}
+}
+
+// Schema version 37 (0037_policy_sets.sql, policy_sets + policy_rule_stats —
+// T-2601) has no versionSeeds entry because it is the current latest, not a
+// "prior" version any fixture in this file freezes at — its own forward
+// application (as part of every case's migrate() call to latest) is exercised
+// by every case above, and TestOpen_CreatesAllTables (store_test.go)
+// exercises it from a fresh database. The next migration to land becomes the
+// new latest and picks up a version 37 entry in versionSeeds at that time.

@@ -210,7 +210,18 @@ type ChangesetsConfig struct {
 	// to this exact list of identities (usernames). Empty (the default)
 	// means anyone who can reach the route (i.e. anyone with netWrite) may
 	// decide.
-	Approvers []string
+	// PolicyFile (T-2601) is the path to a declarative policy-as-code
+	// document (`{id, description, severity, match, assert}` rules) the
+	// daemon installs into the cluster's policy set at startup. Empty (the
+	// default) means no policy file: the cluster keeps whatever rule set is
+	// already installed, which for a fresh deployment is none at all —
+	// nothing is refused that was not refused before.
+	//
+	// A configured file that cannot be parsed is FATAL at startup: a daemon
+	// must never come up quietly enforcing a policy it could not read
+	// (T-2601 acceptance criterion 5).
+	PolicyFile string
+	Approvers  []string
 	// ApprovalRequired, when true, blocks POST /changesets/{id}/apply
 	// server-side (change.Service's approval gate, apply.go's beginApply)
 	// until the changeset carries a recorded "approved" review decision.
@@ -708,6 +719,7 @@ type rawConfig struct {
 // (defaulting to false either way) can't do.
 type rawChangesets struct {
 	AllowSelfApproval *bool    `toml:"allow_self_approval"`
+	PolicyFile        string   `toml:"policy_file"`
 	Approvers         []string `toml:"approvers"`
 	ApprovalRequired  bool     `toml:"approval_required"`
 }
@@ -976,6 +988,7 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			ApprovalRequired:  raw.Changesets.ApprovalRequired,
 			AllowSelfApproval: raw.Changesets.AllowSelfApproval == nil || *raw.Changesets.AllowSelfApproval,
 			Approvers:         raw.Changesets.Approvers,
+			PolicyFile:        raw.Changesets.PolicyFile,
 		},
 		Security: SecurityConfig{
 			ProtectedSegments: raw.Security.ProtectedSegments,

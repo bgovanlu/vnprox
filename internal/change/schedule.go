@@ -270,7 +270,7 @@ func (s *Service) Schedule(ctx context.Context, changesetID, author string, para
 		return Schedule{}, &ErrMgmtPathUnattendedForbidden{ChangesetID: changesetID}
 	}
 
-	findings := s.validate(ctx, cs.Ops)
+	findings := s.validate(ctx, cs.ClusterID, cs.Ops)
 	if hasError(findings) {
 		s.appendAudit(ctx, author, "changeset.schedule_create", "validation_failed", changesetID, map[string]any{"findingCount": len(findings)})
 		return Schedule{}, &ErrValidationBlocked{Findings: findings}

@@ -43,13 +43,20 @@ func (s *Service) ReadRawInterfaces(ctx context.Context, node string) (content, 
 // failure) expandRawReplaceOps produced along the way. Non-raw changesets
 // pass through expandRawReplaceOps unchanged, so this is a strict
 // superset of the pre-T-208 behavior for every other op type.
-func (s *Service) validate(ctx context.Context, ops []Op) []Finding {
+// T-2601: the cluster's declarative policy set is part of the pipeline's
+// inputs (validationInputs), so a policy `deny` blocks here — at validate,
+// before any diff or plan is ever computed.
+func (s *Service) validate(ctx context.Context, clusterID string, ops []Op) []Finding {
 	expanded, rawFindings := s.expandRawReplaceOps(ctx, ops)
-	safety := s.safetyOptions()
-	safety.Allocations = s.dhcpAllocations(ctx)
-	safety.Switches = s.switchSafetyInput(ctx)
+	var report PolicyResult
+	safety, policyFindings := s.validationInputs(ctx, clusterID, &report)
 	findings := ValidateWithSafety(expanded, s.inventorySnapshot(), safety)
-	return append(rawFindings, findings...)
+	s.recordPolicyStats(ctx, clusterID, report)
+
+	out := make([]Finding, 0, len(rawFindings)+len(policyFindings)+len(findings))
+	out = append(out, rawFindings...)
+	out = append(out, policyFindings...)
+	return append(out, findings...)
 }
 
 // validateScoped is validate plus T-1201's cross-cluster scoping class: it
@@ -60,7 +67,7 @@ func (s *Service) validate(ctx context.Context, ops []Op) []Finding {
 // deployment (clusterID == "" and no ClusterMembership seam) sees byte-for-
 // byte the same findings validate already produced.
 func (s *Service) validateScoped(ctx context.Context, clusterID string, ops []Op) []Finding {
-	findings := s.validate(ctx, ops)
+	findings := s.validate(ctx, clusterID, ops)
 	// Skip the membership fetch entirely for an unscoped (implicit-default-
 	// cluster) changeset — the common single-cluster case — since
 	// ValidateClusterScope is a guaranteed no-op there anyway.
