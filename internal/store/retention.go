@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -59,7 +60,8 @@ func RunSnapshotRetentionLoop(ctx context.Context, snapshots *SnapshotRepo, blob
 		case <-ctx.Done():
 			return nil
 		case now := <-ticker.C:
-			if _, _, err := SnapshotRetention(ctx, snapshots, blobs, now, keepDays, pinDays); err != nil && logFn != nil {
+			if _, _, err := SnapshotRetention(ctx, snapshots, blobs, now, keepDays, pinDays); err != nil && logFn != nil &&
+				!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				logFn(err)
 			}
 		}

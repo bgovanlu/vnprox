@@ -44,6 +44,7 @@ package store
 // surprise.
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -176,7 +177,8 @@ func RunCompactionLoop(ctx context.Context, db *DB, interval time.Duration, maxP
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if _, err := Compact(ctx, db, maxPages); err != nil && logFn != nil {
+			if _, err := Compact(ctx, db, maxPages); err != nil && logFn != nil &&
+				!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				logFn(fmt.Errorf("store: compaction: %w", err))
 			}
 		}

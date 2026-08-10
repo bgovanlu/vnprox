@@ -153,7 +153,8 @@ func (r *BaselineProfileRepo) RunPruneLoop(ctx context.Context, interval time.Du
 		case <-ctx.Done():
 			return nil
 		case now := <-ticker.C:
-			if _, err := r.PruneRetention(ctx, now, keepDays); err != nil && logFn != nil {
+			if _, err := r.PruneRetention(ctx, now, keepDays); err != nil && logFn != nil &&
+				!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				logFn(fmt.Errorf("store: pruning baseline profiles: %w", err))
 			}
 		}
