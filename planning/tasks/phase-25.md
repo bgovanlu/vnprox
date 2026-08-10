@@ -259,6 +259,19 @@ with three agents running:
 - A full `go test` sweep against T-2504's leaking build reported 3 package failures once, then 0
   across three subsequent runs.
 
+**Third and fourth observations (wave 2, 2026-08-10).** T-2501's agent reported `make check`
+exiting 2 on load-dependent 5s vitest timeouts (`scaleLab.render`, `IpamPage` — a different pair
+each run, all passing in isolation), while two other agents saturated the machine. That agent
+touched zero files under `web/`. On a quiet machine the same frontend suite passes on clean main
+(224 files / 1,566 tests), and the combined wave-2 merge gate — which contains all of T-2501,
+T-2602 and T-2704 — is green with zero failures.
+
+**That is now four independent sightings across two waves, in both the Go and the TypeScript
+suites, every one of them under CPU pressure and every one of them passing when quiet.** The
+conclusion this repository should act on is not "these two specs are flaky" but "this suite has
+deadline-based tests whose deadlines are tight enough to be load-sensitive", which is a property
+of the suite, not of any spec.
+
 **Why this is recorded on T-2505 rather than fixed here:** T-2409's regression was characterised
 as *order-dependent, not load-dependent*, on the evidence that an idle-machine rerun reproduced
 the wall clock within 0.4 min. That evidence rules out load as the cause of the *slowdown*. It
