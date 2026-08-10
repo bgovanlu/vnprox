@@ -41,7 +41,42 @@ make mockpve    # run the mock PVE server standalone on :8006
 make record     # record a real PVE cluster's API responses into cassettes (T-2502)
 make record-mock# re-record the checked-in mock cassettes after a pvemock handler change
 make ports      # every port this repo's tooling binds, and what is holding them now
+make soak       # resource-leak gate: real daemon + pvemock under seeded churn, fails on trend
 ```
+
+### The soak / resource-leak gate (`make soak`, T-2504)
+
+`make soak` boots the real `runDaemon` against `pvemock` in-process, drives it with a **seeded**
+churn generator (guests created and destroyed, cluster members flapping offline and back, the
+`orphan_vnet` finding appearing and clearing, continuous read traffic, draft-changeset
+create/validate/discard), and samples goroutines, live heap, RSS, open file descriptors, and
+**every** table's row count on a fixed interval.
+
+It **fails on trend, not on threshold**: the verdict is a least-squares slope over the *second half*
+of the run (so warm-up is not scored as a leak), and a metric fails only if that slope exceeds its
+per-minute tolerance *and* projects a real absolute rise across the observed window. A high-but-flat
+value passes. The failure message names the metric — and for a table, names the table.
+
+| Knob | Default | Notes |
+|---|---|---|
+| `SOAK_DURATION` | `3m` | Nightly: `8h`. A longer local run: `30m`. |
+| `SOAK_INTERVAL` | `5s` | Sampling interval. |
+| `SOAK_CHURN` | `2s` | Churn interval. |
+| `SOAK_SEED` | `0` (clock-derived) | Recorded in the artifact; pass it back to replay the churn sequence. |
+| `SOAK_FIXTURE` | `three-node-vlan.yaml` | Any fixture under `testdata/clusters/`. |
+| `SOAK_ARTIFACTS` | `var/soak/<timestamp>` | `samples.csv` + `report.json`. |
+| `LEAK` | *(unset)* | One of `goroutine`, `table`, `flat` — see below. |
+
+Every run writes `samples.csv` (the full series) and `report.json` (the seed, the config, and a
+per-metric verdict), so a failure is diagnosable without a re-run.
+
+**The gate ships with fixtures that make it fire.** `cmd/vnproxd/soakleak.go` is compiled only
+under the `soakleak` build tag, which nothing this repo ships, tests, lints, or packages ever sets;
+`make soak LEAK=<mode>` adds it. `LEAK=goroutine` leaks one goroutine per PVE collection cycle and
+**must fail**, naming `goroutines`. `LEAK=table` grows an unpruned table and **must fail**, naming
+`table.soak_leak_unbounded`. `LEAK=flat` allocates 500 goroutines and 64 MiB once at startup and
+holds them, and **must pass** — that is the proof the gate measures slope rather than magnitude.
+Measured results for all four runs are in [`performance.md`](performance.md) §12.
 
 ### Ports
 

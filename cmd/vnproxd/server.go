@@ -1658,6 +1658,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	g.add(func(ctx context.Context) error {
 		return captureCoord.RunSweepLoop(ctx, captureSweepInterval)
 	})
+	// T-2504: the soak gate's deliberate leak fixtures. Empty in every build
+	// without the `soakleak` tag (soakleak_off.go) — which is every build
+	// this repo ships, tests, lints, or packages — so this loop registers
+	// nothing at all in production. Under that tag each returned actor still
+	// honours this group's contract: it blocks for the daemon's lifetime and
+	// returns nil on cancellation (see soakleak.go).
+	for _, leakActor := range soakLeakActors(db, logger) {
+		g.add(leakActor)
+	}
 
 	logger.Info("vnproxd starting",
 		"version", version,

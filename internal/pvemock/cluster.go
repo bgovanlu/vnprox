@@ -24,10 +24,12 @@ func (srv *Server) handleClusterStatus(w http.ResponseWriter, _ *http.Request) {
 	}
 	for i, n := range f.Cluster.Nodes {
 		entries = append(entries, clusterStatusEntry{
-			Type:   "node",
-			Name:   n.Name,
-			IP:     n.IP,
-			Online: boolToInt(n.Online),
+			Type: "node",
+			Name: n.Name,
+			IP:   n.IP,
+			// T-2504: the fixture's declared flag unless churn.go's
+			// SetNodeOnline has overridden it for this member.
+			Online: boolToInt(srv.state.nodeOnline(n.Name, n.Online)),
 			Local:  boolToInt(i == 0),
 		})
 	}
@@ -55,7 +57,7 @@ func (srv *Server) handleClusterResources(w http.ResponseWriter, _ *http.Request
 	var out []clusterResource
 	for _, n := range f.Cluster.Nodes {
 		status := "offline"
-		if n.Online {
+		if srv.state.nodeOnline(n.Name, n.Online) {
 			status = "online"
 		}
 		out = append(out, clusterResource{Type: "node", ID: "node/" + n.Name, Node: n.Name, Name: n.Name, Status: status})

@@ -86,12 +86,21 @@ type State struct {
 	// AgentUnreachable) table resolves to; handleGuestAgentExecStatus just
 	// reads it back. Never a real process — see internal/probe's package
 	// doc comment for why this mock intentionally never runs commands.
-	execs       map[int]execResult
-	clusterFW   FirewallScope
-	execSeq     int
-	nodesMu     sync.RWMutex
-	clusterFWMu sync.RWMutex
-	execMu      sync.Mutex
+	execs map[int]execResult
+	// nodeOnlineOverride is T-2504's cluster-membership churn lever
+	// (churn.go): a per-node override of the Fixture's declared `online`
+	// flag, consulted by the two cluster handlers that report it. Absent a
+	// SetNodeOnline call it is empty and every node reports exactly what the
+	// fixture says, so this is invisible to every pre-T-2504 caller. Guarded
+	// by churnMu rather than nodesMu because it is keyed by *cluster member*
+	// (Fixture.Cluster.Nodes), not by the runtime nodes map.
+	nodeOnlineOverride map[string]bool
+	clusterFW          FirewallScope
+	execSeq            int
+	nodesMu            sync.RWMutex
+	clusterFWMu        sync.RWMutex
+	execMu             sync.Mutex
+	churnMu            sync.RWMutex
 }
 
 // NewState builds runtime State from a validated Fixture.

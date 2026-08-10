@@ -88,7 +88,13 @@ func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logge
 		// duplicating) Status()'s own last_success/last_attempt/
 		// consecutive_failures bookkeeping — see collect.Config.OnPoll's
 		// doc comment.
-		OnPoll: pollMetricsHook(selfMetrics),
+		//
+		// T-2504 wraps that hook with soakLeakPollHook, which in every build
+		// without the `soakleak` tag — i.e. every build this repo ships,
+		// tests, or packages — is the identity function (soakleak_off.go).
+		// Under that tag it is the "one goroutine per collection cycle" leak
+		// fixture the soak gate must catch; there is no runtime switch.
+		OnPoll: soakLeakPollHook(pollMetricsHook(selfMetrics)),
 	})
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("constructing collector: %w", err)
