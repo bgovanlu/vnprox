@@ -972,6 +972,48 @@ The GitOps reconciler's declared desired state: an operator pins one spec docume
 
 **`GET`/`POST` response shape**: `{pinned: bool, content?, pinnedBy?, pinnedAt?}` — every field but `pinned` is omitted when nothing is pinned. `content` is the exact YAML document as pinned (byte-for-byte, the same document `spec_drift` reconciles against); `pinnedBy`/`pinnedAt` are the acting user and unix-seconds timestamp `POST /spec/pin` recorded. `POST` re-pins in place (no explicit unpin required first) and returns the same shape as `GET` immediately after. A `POST` whose `content` fails `spec.Parse` (e.g. `specVersion` ≠ 1) is rejected with `400 validation_failed` and nothing is stored or audited — the existing pin, if any, is unchanged.
 
+### Git spec sync (T-2701)
+
+A git repository becomes the source of **intent** for the document above. Proxmox stays the source of **truth**: when the two disagree, vnprox opens a **draft changeset** a human reviews, and stops. It never applies, never pushes, never merges, and never decides the file wins. Configuration is `[gitsync]` in `vnprox.toml` (`docs/deployment.md`); the subsystem is **off by default** — with no `[gitsync]` section nothing is fetched and no endpoint is contacted.
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| GET | `/gitsync/status` | `netRead` | last fetched commit, last plan, and why the current sync draft exists |
+
+There is deliberately **no** route that triggers a sync, and none that applies its draft: a sync draft is an ordinary changeset and goes out through `POST /changesets/{id}/apply` + `.../confirm` with the ordinary review and commit-confirm window, like everything else. The route is mounted whether or not the subsystem is configured — "it is off" is an answer an operator needs.
+
+**Response shape** (`enabled: false` alone when the sync is not configured):
+
+```jsonc
+{
+  "enabled": true,
+  "remote": "https://github.com/org/infra (github)",   // never contains a credential
+  "ref": "main",
+  "path": "network/cluster.yaml",
+  "pollIntervalSeconds": 300,
+  "requireSignedCommits": true,
+  "lastFetchedSha": "abcdef0123456789abcdef0123456789abcdef01",
+  "lastFetchAt": 1754000000,          // unix seconds, last attempt
+  "lastSuccessAt": 1754000000,        // unix seconds, last successful cycle
+  "lastSigner": "ops@example.com",    // the verified signing principal, when signatures are required
+  "lastError": "",                    // the last cycle's failure, if any
+  "planOpCount": 2,
+  "plan": ["bridge.update bridge:pve1:vmbr0", "bridge.create bridge:pve1:vmbr9"],
+  "notInSpec": ["vlan:pve2:vmbr0.30"], // reported, never deleted — same rule as POST /spec/import
+  "openChangesetId": "01J...",
+  "openChangesetReason": "the spec at network/cluster.yaml @ abcdef012345 differs from live state in 2 place(s); vnprox staged the reconciling ops for review and applied nothing",
+  "issues": [ {"check": "gitsync_divergence", "severity": "info", "detail": "..."} ]
+}
+```
+
+**One open sync changeset at a time.** A second detected divergence updates the existing draft rather than accumulating drafts. The draft is identified by `origin: "gitsync"` on the changeset (alongside the existing `ui`/`mcp`/`cli` values), so it is distinguishable everywhere a changeset is rendered.
+
+**Findings** (`GET /findings`, `source: "gitsync"`): `gitsync_unreachable`, `gitsync_spec_unparseable`, `gitsync_commit_unsigned`, `gitsync_signature_unverifiable`, `gitsync_divergence`. All are detection-only (`fixable: false`) — the action a divergence produces is the draft changeset, not a fix button. An unreachable remote degrades to `gitsync_unreachable` plus a retry on the next tick; it never blocks daemon startup or any other subsystem.
+
+**Signature verification.** With `require_signed_commits`, a commit whose signature this daemon cannot verify **locally** is refused and nothing is staged. Verification is of git's SSH-format signatures (`gpg.format = ssh`) against the operator's own allowed-signers file — never the host's own "verified: true" boolean. An unsigned commit, an OpenPGP-signed commit, an unsupported key algorithm, a signer absent from the allowed-signers file, and a host that cannot supply the signed commit object at all are **all** refusals: the gate fails closed in every direction.
+
+CLI: `vnproxctl gitsync status [-o json]`.
+
 ## Saved views & annotations
 
 Added by T-907 (Phase 9's only card permitted to touch the backend — docs/roadmap-next.md; `planning/tasks/phase-9.md`'s T-907 card). Both routes below are strictly app-owned UI state: named presets of the topology page's own layer/filter/zoom/selection state, and free-text sticky notes pinned to a map entity — **never** a shadow copy of any PVE-authoritative network config (CLAUDE.md's storage rule). Gated identically to the pre-existing `layouts` routes below: session + `netRead`, no CSRF requirement — the reasoning is unchanged from T-107's original layouts routes ("saving a canvas layout is a personal UI preference, not a network-mutating action"), extended here to naming/deleting a saved view and to pinning/unpinning a shared sticky note, neither of which mutates network state either.

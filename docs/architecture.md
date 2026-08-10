@@ -170,6 +170,42 @@ internal/docexport/     "as-built" config documentation export
 internal/xnode/         pure cross-node comparison families (drift/apicontract)
 ```
 
+Phase 27 addition ("Config as code"):
+
+```
+internal/gitsync/       git-backed spec sync: a repository as the source of
+                        intent, reconciled into a DRAFT changeset (T-2701)
+```
+
+**`internal/gitsync` and D5 (T-2701).** Decision D5 — "Proxmox configs remain source of
+truth" — is the invariant this package is most able to break, so the boundary is worth
+stating here rather than only in the package. A git repository becomes the source of
+*intent*; it never becomes authoritative over live config. On each poll the service
+fetches one file at one ref over plain HTTPS, runs the existing `internal/spec`
+`Parse` + `Import` against the live inventory snapshot, and — if the resulting plan is
+non-empty — opens or updates **one** draft changeset and stops. It has no apply path,
+and that is structural rather than conventional: the only change-engine surface it
+holds is `gitsync.ChangesetStager` (`CreateWithOrigin`/`UpdateDraft`/`List`), which has
+no Apply/Confirm/Rollback/Discard method, the same interface-surface boundary
+`internal/mcp` (§13.1) and `internal/plugin` (§11) already draw. Sync drafts carry
+`origin: "gitsync"`, so they are distinguishable everywhere a changeset is rendered.
+
+**The git-access decision (T-2701, recorded because the arc's risk register asked for
+it explicitly).** vnprox neither shells out to a `git` binary nor links a Go git
+library. `packaging/debian/control.tmpl` declares no `Depends:` at all, so a `git`
+subprocess would add the first hard runtime dependency the .deb has ever had — plus a
+subprocess whose argv carries an operator-supplied remote URL, into a design whose
+security model enumerates every external command and pins each to a fixed argv (git
+remote URLs are a known argument-injection surface). A git *library* is the "large
+dependency" the register names, an order of magnitude beyond fetching one file. The
+requirement is a read-only fetch of one file at one ref, and it is met with `net/http`
+and no new dependency. The consequence is stated rather than hidden: with no git object
+graph, commit-signature verification operates on the commit object the host reports
+(verified locally against the operator's own allowed-signers file — never the host's
+own "verified" flag), and binding file content to that commit's tree would need the git
+object protocol. See `docs/security.md`'s "Git spec-sync credential" note for the full
+residual.
+
 `web/` — React SPA (see docs/development.md). `packaging/` — deb packaging,
 systemd unit, installer script.
 

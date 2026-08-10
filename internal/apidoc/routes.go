@@ -77,6 +77,7 @@ var Operations = map[string]Operation{
 	"GET /api/v1/spec/pin":                {Summary: "Report the pinned spec version, if any.", Tag: "spec", Auth: AuthSession},
 	"POST /api/v1/spec/pin":               {Summary: "Pin the spec to a version, refusing drift from it.", Tag: "spec", Auth: AuthSession},
 	"DELETE /api/v1/spec/pin":             {Summary: "Remove the spec pin.", Tag: "spec", Auth: AuthSession},
+	"GET /api/v1/gitsync/status":          {Summary: "Report the git spec sync's last fetch, last plan, and why its draft is open.", Tag: "spec", Auth: AuthSession},
 
 	// --- Drift and findings -------------------------------------------------
 	"GET /api/v1/drift":                {Summary: "Report configuration drift against the last known state.", Tag: "drift", Auth: AuthSession},

@@ -447,7 +447,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, onCycle func(context.Context, []findings.Finding), logger *slog.Logger) *findings.Engine {
+func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, gitSyncSvc findings.GitSyncProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, onCycle func(context.Context, []findings.Finding), logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
@@ -476,6 +476,10 @@ func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc finding
 		// T-1405: WAN health seam for wan_degraded.
 		Wan:  wanSvc,
 		Cert: certSvc,
+		// T-2701: git spec sync seam for the gitsync_* checks (source
+		// "gitsync"). Late-bound and nil-safe: a deployment with no
+		// [gitsync] section contributes zero findings here.
+		GitSync: gitSyncSvc,
 		// T-1504: classified-flow seam for service_traffic_on_wrong_network.
 		Flow: flowSvc,
 		// T-1501: k8sFindingsAdapter (k8s.go) converts internal/k8s.Poller's

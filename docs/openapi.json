@@ -7177,6 +7177,53 @@
         }
       }
     },
+    "/api/v1/gitsync/status": {
+      "get": {
+        "operationId": "getGitsyncStatus",
+        "summary": "Report the git spec sync's last fetch, last plan, and why its draft is open.",
+        "tags": [
+          "spec"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response body; see docs/api.md for this route's shape."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or the credential is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is valid but lacks the required capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/guests/{ref}/interior": {
       "get": {
         "operationId": "getGuestsByRefInterior",

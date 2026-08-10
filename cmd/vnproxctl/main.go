@@ -85,6 +85,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runRemote(args[1:], stdout, stderr)
 	case "policy":
 		return runPolicy(args[1:], stdout, stderr)
+	case "gitsync":
+		return runGitSync(args[1:], stdout, stderr)
 	case "apply":
 		return runApply(args[1:], stdout, stderr)
 	default:
@@ -152,6 +154,10 @@ HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
   vnproxctl policy test --policy=f.yaml --changeset=<id>
                                          POST /policies/test — evaluate rules against a real
                                          changeset without staging anything; exit 3 on a deny
+  vnproxctl gitsync status               GET /gitsync/status — the git spec sync's last fetched
+                                         commit, its last plan, and why its draft changeset is
+                                         open. Read-only: there is no sync-now or apply verb,
+                                         because a sync draft is applied like any other changeset
 
   vnproxctl --version                  Print the vnproxctl version
   vnproxctl certs                      Cluster TLS certificate inventory and problems

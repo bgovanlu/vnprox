@@ -93,6 +93,7 @@ type Options struct {
 	TopologyDiff          TopologyDiffService
 	Audit                 AuditService
 	HA                    HAStatusService
+	GitSync               GitSyncStatusService
 	DistFS                fs.FS
 	HistoryFindingEvents  HistoryFindingEventsSource
 	SDN                   SDNService
@@ -290,6 +291,10 @@ func NewRouter(opts Options) http.Handler {
 		mountDoctorRoutes(r, opts.DoctorLive, opts.Auth)
 		mountHistoryRoutes(r, opts.History, opts.HistoryFindingEvents, opts.Auth)
 		mountHARoutes(r, opts.HA, opts.Auth)
+		// T-2701: read-only status of the git-backed spec sync. Mounted
+		// unconditionally — "off" is an answer, and it keeps the route
+		// inside T-2405's completeness gate.
+		mountGitSyncRoutes(r, opts.GitSync, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountSDNDNSRoutes(r, opts.SDNDNS, opts.Auth)

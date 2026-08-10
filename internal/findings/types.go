@@ -94,6 +94,13 @@ const (
 	// it is a fact read from pmxcfs, and every check on it is
 	// hysteresis-exempt for that reason.
 	SourceCert Source = "cert"
+	// SourceGitSync (T-2701) marks a finding about the git-backed spec sync:
+	// the remote could not be read, the document did not parse, a commit's
+	// signature was refused, or intent and reality currently disagree. Its
+	// own top-level source (like SourcePeer/SourceStore), because it
+	// describes a repository and this daemon's relationship to it rather
+	// than a node/interface the inventory graph knows about.
+	SourceGitSync Source = "gitsync"
 )
 
 // Severity mirrors internal/drift's vocabulary (itself docs/api.md's

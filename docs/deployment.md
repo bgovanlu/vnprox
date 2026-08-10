@@ -166,7 +166,55 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 #                                   # Impact set never does either, however severe. Off by default: a
 #                                   # deployment that does not opt in behaves exactly as before, and any
 #                                   # single apply can still ask for the guard on its own.
+
+# [gitsync]                        # T-2701: a git repository as the source of INTENT for the
+#                                   # declarative spec (docs/api.md's "Git spec sync"). Proxmox
+#                                   # stays the source of TRUTH: on divergence vnprox opens a
+#                                   # DRAFT changeset for a human and stops. It never applies,
+#                                   # never pushes, and never decides the file wins.
+# enabled = false                  # OFF BY DEFAULT. With this false (or no section at all)
+#                                   # nothing is fetched, no endpoint is contacted, and no
+#                                   # credential file is read.
+# url = "https://github.com/org/infra"      # https only (http allowed for loopback fixtures);
+#                                   # a URL that embeds credentials is REFUSED at startup —
+#                                   # use token_file
+# provider = "github"              # github | gitlab | raw. Omitted: inferred for github.com and
+#                                   # gitlab.com, and a startup error for any other host —
+#                                   # guessing an API shape is how a sync reads the wrong thing
+# ref = "main"                     # branch, tag or sha
+# path = "network/cluster.yaml"    # the spec document's path within the repository
+# poll_interval = "5m"             # default 5m; a spec repo is edited by humans through review
+# token_file = "/etc/vnprox/keys/gitsync.token"   # root:root 0600, the same on-disk-secret
+#                                   # convention [oidc] client_secret_file and [pve] token_file
+#                                   # use. Never inlined here, never placed in a URL, never
+#                                   # logged. Omit entirely for a public repository.
+# require_signed_commits = false   # true refuses any commit whose signature this daemon cannot
+#                                   # verify LOCALLY against allowed_signers_file, and raises a
+#                                   # finding. Fails closed in every direction: unsigned,
+#                                   # OpenPGP-signed (not verifiable without a new dependency),
+#                                   # unsupported algorithm, unlisted signer, and a host that
+#                                   # cannot supply the signed commit object at all (GitLab, raw)
+#                                   # are all refusals. vnprox verifies git's SSH-format
+#                                   # signatures (`git config gpg.format ssh`).
+# allowed_signers_file = "/etc/vnprox/gitsync-allowed-signers"   # an OpenSSH allowed-signers (or
+#                                   # authorized_keys) file. REQUIRED when require_signed_commits
+#                                   # is true — a daemon must never come up enforcing a signature
+#                                   # policy whose trust anchors it could not read.
 ```
+
+### Git spec sync operating notes (T-2701)
+
+- **A remote that is down is never a startup failure.** An unreachable or refusing remote degrades
+  to a `gitsync_unreachable` finding and a retry on the next poll; the daemon starts, serves, and
+  every other subsystem is untouched. The only `[gitsync]` conditions that are fatal at startup are
+  ones that make the remote *undescribable* — a malformed URL, an unguessable provider, an
+  unreadable allowed-signers file — because a daemon that came up looking configured while
+  reconciling nothing is the worst of the available states.
+- **One open sync changeset at a time.** A second detected divergence updates the existing draft
+  rather than accumulating drafts. Check it with `vnproxctl gitsync status`, apply it like any other
+  changeset.
+- **Nothing is pushed on this path.** The sync is a read-only fetch of one file at one ref, over
+  plain HTTPS — there is no `git` binary dependency and no git library in the .deb.
 
 ## Upgrade
 
