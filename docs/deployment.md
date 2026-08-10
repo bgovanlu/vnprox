@@ -157,6 +157,15 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 #                                   # startup: vnproxd must never come up quietly enforcing a policy it
 #                                   # could not read. Validate before deploying with
 #                                   # `vnproxctl policy lint --policy=<path>`.
+# auto_rollback_on_error = false   # T-2603: the CLUSTER DEFAULT for finding-triggered auto-rollback.
+#                                   # When true, a changeset applied without an explicit
+#                                   # `autoRollbackOnError` on its apply body is rolled back inside its
+#                                   # commit-confirm window if a NEW `error` finding appears on an entity
+#                                   # the changeset touched (its T-2404 `Impact` set). Findings already
+#                                   # firing before the apply never trigger, and a finding outside the
+#                                   # Impact set never does either, however severe. Off by default: a
+#                                   # deployment that does not opt in behaves exactly as before, and any
+#                                   # single apply can still ask for the guard on its own.
 ```
 
 ## Upgrade

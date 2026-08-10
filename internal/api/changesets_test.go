@@ -796,3 +796,62 @@ func (stubNodeAgent) ReadInterfaces(context.Context, string) (string, error) { r
 func (stubNodeAgent) StageInterfaces(context.Context, string, string) error  { return nil }
 func (stubNodeAgent) ReloadInterfaces(context.Context, string) error         { return nil }
 func (stubNodeAgent) DiscardStaged(context.Context, string) error            { return nil }
+
+// TestChangesetsApply_AutoRollbackOnErrorRoute is T-2603's API-layer contract:
+// `autoRollbackOnError` decodes on the apply body, reaches
+// change.Service.ApplyWithOptions, and carries any `applyStrategy` named
+// alongside it rather than silently replacing it.
+//
+// The engine-level behaviour (what arms, what triggers, what never does) is
+// asserted in internal/change's own suite against a real node agent and a real
+// findings stream; this test exists so the wire contract cannot drift.
+func TestChangesetsApply_AutoRollbackOnErrorRoute(t *testing.T) {
+	svc := newStagedChangesetTestService(t)
+	r := newChangesetTestRouter(svc, fullCapsAuth("alice"))
+
+	create := func(t *testing.T) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/changesets", bytes.NewBufferString(`{"title":"draft","ops":[]}`))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		var created changesetResponse
+		if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+			t.Fatalf("decoding create response: %v", err)
+		}
+		return created.ID
+	}
+
+	// The flag alone applies normally — proving the field is accepted by the
+	// strict decoder and routed to a service that understands it (a body with
+	// an unknown field is a 400, so a 202 here IS the routing assertion).
+	id := create(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/changesets/"+id+"/apply",
+		bytes.NewBufferString(`{"confirmTimeoutSec":120,"autoRollbackOnError":true}`))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("apply with autoRollbackOnError: status = %d, want 202 (body %s)", rec.Code, rec.Body.String())
+	}
+
+	// The flag does not swallow the strategy travelling with it: an
+	// unhonourable strategy is still refused with its own stable code.
+	other := create(t)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/changesets/"+other+"/apply",
+		bytes.NewBufferString(`{"confirmTimeoutSec":120,"autoRollbackOnError":true,"applyStrategy":{"mode":"rolling"}}`))
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("apply with autoRollbackOnError + a bad strategy: status = %d, want 422 (body %s)", rec.Code, rec.Body.String())
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decoding error envelope: %v", err)
+	}
+	if envelope.Error.Code != "invalid_apply_strategy" {
+		t.Errorf("error code = %q, want %q — the strategy must still be validated when autoRollbackOnError is set", envelope.Error.Code, "invalid_apply_strategy")
+	}
+}

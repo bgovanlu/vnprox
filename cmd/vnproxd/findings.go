@@ -447,7 +447,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, logger *slog.Logger) *findings.Engine {
+func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, onCycle func(context.Context, []findings.Finding), logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
@@ -530,6 +530,11 @@ func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc finding
 			}
 			ws.Broadcast(topicFindings, data)
 		},
+		// T-2603: the per-cycle feed behind the finding-triggered rollback and
+		// T-2602's `gate: auto` evidence (autorollback.go's findingsGuard).
+		// Unlike OnChange above it fires every cycle, changed or not — see
+		// findings.Config.OnCycle for why the unchanged ones matter.
+		OnCycle: onCycle,
 	})
 }
 

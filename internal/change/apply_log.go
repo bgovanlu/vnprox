@@ -55,10 +55,16 @@ type RollbackLog struct {
 // (docs/features/change-management.md §4: "the failure step preserved for
 // diagnosis").
 type ApplyLog struct {
-	FailedStep   *int          `json:"failedStep,omitempty"`
-	RolledBackBy string        `json:"rolledBackBy,omitempty"`
-	Steps        []StepLog     `json:"steps"`
-	Rollback     []RollbackLog `json:"rollback,omitempty"`
+	RolledBackBy string `json:"rolledBackBy,omitempty"`
+	FailedStep   *int   `json:"failedStep,omitempty"`
+	// AutoRollback (T-2603) names the finding that rolled this changeset back
+	// inside its commit-confirm window, or nil for every other outcome. It is
+	// written BEFORE the restore runs (autorollback.go's
+	// recordAutoRollbackTrigger), so an operator reading a changeset that
+	// rolled back on its own is never told merely that something went wrong.
+	AutoRollback *AutoRollbackTrigger `json:"autoRollback,omitempty"`
+	Steps        []StepLog            `json:"steps"`
+	Rollback     []RollbackLog        `json:"rollback,omitempty"`
 	// NodeTimers is T-304's per-node local-timer bookkeeping: one entry per
 	// node the coordinator armed a distributed rollback timer on, updated as
 	// its fate becomes known (fanned-out cancel on confirm, best-effort

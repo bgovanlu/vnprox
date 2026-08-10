@@ -669,7 +669,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	certSvc.Preflight()
 	go certSvc.Run(ctx)
 	certFindings := certFindingsAdapter{svc: certSvc}
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
+	// T-2602/T-2603: the one watcher that sees every findings cycle. It is
+	// built HERE, before both the findings engine (whose per-cycle hook feeds
+	// it) and the change engine (whose `gate: auto` evidence source and
+	// finding-triggered rollback it serves) — its change-service reference is
+	// late-bound below, the same convention mgmtAdapter/scheduleAdapter use.
+	findingsGuardVal := newFindingsGuard(time.Now, logger.With("component", "findings-guard"))
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, findingsGuardVal.observe, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -935,12 +941,19 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// wired (an app-owned table on the same shared db), because a hold
 		// that cannot be recorded is exactly the unknown state the card
 		// forbids — a deployment without it simply cannot request `mode:
-		// canary` at all. Canary (the `gate: auto` evidence source) is left
-		// unwired for now: automatic promotion is refused at validation time
-		// with a message saying so, which is honest, whereas promoting on
-		// evidence nothing gathered would not be. T-2603 wires the findings
-		// engine in behind this seam.
+		// canary` at all.
 		Stages: store.NewChangesetStageRepo(db),
+		// T-2603: Canary — the `gate: auto` evidence source T-2602 defined and
+		// left unwired — is the findings guard above, so automatic promotion
+		// now rests on real per-cycle evidence (new error-severity findings
+		// attributable to the canary nodes) instead of being refused at
+		// validation time.
+		Canary: findingsGuardVal,
+		// T-2603: the CLUSTER DEFAULT for the finding-triggered rollback
+		// inside the commit-confirm window. Off unless [changesets]
+		// auto_rollback_on_error says otherwise; a changeset can still ask for
+		// it individually on its apply request either way.
+		AutoRollbackOnError: cfg.Changesets.AutoRollbackOnError,
 		Approval: change.ApprovalConfig{
 			Required:          cfg.Changesets.ApprovalRequired,
 			AllowSelfApproval: cfg.Changesets.AllowSelfApproval,
@@ -968,6 +981,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 
 	// T-702: point the findings engine's mgmt_single_path check at the now-
 	// real change.Service (see mgmtAdapter's construction/doc comment above).
+	// T-2602/T-2603: late-bind the change service into the findings guard, so
+	// every cycle from here on reaches Service.ObserveFindings. Cycles that
+	// ran before this point are dropped by design — nothing can be armed yet.
+	findingsGuardVal.set(changeSvc)
 	mgmtAdapter.set(changeSvc)
 	// T-1103: point the findings engine's schedule_missed check at the
 	// now-real change.Service (see scheduleAdapter's construction/doc

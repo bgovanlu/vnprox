@@ -90,6 +90,15 @@ func (s *Service) Apply(ctx context.Context, id, author string, pveGW PVEGateway
 // ContinueStagedApply, AbortStagedApply, the auto gate, or the
 // commit-confirm deadline — never by this call blocking on the hold.
 func (s *Service) ApplyStaged(ctx context.Context, id, author string, pveGW PVEGateway, confirmTimeout time.Duration, strategy ApplyStrategy) (Changeset, error) {
+	return s.ApplyWithOptions(ctx, id, author, pveGW, confirmTimeout, strategy, ApplyOptions{})
+}
+
+// ApplyWithOptions is ApplyStaged plus T-2603's per-apply options
+// (autorollback.go's ApplyOptions). The ZERO options value means "no
+// finding-triggered rollback unless the cluster default says otherwise", and
+// the cluster default is itself off — so ApplyStaged above, and therefore
+// Apply, and therefore every caller that predates this card, is unaffected.
+func (s *Service) ApplyWithOptions(ctx context.Context, id, author string, pveGW PVEGateway, confirmTimeout time.Duration, strategy ApplyStrategy, opts ApplyOptions) (Changeset, error) {
 	if !s.applyConfigured() {
 		return Changeset{}, &ErrApplyNotConfigured{}
 	}
@@ -110,6 +119,14 @@ func (s *Service) ApplyStaged(ctx context.Context, id, author string, pveGW PVEG
 	// steps took, and it matches the coordinator's own bookkeeping deadline
 	// below.
 	deadline := s.now().Add(confirmTimeout).Unix()
+
+	// T-2603: arm the finding-triggered rollback guard HERE — after the
+	// changeset is committed to applying, and before the pre-state snapshot
+	// and every mutation. The findings baseline it captures is therefore
+	// genuinely the cycle before the apply, which is what makes "a
+	// pre-existing finding never triggers" a property rather than a race.
+	// A no-op unless this changeset (or the cluster default) asked for it.
+	s.armAutoRollback(ctx, cs, author, opts)
 
 	// --- pre-state snapshot: before any mutation (docs/data-model.md §2).
 	// captureSnapshotFull additionally captures SDN config (T-402) and, since
@@ -303,6 +320,9 @@ func (s *Service) beginApply(ctx context.Context, id, author string, strategy Ap
 // failed, release the lock, audit, and refresh inventory. The completed steps
 // were already rolled back by the executor.
 func (s *Service) finishFailedApply(ctx context.Context, cs Changeset, plan Plan, author string, log *ApplyLog, cause error) (Changeset, error) {
+	// T-2603: a failed apply never enters a confirm window, so there is
+	// nothing left for a finding to roll back.
+	s.disarmAutoRollback(cs.ID)
 	s.applyMu.Lock()
 	logJSON, _ := json.Marshal(log)
 	cs.ApplyLog = logJSON
@@ -410,6 +430,12 @@ func (s *Service) Confirm(ctx context.Context, id, author string) (Changeset, er
 		s.applyMu.Unlock()
 		return Changeset{}, &ErrNotConfirmable{ID: id, Status: cs.Status}
 	}
+	// T-2603 / AC6: confirming closes the window. A finding arriving after
+	// this instant must not roll an already-committed changeset back, so the
+	// guard is dropped inside the same lock hold as the transition — and only
+	// once the confirm is known to be going ahead, so a refused confirm never
+	// silently disarms a changeset that is still in its window.
+	s.disarmAutoRollback(id)
 	// The changeset's current UpdatedAt is its awaiting_confirm-entry
 	// timestamp (finishAwaitingConfirm stamped it there and nothing has
 	// transitioned it since) — captured before Transition below overwrites
@@ -633,6 +659,12 @@ func (s *Service) doRollbackScopedLocked(ctx context.Context, cs *Changeset, act
 	// before this function's own cs.Transition calls (both the early
 	// failure path and the normal one below) overwrite it.
 	enteredAt := cs.UpdatedAt
+	// T-2603: whatever ends this changeset's window — a manual rollback, the
+	// commit-confirm timeout, a staged abort, or a finding trigger itself —
+	// ends the guard with it. Dropping it here, on the one function every
+	// rollback path funnels through, is why no later cycle can roll a
+	// terminal changeset back a second time.
+	s.disarmAutoRollback(cs.ID)
 	defer func() {
 		if s.metrics == nil {
 			return
