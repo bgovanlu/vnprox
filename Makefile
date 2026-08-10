@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve openapi
+.PHONY: build dev test lint check deb mockpve openapi record record-mock
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -193,3 +193,47 @@ mockpve: ## run the mock PVE server standalone on :8006
 	else \
 		echo ">> internal/pvemock: not yet implemented (T-004), skipping"; \
 	fi
+
+# --- record (T-2502) -------------------------------------------------------
+#
+# Record a REAL Proxmox cluster's API responses into cassettes, so a fixture
+# can be observed rather than imagined. Read-only: the session makes GET
+# requests and nothing else.
+#
+# Use an API token, never a password. A ticket-auth client's first call is
+# POST /access/ticket, whose response body IS a credential, and the recorder
+# refuses to write it (that refusal is the point — see
+# internal/pvecassette).
+
+RECORD_DIR ?= internal/pvemock/testdata/cassettes
+
+record: ## record real PVE traffic into internal/pvemock/testdata/cassettes/<pve-version>/
+	@if [ -z "$(PVE_URL)" ] || [ -z "$(PVE_TOKEN)" ] || [ -z "$(PVE_VERSION)" ] || [ -z "$(PVE_NODE)" ]; then \
+		echo "usage: make record PVE_URL=https://pve1.lab:8006 PVE_VERSION=8.3.5 \\"; \
+		echo "                   PVE_TOKEN='vnprox@pve!daemon=<uuid>' PVE_NODE=pve1 \\"; \
+		echo "                   [PVE_IFACE=vmbr0] [PVE_INSECURE=1] [RECORD_DIR=$(RECORD_DIR)]"; \
+		echo ""; \
+		echo "  PVE_VERSION  the release you are recording (pveversion -v | head -1)."; \
+		echo "               It names the cassette directory and is stamped into every"; \
+		echo "               cassette; recording refuses to run without it, because a"; \
+		echo "               cassette that cannot say which PVE produced it is just a"; \
+		echo "               hand-written fixture with a timestamp on it."; \
+		echo "  PVE_TOKEN    an API token, NOT a password (see the note above)."; \
+		echo "  PVE_INSECURE set it if the node still has its self-signed pveproxy cert."; \
+		echo ""; \
+		echo "Afterwards: review the cassettes, run 'make check', and commit them."; \
+		echo "A response carrying a ticket, a password or a key fails the write and"; \
+		echo "names the field — that is the guard working, not a bug to route around."; \
+		exit 2; \
+	fi
+	VNPROX_PVE_RECORD=$(RECORD_DIR) \
+	VNPROX_PVE_VERSION=$(PVE_VERSION) \
+	VNPROX_PVE_URL=$(PVE_URL) \
+	VNPROX_PVE_TOKEN=$(PVE_TOKEN) \
+	VNPROX_PVE_NODE=$(PVE_NODE) \
+	VNPROX_PVE_IFACE=$(or $(PVE_IFACE),vmbr0) \
+	VNPROX_PVE_INSECURE=$(PVE_INSECURE) \
+	$(GO) test ./internal/pvemock/ -run '^TestRecordAgainstRealPVE$$' -count=1 -v
+
+record-mock: ## re-record the checked-in mock cassettes (after a pvemock handler change)
+	VNPROX_UPDATE_CASSETTES=1 $(GO) test ./internal/pvemock/ -run '^TestMockCassettes_MatchTheMockServer$$' -count=1 -v

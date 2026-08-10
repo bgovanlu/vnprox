@@ -1124,3 +1124,30 @@ be too narrow (a useless bundle) or too wide (a leak):
       up and the actor is registered unconditionally), but with no rules it has had nothing to
       flush, so "it wakes up, finds due deferrals, and delivers them" is untested outside the unit
       suite on this host.
+
+## T-2502 — record/replay cassettes (2026-08-10)
+
+This card built the machinery for observing PVE rather than imagining it. **The observation itself
+is the part that needs hardware, and it is the whole point of the card.**
+
+- [ ] **Record a real cluster.** `make record PVE_URL=... PVE_VERSION=... PVE_TOKEN=... PVE_NODE=...`
+      against any PVE 8.x/9.x node writes `internal/pvemock/testdata/cassettes/<version>/`. Until
+      that directory exists, every cassette in this repository is recorded from `internal/pvemock`
+      (`cassettes/mock-three-node-vlan/`) and proves only that the pipeline works.
+- [ ] **Then read the drift report.** `go test ./internal/pvemock/ -run TestFixtureCassetteDrift -v`
+      compares a fixture-driven run against the cassette set and lists every field present in one
+      and absent in the other. Against mock-vs-mock it currently reports 27 divergences, all of
+      which are fixture-content differences between `single-node.yaml` and `three-node-vlan.yaml`.
+      Against a real cassette set, **each line is a claim this repository makes about PVE that PVE
+      does not support** — that list is the deliverable, and it should be filed as bugs, not
+      silenced.
+- [ ] **Confirm the recorder's refusal on a real login.** A ticket-auth recording session must fail
+      at `POST /access/ticket` naming `body.data.ticket`, on real PVE's actual response shape and
+      not just pvemock's imitation of it. If real PVE returns the ticket under a different key, the
+      guard is weaker on hardware than it is in CI, and that is worth knowing before anyone trusts
+      a recorded directory.
+- [ ] **Confirm response-ordering stability.** `pvemock` answers several list endpoints
+      (`/cluster/resources`, `/cluster/sdn/vnets`, `/cluster/sdn/zones`, ...) in map-iteration
+      order, so it returns the same elements in a different order roughly one run in three. Whether
+      *real* PVE is order-stable across identical requests decides whether a recorded cassette can
+      be byte-compared on re-recording, or only compared by content.

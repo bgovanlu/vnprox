@@ -1,0 +1,8 @@
+{
+  "recordedAt": "2026-08-10T14:41:45.555616516Z",
+  "pveVersion": "mock-three-node-vlan",
+  "method": "GET",
+  "path": "/api2/json/cluster/sdn/vnets",
+  "status": 200,
+  "body": "{\"data\":[{\"vnet\":\"vnet100\",\"zone\":\"vlanz\",\"alias\":\"app-tier\",\"tag\":100},{\"vnet\":\"vnet200\",\"zone\":\"vlanz\",\"alias\":\"db-tier\",\"tag\":200}]}\n"
+}

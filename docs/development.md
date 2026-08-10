@@ -38,6 +38,8 @@ make lint       # golangci-lint + eslint + tsc --noEmit
 make check      # lint + test + govulncheck + npm audit (gated by web/audit-allowlist.json)
 make deb        # build the .deb into dist/
 make mockpve    # run the mock PVE server standalone on :8006
+make record     # record a real PVE cluster's API responses into cassettes (T-2502)
+make record-mock# re-record the checked-in mock cassettes after a pvemock handler change
 make ports      # every port this repo's tooling binds, and what is holding them now
 ```
 
@@ -58,6 +60,40 @@ product defect.
 The single most important dev asset: an HTTP server faithfully imitating the PVE API surface vnprox uses (`/access/ticket`, `/cluster/*`, `/nodes/*/network`, `/nodes/*/qemu|lxc`, SDN + firewall endpoints, task polling), driven by YAML fixture files in `testdata/clusters/` — e.g. `single-node.yaml`, `three-node-vlan.yaml`, `evpn-lab.yaml`, `messy-brownfield.yaml` (drift, conflicts, stale configs on purpose). It simulates: ticket auth + CSRF, permission-dependent 403s, task lifecycle with delays, `interfaces.new` staging semantics, and SDN pending/apply state. Host-level reads (`internal/host`) are interfaced so fixtures can back them too (`host.Reader` implementations: `real` and `fixture`).
 
 Every feature must work against at least `single-node.yaml` and `three-node-vlan.yaml` before it is done.
+
+### Record/replay (`T-2502`)
+
+Every fixture above is a **guess**. `T-2108` found four defects sitting under green unit tests
+whose fixtures invented the shape the code expected — the structural consequence of hand-writing
+each one. Record mode is the alternative:
+
+```
+make record PVE_URL=https://pve1.lab:8006 PVE_VERSION=8.3.5 \
+            PVE_TOKEN='vnprox@pve!daemon=<uuid>' PVE_NODE=pve1 [PVE_INSECURE=1]
+```
+
+`VNPROX_PVE_RECORD=<dir>` (plus `VNPROX_PVE_VERSION`) on any `pve.Client` writes each
+request/response pair as a **cassette** into `<dir>/<pve-version>/`: method, path, normalised
+query, status, and the response body verbatim. Cassettes land in
+`internal/pvemock/testdata/cassettes/<pve-version>/`; see that directory's README.
+
+Three properties are not negotiable, and each has a test that makes it fire:
+
+- **Refusal, not redaction.** A response body containing a PVE ticket, a `password` field or a
+  private key **fails the write** and names the field — via the same redactor
+  (`internal/redact`) `T-1902`'s support bundle uses. A cassette with a hole where a ticket used
+  to be no longer describes what PVE returned, which is the only thing it has over a
+  hand-written fixture. Consequence: **record with an API token, never a password** — a
+  ticket-auth client's first call is a login, and its response body is a credential.
+- **No fallback on replay.** `pvemock.NewReplayServer(dir)` serves cassettes and nothing else. An
+  unmatched request returns HTTP 599 with `ErrNoCassette` and, with `WithUnmatchedFailer(t)`,
+  fails the test on the spot. A fixture that passes only because the mock invented an answer
+  cannot be written.
+- **Request headers and bodies are never recorded.** Not redacted — never collected.
+
+`internal/pvecassette.Drift` compares a fixture-driven run against a cassette set and reports
+every field present in one and absent in the other; `TestFixtureCassetteDrift` runs it and logs
+the outcome either way.
 
 ## Go standards
 

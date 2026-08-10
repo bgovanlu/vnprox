@@ -146,6 +146,21 @@ type Config struct {
 	// construction time.
 	TokenFile string
 
+	// --- record mode (T-2502) ---
+
+	// RecordDir, if set, turns on cassette recording into
+	// <RecordDir>/<RecordPVEVersion>/ (see record.go). It overrides the
+	// VNPROX_PVE_RECORD environment variable, which is the documented
+	// operator flow; the field exists so tests can drive record mode
+	// without mutating process-wide state.
+	RecordDir string
+	// RecordPVEVersion is the PVE release label recorded in every cassette
+	// and used as the directory name. Overrides VNPROX_PVE_VERSION.
+	// Required whenever recording is on: New fails rather than defaulting
+	// it, because a cassette that cannot say which PVE produced it has
+	// thrown away the one thing it has over a hand-written fixture.
+	RecordPVEVersion string
+
 	// TLS drives the client's transport TLS behavior; see TLSConfig.
 	TLS TLSConfig
 
@@ -226,10 +241,16 @@ func New(cfg Config) (*Client, error) {
 		}
 	}
 
+	rec, err := newRecorder(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
 	c := &Client{
 		baseURL: base,
 		httpc:   httpc,
 		log:     logger,
+		rec:     rec,
 	}
 
 	switch cfg.Auth {

@@ -1,0 +1,8 @@
+{
+  "recordedAt": "2026-08-10T14:41:45.557158255Z",
+  "pveVersion": "mock-three-node-vlan",
+  "method": "GET",
+  "path": "/api2/json/cluster/firewall/rules",
+  "status": 200,
+  "body": "{\"data\":[{\"type\":\"in\",\"action\":\"ACCEPT\",\"proto\":\"tcp\",\"dport\":\"22\",\"comment\":\"cluster-wide SSH\",\"pos\":0,\"enable\":true}]}\n"
+}

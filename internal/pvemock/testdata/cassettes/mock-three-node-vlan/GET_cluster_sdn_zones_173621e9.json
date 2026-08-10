@@ -1,0 +1,8 @@
+{
+  "recordedAt": "2026-08-10T14:41:45.552888432Z",
+  "pveVersion": "mock-three-node-vlan",
+  "method": "GET",
+  "path": "/api2/json/cluster/sdn/zones",
+  "status": 200,
+  "body": "{\"data\":[{\"nodes\":\"pve1,pve2,pve3\",\"zone\":\"vlanz\",\"type\":\"vlan\",\"bridge\":\"vmbr0\",\"mtu\":1500}]}\n"
+}

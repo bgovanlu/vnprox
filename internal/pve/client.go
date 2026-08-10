@@ -25,6 +25,10 @@ type Client struct {
 	httpc   *http.Client
 	auth    authenticator
 	log     *slog.Logger
+	// rec is non-nil only in record mode (T-2502, VNPROX_PVE_RECORD). See
+	// record.go: it observes responses on the way past and writes
+	// cassettes, and a failed write fails the request.
+	rec *recorder
 }
 
 // endpointURL builds the full URL for a PVE API path (e.g.
@@ -134,5 +138,17 @@ func (c *Client) rawDo(req *http.Request, logPath string) (status int, body []by
 	}
 
 	c.log.Debug("pve request", "method", req.Method, "path", logPath, "status", resp.StatusCode, "duration", duration)
+
+	// Record mode (T-2502). Deliberately after the body has been read in
+	// full and before any status interpretation: a 403's body is as worth
+	// recording as a 200's, since internal/pve's own error mapping is
+	// written against it. A failed write fails the request — see
+	// recorder's doc comment for why silence is the wrong answer here.
+	if c.rec != nil {
+		if recErr := c.rec.record(req, resp.StatusCode, data); recErr != nil {
+			return 0, nil, fmt.Errorf("pve: recording %s %s: %w", req.Method, logPath, recErr)
+		}
+	}
+
 	return resp.StatusCode, data, nil
 }
