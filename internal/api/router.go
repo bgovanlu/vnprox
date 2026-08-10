@@ -63,30 +63,34 @@ type PeerServer interface {
 
 // Options configures the router built by NewRouter.
 type Options struct {
-	MetricsExporter       MetricsExporterConfig
-	SimDivergence         simDivergenceRecorder
-	IngressTargets        IngressTargetStore
-	Collectors            CollectorHealth
-	Topology              TopologyService
-	LLDP                  LLDPService
-	Drift                 DriftService
-	Findings              FindingsService
-	FindingAcks           FindingAckService
-	EntityHistory         EntityHistoryService
-	DoctorLive            DoctorLiveService
-	FindingAudit          findingsAuditWriter
-	Certs                 CertsService
-	FDB                   FDBService
-	Layouts               LayoutStore
-	Annotations           AnnotationStore
-	AlertRules            AlertRuleStore
-	AlertDeliveries       AlertDeliveryStore
-	AlertSecretCipher     SecretCipher
-	Federation            FederationService
-	FederationAudit       federationAuditWriter
-	FederationAgg         FederationAggregator
-	Changesets            ChangesetService
-	Snapshots             SnapshotService
+	MetricsExporter   MetricsExporterConfig
+	SimDivergence     simDivergenceRecorder
+	IngressTargets    IngressTargetStore
+	Collectors        CollectorHealth
+	Topology          TopologyService
+	LLDP              LLDPService
+	Drift             DriftService
+	Findings          FindingsService
+	FindingAcks       FindingAckService
+	EntityHistory     EntityHistoryService
+	DoctorLive        DoctorLiveService
+	FindingAudit      findingsAuditWriter
+	Certs             CertsService
+	FDB               FDBService
+	Layouts           LayoutStore
+	Annotations       AnnotationStore
+	AlertRules        AlertRuleStore
+	AlertDeliveries   AlertDeliveryStore
+	AlertSecretCipher SecretCipher
+	Federation        FederationService
+	FederationAudit   federationAuditWriter
+	FederationAgg     FederationAggregator
+	Changesets        ChangesetService
+	Snapshots         SnapshotService
+	// TopologyDiff (T-2704) backs GET /topology/diff: the point-in-time
+	// topology diff, computed from the snapshot series and attributed
+	// against the changeset history. Nil leaves the route unmounted.
+	TopologyDiff          TopologyDiffService
 	Audit                 AuditService
 	HA                    HAStatusService
 	DistFS                fs.FS
@@ -277,6 +281,7 @@ func NewRouter(opts Options) http.Handler {
 		mountFederationIPAMRoutes(r, opts.FederationIPAM, opts.Auth)
 		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers, opts.Tenant, opts.TenantNotifier, opts.TenantStore)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
+		mountTopologyDiffRoutes(r, opts.TopologyDiff, opts.Auth)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
 		// T-2403: the audit trail re-sliced by entity. Same capability as
 		// /audit — see mountEntityHistoryRoutes.

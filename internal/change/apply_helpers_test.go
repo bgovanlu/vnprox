@@ -123,6 +123,20 @@ func (a *fakeNodeAgent) committedFile(node string) string {
 	return a.committed[node]
 }
 
+// setCommittedFile replaces one node's committed interfaces file directly,
+// with no stage, no reload, and no changeset anywhere near it — the test-side
+// stand-in for `ssh node && vi /etc/network/interfaces && ifreload -a`.
+//
+// T-2704's central assertion needs exactly this: a change vnprox did not make,
+// so the point-in-time diff can be held to marking it unattributed. Every
+// other mutation in this package's tests goes through the change engine, which
+// is why none of them can express an out-of-band edit.
+func (a *fakeNodeAgent) setCommittedFile(node, content string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.committed[node] = content
+}
+
 func (a *fakeNodeAgent) setFailStage(node string, fail bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

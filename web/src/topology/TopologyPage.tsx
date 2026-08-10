@@ -29,6 +29,8 @@ import { computeFlowEdges, flowEdgeStrokeWidth, type FlowEdge } from "./flowEdge
 import { useLiveFlowRecords } from "../flows/flowsQueries";
 import { computeLatencyOverlayEdges } from "./latencyMode";
 import { useLatMeshHeatmapQuery } from "./latMeshQueries";
+import { computeDiffOverlay, summarizeDiffOverlay } from "./diffOverlay";
+import { useTopologyDiffQuery } from "./topologyDiffQuery";
 import { computeMTUOverlayEdges } from "./mtuOverlay";
 import { useMTUProbeResultsQuery } from "./mtuProbeQueries";
 import { useWireGuardTunnelsQuery } from "../wireguard/wgTunnelsQuery";
@@ -589,6 +591,19 @@ function TopologyPageContent() {
     () => (mtuPaintable && mtuProbeResults ? computeMTUOverlayEdges(mtuProbeResults, nodeIdForName) : []),
     [mtuPaintable, mtuProbeResults, nodeIdForName],
   );
+  // T-2704 "diff" overlay: a selected historical range, carried in the URL
+  // (`?diffFrom=&diffTo=`) so the History page's "Show on map" is an ordinary
+  // link and the resulting view is shareable — the same "state lives in the
+  // URL" convention T-907's saved views established. No range in the URL
+  // means no fetch and no overlay at all.
+  const diffFrom = searchParams.get("diffFrom") ?? "";
+  const diffTo = searchParams.get("diffTo") ?? "";
+  const { data: topologyDiff } = useTopologyDiffQuery(diffFrom, diffTo);
+  const diffOverlay = useMemo(() => {
+    const onMap = new Set(elements.nodes.map((n) => n.id));
+    return computeDiffOverlay(topologyDiff, (ref) => onMap.has(ref));
+  }, [topologyDiff, elements.nodes]);
+
   // AC4: the empty-state hint is purely data-driven (zero records
   // cluster-wide, once the initial fetch has actually completed — never
   // flashed during the brief initial loading window) and disappears the
@@ -950,6 +965,27 @@ function TopologyPageContent() {
         <StalenessBanner staleness={topology?.staleness} />
       </div>
 
+      {/* T-2704: the diff overlay's own status line. The map must SAY what
+          the rings mean, and it must say so even when every difference is
+          off-map (a deletion has no node left to ring) — otherwise "nothing
+          is highlighted" and "nothing changed" look identical. */}
+      {topologyDiff && (
+        <div
+          className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 print:hidden"
+          role="status"
+        >
+          <span className="font-medium">
+            Diff vs {topologyDiff.from.snapshotId ?? topologyDiff.from.requested}
+          </span>{" "}
+          — {summarizeDiffOverlay(diffOverlay)}
+          {diffOverlay.unattributedCount > 0 && (
+            <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 font-medium text-red-800 dark:bg-red-950 dark:text-red-200">
+              {diffOverlay.unattributedCount} unattributed
+            </span>
+          )}
+        </div>
+      )}
+
       {noLldpData && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 print:hidden">
           No LLDP data yet — the physical layer shows NICs only.{" "}
@@ -1069,6 +1105,7 @@ function TopologyPageContent() {
             selectedFlowEdgeId={selectedFlowEdgeId}
             latencyEdges={latencyOverlayEdges}
             mtuBadges={mtuOverlayBadges}
+            diffMarks={diffOverlay.marks}
             onFlowEdgeClick={(id) => {
               setSelectedFlowEdgeId(id);
             }}

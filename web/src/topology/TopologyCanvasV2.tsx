@@ -39,8 +39,9 @@ import {
 } from "./canvasScene";
 import { buildA11yProxies } from "./a11yBridge";
 import { TopologyA11yLayer } from "./TopologyA11yLayer";
-import { drawScene, drawFlowOverlay, drawLatencyOverlay, drawMTUOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
+import { drawScene, drawFlowOverlay, drawLatencyOverlay, drawMTUOverlay, drawDiffOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
 import type { LatencyOverlayEdge } from "./latencyMode";
+import type { DiffMark } from "./diffOverlay";
 import type { MTUOverlayBadge } from "./mtuOverlay";
 import { applyLod, parseLodId, zoomBandFor } from "./lod";
 import { Minimap } from "./Minimap";
@@ -112,6 +113,12 @@ export interface TopologyCanvasV2Props {
    * undefined/empty (the default) draws nothing extra, so every pre-T-1306
    * call site is unaffected. */
   mtuBadges?: readonly MTUOverlayBadge[];
+  /** T-2704 point-in-time diff overlay marks (topology/diffOverlay.ts) —
+   * drawn last of all, ringing every entity that differs from the selected
+   * historical point, colored by whether a changeset explains it.
+   * undefined/empty (the default) draws nothing extra, so every call site
+   * that has not selected a range is unaffected. */
+  diffMarks?: readonly DiffMark[];
   /** Fires when a Flows-layer overlay edge is clicked — takes priority
    * over the plain-pane click (onPaneClick) when both could apply, so a
    * click that lands on a flow edge always opens its drill-down rather
@@ -181,6 +188,7 @@ export function TopologyCanvasV2({
   selectedFlowEdgeId,
   latencyEdges,
   mtuBadges,
+  diffMarks,
   onFlowEdgeClick,
 }: TopologyCanvasV2Props) {
   const storeTheme = useThemeStore((s) => s.theme);
@@ -357,6 +365,7 @@ export function TopologyCanvasV2({
   const hasFlowEdges = (flowEdges?.length ?? 0) > 0;
   const hasLatencyEdges = (latencyEdges?.length ?? 0) > 0;
   const hasMTUBadges = (mtuBadges?.length ?? 0) > 0;
+  const hasDiffMarks = (diffMarks?.length ?? 0) > 0;
   const [flowDashOffset, setFlowDashOffset] = useState(0);
   useEffect(() => {
     if (reducedMotion || !hasFlowEdges) {
@@ -446,6 +455,18 @@ export function TopologyCanvasV2({
         dragTopLeft,
       });
     }
+
+    // T-2704: the point-in-time diff overlay, drawn last of all — its rings
+    // surround the node box, so nothing else may paint over them.
+    if (hasDiffMarks && diffMarks) {
+      drawDiffOverlay(ctx, {
+        nodes: lodElements.nodes,
+        marks: diffMarks,
+        viewport,
+        nodeSize: DEFAULT_NODE_SIZE,
+        dragTopLeft,
+      });
+    }
   }, [
     lodElements.nodes,
     lodElements.edges,
@@ -464,6 +485,8 @@ export function TopologyCanvasV2({
     latencyEdges,
     hasMTUBadges,
     mtuBadges,
+    hasDiffMarks,
+    diffMarks,
   ]);
 
   // --- Pointer helpers -----------------------------------------------------

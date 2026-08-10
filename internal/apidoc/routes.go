@@ -36,6 +36,7 @@ var Operations = map[string]Operation{
 
 	// --- Topology and inventory -------------------------------------------
 	"GET /api/v1/topology":                    {Summary: "Return the cluster network graph.", Tag: "topology", Auth: AuthSession},
+	"GET /api/v1/topology/diff":               {Summary: "Diff the cluster against a past point, marking what vnprox did not do.", Tag: "topology", Auth: AuthSession},
 	"GET /api/v1/ports":                       {Summary: "List physical and virtual ports across the cluster.", Tag: "topology", Auth: AuthSession},
 	"GET /api/v1/inventory/search":            {Summary: "Search the inventory by name, address or kind.", Tag: "inventory", Auth: AuthSession},
 	"GET /api/v1/inventory/history":           {Summary: "Return what has changed one entity, and by whom.", Tag: "inventory", Auth: AuthSession},
