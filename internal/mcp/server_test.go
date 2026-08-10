@@ -70,14 +70,21 @@ func TestExposedToolsByScope(t *testing.T) {
 		{
 			name:   "read+write+automation",
 			scopes: []string{"netRead", "netWrite", "automation"},
-			want:   []string{"topology.get", "findings.list", "flows.query", "ipam.subnets.list", "simulate.path", "diagnose.run", "changesets.diff", "changesets.create", "changesets.validate"},
+			want: []string{
+				"topology.get", "findings.list", "flows.query", "ipam.subnets.list", "simulate.path", "diagnose.run",
+				"changesets.diff", "changesets.create", "changesets.validate",
+				"changesets.stage.bridge", "changesets.stage.iface", "changesets.stage.fwrule", "changesets.stage.ipam",
+			},
 		},
 		{
 			name:   "write+automation-only",
 			scopes: []string{"netWrite", "automation"},
 			// changesets.diff is a read (netRead), so a netWrite-only token
-			// does not see it — only the two write-staging tools.
-			want: []string{"changesets.create", "changesets.validate"},
+			// does not see it — only the write-staging tools.
+			want: []string{
+				"changesets.create", "changesets.validate",
+				"changesets.stage.bridge", "changesets.stage.iface", "changesets.stage.fwrule", "changesets.stage.ipam",
+			},
 		},
 		{
 			name:   "automation-only",

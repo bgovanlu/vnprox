@@ -1,0 +1,28 @@
+-- 0039_changeset_origin_tool.sql — T-2705 mutating MCP tools that stage, never
+-- apply.
+--
+-- One additive provenance column on changesets: which MCP tool staged this
+-- draft. T-1701's 0028 already recorded WHO staged it (`origin` = 'mcp' and
+-- `origin_token_id` = the automation token, i.e. the session); this records
+-- WHAT it used — `changesets.stage.bridge`, `changesets.stage.fwrule`, and so
+-- on. Together they are T-2705 acceptance criterion 4's tag: an MCP-staged
+-- changeset names its tool AND its session, and both survive to the review API
+-- (`originTool` + `originTokenId` on every changeset response), so a reviewer
+-- reading a draft can see exactly which AI-operator action produced it rather
+-- than only that "an AI did it".
+--
+-- NULL for every pre-existing row and for every changeset staged by anything
+-- other than one of those tools (the UI, the CLI, gitsync, the generic
+-- `changesets.create` MCP tool) — no backfill, and no meaning is invented for
+-- a row that never had a tool. Set once at insert and never updated: the
+-- changeset repo's Update statement does not name this column, exactly as it
+-- does not name `origin`/`origin_token_id`, so provenance cannot be rewritten
+-- by a later edit of the draft.
+--
+-- App-owned data per CLAUDE.md's storage rule: vnprox's own record of how one
+-- of vnprox's own changesets came to exist, never a shadow of PVE state.
+--
+-- Migrations are forward-only: this file, once released, must never be edited
+-- again. Schema changes land as a new NNNN_*.sql file with a higher version.
+
+ALTER TABLE changesets ADD COLUMN origin_tool TEXT;

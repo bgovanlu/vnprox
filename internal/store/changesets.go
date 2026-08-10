@@ -20,8 +20,14 @@ type Changeset struct {
 	// OriginTokenID is the staging bearer token's api_tokens.id ('' when not
 	// token-staged). Read via COALESCE so pre-0028 rows (defaulted to 'ui' by
 	// the migration) and NULL token ids scan as their empty/'ui' forms.
-	Origin          string
-	OriginTokenID   string
+	Origin        string
+	OriginTokenID string
+	// OriginTool (T-2705) names the MCP tool that staged this changeset
+	// ('changesets.stage.bridge', …), '' for anything not staged by one of
+	// them. Written once by Insert and never by Update, like Origin/
+	// OriginTokenID: provenance is set at creation and cannot be rewritten by
+	// a later edit of the draft.
+	OriginTool      string
 	OpsJSON         string
 	FindingsJSON    sql.NullString
 	PlanJSON        sql.NullString
@@ -58,9 +64,12 @@ func (r *ChangesetRepo) Insert(ctx context.Context, c Changeset) error {
 		origin = "ui" // never write an unlabelled row (mirrors change.OriginUI)
 	}
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO changesets (id, title, author, status, cluster_id, origin, origin_token_id, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.Title, c.Author, c.Status, c.ClusterID, origin, sql.NullString{String: c.OriginTokenID, Valid: c.OriginTokenID != ""}, c.OpsJSON, c.FindingsJSON, c.PlanJSON, c.ApplyLogJSON, c.ConfirmDeadline, c.CreatedAt, c.UpdatedAt,
+		INSERT INTO changesets (id, title, author, status, cluster_id, origin, origin_token_id, origin_tool, ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.ID, c.Title, c.Author, c.Status, c.ClusterID, origin,
+		sql.NullString{String: c.OriginTokenID, Valid: c.OriginTokenID != ""},
+		sql.NullString{String: c.OriginTool, Valid: c.OriginTool != ""},
+		c.OpsJSON, c.FindingsJSON, c.PlanJSON, c.ApplyLogJSON, c.ConfirmDeadline, c.CreatedAt, c.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("store: inserting changeset %s: %w", c.ID, err)
@@ -71,7 +80,7 @@ func (r *ChangesetRepo) Insert(ctx context.Context, c Changeset) error {
 // Get returns the changeset with the given id, or ErrNotFound.
 func (r *ChangesetRepo) Get(ctx context.Context, id string) (Changeset, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, title, author, status, cluster_id, origin, COALESCE(origin_token_id, ''), ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, revert_ticket_expires_at, created_at, updated_at
+		SELECT id, title, author, status, cluster_id, origin, COALESCE(origin_token_id, ''), COALESCE(origin_tool, ''), ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, revert_ticket_expires_at, created_at, updated_at
 		FROM changesets WHERE id = ?`, id,
 	)
 	c, err := scanChangeset(row)
@@ -84,7 +93,7 @@ func (r *ChangesetRepo) Get(ctx context.Context, id string) (Changeset, error) {
 // List returns changesets ordered by created_at descending (newest first),
 // optionally filtered to a single status. Pass an empty status to list all.
 func (r *ChangesetRepo) List(ctx context.Context, status string) ([]Changeset, error) {
-	query := `SELECT id, title, author, status, cluster_id, origin, COALESCE(origin_token_id, ''), ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, revert_ticket_expires_at, created_at, updated_at
+	query := `SELECT id, title, author, status, cluster_id, origin, COALESCE(origin_token_id, ''), COALESCE(origin_tool, ''), ops_json, findings_json, plan_json, apply_log_json, confirm_deadline, revert_ticket_expires_at, created_at, updated_at
 		FROM changesets`
 	args := []any{}
 	if status != "" {
@@ -237,7 +246,7 @@ func (r *ChangesetRepo) WipeExpiredRevertTickets(ctx context.Context, now int64)
 
 func scanChangeset(row rowScanner) (Changeset, error) {
 	var c Changeset
-	err := row.Scan(&c.ID, &c.Title, &c.Author, &c.Status, &c.ClusterID, &c.Origin, &c.OriginTokenID, &c.OpsJSON, &c.FindingsJSON, &c.PlanJSON, &c.ApplyLogJSON, &c.ConfirmDeadline, &c.RevertTicketExpiresAt, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.Title, &c.Author, &c.Status, &c.ClusterID, &c.Origin, &c.OriginTokenID, &c.OriginTool, &c.OpsJSON, &c.FindingsJSON, &c.PlanJSON, &c.ApplyLogJSON, &c.ConfirmDeadline, &c.RevertTicketExpiresAt, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Changeset{}, err

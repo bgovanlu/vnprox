@@ -420,11 +420,13 @@ renamed or removed and no method signature is changed in place. Any breaking cha
 version (`v2`), announced here and in `docs/api.md`, with the previous version kept accepted for at
 least one minor release before removal.
 
-### 13.1 MCP tool manifest — frozen v1 (T-1701)
+### 13.1 MCP tool manifest — frozen v1 (T-1701, extended additively by T-2705)
 
-The MCP server (`internal/mcp`, `docs/api.md` "MCP server") exposes a **fixed, enumerable** nine-tool
+The MCP server (`internal/mcp`, `docs/api.md` "MCP server") exposes a **fixed, enumerable** thirteen-tool
 allowlist; this is itself the security boundary (`docs/security.md`, "MCP stage-only boundary"), not
-merely an API-stability statement. The frozen v1 manifest:
+merely an API-stability statement. The manifest below is the frozen v1 set plus T-2705's four typed
+staging tools, added under this section's own additive-only rule ("a new read/stage tool may be added
+additively; a mutating tool never can") — no existing tool was renamed, removed, or changed:
 
 | Tool | Required scope | Class |
 |---|---|---|
@@ -437,10 +439,15 @@ merely an API-stability statement. The frozen v1 manifest:
 | `changesets.diff` | `netRead` | read |
 | `changesets.create` | `netWrite` | **stage-only** (`origin: "mcp"`, never applied) |
 | `changesets.validate` | `netWrite` | stage-only |
+| `changesets.stage.bridge` | `netWrite` | **stage-only** (one `bridge.create` op; T-2705) |
+| `changesets.stage.iface` | `netWrite` | **stage-only** (one `iface.update` op; T-2705) |
+| `changesets.stage.fwrule` | `netWrite` | **stage-only** (one `fw.rule.create` op; T-2705) |
+| `changesets.stage.ipam` | `netWrite` | **stage-only** (one `ipam.alloc.create` op; T-2705) |
 
-No `apply`/`confirm`/`rollback`/`discard` tool exists or can be added — a package-load check rejects
-any tool whose name matches those verbs, and the change-engine seam handed to the server has no
-mutation method (interface-surface test). Freezing this manifest at v1 means: a new read/stage tool
+No `apply`/`confirm`/`approve`/`delete`/`rollback`/`discard` tool exists or can be added — a
+package-load check rejects any tool whose name matches those verbs, and the change-engine seam handed
+to the server has no mutation method (asserted at compile time since T-2705, plus the
+interface-surface test). Freezing this manifest at v1 means: a new read/stage tool
 may be added additively; a mutating tool never can. The negotiated protocol version string
 (`2025-06-18`) is the MCP wire protocol, independent of this v1 manifest freeze.
 

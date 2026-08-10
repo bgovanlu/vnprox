@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -853,5 +854,71 @@ func TestChangesetsApply_AutoRollbackOnErrorRoute(t *testing.T) {
 	}
 	if envelope.Error.Code != "invalid_apply_strategy" {
 		t.Errorf("error code = %q, want %q — the strategy must still be validated when autoRollbackOnError is set", envelope.Error.Code, "invalid_apply_strategy")
+	}
+}
+
+// TestChangesetsRoutes_MCPProvenanceSurvivesToTheReviewAPI is T-2705
+// acceptance criterion 4's HTTP half: a changeset staged by an MCP tool
+// carries `origin`, `originTokenId`, AND `originTool` on the canonical review
+// read, so a reviewer can see which AI-operator action produced the draft —
+// and an ordinary UI-staged changeset carries none of the token/tool fields at
+// all (the field is omitempty, so no existing response's byte shape changed).
+func TestChangesetsRoutes_MCPProvenanceSurvivesToTheReviewAPI(t *testing.T) {
+	svc := newChangesetTestService(t)
+	r := newChangesetTestRouter(svc, fullCapsAuth("alice"))
+	ctx := context.Background()
+
+	staged, err := svc.CreateWithProvenance(ctx, "mcp:ci-bot", "ai-drafted", nil, change.Provenance{
+		Origin: change.OriginMCP, TokenID: "tok-7", Tool: "changesets.stage.bridge",
+	})
+	if err != nil {
+		t.Fatalf("CreateWithProvenance: %v", err)
+	}
+	human, err := svc.Create(ctx, "alice", "human-drafted", nil)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	cases := []struct {
+		name       string
+		id         string
+		wantOrigin string
+		wantTool   string
+		wantToken  string
+	}{
+		{"mcp-staged", staged.ID, change.OriginMCP, "changesets.stage.bridge", "tok-7"},
+		{"ui-staged", human.ID, change.OriginUI, "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/changesets/"+tc.id, nil)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("GET /changesets/{id} status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+			}
+			body := rec.Body.String()
+			var got changesetResponse
+			if derr := json.NewDecoder(strings.NewReader(body)).Decode(&got); derr != nil {
+				t.Fatalf("decoding response: %v", derr)
+			}
+			if got.Origin != tc.wantOrigin {
+				t.Errorf("origin = %q, want %q", got.Origin, tc.wantOrigin)
+			}
+			if got.OriginTool != tc.wantTool {
+				t.Errorf("originTool = %q, want %q", got.OriginTool, tc.wantTool)
+			}
+			if got.OriginTokenID != tc.wantToken {
+				t.Errorf("originTokenId = %q, want %q", got.OriginTokenID, tc.wantToken)
+			}
+			// The wire bytes, not only the decoded struct: an omitempty field
+			// must actually be absent for a UI-staged changeset.
+			if tc.wantTool == "" && strings.Contains(body, "originTool") {
+				t.Errorf("UI-staged changeset response carries an originTool key: %s", body)
+			}
+			if tc.wantTool != "" && !strings.Contains(body, `"originTool":"`+tc.wantTool+`"`) {
+				t.Errorf("MCP-staged changeset response is missing originTool: %s", body)
+			}
+		})
 	}
 }

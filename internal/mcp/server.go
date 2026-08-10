@@ -14,17 +14,47 @@ import (
 )
 
 // ChangesetStager is the change-engine seam the MCP surface holds. It exposes
-// ONLY draft staging (CreateWithOrigin), re-validation (Validate), and the
-// read-only diff (Diff). It has NO Apply, Confirm, Rollback, or Discard method
-// — that omission is the structural half of T-1701's stage-only invariant: no
+// ONLY draft staging (CreateWithOrigin/CreateWithProvenance), editing an
+// already-open draft (UpdateDraft), re-validation (Validate), the read-only
+// diff (Diff), and the read-only listing the open-draft cap counts (List). It
+// has NO Apply, Confirm, Approve, Rollback, or Discard method — that omission
+// is the structural half of T-1701's (and T-2705's) stage-only invariant: no
 // MCP code path can reach a live-mutating verb because the type it is handed
 // does not have one. *change.Service satisfies this (it has all those methods
 // too, but this narrower view is all this package ever receives).
-// TestChangesetStagerHasNoMutationVerb asserts the omission by reflection.
+//
+// The omission is asserted TWICE, deliberately:
+//
+//   - at compile time, by stageonly.go's closed-shape assertion — a type that
+//     implements exactly these methods and no others is asserted to satisfy
+//     this interface, so adding an Apply method here stops the package
+//     BUILDING (T-2705 AC2);
+//   - at test time, by TestChangesetStagerHasNoMutationVerb, over the
+//     interface's own reflected method set (T-1701).
 type ChangesetStager interface {
 	CreateWithOrigin(ctx context.Context, author, title string, ops []change.Op, origin, originTokenID string) (change.Changeset, error)
+	CreateWithProvenance(ctx context.Context, author, title string, ops []change.Op, p change.Provenance) (change.Changeset, error)
+	UpdateDraft(ctx context.Context, id, author string, title *string, ops []change.Op) (change.Changeset, error)
 	Validate(ctx context.Context, id, author string) (change.Changeset, error)
 	Diff(ctx context.Context, id string) (*ifaces.ChangesetDiff, error)
+	List(ctx context.Context, status string) ([]change.Changeset, error)
+}
+
+// PolicyChecker is T-2601's policy engine as this package consumes it: ONE
+// method, which evaluates a rule set over a list of ops and stages nothing at
+// all (change.Service.EvaluatePolicySet is pure w.r.t. the store — it writes no
+// row, opens no changeset, and is asserted so by that package's own
+// TestEvaluatePolicyForChangeset_StagesNothing). Passing the zero PolicySet
+// makes it evaluate the cluster's INSTALLED set, which is what every caller
+// here does: a staging tool must be judged by the operator's own rules, not by
+// rules the caller chose.
+//
+// Deliberately separate from ChangesetStager: policy evaluation is a read, and
+// keeping it off the staging seam means the staging seam's method set stays
+// exactly "the verbs that open or edit a draft" — which is what the AC2
+// compile-time assertion is asserting about.
+type PolicyChecker interface {
+	EvaluatePolicySet(ctx context.Context, set change.PolicySet, ops []change.Op) (change.PolicyResult, error)
 }
 
 // ToolFunc is the seam for a read tool: it takes the raw JSON arguments the
@@ -67,8 +97,14 @@ type Auditor interface {
 // are each optional (nil => that tool reports "not available"); Audit is
 // optional. Now/Logger/RevocationInterval default sensibly.
 type Deps struct {
-	Auth     TokenAuthenticator
-	Staging  ChangesetStager
+	Auth    TokenAuthenticator
+	Staging ChangesetStager
+	// Policy is T-2601's evaluator (T-2705). When nil, the typed staging
+	// tools refuse to stage at all rather than staging unchecked: a
+	// deployment that cannot evaluate its policy must not let an AI operator
+	// past it. (Nil is a wiring state, not a configuration: cmd/vnproxd
+	// always wires the change service here.)
+	Policy   PolicyChecker
 	Audit    Auditor
 	Topology ToolFunc
 	Findings ToolFunc
@@ -82,11 +118,32 @@ type Deps struct {
 	// token's liveness (AC5's "within one server tick"). Defaults to
 	// DefaultRevocationInterval.
 	RevocationInterval time.Duration
+	// StageRateLimit / StageRateWindow bound how often ONE session may stage
+	// (T-2705 AC5). Defaults: DefaultStageRateLimit calls per
+	// DefaultStageRateWindow. A non-positive StageRateLimit uses the default;
+	// there is deliberately no "unlimited" setting.
+	StageRateLimit  int
+	StageRateWindow time.Duration
+	// MaxOpenMCPDrafts caps how many MCP-staged changesets may be open
+	// (draft/validated) cluster-wide at once. Defaults to
+	// DefaultMaxOpenMCPDrafts. Exceeding it refuses further staging with a
+	// message naming the cap, so the model is told what to do about it
+	// (apply or discard one) rather than merely failing.
+	MaxOpenMCPDrafts int
 }
 
 // DefaultRevocationInterval is the poll cadence for the mid-session
 // token-revocation check on long-lived transports.
 const DefaultRevocationInterval = time.Second
+
+// Staging budget defaults (T-2705 AC5). They bound the blast radius of a
+// looping or runaway AI operator in the two dimensions that matter: how fast
+// it can stage, and how much unreviewed work it can leave behind.
+const (
+	DefaultStageRateLimit   = 12
+	DefaultStageRateWindow  = time.Minute
+	DefaultMaxOpenMCPDrafts = 10
+)
 
 // ErrAuthRequired / ErrAutomationScopeRequired distinguish "no/invalid token"
 // from "token lacks the automation scope" so a transport can map them to the
@@ -103,8 +160,14 @@ type Server struct {
 	now      func() time.Time
 	log      *slog.Logger
 	handlers map[string]toolHandler
+	limiter  *stageLimiter
 	deps     Deps
 	revoke   time.Duration
+	// stageRate/stageWindow/maxOpenDrafts are the resolved (defaulted) staging
+	// budget — see Deps.
+	stageRate     int
+	stageWindow   time.Duration
+	maxOpenDrafts int
 }
 
 // toolHandler executes one tool for a session. Read tools wrap a Deps ToolFunc;
@@ -129,7 +192,23 @@ func NewServer(deps Deps) (*Server, error) {
 	if revoke <= 0 {
 		revoke = DefaultRevocationInterval
 	}
-	s := &Server{deps: deps, now: now, log: log, revoke: revoke}
+	stageRate := deps.StageRateLimit
+	if stageRate <= 0 {
+		stageRate = DefaultStageRateLimit
+	}
+	stageWindow := deps.StageRateWindow
+	if stageWindow <= 0 {
+		stageWindow = DefaultStageRateWindow
+	}
+	maxOpen := deps.MaxOpenMCPDrafts
+	if maxOpen <= 0 {
+		maxOpen = DefaultMaxOpenMCPDrafts
+	}
+	s := &Server{
+		deps: deps, now: now, log: log, revoke: revoke,
+		limiter:   newStageLimiter(),
+		stageRate: stageRate, stageWindow: stageWindow, maxOpenDrafts: maxOpen,
+	}
 	s.handlers = s.buildHandlers()
 	// Defence in depth: every registered handler must map to an allowlisted
 	// tool name, and every allowlisted tool must have a handler — a mismatch
@@ -167,6 +246,10 @@ func (s *Server) buildHandlers() map[string]toolHandler {
 		ToolChangesetsDiff:     s.handleChangesetDiff,
 		ToolChangesetsCreate:   s.handleChangesetCreate,
 		ToolChangesetsValidate: s.handleChangesetValidate,
+		ToolStageBridge:        stageHandler(ToolStageBridge, buildBridgeCreateOp),
+		ToolStageIface:         stageHandler(ToolStageIface, buildIfaceUpdateOp),
+		ToolStageFwRule:        stageHandler(ToolStageFwRule, buildFwRuleCreateOp),
+		ToolStageIPAM:          stageHandler(ToolStageIPAM, buildIpamAllocOp),
 	}
 }
 
@@ -316,15 +399,20 @@ func toolResult(v any) callToolResult {
 // surfacing only the identity, provenance, status, and validation findings a
 // caller needs to decide what to do next.
 type changesetView struct {
-	ID            string           `json:"id"`
-	Title         string           `json:"title"`
-	Author        string           `json:"author"`
-	Status        string           `json:"status"`
-	Origin        string           `json:"origin"`
-	OriginTokenID string           `json:"originTokenId,omitempty"`
-	Findings      []change.Finding `json:"findings"`
-	CreatedAt     int64            `json:"createdAt"`
-	UpdatedAt     int64            `json:"updatedAt"`
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Author        string `json:"author"`
+	Status        string `json:"status"`
+	Origin        string `json:"origin"`
+	OriginTokenID string `json:"originTokenId,omitempty"`
+	// OriginTool (T-2705) is the staging tool's own name, so the model sees
+	// the same tag the review API shows a human (`originTool` on every
+	// changeset response). Empty for a draft this surface did not stage with
+	// a typed tool.
+	OriginTool string           `json:"originTool,omitempty"`
+	Findings   []change.Finding `json:"findings"`
+	CreatedAt  int64            `json:"createdAt"`
+	UpdatedAt  int64            `json:"updatedAt"`
 }
 
 func toChangesetView(c change.Changeset) changesetView {
@@ -334,7 +422,8 @@ func toChangesetView(c change.Changeset) changesetView {
 	}
 	return changesetView{
 		ID: c.ID, Title: c.Title, Author: c.Author, Status: string(c.Status),
-		Origin: c.Origin, OriginTokenID: c.OriginTokenID, Findings: findings,
+		Origin: c.Origin, OriginTokenID: c.OriginTokenID, OriginTool: c.OriginTool,
+		Findings:  findings,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 }
