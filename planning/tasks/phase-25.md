@@ -217,3 +217,51 @@ they are aspirations with a document, not budgets.
 4. Noise does not fail the gate: the measurement is a median of N runs with N stated, and a test
    asserts a single slow outlier passes.
 5. Headroom is reported for every budget on every run, including passing ones.
+
+---
+
+## Follow-ups filed during wave 1 (2026-08-10)
+
+These were found while implementing and verifying the wave, not by a card. They are recorded
+here so they are not re-derived; none is a blocker for the rest of the arc.
+
+### T-2502-followup-01 · `pvemock`'s list endpoints are order-nondeterministic
+
+**kind:** defect · **found by:** T-2502's cassette-freshness gate
+
+`/cluster/resources`, `/cluster/sdn/vnets` and `/cluster/sdn/zones` build their arrays by ranging
+over Go maps, so the same request returns the same elements in a different order on roughly one
+run in three. T-2502 contained the blast radius by comparing canonicalised bodies (arrays sorted)
+in the freshness gate, with a comment saying why; replay itself is still byte-exact.
+
+This matters beyond the gate: any test asserting on a list's *order* against pvemock is
+accidentally asserting on Go's map iteration seed. Fix by sorting at the handler, on a stable key
+(`id` where present), so the mock is deterministic by construction.
+
+**Acceptance**
+
+1. The same request to each of the three endpoints returns byte-identical bodies across 100 runs
+   in one process and across 10 separate processes.
+2. The sort key is stated per endpoint, and a fixture with deliberately unsorted input proves the
+   handler orders it rather than the fixture happening to be ordered.
+3. T-2502's freshness gate can then compare raw bodies; the canonicalisation is removed, not left
+   as dead tolerance.
+
+### T-2505-input-01 · load-sensitive test flakes, observed twice independently
+
+**kind:** evidence · **feeds:** T-2505
+
+Two independent observations during wave 1, both under full-parallel load on a 32-core machine
+with three agents running:
+
+- `internal/collect`'s `TestGolden_OVSLab` blew its 3-second convergence deadline on one of two
+  full uncached `go test ./...` runs (reported by T-2502's agent; passes 5/5 alone).
+- A full `go test` sweep against T-2504's leaking build reported 3 package failures once, then 0
+  across three subsequent runs.
+
+**Why this is recorded on T-2505 rather than fixed here:** T-2409's regression was characterised
+as *order-dependent, not load-dependent*, on the evidence that an idle-machine rerun reproduced
+the wall clock within 0.4 min. That evidence rules out load as the cause of the *slowdown*. It
+does not rule out load as a cause of the *four failures*, and these two sightings show this
+repository does contain deadline-based tests that fail under CPU pressure. T-2505 should test
+that hypothesis explicitly before concluding, and should not treat it as already refuted.
