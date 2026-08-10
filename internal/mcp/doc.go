@@ -11,23 +11,41 @@
 // independent structural facts, not by documentation or convention:
 //
 //  1. The tool registry (registry.go) is a fixed, enumerable allowlist of
-//     exactly nine tools. There is no generic "call any route/method" bridge.
-//     A package init() rejects (panics) any tool whose name matches a mutating
-//     verb, and TestRegistryIsStageOnlyAllowlist / TestNoMutatingToolByName
-//     pin the exact set so a future edit that adds an apply-shaped tool fails
-//     loudly in CI.
+//     exactly thirteen tools. There is no generic "call any route/method"
+//     bridge. A package init() rejects (panics) any tool whose name matches a
+//     mutating verb, and TestRegistryIsStageOnlyAllowlist /
+//     TestNoMutatingToolByName / TestNoApplyConfirmOrDeleteToolName pin the
+//     exact set — the last of those also enumerating the WIRED HANDLER MAP, so
+//     a tool smuggled in by wiring rather than by declaration is caught too.
 //
 //  2. The change-engine seam this package holds (ChangesetStager, server.go)
-//     exposes only CreateWithOrigin/Validate/Diff — it has no Apply, Confirm,
-//     Rollback, or Discard method at all, so no MCP code path can call one even
-//     if a tool tried. TestChangesetStagerHasNoMutationVerb asserts this over
-//     the interface's own method set by reflection (the same interface-surface
-//     style T-1702's plugin seam uses).
+//     exposes only CreateWithOrigin/CreateWithProvenance/UpdateDraft/Validate/
+//     Diff/List — it has no Apply, Confirm, Approve, Rollback, or Discard
+//     method at all, so no MCP code path can call one even if a tool tried.
+//     T-2705 made this a COMPILE-TIME guarantee (stageonly.go): a placeholder
+//     type implementing exactly those verbs and nothing else is asserted to
+//     satisfy the interface, so widening it stops the package building, naming
+//     the offending method. TestChangesetStagerHasNoMutationVerb additionally
+//     asserts it over the interface's own reflected method set (the same
+//     interface-surface style T-1702's plugin seam uses).
+//
+// # Staging (T-2705)
+//
+// Four typed tools — changesets.stage.bridge/.iface/.fwrule/.ipam — turn a
+// small, schema-described request into exactly ONE op in a draft changeset, so
+// an AI operator can propose a concrete change instead of handing a human a
+// paragraph to type. Every one of them funnels through Server.stage (stage.go):
+// rate limit, build the op, POLICY (T-2601's evaluator, before any row exists —
+// a denial names the refusing rule's id and description and stages nothing),
+// open-draft cap, stage. Nothing else. A policy set that cannot be evaluated
+// fails closed.
 //
 // A human (or T-1103's confirm machinery) therefore remains the sole apply/
 // confirm authority: an MCP-staged changeset is an ordinary draft that a person
 // still reviews and applies through the authenticated UI/API, exactly like any
-// other changeset since T-205.
+// other changeset since T-205 — and it is tagged, unerasably, with the tool and
+// the session that produced it (change.OriginMCP + the token id + the tool
+// name), all three of which survive to the review API.
 //
 // # Auth & scoping
 //

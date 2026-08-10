@@ -530,7 +530,7 @@ func (s *Service) Get(ctx context.Context, id string) (Changeset, error) {
 // what they contain — only the explicit Validate call promotes a clean
 // draft to StatusValidated.
 func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (Changeset, error) {
-	return s.create(ctx, author, title, ops, OriginUI, "")
+	return s.create(ctx, author, title, ops, Provenance{Origin: OriginUI})
 }
 
 // CreateWithOrigin is Create with an explicit provenance label (T-1701): the
@@ -543,10 +543,31 @@ func (s *Service) Create(ctx context.Context, author, title string, ops []Op) (C
 // path. An empty origin normalizes to OriginUI so a mis-wired caller can never
 // produce an unlabelled row.
 func (s *Service) CreateWithOrigin(ctx context.Context, author, title string, ops []Op, origin, originTokenID string) (Changeset, error) {
-	return s.create(ctx, author, title, ops, origin, originTokenID)
+	return s.create(ctx, author, title, ops, Provenance{Origin: origin, TokenID: originTokenID})
 }
 
-func (s *Service) create(ctx context.Context, author, title string, ops []Op, origin, originTokenID string) (Changeset, error) {
+// Provenance is the full "how did this changeset come to exist" label
+// (T-2705): the kind of actor (Origin), the automation credential it
+// presented (TokenID — i.e. which session), and the specific tool it used
+// (Tool). It is a label in every case: the apply path is identical for every
+// value of it, so no field here can ever become a control-flow switch.
+type Provenance struct {
+	Origin  string
+	TokenID string
+	Tool    string
+}
+
+// CreateWithProvenance is CreateWithOrigin plus the staging tool's own name
+// (T-2705): the MCP surface's typed staging tools call it so a reviewer can
+// see not only that an AI staged the draft but which action it took. It is
+// otherwise byte-identical to Create/CreateWithOrigin — same validation, same
+// StatusDraft result, same downstream guarantees.
+func (s *Service) CreateWithProvenance(ctx context.Context, author, title string, ops []Op, p Provenance) (Changeset, error) {
+	return s.create(ctx, author, title, ops, p)
+}
+
+func (s *Service) create(ctx context.Context, author, title string, ops []Op, prov Provenance) (Changeset, error) {
+	origin, originTokenID := prov.Origin, prov.TokenID
 	if ops == nil {
 		ops = []Op{}
 	}
@@ -561,7 +582,7 @@ func (s *Service) create(ctx context.Context, author, title string, ops []Op, or
 	findings := s.validateScoped(ctx, s.localClusterID, ops)
 	c := Changeset{
 		ID: store.NewULID(), Title: title, Author: author, Status: StatusDraft, ClusterID: s.localClusterID,
-		Origin: origin, OriginTokenID: originTokenID,
+		Origin: origin, OriginTokenID: originTokenID, OriginTool: prov.Tool,
 		Ops: ops, Findings: findings, CreatedAt: nowUnix, UpdatedAt: nowUnix,
 	}
 	row, err := toStoreRow(c)
@@ -571,7 +592,11 @@ func (s *Service) create(ctx context.Context, author, title string, ops []Op, or
 	if err := s.repo.Insert(ctx, row); err != nil {
 		return Changeset{}, fmt.Errorf("change: creating changeset %s: %w", c.ID, err)
 	}
-	s.appendAudit(ctx, author, "changeset.create", "success", c.ID, map[string]any{"title": title, "opCount": len(ops), "origin": origin})
+	auditDetail := map[string]any{"title": title, "opCount": len(ops), "origin": origin}
+	if prov.Tool != "" {
+		auditDetail["originTool"] = prov.Tool
+	}
+	s.appendAudit(ctx, author, "changeset.create", "success", c.ID, auditDetail)
 	s.auditSafetyOverride(ctx, author, c.ID, findings)
 	s.broadcastStatus(c)
 	return c, nil
@@ -1055,7 +1080,7 @@ func toStoreRow(c Changeset) (store.Changeset, error) {
 	}
 	row := store.Changeset{
 		ID: c.ID, Title: c.Title, Author: c.Author, Status: string(c.Status), ClusterID: c.ClusterID,
-		Origin: c.Origin, OriginTokenID: c.OriginTokenID,
+		Origin: c.Origin, OriginTokenID: c.OriginTokenID, OriginTool: c.OriginTool,
 		OpsJSON: string(opsJSON), CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 	if c.Findings != nil {
@@ -1085,7 +1110,7 @@ func fromStoreRow(row store.Changeset) (Changeset, error) {
 	}
 	c := Changeset{
 		ID: row.ID, Title: row.Title, Author: row.Author, Status: Status(row.Status), ClusterID: row.ClusterID,
-		Origin: row.Origin, OriginTokenID: row.OriginTokenID,
+		Origin: row.Origin, OriginTokenID: row.OriginTokenID, OriginTool: row.OriginTool,
 		Ops: ops, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if row.FindingsJSON.Valid {

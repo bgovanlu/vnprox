@@ -39,10 +39,19 @@ func setupMCP(
 	logger *slog.Logger,
 ) (*mcp.Server, error) {
 	deps := mcp.Deps{
-		Auth:    mcpTokenAuth{repo: tokens},
-		Audit:   audit,
-		Staging: changeSvc,
-		Logger:  logger,
+		Auth:   mcpTokenAuth{repo: tokens},
+		Audit:  audit,
+		Logger: logger,
+	}
+	if changeSvc != nil {
+		deps.Staging = changeSvc
+		// T-2705: the SAME change service is the policy evaluator, so an
+		// MCP-staged op is judged by T-2601's one implementation of what a
+		// rule means — the identical evaluation POST /policies/test and the
+		// validate stage run, not a second copy of it. Wired together with
+		// Staging deliberately: a daemon that can stage must be able to
+		// policy-check, and the staging tools fail closed if it cannot.
+		deps.Policy = changeSvc
 	}
 
 	if topoSvc != nil {

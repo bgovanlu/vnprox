@@ -112,6 +112,10 @@ CREATE TABLE changesets (
   origin TEXT NOT NULL DEFAULT 'ui', -- T-1701 (migration 0028): who staged this changeset —
                                      -- 'ui'|'mcp'|'cli'; default 'ui' backfills every pre-0028 row
   origin_token_id TEXT,              -- T-1701: staging bearer token's api_tokens.id; NULL unless token-staged (mcp/cli)
+  origin_tool TEXT,                  -- T-2705 (migration 0039): the MCP tool that staged it
+                                     -- ('changesets.stage.bridge', …); NULL for anything else.
+                                     -- Written once at insert, never by UPDATE — provenance
+                                     -- (origin/origin_token_id/origin_tool) cannot be rewritten.
   ops_json TEXT NOT NULL,            -- ordered []Op
   findings_json TEXT,                -- validation results
   plan_json TEXT,                    -- ordered apply steps (rendered pre-apply)

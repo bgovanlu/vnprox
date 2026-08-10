@@ -133,12 +133,18 @@ type changesetResponse struct {
 	// review UI can badge an AI-staged draft distinctly from a human one.
 	// OriginTokenID names the staging automation token (present only for a
 	// token-staged changeset).
-	Origin        string           `json:"origin"`
-	OriginTokenID string           `json:"originTokenId,omitempty"`
-	Ops           []change.Op      `json:"ops"`
-	Findings      []change.Finding `json:"findings"`
-	CreatedAt     int64            `json:"createdAt"`
-	UpdatedAt     int64            `json:"updatedAt"`
+	Origin        string `json:"origin"`
+	OriginTokenID string `json:"originTokenId,omitempty"`
+	// OriginTool (T-2705) names the MCP staging tool that produced this
+	// changeset ("changesets.stage.bridge", …), omitted for every changeset
+	// not staged by one. Together with origin/originTokenId it is the tag the
+	// review UI badges an AI-staged draft with: which kind of actor, which
+	// automation credential (session), and which action.
+	OriginTool string           `json:"originTool,omitempty"`
+	Ops        []change.Op      `json:"ops"`
+	Findings   []change.Finding `json:"findings"`
+	CreatedAt  int64            `json:"createdAt"`
+	UpdatedAt  int64            `json:"updatedAt"`
 	// Comments and Approval (T-2003) are the review surface: per-op/
 	// changeset comments and the current review-approval decision,
 	// respectively. Both are additive fields (docs/architecture.md §10/§13's
@@ -213,7 +219,7 @@ func toChangesetResponse(c change.Changeset) changesetResponse {
 	}
 	return changesetResponse{
 		ID: c.ID, Title: c.Title, Author: c.Author, Status: string(c.Status),
-		Origin: origin, OriginTokenID: c.OriginTokenID,
+		Origin: origin, OriginTokenID: c.OriginTokenID, OriginTool: c.OriginTool,
 		Ops: ops, Findings: findings, Plan: c.Plan, ApplyLog: c.ApplyLog,
 		ConfirmDeadline: c.ConfirmDeadline, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 		UnattendedRevert: c.UnattendedRevert,

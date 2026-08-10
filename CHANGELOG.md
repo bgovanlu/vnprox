@@ -28,6 +28,26 @@ functionality is folded into `[2.0.0]`.
 
 ### Added
 
+- **An AI operator can now stage a change it cannot apply.** The MCP surface could already diagnose
+  a problem in full — and then had to hand you a paragraph of instructions to type. Four new tools
+  (`changesets.stage.bridge`, `changesets.stage.iface`, `changesets.stage.fwrule`,
+  `changesets.stage.ipam`) close that gap from the safe side: each turns a request into exactly one
+  op in a **draft** changeset and returns its id. You still review it and you still apply it.
+
+  The boundary that makes this safe is not a rule anyone has to remember:
+
+  - **No tool applies, confirms, approves, or deletes** — and one cannot be written. The only
+    change-engine capability the MCP server holds is an interface with no such method, and a
+    compile-time assertion fails the *build*, naming the offending method, if anyone widens it.
+  - **Every op is checked against your policy rules before a draft exists.** A denied op is refused
+    with the rule's id and description — feedback a model can act on — and leaves nothing behind. A
+    policy that cannot be evaluated refuses the stage rather than skipping the check.
+  - **Every staged changeset says who and what made it**: `origin: "mcp"`, the automation token, and
+    now the tool's own name (`originTool`), all set once at creation and visible on every changeset
+    response, so a reviewer sees which AI action produced the draft rather than only that one did.
+  - **Budgeted**: staging is rate-limited per session and the number of open MCP drafts is capped;
+    exceeding either is refused with a message naming the limit.
+
 - **`vnproxctl verify` — the hardware-validation checklist, executed.** vnprox has always had a
   gap it stated openly: almost every behaviour it claims has only ever been tested against a mock
   Proxmox, because validating one on real hardware meant a person reading a checklist line, doing

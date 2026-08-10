@@ -178,11 +178,22 @@ type Changeset struct {
 	// UI-originated one. It ties an AI-staged draft back to the exact
 	// automation credential that produced it.
 	OriginTokenID string
-	Status        Status
-	Ops           []Op
-	Findings      []Finding
-	Plan          json.RawMessage
-	ApplyLog      json.RawMessage
+	// OriginTool (T-2705) names the tool that staged this changeset, when it
+	// was staged by a tool with an identity of its own — the MCP surface's
+	// typed staging tools set it to their own tool name
+	// ("changesets.stage.bridge", …). '' for everything else (the UI, the CLI,
+	// gitsync, the generic changesets.create MCP tool). Where Origin says
+	// WHAT KIND of actor staged the changeset and OriginTokenID says WHICH
+	// automation credential (i.e. which session), this says WHICH ACTION —
+	// together they are the tag a reviewer sees on an AI-staged draft
+	// (docs/api.md's changeset-provenance paragraph). Set once at create and
+	// never mutated: ChangesetRepo.Update does not write the column.
+	OriginTool string
+	Status     Status
+	Ops        []Op
+	Findings   []Finding
+	Plan       json.RawMessage
+	ApplyLog   json.RawMessage
 	// RevertTicketExpiresAt (T-1805) is when the sealed apply-time revert
 	// ticket stops being usable (unix seconds), or 0 when none is sealed. It
 	// is a **bound, not a credential**: the sealed ticket itself never enters

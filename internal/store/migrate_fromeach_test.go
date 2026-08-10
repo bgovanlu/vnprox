@@ -163,6 +163,7 @@ var versionSeeds = map[int]versionSeed{
 	35: {seedV35, assertV35},
 	36: {seedV36, assertV36},
 	37: {seedV37, assertV37},
+	38: {seedV38, assertV38},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1322,10 +1323,31 @@ func assertV37(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 38 (0038_changeset_apply_stages.sql, changeset_apply_stages
-// — T-2602) has no versionSeeds entry because it is the current latest, not a
+func seedV38(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// T-2602's paused staged (canary) apply, mid-sequence on the v1 changeset.
+	mustExec(t, db, `INSERT INTO changeset_apply_stages
+		(changeset_id, state, strategy_json, applied_nodes, pending_nodes, author, hold_started_at, hold_deadline, confirm_deadline)
+		VALUES ('cs-v1', 'canary_hold', '{"mode":"canary"}', '["pve1"]', '["pve2"]', 'brian', 1700005000, 1700005600, 1700006000)`)
+}
+
+func assertV38(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var state, appliedNodes string
+	var holdDeadline int64
+	if err := db.QueryRowContext(ctx, `SELECT state, applied_nodes, hold_deadline FROM changeset_apply_stages WHERE changeset_id = 'cs-v1'`).
+		Scan(&state, &appliedNodes, &holdDeadline); err != nil {
+		t.Errorf("changeset_apply_stages row lost across migration: %v", err)
+	} else if state != "canary_hold" || appliedNodes != `["pve1"]` || holdDeadline != 1700005600 {
+		t.Errorf("changeset_apply_stages row = (%q, %q, %d), want (\"canary_hold\", \"[\\\"pve1\\\"]\", 1700005600)", state, appliedNodes, holdDeadline)
+	}
+}
+
+// Schema version 39 (0039_changeset_origin_tool.sql, changesets.origin_tool —
+// T-2705) has no versionSeeds entry because it is the current latest, not a
 // "prior" version any fixture in this file freezes at — its own forward
 // application (as part of every case's migrate() call to latest) is exercised
 // by every case above, and TestOpen_CreatesAllTables (store_test.go)
 // exercises it from a fresh database. The next migration to land becomes the
-// new latest and picks up a version 38 entry in versionSeeds at that time.
+// new latest and picks up a version 39 entry in versionSeeds at that time.

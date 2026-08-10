@@ -20,10 +20,18 @@ const (
 )
 
 // Tool names — the complete, fixed allowlist. This list is the surface's
-// security boundary: exactly these nine tools exist, and NONE of them names or
-// reaches an apply/confirm/rollback/discard verb. Adding a tool here whose name
-// matches forbiddenToolSubstrings panics at init (validateRegistry), and
+// security boundary: exactly these thirteen tools exist, and NONE of them names
+// or reaches an apply/confirm/rollback/discard verb. Adding a tool here whose
+// name matches forbiddenToolSubstrings panics at init (validateRegistry), and
 // TestRegistryIsStageOnlyAllowlist pins the exact set.
+//
+// The `changesets.stage.*` family (T-2705) is the typed staging surface: each
+// one turns a small, schema-described request into exactly ONE op in a DRAFT
+// changeset and returns that draft's id. They are mutating in the sense that
+// they write an app-owned draft row — and in no other sense: they cannot touch
+// the network, because staging a draft is the only thing the change-engine seam
+// this package holds can do (see ChangesetStager in server.go and the
+// compile-time assertion in stageonly.go).
 const (
 	ToolTopologyGet        = "topology.get"
 	ToolFindingsList       = "findings.list"
@@ -34,7 +42,17 @@ const (
 	ToolChangesetsDiff     = "changesets.diff"
 	ToolChangesetsCreate   = "changesets.create"
 	ToolChangesetsValidate = "changesets.validate"
+
+	ToolStageBridge = "changesets.stage.bridge"
+	ToolStageIface  = "changesets.stage.iface"
+	ToolStageFwRule = "changesets.stage.fwrule"
+	ToolStageIPAM   = "changesets.stage.ipam"
 )
+
+// stagingTools is the T-2705 typed-staging family, in registration order. It
+// exists so tests (and docs generators) can enumerate exactly the tools that
+// write, without re-deriving the set from a name prefix.
+var stagingTools = []string{ToolStageBridge, ToolStageIface, ToolStageFwRule, ToolStageIPAM}
 
 // forbiddenToolSubstrings are the mutating verbs no MCP tool name may ever
 // contain. validateRegistry enforces this at init and
@@ -42,7 +60,17 @@ const (
 // edit that would (say) add a `changesets.apply` tool. Matching is
 // case-insensitive and substring-based so `apply`, `Apply`, `confirmChange`,
 // etc. are all caught.
-var forbiddenToolSubstrings = []string{"apply", "confirm", "rollback", "discard"}
+//
+// T-2705 widened the original four (apply/confirm/rollback/discard) to cover
+// the approve and destructive verbs too: an AI operator may open a draft, but
+// approving one, deleting one, or destroying an entity are all human decisions
+// with their own authenticated surfaces. The list is checked against every
+// existing tool name by TestNoMutatingToolByName and
+// TestNoApplyConfirmOrDeleteToolName (AC6).
+var forbiddenToolSubstrings = []string{
+	"apply", "confirm", "rollback", "discard",
+	"approve", "delete", "destroy", "remove", "revert", "commit", "execute",
+}
 
 // ToolSpec is the static, dependency-free description of one tool: its name,
 // the scope a token must hold for the tool to be exposed to its session, a
@@ -142,6 +170,89 @@ var toolSpecs = []ToolSpec{
 			"id": schemaString("changeset id"),
 		}, []string{"id"}),
 	},
+	// --- T-2705 typed staging tools ------------------------------------
+	//
+	// Each stages exactly one op. `changesetId` is optional: absent, the tool
+	// opens a NEW draft; present, it appends the op to that already-open
+	// MCP-staged draft, so a multi-step change is one reviewable changeset
+	// rather than four. Either way the result is a draft a human still
+	// reviews and applies.
+	{
+		Name:          ToolStageBridge,
+		RequiredScope: scopeNetWrite,
+		Description: "Stage a bridge.create op in a DRAFT changeset and return the draft's id. " +
+			"Creates a draft only; a human still reviews and applies it through the change engine. " +
+			"Every op is checked against the cluster's policy rules before anything is staged — a denied op names the rule that refused it and stages nothing.",
+		InputSchema: schemaObject(map[string]json.RawMessage{
+			"targetRef":   schemaString("the new bridge's ref, 'bridge:<node>:<name>' (Linux) or 'ovs-bridge:<node>:<name>' (OVS)"),
+			"addresses":   schemaStringArray("CIDR addresses to configure on the bridge"),
+			"gateway":     schemaString("default gateway for the bridge (optional)"),
+			"ports":       schemaStringArray("names of physical NICs/bonds to enslave (optional)"),
+			"mtu":         schemaInt("MTU (optional)"),
+			"vlanAware":   schemaBool("make the bridge VLAN-aware (optional)"),
+			"stp":         schemaBool("enable STP (optional)"),
+			"comments":    schemaString("interfaces(5) comment (optional)"),
+			"title":       schemaString("title for the draft (optional)"),
+			"changesetId": schemaString("append to this already-open MCP-staged draft instead of opening a new one (optional)"),
+		}, []string{"targetRef"}),
+	},
+	{
+		Name:          ToolStageIface,
+		RequiredScope: scopeNetWrite,
+		Description: "Stage an iface.update op (MTU, addresses, gateway, autostart, comments) in a DRAFT changeset and return the draft's id. " +
+			"Creates a draft only; a human still reviews and applies it. Policy-checked at stage time.",
+		InputSchema: schemaObject(map[string]json.RawMessage{
+			"targetRef":     schemaString("the interface to edit, 'kind:node:id' (e.g. 'physnic:pve1:eno1', 'bridge:pve1:vmbr0')"),
+			"mtu":           schemaInt("new MTU (optional)"),
+			"addresses":     schemaStringArray("replacement CIDR address list (optional)"),
+			"gateway":       schemaString("new default gateway (optional)"),
+			"autostart":     schemaBool("bring the interface up at boot (optional)"),
+			"comments":      schemaString("interfaces(5) comment (optional)"),
+			"removeAddress": schemaBool("clear the stanza's address option (optional; ignored when addresses is set)"),
+			"removeGateway": schemaBool("clear the stanza's gateway option (optional; ignored when gateway is set)"),
+			"title":         schemaString("title for the draft (optional)"),
+			"changesetId":   schemaString("append to this already-open MCP-staged draft instead of opening a new one (optional)"),
+		}, []string{"targetRef"}),
+	},
+	{
+		Name:          ToolStageFwRule,
+		RequiredScope: scopeNetWrite,
+		Description: "Stage an fw.rule.create op in a DRAFT changeset and return the draft's id. " +
+			"Creates a draft only; a human still reviews and applies it. Policy-checked at stage time.",
+		InputSchema: schemaObject(map[string]json.RawMessage{
+			"targetRef":   schemaString("the ruleset the rule joins, 'fw-ruleset:<node>:<id>' (cluster/node/guest scope)"),
+			"direction":   schemaString("in|out"),
+			"action":      schemaString("ACCEPT|DROP|REJECT (or a security-group name)"),
+			"proto":       schemaString("IP protocol, e.g. tcp/udp/icmp (optional)"),
+			"source":      schemaString("source address/CIDR/alias (optional)"),
+			"dest":        schemaString("destination address/CIDR/alias (optional)"),
+			"sport":       schemaString("source port or range (optional)"),
+			"dport":       schemaString("destination port or range (optional)"),
+			"iface":       schemaString("interface the rule is scoped to (optional)"),
+			"macro":       schemaString("PVE firewall macro (optional)"),
+			"log":         schemaString("log level (optional)"),
+			"comment":     schemaString("rule comment (optional)"),
+			"pos":         schemaInt("position to insert at within the ruleset (default 0, the top)"),
+			"enabled":     schemaBool("whether the rule is enabled (default true)"),
+			"title":       schemaString("title for the draft (optional)"),
+			"changesetId": schemaString("append to this already-open MCP-staged draft instead of opening a new one (optional)"),
+		}, []string{"targetRef", "direction", "action"}),
+	},
+	{
+		Name:          ToolStageIPAM,
+		RequiredScope: scopeNetWrite,
+		Description: "Reserve an IPAM address by staging an ipam.alloc.create op in a DRAFT changeset, and return the draft's id. " +
+			"Creates a draft only — the reservation does not exist until a human applies the changeset. Policy-checked at stage time.",
+		InputSchema: schemaObject(map[string]json.RawMessage{
+			"targetRef":   schemaString("the parent SDN subnet, 'sdn-subnet::<cidr>'"),
+			"cidr":        schemaString("the address to reserve, typically a /32 or /128 host route"),
+			"hostname":    schemaString("hostname for the reservation (optional)"),
+			"mac":         schemaString("MAC address for the reservation (optional)"),
+			"comment":     schemaString("comment for the reservation (optional)"),
+			"title":       schemaString("title for the draft (optional)"),
+			"changesetId": schemaString("append to this already-open MCP-staged draft instead of opening a new one (optional)"),
+		}, []string{"targetRef", "cidr"}),
+	},
 }
 
 // Tools returns a copy of the static tool allowlist, in registration order.
@@ -216,6 +327,16 @@ func schemaString(desc string) json.RawMessage {
 
 func schemaInt(desc string) json.RawMessage {
 	b, _ := json.Marshal(map[string]any{"type": "integer", "description": desc})
+	return b
+}
+
+func schemaBool(desc string) json.RawMessage {
+	b, _ := json.Marshal(map[string]any{"type": "boolean", "description": desc})
+	return b
+}
+
+func schemaStringArray(desc string) json.RawMessage {
+	b, _ := json.Marshal(map[string]any{"type": "array", "description": desc, "items": map[string]any{"type": "string"}})
 	return b
 }
 
