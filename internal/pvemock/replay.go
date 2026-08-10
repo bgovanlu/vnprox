@@ -134,6 +134,11 @@ func NewReplayServerFromSet(set map[string]pvecassette.Cassette, opts ...ReplayO
 
 // ServeHTTP implements http.Handler.
 func (s *ReplayServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// T-2501: identify as a mock on every response, matched or not. A
+	// cassette recorded from real hardware is still not real hardware being
+	// exercised now, so `vnproxctl verify` has to be able to tell the
+	// difference at the door — see MockIdentityHeader's comment in server.go.
+	w.Header().Set(MockIdentityHeader, "replay")
 	key := pvecassette.RequestKey(r.Method, r.URL.Path, r.URL.Query())
 	c, ok := s.cassettes[key]
 	if !ok {

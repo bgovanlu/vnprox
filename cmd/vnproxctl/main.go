@@ -77,6 +77,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runCerts(args[1:], stdout, stderr)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr)
+	case "verify":
+		return runVerify(args[1:], stdout, stderr)
 	case "support-bundle":
 		return runSupportBundle(args[1:], stdout, stderr)
 	case "remote":
@@ -115,6 +117,13 @@ Usage:
                                        agreement and clock skew. Every problem names what to do
                                        about it. Read-only; works before install and daemon-down.
                                        Exits non-zero if any check FAILS (warnings do not gate).
+  vnproxctl verify                     Run the hardware-validation suite against this cluster and
+                                       print (and optionally sign, with --out) a report naming what
+                                       was observed and the evidence each verdict rests on. Refuses
+                                       to run against a mock PVE endpoint without --allow-mock.
+                                       A check that cannot run reports SKIP with the hardware it
+                                       needs — never PASS. Exits non-zero on any failure AND on a
+                                       run in which nothing passed.
   vnproxctl support-bundle             Write a REDACTED diagnostic archive meant to be attached to
                                        a support thread: environment, allowlisted config, store
                                        facts (never the store), redacted changesets, scrubbed logs,
@@ -149,6 +158,18 @@ HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
                                        (direct pmxcfs read; works daemon-down — which is when a
                                        certificate problem has usually taken the API with it)
   vnproxctl --help                     Show this help
+
+verify flags:
+  --suite <name>    hardware (default), multinode, or destructive
+  --only <ids>      comma-separated check ids, instead of a whole suite (unknown id = error)
+  --list            print every registered check, its matrix row and its hardware precondition
+  --out <path>      write the signed report artifact here (re-verified after writing)
+  --sign-key <path> Ed25519 key for the report (default: ephemeral — detects tampering, no provenance)
+  --allow-mock      run against a mock/replay PVE endpoint; the report is stamped and is NOT
+                    hardware evidence
+  --i-understand    required by --suite=destructive; without it no write client is constructed
+  --pve-url/--pve-token   the PVE endpoint to validate (default: [pve] from --config)
+  --url/--token/--config/--insecure/-o    as for the remote family
 
 policy flags:
   --policy <path>   policy YAML document (test: default is the cluster's installed rule set)
