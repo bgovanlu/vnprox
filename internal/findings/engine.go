@@ -134,11 +134,21 @@ type Config struct {
 	// storeCapacityAdapter over *store.DB.SizeBytes), backing
 	// store_near_capacity (source "store"). Nil skips that check entirely,
 	// same degradation as every other optional Config field.
-	StoreCapacity   StoreCapacityProvider
-	Notifier        Notifier
-	Graph           *inventory.Graph
-	Logger          *slog.Logger
-	OnChange        func(count int)
+	StoreCapacity StoreCapacityProvider
+	Notifier      Notifier
+	Graph         *inventory.Graph
+	Logger        *slog.Logger
+	OnChange      func(count int)
+	// OnCycle (T-2603) receives the WHOLE stream at the end of every cycle,
+	// changed or not — unlike OnChange, which fires only on a transition and
+	// carries just a count. It is the seam the change engine's
+	// finding-triggered auto-rollback hangs off (change.Service.
+	// ObserveFindings): deciding whether a finding is new relative to a
+	// changeset's pre-apply baseline needs every cycle, including the ones
+	// where nothing changed, or "new" would mean "new since the last time
+	// something else moved". Nil (the default) skips it entirely, same
+	// degradation as every other optional Config field.
+	OnCycle         func(ctx context.Context, findings []Finding)
 	Now             func() time.Time
 	NotifyThreshold string
 	// ProtectedSegments is T-1605's operator-flagged protected-segment list
@@ -180,6 +190,7 @@ type Engine struct {
 	capacitySvc      CapacityProvider
 	notified         map[string]string
 	onChange         func(int)
+	onCycle          func(context.Context, []Finding)
 	cephDB           *debouncer
 	baselineSvc      BaselineProvider
 	baselineDB       *debouncer
@@ -262,6 +273,7 @@ func New(cfg Config) *Engine {
 		log:              logger,
 		now:              now,
 		onChange:         cfg.OnChange,
+		onCycle:          cfg.OnCycle,
 		notifier:         cfg.Notifier,
 		notifyMin:        notifyMin,
 		interval:         interval,
@@ -443,6 +455,12 @@ func (e *Engine) cycle(ctx context.Context) {
 	}
 
 	e.evaluateNotifications(ctx, findings)
+
+	// T-2603: every cycle, changed or not. See Config.OnCycle for why the
+	// unchanged ones matter as much as the changed ones.
+	if e.onCycle != nil {
+		e.onCycle(ctx, findings)
+	}
 }
 
 func sameIDSet(a, b map[string]bool) bool {

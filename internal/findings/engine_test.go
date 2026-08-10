@@ -2,6 +2,7 @@ package findings_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -201,6 +202,69 @@ func TestNotify_FiresOncePerTransition(t *testing.T) {
 	}
 	if newCount != 1 {
 		t.Fatalf("notifier fired %d TransitionNew calls across ~16 cycles of an unchanging breach, want exactly 1: %v", newCount, notifier.calls)
+	}
+}
+
+// TestOnCycle_FiresEveryCycleWithTheWholeStream is T-2603's seam contract, and
+// deliberately the OPPOSITE property to the transition hook above: OnCycle must
+// fire on every cycle of an UNCHANGING stream, carrying the findings
+// themselves. The change engine decides "new relative to this changeset's
+// pre-apply baseline"; a hook that fired only on transitions would leave it
+// deciding "new since the last time something else moved".
+//
+// The control is TestNotify_FiresOncePerTransition above, over the same
+// unchanging fixture: that one must see exactly one call where this one sees
+// many, so a shared "fires once" bug cannot pass both.
+func TestOnCycle_FiresEveryCycleWithTheWholeStream(t *testing.T) {
+	g := newGraphWithNodes("pve1")
+	netlinkBond(g, "pve1", "bond0", []inventory.BondSlaveState{
+		{Name: "eno1", MIIStatus: "up", Active: true},
+		{Name: "eno2", MIIStatus: "down", Active: false},
+	})
+
+	var mu sync.Mutex
+	var cycles [][]findings.Finding
+	eng := findings.New(findings.Config{
+		Graph: g, Interval: 5 * time.Millisecond,
+		OnCycle: func(_ context.Context, fs []findings.Finding) {
+			mu.Lock()
+			defer mu.Unlock()
+			cycles = append(cycles, fs)
+		},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	if err := eng.RunLoop(ctx); err != nil {
+		t.Fatalf("RunLoop: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(cycles) < 3 {
+		t.Fatalf("OnCycle fired %d time(s) across ~16 cycles of an unchanging stream, want one per cycle", len(cycles))
+	}
+	var sawFinding bool
+	for _, fs := range cycles {
+		for _, f := range fs {
+			if f.Check == "bond_slave_down" {
+				sawFinding = true
+			}
+		}
+	}
+	if !sawFinding {
+		t.Error("OnCycle never carried the fixture's own finding; the hook must deliver the stream, not merely a count")
+	}
+}
+
+// TestOnCycle_NilIsANoOp pins the same nil-safe-optional convention every
+// other Config seam in this package follows.
+func TestOnCycle_NilIsANoOp(t *testing.T) {
+	eng := findings.New(findings.Config{Graph: newGraphWithNodes("pve1"), Interval: 5 * time.Millisecond})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := eng.RunLoop(ctx); err != nil {
+		t.Fatalf("RunLoop with no OnCycle: %v", err)
 	}
 }
 

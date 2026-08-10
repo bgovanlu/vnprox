@@ -204,6 +204,13 @@ type Config struct {
 	PolicyUnmatchedAfter time.Duration
 	SwitchPushEnabled    bool
 	AllowDangerousOps    bool
+	// AutoRollbackOnError (T-2603) is the CLUSTER DEFAULT for the
+	// finding-triggered rollback inside the commit-confirm window
+	// (autorollback.go). false — the zero value, and every deployment that
+	// does not opt in — means a changeset is guarded only when its own apply
+	// request asks for it, and a deployment that never asks behaves exactly
+	// as it did before this card: no findings cycle can roll anything back.
+	AutoRollbackOnError bool
 }
 
 // TimerFunc arms a one-shot timer that runs f after d and can be stopped.
@@ -260,9 +267,19 @@ type Service struct {
 	// is deliberately a SECOND map rather than sharing s.timers: a paused
 	// changeset has both a hold deadline and a commit-confirm deadline armed
 	// at once, and cancelling one must never cancel the other.
-	stages         *store.ChangesetStageRepo
-	canary         CanaryHealthChecker
-	holdTimers     map[string]Stopper
+	stages     *store.ChangesetStageRepo
+	canary     CanaryHealthChecker
+	holdTimers map[string]Stopper
+	// guards/lastFindings/seenCycle/findMu (T-2603): the armed
+	// finding-triggered rollback watches, the most recent findings cycle's ID
+	// set (the baseline a newly-armed guard inherits), and the lock over both.
+	// Deliberately its own mutex rather than applyMu: a findings cycle must
+	// never block behind an in-flight apply, and evaluating a cycle takes no
+	// apply-engine state at all. Lock order, where both are needed, is
+	// applyMu -> findMu and never the reverse — ObserveFindings releases
+	// findMu before any rollback path takes applyMu (see fireAutoRollback).
+	guards         map[string]*autoRollbackGuard
+	lastFindings   map[string]bool
 	leaderGuard    func() bool
 	log            *slog.Logger
 	newTimer       TimerFunc
@@ -279,8 +296,13 @@ type Service struct {
 	policyUnmatchedAfter time.Duration
 	rollbackWindowDays   int
 	applyMu              sync.Mutex
+	findMu               sync.Mutex
 	switchPushEnabled    bool
 	allowDangerousOps    bool
+	seenCycle            bool
+	// autoRollbackDefault (T-2603) is the cluster default for the guard —
+	// see Config.AutoRollbackOnError.
+	autoRollbackDefault bool
 }
 
 // Commit-confirm window bounds (docs/features/change-management.md §4).
@@ -338,6 +360,7 @@ func NewService(cfg Config) (*Service, error) {
 		comments: cfg.Comments, approvals: cfg.Approvals, approval: cfg.Approval,
 		policies: cfg.Policies, policyUnmatchedAfter: cfg.PolicyUnmatchedAfter,
 		stages: cfg.Stages, canary: cfg.Canary, holdTimers: map[string]Stopper{},
+		guards: map[string]*autoRollbackGuard{}, autoRollbackDefault: cfg.AutoRollbackOnError,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,
 		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, revertGateways: cfg.RevertGateways, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,

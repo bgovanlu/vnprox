@@ -398,6 +398,16 @@ type StagedApplyService interface {
 	StagedApplyState(ctx context.Context, id string) (change.StagedApplyState, bool, error)
 }
 
+// AutoRollbackApplyService is the optional ChangesetService extension backing
+// T-2603's `autoRollbackOnError` apply flag (change.Service.ApplyWithOptions).
+// Checked with a type assertion, exactly like StagedApplyService above, so a
+// deployment whose changeset service predates it REFUSES the field rather
+// than applying without the guard the caller asked for — silently dropping a
+// safety request is worse than declining it.
+type AutoRollbackApplyService interface {
+	ApplyWithOptions(ctx context.Context, id, author string, pveGW change.PVEGateway, confirmTimeout time.Duration, strategy change.ApplyStrategy, opts change.ApplyOptions) (change.Changeset, error)
+}
+
 // applyRequest is docs/api.md's POST /changesets/{id}/apply body:
 // `{confirmTimeoutSec: 120, mgmtAck?: {node}, applyStrategy?: {...}}`.
 // MgmtAck (T-703) is the review screen's typed management-path
@@ -405,9 +415,14 @@ type StagedApplyService interface {
 // management path. ApplyStrategy (T-2602) stages the apply; omitting it is
 // `mode: all`, which is what every apply has always done.
 type applyRequest struct {
-	MgmtAck           *mgmtAckRequest       `json:"mgmtAck,omitempty"`
-	ApplyStrategy     *change.ApplyStrategy `json:"applyStrategy,omitempty"`
-	ConfirmTimeoutSec int                   `json:"confirmTimeoutSec"`
+	MgmtAck       *mgmtAckRequest       `json:"mgmtAck,omitempty"`
+	ApplyStrategy *change.ApplyStrategy `json:"applyStrategy,omitempty"`
+	// AutoRollbackOnError (T-2603) arms the finding-triggered rollback for
+	// this changeset's commit-confirm window. Omitted (nil) means "the
+	// cluster default", which is itself off unless an admin opted in — so a
+	// body that predates this field behaves exactly as it always did.
+	AutoRollbackOnError *bool `json:"autoRollbackOnError,omitempty"`
+	ConfirmTimeoutSec   int   `json:"confirmTimeoutSec"`
 }
 
 type mgmtAckRequest struct {
@@ -495,17 +510,33 @@ func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways 
 		// the field outright rather than applying all-at-once behind the
 		// caller's back — silently ignoring a safety request is worse than
 		// declining it.
+		//
+		// T-2603: `autoRollbackOnError` is orthogonal to the strategy (it
+		// governs the confirm window, not the fan-out), so a body carrying it
+		// goes through ApplyWithOptions with whatever strategy it also named —
+		// including the zero `mode: all` one.
 		var c change.Changeset
 		var err error
 		staged, stagedOK := svc.(StagedApplyService)
+		guarded, guardedOK := svc.(AutoRollbackApplyService)
 		switch {
-		case req.ApplyStrategy == nil:
-			c, err = svc.Apply(r.Context(), id, username, gw, confirmTimeout)
-		case !stagedOK:
+		case req.AutoRollbackOnError != nil && !guardedOK:
+			writeJSONError(w, http.StatusNotImplemented, "not_implemented", "finding-triggered auto-rollback is not available on this deployment")
+			return
+		case req.ApplyStrategy != nil && !stagedOK:
 			writeJSONError(w, http.StatusNotImplemented, "not_implemented", "staged (canary) apply is not available on this deployment")
 			return
-		default:
+		case req.AutoRollbackOnError != nil:
+			strategy := change.ApplyStrategy{}
+			if req.ApplyStrategy != nil {
+				strategy = *req.ApplyStrategy
+			}
+			c, err = guarded.ApplyWithOptions(r.Context(), id, username, gw, confirmTimeout, strategy,
+				change.ApplyOptions{AutoRollbackOnError: req.AutoRollbackOnError})
+		case req.ApplyStrategy != nil:
 			c, err = staged.ApplyStaged(r.Context(), id, username, gw, confirmTimeout, *req.ApplyStrategy)
+		default:
+			c, err = svc.Apply(r.Context(), id, username, gw, confirmTimeout)
 		}
 		if err != nil {
 			writeApplyError(w, err)

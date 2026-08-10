@@ -234,6 +234,15 @@ type ChangesetsConfig struct {
 	// single-admin workflow every pre-T-2003 deployment already has, where
 	// "the approver" and "the author" are routinely the same person.
 	AllowSelfApproval bool
+	// AutoRollbackOnError (T-2603) is the CLUSTER DEFAULT for the
+	// finding-triggered auto-rollback: when a changeset's apply request does
+	// not say either way, this decides whether a new `error` finding on an
+	// entity the changeset touched rolls it back inside its commit-confirm
+	// window. Defaults to false — off — so an upgrading install's apply
+	// behaviour is byte-identical until an admin opts in, and a changeset can
+	// still ask for the guard individually (`autoRollbackOnError` on the apply
+	// body) regardless of what this says.
+	AutoRollbackOnError bool
 }
 
 // MCPConfig is the [mcp] section (T-1701): the read-only/stage-only MCP server
@@ -722,6 +731,12 @@ type rawChangesets struct {
 	PolicyFile        string   `toml:"policy_file"`
 	Approvers         []string `toml:"approvers"`
 	ApprovalRequired  bool     `toml:"approval_required"`
+	// AutoRollbackOnError (T-2603) is the cluster default for the
+	// finding-triggered rollback inside the commit-confirm window. A plain
+	// bool is right here (unlike AllowSelfApproval above): the documented
+	// default is OFF, which is also the zero value, so "not set" and
+	// "explicitly false" mean the same thing and never need distinguishing.
+	AutoRollbackOnError bool `toml:"auto_rollback_on_error"`
 }
 
 type rawMCP struct {
@@ -989,6 +1004,8 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			AllowSelfApproval: raw.Changesets.AllowSelfApproval == nil || *raw.Changesets.AllowSelfApproval,
 			Approvers:         raw.Changesets.Approvers,
 			PolicyFile:        raw.Changesets.PolicyFile,
+			// T-2603: off unless the file says otherwise.
+			AutoRollbackOnError: raw.Changesets.AutoRollbackOnError,
 		},
 		Security: SecurityConfig{
 			ProtectedSegments: raw.Security.ProtectedSegments,
