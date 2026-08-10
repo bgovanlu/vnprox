@@ -1478,7 +1478,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		DocExport: docExportSvc,
 		Capacity:  capacityExportSvc,
 		Posture:   postureRead,
-		Plugins:   pluginRegistry,
+		// T-2706: read-only compliance profiles and evidence export. Built
+		// from the same findings/posture/policy surfaces the routes above
+		// serve; nil (routes unmounted) only if the shipped profile is
+		// unparsable by this build.
+		Compliance: setupCompliance(findingsEngine, findingAcks, findingEventRepo, postureRead, changeSvc, version, logger),
+		Plugins:    pluginRegistry,
 		// T-1705: Blueprint & plugin hub. HubClient nil (no [hub] registry_url)
 		// skips the routes; PluginInstaller reuses pluginRegistry above so a hub
 		// plugin install goes through T-1702's capability-scoped registry.

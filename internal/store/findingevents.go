@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -79,6 +80,26 @@ func (r *FindingEventRepo) ListByTimeRange(ctx context.Context, from, to int64) 
 		return nil, fmt.Errorf("store: listing finding events: %w", err)
 	}
 	return out, nil
+}
+
+// EarliestAt returns the `at` of the oldest retained finding_events row.
+// ok is false when the table is empty.
+//
+// It is the empirical answer to "how far back does the retained finding
+// history actually reach" — which T-2706's compliance report needs in order
+// to REFUSE an as-of request outside the window and name the earliest date
+// it could have covered. Deriving that from MetricRetention alone would be a
+// claim about the prune loop rather than a reading of the table, and the two
+// disagree on a daemon that has not been running for a full window.
+func (r *FindingEventRepo) EarliestAt(ctx context.Context) (at int64, ok bool, err error) {
+	var earliest sql.NullInt64
+	if err := r.db.QueryRowContext(ctx, `SELECT MIN(at) FROM finding_events`).Scan(&earliest); err != nil {
+		return 0, false, fmt.Errorf("store: reading the earliest finding event: %w", err)
+	}
+	if !earliest.Valid {
+		return 0, false, nil
+	}
+	return earliest.Int64, true, nil
 }
 
 // PruneOlderThan deletes rows with at < cutoff, returning the number

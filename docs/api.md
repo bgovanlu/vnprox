@@ -1210,6 +1210,50 @@ All three are `netRead`-gated (a posture score is a derived, read-only artifact 
 
 **Honesty contract** (inherited from `internal/failsim`/`internal/sim`'s "no silent approximation"): a factor that cannot be assessed at all — a cold-start `anomaly_rate` with no learned baseline profiles, where "zero anomalies" means "we have never looked" — is reported `evaluated: false` with `scorePct: -1`, `contribution: 0`, a `caveat`, and is **excluded** from `overall` rather than silently contributing a perfect 100. A factor computed over an incomplete underlying picture (`spof_resilience` when failsim reports `notEvaluated` dimensions) still counts but carries a `caveat` marking the score a ceiling. Either case sets `qualified: true`.
 
+## Compliance profiles & evidence export (T-2706)
+
+Added by T-2706 (`internal/compliance`, `internal/api/compliance.go`, `internal/docexport/compliance.go`). A **profile** is a declarative mapping from control ids onto evidence vnprox already produces: the unified findings stream's checks (`GET /findings`), T-1607's named posture factors (`GET /posture`), and T-2601's installed policy rules (`GET /policies`). vnprox ships **one general profile** (`general-network-hygiene`); the mapping format is the deliverable.
+
+**This is not a certification surface.** No response here asserts compliance with CIS, PCI-DSS, HIPAA, SOC 2, ISO 27001 or any other published framework, and no profile vnprox ships is named after one. Every report carries the profile's `notice` in every output format, and a standing test fails the build if the shipped profile names a framework.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/compliance` | list installed profiles: `{items: [ProfileSummary]}` |
+| GET | `/compliance/{profile}?asOf=` | one profile's report: `ComplianceReport` (below) |
+| GET | `/export/compliance/{profile}?format=md\|html\|json&asOf=` | the same report as a timestamped standalone document (`Content-Disposition: attachment`); `400 validation_failed` for any other `format` |
+
+All three are `netRead`-gated and strictly read-only: a report is a derived artifact, never staged, applied or persisted.
+
+**`ProfileSummary`**: `{id, title, version, description?, notice, controlCount, mappedChecks, unmappedControls}`.
+
+**`ComplianceReport`**: `{productVersion, profileId, profileTitle, profileVersion, notice, generatedAt, asOf?, caveats?, summary, controls, unmappedChecks?, checkUniverse}`.
+
+- **`summary`**: `{pass, fail, notEvaluated, unmapped, total}`.
+- **`controls[]`**: `{id, title, statement, status, evidence?, unmappedReason?}`.
+- **`evidence[]`**: `{kind, name, status, detail, note?, refs?}` — `kind` is `check`\|`posture`\|`policy`; `name` is the check name, posture factor name, policy rule id, or `tag:<tag>`; `refs` names the concrete finding ids or rule ids behind `detail`.
+
+**Control `status` — the load-bearing contract.** Four values, and exactly one of them is a pass:
+
+| `status` | Meaning |
+|---|---|
+| `pass` | every mapped evidence item was evaluated **and** satisfied |
+| `fail` | at least one mapped evidence item was evaluated and is **not** satisfied; the failing item is named in `evidence[]` |
+| `not_evaluated` | the control **has** a mapping, but at least one item could not be evaluated (a posture factor `posture` itself reports `evaluated: false`; a policy rule that is not installed; a rule T-2601 reports `probablyMisconfigured`, i.e. it has never matched an op and so guards nothing). Absence of evidence is not evidence of compliance |
+| `unmapped` | the control has **no** mapped evidence at all — vnprox observes nothing that speaks to it. The profile must state `unmappedReason` |
+
+**A control with no mapped evidence reports `unmapped`, never `pass`**, in every output format. An acknowledged finding (T-2402) still fails its control: acknowledgement is triage, not remediation, and it is reported alongside rather than clearing the control.
+
+**`unmappedChecks`** lists every check this build can emit that **no** control in the profile maps, with `checkUniverse` stating where that list was computed from. Adding a check to the codebase without mapping it therefore degrades no control silently — it is reported.
+
+**Historical reports (`asOf=`).** `asOf` accepts an RFC3339 timestamp or unix seconds and reconstructs the report from the retained `finding_events` history (docs/data-model.md §2), plus the newest `posture_scores` row at or before that instant. Two things it cannot do, both stated in the report's own `caveats` rather than hidden:
+
+- `finding_events` records **which** findings were open, not how severe they were, so every open finding at that instant fails its control. A historical report is stricter than the live one was, never more lenient.
+- Policy evidence is **not evaluated** historically: T-2601's per-rule match bookkeeping is current-state only, so whether a rule was actually guarding anything then cannot be established.
+
+**A date outside the retention window is refused, not thinned.** `400 outside_retention_window`, with `details: {requested, hasRetainedData, earliestAvailable?, earliestAvailableUnix?}` naming the earliest date the evidence reaches. A report assembled from evidence that does not exist would read as "these controls were in this state on that date" when nothing was observed at all. A date in the future is `400 validation_failed`. An unknown profile is `404 not_found` with `details.availableProfiles`.
+
+**Round-trip.** Every export format has a parser (`docexport.ParseCompliance{Markdown,HTML,JSON}`) recovering the vnprox version, profile version, generation time, per-control statuses, evidence names and the unmapped-check list from the rendered bytes, and a standing test asserts the round-trip for every registered format — including any added later, since an unregistered renderer fails the registry gate.
+
 ## Plugins (T-1702)
 
 Added by T-1702 (`internal/plugin`, `internal/api/plugins.go`, `internal/store/plugins.go`). A capability-scoped extension SDK: stable, versioned extension points third parties implement — switch drivers, flow ingestors, finding producers, ingress discoverers, and dashboard tiles — installed into a registry with an audited capability scope. The registry is **not a second mutation path**: the only change-engine surface handed to plugin code is stage-only (`Create`/`Validate`), never `Apply`/`Confirm`/`Rollback`. See `docs/architecture.md` §11 (extension points + deprecation policy) and `docs/security.md` (plugin capability-scope model).
