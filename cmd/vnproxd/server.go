@@ -926,6 +926,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// opts in.
 		Comments:  store.NewChangesetCommentRepo(db),
 		Approvals: store.NewChangesetApprovalRepo(db),
+		// T-2601: the declarative policy-as-code rule set. Always wired
+		// (an app-owned table on the same shared db); an install with no
+		// policy simply has an empty rule set, which produces no findings
+		// and changes nothing.
+		Policies: store.NewPolicySetRepo(db),
 		Approval: change.ApprovalConfig{
 			Required:          cfg.Changesets.ApprovalRequired,
 			AllowSelfApproval: cfg.Changesets.AllowSelfApproval,
@@ -935,6 +940,22 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	if err != nil {
 		return fmt.Errorf("initializing change engine: %w", err)
 	}
+	// T-2601: install the configured policy file into the cluster's policy
+	// set. A file that cannot be parsed is FATAL — a daemon must never come
+	// up quietly enforcing a policy it could not read (acceptance criterion
+	// 5). Installing is idempotent: an unchanged file writes no new
+	// revision and no audit entry.
+	if path := cfg.Changesets.PolicyFile; path != "" {
+		set, perr := change.LoadPolicyFile(path)
+		if perr != nil {
+			return fmt.Errorf("loading policy file: %w", perr)
+		}
+		if _, perr = changeSvc.SetPolicySet(ctx, "system", set); perr != nil {
+			return fmt.Errorf("installing policy file %s: %w", path, perr)
+		}
+		logger.Info("change: policy file installed", "path", path, "rules", len(set.Rules))
+	}
+
 	// T-702: point the findings engine's mgmt_single_path check at the now-
 	// real change.Service (see mgmtAdapter's construction/doc comment above).
 	mgmtAdapter.set(changeSvc)
@@ -1325,6 +1346,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// spec_drift check reads (see pinnedSpecRepo's construction above).
 		SpecPin:      pinnedSpecRepo,
 		SpecPinAudit: auditRepo,
+		// T-2601: the policy-as-code admin surface. Enforcement is not
+		// here — it is in the change engine's validate stage — so this
+		// mounts only the read/replace/test routes.
+		Policy: changeSvc,
 		// T-1107: blueprint sharing bundles (docs/features/blueprints.md §5) —
 		// BlueprintSignersAudit reuses the same *store.AuditRepo every other
 		// audited route family in this Options literal (LLDPAudit, ProbeAudit)

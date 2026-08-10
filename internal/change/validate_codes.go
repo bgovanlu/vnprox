@@ -285,6 +285,24 @@ const (
 	codeEvpnGatewayMissing   = "sdn.evpn_gateway_missing"
 	codeSNATRequiresExitNode = "sdn.snat_requires_exit_node"
 
+	// --- policy-as-code (T-2601: the declarative organisational rule set,
+	// policy.go/policy_eval.go). Deliberately ONE code rather than a code
+	// per rule: the rule set is operator-authored data, so a per-rule code
+	// space would not be a stable vocabulary at all. Which rule fired is
+	// carried in the message (rule id + description, acceptance criterion
+	// 1); the severity is the rule's own (`deny` -> SeverityError,
+	// `warn` -> SeverityWarning), so a client that already routes on
+	// severity needs no new handling.
+
+	codePolicyViolation = "policy.violation"
+	// codePolicyInvalid flags a stored policy set this build cannot parse
+	// (a hand-edited row, or a set written by a newer daemon). It is
+	// SeverityError and therefore blocking: a cluster that has declared a
+	// policy must never quietly validate as if it had none. The daemon
+	// refuses to start on an unparsable policy *file* (LoadPolicyFile), so
+	// this is the store-side backstop for the same rule.
+	codePolicyInvalid = "policy.invalid"
+
 	// --- cross-node consistency (class 4, T-801: docs/features/
 	// change-management.md §2's cross-node class — the same comparisons
 	// internal/drift runs against live state, run instead against this

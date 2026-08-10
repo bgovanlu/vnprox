@@ -168,7 +168,13 @@ type Config struct {
 	// Approvals (T-2003) backs the review surface's approval gate — see
 	// Approval's own doc comment below. Optional/nil-safe like Comments
 	// above.
-	Approvals      *store.ChangesetApprovalRepo
+	Approvals *store.ChangesetApprovalRepo
+	// Policies (T-2601) backs the declarative policy-as-code guardrail:
+	// the cluster's installed rule set and its per-rule bookkeeping.
+	// Optional/nil-safe — a Service built without it evaluates an empty
+	// rule set, which produces no findings at all, so a pre-T-2601
+	// deployment's validation is byte-identical.
+	Policies       *store.PolicySetRepo
 	ProtectedPath  string
 	CorosyncPath   string
 	LocalClusterID string
@@ -179,8 +185,12 @@ type Config struct {
 	Approval           ApprovalConfig
 	RollbackWindowDays int
 	ConfirmTimeout     time.Duration
-	SwitchPushEnabled  bool
-	AllowDangerousOps  bool
+	// PolicyUnmatchedAfter (T-2601) is how long a policy rule may go
+	// without matching anything before PolicyStatus reports it as
+	// probably-misconfigured. Zero means DefaultPolicyUnmatchedAfter.
+	PolicyUnmatchedAfter time.Duration
+	SwitchPushEnabled    bool
+	AllowDangerousOps    bool
 }
 
 // TimerFunc arms a one-shot timer that runs f after d and can be stopped.
@@ -227,24 +237,29 @@ type Service struct {
 	audit           *store.AuditRepo
 	// comments/approvals/approval (T-2003): see Config.Comments/Approvals/
 	// Approval's doc comments — nil-safe, review.go owns all access.
-	comments           *store.ChangesetCommentRepo
-	approvals          *store.ChangesetApprovalRepo
-	leaderGuard        func() bool
-	log                *slog.Logger
-	newTimer           TimerFunc
-	now                func() time.Time
-	repo               *store.ChangesetRepo
-	lockHeldBy         string
-	corosyncPath       string
-	protectedPath      string
-	localClusterID     string
-	scheduleSecret     []byte
-	approval           ApprovalConfig
-	confirmTimeout     time.Duration
-	rollbackWindowDays int
-	applyMu            sync.Mutex
-	switchPushEnabled  bool
-	allowDangerousOps  bool
+	comments  *store.ChangesetCommentRepo
+	approvals *store.ChangesetApprovalRepo
+	// policies (T-2601): see Config.Policies — nil-safe,
+	// policy_service.go owns all access.
+	policies       *store.PolicySetRepo
+	leaderGuard    func() bool
+	log            *slog.Logger
+	newTimer       TimerFunc
+	now            func() time.Time
+	repo           *store.ChangesetRepo
+	lockHeldBy     string
+	corosyncPath   string
+	protectedPath  string
+	localClusterID string
+	scheduleSecret []byte
+	approval       ApprovalConfig
+	confirmTimeout time.Duration
+	// policyUnmatchedAfter (T-2601): see Config.PolicyUnmatchedAfter.
+	policyUnmatchedAfter time.Duration
+	rollbackWindowDays   int
+	applyMu              sync.Mutex
+	switchPushEnabled    bool
+	allowDangerousOps    bool
 }
 
 // Commit-confirm window bounds (docs/features/change-management.md §4).
@@ -300,6 +315,7 @@ func NewService(cfg Config) (*Service, error) {
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		comments: cfg.Comments, approvals: cfg.Approvals, approval: cfg.Approval,
+		policies: cfg.Policies, policyUnmatchedAfter: cfg.PolicyUnmatchedAfter,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,
 		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, revertGateways: cfg.RevertGateways, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,

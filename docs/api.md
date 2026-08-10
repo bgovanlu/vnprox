@@ -251,6 +251,30 @@ Added by T-203 (documented here retroactively per that task's report note; pinne
 
 **`GET /topology` management-path badges** (added by T-702, docs/features/topology.md §3): node badges gain three additional values, painted the same way the `"drift"` badge already is (a handler-level decoration over the pure projection, driven by the exact same computation `GET /protected-interfaces/status` answers from) — `mgmt` and `corosync` on a resolved ref's carrier node (its `roles`), `mgmt-path` on every entity in its resolved `path`. A carrier can badge both `mgmt` and `corosync` at once; a path member never badges `mgmt`/`corosync` itself (only the carrier does).
 
+### Policy set (T-2601)
+
+The cluster's **declarative policy-as-code guardrails**: the organisational rules the change engine refuses (or annotates) a changeset for, at the validate stage, before any diff or plan is computed. Rules are app-owned data (`policy_sets` / `policy_rule_stats`, `docs/data-model.md` §2), never a shadow copy of PVE config — PVE has no notion of them. Policies are cluster-scoped (one rule set per attached cluster, `''` for the implicit local one) and carry a monotonically increasing store `revision`.
+
+A rule is `{id, description, severity, match, assert, tags?}` over the op and inventory shapes the change engine already uses. It is **data, not a scripting language**: `match` and `assert` are lists of `{field, op, value}` conditions (ANDed), where `field` is one of the derived facts below or `params.<jsonField>` of the op's own documented params shape (§ `docs/data-model.md` §3), and `op` is one of `eq ne in notIn gt gte lt lte matches notMatches exists notExists contains notContains`. `matches` is shell globbing (`fw.*`). An **empty `assert` means the match itself is the violation**. `severity: deny` produces a blocking `policy.violation` finding (`severity: "error"`); `severity: warn` produces a non-blocking one (`severity: "warning"`) that rides the changeset's `findings` to the review surface.
+
+Derived fact fields, all evaluated against the changeset's **net effect** on the live inventory: `op`, `target.kind`, `target.node`, `target.id`, `target.ref`, `target.exists`, `target.protected`, `target.guestCount`, `target.uplinkCount`, `target.vlanAware`, `changeset.opCount`.
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| GET | `/policies` | `netRead` | the installed rule set plus per-rule statistics: `{set: {version, rules: [...]}, revision, updatedBy?, updatedAt?, rules: [PolicyRuleStatus]}` |
+| PUT | `/policies` | `netWrite` + CSRF | replace the rule set wholesale with `{version?, rules: [...]}`; audited `policy.update` |
+| POST | `/policies/test` | `netRead` | evaluate a candidate (or the installed) rule set against a changeset **without staging anything** |
+
+**`GET /policies` response shape**: `set` is the installed document; `revision` is the store revision (`0` when nothing is installed); `rules` carries one `PolicyRuleStatus` per rule — `{ruleId, firstSeenAt, lastMatchedAt, evalCount, matchCount, probablyMisconfigured}`. `probablyMisconfigured` is the runtime half of "a policy that matches nothing is an error, not a silent pass": true once a rule has been through enough evaluations, over a long enough window (14 days), without ever matching an op. It is a report, never a refusal.
+
+**`PUT /policies`**: the document is validated before anything is written — a malformed rule set is rejected `400 validation_failed` and nothing is stored and nothing is audited. The error's `details` carries `{file, ruleId, field}`, naming exactly which rule and which field is wrong. Statically-decidable "this rule can never fire" defects are load errors too: an `op` condition matching no op type in the v1 vocabulary, a `params.<name>` no matchable op type has, or an unknown entity kind. A successful update audits `policy.update` with `{clusterId, fromRevision, toRevision, ruleCount, diff}`, where `diff` carries the **full body** of every added and removed rule and **both sides** of every changed one — so the audit entry alone reconstructs what changed. Re-installing an identical rule set is a no-op: no new revision, no audit entry.
+
+**`POST /policies/test`**: body is `{policy?: {version?, rules}, changesetId?: string, ops?: [Op]}` — exactly one of `changesetId`/`ops` is required (`400 validation_failed` otherwise), and an omitted `policy` means "the installed one". The response is `{findings: [Finding], rules: [{ruleId, description, severity, tags?, matchedOps?, violatingOps?}]}`. It stages nothing, installs nothing, and mutates neither the changeset nor the installed policy — it is the route behind `vnproxctl policy test --policy=f.yaml --changeset=<id>`.
+
+**Enforcement is not on these routes.** A `deny` rule blocks inside the change engine's validate stage, which both `POST /changesets/{id}/validate` and the pre-apply revalidation run — so `POST /changesets/{id}/apply` refuses `422 validation_failed` with the policy findings in `details.findings`, and `GET /changesets/{id}/diff` refuses identically **without computing the diff at all**.
+
+A daemon may also be given a policy file (`[changesets] policy_file` in `vnprox.toml`), which it installs at startup. A file it cannot parse is fatal: the daemon does not start with a policy it cannot read.
+
 ### LLDP guided install (T-605)
 
 Added by T-605 (documented here per docs/development.md's definition-of-done #4). Backs the first-login walkthrough's "LLDP offer" step (docs/user-guide.md §1: "if `lldpd` isn't running, vnprox offers to enable it") — the coordinating half of docs/features/lldp-discovery.md §1's "one-click 'install lldpd on all nodes' runs through a changeset-like confirmation, executed via peer API apt install; audited" (the peer-internal half, `POST /api/peer/host/lldp/install`, already existed from T-302).

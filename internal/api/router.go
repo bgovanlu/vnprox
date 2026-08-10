@@ -119,68 +119,73 @@ type Options struct {
 	BlueprintSignersAudit blueprintBundleAuditor
 	Spec                  SpecInventory
 	SpecPin               PinnedSpecStore
-	SpecPinAudit          specPinAuditor
-	Simulator             SimulatorGraph
-	Blueprints            BlueprintService
-	Auth                  AuthService
-	History               HistoryAuditSource
-	QosShapes             QosShapeSource
-	Qos                   QosShapeListService
-	GuestInteriorToggles  GuestInteriorToggleStore
-	GuestInteriorGraph    GuestInteriorGraph
-	GuestInteriorHost     GuestInteriorHostReader
-	GuestInteriorPeers    PeerContainerSource
-	GuestInteriorIPAM     GuestInteriorIPAMSource
-	FwLog                 FwLogService
-	Peer                  PeerServer
-	PeerAudit             PeerAuditSource
-	PeerSnapshots         PeerSnapshotSource
-	Flows                 FlowLocalSource
-	PeerFlows             PeerFlowSource
-	LatMesh               LatMeshService
-	MTUProbe              MTUProbeService
-	Ceph                  CephService
-	Failsim               FailsimService
-	Microseg              MicrosegService
-	WireGuard             WireGuardService
-	WgCarriers            change.WgCarrierSource
-	Wan                   WanService
-	WanAudit              wanAuditor
-	Captures              CaptureService
-	Conntrack             ConntrackLocalSource
-	PeerConntrack         PeerConntrackSource
-	ConntrackGuests       ConntrackGuestResolver
-	TenantStore           TenantAdminStore
-	DocExport             DocExportService
-	Capacity              CapacityService
-	Posture               PostureService
-	Plugins               PluginService
-	HubClient             HubClient
-	HubVetting            HubVetting
-	PluginInstaller       PluginInstaller
-	LLDPInstaller         LocalLLDPInstaller
-	LLDPPeerInstaller     PeerLLDPInstaller
-	LLDPAudit             lldpInstallAuditor
-	Tenant                TenantScoper
-	Tokens                APITokenStore
-	TokenAudit            tokenAuditor
-	Webhooks              WebhookStore
-	WebhookSecretCipher   SecretCipher
-	K8sClusters           K8sClusterStore
-	K8sSecretCipher       SecretCipher
-	K8sPoller             K8sPoller
-	K8sGraph              K8sGraph
-	K8sIPAM               K8sIPAMSource
-	K8sAudit              k8sAuditWriter
-	Store                 StoreInfoProvider
-	Migration             *migration.Planner
-	LocalNode             func() string
-	FlowClassifier        *flow.Classifier
-	Logger                *slog.Logger
-	SelfMetrics           *metrics.Registry
-	Version               string
-	BlueprintSigningKey   ed25519.PrivateKey
-	Instance              InstanceInfo
+	// Policy (T-2601) backs the policy-as-code admin surface
+	// (GET/PUT /policies, POST /policies/test). Nil leaves those routes
+	// unmounted; it never disables enforcement, which lives in the change
+	// engine's validate stage, not here.
+	Policy               PolicyService
+	SpecPinAudit         specPinAuditor
+	Simulator            SimulatorGraph
+	Blueprints           BlueprintService
+	Auth                 AuthService
+	History              HistoryAuditSource
+	QosShapes            QosShapeSource
+	Qos                  QosShapeListService
+	GuestInteriorToggles GuestInteriorToggleStore
+	GuestInteriorGraph   GuestInteriorGraph
+	GuestInteriorHost    GuestInteriorHostReader
+	GuestInteriorPeers   PeerContainerSource
+	GuestInteriorIPAM    GuestInteriorIPAMSource
+	FwLog                FwLogService
+	Peer                 PeerServer
+	PeerAudit            PeerAuditSource
+	PeerSnapshots        PeerSnapshotSource
+	Flows                FlowLocalSource
+	PeerFlows            PeerFlowSource
+	LatMesh              LatMeshService
+	MTUProbe             MTUProbeService
+	Ceph                 CephService
+	Failsim              FailsimService
+	Microseg             MicrosegService
+	WireGuard            WireGuardService
+	WgCarriers           change.WgCarrierSource
+	Wan                  WanService
+	WanAudit             wanAuditor
+	Captures             CaptureService
+	Conntrack            ConntrackLocalSource
+	PeerConntrack        PeerConntrackSource
+	ConntrackGuests      ConntrackGuestResolver
+	TenantStore          TenantAdminStore
+	DocExport            DocExportService
+	Capacity             CapacityService
+	Posture              PostureService
+	Plugins              PluginService
+	HubClient            HubClient
+	HubVetting           HubVetting
+	PluginInstaller      PluginInstaller
+	LLDPInstaller        LocalLLDPInstaller
+	LLDPPeerInstaller    PeerLLDPInstaller
+	LLDPAudit            lldpInstallAuditor
+	Tenant               TenantScoper
+	Tokens               APITokenStore
+	TokenAudit           tokenAuditor
+	Webhooks             WebhookStore
+	WebhookSecretCipher  SecretCipher
+	K8sClusters          K8sClusterStore
+	K8sSecretCipher      SecretCipher
+	K8sPoller            K8sPoller
+	K8sGraph             K8sGraph
+	K8sIPAM              K8sIPAMSource
+	K8sAudit             k8sAuditWriter
+	Store                StoreInfoProvider
+	Migration            *migration.Planner
+	LocalNode            func() string
+	FlowClassifier       *flow.Classifier
+	Logger               *slog.Logger
+	SelfMetrics          *metrics.Registry
+	Version              string
+	BlueprintSigningKey  ed25519.PrivateKey
+	Instance             InstanceInfo
 }
 
 // DefaultMCPPath is the fixed mount path (under /api/v1) for the MCP transport
@@ -295,6 +300,7 @@ func NewRouter(opts Options) http.Handler {
 		mountBlueprintBundleRoutes(r, opts.Blueprints, opts.BlueprintSigningKey, opts.BlueprintTrust, opts.BlueprintSignersAudit, opts.Auth)
 		mountSpecRoutes(r, opts.Spec, opts.Changesets, opts.Auth)
 		mountSpecPinRoutes(r, opts.SpecPin, opts.SpecPinAudit, opts.Auth)
+		mountPolicyRoutes(r, opts.Policy, opts.Auth)
 		mountSimulateRoutes(r, opts.Simulator, opts.GuestInteriorIPAM, opts.ProbeClients, opts.ProbeAudit, opts.SimDivergence, opts.QosShapes, opts.Auth)
 		mountQosRoutes(r, opts.Qos, opts.Auth)
 		mountGuestInteriorRoutes(r, opts.GuestInteriorToggles, opts.GuestInteriorGraph, opts.ProbeClients, opts.GuestInteriorHost, opts.GuestInteriorPeers, opts.GuestInteriorIPAM, opts.LocalNode, opts.ProbeAudit, opts.Auth)

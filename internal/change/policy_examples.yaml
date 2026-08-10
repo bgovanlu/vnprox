@@ -1,0 +1,76 @@
+# Example policy set (T-2601).
+#
+# These rules are SHIPPED BUT NOT ACTIVE. vnprox's default policy set is
+# empty and changes nothing (docs/features/change-management.md §2); this
+# file is the worked example an operator copies from, edits, and installs
+# with `vnproxctl policy test --policy=... --changeset=...` followed by
+# `PUT /policies`.
+#
+# Every rule here has a test fixture that makes it FIRE and one that makes
+# it PASS (internal/change/policy_examples_test.go). That test enumerates
+# this file: adding a rule here without both fixtures fails the build.
+version: 1
+rules:
+  # The card's own first example. A guest NIC on VLAN 1 is on the native/
+  # untagged VLAN of most switch estates, which is where the management
+  # network usually lives — an easy accident with a wide blast radius.
+  - id: no-guest-nic-on-vlan1
+    description: Guest NICs may not be placed on VLAN 1 (the native VLAN carrying management traffic).
+    severity: deny
+    tags: [vlan-hygiene]
+    match:
+      - field: op
+        op: eq
+        value: guest.nic.update
+    assert:
+      - field: params.vid
+        op: ne
+        value: 1
+
+  # The card's second example. `target.guestCount` and `target.uplinkCount`
+  # are net-effect facts: they describe the bridge as the changeset LEAVES
+  # it, so removing the second uplink from a guest-bearing bridge fires
+  # even though the op itself says nothing about guests.
+  - id: guest-bridge-needs-two-uplinks
+    description: A bridge carrying guest NICs must keep at least two uplinks (physical NICs or bonds).
+    severity: deny
+    tags: [redundancy]
+    match:
+      - field: op
+        op: matches
+        value: bridge.*
+      - field: target.guestCount
+        op: gt
+        value: 0
+    assert:
+      - field: target.uplinkCount
+        op: gte
+        value: 2
+
+  # The card's third example, and the shape with no `assert` at all: there
+  # is nothing to assert about these ops, their existence is the violation.
+  - id: no-changes-to-storage-node-vmbr9
+    description: vmbr9 on the storage nodes is managed out of band and must not be changed through vnprox.
+    severity: deny
+    tags: [out-of-band]
+    match:
+      - field: target.id
+        op: eq
+        value: vmbr9
+      - field: target.node
+        op: matches
+        value: storage*
+
+  # A warn-severity rule: it annotates the changeset and reaches the review
+  # surface, but never blocks.
+  - id: new-bridges-should-be-documented
+    description: A newly created bridge should carry a comment saying what it is for.
+    severity: warn
+    tags: [documentation]
+    match:
+      - field: op
+        op: eq
+        value: bridge.create
+    assert:
+      - field: params.comments
+        op: exists

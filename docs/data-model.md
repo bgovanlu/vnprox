@@ -145,6 +145,32 @@ CREATE TABLE changeset_approvals (
   decided_at INTEGER NOT NULL
 );
 
+-- T-2601 (migration 0037): declarative policy-as-code guardrails — the
+-- organisational rules the change engine refuses (or annotates) a changeset
+-- for, at the validate stage. App-owned intent; PVE has no notion of these.
+-- Cluster-scoped, one row per attached cluster ('' = implicit local one).
+CREATE TABLE policy_sets (
+  cluster_id TEXT PRIMARY KEY,       -- '' = implicit local/default cluster
+  revision INTEGER NOT NULL,         -- monotonic document revision, stamped by the daemon
+                                     -- (NOT the document format version, which lives inside
+                                     -- rules_json as `version`)
+  rules_json TEXT NOT NULL,          -- {version, rules: [{id, description, severity, match, assert, tags}]}
+  updated_by TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
+);  -- No per-revision history table: every update writes a policy.update audit
+    -- entry carrying the FULL rule-set diff (both sides of every changed rule),
+    -- so the audit log alone reconstructs what changed — the same
+    -- "current state here, history in the audit log" split changeset_approvals uses.
+
+CREATE TABLE policy_rule_stats (
+  cluster_id TEXT NOT NULL, rule_id TEXT NOT NULL,
+  first_seen_at INTEGER NOT NULL,       -- first evaluation this rule took part in
+  last_matched_at INTEGER NOT NULL DEFAULT 0,  -- 0 = has never matched an op
+  eval_count INTEGER NOT NULL DEFAULT 0, match_count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (cluster_id, rule_id)
+);  -- Backs "a policy that matches nothing is an error, not a silent pass": a rule
+    -- that has never matched, over enough evaluations and a long enough window, is
+    -- reported as probablyMisconfigured on GET /policies. Pure derived bookkeeping.
+
 CREATE TABLE snapshots (
   id TEXT PRIMARY KEY, changeset_id TEXT REFERENCES changesets(id),
   taken_at INTEGER NOT NULL, kind TEXT NOT NULL,      -- pre|post|manual|scheduled
