@@ -172,3 +172,44 @@ func TestFindingEventRepo_RunPruneLoop(t *testing.T) {
 		t.Errorf("RunPruneLoop returned %v, want nil after context cancel", err)
 	}
 }
+
+// TestFindingEventRepo_EarliestAt covers the reading T-2706's compliance
+// report refuses an out-of-window as-of request with: how far back the
+// retained finding history actually reaches, from the table rather than from
+// an assumption about the prune loop.
+func TestFindingEventRepo_EarliestAt(t *testing.T) {
+	db := openTestDB(t)
+	repo := NewFindingEventRepo(db)
+	ctx := context.Background()
+
+	if _, ok, err := repo.EarliestAt(ctx); err != nil || ok {
+		t.Fatalf("EarliestAt on an empty table = (_, %v, %v), want (_, false, nil)", ok, err)
+	}
+
+	for _, e := range []FindingEvent{
+		{FindingID: "f1", At: 5000, Transition: "new"},
+		{FindingID: "f2", At: 1200, Transition: "new"},
+		{FindingID: "f3", At: 9000, Transition: "resolved"},
+	} {
+		if err := repo.Insert(ctx, e); err != nil {
+			t.Fatalf("Insert(%+v): %v", e, err)
+		}
+	}
+
+	at, ok, err := repo.EarliestAt(ctx)
+	if err != nil || !ok {
+		t.Fatalf("EarliestAt = (%d, %v, %v)", at, ok, err)
+	}
+	if at != 1200 {
+		t.Errorf("EarliestAt = %d, want 1200", at)
+	}
+
+	// Pruning moves the floor: the reported earliest must follow the table,
+	// not a constant.
+	if _, pruneErr := repo.PruneOlderThan(ctx, 4000); pruneErr != nil {
+		t.Fatalf("PruneOlderThan: %v", pruneErr)
+	}
+	if at, ok, err = repo.EarliestAt(ctx); err != nil || !ok || at != 5000 {
+		t.Errorf("EarliestAt after prune = (%d, %v, %v), want (5000, true, nil)", at, ok, err)
+	}
+}

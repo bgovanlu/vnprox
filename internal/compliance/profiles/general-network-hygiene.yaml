@@ -1,0 +1,253 @@
+# general-network-hygiene.yaml — the ONE profile vnprox ships (T-2706).
+#
+# This is not CIS, PCI-DSS, HIPAA, SOC 2, ISO 27001, or any other published
+# framework, and it is deliberately not named after one. It describes
+# ordinary network hygiene in terms of evidence vnprox already produces, so
+# that the mapping FORMAT has a worked example. An organisation with its own
+# control set writes its own profile in this shape; vnprox does not certify
+# anything, here or anywhere else.
+#
+# Every control below either names the evidence vnprox has for it, or states
+# plainly that vnprox has none — in which case it reports `unmapped`, never
+# `pass`.
+
+formatVersion: 1
+id: general-network-hygiene
+title: General network hygiene
+version: "1.0.0"
+description: >-
+  A worked example of the vnprox compliance profile format: ordinary network
+  hygiene controls mapped onto the findings-stream checks, posture factors and
+  policy rules this daemon already produces.
+notice: >-
+  This report is a mapping of vnprox's own observations onto the controls named
+  in this profile. It is NOT a certification, an attestation, or an assessment
+  against any published compliance framework, and it must not be presented as
+  one. A control reports `pass` only when every piece of evidence this profile
+  maps to it was evaluated and satisfied; a control vnprox cannot evidence
+  reports `unmapped`, and a control whose evidence could not be evaluated
+  reports `not_evaluated`. Neither is a pass. vnprox observes the network it is
+  pointed at; it does not observe your organisation.
+
+controls:
+  - id: NH-1
+    title: Management path redundancy
+    statement: >-
+      Each cluster node's management path survives the loss of a single
+      physical link.
+    evidence:
+      - kind: check
+        check: mgmt_single_path
+        note: fires for any node whose resolved management path has fewer than two link-up NICs behind it
+      - kind: posture
+        factor: spof_resilience
+        minScore: 60
+        note: the failure simulator's single-point-of-failure inventory, scored
+
+  - id: NH-2
+    title: Physical link and aggregation health
+    statement: >-
+      Physical links, bonds and bridges are operating as configured, without
+      silently degraded members.
+    evidence:
+      - kind: check
+        check: bond_slave_down
+      - kind: check
+        check: lacp_partner_mismatch
+      - kind: check
+        check: bridge_no_carrier
+      - kind: check
+        check: error_drop_rate
+      - kind: check
+        check: corosync_link_degraded
+
+  - id: NH-3
+    title: Running configuration matches intended configuration
+    statement: >-
+      What is running on each node matches what was intended, with no
+      undeclared or half-applied change outstanding.
+    evidence:
+      - kind: check
+        check: bridge_divergence
+      - kind: check
+        check: mtu_consistency
+      - kind: check
+        check: sdn_realization
+      - kind: check
+        check: pending_interfaces
+      - kind: check
+        check: file_runtime_divergence
+      - kind: check
+        check: stale_pending_interfaces
+      - kind: check
+        check: spec_drift
+      - kind: posture
+        factor: drift_hygiene
+        minScore: 70
+
+  - id: NH-4
+    title: Network segmentation
+    statement: >-
+      Guests are placed on the network segment their service class belongs to,
+      and carry an applied segmentation policy.
+    evidence:
+      - kind: posture
+        factor: segmentation
+        minScore: 70
+        note: only APPLIED microsegmentation counts; a dry-run proposal is not coverage
+      - kind: check
+        check: service_traffic_on_wrong_network
+      - kind: check
+        check: orphan_vnet
+
+  - id: NH-5
+    title: Externally reachable services are deliberate
+    statement: >-
+      No guest port is reachable from any source without a rule that says so on
+      purpose.
+    evidence:
+      - kind: posture
+        factor: exposed_ports
+        minScore: 70
+      - kind: check
+        check: k8s_nodeport_exposed_without_fw_rule
+      - kind: check
+        check: fw_rule_unused
+
+  - id: NH-6
+    title: Address management integrity
+    statement: >-
+      Every address in use is accounted for, unique, and within a subnet with
+      remaining headroom.
+    evidence:
+      - kind: check
+        check: duplicate_ip
+      - kind: check
+        check: allocated_dark
+      - kind: check
+        check: observed_unallocated
+      - kind: check
+        check: capacity_ipam_forecast
+
+  - id: NH-7
+    title: Inter-site transport is authenticated and up
+    statement: >-
+      Traffic between sites traverses an authenticated tunnel to a peer this
+      cluster trusts, and that tunnel is live.
+    evidence:
+      - kind: check
+        check: wg_handshake_stale
+      - kind: check
+        check: wg_endpoint_drift
+      - kind: check
+        check: tunnel_down_peer_unreachable
+      - kind: check
+        check: peer_untrusted
+      - kind: check
+        check: peer_trust_degraded
+
+  - id: NH-8
+    title: Transport certificate lifecycle
+    statement: >-
+      The cluster's TLS certificates are present, readable, in date, correctly
+      chained, and cover the names they are served for.
+    evidence:
+      - kind: check
+        check: cert_expired
+      - kind: check
+        check: cert_expiring
+      - kind: check
+        check: cert_missing
+      - kind: check
+        check: cert_unreadable
+      - kind: check
+        check: cert_not_chained
+      - kind: check
+        check: cert_ca_mismatch
+      - kind: check
+        check: cert_san_mismatch
+      - kind: check
+        check: cert_weak_key
+
+  - id: NH-9
+    title: Unauthorized layer-2 activity is detected
+    statement: >-
+      Rogue address-assignment services, spoofing and unknown stations on
+      protected segments are detected when they appear.
+    evidence:
+      - kind: check
+        check: rogue_dhcp_server
+      - kind: check
+        check: unexpected_ra
+      - kind: check
+        check: arp_spoof_suspected
+      - kind: check
+        check: unknown_mac_protected_segment
+
+  - id: NH-10
+    title: Network change is governed by declared rules
+    statement: >-
+      Changes to the network are evaluated against the organisation's own
+      declared rules before they are applied, and those rules are actually
+      exercising.
+    evidence:
+      - kind: policy
+        tag: change-control
+        note: >-
+          any T-2601 policy rule tagged change-control. A rule that is installed
+          but has never matched an op is reported as not evaluated, not as a
+          pass — an unexercised rule guards nothing.
+      - kind: check
+        check: schedule_missed
+
+  - id: NH-11
+    title: Capacity headroom on inter-node links
+    statement: >-
+      Link utilisation is not trending toward saturation within the forecast
+      window.
+    evidence:
+      - kind: check
+        check: capacity_link_forecast
+
+  - id: NH-12
+    title: Traffic is monitored against a learned baseline
+    statement: >-
+      Guest traffic is compared against a learned normal, and departures from
+      it are surfaced.
+    evidence:
+      - kind: posture
+        factor: anomaly_rate
+        minScore: 60
+        note: >-
+          not evaluated while baselines are still learning — an absence of
+          anomaly findings before a baseline exists means "we have never
+          looked", not "nothing is wrong"
+      - kind: check
+        check: new_port
+      - kind: check
+        check: volume_spike
+      - kind: check
+        check: new_subnet
+
+  - id: NH-13
+    title: Administrative access to the hypervisor is restricted
+    statement: >-
+      Only authorized operators can authenticate to the Proxmox cluster, with
+      privileges scoped to their role.
+    unmappedReason: >-
+      vnprox does not read or evaluate Proxmox user, group, role or realm
+      configuration. It authenticates AGAINST Proxmox; it makes no observation
+      of who else can. Evidence for this control must come from Proxmox itself,
+      and this profile says so rather than leaving the control out — a control
+      that is silently absent reads as a control that does not apply.
+
+  - id: NH-14
+    title: Network configuration is recoverable
+    statement: >-
+      The network configuration in force can be restored after a node or
+      cluster loss.
+    unmappedReason: >-
+      vnprox snapshots the interface configuration it changes, so it can roll
+      back its own changesets — but it does not verify that an off-box backup of
+      the cluster's configuration exists, is current, or restores. That is a
+      backup-system property, and no vnprox check observes it.
