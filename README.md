@@ -54,6 +54,7 @@ Full list: [`docs/features.md`](docs/features.md).
 | [`docs/security.md`](docs/security.md) | AuthN/AuthZ, TLS, threat model |
 | [`docs/features.md`](docs/features.md) | v1.0 feature matrix and priorities; per-feature specs in [`docs/features/`](docs/features/). **Stale — describes the v1.0 scope and lists since-shipped capabilities as non-goals; use `datasheet.md` for current capability** |
 | [`docs/roadmap.md`](docs/roadmap.md) | Release phases and milestones |
+| [`docs/roadmap-adopted.md`](docs/roadmap-adopted.md) | Arc 5 (phases 25–28) — the current planned arc: proof, guardrails, config-as-code, adoption |
 | [`docs/deployment.md`](docs/deployment.md) | Install, upgrade, uninstall, port-conflict handling |
 | [`docs/user-guide.md`](docs/user-guide.md) | End-user guide (first run, common tasks) |
 | [`docs/development.md`](docs/development.md) | Tech stack, repo layout, standards, testing, CI |

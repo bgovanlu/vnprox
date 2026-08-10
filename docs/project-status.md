@@ -215,3 +215,35 @@ claim is now corrected in three places, and the lesson is recorded in `developme
 writing off a CI signal as absent, run `gh run list`.
 
 Three consecutive green runner runs (the card's AC3) are still outstanding.
+
+---
+
+## 8. Arc 5 — adoptable, not just proven (planned 2026-08-10)
+
+> **Note on §7's delivery table above:** it records the state partway through phase 24's first
+> pass. The authoritative shipped/blocked state is the "second pass" section of
+> [`planning/tasks/phase-24.md`](../planning/tasks/phase-24.md) — nine of ten shipped, `T-2409`
+> open. This table is not restated here to avoid a second place to keep current.
+
+A second full-stack audit at `42ba175` scoped a fifth arc. Its organising finding is that the
+headline figures in §1 disagree with each other in a specific way: **feature delivery 91%,
+backend implementation 97%, hardware validation 9%, external consumers 0.** Adding a sixth
+networking domain does not move any of those; the remaining value is in *assembly and proof*.
+
+Twenty-five cards across four phases — [`docs/roadmap-adopted.md`](roadmap-adopted.md),
+[`planning/implementation-plan-adopted.md`](../planning/implementation-plan-adopted.md):
+
+| Phase | Theme | Cards | Question it answers |
+|---|---|---|---|
+| [25](../planning/tasks/phase-25.md) | Proof that runs itself | 6 | Can the 9% figure move without a human on a ladder? |
+| [26](../planning/tasks/phase-26.md) | Guardrails | 5 | Can the change engine refuse a bad change, not just narrate it? |
+| [27](../planning/tasks/phase-27.md) | Config as code | 6 | Can the cluster's network live in git and stay there? |
+| [28](../planning/tasks/phase-28.md) | Adoption | 8 | Can someone who has never met us run this? |
+
+**Three candidates were dropped on contact with the code**, as three were in phase 24 —
+failure-impact analysis (`internal/failsim`, T-1604), explainable posture scoring
+(`internal/posture`, T-1607), and traffic-baseline anomaly detection (`internal/baseline`,
+T-1601) all already ship.
+
+`T-2505` subsumes the open `T-2409` and inherits its unfinished investigation, including the two
+hypotheses already refuted and recorded, so they are not re-derived a third time.
