@@ -233,3 +233,87 @@ under "T-1704"/"T-1707":
 Setting a real number for the promotion-latency and replication-lag rows requires two real vnproxd
 instances on real hosts with a real network partition — explicitly out of this environment's reach,
 flagged rather than faked.
+
+## 12. Soak and resource-leak gate — T-2504
+
+§6 above is a *report* of one soak run somebody performed. This section is about the **gate** that
+replaced it: `make soak` (`docs/development.md`, "The soak / resource-leak gate"), which anybody can
+re-run and disagree with. The machinery is `internal/soak`; the daemon, churn generator, and
+tolerances are `cmd/vnproxd/soak_test.go`.
+
+### 12.1 What it measures, and why on trend
+
+Five sampler classes on a fixed interval: `goroutines`, `heap_bytes` (live heap after a forced GC),
+`rss_bytes`, `open_fds`, and one `table.<name>` row-count series per table in the store — enumerated
+from `sqlite_master`, so a table a future card adds is watched without anybody remembering to add it
+to a list.
+
+The verdict is a **least-squares slope over the second half of the run**. Regressing over the whole
+run would score the daemon's warm-up (collectors filling the inventory graph, SQLite growing its
+page cache, the heap reaching its working set) as a leak. A metric fails only when its second-half
+slope exceeds a per-minute tolerance **and** the fit projects a real absolute rise across the
+observed window; the second condition is what makes one policy usable at both 60 seconds and 8
+hours, since over a short window pure jitter fits a large-looking slope. Every failure names the
+metric — and for a table, the table.
+
+### 12.2 The four runs (real, 2026-08-10, seed 20504, 3m each, 5s sampling, 2s churn, `three-node-vlan.yaml`)
+
+Each run drove the real `runDaemon` against an in-process `pvemock` with identical churn: 91 churn
+ticks, 48 guests created, 43 destroyed, 19 node flaps, 13 `orphan_vnet` finding toggles, 31
+draft-changeset create/validate/discard cycles, 91 read-path sweeps, 0 churn errors. 37 samples,
+19 in the trend window.
+
+| Run | `goroutines` (window range) | second-half slope | Gate |
+|---|---|---|---|
+| **clean** (no fixture) | 48–51 | −1.52 /min | **PASS** |
+| **`LEAK=goroutine`** (AC1) | 61 → 70 | **+6.0000 /min** | **FAIL — `goroutines`** |
+| **`LEAK=table`** (AC2) | flat | — | **FAIL — `table.soak_leak_unbounded`** (+299.99 rows/min, 450 → 900) |
+| **`LEAK=flat`** (AC3) | **551–552** | −0.19 /min | **PASS** |
+
+The AC1 slope is exactly 6.00/min because the fixture leaks one goroutine per PVE collection cycle
+and `[collect] pve_interval` is 10s — the gate recovers the leak rate to four decimal places.
+
+The AC3 row is the load-bearing one for "trend, not threshold": that daemon held **551 goroutines
+(≈11× the clean run's 50) and a 70.3 MB live heap (≈25× the clean run's 2.8 MB)**, allocated once at
+startup and held. Both are flat, so both pass. Any threshold that would have caught the 6/min leak
+above would have failed this run.
+
+Clean-run slopes for the other samplers, which is where the tolerances come from:
+`heap_bytes` +112 KB/min (tolerance 512 KiB/min), `rss_bytes` +604 KB/min (tolerance 1 MiB/min),
+`open_fds` −1.01/min (tolerance 0.2/min, absorbed by the rise floor).
+
+### 12.3 What no other test catches — measured, not asserted
+
+The card's claim is that these leaks are invisible to the existing suite. That was checked rather
+than assumed: **the full `go test ./...` suite passes against each leaky build**
+(`VNPROX_SOAK_LEAK=<mode> go test -tags soakleak ./...`).
+
+Worth naming specifically: `internal/collect/leak_test.go` **already is** a goroutine-leak test
+(`goleak.VerifyNone` across five collector start/stop cycles) and it passes against the leaking
+build — because it constructs a `collect.Collector` directly from a hand-built `collect.Config`,
+not through `cmd/vnproxd`'s wiring where the leak lives. That is the gap in one sentence: unit-level
+leak checks prove the unit, not the assembled daemon over time.
+
+### 12.4 Artifacts
+
+Every run writes `samples.csv` (the full series, one column per metric) and `report.json` (the
+seed, the config, a `rerun` command line, and a per-metric verdict with slope, tolerance, rise
+floor, and window statistics) to `SOAK_ARTIFACTS` (default `var/soak/<timestamp>`). A failure is
+therefore diagnosable — and replayable at the same seed — without a re-run.
+
+### 12.5 Honest limits
+
+- **The 8-hour nightly run has not been executed here.** `make soak SOAK_DURATION=8h` is the
+  documented nightly invocation and the gate is duration-parametric by construction (tolerances are
+  per minute, the window is always the second half), but the longest run actually performed for this
+  section is 3 minutes. The claim "this gate works at 8 hours" is a design property, not an observed
+  one, and is flagged as such.
+- **Nothing schedules the nightly run.** The card names a nightly cadence; this delivers the gate
+  and its invocation, not a scheduler. Wiring it into CI is a follow-up.
+- **Host-level churn is not exercised.** `cmd/vnproxd` always constructs `host.NewReal()`, so
+  fixture-declared link and service state never reaches the daemon; the churn generator therefore
+  drives PVE-side state (guests, cluster membership, SDN) and the daemon's own API, not simulated
+  NIC flaps. Findings churn goes through `orphan_vnet`, which is inventory-derived.
+- **The churn *sequence* is seeded and reproducible; its wall-clock interleaving with the daemon's
+  poll loops is not.** No seeded generator can fix that, and the artifact records the seed to make
+  the sequence replayable, not to promise a byte-identical run.

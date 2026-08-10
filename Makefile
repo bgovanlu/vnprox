@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve openapi
+.PHONY: build dev test lint check deb mockpve openapi soak
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -78,6 +78,48 @@ test: ## go test ./... && vitest run
 	else \
 		echo ">> web: not yet implemented (T-005), skipping vitest"; \
 	fi
+
+# --- soak ------------------------------------------------------------------
+
+# T-2504: the resource-leak gate. Runs the real daemon against pvemock under
+# seeded synthetic churn, samples goroutines/heap/RSS/open fds/every table's
+# row count, and fails on a positive TREND over the second half of the run
+# rather than on any absolute threshold. Artifacts (samples.csv +
+# report.json, the latter carrying the seed) land in SOAK_ARTIFACTS.
+#
+# SOAK_DURATION defaults to a short run on purpose: `make soak` has to be
+# usable as a "does this still work" check. The nightly run is
+# `make soak SOAK_DURATION=8h`; a longer local run is `SOAK_DURATION=30m`.
+#
+# LEAK selects one of the deliberate leak fixtures (cmd/vnproxd/soakleak.go),
+# which are compiled in ONLY under the `soakleak` build tag this target adds
+# for them — no shipped build contains them. goroutine/table must FAIL the
+# gate; flat must PASS it.
+SOAK_DURATION  ?= 3m
+SOAK_INTERVAL  ?= 5s
+SOAK_CHURN     ?= 2s
+SOAK_SEED      ?= 0
+SOAK_FIXTURE   ?= three-node-vlan.yaml
+SOAK_ARTIFACTS ?=
+LEAK           ?=
+# `go test -timeout 0` = no limit. The run is already bounded by
+# SOAK_DURATION plus a bounded shutdown, and an 8-hour nightly would
+# otherwise need this raised in lockstep with SOAK_DURATION every time.
+SOAK_TIMEOUT   ?= 0
+
+soak: ## resource-leak gate: real daemon + pvemock under seeded churn, fails on trend (LEAK=goroutine|table|flat)
+	@echo ">> soak: $(SOAK_DURATION) run, sampling every $(SOAK_INTERVAL), churn every $(SOAK_CHURN), fixture $(SOAK_FIXTURE)"
+	@if [ -n "$(LEAK)" ]; then echo ">> soak: LEAK FIXTURE '$(LEAK)' ACTIVE (build tag: soakleak) — goroutine/table must FAIL, flat must PASS"; fi
+	VNPROX_SOAK_LEAK=$(LEAK) $(GO) test ./cmd/vnproxd/ \
+		$(if $(LEAK),-tags soakleak,) \
+		-run '^TestSoak$$' -count=1 -v \
+		-timeout $(SOAK_TIMEOUT) \
+		-soak.duration=$(SOAK_DURATION) \
+		-soak.interval=$(SOAK_INTERVAL) \
+		-soak.churn-interval=$(SOAK_CHURN) \
+		-soak.seed=$(SOAK_SEED) \
+		-soak.fixture=$(SOAK_FIXTURE) \
+		-soak.artifacts=$(SOAK_ARTIFACTS)
 
 # --- openapi -------------------------------------------------------------
 
