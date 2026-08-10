@@ -5,6 +5,18 @@ confirm before v1.0 ships. Per CLAUDE.md, implementation agents have no live PVE
 the accumulating checklist for the first hardware pass (owner: T-6xx hardening/validation work).
 Check items off with the PVE version tested.
 
+> **Much of this list is now executable (T-2501).** `vnproxctl verify --suite=hardware` runs 26
+> checks across every feature area the matrix marks `B` or `V`, decides pass/fail/skip itself, and
+> writes a signed report carrying the evidence each verdict rests on
+> (`vnproxctl verify --list` shows what each one needs; see `docs/deployment.md`). It replaces the
+> read-a-line-and-write-down-what-happened loop for the behaviours it covers — the items below stay
+> because they are the ones a command still cannot decide, and because an item is only ticked here
+> when a human returned real output.
+>
+> The suite **refuses to run against `internal/pvemock`** without `--allow-mock`, and a run in
+> which every check skipped exits non-zero reporting `0 passed`. Both exist so a green run cannot
+> be produced by accident and filed here.
+
 ## Deploy-time validation, 2026-08-05 (pvecube, pve-manager/9.2.4, kernel 7.0.14-4-pve, single node)
 
 Obtained while deploying this arc's merged work, not through T-1801's harness. Single node, so

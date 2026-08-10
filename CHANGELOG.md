@@ -28,6 +28,43 @@ functionality is folded into `[2.0.0]`.
 
 ### Added
 
+- **`vnproxctl verify` — the hardware-validation checklist, executed.** vnprox has always had a
+  gap it stated openly: almost every behaviour it claims has only ever been tested against a mock
+  Proxmox, because validating one on real hardware meant a person reading a checklist line, doing
+  the thing, and writing down what happened. That does not scale, does not repeat, and — the part
+  that actually mattered — could not be handed to a user who has a cluster and would like to help.
+
+  `vnproxctl verify --suite=hardware` is that checklist as a command. Twenty-six checks, one per
+  claim, each deciding its own verdict against your cluster and carrying the API response, command
+  output or file contents that verdict rests on. It is read-only and safe on a production cluster.
+  **If you have a Proxmox cluster, this is the single most useful thing you can send us.**
+
+  Three properties keep the result honest, and each is enforced structurally rather than by
+  convention:
+
+  - **A skipped check is never a passing one.** A check that cannot run here says *why*, and names
+    the hardware it would take. A run in which everything skipped exits non-zero and reports
+    `0 passed` — because "we did not look" read as "we looked and it was fine" is how a validation
+    figure becomes fiction.
+  - **A verdict with no evidence is a malformed report**, which the command refuses to print. You
+    can read the working and disagree with the verdict; that is the whole difference between this
+    and a ticked box.
+  - **It refuses to run against a mock Proxmox** unless `--allow-mock` is passed, naming the flag
+    and saying what it costs. A green run against a mock is indistinguishable from a green run
+    against real hardware, so the refusal is the default. A run made with the flag is stamped as
+    such *in the report*, so the caveat travels with the document.
+
+  Three suites: `hardware` (one real node, changes nothing), `multinode` (two or more nodes, or two
+  clusters for federation; skips loudly with the count it saw otherwise), and `destructive`
+  (`--i-understand` required — it interrupts applies, lets commit-confirm windows expire, and stops
+  the active daemon). The destructive interlock is wiring, not policy: without the flag no write
+  client is constructed at all.
+
+  `--out` writes a signed, timestamped JSON artifact naming the vnprox version, PVE version, kernel
+  and NIC models the run observed. Editing it — including merely re-indenting it — invalidates the
+  signature. `vnproxctl verify --list` prints every check with the hardware it needs, so you can see
+  what the suite will ask of your cluster before running any of it.
+
 - **Policy-as-code guardrails: the change engine can now say no.** Until now the engine's
   guarantees were strong and *advisory* — it told you what would happen, but it refused only one
   thing, hard-coded: cutting a node's management path. Every other rule an organisation has ("no

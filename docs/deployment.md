@@ -571,9 +571,130 @@ the report itself is JSON on stdout.
   abort on failure — aborting after the package and cluster rollout have run would leave a
   half-configured cluster. Making it a hard gate is `T-1904-followup-01`.
 
+## `vnproxctl verify` — hardware validation, executed (T-2501)
+
+`doctor` asks whether this daemon is healthy. `verify` asks a different question: **does this
+cluster actually behave the way vnprox claims it does?**
+
+It exists because of the number in [`status-matrix.md`](status-matrix.md) §5.3. Almost everything
+vnprox does has only ever been tested against `internal/pvemock`, because validating a behaviour on
+real hardware meant a human reading a checklist line, doing the thing, and writing down what
+happened. That does not scale, does not repeat, and — most importantly — cannot be handed to a user
+who has a cluster and would like to help. `verify` is that checklist as a command.
+
+```
+vnproxctl verify --list                       # what the suite will ask of your hardware, before it asks
+vnproxctl verify --suite=hardware             # read-only; safe on a production cluster
+vnproxctl verify --suite=multinode            # needs 2+ nodes; skips loudly otherwise
+vnproxctl verify --suite=destructive --i-understand
+vnproxctl verify --only=lldp.neighbors_match_pve_interfaces
+vnproxctl verify --suite=hardware --out report.json   # signed artifact to attach to an issue
+```
+
+**If you have a Proxmox cluster and want to help this project, this is the command to run.**
+`--suite=hardware` changes nothing, and the report it prints (or writes with `--out`) is the single
+most useful thing anyone outside the project can contribute.
+
+### What a result means
+
+| Status | Meaning |
+|---|---|
+| `PASS` | The behaviour was observed on your hardware, and it was what we claim. The evidence is in the report. |
+| `FAIL` | The behaviour was observed, and it was not what we claim. This is a bug in vnprox — please send the report. |
+| `SKIP` | The behaviour could **not** be observed here, with the reason and the hardware it would take. **Never** counted as a pass. |
+
+**A run in which everything skipped exits non-zero and says `0 passed`.** "We did not look" and "we
+looked and it was fine" are different facts, and a suite that conflated them would make the
+hardware-validated figure fiction rather than merely small.
+
+**Every `PASS` and every `FAIL` carries its evidence** — the API response, the command output, the
+file contents the verdict rests on. This is enforced structurally (`verify.Report.Validate`), not
+by convention: a verdict with no evidence is a malformed report and the command refuses to print
+it. The point is that you can read the working and disagree with the verdict.
+
+### It refuses to run against a mock
+
+```
+$ vnproxctl verify --pve-url https://127.0.0.1:8899
+vnproxctl verify: refusing to run the hardware validation suite against https://127.0.0.1:8899:
+the endpoint identifies itself as internal/pvemock (X-Pvemock: server).
+A green run against a mock is indistinguishable from a green run against real Proxmox, and would
+raise the hardware-validated count in docs/status-matrix.md without validating any hardware.
+Point --pve-url at a real cluster, or pass --allow-mock to run against the mock anyway — the report
+will be stamped as a mock run and is not hardware evidence.
+```
+
+`--allow-mock` exists for development. A report produced with it carries `environment.mock: true`
+and the signal that identified the endpoint, so the stamp travels with the document rather than
+living only in the terminal of whoever ran it. A cassette **replay** server counts as a mock too:
+the traffic was recorded from real PVE, but replaying it is not exercising a live cluster.
+
+### The suites
+
+| Suite | Needs | Changes anything? |
+|---|---|---|
+| `hardware` | one real PVE node | **No.** Read-only throughout. |
+| `multinode` | two or more online nodes (or, for federation, two clusters) | No. |
+| `destructive` | `--i-understand`, and a cluster you can disrupt | **Yes** — it interrupts applies, lets commit-confirm windows expire, provisions VFs, and stops the active daemon. |
+
+The destructive interlock is structural: without `--i-understand` the command does not construct a
+write client at all, so those checks find no way to mutate and skip naming the flag. It is not a
+rule the checks are trusted to follow.
+
+### The report artifact
+
+`--out` writes a signed, timestamped JSON document naming the vnprox version, PVE version, kernel
+and NIC models the run observed, plus every result and its evidence. It is compact single-line JSON
+on purpose — that is its canonical form, and the parser rejects anything that is not byte-identical
+to it, so re-indenting the file (`jq . report.json`) invalidates it exactly as editing a value
+would.
+
+The signature is Ed25519 with the public key embedded, which means **integrity, not provenance**: a
+verified signature says "these are the bytes that were signed", and says nothing about who signed
+them unless you already trust the fingerprint. `--sign-key` points at a key whose fingerprint a
+reader knows; without it the run uses an ephemeral key, which still detects any later edit.
+
+### Exit codes
+
+`0` only when at least one check passed and none failed. `1` on any failure **or** on a run that
+validated nothing. `2` for a usage problem, including the mock refusal and an unknown `--only` id.
+`5` when the PVE endpoint could not be reached at all.
+
+### Before you send a report to a stranger
+
+**Read it first.** Evidence is verbatim by design — that is what makes a verdict checkable — so a
+report carries real API responses and real command output from your cluster: node names, IP
+addresses, bridge and VNet names, LLDP neighbour identities, certificate subjects.
+
+The one check that deliberately handles a live credential (`supportbundle.contains_no_secret`, which
+must read your session key in order to search for it) redacts that key from its own evidence,
+including on the branch where the bundle leaked it — a report written to prove a secret did not
+escape must not be the thing that lets it escape. That is enforced by a test.
+
+**No general redaction pass runs over the other checks' evidence.** vnprox's own routes are built
+not to return secrets (`GET /config` excludes every secret-bearing value; `GET /wireguard/tunnels`
+never returns a private key — both are checked by this suite), so the exposure is inventory
+metadata rather than credentials. But it is your cluster's metadata, and it is your call. Use
+`vnproxctl support-bundle` instead when you need a redaction guarantee; that command is built for
+it and this one is not.
+
+### Known limitations, stated rather than hidden
+
+- **Host reads are local-only.** `verify` reads `/proc`, `/sys` and `/etc/pve` on the machine it
+  runs on. Asked for another node's host state it reports that limitation, which the affected
+  checks turn into a skip — never a silent read of the wrong node. Run the suite on each node.
+- **The `HW` column is not yet regenerated automatically.** `verify.HWFromReport` computes what a
+  row's mark should be from a report, and nothing yet writes it back into
+  [`status-matrix.md`](status-matrix.md). Until it does, the column is maintained by hand.
+- **Many checks skip on a healthy, lightly-used cluster** — no drift to report, no capture ever
+  run, no external IPAM configured. Each says what to do to make itself run. That is the honest
+  state: a suite that reported `pass` for "we looked and there was nothing to look at" would be
+  back to the problem this command exists to solve.
+
 ## Troubleshooting quick refs
 
 - `vnproxctl doctor` — **start here.** Ten checks, each failure naming its own fix. Read-only; works daemon-down.
+- `vnproxctl verify --suite=hardware` — does this cluster behave the way vnprox claims? Read-only, evidence-carrying, and the most useful thing you can send us if you have hardware we do not.
 - `journalctl -u vnprox` — daemon logs (structured).
 - `vnproxctl status` — local daemon, peer reachability, PVE API health, collector ages.
 - `vnproxctl rollback-now <changeset-id>` — CLI escape hatch to trigger rollback when the UI is unreachable.

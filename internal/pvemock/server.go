@@ -68,8 +68,22 @@ func WithTicketTTL(ttl time.Duration) Option {
 	}
 }
 
+// MockIdentityHeader is set on every response this package's servers send,
+// naming which of them answered ("server" here, "replay" in replay.go).
+//
+// Added for T-2501. A real pveproxy cannot set it, so it is an unambiguous
+// answer to "am I talking to a mock?" — which `vnproxctl verify` asks before
+// it will produce a hardware-validation report, because a green run against
+// this server is indistinguishable from a green run against real Proxmox and
+// would raise the validated count in docs/status-matrix.md without validating
+// anything. Identifying itself is the mock's own responsibility; leaving the
+// caller to infer it from behaviour is how the inference eventually goes
+// wrong in the direction nobody notices.
+const MockIdentityHeader = "X-Pvemock"
+
 // ServeHTTP implements http.Handler.
 func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set(MockIdentityHeader, "server")
 	srv.router.ServeHTTP(w, r)
 }
 
