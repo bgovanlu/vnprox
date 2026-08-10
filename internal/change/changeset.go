@@ -205,6 +205,14 @@ const (
 	OriginUI  = "ui"
 	OriginMCP = "mcp"
 	OriginCLI = "cli"
+	// OriginGitSync (T-2701) marks a draft opened by internal/gitsync because
+	// the spec in the operator's git repository and the live cluster
+	// disagreed. Like every other origin it is a provenance label, not a
+	// control-flow switch: a sync draft is an ordinary draft a human reviews
+	// and applies through the normal flow. It is also the key gitsync uses to
+	// find its own single open draft, which is how "one open sync changeset
+	// at a time" is enforced without a second table.
+	OriginGitSync = "gitsync"
 )
 
 // CanTransition reports whether moving from c's current Status to to is

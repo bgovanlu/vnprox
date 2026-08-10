@@ -512,6 +512,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// unchanged.
 	haGuard := &haLeaderGuard{}
 	haFindAdapter := &haFindingsAdapter{}
+	// T-2701: the git-backed spec sync is built after change.Service (below),
+	// so its findings and status seams are late-bound exactly the way
+	// haFindAdapter is. Until set — and forever, when [gitsync] is off —
+	// both report "nothing".
+	gitSyncFindings := &gitSyncFindingsAdapter{}
+	gitSyncStatus := &gitSyncStatusAdapter{}
 	// T-1504: flowClassifier is built now (it only needs corosync.conf,
 	// already readable) and registered into api.Options.FlowClassifier
 	// below; flowClassifyAdapterVal is wired in now (findings.Engine is
@@ -669,7 +675,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	certSvc.Preflight()
 	go certSvc.Run(ctx)
 	certFindings := certFindingsAdapter{svc: certSvc}
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, gitSyncFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -1029,6 +1035,19 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		}
 	}
 
+	// T-2701: git-backed spec sync. Constructed unconditionally so
+	// `GET /gitsync/status` always has an answer and the actor set does not
+	// change shape with configuration; a disabled section contacts nothing.
+	// A remote this daemon cannot even describe (malformed URL, unguessable
+	// provider, unreadable trust anchors) is fatal here — a remote that is
+	// merely unreachable is not, and never blocks startup (T-2701 AC7).
+	gitSyncSvc, err := buildGitSync(cfg.GitSync, changeSvc, graph, auditRepo, logger)
+	if err != nil {
+		return fmt.Errorf("initializing git spec sync: %w", err)
+	}
+	gitSyncFindings.set(gitSyncSvc)
+	gitSyncStatus.set(gitSyncSvc)
+
 	// T-505: the firewall log viewer's cluster-wide tailer/correlator.
 	// Built before peerSrv below so the same local log source
 	// (fwlogSource) backs both this daemon's own polling (fwlogSvc) and
@@ -1340,6 +1359,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// clean nil interface when HA is disabled (avoiding the typed-nil trap),
 		// so the route simply isn't mounted.
 		HA: haStatus,
+		// T-2701: GET /gitsync/status — read-only; there is deliberately no
+		// route that triggers a sync or applies its draft.
+		GitSync: gitSyncStatus,
 		// T-1007: GET /history/events merges the same audit_log (narrowed to
 		// the changeset-lifecycle action set) with finding_events.
 		History:              auditRepo,
@@ -1610,6 +1632,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		g.add(collector.RunLLDPLoop)
 	}
 	g.add(driftSvc.RunLoop)
+	// T-2701: the git spec-sync poll loop. Blocks for the daemon's lifetime
+	// and returns nil on cancellation like every other actor here; a
+	// disabled sync simply waits. Every per-cycle failure (unreachable
+	// remote, unparseable document, refused signature) stays inside the loop
+	// as a finding plus a retry, so this actor can never take the group down.
+	g.add(gitSyncSvc.Run)
 	// T-1103: the maintenance-window scheduler's own supervised, periodic
 	// tick (change.Service.RunScheduler/TickSchedules' doc comments) — owned
 	// and shut down here exactly like every other actor in this group.

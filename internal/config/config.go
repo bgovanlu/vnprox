@@ -180,6 +180,7 @@ type Config struct {
 	Blueprint   BlueprintConfig
 	Safety      SafetyConfig
 	Hub         HubConfig
+	GitSync     GitSyncConfig
 	Security    SecurityConfig
 	OIDC        OIDCConfig
 	Server      ServerConfig
@@ -283,6 +284,51 @@ type HAConfig struct {
 type HubConfig struct {
 	RegistryURL   string
 	VettedSigners []string
+}
+
+// GitSyncConfig is the [gitsync] section (T-2701): a git repository as the
+// source of *intent* for the declarative cluster network spec.
+//
+// **Off by default and off by construction.** Enabled false — the zero value
+// — means nothing is fetched and no endpoint is contacted, ever; the poll
+// loop blocks on shutdown and does nothing else. Proxmox remains the source
+// of truth: when the repository and the cluster disagree, vnprox opens a
+// DRAFT changeset for a human and stops. Nothing in this section can make
+// the file authoritative over live config.
+type GitSyncConfig struct {
+	// URL is the repository (or, for provider = "raw", the directory base)
+	// to read from. https only, except on loopback. A URL that embeds
+	// credentials is refused: use TokenFile.
+	URL string
+	// Provider selects the read surface: "github", "gitlab" or "raw".
+	// Empty infers from the host for github.com/gitlab.com and is a startup
+	// error for anything else — guessing an API shape from an unknown host
+	// is how a sync silently reads the wrong thing.
+	Provider string
+	// Ref is the branch, tag or sha to read. Defaults to "main".
+	Ref string
+	// Path is the spec document's path within the repository.
+	Path string
+	// TokenFile is a root:root 0600 file containing the host credential —
+	// the same on-disk-secret convention [oidc] client_secret_file and
+	// [pve] token_file already use. The credential is never written into
+	// this config file, never placed in a URL, and never logged.
+	TokenFile string
+	// AllowedSignersFile is an OpenSSH allowed-signers (or authorized_keys)
+	// file listing the keys whose commit signatures are trusted. Required
+	// when RequireSignedCommits is set.
+	AllowedSignersFile string
+	// PollInterval is the fetch cadence. Zero takes the package default.
+	PollInterval time.Duration
+	// Enabled is the master switch. False leaves the whole subsystem inert.
+	// The two bools sit last so the struct packs; Enabled is nonetheless the
+	// first key an operator writes (docs/deployment.md).
+	Enabled bool
+	// RequireSignedCommits refuses a commit whose signature this daemon
+	// cannot verify locally against AllowedSignersFile. It fails closed: an
+	// unsigned commit, an unsupported signature format, and a host that
+	// cannot supply the signed commit object are all refusals.
+	RequireSignedCommits bool
 }
 
 // SecurityConfig is the [security] section (T-1605: rogue-service detection).
@@ -694,6 +740,7 @@ type rawConfig struct {
 	OIDC        rawOIDC        `toml:"oidc"`
 	Metrics     rawMetrics     `toml:"metrics"`
 	Hub         rawHub         `toml:"hub"`
+	GitSync     rawGitSync     `toml:"gitsync"`
 	Safety      rawSafety      `toml:"safety"`
 	Security    rawSecurity    `toml:"security"`
 	Certs       rawCerts       `toml:"certs"`
@@ -726,6 +773,18 @@ type rawChangesets struct {
 
 type rawMCP struct {
 	Enabled bool `toml:"enabled"`
+}
+
+type rawGitSync struct {
+	URL                  string `toml:"url"`
+	Provider             string `toml:"provider"`
+	Ref                  string `toml:"ref"`
+	Path                 string `toml:"path"`
+	PollInterval         string `toml:"poll_interval"`
+	TokenFile            string `toml:"token_file"`
+	AllowedSignersFile   string `toml:"allowed_signers_file"`
+	Enabled              bool   `toml:"enabled"`
+	RequireSignedCommits bool   `toml:"require_signed_commits"`
 }
 
 type rawHA struct {
@@ -944,6 +1003,10 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	gitSyncCfg, err := resolveGitSyncConfig(raw.GitSync)
+	if err != nil {
+		return nil, err
+	}
 	// T-2401: absent/"" means OFF (the default), so this cannot go through
 	// parseDurationOrDefault, which treats a non-positive duration as an
 	// error. A malformed string is still fatal — an operator who wrote
@@ -1076,7 +1139,8 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			RetentionHours:        firstNonZeroInt(raw.Capture.RetentionHours, capture.DefaultCaps.RetentionHours),
 			MaxFilterInstructions: firstNonZeroInt(raw.Capture.MaxFilterInstructions, capture.DefaultMaxFilterInstructions),
 		},
-		OIDC: resolveOIDCConfig(raw.OIDC),
+		OIDC:    resolveOIDCConfig(raw.OIDC),
+		GitSync: gitSyncCfg,
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -1388,6 +1452,61 @@ func parseCIDRList(raw []string) ([]*net.IPNet, error) {
 // GroupsClaim defaults to "groups", and the group→role mapping table is carried
 // through verbatim (cap-name validation happens in validate()). Scopes are
 // passed through as-is; internal/auth's provider always adds "openid".
+// resolveGitSyncConfig resolves and validates the [gitsync] section
+// (T-2701). A disabled section is returned as-is without a single check: an
+// operator who never turned this on must never see an error from it, and a
+// half-filled disabled section is not a misconfiguration of anything.
+//
+// An *enabled* section, by contrast, is checked strictly and fatally. That
+// asymmetry is deliberate: a daemon that came up with a sync it could not
+// perform would look configured while reconciling nothing, which is the
+// worst of the three possible states. Note the boundary this draws — a
+// remote that is merely *unreachable* is never a startup failure (T-2701
+// AC7); only a remote that is not describable is.
+func resolveGitSyncConfig(raw rawGitSync) (GitSyncConfig, error) {
+	cfg := GitSyncConfig{
+		Enabled:              raw.Enabled,
+		URL:                  strings.TrimSpace(raw.URL),
+		Provider:             strings.TrimSpace(raw.Provider),
+		Ref:                  firstNonEmpty(strings.TrimSpace(raw.Ref), "main"),
+		Path:                 strings.TrimSpace(raw.Path),
+		TokenFile:            strings.TrimSpace(raw.TokenFile),
+		RequireSignedCommits: raw.RequireSignedCommits,
+		AllowedSignersFile:   strings.TrimSpace(raw.AllowedSignersFile),
+	}
+	if raw.PollInterval != "" {
+		d, err := time.ParseDuration(raw.PollInterval)
+		if err != nil {
+			return GitSyncConfig{}, fmt.Errorf("%w: gitsync.poll_interval %q: %v", ErrInvalidConfig, raw.PollInterval, err)
+		}
+		if d <= 0 {
+			return GitSyncConfig{}, fmt.Errorf("%w: gitsync.poll_interval must be positive, got %q", ErrInvalidConfig, raw.PollInterval)
+		}
+		cfg.PollInterval = d
+	}
+	if !cfg.Enabled {
+		return cfg, nil
+	}
+	if cfg.URL == "" {
+		return GitSyncConfig{}, fmt.Errorf("%w: gitsync.url is required when gitsync.enabled is true", ErrInvalidConfig)
+	}
+	if cfg.Path == "" {
+		return GitSyncConfig{}, fmt.Errorf("%w: gitsync.path is required when gitsync.enabled is true", ErrInvalidConfig)
+	}
+	switch cfg.Provider {
+	case "", "github", "gitlab", "raw":
+	default:
+		return GitSyncConfig{}, fmt.Errorf("%w: gitsync.provider %q is not one of github, gitlab, raw", ErrInvalidConfig, cfg.Provider)
+	}
+	if cfg.RequireSignedCommits && cfg.AllowedSignersFile == "" {
+		// Without trust anchors "require signatures" could only ever mean
+		// "refuse everything", which is a configuration mistake worth
+		// naming rather than a policy worth honouring.
+		return GitSyncConfig{}, fmt.Errorf("%w: gitsync.allowed_signers_file is required when gitsync.require_signed_commits is true", ErrInvalidConfig)
+	}
+	return cfg, nil
+}
+
 func resolveOIDCConfig(raw rawOIDC) OIDCConfig {
 	groups := make([]OIDCGroupMapping, 0, len(raw.Groups))
 	for _, g := range raw.Groups {

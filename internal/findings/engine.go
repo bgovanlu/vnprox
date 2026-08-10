@@ -134,7 +134,13 @@ type Config struct {
 	// storeCapacityAdapter over *store.DB.SizeBytes), backing
 	// store_near_capacity (source "store"). Nil skips that check entirely,
 	// same degradation as every other optional Config field.
-	StoreCapacity   StoreCapacityProvider
+	StoreCapacity StoreCapacityProvider
+	// GitSync is T-2701's git-backed spec sync seam (cmd/vnproxd's
+	// gitSyncFindingsAdapter over *gitsync.Service), backing the
+	// gitsync_* checks (source "gitsync"). Nil — which is every deployment
+	// that has not configured [gitsync] — skips them entirely, the same
+	// degradation every other optional Config field uses.
+	GitSync         GitSyncProvider
 	Notifier        Notifier
 	Graph           *inventory.Graph
 	Logger          *slog.Logger
@@ -189,6 +195,7 @@ type Engine struct {
 	peerUnreachDB    *debouncer
 	storeCapacitySvc StoreCapacityProvider
 	storeCapacityDB  *debouncer
+	gitSyncSvc       GitSyncProvider
 	bondDB           *debouncer
 	wgStaleDB        *debouncer
 	arpChurnDB       *arpChurnTracker
@@ -299,6 +306,7 @@ func New(cfg Config) *Engine {
 		peerUnreachDB:    newDebouncer(),
 		storeCapacitySvc: cfg.StoreCapacity,
 		storeCapacityDB:  newDebouncer(),
+		gitSyncSvc:       cfg.GitSync,
 	}
 }
 
@@ -333,6 +341,7 @@ func (e *Engine) Findings() []Finding {
 	out = append(out, peerTrustFindings(e.peerTrustSvc, e.peerUnreachDB)...)
 	out = append(out, storeCapacityFindings(e.storeCapacitySvc, e.thresholds.StoreCapacityWarnBytes, e.storeCapacityDB)...)
 	out = append(out, checkCertificates(e.certSvc)...)
+	out = append(out, gitSyncFindings(e.gitSyncSvc)...)
 	out = append(out, e.healthFindings()...)
 	out = append(out, e.rogueFindings()...)
 	sortFindings(out)
