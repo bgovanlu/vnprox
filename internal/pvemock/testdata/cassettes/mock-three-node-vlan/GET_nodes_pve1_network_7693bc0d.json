@@ -1,0 +1,8 @@
+{
+  "recordedAt": "2026-08-10T14:41:45.548604272Z",
+  "pveVersion": "mock-three-node-vlan",
+  "method": "GET",
+  "path": "/api2/json/nodes/pve1/network",
+  "status": 200,
+  "body": "{\"data\":[{\"type\":\"loopback\",\"method\":\"loopback\",\"iface\":\"lo\",\"autostart\":1},{\"type\":\"eth\",\"method\":\"manual\",\"iface\":\"eno1\",\"mtu\":1500,\"autostart\":1},{\"type\":\"eth\",\"method\":\"manual\",\"iface\":\"eno2\",\"mtu\":1500,\"autostart\":1},{\"type\":\"eth\",\"method\":\"manual\",\"iface\":\"eno3\",\"mtu\":1500,\"autostart\":1},{\"bond_mode\":\"802.3ad\",\"type\":\"bond\",\"method\":\"manual\",\"iface\":\"bond0\",\"comments\":\"LACP to access switch\",\"slaves\":\"eno1 eno2\",\"mtu\":1500,\"autostart\":1},{\"type\":\"bridge\",\"method\":\"static\",\"address\":\"10.10.0.11/24\",\"gateway\":\"10.10.0.1\",\"iface\":\"vmbr0\",\"comments\":\"cluster/mgmt trunk, VLAN-aware\",\"bridge_ports\":\"bond0\",\"mtu\":1500,\"bridge_vlan_aware\":1,\"autostart\":1},{\"type\":\"vlan\",\"method\":\"static\",\"address\":\"10.10.20.11/24\",\"iface\":\"vmbr0.20\",\"comments\":\"storage VLAN\",\"vlan_raw_device\":\"vmbr0\",\"mtu\":1500,\"vlan_id\":20,\"autostart\":1}]}\n"
+}

@@ -1,0 +1,8 @@
+{
+  "recordedAt": "2026-08-10T14:41:45.551289996Z",
+  "pveVersion": "mock-three-node-vlan",
+  "method": "GET",
+  "path": "/api2/json/nodes/pve1/network/vmbr0",
+  "status": 200,
+  "body": "{\"data\":{\"type\":\"bridge\",\"method\":\"static\",\"address\":\"10.10.0.11/24\",\"gateway\":\"10.10.0.1\",\"iface\":\"vmbr0\",\"comments\":\"cluster/mgmt trunk, VLAN-aware\",\"bridge_ports\":\"bond0\",\"mtu\":1500,\"bridge_vlan_aware\":1,\"autostart\":1}}\n"
+}

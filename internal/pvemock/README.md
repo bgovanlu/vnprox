@@ -222,3 +222,33 @@ a test exercising both sees one consistent view of the world. T-102's
 `real` implementation (netlink, `/etc/network/interfaces`, `lldpctl`,
 `/proc/net`) only needs to match this method set; Go's structural interface
 typing means it never needs to import this package to satisfy it.
+
+## Replay mode (T-2502)
+
+`Server` answers from a YAML fixture through ~80 hand-written handlers, and
+every one of those handlers is a statement about what PVE does — a statement
+somebody made up. `ReplayServer` is the alternative for tests that want the
+opposite property:
+
+```go
+srv, err := pvemock.NewReplayServer("testdata/cassettes/8.3.5",
+    pvemock.WithUnmatchedFailer(t))
+ts := httptest.NewServer(srv)
+```
+
+It serves *cassettes* — request/response pairs recorded from a real PVE by
+`make record` (see `testdata/cassettes/README.md`) — matching on method,
+path and normalised query. Query matching is order-independent and
+value-sensitive: `?a=1&b=2` and `?b=2&a=1` are the same request,
+`?running=1` and `?running=0` are not.
+
+**An unmatched request fails loudly.** It returns HTTP 599 with
+`X-Pvemock-Replay: unmatched`, a body carrying `ErrNoCassette`, and — with
+`WithUnmatchedFailer(t)` — an immediate test failure on the line that made
+it. There is no fallback to a synthetic default, and none can be
+configured: a fixture that "works" only because the mock invented an answer
+is the exact defect class this exists to eliminate (T-2108 found four).
+
+`ReplayServer` is a sibling of `Server`, not a mode of it. It inherits none
+of `Server`'s handlers, not even `/mock/*`, so it can answer exactly what
+somebody observed and nothing else.

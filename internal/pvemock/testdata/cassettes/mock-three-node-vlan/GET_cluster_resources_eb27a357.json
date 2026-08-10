@@ -1,0 +1,8 @@
+{
+  "recordedAt": "2026-08-10T14:41:45.546580153Z",
+  "pveVersion": "mock-three-node-vlan",
+  "method": "GET",
+  "path": "/api2/json/cluster/resources",
+  "status": 200,
+  "body": "{\"data\":[{\"type\":\"node\",\"id\":\"node/pve1\",\"node\":\"pve1\",\"name\":\"pve1\",\"status\":\"online\"},{\"type\":\"node\",\"id\":\"node/pve2\",\"node\":\"pve2\",\"name\":\"pve2\",\"status\":\"online\"},{\"type\":\"node\",\"id\":\"node/pve3\",\"node\":\"pve3\",\"name\":\"pve3\",\"status\":\"online\"},{\"type\":\"qemu\",\"id\":\"qemu/200\",\"node\":\"pve1\",\"name\":\"app01\",\"status\":\"running\",\"vmid\":200},{\"type\":\"lxc\",\"id\":\"lxc/201\",\"node\":\"pve2\",\"name\":\"cache01\",\"status\":\"running\",\"vmid\":201}]}\n"
+}

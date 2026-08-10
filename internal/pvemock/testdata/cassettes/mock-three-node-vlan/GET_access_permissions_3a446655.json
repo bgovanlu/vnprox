@@ -1,0 +1,8 @@
+{
+  "recordedAt": "2026-08-10T14:41:45.545161467Z",
+  "pveVersion": "mock-three-node-vlan",
+  "method": "GET",
+  "path": "/api2/json/access/permissions",
+  "status": 200,
+  "body": "{\"data\":{\"/\":{\"*\":1}}}\n"
+}
