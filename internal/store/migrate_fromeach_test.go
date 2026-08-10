@@ -162,6 +162,7 @@ var versionSeeds = map[int]versionSeed{
 	34: {seedV34, assertV34},
 	35: {seedV35, assertV35},
 	36: {seedV36, assertV36},
+	37: {seedV37, assertV37},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1292,10 +1293,39 @@ func assertV36(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 37 (0037_policy_sets.sql, policy_sets + policy_rule_stats —
-// T-2601) has no versionSeeds entry because it is the current latest, not a
+func seedV37(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// T-2601's installed policy set plus one rule's runtime bookkeeping.
+	mustExec(t, db, `INSERT INTO policy_sets (cluster_id, revision, rules_json, updated_by, updated_at)
+		VALUES ('', 3, '{"version":1,"rules":[{"id":"no-vlan1","description":"no guest on VLAN 1","severity":"deny"}]}', 'brian', 1700004000)`)
+	mustExec(t, db, `INSERT INTO policy_rule_stats (cluster_id, rule_id, first_seen_at, last_matched_at, eval_count, match_count)
+		VALUES ('', 'no-vlan1', 1700000000, 1700003000, 42, 7)`)
+}
+
+func assertV37(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var revision int64
+	var updatedBy string
+	if err := db.QueryRowContext(ctx, `SELECT revision, updated_by FROM policy_sets WHERE cluster_id = ''`).Scan(&revision, &updatedBy); err != nil {
+		t.Errorf("policy_sets row lost across migration: %v", err)
+	} else if revision != 3 || updatedBy != "brian" {
+		t.Errorf("policy_sets row = (%d, %q), want (3, \"brian\")", revision, updatedBy)
+	}
+
+	var evalCount, matchCount int64
+	if err := db.QueryRowContext(ctx, `SELECT eval_count, match_count FROM policy_rule_stats WHERE cluster_id = '' AND rule_id = 'no-vlan1'`).
+		Scan(&evalCount, &matchCount); err != nil {
+		t.Errorf("policy_rule_stats row lost across migration: %v", err)
+	} else if evalCount != 42 || matchCount != 7 {
+		t.Errorf("policy_rule_stats row = (%d, %d), want (42, 7)", evalCount, matchCount)
+	}
+}
+
+// Schema version 38 (0038_changeset_apply_stages.sql, changeset_apply_stages
+// — T-2602) has no versionSeeds entry because it is the current latest, not a
 // "prior" version any fixture in this file freezes at — its own forward
 // application (as part of every case's migrate() call to latest) is exercised
 // by every case above, and TestOpen_CreatesAllTables (store_test.go)
 // exercises it from a fresh database. The next migration to land becomes the
-// new latest and picks up a version 37 entry in versionSeeds at that time.
+// new latest and picks up a version 38 entry in versionSeeds at that time.

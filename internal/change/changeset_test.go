@@ -27,6 +27,10 @@ func wantTransitions() map[[2]Status]bool {
 	// applying: succeeds into the confirm window, or fails outright.
 	set(StatusApplying, StatusAwaitingConfirm)
 	set(StatusApplying, StatusFailed)
+	// T-2602: a staged (canary) apply pauses in `applying` between stages;
+	// aborting from that pause restores the stages that ran and lands in
+	// rolled_back (failed only when the restore itself was incomplete).
+	set(StatusApplying, StatusRolledBack)
 	// awaiting_confirm: user confirms (committed) or the deadline elapses /
 	// manual rollback (rolled_back); failed when that rollback could not
 	// fully restore every node (T-205).

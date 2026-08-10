@@ -33,7 +33,12 @@ func (c changeHACoordinator) ReArm(ctx context.Context) error {
 	return nil
 }
 
-func (c changeHACoordinator) Quiesce() { c.svc.StopTimers() }
+func (c changeHACoordinator) Quiesce() {
+	c.svc.StopTimers()
+	// T-2602: a demoted daemon must also stop driving canary holds; the
+	// promoted one re-arms them from the store via ReArm above.
+	c.svc.StopHoldTimers()
+}
 
 // haLeaderGuard lets change.Service's LeaderGuard reference the ha.Manager that
 // is constructed after it. Until set (HA disabled, or before the manager

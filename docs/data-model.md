@@ -171,6 +171,26 @@ CREATE TABLE policy_rule_stats (
     -- that has never matched, over enough evaluations and a long enough window, is
     -- reported as probablyMisconfigured on GET /policies. Pure derived bookkeeping.
 
+-- T-2602 (migration 0038): the PAUSED STATE of a staged (canary) apply — the
+-- one row that exists between the canary stage completing and the sequence
+-- being either promoted or aborted. It is a table, not an in-memory map,
+-- because a daemon killed mid-hold must come back and resolve the pause per
+-- the strategy it recorded: a half-applied changeset with nothing recording
+-- which half is exactly the unknown state a staged apply exists to prevent.
+-- A changeset with no row here was applied the ordinary all-at-once way,
+-- which is the default and what every pre-T-2602 changeset is.
+CREATE TABLE changeset_apply_stages (
+  changeset_id TEXT PRIMARY KEY REFERENCES changesets(id) ON DELETE CASCADE,
+  state TEXT NOT NULL,               -- canary_hold | promoting
+  strategy_json TEXT NOT NULL,       -- {mode, gate, canaryNodes, holdForSec} as requested and normalized
+  applied_nodes TEXT NOT NULL,       -- JSON array: nodes whose steps have run (an abort restores exactly these)
+  pending_nodes TEXT NOT NULL,       -- JSON array: nodes not yet contacted for a write (an abort never touches these)
+  author TEXT NOT NULL DEFAULT '',
+  hold_started_at INTEGER NOT NULL,
+  hold_deadline INTEGER NOT NULL,    -- always <= confirm_deadline: a hold may never outlive its window
+  confirm_deadline INTEGER NOT NULL  -- the WHOLE sequence's commit-confirm deadline, set once at its start
+);
+
 CREATE TABLE snapshots (
   id TEXT PRIMARY KEY, changeset_id TEXT REFERENCES changesets(id),
   taken_at INTEGER NOT NULL, kind TEXT NOT NULL,      -- pre|post|manual|scheduled

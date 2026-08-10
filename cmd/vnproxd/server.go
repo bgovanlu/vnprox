@@ -931,6 +931,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// policy simply has an empty rule set, which produces no findings
 		// and changes nothing.
 		Policies: store.NewPolicySetRepo(db),
+		// T-2602: the persisted pause of a staged (canary) apply. Always
+		// wired (an app-owned table on the same shared db), because a hold
+		// that cannot be recorded is exactly the unknown state the card
+		// forbids — a deployment without it simply cannot request `mode:
+		// canary` at all. Canary (the `gate: auto` evidence source) is left
+		// unwired for now: automatic promotion is refused at validation time
+		// with a message saying so, which is honest, whereas promoting on
+		// evidence nothing gathered would not be. T-2603 wires the findings
+		// engine in behind this seam.
+		Stages: store.NewChangesetStageRepo(db),
 		Approval: change.ApprovalConfig{
 			Required:          cfg.Changesets.ApprovalRequired,
 			AllowSelfApproval: cfg.Changesets.AllowSelfApproval,
@@ -974,6 +984,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		logger.Error("change: re-arming pending rollbacks on startup", "error", armErr)
 	}
 	defer changeSvc.StopTimers()
+	// T-2602: canary-hold timers survive a restart the same way — stopped
+	// here, re-armed from changeset_apply_stages by ArmPendingRollbacks above.
+	defer changeSvc.StopHoldTimers()
 	// T-1702: the capability-scoped plugin registry. Built-ins register through
 	// the same registry as third-party plugins (proving the extension interfaces
 	// by use); the change engine is handed in as the stage-only seam — the

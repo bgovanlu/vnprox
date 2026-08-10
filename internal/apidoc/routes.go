@@ -55,6 +55,7 @@ var Operations = map[string]Operation{
 	"POST /api/v1/changesets/{id}/preflight-impact":       {Summary: "Report impact for a proposed edit before it is saved.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/apply":                  {Summary: "Apply a changeset under the commit-confirm timer.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/confirm":                {Summary: "Confirm an applied changeset before its timer expires.", Tag: "changesets", Auth: AuthSession},
+	"POST /api/v1/changesets/{id}/continue":               {Summary: "Promote a staged (canary) apply past its hold to the remaining nodes.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/rollback":               {Summary: "Roll an applied changeset back to its pre-apply state.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/approve":                {Summary: "Record an approval on a changeset.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/review/approve":         {Summary: "Approve a changeset in four-eyes review.", Tag: "changesets", Auth: AuthSession},

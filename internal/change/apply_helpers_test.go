@@ -45,9 +45,16 @@ type fakeNodeAgent struct {
 	staged      map[string]string
 	failStage   map[string]bool
 	failDiscard map[string]bool
-	stageCalls  int
-	loadCalls   int
-	mu          sync.Mutex
+	// calls records EVERY method this agent was asked to perform, per node,
+	// in order — the spy T-2602's "the remaining nodes' clients record zero
+	// calls" assertions are made against. It deliberately records reads
+	// alongside writes: an assertion that a node was never contacted has to
+	// be able to see a read that did contact it, or it proves less than it
+	// claims.
+	calls      map[string][]string
+	stageCalls int
+	loadCalls  int
+	mu         sync.Mutex
 }
 
 func newFakeNodeAgent(seed pvemock.HostReader, client *pve.Client) *fakeNodeAgent {
@@ -58,12 +65,45 @@ func newFakeNodeAgent(seed pvemock.HostReader, client *pve.Client) *fakeNodeAgen
 		staged:      map[string]string{},
 		failStage:   map[string]bool{},
 		failDiscard: map[string]bool{},
+		calls:       map[string][]string{},
 	}
+}
+
+// record appends one call against node. Callers hold a.mu, except
+// ReloadInterfaces which takes it around this call explicitly.
+func (a *fakeNodeAgent) record(node, method string) {
+	a.calls[node] = append(a.calls[node], method)
+}
+
+// callsFor returns every method recorded against node, in order.
+func (a *fakeNodeAgent) callsFor(node string) []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]string, len(a.calls[node]))
+	copy(out, a.calls[node])
+	return out
+}
+
+// writeCallsFor returns only the MUTATING calls recorded against node —
+// staging a file, reloading, or discarding a staged file. Reading a node's
+// current interfaces file is not a touch: the pre-apply snapshot reads every
+// affected node before any stage runs, by design (it is the rollback source
+// for the whole changeset), so "this node was never written to" is the
+// property a canary stage actually promises.
+func (a *fakeNodeAgent) writeCallsFor(node string) []string {
+	var out []string
+	for _, c := range a.callsFor(node) {
+		if c != "ReadInterfaces" {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func (a *fakeNodeAgent) ReadInterfaces(ctx context.Context, node string) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.record(node, "ReadInterfaces")
 	if _, ok := a.committed[node]; !ok {
 		content, err := a.seed.InterfacesFile(ctx, node, false)
 		if err != nil {
@@ -78,6 +118,7 @@ func (a *fakeNodeAgent) StageInterfaces(_ context.Context, node, content string)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.stageCalls++
+	a.record(node, "StageInterfaces")
 	if a.failStage[node] {
 		return errInjectedStage
 	}
@@ -88,6 +129,7 @@ func (a *fakeNodeAgent) StageInterfaces(_ context.Context, node, content string)
 func (a *fakeNodeAgent) ReloadInterfaces(ctx context.Context, node string) error {
 	a.mu.Lock()
 	a.loadCalls++
+	a.record(node, "ReloadInterfaces")
 	a.mu.Unlock()
 
 	upid, err := a.client.ReloadNodeNetwork(ctx, node)
@@ -110,6 +152,7 @@ func (a *fakeNodeAgent) ReloadInterfaces(ctx context.Context, node string) error
 func (a *fakeNodeAgent) DiscardStaged(_ context.Context, node string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.record(node, "DiscardStaged")
 	if a.failDiscard[node] {
 		return &injectedError{"injected discard failure"}
 	}
@@ -772,6 +815,10 @@ type applyHarness struct {
 	// ticket's plaintext appears nowhere in these raw bytes, mirroring
 	// TestWireGuardRepo_PrivateKeyEncryptedAtRest's shape.
 	dbPath string
+	// cfg is the exact Config svc was built from, so restart (below) can
+	// build a second Service over the same store — the daemon-restart
+	// simulation T-2602 AC4 needs.
+	cfg change.Config
 }
 
 // newHarness wires a full apply-capable Service against a fresh SQLite DB and
@@ -815,6 +862,10 @@ func newHarness(t *testing.T, fixturePath string, opts ...func(*change.Config)) 
 		Changesets: csRepo, Audit: auditRepo, WS: ws,
 		Nodes: agent, Snapshots: snapRepo, Blobs: blobRepo, Refresher: refresher,
 		TimerFunc: timers.New, ProtectedPath: protectedPath,
+		// T-2602: the staged-apply pause store, wired exactly as cmd/vnproxd
+		// wires it. Nothing here changes for an ordinary apply — no row is
+		// ever written unless a caller asks for `mode: canary`.
+		Stages: store.NewChangesetStageRepo(db),
 	}
 	for _, o := range opts {
 		o(&cfg)
@@ -822,8 +873,23 @@ func newHarness(t *testing.T, fixturePath string, opts ...func(*change.Config)) 
 	svc := newService(t, cfg)
 
 	return &applyHarness{
-		svc: svc, db: db, dbPath: dbPath, csRepo: csRepo, auditRepo: auditRepo, snapRepo: snapRepo, blobRepo: blobRepo,
+		svc: svc, cfg: cfg, db: db, dbPath: dbPath, csRepo: csRepo, auditRepo: auditRepo, snapRepo: snapRepo, blobRepo: blobRepo,
 		server: ts, client: client, agent: agent, timers: timers, ws: ws, refresher: refresher,
+	}
+}
+
+// restart replaces h.svc with a NEW change.Service built over the exact same
+// store, node agent and timer factory — the daemon-restart simulation
+// T-2602's AC4 needs. It stops the outgoing service's in-process timers
+// first (as a graceful shutdown does) so nothing of the old process survives
+// except what was persisted, then runs the startup recovery sweep.
+func (h *applyHarness) restart(t *testing.T) {
+	t.Helper()
+	h.svc.StopTimers()
+	h.svc.StopHoldTimers()
+	h.svc = newService(t, h.cfg)
+	if err := h.svc.ArmPendingRollbacks(context.Background()); err != nil {
+		t.Fatalf("ArmPendingRollbacks after restart: %v", err)
 	}
 }
 

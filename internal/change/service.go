@@ -174,7 +174,20 @@ type Config struct {
 	// Optional/nil-safe — a Service built without it evaluates an empty
 	// rule set, which produces no findings at all, so a pre-T-2601
 	// deployment's validation is byte-identical.
-	Policies       *store.PolicySetRepo
+	Policies *store.PolicySetRepo
+	// Stages (T-2602) backs the staged (canary) apply's PERSISTED pause
+	// between stages. Optional: a Service built without it applies exactly
+	// as it always did, and a caller that asks for `mode: canary` is
+	// refused at validation time with a message saying why — a pause with
+	// nowhere to be recorded is precisely the unknown state a staged apply
+	// exists to prevent, so it is never silently downgraded to an
+	// all-at-once apply.
+	Stages *store.ChangesetStageRepo
+	// Canary (T-2602) is the health/finding evidence the `gate: auto`
+	// promotion is decided on. Optional: without it, `gate: manual` works
+	// normally and `gate: auto` is refused at validation time rather than
+	// treated as "no evidence, therefore clean".
+	Canary         CanaryHealthChecker
 	ProtectedPath  string
 	CorosyncPath   string
 	LocalClusterID string
@@ -241,7 +254,15 @@ type Service struct {
 	approvals *store.ChangesetApprovalRepo
 	// policies (T-2601): see Config.Policies — nil-safe,
 	// policy_service.go owns all access.
-	policies       *store.PolicySetRepo
+	policies *store.PolicySetRepo
+	// stages/canary/holdTimers (T-2602): the staged-apply pause store, the
+	// auto gate's evidence source, and the in-process hold timers. holdTimers
+	// is deliberately a SECOND map rather than sharing s.timers: a paused
+	// changeset has both a hold deadline and a commit-confirm deadline armed
+	// at once, and cancelling one must never cancel the other.
+	stages         *store.ChangesetStageRepo
+	canary         CanaryHealthChecker
+	holdTimers     map[string]Stopper
 	leaderGuard    func() bool
 	log            *slog.Logger
 	newTimer       TimerFunc
@@ -316,6 +337,7 @@ func NewService(cfg Config) (*Service, error) {
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		comments: cfg.Comments, approvals: cfg.Approvals, approval: cfg.Approval,
 		policies: cfg.Policies, policyUnmatchedAfter: cfg.PolicyUnmatchedAfter,
+		stages: cfg.Stages, canary: cfg.Canary, holdTimers: map[string]Stopper{},
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
 		localClusterID: cfg.LocalClusterID, membership: cfg.ClusterMembership, impactPreflight: cfg.ImpactPreflight,
 		nodes: cfg.Nodes, nodeTimers: cfg.Timers, qos: cfg.Qos, wg: cfg.WG, sealer: cfg.Sealer, revertGateways: cfg.RevertGateways, wgCarriers: cfg.WgCarriers, snapshots: cfg.Snapshots, blobs: cfg.Blobs, refresher: cfg.Refresher,

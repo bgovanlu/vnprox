@@ -50,14 +50,25 @@ type executor struct {
 	// the restore target for a mid-apply failure that had already run a switch
 	// step (T-1205). Populated from the pre-snapshot's switchStateSnapshotPath
 	// file; hasSwitchPre is false for a changeset with no switch.port.* ops.
-	switchPre    map[string]string
-	plan         Plan
-	cs           Changeset
-	deadline     int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
-	hasSDNPre    bool
-	hasQosPre    bool
-	hasWgPre     bool
-	hasSwitchPre bool
+	switchPre map[string]string
+	// rollbackNodes is the node set rollbackAfterFailure converges back to the
+	// pre-apply state, in plan.affectedNodes() order. For an ordinary
+	// all-at-once apply it IS plan.affectedNodes() — every node the plan
+	// touches — which is what newExecutor sets it to, so nothing about the
+	// pre-T-2602 rollback changes.
+	//
+	// A staged (canary) apply narrows it to the nodes whose stages actually
+	// ran. That narrowing is the whole of T-2602's AC2: a node that was never
+	// contacted must not be contacted by the rollback either — not even for a
+	// DiscardStaged of a file that was never staged on it.
+	rollbackNodes []string
+	plan          Plan
+	cs            Changeset
+	deadline      int64 // unix; the commit-confirm deadline every node's local timer (T-304) is armed with
+	hasSDNPre     bool
+	hasQosPre     bool
+	hasWgPre      bool
+	hasSwitchPre  bool
 }
 
 // newExecutor builds an executor with a fresh apply log (all steps pending)
@@ -106,9 +117,31 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 		svc: s, cs: cs, plan: plan, pre: preByNode, sdnPre: sdnPre, hasSDNPre: hasSDNPre,
 		qosPre: qosPre, hasQosPre: hasQosPre, wgPre: wgPre, hasWgPre: hasWgPre,
 		switchPre: switchPre, hasSwitchPre: hasSwitchPre, pveGW: pveGW, deadline: deadline,
-		log:     &ApplyLog{Steps: steps},
-		stageIx: stageIx, loadIx: loadIx, fwPre: fwPre,
+		log:           &ApplyLog{Steps: steps},
+		rollbackNodes: plan.affectedNodes(),
+		stageIx:       stageIx, loadIx: loadIx, fwPre: fwPre,
 	}
+}
+
+// seedLog folds a previous stage's apply log into this executor's fresh one
+// (T-2602): step statuses/timings/errors and the rollback actions already
+// recorded. It is what makes a staged sequence produce ONE apply log rather
+// than one per stage, and — load-bearing — what lets undoNode see that a
+// canary node's reload already committed, so a failure in the remaining
+// stage restores the canary nodes too rather than only discarding their
+// (long-gone) staged file.
+func (e *executor) seedLog(prev ApplyLog) {
+	for i := range prev.Steps {
+		if i >= len(e.log.Steps) {
+			break
+		}
+		if prev.Steps[i].Status == StepPending {
+			continue
+		}
+		e.log.Steps[i] = prev.Steps[i]
+	}
+	e.log.Rollback = append(e.log.Rollback, prev.Rollback...)
+	e.log.NodeTimers = mergeNodeTimerLogs(e.log.NodeTimers, prev.NodeTimers)
 }
 
 // run executes every plan step in order. On the first step error it records
@@ -116,7 +149,22 @@ func (s *Service) newExecutor(cs Changeset, plan Plan, pre []snapshotFile, pveGW
 // and returns the error. On full success it returns a nil error and an apply
 // log with every step StepOK.
 func (e *executor) run(ctx context.Context) error {
-	for i := range e.plan.Steps {
+	return e.runSteps(ctx, allStepIndexes(e.plan))
+}
+
+// runSteps executes the given plan step indexes, in the order given. run
+// above passes every index in plan order, which is the only thing that ever
+// happened before T-2602; a staged apply passes one stage's indexes at a
+// time.
+//
+// On the first step error it records the failed step, marks every step that
+// has not run SKIPPED, rolls back what completed, and returns the error. The
+// skip rule is written as "every step still pending" rather than "every
+// index after the failing one" so it stays correct for a stage whose indexes
+// are not contiguous; for the contiguous all-at-once case the two are the
+// same set, which is why the pre-existing failure tests are unaffected.
+func (e *executor) runSteps(ctx context.Context, idxs []int) error {
+	for _, i := range idxs {
 		e.log.Steps[i].StartedAt = e.svc.now().Unix()
 		err := e.execStep(ctx, i)
 		e.log.Steps[i].EndedAt = e.svc.now().Unix()
@@ -125,8 +173,10 @@ func (e *executor) run(ctx context.Context) error {
 			e.log.Steps[i].Error = err.Error()
 			fi := i
 			e.log.FailedStep = &fi
-			for j := i + 1; j < len(e.log.Steps); j++ {
-				e.log.Steps[j].Status = StepSkipped
+			for j := range e.log.Steps {
+				if e.log.Steps[j].Status == StepPending {
+					e.log.Steps[j].Status = StepSkipped
+				}
 			}
 			e.rollbackAfterFailure(ctx)
 			return fmt.Errorf("change: apply step %d (%s) failed: %w", i, e.plan.Steps[i].Kind, err)
@@ -375,7 +425,13 @@ func (e *executor) rollbackAfterFailure(ctx context.Context) {
 		e.log.Rollback = append(e.log.Rollback, e.svc.restoreSDN(ctx, e.pveGW, e.sdnPre))
 	}
 
-	nodes := e.plan.affectedNodes()
+	// e.rollbackNodes is plan.affectedNodes() for an ordinary apply and the
+	// executed stages' nodes for a staged one — see its field doc.
+	nodes := e.rollbackNodes
+	inScope := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		inScope[n] = true
+	}
 	for i := len(nodes) - 1; i >= 0; i-- {
 		node := nodes[i]
 		reloadIdx, hasReload := e.loadIx[node]
@@ -383,16 +439,32 @@ func (e *executor) rollbackAfterFailure(ctx context.Context) {
 		e.undoNode(ctx, node, committed)
 	}
 	e.rollbackIpamSteps(ctx)
-	e.undoFwTargets(ctx)
+	e.undoFwTargets(ctx, inScope)
 	if e.hasQosPre && e.anyQosStepSucceeded() {
-		e.log.Rollback = append(e.log.Rollback, e.svc.restoreQosState(ctx, e.qosPre)...)
+		e.log.Rollback = append(e.log.Rollback, e.svc.restoreQosState(ctx, scopedToNodes(e.qosPre, inScope))...)
 	}
 	if e.hasWgPre && e.anyWgStepSucceeded() {
-		e.log.Rollback = append(e.log.Rollback, e.svc.restoreWgState(ctx, e.wgPre)...)
+		e.log.Rollback = append(e.log.Rollback, e.svc.restoreWgState(ctx, scopedToNodes(e.wgPre, inScope))...)
 	}
 	if e.hasSwitchPre && e.anySwitchStepSucceeded() {
 		e.log.Rollback = append(e.log.Rollback, e.svc.restoreSwitchState(ctx, e.switchPre)...)
 	}
+}
+
+// scopedToNodes narrows a per-node pre-apply state map to the nodes this
+// rollback is allowed to touch. For an ordinary apply every node in the map
+// is in scope (rollbackNodes is the plan's whole node set), so the returned
+// map has exactly the same entries and the pre-T-2602 behaviour is
+// unchanged. For a staged apply it drops the nodes that were never
+// contacted.
+func scopedToNodes(state map[string]string, inScope map[string]bool) map[string]string {
+	out := make(map[string]string, len(state))
+	for node, v := range state {
+		if inScope[node] {
+			out[node] = v
+		}
+	}
+	return out
 }
 
 // anyQosStepSucceeded reports whether any StepQosApply step in this apply
@@ -620,11 +692,20 @@ func (e *executor) rollbackIpamSteps(ctx context.Context) {
 // still restored as long as e.fwPre captured something for them, since a
 // snapshot is taken before the *first* op in the step runs, not after the
 // whole step succeeds.
-func (e *executor) undoFwTargets(ctx context.Context) {
+//
+// inScope narrows the node-scoped targets to the nodes this rollback may
+// touch (T-2602). Cluster-scope targets (Node == "") are always in scope:
+// they are a PVE-side ruleset with no owning node, so restoring one contacts
+// no node at all, and restoring it to its own pre-image is a no-op when its
+// step never ran.
+func (e *executor) undoFwTargets(ctx context.Context, inScope map[string]bool) {
 	if e.pveGW == nil {
 		return
 	}
 	for _, target := range e.plan.fwTargets() {
+		if target.Node != "" && !inScope[target.Node] {
+			continue
+		}
 		key := target.String()
 		pre, captured := e.fwPre[key]
 		if !captured {
