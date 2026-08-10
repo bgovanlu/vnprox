@@ -76,6 +76,17 @@ var allowedTransitions = map[Status]map[Status]bool{
 	StatusApplying: {
 		StatusAwaitingConfirm: true,
 		StatusFailed:          true,
+		// StatusRolledBack is reachable since T-2602's staged (canary) apply.
+		// A staged apply PAUSES in `applying` between stages — it is neither
+		// applied nor rolled back — and aborting from that pause restores
+		// exactly the stages that ran. That outcome is `rolled_back` by the
+		// plain meaning of both terms: what was applied was undone. Routing
+		// it to `failed` instead would conflate "we stopped on purpose and
+		// cleaned up" with `failed`'s own documented meaning ("an apply step
+		// failed"), which is still where an abort lands when the restore
+		// itself could not complete. No non-staged apply can take this edge:
+		// nothing else ever pauses in `applying`.
+		StatusRolledBack: true,
 	},
 	StatusAwaitingConfirm: {
 		StatusCommitted:  true,

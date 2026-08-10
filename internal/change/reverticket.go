@@ -255,24 +255,36 @@ func (s *Service) unattendedRevertFor(c Changeset) *UnattendedRevert {
 	if err != nil {
 		return nil
 	}
-	deadline := *c.ConfirmDeadline
+	out := revertCoverage(plan, *c.ConfirmDeadline, c.RevertTicketExpiresAt)
+	return &out
+}
+
+// revertCoverage computes the coverage report from data alone: what the plan
+// needs a ticket for, when the window closes, and when the sealed ticket (if
+// any) stops being usable. Shared by unattendedRevertFor above and by
+// T-2602's staged-apply promotion (apply_staged.go), which must report the
+// same coverage the apply response promised at the START of the sequence —
+// continuing a staged apply neither seals a new ticket nor extends the old
+// one, so the answer must be recomputed from the same three inputs rather
+// than re-derived independently.
+func revertCoverage(plan Plan, deadline, ticketExpiresAt int64) UnattendedRevert {
 	if !plan.needsRevertTicket() {
-		return &UnattendedRevert{Required: false, Available: true, CoversUntil: deadline, FullWindow: true}
+		return UnattendedRevert{Required: false, Available: true, CoversUntil: deadline, FullWindow: true}
 	}
 	out := UnattendedRevert{Required: true}
-	if c.RevertTicketExpiresAt == 0 {
+	if ticketExpiresAt == 0 {
 		out.Reason = revertReasonNoSession
-		return &out
+		return out
 	}
 	out.Available = true
 	out.CoversUntil = deadline
 	out.FullWindow = true
-	if c.RevertTicketExpiresAt < deadline {
-		out.CoversUntil = c.RevertTicketExpiresAt
+	if ticketExpiresAt < deadline {
+		out.CoversUntil = ticketExpiresAt
 		out.FullWindow = false
 		out.Reason = revertReasonTicketExpiresFirst
 	}
-	return &out
+	return out
 }
 
 // revertGatewayFor unseals this changeset's revert ticket and builds a

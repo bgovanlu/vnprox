@@ -74,6 +74,22 @@ func (e *ErrValidationBlocked) Error() string {
 // it may be nil for a changeset with no such steps. confirmTimeout of 0 uses
 // the Service default; any value is clamped to [Min,Max]ConfirmTimeout.
 func (s *Service) Apply(ctx context.Context, id, author string, pveGW PVEGateway, confirmTimeout time.Duration) (Changeset, error) {
+	return s.ApplyStaged(ctx, id, author, pveGW, confirmTimeout, ApplyStrategy{})
+}
+
+// ApplyStaged is Apply with an explicit T-2602 apply strategy. The ZERO
+// strategy is `mode: all`, and Apply above passes exactly that — so the
+// all-at-once path below is byte-for-byte the code that ran before this
+// card, and every caller that never heard of a strategy is unaffected.
+//
+// A `mode: canary` strategy runs the named nodes' steps first and then
+// PAUSES in a persisted, resumable state (apply_staged.go): the changeset is
+// neither applied nor rolled back, the store records which nodes are in
+// which state, and the returned Changeset is still `applying` with its
+// `applyStage` describing the hold. The sequence then ends via
+// ContinueStagedApply, AbortStagedApply, the auto gate, or the
+// commit-confirm deadline — never by this call blocking on the hold.
+func (s *Service) ApplyStaged(ctx context.Context, id, author string, pveGW PVEGateway, confirmTimeout time.Duration, strategy ApplyStrategy) (Changeset, error) {
 	if !s.applyConfigured() {
 		return Changeset{}, &ErrApplyNotConfigured{}
 	}
@@ -82,7 +98,7 @@ func (s *Service) Apply(ctx context.Context, id, author string, pveGW PVEGateway
 	}
 	confirmTimeout = clampConfirmTimeout(confirmTimeout)
 
-	cs, plan, err := s.beginApply(ctx, id, author)
+	cs, plan, strategy, err := s.beginApply(ctx, id, author, strategy, confirmTimeout)
 	if err != nil {
 		return Changeset{}, err
 	}
@@ -114,36 +130,53 @@ func (s *Service) Apply(ctx context.Context, id, author string, pveGW PVEGateway
 	revert := s.sealRevertTicket(ctx, id, plan, pveGW, deadline)
 
 	// --- execute the plan ---
+	//
+	// T-2602: a plan is executed as one or more STAGES. `mode: all` — the
+	// default and every pre-T-2602 apply — has exactly one stage containing
+	// every step in plan order, so this is the same single ex.run(ctx) pass
+	// it always was.
 	ex := s.newExecutor(cs, plan, pre, pveGW, deadline)
-	runErr := ex.run(ctx)
-	if runErr != nil {
-		return s.finishFailedApply(ctx, cs, plan, author, ex.log, runErr)
+	if !strategy.IsCanary() {
+		runErr := ex.run(ctx)
+		if runErr != nil {
+			return s.finishFailedApply(ctx, cs, plan, author, ex.log, runErr)
+		}
+		// --- success: arm the commit-confirm window ---
+		return s.finishAwaitingConfirm(ctx, cs, plan, author, ex.log, deadline, revert)
 	}
 
-	// --- success: arm the commit-confirm window ---
-	return s.finishAwaitingConfirm(ctx, cs, plan, author, ex.log, deadline, revert)
+	canaryIdx, restIdx := canaryStageIndexes(plan, strategy.CanaryNodes)
+	applied, pending := plan.stageNodes(canaryIdx), plan.stageNodes(restIdx)
+	// A failure inside the canary stage rolls back the canary nodes only —
+	// the remaining nodes were never written to, so there is nothing on them
+	// to undo and nothing that justifies contacting them.
+	ex.rollbackNodes = applied
+	if runErr := ex.runSteps(ctx, canaryIdx); runErr != nil {
+		return s.finishFailedApply(ctx, cs, plan, author, ex.log, runErr)
+	}
+	return s.holdAfterCanary(ctx, cs, plan, author, ex.log, deadline, strategy, applied, pending)
 }
 
 // beginApply performs the locked prologue of Apply: acquire the advisory
 // single-applier lock, load and revalidate the changeset, build+persist the
 // plan, and transition to applying. It returns with the lock held (released
 // by whichever terminal transition Apply reaches).
-func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset, Plan, error) {
+func (s *Service) beginApply(ctx context.Context, id, author string, strategy ApplyStrategy, confirmTimeout time.Duration) (Changeset, Plan, ApplyStrategy, error) {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
 
 	if s.lockHeldBy != "" {
 		held := s.lockHeldBy
 		s.appendAudit(ctx, author, "changeset.apply", "locked", id, map[string]any{"heldBy": held})
-		return Changeset{}, Plan{}, &ErrChangesetLocked{HeldBy: held}
+		return Changeset{}, Plan{}, ApplyStrategy{}, &ErrChangesetLocked{HeldBy: held}
 	}
 
 	cs, err := s.Get(ctx, id)
 	if err != nil {
-		return Changeset{}, Plan{}, err
+		return Changeset{}, Plan{}, ApplyStrategy{}, err
 	}
 	if cs.Status != StatusDraft && cs.Status != StatusValidated {
-		return Changeset{}, Plan{}, &ErrIllegalTransition{From: cs.Status, To: StatusApplying}
+		return Changeset{}, Plan{}, ApplyStrategy{}, &ErrIllegalTransition{From: cs.Status, To: StatusApplying}
 	}
 
 	// T-2003: the review-approval gate. This is an AUTHORIZATION check, not
@@ -158,11 +191,11 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 	if s.approval.Required {
 		approved, aerr := s.isApproved(ctx, id)
 		if aerr != nil {
-			return Changeset{}, Plan{}, aerr
+			return Changeset{}, Plan{}, ApplyStrategy{}, aerr
 		}
 		if !approved {
 			s.appendAudit(ctx, author, "changeset.apply", "approval_required", id, nil)
-			return Changeset{}, Plan{}, &ErrApprovalRequired{ID: id}
+			return Changeset{}, Plan{}, ApplyStrategy{}, &ErrApprovalRequired{ID: id}
 		}
 	}
 
@@ -187,11 +220,11 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 			cs.UpdatedAt = s.now().Unix()
 		}
 		if perr := s.persist(ctx, cs); perr != nil {
-			return Changeset{}, Plan{}, perr
+			return Changeset{}, Plan{}, ApplyStrategy{}, perr
 		}
 		s.appendAudit(ctx, author, "changeset.apply", "validation_failed", id, map[string]any{"findingCount": len(findings)})
 		s.broadcastStatus(cs)
-		return Changeset{}, Plan{}, &ErrValidationBlocked{Findings: findings}
+		return Changeset{}, Plan{}, ApplyStrategy{}, &ErrValidationBlocked{Findings: findings}
 	}
 
 	// An apply that proceeds only because allow_dangerous_ops downgraded
@@ -204,7 +237,7 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 	plan, err := BuildPlan(cs.Ops)
 	if err != nil {
 		s.appendAudit(ctx, author, "changeset.apply", "unsupported_op", id, map[string]any{"error": err.Error()})
-		return Changeset{}, Plan{}, err
+		return Changeset{}, Plan{}, ApplyStrategy{}, err
 	}
 
 	// Peer-version compatibility gate (docs/architecture.md §5: "a daemon
@@ -232,26 +265,38 @@ func (s *Service) beginApply(ctx context.Context, id, author string) (Changeset,
 			}
 			incompatible := &ErrIncompatiblePeer{Node: node, Err: cerr}
 			s.appendAudit(ctx, author, "changeset.apply", "peer_incompatible", id, map[string]any{"node": node, "error": cerr.Error()})
-			return Changeset{}, Plan{}, incompatible
+			return Changeset{}, Plan{}, ApplyStrategy{}, incompatible
 		}
+	}
+
+	// T-2602: the apply strategy is validated against the plan it will run,
+	// HERE — after the plan exists (a canary node list can only be checked
+	// against the nodes the plan actually affects, AC7) and before the
+	// changeset transitions to applying or anything is snapshotted or
+	// mutated. A refused strategy therefore leaves the changeset exactly
+	// where it was, holding no lock.
+	strategy, serr := s.validateApplyStrategy(strategy, plan, confirmTimeout)
+	if serr != nil {
+		s.appendAudit(ctx, author, "changeset.apply", "invalid_apply_strategy", id, map[string]any{"error": serr.Error()})
+		return Changeset{}, Plan{}, ApplyStrategy{}, serr
 	}
 
 	planJSON, err := json.Marshal(plan)
 	if err != nil {
-		return Changeset{}, Plan{}, fmt.Errorf("change: marshaling plan for changeset %s: %w", id, err)
+		return Changeset{}, Plan{}, ApplyStrategy{}, fmt.Errorf("change: marshaling plan for changeset %s: %w", id, err)
 	}
 	cs.Plan = planJSON
 	cs.ApplyLog = nil
 	if err := cs.Transition(StatusApplying, s.now().Unix()); err != nil {
-		return Changeset{}, Plan{}, err
+		return Changeset{}, Plan{}, ApplyStrategy{}, err
 	}
 	if err := s.persist(ctx, cs); err != nil {
-		return Changeset{}, Plan{}, err
+		return Changeset{}, Plan{}, ApplyStrategy{}, err
 	}
 	s.lockHeldBy = id
 	s.appendAudit(ctx, author, "changeset.apply", "applying", id, map[string]any{"stepCount": len(plan.Steps)})
 	s.broadcastStatus(cs)
-	return cs, plan, nil
+	return cs, plan, strategy, nil
 }
 
 // finishFailedApply records a failed apply: persist the apply log, move to
@@ -292,8 +337,19 @@ func (s *Service) finishFailedApply(ctx context.Context, cs Changeset, plan Plan
 func (s *Service) finishAwaitingConfirm(ctx context.Context, cs Changeset, plan Plan, author string, log *ApplyLog, deadline int64, revert UnattendedRevert) (Changeset, error) {
 	s.applyMu.Lock()
 	if s.nodeTimers != nil {
-		for _, node := range plan.affectedNodes() {
-			log.NodeTimers = append(log.NodeTimers, NodeTimerLog{Node: node, Status: NodeTimerStatusArmed, Deadline: deadline})
+		if len(log.NodeTimers) == 0 {
+			for _, node := range plan.affectedNodes() {
+				log.NodeTimers = append(log.NodeTimers, NodeTimerLog{Node: node, Status: NodeTimerStatusArmed, Deadline: deadline})
+			}
+		} else {
+			// T-2602: a staged sequence already recorded the canary stage's
+			// node timers at the hold. Merge rather than append, so promoting
+			// the rest does not produce a duplicate entry per canary node.
+			var armed []NodeTimerLog
+			for _, node := range plan.affectedNodes() {
+				armed = append(armed, NodeTimerLog{Node: node, Status: NodeTimerStatusArmed, Deadline: deadline})
+			}
+			log.NodeTimers = mergeNodeTimerLogs(log.NodeTimers, armed)
 		}
 	}
 	logJSON, _ := json.Marshal(log)
@@ -448,6 +504,16 @@ func (s *Service) Rollback(ctx context.Context, id, author string, pveGW PVEGate
 		s.applyMu.Unlock()
 		s.refreshAfterTerminal(ctx, plan)
 		return cs, rbErr
+	case StatusApplying:
+		// T-2602: rolling back a changeset PAUSED between apply stages is the
+		// abort case — restore exactly the stages that ran. An `applying`
+		// changeset with no staged pause is a genuine mid-flight apply and
+		// still falls through to *ErrNotConfirmable below, unchanged.
+		s.applyMu.Unlock()
+		if _, paused, serr := s.StagedApplyState(ctx, id); serr == nil && paused {
+			return s.abortStagedApply(ctx, id, author, "operator aborted the staged apply during the canary hold", pveGW)
+		}
+		return Changeset{}, &ErrNotConfirmable{ID: id, Status: cs.Status}
 	case StatusCommitted:
 		s.applyMu.Unlock()
 		// F-10 (audit phase-2): the manual-rollback offer expires after the
@@ -495,6 +561,20 @@ func (s *Service) autoRollback(ctx context.Context, id string) {
 		s.log.Error("change: auto-rollback: loading changeset", "changeset_id", id, "error", err)
 		return
 	}
+	if cs.Status == StatusApplying {
+		// T-2602 AC5: the commit-confirm deadline covers the WHOLE staged
+		// sequence. A changeset still paused in a canary hold when it elapses
+		// rolls back everything applied so far — the hold does not get to
+		// keep the cluster open past the window it was granted.
+		s.applyMu.Unlock()
+		if _, paused, serr := s.StagedApplyState(ctx, id); serr == nil && paused {
+			if _, err := s.abortStagedApply(ctx, id, systemRollbackActor,
+				"the commit-confirm window expired while the staged apply was still paused", nil); err != nil {
+				s.log.Error("change: auto-rollback of a paused staged apply failed", "changeset_id", id, "error", err)
+			}
+		}
+		return
+	}
 	if cs.Status != StatusAwaitingConfirm {
 		s.applyMu.Unlock()
 		return
@@ -531,6 +611,23 @@ func (s *Service) autoRollback(ctx context.Context, id string) {
 // duration histogram, regardless of which of doRollbackLocked's several
 // return points is taken.
 func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor, op string, pveGW PVEGateway) (retPlan Plan, retErr error) {
+	return s.doRollbackScopedLocked(ctx, cs, actor, op, pveGW, nil)
+}
+
+// doRollbackScopedLocked is doRollbackLocked restricted to a node set.
+//
+// restrictNodes nil — every caller that existed before T-2602 — means "the
+// whole plan", i.e. exactly what doRollbackLocked always did. A non-nil list
+// (T-2602's abort of a paused staged apply) narrows the plan to those nodes'
+// steps before anything is restored, so a node the sequence never reached is
+// not restored, not reloaded, and not contacted at all. Restricting the PLAN
+// rather than filtering inside each restore is deliberate: every downstream
+// decision this function makes — which nodes to converge, whether there is
+// an SDN/firewall/QoS/WireGuard/switch portion to revert, which nodes to
+// refresh afterwards — is derived from the plan, so narrowing it once
+// narrows all of them consistently instead of leaving one of them to be
+// forgotten.
+func (s *Service) doRollbackScopedLocked(ctx context.Context, cs *Changeset, actor, op string, pveGW PVEGateway, restrictNodes []string) (retPlan Plan, retErr error) {
 	// cs.UpdatedAt is still its awaiting_confirm-entry timestamp here —
 	// nothing has transitioned it since finishAwaitingConfirm — captured
 	// before this function's own cs.Transition calls (both the early
@@ -549,6 +646,9 @@ func (s *Service) doRollbackLocked(ctx context.Context, cs *Changeset, actor, op
 	}()
 
 	plan := decodePlan(cs.Plan)
+	if restrictNodes != nil {
+		plan = plan.restrictedToNodes(restrictNodes)
+	}
 	log := decodeApplyLog(cs.ApplyLog)
 
 	// T-1805 / D1: when the caller has no live PVE credential (the
@@ -824,7 +924,20 @@ func (s *Service) ArmPendingRollbacks(ctx context.Context) error {
 		return fmt.Errorf("change: listing interrupted applies on startup: %w", err)
 	}
 	for _, cs := range interrupted {
-		s.recoverInterruptedApply(ctx, cs)
+		// T-2602 AC4: an `applying` changeset that was PAUSED between stages
+		// is not an interrupted apply — it is a recorded hold, and it is
+		// resolved per the strategy the store remembers (resume the hold, or
+		// take its decision now if the deadline has already passed). Only a
+		// changeset with no staged pause is the pre-T-2602 "the daemon died
+		// mid-apply" case, whose handling is untouched.
+		if state, paused, serr := s.StagedApplyState(ctx, cs.ID); serr != nil {
+			s.log.Error("change: reading staged-apply state during startup recovery; treating as an interrupted apply", "changeset_id", cs.ID, "error", serr)
+			s.recoverInterruptedApply(ctx, cs)
+		} else if paused {
+			s.recoverStagedApply(ctx, cs, state)
+		} else {
+			s.recoverInterruptedApply(ctx, cs)
+		}
 	}
 	return nil
 }

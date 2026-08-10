@@ -148,6 +148,13 @@ type changesetResponse struct {
 	// below; every other response's byte shape is completely unaffected.
 	Comments []commentResponse `json:"comments,omitempty"`
 	Approval *approvalResponse `json:"approval,omitempty"`
+	// ApplyStage (T-2602) describes a staged (canary) apply that is currently
+	// PAUSED between stages: which strategy was recorded, which nodes have
+	// been applied, which have not been contacted at all, and the two
+	// deadlines. Present only while the pause exists — every ordinary
+	// all-at-once apply (the default) omits it entirely, so no existing
+	// response's byte shape changes.
+	ApplyStage *change.StagedApplyState `json:"applyStage,omitempty"`
 	// TouchesMgmtPath is T-703's server-computed flag (docs/api.md's
 	// changesets section): the ops intersect a node's resolved management
 	// path (change.TouchesMgmtPath over the same MgmtStatus computation
@@ -297,6 +304,8 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup, mgmt, wgCarriers))
 		r.Post("/changesets/{id}/apply", handleApplyChangeset(svc, lookup, gateways, mgmt, wgCarriers))
 		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup, mgmt, wgCarriers))
+		// T-2602: promote a staged apply past its canary hold.
+		r.Post("/changesets/{id}/continue", handleContinueChangeset(svc, lookup, gateways, mgmt, wgCarriers))
 		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup, gateways, mgmt, wgCarriers))
 
 		// T-2003: the review surface — per-op/changeset comments and the
@@ -376,13 +385,29 @@ type MgmtAckRecorder interface {
 	RecordMgmtAck(ctx context.Context, id, author, node string)
 }
 
+// StagedApplyService is the optional ChangesetService extension backing
+// T-2602's canary / staged apply (change.Service.ApplyStaged /
+// ContinueStagedApply / StagedApplyState). Checked with a type assertion,
+// exactly like MgmtAckRecorder and ChangesetImpactService above, so a test
+// double that does not care about staging need not grow three methods — and
+// so a deployment whose changeset service predates it degrades to refusing
+// an applyStrategy rather than silently ignoring one.
+type StagedApplyService interface {
+	ApplyStaged(ctx context.Context, id, author string, pveGW change.PVEGateway, confirmTimeout time.Duration, strategy change.ApplyStrategy) (change.Changeset, error)
+	ContinueStagedApply(ctx context.Context, id, author string, pveGW change.PVEGateway) (change.Changeset, error)
+	StagedApplyState(ctx context.Context, id string) (change.StagedApplyState, bool, error)
+}
+
 // applyRequest is docs/api.md's POST /changesets/{id}/apply body:
-// `{confirmTimeoutSec: 120, mgmtAck?: {node}}`. MgmtAck (T-703) is the
-// review screen's typed management-path acknowledgement, recorded to the
-// audit log when the changeset touches a management path.
+// `{confirmTimeoutSec: 120, mgmtAck?: {node}, applyStrategy?: {...}}`.
+// MgmtAck (T-703) is the review screen's typed management-path
+// acknowledgement, recorded to the audit log when the changeset touches a
+// management path. ApplyStrategy (T-2602) stages the apply; omitting it is
+// `mode: all`, which is what every apply has always done.
 type applyRequest struct {
-	MgmtAck           *mgmtAckRequest `json:"mgmtAck,omitempty"`
-	ConfirmTimeoutSec int             `json:"confirmTimeoutSec"`
+	MgmtAck           *mgmtAckRequest       `json:"mgmtAck,omitempty"`
+	ApplyStrategy     *change.ApplyStrategy `json:"applyStrategy,omitempty"`
+	ConfirmTimeoutSec int                   `json:"confirmTimeoutSec"`
 }
 
 type mgmtAckRequest struct {
@@ -463,16 +488,88 @@ func handleApplyChangeset(svc ChangesetService, lookup UsernameLookup, gateways 
 			}
 		}
 
-		c, err := svc.Apply(r.Context(), id, username, gw, confirmTimeout)
+		// T-2602: a request that names an applyStrategy goes through
+		// ApplyStaged; one that does not goes through Apply, which is
+		// ApplyStaged with the zero (mode: all) strategy. A deployment whose
+		// changeset service does not implement the staged extension refuses
+		// the field outright rather than applying all-at-once behind the
+		// caller's back — silently ignoring a safety request is worse than
+		// declining it.
+		var c change.Changeset
+		var err error
+		staged, stagedOK := svc.(StagedApplyService)
+		switch {
+		case req.ApplyStrategy == nil:
+			c, err = svc.Apply(r.Context(), id, username, gw, confirmTimeout)
+		case !stagedOK:
+			writeJSONError(w, http.StatusNotImplemented, "not_implemented", "staged (canary) apply is not available on this deployment")
+			return
+		default:
+			c, err = staged.ApplyStaged(r.Context(), id, username, gw, confirmTimeout, *req.ApplyStrategy)
+		}
 		if err != nil {
 			writeApplyError(w, err)
 			return
 		}
 		resp := toChangesetResponse(c)
 		resp.TouchesMgmtPath = touchesMgmt
+		resp = withStagedApply(r.Context(), svc, resp)
 		resp = withReview(r.Context(), svc, resp)
 		writeJSON(w, http.StatusAccepted, resp)
 	}
+}
+
+// handleContinueChangeset serves `POST /changesets/{id}/continue` (T-2602):
+// the manual gate's promotion of a staged apply from the canary stage to the
+// rest of the cluster.
+//
+// It is a netWrite + CSRF route sitting beside apply/confirm/rollback, not a
+// variant of confirm: confirming a changeset paused between stages would
+// commit a half-applied change, which is precisely what this route exists to
+// avoid. A changeset that is not paused is refused with `invalid_transition`.
+func handleContinueChangeset(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
+	staged, ok := svc.(StagedApplyService)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !ok {
+			writeJSONError(w, http.StatusNotImplemented, "not_implemented", "staged (canary) apply is not available on this deployment")
+			return
+		}
+		username, found := lookup.Username(r.Context())
+		if !found {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		var gw change.PVEGateway
+		if gateways != nil {
+			gw, _ = gateways.GatewayFor(r.Context())
+		}
+		c, err := staged.ContinueStagedApply(r.Context(), chi.URLParam(r, "id"), username, gw)
+		if err != nil {
+			writeApplyError(w, err)
+			return
+		}
+		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
+		resp := withStagedApply(r.Context(), svc, withMgmtFlag(c, paths, carriers))
+		writeJSON(w, http.StatusOK, withReview(r.Context(), svc, resp))
+	}
+}
+
+// withStagedApply decorates resp with T-2602's `applyStage` — present only
+// while a changeset is actually paused between stages, absent for every
+// ordinary apply (which is every apply, by default). Best-effort like
+// withReview: a read failure omits the field rather than failing the
+// response.
+func withStagedApply(ctx context.Context, svc ChangesetService, resp changesetResponse) changesetResponse {
+	staged, ok := svc.(StagedApplyService)
+	if !ok {
+		return resp
+	}
+	state, paused, err := staged.StagedApplyState(ctx, resp.ID)
+	if err != nil || !paused {
+		return resp
+	}
+	resp.ApplyStage = &state
+	return resp
 }
 
 func handleConfirmChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
@@ -509,7 +606,7 @@ func handleRollbackChangeset(svc ChangesetService, lookup UsernameLookup, gatewa
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		writeJSON(w, http.StatusOK, withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
+		writeJSON(w, http.StatusOK, withReview(r.Context(), svc, withStagedApply(r.Context(), svc, withMgmtFlag(c, paths, carriers))))
 	}
 }
 
@@ -681,6 +778,21 @@ func writeApplyError(w http.ResponseWriter, err error) {
 		writeJSONErrorDetails(w, http.StatusConflict, "peer_incompatible", err.Error(), map[string]any{"node": incompatiblePeer.Node})
 		return
 	}
+	// T-2602: a strategy the engine cannot honour is refused before any
+	// mutation, with its own stable code — never folded into
+	// validation_failed (the changeset's ops are fine; the apply *strategy*
+	// is not) nor into invalid_transition (the status machine is untouched).
+	var badStrategy *change.ErrInvalidApplyStrategy
+	if errors.As(err, &badStrategy) {
+		writeJSONErrorDetails(w, http.StatusUnprocessableEntity, "invalid_apply_strategy", err.Error(),
+			map[string]any{"nodes": badStrategy.Nodes})
+		return
+	}
+	var notResumable *change.ErrNotResumable
+	if errors.As(err, &notResumable) {
+		writeJSONError(w, http.StatusConflict, "invalid_transition", err.Error())
+		return
+	}
 	var notConfirmable *change.ErrNotConfirmable
 	if errors.As(err, &notConfirmable) {
 		writeJSONError(w, http.StatusConflict, "invalid_transition", err.Error())
@@ -734,7 +846,7 @@ func handleGetChangeset(svc ChangesetService, mgmt MgmtStatusService, wgCarriers
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		resp := withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers))
+		resp := withReview(r.Context(), svc, withStagedApply(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
 		writeJSON(w, http.StatusOK, resp)
 	}
 }

@@ -471,6 +471,9 @@ func TestChangesetsApplyRoutes_Unconfigured(t *testing.T) {
 		"/api/v1/changesets/" + created.ID + "/apply",
 		"/api/v1/changesets/" + created.ID + "/confirm",
 		"/api/v1/changesets/" + created.ID + "/rollback",
+		// T-2602's staged-apply promotion route: registered and implemented
+		// on the same terms as the rest of the apply family.
+		"/api/v1/changesets/" + created.ID + "/continue",
 	} {
 		req := httptest.NewRequest(http.MethodPost, path, nil)
 		rec := httptest.NewRecorder()
@@ -695,3 +698,101 @@ func TestChangesetsApply_NoGatewayButNoSDNSteps(t *testing.T) {
 		t.Fatalf("apply returned pve_session_required for a node-file-only changeset")
 	}
 }
+
+// TestChangesetsApplyStrategy_Route is T-2602's API-layer contract coverage:
+// `applyStrategy` decodes on the apply body and its refusal reaches the
+// caller as the documented `422 invalid_apply_strategy` envelope, and
+// `POST /changesets/{id}/continue` refuses a changeset that is not paused
+// between stages with `409 invalid_transition`.
+//
+// The engine-level behaviour (which nodes are touched, what an abort
+// restores, restart recovery) is asserted in internal/change's own suite
+// against a real node agent; this test exists so the wire contract other
+// callers depend on cannot drift silently.
+func TestChangesetsApplyStrategy_Route(t *testing.T) {
+	svc := newStagedChangesetTestService(t)
+	r := newChangesetTestRouter(svc, fullCapsAuth("alice"))
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/changesets", bytes.NewBufferString(`{"title":"draft","ops":[]}`))
+	createRec := httptest.NewRecorder()
+	r.ServeHTTP(createRec, createReq)
+	var created changesetResponse
+	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
+		t.Fatalf("decoding create response: %v", err)
+	}
+	if created.ApplyStage != nil {
+		t.Error("a freshly created draft must carry no applyStage")
+	}
+
+	// An unknown mode is refused with the strategy's own stable code — never
+	// folded into validation_failed or invalid_transition.
+	body := `{"confirmTimeoutSec":120,"applyStrategy":{"mode":"rolling"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/changesets/"+created.ID+"/apply", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("apply with an unknown mode: status = %d, want 422 (body %s)", rec.Code, rec.Body.String())
+	}
+	var envelope struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+		t.Fatalf("decoding error envelope: %v", err)
+	}
+	if envelope.Error.Code != "invalid_apply_strategy" {
+		t.Errorf("error code = %q, want %q", envelope.Error.Code, "invalid_apply_strategy")
+	}
+
+	// Continuing a changeset that is not paused between stages is a refusal,
+	// not a second apply.
+	contReq := httptest.NewRequest(http.MethodPost, "/api/v1/changesets/"+created.ID+"/continue", nil)
+	contRec := httptest.NewRecorder()
+	r.ServeHTTP(contRec, contReq)
+	if contRec.Code != http.StatusConflict {
+		t.Fatalf("continue on a draft: status = %d, want 409 (body %s)", contRec.Code, contRec.Body.String())
+	}
+}
+
+// newStagedChangesetTestService is newChangesetTestService with the apply
+// engine and T-2602's stage store wired, so the strategy gate is reached
+// rather than short-circuited by apply_unavailable.
+func newStagedChangesetTestService(t *testing.T) *change.Service {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "vnprox.db")
+	db, err := store.Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Errorf("db.Close: %v", closeErr)
+		}
+	})
+	svc, err := change.NewService(change.Config{
+		Changesets: store.NewChangesetRepo(db),
+		Audit:      store.NewAuditRepo(db),
+		Snapshots:  store.NewSnapshotRepo(db),
+		Blobs:      store.NewBlobRepo(db),
+		Stages:     store.NewChangesetStageRepo(db),
+		Nodes:      stubNodeAgent{},
+		Now:        func() time.Time { return time.Unix(1_700_000_000, 0) },
+	})
+	if err != nil {
+		t.Fatalf("change.NewService: %v", err)
+	}
+	return svc
+}
+
+// stubNodeAgent satisfies change.NodeAgent so the apply engine counts as
+// configured. No test in this file reaches a step that calls it: the
+// strategy gate runs before any snapshot or mutation, which is the property
+// under test.
+type stubNodeAgent struct{}
+
+func (stubNodeAgent) ReadInterfaces(context.Context, string) (string, error) { return "", nil }
+func (stubNodeAgent) StageInterfaces(context.Context, string, string) error  { return nil }
+func (stubNodeAgent) ReloadInterfaces(context.Context, string) error         { return nil }
+func (stubNodeAgent) DiscardStaged(context.Context, string) error            { return nil }
