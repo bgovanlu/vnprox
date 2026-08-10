@@ -1319,7 +1319,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		TenantStore:    tenantRepo,
 		TenantNotifier: tenantNotifier,
 		Snapshots:      changeSvc,
-		Audit:          auditRepo,
+		// T-2704: GET /topology/diff — the same change engine, holding the
+		// snapshot series and the changeset history the attribution needs.
+		TopologyDiff: changeSvc,
+		Audit:        auditRepo,
 		// T-1704: GET /ha/status (role/lease/replication-lag). haStatus is a
 		// clean nil interface when HA is disabled (avoiding the typed-nil trap),
 		// so the route simply isn't mounted.

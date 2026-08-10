@@ -12046,6 +12046,53 @@
         }
       }
     },
+    "/api/v1/topology/diff": {
+      "get": {
+        "operationId": "getTopologyDiff",
+        "summary": "Diff the cluster against a past point, marking what vnprox did not do.",
+        "tags": [
+          "topology"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response body; see docs/api.md for this route's shape."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No credential, or the credential is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is valid but lacks the required capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/wan/status": {
       "get": {
         "operationId": "getWanStatus",

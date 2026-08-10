@@ -21,6 +21,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } fr
 import { Tooltip } from "../components/Tooltip";
 import { useToast } from "../components/Toast";
 import { DiffView } from "./DiffView";
+import { TopologyDiffPanel } from "./TopologyDiffPanel";
 import { groupSnapshots, kindLabel } from "./timeline";
 
 const SNAPSHOTS_QUERY_KEY = ["snapshots"] as const;
@@ -43,6 +44,10 @@ export function HistoryPage() {
   const { data: session } = useSession();
   const [selection, setSelection] = useState<DiffSelection>({});
   const [note, setNote] = useState("");
+  // Which reading of the same two points is shown: the raw file diff this
+  // page has always had, or T-2704's entity-level topology diff (which also
+  // answers "did vnprox do this?"). A per-session toggle, not persisted.
+  const [diffMode, setDiffMode] = useState<"files" | "topology">("topology");
   const [restoreTarget, setRestoreTarget] = useState<SnapshotSummary | undefined>(undefined);
 
   // T-605 read-only sweep finding: neither "Take snapshot" (POST
@@ -74,7 +79,9 @@ export function HistoryPage() {
   const diffQuery = useQuery<SnapshotDiffResponse>({
     queryKey: ["snapshot-diff", selection.from ?? "", selection.to ?? ""],
     queryFn: () => fetchSnapshotDiff(selection.from ?? "", selection.to ?? ""),
-    enabled: diffEnabled,
+    // Only the Files view consumes it — the Topology view has its own query,
+    // and fetching both would double every diff request for no reader.
+    enabled: diffEnabled && diffMode === "files",
   });
 
   const createMutation = useMutation({
@@ -262,13 +269,37 @@ export function HistoryPage() {
 
         {/* Diff panel */}
         <section className="flex min-h-0 flex-col gap-2 overflow-y-auto" aria-label="Snapshot diff">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Diff</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Diff</h2>
+              <div className="flex items-center gap-1" role="group" aria-label="Diff view">
+                <Button
+                  size="sm"
+                  variant={diffMode === "topology" ? "primary" : "ghost"}
+                  onClick={() => {
+                    setDiffMode("topology");
+                  }}
+                >
+                  Topology
+                </Button>
+                <Button
+                  size="sm"
+                  variant={diffMode === "files" ? "primary" : "ghost"}
+                  onClick={() => {
+                    setDiffMode("files");
+                  }}
+                >
+                  Files
+                </Button>
+              </div>
+            </div>
             <span className="text-xs text-slate-500">
               {selection.from ?? "(pick From)"} → {selection.to ?? "(pick To or vs live)"}
             </span>
           </div>
-          {!diffEnabled ? (
+          {diffMode === "topology" ? (
+            <TopologyDiffPanel from={selection.from ?? ""} to={selection.to ?? ""} />
+          ) : !diffEnabled ? (
             <EmptyState
               title="Pick two points to compare"
               description='Choose a "From" and a "To" snapshot on the timeline, or use "vs live" to compare a snapshot with the current configuration.'

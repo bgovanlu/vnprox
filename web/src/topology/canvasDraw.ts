@@ -18,6 +18,7 @@ import type { EntityNodeData } from "./EntityNode";
 import type { Size, Viewport } from "./canvasScene";
 import { DEFAULT_NODE_SIZE, graphToScreen } from "./canvasScene";
 import type { LatencyOverlayEdge } from "./latencyMode";
+import { diffMarkColor, diffMarkGlyph, type DiffMark } from "./diffOverlay";
 import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
 import { trafficEdgeStyle } from "./trafficMode";
 
@@ -471,6 +472,76 @@ export function drawMTUOverlay(ctx: CanvasRenderingContext2D, params: DrawMTUOve
     ctx.fill();
     ctx.fillStyle = theme.badgeText;
     ctx.fillText(label, midX - textWidth / 2, midY + 0.5);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// --- T-2704: the point-in-time diff overlay ---------------------------------
+// A fourth, independent overlay pass: for a selected historical range, ring
+// every map node whose entity differs from what it was at the `from` point,
+// with a corner glyph naming the kind of difference.
+//
+// The ring color carries the attribution (topology/diffOverlay.ts's
+// diffMarkColor): a change no changeset explains — an edit made outside
+// vnprox — is painted in its own color regardless of what KIND of change it
+// is, because "vnprox did not do this" is the distinction an operator is
+// scanning the map for. An unattributed mark is additionally drawn with a
+// solid, thicker ring where an attributed one is dashed and thin, so the two
+// stay distinguishable without relying on color alone.
+//
+// Entities not currently on the map (a deleted bridge, or one the active
+// layer/VLAN filters hide) are not in `marks` at all — computeDiffOverlay
+// routes them to its `offMap` list, which the page surfaces as text. Silently
+// dropping them would make "nothing is highlighted" and "nothing changed"
+// look identical.
+
+export interface DrawDiffOverlayParams {
+  nodes: FlowNode<EntityNodeData, "entity">[];
+  marks: readonly DiffMark[];
+  viewport: Viewport;
+  nodeSize: Size;
+  dragTopLeft?: DrawSceneParams["dragTopLeft"];
+}
+
+export function drawDiffOverlay(ctx: CanvasRenderingContext2D, params: DrawDiffOverlayParams): void {
+  const { nodes, marks, viewport: vp, nodeSize, dragTopLeft } = params;
+  if (marks.length === 0) return;
+  const size = nodeSize.width > 0 ? nodeSize : DEFAULT_NODE_SIZE;
+  const byId = new Map<string, FlowNode<EntityNodeData, "entity">>();
+  for (const n of nodes) byId.set(n.id, n);
+
+  ctx.save();
+  ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  for (const mark of marks) {
+    const node = byId.get(mark.nodeId);
+    if (!node) continue;
+    const center = nodeCenterScreen(node, vp, size, dragTopLeft);
+    const w = size.width * vp.zoom;
+    const h = size.height * vp.zoom;
+    const x = center.x - w / 2;
+    const y = center.y - h / 2;
+    const color = diffMarkColor(mark);
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = mark.attributed ? 2 : 3.5;
+    ctx.setLineDash(mark.attributed ? [5, 4] : []);
+    roundRectPath(ctx, x - 4, y - 4, w + 8, h + 8, 10);
+    ctx.stroke();
+    ctx.restore();
+
+    // Corner glyph: +, −, ~ — the change kind, readable without color.
+    const glyph = diffMarkGlyph(mark.change);
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x + w + 2, y - 2, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    const glyphWidth = ctx.measureText(glyph).width;
+    ctx.fillText(glyph, x + w + 2 - glyphWidth / 2, y - 1);
     ctx.restore();
   }
   ctx.restore();

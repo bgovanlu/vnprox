@@ -316,6 +316,49 @@ func (r *SnapshotRepo) LatestOfKind(ctx context.Context, kind string) (Snapshot,
 	return s, nil
 }
 
+// LatestAtOrBefore returns the newest snapshot taken at or before `at`, or
+// ErrNotFound if the history does not reach back that far. T-2704's
+// point-in-time diff resolves a caller-supplied timestamp through it: "the
+// cluster as of Tuesday" is the most recent capture that had already happened
+// by Tuesday.
+func (r *SnapshotRepo) LatestAtOrBefore(ctx context.Context, at int64) (Snapshot, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, changeset_id, taken_at, kind, files_json, note
+		FROM snapshots WHERE taken_at <= ?
+		ORDER BY taken_at DESC, id DESC LIMIT 1`, at)
+	s, err := scanSnapshot(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Snapshot{}, ErrNotFound
+	}
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return s, nil
+}
+
+// EarliestAtOrAfter returns the oldest snapshot taken at or after `at`, or
+// ErrNotFound if there is none.
+//
+// It exists for the failure path, not the happy one: when LatestAtOrBefore
+// finds nothing, T-2704 must return an error that NAMES the nearest available
+// snapshots rather than an empty diff (which would read as "nothing changed" —
+// a false statement about the cluster). This is where the "nearest, on the
+// other side" half of that message comes from.
+func (r *SnapshotRepo) EarliestAtOrAfter(ctx context.Context, at int64) (Snapshot, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, changeset_id, taken_at, kind, files_json, note
+		FROM snapshots WHERE taken_at >= ?
+		ORDER BY taken_at ASC, id ASC LIMIT 1`, at)
+	s, err := scanSnapshot(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Snapshot{}, ErrNotFound
+	}
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return s, nil
+}
+
 // PruneKindKeepNewest deletes all but the newest `keep` snapshots OF THE GIVEN
 // KIND, oldest first, and returns how many rows it removed (T-2401's
 // count-based retention for scheduled captures).
