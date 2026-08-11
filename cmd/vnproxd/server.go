@@ -695,6 +695,13 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// below; postureRead backs GET /posture, /posture/history, /export/posture.
 	postureComputeActor, posturePruneActor, postureRead := setupPosture(graph, failsimSvc, findingsEngine, baselineProfileRepo, db, logger)
 
+	// T-2807: the scheduled digest — one weekly push assembled from the same
+	// posture read model, findings stream and finding_events history the API
+	// already serves, delivered through T-2407's own webhook path (see
+	// digest.go). The actor is registered in the run group below.
+	digestActor := setupDigest(db, alertRuleRepo, alertDeliveryRepo, alertPendingRepo, sessionCipher,
+		postureRead, findingsEngine, findingEventRepo, logger)
+
 	// changeSvc reuses topoSvc's WS hub for changeset.status broadcasts
 	// (docs/api.md's WebSocket section documents one shared /api/ws
 	// connection multiplexing "topology"/"changesets"/... topics alike —
@@ -1721,6 +1728,9 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	g.add(func(ctx context.Context) error {
 		return webhookNotifier.RunFlushLoop(ctx, findings.DefaultFlushInterval, logger)
 	})
+	// T-2807: the scheduled digest. Always registered and always blocking (see
+	// setupDigest); with no digest_schedules row every tick is a no-op read.
+	g.add(digestActor)
 	// T-1704: the HA manager's renew/replicate/promote loop — owned and shut
 	// down here like every other actor. Only added when HA is enabled.
 	if haMgr != nil {
