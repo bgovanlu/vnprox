@@ -20,6 +20,46 @@ import (
 
 // ---------------------------------------------------------------- AC1
 
+// bundleProducer is one thing this package can produce that must satisfy the
+// assertions below.
+//
+// T-2804 added the second one. Its acceptance criterion 3 asks for the
+// incident export to pass "the same secret-redaction assertions as the
+// T-1902 support bundle, reusing those tests rather than writing new ones" —
+// so the export is a case in this table rather than a parallel copy of the
+// test body. A future producer that forgets to redact fails T-1902's own AC1,
+// which is the point.
+type bundleProducer struct {
+	name    string
+	options func(bf *bundleFixture, t *testing.T, outDir string) BundleOptions
+	// controls are the markers that MUST survive in this producer's archive,
+	// beyond the four every bundle shares.
+	controls []control
+}
+
+type control struct {
+	marker string
+	why    string
+}
+
+func bundleProducers() []bundleProducer {
+	return []bundleProducer{
+		{
+			name:    "support-bundle",
+			options: func(bf *bundleFixture, t *testing.T, outDir string) BundleOptions { return bf.options(t, outDir) },
+		},
+		{
+			name: "incident-export",
+			options: func(bf *bundleFixture, t *testing.T, outDir string) BundleOptions {
+				return bf.incidentOptions(t, outDir)
+			},
+			controls: []control{
+				{bundleControlIncident, "an ordinary annotation body from the incident timeline (T-2804)"},
+			},
+		},
+	}
+}
+
 // TestBundle_AC1_ContainsNoSecretClass is T-1902 AC1: "A bundle produced
 // from a store seeded with one of every secret class contains none of them
 // — table-driven, one case per class, scanning the whole archive rather
@@ -43,27 +83,37 @@ import (
 //  3. **The scan decompresses.** Scanning the .tar.gz's compressed bytes is
 //     the comforting version of this test; scanning what `tar -xz` actually
 //     yields is the real one.
+//
+// T-2804 runs the identical body over a second producer, the incident export
+// (bundleProducers above) — its own AC3 asks for exactly that rather than a
+// parallel copy of these assertions.
 func TestBundle_AC1_ContainsNoSecretClass(t *testing.T) {
+	for _, prod := range bundleProducers() {
+		t.Run(prod.name, func(t *testing.T) {
+			assertProducerCarriesNoSecret(t, prod)
+		})
+	}
+}
+
+func assertProducerCarriesNoSecret(t *testing.T, prod bundleProducer) {
+	t.Helper()
 	ctx := context.Background()
 	bf := newBundleFixture(t)
 	outDir := filepath.Join(t.TempDir(), "bundles")
 
-	res, err := Bundle(ctx, bf.options(t, outDir))
+	res, err := Bundle(ctx, prod.options(bf, t, outDir))
 	if err != nil {
 		t.Fatalf("Bundle: %v", err)
 	}
 	plain := decompressArchive(t, res.Path)
 
 	// --- the controls: the scan reaches every collection path -----------
-	controls := []struct {
-		marker string
-		why    string
-	}{
+	controls := append([]control{
 		{bundleControlStore, "a changeset title read from the store"},
 		{bundleControlHost, "an allowlisted option from /etc/network/interfaces"},
 		{bundleControlConfig, "an allowlisted value from vnprox.toml"},
 		{bundleControlLog, "an ordinary line from the daemon log"},
-	}
+	}, prod.controls...)
 	for _, c := range controls {
 		if !bytes.Contains(plain, []byte(c.marker)) {
 			t.Fatalf("CONTROL FAILED: %s was not found in the bundle. Either that collector did not run, "+
@@ -114,6 +164,76 @@ func TestBundle_AC1_ContainsNoSecretClass(t *testing.T) {
 	}
 	if res.Bytes <= 0 {
 		t.Fatal("the bundle is zero bytes")
+	}
+}
+
+// TestBundleIncident_PlantingsReachTheDocument is the incident half of the
+// planting guard: every marker incidentPlantings claims to plant must
+// actually be somewhere in the document handed to Bundle. Without it, the
+// incident-export leg of AC1 above could pass because the document is empty.
+func TestBundleIncident_PlantingsReachTheDocument(t *testing.T) {
+	doc, err := json.Marshal(bundleFixtureIncident())
+	if err != nil {
+		t.Fatalf("marshalling the fixture incident: %v", err)
+	}
+	if len(incidentPlantings) < 6 {
+		t.Fatalf("only %d incident plantings declared; the export carries more free-text fields than that",
+			len(incidentPlantings))
+	}
+	for _, p := range incidentPlantings {
+		t.Run(p.ClassID, func(t *testing.T) {
+			marker := secretMarkers[p.ClassID]
+			if marker == "" {
+				t.Fatalf("planting names class %q, which has no marker", p.ClassID)
+			}
+			if !bytes.Contains(doc, []byte(marker)) {
+				t.Errorf("the %s marker is supposed to be planted in %s, but it is not in the incident "+
+					"document at all — AC3's assertion for this class proves nothing", p.ClassID, p.Where)
+			}
+		})
+	}
+	// And the control is there too, or the whole leg is vacuous.
+	if !bytes.Contains(doc, []byte(bundleControlIncident)) {
+		t.Error("the incident control marker is not in the fixture document")
+	}
+}
+
+// TestBundleIncident_IsAbsentFromAnOrdinarySupportBundle keeps the export
+// additive: `vnproxctl support-bundle` must produce exactly the archive it
+// always did.
+func TestBundleIncident_IsAbsentFromAnOrdinarySupportBundle(t *testing.T) {
+	ctx := context.Background()
+	bf := newBundleFixture(t)
+
+	plainRes, err := Bundle(ctx, bf.options(t, filepath.Join(t.TempDir(), "plain")))
+	if err != nil {
+		t.Fatalf("Bundle: %v", err)
+	}
+	for _, e := range plainRes.Manifest.Entries {
+		if e.Name == entryBundleIncident {
+			t.Fatalf("an ordinary support bundle contains %s", entryBundleIncident)
+		}
+	}
+
+	// Control: the same fixture WITH an incident does carry it, so the
+	// assertion above is about the option rather than about the entry name
+	// being unreachable.
+	incRes, err := Bundle(ctx, bf.incidentOptions(t, filepath.Join(t.TempDir(), "incident")))
+	if err != nil {
+		t.Fatalf("Bundle(incident): %v", err)
+	}
+	found := false
+	for _, e := range incRes.Manifest.Entries {
+		if e.Name == entryBundleIncident {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("CONTROL FAILED: an incident export does not contain %s either", entryBundleIncident)
+	}
+	if len(incRes.Manifest.Entries) != len(plainRes.Manifest.Entries)+1 {
+		t.Errorf("an incident export has %d entries and a support bundle %d; the export must add exactly one",
+			len(incRes.Manifest.Entries), len(plainRes.Manifest.Entries))
 	}
 }
 
@@ -236,22 +356,28 @@ func entryFromArchive(t *testing.T, path, name string) []byte {
 // entry behind it — which nothing else would notice.
 func TestBundle_AC2_EveryProducedEntryIsDeclared(t *testing.T) {
 	ctx := context.Background()
-	bf := newBundleFixture(t)
-	res, err := Bundle(ctx, bf.options(t, filepath.Join(t.TempDir(), "bundles")))
-	if err != nil {
-		t.Fatalf("Bundle: %v", err)
-	}
 
+	// Both producers, unioned: an entry is declared if SOME producer makes
+	// it, and every entry any producer makes must be declared. An entry
+	// belonging to one producer only (T-2804's incident/timeline.json) is
+	// still covered in both directions.
 	produced := map[string]bool{}
-	for _, e := range res.Manifest.Entries {
-		produced[e.Name] = true
-		d, ok := entryDeclFor(e.Name)
-		if !ok {
-			t.Errorf("the bundle contains %q, which bundleEntrySchema does not declare", e.Name)
-			continue
+	for _, prod := range bundleProducers() {
+		bf := newBundleFixture(t)
+		res, err := Bundle(ctx, prod.options(bf, t, filepath.Join(t.TempDir(), "bundles-"+prod.name)))
+		if err != nil {
+			t.Fatalf("Bundle(%s): %v", prod.name, err)
 		}
-		if d.Role != e.Role {
-			t.Errorf("entry %q has role %q but is declared as %q", e.Name, e.Role, d.Role)
+		for _, e := range res.Manifest.Entries {
+			produced[e.Name] = true
+			d, ok := entryDeclFor(e.Name)
+			if !ok {
+				t.Errorf("the %s bundle contains %q, which bundleEntrySchema does not declare", prod.name, e.Name)
+				continue
+			}
+			if d.Role != e.Role {
+				t.Errorf("entry %q has role %q but is declared as %q", e.Name, e.Role, d.Role)
+			}
 		}
 	}
 	for _, d := range bundleEntrySchema {

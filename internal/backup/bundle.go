@@ -160,6 +160,12 @@ type BundleOptions struct {
 	// staging area away without writing an archive.
 	DryRun bool
 
+	// Incident (T-2804), when set, adds one entry — incident/timeline.json —
+	// to an otherwise ordinary support bundle. Nil (every `vnproxctl
+	// support-bundle` invocation) produces exactly the archive this package
+	// always produced; the incident collector stages nothing at all.
+	Incident *BundleIncident
+
 	// Now is injectable for tests; defaults to time.Now.
 	Now func() time.Time
 	// Logger is optional.
@@ -276,6 +282,12 @@ func bundleCollectors(opts *BundleOptions) []Collector {
 		peersCollector{opts},
 		probesCollector{opts},
 		logsCollector{opts},
+		// T-2804: stages nothing unless opts.Incident is set, so it is in
+		// the ordered set unconditionally rather than being conditionally
+		// appended — a collector list that changes shape per invocation is
+		// a second code path, and --dry-run's whole design is that there is
+		// only one.
+		incidentCollector{opts},
 	}
 	out := make([]Collector, 0, len(inner))
 	for _, c := range inner {

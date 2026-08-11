@@ -19,6 +19,7 @@ import { PortsPage } from "./pages/PortsPage";
 import { BlueprintsPage } from "./pages/BlueprintsPage";
 import { HubPage } from "./hub/HubPage";
 import { HistoryPage } from "./pages/HistoryPage";
+import { IncidentsPage } from "./pages/IncidentsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { ToolsPage } from "./pages/ToolsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -196,6 +197,14 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="History">
                   <HistoryPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            <Route
+              path="/incidents"
+              element={
+                <DesktopOnlyRoute pageLabel="Incidents">
+                  <IncidentsPage />
                 </DesktopOnlyRoute>
               }
             />

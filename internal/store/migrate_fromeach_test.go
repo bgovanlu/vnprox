@@ -164,6 +164,7 @@ var versionSeeds = map[int]versionSeed{
 	36: {seedV36, assertV36},
 	37: {seedV37, assertV37},
 	38: {seedV38, assertV38},
+	39: {seedV39, assertV39},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -208,7 +209,26 @@ func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
 	// setup loudly, for the whole test, if a version in range is missing an
 	// entry rather than quietly skipping it — this is what keeps the corpus
 	// honest as migrations accrue.
+	//
+	// "Every version" means every version a database was ever AT, which is
+	// exactly the set of embedded migration numbers: applyMigration writes
+	// schema_version = the migration's own number, so a number with no
+	// migration file behind it is a version no on-disk database has ever
+	// held and no fixture could freeze at. That is normally the same as
+	// 1..latest-1, and differs only while a numbering gap exists — this
+	// repo's own convention runs concurrent tasks in separate worktrees
+	// (docs/development.md), each holding a pre-assigned migration number,
+	// so a worktree can legitimately carry NNNN+1 before NNNN has merged.
+	// Demanding a fixture for the absent number would fail a tree for a
+	// migration that is not in it.
+	shipped := make(map[int]bool, len(migrations))
+	for _, m := range migrations {
+		shipped[m.version] = true
+	}
 	for v := 1; v < latest; v++ {
+		if !shipped[v] {
+			continue
+		}
 		if _, ok := versionSeeds[v]; !ok {
 			t.Fatalf("no versionSeeds fixture registered for schema version %d — add seedV%d/assertV%d "+
 				"(see this file's package doc comment) and register it in versionSeeds; T-1807 AC1 requires "+
@@ -247,6 +267,11 @@ func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
 
 	for v := 1; v < latest; v++ {
 		v := v
+		if !shipped[v] {
+			// No migration carries this number, so no database was ever at
+			// it — see the fixture gate above.
+			continue
+		}
 		t.Run(fmt.Sprintf("version %d", v), func(t *testing.T) {
 			db := openFrozenAt(t, v)
 			ctx := context.Background()
@@ -1344,10 +1369,28 @@ func assertV38(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 39 (0039_changeset_origin_tool.sql, changesets.origin_tool —
-// T-2705) has no versionSeeds entry because it is the current latest, not a
+func seedV39(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// T-2705's provenance column: which MCP tool staged this draft. Set on
+	// the v1 changeset, which every later assertion also reads.
+	mustExec(t, db, `UPDATE changesets SET origin_tool = 'changesets.stage.bridge' WHERE id = 'cs-v1'`)
+}
+
+func assertV39(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var tool sql.NullString
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT origin_tool FROM changesets WHERE id = 'cs-v1'`).Scan(&tool); err != nil {
+		t.Errorf("changesets.origin_tool lost across migration: %v", err)
+	} else if !tool.Valid || tool.String != "changesets.stage.bridge" {
+		t.Errorf("changesets.origin_tool = %v, want \"changesets.stage.bridge\"", tool)
+	}
+}
+
+// Schema version 41 (0041_incidents.sql, incidents + incident_annotations —
+// T-2804) has no versionSeeds entry because it is the current latest, not a
 // "prior" version any fixture in this file freezes at — its own forward
 // application (as part of every case's migrate() call to latest) is exercised
 // by every case above, and TestOpen_CreatesAllTables (store_test.go)
 // exercises it from a fresh database. The next migration to land becomes the
-// new latest and picks up a version 39 entry in versionSeeds at that time.
+// new latest and picks up a version 41 entry in versionSeeds at that time.

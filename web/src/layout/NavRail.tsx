@@ -29,6 +29,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/blueprints", label: "Blueprints", glyph: "B" },
   { path: "/hub", label: "Hub", glyph: "U" },
   { path: "/history", label: "History", glyph: "H" },
+  // T-2804: one timeline over the window an operator is investigating.
+  { path: "/incidents", label: "Incidents", glyph: "X" },
   { path: "/audit", label: "Audit", glyph: "A" },
   { path: "/tools", label: "Tools", glyph: "L" },
   { path: "/settings", label: "Settings", glyph: "G" },

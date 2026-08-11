@@ -90,11 +90,17 @@ type Options struct {
 	// TopologyDiff (T-2704) backs GET /topology/diff: the point-in-time
 	// topology diff, computed from the snapshot series and attributed
 	// against the changeset history. Nil leaves the route unmounted.
-	TopologyDiff          TopologyDiffService
-	Audit                 AuditService
-	HA                    HAStatusService
-	GitSync               GitSyncStatusService
-	DistFS                fs.FS
+	TopologyDiff TopologyDiffService
+	Audit        AuditService
+	HA           HAStatusService
+	GitSync      GitSyncStatusService
+	DistFS       fs.FS
+	// Incidents (T-2804) backs the incident view: one timeline over the
+	// window an operator is investigating. Nil leaves those routes
+	// unmounted; it disables no collection, because there is none to
+	// disable.
+	Incidents             IncidentService
+	IncidentAudit         incidentAuditor
 	HistoryFindingEvents  HistoryFindingEventsSource
 	SDN                   SDNService
 	SDNDNS                SDNDNSService
@@ -292,6 +298,10 @@ func NewRouter(opts Options) http.Handler {
 		// T-2406: the four self-check verdicts only the daemon can produce.
 		mountDoctorRoutes(r, opts.DoctorLive, opts.Auth)
 		mountHistoryRoutes(r, opts.History, opts.HistoryFindingEvents, opts.Auth)
+		// T-2804: the incident view — the same history, sliced by a window
+		// and stitched into one timeline. Read-only over data the routes
+		// above already serve, plus the operator's own annotations.
+		mountIncidentRoutes(r, opts.Incidents, opts.IncidentAudit, opts.Auth)
 		mountHARoutes(r, opts.HA, opts.Auth)
 		// T-2701: read-only status of the git-backed spec sync. Mounted
 		// unconditionally — "off" is an answer, and it keeps the route

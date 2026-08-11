@@ -56,7 +56,7 @@ func TestBundleSchema_AC2_EveryEmittedFieldIsDeclared(t *testing.T) {
 	// Every document type must be reachable as a root: a type that is only
 	// reachable through another is fine, but a ROOT that is not in
 	// bundleDocTypes cannot be checked at all.
-	if got, want := len(bundleDocTypes()), 9; got != want {
+	if got, want := len(bundleDocTypes()), 10; got != want {
 		t.Errorf("bundleDocTypes has %d roots, expected %d — add the new document type to the roots "+
 			"as well as to bundleFieldSchema, or it is never walked", got, want)
 	}
