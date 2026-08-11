@@ -169,6 +169,26 @@ type Config struct {
 	// Approval's own doc comment below. Optional/nil-safe like Comments
 	// above.
 	Approvals *store.ChangesetApprovalRepo
+	// Signoffs (T-2604) backs the two-person rule's distinct-approver set —
+	// one row per (changeset, principal), which is what makes "two tokens
+	// belonging to one person are one approver" a storage-level property.
+	// Optional/nil-safe: a Service built without it can record no sign-offs
+	// at all, so a deployment that also configures ProtectedClasses refuses
+	// every protected apply rather than permitting one it cannot prove.
+	Signoffs *store.ChangesetSignoffRepo
+	// BreakGlass (T-2604) backs the emergency override of that rule.
+	// Optional/nil-safe: without it InvokeBreakGlass reports
+	// ErrBreakGlassNotConfigured and no apply is ever overridden.
+	BreakGlass *store.ChangesetBreakGlassRepo
+	// ProtectedClasses (T-2604) declares which classes of change require N
+	// distinct approvers before they may be applied — op-type globs
+	// ("fw.*"), ProtectedClassMgmtPath, or "tag:<policy tag>" (twoperson.go).
+	// EMPTY IS THE DEFAULT AND A COMPLETE NO-OP: no changeset is ever in a
+	// protected class, so every pre-T-2604 deployment's apply behaviour is
+	// byte-identical. NewService's own validation refuses a malformed entry
+	// rather than dropping it, so a mistyped class name can never present as
+	// a gate that quietly does not exist.
+	ProtectedClasses []ProtectedClass
 	// Policies (T-2601) backs the declarative policy-as-code guardrail:
 	// the cluster's installed rule set and its per-rule bookkeeping.
 	// Optional/nil-safe — a Service built without it evaluates an empty
@@ -259,6 +279,13 @@ type Service struct {
 	// Approval's doc comments — nil-safe, review.go owns all access.
 	comments  *store.ChangesetCommentRepo
 	approvals *store.ChangesetApprovalRepo
+	// signoffs/breakGlass/protectedClasses (T-2604): the two-person rule's
+	// distinct-approver set, its emergency override, and the declared
+	// protected classes. See Config's own doc comments — nil/empty is a
+	// complete no-op, and twoperson.go owns all access.
+	signoffs         *store.ChangesetSignoffRepo
+	breakGlass       *store.ChangesetBreakGlassRepo
+	protectedClasses []ProtectedClass
 	// policies (T-2601): see Config.Policies — nil-safe,
 	// policy_service.go owns all access.
 	policies *store.PolicySetRepo
@@ -355,10 +382,19 @@ func NewService(cfg Config) (*Service, error) {
 	if clock == nil {
 		clock = clockFunc(now)
 	}
+	// T-2604: a malformed protected-class declaration is fatal here rather
+	// than dropped, so a deployment can never come up believing it has a
+	// two-person gate it does not have (the same reasoning that makes an
+	// unparsable policy file fatal at startup).
+	protectedClasses, err := NormalizeProtectedClasses(cfg.ProtectedClasses)
+	if err != nil {
+		return nil, err
+	}
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		comments: cfg.Comments, approvals: cfg.Approvals, approval: cfg.Approval,
 		policies: cfg.Policies, policyUnmatchedAfter: cfg.PolicyUnmatchedAfter,
+		signoffs: cfg.Signoffs, breakGlass: cfg.BreakGlass, protectedClasses: protectedClasses,
 		stages: cfg.Stages, canary: cfg.Canary, holdTimers: map[string]Stopper{},
 		guards: map[string]*autoRollbackGuard{}, autoRollbackDefault: cfg.AutoRollbackOnError,
 		protectedPath: protectedPath, corosyncPath: cfg.CorosyncPath, allowDangerousOps: cfg.AllowDangerousOps,
@@ -737,6 +773,11 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 	sort.Strings(removed)
 	s.cleanupOrphanedComments(ctx, id, author, removed)
 	s.clearApproval(ctx, id)
+	// T-2604: and so is every distinct-principal sign-off, for exactly the
+	// same reason — people endorsed a specific set of ops. (A break-glass
+	// override is NOT cleared here: it is evidence, and its own ops
+	// fingerprint already stops it authorizing the edited ops — twoperson.go.)
+	s.clearSignoffs(ctx, id)
 
 	if prevStatus != c.Status {
 		s.broadcastStatus(c)

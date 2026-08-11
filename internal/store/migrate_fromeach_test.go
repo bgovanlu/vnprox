@@ -164,6 +164,7 @@ var versionSeeds = map[int]versionSeed{
 	36: {seedV36, assertV36},
 	37: {seedV37, assertV37},
 	38: {seedV38, assertV38},
+	39: {seedV39, assertV39},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1344,10 +1345,28 @@ func assertV38(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 39 (0039_changeset_origin_tool.sql, changesets.origin_tool —
-// T-2705) has no versionSeeds entry because it is the current latest, not a
-// "prior" version any fixture in this file freezes at — its own forward
-// application (as part of every case's migrate() call to latest) is exercised
-// by every case above, and TestOpen_CreatesAllTables (store_test.go)
-// exercises it from a fresh database. The next migration to land becomes the
-// new latest and picks up a version 39 entry in versionSeeds at that time.
+func seedV39(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// T-2705's per-tool changeset provenance on the v1 changeset.
+	mustExec(t, db, `UPDATE changesets SET origin_tool = 'changesets.stage.bridge' WHERE id = 'cs-v1'`)
+}
+
+func assertV39(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var originTool string
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT origin_tool FROM changesets WHERE id = 'cs-v1'`).Scan(&originTool); err != nil {
+		t.Errorf("changesets.origin_tool lost across migration: %v", err)
+	} else if originTool != "changesets.stage.bridge" {
+		t.Errorf("changesets.origin_tool = %q, want %q", originTool, "changesets.stage.bridge")
+	}
+}
+
+// Schema version 40 (0040_two_person_rule.sql, changeset_signoffs +
+// changeset_breakglass — T-2604) has no versionSeeds entry because it is the
+// current latest, not a "prior" version any fixture in this file freezes at —
+// its own forward application (as part of every case's migrate() call to
+// latest) is exercised by every case above, and TestOpen_CreatesAllTables
+// (store_test.go) exercises it from a fresh database. The next migration to
+// land becomes the new latest and picks up a version 40 entry in versionSeeds
+// at that time.

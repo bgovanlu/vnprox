@@ -48,17 +48,63 @@ func newTokenTestSetup(t *testing.T, cap auth.Cap) (*httptest.Server, *store.API
 
 func mintToken(t *testing.T, tokens *store.APITokenRepo, id string, scopesJSON string) string {
 	t.Helper()
+	return mintTokenFor(t, tokens, id, scopesJSON, "root@pam")
+}
+
+// mintTokenFor is mintToken with an explicit creating user — the dimension
+// T-2604's distinct-approver rule turns on.
+func mintTokenFor(t *testing.T, tokens *store.APITokenRepo, id, scopesJSON, createdBy string) string {
+	t.Helper()
 	raw, hash, err := auth.GenerateAPIToken()
 	if err != nil {
 		t.Fatalf("GenerateAPIToken: %v", err)
 	}
 	if err := tokens.Create(context.Background(), store.APIToken{
-		ID: id, Name: "test-token", TokenHash: hash, ScopesJSON: scopesJSON,
-		CreatedBy: "root@pam", CreatedAt: time.Now().Unix(),
+		ID: id, Name: "test-token-" + id, TokenHash: hash, ScopesJSON: scopesJSON,
+		CreatedBy: createdBy, CreatedAt: time.Now().Unix(),
 	}); err != nil {
 		t.Fatalf("tokens.Create: %v", err)
 	}
 	return raw
+}
+
+// TestBearerAuth_TwoTokensOfOnePersonCarryOneUsername pins the premise
+// T-2604's two-person rule rests on: a bearer token's identity is its
+// CREATING USER, so two different tokens minted by the same person present
+// as the same principal — which is why the sign-off table, keyed on
+// principal, counts them once (internal/change/twoperson.go, and the
+// end-to-end assertion in internal/api/changesets_twoperson_test.go).
+//
+// The control leg is the third token, minted by someone else: it presents as
+// a different principal, so this test says something about identity rather
+// than about the header being ignored.
+func TestBearerAuth_TwoTokensOfOnePersonCarryOneUsername(t *testing.T) {
+	ts, tokens, _ := newTokenTestSetup(t, auth.CapNetRead)
+
+	usernameFor := func(raw string) string {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/protected", nil)
+		req.Header.Set("Authorization", "Bearer "+raw)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("GET /protected: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		return resp.Header.Get("X-Username")
+	}
+
+	first := usernameFor(mintTokenFor(t, tokens, "tok-a", `["netRead"]`, "bob@pam"))
+	second := usernameFor(mintTokenFor(t, tokens, "tok-b", `["netRead"]`, "bob@pam"))
+	if first != "bob@pam" || second != "bob@pam" {
+		t.Fatalf("usernames = (%q, %q), want both bob@pam — two tokens, one person", first, second)
+	}
+
+	if other := usernameFor(mintTokenFor(t, tokens, "tok-c", `["netRead"]`, "carol@pam")); other != "carol@pam" {
+		t.Fatalf("a third person's token presented as %q, want carol@pam", other)
+	}
 }
 
 func TestBearerAuth_ValidTokenWithScopeSucceeds(t *testing.T) {

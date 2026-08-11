@@ -60,6 +60,7 @@ var Operations = map[string]Operation{
 	"POST /api/v1/changesets/{id}/approve":                {Summary: "Record an approval on a changeset.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/review/approve":         {Summary: "Approve a changeset in four-eyes review.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/review/reject":          {Summary: "Reject a changeset in four-eyes review.", Tag: "changesets", Auth: AuthSession},
+	"POST /api/v1/changesets/{id}/break-glass":            {Summary: "Record an emergency override of the two-person rule, with a written reason.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/comments":               {Summary: "Add a review comment to a changeset.", Tag: "changesets", Auth: AuthSession},
 	"DELETE /api/v1/changesets/{id}/comments/{commentId}": {Summary: "Delete a review comment.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/schedule":               {Summary: "Schedule a changeset to apply in a maintenance window.", Tag: "changesets", Auth: AuthSession},

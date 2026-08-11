@@ -370,6 +370,12 @@ func (s *Service) ReviewApprove(ctx context.Context, id, approver string) (Chang
 	}); err != nil {
 		return Changeset{}, fmt.Errorf("change: recording approval for changeset %s: %w", id, err)
 	}
+	// T-2604: the same decision also records this approver as one DISTINCT
+	// PRINCIPAL who has endorsed these ops. There is deliberately no second
+	// "sign off" route: a two-person rule that needed its own approval verb
+	// would let a changeset be approved for one gate and not the other, and
+	// an operator would have no way to tell which they had done.
+	s.recordSignoff(ctx, id, approver, now)
 	s.appendAudit(ctx, approver, "changeset.review_approve", "success", id, nil)
 	return cs, nil
 }
@@ -398,6 +404,11 @@ func (s *Service) ReviewReject(ctx context.Context, id, rejecter, reason string)
 	}); err != nil {
 		return Changeset{}, fmt.Errorf("change: recording rejection for changeset %s: %w", id, err)
 	}
+	// T-2604: an endorsement withdrawn is not an endorsement. Someone who
+	// approved and has now rejected must stop counting toward the
+	// distinct-approver requirement — otherwise a two-person changeset could
+	// apply on the strength of an approval its own author has since retracted.
+	s.withdrawSignoff(ctx, id, rejecter)
 	s.appendAudit(ctx, rejecter, "changeset.review_reject", "rejected", id, map[string]any{"reason": reason})
 	return cs, nil
 }

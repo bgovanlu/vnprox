@@ -149,6 +149,41 @@ CREATE TABLE changeset_approvals (
   decided_at INTEGER NOT NULL
 );
 
+-- T-2604 (migration 0040): the enforced two-person rule on protected op
+-- classes, and its emergency override. changeset_approvals above records the
+-- LATEST review decision; it cannot answer "have two DIFFERENT PEOPLE
+-- approved this?", which is the only question a two-person rule asks.
+--
+-- One row per (changeset, PRINCIPAL) — never per session, per token, or per
+-- click. The primary key IS the distinct-approver guarantee: one person
+-- approving through two API tokens (whose identity is their creating user)
+-- upserts one row twice rather than inserting two, so the row count is the
+-- people count. Cleared wholesale when a draft's ops are replaced, and one
+-- row is removed when its principal later rejects — an endorsement withdrawn
+-- is not an endorsement.
+CREATE TABLE changeset_signoffs (
+  changeset_id TEXT NOT NULL REFERENCES changesets(id) ON DELETE CASCADE,
+  principal TEXT NOT NULL,           -- the approving identity (session username)
+  decided_at INTEGER NOT NULL,       -- unix; most recent approval by this principal
+  PRIMARY KEY (changeset_id, principal)
+);
+
+-- One row per changeset that has had emergency break-glass invoked on it.
+-- NEVER deleted by an edit, an apply, a rollback, or a discard: it is the
+-- evidence trail behind the change_break_glass finding, whose 24-hour
+-- acknowledgement floor would otherwise be defeated by deleting the row it is
+-- computed from. Only the changeset's own deletion cascades it away.
+-- ops_fingerprint pins the override to the ops it was invoked for, so a later
+-- edit cannot inherit it (apply refuses a mismatch and a fresh override — and
+-- therefore a fresh finding — must be taken).
+CREATE TABLE changeset_breakglass (
+  changeset_id TEXT PRIMARY KEY REFERENCES changesets(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,              -- required, non-empty (refused above this layer)
+  invoked_by TEXT NOT NULL,
+  invoked_at INTEGER NOT NULL,       -- unix; the 24h ack floor counts from here
+  ops_fingerprint TEXT NOT NULL DEFAULT ''
+);
+
 -- T-2601 (migration 0037): declarative policy-as-code guardrails — the
 -- organisational rules the change engine refuses (or annotates) a changeset
 -- for, at the validate stage. App-owned intent; PVE has no notion of these.

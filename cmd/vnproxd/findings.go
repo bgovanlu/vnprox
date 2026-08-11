@@ -299,10 +299,15 @@ func (a *mgmtStatusAdapter) MgmtStatus() (change.MgmtStatus, error) {
 }
 
 // scheduleMissedAdapter adapts a lazily-set *change.Service into
-// findings.ScheduleMissedProvider (T-1103's schedule_missed health check),
-// the exact same lazily-set pattern mgmtStatusAdapter above establishes and
-// for the identical reason: server.go builds the findings.Engine (via
+// findings.ScheduleMissedProvider (T-1103's schedule_missed health check)
+// AND findings.BreakGlassProvider (T-2604's change_break_glass check), the
+// exact same lazily-set pattern mgmtStatusAdapter above establishes and for
+// the identical reason: server.go builds the findings.Engine (via
 // setupFindings) before change.Service exists.
+//
+// One adapter serves both because both are the same seam — "ask the change
+// service what it has recorded" — over the same lazily-set target; a second
+// struct would be a second place to forget to call set().
 type scheduleMissedAdapter struct {
 	svc *change.Service
 	mu  sync.Mutex
@@ -325,6 +330,20 @@ func (a *scheduleMissedAdapter) MissedSchedules() []change.MissedSchedule {
 		return nil
 	}
 	return svc.MissedSchedules(context.Background())
+}
+
+// BreakGlassEvents implements findings.BreakGlassProvider (T-2604). Same
+// degrade-before-ready contract as MissedSchedules above: nil until the
+// change service is set, which contributes zero findings rather than
+// panicking.
+func (a *scheduleMissedAdapter) BreakGlassEvents() []change.BreakGlassRecord {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc == nil {
+		return nil
+	}
+	return svc.BreakGlassEvents(context.Background())
 }
 
 // corosyncStatusAdapter adapts a host.Reader + a localNode closure into
@@ -447,7 +466,7 @@ type findingsBroadcaster interface {
 // disabling the notification hook entirely — the P1 half of this task's
 // deliverable is present but harmless to omit if, say, the PVE client
 // failed to construct).
-func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, gitSyncSvc findings.GitSyncProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, onCycle func(context.Context, []findings.Finding), logger *slog.Logger) *findings.Engine {
+func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc findings.DriftProvider, topoSvc *topology.Service, metricsSampler *metrics.Sampler, mgmtSvc findings.MgmtProvider, corosyncSvc findings.CorosyncProvider, fwAnalyticsSvc findings.FwAnalyticsProvider, scheduleSvc findings.ScheduleMissedProvider, breakGlassSvc findings.BreakGlassProvider, latMeshSvc findings.LatMeshProvider, mtuSvc findings.MTUProvider, wgSvc findings.WGProvider, wanSvc findings.WanProvider, flowSvc findings.FlowProvider, k8sPoller *k8s.Poller, cephSvc findings.CephProvider, rogueSvc findings.RogueProvider, protectedSegments []string, capacitySvc findings.CapacityProvider, baselineSvc findings.BaselineProvider, federationSvc findings.FederationProvider, peerTrustSvc findings.PeerTrustProvider, storeCapacitySvc findings.StoreCapacityProvider, certSvc findings.CertProvider, gitSyncSvc findings.GitSyncProvider, webhookRepo *store.WebhookRepo, notifier findings.Notifier, ws findingsBroadcaster, ipamSvc *ipam.Service, probeRepo *store.SimDivergenceRepo, thresholds findings.HealthThresholds, haSvc findings.HAReplicationProvider, onCycle func(context.Context, []findings.Finding), logger *slog.Logger) *findings.Engine {
 	return findings.New(findings.Config{
 		Graph:       graph,
 		Drift:       driftSvc,
@@ -459,6 +478,10 @@ func setupFindings(ctx context.Context, graph *inventory.Graph, driftSvc finding
 		Corosync:    corosyncSvc,
 		FwAnalytics: fwAnalyticsSvc,
 		Schedule:    scheduleSvc,
+		// T-2604: the change_break_glass finding — an error-severity,
+		// 24-hour-unackable record of every emergency override of the
+		// two-person rule. Late-bound like Schedule above and nil-safe.
+		BreakGlass: breakGlassSvc,
 		// T-1704: the ha_replication_degraded health check, computed live from
 		// the HA manager's Status (late-bound — the manager is built after this
 		// engine; a nil target reports not-degraded).

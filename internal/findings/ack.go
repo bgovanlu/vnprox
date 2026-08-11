@@ -70,6 +70,20 @@ var ErrAckReasonRequired = errors.New("findings: an acknowledgement requires a r
 // never applies, silently.
 var ErrAckExpiryInPast = errors.New("findings: an acknowledgement's expiry is already in the past")
 
+// ErrAckTooEarly is returned by AckService.Ack when the finding declares an
+// AckableAt (T-2604) that has not been reached yet. It carries the instant
+// the finding becomes acknowledgeable so the API can say when, not merely
+// that it refused.
+type ErrAckTooEarly struct {
+	FindingID string
+	AckableAt int64
+}
+
+func (e *ErrAckTooEarly) Error() string {
+	return fmt.Sprintf("findings: %s cannot be acknowledged until %s",
+		e.FindingID, time.Unix(e.AckableAt, 0).UTC().Format(time.RFC3339))
+}
+
 // ErrNoSuchFinding is returned when the caller acks an id no producer is
 // currently reporting. Recording one would leave a dangling row that nothing
 // can ever clear from the UI, because the UI only shows acks alongside their
@@ -125,17 +139,31 @@ func (s *AckService) Decorate(ctx context.Context, in []Finding) (out []Finding,
 }
 
 // Ack records (or replaces) an acknowledgement for findingID. present is the
-// set of ids currently reported by the engine; acking an id absent from it is
-// refused rather than creating a dangling row.
+// findings currently reported by the engine, keyed by id (PresentFindings);
+// acking an id absent from it is refused rather than creating a dangling row.
+//
+// It carries the whole finding, not merely its id, because a finding may
+// declare a floor on when it becomes acknowledgeable (AckableAt, T-2604) and
+// that floor has to be enforced HERE — at the one write path — rather than
+// by whichever caller happens to remember to check it.
 //
 // Re-acking an already-acked finding replaces the reason, actor, and expiry:
 // an operator extending a mute should not have to un-ack first.
-func (s *AckService) Ack(ctx context.Context, findingID, reason, actor string, expiresAt int64, present map[string]bool) (Ack, error) {
+func (s *AckService) Ack(ctx context.Context, findingID, reason, actor string, expiresAt int64, present map[string]Finding) (Ack, error) {
 	if s == nil || s.store == nil {
 		return Ack{}, errors.New("findings: acknowledgement storage is not configured")
 	}
-	if !present[findingID] {
+	f, ok := present[findingID]
+	if !ok {
 		return Ack{}, ErrNoSuchFinding
+	}
+	// T-2604: the acknowledgement floor. Evaluated against the same injected
+	// clock the expiry rule uses, so it is provable by setting the clock
+	// rather than by waiting — and checked before the reason/expiry
+	// validation below so a too-early ack is refused for the reason that
+	// actually applies.
+	if f.AckableAt != 0 && s.now().Unix() < f.AckableAt {
+		return Ack{}, &ErrAckTooEarly{FindingID: findingID, AckableAt: f.AckableAt}
 	}
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
@@ -168,11 +196,14 @@ func (s *AckService) Unack(ctx context.Context, findingID string) error {
 	return nil
 }
 
-// PresentIDs builds the id set Ack takes, from a findings slice.
-func PresentIDs(in []Finding) map[string]bool {
-	out := make(map[string]bool, len(in))
+// PresentFindings builds the map Ack takes, from a findings slice: every
+// currently-reported finding keyed by its id. It carries whole findings
+// rather than ids so Ack can enforce a per-finding acknowledgement floor
+// (Finding.AckableAt) without a second lookup the caller could skip.
+func PresentFindings(in []Finding) map[string]Finding {
+	out := make(map[string]Finding, len(in))
 	for _, f := range in {
-		out[f.ID] = true
+		out[f.ID] = f
 	}
 	return out
 }

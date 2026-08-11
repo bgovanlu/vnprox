@@ -51,6 +51,12 @@ type Config struct {
 	// that check entirely, same degradation as every other optional Config
 	// field.
 	Schedule ScheduleMissedProvider
+	// BreakGlass is T-2604's emergency-override seam (change.Service.
+	// BreakGlassEvents), backing the change_break_glass finding — the
+	// error-severity, 24-hour-unackable record of a two-person rule that was
+	// deliberately overridden. Nil skips that check entirely, same
+	// degradation as every other optional Config field.
+	BreakGlass BreakGlassProvider
 	// HA is T-1704's HA-replication-health seam (*ha.Manager.Status), backing
 	// the ha_replication_degraded health check. Nil (HA disabled) skips that
 	// check entirely, same degradation as every other optional Config field.
@@ -181,6 +187,7 @@ type Engine struct {
 	corosyncSvc      CorosyncProvider
 	fwAnalytics      FwAnalyticsProvider
 	scheduleSvc      ScheduleMissedProvider
+	breakGlassSvc    BreakGlassProvider
 	haSvc            HAReplicationProvider
 	webhooksSvc      WebhookProvider
 	probeSvc         ProbeProvider
@@ -269,6 +276,7 @@ func New(cfg Config) *Engine {
 		corosyncSvc:      cfg.Corosync,
 		fwAnalytics:      cfg.FwAnalytics,
 		scheduleSvc:      cfg.Schedule,
+		breakGlassSvc:    cfg.BreakGlass,
 		haSvc:            cfg.HA,
 		webhooksSvc:      cfg.Webhooks,
 		probeSvc:         cfg.Probe,
@@ -403,6 +411,7 @@ func (e *Engine) healthFindings() []Finding {
 	out = append(out, checkCephFootguns(e.cephSvc, snap, e.cephDB)...)
 	out = append(out, checkFwRuleUnused(e.fwAnalytics, now)...)
 	out = append(out, checkScheduleMissed(e.scheduleSvc)...)
+	out = append(out, checkBreakGlass(e.breakGlassSvc)...)
 	out = append(out, checkHAReplicationDegraded(e.haSvc)...)
 	out = append(out, checkPathLatencyDegraded(e.latMeshSvc, e.latRttDB, e.thresholds)...)
 	out = append(out, checkPathLoss(e.latMeshSvc, e.latLossDB, e.thresholds)...)
