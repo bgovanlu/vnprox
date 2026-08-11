@@ -108,6 +108,7 @@ type Options struct {
 	// finding: restore intent (stage a changeset) and adopt reality (propose a
 	// spec commit). Nil leaves the routes mounted and answering honestly.
 	DriftReconciler       DriftReconciler
+	DigestSchedule        DigestScheduleService
 	DistFS                fs.FS
 	HistoryFindingEvents  HistoryFindingEventsSource
 	SDN                   SDNService
@@ -325,6 +326,10 @@ func NewRouter(opts Options) http.Handler {
 		// commit). Mounted unconditionally for the same reason the propose
 		// routes are; neither applies anything.
 		mountReconcileRoutes(r, opts.DriftReconciler, opts.Auth)
+		// T-2807: the digest schedule. Mounted unconditionally so a client can
+		// tell "digests are off" from "this build has no digests" — the
+		// distinction the runner alone cannot express.
+		mountDigestRoutes(r, opts.DigestSchedule, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountSDNDNSRoutes(r, opts.SDNDNS, opts.Auth)

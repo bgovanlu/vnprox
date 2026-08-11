@@ -1411,6 +1411,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// or polls one.
 		ChangesetProposer: gitSyncProposer,
 		DriftReconciler:   driftReconciler,
+		// T-2807: GET/PUT /digest/schedule. The route reads and writes the
+		// schedule row the runner re-reads on every tick, which is what makes
+		// a cadence change take effect without a restart.
+		DigestSchedule: store.NewDigestRepo(db),
 		// T-1007: GET /history/events merges the same audit_log (narrowed to
 		// the changeset-lifecycle action set) with finding_events.
 		History:              auditRepo,
