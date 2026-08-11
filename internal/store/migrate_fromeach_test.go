@@ -167,6 +167,7 @@ var versionSeeds = map[int]versionSeed{
 	39: {seedV39, assertV39},
 	40: {seedV40, assertV40},
 	41: {seedV41, assertV41},
+	42: {seedV42, assertV42},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1445,10 +1446,53 @@ func assertV41(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 41 (0041_incidents.sql, incidents + incident_annotations —
-// T-2804) has no versionSeeds entry because it is the current latest, not a
-// "prior" version any fixture in this file freezes at — its own forward
-// application (as part of every case's migrate() call to latest) is exercised
-// by every case above, and TestOpen_CreatesAllTables (store_test.go)
+func seedV42(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// T-2702's changeset -> pull request bookkeeping, on the v1 changeset.
+	// One row per changeset by PRIMARY KEY (0042's own comment): that IS the
+	// "proposing twice updates the existing request" rule, so what must
+	// survive a migration is the single row with its pr_id/pr_url intact —
+	// a lossy table rebuild that dropped either would silently turn the next
+	// propose into a second pull request.
+	mustExec(t, db, `INSERT INTO changeset_proposals
+	                 (changeset_id, remote, branch, path, commit_sha, pr_id, pr_url, proposed_by, created_at, updated_at)
+	                 VALUES ('cs-v1', 'github.com/example/netspec', 'vnprox/changeset-cs-v1',
+	                         'spec/cluster.yaml', 'abc123def456', '17',
+	                         'https://github.com/example/netspec/pull/17', 'alice@pam', 1750000200, 1750000300)`)
+}
+
+func assertV42(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var remote, branch, path, commitSHA, prID, prURL, proposedBy string
+	var createdAt, updatedAt int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT remote, branch, path, commit_sha, pr_id, pr_url, proposed_by, created_at, updated_at
+		 FROM changeset_proposals WHERE changeset_id = 'cs-v1'`).
+		Scan(&remote, &branch, &path, &commitSHA, &prID, &prURL, &proposedBy, &createdAt, &updatedAt); err != nil {
+		t.Errorf("changeset_proposals row lost across migration: %v", err)
+		return
+	}
+	if remote != "github.com/example/netspec" || branch != "vnprox/changeset-cs-v1" ||
+		path != "spec/cluster.yaml" || commitSHA != "abc123def456" || prID != "17" ||
+		prURL != "https://github.com/example/netspec/pull/17" || proposedBy != "alice@pam" ||
+		createdAt != 1750000200 || updatedAt != 1750000300 {
+		t.Errorf("changeset_proposals = (%q, %q, %q, %q, %q, %q, %q, %d, %d), want the seeded row",
+			remote, branch, path, commitSHA, prID, prURL, proposedBy, createdAt, updatedAt)
+	}
+
+	var rows int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT count(*) FROM changeset_proposals WHERE changeset_id = 'cs-v1'`).Scan(&rows); err != nil {
+		t.Errorf("changeset_proposals count query failed: %v", err)
+	} else if rows != 1 {
+		t.Errorf("changeset_proposals rows for cs-v1 = %d, want exactly 1 (the one-proposal-per-changeset invariant)", rows)
+	}
+}
+
+// Schema version 43 (0043_digest_schedules.sql, digest_schedules +
+// digest_runs — T-2807) has no versionSeeds entry because it is the current
+// latest, not a "prior" version any fixture in this file freezes at — its own
+// forward application (as part of every case's migrate() call to latest) is
+// exercised by every case above, and TestOpen_CreatesAllTables (store_test.go)
 // exercises it from a fresh database. The next migration to land becomes the
-// new latest and picks up a version 41 entry in versionSeeds at that time.
+// new latest and picks up a version 43 entry in versionSeeds at that time.
