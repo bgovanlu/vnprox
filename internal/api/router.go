@@ -94,13 +94,17 @@ type Options struct {
 	Audit        AuditService
 	HA           HAStatusService
 	GitSync      GitSyncStatusService
-	DistFS       fs.FS
 	// Incidents (T-2804) backs the incident view: one timeline over the
 	// window an operator is investigating. Nil leaves those routes
 	// unmounted; it disables no collection, because there is none to
 	// disable.
-	Incidents             IncidentService
-	IncidentAudit         incidentAuditor
+	Incidents     IncidentService
+	IncidentAudit incidentAuditor
+	// ChangesetProposer (T-2702) backs POST /changesets/{id}/propose and
+	// GET /changesets/{id}/proposal. Nil (or a disabled proposer) leaves both
+	// routes mounted and answering honestly, never silently absent.
+	ChangesetProposer ChangesetProposer
+	DistFS            fs.FS
 	HistoryFindingEvents  HistoryFindingEventsSource
 	SDN                   SDNService
 	SDNDNS                SDNDNSService
@@ -307,6 +311,11 @@ func NewRouter(opts Options) http.Handler {
 		// unconditionally — "off" is an answer, and it keeps the route
 		// inside T-2405's completeness gate.
 		mountGitSyncRoutes(r, opts.GitSync, opts.Auth)
+		// T-2702: propose a changeset as a pull request against the spec
+		// repository, and read back what was opened. Mounted unconditionally
+		// for the same reason gitsync/status is — "it is not configured" is an
+		// answer — and inside T-2405's completeness gate either way.
+		mountProposeRoutes(r, opts.ChangesetProposer, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountSDNDNSRoutes(r, opts.SDNDNS, opts.Auth)

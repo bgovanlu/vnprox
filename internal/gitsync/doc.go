@@ -61,4 +61,25 @@
 //     open or update the one draft. It never applies.
 //   - Everything is off until an operator sets `[gitsync] enabled = true`
 //     with a URL: a disabled Service contacts no endpoint and writes nothing.
+//
+// # The write half (T-2702)
+//
+// The other direction — a changeset staged in the GUI becoming a pull request
+// against the same repository — is a SIBLING of the read path, never an
+// extension of it:
+//
+//   - Host (host.go) is the write seam: branches, one file commit, and open
+//     or update a pull request. It has no merge, approve or poll verb,
+//     because vnprox opens a request and stops.
+//   - Proposer (propose.go) renders a changeset into the document
+//     (spec.ApplyOps), CHECKS that the result re-imports to exactly that
+//     changeset's ops before writing anything, and orders its host calls so a
+//     failure never leaves an orphan branch.
+//   - Source and Host are separate types with separate credentials
+//     ([gitsync] token_file and push_token_file). The sync Service holds only
+//     a Source, so an applying-or-pushing sync path cannot be written without
+//     editing an interface — the same structural stance ChangesetStager takes
+//     towards apply.
+//   - The write half is off until an operator sets push_token_file, quite
+//     separately from enabling the sync.
 package gitsync

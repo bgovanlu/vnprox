@@ -166,6 +166,7 @@ var versionSeeds = map[int]versionSeed{
 	38: {seedV38, assertV38},
 	39: {seedV39, assertV39},
 	40: {seedV40, assertV40},
+	41: {seedV41, assertV41},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1406,6 +1407,41 @@ func assertV40(t *testing.T, db *sql.DB) {
 		invokedAt != 1750000100 || fingerprint != "fp-v40" {
 		t.Errorf("changeset_breakglass = (%q, %q, %d, %q), want the seeded row",
 			reason, invokedBy, invokedAt, fingerprint)
+	}
+}
+
+func seedV41(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// T-2804's incident view: the window and one operator annotation. There
+	// is deliberately no incident_events table (see 0041's own comment) —
+	// what must survive a migration is the window, because the timeline is
+	// recomputed from the sources over it.
+	mustExec(t, db, `INSERT INTO incidents (id, title, started_at, ended_at, opened_by, opened_at, status)
+	                 VALUES ('inc-v41', 'uplink flap', 1750000000, 1750003600, 'alice@pam', 1750000050, 'closed')`)
+	mustExec(t, db, `INSERT INTO incident_annotations (id, incident_id, at, author, body)
+	                 VALUES ('ann-v41', 'inc-v41', 1750001000, 'alice@pam', 'swapped the SFP')`)
+}
+
+func assertV41(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var title, openedBy, status string
+	var startedAt, endedAt int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT title, started_at, ended_at, opened_by, status FROM incidents WHERE id = 'inc-v41'`).
+		Scan(&title, &startedAt, &endedAt, &openedBy, &status); err != nil {
+		t.Errorf("incidents row lost across migration: %v", err)
+	} else if title != "uplink flap" || startedAt != 1750000000 || endedAt != 1750003600 ||
+		openedBy != "alice@pam" || status != "closed" {
+		t.Errorf("incidents = (%q, %d, %d, %q, %q), want the seeded row",
+			title, startedAt, endedAt, openedBy, status)
+	}
+
+	var note string
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT body FROM incident_annotations WHERE incident_id = 'inc-v41'`).Scan(&note); err != nil {
+		t.Errorf("incident_annotations row lost across migration: %v", err)
+	} else if note != "swapped the SFP" {
+		t.Errorf("incident_annotations.body = %q, want %q", note, "swapped the SFP")
 	}
 }
 

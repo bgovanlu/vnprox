@@ -1075,6 +1075,18 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	gitSyncFindings.set(gitSyncSvc)
 	gitSyncStatus.set(gitSyncSvc)
 
+	// T-2702: the other direction — a changeset staged here becomes a pull
+	// request against the same repository. Constructed unconditionally so the
+	// route always has an honest answer, and INERT unless the operator has
+	// set a write-scoped credential ([gitsync] push_token_file): syncing
+	// needs only a read, and a deployment that never asked to propose
+	// anything never reads a write credential off disk.
+	gitSyncProposer, err := buildGitSyncProposer(
+		cfg.GitSync, changeSvc, graph, store.NewChangesetProposalRepo(db), changeSvc, auditRepo, logger)
+	if err != nil {
+		return fmt.Errorf("initializing changeset proposals: %w", err)
+	}
+
 	// T-505: the firewall log viewer's cluster-wide tailer/correlator.
 	// Built before peerSrv below so the same local log source
 	// (fwlogSource) backs both this daemon's own polling (fwlogSvc) and
@@ -1389,6 +1401,10 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// T-2701: GET /gitsync/status — read-only; there is deliberately no
 		// route that triggers a sync or applies its draft.
 		GitSync: gitSyncStatus,
+		// T-2702: POST /changesets/{id}/propose — the loop back the other
+		// way. It opens a pull request and stops; nothing here merges, gates
+		// or polls one.
+		ChangesetProposer: gitSyncProposer,
 		// T-1007: GET /history/events merges the same audit_log (narrowed to
 		// the changeset-lifecycle action set) with finding_events.
 		History:              auditRepo,

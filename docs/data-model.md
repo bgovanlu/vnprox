@@ -230,6 +230,29 @@ CREATE TABLE changeset_apply_stages (
   confirm_deadline INTEGER NOT NULL  -- the WHOLE sequence's commit-confirm deadline, set once at its start
 );
 
+-- T-2702: the pull request a changeset was proposed as, against the spec
+-- repository ([gitsync]). App-owned bookkeeping about an EXTERNAL object —
+-- never a shadow of PVE state and never a credential (the push token has no
+-- column here and no writer of this row ever holds one).
+--
+-- ONE ROW PER CHANGESET, by primary key: that is the "proposing twice updates
+-- the existing request rather than opening a second" rule expressed in the
+-- schema, since there is nowhere to put a second proposal. It is a side table
+-- rather than columns on `changesets` so the ordinary changeset UPDATE — which
+-- rewrites status/ops/plan on every lifecycle step — can never clobber it.
+CREATE TABLE changeset_proposals (
+  changeset_id TEXT PRIMARY KEY,
+  remote TEXT NOT NULL,              -- credential-free description, as GET /gitsync/status renders it
+  branch TEXT NOT NULL,              -- "vnprox/changeset-<id>": deterministic, so re-proposing finds it
+  path TEXT NOT NULL,                -- the spec document's path within the repository
+  commit_sha TEXT NOT NULL DEFAULT '',  -- '' when the branch already carried byte-identical content
+  pr_id TEXT NOT NULL DEFAULT '',    -- the host's own id (GitHub pull number, GitLab MR iid), as text
+  pr_url TEXT NOT NULL DEFAULT '',   -- the page the review surface links to
+  proposed_by TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,       -- the FIRST proposal's time; re-proposing preserves it
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE snapshots (
   id TEXT PRIMARY KEY, changeset_id TEXT REFERENCES changesets(id),
   taken_at INTEGER NOT NULL, kind TEXT NOT NULL,      -- pre|post|manual|scheduled

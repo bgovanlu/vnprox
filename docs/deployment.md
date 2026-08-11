@@ -221,6 +221,15 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 #                                   # authorized_keys) file. REQUIRED when require_signed_commits
 #                                   # is true — a daemon must never come up enforcing a signature
 #                                   # policy whose trust anchors it could not read.
+# push_token_file = "/etc/vnprox/keys/gitsync-push.token"   # T-2702, and OFF unless set: a
+#                                   # separate, WRITE-scoped credential used only by
+#                                   # POST /changesets/{id}/propose to push a branch and open a
+#                                   # pull request. Deliberately not the same key as token_file:
+#                                   # syncing needs only a read, and a deployment that never asked
+#                                   # to propose anything never reads a write credential off disk.
+#                                   # Unset: proposing answers 501 and nothing is contacted.
+#                                   # Requires provider github or gitlab (a raw file host has no
+#                                   # branch or pull-request API).
 ```
 
 ### Git spec sync operating notes (T-2701)
@@ -234,6 +243,12 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 - **One open sync changeset at a time.** A second detected divergence updates the existing draft
   rather than accumulating drafts. Check it with `vnproxctl gitsync status`, apply it like any other
   changeset.
+- **Proposing (T-2702) is a separate opt-in with a separate credential.** Setting `push_token_file`
+  is what turns on `POST /changesets/{id}/propose`; syncing keeps working with a read-only
+  `token_file` and never pushes. vnprox opens a pull request and stops — it does not merge, gate or
+  poll one, and whatever happens to the request comes back through the ordinary sync above. A
+  proposal that could not be completed removes the branch it created, so a failed call leaves no
+  orphan branch behind.
 - **Nothing is pushed on this path.** The sync is a read-only fetch of one file at one ref, over
   plain HTTPS — there is no `git` binary dependency and no git library in the .deb.
 

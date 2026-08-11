@@ -58,6 +58,8 @@ var Operations = map[string]Operation{
 	"POST /api/v1/changesets/{id}/continue":               {Summary: "Promote a staged (canary) apply past its hold to the remaining nodes.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/rollback":               {Summary: "Roll an applied changeset back to its pre-apply state.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/approve":                {Summary: "Record an approval on a changeset.", Tag: "changesets", Auth: AuthSession},
+	"POST /api/v1/changesets/{id}/propose":                {Summary: "Propose a changeset as a pull request against the spec repository.", Tag: "changesets", Auth: AuthSession},
+	"GET /api/v1/changesets/{id}/proposal":                {Summary: "Return the pull request a changeset was proposed as.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/review/approve":         {Summary: "Approve a changeset in four-eyes review.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/review/reject":          {Summary: "Reject a changeset in four-eyes review.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/break-glass":            {Summary: "Record an emergency override of the two-person rule, with a written reason.", Tag: "changesets", Auth: AuthSession},

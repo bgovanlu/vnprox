@@ -21,17 +21,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"sync"
 
+	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/gitsync"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/store"
+	"github.com/bgovanlu/vnprox/internal/topology"
 )
 
 // buildGitSync resolves the [gitsync] section into a Service.
@@ -83,6 +86,85 @@ func buildGitSync(cfg config.GitSyncConfig, changesets gitsync.ChangesetStager, 
 		Audit:                audit,
 		Logger:               logger,
 	}), nil
+}
+
+// buildGitSyncProposer resolves the [gitsync] section into T-2702's
+// Proposer: the path that turns a staged changeset into a pull request
+// against the spec repository.
+//
+// It is built unconditionally and is INERT unless the operator has set a
+// write-scoped credential ([gitsync] push_token_file). That key is separate
+// from token_file on purpose: syncing needs only a read, proposing needs a
+// write, and a deployment that never asked to propose anything never has a
+// write credential read off disk — let alone held in memory.
+//
+// The Proposer holds one read seam and one write seam, which are different
+// types (gitsync.Source and gitsync.Host). Nothing here can widen the sync
+// path into a pushing one.
+func buildGitSyncProposer(
+	cfg config.GitSyncConfig,
+	changesets gitsync.ChangesetReader,
+	graph *inventory.Graph,
+	proposals gitsync.ProposalStore,
+	mgmt mgmtPathSource,
+	audit *store.AuditRepo,
+	logger *slog.Logger,
+) (*gitsync.Proposer, error) {
+	if !cfg.Enabled || cfg.PushTokenFile == "" {
+		// Nothing is read: not the push credential, not the remote.
+		return gitsync.NewProposer(gitsync.ProposerConfig{Logger: logger}), nil
+	}
+
+	pushToken, err := readGitSyncToken(cfg.PushTokenFile)
+	if err != nil {
+		return nil, err
+	}
+	readToken, err := readGitSyncToken(cfg.TokenFile)
+	if err != nil {
+		return nil, err
+	}
+	// The base document is read through the ordinary READ source, with the
+	// ordinary read credential — proposing does not read through the write
+	// host, and the write host does not fetch specs.
+	source, err := gitsync.NewHTTPSource(gitsync.SourceConfig{
+		URL: cfg.URL, Provider: gitsync.Provider(cfg.Provider), Token: readToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+	host, err := gitsync.NewHTTPHost(gitsync.HostConfig{
+		URL: cfg.URL, Provider: gitsync.Provider(cfg.Provider), Token: pushToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return gitsync.NewProposer(gitsync.ProposerConfig{
+		Enabled: true, Source: source, Host: host, Ref: cfg.Ref, Path: cfg.Path,
+		Changesets: changesets, Inventory: graph, Proposals: proposals, Audit: audit,
+		MgmtPaths: mgmtPathsFrom(mgmt), Logger: logger,
+	}), nil
+}
+
+// mgmtPathSource is the management-path read the blast radius in a proposal's
+// body is evaluated against — *change.Service satisfies it. Nil-safe: a
+// deployment without it reports the management path as "not evaluated" in the
+// pull-request body rather than reporting a false "not touched".
+type mgmtPathSource interface {
+	MgmtStatus(ctx context.Context) (change.MgmtStatus, error)
+}
+
+func mgmtPathsFrom(mgmt mgmtPathSource) func(context.Context) map[string][]topology.MgmtPath {
+	if mgmt == nil {
+		return nil
+	}
+	return func(ctx context.Context) map[string][]topology.MgmtPath {
+		status, err := mgmt.MgmtStatus(ctx)
+		if err != nil {
+			return nil
+		}
+		return status.Nodes
+	}
 }
 
 // readGitSyncToken reads the host credential from its own root:root 0600

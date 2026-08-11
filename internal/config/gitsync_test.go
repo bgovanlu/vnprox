@@ -71,6 +71,47 @@ allowed_signers_file = "/etc/vnprox/gitsync-allowed-signers"
 			},
 		},
 		{
+			// T-2702: the push credential is its own key. A section that
+			// configures a sync but no push_token_file resolves to a sync
+			// that cannot propose — which is the default, and the reason
+			// enabling proposals is a separate, explicit act.
+			name: "the push credential is separate from the read one",
+			section: `
+[gitsync]
+enabled = true
+url = "https://github.com/org/infra"
+path = "network/cluster.yaml"
+token_file = "/etc/vnprox/keys/gitsync.token"
+`,
+			check: func(t *testing.T, g GitSyncConfig) {
+				if g.TokenFile == "" {
+					t.Fatal("control failed: the read token did not resolve, so the assertion below proves nothing")
+				}
+				if g.PushTokenFile != "" {
+					t.Errorf("PushTokenFile = %q for a section that never set one", g.PushTokenFile)
+				}
+			},
+		},
+		{
+			name: "setting push_token_file resolves it, and only it",
+			section: `
+[gitsync]
+enabled = true
+url = "https://github.com/org/infra"
+path = "network/cluster.yaml"
+token_file = "/etc/vnprox/keys/gitsync.token"
+push_token_file = "/etc/vnprox/keys/gitsync-push.token"
+`,
+			check: func(t *testing.T, g GitSyncConfig) {
+				if g.PushTokenFile != "/etc/vnprox/keys/gitsync-push.token" {
+					t.Errorf("PushTokenFile = %q", g.PushTokenFile)
+				}
+				if g.TokenFile == g.PushTokenFile {
+					t.Error("the read and push credentials resolved to the same file")
+				}
+			},
+		},
+		{
 			name: "ref defaults to main",
 			section: `
 [gitsync]
