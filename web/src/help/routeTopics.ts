@@ -23,6 +23,7 @@ export const ROUTE_HELP: Readonly<Record<string, string>> = {
   "/blueprints": "blueprints-page",
   "/hub": "hub-page",
   "/history": "history-page",
+  "/incidents": "incidents-page",
   "/audit": "audit-page",
   "/tools": "tools-page",
   "/changesets/:id/review": "changeset-review-page",

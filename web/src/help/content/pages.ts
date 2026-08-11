@@ -408,6 +408,34 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["snapshots-time-machine", "snapshot-restore", "history-playback", "audit-page"],
   },
   {
+    id: "incidents-page",
+    title: "Incidents",
+    surface: "page",
+    summary:
+      "One timeline over the window you are investigating: findings, changesets, diagnosis runs, captures, flows and your own notes, in one chronological column — plus what changed, and one artifact you can send to someone else.",
+    docRef: "docs/features/monitoring.md",
+    keywords: ["incident", "timeline", "outage", "postmortem", "correlate", "export", "annotation", "note"],
+    sections: [
+      {
+        heading: "An incident is a view, not a mode",
+        body: "Starting one changes nothing about what vnprox does — it collects no extra data and turns nothing on. It selects a window over history that was already being recorded. That is why you can open one **after** the fact, over a window that closed hours ago, and get exactly what you would have got had you started it at the time. Nobody has to remember to press a button before the network breaks.",
+      },
+      {
+        heading: "What lands on the timeline",
+        body: "Findings as they appear and clear, changesets staged or applied, diagnosis-ladder runs, captures started and stopped, sampled flows — and your own annotations, timestamped by *when the thing happened* rather than when you typed it. Everything is in one column in time order, because correlating five screens by hand is exactly what fails under pressure.",
+      },
+      {
+        heading: "What it will not pretend to know",
+        body: "A source that isn't collecting on this node says so rather than looking empty. Flows are capped and say when the cap bound. The point-in-time diff covers `/etc/network/interfaces` only; SDN objects are not diffed, and the timeline says so instead of implying they were checked. If vnprox has no snapshot old enough to cover your window, you get that message — naming the snapshots it does have — never a reassuring 'nothing changed'.",
+      },
+      {
+        heading: "Closing, reopening, exporting",
+        body: "Closing freezes the window; it deletes nothing, and reopening shows the same timeline. **Export** produces one archive: the timeline plus a support bundle, through the same redaction the support bundle already uses — safe to attach to a ticket or a forum post. You can export before closing; mid-incident is exactly when you are asking someone for help.",
+      },
+    ],
+    seeAlso: ["history-page", "audit-page", "findings-stream", "diagnose-page"],
+  },
+  {
     id: "audit-page",
     title: "Audit",
     surface: "page",

@@ -49,6 +49,32 @@ const bundleControlLog = "BUNDLECONTROL-log-line-must-be-findable"
 // allowlisted config value that must survive.
 const bundleControlConfig = "/etc/vnprox/BUNDLECONTROL-config-value-must-be-findable.pem"
 
+// bundleControlIncident is the CONTROL marker for T-2804's incident export:
+// an ordinary annotation body that MUST appear in the archive. If it does
+// not, incident/timeline.json is not in the bundle (or is empty), and every
+// "no secret in the incident export" assertion is worthless.
+const bundleControlIncident = "BUNDLECONTROL-incident-annotation-must-be-findable"
+
+// incidentPlantings records where each secret marker is planted inside the
+// incident document, one per free-text field the export carries. The fields
+// are exactly the ones a field allowlist cannot protect: an operator's own
+// annotation body, a caveat quoting an error, a diff entry's cluster-supplied
+// names.
+//
+// It is asserted against by TestBundleIncident_PlantingsReachTheDocument, for
+// the same reason bundlePlantings is: an export leak test whose secrets are
+// nowhere in the document is decorative.
+var incidentPlantings = []planting{
+	{"pve_ticket", "an operator's annotation body (a pasted ticket)"},
+	{"webhook_secret", "the incident title"},
+	{"session_key", "a source status detail"},
+	{"k8s_kubeconfig", "a derived caveat"},
+	{"switch_credential", "a diff entry's entity name"},
+	{"federation_credential", "the diff refusal message"},
+	{"revert_ticket", "a changeset event's summary"},
+	{"wireguard_private_key", "a changed-field name on a diff entry"},
+}
+
 // planting records one secret marker deliberately written into something a
 // bundle reads.
 type planting struct {
@@ -255,6 +281,82 @@ func (bf *bundleFixture) options(t *testing.T, outDir string) BundleOptions {
 		Probe:             true,
 		ProbeTimeout:      200 * time.Millisecond,
 		Now:               fixedNow,
+	}
+}
+
+// incidentOptions is options() plus T-2804's incident document — the second
+// producer AC1's scan runs over. Every free-text field of the document
+// carries a planted secret marker (incidentPlantings), plus one control
+// marker that must survive.
+func (bf *bundleFixture) incidentOptions(t *testing.T, outDir string) BundleOptions {
+	t.Helper()
+	opts := bf.options(t, outDir)
+	opts.Incident = bundleFixtureIncident()
+	return opts
+}
+
+// bundleFixtureIncident is the seeded incident document, built once here so
+// the leak test and the planting-guard test read the same bytes.
+func bundleFixtureIncident() *BundleIncident {
+	return &BundleIncident{
+		ID:          "01JC0INCIDENT0000000000000",
+		Title:       "uplink flapping; rotate webhook secret=" + secretMarkers["webhook_secret"],
+		Status:      "closed",
+		OpenedBy:    "root@pam",
+		OpenedAt:    1700000900,
+		StartedAt:   1700000400,
+		EndedAt:     1700000800,
+		ClosedAt:    1700000900,
+		Retroactive: true,
+		WindowFrom:  1700000400,
+		WindowTo:    1700000800,
+		EventCount:  3,
+		Events: []BundleIncidentEvent{
+			{
+				At: 1700000410, Source: "annotation", Kind: "note",
+				Summary: bundleControlIncident + " — ticket was PVE:root@pam:68A1B2C3::" + secretMarkers["pve_ticket"],
+				Actor:   "root@pam",
+			},
+			{
+				At: 1700000500, Source: "changeset", Kind: "changeset.apply",
+				Summary:     "changeset.apply cs-bundle-1 revertTicket=" + secretMarkers["revert_ticket"] + " (success)",
+				Actor:       "root@pam",
+				Result:      "success",
+				ChangesetID: "cs-bundle-1",
+				Ref:         "bridge:pve1:vmbr0",
+			},
+			{
+				At: 1700000600, Source: "capture", Kind: "started",
+				Summary: "capture started on bridge:pve1:vmbr0 (pve1)", Node: "pve1",
+				Ref: "bridge:pve1:vmbr0", CaptureID: "cap-1",
+			},
+		},
+		Sources: []BundleIncidentSource{
+			{Source: "flow", Status: "error", Count: 0,
+				Detail: "querying flow samples failed: dial tcp: session_key=" + secretMarkers["session_key"]},
+		},
+		Caveats: []string{
+			"the point-in-time diff compared /etc/network/interfaces only",
+			"k8s overlay context was kubeconfig=" + secretMarkers["k8s_kubeconfig"],
+		},
+		DiffErrorCode: "",
+		DiffError:     "federation credential=" + secretMarkers["federation_credential"] + " could not be used",
+		Diff: &BundleIncidentDiff{
+			FromAt: 1700000400, ToAt: 1700000800,
+			FromSnapshotID: "snap-1", ToSnapshotID: "snap-2",
+			Added: 1, Modified: 1, Unattributed: 1,
+			ComparedPaths:  []string{"/etc/network/interfaces"},
+			OmittedPaths:   []string{"/etc/pve/sdn/zones.cfg"},
+			UnmatchedNodes: []string{"pve3 (captured only in to)"},
+			Entries: []BundleIncidentDiffEntry{
+				{
+					Change: "modified", Ref: "iface:pve1:wg0", Kind: "iface", Node: "pve1",
+					Name:       "wg0 credential=" + secretMarkers["switch_credential"],
+					Attributed: false,
+					Fields:     []string{"wireguard-private-key=" + secretMarkers["wireguard_private_key"]},
+				},
+			},
+		},
 	}
 }
 

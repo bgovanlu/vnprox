@@ -906,6 +906,55 @@ Requires the `audit` capability (the same gate `GET /audit` uses — this route'
 
 **Bounds** (docs/features/topology.md §2's scrubber, per this task's card): the UI clamps its playback range to the shorter of the metrics window (24h, `store.MetricRetention`) and the flows window (`[flows] retention_minutes`, default 60m, T-1002) — scrubbing earlier than the flow window's own retention disables/greys the Flows layer with an explicit disclosure ("flow history available for the last N minutes only") rather than silently showing an empty overlay. `finding_events` is bounded and pruned to the same `store.MetricRetention` window as `metric_samples` (`internal/store/migrations/0009_finding_events.sql`'s doc comment) — never a longer horizon, matching every other bounded ring this codebase keeps.
 
+## Incidents (T-2804)
+
+Added by T-2804 (`internal/incident`, `internal/api/incidents.go`, `web/src/incidents/`). When a network breaks, an operator needs the diagnosis ladder, a capture, the current findings, recent flows and what changed — and before this, that meant five screens correlated by hand, under time pressure. An **incident** is one window and one merged timeline over all of it.
+
+**An incident is a VIEW, not a mode.** Opening one starts no collector, subscribes to no stream and copies no event: every timeline is assembled at read time from history vnprox already records (`finding_events`, `audit_log`, `capture_sessions`, `flow_samples` — the same tables `GET /history/events`, `GET /audit`, `GET /captures` and `GET /flows` already serve), plus the one thing nothing else records, the operator's own annotations. Two consequences are contractual rather than incidental:
+
+- An incident can be opened **retroactively** over a window that closed hours ago and contains exactly what an incident opened live at that moment would have contained. Nobody has to press "start incident" before the network breaks.
+- **Closing deletes nothing** and reopening shows the same timeline, because there is nothing of the timeline stored to delete. `incidents`/`incident_annotations` (docs/data-model.md §2) hold the window and the notes; there is no `incident_events` table and there must never be one.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/incidents` | `{items: [Incident]}`, most recent window first |
+| POST | `/incidents` | open: `{title, startedAt?, endedAt?}` → `201 Incident` |
+| GET | `/incidents/{id}` | one `Incident` with its `annotations` |
+| GET | `/incidents/{id}/timeline` | the merged `Timeline` (below) |
+| POST | `/incidents/{id}/annotations` | `{body, at?}` → `201 Annotation` |
+| POST | `/incidents/{id}/close` | close, freezing an open-ended window at now → `Incident` |
+| POST | `/incidents/{id}/reopen` | reopen; the window runs to now again → `Incident` |
+| GET | `/incidents/{id}/export` | the artifact: the timeline **plus** a support bundle, `Content-Type: application/gzip`, `Content-Disposition: attachment` |
+
+**Node-local, like `GET /history/events`.** The timeline is assembled from this node's own tables and does **not** fan out to peers: `finding_events` and the incident record are app-owned per-node data, `flow_samples` is this node's own sampling window, and a cluster-wide *changeset* view is `GET /audit`'s own job with its own documented fan-out. An incident opened on one node therefore reads that node's history; open one on the node you are investigating. This is gated (`internal/incident`'s `TestTimeline_IsNodeLocalByConstruction`) rather than only written down — the service holds no peer seam, and adding one fails that test.
+
+Every route requires the **`audit`** capability — the same gate `GET /audit` and `GET /history/events` use. The timeline re-exposes real `audit_log` rows (its changeset and diagnosis halves), so it is never gated more loosely than the route that already serves them, and the export carries the same redacted diagnostic material `vnproxctl support-bundle` produces. The four mutating routes additionally require CSRF; what they mutate is only vnprox's own record of the investigation — nothing here reaches the change engine, and `api.IncidentService` has no Apply/Stage/Confirm method for it to reach through.
+
+**`Incident`**: `{id, title, status, openedBy, openedAt, startedAt, endedAt?, closedAt?, retroactive, annotations: [Annotation]}`. `status` is `"open"`\|`"closed"`. `openedAt`/`startedAt` are deliberately distinct: the first is when the record was created, the second when the window begins, and `retroactive` is the derived `openedAt > startedAt`. `endedAt` is the inclusive window end; absent/`0` means "runs to now". `POST /incidents` with no `startedAt` opens a live incident from now; with `startedAt`+`endedAt` in the past it opens a retroactive one — the same route, no mode flag. An inverted window (`endedAt < startedAt`) is `400 validation_failed`; a blank title likewise. `GET /incidents`' list items carry no annotation bodies.
+
+**`Annotation`**: `{id, author, body, at}`. `at` is what the observation is *about*, not when it was typed — back-dating ("the link flapped at 14:02", written at 14:20) is the normal case. Annotations are permitted on a closed incident: a conclusion is usually written afterwards.
+
+**`Timeline`**: `{incident, window, events, sources, diff?, diffError?, diffErrorCode?, caveats}`.
+
+- **`window`**: `{from, to, live}`. `to` is always concrete — an open incident resolves it to the assembly instant (`live: true`), so the timeline and the diff beside it describe the same range.
+- **`events[]`**: `{id, at, source, kind, summary, actor?, node?, ref?, result?, findingId?, transition?, changesetId?, action?, captureId?, annotationId?}`, in **strict chronological order** across every source (ties broken by `id`, which is stable per underlying row). `source` is the closed vocabulary `finding` \| `changeset` \| `diagnosis` \| `capture` \| `flow` \| `annotation`:
+
+  | `source` | Where it comes from | `kind` |
+  |---|---|---|
+  | `finding` | `finding_events` rows in the window | `new`\|`escalated`\|`resolved` |
+  | `changeset` | `audit_log` rows with action `changeset.create` (staged) or one of the T-205 lifecycle actions `GET /history/events` documents | the audit action |
+  | `diagnosis` | `audit_log` rows with action `diagnose.run` (the per-step `diagnose.step` rows are deliberately excluded — five rows per run would bury the other four sources) | `diagnose.run` |
+  | `capture` | `capture_sessions` whose start or stop falls in the window | `started`\|`stopped` |
+  | `flow` | `flow_samples` in the window, newest-first, capped | the flow's own source (`netflow9`, `sflow`, ...) |
+  | `annotation` | this incident's own annotations | `note` |
+
+  A capture that was already running before the window and still running after it contributes nothing: the timeline records what *happened* in the window.
+- **`sources[]`**: `{source, status, count, detail?}` — one per source, always all six. `status` is `ok` \| `unavailable` (that source is not wired on this node — a different statement from "returned nothing") \| `error` (queried and failed; every other source still contributed) \| `truncated` (the flow cap bound; `detail` names it). A dead source never fails the request, matching `GET /flows`' `partial`/`failedNodes` degradation contract.
+- **`diff`** is `GET /topology/diff`'s own response shape (T-2704), computed across the incident's window (`to=now` for a live one). When the change engine **refuses** the range it returns a typed error, never an empty diff, and this route surfaces that refusal verbatim in `diffError` with `diffErrorCode` set to the same stable code `GET /topology/diff` returns (`no_snapshot_in_range`, `validation_failed`, `apply_unavailable`, `internal_error`). The message names the snapshots that *do* exist, which is both the explanation and the fix. An empty diff is never substituted: "nothing changed" and "vnprox cannot see that far back" are different statements and an operator acts differently on each.
+- **`caveats[]`** are derived, never constant. They are computed from what the assembly observed — each degraded/truncated source, and the diff's own `coverage` — so a caveat cannot outlive the limit it describes. Concretely: the diff's compared paths (`/etc/network/interfaces` only today; **SDN entities are not diffed**, and `coverage.omittedPaths` names them), any node captured at only one end of the range (an entity absent on such a node is *not* evidence of a deletion), and the count of differences no changeset explains — the out-of-band changes, which is the number an operator reacts to.
+
+**The export** (`GET /incidents/{id}/export`) produces **one** artifact: a T-1902 support bundle with one additional declared entry, `incident/timeline.json`. It is not a second archive format — it goes through the same staging, the same manifest, the same declared-field schema and the same redactor, which is why T-1902's own secret-scan runs over it as a second producer. Two deliberate losses, stated because they are load-bearing: a diff entry travels as the **names** of the changed interfaces(5) options and never their **values** (an option value is exactly where a `wireguard-private-key` lives), and the archive is named `vnprox-incident-<id>-<stamp>.tar.gz` so it is neither mistaken for a backup (which retention would then be entitled to delete) nor for a plain support bundle. The artifact is written to a temporary directory, streamed, and removed. An export is permitted on an open incident — the operator who most needs to send one is mid-incident, asking for help — and writes one `incident.export` audit row. `503 export_unavailable` when the node has no bundler wired.
+
 ## Blueprints
 
 | Method | Path | Purpose |

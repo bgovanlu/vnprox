@@ -164,3 +164,18 @@ Query duration is instrumented once, transparently, at `store.DB`'s own `ExecCon
 ### Scrape overhead
 
 Measured (not estimated, per this task's card) against a scrape carrying a representative full series set (every family above populated, plus a realistic cluster-derived `vnprox_iface_*`/findings/changesets body from §4): see `planning/reports/T-1903.md` for the measured `GET /metrics` handler latency and the stated budget it is well under.
+
+## 10. Incident mode (T-2804)
+
+When a network breaks, the operator needs the diagnosis ladder (§6/§7 and `docs/api.md`'s Diagnosis section), a capture, the current findings (§5), recent flows, and what changed — and before this, that meant five screens correlated by hand, under time pressure, which is exactly when hand-correlation fails.
+
+An **incident** (`internal/incident`, `web/src/incidents/`, `docs/api.md`'s Incidents section) is one window and one merged timeline over all of it, plus the operator's own annotations, plus T-2704's point-in-time diff across the window.
+
+**It is a view, not a mode.** Opening one starts no collector, subscribes to no stream and copies no event. Every timeline is assembled at read time from history vnprox already records — `finding_events`, `audit_log` (both the changeset-lifecycle actions and `diagnose.run`), `capture_sessions`, `flow_samples` — the same tables `GET /history/events` (§2), `GET /audit`, `GET /captures` and `GET /flows` already serve. Two consequences are contractual:
+
+- An incident can be opened **retroactively** over a window that closed hours ago and contains exactly what a live one opened at that moment would have contained. Nobody has to press "start incident" before the network breaks.
+- **Closing deletes nothing**, and reopening shows the same timeline — there is no `incident_events` table to delete from (see `docs/data-model.md` §2 and migration `0041_incidents.sql`).
+
+**What it refuses to imply.** A source that is not collecting on this node reports `unavailable` rather than looking empty; a failed source degrades only its own events; the flow list is capped and says when the cap bound. The point-in-time diff's scope caveat is *derived from the diff's own `coverage`* (today `/etc/network/interfaces` only — SDN entities are not diffed), as is the warning about a node captured at only one end of the range, whose absent entities are not deletions. A range the change engine cannot cover surfaces its typed refusal — which names the snapshots that do exist — never an empty diff, because an empty diff reads as "nothing changed" and an operator acts on that.
+
+**Export** produces one artifact: T-1902's support bundle with one additional declared entry, `incident/timeline.json`, through the same staging, manifest, declared-field schema and redactor — which is why T-1902's own secret scan runs over it as a second producer rather than being reimplemented. A diff entry travels as the *names* of the changed interfaces(5) options and never their values, since an option value is exactly where a `wireguard-private-key` lives.

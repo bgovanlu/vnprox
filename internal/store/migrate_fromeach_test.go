@@ -165,6 +165,7 @@ var versionSeeds = map[int]versionSeed{
 	37: {seedV37, assertV37},
 	38: {seedV38, assertV38},
 	39: {seedV39, assertV39},
+	40: {seedV40, assertV40},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -209,6 +210,14 @@ func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
 	// setup loudly, for the whole test, if a version in range is missing an
 	// entry rather than quietly skipping it — this is what keeps the corpus
 	// honest as migrations accrue.
+	//
+	// This gate was briefly relaxed to "every version that ships a migration
+	// file", during a wave where three branches each held a pre-assigned
+	// migration number and numbering was temporarily sparse. Numbering is
+	// dense again (0040, 0041, 0042 all landed), so the stronger form is
+	// restored: a gap here means a version some database really could sit at
+	// has no upgrade fixture, and that is exactly what this test exists to
+	// catch.
 	for v := 1; v < latest; v++ {
 		if _, ok := versionSeeds[v]; !ok {
 			t.Fatalf("no versionSeeds fixture registered for schema version %d — add seedV%d/assertV%d "+
@@ -1347,26 +1356,63 @@ func assertV38(t *testing.T, db *sql.DB) {
 
 func seedV39(t *testing.T, db *sql.DB) {
 	t.Helper()
-	// T-2705's per-tool changeset provenance on the v1 changeset.
+	// T-2705's provenance column: which MCP tool staged this draft. Set on
+	// the v1 changeset, which every later assertion also reads.
 	mustExec(t, db, `UPDATE changesets SET origin_tool = 'changesets.stage.bridge' WHERE id = 'cs-v1'`)
 }
 
 func assertV39(t *testing.T, db *sql.DB) {
 	t.Helper()
-	var originTool string
+	var tool sql.NullString
 	if err := db.QueryRowContext(context.Background(),
-		`SELECT origin_tool FROM changesets WHERE id = 'cs-v1'`).Scan(&originTool); err != nil {
+		`SELECT origin_tool FROM changesets WHERE id = 'cs-v1'`).Scan(&tool); err != nil {
 		t.Errorf("changesets.origin_tool lost across migration: %v", err)
-	} else if originTool != "changesets.stage.bridge" {
-		t.Errorf("changesets.origin_tool = %q, want %q", originTool, "changesets.stage.bridge")
+	} else if !tool.Valid || tool.String != "changesets.stage.bridge" {
+		t.Errorf("changesets.origin_tool = %v, want \"changesets.stage.bridge\"", tool)
 	}
 }
 
-// Schema version 40 (0040_two_person_rule.sql, changeset_signoffs +
-// changeset_breakglass — T-2604) has no versionSeeds entry because it is the
-// current latest, not a "prior" version any fixture in this file freezes at —
-// its own forward application (as part of every case's migrate() call to
-// latest) is exercised by every case above, and TestOpen_CreatesAllTables
-// (store_test.go) exercises it from a fresh database. The next migration to
-// land becomes the new latest and picks up a version 40 entry in versionSeeds
-// at that time.
+func seedV40(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// T-2604's two-person rule: a sign-off keyed (changeset_id, principal) —
+	// the row whose PRIMARY KEY is what makes "the same person via two tokens
+	// is one approver" a storage property — and the break-glass record, whose
+	// invoked_at is the floor the 24h un-ackable finding counts from.
+	mustExec(t, db, `INSERT INTO changeset_signoffs (changeset_id, principal, decided_at)
+	                 VALUES ('cs-v1', 'alice@pam', 1750000000)`)
+	mustExec(t, db, `INSERT INTO changeset_breakglass (changeset_id, reason, invoked_by, invoked_at, ops_fingerprint)
+	                 VALUES ('cs-v1', 'link down, on-call alone', 'bob@pam', 1750000100, 'fp-v40')`)
+}
+
+func assertV40(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var principal string
+	var decidedAt int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT principal, decided_at FROM changeset_signoffs WHERE changeset_id = 'cs-v1'`).
+		Scan(&principal, &decidedAt); err != nil {
+		t.Errorf("changeset_signoffs row lost across migration: %v", err)
+	} else if principal != "alice@pam" || decidedAt != 1750000000 {
+		t.Errorf("changeset_signoffs = (%q, %d), want (\"alice@pam\", 1750000000)", principal, decidedAt)
+	}
+
+	var reason, invokedBy, fingerprint string
+	var invokedAt int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT reason, invoked_by, invoked_at, ops_fingerprint FROM changeset_breakglass WHERE changeset_id = 'cs-v1'`).
+		Scan(&reason, &invokedBy, &invokedAt, &fingerprint); err != nil {
+		t.Errorf("changeset_breakglass row lost across migration: %v", err)
+	} else if reason != "link down, on-call alone" || invokedBy != "bob@pam" ||
+		invokedAt != 1750000100 || fingerprint != "fp-v40" {
+		t.Errorf("changeset_breakglass = (%q, %q, %d, %q), want the seeded row",
+			reason, invokedBy, invokedAt, fingerprint)
+	}
+}
+
+// Schema version 41 (0041_incidents.sql, incidents + incident_annotations —
+// T-2804) has no versionSeeds entry because it is the current latest, not a
+// "prior" version any fixture in this file freezes at — its own forward
+// application (as part of every case's migrate() call to latest) is exercised
+// by every case above, and TestOpen_CreatesAllTables (store_test.go)
+// exercises it from a fresh database. The next migration to land becomes the
+// new latest and picks up a version 41 entry in versionSeeds at that time.

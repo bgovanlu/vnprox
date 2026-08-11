@@ -94,6 +94,16 @@ var Operations = map[string]Operation{
 	"GET /api/v1/history/events": {Summary: "Return the unified event timeline.", Tag: "history", Auth: AuthSession},
 	"GET /api/v1/doctor/live":    {Summary: "Run the self-checks that need the daemon's own credentials.", Tag: "doctor", Auth: AuthSession},
 
+	// --- Incidents (T-2804) ----------------------------------------------------
+	"GET /api/v1/incidents":                   {Summary: "List incidents.", Tag: "incidents", Auth: AuthSession},
+	"POST /api/v1/incidents":                  {Summary: "Open an incident over a window, live or retroactive.", Tag: "incidents", Auth: AuthSession},
+	"GET /api/v1/incidents/{id}":              {Summary: "Read one incident and its annotations.", Tag: "incidents", Auth: AuthSession},
+	"GET /api/v1/incidents/{id}/timeline":     {Summary: "Assemble one incident's merged timeline.", Tag: "incidents", Auth: AuthSession},
+	"POST /api/v1/incidents/{id}/annotations": {Summary: "Add an operator observation to the timeline.", Tag: "incidents", Auth: AuthSession},
+	"POST /api/v1/incidents/{id}/close":       {Summary: "Close an incident, freezing its window.", Tag: "incidents", Auth: AuthSession},
+	"POST /api/v1/incidents/{id}/reopen":      {Summary: "Reopen a closed incident.", Tag: "incidents", Auth: AuthSession},
+	"GET /api/v1/incidents/{id}/export":       {Summary: "Download the incident artifact: the timeline plus a support bundle.", Tag: "incidents", Auth: AuthSession},
+
 	// --- Metrics ---------------------------------------------------------------
 	"GET /api/v1/metrics":         {Summary: "Prometheus exposition of vnprox and cluster metrics.", Tag: "metrics", Auth: AuthBearer},
 	"GET /api/v1/metrics/live":    {Summary: "Return current interface counters and rates.", Tag: "metrics", Auth: AuthSession},
