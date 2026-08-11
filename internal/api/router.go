@@ -103,7 +103,11 @@ type Options struct {
 	// ChangesetProposer (T-2702) backs POST /changesets/{id}/propose and
 	// GET /changesets/{id}/proposal. Nil (or a disabled proposer) leaves both
 	// routes mounted and answering honestly, never silently absent.
-	ChangesetProposer     ChangesetProposer
+	ChangesetProposer ChangesetProposer
+	// DriftReconciler (T-2703) backs the two symmetric actions on a drift
+	// finding: restore intent (stage a changeset) and adopt reality (propose a
+	// spec commit). Nil leaves the routes mounted and answering honestly.
+	DriftReconciler       DriftReconciler
 	DistFS                fs.FS
 	HistoryFindingEvents  HistoryFindingEventsSource
 	SDN                   SDNService
@@ -316,6 +320,11 @@ func NewRouter(opts Options) http.Handler {
 		// for the same reason gitsync/status is — "it is not configured" is an
 		// answer — and inside T-2405's completeness gate either way.
 		mountProposeRoutes(r, opts.ChangesetProposer, opts.Auth)
+		// T-2703: the two symmetric answers to a drift finding — restore
+		// intent (a staged changeset) and adopt reality (a proposed spec
+		// commit). Mounted unconditionally for the same reason the propose
+		// routes are; neither applies anything.
+		mountReconcileRoutes(r, opts.DriftReconciler, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountSDNDNSRoutes(r, opts.SDNDNS, opts.Auth)

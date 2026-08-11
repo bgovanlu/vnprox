@@ -92,7 +92,8 @@ var allCheckNames = []string{
 	"sdn_realization", // internal/drift
 	CheckServiceDown,
 	CheckServiceTrafficOnWrongNetwork,
-	"spec_drift", // internal/drift
+	"spec_drift",          // internal/drift
+	"spec_reconciliation", // internal/drift (T-2703)
 	CheckStalePendingInterfaces,
 	CheckStoreNearCapacity,
 	CheckSTPTopologyBurst,

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/bgovanlu/vnprox/internal/change"
+	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
 // Check family identifiers (docs/features/topology.md §6). These are the
@@ -59,10 +60,22 @@ type Finding struct {
 	Severity string `json:"severity"`
 	Detail   string `json:"detail"`
 	fixTitle string
-	Nodes    []string `json:"nodes"`
-	Refs     []string `json:"refs,omitempty"`
-	fixOps   []change.Op
-	Fixable  bool `json:"fixable"`
+	// Reconcile is T-2703's three-position report (spec / config / live) and
+	// the two reconciliation actions the finding offers. It is set only by
+	// the spec_reconciliation family (reconcile.go); every other family
+	// leaves it nil, and the field is omitted from the wire shape then —
+	// a finding with no spec position has no third position to report.
+	Reconcile *Reconciliation `json:"reconciliation,omitempty"`
+	Nodes     []string        `json:"nodes"`
+	Refs      []string        `json:"refs,omitempty"`
+	fixOps    []change.Op
+	// adoptRefs are the entities an "adopt reality" proposal for this finding
+	// would rewrite in the document. Unexported for the same reason fixOps is:
+	// the refs are looked up server-side by finding id (Service.AdoptRealityRefs)
+	// rather than accepted from a request body, so a caller can never widen an
+	// adoption past the entity the finding is about.
+	adoptRefs []inventory.Ref
+	Fixable   bool `json:"fixable"`
 }
 
 // sortedUnique returns a sorted copy of ss with duplicates and empty

@@ -83,13 +83,16 @@ var Operations = map[string]Operation{
 	"GET /api/v1/gitsync/status":          {Summary: "Report the git spec sync's last fetch, last plan, and why its draft is open.", Tag: "spec", Auth: AuthSession},
 
 	// --- Drift and findings -------------------------------------------------
-	"GET /api/v1/drift":                {Summary: "Report configuration drift against the last known state.", Tag: "drift", Auth: AuthSession},
-	"POST /api/v1/drift/{id}/fix":      {Summary: "Stage a changeset reconciling one drift item.", Tag: "drift", Auth: AuthSession},
-	"GET /api/v1/findings":             {Summary: "List open findings, optionally filtered by acknowledgement.", Tag: "findings", Auth: AuthSession},
-	"POST /api/v1/findings/{id}/fix":   {Summary: "Stage a changeset fixing one finding.", Tag: "findings", Auth: AuthSession},
-	"POST /api/v1/findings/fix":        {Summary: "Stage one changeset fixing several findings together.", Tag: "findings", Auth: AuthSession},
-	"POST /api/v1/findings/{id}/ack":   {Summary: "Acknowledge a finding, with a reason and optional expiry.", Tag: "findings", Auth: AuthSession},
-	"DELETE /api/v1/findings/{id}/ack": {Summary: "Withdraw a finding's acknowledgement.", Tag: "findings", Auth: AuthSession},
+	"GET /api/v1/drift":                      {Summary: "Report configuration drift against the last known state.", Tag: "drift", Auth: AuthSession},
+	"POST /api/v1/drift/{id}/fix":            {Summary: "Stage a changeset reconciling one drift item.", Tag: "drift", Auth: AuthSession},
+	"POST /api/v1/drift/{id}/restore-intent": {Summary: "Stage a changeset bringing the cluster back to what the spec declares.", Tag: "drift", Auth: AuthSession},
+	"POST /api/v1/drift/{id}/adopt-reality":  {Summary: "Propose a spec commit describing the cluster as it is.", Tag: "drift", Auth: AuthSession},
+	"GET /api/v1/drift/{id}/adoption":        {Summary: "Return the pull request this drift finding was adopted as.", Tag: "drift", Auth: AuthSession},
+	"GET /api/v1/findings":                   {Summary: "List open findings, optionally filtered by acknowledgement.", Tag: "findings", Auth: AuthSession},
+	"POST /api/v1/findings/{id}/fix":         {Summary: "Stage a changeset fixing one finding.", Tag: "findings", Auth: AuthSession},
+	"POST /api/v1/findings/fix":              {Summary: "Stage one changeset fixing several findings together.", Tag: "findings", Auth: AuthSession},
+	"POST /api/v1/findings/{id}/ack":         {Summary: "Acknowledge a finding, with a reason and optional expiry.", Tag: "findings", Auth: AuthSession},
+	"DELETE /api/v1/findings/{id}/ack":       {Summary: "Withdraw a finding's acknowledgement.", Tag: "findings", Auth: AuthSession},
 
 	// --- Audit, history, doctor ----------------------------------------------
 	"GET /api/v1/audit":          {Summary: "Read the audit log.", Tag: "audit", Auth: AuthSession},

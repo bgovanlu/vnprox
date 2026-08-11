@@ -112,7 +112,12 @@ type PreviewSource interface {
 //
 //nolint:govet // fieldalignment: field order is the wire/report shape, not packing.
 type Proposal struct {
-	ChangesetID    string `json:"changesetId"`
+	ChangesetID string `json:"changesetId"`
+	// FindingID is set instead of ChangesetID when this proposal came from
+	// T-2703's "adopt reality" (adopt.go): the subject is a drift finding, not
+	// a changeset, because adopting moves the DOCUMENT rather than the
+	// cluster. Exactly one of the two is ever non-empty.
+	FindingID      string `json:"findingId,omitempty"`
 	Remote         string `json:"remote"`
 	Branch         string `json:"branch"`
 	Path           string `json:"path"`
@@ -268,10 +273,14 @@ func (p *Proposer) Propose(ctx context.Context, changesetID, actor string) (Prop
 		Body:   body,
 	}
 
-	result, err := p.publish(ctx, in, proposedDoc, cs)
+	result, err := p.publish(ctx, publication{
+		key: cs.ID, subject: "changeset " + cs.ID, in: in,
+		content: proposedDoc, commitMessage: commitMessage(cs),
+	})
 	if err != nil {
 		return Proposal{}, err
 	}
+	result.ChangesetID = cs.ID
 	result.ProposedBy = firstNonEmptyString(actor, ProposeAuthor)
 	p.record(ctx, &result)
 	p.audit(ctx, result, len(cs.Ops))
@@ -281,17 +290,36 @@ func (p *Proposer) Propose(ctx context.Context, changesetID, actor string) (Prop
 	return result, nil
 }
 
+// publication is one thing to publish: a document, on a deterministic branch,
+// as a pull request. It exists so the changeset path (Propose) and T-2703's
+// adoption path (ProposeAdoption) share ONE implementation of the host write
+// ordering — the ordering AC3's no-orphan-branch post-condition rests on. Two
+// copies of that sequence would eventually diverge, and the day they did, one
+// of them would leave a branch behind.
+//
+//nolint:govet // fieldalignment: field order reads as the publication being made, not packing.
+type publication struct {
+	// key is the deterministic identity this publication is addressed by — a
+	// changeset id, or an adoption's finding id. It is what makes proposing
+	// the same thing twice update one request instead of opening a second.
+	key string
+	// subject names what is being proposed, for error messages only.
+	subject       string
+	in            PullRequestInput
+	content       []byte
+	commitMessage string
+}
+
 // publish performs the host writes in the order AC3 requires, and undoes a
 // branch it created if anything after that fails.
-func (p *Proposer) publish(ctx context.Context, in PullRequestInput, content []byte, cs change.Changeset) (Proposal, error) {
+func (p *Proposer) publish(ctx context.Context, pub publication) (Proposal, error) {
 	host := p.cfg.Host
-	result := Proposal{
-		ChangesetID: cs.ID, Remote: host.Describe(), Branch: in.Branch, Path: p.cfg.Path,
-	}
+	in := pub.in
+	result := Proposal{Remote: host.Describe(), Branch: in.Branch, Path: p.cfg.Path}
 
 	baseSHA, err := host.ResolveRef(ctx, p.cfg.Ref)
 	if err != nil {
-		return Proposal{}, fmt.Errorf("gitsync: resolving %s to propose changeset %s: %w", p.cfg.Ref, cs.ID, err)
+		return Proposal{}, fmt.Errorf("gitsync: resolving %s to propose %s: %w", p.cfg.Ref, pub.subject, err)
 	}
 
 	_, branchExisted, err := host.BranchHead(ctx, in.Branch)
@@ -321,7 +349,7 @@ func (p *Proposer) publish(ctx context.Context, in PullRequestInput, content []b
 			return Proposal{}, fmt.Errorf("%w (and the branch %s created for it could not be removed: %v)", cause, in.Branch, delErr)
 		}
 		p.log.Warn("gitsync: proposal failed; removed the branch it had created",
-			"changesetId", cs.ID, "branch", in.Branch, "error", cause)
+			"subject", pub.subject, "branch", in.Branch, "error", cause)
 		return Proposal{}, cause
 	}
 
@@ -332,9 +360,9 @@ func (p *Proposer) publish(ctx context.Context, in PullRequestInput, content []b
 	if err != nil {
 		return abandon(fmt.Errorf("gitsync: reading %s on %s: %w", p.cfg.Path, in.Branch, err))
 	}
-	if !hasFile || string(existing) != string(content) {
+	if !hasFile || string(existing) != string(pub.content) {
 		commitSHA, commitErr := host.CommitFile(ctx, CommitRequest{
-			Branch: in.Branch, Path: p.cfg.Path, Message: commitMessage(cs), Content: content,
+			Branch: in.Branch, Path: p.cfg.Path, Message: pub.commitMessage, Content: pub.content,
 		})
 		if commitErr != nil {
 			return abandon(commitErr)
@@ -555,11 +583,11 @@ func (p *Proposer) record(ctx context.Context, result *Proposal) {
 	if p.cfg.Proposals == nil {
 		return
 	}
-	if prev, err := p.cfg.Proposals.Get(ctx, result.ChangesetID); err == nil && prev.CreatedAt > 0 {
+	if prev, err := p.cfg.Proposals.Get(ctx, proposalStoreKey(*result)); err == nil && prev.CreatedAt > 0 {
 		result.ProposedAt = prev.CreatedAt
 	}
 	row := store.ChangesetProposal{
-		ChangesetID: result.ChangesetID, Remote: result.Remote, Branch: result.Branch, Path: result.Path,
+		ChangesetID: proposalStoreKey(*result), Remote: result.Remote, Branch: result.Branch, Path: result.Path,
 		CommitSHA: result.CommitSHA, PRID: result.PullRequestID, PRURL: result.PullRequestURL,
 		ProposedBy: result.ProposedBy, CreatedAt: result.ProposedAt, UpdatedAt: now,
 	}
@@ -605,11 +633,16 @@ func (p *Proposer) audit(ctx context.Context, result Proposal, opCount int) {
 }
 
 func proposalFromRow(row store.ChangesetProposal) Proposal {
-	return Proposal{
+	out := Proposal{
 		ChangesetID: row.ChangesetID, Remote: row.Remote, Branch: row.Branch, Path: row.Path,
 		CommitSHA: row.CommitSHA, PullRequestID: row.PRID, PullRequestURL: row.PRURL,
 		ProposedBy: row.ProposedBy, ProposedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
+	if findingID, isAdoption := strings.CutPrefix(row.ChangesetID, adoptionKeyPrefix); isAdoption {
+		out.ChangesetID = ""
+		out.FindingID = findingID
+	}
+	return out
 }
 
 // proposable refuses the changesets whose ops are not a statement of intent.

@@ -52,17 +52,8 @@ type PinProvider interface {
 // /spec/pin validates the document before storing it) is logged and treated
 // as zero findings rather than panicking the whole drift cycle.
 func (s *Service) specDriftFindings(snap inventory.Snapshot) []Finding {
-	if s.pins == nil {
-		return nil
-	}
-	content, ok := s.pins.Pin()
+	parsed, ok := s.parsedSpec()
 	if !ok {
-		return nil
-	}
-
-	parsed, err := spec.Parse([]byte(content))
-	if err != nil {
-		s.log.Error("drift: parsing pinned spec", "error", err)
 		return nil
 	}
 	ops, _, err := spec.Import(parsed, snap)
@@ -74,6 +65,28 @@ func (s *Service) specDriftFindings(snap inventory.Snapshot) []Finding {
 		return nil
 	}
 	return specDriftFindingsFromOps(ops)
+}
+
+// parsedSpec returns the current spec document — the third position both this
+// file and reconcile.go (T-2703) diff against — parsed, or false when nothing
+// is pinned, no provider is wired, or the document does not parse. A parse
+// failure is logged and treated as "no spec" rather than panicking the drift
+// cycle; POST /spec/pin validates a document before storing it, and T-2701's
+// sync raises its own finding for an unparseable one.
+func (s *Service) parsedSpec() (spec.Spec, bool) {
+	if s.pins == nil {
+		return spec.Spec{}, false
+	}
+	content, ok := s.pins.Pin()
+	if !ok {
+		return spec.Spec{}, false
+	}
+	parsed, err := spec.Parse([]byte(content))
+	if err != nil {
+		s.log.Error("drift: parsing pinned spec", "error", err)
+		return spec.Spec{}, false
+	}
+	return parsed, true
 }
 
 // specDriftFindingsFromOps groups ops by their target Ref (spec.Import may

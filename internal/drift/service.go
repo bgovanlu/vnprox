@@ -98,8 +98,52 @@ func (s *Service) Findings() []Finding {
 		out = append(out, fn(snap)...)
 	}
 	out = append(out, s.specDriftFindings(snap)...)
+	out = append(out, s.reconcileFindings(snap)...)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+// RestoreIntentOps returns T-2703's "restore intent" op patch for the finding
+// with the given id — the ops that bring the cluster back to what the spec
+// declares — and a suggested changeset title. ok is false when no current
+// finding has that id, or the finding does not offer the action.
+//
+// Like FixOps it recomputes fresh against the current snapshot, so the ops
+// always reflect live state rather than a cached value, and like FixOps it is
+// a LOOKUP: the caller names a finding, never an op list. Staging remains the
+// change engine's job — nothing here applies anything.
+func (s *Service) RestoreIntentOps(id string) (ops []change.Op, title string, ok bool) {
+	for _, f := range s.Findings() {
+		if f.ID != id {
+			continue
+		}
+		if f.Reconcile == nil || !f.Reconcile.Actions.RestoreIntent || len(f.fixOps) == 0 {
+			return nil, "", false
+		}
+		return f.fixOps, f.fixTitle, true
+	}
+	return nil, "", false
+}
+
+// AdoptRealityRefs returns the entities an "adopt reality" proposal for the
+// finding with the given id would rewrite in the spec document, plus the
+// finding's own detail for the pull-request body. ok is false when no current
+// finding has that id, or the finding does not offer the action.
+//
+// It returns refs, not a document: rendering the document is internal/spec's
+// job and proposing it is internal/gitsync's, and this package holds neither a
+// git credential nor a way to reach a host.
+func (s *Service) AdoptRealityRefs(id string) (refs []inventory.Ref, detail string, ok bool) {
+	for _, f := range s.Findings() {
+		if f.ID != id {
+			continue
+		}
+		if f.Reconcile == nil || !f.Reconcile.Actions.AdoptReality || len(f.adoptRefs) == 0 {
+			return nil, "", false
+		}
+		return append([]inventory.Ref(nil), f.adoptRefs...), f.Detail, true
+	}
+	return nil, "", false
 }
 
 // FixOps returns the computed fixing-changeset op patch for the finding
