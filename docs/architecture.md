@@ -166,6 +166,8 @@ internal/plugin/        capability-scoped extension SDK (T-1702)
 internal/tenant/        multi-tenancy & self-service (T-1703)
 internal/ha/            active/standby vnproxd HA, lease fencing (T-1704)
 internal/hub/           client for the public blueprint/plugin registry (T-1705)
+internal/hubreg/        that registry's signed-index format, publisher tooling
+                        and client-side verification/revocation gate (T-2803)
 internal/docexport/     "as-built" config documentation export
 internal/xnode/         pure cross-node comparison families (drift/apicontract)
 ```

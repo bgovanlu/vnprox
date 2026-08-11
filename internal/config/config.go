@@ -312,9 +312,18 @@ type HAConfig struct {
 // "vetted" badge — it is distinct from T-1107's per-admin trust store
 // ([blueprint] trusted_signers_dir) and never bypasses that trust decision
 // (docs/security.md's Hub vetted-tier note).
+//
+// IndexSigners (T-2803) is the fingerprint allowlist for the *registry's own
+// index signing key*. When it is non-empty the daemon installs the T-2803
+// index gate: the index must be signed by one of these keys or nothing is
+// browsable, and the revocations carried inside that signed index are enforced
+// on every artifact fetch. It is a third, distinct list from the two above —
+// it says who may publish the *catalog*, never who may sign an *artifact*, and
+// it can no more make an artifact installable than the vetted badge can.
 type HubConfig struct {
 	RegistryURL   string
 	VettedSigners []string
+	IndexSigners  []string
 }
 
 // GitSyncConfig is the [gitsync] section (T-2701): a git repository as the
@@ -982,6 +991,7 @@ type rawBlueprint struct {
 type rawHub struct {
 	RegistryURL   string   `toml:"registry_url"`
 	VettedSigners []string `toml:"vetted_signers"`
+	IndexSigners  []string `toml:"index_signers"`
 }
 
 type rawFlows struct {
@@ -1150,6 +1160,7 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 		Hub: HubConfig{
 			RegistryURL:   raw.Hub.RegistryURL,
 			VettedSigners: raw.Hub.VettedSigners,
+			IndexSigners:  raw.Hub.IndexSigners,
 		},
 		Flows: FlowsConfig{
 			SFlowEnabled:     raw.Flows.SFlowEnabled,

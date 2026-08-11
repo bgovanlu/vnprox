@@ -290,21 +290,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	}
 	blueprintTrust := blueprint.NewTrustStore(cfg.Blueprint.TrustedSignersDir)
 
-	// T-1705: the opt-in Blueprint & plugin hub client. Constructed only when a
-	// registry URL is configured ([hub] registry_url) — an empty URL leaves
-	// hubClient nil, which skips mounting the hub routes entirely (the hub is
-	// off by default). A malformed URL is logged and the hub stays off rather
-	// than failing daemon startup. The vetted-signer set drives only the
-	// informational badge; it never gates an install.
-	var hubClient *hub.Client
-	if regURL := cfg.Hub.RegistryURL; regURL != "" {
-		hc, herr := hub.NewClient(regURL)
-		if herr != nil {
-			logger.Warn("blueprint & plugin hub disabled: invalid registry URL", "url", regURL, "err", herr)
-		} else {
-			hubClient = hc
-		}
-	}
+	hubClient := newHubClient(cfg.Hub, logger)
 	hubVetted := hub.NewVettedSet(cfg.Hub.VettedSigners)
 
 	// T-602: the unified findings engine's IngestServices is wired in as
