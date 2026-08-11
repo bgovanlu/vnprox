@@ -165,6 +165,16 @@ type Finding struct {
 	Refs     []string `json:"refs,omitempty"`
 	Fixable  bool     `json:"fixable"`
 
+	// AckableAt (T-2604) is the unix instant before which this finding may
+	// NOT be acknowledged — 0 (the default, and every finding that predates
+	// this field) meaning "acknowledgeable now, as always". It exists for
+	// findings whose whole purpose is to force a later review by someone who
+	// was not in the room: the break-glass finding cannot be acked for 24
+	// hours, so the person who invoked the override cannot silence it on
+	// their way out. A producer sets it; AckService.Ack enforces it against
+	// the same clock the expiry rule already uses, at write time.
+	AckableAt int64 `json:"ackableAt,omitempty"`
+
 	// Ack is this finding's currently-active acknowledgement (T-2402), or
 	// nil. It is never set by a producer: AckService.Decorate attaches it at
 	// the API boundary, and an expired acknowledgement leaves it nil. It is

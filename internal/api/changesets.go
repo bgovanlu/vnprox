@@ -77,6 +77,13 @@ type ChangesetService interface {
 	GetApproval(ctx context.Context, changesetID string) (change.ApprovalState, error)
 	ReviewApprove(ctx context.Context, changesetID, approver string) (change.Changeset, error)
 	ReviewReject(ctx context.Context, changesetID, rejecter, reason string) (change.Changeset, error)
+
+	// T-2604 two-person rule: the read model behind `approval.twoPerson`,
+	// and the emergency override. InvokeBreakGlass only ever RECORDS an
+	// override — Apply itself decides whether one applies, from the row this
+	// wrote, server-side.
+	TwoPersonState(ctx context.Context, changesetID string) (change.TwoPersonState, error)
+	InvokeBreakGlass(ctx context.Context, changesetID, actor, reason string) (change.BreakGlassRecord, error)
 }
 
 // PVEGatewayProvider supplies a change.PVEGateway bound to the requesting
@@ -193,11 +200,21 @@ func toCommentResponse(c change.Comment) commentResponse {
 // from the absence of an apply button; Apply's own refusal
 // (approval_required, see writeApplyError below) is the actual enforcement.
 type approvalResponse struct {
-	Status    string `json:"status"`
-	DecidedBy string `json:"decidedBy,omitempty"`
-	Reason    string `json:"reason,omitempty"`
-	DecidedAt int64  `json:"decidedAt,omitempty"`
-	Required  bool   `json:"required"`
+	// TwoPerson (T-2604) reports the two-person rule's state for this
+	// changeset: which protected op classes it falls into, how many DISTINCT
+	// principals must approve, who has, and whether an emergency break-glass
+	// override is on record. Omitted entirely for a deployment that declares
+	// no protected classes, so no pre-T-2604 response's byte shape changed.
+	//
+	// Like `required` above, it is a READ of the gate, never the gate: a
+	// client must not infer permission from it, and Apply's own refusal
+	// (two_person_required) is the enforcement.
+	TwoPerson *change.TwoPersonState `json:"twoPerson,omitempty"`
+	Status    string                 `json:"status"`
+	DecidedBy string                 `json:"decidedBy,omitempty"`
+	Reason    string                 `json:"reason,omitempty"`
+	DecidedAt int64                  `json:"decidedAt,omitempty"`
+	Required  bool                   `json:"required"`
 }
 
 func toApprovalResponse(a change.ApprovalState) approvalResponse {
@@ -324,6 +341,15 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		r.Delete("/changesets/{id}/comments/{commentId}", handleDeleteComment(svc, lookup))
 		r.Post("/changesets/{id}/review/approve", handleReviewApprove(svc, lookup))
 		r.Post("/changesets/{id}/review/reject", handleReviewReject(svc, lookup))
+
+		// T-2604: emergency break-glass on the two-person rule. Its own
+		// route rather than a field on the apply body, deliberately: an
+		// override is an event with its own actor, its own written reason,
+		// its own audit action (`change.breakglass`) and its own
+		// consequence (an error finding nobody may acknowledge for 24
+		// hours). Folding it into the apply request would make all four
+		// incidental to a request whose subject is something else.
+		r.Post("/changesets/{id}/break-glass", handleBreakGlass(svc, lookup))
 	})
 
 	// T-1103: scheduled changesets & maintenance windows. Mounted alongside
@@ -797,6 +823,22 @@ func writeApplyError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusUnprocessableEntity, "approval_required", err.Error())
 		return
 	}
+	// T-2604: the two-person rule's refusal. A new, additive 422 code — the
+	// changeset may be perfectly valid (so not validation_failed) and the
+	// status state machine is untouched (so not invalid_transition). Details
+	// carry the class, the count required, and who has approved so far, so
+	// the UI can say what would satisfy it rather than only that it refused.
+	var twoPerson *change.ErrTwoPersonRequired
+	if errors.As(err, &twoPerson) {
+		writeJSONErrorDetails(w, http.StatusUnprocessableEntity, "two_person_required", err.Error(), map[string]any{
+			"class":     twoPerson.Class,
+			"required":  twoPerson.Required,
+			"have":      twoPerson.Have,
+			"approvers": twoPerson.Approvers,
+			"classes":   twoPerson.Classes,
+		})
+		return
+	}
 	var sdnUnhealthy *change.ErrSDNZoneUnhealthy
 	if errors.As(err, &sdnUnhealthy) {
 		writeJSONErrorDetails(w, http.StatusUnprocessableEntity, "sdn_zone_unhealthy", err.Error(), map[string]any{
@@ -911,6 +953,15 @@ func withReview(ctx context.Context, svc ChangesetService, resp changesetRespons
 	}
 	if approval, err := svc.GetApproval(ctx, resp.ID); err == nil {
 		ar := toApprovalResponse(approval)
+		// T-2604: the two-person rule's read model rides the same field, and
+		// with the same best-effort tolerance — a deployment with no
+		// protected classes does no work at all here (change.Service.
+		// TwoPersonState short-circuits), and a read failure omits the field
+		// rather than failing the whole response.
+		if tp, terr := svc.TwoPersonState(ctx, resp.ID); terr == nil && len(tp.Classes) > 0 {
+			state := tp
+			ar.TwoPerson = &state
+		}
 		resp.Approval = &ar
 	}
 	return resp
@@ -1031,6 +1082,71 @@ func handleReviewReject(svc ChangesetService, lookup UsernameLookup) http.Handle
 		}
 		writeJSON(w, http.StatusOK, toApprovalResponse(approval))
 	}
+}
+
+// breakGlassRequest is `POST /changesets/{id}/break-glass`'s body:
+// `{reason}`. The reason is REQUIRED — an override with no written
+// justification is exactly the thing this ceremony exists to prevent — and
+// is refused server-side (change.ErrBreakGlassReasonRequired), never merely
+// by the form insisting on it.
+type breakGlassRequest struct {
+	Reason string `json:"reason"`
+}
+
+// handleBreakGlass serves `POST /changesets/{id}/break-glass` (T-2604): the
+// emergency, reasoned override of the two-person rule on protected op
+// classes.
+//
+// It only RECORDS the override. The apply that follows still runs every
+// other gate — validation, T-2003's approval requirement, peer compatibility
+// — and still decides for itself, server-side, whether the recorded override
+// applies to the ops actually being applied.
+func handleBreakGlass(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+
+		var req breakGlassRequest
+		if r.ContentLength != 0 {
+			dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&req); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "validation_failed", "malformed request body")
+				return
+			}
+		}
+
+		rec, err := svc.InvokeBreakGlass(r.Context(), id, username, req.Reason)
+		if err != nil {
+			writeBreakGlassError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rec)
+	}
+}
+
+// writeBreakGlassError maps T-2604's break-glass errors to their documented
+// (status, code) pairs.
+func writeBreakGlassError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrNotFound) {
+		writeJSONError(w, http.StatusNotFound, "not_found", "no such changeset")
+		return
+	}
+	var reasonRequired *change.ErrBreakGlassReasonRequired
+	if errors.As(err, &reasonRequired) {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+	var notConfigured *change.ErrBreakGlassNotConfigured
+	if errors.As(err, &notConfigured) {
+		writeJSONError(w, http.StatusServiceUnavailable, "break_glass_unavailable", err.Error())
+		return
+	}
+	writeJSONError(w, http.StatusInternalServerError, "internal_error", "break-glass could not be recorded")
 }
 
 // writeReviewError maps T-2003 review-surface errors (comments/approval) to

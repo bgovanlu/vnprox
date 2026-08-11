@@ -251,6 +251,29 @@ func (s *Service) beginApply(ctx context.Context, id, author string, strategy Ap
 	// moment of apply (audit-phase-2 F-12).
 	s.auditSafetyOverride(ctx, author, id, findings)
 
+	// T-2604: the two-person rule on protected op classes. Like the approval
+	// gate above this is an AUTHORIZATION check, satisfiable only by rows a
+	// prior, separately-audited request wrote — never by anything on this
+	// request. It is placed HERE, after revalidation, deliberately: the
+	// policy-tagged half of a protected class is read from the policy result
+	// the revalidation just produced (policyReport), so the gate and the
+	// validator can never be looking at different rule sets, and a
+	// referentially-broken changeset is refused by validation before its
+	// class is ever computed. Still before BuildPlan, the snapshot, and every
+	// mutation, so a refusal leaves the changeset exactly where it was.
+	if tpErr := s.enforceTwoPerson(ctx, cs, author, policyReport); tpErr != nil {
+		var required *ErrTwoPersonRequired
+		if errors.As(tpErr, &required) {
+			s.appendAudit(ctx, author, "changeset.apply", "two_person_required", id, map[string]any{
+				"class": required.Class, "required": required.Required, "have": required.Have,
+				"approvers": required.Approvers, "classes": required.Classes,
+			})
+		} else {
+			s.appendAudit(ctx, author, "changeset.apply", "two_person_undecidable", id, map[string]any{"error": tpErr.Error()})
+		}
+		return Changeset{}, Plan{}, ApplyStrategy{}, tpErr
+	}
+
 	plan, err := BuildPlan(cs.Ops)
 	if err != nil {
 		s.appendAudit(ctx, author, "changeset.apply", "unsupported_op", id, map[string]any{"error": err.Error()})

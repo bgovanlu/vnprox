@@ -32,7 +32,7 @@ type FindingsService interface {
 // which is what keeps a degraded startup (no store) serving findings.
 type FindingAckService interface {
 	Decorate(ctx context.Context, in []findings.Finding) ([]findings.Finding, int, error)
-	Ack(ctx context.Context, findingID, reason, actor string, expiresAt int64, present map[string]bool) (findings.Ack, error)
+	Ack(ctx context.Context, findingID, reason, actor string, expiresAt int64, present map[string]findings.Finding) (findings.Ack, error)
 	Unack(ctx context.Context, findingID string) error
 }
 
@@ -216,10 +216,20 @@ func handleFindingAck(svc FindingsService, acks FindingAckService, audit finding
 		}
 		id := chi.URLParam(r, "id")
 
-		ack, err := acks.Ack(r.Context(), id, req.Reason, username, req.ExpiresAt, findings.PresentIDs(svc.Findings()))
+		ack, err := acks.Ack(r.Context(), id, req.Reason, username, req.ExpiresAt, findings.PresentFindings(svc.Findings()))
+		var tooEarly *findings.ErrAckTooEarly
 		switch {
 		case errors.Is(err, findings.ErrNoSuchFinding):
 			writeJSONError(w, http.StatusNotFound, "not_found", "no finding with that id is currently reported")
+			return
+		case errors.As(err, &tooEarly):
+			// T-2604: a finding with an acknowledgement floor (the break-glass
+			// record) refuses an early ack with its own stable code and the
+			// instant it becomes ackable — never a generic validation error,
+			// because the caller's request was well-formed and will succeed
+			// unchanged later.
+			writeJSONErrorDetails(w, http.StatusConflict, "ack_too_early", tooEarly.Error(),
+				map[string]any{"ackableAt": tooEarly.AckableAt})
 			return
 		case errors.Is(err, findings.ErrAckReasonRequired):
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", "an acknowledgement requires a reason")

@@ -770,6 +770,54 @@ tls_key = "` + keyPath + `"
 	if len(cfg.Changesets.Approvers) != 0 {
 		t.Errorf("Changesets.Approvers = %v, want empty (default: anyone with netWrite)", cfg.Changesets.Approvers)
 	}
+	// T-2604: no protected classes declared means no changeset is ever in
+	// one, which is what keeps an upgrading install's apply behaviour
+	// byte-identical.
+	if len(cfg.Changesets.ProtectedClasses) != 0 {
+		t.Errorf("Changesets.ProtectedClasses = %v, want empty (default: the two-person rule is off)", cfg.Changesets.ProtectedClasses)
+	}
+}
+
+// TestLoad_ChangesetsProtectedClasses covers T-2604's
+// [[changesets.protected_class]] array of tables, including the documented
+// "omitted approvals means two" normalization — which lives in
+// internal/change (NormalizeProtectedClasses), so what is asserted HERE is
+// only that the file's words reach it unchanged.
+func TestLoad_ChangesetsProtectedClasses(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+
+[[changesets.protected_class]]
+class = "fw.*"
+approvals = 2
+
+[[changesets.protected_class]]
+class = "mgmtPath"
+
+[[changesets.protected_class]]
+class = "tag:pci-scope"
+approvals = 3
+`
+	cfg, err := Load(writeTemp(t, "changesets-protected.toml", toml), discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	want := []ProtectedClassConfig{
+		{Class: "fw.*", Approvals: 2},
+		{Class: "mgmtPath", Approvals: 0},
+		{Class: "tag:pci-scope", Approvals: 3},
+	}
+	if len(cfg.Changesets.ProtectedClasses) != len(want) {
+		t.Fatalf("ProtectedClasses = %+v, want %+v", cfg.Changesets.ProtectedClasses, want)
+	}
+	for i := range want {
+		if cfg.Changesets.ProtectedClasses[i] != want[i] {
+			t.Errorf("ProtectedClasses[%d] = %+v, want %+v", i, cfg.Changesets.ProtectedClasses[i], want[i])
+		}
+	}
 }
 
 // TestLoad_ChangesetsOverride covers an explicit [changesets] section:

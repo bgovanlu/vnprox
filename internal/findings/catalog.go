@@ -62,6 +62,7 @@ var allCheckNames = []string{
 	"cert_san_mismatch",
 	"cert_unreadable",
 	"cert_weak_key",
+	CheckBreakGlass,
 	CheckCorosyncLinkDegraded,
 	CheckDualstackDrift,
 	CheckErrorDropRate,

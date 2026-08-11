@@ -223,6 +223,17 @@ type ChangesetsConfig struct {
 	// (T-2601 acceptance criterion 5).
 	PolicyFile string
 	Approvers  []string
+	// ProtectedClasses (T-2604) declares which classes of change require N
+	// distinct approvers before apply. Each entry is
+	// `[[changesets.protected_class]]` plus `class`/`approvals`, where class
+	// is an op-type glob, "mgmtPath", or "tag:<policy rule tag>". Empty (the
+	// default) is a complete no-op: no changeset is ever in a protected
+	// class, so an upgrading install's apply behaviour is byte-identical
+	// until an admin opts in. A malformed entry is FATAL at startup
+	// (change.NewService refuses it) rather than dropped: a deployment must
+	// never come up believing it has a gate it does not have — the same
+	// reasoning that makes an unparsable policy file fatal.
+	ProtectedClasses []ProtectedClassConfig
 	// ApprovalRequired, when true, blocks POST /changesets/{id}/apply
 	// server-side (change.Service's approval gate, apply.go's beginApply)
 	// until the changeset carries a recorded "approved" review decision.
@@ -244,6 +255,17 @@ type ChangesetsConfig struct {
 	// still ask for the guard individually (`autoRollbackOnError` on the apply
 	// body) regardless of what this says.
 	AutoRollbackOnError bool
+}
+
+// ProtectedClassConfig is one `[[changesets.protected_class]]` entry.
+type ProtectedClassConfig struct {
+	// Class is an op-type glob ("fw.*", "sdn.*"), the reserved "mgmtPath",
+	// or "tag:<tag>" naming a T-2601 policy rule's tag.
+	Class string
+	// Approvals is how many DISTINCT principals must approve. Omitted (or
+	// below 2) means 2: listing a class unambiguously means "gate it", and a
+	// two-person rule requiring one person is not one.
+	Approvals int
 }
 
 // MCPConfig is the [mcp] section (T-1701): the read-only/stage-only MCP server
@@ -777,13 +799,23 @@ type rawChangesets struct {
 	AllowSelfApproval *bool    `toml:"allow_self_approval"`
 	PolicyFile        string   `toml:"policy_file"`
 	Approvers         []string `toml:"approvers"`
-	ApprovalRequired  bool     `toml:"approval_required"`
+	// ProtectedClass (T-2604) mirrors `[[changesets.protected_class]]` — an
+	// array of tables rather than a map, so each entry reads as a sentence
+	// ("class = \"fw.*\"", "approvals = 2") instead of as a quoted key whose
+	// dots and asterisks TOML would otherwise make the reader parse.
+	ProtectedClass   []rawProtectedClass `toml:"protected_class"`
+	ApprovalRequired bool                `toml:"approval_required"`
 	// AutoRollbackOnError (T-2603) is the cluster default for the
 	// finding-triggered rollback inside the commit-confirm window. A plain
 	// bool is right here (unlike AllowSelfApproval above): the documented
 	// default is OFF, which is also the zero value, so "not set" and
 	// "explicitly false" mean the same thing and never need distinguishing.
 	AutoRollbackOnError bool `toml:"auto_rollback_on_error"`
+}
+
+type rawProtectedClass struct {
+	Class     string `toml:"class"`
+	Approvals int    `toml:"approvals"`
 }
 
 type rawMCP struct {
@@ -1069,6 +1101,8 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 			PolicyFile:        raw.Changesets.PolicyFile,
 			// T-2603: off unless the file says otherwise.
 			AutoRollbackOnError: raw.Changesets.AutoRollbackOnError,
+			// T-2604: empty unless the file declares protected classes.
+			ProtectedClasses: protectedClasses(raw.Changesets.ProtectedClass),
 		},
 		Security: SecurityConfig{
 			ProtectedSegments: raw.Security.ProtectedSegments,
@@ -1615,4 +1649,20 @@ func firstNonZeroInt64(v, def int64) int64 {
 		return def
 	}
 	return v
+}
+
+// protectedClasses converts the raw `[[changesets.protected_class]]` entries
+// (T-2604) into their typed form. Validation of the class NAMES themselves
+// deliberately lives in internal/change (NormalizeProtectedClasses), next to
+// the op-type vocabulary and the policy globbing they are checked against —
+// this layer only reshapes what the file said.
+func protectedClasses(raw []rawProtectedClass) []ProtectedClassConfig {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]ProtectedClassConfig, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, ProtectedClassConfig(r))
+	}
+	return out
 }

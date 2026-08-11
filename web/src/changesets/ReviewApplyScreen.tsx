@@ -29,7 +29,12 @@ import { preApplyRevertNotice } from "./revertCoverage";
 import { mgmtStrings } from "../mgmt/strings";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { CommentsPanel } from "./CommentsPanel";
-import { APPROVAL_REQUIRED_MESSAGE, blocksApply } from "./approvalGate";
+import {
+  APPROVAL_REQUIRED_MESSAGE,
+  blocksApply,
+  twoPersonBlocksApply,
+  twoPersonRequiredMessage,
+} from "./approvalGate";
 import { reviewLinkFor } from "./reviewLink";
 
 export interface ReviewApplyScreenProps {
@@ -98,8 +103,16 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   // re-checks stored approval state on every apply attempt regardless of
   // what this flag says (see approvalGate.ts's own doc comment).
   const approvalBlocks = blocksApply(changeset.approval);
+  // T-2604: the same client-side echo for the two-person rule on protected
+  // op classes — the server's own two_person_required refusal at apply is
+  // what actually enforces it.
+  const twoPersonBlocks = twoPersonBlocksApply(changeset.approval);
   const applyEnabled =
-    canApply(changeset, warningsAcknowledged) && ackSatisfied && !approvalBlocks && !applyMutation.isPending;
+    canApply(changeset, warningsAcknowledged) &&
+    ackSatisfied &&
+    !approvalBlocks &&
+    !twoPersonBlocks &&
+    !applyMutation.isPending;
 
   // Pre-apply the server hasn't built a plan yet (plan_json is written at
   // apply time) — show the client-side preview mirroring BuildPlan so the
@@ -353,6 +366,11 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             {approvalBlocks && (
               <p className="max-w-xs text-right text-[11px] text-red-700 dark:text-red-300" role="alert">
                 {APPROVAL_REQUIRED_MESSAGE}
+              </p>
+            )}
+            {twoPersonBlocks && (
+              <p className="max-w-xs text-right text-[11px] text-red-700 dark:text-red-300" role="alert">
+                {twoPersonRequiredMessage(changeset.approval)}
               </p>
             )}
             <div className="flex gap-2">

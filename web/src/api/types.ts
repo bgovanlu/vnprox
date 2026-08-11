@@ -1205,6 +1205,40 @@ export interface ApprovalState {
   reason?: string;
   decidedAt?: number;
   required: boolean;
+  /** T-2604's enforced two-person rule, present only when this changeset
+   * falls in at least one protected op class. Like `required` above, it is a
+   * READ of the server's gate and never the gate itself: the server's own
+   * `two_person_required` refusal at apply is the enforcement. */
+  twoPerson?: TwoPersonState;
+}
+
+/** One protected op class a changeset falls into (T-2604): the declared
+ * class name, how many DISTINCT principals it requires, and how many of the
+ * changeset's ops put it in that class. */
+export interface ProtectedClassMatch {
+  class: string;
+  approvals: number;
+  ops: number;
+}
+
+/** An emergency break-glass override on record for a changeset (T-2604).
+ * `ackableAt` is the unix instant the error finding it raised becomes
+ * acknowledgeable — 24 hours after it was invoked. */
+export interface BreakGlassRecord {
+  changesetId: string;
+  reason: string;
+  invokedBy: string;
+  invokedAt: number;
+  ackableAt: number;
+}
+
+/** A changeset's two-person-rule state (T-2604). */
+export interface TwoPersonState {
+  classes?: ProtectedClassMatch[];
+  approvers?: string[];
+  breakGlass?: BreakGlassRecord;
+  required: number;
+  satisfied: boolean;
 }
 
 /** T-1805 (`unattendedRevert` on a changeset response): the server's answer to

@@ -166,6 +166,27 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 #                                   # Impact set never does either, however severe. Off by default: a
 #                                   # deployment that does not opt in behaves exactly as before, and any
 #                                   # single apply can still ask for the guard on its own.
+#
+# [[changesets.protected_class]]   # T-2604: the ENFORCED TWO-PERSON RULE. Each entry declares one
+# class = "fw.*"                    # class of change that may not be applied until N DISTINCT
+# approvals = 2                     # principals have approved it (POST .../review/approve). `class` is
+#                                   # an op-type glob ("fw.*", "sdn.*"), the reserved "mgmtPath"
+#                                   # (anything touching a node's resolved management path), or
+#                                   # "tag:<tag>" naming a T-2601 policy rule's tag. `approvals`
+#                                   # defaults to 2 and is never lower.
+#                                   #
+#                                   # NO ENTRIES = THE RULE IS OFF, which is the default: no changeset
+#                                   # is ever in a protected class and apply behaves exactly as it did
+#                                   # before. A class name no op type can match is FATAL at startup —
+#                                   # a deployment must never come up believing it has a gate it does
+#                                   # not have.
+#                                   #
+#                                   # Enforcement is server-side at apply (422 two_person_required),
+#                                   # never in the UI. Two API tokens belonging to one person are ONE
+#                                   # approver. Emergency override: POST .../break-glass {reason},
+#                                   # which requires a written reason, is audited `change.breakglass`,
+#                                   # and raises an error finding that cannot be acknowledged for 24
+#                                   # hours.
 
 # [gitsync]                        # T-2701: a git repository as the source of INTENT for the
 #                                   # declarative spec (docs/api.md's "Git spec sync"). Proxmox

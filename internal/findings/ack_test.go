@@ -62,7 +62,7 @@ func TestAckSurvivesARecomputeCycle(t *testing.T) {
 	ctx := context.Background()
 
 	first := []Finding{ackFinding("health:mtu_mismatch|bridge:pve1:vmbr0")}
-	if _, err := svc.Ack(ctx, first[0].ID, "deliberate, jumbo on storage only", "brian", 0, PresentIDs(first)); err != nil {
+	if _, err := svc.Ack(ctx, first[0].ID, "deliberate, jumbo on storage only", "brian", 0, PresentFindings(first)); err != nil {
 		t.Fatalf("Ack: %v", err)
 	}
 
@@ -155,7 +155,7 @@ func TestAckRequiresANonBlankReason(t *testing.T) {
 	for _, reason := range []string{"", "   ", "\t\n "} {
 		st := newFakeAckStore()
 		svc := NewAckService(st, fixedClock(time.Unix(1_000, 0)))
-		present := map[string]bool{"f1": true}
+		present := map[string]Finding{"f1": {ID: "f1"}}
 		if _, err := svc.Ack(context.Background(), "f1", reason, "brian", 0, present); !errors.Is(err, ErrAckReasonRequired) {
 			t.Fatalf("reason %q: err = %v, want ErrAckReasonRequired", reason, err)
 		}
@@ -168,7 +168,7 @@ func TestAckRequiresANonBlankReason(t *testing.T) {
 func TestAckStoresTheTrimmedReasonAndBoundsItsLength(t *testing.T) {
 	st := newFakeAckStore()
 	svc := NewAckService(st, fixedClock(time.Unix(1_000, 0)))
-	present := map[string]bool{"f1": true}
+	present := map[string]Finding{"f1": {ID: "f1"}}
 
 	if _, err := svc.Ack(context.Background(), "f1", "  padded  ", "brian", 0, present); err != nil {
 		t.Fatalf("Ack: %v", err)
@@ -186,7 +186,7 @@ func TestAckStoresTheTrimmedReasonAndBoundsItsLength(t *testing.T) {
 func TestAckOfAnUnknownFindingIsRefusedAndWritesNothing(t *testing.T) {
 	st := newFakeAckStore()
 	svc := NewAckService(st, fixedClock(time.Unix(1_000, 0)))
-	present := map[string]bool{"f1": true}
+	present := map[string]Finding{"f1": {ID: "f1"}}
 
 	_, err := svc.Ack(context.Background(), "does-not-exist", "because", "brian", 0, present)
 	if !errors.Is(err, ErrNoSuchFinding) {
@@ -203,7 +203,7 @@ func TestAckRefusesAnExpiryAlreadyInThePast(t *testing.T) {
 	st := newFakeAckStore()
 	now := time.Unix(2_000_000, 0)
 	svc := NewAckService(st, fixedClock(now))
-	present := map[string]bool{"f1": true}
+	present := map[string]Finding{"f1": {ID: "f1"}}
 
 	for _, exp := range []int64{now.Unix() - 1, now.Unix()} {
 		if _, err := svc.Ack(context.Background(), "f1", "because", "brian", exp, present); !errors.Is(err, ErrAckExpiryInPast) {
@@ -221,7 +221,7 @@ func TestReAckingReplacesTheReasonActorAndExpiry(t *testing.T) {
 	st := newFakeAckStore()
 	now := time.Unix(1_000_000, 0)
 	svc := NewAckService(st, fixedClock(now))
-	present := map[string]bool{"f1": true}
+	present := map[string]Finding{"f1": {ID: "f1"}}
 	ctx := context.Background()
 
 	if _, err := svc.Ack(ctx, "f1", "first", "alice", 0, present); err != nil {
@@ -272,7 +272,7 @@ func TestAckSurvivesTheFindingClearingAndReturning(t *testing.T) {
 	ctx := context.Background()
 
 	cycle1 := []Finding{ackFinding("health:mtu_mismatch|bridge:pve1:vmbr0")}
-	if _, err := svc.Ack(ctx, cycle1[0].ID, "known-good asymmetry", "brian", 0, PresentIDs(cycle1)); err != nil {
+	if _, err := svc.Ack(ctx, cycle1[0].ID, "known-good asymmetry", "brian", 0, PresentFindings(cycle1)); err != nil {
 		t.Fatalf("Ack: %v", err)
 	}
 
@@ -308,7 +308,7 @@ func TestAckAppliesToOneFindingIDOnly(t *testing.T) {
 		ackFinding("health:mtu_mismatch|bridge:pve1:vmbr0"),
 		ackFinding("health:mtu_mismatch|bridge:pve1:vmbr1"),
 	}
-	if _, err := svc.Ack(ctx, all[0].ID, "deliberate", "brian", 0, PresentIDs(all)); err != nil {
+	if _, err := svc.Ack(ctx, all[0].ID, "deliberate", "brian", 0, PresentFindings(all)); err != nil {
 		t.Fatalf("Ack: %v", err)
 	}
 	got, acked, err := svc.Decorate(ctx, all)
@@ -344,12 +344,12 @@ func TestDecorateSurfacesAStoreError(t *testing.T) {
 	}
 }
 
-func TestPresentIDs(t *testing.T) {
-	got := PresentIDs([]Finding{ackFinding("a"), ackFinding("b")})
-	if len(got) != 2 || !got["a"] || !got["b"] {
-		t.Fatalf("PresentIDs = %v", got)
+func TestPresentFindings(t *testing.T) {
+	got := PresentFindings([]Finding{ackFinding("a"), ackFinding("b")})
+	if len(got) != 2 || got["a"].ID != "a" || got["b"].ID != "b" {
+		t.Fatalf("PresentFindings = %v", got)
 	}
-	if len(PresentIDs(nil)) != 0 {
-		t.Fatal("PresentIDs(nil) should be empty, not nil-mapped")
+	if len(PresentFindings(nil)) != 0 {
+		t.Fatal("PresentFindings(nil) should be empty, not nil-mapped")
 	}
 }

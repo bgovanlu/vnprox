@@ -681,7 +681,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// finding-triggered rollback it serves) — its change-service reference is
 	// late-bound below, the same convention mgmtAdapter/scheduleAdapter use.
 	findingsGuardVal := newFindingsGuard(time.Now, logger.With("component", "findings-guard"))
-	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, gitSyncFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, findingsGuardVal.observe, logger)
+	findingsEngine = setupFindings(ctx, graph, driftSvc, topoSvc, metricsSampler, mgmtAdapter, corosyncAdapter, fwAnalyticsAdapterVal, scheduleAdapter, scheduleAdapter, latMeshSvc, mtuProbeSvc, wgReadSvc, wanSvc, flowClassifyAdapterVal, k8sPoller, cephAdapter, rogueAdapter, cfg.Security.ProtectedSegments, capacityProvider, baselineSvcVal, fedTunnelAdapter, peerTrustAdapterVal, storeCapacitySvc, certFindings, gitSyncFindings, webhookRepo, findingsNotifier, topoSvc, ipamConcrete, simDivergenceRepo, wanThresholds, haFindAdapter, findingsGuardVal.observe, logger)
 
 	// T-605: the config documentation export (docs/features/blueprints.md
 	// §4) reads the exact same live sources the rest of this file's read
@@ -938,6 +938,16 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// opts in.
 		Comments:  store.NewChangesetCommentRepo(db),
 		Approvals: store.NewChangesetApprovalRepo(db),
+		// T-2604: the two-person rule's distinct-approver set and its
+		// emergency override. Always wired (app-owned tables on the same
+		// shared db); an install that declares no protected classes never
+		// reads either, so its apply behaviour is unchanged.
+		Signoffs:   store.NewChangesetSignoffRepo(db),
+		BreakGlass: store.NewChangesetBreakGlassRepo(db),
+		// T-2604: which classes of change need N distinct approvers. Empty
+		// unless [[changesets.protected_class]] says otherwise; a malformed
+		// entry fails NewService, and therefore startup, on purpose.
+		ProtectedClasses: protectedClassesFromConfig(cfg.Changesets.ProtectedClasses),
 		// T-2601: the declarative policy-as-code rule set. Always wired
 		// (an app-owned table on the same shared db); an install with no
 		// policy simply has an empty rule set, which produces no findings
