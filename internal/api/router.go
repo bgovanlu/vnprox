@@ -103,8 +103,8 @@ type Options struct {
 	// ChangesetProposer (T-2702) backs POST /changesets/{id}/propose and
 	// GET /changesets/{id}/proposal. Nil (or a disabled proposer) leaves both
 	// routes mounted and answering honestly, never silently absent.
-	ChangesetProposer ChangesetProposer
-	DistFS            fs.FS
+	ChangesetProposer     ChangesetProposer
+	DistFS                fs.FS
 	HistoryFindingEvents  HistoryFindingEventsSource
 	SDN                   SDNService
 	SDNDNS                SDNDNSService
