@@ -3,14 +3,53 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os/exec"
 
 	"github.com/bgovanlu/vnprox/internal/api"
+	"github.com/bgovanlu/vnprox/internal/config"
 	"github.com/bgovanlu/vnprox/internal/hub"
+	"github.com/bgovanlu/vnprox/internal/hubreg"
 	"github.com/bgovanlu/vnprox/internal/ingress"
 	"github.com/bgovanlu/vnprox/internal/plugin"
 	"github.com/bgovanlu/vnprox/internal/plugin/procshim"
 )
+
+// newHubClient constructs the opt-in T-1705 Blueprint & plugin hub client from
+// the [hub] section, or nil when the hub is off.
+//
+// Off by default: an empty registry_url returns nil, which skips mounting the
+// hub routes entirely. A malformed URL is logged and the hub stays off rather
+// than failing daemon startup.
+//
+// T-2803: when index_signers is configured, the T-2803 registry gate rides the
+// client's *existing* WithHTTPClient seam — the index must verify against one
+// of those signers before the client sees a single entry, and the revocations
+// inside that signed index are enforced on every artifact fetch with no
+// further network access. internal/hub itself is unchanged; internal/hubreg's
+// gate.go explains why the seam, and not the client, is the right place for
+// this. With no index_signers the pre-T-2803 behaviour is preserved and said
+// out loud at startup: an unauthenticated catalog and unenforced revocations
+// (artifact signatures and the trust store still gate every install either
+// way, which is why this is a warning and not a refusal to start).
+func newHubClient(cfg config.HubConfig, logger *slog.Logger) *hub.Client {
+	regURL := cfg.RegistryURL
+	if regURL == "" {
+		return nil
+	}
+	var opts []hub.Option
+	if len(cfg.IndexSigners) > 0 {
+		opts = append(opts, hub.WithHTTPClient(hubreg.NewGate(nil, cfg.IndexSigners)))
+	} else {
+		logger.Warn("blueprint & plugin hub: registry index signature verification is OFF ([hub] index_signers is empty) — the catalog is unauthenticated and published revocations are not enforced (artifact signatures and the trust store still gate every install)", "url", regURL)
+	}
+	c, err := hub.NewClient(regURL, opts...)
+	if err != nil {
+		logger.Warn("blueprint & plugin hub disabled: invalid registry URL", "url", regURL, "err", err)
+		return nil
+	}
+	return c
+}
 
 // hubClientOrNil returns c as an api.HubClient, or an untyped nil interface when
 // c is nil — so mountHubRoutes' `client == nil` guard fires (a typed-nil
