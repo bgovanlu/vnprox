@@ -3,6 +3,8 @@ package incident
 import (
 	"context"
 	"errors"
+	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -243,5 +245,37 @@ func TestAC2_TheLifecycleQueriesNoSourceAndTimelineQueriesEachOnce(t *testing.T)
 		if got := src.counts()[name]; got != expect {
 			t.Errorf("after one Timeline call, the %s source was queried %d times, want %d", name, got, expect)
 		}
+	}
+}
+
+// TestTimeline_IsNodeLocalByConstruction gates the scope limit docs/api.md
+// states: the timeline is assembled from THIS node's own tables and does not
+// fan out to peers.
+//
+// The limitation is inherited rather than invented — GET /history/events is
+// node-local for the same reason (finding_events and audit_log are app-owned,
+// per-node data), and a cluster-wide audit view is GET /audit's own job, with
+// its own documented fan-out. Stating it in the docs without a gate would be
+// exactly the "documented limitation with no test behind it" this repo has
+// been bitten by, so the gate is structural: no seam this service holds is a
+// peer client, and there is nowhere for one to hide.
+func TestTimeline_IsNodeLocalByConstruction(t *testing.T) {
+	cfgType := reflect.TypeOf(Config{})
+	seen := 0
+	for i := 0; i < cfgType.NumField(); i++ {
+		f := cfgType.Field(i)
+		name := f.Name + " " + f.Type.String()
+		for _, forbidden := range []string{"Peer", "peer", "Fanout", "FanOut", "Cluster"} {
+			if strings.Contains(name, forbidden) {
+				t.Errorf("incident.Config declares %q, which looks like a cross-node seam — the timeline is "+
+					"documented (docs/api.md) as node-local; either remove it or update that statement", name)
+			}
+		}
+		seen++
+	}
+	// Control: the walk actually saw the fields, so "no peer seam" is not
+	// the trivial consequence of an empty loop.
+	if seen < 8 {
+		t.Fatalf("CONTROL FAILED: walked only %d Config fields; the reflection is not seeing the struct", seen)
 	}
 }
