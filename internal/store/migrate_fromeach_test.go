@@ -164,6 +164,7 @@ var versionSeeds = map[int]versionSeed{
 	36: {seedV36, assertV36},
 	37: {seedV37, assertV37},
 	38: {seedV38, assertV38},
+	39: {seedV39, assertV39},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -204,15 +205,25 @@ func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
 		t.Fatal("no embedded migrations found — this test needs at least one to be meaningful")
 	}
 
-	// AC1: every schema version from 1 to current must have a fixture. Fail
-	// setup loudly, for the whole test, if a version in range is missing an
+	// AC1: every shipped schema version below the current one must have a
+	// fixture. Fail setup loudly, for the whole test, if one is missing an
 	// entry rather than quietly skipping it — this is what keeps the corpus
 	// honest as migrations accrue.
-	for v := 1; v < latest; v++ {
-		if _, ok := versionSeeds[v]; !ok {
-			t.Fatalf("no versionSeeds fixture registered for schema version %d — add seedV%d/assertV%d "+
+	//
+	// The requirement is over versions that ACTUALLY EXIST as a migration
+	// file, not over the integers below latest: numbering can be sparse while
+	// several branches each hold a pre-assigned migration number, and
+	// demanding a fixture for a version no migration in this build defines
+	// would fail on a gap that means nothing (T-2702, which landed as 0042
+	// alongside two siblings holding 0040/0041).
+	for _, m := range migrations {
+		if m.version >= latest {
+			continue
+		}
+		if _, ok := versionSeeds[m.version]; !ok {
+			t.Fatalf("no versionSeeds fixture registered for schema version %d (%s) — add seedV%d/assertV%d "+
 				"(see this file's package doc comment) and register it in versionSeeds; T-1807 AC1 requires "+
-				"every version 1..%d to have one", v, v, v, latest-1)
+				"every shipped version below %d to have one", m.version, m.name, m.version, m.version, latest)
 		}
 	}
 
@@ -245,8 +256,15 @@ func TestMigrate_FromEachPriorSchemaVersion(t *testing.T) {
 		}
 	})
 
-	for v := 1; v < latest; v++ {
-		v := v
+	// Same reasoning as the fixture gate above: the cases are the versions
+	// that exist as migrations, not every integer below latest — freezing at
+	// a number no migration defines would freeze at the previous real version
+	// and then fail its own "freezing helper bug" check.
+	for _, m := range migrations {
+		if m.version >= latest {
+			continue
+		}
+		v := m.version
 		t.Run(fmt.Sprintf("version %d", v), func(t *testing.T) {
 			db := openFrozenAt(t, v)
 			ctx := context.Background()
@@ -1344,10 +1362,29 @@ func assertV38(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 39 (0039_changeset_origin_tool.sql, changesets.origin_tool —
-// T-2705) has no versionSeeds entry because it is the current latest, not a
-// "prior" version any fixture in this file freezes at — its own forward
-// application (as part of every case's migrate() call to latest) is exercised
-// by every case above, and TestOpen_CreatesAllTables (store_test.go)
-// exercises it from a fresh database. The next migration to land becomes the
-// new latest and picks up a version 39 entry in versionSeeds at that time.
+// ---------------------------------------------------------------------
+// Version 39 — 0039_changeset_origin_tool.sql (T-2705)
+// ---------------------------------------------------------------------
+
+func seedV39(t *testing.T, db *sql.DB) {
+	t.Helper()
+	mustExec(t, db, `UPDATE changesets SET origin_tool = 'changesets.stage.bridge' WHERE id = 'cs-v1'`)
+}
+
+func assertV39(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var tool string
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT COALESCE(origin_tool, '') FROM changesets WHERE id = 'cs-v1'`).Scan(&tool); err != nil {
+		t.Errorf("changesets.origin_tool lost across migration: %v", err)
+	} else if tool != "changesets.stage.bridge" {
+		t.Errorf("changesets.origin_tool = %q, want changesets.stage.bridge", tool)
+	}
+}
+
+// The CURRENT latest migration never has a versionSeeds entry: it is not a
+// "prior" version any fixture freezes at — its own forward application is
+// exercised by every case above (each one migrates all the way to latest)
+// and by TestOpen_CreatesAllTables (store_test.go) from a fresh database.
+// Each migration that lands picks up an entry here when the next one makes
+// it a prior version.

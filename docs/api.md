@@ -141,6 +141,8 @@ Response: `{from: DiffPoint, to: DiffPoint, added: [EntityDiff], removed: [Entit
 | DELETE | `/changesets/{id}/comments/{commentId}` | remove a review comment |
 | POST | `/changesets/{id}/review/approve` | record an approval decision (T-2003, below) — **not** the T-1703 `/changesets/{id}/approve` route below, which converts a tenant request-changeset to a draft |
 | POST | `/changesets/{id}/review/reject` | record a rejection decision: `{reason?}` |
+| POST | `/changesets/{id}/propose` | **T-2702.** Propose this changeset as a pull request against the spec repository (`netWrite` + CSRF). See "Changeset → pull request" below. |
+| GET | `/changesets/{id}/proposal` | **T-2702.** The pull request this changeset was proposed as, or `404 not_found` if it never was (`netRead`). |
 
 Validation finding shape: `{severity: "error"|"warning"|"info", code, message, ref?, fix?}` where `fix` is an optional machine-applicable amendment (an `[]Op` patch the UI can offer one-click).
 
@@ -1013,6 +1015,57 @@ There is deliberately **no** route that triggers a sync, and none that applies i
 **Signature verification.** With `require_signed_commits`, a commit whose signature this daemon cannot verify **locally** is refused and nothing is staged. Verification is of git's SSH-format signatures (`gpg.format = ssh`) against the operator's own allowed-signers file — never the host's own "verified: true" boolean. An unsigned commit, an OpenPGP-signed commit, an unsupported key algorithm, a signer absent from the allowed-signers file, and a host that cannot supply the signed commit object at all are **all** refusals: the gate fails closed in every direction.
 
 CLI: `vnproxctl gitsync status [-o json]`.
+
+### Changeset → pull request (T-2702)
+
+The other direction of the same loop. A change staged in the vnprox GUI is a change made *outside* the system of record; proposing it puts that change where the intent lives, as a reviewable commit.
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| POST | `/changesets/{id}/propose` | `netWrite` + CSRF | render the changeset as a spec delta, commit it on a branch, push, and open a pull request for it |
+| GET | `/changesets/{id}/proposal` | `netRead` | the recorded pull request for this changeset, or `404 not_found` |
+
+**vnprox does not merge, gate, or poll a pull request.** It opens one and stops. Whatever happens next — approval, changes requested, a merge — comes back through the ordinary sync above, which opens a draft changeset a human applies through the change engine. There is deliberately no route that merges, approves, or reports a request's review state.
+
+**Response shape** (both routes; `201` when a request was opened, `200` when the existing one was updated):
+
+```jsonc
+{
+  "changesetId": "01J...",
+  "remote": "https://github.com/org/infra (github)",  // never contains a credential
+  "branch": "vnprox/changeset-01J...",                // deterministic: the prefix plus the changeset id
+  "path": "network/cluster.yaml",
+  "commitSha": "9f2c...",         // omitted when the branch already carried byte-identical content
+  "pullRequestId": "42",          // the host's own id: GitHub's pull number, GitLab's merge-request iid
+  "pullRequestUrl": "https://github.com/org/infra/pull/42",
+  "proposedBy": "brian",
+  "proposedAt": 1754000000,       // the FIRST proposal's timestamp; re-proposing keeps it
+  "updatedAt": 1754000600,
+  "created": true                 // false when an already-open request was updated
+}
+```
+
+**Proposing twice updates one request, never opens a second.** The branch name is derived from the changeset id, so the same changeset always addresses the same branch and the same open request; the `changeset_proposals` table holds one row per changeset by primary key (`docs/data-model.md`).
+
+**The round trip is checked before anything is written.** The proposed document must, when re-imported against live state, plan to exactly the base document's plan plus this changeset's ops — asserted semantically (op ids and ordering excluded, set-valued params compared as sets), not textually. A changeset that would not round-trip is refused with the difference named, because a pull request that does not mean what the changeset meant is worse than none.
+
+**The PR body carries the review context**: the rendered spec diff, the per-op summary, and `T-2404`'s blast radius (disruption class, affected nodes/carriers/guests, and whether the management path is touched). The post-apply projection (`T-2605`) is included when the build has one and is stated as unavailable when it does not.
+
+**Refusals** (all `422` unless noted), each naming exactly what is wrong:
+
+| Code | Meaning |
+|---|---|
+| `nothing_to_propose` | the changeset has no ops, or its ops make no difference to the document as it stands |
+| `not_proposable` | the changeset is discarded, rolled back or failed — its ops were abandoned or undone, and are not a statement of intent |
+| `not_expressible_in_spec` | an op the declarative spec has no vocabulary for (every delete, and every firewall/IPAM/QoS/WireGuard/raw-file op), or an update to an entity the document does not declare |
+| `spec_round_trip_failed` | the proposed document would plan to something other than this changeset |
+| `no_spec_document` | the repository has no document at `[gitsync] path` — proposing never invents a whole-cluster spec, which is `T-2703`'s explicit human decision |
+| `remote_unreachable` (`502`) | the host could not be reached or refused the call |
+| `not_implemented` (`501`) | this deployment has no write credential (`[gitsync] push_token_file`) |
+
+**A host API failure leaves no orphan branch.** The writes are ordered so the compensating action is always available: resolve the base, create the branch (remembering whether vnprox created it), commit, then open or update the request. Any failure after a branch vnprox created removes that branch before returning — either the branch and the request both exist, or neither does. A branch that already existed (an earlier proposal a human may be reviewing) is never deleted.
+
+**Credentials.** The push credential is a **separate, write-scoped** key (`[gitsync] push_token_file`) held by a separate object from the read-only sync token; a deployment that has not set it never reads a write credential off disk, and `POST .../propose` answers `501`. The credential never appears in the pull-request body, the commit message, the branch name, the audit trail, the log, or any error.
 
 ## Saved views & annotations
 

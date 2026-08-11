@@ -322,7 +322,18 @@ type GitSyncConfig struct {
 	// the same on-disk-secret convention [oidc] client_secret_file and
 	// [pve] token_file already use. The credential is never written into
 	// this config file, never placed in a URL, and never logged.
+	//
+	// It is READ-ONLY scope: everything T-2701 does is a fetch. Proposing a
+	// changeset needs PushTokenFile below instead — a separate key holding a
+	// separate credential, so turning on proposals is an explicit act and a
+	// sync-only deployment's token is never silently widened.
 	TokenFile string
+	// PushTokenFile (T-2702) is a root:root 0600 file containing a
+	// WRITE-scoped host credential: the one used to push a branch and open a
+	// pull request for a proposed changeset. Empty — the default — means
+	// POST /changesets/{id}/propose answers "not configured" and no write
+	// credential is ever read from disk, let alone used.
+	PushTokenFile string
 	// AllowedSignersFile is an OpenSSH allowed-signers (or authorized_keys)
 	// file listing the keys whose commit signatures are trusted. Required
 	// when RequireSignedCommits is set.
@@ -797,6 +808,7 @@ type rawGitSync struct {
 	Path                 string `toml:"path"`
 	PollInterval         string `toml:"poll_interval"`
 	TokenFile            string `toml:"token_file"`
+	PushTokenFile        string `toml:"push_token_file"`
 	AllowedSignersFile   string `toml:"allowed_signers_file"`
 	Enabled              bool   `toml:"enabled"`
 	RequireSignedCommits bool   `toml:"require_signed_commits"`
@@ -1488,6 +1500,7 @@ func resolveGitSyncConfig(raw rawGitSync) (GitSyncConfig, error) {
 		Ref:                  firstNonEmpty(strings.TrimSpace(raw.Ref), "main"),
 		Path:                 strings.TrimSpace(raw.Path),
 		TokenFile:            strings.TrimSpace(raw.TokenFile),
+		PushTokenFile:        strings.TrimSpace(raw.PushTokenFile),
 		RequireSignedCommits: raw.RequireSignedCommits,
 		AllowedSignersFile:   strings.TrimSpace(raw.AllowedSignersFile),
 	}

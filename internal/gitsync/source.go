@@ -6,11 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -83,10 +80,15 @@ func (r Revision) ContentDigest() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Source resolves a ref+path to a Revision. It is an interface so T-2702's
-// changeset→PR path can add a write-capable implementation beside this one
-// without every caller learning about hosts, and so tests can drive the
-// service without any network at all.
+// Source resolves a ref+path to a Revision.
+//
+// It is READ-ONLY BY DESIGN, and stays that way: T-2702's changeset→PR path
+// did not extend this interface, it declared a SIBLING one (host.go's Host).
+// Keeping them apart is what makes "vnprox never pushes on the sync path" a
+// property of the type system — the sync Service holds a Source and there is
+// no method on it that could write, so an applying/pushing sync cannot be
+// written without editing this file. A reflection test (propose_test.go's
+// TestSeamsStaySeparate) asserts the omission in both directions.
 type Source interface {
 	// Describe returns a human-readable, credential-free description of
 	// where this source reads from. It is rendered into findings and into
@@ -107,15 +109,17 @@ type Source interface {
 // text), never returned by Describe, and never included in any error this
 // type produces: nothing in this file formats c.token into anything.
 type HTTPSource struct {
-	client   *http.Client
-	provider Provider
+	// httpTransport carries the client, the provider and the read
+	// credential (hosturl.go). It is embedded rather than duplicated so the
+	// "never echo a response body into an error" property lives in exactly
+	// one place.
+	httpTransport
 	// apiBase is the provider's API root for this repository, already
 	// resolved from the operator's URL — e.g.
 	// "https://api.github.com/repos/org/infra".
 	apiBase string
 	// describe is the credential-free origin string.
 	describe string
-	token    string
 }
 
 // SourceConfig configures an HTTPSource.
@@ -141,124 +145,19 @@ type SourceConfig struct {
 // NewHTTPSource validates cfg and builds a Source. It performs no I/O: a
 // misconfigured remote is a startup error, not a first-poll surprise.
 func NewHTTPSource(cfg SourceConfig) (*HTTPSource, error) {
-	if strings.TrimSpace(cfg.URL) == "" {
-		return nil, fmt.Errorf("gitsync: url is required")
-	}
-	u, err := url.Parse(strings.TrimSpace(cfg.URL))
+	rem, err := resolveRemote(cfg.URL, cfg.Provider, "token_file")
 	if err != nil {
-		return nil, fmt.Errorf("gitsync: parsing url: %w", err)
+		return nil, err
 	}
-	if secErr := checkTransportSecurity(u); secErr != nil {
-		return nil, secErr
-	}
-	if u.User != nil {
-		// A credential in the URL would end up in every log line, finding
-		// and status output that names the origin. Refuse it outright and
-		// point at the key that exists for this.
-		return nil, fmt.Errorf("gitsync: url must not embed credentials; use [gitsync] token_file")
-	}
-
-	provider := cfg.Provider
-	if provider == "" {
-		provider, err = inferProvider(u.Hostname())
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	client := cfg.Client
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-
-	src := &HTTPSource{client: client, provider: provider, token: cfg.Token}
-	switch provider {
-	case ProviderGitHub:
-		src.apiBase, err = githubAPIBase(u)
-	case ProviderGitLab:
-		src.apiBase, err = gitlabAPIBase(u)
-	case ProviderRaw:
-		src.apiBase = strings.TrimSuffix(u.String(), "/")
-	default:
-		return nil, fmt.Errorf("gitsync: unknown provider %q (want github, gitlab or raw)", provider)
-	}
-	if err != nil {
-		return nil, err
-	}
-	// Describe deliberately renders the operator's own URL with any userinfo
-	// already refused above, plus the provider — never apiBase with a token.
-	src.describe = fmt.Sprintf("%s (%s)", u.Redacted(), provider)
-	return src, nil
-}
-
-// checkTransportSecurity refuses a plaintext remote except on loopback,
-// where the only realistic caller is this repository's own tests and a
-// developer's local fixture server. Everything else must be https: the
-// credential and the intent document both travel on this connection.
-func checkTransportSecurity(u *url.URL) error {
-	switch u.Scheme {
-	case "https":
-		return nil
-	case "http":
-		if isLoopbackHost(u.Hostname()) {
-			return nil
-		}
-		return fmt.Errorf("gitsync: url must use https (got http for host %q)", u.Hostname())
-	default:
-		return fmt.Errorf("gitsync: url scheme %q is not supported (want https)", u.Scheme)
-	}
-}
-
-func isLoopbackHost(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
-
-func inferProvider(host string) (Provider, error) {
-	switch strings.ToLower(host) {
-	case "github.com", "www.github.com":
-		return ProviderGitHub, nil
-	case "gitlab.com", "www.gitlab.com":
-		return ProviderGitLab, nil
-	default:
-		return "", fmt.Errorf("gitsync: cannot infer provider for host %q — set [gitsync] provider explicitly (github, gitlab or raw)", host)
-	}
-}
-
-// repoPath splits "/owner/repo(.git)" out of a repository URL.
-func repoPath(u *url.URL) (string, error) {
-	p := strings.Trim(u.Path, "/")
-	p = strings.TrimSuffix(p, ".git")
-	if p == "" {
-		return "", fmt.Errorf("gitsync: url %q names no repository path", u.Redacted())
-	}
-	return p, nil
-}
-
-func githubAPIBase(u *url.URL) (string, error) {
-	repo, err := repoPath(u)
-	if err != nil {
-		return "", err
-	}
-	host := strings.ToLower(u.Hostname())
-	// github.com's API lives on api.github.com; a GitHub Enterprise host
-	// serves it under /api/v3 on the same origin. A non-default port (a test
-	// server, an internal GHE) is preserved.
-	if host == "github.com" || host == "www.github.com" {
-		return "https://api.github.com/repos/" + repo, nil
-	}
-	return fmt.Sprintf("%s://%s/api/v3/repos/%s", u.Scheme, u.Host, repo), nil
-}
-
-func gitlabAPIBase(u *url.URL) (string, error) {
-	repo, err := repoPath(u)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s://%s/api/v4/projects/%s", u.Scheme, u.Host, url.PathEscape(repo)), nil
+	return &HTTPSource{
+		httpTransport: httpTransport{client: client, provider: rem.provider, token: cfg.Token},
+		apiBase:       rem.apiBase,
+		describe:      rem.describe,
+	}, nil
 }
 
 // Describe implements Source.
@@ -281,56 +180,11 @@ func (s *HTTPSource) Fetch(ctx context.Context, ref, path string) (Revision, err
 	}
 }
 
-// authHeader applies the provider's credential header. GitHub and a generic
-// raw host take a bearer token; GitLab takes PRIVATE-TOKEN. Either way the
-// credential exists only as a header value on an in-flight request.
-func (s *HTTPSource) authHeader(req *http.Request) {
-	if s.token == "" {
-		return
-	}
-	if s.provider == ProviderGitLab {
-		req.Header.Set("PRIVATE-TOKEN", s.token)
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+s.token)
-}
-
-// do issues one GET and returns the body, bounded at maxSpecBytes.
-//
-// The error text names the method, the URL and the status — never the
-// response body, because a hosting provider's error body routinely quotes
-// the request back (GitHub's 401 body, for one), and never the credential,
-// which is not formatted into anything here.
-func (s *HTTPSource) do(ctx context.Context, rawURL, accept string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("gitsync: building request for %s: %w", rawURL, err)
-	}
-	if accept != "" {
-		req.Header.Set("Accept", accept)
-	}
-	s.authHeader(req)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		// url.Error's own Error() renders the request URL, which carries no
-		// credential by construction (userinfo is refused at construction).
-		return nil, fmt.Errorf("%w: GET %s: %w", ErrUnreachable, rawURL, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("%w: GET %s: status %d", ErrRemoteStatus, rawURL, resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxSpecBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("%w: GET %s: reading body: %w", ErrUnreachable, rawURL, err)
-	}
-	if len(body) > maxSpecBytes {
-		return nil, fmt.Errorf("gitsync: GET %s: response exceeds %d bytes", rawURL, maxSpecBytes)
-	}
-	return body, nil
+// get issues one GET through the shared transport (hosturl.go), which is
+// where the "an error never carries the response body or the credential"
+// property lives.
+func (s *HTTPSource) get(ctx context.Context, rawURL, accept string) ([]byte, error) {
+	return s.do(ctx, request{method: http.MethodGet, url: rawURL, accept: accept})
 }
 
 // --- GitHub ---------------------------------------------------------------
@@ -346,7 +200,7 @@ type githubCommitResponse struct {
 }
 
 func (s *HTTPSource) fetchGitHub(ctx context.Context, ref, path string) (Revision, error) {
-	body, err := s.do(ctx, s.apiBase+"/commits/"+url.PathEscape(ref), "application/vnd.github+json")
+	body, err := s.get(ctx, s.apiBase+"/commits/"+url.PathEscape(ref), "application/vnd.github+json")
 	if err != nil {
 		return Revision{}, err
 	}
@@ -358,7 +212,7 @@ func (s *HTTPSource) fetchGitHub(ctx context.Context, ref, path string) (Revisio
 		return Revision{}, fmt.Errorf("gitsync: commit for ref %q carries no sha", ref)
 	}
 
-	content, err := s.do(ctx,
+	content, err := s.get(ctx,
 		s.apiBase+"/contents/"+escapePath(path)+"?ref="+url.QueryEscape(commit.SHA),
 		"application/vnd.github.raw")
 	if err != nil {
@@ -379,7 +233,7 @@ type gitlabCommitResponse struct {
 }
 
 func (s *HTTPSource) fetchGitLab(ctx context.Context, ref, path string) (Revision, error) {
-	body, err := s.do(ctx, s.apiBase+"/repository/commits/"+url.PathEscape(ref), "application/json")
+	body, err := s.get(ctx, s.apiBase+"/repository/commits/"+url.PathEscape(ref), "application/json")
 	if err != nil {
 		return Revision{}, err
 	}
@@ -391,7 +245,7 @@ func (s *HTTPSource) fetchGitLab(ctx context.Context, ref, path string) (Revisio
 		return Revision{}, fmt.Errorf("gitsync: commit for ref %q carries no id", ref)
 	}
 
-	content, err := s.do(ctx,
+	content, err := s.get(ctx,
 		s.apiBase+"/repository/files/"+url.PathEscape(path)+"/raw?ref="+url.QueryEscape(commit.ID),
 		"application/json")
 	if err != nil {
@@ -407,22 +261,11 @@ func (s *HTTPSource) fetchGitLab(ctx context.Context, ref, path string) (Revisio
 // --- raw ------------------------------------------------------------------
 
 func (s *HTTPSource) fetchRaw(ctx context.Context, ref, path string) (Revision, error) {
-	content, err := s.do(ctx, s.apiBase+"/"+url.PathEscape(ref)+"/"+escapePath(path), "")
+	content, err := s.get(ctx, s.apiBase+"/"+url.PathEscape(ref)+"/"+escapePath(path), "")
 	if err != nil {
 		return Revision{}, err
 	}
 	rev := Revision{Path: path, Content: content}
 	rev.SHA = "sha256:" + rev.ContentDigest()
 	return rev, nil
-}
-
-// escapePath percent-escapes each path segment while keeping the separators,
-// so "network/cluster spec.yaml" becomes "network/cluster%20spec.yaml"
-// rather than a single escaped blob.
-func escapePath(p string) string {
-	parts := strings.Split(strings.TrimPrefix(p, "/"), "/")
-	for i, part := range parts {
-		parts[i] = url.PathEscape(part)
-	}
-	return strings.Join(parts, "/")
 }

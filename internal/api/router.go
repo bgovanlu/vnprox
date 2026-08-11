@@ -90,10 +90,14 @@ type Options struct {
 	// TopologyDiff (T-2704) backs GET /topology/diff: the point-in-time
 	// topology diff, computed from the snapshot series and attributed
 	// against the changeset history. Nil leaves the route unmounted.
-	TopologyDiff          TopologyDiffService
-	Audit                 AuditService
-	HA                    HAStatusService
-	GitSync               GitSyncStatusService
+	TopologyDiff TopologyDiffService
+	Audit        AuditService
+	HA           HAStatusService
+	GitSync      GitSyncStatusService
+	// ChangesetProposer (T-2702) backs POST /changesets/{id}/propose and
+	// GET /changesets/{id}/proposal. Nil (or a disabled proposer) leaves both
+	// routes mounted and answering honestly, never silently absent.
+	ChangesetProposer     ChangesetProposer
 	DistFS                fs.FS
 	HistoryFindingEvents  HistoryFindingEventsSource
 	SDN                   SDNService
@@ -297,6 +301,11 @@ func NewRouter(opts Options) http.Handler {
 		// unconditionally — "off" is an answer, and it keeps the route
 		// inside T-2405's completeness gate.
 		mountGitSyncRoutes(r, opts.GitSync, opts.Auth)
+		// T-2702: propose a changeset as a pull request against the spec
+		// repository, and read back what was opened. Mounted unconditionally
+		// for the same reason gitsync/status is — "it is not configured" is an
+		// answer — and inside T-2405's completeness gate either way.
+		mountProposeRoutes(r, opts.ChangesetProposer, opts.Auth)
 		mountProtectedRoutes(r, opts.Protected, opts.Auth)
 		mountSDNRoutes(r, opts.SDN, opts.Auth)
 		mountSDNDNSRoutes(r, opts.SDNDNS, opts.Auth)

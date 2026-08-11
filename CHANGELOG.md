@@ -28,6 +28,33 @@ functionality is folded into `[2.0.0]`.
 
 ### Added
 
+- **A change you made in the GUI can now be proposed to the repository it belongs in.** If your
+  intent lives in git (`[gitsync]`), a change staged in vnprox was, until now, a change made outside
+  your system of record: the cluster moved, the repository did not, and the next sync reported your
+  own edit back to you as divergence. `POST /changesets/{id}/propose` closes the loop — it renders
+  the changeset as a spec delta, commits it on a branch, pushes, and opens a pull request, on
+  GitHub or GitLab. The changeset records the URL.
+
+  What makes it trustworthy is what it refuses to do:
+
+  - **vnprox opens the pull request and stops.** It never merges, gates, approves, or polls one —
+    not as a route and not as a method anything here could call. Whatever happens to the request
+    comes back through the ordinary sync, which opens a draft changeset you apply yourself.
+  - **The branch means what the changeset meant, and that is checked before anything is written.**
+    The proposed document must re-import to exactly your changeset's ops; one that would not is
+    refused with the difference named. A changeset the spec cannot express — every delete, and
+    every firewall/IPAM/QoS/WireGuard/raw-file op — is refused rather than approximated.
+  - **A failed proposal leaves no orphan branch.** Either the branch and the request both exist, or
+    neither does; a branch someone is already reviewing is never removed.
+  - **Pushing needs its own credential.** `[gitsync] push_token_file` is separate from the
+    read-only sync token, so syncing still never pushes, and a deployment that has not opted in
+    never reads a write credential off disk. It appears in none of what gets written: not the
+    branch name, the commit message, the pull-request body, the audit trail, or any error.
+
+  The pull-request body carries the review context with the review: the spec diff, the per-op
+  summary, and the blast radius — which nodes, carriers and guests the change would disturb, and
+  whether it touches a management path.
+
 - **An AI operator can now stage a change it cannot apply.** The MCP surface could already diagnose
   a problem in full — and then had to hand you a paragraph of instructions to type. Four new tools
   (`changesets.stage.bridge`, `changesets.stage.iface`, `changesets.stage.fwrule`,

@@ -277,6 +277,12 @@ There is **one privileged internal identity**: a PVE API token `vnprox@pve!daemo
 
 The frontend renders an Apply button disabled when it locally computes that approval is required and missing (`web/src/changesets/approvalGate.ts`) — purely an affordance; the server's own refusal above is the actual enforcement, and a build that skipped rendering the disabled state (or a raw API/`vnproxctl` call bypassing the SPA entirely) would still be refused identically. `planning/reports/T-402.md` flagged a prior instance of capability enforcement (`sdnWrite`) that lived only in the frontend, disabled-affordance-only with no server-side per-op check — deliberately not repeated here: this gate's enforcement is server-side first, the disabled button second.
 
+**Proposing a changeset to git (T-2702, addition).** `POST /changesets/{id}/propose` is the daemon's only outbound *write* to a third-party host. Three properties bound it:
+
+- **Its own credential, of its own scope.** The push token is a separate config key (`[gitsync] push_token_file`) held by a separate object from T-2701's read-only sync token. A deployment that has not set it never reads a write credential off disk and the route answers `501`; the sync path's credential is never widened to cover pushing. The two are separate *types* as well as separate keys — `gitsync.Source` (read) has no write verb and `gitsync.Host` (write) has no fetch verb, so "vnprox never pushes on the sync path" is enforced by the compiler rather than by review.
+- **It is `netWrite` + CSRF, but it is not an apply.** Nothing about the cluster changes and the changeset itself is not mutated (the propose path's change-engine seam has exactly one method, `Get`). It requires `netWrite` because it publishes the operator's intent to a shared repository under the daemon's credential, which is a mutation of something — just not of the network.
+- **It opens a pull request and stops.** There is no merge, approve, gate or poll — not as a route, not as a method on the host client. What happens to the request comes back through the ordinary git spec sync, which stages a draft a human applies through the change engine. The credential appears in none of what it writes: not the branch name, the commit message, the pull-request body, the audit row, the log, or any error.
+
 ## Transport
 
 - TLS everywhere; no plaintext listener. Reuses the node's PVE certificate by default (see architecture §9), so admins keep one cert story.
