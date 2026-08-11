@@ -28,6 +28,35 @@ functionality is folded into `[2.0.0]`.
 
 ### Added
 
+- **The Hub has a registry to talk to — and it is a signed file, not a service.** vnprox shipped a
+  registry *client* with nothing on the other end. T-2803 supplies the other end: the index format,
+  the tooling that produces it (`vnproxctl hub publish|index|revoke|verify|keygen`), and the
+  verification that makes it binding. The registry is a static directory — `index.json` next to an
+  artifact tree — on object storage or GitHub Pages, exactly the posture the apt repository already
+  uses. There is nothing new to run, and no new port.
+
+  What the signature over the catalog buys you, given artifacts were already signed:
+
+  - **A corrupted catalog gives you nothing, not part of something.** An index that is unsigned,
+    truncated, edited, or signed by a key you did not pin fails as a whole; the Hub reports the
+    registry as unavailable rather than showing you a catalog someone else edited. Set the
+    registry's fingerprint in `[hub] index_signers` to turn this on.
+  - **Revocation works when the network does not.** A withdrawn blueprint or plugin — one version,
+    every version, or everything a compromised publisher key ever signed — is refused both in the
+    catalog and at download, decided from the index you already fetched. No live revocation call
+    exists to be blocked, spoofed, or simply unreachable at the moment it matters.
+  - **It cannot make anything trusted.** The index signature is authority over the *catalog* only.
+    An artifact from a signer you have not trusted still stops at the same explicit trust step it
+    always did, and the capability scope a plugin declares is still shown to you before you confirm
+    and still enforced after.
+
+  Publishing is deliberately two-handed: a publisher signs their own artifact and opens a pull
+  request; a reviewer — who does not hold the publisher's key — indexes it. Publishing the same
+  artifact twice yields one entry and does not even rewrite the published file; publishing
+  *different* bytes under a version that already exists is refused rather than swapped. The review
+  checklist, the key handling, and the index-key rotation procedure are written down in
+  `docs/hub-registry.md` before the first submission rather than after.
+
 - **A change you made in the GUI can now be proposed to the repository it belongs in.** If your
   intent lives in git (`[gitsync]`), a change staged in vnprox was, until now, a change made outside
   your system of record: the cluster moved, the repository did not, and the next sync reported your

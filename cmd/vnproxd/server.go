@@ -28,6 +28,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/ha"
 	"github.com/bgovanlu/vnprox/internal/host"
 	"github.com/bgovanlu/vnprox/internal/hub"
+	"github.com/bgovanlu/vnprox/internal/hubreg"
 	"github.com/bgovanlu/vnprox/internal/ingress"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/ipam"
@@ -295,9 +296,23 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// off by default). A malformed URL is logged and the hub stays off rather
 	// than failing daemon startup. The vetted-signer set drives only the
 	// informational badge; it never gates an install.
+	//
+	// T-2803: when [hub] index_signers is configured, the client's existing
+	// WithHTTPClient seam carries the registry gate — the index must verify
+	// against one of those signers before the client sees a single entry, and
+	// the revocations inside that signed index are enforced on every artifact
+	// fetch with no further network access. internal/hub itself is unchanged;
+	// see internal/hubreg/gate.go for why the seam, not the client, is the
+	// right place for this.
 	var hubClient *hub.Client
 	if regURL := cfg.Hub.RegistryURL; regURL != "" {
-		hc, herr := hub.NewClient(regURL)
+		var opts []hub.Option
+		if len(cfg.Hub.IndexSigners) > 0 {
+			opts = append(opts, hub.WithHTTPClient(hubreg.NewGate(nil, cfg.Hub.IndexSigners)))
+		} else {
+			logger.Warn("blueprint & plugin hub: registry index signature verification is OFF ([hub] index_signers is empty) — the catalog is unauthenticated and published revocations are not enforced (artifact signatures and the trust store still gate every install)", "url", regURL)
+		}
+		hc, herr := hub.NewClient(regURL, opts...)
 		if herr != nil {
 			logger.Warn("blueprint & plugin hub disabled: invalid registry URL", "url", regURL, "err", herr)
 		} else {

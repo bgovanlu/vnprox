@@ -87,6 +87,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runPolicy(args[1:], stdout, stderr)
 	case "gitsync":
 		return runGitSync(args[1:], stdout, stderr)
+	case "hub":
+		return runHub(args[1:], stdout, stderr)
 	case "apply":
 		return runApply(args[1:], stdout, stderr)
 	default:
@@ -158,6 +160,12 @@ HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
                                          commit, its last plan, and why its draft changeset is
                                          open. Read-only: there is no sync-now or apply verb,
                                          because a sync draft is applied like any other changeset
+
+  vnproxctl hub <subcommand>           Publish to, and audit, the signed blueprint/plugin
+                                       registry the Hub browses (T-2803): publish | index |
+                                       revoke | verify | keygen. Local file work only — the
+                                       registry is static hosting, not a service. Run
+                                       "vnproxctl hub" for the subcommand reference.
 
   vnproxctl --version                  Print the vnproxctl version
   vnproxctl certs                      Cluster TLS certificate inventory and problems

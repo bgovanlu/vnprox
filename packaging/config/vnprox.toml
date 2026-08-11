@@ -73,10 +73,21 @@ snapshot_pin_days = 7
 # Blueprint & plugin hub (T-1705) — an opt-in client for a public registry of
 # signed blueprint bundles and SDK plugins. Off by default: leave registry_url
 # empty (or this whole section commented) and the hub routes are not mounted.
-# vnprox ships the client only; the registry service (index + artifacts) lives
-# elsewhere. Installs still pass the full Ed25519 signature + trust-store gate.
+# The registry is static hosting (index.json + an artifact tree), not a service
+# — see docs/hub-registry.md. Installs still pass the full Ed25519 signature +
+# trust-store gate.
 # [hub]
 # registry_url = "https://hub.example.com/vnprox"
 # vetted_signers = []   # hex signer fingerprints shown a "vetted" badge; purely
 #                       # informational — never bypasses the per-install trust
 #                       # decision (a vetted-but-untrusted signer still prompts)
+# index_signers = []    # T-2803: fingerprints allowed to sign the registry's
+#                       # index.json. Set this whenever registry_url is set: with
+#                       # it, an index that is unsigned, corrupted, or signed by
+#                       # another key is refused whole (no partial catalog), and
+#                       # the revocations published inside the signed index are
+#                       # enforced offline on every artifact fetch. Leaving it
+#                       # empty logs a warning at startup and keeps the pre-T-2803
+#                       # behaviour: an unauthenticated catalog, no revocation.
+#                       # It says who may publish the CATALOG — it never makes an
+#                       # artifact trusted.
