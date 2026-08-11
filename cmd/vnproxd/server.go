@@ -37,6 +37,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/neighbor"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/plugin"
+	"github.com/bgovanlu/vnprox/internal/reconcile"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
 	"github.com/bgovanlu/vnprox/internal/tenant"
@@ -1087,6 +1088,17 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return fmt.Errorf("initializing changeset proposals: %w", err)
 	}
 
+	// T-2703: the two symmetric answers to a drift finding. It holds the
+	// drift service only as a pair of lookups by finding id, a change engine
+	// it can only STAGE through, and the proposer above — so nothing on this
+	// path can apply, and nothing on it runs on a timer.
+	driftReconciler := reconcile.New(reconcile.Config{
+		Findings: driftSvc,
+		Stager:   changeSvc,
+		Adopter:  gitSyncProposer,
+		Logger:   logger,
+	})
+
 	// T-505: the firewall log viewer's cluster-wide tailer/correlator.
 	// Built before peerSrv below so the same local log source
 	// (fwlogSource) backs both this daemon's own polling (fwlogSvc) and
@@ -1405,6 +1417,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// way. It opens a pull request and stops; nothing here merges, gates
 		// or polls one.
 		ChangesetProposer: gitSyncProposer,
+		DriftReconciler:   driftReconciler,
 		// T-1007: GET /history/events merges the same audit_log (narrowed to
 		// the changeset-lifecycle action set) with finding_events.
 		History:              auditRepo,
