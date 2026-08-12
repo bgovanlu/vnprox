@@ -26,7 +26,10 @@ Toolchain note: the module requires Go 1.25+ (`go 1.25.0` in go.mod). A host wit
 
 ## Repo layout
 
-As specified in architecture §2. Additional top-level: `Makefile`, `packaging/`, `testdata/` (shared fixtures).
+As specified in architecture §2. Additional top-level: `Makefile`, `packaging/`, `testdata/` (shared
+fixtures), `perf/` (T-2506's single budgets file, read by both a Go test and a Playwright spec —
+repository-level data rather than either language's, which is why it is not under `internal/` or
+`web/`).
 
 ## Make targets (contract — CI and agents rely on these)
 
@@ -42,6 +45,7 @@ make record     # record a real PVE cluster's API responses into cassettes (T-25
 make record-mock# re-record the checked-in mock cassettes after a pvemock handler change
 make ports      # every port this repo's tooling binds, and what is holding them now
 make soak       # resource-leak gate: real daemon + pvemock under seeded churn, fails on trend
+make perf       # performance budget gate against perf/budgets.json (also runs inside make check)
 ```
 
 ### The soak / resource-leak gate (`make soak`, T-2504)
@@ -77,6 +81,57 @@ under the `soakleak` build tag, which nothing this repo ships, tests, lints, or 
 `table.soak_leak_unbounded`. `LEAK=flat` allocates 500 goroutines and 64 MiB once at startup and
 holds them, and **must pass** — that is the proof the gate measures slope rather than magnitude.
 Measured results for all four runs are in [`performance.md`](performance.md) §12.
+
+### The performance budget gate (`make perf`, T-2506)
+
+`docs/performance.md` used to state render and collection budgets that nothing failed on, which
+makes them aspirations with a document. The budgets now live in **one machine-readable file**,
+[`perf/budgets.json`](../perf/budgets.json), read by both measurement sites:
+
+| Site | Reads it via | Runs in | Budgets |
+|---|---|---|---|
+| `internal/collect/sim_bench_test.go` | `internal/perfbudget` | `make check`, `make perf` | `sim.*` |
+| `web/e2e/scale.spec.ts` | `web/perf/budgets.ts` | `make e2e` | `topology.scale.*` |
+
+Three properties are worth knowing before you touch it:
+
+- **It compares against the budget, never against the previous run.** A drift that never regresses
+  5% in one step still fails once it crosses the line. `perfbudget.Evaluate` is not given a previous
+  run at all, so there is nothing a step-over-step comparison could be made against.
+- **Every verdict is a median of N**, with N declared per budget in the file (5 for the Go budgets,
+  3 for the browser ones). A gating budget may not declare fewer than 3 — `Validate` rejects the
+  file. One slow sample is noise and does not move a median.
+- **Every budget's headroom is printed on every run, passing ones included**, and a budget that
+  stops being measured is a failure (`perfbudget.Missing`) rather than a silent pass.
+
+**A budget is host-relative, and the file says so.** `T-2505-input-02` is the evidence: the same
+commit passes here and fails on a hosted runner with no code difference, because this box is 32-core
+and the runner is 2–4. So each budget declares its normalisation — `calibrated` (a fixed Go CPU
+kernel measured on the machine doing the measuring, against the reference host's 42.3 ms),
+`cores` (T-2505's own `availableParallelism` ladder, shared with `web/playwright.config.ts`'s
+`slowFactor`), or `absolute` (which **may not gate**; `Validate` refuses). Both factors are floored
+at 1.0, so **normalisation only ever loosens**: the documented limit is the tightest the gate ever
+gets, and a slower machine trades sensitivity for not producing false failures. See
+[`performance.md`](performance.md) §13.2 for the full consequence, and §13.8 for what this costs.
+
+**The document and the file cannot disagree.** `performance.md` §13.3 carries the budget table
+between `<!-- perf-budgets:begin -->` markers, and `internal/perfbudget`'s
+`TestDocTableMatchesBudgets` compares it against `perf/budgets.json` on every `make check`, in both
+directions — an edit to either side alone reddens the tree. **To change a budget: edit
+`perf/budgets.json` (including its `why`, which must say where the number came from) and the table
+in §13.3 together.**
+
+**The gate ships with fixtures that make it fire**, the same arrangement as `make soak LEAK=`:
+`internal/sim/perfslow_on.go` puts real extra work inside `Engine.Simulate` and is compiled only
+under the `perfslow` build tag, which nothing this repo ships, tests, lints or packages ever sets.
+
+```
+make perf                      measure and gate; prints the headroom table
+make perf PERF_SLOW=always     every sample slowed — must FAIL, naming sim.simulate_10k_wall_ms
+make perf PERF_SLOW=outlier    one of five samples slowed — must PASS
+```
+
+Measured results for all three are in [`performance.md`](performance.md) §13.7.
 
 ### Ports
 

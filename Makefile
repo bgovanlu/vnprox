@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve openapi record record-mock soak e2e e2e-whole e2e-trend
+.PHONY: build dev test lint check deb mockpve openapi record record-mock soak perf e2e e2e-whole e2e-trend
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -120,6 +120,38 @@ soak: ## resource-leak gate: real daemon + pvemock under seeded churn, fails on 
 		-soak.seed=$(SOAK_SEED) \
 		-soak.fixture=$(SOAK_FIXTURE) \
 		-soak.artifacts=$(SOAK_ARTIFACTS)
+
+# --- perf (T-2506) ---------------------------------------------------------
+#
+# The performance regression budget gate. Every number it enforces lives in
+# perf/budgets.json — the single source both this Go site and
+# web/e2e/scale.spec.ts read — and docs/performance.md §13 states the same
+# numbers, checked against the file on every `make check` so the two cannot
+# disagree.
+#
+# The gate compares against the BUDGET, never against the previous run, and
+# every measurement is a median of the N runs the budget itself declares.
+# Every budget's headroom is printed on every run, passing ones included.
+#
+# This target is the Go half; it is the same test `make check` already runs, so
+# `make perf` is for reading the headroom table and for driving the fixtures
+# below. The browser half runs inside `make e2e`.
+#
+# PERF_SLOW selects one of the deliberate slow-path fixtures
+# (internal/sim/perfslow_on.go), compiled in ONLY under the `perfslow` build
+# tag this target adds for them — no shipped build contains them.
+# `always` must FAIL the gate, naming sim.simulate_10k_wall_ms; `outlier`
+# slows exactly one of the five samples and must PASS, which is what proves
+# the median is doing the noise rejection.
+PERF_SLOW        ?=
+PERF_SLOW_PASSES ?=
+
+perf: ## performance budget gate against perf/budgets.json (PERF_SLOW=always|outlier)
+	@echo ">> perf: budgets are perf/budgets.json; docs/performance.md §13 states the same numbers"
+	@if [ -n "$(PERF_SLOW)" ]; then echo ">> perf: SLOW FIXTURE '$(PERF_SLOW)' ACTIVE (build tag: perfslow) — always must FAIL, outlier must PASS"; fi
+	VNPROX_PERF_SLOW=$(PERF_SLOW) VNPROX_PERF_SLOW_PASSES=$(PERF_SLOW_PASSES) $(GO) test ./internal/collect/ \
+		$(if $(PERF_SLOW),-tags perfslow,) \
+		-run '^TestPerfBudgets_Sim$$' -count=1 -v
 
 # --- openapi -------------------------------------------------------------
 

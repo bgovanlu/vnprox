@@ -1,0 +1,99 @@
+{
+  "comment": "T-2506. THE performance budgets. Both measurement sites read this file and nothing else: internal/collect/sim_bench_test.go (Go, via internal/perfbudget) and web/e2e/scale.spec.ts (Playwright, via web/perf/budgets.ts). docs/performance.md section 13 states the same numbers in prose and internal/perfbudget's TestDocTableMatchesBudgets fails `make check` if the two ever disagree, in either direction. A budget is NOT allowed to be an unnormalised wall-clock number and also gate: see reference_host.notes.",
+  "reference_host": {
+    "name": "vnprox dev host (the machine every absolute number below was measured on)",
+    "cpu": "QEMU Virtual CPU version 2.5+, 32 logical CPUs",
+    "cores": 32,
+    "memory": "62 GB",
+    "os": "Linux 6.12.90+deb13-amd64, go1.26.5 linux/amd64",
+    "measured": "2026-08-12",
+    "notes": "T-2505-input-02 is why this block exists. The same commit (4968bf3) is 89 passed / 0 failed on this host and 87 / 2 on a GitHub-hosted runner, with no code difference at all — this box is 32-core/62 GB and a hosted ubuntu-latest runner is 2-4 core/~16 GB. So every limit below is qualified by THIS machine, and every budget declares how it is normalised for another one: `calibrated` measures internal/perfbudget's fixed CPU kernel here and stretches the limit by how much slower this machine is than the reference; `cores` applies T-2505's own availableParallelism ladder (x2.5 under 4 cores, x1.5 under 8, unchanged above), the same ladder web/playwright.config.ts already scales its deadlines by; `absolute` does not normalise and is therefore only ever report-only. Both factors are floored at 1.0, so normalisation only ever LOOSENS: the numbers below are the tightest the gate ever gets, this host keeps full sensitivity, and a slower machine trades sensitivity for not producing false failures. The measurements themselves were taken with two sibling agent tasks active on the box (load average ~1.4 of 32), so they are an upper bound rather than a best case; re-measuring on a quiet host would let several limits tighten."
+  },
+  "calibration": {
+    "workload": "fnv1a-map-mix-v1",
+    "reference_ns": 42300000,
+    "samples": 5,
+    "max_factor": 8,
+    "notes": "Median of 5 runs of internal/perfbudget's calibrationKernel after a 400 ms warm-up, on the reference host, 2026-08-12: 41.8 / 41.8 / 42.1 / 42.6 / 43.0 / 42.6 ms across six back-to-back calibrations. The warm-up is not ceremony: the same kernel measures ~41 ms for its first four runs and ~21 ms thereafter when the GC is not forced between them, a 2x swing that is the CPU frequency governor ramping. max_factor 8 bounds how far a slow machine may stretch a budget; past that the measurement is not worth trusting and the report says the factor was clamped rather than passing everything silently."
+  },
+  "budgets": [
+    {
+      "id": "sim.simulate_10k_wall_ms",
+      "title": "10,000 path simulations over the EVPN fixture",
+      "site": "internal/collect/sim_bench_test.go",
+      "metric": "wall clock of 10,000 sim.Engine.Simulate calls over testdata/clusters/evpn-lab.yaml, engine built once outside the timed loop, request pool seeded at 42",
+      "unit": "ms",
+      "limit": 150,
+      "direction": "max",
+      "samples": 5,
+      "scaling": "calibrated",
+      "enforcement": "gate",
+      "why": "T-503 AC4's product bar was '10k simulations in well under 5s'. Measured on the reference host on 2026-08-12 the real number is a median of ~75 ms across twelve runs (70-84 ms), so the 5,000 ms bar had 67x headroom and could not have caught anything. 150 ms is 2x the measured median: it still clears the product bar by 33x, and it turns the assertion into a gate that catches a 2x regression instead of a 67x one. The spread of the underlying measurement is about +-10%, which is what stops the limit being tighter."
+    },
+    {
+      "id": "sim.engine_build_us",
+      "title": "sim engine index build",
+      "site": "internal/collect/sim_bench_test.go",
+      "metric": "mean microseconds per sim.NewEngine call over testdata/clusters/evpn-lab.yaml, aggregated over 100 builds per sample",
+      "unit": "us",
+      "limit": 350,
+      "direction": "max",
+      "samples": 5,
+      "scaling": "calibrated",
+      "enforcement": "gate",
+      "why": "The index build is the cost every simulation request pays once and no per-call benchmark sees. Measured 124-194 us/build (median ~165) over ten 100-build samples on the reference host, 2026-08-12; 350 us is ~2.1x that median. Aggregated over 100 builds per sample because one build is ~0.16 ms, where the clock's resolution and a single GC cycle dominate the measurement."
+    },
+    {
+      "id": "topology.scale.page_render_ms",
+      "title": "scale-lab topology page render",
+      "site": "web/e2e/scale.spec.ts",
+      "metric": "navigation to /topology on an authenticated session until all 8 scale-lab nodes' vmbr0 bridge buttons have mounted in the Graph view, against testdata/clusters/scale-lab.yaml with the collectors already converged",
+      "unit": "ms",
+      "limit": 12000,
+      "direction": "max",
+      "samples": 3,
+      "scaling": "cores",
+      "enforcement": "gate",
+      "why": "Measured on the reference host on 2026-08-12 against the real scale stack: 3963 / 3173 / 3254 ms, median 3254 (docs/performance.md section 3 recorded ~3.0 s for the wider login-to-rendered path in T-607). Set at 12,000 ms — 3.7x the median — rather than near the measurement because the browser side is where T-2505-input-02's hardware gap actually bit: this is a headless, software-rasterised Chromium sharing a box with the shard's other stacks, and on a 2-core runner the cores ladder stretches this to 30 s. It gates a catastrophic render regression, not a 20% one."
+    },
+    {
+      "id": "topology.scale.v1_pan_zoom_p95_frame_ms",
+      "title": "v1 React Flow pan/zoom p95 frame time at scale",
+      "site": "web/e2e/scale.spec.ts",
+      "metric": "p95 requestAnimationFrame delta during four pan passes and 24 wheel-zoom steps on the v1 React Flow canvas at scale-lab, one gesture round per sample",
+      "unit": "ms",
+      "limit": 90,
+      "direction": "max",
+      "samples": 3,
+      "scaling": "cores",
+      "enforcement": "gate",
+      "why": "Measured on the reference host on 2026-08-12 against the real scale stack: three gesture rounds at p95 33.4 / 50.0 / 50.0 ms, median 50.0, mean 46.6 fps over ~700 sampled frames per round — the same ~50 ms docs/performance.md section 3 recorded for this headless, software-rasterised, GPU-less runner. 90 ms is the headless regression ceiling T-901 chose for the v2 renderer, applied to v1 for the first time: before T-2506 this test asserted only that more than 30 frames were sampled, so a renderer change that halved v1's frame rate would have passed it."
+    },
+    {
+      "id": "topology.scale.v2_pan_zoom_p95_frame_ms",
+      "title": "v2 canvas pan/zoom p95 frame time at scale",
+      "site": "web/e2e/scale.spec.ts",
+      "metric": "p95 requestAnimationFrame delta during four pan passes and 24 wheel-zoom steps on the TopologyCanvasV2 renderer at scale-lab, one gesture round per sample",
+      "unit": "ms",
+      "limit": 90,
+      "direction": "max",
+      "samples": 3,
+      "scaling": "cores",
+      "enforcement": "gate",
+      "why": "This is T-901's headless regression ceiling, previously the hard-coded HEADLESS_REGRESSION_CEILING_MS in scale.spec.ts and now stated here instead. Measured v2 p95 is ~50 ms in this runner (docs/performance.md section 3a), the same as v1, because both are software-rasterised. NOTE: the test that measures it is quarantined under T-2505-followup-01, so this budget is only measured on runs where that test is not skipped."
+    },
+    {
+      "id": "topology.scale.v2_pan_zoom_p95_frame_hardware_ms",
+      "title": "v2 canvas pan/zoom p95 frame time, GPU hardware target",
+      "site": "web/e2e/scale.spec.ts",
+      "metric": "the same p95 requestAnimationFrame delta as topology.scale.v2_pan_zoom_p95_frame_ms, compared against T-901 AC6's hardware target rather than against this runner's headless ceiling",
+      "unit": "ms",
+      "limit": 20,
+      "direction": "max",
+      "samples": 3,
+      "scaling": "absolute",
+      "enforcement": "report",
+      "why": "T-901 AC6's real target, and the number docs/performance.md section 3a spent a correction on. It is absolute and therefore report-only by the rule in internal/perfbudget: this Playwright runner is headless and software-rasterised, where v1 measures the same ~50 ms, so gating on 20 ms would be gating on GPU acceleration the runner does not have. It stays in this file rather than in prose so the headroom against the real target is printed on every run, and so a future GPU-capable runner can flip enforcement to gate by editing one field. Remains needs-hardware-validation."
+    }
+  ]
+}
