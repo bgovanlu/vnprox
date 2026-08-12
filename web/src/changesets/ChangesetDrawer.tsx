@@ -13,6 +13,7 @@ import clsx from "clsx";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
 import type { Finding, Op } from "../api/types";
+import { useSession } from "../api/useSession";
 import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
 import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { canReview, computeDrawerView, isDraftEditable } from "./drawerMachine";
@@ -28,6 +29,7 @@ import { useDrawerActions } from "./useDrawerActions";
 import { CountdownBanner } from "./CountdownBanner";
 import { FixButton } from "./FixButton";
 import { LockNoticeBanner } from "./LockNoticeBanner";
+import { PresenceIndicator } from "./PresenceIndicator";
 import { ReviewApplyScreen } from "./ReviewApplyScreen";
 
 function findingsForOp(findings: Finding[], op: Op): Finding[] {
@@ -62,6 +64,11 @@ export function ChangesetDrawer() {
 
   const { data: changeset } = useChangesetQuery(activeId);
   const { data: resumable } = useResumableDraftsQuery();
+  // T-2805: the presence sentence says "N others", so it needs to know which
+  // viewer is this session. Undefined (session not yet loaded) over-counts by
+  // one rather than under-counting — see PresenceIndicator's own comment.
+  const { data: session } = useSession();
+  const currentUser = session?.user.username;
   const discardMutation = useDiscardChangesetMutation();
   const { replaceOps } = useDrawerActions();
   const { toast } = useToast();
@@ -177,6 +184,9 @@ export function ChangesetDrawer() {
                 the body because it is about the ops listed below it — and it
                 disables nothing: the ops are already staged. */}
             {changeset && <LockNoticeBanner changeset={changeset} />}
+            {/* T-2805: mounting this declares presence on the changeset and
+                renders "who else is here" — nothing at all when nobody is. */}
+            {changeset && <PresenceIndicator changesetId={changeset.id} currentUser={currentUser} />}
             {otherDrafts.length > 0 && (
               <div>
                 <button
