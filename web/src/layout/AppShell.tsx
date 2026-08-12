@@ -12,6 +12,7 @@ import { MgmtWizardHost } from "../mgmt/MgmtWizardHost";
 import { MgmtProtectedRefreshPrompt } from "../mgmt/MgmtProtectedRefreshPrompt";
 import { ConnectClustersWizardHost } from "../wireguard/ConnectClustersWizardHost";
 import { HelpPanel } from "../help/HelpPanel";
+import { AssistantPanel } from "../assistant/AssistantPanel";
 import { useHelpForRoute } from "../help/useHelpForRoute";
 
 /** Top-level layout for every authenticated route: nav rail + top bar
@@ -84,6 +85,10 @@ export function AppShell() {
       </div>
       <ShortcutHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
       <HelpPanel />
+      {/* T-2808: the in-app assistant over the MCP read tools. Mounted once,
+       * app-wide, like HelpPanel — it is opened from the top bar and holds
+       * no conversation state anywhere but its own component state. */}
+      <AssistantPanel />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <ChangesetDrawer />
       <MgmtWizardHost />

@@ -800,3 +800,80 @@ func TestBundleName_IsNotABackupName(t *testing.T) {
 		t.Fatal("CONTROL FAILED: a backup archive name does not match the retention pattern either")
 	}
 }
+
+// TestBundle_CarriesNoAssistantTranscript is T-2808 AC6's support-bundle
+// half — "prompt content and answers are excluded from logs and support
+// bundles by default" — asserted through THIS file's existing machinery
+// rather than by a parallel scan of its own, the way T-2804's incident
+// export was.
+//
+// The reuse is deliberate and load-bearing. Two facts already proven here
+// do most of the work:
+//
+//   - TestBundle_AC2_EveryProducedEntryIsDeclared: a bundle contains only
+//     entries bundleEntrySchema declares, in both directions.
+//   - TestBundle_NeverCarriesTheStore: the app-owned database is never in
+//     the archive.
+//
+// So "no assistant transcript is in a bundle" reduces to "no DECLARED entry
+// is one", which is what this test asserts — plus a real archive built from
+// the real fixture, whose entry names must not name one either.
+//
+// The deeper reason it holds is upstream of this package: the in-app
+// assistant (T-2808) has no daemon data path at all. The browser talks to
+// the operator's own model backend directly, so vnproxd never receives a
+// prompt or an answer, never logs one, and has none to collect. That
+// premise is asserted where it lives, over the daemon's own route table:
+// internal/api's TestAssistant_NoDaemonRouteAcceptsPromptContent.
+func TestBundle_CarriesNoAssistantTranscript(t *testing.T) {
+	ctx := context.Background()
+
+	// Words a stored prompt/answer document would plausibly be named or
+	// described with. A bar against a future edit, not a claim about the
+	// declarations as they stand.
+	forbidden := []string{"assistant", "prompt", "transcript", "conversation", "chat"}
+
+	// --- the declarations ------------------------------------------------
+	if len(bundleEntrySchema) < 8 {
+		t.Fatalf("bundleEntrySchema declares only %d entries; this scan is not reading the real inventory",
+			len(bundleEntrySchema))
+	}
+	if _, ok := entryDeclFor(entryBundleLog); !ok {
+		t.Fatalf("bundleEntrySchema does not declare %q — the scan below is reading the wrong table",
+			entryBundleLog)
+	}
+	for _, d := range bundleEntrySchema {
+		haystack := strings.ToLower(d.Name + " " + d.Doc + " " + d.About)
+		for _, bad := range forbidden {
+			if strings.Contains(haystack, bad) {
+				t.Errorf("bundleEntrySchema declares %q, which reads like an assistant transcript (%q).\n\n"+
+					"T-2808's assistant keeps prompts and answers in the browser; nothing about them "+
+					"reaches the daemon, so nothing about them belongs in a support bundle a user "+
+					"attaches to a forum post.", d.Name, bad)
+			}
+		}
+	}
+
+	// --- and a real archive ----------------------------------------------
+	for _, prod := range bundleProducers() {
+		bf := newBundleFixture(t)
+		res, err := Bundle(ctx, prod.options(bf, t, filepath.Join(t.TempDir(), "bundles-"+prod.name)))
+		if err != nil {
+			t.Fatalf("Bundle(%s): %v", prod.name, err)
+		}
+		// Non-vacuity: the archive really was produced and really has
+		// content, so "no assistant entry" is an observation about a bundle
+		// rather than about an empty list.
+		if len(res.Manifest.Entries) < 8 {
+			t.Fatalf("the %s bundle has only %d entries; this check would be trivially true",
+				prod.name, len(res.Manifest.Entries))
+		}
+		for _, e := range res.Manifest.Entries {
+			for _, bad := range forbidden {
+				if strings.Contains(strings.ToLower(e.Name), bad) {
+					t.Errorf("the %s bundle contains %q, which names assistant/prompt material", prod.name, e.Name)
+				}
+			}
+		}
+	}
+}
