@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"nhooyr.io/websocket"
@@ -74,6 +76,26 @@ const (
 	wsReadLimit = 64 * 1024
 )
 
+// ConnObserver is notified about the lifecycle of live /api/ws
+// connections: when one is accepted (with the identity the middleware chain
+// already resolved), when it changes its subscription set, and when it goes
+// away.
+//
+// It exists for T-2805's presence and advisory locks, which need exactly two
+// facts this hub is the only place that knows: which connections currently
+// declare interest in a `presence:<scope>` topic, and — the one that matters
+// — the instant a connection DIES. A lock released only by an explicit
+// endpoint call is a lock a closed laptop holds forever, so the disconnect
+// has to be observable rather than polled for.
+//
+// Implementations must not block: every method is called from the
+// connection's own goroutine, on the accept and teardown paths.
+type ConnObserver interface {
+	ConnOpened(connID, username, sessionID string)
+	ConnTopics(connID string, topics []string)
+	ConnClosed(connID string)
+}
+
 // Hub is the /api/ws server: it tracks connected clients' subscription
 // topics and fans out topology.delta events from the collector's
 // inventory.Delta callback (docs/api.md's WebSocket section).
@@ -81,7 +103,25 @@ type Hub struct {
 	log       *slog.Logger
 	conns     map[*wsConn]struct{}
 	eventSink func([]byte)
+	observer  ConnObserver
+	nextConn  atomic.Uint64
 	mu        sync.Mutex
+}
+
+// SetConnObserver registers o to receive connection lifecycle callbacks. A
+// nil observer (the default) means nothing observes them, which is exactly
+// how this hub behaved before T-2805 — the same optional-hook convention
+// SetEventSink above already follows.
+func (h *Hub) SetConnObserver(o ConnObserver) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.observer = o
+}
+
+func (h *Hub) connObserver() ConnObserver {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.observer
 }
 
 // NewHub constructs an empty Hub. log defaults to slog.Default() if nil.
@@ -114,10 +154,15 @@ func (h *Hub) SetEventSink(fn func([]byte)) {
 // wsConn is one accepted WebSocket client: its own bounded outbound queue
 // and current subscription set.
 type wsConn struct {
-	ws        *websocket.Conn
-	send      chan []byte
-	topics    map[string]bool
-	tokenID   string
+	ws       *websocket.Conn
+	send     chan []byte
+	topics   map[string]bool
+	tokenID  string
+	observer ConnObserver
+	// id is this connection's hub-unique identifier, handed to the
+	// ConnObserver so presence can attribute (and, on close, retract) a
+	// subscription set without holding a pointer to the connection itself.
+	id        string
 	dropped   int64
 	topicsMu  sync.Mutex
 	canEvents bool
@@ -133,13 +178,22 @@ type wsConn struct {
 // have to parse out of an otherwise ack-less protocol.
 func (c *wsConn) setTopics(topics []string) {
 	c.topicsMu.Lock()
-	defer c.topicsMu.Unlock()
+	accepted := make([]string, 0, len(topics))
 	c.topics = make(map[string]bool, len(topics))
 	for _, t := range topics {
 		if t == topicEvents && !c.canEvents {
 			continue
 		}
 		c.topics[t] = true
+		accepted = append(accepted, t)
+	}
+	c.topicsMu.Unlock()
+
+	// The observer is told the ACCEPTED set, not the requested one, so a
+	// topic this connection was refused (the automation-gated "events"
+	// topic) can never register presence either.
+	if c.observer != nil {
+		c.observer.ConnTopics(c.id, accepted)
 	}
 }
 
@@ -174,16 +228,30 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var tokenID string
+	var tokenID, username, sessionID string
 	var canEvents bool
 	if id, ok := auth.IdentityFromContext(r.Context()); ok {
 		tokenID = id.TokenID
+		username = id.Username
+		sessionID = id.SessionID
 		canEvents = id.HasCap("", auth.CapAutomation)
 	}
 
-	conn := &wsConn{ws: ws, send: make(chan []byte, wsSendQueueSize), topics: map[string]bool{}, tokenID: tokenID, canEvents: canEvents}
+	observer := h.connObserver()
+	connID := strconv.FormatUint(h.nextConn.Add(1), 10)
+	conn := &wsConn{
+		ws: ws, send: make(chan []byte, wsSendQueueSize), topics: map[string]bool{},
+		tokenID: tokenID, canEvents: canEvents, id: connID, observer: observer,
+	}
 	h.add(conn)
 	defer h.remove(conn)
+	if observer != nil {
+		observer.ConnOpened(connID, username, sessionID)
+		// T-2805 AC3: this runs on EVERY exit from ServeWS — a clean close,
+		// a read error, a killed socket, a cancelled server context — which
+		// is the whole point. The disconnect is the release trigger.
+		defer observer.ConnClosed(connID)
+	}
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()

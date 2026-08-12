@@ -125,3 +125,11 @@ func (s *Service) CloseByTokenID(id string) int {
 func (s *Service) SetEventSink(fn func([]byte)) {
 	s.hub.SetEventSink(fn)
 }
+
+// SetConnObserver registers o as the Hub's T-2805 connection-lifecycle
+// observer (see Hub.SetConnObserver) — cmd/vnproxd wires this to
+// internal/presence.Service, which is how a dropped connection releases the
+// advisory locks its session held.
+func (s *Service) SetConnObserver(o ConnObserver) {
+	s.hub.SetConnObserver(o)
+}

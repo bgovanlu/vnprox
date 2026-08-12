@@ -1178,6 +1178,72 @@ export interface Changeset {
    * computes. */
   comments?: ChangesetComment[];
   approval?: ApprovalState;
+  /** T-2805: the advisory-lock warning for a staging request. Present only
+   * on `POST /changesets` and `PUT /changesets/{id}`, and only when there is
+   * something to warn about — an uncontended staging response omits it
+   * entirely. It is a WARNING and nothing else: the changeset it arrives on
+   * was already created or updated, and no route refuses anything because of
+   * a lock. */
+  locks?: ChangesetLocks;
+}
+
+/** One advisory lock a staged draft holds on an entity (docs/api.md's
+ * "Advisory locks and presence"). `holder` is absent for a caller without
+ * the `audit` capability — that an entity is spoken for is an ordinary read;
+ * WHO spoke for it is an attribution. */
+export interface EntityLock {
+  ref: string;
+  changesetId: string;
+  holder?: string;
+  acquiredAt: number;
+  expiresAt: number;
+  /** Whether the requesting session holds it. Always answerable — "is this
+   * me?" attributes nothing to anyone else. */
+  mine: boolean;
+}
+
+/** The `locks` object on a staging response (T-2805). `held` are other
+ * operators' claims this staging stepped around; `overridden` are the ones
+ * it deliberately took over (each with a `changeset.lock_override` audit
+ * row). */
+export interface ChangesetLocks {
+  held?: EntityLock[];
+  overridden?: EntityLock[];
+}
+
+/** `GET /locks` (T-2805). */
+export interface LocksResponse {
+  locks: EntityLock[];
+}
+
+/** One person present on a presence scope. `sessions` counts that person's
+ * distinct sessions, so a second browser tab is not a second colleague. */
+export interface PresenceViewer {
+  user: string;
+  since: number;
+  sessions: number;
+}
+
+/** One scope's presence (T-2805). `viewers` is absent for a caller without
+ * the `audit` capability; `count` is always present, because a count is not
+ * an identity. */
+export interface PresenceScope {
+  scope: string;
+  viewers?: PresenceViewer[];
+  count: number;
+}
+
+/** `GET /presence` (T-2805). */
+export interface PresenceResponse {
+  scopes: PresenceScope[];
+}
+
+/** The `presence.changed` WS event (T-2805). It carries a count and never an
+ * identity — see docs/api.md's WebSocket section for why that is structural
+ * rather than a policy the client could work around. */
+export interface PresenceChangedEvent {
+  scope: string;
+  count: number;
 }
 
 /** One review comment (docs/api.md's changesets section, T-2003):
@@ -1267,6 +1333,11 @@ export interface UnattendedRevert {
 export interface CreateChangesetRequest {
   title: string;
   ops: Op[];
+  /** T-2805: take over another operator's advisory lock on an entity this
+   * changeset touches. Omitting it leaves their claim alone and returns it
+   * in the response's `locks.held`; the changeset is staged either way. Each
+   * takeover is audited server-side. */
+  lockOverride?: boolean;
 }
 
 /** PUT /changesets/{id} body — `title` is an accepted-but-undocumented
@@ -1274,6 +1345,8 @@ export interface CreateChangesetRequest {
 export interface UpdateChangesetRequest {
   title?: string;
   ops: Op[];
+  /** T-2805: see CreateChangesetRequest.lockOverride. */
+  lockOverride?: boolean;
 }
 
 /** POST /changesets/{id}/apply body. */

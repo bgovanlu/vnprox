@@ -168,6 +168,7 @@ var versionSeeds = map[int]versionSeed{
 	40: {seedV40, assertV40},
 	41: {seedV41, assertV41},
 	42: {seedV42, assertV42},
+	43: {seedV43, assertV43},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1489,10 +1490,83 @@ func assertV42(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 43 (0043_digest_schedules.sql, digest_schedules +
-// digest_runs — T-2807) has no versionSeeds entry because it is the current
-// latest, not a "prior" version any fixture in this file freezes at — its own
-// forward application (as part of every case's migrate() call to latest) is
-// exercised by every case above, and TestOpen_CreatesAllTables (store_test.go)
-// exercises it from a fresh database. The next migration to land becomes the
-// new latest and picks up a version 43 entry in versionSeeds at that time.
+func seedV43(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// T-2807's digest schedule and the run that is the BASELINE for the next
+	// digest. Both matter across a migration for the same reason: 0043's own
+	// comment makes `digest_runs` the only record of what the previous digest
+	// said, so a lossy rebuild that dropped a run row would silently turn the
+	// next digest's delta into a delta against nothing — and one that dropped
+	// the schedule row would silently stop digests entirely. posture_overall
+	// is seeded as the -1 not-scored sentinel on one run and a real score on
+	// the other, because the whole point of the sentinel is that the two are
+	// distinguishable.
+	mustExec(t, db, `INSERT INTO digest_schedules (id, enabled, every_sec, rule_ids_json, updated_at, updated_by)
+	                 VALUES ('default', 1, 604800, '["ar-v8"]', 1750000400, 'alice@pam')`)
+	mustExec(t, db, `INSERT INTO digest_runs
+	                 (id, schedule_id, period_start, period_end, generated_at, posture_overall,
+	                  opened_count, closed_count, drift_count, capacity_count, quiet, status, detail)
+	                 VALUES ('dr-v43-first', 'default', 0, 1749395600, 1749395600, -1,
+	                         0, 0, 0, 0, 1, 'delivered', 'nothing to report')`)
+	mustExec(t, db, `INSERT INTO digest_runs
+	                 (id, schedule_id, period_start, period_end, generated_at, posture_overall,
+	                  opened_count, closed_count, drift_count, capacity_count, quiet, status, detail)
+	                 VALUES ('dr-v43', 'default', 1749395600, 1750000400, 1750000400, 72,
+	                         5, 3, 2, 1, 0, 'delivered', 'sent to 1 target')`)
+}
+
+func assertV43(t *testing.T, db *sql.DB) {
+	t.Helper()
+
+	var enabled, everySec int64
+	var ruleIDs, updatedBy string
+	var updatedAt int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT enabled, every_sec, rule_ids_json, updated_at, updated_by
+		 FROM digest_schedules WHERE id = 'default'`).
+		Scan(&enabled, &everySec, &ruleIDs, &updatedAt, &updatedBy); err != nil {
+		t.Errorf("digest_schedules row lost across migration: %v", err)
+	} else if enabled != 1 || everySec != 604800 || ruleIDs != `["ar-v8"]` ||
+		updatedAt != 1750000400 || updatedBy != "alice@pam" {
+		t.Errorf("digest_schedules = (%d, %d, %q, %d, %q), want the seeded row",
+			enabled, everySec, ruleIDs, updatedAt, updatedBy)
+	}
+
+	var periodStart, periodEnd, generatedAt, postureOverall int64
+	var opened, closed, drift, capacity, quiet int64
+	var status, detail string
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT period_start, period_end, generated_at, posture_overall,
+		        opened_count, closed_count, drift_count, capacity_count, quiet, status, detail
+		 FROM digest_runs WHERE id = 'dr-v43'`).
+		Scan(&periodStart, &periodEnd, &generatedAt, &postureOverall,
+			&opened, &closed, &drift, &capacity, &quiet, &status, &detail); err != nil {
+		t.Errorf("digest_runs row lost across migration: %v", err)
+	} else if periodStart != 1749395600 || periodEnd != 1750000400 || generatedAt != 1750000400 ||
+		postureOverall != 72 || opened != 5 || closed != 3 || drift != 2 || capacity != 1 ||
+		quiet != 0 || status != "delivered" || detail != "sent to 1 target" {
+		t.Errorf("digest_runs = (%d, %d, %d, %d, %d, %d, %d, %d, %d, %q, %q), want the seeded row",
+			periodStart, periodEnd, generatedAt, postureOverall,
+			opened, closed, drift, capacity, quiet, status, detail)
+	}
+
+	// The not-scored sentinel must survive as -1 and not be coerced to 0 by a
+	// column rebuild — "scored 0" and "not scored" are different facts.
+	var firstPosture, firstQuiet, firstPeriodStart int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT posture_overall, quiet, period_start FROM digest_runs WHERE id = 'dr-v43-first'`).
+		Scan(&firstPosture, &firstQuiet, &firstPeriodStart); err != nil {
+		t.Errorf("digest_runs first-ever row lost across migration: %v", err)
+	} else if firstPosture != -1 || firstQuiet != 1 || firstPeriodStart != 0 {
+		t.Errorf("digest_runs first-ever row = (posture %d, quiet %d, period_start %d), want (-1, 1, 0)",
+			firstPosture, firstQuiet, firstPeriodStart)
+	}
+}
+
+// Schema version 44 (0044_entity_locks.sql, entity_locks — T-2805) has no
+// versionSeeds entry because it is the current latest, not a "prior" version
+// any fixture in this file freezes at — its own forward application (as part
+// of every case's migrate() call to latest) is exercised by every case above,
+// and TestOpen_CreatesAllTables (store_test.go) exercises it from a fresh
+// database. The next migration to land becomes the new latest and picks up a
+// version 44 entry in versionSeeds at that time.

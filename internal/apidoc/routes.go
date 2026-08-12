@@ -68,6 +68,11 @@ var Operations = map[string]Operation{
 	"POST /api/v1/changesets/{id}/schedule":               {Summary: "Schedule a changeset to apply in a maintenance window.", Tag: "changesets", Auth: AuthSession},
 	"DELETE /api/v1/changesets/{id}/schedule":             {Summary: "Cancel a changeset's schedule.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/schedule/ack":           {Summary: "Acknowledge a scheduled apply, releasing it to run.", Tag: "changesets", Auth: AuthSession},
+	// T-2805: advisory locks and presence. Reads only — a lock warns, it
+	// never refuses, and there is deliberately no verb that takes or drops
+	// one directly.
+	"GET /api/v1/locks":    {Summary: "List the advisory locks staged drafts currently hold on entities.", Tag: "changesets", Auth: AuthSession},
+	"GET /api/v1/presence": {Summary: "Report who is currently viewing a changeset or entity.", Tag: "changesets", Auth: AuthSession},
 
 	// --- Snapshots and spec ------------------------------------------------
 	"GET /api/v1/snapshots":               {Summary: "List configuration snapshots.", Tag: "snapshots", Auth: AuthSession},

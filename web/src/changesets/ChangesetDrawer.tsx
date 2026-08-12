@@ -27,6 +27,7 @@ import { useChangesetDrawerStore } from "./store";
 import { useDrawerActions } from "./useDrawerActions";
 import { CountdownBanner } from "./CountdownBanner";
 import { FixButton } from "./FixButton";
+import { LockNoticeBanner } from "./LockNoticeBanner";
 import { ReviewApplyScreen } from "./ReviewApplyScreen";
 
 function findingsForOp(findings: Finding[], op: Op): Finding[] {
@@ -172,6 +173,10 @@ export function ChangesetDrawer() {
 
         {drawerOpen && (
           <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto p-3 text-sm">
+            {/* T-2805: who else has a draft open on these entities. First in
+                the body because it is about the ops listed below it — and it
+                disables nothing: the ops are already staged. */}
+            {changeset && <LockNoticeBanner changeset={changeset} />}
             {otherDrafts.length > 0 && (
               <div>
                 <button

@@ -107,7 +107,14 @@ type Options struct {
 	// DriftReconciler (T-2703) backs the two symmetric actions on a drift
 	// finding: restore intent (stage a changeset) and adopt reality (propose a
 	// spec commit). Nil leaves the routes mounted and answering honestly.
-	DriftReconciler       DriftReconciler
+	DriftReconciler DriftReconciler
+	// Locks / Presence (T-2805) back the advisory-lock warning on staging
+	// and the two read surfaces (GET /locks, GET /presence). Both nil leaves
+	// those routes unmounted and every staging response byte-identical to
+	// the pre-T-2805 one — and, crucially, changes nothing about apply
+	// either way: no apply path consults them (internal/presence's doc.go).
+	Locks                 LockService
+	Presence              PresenceService
 	DigestSchedule        DigestScheduleService
 	DistFS                fs.FS
 	HistoryFindingEvents  HistoryFindingEventsSource
@@ -297,7 +304,11 @@ func NewRouter(opts Options) http.Handler {
 		mountFederationRoutes(r, opts.Federation, opts.FederationAudit, opts.Auth)
 		mountFederationTopologyRoutes(r, opts.FederationAgg, opts.Auth)
 		mountFederationIPAMRoutes(r, opts.FederationIPAM, opts.Auth)
-		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers, opts.Tenant, opts.TenantNotifier, opts.TenantStore)
+		mountChangesetsRoutes(r, opts.Changesets, opts.Auth, opts.PVEGateways, opts.Protected, opts.WgCarriers, opts.Tenant, opts.TenantNotifier, opts.TenantStore, opts.Locks)
+		// T-2805: who has a draft open against which entity, and who is
+		// looking at what. Reads only — a lock is taken by staging and freed
+		// by discarding, disconnecting, or expiring, never by a verb.
+		mountLockRoutes(r, opts.Locks, opts.Presence, opts.Auth)
 		mountSnapshotsRoutes(r, opts.Snapshots, opts.Auth, opts.PeerSnapshots)
 		mountTopologyDiffRoutes(r, opts.TopologyDiff, opts.Auth)
 		mountAuditRoutes(r, opts.Audit, opts.Auth, opts.PeerAudit)
