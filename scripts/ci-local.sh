@@ -14,6 +14,12 @@
 #     than CI pins is not evidence about CI.
 #   * `actions/upload-artifact` has no local equivalent; artifacts are left in
 #     place (dist/*.deb, web/test-results/) and their paths reported.
+#   * The `e2e` job is a 4-way shard MATRIX on the hosted runner — one shard per
+#     2-4 core runner — plus a required `e2e-gate` job that reads all four
+#     reports. `make e2e` here runs all four shards CONCURRENTLY on this
+#     32-core box and then gates, so the verdict is the same but the timing is
+#     not comparable. Do not quote a local shard wall-clock as a CI number
+#     (T-2505-input-02, planning/tasks/phase-25.md).
 #   * The hosted runner starts from a clean checkout every time. This host does
 #     not, so the script refuses to run with a dirty tree unless ALLOW_DIRTY=1.
 #
