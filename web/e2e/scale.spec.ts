@@ -25,8 +25,26 @@
 // it" one (see web/src/topology/scaleLab.render.test.tsx for the
 // synthetic beyond-cap counterpart, which proves the prompt itself trips
 // correctly once the real 2,000-element arithmetic is exceeded).
+//
+// T-2506 made every number this file gates on come from perf/budgets.json —
+// the same file internal/collect/sim_bench_test.go reads for the Go-side
+// budgets. Nothing below holds a limit of its own; `budgets` is looked up by
+// id, the sample count N comes from the budget rather than from the test, and
+// every measurement prints its headroom whether it passed or not. See
+// docs/performance.md section 13.
 import { expect, request, test, type Page } from "@playwright/test";
 import { switchToGraphView } from "./helpers";
+import {
+  budgetById,
+  budgetsForSite,
+  check,
+  evaluate,
+  loadBudgets,
+  renderReport,
+  SCALE_SITE,
+  thisMachine,
+  type Result,
+} from "../perf/budgets";
 
 declare global {
   interface Window {
@@ -122,7 +140,114 @@ function stats(deltas: number[]): FrameStats {
   };
 }
 
+/** The budgets in perf/budgets.json this file measures, and which test
+ * measures each. Not a second copy of the budget list: the first test below
+ * asserts that the union of these ids is exactly the set of budgets naming
+ * this file as their site, so a budget added to the file and forgotten here —
+ * or removed from the file and left here — is a failure rather than a silent
+ * gap. Same shape as web/e2e/shards.ts's "a spec in no shard is a hard error". */
+const MEASURED_BY: Readonly<Record<string, readonly string[]>> = {
+  "initial render and progressive disclosure": ["topology.scale.page_render_ms"],
+  "v1 pan/zoom": ["topology.scale.v1_pan_zoom_p95_frame_ms"],
+  "v2 pan/zoom": ["topology.scale.v2_pan_zoom_p95_frame_ms", "topology.scale.v2_pan_zoom_p95_frame_hardware_ms"],
+};
+
+const budgets = loadBudgets();
+const machine = thisMachine();
+
+/** Prints the headroom for everything measured (AC5), then fails the test if a
+ * gating budget was exceeded. Report first, always: a run that fails should
+ * still say how much room the budgets that passed had left. */
+async function reportAndGate(testInfo: { attach: (name: string, opts: { body: string; contentType: string }) => Promise<void> }, results: Result[]): Promise<void> {
+  const report = renderReport(results, machine);
+  console.log(report);
+  await testInfo.attach("perf-budgets", { body: report, contentType: "text/plain" });
+  const exceeded = check(results);
+  expect(exceeded, exceeded ?? "").toBeNull();
+}
+
+/** One pan/zoom round: install the rAF sampler, drive four pan passes and 24
+ * wheel steps over the canvas at (cx, cy), stop the sampler, return the frame
+ * statistics.
+ *
+ * Extracted by T-2506 because both renderers' budgets are now medians of N
+ * rounds rather than one measurement (`samples` in perf/budgets.json), and
+ * three copies of the gesture would be three chances for the v1 and v2 numbers
+ * to stop being comparable. The gesture itself is byte-for-byte what this file
+ * has driven since T-607. */
+async function panZoomRound(page: Page, cx: number, cy: number): Promise<FrameStats> {
+  await page.evaluate(() => {
+    window.__vnproxFrameDeltas = [];
+    let last = performance.now();
+    let running = true;
+    const tick = (now: number) => {
+      window.__vnproxFrameDeltas?.push(now - last);
+      last = now;
+      if (running) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    window.__vnproxSamplerStop = () => {
+      running = false;
+    };
+  });
+
+  for (let pass = 0; pass < 4; pass++) {
+    const dir = pass % 2 === 0 ? 1 : -1;
+    await page.mouse.move(cx - dir * 200, cy - 100);
+    await page.mouse.down();
+    for (let step = 0; step <= 40; step++) {
+      await page.mouse.move(cx - dir * 200 + dir * step * 10, cy - 100 + step * 5, { steps: 1 });
+    }
+    await page.mouse.up();
+  }
+  await page.mouse.move(cx, cy);
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.wheel(0, -120);
+  }
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.wheel(0, 120);
+  }
+
+  const deltas = await page.evaluate(() => {
+    window.__vnproxSamplerStop?.();
+    return window.__vnproxFrameDeltas ?? [];
+  });
+  expect(deltas.length).toBeGreaterThan(30);
+  return stats(deltas);
+}
+
+/** Runs `rounds` pan/zoom rounds and returns each round's stats. */
+async function panZoomRounds(page: Page, cx: number, cy: number, rounds: number): Promise<FrameStats[]> {
+  const out: FrameStats[] = [];
+  for (let i = 0; i < rounds; i++) {
+    out.push(await panZoomRound(page, cx, cy));
+  }
+  return out;
+}
+
+function logRounds(tag: string, rounds: readonly FrameStats[]): void {
+  for (const s of rounds) {
+    console.log(
+      `[${tag}] frames=${String(s.frames)} meanFps=${s.meanFps.toFixed(1)} p95=${s.p95FrameMs.toFixed(1)}ms max=${s.maxFrameMs.toFixed(1)}ms over-budget=${s.pctOver60fpsBudget.toFixed(1)}%`,
+    );
+  }
+}
+
 test.describe.configure({ mode: "serial" });
+
+// Cheap, browser-free, and deliberately first in the file: a budget that
+// quietly stops being measured reads exactly like a budget that passes.
+test("scale-lab: every budget naming this file is measured by one of its tests", () => {
+  const declared = [...new Set(Object.values(MEASURED_BY).flat())].sort();
+  const inFile = budgetsForSite(budgets, SCALE_SITE)
+    .map((b) => b.id)
+    .sort();
+  expect(declared).toEqual(inFile);
+  for (const id of declared) {
+    // Throws, naming the alternatives, if the file no longer has this budget.
+    expect(budgetById(budgets, id).site).toBe(SCALE_SITE);
+  }
+});
 
 test("scale-lab: initial render time and progressive disclosure at the documented scale target", async ({ page }, testInfo) => {
   // The captured web/src/topology/__fixtures__/scale-lab-topology.json
@@ -169,6 +294,24 @@ test("scale-lab: initial render time and progressive disclosure at the documente
   // prompt must NOT be showing (web/src/topology/scaleLab.render.test.tsx
   // covers the synthetic beyond-cap case where it does trip).
   await expect(page.getByText(/above the ~2,000/)).toHaveCount(0);
+
+  // T-2506's budget, measured separately from the login-inclusive number
+  // above. Its window is narrower on purpose — navigation to /topology on an
+  // already-authenticated session until the canvas has mounted all 8 nodes'
+  // vmbr0 — because that is the part a render regression would move, and it
+  // is repeatable, which the one-shot login path is not. N comes from the
+  // budget (3), not from this test.
+  const budget = budgetById(budgets, "topology.scale.page_render_ms");
+  const samples: number[] = [];
+  for (let i = 0; i < budget.samples; i++) {
+    const from = Date.now();
+    await page.goto(BASE + "/topology");
+    await switchToGraphView(page);
+    await expect(page.getByRole("button", { name: "vmbr0", exact: true })).toHaveCount(8, { timeout: 30_000 });
+    samples.push(Date.now() - from);
+  }
+  console.log(`[scale] page render samples: ${samples.map((s) => `${String(s)}ms`).join(", ")}`);
+  await reportAndGate(testInfo, [evaluate(budget, samples, machine)]);
 });
 
 test("scale-lab: pan/zoom frame timings at the documented scale target", async ({ page }, testInfo) => {
@@ -186,49 +329,15 @@ test("scale-lab: pan/zoom frame timings at the documented scale target", async (
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
 
-  await page.evaluate(() => {
-    window.__vnproxFrameDeltas = [];
-    let last = performance.now();
-    let running = true;
-    const tick = (now: number) => {
-      window.__vnproxFrameDeltas?.push(now - last);
-      last = now;
-      if (running) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-    window.__vnproxSamplerStop = () => {
-      running = false;
-    };
-  });
-
-  for (let pass = 0; pass < 4; pass++) {
-    const dir = pass % 2 === 0 ? 1 : -1;
-    await page.mouse.move(cx - dir * 200, cy - 100);
-    await page.mouse.down();
-    for (let step = 0; step <= 40; step++) {
-      await page.mouse.move(cx - dir * 200 + dir * step * 10, cy - 100 + step * 5, { steps: 1 });
-    }
-    await page.mouse.up();
-  }
-  await page.mouse.move(cx, cy);
-  for (let i = 0; i < 12; i++) {
-    await page.mouse.wheel(0, -120);
-  }
-  for (let i = 0; i < 12; i++) {
-    await page.mouse.wheel(0, 120);
-  }
-
-  const deltas = await page.evaluate(() => {
-    window.__vnproxSamplerStop?.();
-    return window.__vnproxFrameDeltas ?? [];
-  });
-  expect(deltas.length).toBeGreaterThan(30);
-
-  const s = stats(deltas);
-  await testInfo.attach("frame-stats", { body: JSON.stringify({ stats: s, deltas }, null, 2), contentType: "application/json" });
-  console.log(
-    `[scale] frames=${String(s.frames)} meanFps=${s.meanFps.toFixed(1)} p95=${s.p95FrameMs.toFixed(1)}ms max=${s.maxFrameMs.toFixed(1)}ms over-budget=${s.pctOver60fpsBudget.toFixed(1)}%`,
-  );
+  // Before T-2506 this test asserted only that more than 30 frames had been
+  // sampled, so a renderer change that halved v1's frame rate would have
+  // passed it. The budget it gates on now is the same headless ceiling T-901
+  // chose for v2, and it lives in perf/budgets.json rather than here.
+  const budget = budgetById(budgets, "topology.scale.v1_pan_zoom_p95_frame_ms");
+  const rounds = await panZoomRounds(page, cx, cy, budget.samples);
+  logRounds("scale", rounds);
+  await testInfo.attach("frame-stats", { body: JSON.stringify({ rounds }, null, 2), contentType: "application/json" });
+  await reportAndGate(testInfo, [evaluate(budget, rounds.map((s) => s.p95FrameMs), machine)]);
 });
 
 // T-901: the same rAF frame-delta sampler above, but against the v2 canvas
@@ -273,60 +382,24 @@ test("scale-lab (v2 canvas renderer): pan/zoom frame timings at the documented s
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
 
-  await page.evaluate(() => {
-    window.__vnproxFrameDeltas = [];
-    let last = performance.now();
-    let running = true;
-    const tick = (now: number) => {
-      window.__vnproxFrameDeltas?.push(now - last);
-      last = now;
-      if (running) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-    window.__vnproxSamplerStop = () => {
-      running = false;
-    };
-  });
-
-  for (let pass = 0; pass < 4; pass++) {
-    const dir = pass % 2 === 0 ? 1 : -1;
-    await page.mouse.move(cx - dir * 200, cy - 100);
-    await page.mouse.down();
-    for (let step = 0; step <= 40; step++) {
-      await page.mouse.move(cx - dir * 200 + dir * step * 10, cy - 100 + step * 5, { steps: 1 });
-    }
-    await page.mouse.up();
-  }
-  await page.mouse.move(cx, cy);
-  for (let i = 0; i < 12; i++) {
-    await page.mouse.wheel(0, -120);
-  }
-  for (let i = 0; i < 12; i++) {
-    await page.mouse.wheel(0, 120);
-  }
-
-  const deltas = await page.evaluate(() => {
-    window.__vnproxSamplerStop?.();
-    return window.__vnproxFrameDeltas ?? [];
-  });
-  expect(deltas.length).toBeGreaterThan(30);
-
-  const s = stats(deltas);
-  await testInfo.attach("frame-stats", { body: JSON.stringify({ stats: s, deltas }, null, 2), contentType: "application/json" });
-  console.log(
-    `[scale-v2] frames=${String(s.frames)} meanFps=${s.meanFps.toFixed(1)} p95=${s.p95FrameMs.toFixed(1)}ms max=${s.maxFrameMs.toFixed(1)}ms over-budget=${s.pctOver60fpsBudget.toFixed(1)}%`,
-  );
-  // AC6 target: p95 frame time <= 20ms for the v2 renderer at the documented
-  // scale. That 20ms is a *hardware* target (recorded in docs/performance.md);
-  // it is deliberately NOT hard-asserted here, because this Playwright runner is
-  // headless + software-rasterized (swiftshader), where the identical pan/zoom
-  // on the *v1* renderer also measures ~50ms p95 — the v1 perf test above
-  // asserts only frame count for exactly this reason. Gating CI on <=20ms would
-  // gate it on GPU acceleration the runner doesn't have. What this test guards
-  // instead is a catastrophic regression versus that ~50ms software-rasterized
-  // baseline (a real renderer bug would blow well past this), while the
-  // frame-stats artifact + the log line above carry the actual number for the
-  // hardware-target check transcribed into docs/performance.md.
-  const HEADLESS_REGRESSION_CEILING_MS = 90;
-  expect(s.p95FrameMs).toBeLessThanOrEqual(HEADLESS_REGRESSION_CEILING_MS);
+  const ceiling = budgetById(budgets, "topology.scale.v2_pan_zoom_p95_frame_ms");
+  const hardware = budgetById(budgets, "topology.scale.v2_pan_zoom_p95_frame_hardware_ms");
+  const rounds = await panZoomRounds(page, cx, cy, ceiling.samples);
+  logRounds("scale-v2", rounds);
+  await testInfo.attach("frame-stats", { body: JSON.stringify({ rounds }, null, 2), contentType: "application/json" });
+  const p95s = rounds.map((s) => s.p95FrameMs);
+  // The SAME measurement, compared against two different budgets, which is the
+  // honest way to state what T-901 AC6 actually asked for:
+  //
+  //  - the 90 ms headless ceiling GATES. That was the hard-coded
+  //    HEADLESS_REGRESSION_CEILING_MS here until T-2506 moved it into
+  //    perf/budgets.json. It catches a catastrophic renderer regression against
+  //    the ~50 ms this software-rasterised runner measures for BOTH renderers.
+  //  - the 20 ms hardware target REPORTS. It is a GPU-compositing number, and
+  //    this runner is headless swiftshader where v1 measures the same ~50 ms;
+  //    gating on it would be gating on hardware the runner does not have. It is
+  //    in the budgets file rather than in prose so its headroom is printed on
+  //    every run, and so a future GPU-capable runner promotes it by editing one
+  //    field. `absolute` scaling is why perfbudget refuses to let it gate.
+  await reportAndGate(testInfo, [evaluate(ceiling, p95s, machine), evaluate(hardware, p95s, machine)]);
 });

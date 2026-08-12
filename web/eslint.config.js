@@ -24,7 +24,7 @@ export default tseslint.config(
     ],
   },
   {
-    files: ["src/**/*.{ts,tsx}", "vite.config.ts", "e2e/**/*.ts", "playwright.config.ts"],
+    files: ["src/**/*.{ts,tsx}", "perf/**/*.ts", "vite.config.ts", "e2e/**/*.ts", "playwright.config.ts"],
     extends: [
       js.configs.recommended,
       ...tseslint.configs.strictTypeChecked,
@@ -61,10 +61,11 @@ export default tseslint.config(
     },
   },
   {
-    // vite.config.ts and the Playwright layer run under Node, not the
-    // browser (e2e specs' page.evaluate callbacks execute in the browser,
-    // but the spec files themselves are Node programs).
-    files: ["vite.config.ts", "e2e/**/*.ts", "playwright.config.ts"],
+    // vite.config.ts, perf/ (T-2506's budget reader, which reads
+    // perf/budgets.json off disk) and the Playwright layer run under Node,
+    // not the browser (e2e specs' page.evaluate callbacks execute in the
+    // browser, but the spec files themselves are Node programs).
+    files: ["vite.config.ts", "perf/**/*.ts", "e2e/**/*.ts", "playwright.config.ts"],
     languageOptions: {
       globals: globals.node,
     },

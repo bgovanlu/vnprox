@@ -317,3 +317,199 @@ therefore diagnosable — and replayable at the same seed — without a re-run.
 - **The churn *sequence* is seeded and reproducible; its wall-clock interleaving with the daemon's
   poll loops is not.** No seeded generator can fix that, and the artifact records the seed to make
   the sequence replayable, not to promise a byte-identical run.
+
+## 13. The performance regression budget gate — T-2506
+
+Every section above this one is a *report*: somebody measured something once and typed the number
+into this file. Nothing failed when a later change made the number worse. This section is about the
+**gate** that replaced that arrangement for the numbers it covers.
+
+### 13.1 One file, two measurement sites
+
+The budgets live in [`perf/budgets.json`](../perf/budgets.json) and nowhere else. Two sites read it:
+
+| Site | Reads it via | Budgets |
+|---|---|---|
+| `internal/collect/sim_bench_test.go` (Go, part of `make check`) | `internal/perfbudget` | `sim.*` |
+| `web/e2e/scale.spec.ts` (Playwright, part of `make e2e`) | `web/perf/budgets.ts` | `topology.scale.*` |
+
+The table in §13.3 below is checked against that file by `internal/perfbudget`'s
+`TestDocTableMatchesBudgets` on **every `make check`**, in both directions: a budget with no row here
+fails, a row here naming no budget fails, and a row whose limit, direction, sample count,
+normalisation, enforcement or measuring site differs from the file fails. So this section cannot
+drift from what is enforced — which is exactly what happened to §3a's 20 ms figure before it, and
+what the correction recorded there had to be written by hand to fix.
+
+### 13.2 The budgets are host-normalised, and here is the consequence
+
+**A budget measured on this host does not predict CI**, and that is not a hypothesis:
+`T-2505-input-02` records the same commit (`4968bf3`) passing 89/0/2 here and failing 87/2/2 on a
+GitHub-hosted runner with no code difference at all. This box is 32-core/62 GB; a hosted
+`ubuntu-latest` runner is 2–4 core/~16 GB. A single hardcoded wall-clock number asserted on both is
+a gate that is green for the developer and red for the pipeline, which trains everyone to ignore it
+— the exact failure `docs/development.md` records for `make check`'s bare `npm audit`.
+
+So every budget declares **how it is normalised for the machine measuring it**, and
+`perf/budgets.json`'s `reference_host` block names the machine the numbers were measured on:
+
+| Mode | What it multiplies the limit by | Used for |
+|---|---|---|
+| `calibrated` | this machine's median time for `internal/perfbudget`'s fixed CPU kernel, divided by the reference host's (42.3 ms) | CPU-bound Go work |
+| `cores` | T-2505's own `availableParallelism` ladder — ×2.5 under 4 cores, ×1.5 under 8, unchanged above — the same ladder `web/playwright.config.ts` scales its deadlines by | browser-side work, whose cost is rasterisation rather than anything a Go kernel can time |
+| `absolute` | nothing | hardware targets only, and **`internal/perfbudget.Validate` refuses to let an `absolute` budget gate** |
+
+**Both factors are floored at 1.0, so normalisation only ever loosens.** State the consequence
+plainly rather than leaving it to be discovered:
+
+- The limit written in the table below is the **tightest the gate ever gets**. The reference host
+  keeps full sensitivity; nothing gets a *tighter* budget by being fast, because then the documented
+  number would stop being the contract.
+- A slower machine trades sensitivity for not producing false failures. **A regression small enough
+  to hide inside the factor on a 2-core runner will be caught on the reference host and not there.**
+  That is a deliberate choice: a gate that is right on one machine and quiet on the other is worth
+  more than one that is red everywhere.
+- The calibrated factor is clamped at `max_factor` (8). Past that the machine's measurement is not
+  worth trusting, and the run's report says the factor was clamped instead of silently passing.
+
+`internal/perfbudget`'s calibration kernel is warmed for 400 ms before it takes its five samples.
+That is not ceremony: on the reference host the same kernel measures ~41 ms for its first four runs
+and ~21 ms thereafter, a 2× swing that is the CPU frequency governor ramping, and calibrating on the
+cold half would report the machine as half its real speed and stretch every calibrated budget by 2×.
+
+### 13.3 The budgets
+
+<!-- perf-budgets:begin -->
+
+| Budget | Limit | Direction | Samples (N) | Normalisation | Enforcement | Measured by |
+|---|---|---|---|---|---|---|
+| `sim.simulate_10k_wall_ms` | 150 ms | max | 5 | calibrated | gate | `internal/collect/sim_bench_test.go` |
+| `sim.engine_build_us` | 350 us | max | 5 | calibrated | gate | `internal/collect/sim_bench_test.go` |
+| `topology.scale.page_render_ms` | 12000 ms | max | 3 | cores | gate | `web/e2e/scale.spec.ts` |
+| `topology.scale.v1_pan_zoom_p95_frame_ms` | 90 ms | max | 3 | cores | gate | `web/e2e/scale.spec.ts` |
+| `topology.scale.v2_pan_zoom_p95_frame_ms` | 90 ms | max | 3 | cores | gate | `web/e2e/scale.spec.ts` |
+| `topology.scale.v2_pan_zoom_p95_frame_hardware_ms` | 20 ms | max | 3 | absolute | report | `web/e2e/scale.spec.ts` |
+
+<!-- perf-budgets:end -->
+
+Each budget's `why` field in `perf/budgets.json` carries the measurement its limit came from; they
+are not repeated here, because a number written in two places is a number that can disagree with
+itself, and the only two places these numbers are allowed to appear are that file and this table.
+
+Two of them replace assertions that could not have caught anything:
+
+- `sim.simulate_10k_wall_ms` replaces `TestSim_10kUnder5s`, which asserted T-503 AC4's "10k
+  simulations in well under 5 s" against a workload whose real median is **~75 ms** — 67× of
+  headroom. The new 150 ms limit still clears T-503's product bar by 33× while being able to see a
+  2× regression.
+- `topology.scale.v1_pan_zoom_p95_frame_ms` is the first assertion of any kind on v1's frame times;
+  before it, that test asserted only that more than 30 frames were sampled.
+
+### 13.4 Threshold, not step-over-step
+
+The gate compares the measurement against the budget. It is not given the previous run at all —
+`perfbudget.Evaluate` takes the samples, the budget and the machine, and there is no parameter a
+step-over-step comparison could be made against. That is the point of AC3: a workload that degrades
+4% per step across five steps never regresses 5% in one step, so a "fail if this run is more than 5%
+worse than the last" gate passes it forever, while a threshold gate fails at the step that crosses
+the line (`TestFourPercentPerStepFailsAtTheCrossing`, which asserts both that the crossing step
+fails and that no earlier one does).
+
+That test's series is computed rather than really slowed, and the reason is a measurement: the real
+10,000-simulation workload spans 70–84 ms run to run on this host (±10%), so a genuinely-slowed 4%
+step would be well inside the noise and the test would be measuring the scheduler. The end-to-end
+proof that a real slowdown moves a real measurement through this same comparator is §13.7's.
+
+### 13.5 Noise: median of N, with N in the file
+
+Each budget states its own `samples`. Every gating budget takes at least **3** (`MinGateSamples`,
+enforced by `Validate` — a budget cannot quietly opt out by declaring 1), and the Go budgets take
+**5**. The verdict is the **median**, so one sample landing on a GC pause, a scheduler preemption or
+a sibling process's burst does not move it. There is no retry, no tolerance band and no flake
+allowance beyond that.
+
+Proven two ways: `TestOutlierDoesNotFailTheGate` feeds one 900 ms sample among four ~70 ms ones to a
+100 ms budget and requires a pass — and the converse, that four slow samples and one fast one still
+fail, so the median is not being read as a minimum; and `make perf PERF_SLOW=outlier` really slows
+one of the five real samples of the real workload and requires the gate to stay green.
+
+### 13.6 Headroom on every budget, every run
+
+`perfbudget.Report` prints every budget it measured with its median, its written limit, the limit as
+normalised for this machine, and the headroom as a signed percentage — passing budgets included. A
+budget sitting at 4% headroom is the thing worth knowing before it breaks, and a gate that only
+speaks when it fails cannot say it. A budget that stops being measured at all is caught separately
+by `perfbudget.Missing`, because an unmeasured budget reads exactly like a passing one.
+
+Both sites, on the reference host, 2026-08-12. The Go half (`make perf`):
+
+```
+performance budgets (perf/budgets.json), 32 cores, calibration 41.1 ms, x1.00 calibrated / x1.00 cores
+  budget                                       median     budget  effective  headroom verdict
+  sim.engine_build_us                        151.7 us   350.0 us   350.0 us     56.7% PASS
+  sim.simulate_10k_wall_ms                    72.1 ms   150.0 ms   150.0 ms     51.9% PASS
+```
+
+The browser half, from a real run of `scale.spec.ts` against the scale-lab stack
+(`VNPROX_E2E_SHARD=shard-1 npx playwright test scale.spec.ts`):
+
+```
+[scale] page render samples: 3963ms, 3173ms, 3254ms
+performance budgets (perf/budgets.json), 32 cores, x1.00 cores normalisation
+  budget                                               median     budget  effective  headroom verdict
+  topology.scale.page_render_ms                     3254.0 ms 12000.0 ms 12000.0 ms     72.9% PASS
+
+[scale] frames=784 meanFps=46.6 p95=33.4ms max=366.6ms over-budget=11.6%
+[scale] frames=712 meanFps=46.5 p95=50.0ms max=250.0ms over-budget=14.7%
+[scale] frames=698 meanFps=46.7 p95=50.0ms max=333.4ms over-budget=12.2%
+performance budgets (perf/budgets.json), 32 cores, x1.00 cores normalisation
+  budget                                               median     budget  effective  headroom verdict
+  topology.scale.v1_pan_zoom_p95_frame_ms             50.0 ms    90.0 ms    90.0 ms     44.4% PASS
+```
+
+The v1 median of 50.0 ms is the same number §3 recorded for this renderer in this runner, now
+enforced rather than transcribed. The `topology.scale.v2_*` pair is not in either block: its test is
+quarantined (§13.8).
+
+### 13.7 The gate ships with a fixture that makes it fire
+
+`internal/sim/perfslow_on.go` puts real, measurable extra work inside `Engine.Simulate` — the actual
+code path the budget times — and is compiled **only** under the `perfslow` build tag, which nothing
+this repository ships, tests, lints or packages ever sets. `perfslow_off.go`'s empty function is
+what every other build gets, inlined to nothing. Same arrangement as T-2504's
+`cmd/vnproxd/soakleak.go`, and for the same reason: a gate nobody has watched fail is a gate nobody
+has evidence about.
+
+```
+make perf                      measure and gate (the same test `make check` runs)
+make perf PERF_SLOW=always     every sample slowed — must FAIL, naming sim.simulate_10k_wall_ms
+make perf PERF_SLOW=outlier    one of five samples slowed — must PASS
+```
+
+Measured on the reference host, 2026-08-12:
+
+| Run | `sim.simulate_10k_wall_ms` median | Verdict |
+|---|---|---|
+| ordinary | 72.1 ms | **PASS**, 51.9% headroom |
+| `PERF_SLOW=always` | **374.4 ms** | **FAIL** — `over max budget — measured 374.4 ms (median of 5), budget 150.0 ms, effective 150.8 ms here (x1.01 calibrated normalisation)` |
+| `PERF_SLOW=outlier` (sample 2 slowed to ~374 ms) | 72.1 ms | **PASS**, 52.0% headroom |
+
+### 13.8 Honest limits
+
+- **The reference-host numbers were measured on a shared box.** Two sibling agent tasks were active
+  while the limits in §13.3 were derived (load average ~1.4 of 32). Every one of them is therefore an
+  upper bound rather than a best case, and re-measuring on a quiet host would let several tighten.
+  Because normalisation is floored at 1.0, a reference calibration that is slightly *too slow* makes
+  the factor slightly *smaller* — the safe direction — but the limits themselves are where the
+  looseness sits.
+- **The browser-side budgets are normalised by core count, not by a browser calibration.** A JS
+  calibration loop would measure the wrong dimension for a frame-time budget (the cost is
+  rasterisation, not script), and a rasterisation calibration is a bigger piece of machinery than
+  this card could verify. The `cores` ladder is T-2505's, adopted because it is already measured
+  against this repository's own two-core reproduction — not because it is the ideal normalisation.
+- **`topology.scale.v2_*` is measured by a quarantined test.** `scale.spec.ts › scale-lab (v2 canvas
+  renderer)` is quarantined under `T-2505-followup-01`; on runs where it does not execute, those two
+  budgets are not measured, and the spec's no-orphan check is scoped to the tests that actually ran.
+- **The 20 ms v2 hardware target remains needs-hardware-validation.** It is in the file as a
+  report-only budget so its headroom is printed on every run, and so a future GPU-capable runner can
+  promote it by editing one field. It is not something this software-rasterised runner can verify;
+  see §3a.

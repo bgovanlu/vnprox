@@ -26,6 +26,7 @@ import { availableParallelism } from "node:os";
 import { defineConfig } from "@playwright/test";
 
 import { activeShard, allSpecs, stackURL, validateManifest, webServers, WHOLE_SUITE } from "./e2e/shards";
+import { coresFactor } from "./perf/budgets";
 
 validateManifest();
 
@@ -56,9 +57,15 @@ const slot = shard?.slot ?? 0;
  *
  * availableParallelism() and not cpus().length: it honours CPU affinity, so a
  * `taskset`-restricted run — and a container with a restricted cpuset — reads
- * the cores it can actually use rather than the cores the box has. */
+ * the cores it can actually use rather than the cores the box has.
+ *
+ * T-2506 moved the ladder itself into web/perf/budgets.ts, because the
+ * browser-side performance budgets normalise by exactly this function and two
+ * copies of it would be two answers to "how much slower is a small machine".
+ * internal/perfbudget.CoresFactor is the Go mirror, table-tested over the same
+ * three rungs. */
 const cores = availableParallelism();
-const slowFactor = cores >= 8 ? 1 : cores >= 4 ? 1.5 : 2.5;
+const slowFactor = coresFactor(cores);
 
 export default defineConfig({
   testDir: "./e2e",

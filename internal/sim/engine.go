@@ -94,6 +94,10 @@ func Simulate(in Input, req Request) Result {
 // non-empty Caveats list (AC3) and a Verdict that is honest about the
 // engine's evaluation limits (AC5).
 func (e *Engine) Simulate(req Request) Result {
+	// T-2506's deliberate-slowdown fixture. Empty and inlined away in every
+	// build that does not set the `perfslow` tag — see perfslow_off.go.
+	perfSlowWork()
+
 	res := Result{Proto: req.Proto, Port: req.Port, Hops: []Hop{}}
 	family := req.Family.orDefault()
 

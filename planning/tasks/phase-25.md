@@ -252,6 +252,201 @@ they are aspirations with a document, not budgets.
    asserts a single slow outlier passes.
 5. Headroom is reported for every budget on every run, including passing ones.
 
+### T-2506 — the host-independence decision, made explicitly (2026-08-12)
+
+The card's dependency landed with a finding that goes straight at AC2 and AC4: **a budget measured
+on this host does not predict CI.** `T-2505-input-02` is the evidence — commit `4968bf3` is 89/0/2
+here and 87/2/2 on a hosted runner, same command, no code difference, 32-core/62 GB against
+2–4 core/~16 GB. So a single hardcoded number in a budgets file is very likely wrong, and the choice
+between an absolute-but-host-qualified budget, a normalised one, and one relative to a calibration
+run has to be made rather than defaulted into.
+
+**The decision: normalised, per budget, with the mode declared in the file — and a structural rule
+that an un-normalised budget is not allowed to gate at all.**
+
+| Mode | Multiplier | Used by | Why that mode |
+|---|---|---|---|
+| `calibrated` | this machine's median time for a fixed Go CPU kernel ÷ the reference host's (42.3 ms) | the two `sim.*` budgets | the work is CPU-bound Go; a kernel timed in the same process is the closest available proxy |
+| `cores` | T-2505's own `availableParallelism` ladder (×2.5 under 4, ×1.5 under 8, else ×1) | the four `topology.scale.*` budgets | the work is browser rasterisation, which no Go kernel can time; this ladder is already measured against this repo's own two-core reproduction |
+| `absolute` | none | the 20 ms v2 hardware target, **report-only** | it is a GPU number this software-rasterised runner cannot verify |
+
+`internal/perfbudget.Validate` **refuses a file where an `absolute` budget gates**, and refuses a
+gating budget with fewer than 3 samples. Those two rules are the card's lessons made unforgettable
+rather than commented.
+
+**The consequence, stated here and in `docs/performance.md` §13.2 rather than left to be
+discovered: both factors are floored at 1.0, so normalisation only ever *loosens*.** The number in
+the file is the tightest the gate ever gets; the reference host keeps full sensitivity; a slower
+machine trades sensitivity for not producing false failures. **A regression small enough to hide
+inside the factor on a 2-core runner will be caught here and not there.** That is a deliberate
+trade: a gate that is green here and red on every pipeline run is worse than no gate, because it
+trains people to ignore it — which is exactly what `make check`'s bare `npm audit` did until an
+allowlist replaced it (`docs/development.md`).
+
+## T-2506 — delivery record (2026-08-12)
+
+Shipped: `perf/budgets.json` (the one file), `internal/perfbudget` (loader, validation, calibration,
+median-of-N, threshold comparator, headroom report, doc-table comparison), `internal/sim/perfslow_*.go`
+(the tag-gated slow fixture), a rewritten `internal/collect/sim_bench_test.go`, `web/perf/budgets.ts`
++ its vitest suite, a rewritten `web/e2e/scale.spec.ts`, `make perf`, and `docs/performance.md` §13.
+
+| AC | State | Evidence |
+|---|---|---|
+| 1 | ● Met, with a real slowed code path | `make perf PERF_SLOW=always`: 374.4 ms against a 150.0 ms budget, FAIL naming `sim.simulate_10k_wall_ms` |
+| 2 | ● Met, proven in **both** directions | `TestCompareDoc_BothDirections`, 11 cases; mutating the doc and mutating the file each redden `TestDocTableMatchesBudgets` |
+| 3 | ● Met | `TestFourPercentPerStepFailsAtTheCrossing` — steps 0-3 pass, step 4 fails, no step is a 5% regression |
+| 4 | ● Met, synthetically **and** for real | N=5 stated in the file; `make perf PERF_SLOW=outlier` slows one of five real samples and stays green |
+| 5 | ● Met | `perfbudget.Report` prints median / limit / effective / headroom for every budget, passing ones included — seen on both sites' real runs |
+
+Both measurement sites were run for real. Go: `make perf`, 51.9% / 56.7% headroom. Browser:
+`VNPROX_E2E_SHARD=shard-1 npx playwright test scale.spec.ts --grep-invert "v2 canvas"`, 3 passed in
+1.5 min, `topology.scale.page_render_ms` 3254 ms of 12,000 (72.9% headroom) and
+`topology.scale.v1_pan_zoom_p95_frame_ms` 50.0 ms of 90 (44.4%).
+
+### AC1: the slowed path is real, and it is inside `Simulate`
+
+`internal/sim/perfslow_on.go` adds real CPU work inside `Engine.Simulate` — the code path the
+budget times — and is compiled **only** under the `perfslow` build tag, which nothing this
+repository ships, tests, lints or packages ever sets; `perfslow_off.go`'s empty function is what
+every other build gets, inlined away. Same arrangement as T-2504's `cmd/vnproxd/soakleak.go`. The
+harness (`internal/collect/perfslow_on_test.go`) drives *the same test* the ordinary run executes,
+so the whole chain — workload, clock, median, calibration, comparison, message — is what fires.
+
+```
+make perf                    sim.simulate_10k_wall_ms  72.1 ms / 150.0 ms   PASS  51.9% headroom
+make perf PERF_SLOW=always   sim.simulate_10k_wall_ms 374.4 ms / 150.8 ms   FAIL
+  sim.simulate_10k_wall_ms (10,000 path simulations over the EVPN fixture): over max budget —
+  measured 374.4 ms (median of 5), budget 150.0 ms, effective 150.8 ms here (x1.01 calibrated
+  normalisation). ...
+make perf PERF_SLOW=outlier  sim.simulate_10k_wall_ms  72.1 ms / 150.0 ms   PASS  52.0% headroom
+```
+
+The `outlier` run slows sample 2 of 5 to ~374 ms — a sample that would fail on its own by 2.5× — and
+the median does not move. That is AC4 against a real measurement rather than a constructed series.
+The slowed sample is deliberately neither the first nor the last, so an implementation that trimmed
+extremes or only read the first sample would not pass it.
+
+### AC2: the document and the file, mutated in both directions
+
+`docs/performance.md` §13.3 carries the budget table between `<!-- perf-budgets:begin -->` markers;
+`internal/perfbudget.CompareDoc` parses it and compares every field. Both mutations were run:
+
+| Mutation | Result |
+|---|---|
+| `docs/performance.md`: `sim.simulate_10k_wall_ms` limit 150 ms → **175 ms** | `TestDocTableMatchesBudgets` FAILS: `sim.simulate_10k_wall_ms: docs/performance.md line 385 says limit "175 ms", perf/budgets.json says "150 ms"` |
+| `perf/budgets.json`: the same budget's limit 150 → **175** | FAILS the other way: `docs/performance.md line 385 says limit "150 ms", perf/budgets.json says "175 ms"`. Note `TestPerfBudgets_Sim` still *passed* under this mutation — a loosened budget does not fail anything, which is precisely why the doc comparison has to be the guard |
+| `docs/performance.md`: delete the row, leave the file alone | FAILS: `sim.simulate_10k_wall_ms: in perf/budgets.json but has no row in docs/performance.md's budget table — a budget the gate enforces and the document does not state is a number in a program` |
+| `docs/performance.md`: add a row, leave the file alone | FAILS: `sim.ghost_ms: docs/performance.md line 386 documents a budget that is not in perf/budgets.json — nothing measures or enforces it` |
+
+The comparison also covers direction, sample count, normalisation, enforcement and the measuring
+site, each with its own table case in `TestCompareDoc_BothDirections`.
+
+### AC3: threshold, not step-over-step — and why the fixture is computed
+
+`perfbudget.Evaluate(budget, samples, machine)` has no previous-run parameter, so a step-over-step
+comparison is not merely absent from the policy, it is unrepresentable. The five-step fixture:
+
+```
+step 0:  88.00 ms (start)                headroom  12.0%  pass
+step 1:  91.52 ms (+4.0% on step 0)      headroom   8.5%  pass
+step 2:  95.18 ms (+4.0%)                headroom   4.8%  pass
+step 3:  98.99 ms (+4.0%)                headroom   1.0%  pass
+step 4: 102.95 ms (+4.0%)                headroom  -2.9%  FAIL   <- the crossing
+step 5: 107.07 ms (+4.0%)                headroom  -7.1%  FAIL
+```
+
+The test asserts the crossing is at step 4, that no earlier step failed, that no later step passed,
+and that the per-step degradation is under 5% — so a "worse than last run by 5%" gate would pass
+this series forever. The same fixture is asserted in the TypeScript half (`web/perf/budgets.test.ts`).
+
+**The series is computed, not really slowed, and that is a stated limit.** The real
+10,000-simulation workload spans 70–84 ms run to run on this host (±10%), so a genuinely-slowed 4%
+step is well inside the noise and a "real fixture" version would be measuring the scheduler. AC1's
+run is the end-to-end proof that a real slowdown moves a real measurement through this same
+comparator; this test proves the property that proof cannot.
+
+### Mutation testing (every guard broken, then restored)
+
+`go clean -testcache` first; each mutation applied alone.
+
+| Mutation | Reddened |
+|---|---|
+| `Evaluate`: `Median(samples)` → `samples[0]` | **survived, first time** — see below. After the fix: `TestOutlierDoesNotFailTheGate`, "one 900 ms sample at position 0 ... median was 900" |
+| `Evaluate`: `Median` → `slices.Max` | `TestOutlierDoesNotFailTheGate` |
+| `Evaluate`: `eff := b.Limit * factor` → `eff := med * 1.05` (i.e. a step-over-step-shaped comparator) | `TestFourPercentPerStepFailsAtTheCrossing`: "first failing step = -1, want 4 — the gate is not comparing against the budget" |
+| `Validate`: drop the `absolute`-may-not-gate rule | that test's "an absolute budget may not gate" subtest **only** |
+| `Validate`: drop the `MinGateSamples` rule | that test's "a gate needs at least three samples" subtest **only** |
+| `clampFactor`: remove the floor at 1 | `TestFactor_OnlyEverLoosens/a_faster_machine_gets_no_tighter_a_budget` **and** `TestDetect_UsesTheFilesSampleCount` |
+| `clampFactor`: remove the `MaxFactor` clamp | `TestFactor_OnlyEverLoosens/an_absurdly_slow_machine_is_clamped,_not_indulged` |
+| `CompareDoc`: drop the "row with no budget" loop | that test's "a documented budget nothing enforces" subtest **only** |
+| `CompareDoc`: drop the limit comparison | that test's two limit subtests, both directions |
+| `calibrationKernel`: `m[(k+1)%…]` → `m[(k+2)%…]` | `TestCalibrationKernelIsDeterministic` ("kernel changed. Re-measure calibration.reference_ns"), plus `TestCalibrate_...` and `TestDetect_...` via `CalibrationSample`'s own refusal |
+| `Calibrate`: remove the 400 ms warm-up | **nothing failed — a real gap, recorded below** |
+| `Check`: stop skipping report-only budgets | `TestCheck_IgnoresReportOnlyBudgets` |
+| `Report`: print only failing results | `TestReport_ShowsEveryBudgetIncludingPassingOnes` (AC5) |
+| `Missing`: never append | `TestMissing_CatchesABudgetNothingMeasured` |
+| `sim_bench_test.go`: `perfSite` → the browser site | `TestPerfBudgets_Sim`: "these budgets name this site in perf/budgets.json but nothing measured them: topology.scale.page_render_ms, ..." |
+| `web/perf/budgets.ts` `median` → `samples[0]` | 4 vitest tests, including "is not failed by a single slow outlier at position 0" |
+| `web/perf/budgets.ts`: drop the absolute-may-not-gate rule | vitest "refuses an absolute budget that gates" **only** |
+
+**The mutation that survived, and what it cost.** `Median(samples)` → `samples[0]` passed the whole
+suite on the first attempt. The outlier fixture was `{70, 71, 900, 72, 73}` — the slow sample in the
+middle, where `samples[0]` is 70 and the gate happily passes. A test that puts the outlier only
+where the correct implementation would look is not a test of the outlier policy. Both the Go and
+the TypeScript outlier tests now sweep **every** position, which also kills a trimmed-extremes or
+last-sample implementation. Reported rather than quietly fixed, because it is the one place this
+card's AC4 evidence was initially weaker than it read.
+
+### What was measured, under what conditions
+
+Every number below was measured on the dev host on 2026-08-12 with **two sibling agent tasks active**
+(load average ~1.4 of 32). They are upper bounds, not best cases.
+
+| Measurement | Value | Runs |
+|---|---|---|
+| calibration kernel (warm) | 41.8–43.0 ms, median 42.3 | 6 calibrations × 5 samples |
+| calibration kernel (cold, no forced GC) | **41 ms for four runs, then 21 ms** | 16 consecutive |
+| 10,000 simulations, evpn-lab | 69.9–84.2 ms, median ~75 | 12 |
+| `sim.NewEngine`, evpn-lab | 124–194 µs/build | 10 samples × 100 builds |
+| scale-lab page render (authenticated nav → 8× vmbr0) | 3963 / 3173 / 3254 ms, **median 3254** | 1 e2e run × 3 samples |
+| scale-lab v1 pan/zoom p95 frame time | 33.4 / 50.0 / 50.0 ms, **median 50.0** (46.6 fps mean, ~700 frames/round) | 1 e2e run × 3 rounds |
+
+**Numbers that need a quiet host to be trusted, flagged for re-measurement at merge:** every row
+above, and therefore the two `sim.*` limits derived from them (150 ms, 350 µs), the two measured
+`topology.scale.*` limits, and `calibration.reference_ns` (42.3 ms). The direction of the error is
+safe — a reference calibration measured slow makes the factor *smaller*, i.e. the gate *tighter* —
+but the limits themselves carry whatever contention was present. A quiet-host re-measurement would
+let several tighten; ask for a quiet window if that is wanted before merge.
+
+### Gaps, stated
+
+- **The two non-quarantined browser budgets were measured end to end; the two quarantined ones were
+  not.** `VNPROX_E2E_SHARD=shard-1 npx playwright test scale.spec.ts --grep-invert "v2 canvas"` ran
+  green (3 passed, 1.5 min, after the shard's two stacks booted) and produced the page-render and v1
+  frame-time rows above. `topology.scale.v2_pan_zoom_p95_frame_ms` and its hardware twin were **not**
+  executed — that test is quarantined and running it in file order is the exact arrangement
+  `T-2505-followup-01` says reproduces 4/4. The v2 ceiling is the pre-existing 90 ms constant moved
+  into the file, so it enforces exactly what it enforced before; the hardware budget is report-only.
+  The **whole four-shard `make e2e` suite was not run** on this branch.
+- **`Calibrate`'s 400 ms warm-up is not covered by a test.** Removing it reddens nothing, because a
+  test that asserted "the cold measurement differs from the warm one by ~2×" would be asserting a
+  property of this host's frequency governor. The warm-up's justification is the 16-run measurement
+  above, recorded in `perf/budgets.json`'s `calibration.notes` — it is evidence, not a regression
+  test.
+- **`sim.engine_build_us` is the noisiest budget here** (124–194 µs across ten samples, a ~50%
+  spread even aggregated over 100 builds each), which is why its limit sits at ~2.1× the median. It
+  is included because the index build is a real cost no per-call benchmark sees, not because the
+  measurement is tight.
+- **The browser budgets normalise by core count, not by a browser calibration.** A JS calibration
+  loop measures the wrong dimension for a frame-time budget; a rasterisation calibration is more
+  machinery than this card could verify. The `cores` ladder is adopted from T-2505 because it is
+  already measured against this repository's two-core reproduction, not because it is ideal.
+- **`topology.scale.v2_*` is measured by a quarantined test** (`T-2505-followup-01`). This card does
+  **not** depend on that spec being green: nothing in its ACs is proven by it, its quarantine entry
+  was not touched, and on a run where the test does not execute its two budgets are simply not
+  measured. The spec's own no-orphan check (a browser-free test, first in the file) is what stops a
+  budget from silently stopping being measured.
+
 ---
 
 ## Follow-ups filed during wave 1 (2026-08-10)
