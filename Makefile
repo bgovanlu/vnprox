@@ -201,9 +201,27 @@ deb: ## build the .deb into dist/ (builds the frontend first — see below)
 MOCKPVE_ADDR    ?= :8006
 MOCKPVE_FIXTURE ?= testdata/clusters/single-node.yaml
 
-ci: ## everything GitHub Actions would run, locally (check + cross-arm64 + fuzz + package)
-	@echo ">> ci: this is the CI-equivalent gate. GitHub Actions is currently"
-	@echo ">> ci: unfunded for this repository, so THIS is the gate that matters."
+# `make ci` is the GO-ONLY subset: the four jobs that need no browser, no
+# container runtime, and no particular Node major. It is what to run before a
+# commit.
+#
+# It is NOT the whole of what GitHub Actions runs. ci.yml also has `e2e`
+# (Playwright + Chromium) and packaging-matrix.yml has `matrix` (10 container
+# legs across two Debian bases) and `cluster-ssh` (a 3-container simulation).
+# Those live in scripts/ci-local.sh, which reproduces every job including
+# these four and pins Node to the major the workflows pin — a green `make
+# check` on a different Node major is not evidence about CI.
+#
+#   scripts/ci-local.sh                  every job
+#   scripts/ci-local.sh check e2e        only the named jobs
+#
+# Since GitHub Actions is unfunded for this repository, scripts/ci-local.sh is
+# the only place the full matrix runs at all.
+ci: ## the container-free CI subset (check + cross-arm64 + fuzz + package); full matrix is scripts/ci-local.sh
+	@echo ">> ci: the container-free CI subset. GitHub Actions is unfunded for"
+	@echo ">> ci: this repository, so local runs are the gate that matters."
+	@echo ">> ci: this target OMITS the e2e and packaging-matrix jobs —"
+	@echo ">> ci: run scripts/ci-local.sh for the full matrix."
 	@echo ">> ci: [1/4] make check"
 	@$(MAKE) check
 	@echo ">> ci: [2/4] cross-compile for linux/arm64 (build-only, matches the cross-arm64 job)"
@@ -218,8 +236,9 @@ ci: ## everything GitHub Actions would run, locally (check + cross-arm64 + fuzz 
 	$(GO) test -run='^$$' -fuzz='^FuzzParseAll$$'        -fuzztime=$(FUZZTIME) ./internal/fwlog/
 	@echo ">> ci: [4/4] package"
 	@$(MAKE) deb
-	@echo ">> ci: PASSED. Note: make e2e is NOT included — the Playwright"
-	@echo ">> ci: suite is currently red (29 failed / 59 passed, see T-2108)."
+	@echo ">> ci: PASSED (check + cross-arm64 + fuzz + package)."
+	@echo ">> ci: NOT run here: e2e, packaging-matrix, cluster-ssh."
+	@echo ">> ci: for those, run: scripts/ci-local.sh"
 
 e2e: ## Playwright end-to-end suite against pvemock + vnproxd + the production SPA
 	@echo ">> e2e: building the SPA (vnproxd embeds web/dist) and running Playwright"

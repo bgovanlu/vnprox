@@ -177,16 +177,43 @@ the outcome either way.
 
 ## CI
 
-> **Correction, 2026-08-08 (T-2410): GitHub Actions IS running.** This note previously said it was
-> unfunded and that no workflow ran. That was wrong, and it was expensive: `T-1806-bug-02` sat
-> unexplained for two days with "reproduce under runner-like conditions" as its next step, while the
-> runner's own log — one `gh api .../jobs/<id>/logs` call away — contained the answer. Before
-> writing off a CI signal as absent, run `gh run list`.
+> **Status, 2026-08-11: Actions billing is exhausted; treat the hosted pipeline as unavailable and
+> run `scripts/ci-local.sh` instead.** Note carefully what this does *not* mean — as of this
+> writing runs still appear in `gh run list` and still complete. Do not infer from a green or red
+> hosted run that the pipeline is funded, and do not infer from "unfunded" that nothing ran.
+> **Check, don't assume, in both directions** — that is the durable lesson from the correction
+> below, and it survives the funding status changing again.
 >
-> Both `CI` and `Packaging matrix` run on every push to `main` and on pull requests. `make ci` on a
-> development host remains the fastest gate for a working tree — it runs the same four jobs
-> (`make check`, the arm64 cross-build, all seven fuzz targets, and the package build) — but it is
-> now a complement to the pipeline rather than a replacement for it.
+> **The 2026-08-08 (T-2410) correction this replaces, kept because its lesson still applies:** this
+> note once said Actions was unfunded and that no workflow ran. That was wrong, and it was
+> expensive — `T-1806-bug-02` sat unexplained for two days with "reproduce under runner-like
+> conditions" as its next step, while the runner's own log, one `gh api .../jobs/<id>/logs` call
+> away, contained the answer. Before writing off a CI signal as absent, run `gh run list`.
+>
+> **`scripts/ci-local.sh` is now the gate that matters.** It reproduces every job in both
+> workflows — `check`, `e2e`, `cross-arm64`, `fuzz`, `package`, the 10-leg `packaging-matrix`, and
+> `cluster-ssh` — pins Node to the major the workflows pin (via nvm; it *fails* rather than
+> silently using the system Node), refuses a dirty tree unless `ALLOW_DIRTY=1`, and prints one
+> line per job. `make ci` remains the fast container-free subset for a working tree.
+>
+> ```
+> scripts/ci-local.sh                # every job
+> scripts/ci-local.sh check e2e      # only the named jobs
+> FUZZTIME=10s scripts/ci-local.sh fuzz
+> ```
+>
+> **Run the jobs sequentially, and do not run anything else heavy alongside them.** The runner does
+> this by default for a reason: on 2026-08-11 a `go test ./internal/api/` issued concurrently with
+> the `fuzz` job killed a fuzz worker outright — "fuzzing process hung or terminated unexpectedly
+> while minimizing: EOF" — and Go saved the input it happened to be holding as a corpus entry. That
+> input did not reproduce any failure; the *process* died, not the parser. Run alone, `fuzz` passes
+> in ~500s. A fuzz failure of that shape is a resource verdict on the host, not a finding about the
+> code, and the saved corpus entry should be deleted rather than committed.
+>
+> **A local green is not a hosted green.** On commit `4968bf3` the hosted `e2e` job failed two
+> specs that pass on this host (see `T-2505-input-02` in `planning/tasks/phase-25.md`). This box is
+> 32-core; a hosted runner is 2–4. Any timing- or budget-based criterion measured here is
+> host-relative and will not predict the pipeline.
 >
 > `make e2e` is still deliberately **not** part of `make ci`: it needs a downloaded Chromium and a
 > set of free ports (`make ports`), so a developer running `make ci` on a laptop should not pay for

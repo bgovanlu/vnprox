@@ -272,6 +272,40 @@ conclusion this repository should act on is not "these two specs are flaky" but 
 deadline-based tests whose deadlines are tight enough to be load-sensitive", which is a property
 of the suite, not of any spec.
 
+### T-2505-input-02 · the hosted runner fails e2e specs this host passes — a hardware-class datum
+
+**kind:** evidence · **feeds:** T-2505 · **recorded:** 2026-08-11
+
+The `CI` workflow's `e2e` job on commit `4968bf3` reported **87 passed / 2 failed / 2 skipped**:
+
+- `e2e/guest-interior.spec.ts:23` — guest interior tab opt-in toggle
+- `e2e/user-guide-tasks.spec.ts:73` — LACP bond create draft
+
+The **same commit, same suite, same command** (`make e2e`) on the development host reports
+**89 passed / 0 failed / 2 skipped** — the documented baseline — with those two specs green at
+3.5s and 13.7s respectively. Full local run: 9.5 min, well inside budget.
+
+The two machines differ by roughly an order of magnitude in parallelism: this host is **32-core /
+62 GB**; a standard GitHub-hosted `ubuntu-latest` runner is **2–4 core / ~16 GB**.
+
+**Why this matters to T-2505 specifically.** T-2409 concluded its regression was *order-dependent,
+not load-dependent*, on the evidence that an idle-machine rerun reproduced the wall clock within
+0.4 min. `T-2505-input-01` already noted that this rules out load as the cause of the *slowdown*
+but not of the *failures*. This sighting is the first where the **same commit passes on fast
+hardware and fails on slow hardware with no code difference at all** — which is the cleanest
+available separation of the two hypotheses, because order is held constant and only the machine
+changes.
+
+The practical consequence for T-2505's AC2 (wall clock within +25% of the 9.1-min baseline): the
+baseline and the budget are **host-relative**, and a card that measures them on a 32-core box is
+not measuring what CI experiences. T-2505 should either state which host its budget is defined
+against, or express the budget in a host-independent way. Measuring on this host alone will
+produce a green card and a red pipeline.
+
+**Not yet done:** these two specs have not been run under artificial CPU restriction (e.g.
+`taskset -c 0,1`) to confirm the mechanism directly. That is the cheap next experiment and it
+belongs to T-2505, not here.
+
 **Why this is recorded on T-2505 rather than fixed here:** T-2409's regression was characterised
 as *order-dependent, not load-dependent*, on the evidence that an idle-machine rerun reproduced
 the wall clock within 0.4 min. That evidence rules out load as the cause of the *slowdown*. It

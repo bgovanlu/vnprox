@@ -784,6 +784,17 @@ func newStagedChangesetTestService(t *testing.T) *change.Service {
 	if err != nil {
 		t.Fatalf("change.NewService: %v", err)
 	}
+	// An apply that returns 202 arms a commit-confirm timer whose callback
+	// runs on its own goroutine, outliving the test unless it is stopped. Left
+	// armed, it fires after t.Cleanup has closed the database and logs
+	// "auto-rollback: loading changeset ... sql: database is closed" — noise
+	// that reads exactly like a real failure to load a changeset.
+	//
+	// Registered BEFORE the db.Close cleanup above runs (cleanups run
+	// last-registered-first), so the timers are stopped while the database is
+	// still open. The daemon does the same thing at shutdown via StopTimers;
+	// this is the test harness catching up with it, not a production defect.
+	t.Cleanup(svc.StopTimers)
 	return svc
 }
 
@@ -836,7 +847,28 @@ func TestChangesetsApply_AutoRollbackOnErrorRoute(t *testing.T) {
 
 	// The flag does not swallow the strategy travelling with it: an
 	// unhonourable strategy is still refused with its own stable code.
-	other := create(t)
+	//
+	// On a SEPARATE service, deliberately. The apply above returns 202 and
+	// holds the engine's apply lock while it runs; the lock is checked before
+	// the strategy is validated, so on a loaded machine the request below
+	// raced it and got 409 changeset_locked instead of 422 — which is what
+	// failed in CI while passing locally and 5/5 in isolation. Waiting for the
+	// first apply to release would make this a timing test; giving the
+	// strategy assertion its own engine removes the coupling entirely, and
+	// keeps it true no matter what an earlier assertion in this test does
+	// later.
+	otherSvc := newStagedChangesetTestService(t)
+	otherRouter := newChangesetTestRouter(otherSvc, fullCapsAuth("alice"))
+	otherReq := httptest.NewRequest(http.MethodPost, "/api/v1/changesets",
+		bytes.NewBufferString(`{"title":"draft","ops":[]}`))
+	otherRec := httptest.NewRecorder()
+	otherRouter.ServeHTTP(otherRec, otherReq)
+	var otherCreated changesetResponse
+	if err := json.NewDecoder(otherRec.Body).Decode(&otherCreated); err != nil {
+		t.Fatalf("decoding create response on the second service: %v", err)
+	}
+	other := otherCreated.ID
+	r = otherRouter
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/changesets/"+other+"/apply",
 		bytes.NewBufferString(`{"confirmTimeoutSec":120,"autoRollbackOnError":true,"applyStrategy":{"mode":"rolling"}}`))
 	rec = httptest.NewRecorder()

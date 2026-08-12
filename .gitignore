@@ -41,3 +41,8 @@ web/playwright-report/
 
 # Agent tooling (isolated worktrees for parallel sub-agent tasks)
 /.claude/worktrees/
+
+# scripts/ci-local.sh per-job logs. GitHub Actions is unfunded for this
+# repository, so that script is the gate; its output is a local artifact and
+# is never committed.
+/.ci-local/
