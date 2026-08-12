@@ -38,6 +38,29 @@ Findings carry optional machine-applicable `fix` patches (API doc). Errors block
 
 The review screen shows four tabs: **Summary** (op cards), **File diff** (unified diffs of every file the change touches — `/etc/network/interfaces` per node, and, since T-2003, SDN config, cluster-scoped), **Plan** (the exact ordered steps: which PVE API calls, which nodes reload, in what order), and **Discussion** (T-2003, below). Nothing applies until the user has seen this screen. The config (File diff) tab is deliberately literal — operators reason in `/etc/network/interfaces` terms even where the Summary tab's semantic op cards are more precise — and it renders exactly what apply would write: the same parse → mutate → unified-diff pipeline apply's own staging step uses for node files, and the same net-effect projection over live inventory for SDN config.
 
+### 3.0 Post-apply topology preview (T-2605)
+
+The blast radius (T-2404) answers *what breaks* and the diff answers *what fields change*. Neither
+answers the question an operator forms before clicking apply: **what will the map look like**.
+`GET /changesets/{id}/preview` answers it — the live inventory graph with the changeset's ops folded
+in **in memory**, rendered through the same projection `GET /topology` uses, plus a per-entity
+`added`/`removed`/`modified` marking. The map renders it as a distinct mode (`/topology?previewChangeset=<id>`),
+with removed entities drawn back onto the scene and struck rather than quietly absent — a deletion
+shown as an absence is a deletion nobody notices.
+
+Three properties are the whole point:
+
+- **It is best-effort and says so.** `bestEffort` is always true, and every op whose effect cannot be
+  expressed as a change to the inventory graph — a raw `/etc/network/interfaces` edit, or a
+  firewall/QoS/NAT/WireGuard/switch op that has no graph entity at all — is listed **by name with a
+  reason** in `unprojectable`. Nothing is silently dropped, and the reason describes the op rather
+  than vnprox's completeness.
+- **A changeset that cannot apply gets no preview.** Blocking validation findings mean there is no
+  post-apply state; the route refuses with `422 validation_failed` rather than rendering a map no
+  sequence of events can produce.
+- **It is read-only.** The projection touches neither the store nor PVE, and never writes through to
+  the live graph.
+
 ### 3.1 Review, comments, and approval (T-2003)
 
 The changeset is this product's unit of work, and review is where a *team*, not just a single admin, actually lives — generalizing T-1703's tenant self-service request-changeset approval queue (docs/api.md's "Tenants & self-service" section) into a mechanism every changeset can use, not only tenant requests.
