@@ -18,7 +18,10 @@
 // suite exercises against a live daemon.
 import { expect, test, type Page } from "@playwright/test";
 
-const CLUSTER_API_URL = "http://127.0.0.1:38006";
+import { mockURL } from "./shards";
+
+// T-2505: the single-homed mgmt stack's pvemock — see web/e2e/shards.ts.
+const CLUSTER_API_URL = mockURL("mgmt");
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {

@@ -193,6 +193,40 @@ in 41.3s and times out at 120s in-suite** — the cause is order-dependent state
    fixture whose expiry is in the past.
 6. The flake trend list is generated from run history, not hand-maintained.
 
+### T-2505 AC2 — the budget, restated against a named host (2026-08-12)
+
+**The +25% budget was never host-qualified, and a wall-clock budget that does not name its machine
+is not a budget.** `T-2505-input-02` is the evidence: the same commit is 89/0/2 here and 87/2/2 on a
+hosted runner, and this box is 32-core/62 GB against a runner's 2-4 core/~16 GB. So AC2 is restated
+rather than merely met:
+
+> **AC2 (restated).** The suite's wall clock is measured on the **development host** (32-core,
+> 62 GB, otherwise idle) with `make e2e`, which runs all four shards concurrently. The budget is
+> **within +25% of the serial baseline measured on the same host on the same day** — 9.92 min
+> (`89 passed / 0 failed / 2 skipped`, commit `d80f771`), i.e. **≤ 12.4 min**. CI does **not** run
+> four shards on one runner; it runs one shard per matrix leg, so the hosted number is a per-leg
+> figure and is deliberately not compared against this one.
+
+Measured, same host, same day, machine otherwise idle:
+
+| Arrangement | Wall clock | Result |
+|---|---|---|
+| Serial (pre-T-2505, `workers: 1`) | **9.92 min** | 89 passed / 0 failed / 2 skipped |
+| Four concurrent shards, run 1 | 4.6 min | 90 passed / 1 failed / 2 skipped |
+| Four concurrent shards, run 2 | 5.0 min | 89 / 2 / 2 |
+| Four concurrent shards, run 3 | 5.5 min | 90 passed / 0 failed / **1 quarantined-failing** / 2 skipped, gate PASS |
+| Four concurrent shards, run 4 (the committed tree) | **4.7 min** | 90 passed / 0 failed / **1 quarantined-failing** / 2 skipped, gate PASS |
+
+**−53% against a +25% budget**, on the committed tree (−45% on the slowest of the four runs). The slowest shard sets the clock, and shard-1 is the long pole
+because the quarantined `scale.spec.ts` test burns its full 120s timeout inside it; removing that
+one timeout would put shard-1 at ~3.5 min. The run-to-run spread (4.6 → 5.5 min) is itself worth
+recording: four concurrent shards contend for one machine, so this number is noisier than the serial
+one was.
+
+**One shard on two cores** (`taskset -c 0,1`, the closest local analogue of a hosted runner leg) is
+recorded in the delivery record below — that, not the number above, is what should be compared with
+the pipeline.
+
 ## T-2506 · Performance regression budget gate
 
 **kind:** implementation · **depends on:** T-2505
@@ -312,3 +346,229 @@ the wall clock within 0.4 min. That evidence rules out load as the cause of the 
 does not rule out load as a cause of the *four failures*, and these two sightings show this
 repository does contain deadline-based tests that fail under CPU pressure. T-2505 should test
 that hypothesis explicitly before concluding, and should not treat it as already refuted.
+
+---
+
+## T-2505 — delivery record (2026-08-12)
+
+Shipped: four-shard e2e suite (`web/e2e/shards.json` + `shards.ts`), `cmd/e2egate`
+(quarantine + expiry + run-history flake trend), `scripts/e2e-shards.sh`, a four-leg CI matrix
+with a required `e2e-gate` job, and six new registry rows.
+
+| AC | State | Evidence |
+|---|---|---|
+| 1 | ◐ **One failure bisected, mechanism NOT explained** | See below. Recorded as unexplained, with the bisection attached, exactly as the AC permits |
+| 2 | ● Met, budget restated against a named host | 5.5 min vs a 9.92-min same-day serial baseline: **−45%** against a +25% budget |
+| 3 | ✗ **NOT met, and now explained** | Run for the first time. 10 failures; the reason is precise and is not sharding |
+| 4 | ● Met, with a mutation | Canary/witness pair; green isolated, red when two shards share a store |
+| 5 | ● Met, with a past-dated fixture | Five gate cases run against real shard reports |
+| 6 | ● Met | Trend computed from `var/e2e-runs/runs.jsonl`; nothing hand-maintained |
+
+### AC1: what the bisection found, and what it did not
+
+**The four failures T-2409 reported no longer exist as a set** — they were properties of that
+branch's per-spec-daemon design, not of this repository. Two of them are explained outright:
+
+- **`user-guide-tasks.spec.ts` × 2 (IPAM reserve, firewall macro rule).** T-2409's branch applied
+  `isolatedStore({ config: "testdata/dev-scale.toml" })` at **file** scope. On `main` only that
+  file's *first* `describe` runs against the scale stack (`test.use({ baseURL: ...:28007 })`); the
+  SDN/IPAM/firewall `describe` runs against three-node-vlan. The conversion silently moved four
+  tests onto a fixture they were never written for. Named cause: **a fixture regression introduced
+  by the isolation conversion, not order-dependence.** `SPEC_STACKS` in `web/e2e/shards.ts` records
+  that this file needs *both* stacks, with a comment naming the trap.
+- **`history.spec.ts › History playback` (run 2 only).** Same class: `history.spec.ts` drives the
+  flow stack (`58007`), and appeared only in the run where the branch's per-file daemon replaced it.
+  Not reproduced here; the spec is green in every run below.
+
+**`scale.spec.ts › scale-lab (v2 canvas renderer)` is bisected and unexplained.** It is
+**quarantined** (`web/e2e/quarantine.json`, expires 2026-09-15, `T-2505-followup-01`).
+
+| Tests run, in file order | Result | Reproductions |
+|---|---|---|
+| `:258` alone | passes, 14.2s | 1/1 |
+| `:258` alone under `taskset -c 0,1` | passes, 19.5s | 1/1 |
+| `:127` → `:258` | passes, 33s total | 1/1 |
+| `:174` → `:258` | passes, 58s total | 1/1 |
+| `:127` → `:174` → `:258` | **`:258` times out at 120s** | **4/4** |
+| the full 91-test serial suite (`:127`,`:174`,`:258` in it) | passes, 13.3s | 1/1 |
+
+What that rules out, with the evidence:
+
+- **Not the sharding change.** It reproduces on **unmodified `main`'s** `playwright.config.ts`
+  (restored from `d80f771` and run with `--config`), same 4/4 shape.
+- **Not CPU.** It passes on two cores in isolation, and reproduces on an otherwise-idle 32-core box.
+- **Not order-dependent app state.** The scale stack's SQLite store contains **no layout row** after
+  a failing run — nothing was persisted for `:258` to inherit. (`TopologyPage` only persists
+  `positions`/`activeLayers`/`vlanFilter`; pan and zoom are not persisted at all.)
+- **Not the daemon's warm-up.** `:258` passes against a daemon of the same age when the preceding
+  tests are removed.
+
+So it needs **both** predecessors and neither alone, in a process where each test already gets a
+fresh browser context — which points at cumulative state in the shared **browser process**, not in
+vnprox. That is a hypothesis, not a finding, and it is written here as one. The remaining puzzle,
+stated plainly because it is the part that does not fit: the full 91-test serial suite runs all
+three tests in that order and **passes**, so more preceding work makes it *better*, not worse.
+
+`T-2505-followup-01` carries it.
+
+### AC3: `--repeat-each=2` — run at last, and it fails
+
+`E2E_ARGS="--repeat-each=2" scripts/e2e-shards.sh`, all four shards, idle machine, 8.8 min:
+**168 passed / 10 failed / 2 quarantined-failing / 6 skipped.** The criterion `T-2409` never ran has
+now been run, and the answer is no.
+
+The reason is one sentence, and it is not sharding: **most of this suite's specs assume a fresh
+store, and `--repeat-each=2` runs each spec twice against one daemon.** The cleanest demonstration is
+the spec that says so in its own name:
+
+```
+onboarding.spec.ts, --repeat-each=2, shard-2, idle machine
+  repeat 1  full walkthrough ...  PASS  5.5s
+  repeat 1  skip/dismiss/resume   PASS 11.8s
+  repeat 2  full walkthrough ...  FAIL 34.8s   <- describe title: "onboarding walkthrough (fresh DB, ...)"
+```
+
+The ten failures are that shape: `onboarding`, `changesets`, `mgmt-redundancy` (apply → confirm →
+committed), `history` (seeds and commits a changeset), `alert-rules` (a finding transition only fires
+once), `simulator`, `flows`, `responsive-triage` (confirms a pending changeset), `guest-interior`.
+Every one of them mutates app-owned state and then asserts on a starting condition its own first
+repeat destroyed.
+
+**What this means for the arc, stated plainly.** `--repeat-each` needs isolation *per run of a spec*.
+Sharding gives isolation *per shard*, which is a different and weaker guarantee — it was never going
+to satisfy this criterion, and saying otherwise would have been the tidy answer rather than the true
+one. The construct that does satisfy it is `T-2409`'s per-spec daemon on branch
+`t-2409-e2e-store-isolation`, whose blocker was cost: +79% wall clock, 16.3 min serial.
+
+**That blocker is now much smaller than it was.** 16.3 min of serial per-spec isolation spread over
+four shards is ~4-5 min — inside the budget restated above, on the same host. Combining the two is the
+obvious next card, and it is the one that closes AC3. It is not attempted here because it would mean
+re-verifying every measurement in this record against a second, larger change.
+
+### AC4: sharding isolates, proven by breaking it
+
+`web/e2e/aa-shard-canary.spec.ts` (shard-1) creates a real changeset in its shard's store and
+records the row id; `web/e2e/zz-shard-witness.spec.ts` (shard-2) asks *its* daemon for the same id
+and requires a 404. It refuses to be vacuous: it waits for the writer's marker and fails if it never
+arrives, and in a whole-suite run — where the two specs legitimately share one stack — it inverts
+into a positive control requiring the row to **be** visible.
+
+The mutation: `shardVarDir()` changed to return one directory for every shard.
+
+```
+CONTROL   shard-1 writer ✓   shard-2 witness ✓
+MUTATION  shard-1 writer ✓   shard-2 witness ✘
+  changeset 01KZV807SEK09FMB2E7HX7C1TN was created by shard-1 on https://127.0.0.1:8007 and is
+  visible on shard-2's own daemon https://127.0.0.1:21007: the two shards are sharing a store, so
+  a spec that corrupts state does not fail only its own shard
+```
+
+### AC5: the quarantine, and its expiry
+
+Five cases, run through `cmd/e2egate` against the **real** shard reports of a run that really did
+fail `scale.spec.ts`:
+
+| Case | Verdict |
+|---|---|
+| No quarantine | FAIL — both failures named |
+| Live quarantine (expires 2026-09-15) | the scale failure **tolerated**, reported as `QUARANTINED` |
+| Same entry back-dated to 2026-08-01 | FAIL, `EXPIRED ... fix it or re-triage it` |
+| Back-dated entry on a test that **passed** | FAIL — an expiry that only bites when the test fails is not a deadline |
+| Two of four shard reports missing | FAIL, `NOREPORT shard shard-3 produced no report` |
+
+`internal/e2egate` additionally table-tests malformed entries (reason under 20 characters, no ticket,
+unparseable or >42-day expiry, duplicates) and refuses to honour them, and
+`TestRepoQuarantineIsValid` re-checks the shipped file against the real clock on every `make check`.
+
+### A defect this work found in the suite, and fixed
+
+`saved-views.spec.ts › T-907 annotations` reloads the page immediately after clicking "Pin note".
+The note list re-renders from the mutation's own result, so the assertion can pass while
+`POST /annotations` is still in flight, and the reload then discards the write. That is the
+mechanism behind the "failed once in three full runs, passes in isolation" flake recorded on
+`t-2409-e2e-store-isolation`; it surfaced immediately once four shards ran at once. Both the create
+and the delete now wait for the server's response.
+
+### T-2505-followup-01 · `scale.spec.ts › v2 canvas` times out after its two file-mates
+
+**kind:** defect · **found by:** T-2505's bisection · **quarantined until:** 2026-09-15
+
+Everything known is in the AC1 table above: 4/4 reproducible, needs both preceding tests in the
+file, reproduces on unmodified `main`, not CPU, not persisted app state, and yet green inside the
+full serial suite. The next experiment is the one this card ran out of room for: restart the browser
+between the three tests (three separate Playwright invocations against one long-lived daemon) and
+see whether the failure follows the browser or the daemon. If it follows the browser, this is a
+Playwright/Chromium resource story and the fix is a spec-level one; if it follows the daemon, the
+store check above was looking in the wrong place.
+
+**Do not close it by re-running until it is green.** It is deterministic in the arrangement above.
+
+### The load hypothesis, tested rather than assumed — and half-confirmed
+
+`T-2505-input-02` asked for one experiment: re-run the two specs the hosted runner fails under
+`taskset -c 0,1`. Run, with a control at each step, on an otherwise-idle machine:
+
+| What | 32 cores | 2 cores (`taskset -c 0,1`) |
+|---|---|---|
+| `guest-interior.spec.ts:23` alone | passes 3.8s | **passes** 4.7s |
+| `user-guide-tasks.spec.ts:73` alone | passes 13.6s | **passes** 17.5s |
+| `scale.spec.ts:258` alone | passes 14.2s | **passes** 19.5s |
+| **shard-4 entire (20 tests)** | passes, 3/3 runs | **fails, 2/2 runs — a different test each time** |
+
+The single-spec probes refute the simple version of the hypothesis: two cores alone do not break
+these specs. The whole-shard runs confirm the version `T-2505-input-01` actually stated. Run 1 failed
+`guest-interior.spec.ts:23` — **one of the exact two specs the hosted runner failed on `4968bf3`**.
+Run 2 failed `a11y.spec.ts:106 › axe: Topology (Graph view, v1)` instead, and passed
+`guest-interior`. Both failures were `toBeVisible` assertions that ran out their 30-second budget,
+and both specs pass on the same two cores when run alone.
+
+**That is not a set of flaky specs; it is a suite whose deadlines are a function of the machine.**
+Two changes came out of it:
+
+1. **Deadlines now scale with `availableParallelism()`** (`web/playwright.config.ts`): ×2.5 under 4
+   cores, ×1.5 under 8, unchanged above. It honours CPU affinity, so a `taskset` run and a
+   cpuset-restricted container both read the cores they can actually use. A deadline only costs time
+   when it fires, so a passing run on a big machine is unaffected. With it, shard-4 on two cores went
+   green in 2.8 min.
+2. **A real defect, not a deadline** — see `T-2505-followup-02`. The scaled deadline did **not** fix
+   `guest-interior`, which failed again on the next two-core run after waiting the full 75 seconds.
+   Raising a deadline would have hidden it; the daemon log shows it is not slowness at all.
+
+### T-2505-followup-02 · the guest-interior panel never refetches after its toggle is enabled
+
+**kind:** defect · **found by:** T-2505's two-core reproduction · **reproduces:** `taskset -c 0,1`
+running shard-4 whole, 2 of 3 runs
+
+The daemon log for a failing run, in order, over 60ms:
+
+```
+GET  /api/v1/guests/guest:pve1:200/interior-toggle   200
+GET  /api/v1/guests/guest:pve1:200/interior          404      <-- toggle still off
+PUT  /api/v1/guests/guest:pve1:200/interior-toggle   200      <-- spec turns it on
+GET  /api/v1/guests/guest:pve1:200/interior-toggle   200
+(nothing further)
+```
+
+The interior read is issued **once**, before the toggle is on, and correctly 404s. Enabling the
+toggle never invalidates that query, so the panel keeps rendering the error branch — "Could not read
+this guest's interior right now — it may be unreachable, or no live PVE session is available" —
+until the tab is remounted. On a fast machine the initial GET lands after the toggle and the bug is
+invisible.
+
+This is a **frontend cache-invalidation defect in the guest-interior panel**, not a timing
+tolerance, and it is the most likely explanation for one of the two specs the hosted runner failed on
+`4968bf3`. Out of scope for T-2505, which is why it is written down here rather than patched: the
+fix belongs with an owner of that panel, and the spec should assert the refetch happened rather than
+waiting longer for a render that is never coming.
+
+### A twenty-minute lesson worth one preflight check
+
+`web/dist/index.html` is **checked in** (only that file — `.gitignore` excludes the hashed assets
+beside it) so `//go:embed all:dist` compiles on a fresh clone. Its asset hashes therefore go stale
+the instant anyone rebuilds, and restoring it with `git checkout -- web/dist/index.html` — which is
+the *correct* thing to do before committing — leaves a page pointing at a bundle that is not on
+disk. Every test then times out at 120s and not one failure message mentions the SPA.
+
+`scripts/e2e-shards.sh` now reads the bundle path out of `index.html` and refuses to start if that
+file is not in `web/dist`, naming it. Verified both ways: it refuses on the checked-in file and
+proceeds after `npm run build`.

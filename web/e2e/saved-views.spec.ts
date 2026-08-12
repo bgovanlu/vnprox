@@ -142,7 +142,23 @@ test.describe("T-907 annotations", () => {
     await expect(inspector.getByText("No notes pinned to this entity yet.")).toBeVisible();
 
     await inspector.getByPlaceholder("Pin a note to this entity…").fill(noteText);
-    await inspector.getByRole("button", { name: "Pin note" }).click();
+
+    // T-2505: wait for the server to have ACCEPTED the note, not just for the
+    // note to have appeared. The list re-renders from the mutation's own
+    // result, so `getByText(noteText)` can be satisfied while POST
+    // /annotations is still in flight — and the reload below then races it and
+    // discards the write. That is the mechanism behind this spec's documented
+    // "failed once in three full runs, passes in isolation" flake (recorded on
+    // branch t-2409-e2e-store-isolation), and it fails more often the busier
+    // the machine is, which is why it surfaced when the suite started running
+    // four shards at once.
+    const [created] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("/api/v1/annotations") && r.request().method() === "POST",
+      ),
+      inspector.getByRole("button", { name: "Pin note" }).click(),
+    ]);
+    expect(created.status(), "POST /annotations did not create the note").toBe(201);
     await expect(inspector.getByText(noteText)).toBeVisible();
 
     // Reload the whole page (a fresh navigation, not just client-side
@@ -155,7 +171,15 @@ test.describe("T-907 annotations", () => {
     await expect(reopenedInspector.getByText(noteText)).toBeVisible();
 
     // Deleting it removes it — and it stays removed across another reload.
-    await reopenedInspector.getByRole("button", { name: `Delete note: ${noteText}` }).click();
+    // Same wait-for-the-server rule as the create above: the reload two
+    // statements down would otherwise race an in-flight DELETE.
+    const [deleted] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("/api/v1/annotations/") && r.request().method() === "DELETE",
+      ),
+      reopenedInspector.getByRole("button", { name: `Delete note: ${noteText}` }).click(),
+    ]);
+    expect(deleted.status(), "DELETE /annotations/{id} did not remove the note").toBe(204);
     await expect(reopenedInspector.getByText(noteText)).toHaveCount(0);
     await expect(reopenedInspector.getByText("No notes pinned to this entity yet.")).toBeVisible();
 

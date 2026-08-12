@@ -1,0 +1,68 @@
+[
+  {
+    "name": "shard-1",
+    "slot": 0,
+    "why": "Owns the scale stack: everything that drives scale-lab must share a shard, because a second copy would need a second registered port pair for no gain.",
+    "specs": [
+      "aa-shard-canary.spec.ts",
+      "change-review.spec.ts",
+      "command-palette.spec.ts",
+      "evpn-tab.spec.ts",
+      "fwlog-analytics.spec.ts",
+      "map-export.spec.ts",
+      "nav-after-inspector.spec.ts",
+      "scale.spec.ts",
+      "user-guide-tasks.spec.ts"
+    ]
+  },
+  {
+    "name": "shard-2",
+    "slot": 1,
+    "why": "Owns the simulator and alert stacks, and the isolation witness — which must not be in shard-1, since proving it cannot see shard-1's canary is the point.",
+    "specs": [
+      "alert-rules.spec.ts",
+      "capture.spec.ts",
+      "changesets.spec.ts",
+      "lacp-inspector.spec.ts",
+      "onboarding.spec.ts",
+      "responsive-triage.spec.ts",
+      "simulator.spec.ts",
+      "wireguard-wizard.spec.ts",
+      "zz-shard-witness.spec.ts"
+    ]
+  },
+  {
+    "name": "shard-3",
+    "slot": 2,
+    "why": "Owns the mgmt stack (the federation specs' second cluster) and the flow stack.",
+    "specs": [
+      "diagnose.spec.ts",
+      "federation-clusters.spec.ts",
+      "federation.spec.ts",
+      "flows.spec.ts",
+      "help.spec.ts",
+      "history.spec.ts",
+      "inspector-compare.spec.ts",
+      "mgmt-redundancy.spec.ts",
+      "microseg.spec.ts",
+      "readonly-crawl.spec.ts",
+      "saved-views.spec.ts",
+      "topology.spec.ts"
+    ]
+  },
+  {
+    "name": "shard-4",
+    "slot": 3,
+    "why": "Owns the phys-collapse and k8s stacks, and a11y.spec.ts — the single longest file in the suite at 78s.",
+    "specs": [
+      "a11y.spec.ts",
+      "conntrack.spec.ts",
+      "dashboard.spec.ts",
+      "guest-interior.spec.ts",
+      "k8s-overlay.spec.ts",
+      "lod.spec.ts",
+      "perf.spec.ts",
+      "physical-collapse.spec.ts"
+    ]
+  }
+]

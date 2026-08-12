@@ -18,10 +18,13 @@
 // only in cluster "west" and switches active context to it.
 import { expect, request, test, type Page } from "@playwright/test";
 import { switchToGraphView } from "./helpers";
+import { mockURL, stackURL } from "./shards";
 
-const BASE = "https://127.0.0.1:8007";
-const CLUSTER_EAST_URL = "http://127.0.0.1:8006";
-const CLUSTER_WEST_URL = "http://127.0.0.1:38006";
+// T-2505: resolved per shard — see web/e2e/shards.ts. "east" is this shard's
+// own default pvemock; "west" is the single-homed mgmt stack's.
+const BASE = stackURL("default");
+const CLUSTER_EAST_URL = mockURL("default");
+const CLUSTER_WEST_URL = mockURL("mgmt");
 
 async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
   await page.addInitScript(() => {
