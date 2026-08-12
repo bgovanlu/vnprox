@@ -8,7 +8,17 @@ import { getChangeset } from "../api/changesets";
 import type { Changeset, Op } from "../api/types";
 import { isDraftEditable } from "./drawerMachine";
 import { changesetKey, useCreateChangesetMutation, useUpdateChangesetMutation } from "./queries";
+import { useLockNoticeStore } from "./lockNoticeStore";
 import { useChangesetDrawerStore } from "./store";
+
+/** Options every op-landing action accepts (T-2805). */
+export interface StageOptions {
+  /** Take over another operator's advisory lock on an entity this changeset
+   * touches. It changes nothing about whether the staging succeeds — the
+   * server stages either way — only whether their claim is transferred and
+   * the takeover audited. */
+  lockOverride?: boolean;
+}
 
 export interface DrawerActions {
   /** Appends `ops` to the currently-active draft, creating a new one (with
@@ -20,7 +30,7 @@ export interface DrawerActions {
    * drawer's own list-editing actions, which always operate on the full
    * array since PUT /changesets/{id} replaces it). Throws if there is no
    * active draft. */
-  replaceOps: (ops: Op[]) => Promise<Changeset>;
+  replaceOps: (ops: Op[], opts?: StageOptions) => Promise<Changeset>;
   /** Replaces the trailing `count` ops of the active draft with `ops` —
    * the editor re-submit path (useEditorSubmit): a previous submit's
    * erroring op(s) sit at the tail (addOps appends), and re-submitting the
@@ -36,6 +46,10 @@ export function useDrawerActions(): DrawerActions {
   const setActiveId = useChangesetDrawerStore((s) => s.setActiveId);
   const createMutation = useCreateChangesetMutation();
   const updateMutation = useUpdateChangesetMutation();
+  // T-2805: every staging round trip records (or clears) the advisory-lock
+  // warning the server returned, so a collision that has been resolved stops
+  // being shown without anyone dismissing it.
+  const setLockNotice = useLockNoticeStore((s) => s.setNotice);
 
   async function currentChangeset(id: string): Promise<Changeset> {
     const cached = queryClient.getQueryData<Changeset>(changesetKey(id));
@@ -48,19 +62,23 @@ export function useDrawerActions(): DrawerActions {
       const current = await currentChangeset(activeId);
       if (isDraftEditable(current)) {
         const updated = await updateMutation.mutateAsync({ id: activeId, ops: [...current.ops, ...ops] });
+        setLockNotice(updated.id, updated.locks);
         return updated;
       }
     }
     const created = await createMutation.mutateAsync({ title: titleIfNew, ops });
     setActiveId(created.id);
+    setLockNotice(created.id, created.locks);
     return created;
   }
 
-  async function replaceOps(ops: Op[]): Promise<Changeset> {
+  async function replaceOps(ops: Op[], opts?: StageOptions): Promise<Changeset> {
     if (!activeId) {
       throw new Error("useDrawerActions.replaceOps: no active draft");
     }
-    return updateMutation.mutateAsync({ id: activeId, ops });
+    const updated = await updateMutation.mutateAsync({ id: activeId, ops, lockOverride: opts?.lockOverride });
+    setLockNotice(updated.id, updated.locks);
+    return updated;
   }
 
   async function amendLastOps(count: number, ops: Op[], titleIfNew = "Untitled draft"): Promise<Changeset> {
@@ -68,7 +86,9 @@ export function useDrawerActions(): DrawerActions {
       const current = await currentChangeset(activeId);
       if (isDraftEditable(current) && current.ops.length >= count) {
         const kept = current.ops.slice(0, current.ops.length - count);
-        return updateMutation.mutateAsync({ id: activeId, ops: [...kept, ...ops] });
+        const amended = await updateMutation.mutateAsync({ id: activeId, ops: [...kept, ...ops] });
+        setLockNotice(amended.id, amended.locks);
+        return amended;
       }
     }
     return addOps(ops, titleIfNew);

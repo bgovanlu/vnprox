@@ -179,6 +179,38 @@ internal/gitsync/       git-backed spec sync: a repository as the source of
                         intent, reconciled into a DRAFT changeset (T-2701)
 ```
 
+Phase 28 addition ("Adoption"):
+
+```
+internal/presence/      advisory entity locks on staged drafts + per-changeset
+                        /per-entity presence over the existing WS stream (T-2805)
+```
+
+**`internal/presence` and D4 (T-2805).** Decision D4 — "all mutations via the change engine with
+commit-confirm" — is the invariant an entity-lock feature is most able to break, so the boundary
+is stated here rather than only in the package. A lock is **advisory**: it warns a second operator
+staging against an entity someone else already has a draft open on, names the holder, and lets
+them proceed with the override audited (`changeset.lock_override`). It refuses nothing. That is
+structural rather than conventional: this package is consumed only by `internal/api`'s staging
+handlers and its two read routes, and **`internal/change` holds no reference to it at all** — a
+test over the real package's import list (`presence.TestChangeEngineDoesNotImportPresence`) fails
+the build if that ever changes, the same shape §11's stage-only plugin `Stager` and §13.1's MCP
+manifest already take. A lock that could block an apply would be a second gate on stage →
+validate → diff → apply → confirm/rollback; the single cluster-wide apply interlock §4 describes
+is a different mechanism and is untouched. Presence adds no second push channel: a client
+subscribes to `presence:<scope>` on the existing `/api/ws` hub (§8), and the resulting
+`presence.changed` event carries a count and no identities, because the hub fans one pre-encoded
+payload out to every subscriber and has no per-subscriber capability view — names live behind
+`GET /presence`'s `audit` gate instead.
+
+**Scope limit, stated rather than implied.** Locks and presence are **node-local**, because the
+sessions they are tied to are (§7: the SQLite store is node-local app data, and sessions live in
+it). Two operators on the same node's UI see each other; two operators who happened to log in to
+different nodes of the same cluster do not. That is a real gap against §5's "everything is
+cluster-aware", and closing it needs a peer-API fan-out (`GET /api/peer/locks`) that T-2805 did
+not spec. It fails in the safe direction — a missed warning, never a missed apply — because the
+mechanism is advisory in the first place.
+
 **`internal/gitsync` and D5 (T-2701).** Decision D5 — "Proxmox configs remain source of
 truth" — is the invariant this package is most able to break, so the boundary is worth
 stating here rather than only in the package. A git repository becomes the source of

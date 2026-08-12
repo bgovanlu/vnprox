@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -168,6 +169,20 @@ type changesetResponse struct {
 	// all-at-once apply (the default) omits it entirely, so no existing
 	// response's byte shape changes.
 	ApplyStage *change.StagedApplyState `json:"applyStage,omitempty"`
+	// Locks (T-2805) is the advisory-lock warning for a staging request:
+	// which entities this changeset touches that another operator already
+	// has a draft open against, and which of those this request deliberately
+	// took over. It is present ONLY on POST /changesets and PUT
+	// /changesets/{id}, and only when there is something to warn about, so
+	// every other response — and every uncontended staging — has a
+	// byte-identical shape to the pre-T-2805 one.
+	//
+	// It is a WARNING and nothing else. The changeset it appears on was
+	// already created or updated by the time this object was built, and no
+	// route anywhere refuses anything because of a lock (docs/api.md's
+	// advisory-locks paragraph; internal/presence's doc.go for why that is
+	// structural).
+	Locks *changesetLocks `json:"locks,omitempty"`
 	// TouchesMgmtPath is T-703's server-computed flag (docs/api.md's
 	// changesets section): the ops intersect a node's resolved management
 	// path (change.TouchesMgmtPath over the same MgmtStatus computation
@@ -286,7 +301,7 @@ func redactOpSecrets(ops []change.Op) []change.Op {
 // mounted — same reasoning as mountLayoutsRoutes: there would be no safe
 // way to attribute a created/discarded changeset to a user for the
 // audit trail docs/security.md requires.
-func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService, gateways PVEGatewayProvider, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource, scoper TenantScoper, notifier ApprovalNotifier, adminStore TenantAdminStore) {
+func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService, gateways PVEGatewayProvider, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource, scoper TenantScoper, notifier ApprovalNotifier, adminStore TenantAdminStore, locks LockService) {
 	if svc == nil || auth == nil {
 		return
 	}
@@ -325,9 +340,9 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 			r.Use(csrf.CSRFMiddleware)
 		}
 		r.Use(auth.RequireCap(capNetWrite))
-		r.Post("/changesets", handleCreateChangeset(svc, lookup, mgmt, wgCarriers, scoper, notifier, adminStore))
-		r.Put("/changesets/{id}", handleUpdateChangeset(svc, lookup, mgmt, wgCarriers))
-		r.Delete("/changesets/{id}", handleDiscardChangeset(svc, lookup))
+		r.Post("/changesets", handleCreateChangeset(svc, lookup, mgmt, wgCarriers, scoper, notifier, adminStore, locks, auth))
+		r.Put("/changesets/{id}", handleUpdateChangeset(svc, lookup, mgmt, wgCarriers, locks, auth))
+		r.Delete("/changesets/{id}", handleDiscardChangeset(svc, lookup, locks))
 		r.Post("/changesets/{id}/validate", handleValidateChangeset(svc, lookup, mgmt, wgCarriers))
 		r.Post("/changesets/{id}/apply", handleApplyChangeset(svc, lookup, gateways, mgmt, wgCarriers))
 		r.Post("/changesets/{id}/confirm", handleConfirmChangeset(svc, lookup, mgmt, wgCarriers))
@@ -1254,13 +1269,20 @@ func (o *opsField) UnmarshalJSON(data []byte) error {
 // `{title, ops:[Op]}`. TenantId (T-1703) is optional: when present the body
 // creates a request-changeset (StatusRequested) owned by that tenant, subject
 // to the tenant scope check, rather than an ordinary draft.
+// LockOverride (T-2805) is the deliberate "I know someone else has this
+// open, take it anyway" flag. Omitting it (the default, and every
+// pre-T-2805 caller) leaves another operator's claim alone and reports it
+// in the response's `locks.held`; the changeset is staged either way.
+// Setting it takes the claim over and audits each takeover as
+// `changeset.lock_override`.
 type createChangesetRequest struct {
-	Title    string   `json:"title"`
-	TenantId string   `json:"tenantId,omitempty"`
-	Ops      opsField `json:"ops"`
+	Title        string   `json:"title"`
+	TenantId     string   `json:"tenantId,omitempty"`
+	Ops          opsField `json:"ops"`
+	LockOverride bool     `json:"lockOverride,omitempty"`
 }
 
-func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource, scoper TenantScoper, notifier ApprovalNotifier, adminStore TenantAdminStore) http.HandlerFunc {
+func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource, scoper TenantScoper, notifier ApprovalNotifier, adminStore TenantAdminStore, locks LockService, authSvc AuthService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -1292,8 +1314,28 @@ func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mgm
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		writeJSON(w, http.StatusCreated, withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
+		resp := withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers))
+		// T-2805: the draft exists at this point regardless of what the lock
+		// table says. Staging is never refused; this only decides what the
+		// operator is TOLD about it.
+		resp.Locks = stageLocks(r.Context(), locks, authSvc, username, c.ID, opTargets(c.Ops), req.LockOverride)
+		writeJSON(w, http.StatusCreated, resp)
 	}
+}
+
+// opTargets is the set of entity Ref strings a changeset's ops name — the
+// entities an advisory lock is taken on. Ops with no target at all (a
+// trailing `sdn.apply`, say) lock nothing: there is no entity to collide
+// over.
+func opTargets(ops []change.Op) []string {
+	out := make([]string, 0, len(ops))
+	for _, op := range ops {
+		if op.Target.IsZero() {
+			continue
+		}
+		out = append(out, op.Target.String())
+	}
+	return out
 }
 
 // updateChangesetRequest is docs/api.md's PUT /changesets/{id} body:
@@ -1305,9 +1347,11 @@ func handleCreateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mgm
 type updateChangesetRequest struct {
 	Title *string  `json:"title,omitempty"`
 	Ops   opsField `json:"ops"`
+	// LockOverride (T-2805): see createChangesetRequest's own comment.
+	LockOverride bool `json:"lockOverride,omitempty"`
 }
 
-func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource) http.HandlerFunc {
+func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt MgmtStatusService, wgCarriers change.WgCarrierSource, locks LockService, authSvc AuthService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -1335,11 +1379,13 @@ func handleUpdateChangeset(svc ChangesetService, lookup UsernameLookup, mgmt Mgm
 			return
 		}
 		paths, carriers := mgmtEval(r.Context(), mgmt, wgCarriers)
-		writeJSON(w, http.StatusOK, withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers)))
+		resp := withReview(r.Context(), svc, withMgmtFlag(c, paths, carriers))
+		resp.Locks = stageLocks(r.Context(), locks, authSvc, username, c.ID, opTargets(c.Ops), req.LockOverride)
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
-func handleDiscardChangeset(svc ChangesetService, lookup UsernameLookup) http.HandlerFunc {
+func handleDiscardChangeset(svc ChangesetService, lookup UsernameLookup, locks LockService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -1351,6 +1397,14 @@ func handleDiscardChangeset(svc ChangesetService, lookup UsernameLookup) http.Ha
 		if err := svc.Discard(r.Context(), id, username); err != nil {
 			writeChangesetMutationError(w, err)
 			return
+		}
+		// T-2805: the draft is gone, so its advisory claim on those entities
+		// is meaningless. Best-effort — the discard already succeeded, and a
+		// stranded lock expires on its own.
+		if locks != nil {
+			if _, err := locks.ReleaseChangeset(r.Context(), id); err != nil {
+				slog.Default().Warn("api: releasing locks for a discarded changeset", "error", err, "changeset_id", id)
+			}
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}

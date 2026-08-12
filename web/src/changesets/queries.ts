@@ -81,7 +81,10 @@ export function useChangesetImpactQuery(id: string | undefined, enabled: boolean
 export function useCreateChangesetMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { title: string; ops: Op[] }) => createChangeset(input),
+    // T-2805: `lockOverride` is passed straight through. It never gates
+    // anything client-side — the server stages either way and only decides
+    // whether another operator's advisory claim is taken over (and audited).
+    mutationFn: (input: { title: string; ops: Op[]; lockOverride?: boolean }) => createChangeset(input),
     onSuccess: (c) => {
       queryClient.setQueryData(changesetKey(c.id), c);
       void queryClient.invalidateQueries({ queryKey: ["changesets", "resumable"] });
@@ -92,8 +95,8 @@ export function useCreateChangesetMutation() {
 export function useUpdateChangesetMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, title, ops }: { id: string; title?: string; ops: Op[] }) =>
-      updateChangeset(id, { title, ops }),
+    mutationFn: ({ id, title, ops, lockOverride }: { id: string; title?: string; ops: Op[]; lockOverride?: boolean }) =>
+      updateChangeset(id, { title, ops, lockOverride }),
     onSuccess: (c) => {
       queryClient.setQueryData(changesetKey(c.id), c);
       void queryClient.invalidateQueries({ queryKey: changesetDiffKey(c.id) });

@@ -38,6 +38,21 @@ func (a authServiceAdapter) Username(ctx context.Context) (string, bool) {
 	return id.Username, true
 }
 
+// SessionID resolves the authenticated session id from ctx, satisfying
+// internal/api's SessionLookup interface (T-2805). It is the identity an
+// advisory lock's lifetime is tied to: the same id the WS hub reports for a
+// connection, so that dropping the connection drops the lock. A bearer-token
+// request carries its own session id here too, so a token-staged draft takes
+// locks like any other — it simply has no WS connection whose loss could
+// free them early.
+func (a authServiceAdapter) SessionID(ctx context.Context) (string, bool) {
+	id, ok := auth.IdentityFromContext(ctx)
+	if !ok || id.SessionID == "" {
+		return "", false
+	}
+	return id.SessionID, true
+}
+
 // HasCap satisfies internal/api's DiagnoseCapabilityChecker interface
 // (T-1307's POST /diagnose capture-escalation step): reports whether ctx's
 // authenticated session holds the named capability, without 403ing when it

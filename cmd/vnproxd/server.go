@@ -37,6 +37,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/neighbor"
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/plugin"
+	"github.com/bgovanlu/vnprox/internal/presence"
 	"github.com/bgovanlu/vnprox/internal/reconcile"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
@@ -230,6 +231,21 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 
 	graph := inventory.NewGraph()
 	topoSvc := topology.NewService(graph, logger)
+	// T-2805: advisory entity locks + presence. It is wired to the WS hub as
+	// a connection observer, which is the whole mechanism behind "a closed
+	// laptop never blocks the cluster": the hub is the only place that knows
+	// the instant a connection dies, and that instant is what releases the
+	// locks its session held.
+	presenceSvc, err := presence.NewService(presence.Config{
+		Locks:  store.NewEntityLockRepo(db),
+		Audit:  auditRepo,
+		WS:     topoSvc,
+		Logger: logger,
+	})
+	if err != nil {
+		return fmt.Errorf("initializing presence: %w", err)
+	}
+	topoSvc.SetConnObserver(presenceSvc)
 	// T-1102: the pinned-spec table (the GitOps reconciler's declared
 	// desired state) — constructed here, ahead of driftSvc below, so its
 	// spec_drift check family can read it every cycle via specPinAdapter.
@@ -1415,6 +1431,14 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// schedule row the runner re-reads on every tick, which is what makes
 		// a cadence change take effect without a restart.
 		DigestSchedule: store.NewDigestRepo(db),
+		// T-2805: advisory locks and presence. The SAME object serves both
+		// seams — one service owns the lock table and the connection
+		// registry, because "this session disconnected" is what releases a
+		// lock. It is deliberately NOT handed to changeSvc: the change
+		// engine has no reference to it, so no apply path can consult a lock
+		// even by accident (internal/presence's doc.go).
+		Locks:    presenceSvc,
+		Presence: presenceSvc,
 		// T-1007: GET /history/events merges the same audit_log (narrowed to
 		// the changeset-lifecycle action set) with finding_events.
 		History:              auditRepo,

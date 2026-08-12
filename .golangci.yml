@@ -167,6 +167,15 @@ linters:
         linters:
           - staticcheck
         text: "SA1019"
+      # T-2805 AC3 ("a disconnected session's locks are released, asserted by
+      # dropping the connection") can only be asserted by dialling a real WS
+      # client and killing it — same locked nhooyr.io/websocket dependency,
+      # same unavoidable module-wide deprecation notice as the hub.go
+      # exclusion above.
+      - path: internal/presence/ws_disconnect_test\.go
+        linters:
+          - staticcheck
+        text: "SA1019"
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
