@@ -55,6 +55,14 @@ tooling assumed. `ports_require_free` names the holding PID for exactly this cas
 4. Run `make check`. `internal/devports` will tell you if the port is unregistered, double-claimed,
    or half of an unclaimed pair.
 
+**Write the port as a literal, never as arithmetic.** `T-2505` added a shard per copy of the e2e
+default stack, and the tempting shape was `basePort + shard * stride`. The scan reads *literals*, so
+that would have hidden every shard's bind from the very check this document exists to describe — a
+registry that cannot see a bind is worse than none, because readers trust it. `web/e2e/shards.ts`
+spells all six out in the `port:` shape the scan recognises, and the mutation proving the scan sees
+them (change one to an unregistered number, watch `TestEveryBoundPortIsRegistered` name it) is a
+30-second check worth running whenever a new binder shape is introduced.
+
 ---
 
 ## 3. What is enforced
@@ -90,7 +98,7 @@ line:
 
 ```
 PORT    PROTO OWNER                      STATUS   BINDER
-8006    tcp   pvemock-default            IN USE   web/playwright.config.ts
+8006    tcp   pvemock-default            IN USE   web/e2e/shards.ts
                                                     ^ pid 2496324: .../pvemock --addr 127.0.0.1:8006 ...
 8007    tcp   vnproxd-default            free     testdata/dev.toml
 ```

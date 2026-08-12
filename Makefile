@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve openapi record record-mock soak
+.PHONY: build dev test lint check deb mockpve openapi record record-mock soak e2e e2e-whole e2e-trend
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -240,9 +240,17 @@ ci: ## the container-free CI subset (check + cross-arm64 + fuzz + package); full
 	@echo ">> ci: NOT run here: e2e, packaging-matrix, cluster-ssh."
 	@echo ">> ci: for those, run: scripts/ci-local.sh"
 
-e2e: ## Playwright end-to-end suite against pvemock + vnproxd + the production SPA
-	@echo ">> e2e: building the SPA (vnproxd embeds web/dist) and running Playwright"
+e2e: ## Playwright end-to-end suite, sharded, against pvemock + vnproxd + the production SPA
+	@echo ">> e2e: building the SPA (vnproxd embeds web/dist)"
+	cd $(WEB_DIR) && npm run build
+	@echo ">> e2e: running the suite as concurrent shards; cmd/e2egate decides the verdict"
+	scripts/e2e-shards.sh
+
+e2e-whole: ## the same suite in ONE process on 8006/8007 — the pre-T-2505 arrangement, for reproducing a cross-spec interaction
 	cd $(WEB_DIR) && npm run e2e
+
+e2e-trend: ## per-test flake rate over the recorded run history (T-2505 AC6)
+	$(GO) run ./cmd/e2egate trend
 
 ports: ## show every port this repo's tooling binds, and what is holding them now
 	@. packaging/test/lib/ports.sh && ports_report

@@ -48,6 +48,24 @@ jobs:
   # on a laptop should not pay for it. `make e2e` runs the identical command
   # locally.
   e2e:
+    # T-2505: one shard per runner, four runners.
+    #
+    # Locally, `make e2e` runs all four shards concurrently on one 32-core box.
+    # A hosted runner is 2-4 cores, so doing that here would make every shard
+    # slower than the serial suite was. One shard per leg is the arrangement
+    # that helps BOTH machines: this runner does a quarter of the work and
+    # brings up a quarter of the servers.
+    #
+    # A leg does NOT decide anything. It uploads its report and exits 0 even
+    # when its tests failed, because the verdict needs every shard's report and
+    # the quarantine — which only the `e2e-gate` job below has. That is not the
+    # `continue-on-error` this file warns about: `e2e-gate` is required, it
+    # fails on any unquarantined failure, and it fails on a shard that produced
+    # no report at all.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [shard-1, shard-2, shard-3, shard-4]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # BLOCKING as of 2026-08-07 (T-2108 AC2). It was `continue-on-error: true`
@@ -91,8 +109,22 @@ jobs:
         run: npx playwright install --with-deps chromium
         working-directory: web
 
-      - name: Run the end-to-end suite
-        run: make e2e
+      - name: Build the production SPA
+        run: npm run build
+        working-directory: web
+
+      - name: Run ${{ matrix.shard }}
+        # `|| true`: see the job comment. The shard's exit code is not the
+        # verdict; a missing report is what `e2e-gate` treats as a failed shard.
+        run: E2E_NO_GATE=1 scripts/e2e-shards.sh ${{ matrix.shard }} || true
+
+      - name: Upload ${{ matrix.shard }}'s report
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-${{ matrix.shard }}
+          path: web/test-results/shards/${{ matrix.shard }}.json
+          retention-days: 7
+          if-no-files-found: ignore
 
       # Traces are retain-on-failure (playwright.config.ts), so this uploads
       # only what is needed to diagnose a red run.
@@ -100,9 +132,40 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.shard }}
           path: web/test-results/
           retention-days: 7
+
+  # The job that decides. Required; every shard's report has to be here for it
+  # to say anything, and a shard that produced none fails it by name.
+  e2e-gate:
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Download every shard's report
+        uses: actions/download-artifact@v4
+        with:
+          pattern: e2e-report-*
+          merge-multiple: true
+          path: e2e-reports
+
+      - name: Apply the quarantine and decide
+        run: |
+          go run ./cmd/e2egate gate \
+            --reports e2e-reports \
+            --shards shard-1,shard-2,shard-3,shard-4 \
+            --history var/e2e-runs
 
   cross-arm64:
     # Build-only leg per docs/development.md ("make check matrix (amd64;

@@ -90,6 +90,46 @@ Why it is enforced rather than documented: five collisions in a single phase, th
 was the fix for the third (`T-1807-bug-01` → `T-1807-bug-02`). Each one first presented as a
 product defect.
 
+`T-2505` added six rows (`21006`-`23007`): the e2e suite's default three-node-vlan stack now has one
+copy per shard. Those ports are written as literals in `web/e2e/shards.ts` precisely so the scan can
+see them — computing them as `base + shard * stride` would have hidden every shard's binds from the
+registry, which is the failure mode the registry exists to prevent.
+
+### The e2e suite runs in shards (`T-2505`)
+
+`web/e2e/shards.json` says which spec files run in which of the four shards; `web/e2e/shards.ts`
+turns that into ports, generated daemon configs and Playwright `webServer` entries. Each shard is a
+**separate Playwright process with its own pvemock/vnproxd stacks, SQLite store and interfaces
+sandbox**, so the suite's wall clock is the slowest shard rather than the sum of every spec, and a
+spec that corrupts global state can only corrupt its own shard's.
+
+```
+make e2e                          all four shards concurrently, then the gate
+make e2e-whole                    the pre-T-2505 arrangement: one process on 8006/8007
+make e2e-trend                    per-test flake rate from recorded run history
+scripts/e2e-shards.sh shard-2     one shard
+E2E_ARGS="--repeat-each=2" scripts/e2e-shards.sh
+```
+
+**The shards' exit codes are not the verdict.** `cmd/e2egate` reads every shard's JSON report and
+decides: an unquarantined failure fails the build, an **expired** quarantine fails the build whether
+or not its test failed, a shard that produced no report at all fails the build, and every run is
+appended to `var/e2e-runs/runs.jsonl` so the flake trend is computed rather than curated.
+
+**Quarantine** lives in `web/e2e/quarantine.json`. An entry needs the file, the test's full title, a
+reason of at least 20 characters, a ticket, and an expiry no more than 42 days out.
+`internal/e2egate`'s `TestRepoQuarantineIsValid` re-checks that file against the real clock on every
+`make check`, so an entry that quietly expires reddens the tree without anyone running the e2e suite.
+
+**Adding a spec:** put its file name in exactly one shard in `shards.json`, and if it needs a
+fixture other than three-node-vlan, name that stack in `SPEC_STACKS`. A spec file in no shard is a
+hard error at config load — a spec that silently stops running is what `T-2108` spent an arc
+recovering from, and the check caught exactly that mistake while this manifest was being written.
+
+**Local four-up is not the CI arrangement.** Four concurrent shards is a 32-core developer machine's
+setting; `ci.yml` runs **one shard per runner** across a four-leg matrix, with a required `e2e-gate`
+job that collects the reports. See `T-2505-input-02` for why that distinction is load-bearing.
+
 ## The mock PVE server (`internal/pvemock`)
 
 The single most important dev asset: an HTTP server faithfully imitating the PVE API surface vnprox uses (`/access/ticket`, `/cluster/*`, `/nodes/*/network`, `/nodes/*/qemu|lxc`, SDN + firewall endpoints, task polling), driven by YAML fixture files in `testdata/clusters/` — e.g. `single-node.yaml`, `three-node-vlan.yaml`, `evpn-lab.yaml`, `messy-brownfield.yaml` (drift, conflicts, stale configs on purpose). It simulates: ticket auth + CSRF, permission-dependent 403s, task lifecycle with delays, `interfaces.new` staging semantics, and SDN pending/apply state. Host-level reads (`internal/host`) are interfaced so fixtures can back them too (`host.Reader` implementations: `real` and `fixture`).
@@ -217,8 +257,10 @@ the outcome either way.
 >
 > `make e2e` is still deliberately **not** part of `make ci`: it needs a downloaded Chromium and a
 > set of free ports (`make ports`), so a developer running `make ci` on a laptop should not pay for
-> it. It is green (89 passed / 0 failed / 2 skipped) and is a required job in `ci.yml`; run it
-> locally when touching UI flows.
+> it. Since `T-2505` it runs four shards concurrently — **90 passed / 0 failed / 1
+> quarantined-failing / 2 skipped in 5.5 min** on this host, against the 9.9-min serial baseline the
+> same day — and the `e2e-gate` job is what is required in `ci.yml`. Run it locally when touching UI
+> flows.
 
 ### Workflow definitions (GitHub Actions)
 
@@ -230,14 +272,15 @@ the outcome either way.
 | `cross-arm64` | `GOOS=linux GOARCH=arm64 go build ./...` — build-only; internal/host's netlink/ioctl code must at least compile for arm64 Proxmox nodes even though the CI fleet is amd64-only | **Required** |
 | `fuzz` | Every untrusted-input parser's fuzz target, 60s each (T-604) — see `docs/security-verification.md`'s fuzz inventory | **Required** |
 | `package` | `make build` (production frontend) + `make deb`, artifact uploaded | **Required** |
-| `e2e` | `make e2e` — Playwright against pvemock + vnproxd + the production SPA. Uploads traces on failure | **Required** (blocking since 2026-08-07, `T-2108`) |
+| `e2e` | **T-2505:** a four-leg matrix, one shard per runner. Uploads each shard's report (and traces on failure). A leg exits 0 even when its tests failed — it is not the verdict | Not required on its own |
+| `e2e-gate` | `cmd/e2egate` over all four reports: unquarantined failures, expired quarantines and missing shard reports each fail it | **Required** (the blocking successor to `e2e`, `T-2108` → `T-2505`) |
 
 Local equivalents, in the order of decreasing frequency you should run them:
 
 ```
 make check   # every change — lint, typecheck, 4,058 tests, govulncheck, npm audit
 make ci      # before pushing — check + arm64 cross-build + 7 fuzz targets + package
-make e2e     # when touching UI flows — Playwright; green, and required in CI
+make e2e     # when touching UI flows — Playwright, sharded; the gate decides pass/fail
 ```
 
 `release.yml`: on tag — build, sign .deb, publish to the apt repo, GitHub release with changelog. Keep runtimes <10 min; cache Go/npm.

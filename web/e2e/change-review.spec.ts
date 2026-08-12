@@ -18,7 +18,11 @@
 // via a real change.Service) — see planning/reports/T-2003.md.
 import { expect, test, type Page } from "@playwright/test";
 
-const BASE = "https://127.0.0.1:8007";
+import { stackURL } from "./shards";
+
+// T-2505: this shard's own default-stack daemon. A hard-coded 8007 would have
+// shard-2 quietly driving shard-1's daemon.
+const BASE = stackURL("default");
 
 async function readCsrfCookie(page: Page): Promise<string> {
   const cookies = await page.context().cookies();

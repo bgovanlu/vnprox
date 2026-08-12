@@ -17,8 +17,13 @@
 // for why that specific IP was chosen.
 import { expect, request, test, type Page } from "@playwright/test";
 
-const BASE = "https://127.0.0.1:8007";
-const K8SMOCK_URL = "http://127.0.0.1:8008";
+import { mockURL, stackURL } from "./shards";
+
+// T-2505: resolved per shard — see web/e2e/shards.ts. The k8s mock is
+// single-homed (one registered port pair), so its address is the same in every
+// shard; the default daemon's is not.
+const BASE = stackURL("default");
+const K8SMOCK_URL = mockURL("k8s");
 
 const GUEST_REF = "guest:pve1:200";
 const BRIDGE_REF = "bridge:pve1:vmbr0";
