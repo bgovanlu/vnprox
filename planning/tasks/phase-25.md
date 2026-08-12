@@ -214,9 +214,10 @@ Measured, same host, same day, machine otherwise idle:
 | Serial (pre-T-2505, `workers: 1`) | **9.92 min** | 89 passed / 0 failed / 2 skipped |
 | Four concurrent shards, run 1 | 4.6 min | 90 passed / 1 failed / 2 skipped |
 | Four concurrent shards, run 2 | 5.0 min | 89 / 2 / 2 |
-| Four concurrent shards, run 3 (as shipped) | **5.5 min** | 90 passed / 0 failed / **1 quarantined-failing** / 2 skipped, gate PASS |
+| Four concurrent shards, run 3 | 5.5 min | 90 passed / 0 failed / **1 quarantined-failing** / 2 skipped, gate PASS |
+| Four concurrent shards, run 4 (the committed tree) | **4.7 min** | 90 passed / 0 failed / **1 quarantined-failing** / 2 skipped, gate PASS |
 
-**−45% against a +25% budget.** The slowest shard sets the clock, and shard-1 is the long pole
+**−53% against a +25% budget**, on the committed tree (−45% on the slowest of the four runs). The slowest shard sets the clock, and shard-1 is the long pole
 because the quarantined `scale.spec.ts` test burns its full 120s timeout inside it; removing that
 one timeout would put shard-1 at ~3.5 min. The run-to-run spread (4.6 → 5.5 min) is itself worth
 recording: four concurrent shards contend for one machine, so this number is noisier than the serial
@@ -559,3 +560,15 @@ tolerance, and it is the most likely explanation for one of the two specs the ho
 `4968bf3`. Out of scope for T-2505, which is why it is written down here rather than patched: the
 fix belongs with an owner of that panel, and the spec should assert the refetch happened rather than
 waiting longer for a render that is never coming.
+
+### A twenty-minute lesson worth one preflight check
+
+`web/dist/index.html` is **checked in** (only that file — `.gitignore` excludes the hashed assets
+beside it) so `//go:embed all:dist` compiles on a fresh clone. Its asset hashes therefore go stale
+the instant anyone rebuilds, and restoring it with `git checkout -- web/dist/index.html` — which is
+the *correct* thing to do before committing — leaves a page pointing at a bundle that is not on
+disk. Every test then times out at 120s and not one failure message mentions the SPA.
+
+`scripts/e2e-shards.sh` now reads the bundle path out of `index.html` and refuses to start if that
+file is not in `web/dist`, naming it. Verified both ways: it refuses on the checked-in file and
+proceeds after `npm run build`.

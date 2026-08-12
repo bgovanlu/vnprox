@@ -54,6 +54,25 @@ EXTRA_ARGS="${E2E_ARGS:-}"
 echo ">> e2e: shards: $SHARDS"
 
 # --- preflight --------------------------------------------------------------
+# vnproxd serves web/dist, and web/dist/index.html is CHECKED IN (only
+# index.html — .gitignore excludes the hashed assets beside it) so that
+# `//go:embed all:dist` compiles on a fresh clone. Its asset hashes therefore go
+# stale the moment anyone rebuilds, and a `git checkout -- web/dist/index.html`
+# restores a page pointing at a bundle that is not on disk. The browser then
+# gets a 404 for the application itself and EVERY test times out at 120s with
+# nothing in the failure naming the cause — which is exactly how twenty minutes
+# went missing while T-2505 was being written.
+#
+# So check the referenced bundle exists rather than checking for a placeholder
+# marker: the file is always "a real index.html", just not one for this build.
+BUNDLE=$(sed -n 's/.*src="\/\(assets\/[^"]*\.js\)".*/\1/p' web/dist/index.html | head -n 1)
+if [ -z "$BUNDLE" ] || [ ! -f "web/dist/$BUNDLE" ]; then
+  echo ">> e2e: web/dist/index.html references ${BUNDLE:-no bundle at all}, which is not in web/dist." >&2
+  echo "   vnproxd would serve a page with no application on it and every test would time out." >&2
+  echo "   Run 'npm --prefix web run build' first, or use 'make e2e', which does it for you." >&2
+  exit 2
+fi
+
 # The registry knows every port this repo's tooling binds; a shard whose stack
 # cannot bind fails 90 seconds later with a message about a health check, not
 # about the port.
