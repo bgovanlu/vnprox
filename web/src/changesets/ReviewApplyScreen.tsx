@@ -220,6 +220,17 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
 
           <RadixTabs.Content value="impact" className="mt-3 flex-1 overflow-y-auto">
             <ImpactPanel impact={impact} loading={impactLoading} error={impactError} />
+            {/* T-2605: the blast radius says who notices; this says what the map
+                would look like. The preview lives on the map rather than in
+                this drawer because a projected topology is a topology — the
+                link carries the changeset id in the URL so the resulting view
+                is shareable (topology/previewQuery.ts). */}
+            <a
+              className="mt-3 inline-block text-xs font-medium text-indigo-700 underline dark:text-indigo-300"
+              href={`/topology?previewChangeset=${encodeURIComponent(changeset.id)}`}
+            >
+              Preview the post-apply map →
+            </a>
           </RadixTabs.Content>
 
           <RadixTabs.Content value="filediff" className="mt-3 flex-1 overflow-y-auto">

@@ -142,6 +142,36 @@ func EntitiesFromInterfaces(node, content string) ([]PointEntity, error) {
 	return out, nil
 }
 
+// PointEntities flattens already-resolved inventory entities into the same
+// comparable point-in-time shape EntitiesFromInterfaces produces from captured
+// file text.
+//
+// It exists so a comparison between two IN-MEMORY entity sets — T-2605's live
+// snapshot versus its post-apply projection — goes through this file's single
+// canonical field renderer (entityFieldStrings/canonicalValue) rather than a
+// second one written next to the projection. Two renderers would eventually
+// disagree about what counts as a changed field, and on that day one of the two
+// surfaces would report a change the other said had not happened.
+//
+// Unlike EntitiesFromInterfaces it is not restricted to interfaces(5) kinds:
+// every entity handed to it is flattened, so an SDN or guest-NIC difference is
+// comparable too.
+func PointEntities(ents []inventory.Entity) ([]PointEntity, error) {
+	out := make([]PointEntity, 0, len(ents))
+	for _, e := range ents {
+		if e == nil {
+			continue
+		}
+		fields, err := entityFieldStrings(e)
+		if err != nil {
+			return nil, fmt.Errorf("topology: reading fields for %s: %w", e.GetRef(), err)
+		}
+		out = append(out, PointEntity{Ref: e.GetRef(), Name: fields["Name"], Fields: fields})
+	}
+	sortPointEntities(out)
+	return out, nil
+}
+
 func sortPointEntities(ents []PointEntity) {
 	sort.Slice(ents, func(i, j int) bool { return ents[i].Ref.String() < ents[j].Ref.String() })
 }

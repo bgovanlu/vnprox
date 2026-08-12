@@ -305,6 +305,10 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		// netRead routes — knowing what a changeset would disrupt must never
 		// require the capability to apply it.
 		r.Get("/changesets/{id}/impact", handleChangesetImpact(svc, mgmt, wgCarriers))
+		// T-2605: the post-apply topology preview. A read, in the netRead
+		// group for the same reason as impact above — seeing what the map
+		// would look like must never require the capability to make it so.
+		r.Get("/changesets/{id}/preview", handleChangesetPreview(svc))
 
 		// T-208 raw editor: the "open" call and its live syntax-lint
 		// round trip. Neither mutates server state (the lint endpoint
@@ -706,6 +710,39 @@ func handleChangesetImpact(svc ChangesetService, mgmt MgmtStatusService, wgCarri
 			return
 		}
 		writeJSON(w, http.StatusOK, impact)
+	}
+}
+
+// ChangesetPreviewService is the optional ChangesetService extension backing
+// T-2605's post-apply topology preview (change.Service.Preview). Checked with a
+// type assertion, like ChangesetImpactService above, so a test double that does
+// not care about the preview need not grow a method.
+type ChangesetPreviewService interface {
+	Preview(ctx context.Context, id string) (change.Preview, error)
+}
+
+// handleChangesetPreview serves `GET /changesets/{id}/preview` (T-2605): the
+// cluster map as it would be with this changeset's ops applied.
+//
+// Read-only and side-effect free by construction. It takes no PVE gateway (so
+// there is nothing for it to write PVE through), passes no author (so there is
+// no actor for it to attribute a store write to), and the service method it
+// calls persists nothing. A changeset with blocking validation findings is
+// refused with the ordinary 422 `validation_failed` envelope rather than
+// projected: a changeset that cannot apply has no post-apply map.
+func handleChangesetPreview(svc ChangesetService) http.HandlerFunc {
+	previewer, ok := svc.(ChangesetPreviewService)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !ok {
+			writeJSONError(w, http.StatusNotImplemented, "not_implemented", "post-apply preview is not available")
+			return
+		}
+		preview, err := previewer.Preview(r.Context(), chi.URLParam(r, "id"))
+		if err != nil {
+			writeApplyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, preview)
 	}
 }
 

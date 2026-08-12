@@ -52,6 +52,7 @@ var Operations = map[string]Operation{
 	"POST /api/v1/changesets/{id}/validate":               {Summary: "Validate a changeset without applying it.", Tag: "changesets", Auth: AuthSession},
 	"GET /api/v1/changesets/{id}/diff":                    {Summary: "Return the config diff a changeset would produce.", Tag: "changesets", Auth: AuthSession},
 	"GET /api/v1/changesets/{id}/impact":                  {Summary: "Report which guests and paths a changeset disrupts.", Tag: "changesets", Auth: AuthSession},
+	"GET /api/v1/changesets/{id}/preview":                 {Summary: "Project the topology map as it would be with a changeset applied.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/preflight-impact":       {Summary: "Report impact for a proposed edit before it is saved.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/apply":                  {Summary: "Apply a changeset under the commit-confirm timer.", Tag: "changesets", Auth: AuthSession},
 	"POST /api/v1/changesets/{id}/confirm":                {Summary: "Confirm an applied changeset before its timer expires.", Tag: "changesets", Auth: AuthSession},

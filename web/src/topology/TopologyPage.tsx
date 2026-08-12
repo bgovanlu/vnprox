@@ -31,6 +31,8 @@ import { computeLatencyOverlayEdges } from "./latencyMode";
 import { useLatMeshHeatmapQuery } from "./latMeshQueries";
 import { computeDiffOverlay, summarizeDiffOverlay } from "./diffOverlay";
 import { useTopologyDiffQuery } from "./topologyDiffQuery";
+import { buildPreviewScene, summarizePreviewScene, summarizeUnprojectable } from "./previewOverlay";
+import { useChangesetPreviewQuery } from "./previewQuery";
 import { computeMTUOverlayEdges } from "./mtuOverlay";
 import { useMTUProbeResultsQuery } from "./mtuProbeQueries";
 import { useWireGuardTunnelsQuery } from "../wireguard/wgTunnelsQuery";
@@ -152,7 +154,28 @@ function TopologyPageContent() {
   // this is undefined and the fetch is the unchanged local GET /topology.
   const [clusterSearchParams] = useSearchParams();
   const drilledClusterId = clusterSearchParams.get("cluster") ?? undefined;
-  const { data: topology, isLoading, isError, dataUpdatedAt } = useTopologyQuery(drilledClusterId);
+  const { data: liveTopology, isLoading, isError, dataUpdatedAt } = useTopologyQuery(drilledClusterId);
+  // T-2605 preview mode: `?previewChangeset=<id>` renders the map as it would
+  // be with that changeset applied. Carried in the URL — like T-2704's diff
+  // range — so the changeset drawer's "show on map" is an ordinary link and the
+  // resulting view is shareable. No param means no fetch and no preview.
+  const previewChangesetId = clusterSearchParams.get("previewChangeset") ?? "";
+  const { data: preview, isError: previewFailed } = useChangesetPreviewQuery(previewChangesetId);
+  const previewScene = useMemo(() => buildPreviewScene(preview, liveTopology), [preview, liveTopology]);
+  const previewActive = preview !== undefined;
+  // Everything downstream — layout, elements, the inspector, the switch view —
+  // reads `topology`, so preview mode is a substitution at this one point
+  // rather than a second rendering path that could drift from the real one.
+  // Memoized, not a bare conditional: every downstream useMemo (layout above
+  // all) keys on this value's identity, and a fresh object each render would
+  // re-run the elk layout on every keystroke.
+  const topology: typeof liveTopology = useMemo(
+    () =>
+      preview
+        ? { ...preview.topology, nodes: previewScene.nodes, edges: previewScene.edges, staleness: liveTopology?.staleness }
+        : liveTopology,
+    [preview, previewScene, liveTopology],
+  );
   useTopologyWsBridge();
   const reactFlow = useReactFlow();
   const { data: session } = useSession();
@@ -986,6 +1009,46 @@ function TopologyPageContent() {
         </div>
       )}
 
+      {/* T-2605: preview mode's own status line. The map must SAY that it is
+          showing something that has not happened, must say what would change
+          even when a change is off-map, and must repeat the server's
+          disclosure of what it could not project — a projected map rendered
+          without that list turns a disclosed gap back into a hidden one. */}
+      {previewActive && (
+        <div
+          className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100 print:hidden"
+          role="status"
+        >
+          <span className="font-medium">Post-apply preview of changeset {preview.changesetId}</span> —{" "}
+          {summarizePreviewScene(previewScene)}{" "}
+          <span className="italic">Best-effort projection: nothing has been applied.</span>
+          {summarizeUnprojectable(preview) !== "" && (
+            <div className="mt-1">
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                {summarizeUnprojectable(preview)}
+              </span>
+              <ul className="mt-1 list-disc pl-5">
+                {preview.unprojectable.map((op) => (
+                  <li key={`${op.op}:${op.target ?? ""}:${op.opId ?? ""}`}>
+                    <code>{op.op}</code> {op.target} — {op.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {previewChangesetId !== "" && previewFailed && (
+        <div
+          className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200 print:hidden"
+          role="status"
+        >
+          Could not project changeset {previewChangesetId}. A changeset with blocking validation errors has no
+          post-apply map; the live map is shown instead.
+        </div>
+      )}
+
       {noLldpData && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 print:hidden">
           No LLDP data yet — the physical layer shows NICs only.{" "}
@@ -1105,7 +1168,7 @@ function TopologyPageContent() {
             selectedFlowEdgeId={selectedFlowEdgeId}
             latencyEdges={latencyOverlayEdges}
             mtuBadges={mtuOverlayBadges}
-            diffMarks={diffOverlay.marks}
+            diffMarks={previewActive ? previewScene.marks : diffOverlay.marks}
             onFlowEdgeClick={(id) => {
               setSelectedFlowEdgeId(id);
             }}
