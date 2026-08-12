@@ -57,6 +57,74 @@ func TestCalibrate_RejectsZeroSamples(t *testing.T) {
 	}
 }
 
+// TestCalibrate_TakesTheFastestSampleNotATypicalOne pins the estimator, because
+// switching it back to a median would be an easy and entirely reasonable-
+// looking change that quietly turns this gate into a suggestion.
+//
+// The reasoning, restated so a future reader does not have to reconstruct it:
+// every error source in the calibration is one-directional. Contention, GC,
+// preemption and frequency ramp make the kernel slower; nothing makes it
+// faster than the hardware allows. Factor divides this by the reference and
+// only ever loosens a budget, so a calibration inflated by noise hands out
+// headroom — noise making the gate PASS a regression, which no acceptance
+// criterion covers because AC4 is about noise making it FAIL.
+//
+// Measured on the dev host at merge (idle, three consecutive runs): 41.1 ms,
+// 41.6 ms, 48.8 ms as medians-of-5. The outlier would have stretched every
+// calibrated budget by 15% for that run.
+//
+// It injects the samples rather than asserting statistically on real ones. A
+// first version of this test did the latter and was vacuous: on a quiet
+// machine the median and the minimum of five real samples differ by less than
+// any margin wide enough not to flake, so reverting Calibrate to a median did
+// not redden it. The injected sequence below is one a median and a minimum
+// disagree about by construction.
+func TestCalibrate_TakesTheFastestSampleNotATypicalOne(t *testing.T) {
+	// One clean sample and four progressively contended ones — the shape of a
+	// real run that happens to land during someone else's build. Median = 60ms,
+	// minimum = 40ms. The reference host is 42.3 ms, so a median-based
+	// calibration reports this machine as 1.4x slower than reference and
+	// stretches every calibrated budget accordingly; the minimum reports it as
+	// slightly faster and stretches nothing.
+	samples := []time.Duration{
+		40 * time.Millisecond,
+		55 * time.Millisecond,
+		60 * time.Millisecond,
+		70 * time.Millisecond,
+		95 * time.Millisecond,
+	}
+	var i int
+	sample := func() (time.Duration, error) {
+		if i >= len(samples) {
+			// Past the scripted sequence: a value slower than every scored
+			// sample, so a bug that scored extra samples would move the
+			// result away from 40ms rather than flattering it.
+			return 95 * time.Millisecond, nil
+		}
+		d := samples[i]
+		i++
+		return d, nil
+	}
+
+	// Warm-up 0: the real 400ms warm-up exists to outlast the CPU frequency
+	// governor's ramp, which an injected sampler does not have. Leaving it in
+	// would spin the fake through its sequence before a single sample was
+	// scored.
+	got, err := calibrateWith(len(samples), 0, sample)
+	if err != nil {
+		t.Fatalf("calibrateWith: %v", err)
+	}
+
+	if got != 40*time.Millisecond {
+		t.Errorf("calibration = %s, want 40ms (the fastest scored sample).\n\n"+
+			"A median of this sequence is 60ms. If this function was changed to return a typical "+
+			"sample rather than the fastest one, revert it: every error source in this measurement "+
+			"is one-directional (contention, GC, frequency ramp only make it slower), and Factor "+
+			"only ever LOOSENS a budget — so a typical-value estimator lets a noisy run hand out "+
+			"headroom and hide a real regression.", got)
+	}
+}
+
 // TestFactor_OnlyEverLoosens is the property the whole normalisation design
 // rests on, and the one a reader is most likely to want to argue with. It is
 // stated in the package comment; this is where it is enforced.

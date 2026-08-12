@@ -206,6 +206,19 @@ func (p *Proposer) Enabled() bool {
 	return p.cfg.Enabled && p.cfg.Host != nil && p.cfg.Source != nil && p.cfg.Changesets != nil
 }
 
+// PreviewConfigured reports whether a T-2605 post-apply projection is wired
+// in, and therefore whether a pull-request body will carry a preview section.
+//
+// It exists because the absence of a preview is INVISIBLE in every other
+// signal: pullRequestBody omits the section silently when cfg.Preview is nil,
+// which is correct behaviour (an omitted section is honest, an empty one
+// claims a projection was attempted) but means a daemon that simply forgot to
+// pass the seam produces bodies indistinguishable from a daemon that has no
+// projection to offer. T-2702 shipped in exactly that state for two waves —
+// the section was written and unit-tested against a stub while the daemon
+// handed it nil — so the wiring now has something a test can assert on.
+func (p *Proposer) PreviewConfigured() bool { return p.cfg.Preview != nil }
+
 // Describe returns the credential-free description of where proposals go.
 func (p *Proposer) Describe() string {
 	if p.cfg.Host == nil {

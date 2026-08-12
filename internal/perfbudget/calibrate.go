@@ -2,6 +2,7 @@ package perfbudget
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"time"
 )
@@ -90,25 +91,67 @@ func CalibrationSample() (time.Duration, error) {
 }
 
 // Calibrate warms the machine for calibrationWarmup, then runs the kernel n
-// times and returns the median of those n.
+// times and returns the FASTEST of those n.
+//
+// Fastest, not median, and the difference is the difference between a gate and
+// a suggestion. Every source of error in this measurement is one-directional:
+// contention, GC, scheduler preemption and CPU frequency ramp can only make
+// the kernel take LONGER than the machine is actually capable of. Nothing can
+// make it finish faster than the hardware allows. So the minimum is the best
+// available estimate of the machine's true speed, and the median is an
+// estimate of "the machine's speed plus whatever noise was typical during
+// these five samples".
+//
+// Why that matters here specifically: Factor divides this by the reference
+// host's time and the result only ever LOOSENS a budget (it is floored at 1).
+// A calibration that reads high therefore hands out extra headroom — which is
+// to say, noise can make the gate pass a real regression. Measured on the dev
+// host at merge time (2026-08-12, idle): three consecutive median-of-5
+// calibrations returned 41.1 ms, 41.6 ms and 48.8 ms. The third would have
+// stretched every calibrated budget by 15% for that run, silently. Taking the
+// minimum makes a noisy run produce a TIGHTER budget than a quiet one, which
+// is the safe direction to be wrong in: the failure mode becomes a spurious
+// red that a re-run clears, not a green that hides a regression.
+//
+// The measurement side keeps the median (see Median's use in the gate): there,
+// the thing being measured IS the workload, a slow outlier is a real
+// observation of the system under test, and AC4 requires one outlier not to
+// fail the gate. The asymmetry is deliberate — the calibration is measuring
+// the ruler, the gate is measuring the object.
 func Calibrate(n int) (time.Duration, error) {
+	return calibrateWith(n, calibrationWarmup, CalibrationSample)
+}
+
+// calibrateWith is Calibrate's body with the sampler injected.
+//
+// The seam exists so the estimator can be tested deterministically. It cannot
+// be tested through Calibrate: CalibrationSample times a real kernel, so on a
+// quiet machine the median and the minimum of five samples are within noise of
+// each other and a statistical assertion about them passes whichever estimator
+// is in use. (Confirmed the hard way — a first version of the test below was
+// written against the real sampler, and reverting this function to a median
+// did not redden it. A test that cannot fail for the reason it was written is
+// worse than none, because it reports coverage that does not exist.)
+func calibrateWith(n int, warmup time.Duration, sample func() (time.Duration, error)) (time.Duration, error) {
 	if n < 1 {
 		return 0, fmt.Errorf("calibrating: samples must be at least 1, got %d", n)
 	}
-	for start := time.Now(); time.Since(start) < calibrationWarmup; {
-		if _, err := CalibrationSample(); err != nil {
+	for start := time.Now(); time.Since(start) < warmup; {
+		if _, err := sample(); err != nil {
 			return 0, err
 		}
 	}
-	samples := make([]float64, 0, n)
+	fastest := time.Duration(math.MaxInt64)
 	for i := 0; i < n; i++ {
-		d, err := CalibrationSample()
+		d, err := sample()
 		if err != nil {
 			return 0, err
 		}
-		samples = append(samples, float64(d))
+		if d < fastest {
+			fastest = d
+		}
 	}
-	return time.Duration(Median(samples)), nil
+	return fastest, nil
 }
 
 // Factor is how much every "calibrated" limit stretches on this machine:

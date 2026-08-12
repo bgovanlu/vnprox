@@ -1092,7 +1092,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// needs only a read, and a deployment that never asked to propose
 	// anything never reads a write credential off disk.
 	gitSyncProposer, err := buildGitSyncProposer(
-		cfg.GitSync, changeSvc, graph, store.NewChangesetProposalRepo(db), changeSvc, auditRepo, logger)
+		cfg.GitSync, changeSvc, graph, store.NewChangesetProposalRepo(db), changeSvc, changeSvc, auditRepo, logger)
 	if err != nil {
 		return fmt.Errorf("initializing changeset proposals: %w", err)
 	}

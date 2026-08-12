@@ -107,6 +107,13 @@ func buildGitSyncProposer(
 	graph *inventory.Graph,
 	proposals gitsync.ProposalStore,
 	mgmt mgmtPathSource,
+	// preview (T-2605) is the post-apply projection the pull-request body's
+	// preview section renders. T-2702 shipped before T-2605 existed, so that
+	// section had nothing to call and silently rendered nothing; it is wired
+	// here now that there is a projection to ask. Nil-safe by the same rule as
+	// mgmt above — a deployment without it omits the section rather than
+	// claiming an empty preview.
+	preview gitsync.PreviewSource,
 	audit *store.AuditRepo,
 	logger *slog.Logger,
 ) (*gitsync.Proposer, error) {
@@ -142,7 +149,7 @@ func buildGitSyncProposer(
 	return gitsync.NewProposer(gitsync.ProposerConfig{
 		Enabled: true, Source: source, Host: host, Ref: cfg.Ref, Path: cfg.Path,
 		Changesets: changesets, Inventory: graph, Proposals: proposals, Audit: audit,
-		MgmtPaths: mgmtPathsFrom(mgmt), Logger: logger,
+		MgmtPaths: mgmtPathsFrom(mgmt), Preview: preview, Logger: logger,
 	}), nil
 }
 
