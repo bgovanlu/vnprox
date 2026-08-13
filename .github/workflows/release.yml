@@ -93,6 +93,35 @@ jobs:
           path: dist/*.deb
           if-no-files-found: error
 
+      # T-2101: the versioned contract artifacts terraform-provider-vnprox
+      # and ansible-collection-vnprox pin against — docs/api.md's
+      # "Automation contract" section names both.
+      #
+      # docs/openapi.json is committed with info.version pinned to the
+      # literal string "unversioned" (cmd/vnproxd/openapi_test.go's
+      # openAPIVersionPlaceholder) so that field doesn't churn the diff on
+      # every commit — see that file's doc comment. A release is exactly the
+      # one place a real version belongs, so this step publishes a
+      # version-stamped COPY under dist/contract/ without touching the
+      # committed placeholder. docs/automation-contract.json's own "version"
+      # field already carries docs/api.md's stability sentence (currently
+      # "v1.7") rather than a build version, and is published unmodified.
+      - name: Stamp and publish contract artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist/contract
+          jq --arg v "${GITHUB_REF_NAME}" '.info.version = $v' docs/openapi.json \
+            > "dist/contract/vnprox-openapi-${GITHUB_REF_NAME}.json"
+          cp docs/automation-contract.json "dist/contract/vnprox-automation-contract-${GITHUB_REF_NAME}.json"
+          ls -l dist/contract
+
+      - name: Upload contract artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnprox-contract
+          path: dist/contract
+          if-no-files-found: error
+
       - name: Publish apt repo to get.vnprox.io
         env:
           APT_REPO_DEPLOY_HOST: ${{ secrets.APT_REPO_DEPLOY_HOST }}
@@ -126,5 +155,6 @@ jobs:
           body: ${{ steps.changelog.outputs.body }}
           files: |
             dist/*.deb
+            dist/contract/*.json
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}

@@ -167,6 +167,33 @@ jobs:
             --shards shard-1,shard-2,shard-3,shard-4 \
             --history var/e2e-runs
 
+  # T-2101: rehearses what terraform-provider-vnprox's and
+  # ansible-collection-vnprox's own CI runs against this repo's conformance
+  # suite — a real, out-of-process vnproxd (mock-backed, same shape `make
+  # dev` uses minus the frontend), with internal/apicontract driving it
+  # purely over HTTP in its external conformance mode
+  # (internal/apicontract/conformance_external_test.go). `make
+  # conformance-external` is the single documented invocation this job, a
+  # downstream repo, and a developer's laptop all share. A contract break in
+  # this repo (a renamed/removed response field, a route removed) fails this
+  # job exactly the way it would fail a downstream repo's own CI — proven by
+  # hand, mutation-tested, in planning/reports/T-2101.md.
+  apicontract-external:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: make conformance-external
+        run: make conformance-external
+
   cross-arm64:
     # Build-only leg per docs/development.md ("make check matrix (amd64;
     # arm64 build-only)"): internal/host (T-102) is real-OS Linux code

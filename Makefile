@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve openapi record record-mock soak perf e2e e2e-whole e2e-trend
+.PHONY: build dev test lint check deb mockpve openapi contract-export conformance-external record record-mock soak perf e2e e2e-whole e2e-trend
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -159,6 +159,59 @@ openapi: ## regenerate docs/openapi.json from the daemon's registered routes
 	@echo ">> openapi: bringing the daemon up and reading its generated document"
 	$(GO) test ./cmd/vnproxd/ -run TestOpenAPI_MatchesTheCommittedDocument -update -count=1
 	@echo ">> openapi: docs/openapi.json is up to date"
+
+# --- contract-export (T-2101) ---------------------------------------------
+
+contract-export: ## regenerate docs/automation-contract.json from internal/apicontract's manifest
+	@echo ">> contract-export: regenerating docs/automation-contract.json"
+	$(GO) test ./internal/apicontract/... -run TestAutomationContractManifest_MatchesPublishedArtifact -update -count=1
+	@echo ">> contract-export: docs/automation-contract.json is up to date"
+
+# --- conformance-external (T-2101) ----------------------------------------
+#
+# Rehearses exactly what a downstream repo (terraform-provider-vnprox,
+# ansible-collection-vnprox) runs in its own CI: bring up a real,
+# out-of-process vnproxd (mock-backed, the same shape `dev` above uses minus
+# the frontend), then run internal/apicontract in its external conformance
+# mode against it purely over HTTP — see
+# internal/apicontract/conformance_external_test.go for the full env-var/
+# protocol documentation this target is the literal invocation of. A
+# deliberate contract break in this repo (a renamed/removed response field,
+# a route removed) fails this target exactly like it fails `make check`'s
+# in-process run — see planning/reports/T-2101.md for the mutation-tested
+# proof, done by hand against a real running daemon.
+CONFORMANCE_ADDR    ?= 127.0.0.1:8007
+CONFORMANCE_FIXTURE ?= testdata/clusters/single-node.yaml
+
+conformance-external: ## rehearse a downstream repo's CI: real pvemock+vnproxd, then internal/apicontract in external mode
+	@if [ -z "$(DAEMON_READY)" ] || [ -z "$(MOCKPVE_READY)" ]; then \
+		echo ">> conformance-external: not yet implemented, skipping"; \
+		exit 0; \
+	fi
+	@echo ">> conformance-external: clearing dev state so ops (bridge names, etc.) don't collide with a prior run"
+	@rm -rf var/dev-host var/dev-vnprox.db var/dev-vnprox.db.lock var/dev-vnprox.db-shm var/dev-vnprox.db-wal \
+		var/dev-protected.json var/dev-session.key var/dev-cluster.secret var/dev-metrics.key \
+		var/dev-blueprint-signing.key var/dev-trusted-signers
+	@echo ">> conformance-external: starting mock PVE ($(CONFORMANCE_FIXTURE)) and vnproxd"; \
+	setsid $(GO) run ./cmd/pvemock --addr :8006 --fixture $(CONFORMANCE_FIXTURE) & \
+	pvemock_pid=$$!; \
+	setsid $(GO) run ./cmd/vnproxd --config testdata/dev.toml & \
+	vnproxd_pid=$$!; \
+	cleanup() { kill -- -$$pvemock_pid 2>/dev/null || true; kill -- -$$vnproxd_pid 2>/dev/null || true; }; \
+	trap cleanup EXIT; \
+	echo ">> conformance-external: waiting for https://$(CONFORMANCE_ADDR)/api/v1/health"; \
+	up=0; \
+	for i in $$(seq 1 60); do \
+		if curl -sk -o /dev/null -w '%{http_code}' "https://$(CONFORMANCE_ADDR)/api/v1/health" 2>/dev/null | grep -q '^200$$'; then up=1; break; fi; \
+		sleep 1; \
+	done; \
+	if [ "$$up" != "1" ]; then echo ">> conformance-external: vnproxd never became healthy" >&2; exit 1; fi; \
+	echo ">> conformance-external: running internal/apicontract in external mode against https://$(CONFORMANCE_ADDR)"; \
+	VNPROX_CONFORMANCE_BASE_URL="https://$(CONFORMANCE_ADDR)" \
+	VNPROX_CONFORMANCE_USERNAME="root@pam" \
+	VNPROX_CONFORMANCE_PASSWORD="vnprox-mock" \
+	VNPROX_CONFORMANCE_INSECURE_SKIP_VERIFY=1 \
+	$(GO) test ./internal/apicontract/... -count=1 -v
 
 # --- lint ----------------------------------------------------------------
 

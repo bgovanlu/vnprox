@@ -59,21 +59,48 @@ const (
 type contractHarness struct {
 	t         *testing.T
 	fixture   *pvemock.Fixture
-	server    *httptest.Server
+	baseURL   string
+	client    *http.Client
 	pveMock   *httptest.Server
 	graph     *inventory.Graph
 	tokens    *store.APITokenRepo
 	authSvc   *auth.Service
 	changeSvc *change.Service
 	localNode string
+
+	// External conformance mode (T-2101, conformance_external_test.go): set
+	// when VNPROX_CONFORMANCE_BASE_URL points this suite at an already-running,
+	// out-of-process vnproxd instead of the in-process stack built below —
+	// the "consumable by an external CI run" half of this package. mintToken
+	// hands back one of these two pre-bootstrapped tokens instead of writing
+	// to a local store.
+	external        bool
+	externalRWToken string
+	externalROToken string
 }
 
 // newContractHarness builds a full harness for fixturePath. Every scenario
 // in this package calls this once per fixture (single-node/three-node-vlan)
 // and drives the rest purely over HTTP, exactly like an external caller
 // would.
+//
+// When VNPROX_CONFORMANCE_BASE_URL is set (external conformance mode, see
+// conformance_external_test.go), this skips building the in-process stack
+// entirely and instead bootstraps a session and two bearer tokens against
+// the caller-supplied, already-running vnproxd — the same four scenarios in
+// this package then run unmodified against a real, out-of-process daemon.
+// A fixturePath whose short name doesn't match VNPROX_CONFORMANCE_FIXTURE
+// (default "single-node") is skipped, since only one fixture can be loaded
+// into a given running daemon at a time.
 func newContractHarness(t *testing.T, fixturePath string) *contractHarness {
 	t.Helper()
+
+	if cfg, ok := loadExternalConfig(t); ok {
+		if !externalFixtureMatches(fixturePath, cfg) {
+			t.Skipf("external conformance mode: %s=%q selects a different fixture than %s, skipping", envConformanceFixture, cfg.fixture, fixturePath)
+		}
+		return newExternalContractHarness(t, cfg)
+	}
 
 	f, err := pvemock.LoadFixture(fixturePath)
 	if err != nil {
@@ -162,7 +189,7 @@ func newContractHarness(t *testing.T, fixturePath string) *contractHarness {
 	}
 
 	return &contractHarness{
-		t: t, fixture: f, server: apiTS, pveMock: mockTS, graph: graph,
+		t: t, fixture: f, baseURL: apiTS.URL, client: apiTS.Client(), pveMock: mockTS, graph: graph,
 		tokens: tokenRepo, localNode: localNode, authSvc: authSvc, changeSvc: changeSvc,
 	}
 }
@@ -182,6 +209,9 @@ func (*contractLoginError) Error() string {
 // returns the raw bearer value.
 func (h *contractHarness) mintToken(id string, scopes ...string) string {
 	h.t.Helper()
+	if h.external {
+		return h.externalToken(scopes)
+	}
 	raw, hash, err := auth.GenerateAPIToken()
 	if err != nil {
 		h.t.Fatalf("GenerateAPIToken: %v", err)
@@ -203,6 +233,26 @@ func (h *contractHarness) mintToken(id string, scopes ...string) string {
 	return raw
 }
 
+// externalToken picks between the two bootstrapped external-mode tokens by
+// the same scope shape every scenario in this package already requests:
+// {netRead, netWrite} for a write-capable token, {netRead} alone for a
+// read-only one. See conformance_external_test.go.
+func (h *contractHarness) externalToken(scopes []string) string {
+	h.t.Helper()
+	for _, s := range scopes {
+		if s == "netWrite" {
+			if h.externalRWToken == "" {
+				h.t.Fatal("apicontract: external conformance mode requested a netWrite-scoped token but none was bootstrapped")
+			}
+			return h.externalRWToken
+		}
+	}
+	if h.externalROToken == "" {
+		h.t.Fatal("apicontract: external conformance mode requested a netRead-only token but none was bootstrapped")
+	}
+	return h.externalROToken
+}
+
 // newRequest builds an httptest-server-relative request with the given
 // bearer token and (for mutating methods) the CSRF header set to a fixed
 // value — bearer requests skip CSRF per docs/api.md's Conventions section
@@ -214,7 +264,7 @@ func (h *contractHarness) newRequest(method, path, token string, body []byte) *h
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequest(method, h.server.URL+path, reader)
+	req, err := http.NewRequest(method, h.baseURL+path, reader)
 	if err != nil {
 		h.t.Fatalf("building request %s %s: %v", method, path, err)
 	}
@@ -229,7 +279,7 @@ func (h *contractHarness) newRequest(method, path, token string, body []byte) *h
 
 func (h *contractHarness) do(req *http.Request) *http.Response {
 	h.t.Helper()
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := h.client.Do(req)
 	if err != nil {
 		h.t.Fatalf("%s %s: %v", req.Method, req.URL.Path, err)
 	}

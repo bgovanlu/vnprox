@@ -1,0 +1,61 @@
+{
+  "version": "v1.7",
+  "source": "docs/api.md#automation-contract-t-1106",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/v1/tokens",
+      "purpose": "mint the bearer token automation authenticates with"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spec",
+      "purpose": "render current cluster intent as specVersion: 1 YAML"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spec/import",
+      "purpose": "diff the tracked spec against live state into a draft changeset + notInSpec (terraform plan's drift-detection primitive)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/changesets",
+      "purpose": "create a draft changeset directly"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/changesets/{id}",
+      "purpose": "poll changeset status/findings"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/changesets/{id}/validate",
+      "purpose": "re-run validation (plan's \"does this still apply cleanly\" check)"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/changesets/{id}/diff",
+      "purpose": "rendered diff (plan's human-readable change summary)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/changesets/{id}/apply",
+      "purpose": "apply (terraform apply's mutating step)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/changesets/{id}/confirm",
+      "purpose": "commit-confirm within the window"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/changesets/{id}/rollback",
+      "purpose": "manual rollback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/changesets/{id}",
+      "purpose": "discard an unwanted draft"
+    }
+  ]
+}
