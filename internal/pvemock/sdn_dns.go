@@ -86,9 +86,12 @@ func dnsRecordValueError(r SDNDnsRecordSpec) string {
 func (srv *Server) handleSDNDnsZonesList(w http.ResponseWriter, r *http.Request) {
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
+	// T-2502-followup-01: dnsZones is a map, whose iteration order is
+	// randomized; sort by ID (the map's own key) so the response is
+	// deterministic.
 	out := make([]SDNDnsZoneSpec, 0, len(srv.state.sdn.dnsZones))
-	for _, z := range srv.state.sdn.dnsZones {
-		out = append(out, z)
+	for _, id := range sortedKeys(srv.state.sdn.dnsZones) {
+		out = append(out, srv.state.sdn.dnsZones[id])
 	}
 	writeData(w, http.StatusOK, out)
 }

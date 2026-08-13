@@ -118,9 +118,12 @@ func (srv *Server) handleSDNZonesList(w http.ResponseWriter, r *http.Request) {
 	if isRunningRequest(r) {
 		zones = srv.state.sdn.zonesRunning
 	}
+	// T-2502-followup-01: zones is a map, whose iteration order is
+	// randomized; sort by ID (the map's own key, and the field callers
+	// identify a zone by) so the response is deterministic.
 	out := make([]SDNZoneSpec, 0, len(zones))
-	for _, z := range zones {
-		out = append(out, z)
+	for _, id := range sortedKeys(zones) {
+		out = append(out, zones[id])
 	}
 	writeData(w, http.StatusOK, out)
 }
@@ -268,9 +271,12 @@ func (srv *Server) handleSDNVnetsList(w http.ResponseWriter, r *http.Request) {
 	if isRunningRequest(r) {
 		vnets = srv.state.sdn.vnetsRunning
 	}
+	// T-2502-followup-01: vnets is a map, whose iteration order is
+	// randomized; sort by ID (the map's own key) so the response is
+	// deterministic.
 	out := make([]SDNVnetSpec, 0, len(vnets))
-	for _, v := range vnets {
-		out = append(out, v)
+	for _, id := range sortedKeys(vnets) {
+		out = append(out, vnets[id])
 	}
 	writeData(w, http.StatusOK, out)
 }
@@ -361,8 +367,12 @@ func (srv *Server) handleSDNSubnetsList(w http.ResponseWriter, r *http.Request) 
 	if isRunningRequest(r) {
 		subnets = srv.state.sdn.subnetsRunning
 	}
+	// T-2502-followup-01: subnets is a map, whose iteration order is
+	// randomized; sort by ID (the map's own key) so the response is
+	// deterministic.
 	var out []SDNSubnetSpec
-	for _, s := range subnets {
+	for _, id := range sortedKeys(subnets) {
+		s := subnets[id]
 		if s.Vnet == vnet {
 			out = append(out, s)
 		}
@@ -501,14 +511,20 @@ type sdnStatusEntry struct {
 func (srv *Server) handleSDNStatus(w http.ResponseWriter, r *http.Request) {
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
+	// T-2502-followup-01: zones/vnets/subnets are maps, whose iteration
+	// order is randomized; sort each group by ID (the map's own key) so
+	// the response is deterministic.
 	var out []sdnStatusEntry
-	for _, z := range srv.state.sdn.zones {
+	for _, id := range sortedKeys(srv.state.sdn.zones) {
+		z := srv.state.sdn.zones[id]
 		out = append(out, sdnStatusEntry{Kind: "zone", ID: z.ID, Pending: z.Pending})
 	}
-	for _, v := range srv.state.sdn.vnets {
+	for _, id := range sortedKeys(srv.state.sdn.vnets) {
+		v := srv.state.sdn.vnets[id]
 		out = append(out, sdnStatusEntry{Kind: "vnet", ID: v.ID, Pending: v.Pending})
 	}
-	for _, s := range srv.state.sdn.subnets {
+	for _, id := range sortedKeys(srv.state.sdn.subnets) {
+		s := srv.state.sdn.subnets[id]
 		out = append(out, sdnStatusEntry{Kind: "subnet", ID: s.ID, Pending: s.Pending})
 	}
 	writeData(w, http.StatusOK, out)

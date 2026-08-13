@@ -1,6 +1,9 @@
 package pvemock
 
-import "net/http"
+import (
+	"net/http"
+	"sort"
+)
 
 type clusterStatusEntry struct {
 	Type    string `json:"type"` // "cluster" | "node"
@@ -62,16 +65,36 @@ func (srv *Server) handleClusterResources(w http.ResponseWriter, _ *http.Request
 		}
 		out = append(out, clusterResource{Type: "node", ID: "node/" + n.Name, Node: n.Name, Name: n.Name, Status: status})
 	}
-	for nodeName := range f.Nodes {
+	// T-2502-followup-01: f.Nodes and each node's qemu/lxc maps iterate in
+	// randomized order. Sort node names alphabetically and VMIDs
+	// numerically so this response is deterministic byte-for-byte across
+	// runs and processes, rather than depending on Go's map iteration
+	// seed.
+	for _, nodeName := range sortedKeys(f.Nodes) {
 		ns, _ := srv.state.node(nodeName)
 		ns.mu.RLock()
-		for vmid, g := range ns.qemu {
+		for _, vmid := range sortedVMIDs(ns.qemu) {
+			g := ns.qemu[vmid]
 			out = append(out, clusterResource{Type: "qemu", ID: "qemu/" + vmid, Node: nodeName, Name: g.Name, Status: g.Status, VMID: atoiOr(vmid, 0)})
 		}
-		for vmid, g := range ns.lxc {
+		for _, vmid := range sortedVMIDs(ns.lxc) {
+			g := ns.lxc[vmid]
 			out = append(out, clusterResource{Type: "lxc", ID: "lxc/" + vmid, Node: nodeName, Name: g.Name, Status: g.Status, VMID: atoiOr(vmid, 0)})
 		}
 		ns.mu.RUnlock()
 	}
 	writeData(w, http.StatusOK, out)
+}
+
+// sortedVMIDs returns m's keys (VMIDs, e.g. "100") in ascending numeric
+// order. VMIDs are the map's own identifying key, but a plain string sort
+// would put "20" after "100"; guests are a resource users reason about
+// numerically, so sort on that value instead.
+func sortedVMIDs[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return atoiOr(keys[i], 0) < atoiOr(keys[j], 0) })
+	return keys
 }

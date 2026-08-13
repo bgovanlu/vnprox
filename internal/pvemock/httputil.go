@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 )
 
@@ -82,4 +83,23 @@ func atoiOr(s string, def int) int {
 		return def
 	}
 	return n
+}
+
+// sortedKeys returns m's keys in ascending string order.
+//
+// Go deliberately randomizes map iteration order, so any handler that
+// ranges over a map to build a JSON array (as opposed to a JSON object,
+// where encoding/json already sorts keys on Marshal) returns its elements
+// in a different order on roughly one run in three. That makes pvemock
+// itself the source of test flakiness and cassette churn rather than a
+// stable fixture for tests to build on — see T-2502-followup-01. Handlers
+// that build a list from a map keyed by the resource's own id/name should
+// range over sortedKeys(m) instead of the map directly.
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
