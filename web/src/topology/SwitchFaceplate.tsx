@@ -104,7 +104,12 @@ function NeighborTag({ neighbor }: { neighbor: SwitchPortNic["neighbor"] }) {
     <span className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-slate-500 dark:text-slate-400">
       <span aria-hidden>↔</span>
       <span className="truncate">{neighbor.label}</span>
-      {neighbor.port && <span className="text-slate-400 dark:text-slate-400">{neighbor.port}</span>}
+      {/* T-2004: text-slate-400 dark:text-slate-400 (identical in both
+          themes) measured 2.63:1 against a white card in light mode — the
+          value only clears AA against a dark card, which is what dark mode
+          actually sits on. slate-600 in light mode clears it with margin
+          (7.58:1) while leaving dark mode (6.78:1) untouched. */}
+      {neighbor.port && <span className="text-slate-600 dark:text-slate-400">{neighbor.port}</span>}
     </span>
   );
 }
@@ -160,7 +165,12 @@ function NicPort({
         <Led status={nic.status} />
         <span className="font-mono font-medium text-slate-700 dark:text-slate-200">{nic.label}</span>
         {!nic.active && (
-          <span className="rounded bg-amber-100 px-1 text-[9px] uppercase text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+          // T-2004: text-amber-700 on bg-amber-100 measured 4.52:1 in light
+          // mode — technically over the 4.5:1 AA floor but with essentially
+          // no headroom on 9px text, one step from failing outright.
+          // amber-800 clears it with margin (6.36:1); dark mode was already
+          // fine (10.37:1) and is unchanged.
+          <span className="rounded bg-amber-100 px-1 text-[9px] uppercase text-amber-800 dark:bg-amber-950 dark:text-amber-300">
             standby
           </span>
         )}
@@ -294,9 +304,15 @@ function AccessPort({
           </span>
         </span>
         <span className="max-w-[72px] truncate text-[10px] text-slate-600 dark:text-slate-300">{guestName}</span>
-        <span className="text-[9px] text-slate-400 dark:text-slate-400">
+        {/* T-2004: both spans here were sub-AA in light mode only —
+            text-slate-400 dark:text-slate-400 (identical both themes, 2.63:1
+            on a white card) and text-violet-500 dark:text-violet-300
+            (4.4:1, just under the 4.5:1 floor). slate-600 (7.58:1) and
+            violet-700 (7.3:1) clear both with margin; dark mode values
+            (6.78:1 / 9.61:1) were already fine and are unchanged. */}
+        <span className="text-[9px] text-slate-600 dark:text-slate-400">
           {nicKey}
-          {port.vid !== undefined && <span className="ml-0.5 text-violet-500 dark:text-violet-300">·{port.vid}</span>}
+          {port.vid !== undefined && <span className="ml-0.5 text-violet-700 dark:text-violet-300">·{port.vid}</span>}
         </span>
       </button>
       <A11yDesc id={portDescId} text={switchAriaDescription("guest-nic", port.status, port.badges)} />
@@ -307,7 +323,10 @@ function AccessPort({
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="border-t border-slate-200 px-3 py-2 dark:border-slate-800">
-      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-400">
+      {/* T-2004: text-slate-400 dark:text-slate-400 (identical both themes)
+          measured 2.63:1 against a white card — passes only in dark mode.
+          slate-600 in light mode clears AA with margin (7.58:1). */}
+      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
         {label}
       </div>
       {children}
@@ -373,7 +392,11 @@ export function SwitchFaceplate({
       >
         <Led status={model.status} className="h-2.5 w-2.5" />
         <span className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-100">{model.name}</span>
-        <span className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-400">{model.kind}</span>
+        {/* T-2004: text-slate-400 dark:text-slate-400 (identical both
+            themes) measured 2.35:1 against this header's bg-indigo-50 —
+            slate-600 clears AA with margin (6.78:1); dark mode (6.39:1
+            against the dark header tint) was already fine. */}
+        <span className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-400">{model.kind}</span>
         <span className="ml-auto flex flex-wrap gap-1">
           {model.badges.map((b) => (
             <span
@@ -462,7 +485,13 @@ export function SwitchFaceplate({
               >
                 <Led status={v.status} />
                 <span className="font-medium">{v.label}</span>
-                {v.tag !== undefined && <span className="text-teal-500 dark:text-teal-400">·{v.tag}</span>}
+                {/* T-2004: text-teal-500 dark:text-teal-400 measured 2.32:1
+                    in light mode against this button's bg-teal-50 — badly
+                    sub-AA. Reusing the button's own text-teal-700/
+                    dark:text-teal-300 (the ".label" color above) clears it
+                    with margin (5.14:1 light, 9.82:1 dark, both unchanged
+                    from the existing label color). */}
+                {v.tag !== undefined && <span className="text-teal-700 dark:text-teal-300">·{v.tag}</span>}
               </button>
             ))}
           </div>

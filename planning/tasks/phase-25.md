@@ -648,7 +648,30 @@ Two things changed so this cannot recur silently:
    forcing `opacity:1` clears every remaining violation while forcing `filter:none` alone clears
    none, so the cause is opacity and not the greying.
 
-**Method note, because two intermediate conclusions here were wrong before the right one held.**
+**Correction, 2026-08-13 (T-2004).** The account above pins the *remaining* ~53–90 violations at
+2.76:1–4.48:1 on the `dimmed`/`dimVid` de-emphasis opacity, by elimination: forcing `opacity:1`
+cleared them and forcing `filter:none` did not. The elimination was sound and the conclusion was
+still incomplete. The dominant driver of that particular range was **`animate-pulse` on a
+drift-badged switch** — Tailwind's default keyframes oscillate opacity 1↔0.5, nothing in the suite
+emulated `prefers-reduced-motion`, and axe was caught measuring an *ancestor* mid-pulse at opacity
+0.559. An ancestor's opacity composites its whole subtree, so `neutralizeFaceplateDimming`'s
+`opacity:1 !important` on the *target* element could never have cancelled it — which is exactly
+why "force opacity to 1" appeared to be the discriminating variable while pointing at the wrong
+element.
+
+It also explains an anomaly recorded above and not chased: two runs of *identical* code reported
+different ratio sets (2.57/3.28/3.78… then 2.76/3.56/4.14…). A pulse sampled at a different phase
+gives a different ratio every scan. I read that as ordinary noise; it was the signal.
+
+`e2e/a11y.spec.ts` now calls `page.emulateMedia({ reducedMotion: "reduce" })` at login, which makes
+the app's own `useReducedMotion()` hook suppress the animation — the shipped mechanism exercised,
+not a test-only workaround. With the pulse gone, disabling the suppression yields a *different and
+much lower* band: **80 nodes at 1.55:1–2.04:1**, all genuinely de-emphasised content at 25–40%
+opacity. So the exemption is real, but it was never responsible for the numbers first attributed
+to it.
+
+**Method note, because two intermediate conclusions here were wrong before the right one held —
+and a third was wrong after.**
 "Desaturation collapses these hue-carried badges" and "axe does not model CSS `filter`" were both
 inferred from partial evidence and both refuted by the next measurement — the first by removing
 the opacity and watching the violations persist unchanged, the second by an isolating probe whose

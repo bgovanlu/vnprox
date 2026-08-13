@@ -201,3 +201,152 @@ describe("SwitchView — T-702 management-path badges", () => {
     );
   }
 });
+
+// T-2004: a design-system pass over SwitchView/SwitchFaceplate found several
+// 9-10px labels that were sub-AA against the surfaces they actually render
+// on — some by a hair (text-amber-700 on bg-amber-100 measured 4.52:1, just
+// over the 4.5:1 floor with no headroom), some outright (text-teal-500 on
+// bg-teal-50 measured 2.32:1). The worst offender was a copy-paste pattern,
+// `text-slate-400 dark:text-slate-400` — identical in both themes, so it
+// only ever cleared AA against a dark card; every light-mode instance
+// measured ~2.4-2.6:1 against this app's actual light-mode surfaces
+// (bg-slate-100 page background / bg-white card / bg-indigo-50 header).
+// These tests assert the corrected class strings directly (jsdom doesn't
+// compute real CSS colour, so a rendered-pixel contrast assertion isn't
+// available here — the actual ratios are computed and recorded in the
+// component comments and this task's report) and guard against regressing
+// back to the broken pairing.
+describe("SwitchView / SwitchFaceplate — T-2004 contrast fixes", () => {
+  it("standby badge uses amber-800, not the marginal amber-700 (4.52:1, no headroom)", () => {
+    const nodes: TopologyNode[] = [
+      { id: "bridge:pve1:vmbr9", kind: "bridge", label: "vmbr9", layer: "l2", nodeGroup: "pve1", status: "ok", badges: [] },
+      { id: "bond:pve1:bond9", kind: "bond", label: "bond9", layer: "l2", nodeGroup: "pve1", status: "ok", badges: [] },
+      { id: "physnic:pve1:eno9a", kind: "physnic", label: "eno9a", layer: "phys", nodeGroup: "pve1", status: "ok", badges: [] },
+      { id: "physnic:pve1:eno9b", kind: "physnic", label: "eno9b", layer: "phys", nodeGroup: "pve1", status: "ok", badges: [] },
+    ];
+    const edges: TopologyEdge[] = [
+      { from: "bond:pve1:bond9", to: "bridge:pve1:vmbr9", kind: "port-of", status: "ok", badges: [] },
+      { from: "physnic:pve1:eno9a", to: "bond:pve1:bond9", kind: "enslaved-by", status: "ok", badges: ["active"] },
+      { from: "physnic:pve1:eno9b", to: "bond:pve1:bond9", kind: "enslaved-by", status: "ok", badges: [] },
+    ];
+    const topology = buildSwitchModel(nodes, edges);
+    render(
+      <div style={{ width: 1200, height: 800 }}>
+        <SwitchView
+          topology={topology}
+          selectedId={undefined}
+          vlanFilter={undefined}
+          activeLayers={ALL}
+          staleNodeGroups={new Set()}
+          onSelect={() => undefined}
+          onExpandGroup={() => undefined}
+        />
+      </div>,
+    );
+    const badge = screen.getByText("standby");
+    expect(badge.className).toContain("text-amber-800");
+    expect(badge.className).not.toContain("text-amber-700");
+  });
+
+  it("a stale node group's 'stale' pill uses amber-800, not the marginal amber-700", () => {
+    const topology = buildSwitchModel(full.nodes, full.edges);
+    render(
+      <div style={{ width: 1200, height: 800 }}>
+        <SwitchView
+          topology={topology}
+          selectedId={undefined}
+          vlanFilter={undefined}
+          activeLayers={ALL}
+          staleNodeGroups={new Set(["pve1"])}
+          onSelect={() => undefined}
+          onExpandGroup={() => undefined}
+        />
+      </div>,
+    );
+    const badge = screen.getByText("stale");
+    expect(badge.className).toContain("text-amber-800");
+    expect(badge.className).not.toContain("text-amber-700");
+  });
+
+  it("the node group's switch-count label uses slate-600/slate-400, not the light-mode-broken slate-400/slate-400 pairing (2.4:1 against bg-slate-100)", () => {
+    renderView();
+    const [label] = screen.getAllByText(/^\d+ switch(es)?$/);
+    if (!label) throw new Error("expected a switch-count label");
+    expect(label.className).toContain("text-slate-600");
+    expect(label.className).toContain("dark:text-slate-400");
+    expect(label.className).not.toContain("text-slate-400 dark:text-slate-400");
+  });
+
+  it("the chassis kind label uses slate-600 in light mode, not slate-400 (2.35:1 against the header's bg-indigo-50)", () => {
+    renderView();
+    const [kindLabel] = screen.getAllByText("bridge");
+    if (!kindLabel) throw new Error("expected a chassis kind label");
+    expect(kindLabel.className).toContain("text-slate-600");
+    expect(kindLabel.className).toContain("dark:text-slate-400");
+    expect(kindLabel.className).not.toContain("text-slate-400 dark:text-slate-400");
+  });
+
+  it("the access port's NIC-key text and VLAN id marker both clear AA in light mode (were 2.63:1 and 4.4:1)", () => {
+    renderView();
+    const port = screen.getByLabelText("app01/net0");
+    // Structure (AccessPort in SwitchFaceplate.tsx): [0] vmid+LED wrapper,
+    // [1] guest name, [2] nicKey + vid marker.
+    const nicKeySpan = port.children[2];
+    if (!(nicKeySpan instanceof HTMLElement)) throw new Error("expected the nicKey span");
+    expect(nicKeySpan.className).toContain("text-slate-600");
+    expect(nicKeySpan.className).not.toContain("text-slate-400 dark:text-slate-400");
+    const vidMarker = nicKeySpan.children[0];
+    if (!(vidMarker instanceof HTMLElement)) throw new Error("expected the vid-marker span");
+    expect(vidMarker.className).toContain("text-violet-700");
+    expect(vidMarker.className).not.toContain("text-violet-500");
+  });
+
+  it("the VNet tag's ·<vlan> suffix uses teal-700, not teal-500 (measured 2.32:1 against bg-teal-50)", () => {
+    renderView();
+    const vnetButton = within(screen.getByLabelText("node pve1")).getByLabelText("vnet100 (app-tier)");
+    // Structure (VNet button in SwitchFaceplate.tsx): [0] LED, [1] label,
+    // [2] the "·<tag>" suffix (only present when v.tag is defined).
+    const tagSpan = vnetButton.children[2];
+    if (!(tagSpan instanceof HTMLElement)) throw new Error("expected the vnet tag suffix span");
+    expect(tagSpan.textContent).toContain("100");
+    expect(tagSpan.className).toContain("text-teal-700");
+    expect(tagSpan.className).not.toContain("text-teal-500");
+  });
+
+  it("a free (unattached) port's Section label and bond/nic type tag clear AA in light mode (both were ~2.4-2.6:1)", () => {
+    const nodes: TopologyNode[] = [
+      // SwitchView renders its "No bridges to show" empty state when there
+      // are zero switches at all, so this needs a real bridge alongside the
+      // genuinely-unattached NIC below.
+      { id: "bridge:pve1:vmbr9", kind: "bridge", label: "vmbr9", layer: "l2", nodeGroup: "pve1", status: "ok", badges: [] },
+      { id: "physnic:pve1:eno9a", kind: "physnic", label: "eno9a", layer: "phys", nodeGroup: "pve1", status: "ok", badges: [] },
+      { id: "physnic:pve1:enofree", kind: "physnic", label: "enofree", layer: "phys", nodeGroup: "pve1", status: "ok", badges: [] },
+    ];
+    const edges: TopologyEdge[] = [
+      { from: "physnic:pve1:eno9a", to: "bridge:pve1:vmbr9", kind: "port-of", status: "ok", badges: [] },
+      // enofree has no edges at all — never consumed, so it surfaces under
+      // "Unattached ports" via SwitchView's freeByNode/FreePort path.
+    ];
+    const topology = buildSwitchModel(nodes, edges);
+    render(
+      <div style={{ width: 1200, height: 800 }}>
+        <SwitchView
+          topology={topology}
+          selectedId={undefined}
+          vlanFilter={undefined}
+          activeLayers={ALL}
+          staleNodeGroups={new Set()}
+          onSelect={() => undefined}
+          onExpandGroup={() => undefined}
+        />
+      </div>,
+    );
+    const sectionLabel = screen.getByText("Unattached ports");
+    expect(sectionLabel.className).toContain("text-slate-600");
+    expect(sectionLabel.className).not.toContain("text-slate-400 dark:text-slate-400");
+
+    const tag = screen.getByText("nic");
+    expect(tag.className).toContain("text-slate-600");
+    expect(tag.className).toContain("dark:text-slate-400");
+  });
+});

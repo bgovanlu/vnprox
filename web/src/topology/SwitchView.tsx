@@ -75,7 +75,14 @@ function FreePort({
         }
       />
       <span className="font-mono text-slate-700 dark:text-slate-200">{port.label}</span>
-      <span className="text-[10px] uppercase tracking-wide text-slate-400">{isBond ? "bond" : "nic"}</span>
+      {/* T-2004: text-slate-400 with no dark: override measured 2.63:1
+          against this button's bg-white in light mode (it only cleared AA
+          against the dark:bg-slate-900 it happened to also render on,
+          6.78:1). slate-600 dark:slate-400 clears both explicitly
+          (7.58:1 / 6.78:1). */}
+      <span className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-400">
+        {isBond ? "bond" : "nic"}
+      </span>
     </button>
   );
 }
@@ -114,11 +121,19 @@ export function SwitchView({
             <section key={group.node} aria-label={`node ${group.node}`}>
               <div className="mb-2 flex items-center gap-2">
                 <h2 className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-200">{group.node}</h2>
-                <span className="text-xs text-slate-400 dark:text-slate-400">
+                {/* T-2004: text-slate-400 dark:text-slate-400 (identical
+                    both themes) measured 2.4:1 against this page's
+                    bg-slate-100 — passes only in dark mode. slate-600
+                    clears AA with margin (6.92:1). */}
+                <span className="text-xs text-slate-600 dark:text-slate-400">
                   {group.switches.length} switch{group.switches.length === 1 ? "" : "es"}
                 </span>
                 {stale && (
-                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                  // T-2004: text-amber-700 on bg-amber-100 measured 4.52:1 —
+                  // over the 4.5:1 floor but with no headroom. amber-800
+                  // clears it with margin (6.36:1); dark mode (10.37:1) was
+                  // already fine.
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                     stale
                   </span>
                 )}
@@ -143,7 +158,11 @@ export function SwitchView({
               </div>
               {activeLayers.has("phys") && group.freePorts.length > 0 && (
                 <div className="mt-2 rounded-lg border border-dashed border-slate-300 p-2 dark:border-slate-700">
-                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-400">
+                  {/* T-2004: text-slate-400 dark:text-slate-400 (identical
+                      both themes) measured 2.4:1 against bg-slate-100 —
+                      passes only in dark mode. slate-600 clears AA with
+                      margin (6.92:1). */}
+                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                     Unattached ports
                   </div>
                   <div className="flex flex-wrap gap-1.5">

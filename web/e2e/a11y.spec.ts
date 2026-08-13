@@ -36,6 +36,22 @@ async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
 }
 
 async function logIn(page: Page): Promise<void> {
+  // T-2004: axe samples computed style at whatever instant it runs, and a
+  // running CSS animation is a moving target — a drift-badged switch
+  // faceplate's `animate-pulse` (SwitchFaceplate.tsx) cycles the WHOLE
+  // card's opacity between 1 and .5, and a scan that lands mid-cycle reports
+  // a real but animation-phase-dependent color-contrast violation on every
+  // badge inside it (found investigating this task's "9px badge" defect —
+  // it was this, not the badge tints, that produced most of the reported
+  // violation count). `prefers-reduced-motion: reduce` is also the more
+  // correct posture for this suite regardless: it makes `useReducedMotion()`
+  // (src/lib/useReducedMotion.ts) report true, which is the app's own,
+  // already-shipped mechanism for skipping `animate-pulse` — so this both
+  // stabilizes the scan and exercises that every animated affordance this
+  // suite touches actually honors the setting, rather than exercising a
+  // fixed instant of an animation that a real reduced-motion user would
+  // never even see.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await suppressOnboardingWalkthrough(page);
   await page.goto("/login");
   await page.getByLabel("Username").fill("root");
@@ -66,8 +82,9 @@ async function waitForAStaleEntity(page: Page): Promise<void> {
 }
 
 /**
- * Neutralizes opacity/filter over the node faceplates for the axe
- * measurement — the de-emphasis dimming only, by the time this runs.
+ * Neutralizes opacity over the node faceplates for the axe measurement — the
+ * de-emphasis dimming only, and, since T-2004, scoped to only the elements
+ * that actually carry it rather than the whole node subtree.
  *
  * This replaces `neutralizeStaleFaceplates`, which did the same thing but
  * justified itself as normalizing a dev-host artifact: the fixture's
@@ -84,13 +101,26 @@ async function waitForAStaleEntity(page: Page): Promise<void> {
  *    no equivalent suppression, which is how axe caught it there at all, and
  *    only intermittently, as `axe: changeset drawer`.
  *  - What still needs neutralizing is the DE-EMPHASIS dimming: `dimmed` and
- *    `dimVid` drop filtered-out slots to opacity-25/40 (SwitchFaceplate.tsx),
- *    and after the stale fix those are the only opacity sources left in that
- *    subtree. Forcing opacity:1 clears every remaining violation; forcing
+ *    `dimVid` drop filtered-out slots to `opacity-25`/`opacity-40`
+ *    (SwitchFaceplate.tsx), the only opacity classes that file emits.
+ *    Forcing opacity:1 clears every remaining violation; forcing
  *    filter:none alone clears none of them, which is what pins the cause on
- *    opacity rather than on the greying. Content the user has actively
- *    filtered out is the same contrast-exempt case as a disabled control,
- *    and axe cannot tell the difference.
+ *    opacity rather than on the greying — so this only touches `opacity`,
+ *    not `filter`, and leaves `stale`'s grayscale on screen and measured.
+ *    Content the user has actively filtered out is the same contrast-exempt
+ *    case as a disabled control, and axe cannot tell the difference.
+ *
+ * T-2004 narrowed the selector from "every node section, unconditionally" to
+ * "only subtrees actually carrying `.opacity-25`/`.opacity-40`" — the exact
+ * lesson from the incident above, applied to the suppression that survived
+ * it: after re-picking the faceplate's badge tints so they clear AA at full
+ * strength (see SwitchFaceplate.tsx/SwitchView.tsx `T-2004` comments and this
+ * task's report for the measured before/after ratios), a blanket
+ * opacity-1/filter-none override was no longer pulling its weight — it was
+ * neutralizing content that was never dimmed in the first place. Scoping to
+ * the two classes that are the dimming means this can never again silently
+ * swallow an unrelated opacity- or filter-driven defect the way
+ * `neutralizeStaleFaceplates` did.
  *
  * The callers below now wait for a stale entity BEFORE neutralizing, so the
  * stale state is inside what gets measured rather than being raced past — the
@@ -98,13 +128,31 @@ async function waitForAStaleEntity(page: Page): Promise<void> {
  */
 async function neutralizeFaceplateDimming(page: Page): Promise<void> {
   await page.evaluate(() => {
-    document.querySelectorAll('section[aria-label^="node "], section[aria-label^="node "] *').forEach((el) => {
-      if (el instanceof HTMLElement) {
-        el.style.setProperty("opacity", "1", "important");
-        el.style.setProperty("filter", "none", "important");
-      }
-    });
+    document
+      .querySelectorAll(
+        [
+          'section[aria-label^="node "] .opacity-25',
+          'section[aria-label^="node "] .opacity-25 *',
+          'section[aria-label^="node "] .opacity-40',
+          'section[aria-label^="node "] .opacity-40 *',
+        ].join(", "),
+      )
+      .forEach((el) => {
+        if (el instanceof HTMLElement) {
+          el.style.setProperty("opacity", "1", "important");
+        }
+      });
   });
+}
+
+/** Types a VID into the topology VLAN filter and submits it — the only way
+ * to actually put `dimmed`/`dimVid` de-emphasis (opacity-25/40) on screen,
+ * which `neutralizeFaceplateDimming` exists to neutralize. Used by the T-2004
+ * test below so that suppression is measured against the state it claims to
+ * cover, rather than against a scan where nothing is ever dimmed. */
+async function applyVlanFilter(page: Page, vid: number): Promise<void> {
+  await page.getByLabel("VLAN").fill(String(vid));
+  await page.getByRole("button", { name: "Apply" }).click();
 }
 
 test("axe: Dashboard", async ({ page }) => {
@@ -124,6 +172,25 @@ test("axe: Topology (Switch view, the default)", async ({ page }) => {
   await waitForAStaleEntity(page);
   await neutralizeFaceplateDimming(page);
   await expectNoSeriousViolations(page, "Topology (Switch view)");
+});
+
+// T-2004: the default Switch-view scan above never activates the VLAN
+// filter, so `dimmed`/`dimVid` (opacity-25/40) never actually land on
+// screen there — the one thing `neutralizeFaceplateDimming` exists to cover
+// was, until now, never exercised by this suite. This test turns the filter
+// on (VID 20, which the three-node-vlan fixture's `vmbr0.20` sub-interface
+// carries, per switchModel.ts/three-node-vlan-topology.json) so the
+// de-emphasis dimming is actually on screen and actually measured.
+test("axe: Topology (Switch view, VLAN filter de-emphasis dimming active)", async ({ page }) => {
+  await logIn(page);
+  await expect(page.getByRole("button", { name: "vmbr0 switch" }).first()).toBeVisible();
+  await applyVlanFilter(page, 20);
+  // Confirm the filter actually dimmed something before measuring — a
+  // no-op filter would make this test pass for the wrong reason.
+  await expect(page.locator(".opacity-25, .opacity-40").first()).toBeVisible();
+  await waitForAStaleEntity(page);
+  await neutralizeFaceplateDimming(page);
+  await expectNoSeriousViolations(page, "Topology (Switch view, VLAN filter active)");
 });
 
 test("axe: Topology (Graph view, v1)", async ({ page }) => {
