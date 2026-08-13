@@ -1,14 +1,16 @@
 # Feature set
 
-**Scope of this file.** The feature *index*, organised by area, with a pointer to each detailed spec in `docs/features/`. It covers what ships today across all four arcs.
+**Scope of this file.** The feature *index*, organised by area, with a pointer to each detailed spec in `docs/features/`. It covers what ships today across all five arcs.
 
 - For a reader evaluating the product, [`datasheet.md`](datasheet.md) is the better entry point — it states capability, requirements, and limits in one place.
 - For delivery state and open items, see [`project-status.md`](project-status.md).
 - For the per-feature implementation grid, see [`status-matrix.md`](status-matrix.md).
 
-**Priorities** below are historical: **P0** = shipped in v1.0, **P1** = v1.x, **P2** = later. The **Arc** column says which release arc delivered it — 1 (v1.0, phases 0–7), 2 (v2.0, phases 8–12), 3 (v3.0, phases 13–17), 4 (v3.1+, phases 18–23).
+**Priorities** below are historical: **P0** = shipped in v1.0, **P1** = v1.x, **P2** = later. The **Arc** column says which release arc delivered it — 1 (v1.0, phases 0–7), 2 (v2.0, phases 8–12), 3 (v3.0, phases 13–17), 4 (v3.1+, phases 18–23), 5 (phases 25–28, "adoptable, not just proven" — `docs/roadmap-adopted.md`).
 
 > **Correction (T-2107, 2026-08-06).** This file previously described only the v1.0 scope and listed five since-shipped capabilities under "explicit non-goals": flow collection, Proxmox Backup Server networking, multi-cluster federation, physical switch config push, and the Prometheus exporter. All five now ship. The non-goals section below has been rewritten to state what is *still* out of scope, and the arcs 2–4 features have been added.
+
+> **Arc 5 note.** Twenty-five cards across phases 25–28 shipped since the correction above: hardware-validation and quality-gate tooling (verify suite, record/replay fixtures, telemetry, soak gate, e2e sharding, performance budgets), change-engine guardrails (policy-as-code, canary apply, auto-rollback, the two-person rule, post-apply preview), config-as-code (git-backed spec sync, changeset→PR, drift-to-git reconciliation, point-in-time topology diff), and adoption features (demo mode, a hosted-registry server side, incident mode, multi-user presence, map annotations, digest reports, an in-app assistant). Rows below are tagged Arc 5; `T-2505`'s two disclosed gaps (a quarantined e2e spec, and `--repeat-each=2` not yet satisfied — see `docs/status-matrix.md` §5.11) and `T-2802`'s "no hosted instance exists yet" (see `docs/features/demo-mode.md`) are the two places Arc 5 shipped less than its own cards asked for, stated here rather than left to be discovered.
 
 ## Visualization & discovery
 
@@ -23,6 +25,9 @@
 | Export config docs as Markdown/HTML (embedded topology SVG) | P1 | 1 | topology.md |
 | Guest network interior inspector (opt-in, read-only) | P1 | 3 | monitoring.md §6 |
 | Physical-layer progressive collapse | P1 | 4 | topology.md |
+| Point-in-time topology diff (compare against a past snapshot, attributed vs. unattributed) | P1 | 5 | topology.md §6 |
+| Drift-to-git reconciliation (`spec_reconciliation`: spec/config/live three-way, "adopt reality" / "restore intent") | P1 | 5 | topology.md §6 |
+| Map annotation layer (free-text notes pinned to entities, labelled regions) | P1 | 5 | [api.md](api.md) "Map annotation layer" |
 
 **Known gap (T-607):** a standalone "export the map as SVG/PNG" control does not exist — the only SVG export is the topology diagram embedded in the config-doc export. Not release-blocking.
 
@@ -44,6 +49,12 @@
 | Declarative cluster network spec (apply/plan) | P1 | 2 | change-management.md |
 | Change review: comments, approvals, shareable review link | P1 | 4 | change-management.md §3.1 |
 | Unattended revert for `fw.*`/`sdn.*` via apply-time sealed ticket | P0 | 4 | change-management.md §4 |
+| Policy-as-code guardrails at validate (`deny` blocks, `warn` annotates; declarative, no interpreter) | P0 | 5 | change-management.md §2 |
+| Post-apply topology preview (render the map with a changeset's ops folded in, before applying) | P1 | 5 | change-management.md §3.0 |
+| Canary / staged multi-node apply (hold between stages, `gate: manual\|auto`) | P0 | 5 | change-management.md §4 |
+| Finding-triggered auto-rollback inside the commit-confirm window | P1 | 5 | change-management.md §4 |
+| Enforced two-person rule on protected op classes, with audited break-glass | P0 | 5 | change-management.md §4 |
+| Advisory entity locks + multi-user presence on staged drafts | P1 | 5 | [api.md](api.md) "Advisory locks and presence" |
 
 ## SDN, IPAM & addressing
 
@@ -92,6 +103,8 @@
 | Service-class flow attribution (migration/backup/Ceph/corosync) | P1 | 3 | monitoring.md §3 |
 | Capacity forecasting; traffic baseline & anomaly detection | P2 | 3 | monitoring.md |
 | Daemon self-observability (RED metrics) | P1 | 4 | monitoring.md |
+| Incident mode (one timeline over diagnosis, captures, findings, flows and the config diff; a view, not a recorder) | P1 | 5 | [api.md](api.md) "Incidents" |
+| Scheduled digest reports (posture, capacity, drift, findings — pushed, with a one-line quiet form) | P1 | 5 | [api.md](api.md) "Digest reports" |
 
 ## Platform & fleet
 
@@ -108,14 +121,18 @@
 | Ceph network awareness; migration network planner | P2 | 3 | monitoring.md |
 | Kubernetes overlay mapping + flow attribution | P2 | 3 | monitoring.md §3 |
 | SR-IOV VF lifecycle | P2 | 3 | — |
-| MCP surface for AI operators (read + stage only) | P1 | 3 | user-guide.md §8.1 |
+| MCP surface for AI operators (read-only in Arc 3; four typed **staging** tools added Arc 5, still never apply — T-2705) | P1 | 3/5 | user-guide.md §8.1, §9.7 |
 | Plugin SDK (5 extension points, sandboxed) | P1 | 3 | user-guide.md §8.2 |
 | Multi-tenancy & self-service request/approve | P1 | 3 | user-guide.md §8.3 |
 | High availability (active/standby, timers survive failover) | P1 | 3 | user-guide.md §8.4 |
-| Hub: signed blueprint/plugin registry client | P2 | 3 | user-guide.md §8.5 |
+| Hub: signed blueprint/plugin registry client (Arc 3); server-side index format, publisher tooling and revocation added Arc 5, no hosted instance yet (T-2803) | P2 | 3/5 | user-guide.md §8.5, [hub-registry.md](hub-registry.md) |
 | Embeddable read-only views | P2 | 3 | user-guide.md §8.6 |
 | OIDC single sign-on | P2 | 2 | user-guide.md §7.6 |
 | Automation tokens & webhooks | P1 | 2 | [api.md](api.md) |
+| Git-backed spec sync (a repository as the source of intent; opens a draft changeset, never applies) | P1 | 5 | user-guide.md §9.4 |
+| Changeset → pull request (propose a staged changeset as a spec commit, GitHub or GitLab) | P1 | 5 | user-guide.md §9.5 |
+| Compliance profiles and evidence export (control-id → checks/policies/posture mapping; `unmapped` never renders as `pass`) | P2 | 5 | user-guide.md §9.8 |
+| In-app assistant over the MCP read tools (own session, no backend by default, no apply path) | P2 | 5 | user-guide.md §10.6 |
 
 ## Operations & lifecycle
 
@@ -129,6 +146,10 @@
 | Certificate inventory, expiry/SAN/chain checks | P1 | 4 | security.md |
 | Online help on every screen (build-gated coverage) | P1 | 4 | user-guide.md §6a |
 | Accessibility (WCAG AA, axe-gated), responsive triage layout | P1 | 2 | — |
+| `vnproxctl verify`: hardware-validation checklist as a signed, timestamped command output | P0 | 5 | deployment.md "`vnproxctl verify`" |
+| `vnproxctl telemetry`: opt-in, off-by-default compatibility reporting (`preview` prints the exact bytes sent) | P2 | 5 | deployment.md "`vnproxctl telemetry`" |
+| One-command install (`curl \| sh`, signature-verified, no `--insecure`) + built-in demo mode (`--demo`, no PVE, no network) | P0 | 5 | [features/demo-mode.md](features/demo-mode.md) |
+| Hosted read-only demo (`--public-demo`) and guided tour — edge refuses every non-`GET` request; **no hosted instance exists yet**, see the spec's "Known gaps" | P2 | 5 | features/demo-mode.md |
 
 ## Still out of scope
 

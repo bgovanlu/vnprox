@@ -197,6 +197,8 @@ A strategy the engine cannot honour is refused **before any snapshot or mutation
 
 A deployment whose changeset service predates the flag refuses the field with `501 not_implemented` rather than applying without the guard the caller asked for — silently dropping a safety request is worse than declining it.
 
+**Known limitation: the guard is in-memory and does not survive a daemon restart.** If `vnproxd` restarts mid-window, an armed `autoRollbackOnError` guard is not re-armed — re-arming with no findings baseline would treat every existing finding as new and fire a spurious rollback. The commit-confirm timer, which **is** persisted and re-armed on restart, remains the safety net for that window regardless: a changeset a restart-dropped guard no longer watches still rolls back if nobody confirms it in time.
+
 **Unattended-revert coverage: `unattendedRevert` (added by T-1805).** PVE firewall and SDN writes are performed with the *user's own* ticket (docs/architecture.md §6), so reverting them with no live session needs a credential the daemon does not otherwise have. Per `docs/roadmap-proven.md`'s decision **D1**, `POST /changesets/{id}/apply` seals the applying user's PVE ticket into the changeset row for the duration of the commit-confirm window, reverts with it, and wipes it the moment the changeset leaves `awaiting_confirm` by any path. The apply response — and a `GET /changesets/{id}` read of an `awaiting_confirm` changeset — carries the resulting coverage report:
 
 ```json
@@ -1262,6 +1264,47 @@ Quiet hours and the digest compose in one direction only, and deliberately: a by
 Deferred events are held in the `alert_pending` table, not in memory, so a daemon restart inside an eight-hour quiet window does not drop them — "deferred, not dropped" is a durability claim, not just a scheduling one. Every deferral is written to the delivery log as a row with `status: "deferred"` and a `detail` saying why and until when, so "we never got paged" is answerable from the log alone; the eventual coalesced delivery carries a `detail` naming how many events it contained. A rule that is deleted or disabled while holding events has them discarded at the next flush rather than delivered, so the operator's most recent instruction wins. The daemon looks for expired holds every 30s.
 
 **Delivery/retry.** A qualifying finding transition (Engine's existing once-per-transition firing — `internal/findings/notify.go`, unchanged by this task) is delivered to every enabled rule whose filters match, each independently, with up to 5 attempts and exponential backoff (1s, 2s, 4s, 8s, capped at 30s) between attempts. `AlertDelivery`: `{id, ruleId, findingId, at, attempt, status: "retrying"|"delivered"|"failed"|"deferred", error?, detail?}` (`"deferred"` and `detail` added by T-2407 — a deferral is not a failure and deliberately does not use the `error` field) — one row per HTTP attempt (not one row per logical delivery): `"retrying"` means this attempt failed and another is scheduled, `"delivered"`/`"failed"` are terminal (a `"failed"` sequence is never retried again past its 5th attempt — no indefinite retry queue, matching this codebase's "every storage deliverable states its bound" convention even though this table is small/event-driven rather than a sampled ring). `POST /alert-rules/{id}/test` bypasses the retry loop entirely (a single delivery attempt, `attempt: 1`) so the Settings UI's "Test" button returns promptly.
+
+## Digest reports (T-2807)
+
+Posture score, capacity forecasts and unresolved drift are computed continuously and looked at
+when someone remembers. A scheduled digest turns those three pull surfaces, plus findings
+opened/closed in the period, into one push — reusing the Alert Rules delivery machinery above
+rather than a second notification path.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/digest/schedule` | the current schedule and the last run's outcome (`netRead`) |
+| PUT | `/digest/schedule` | replace the cadence, recipients, or enablement (`netWrite` + CSRF) |
+
+`GET /digest/schedule` → `200 DigestSchedule`:
+
+```json
+{
+  "enabled": false,
+  "everySec": 0,
+  "ruleIds": [],
+  "updatedBy": "",
+  "updatedAt": 0,
+  "lastRun": null
+}
+```
+
+`everySec` is `0` here, not a cadence: a schedule nobody has written has no cadence, and the route reports that rather than inventing one. The **runner** substitutes `digest.DefaultEvery` (weekly, 604800s) when it finds a stored cadence of zero — but it only reaches that substitution for an *enabled* schedule, so a client must not read this `0` as "weekly is already configured".
+
+**`DigestSchedule`**: `{enabled, everySec, ruleIds: [string], updatedBy, updatedAt, lastRun?: DigestRun}`. `ruleIds` is a **filter over the existing `alert_rules`** (above) — empty/omitted means every rule, the same "no filter set" convention every other filter in this API uses — not a second address book; a digest carries no target of its own. A daemon that has never had a schedule written still answers `200` with the disabled default shown above rather than `404`, so a client never has to special-case "not configured yet".
+
+**`DigestRun`**: `{status, detail, periodStart, periodEnd, generatedAt, quiet}`. `quiet` marks a run that found nothing to report — see "The quiet form" below. `lastRun` is omitted (`null`) until the first tick has run.
+
+`PUT /digest/schedule` is a **full replace**, matching how the store models a schedule (one row, upserted) — a caller that wants to flip `enabled` alone reads first and writes the whole object back, the same contract every other single-object configuration route in this API uses. Request body: `{ruleIds?, everySec?, enabled?}`, all optional; an omitted field keeps its currently stored value rather than resetting to zero. **An enabled schedule must carry `everySec >= 3600`** (one hour) — `400 validation_failed` otherwise; a disabled schedule may carry any cadence, including none, because disabling is how an operator silences a digest without losing the cadence they chose. A successful `PUT` returns `200` with the same `DigestSchedule` shape `GET` returns, `updatedBy` set to the caller and `updatedAt` to now.
+
+**The quiet form.** A digest covering a period with nothing to report renders as **one line**, under a stated size (`docexport.DigestQuietMaxBytes`, 200 bytes) — no section, no table, no "none observed" filler, because a digest that arrives full every week regardless is one people learn to delete unread.
+
+**Deltas are measured against the previous digest, not an arbitrary window.** A run's `periodStart` is the previous run's `periodEnd`, so consecutive digests abut exactly; a first-ever digest has no prior run to read and states that it has no baseline rather than rendering a delta against zero.
+
+**Delivery reuses the Alert Rules path above wholesale** (`internal/findings.WebhookNotifier`, T-2407): a digest is handed to it as an ordinary `Finding`, so quiet hours defer it, `digestWindowSec` coalescing still applies, failures retry with the same bounded backoff, and every attempt lands in `alert_deliveries` and is visible at `GET /alert-deliveries` — nothing here is a parallel delivery mechanism.
+
+**The schedule lives in SQLite** (`digest_schedules`, migration `internal/store/migrations/0043_digest_schedules.sql`) rather than `vnprox.toml`, and is re-read on every tick — a cadence change made through `PUT /digest/schedule` takes effect without a daemon restart. Rendering is `internal/docexport` (`digest.go`), alongside the config-doc, posture and compliance reports — same Markdown conventions, same standalone/CSP-safe HTML shell.
 
 ## Tokens & Webhooks (T-1104, automation)
 

@@ -20,6 +20,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
 import { Tooltip } from "../components/Tooltip";
 import { useToast } from "../components/Toast";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { DiffView } from "./DiffView";
 import { TopologyDiffPanel } from "./TopologyDiffPanel";
 import { groupSnapshots, kindLabel } from "./timeline";
@@ -272,6 +273,7 @@ export function HistoryPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Diff</h2>
+              <HelpAnchor topic="topology-point-in-time-diff" />
               <div className="flex items-center gap-1" role="group" aria-label="Diff view">
                 <Button
                   size="sm"

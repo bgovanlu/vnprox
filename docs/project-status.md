@@ -247,3 +247,60 @@ T-1601) all already ship.
 
 `T-2505` subsumes the open `T-2409` and inherits its unfinished investigation, including the two
 hypotheses already refuted and recorded, so they are not re-derived a third time.
+
+---
+
+## 9. Arc 5 — delivery (2026-08-13)
+
+All 25 cards across phases 25–28 have shipped code, merged to `main`. This section is the
+delivery record §8 was written before; it does not restate §1's headline percentages, which
+predate this arc and are not recomputed here — see the note at the end of this section for what
+that means and does not mean.
+
+| Card | Item | State |
+|---|---|---|
+| `T-2501` | Self-executing hardware validation suite (`vnproxctl verify`, 26 checks) | ● Shipped |
+| `T-2502` | Record/replay real PVE traffic into fixtures | ● Shipped — no cassette here is from real PVE hardware yet, stated in the cassette directory's own name (`mock-three-node-vlan`) |
+| `T-2503` | Opt-in compatibility telemetry (`vnproxctl telemetry`) | ● Shipped |
+| `T-2504` | Nightly soak and resource-leak gate (`make soak`) | ● Shipped |
+| `T-2505` | E2E sharding, isolation, and flake quarantine | ◐ **Shipped with two ACs explicitly not met, recorded rather than faked closed**: one of the four original failures is bisected but its mechanism is unexplained and the spec is quarantined (`web/e2e/quarantine.json`, expires 2026-09-15); `--repeat-each=2` still fails because most specs assume a fresh store, which shard-level isolation doesn't provide. See `planning/tasks/phase-25.md`'s delivery record and `status-matrix.md` §5.11 |
+| `T-2506` | Performance regression budget gate (`make perf`) | ● Shipped |
+| `T-2601` | Policy-as-code guardrails at the validate stage | ● Shipped |
+| `T-2602` | Canary / staged multi-node apply | ● Shipped |
+| `T-2603` | Finding-triggered auto-rollback inside the confirm window | ● Shipped — closes T-2602's `gate: auto` gap by wiring the canary health checker into `cmd/vnproxd` |
+| `T-2604` | Enforced two-person rule on protected op classes | ● Shipped |
+| `T-2605` | Post-apply topology preview | ● Shipped |
+| `T-2701` | Git-backed spec sync | ● Shipped |
+| `T-2702` | Changeset → pull request | ● Shipped |
+| `T-2703` | Drift-to-git reconciliation | ● Shipped |
+| `T-2704` | Point-in-time topology diff | ● Shipped |
+| `T-2705` | Mutating MCP tools that stage, never apply | ● Shipped |
+| `T-2706` | Compliance profiles and evidence export | ● Shipped — one general profile, explicitly not a certification claim |
+| `T-2801` | One-command install and built-in demo mode | ● Shipped |
+| `T-2802` | Hosted read-only demo and guided tour | ◐ **The mechanism shipped; the instance does not exist.** `--public-demo` and its edge, session isolation, rate caps, and guided tour are built and tested. There is no domain, object storage, deploy target, or CI budget to actually run one — stated in `docs/features/demo-mode.md`'s "Known gaps" rather than implied by the card being closed |
+| `T-2803` | Hosted signed registry for blueprints and plugins | ● Shipped — the signed-index format and publisher tooling; no instance is hosted, matching `T-2802`'s gap and stated in `docs/hub-registry.md` |
+| `T-2804` | Incident mode | ● Shipped |
+| `T-2805` | Multi-user presence and changeset locking | ● Shipped — locks and presence are node-local; a peer-API fan-out for cross-node presence is a stated, unfilled gap |
+| `T-2806` | Map annotation layer | ● Shipped |
+| `T-2807` | Scheduled digest reports | ● Shipped — the API route (`GET`/`PUT /digest/schedule`) landed in a follow-up commit after the card's first pass, since no acceptance criterion named one and three other cards were touching `docs/openapi.json` at the time |
+| `T-2808` | In-app assistant over the MCP read tools | ● Shipped |
+
+**Two real product defects surfaced during this arc and remain open, both disclosed on their
+originating cards rather than fixed silently:**
+
+- The guest-interior panel doesn't refetch after its own toggle is switched on, so it keeps
+  showing a stale "could not read this guest's interior" error until the tab is remounted
+  (`T-2505-followup-02`). Frontend cache-invalidation defect; out of `T-2505`'s scope by design.
+- `scale.spec.ts › v2 canvas renderer` fails only after two specific preceding specs in the same
+  browser process — reproducible, but its mechanism is unexplained (`T-2505-followup-01`,
+  quarantined, expires 2026-09-15).
+
+**What this section does not claim.** §1's headline table (feature delivery, hardware validation,
+etc.) is a mechanical sweep against a specific commit, predates this arc, and is not recomputed
+here — recomputing it needs the same commands `status-matrix.md` §6 describes, re-run against the
+current tree, which this delivery record does not do. What *is* true without re-running anything:
+`T-2501` makes the 9%-hardware-validation figure *movable* by someone with a cluster — it does not
+move it itself, because no card can validate hardware without hardware — and `T-2801`/`T-2802`
+answer "can someone who has never met us run this" for the *installed* case (yes) while leaving
+the *hosted-demo* case exactly where `T-2803`'s registry hosting also sits: designed, tested, and
+not actually deployed anywhere.

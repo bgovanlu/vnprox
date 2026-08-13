@@ -6,6 +6,13 @@ This is a mechanical sweep of the whole stack: feature area × backend × GUI ×
 
 Companion documents: [`project-status.md`](project-status.md) (open items, percent complete, roadmap) and [`datasheet.md`](datasheet.md) (shipped capability, for external readers).
 
+> **This matrix predates Arc 5** (phases 25–28, 25 cards, shipped 2026-08-10 to 2026-08-13 —
+> `project-status.md` §9 has the per-card delivery record). Retagging §2's rows for the new
+> feature areas needs the same mechanical sweep this file's own method requires, re-run against
+> the current tree, which has not been done here — so no new rows were added rather than adding
+> ones with invented cells. §5.11 and §5.4 below are the two places this file *was* updated for
+> Arc 5, both narrowly.
+
 ---
 
 ## 1. Legend
@@ -236,9 +243,13 @@ Five of the six were validated on 2026-08-05 (CA path, migration chain, `backup`
 
 **`T-2501` changes what "an agent cannot do" costs.** It does not validate anything — no card can, without hardware — but it removes the reason validation did not scale. `vnproxctl verify` is 26 checks in `internal/verify`, one per claim, each deciding its own verdict and carrying the API response, command output or file contents it rests on; the run produces a signed artifact rather than a message in a chat log. Every feature area marked **B** above has at least one check (enforced: `Reconcile` fails the build for a `B` or `V` row with nothing behind it), and every check states the hardware it needs, so `vnproxctl verify --list` is now the answer to "what would it take". Three properties keep the resulting number honest: a `skip` is never a `pass` and a run of nothing but skips exits non-zero, a verdict without evidence is a malformed report the CLI refuses to print, and the suite refuses to run against `internal/pvemock` at all without `--allow-mock`. What remains genuinely blocked is unchanged — somebody has to run it on iron.
 
-### 5.4 `docs/features.md` is materially stale
+### 5.4 `docs/features.md` is materially stale — **closed 2026-08-06 (`T-2107`), then updated again for Arc 5**
 
-It still describes the v1.0 feature set and lists as **explicit non-goals** five things that have since shipped: NetFlow/sFlow collection, PBS networking, multi-cluster federation, physical switch config push, and the Prometheus exporter. A reader taking it at face value would form a wrong picture of the product. It is the only doc in this state — `api.md`, `security.md`, `user-guide.md`, and the roadmaps are all current.
+Historical note, kept for the record: this section used to report that `features.md` still described
+the v1.0 feature set and listed five since-shipped capabilities as non-goals. `T-2107` rewrote it on
+2026-08-06, and it now also carries an Arc 5 section. This paragraph is the only part of it that was
+stale, and it was the irony of a staleness note about a staleness note — see `features.md`'s own
+correction note at its top for the full history.
 
 ### 5.5 Open user-facing defects
 
@@ -327,6 +338,26 @@ tested but report `skip` from the CLI pending live-daemon wiring (`T-1904-follow
 home for `T-1906-bug-01`'s certificate/SAN preflight), and `install.sh` reports rather than aborts
 (`T-1904-followup-01`, deliberately blocked on `T-1806-bug-02`). Both stated in
 `docs/deployment.md` rather than left to be discovered.
+
+### 5.11 Arc 5 open items carried out of the e2e-sharding card (`T-2505`)
+
+`T-2505` (phase 25) is closed with two items explicitly left open rather than faked closed —
+both recorded on `planning/tasks/phase-25.md`'s delivery record, restated here so they show up in
+the defect list a reader actually checks:
+
+- **`scale.spec.ts › scale-lab (v2 canvas renderer)` is quarantined, not fixed**
+  (`web/e2e/quarantine.json`, `T-2505-followup-01`, expires 2026-09-15). It fails only when it runs
+  after two specific preceding specs in the same browser process — reproducible 4/4 in that
+  arrangement, passing alone or in the full serial suite — and the mechanism is unexplained. An
+  expired quarantine fails the build, so this either gets re-triaged or starts failing the gate on
+  its own by the expiry date.
+- **The guest-interior panel does not refetch after its toggle is enabled**
+  (`T-2505-followup-02`, found by `T-2505`'s two-core reproduction, still open). The panel issues
+  its one `GET .../interior` read before the toggle flips on, gets a `404`, and never invalidates
+  that query when the toggle later turns on — so it keeps showing "could not read this guest's
+  interior" until the tab is remounted. Fast machines rarely see it, which is why the hosted CI
+  runner failed this spec on a commit that passed locally. Frontend cache-invalidation defect,
+  unfixed as of this writing; out of `T-2505`'s scope by design.
 
 ---
 

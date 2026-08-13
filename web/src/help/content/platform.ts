@@ -56,7 +56,7 @@ export const PLATFORM_TOPICS: readonly HelpTopic[] = [
         body: "The realistic case is triage: an on-call assistant reads an alert, runs the diagnosis ladder, and drafts a failover changeset that you review and confirm from your phone. The drafting is the labour; the judgement stays yours.",
       },
     ],
-    seeAlso: ["tokens-and-embeds", "audit-page", "safety-model", "changeset-review-page"],
+    seeAlso: ["tokens-and-embeds", "audit-page", "safety-model", "changeset-review-page", "in-app-assistant"],
   },
   {
     id: "plugins",

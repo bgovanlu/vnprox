@@ -313,4 +313,28 @@ export const CONCEPT_TOPICS: readonly HelpTopic[] = [
     ],
     seeAlso: ["commit-confirm", "snapshots-time-machine", "safety-model"],
   },
+  {
+    id: "demo-mode",
+    title: "Demo mode",
+    surface: "concept",
+    summary:
+      "vnproxd --demo runs the whole product against a synthetic cluster built into the binary — no Proxmox, no network access — and every write reports what it would have done instead of doing it.",
+    docRef: "docs/features/demo-mode.md",
+    keywords: ["demo", "demo mode", "evaluate", "trial", "sandbox", "synthetic", "would have"],
+    sections: [
+      {
+        heading: "How to tell you're in one",
+        body: "A persistent amber banner across the top of every screen, which doesn't dismiss and doesn't auto-hide — it's meant to still be there when someone else walks up to the screen. Log in with the demo fixture's own built-in credentials (`root` / `vnprox-mock`, realm `pam`); there's no separate demo account system to set up.",
+      },
+      {
+        heading: "Nothing you do here is real",
+        body: "Every mutating request — staging, applying, confirming — is accepted and reports what it would have done, and touches nothing: no PVE endpoint is dialled (there is none to dial), and the synthetic cluster's own state doesn't change either. You can go through an entire apply-and-confirm flow safely, to see exactly what it feels like before you point vnprox at a real cluster.",
+      },
+      {
+        heading: "It shows a real fixture, not your machine",
+        body: "The topology, findings, drift and flows you see are a realistic multi-node cluster built into vnprox for exactly this purpose — never the interfaces of the computer the demo happens to be running on. A demo instance also can't be pointed at a real Proxmox endpoint, and a real deployment can't be switched into demo mode; each direction is refused outright.",
+      },
+    ],
+    seeAlso: ["dashboard-page", "safety-model", "onboarding-walkthrough"],
+  },
 ];

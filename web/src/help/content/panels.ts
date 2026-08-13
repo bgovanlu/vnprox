@@ -27,7 +27,7 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
         body: "For a guest, an opt-in read-only tab shows the guest's *own* view of its network: interfaces, addresses, routes, DNS, listening sockets, gateway reachability. It's off by default and reads inside the guest each time you open it. Every address the guest claims is cross-checked against IPAM rather than taken at face value — a self-report is a claim, not a fact.",
       },
     ],
-    seeAlso: ["topology-page", "topology-paint-modes", "ipam-page"],
+    seeAlso: ["topology-page", "topology-paint-modes", "ipam-page", "map-annotations"],
   },
   {
     id: "topology-paint-modes",
@@ -552,5 +552,133 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
       },
     ],
     seeAlso: ["protected-interfaces", "ports-page", "findings-stream", "safety-model"],
+  },
+  {
+    id: "in-app-assistant",
+    title: "The in-app assistant",
+    surface: "dialog",
+    summary:
+      "A drawer that asks vnprox's own read-only tools your question — using your session and your permissions — and can draft a change for review. It never applies one, and until you point it at a model backend it does nothing at all.",
+    docRef: "docs/security.md",
+    keywords: ["assistant", "ai", "ask", "mcp", "chat", "drawer", "citations", "question"],
+    sections: [
+      {
+        heading: "No backend, no requests",
+        body: "vnprox ships no model and no credential for one. The panel does nothing until you fill in an endpoint, a model name, and an optional API key under **Backend settings** — kept in memory for this browser tab only, never written to storage and never sent to vnprox itself. Your question and the tool results go straight from your browser to the backend you configured; vnproxd never sees them.",
+      },
+      {
+        heading: "Every answer is cited, or it isn't shown",
+        body: "The assistant runs the same read tools vnprox exposes over MCP against the local daemon, under your own session — a capability you lack is unreachable through it exactly as it is everywhere else, and your account's exact restrictions are named above the question box. An answer is rendered only if it cites something those tools actually returned; a reply that cites nothing, or cites something the tools didn't produce, is withheld rather than shown with a caveat.",
+      },
+      {
+        heading: "It can draft, never apply",
+        body: "When the answer implies a change, a **Proposed change** panel appears with a **Stage for review** button. Staging opens an ordinary draft changeset — tagged as the assistant's — and hands off to the normal review screen. There is no apply, confirm or rollback control anywhere in this panel; the component that renders it holds nothing capable of reaching one.",
+      },
+    ],
+    seeAlso: ["mcp-ai-operators", "change-drawer", "changeset-review-page"],
+  },
+  {
+    id: "map-annotations",
+    title: "Notes and regions on the map",
+    surface: "panel",
+    summary:
+      "Pin a free-text note to any entity, or draw a labelled region on the canvas — a shared team scratchpad for the things the map itself can't show, like 'temporary until the switch swap'.",
+    docRef: "docs/features/topology.md",
+    keywords: ["annotation", "note", "sticky note", "region", "label", "pin", "comment", "scratchpad"],
+    sections: [
+      {
+        heading: "Notes",
+        body: "Pinned to one entity from the inspector's **Notes** tab, and shown there and as a small marker on that entity on the Graph-view canvas. Every note carries who pinned it and when, and can carry an expiry — 7, 30 or 90 days, or never — so a temporary note announces its own staleness instead of quietly becoming permanent. Expiry is checked on every read, never left to the browser's own clock.",
+      },
+      {
+        heading: "Regions",
+        body: "Labelled rectangles you draw on the Graph-view canvas to mark an area — a rack, a cage, a set of nodes under maintenance. They hold their position under pan and zoom and survive layout changes and view switches, because they're stored separately from your personal saved layout rather than inside it.",
+      },
+      {
+        heading: "Shared, and never lost",
+        body: "Every `netRead`-capable user sees the same notes and regions, and anyone can unpin any note — this is a team scratchpad, not private data. A note on an entity that's later removed is kept and marked **Entity no longer exists** rather than dropped, because it's often the only record of why the entity was removed. Notes and region labels both appear in the documentation export, and the text is always rendered escaped, never as HTML.",
+      },
+    ],
+    seeAlso: ["topology-page", "topology-inspector", "doc-export"],
+  },
+  {
+    id: "presence-and-locks",
+    title: "Presence and draft locks",
+    surface: "panel",
+    summary:
+      "Staging a change takes an advisory lock on the entities it touches, and the drawer shows who else is looking at a changeset — so two people editing the same bridge find out about each other instead of silently overwriting each other's work.",
+    docRef: "docs/api.md",
+    keywords: ["presence", "lock", "advisory lock", "collision", "who else", "viewing", "take over the lock"],
+    sections: [
+      {
+        heading: "Advisory means it never blocks you",
+        body: "A lock warns; it doesn't refuse. If you stage or edit a draft that touches an entity someone else already has a draft open against, your change is saved exactly the same — the drawer just tells you who else has a claim, and lets you proceed deliberately. Apply never consults a lock, and can't: a lock prevents an accidental change, never an emergency one.",
+      },
+      {
+        heading: "Taking over",
+        body: "**Take over the lock** doesn't touch your changeset's operations at all — it re-submits the same ones with the claim transferred to you, so the other operator is the one warned next time. Every takeover is recorded in the audit log, naming who held the lock before.",
+      },
+      {
+        heading: "Presence",
+        body: "While you have a changeset open, the drawer shows a quiet 'N other people are viewing this' line — nothing renders when you're alone with it. Presence comes from who's currently connected rather than anything stored, and it clears the moment their session ends.",
+      },
+      {
+        heading: "Locks release themselves",
+        body: "A lock expires on a timeout, releases the moment its holder's session ends (closing a laptop, not a button click), and disappears entirely once its draft is discarded. There's no separate 'unlock' action to remember.",
+      },
+    ],
+    seeAlso: ["change-drawer", "changeset-review-page", "audit-page"],
+  },
+  {
+    id: "topology-point-in-time-diff",
+    title: "Point-in-time topology diff",
+    surface: "panel",
+    summary:
+      "Compares your cluster at two points in time — a snapshot, a timestamp, or right now — and shows exactly what changed, entity by entity, naming the changeset responsible or flagging a change nothing explains.",
+    docRef: "docs/api.md",
+    keywords: ["diff", "topology diff", "point in time", "compare", "unattributed", "out of band", "what changed"],
+    sections: [
+      {
+        heading: "Where to start it",
+        body: "From **History**, pick a **From** and a **To** point (or 'vs live') and switch the **Diff** toggle to **Topology** — as opposed to **Files**, the older, literal unified diff of the raw `/etc/network/interfaces` text. **Show on map** opens the same range as an overlay on the Topology page, ringing every changed entity: a dashed ring for a change a changeset explains, a thicker solid one for a change nothing does.",
+      },
+      {
+        heading: "The unattributed count is the point",
+        body: "Every difference names whether a changeset explains it. One that doesn't is a change made outside vnprox — someone SSHed in and edited the file, or ran an `ip` command — which is exactly the class of change the drift checker exists to catch. That count is called out on its own, in both the History panel and the map overlay's status line, rather than folded into an undifferentiated 'N changes'.",
+      },
+      {
+        heading: "What's compared, stated rather than assumed",
+        body: "The diff covers each node's `/etc/network/interfaces` — bridges, bonds, VLANs, addressing. SDN zones and VNets aren't diffed yet. A node captured at only one end of the range is named as such rather than having every interface on it reported as created or deleted.",
+      },
+      {
+        heading: "An honest error beats an empty diff",
+        body: "Asking for a range vnprox has no snapshot old enough to cover returns a stated error naming the snapshots that do exist — never a diff that quietly comes back empty and reads as 'nothing changed'.",
+      },
+    ],
+    seeAlso: ["history-page", "topology-page", "drift", "incidents-page"],
+  },
+  {
+    id: "post-apply-preview",
+    title: "Post-apply preview",
+    surface: "panel",
+    summary:
+      "See what the map would look like after a staged changeset applies — before you click Apply — with every added, removed and changed entity marked on a distinct preview mode of the map.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["preview", "post-apply", "post apply", "what will change", "projection", "before apply"],
+    sections: [
+      {
+        heading: "Where to find it",
+        body: "**Preview the post-apply map**, on a changeset's **Blast radius** tab, opens the Topology page in preview mode. A deleted entity is drawn back onto the map, struck through rather than simply missing — an absence is exactly the kind of change nobody notices, so it's shown, never omitted.",
+      },
+      {
+        heading: "Best-effort, and it says so",
+        body: "The projection folds the changeset's operations into the live inventory in memory — nothing is written anywhere, and nothing here touches the store or PVE. Some operations have no representation in the entity graph at all (a raw interfaces-file edit, a firewall, QoS, NAT or WireGuard change): those are listed by name with a reason as **unprojectable**, in the map's own status line, rather than silently left out of the picture.",
+      },
+      {
+        heading: "No preview for a changeset that can't apply",
+        body: "A changeset with blocking validation findings has no post-apply state to show, so the preview is refused rather than rendering a map no real sequence of events could produce — the live map is shown instead, with a message naming why.",
+      },
+    ],
+    seeAlso: ["changeset-review-page", "topology-page", "validation-findings"],
   },
 ];

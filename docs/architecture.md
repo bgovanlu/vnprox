@@ -172,19 +172,69 @@ internal/docexport/     "as-built" config documentation export
 internal/xnode/         pure cross-node comparison families (drift/apicontract)
 ```
 
-Phase 27 addition ("Config as code"):
+Phase 25 additions ("Proof that runs itself" — hardware validation made a command
+rather than a checklist a human reads):
+
+```
+internal/verify/        the `vnproxctl verify` check suite: one Check per
+                        docs/status-matrix.md §2 claim, a signed timestamped
+                        report artifact (T-2501)
+internal/pvecassette/   on-disk cassette format for recorded PVE API traffic:
+                        matcher, writer, drift comparator (T-2502)
+internal/redact/        the T-1902 support-bundle redactor, extracted so
+                        internal/pve's record mode and internal/pvecassette
+                        can share it without pvemock importing internal/backup
+internal/soak/          the resource-leak gate: trend (not threshold) analysis
+                        over sampled goroutines/heap/RSS/fds/table rows (T-2504)
+internal/perfbudget/    the performance-regression budget gate: loader,
+                        host-normalised calibration, median-of-N comparator,
+                        headroom report, doc-table cross-check (T-2506)
+cmd/e2egate/            verdict authority over the four-shard e2e suite:
+                        quarantine + expiry + flake trend from run history
+                        (T-2505)
+```
+
+Phase 27 additions ("Config as code"):
 
 ```
 internal/gitsync/       git-backed spec sync: a repository as the source of
                         intent, reconciled into a DRAFT changeset (T-2701)
+internal/reconcile/     executes drift-to-git reconciliation from an explicit
+                        operator request ("adopt reality" / "restore intent");
+                        internal/drift only computes and offers (T-2703)
+internal/compliance/    declarative control-id -> checks/policies/posture-factor
+                        evidence mapping, with as-of historical reconstruction
+                        (T-2706)
 ```
 
-Phase 28 addition ("Adoption"):
+Phase 28 additions ("Adoption"):
 
 ```
+internal/demo/          embedded synthetic cluster + in-process transport for
+                        `vnproxd --demo` (T-2801)
+internal/publicdemo/    the read-only edge in front of `--public-demo`: method-only
+                        write refusal, per-visitor sessions and scratch state (T-2802)
+internal/incident/      assembles a read-only timeline over existing history
+                        (finding_events, audit_log, capture_sessions, flow_samples,
+                        the T-2704 diff) plus operator annotations — a VIEW, with
+                        no event table of its own (T-2804)
 internal/presence/      advisory entity locks on staged drafts + per-changeset
                         /per-entity presence over the existing WS stream (T-2805)
+internal/annotate/      the map annotation layer's read model: free-text notes and
+                        labelled regions, with expiry and orphan status both
+                        computed at read time rather than stored (T-2806)
 ```
+
+`internal/docexport` (Phase 16–17, above) gains a digest renderer (`digest.go`, T-2807) alongside
+its existing config-doc, posture and compliance reports — same Markdown/HTML conventions, same
+cell helpers, no new package. Delivery reuses `internal/findings`' existing `WebhookNotifier`
+(T-2407) rather than a second delivery path.
+
+`web/src/tour/` (T-2802) and `web/src/assistant/` (T-2808) are frontend-only additions with no
+backend package of their own: the tour is data (`tourScript.ts`) driving the public-demo edge's
+visitor-scratch API (§9b), and the assistant panel runs the **same** MCP read tools over the
+ordinary `/api/v1` routes with the caller's own session cookie — no new route, no new backend
+capability. See §13.1 and `docs/security.md`'s "In-app assistant" entry.
 
 **`internal/presence` and D4 (T-2805).** Decision D4 — "all mutations via the change engine with
 commit-confirm" — is the invariant an entity-lock feature is most able to break, so the boundary

@@ -16,6 +16,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "../components/Drawer";
 import { Button } from "../components/Button";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { useSession } from "../api/useSession";
 import { useCreateChangesetMutation } from "../changesets/queries";
 import { useChangesetDrawerStore } from "../changesets/store";
@@ -301,8 +302,9 @@ export function AssistantPanel() {
       }}
     >
       <DrawerContent side="right" aria-describedby="assistant-panel-summary" className="max-w-lg">
-        <DrawerTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
+        <DrawerTitle className="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-slate-100">
           Assistant
+          <HelpAnchor topic="in-app-assistant" />
         </DrawerTitle>
         <DrawerDescription
           id="assistant-panel-summary"

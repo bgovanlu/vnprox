@@ -51,7 +51,14 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
         body: "If something is wrong, the fastest route is usually the findings stream, which carries the plain-English explanation and, where one is computable, a fix you can stage. For 'why can't A reach B', go straight to the path simulator.",
       },
     ],
-    seeAlso: ["findings-stream", "tools-page", "topology-page", "service-class-traffic", "onboarding-walkthrough"],
+    seeAlso: [
+      "findings-stream",
+      "tools-page",
+      "topology-page",
+      "service-class-traffic",
+      "onboarding-walkthrough",
+      "demo-mode",
+    ],
   },
   {
     id: "topology-page",
@@ -78,6 +85,10 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
         heading: "Editing from the map",
         body: "In Graph view you can drag a NIC into a bond, or a guest NIC onto another bridge. Nothing applies — each drop becomes an operation in the change drawer, and goes through review and confirm like everything else.",
       },
+      {
+        heading: "Beyond the live view",
+        body: "Pin a note or draw a region to record what the map can't show on its own — 'temporary until the switch swap'. Ask **History** for a point-in-time diff and click **Show on map** to ring every entity that changed. And from a changeset's review screen, **Preview the post-apply map** renders what applying it would actually produce, before you commit to it.",
+      },
     ],
     seeAlso: [
       "topology-inspector",
@@ -85,6 +96,9 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
       "spotlight-search",
       "change-drawer",
       "keyboard-and-palette",
+      "map-annotations",
+      "topology-point-in-time-diff",
+      "post-apply-preview",
     ],
   },
   {
@@ -398,14 +412,20 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
       },
       {
         heading: "Diffing two points",
-        body: "Pick any two snapshots and see what changed between them, per node and per file. This is the view for 'what did we actually do last Tuesday' and for 'this worked in March — what's different now'.",
+        body: "Pick a **From** and a **To** point — any two snapshots, or 'vs live' — and switch between two views of what changed. **Topology** reads by entity: what was added, removed or changed, and whether a changeset explains it. **Files** is the older, literal unified diff of the raw interfaces text. This is the view for 'what did we actually do last Tuesday' and for 'this worked in March — what's different now'.",
       },
       {
         heading: "Restoring",
         body: "Restoring a snapshot doesn't reach behind the change engine. It builds a new changeset containing the operations that would return you to that state, and you review, apply and confirm it exactly as you would any change you'd built yourself.",
       },
     ],
-    seeAlso: ["snapshots-time-machine", "snapshot-restore", "history-playback", "audit-page"],
+    seeAlso: [
+      "snapshots-time-machine",
+      "snapshot-restore",
+      "history-playback",
+      "audit-page",
+      "topology-point-in-time-diff",
+    ],
   },
   {
     id: "incidents-page",
@@ -433,7 +453,7 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
         body: "Closing freezes the window; it deletes nothing, and reopening shows the same timeline. **Export** produces one archive: the timeline plus a support bundle, through the same redaction the support bundle already uses — safe to attach to a ticket or a forum post. You can export before closing; mid-incident is exactly when you are asking someone for help.",
       },
     ],
-    seeAlso: ["history-page", "audit-page", "findings-stream", "diagnose-page"],
+    seeAlso: ["history-page", "audit-page", "findings-stream", "diagnose-page", "topology-point-in-time-diff"],
   },
   {
     id: "audit-page",
@@ -505,11 +525,22 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
         body: "If your deployment requires sign-off, an approver approves or rejects right here. That's an authorization decision made server-side on every apply attempt, not a UI affordance — an unapproved apply is refused whether it comes from the UI, the API, or the CLI. Editing the operations clears any prior approval, because a decision made about one set of operations must never authorize a different one.",
       },
       {
+        heading: "Extra approvers for protected changes",
+        body: "Some deployments require more than one approval for certain classes of change — anything touching firewall rules, SDN, a node's management path, or a policy tag your organisation defined. When a changeset falls into one of those classes, Apply stays disabled until enough **distinct people** have approved it, and the message under the button names the class and exactly how many more are needed. This is enforced by the server on every apply attempt, not by this screen — a request that skips the UI meets the identical refusal. An emergency break-glass override exists for when nobody else is available; it isn't a button on this screen, it requires a written reason, and it raises a finding that can't be acknowledged for 24 hours, so the override still gets reviewed by someone who wasn't in the room.",
+      },
+      {
         heading: "Before you hit Apply",
-        body: "If the change touches a node's management path you'll be asked to type that node's name to acknowledge it, and the confirm window is raised to at least 180 seconds. The screen also tells you how much of your confirm window is covered by unattended revert for firewall and SDN operations, before you commit to it.",
+        body: "If the change touches a node's management path you'll be asked to type that node's name to acknowledge it, and the confirm window is raised to at least 180 seconds. The screen also tells you how much of your confirm window is covered by unattended revert for firewall and SDN operations, before you commit to it. **Preview the post-apply map**, on the blast-radius tab, shows what the map would look like once this changeset applies — before you commit to anything.",
       },
     ],
-    seeAlso: ["change-drawer", "commit-confirm", "validation-findings", "scheduled-apply"],
+    seeAlso: [
+      "change-drawer",
+      "commit-confirm",
+      "validation-findings",
+      "scheduled-apply",
+      "post-apply-preview",
+      "presence-and-locks",
+    ],
   },
   {
     id: "settings-page",
