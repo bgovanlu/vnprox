@@ -44,6 +44,13 @@ type InstanceInfo struct {
 	MetricsEnabled    bool `json:"metricsEnabled"`
 	AllowDangerousOps bool `json:"allowDangerousOps"`
 	ReadOnly          bool `json:"readOnly"`
+	// Demo (T-2801) is true iff this daemon runs against the embedded
+	// synthetic cluster. Duplicated from GET /health (which the SPA reads
+	// before login) on purpose: the Settings page's Instance section is
+	// where an operator goes to ask "what is this daemon", and "it is a
+	// demo" is the single most important answer it can give. Same "mode
+	// flag, not a secret" bar as MetricsEnabled/ReadOnly above.
+	Demo bool `json:"demo"`
 }
 
 // configHandler serves GET /api/v1/config -> InstanceInfo. It is a pure

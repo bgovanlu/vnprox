@@ -135,6 +135,26 @@ func (c *Collector) hostPollOnce(ctx context.Context) error {
 	c.recordNodeResult(localNode, start, localErr)
 	c.reportPoll("host", localNode, time.Since(start), localErr)
 
+	// T-2801: one cluster-wide fixture reader answers for every node, so
+	// every other node is polled through the SAME reader as the local one
+	// and no peer address is ever dialled. Mutually exclusive with the peer
+	// fan-out below by construction: a demo daemon is built with no peer
+	// client at all.
+	if c.hostServesCluster {
+		for _, node := range c.getClusterNodes() {
+			if node == localNode {
+				continue
+			}
+			nStart := time.Now()
+			err := c.hostPollStateFor(ctx, node, c.host)
+			c.recordNodeResult(node, nStart, err)
+			c.reportPoll("host", node, time.Since(nStart), err)
+			if err != nil {
+				c.log.Warn("collect: cluster-wide host reader failed for a node, keeping last-known state", "node", node, "error", err)
+			}
+		}
+	}
+
 	if c.peerClient != nil {
 		for _, p := range c.getPeers() {
 			if p.Node == localNode {

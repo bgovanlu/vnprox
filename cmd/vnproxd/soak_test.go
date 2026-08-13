@@ -291,7 +291,7 @@ func bootSoakDaemon(t *testing.T, logger *slog.Logger) *soakDaemon {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	daemonDone := make(chan error, 1)
-	go func() { daemonDone <- runDaemon(ctx, cfgPath, logger) }()
+	go func() { daemonDone <- runDaemon(ctx, daemonOptions{ConfigPath: cfgPath}, logger) }()
 
 	client := &http.Client{
 		Timeout: 30 * time.Second,

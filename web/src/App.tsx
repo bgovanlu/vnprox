@@ -32,6 +32,7 @@ import { EmbedMap } from "./embed/EmbedMap";
 import { EmbedDashboard } from "./embed/EmbedDashboard";
 import { EmbedPosture } from "./embed/EmbedPosture";
 import { applyThemeClass, useThemeStore } from "./store/theme";
+import { detectDemoMode } from "./demo/useDemoMode";
 
 export function App() {
   const theme = useThemeStore((s) => s.theme);
@@ -39,6 +40,13 @@ export function App() {
   useEffect(() => {
     applyThemeClass(theme);
   }, [theme]);
+
+  // T-2801: ask the daemon once whether it is a demo, and stamp
+  // <html class="demo"> if so. Empty dependency list on purpose — a
+  // daemon does not stop being a demo while you look at it.
+  useEffect(() => {
+    void detectDemoMode();
+  }, []);
 
   return (
     <BrowserRouter>

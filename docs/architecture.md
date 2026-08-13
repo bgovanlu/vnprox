@@ -342,6 +342,29 @@ Cluster-shared data is intentionally minimal (the cluster secret under `/etc/pve
   - **Rotation without a restart.** The anchor file is re-read on a bounded cadence (30 s) and the transport's pooled connections are dropped when its bytes change, so `pvecm updatecerts -f` does not require restarting `vnproxd`.
   - **Untrusted ≠ unreachable.** A peer that fails verification and a peer that does not answer produce different findings (`peer_untrusted`, error, vs `peer_unreachable`, warning), so an operator can tell an attack from a cable. Both still satisfy `errors.Is(err, peer.ErrPeerUnreachable)`, so every existing degrade-around-a-dead-peer path is unchanged.
 
+## 9a. Demo mode (T-2801)
+
+`vnproxd --demo` runs every component above against an embedded synthetic
+cluster, with no Proxmox VE endpoint and no outbound network. It is not a
+second architecture: the collectors, change engine, findings engine, API and
+SPA are the ones documented above, unmodified. Three substitutions at the
+edges are the whole of it, and each is made by construction rather than by
+configuration:
+
+- **The PVE client's transport** is an in-process `http.RoundTripper` over
+  `internal/pvemock` (`internal/demo/transport.go`). No dialer, no socket.
+- **The host reader** is `internal/host.FixtureReader` over the same
+  fixture, serving every cluster node
+  (`collect.Config.HostServesCluster`) — so §5's peer fan-out is not used,
+  and no peer address is dialled.
+- **Every mutating API route** answers with what it would have done
+  (`internal/api/demo.go`), in front of routing rather than inside each
+  handler.
+
+`config.LoadDemo` refuses to start a demo daemon against a configured PVE
+endpoint, and the API refuses to configure an external endpoint while one is
+running. See docs/features/demo-mode.md.
+
 ## 10. Key decisions (locked)
 
 | # | Decision | Rationale |

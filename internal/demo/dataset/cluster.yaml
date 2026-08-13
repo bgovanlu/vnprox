@@ -1,0 +1,553 @@
+# cluster.yaml — T-2801's demo cluster: the synthetic Proxmox VE cluster
+# `vnproxd --demo` runs against, with no PVE and no network access.
+#
+# WHY THIS FILE IS A FIXTURE AND NOT A GENERATOR. The card is explicit:
+# "the demo dataset is a fixture in the repository, so it is versioned,
+# reviewable, and usable as a test corpus rather than being generated at
+# runtime". A generator's output is reviewed by nobody and changes shape
+# whenever its seed does; this file diffs.
+#
+# It is a pvemock cluster fixture (internal/pvemock.Fixture) — the exact
+# same schema testdata/clusters/*.yaml uses — so it backs BOTH halves of a
+# demo daemon's world from one description: the PVE API surface (served
+# in-process, over a transport that cannot dial, see internal/demo/
+# transport.go) and the host-level reads (internal/host.FixtureReader).
+# There is no second, divergent "demo mode" data path.
+#
+# Derived from testdata/clusters/three-node-vlan.yaml, the repo's clean
+# three-node baseline, with the deliberate imperfections a demo needs in
+# order to have anything to show. A cluster with nothing wrong renders
+# empty findings and empty drift screens, which is exactly the demo the
+# card is trying to avoid. Every one of them is enumerated in `mess:` at
+# the bottom of this file — the same convention messy-brownfield.yaml
+# uses — so a reviewer can check the list against the data.
+#
+# CONSUMED BY:
+#   internal/demo   — go:embed, the daemon's --demo dataset.
+#   T-2802          — the hosted read-only demo and guided tour load THIS
+#                     file, through internal/demo.Load(); the tour script
+#                     is written against the names below (pve1/pve2/pve3,
+#                     vmbr0, vnet100/vnet200, app01/cache01/db01).
+# Renaming anything here is a T-2802-visible change.
+cluster:
+  name: vnprox-demo
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 10.10.0.11
+      online: true
+    - name: pve2
+      ip: 10.10.0.12
+      online: true
+    - name: pve3
+      ip: 10.10.0.13
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 4f9d21c7-3a80-4b6e-b1d2-95c8e7a40f13
+  - userid: netops@pve
+    password: netops
+    privileges: ["Sys.Audit", "Sys.Modify", "SDN.Audit", "SDN.Allocate", "VM.Audit"]
+  - userid: auditor@pve
+    password: readonly
+    privileges: ["Sys.Audit", "VM.Audit", "SDN.Audit"]
+  # The two remaining capability-matrix personas (T-105 acceptance
+  # criterion 3, docs/security.md's mapping table in internal/auth/caps.go):
+  # sdn-only holds SDN privileges without Sys.Modify (or even Sys.Audit),
+  # vm-user holds only guest-NIC-editing privileges.
+  - userid: sdn-only@pve
+    password: sdn-only
+    privileges: ["SDN.Audit", "SDN.Allocate"]
+  - userid: vm-user@pve
+    password: vm-user
+    privileges: ["VM.Audit", "VM.Config.Network"]
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      # eno3 (T-703): a spare, unconfigured, link-up NIC on pve1 only — the
+      # candidate the "add/replace a slave in the mgmt-path bond" wizard flow
+      # (flow B) picks. pve2/pve3 deliberately have no spare, so per-node
+      # candidate selection is provably per-node, not cluster-blanket.
+      - iface: eno3
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+        comments: "LACP to access switch"
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.10.0.11/24
+        gateway: 10.10.0.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        bridge_vlan_aware: true
+        comments: "cluster/mgmt trunk, VLAN-aware"
+      - iface: vmbr0.20
+        type: vlan
+        method: static
+        address: 10.10.20.11/24
+        autostart: true
+        mtu: 1500
+        vlan_raw_device: vmbr0
+        vlan_id: 20
+        comments: "storage VLAN"
+    links:
+      eno1: {mac: "bc:24:11:01:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
+      eno2: {mac: "bc:24:11:01:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
+      eno3: {mac: "bc:24:11:01:00:03", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.2"}
+      bond0: {mac: "bc:24:11:01:00:01", link_up: true}
+      # T-306 MAC/FDB browser fixtures: app01's own NIC (owner=guest, via a
+      # tap device that is a dynamic bridge member, not a declared
+      # bridge_ports entry), an unrecognized device seen on the uplink trunk
+      # (owner=unknown), and a second unknown entry the bridge has aged out
+      # (stale=true, per the FDB browser's staleness AC).
+      vmbr0:
+        mac: "bc:24:11:01:00:01"
+        link_up: true
+        fdb:
+          - {mac: "BC:24:11:AA:02:C8", port: "tap200i0", vlan: 100}
+          - {mac: "DE:AD:BE:EF:00:01", port: "bond0", vlan: 1}
+          - {mac: "CA:FE:BA:BE:00:02", port: "bond0", vlan: 1, stale: true}
+    lldp:
+      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.254, vlan: 10, tagged_vlans: [100, 200, 300], ttl: 120}
+      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/1", mgmt_ip: 10.10.0.253, vlan: 10, tagged_vlans: [100, 200, 300], ttl: 120}
+    stats:
+      eno1: {rx_bytes: 5000000000, tx_bytes: 2000000000, rx_packets: 4000000, tx_packets: 1800000}
+      eno2: {rx_bytes: 4800000000, tx_bytes: 1900000000, rx_packets: 3900000, tx_packets: 1750000}
+      bond0: {rx_bytes: 9800000000, tx_bytes: 3900000000, rx_packets: 7900000, tx_packets: 3550000}
+      vmbr0: {rx_bytes: 9800000000, tx_bytes: 3900000000, rx_packets: 7900000, tx_packets: 3550000}
+    # T-803: corosync-cfgtool -s ring status — both rings healthy on pve1.
+    corosync:
+      rings:
+        - {id: 0, addr: 10.10.0.11}
+        - {id: 1, addr: 10.10.1.11}
+    # T-1305's conntrack/NAT explorer fixture: a plain established TCP
+    # connection, an assured UDP (DNS) connection, an outbound SNAT'd TCP
+    # connection (app01's own address masqueraded to a public IP), and an
+    # inbound DNAT'd TCP connection (a public-facing port forwarded to
+    # app01) — covers every state/NAT combination the explorer's columns
+    # render.
+    conntrack:
+      - {proto: 6, src_ip: 10.10.0.50, dst_ip: 10.10.0.11, src_port: 54321, dst_port: 443, state: ESTABLISHED, timeout_sec: 431999}
+      - {proto: 17, src_ip: 10.10.0.51, dst_ip: 10.10.20.11, src_port: 51000, dst_port: 53, state: ASSURED, timeout_sec: 29}
+      - proto: 6
+        src_ip: 10.10.0.11
+        dst_ip: 8.8.8.8
+        src_port: 44444
+        dst_port: 443
+        state: ESTABLISHED
+        timeout_sec: 431999
+        nat_src: {ip: 203.0.113.10, port: 44444}
+      - proto: 6
+        src_ip: 203.0.113.5
+        dst_ip: 203.0.113.10
+        src_port: 51000
+        dst_port: 8080
+        state: ESTABLISHED
+        timeout_sec: 431999
+        nat_dst: {ip: 10.10.0.11, port: 80}
+    qemu:
+      "200":
+        name: app01
+        status: running
+        config:
+          name: app01
+          cores: "4"
+          memory: "4096"
+          net0: "virtio=BC:24:11:AA:02:C8,bridge=vmbr0,tag=100,firewall=1"
+          ostype: l26
+        # T-1304: guest network interior inspector fixtures — app01's own
+        # QEMU-guest-agent-reported view of itself, exercised end to end by
+        # internal/api's guestinterior_test.go and web/e2e's interior tab
+        # spec. agent_interfaces is the addresses/interfaces source (T-405's
+        # existing enrichment shape); interior_routes_json/
+        # interior_resolv_conf/interior_sockets back the three additional
+        # `agent/exec` command shapes internal/guestinterior's qemu.go
+        # emits (see pvemock's parseInteriorCommand); agent_exec_outcomes'
+        # icmp entry backs the default-gateway reachability check (reusing
+        # T-802's existing probe scripting rather than a fourth field).
+        agent_interfaces:
+          - name: eth0
+            hardware_address: "BC:24:11:AA:02:C8"
+            ip_addresses:
+              - ip: "10.10.0.200"
+                type: ipv4
+                prefix: 24
+        agent_exec_outcomes:
+          - proto: icmp
+            dst: "10.10.0.1"
+            outcome: reachable
+            detail: "connected"
+        interior_routes_json: '[{"dst":"default","gateway":"10.10.0.1","dev":"eth0"},{"dst":"10.10.0.0/24","dev":"eth0"}]'
+        interior_resolv_conf: "nameserver 10.10.0.1\n"
+        interior_sockets: "tcp   LISTEN 0      128          0.0.0.0:22         0.0.0.0:*\n"
+    lxc: {}
+    firewall:
+      enabled: true
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+  pve2:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.10.0.12/24
+        gateway: 10.10.0.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: bond0
+        bridge_vlan_aware: true
+      - iface: vmbr0.20
+        type: vlan
+        method: static
+        address: 10.10.20.12/24
+        autostart: true
+        mtu: 1500
+        vlan_raw_device: vmbr0
+        vlan_id: 20
+    # DEMO DRIFT 1 (mess item 1): /etc/network/interfaces.new carries a
+    # staged jumbo-frame change on eno1/bond0/vmbr0 that was never applied
+    # with `ifreload -a`. Live is still 1500. internal/drift's
+    # checkPendingInterfaces reports pending_interfaces for pve2, and the
+    # Findings screen has a real, explicable entry on first paint.
+    network_pending:
+      - {iface: lo, type: loopback, method: loopback, autostart: true}
+      - {iface: eno1, type: eth, method: manual, autostart: true, mtu: 9000}
+      - {iface: eno2, type: eth, method: manual, autostart: true, mtu: 9000}
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 9000
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.10.0.12/24
+        gateway: 10.10.0.1
+        autostart: true
+        mtu: 9000
+        bridge_ports: bond0
+        bridge_vlan_aware: true
+      - iface: vmbr0.20
+        type: vlan
+        method: static
+        address: 10.10.20.12/24
+        autostart: true
+        mtu: 9000
+        vlan_raw_device: vmbr0
+        vlan_id: 20
+    links:
+      eno1: {mac: "bc:24:11:02:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
+      eno2: {mac: "bc:24:11:02:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
+      bond0: {mac: "bc:24:11:02:00:01", link_up: true}
+      # T-306: one entry that is actually pve1's own uplink NIC MAC, seen
+      # here transiting the mgmt/cluster trunk (owner=vnprox-known — a
+      # known infra MAC, not a guest and not an unrecognized device), plus
+      # a second unrelated unknown device for the cluster-wide partial
+      # search AC (matches pve1's/pve3's "DE:AD:BE:EF:00:0*" entries).
+      vmbr0:
+        mac: "bc:24:11:02:00:01"
+        link_up: true
+        fdb:
+          - {mac: "bc:24:11:01:00:01", port: "bond0", vlan: 1}
+          - {mac: "DE:AD:BE:EF:00:02", port: "bond0", vlan: 1}
+    lldp:
+      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.254, vlan: 10, tagged_vlans: [100, 200, 300], ttl: 120}
+      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/2", mgmt_ip: 10.10.0.253, vlan: 10, tagged_vlans: [100, 200, 300], ttl: 120}
+    stats:
+      eno1: {rx_bytes: 4700000000, tx_bytes: 1950000000, rx_packets: 3800000, tx_packets: 1700000}
+      eno2: {rx_bytes: 4600000000, tx_bytes: 1900000000, rx_packets: 3750000, tx_packets: 1680000}
+      bond0: {rx_bytes: 9300000000, tx_bytes: 3850000000, rx_packets: 7550000, tx_packets: 3380000}
+      vmbr0: {rx_bytes: 9300000000, tx_bytes: 3850000000, rx_packets: 7550000, tx_packets: 3380000}
+    # T-803: both rings healthy on pve2 too.
+    corosync:
+      rings:
+        - {id: 0, addr: 10.10.0.12}
+        - {id: 1, addr: 10.10.1.12}
+    # T-1305: a second node's own connections, so the conntrack explorer's
+    # cluster fan-out has more than one node's worth of live entries to
+    # merge.
+    conntrack:
+      - {proto: 6, src_ip: 10.10.0.60, dst_ip: 10.10.0.12, src_port: 33000, dst_port: 22, state: ESTABLISHED, timeout_sec: 431999}
+    qemu: {}
+    lxc:
+      "201":
+        name: cache01
+        status: running
+        config:
+          hostname: cache01
+          cores: "2"
+          memory: "1024"
+          net0: "name=eth0,bridge=vmbr0,tag=100,firewall=1"
+        # T-1304: guest network interior inspector fixtures — cache01 has
+        # no QEMU guest agent (it's an lxc container), so its interior view
+        # is read host-side (internal/host.Reader.ContainerInterior/
+        # ContainerPing, backed here by FixtureHostReader.ContainerInterior/
+        # ContainerPing reading these fields directly — see GuestSpec's own
+        # doc comment). Same response shape as app01's qemu fixtures above,
+        # by design (source: "lxc-host" is the only difference).
+        interior_addr_json: '[{"ifname":"eth0","address":"BC:24:11:AA:02:C9","mtu":1500,"flags":["BROADCAST","UP"],"addr_info":[{"family":"inet","local":"10.10.0.201","prefixlen":24}]}]'
+        interior_routes_json: '[{"dst":"default","gateway":"10.10.0.1","dev":"eth0"},{"dst":"10.10.0.0/24","dev":"eth0"}]'
+        interior_resolv_conf: "nameserver 10.10.0.1\n"
+        interior_sockets: "tcp   LISTEN 0      128          0.0.0.0:11211       0.0.0.0:*\n"
+        interior_ping_outcomes:
+          - ip: "10.10.0.1"
+            reachable: true
+    firewall:
+      enabled: true
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+  pve3:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: eno2
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: bond0
+        type: bond
+        method: manual
+        autostart: true
+        mtu: 1500
+        slaves: "eno1 eno2"
+        bond_mode: 802.3ad
+      # DEMO DRIFT 2 (mess item 2): vmbr0's MTU is 9000 here and 1500 on
+      # pve1/pve2 — the "same" cluster bridge, diverged. Its own uplink
+      # bond0 is still 1500, so this trips BOTH of internal/drift's MTU
+      # checks: the cross-node same-named-bridge divergence and the
+      # NIC->bond->bridge path check. Both carry a computable fix, so the
+      # demo's Drift screen has a "stage the fixing changeset" affordance
+      # that leads somewhere — which is the point of showing drift at all.
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 10.10.0.13/24
+        gateway: 10.10.0.1
+        autostart: true
+        mtu: 9000
+        bridge_ports: bond0
+        bridge_vlan_aware: true
+      - iface: vmbr0.20
+        type: vlan
+        method: static
+        address: 10.10.20.13/24
+        autostart: true
+        mtu: 1500
+        vlan_raw_device: vmbr0
+        vlan_id: 20
+    links:
+      eno1: {mac: "bc:24:11:03:00:01", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.0"}
+      eno2: {mac: "bc:24:11:03:00:02", driver: igb, speed_mbps: 10000, duplex: full, link_up: true, pci_addr: "0000:01:00.1"}
+      bond0: {mac: "bc:24:11:03:00:01", link_up: true}
+      # T-306: a third unknown device, same MAC family as pve1's/pve2's, so
+      # a partial search ("deadbeef00") returns ranked hits from all three
+      # nodes.
+      vmbr0:
+        mac: "bc:24:11:03:00:01"
+        link_up: true
+        fdb:
+          - {mac: "DE:AD:BE:EF:00:03", port: "bond0", vlan: 1}
+    lldp:
+      # T-403 VLAN-zone-wizard LLDP trunk cross-check fixture: pve3's
+      # trunk is deliberately missing VID 300 (present on pve1/pve2) so
+      # the wizard's LLDP cross-check has a real "VID not trunked on
+      # this switch port" case to warn about, naming the port.
+      eno1: {chassis_name: sw-core-01, chassis_id: "ac:1f:6b:01:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.254, vlan: 10, tagged_vlans: [100, 200], ttl: 120}
+      eno2: {chassis_name: sw-core-02, chassis_id: "ac:1f:6b:02:00:01", port_id: "Te1/0/3", mgmt_ip: 10.10.0.253, vlan: 10, tagged_vlans: [100, 200], ttl: 120}
+    stats:
+      eno1: {rx_bytes: 4500000000, tx_bytes: 1850000000, rx_packets: 3700000, tx_packets: 1650000}
+      eno2: {rx_bytes: 4400000000, tx_bytes: 1800000000, rx_packets: 3650000, tx_packets: 1620000}
+      bond0: {rx_bytes: 8900000000, tx_bytes: 3650000000, rx_packets: 7350000, tx_packets: 3270000}
+      vmbr0: {rx_bytes: 8900000000, tx_bytes: 3650000000, rx_packets: 7350000, tx_packets: 3270000}
+    # T-803: pve3's second corosync ring is deliberately reporting faulty
+    # (a cable/switch-port issue on the redundant ring, ring 0 unaffected)
+    # so `corosync_link_degraded` has a real firing case to test against,
+    # not just an all-healthy fixture.
+    corosync:
+      rings:
+        - {id: 0, addr: 10.10.0.13}
+        - {id: 1, addr: 10.10.1.13, faulty: true}
+    conntrack:
+      - {proto: 6, src_ip: 10.100.0.51, dst_ip: 10.200.0.60, src_port: 40122, dst_port: 5432, state: ESTABLISHED, timeout_sec: 431999}
+      - {proto: 6, src_ip: 10.10.0.60, dst_ip: 10.10.0.13, src_port: 34002, dst_port: 22, state: ESTABLISHED, timeout_sec: 431999}
+    qemu:
+      "300":
+        name: db01
+        status: running
+        config:
+          name: db01
+          cores: "8"
+          memory: "16384"
+          net0: "virtio=BC:24:11:AA:03:2C,bridge=vmbr0,tag=200,firewall=1"
+          ostype: l26
+        agent_interfaces:
+          - name: eth0
+            hardware_address: "BC:24:11:AA:03:2C"
+            ip_addresses:
+              - ip: "10.200.0.60"
+                type: ipv4
+                prefix: 24
+        agent_exec_outcomes:
+          - proto: icmp
+            dst: "10.200.0.1"
+            outcome: reachable
+            detail: "connected"
+        interior_routes_json: '[{"dst":"default","gateway":"10.200.0.1","dev":"eth0"},{"dst":"10.200.0.0/24","dev":"eth0"}]'
+        interior_resolv_conf: "nameserver 10.10.0.1\n"
+        interior_sockets: "tcp   LISTEN 0      128          0.0.0.0:5432       0.0.0.0:*\n"
+    lxc: {}
+    firewall:
+      enabled: true
+      policy_in: DROP
+      policy_out: ACCEPT
+      rules: []
+
+sdn:
+  zones:
+    - id: vlanz
+      type: vlan
+      bridge: vmbr0
+      nodes: [pve1, pve2, pve3]
+      mtu: 1500
+  vnets:
+    - id: vnet100
+      zone: vlanz
+      tag: 100
+      alias: "app-tier"
+    - id: vnet200
+      zone: vlanz
+      tag: 200
+      alias: "db-tier"
+  subnets:
+    - id: "10.100.0.0-24"
+      vnet: vnet100
+      cidr: 10.100.0.0/24
+      gateway: 10.100.0.1
+    - id: "10.200.0.0-24"
+      vnet: vnet200
+      cidr: 10.200.0.0/24
+      gateway: 10.200.0.1
+  # PVE's built-in IPAM tracking the two SDN subnets: the gateway record
+  # each subnet gets automatically, plus one guest allocation per VNet
+  # (app01/cache01 attach with tag 100 = vnet100's VLAN; MACs match their
+  # net0 NICs above).
+  ipams:
+    - id: pve
+      type: pve
+      entries:
+        - {zone: vlanz, vnet: vnet100, subnet: 10.100.0.0/24, ip: 10.100.0.1, gateway: true}
+        - {zone: vlanz, vnet: vnet100, subnet: 10.100.0.0/24, ip: 10.100.0.50, mac: "BC:24:11:AA:02:C8", hostname: app01, vmid: 200}
+        - {zone: vlanz, vnet: vnet200, subnet: 10.200.0.0/24, ip: 10.200.0.1, gateway: true}
+
+firewall:
+  cluster:
+    enabled: true
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules:
+      - pos: 0
+        enabled: true
+        type: in
+        action: ACCEPT
+        proto: tcp
+        dport: "22"
+        comment: "cluster-wide SSH"
+    aliases:
+      - name: mgmt_net
+        cidr: 10.10.0.0/24
+    ipsets:
+      - name: trusted_admins
+        entries:
+          - cidr: 10.10.0.100/32
+            comment: "jump host"
+    groups:
+      - name: web-servers
+        comment: "reusable web ingress rules"
+        rules:
+          - pos: 0
+            enabled: true
+            type: in
+            action: ACCEPT
+            proto: tcp
+            dport: "80,443"
+
+# The deliberate imperfections, enumerated. A demo cluster with nothing
+# wrong shows empty Findings and Drift screens; every entry below exists so
+# one of those screens has a real, explicable row. Nothing here is filler —
+# if you remove an item from the fixture, remove it from this list too.
+mess:
+  - "pve2: /etc/network/interfaces.new stages a jumbo-frame change (eno1/eno2/bond0/vmbr0/vmbr0.20 1500 -> 9000) that was never applied with `ifreload -a`; live is still 1500. internal/drift's checkPendingInterfaces reports pending_interfaces for pve2."
+  - "pve3: vmbr0's MTU is 9000 while pve1/pve2 keep the same bridge at 1500, and pve3's own uplink bond0 is still 1500 — cross-node bridge MTU divergence AND a NIC->bond->bridge path mismatch on one node, both with a computable fix."
+  # Inherited from three-node-vlan.yaml and kept, but stated honestly: it
+  # does NOT currently produce a finding in a demo daemon. The
+  # corosync_link_degraded check reads corosync.conf from pmxcfs, which a
+  # demo has no equivalent of, so the ring status below is data nothing
+  # consumes yet. Left in place because it costs nothing and is the right
+  # shape the day that check can be fed from a fixture.
+  - "pve3: corosync ring 1 (10.10.1.13) reports faulty while ring 0 is healthy — a degraded redundant ring. Fixture data only today; see the note above."
+  - "pve3: the LLDP-reported switch trunk on eno1/eno2 carries VIDs 100 and 200 but not 300, which pve1/pve2's ports do carry — the VLAN zone wizard's trunk cross-check has a real port to name."

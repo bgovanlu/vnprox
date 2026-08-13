@@ -105,7 +105,7 @@ func TestRunDaemon_DevConfigServesHealth(t *testing.T) {
 	defer cancel()
 
 	daemonDone := make(chan error, 1)
-	go func() { daemonDone <- runDaemon(ctx, cfgPath, testLogger()) }()
+	go func() { daemonDone <- runDaemon(ctx, daemonOptions{ConfigPath: cfgPath}, testLogger()) }()
 
 	client := &http.Client{
 		Timeout: 2 * time.Second,

@@ -198,6 +198,14 @@ type Config struct {
 	MTUProbe    MTUProbeConfig
 	Switches    SwitchesConfig
 	MCP         MCPConfig
+
+	// Demo (T-2801) marks this daemon as running against the embedded
+	// synthetic cluster (internal/demo), with no PVE endpoint and no
+	// outbound network. It is set ONLY by LoadDemo and has no TOML key on
+	// purpose: demo mode is a way the daemon was started, visible in the
+	// process's own argv, not a setting a config file can turn on behind
+	// an operator's back.
+	Demo bool
 }
 
 // ChangesetsConfig is the [changesets] section (T-2003: change review —
@@ -1045,7 +1053,13 @@ func Load(path string, logger *slog.Logger) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading config file %s: %w", path, err)
 	}
+	return loadBytes(data, path, logger)
+}
 
+// loadBytes is Load's body, split out so LoadDemo can build a daemon config
+// from a document it holds in memory rather than requiring one on disk.
+// path is used only for error/log messages.
+func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 	var raw rawConfig
 	meta, err := toml.Decode(string(data), &raw)
 	if err != nil {

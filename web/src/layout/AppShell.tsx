@@ -13,6 +13,7 @@ import { MgmtProtectedRefreshPrompt } from "../mgmt/MgmtProtectedRefreshPrompt";
 import { ConnectClustersWizardHost } from "../wireguard/ConnectClustersWizardHost";
 import { HelpPanel } from "../help/HelpPanel";
 import { useHelpForRoute } from "../help/useHelpForRoute";
+import { DemoBanner } from "../demo/DemoBanner";
 
 /** Top-level layout for every authenticated route: nav rail + top bar
  * around a routed <Outlet/>, with the keyboard-shortcut framework wired
@@ -37,6 +38,11 @@ export function AppShell() {
       <NavRail />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onOpenHelp={() => { setHelpOpen(true); }} onOpenPageHelp={openPageHelp} />
+        {/* T-2801: on EVERY authenticated screen, because every authenticated
+         * screen is routed through this shell. Renders nothing outside demo
+         * mode. Placed directly under the TopBar and in normal flow for the
+         * same reason OnboardingWalkthrough below is — see its comment. */}
+        <DemoBanner />
         {/* Rendered in normal document flow, between TopBar and <main> —
          * not a fixed overlay — so it pushes page content down instead of
          * floating on top of it. Every page's own top-row controls (the

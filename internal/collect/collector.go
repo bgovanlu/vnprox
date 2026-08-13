@@ -85,6 +85,21 @@ type Config struct {
 	PVEInterval  time.Duration
 	HostInterval time.Duration
 	LLDPInterval time.Duration
+	// HostServesCluster (T-2801) declares that Host answers for every
+	// cluster node, not only this daemon's own. The host loop then reads
+	// every node through Host and never builds a peerHostReader.
+	//
+	// False for every real deployment and every pre-T-2801 caller: a real
+	// host.Reader reads netlink, procfs and lldpctl on the machine it runs
+	// on, and cannot answer for another node however politely you ask —
+	// which is exactly why the peer API exists. It is true for exactly one
+	// caller, `vnproxd --demo`, whose Host is a fixture reader over the
+	// whole synthetic cluster (internal/host.FixtureReader). Without it a
+	// demo daemon would dial its fixture's own node addresses (10.10.0.12,
+	// 10.10.0.13, ...) over the real network — addresses that resolve to
+	// SOMETHING on plenty of networks — which is the precise opposite of
+	// "no network access".
+	HostServesCluster bool
 }
 
 // sourceState is the staleness/backoff bookkeeping for one named poll loop
@@ -127,13 +142,27 @@ type Collector struct {
 	// keyed by node name. Populated only when Config.Peer is set; used by
 	// hostPollOnce to fan out to every peer without a second discovery
 	// round-trip per host-loop tick.
-	peers        map[string]peer.Peer
-	localNode    string
+	peers     map[string]peer.Peer
+	localNode string
+	// clusterNodes is every node name the last cluster-status poll saw
+	// (guarded by mu). Populated only when hostServesCluster is set — the
+	// demo daemon's case, where one cluster-wide fixture reader answers for
+	// every node and there is no peer address book to fan out to.
+	//
+	// After localNode, not before it: fieldalignment counts the scanned
+	// prefix, and a slice's len/cap tail inside that prefix is what a
+	// string-before-slice ordering avoids.
+	clusterNodes []string
 	pveInterval  time.Duration
 	hostInterval time.Duration
 	lldpInterval time.Duration
 	mu           sync.Mutex
 	statusMu     sync.Mutex
+	// hostServesCluster reports that Config.Host answers for EVERY cluster
+	// node, not only this daemon's own — see Config.HostServesCluster.
+	// Last, and a bool: fieldalignment wants the pointer-bearing fields
+	// packed ahead of it.
+	hostServesCluster bool
 }
 
 // New builds a Collector from cfg. It performs no network calls; polling
@@ -181,6 +210,8 @@ func New(cfg Config) (*Collector, error) {
 		onServices:   cfg.OnServices,
 		onPoll:       cfg.OnPoll,
 		localNode:    cfg.LocalNode,
+
+		hostServesCluster: cfg.HostServesCluster,
 		status: map[string]*sourceState{
 			"pve":  {},
 			"host": {},
@@ -221,6 +252,26 @@ func (c *Collector) setPeers(peers map[string]peer.Peer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.peers = peers
+}
+
+// setClusterNodes records every node name the most recent successful
+// cluster-status poll saw. Populated only when hostServesCluster is set;
+// hostPollOnce reads it back via getClusterNodes.
+func (c *Collector) setClusterNodes(nodes []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.clusterNodes = nodes
+}
+
+// getClusterNodes returns a stable-ordered copy of the cluster membership
+// (empty before the first cluster-status poll, or when hostServesCluster is
+// unset).
+func (c *Collector) getClusterNodes() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := append([]string(nil), c.clusterNodes...)
+	sort.Strings(out)
+	return out
 }
 
 // getPeers returns a stable-ordered snapshot of the current peer address

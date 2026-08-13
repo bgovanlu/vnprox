@@ -269,17 +269,24 @@ func (g *pveGateway) RevertTicket(ctx context.Context) (change.RevertTicket, boo
 // pinned to the node's pveproxy certificate in a real deployment, unpinned
 // against a plain-HTTP pvemock in dev/test.
 type revertGatewayFactory struct {
-	apiURL string
-	tls    pve.TLSConfig
+	// httpClient (T-2801) is the demo daemon's in-process transport, or nil
+	// for a normal daemon. A demo never reaches this path — no changeset can
+	// be applied, so no revert ticket can exist — but leaving a real dialer
+	// wired into a demo daemon's revert factory would be one refactor away
+	// from an unattended revert against something real.
+	httpClient *http.Client
+	apiURL     string
+	tls        pve.TLSConfig
 }
 
 func (f revertGatewayFactory) GatewayForRevertTicket(_ context.Context, t change.RevertTicket) (change.PVEGateway, error) {
 	client, err := pve.New(pve.Config{
-		APIURL:    f.apiURL,
-		Auth:      pve.AuthTicket,
-		Ticket:    t.Ticket,
-		CSRFToken: t.CSRF,
-		TLS:       f.tls,
+		APIURL:     f.apiURL,
+		Auth:       pve.AuthTicket,
+		Ticket:     t.Ticket,
+		CSRFToken:  t.CSRF,
+		TLS:        f.tls,
+		HTTPClient: f.httpClient,
 	})
 	if err != nil {
 		// Deliberately no ticket material in the error: this string reaches

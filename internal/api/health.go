@@ -10,6 +10,16 @@ type healthResponse struct {
 	Status     string                  `json:"status"`
 	Version    string                  `json:"version"`
 	Collectors []CollectorSourceStatus `json:"collectors,omitempty"`
+	// Demo (T-2801) is true iff this daemon is running against the embedded
+	// synthetic cluster.
+	//
+	// It lives on /health, not only on /config, because /health is the one
+	// unauthenticated route — and the demo banner has to be on the LOGIN
+	// screen too. A visitor who is told "log in to find out whether this is
+	// real" has been told nothing. Omitted entirely on a normal daemon, so
+	// every existing consumer of this endpoint sees a byte-identical
+	// response.
+	Demo bool `json:"demo,omitempty"`
 }
 
 // CollectorHealth is the subset of T-104's *collect.Collector the health
@@ -53,9 +63,9 @@ type CollectorSourceStatus struct {
 // (and the field omitted) when ch is nil, preserving this endpoint's
 // original minimal shape for callers/tests that don't care about
 // collector staleness.
-func healthHandler(version string, ch CollectorHealth) http.HandlerFunc {
+func healthHandler(version string, ch CollectorHealth, demo bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		resp := healthResponse{Status: "ok", Version: version}
+		resp := healthResponse{Status: "ok", Version: version, Demo: demo}
 		if ch != nil {
 			resp.Collectors = ch.CollectorStatus()
 		}

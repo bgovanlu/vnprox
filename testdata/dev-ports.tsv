@@ -51,4 +51,5 @@
 58007	tcp	vnproxd-flow	testdata/dev-flow.toml	vnproxd for the flow stack; pairs with the 52055 NetFlow listener in the same config.
 61006	tcp	pvemock-physcollapse	web/e2e/shards.ts	Mock PVE for the physical-collapse stack (phys-collapse fixture).
 61007	tcp	vnproxd-physcollapse	testdata/dev-physcollapse.toml	vnproxd for the physical-collapse stack.
+24007	tcp	vnproxd-demo	testdata/demo.toml	T-2801. The demo-mode e2e stack's vnproxd (`vnproxd --demo --config testdata/demo.toml`). It has NO NNN006 sibling on purpose: a demo daemon's PVE mock runs in-process over a transport with no dialer (internal/demo/transport.go), so there is no second process and no second port to claim.
 62007	tcp	packaging-upgrade-service	packaging/test/upgrade-service.sh	Real systemd service under podman --network=host, so it shares the host's port namespace. Moved here from 61007 by 9047685 after colliding with vnproxd-physcollapse — the incident this registry exists to prevent.

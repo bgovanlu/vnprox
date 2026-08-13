@@ -17,6 +17,18 @@
 
 ## Install
 
+### Try it without a cluster first
+
+```bash
+vnproxd --demo
+```
+
+Runs the whole product against a synthetic three-node cluster built into the
+binary, with no Proxmox VE endpoint and no outbound network. It needs no
+root and no configuration — everything lands under
+`$XDG_STATE_HOME/vnprox-demo`. Log in with `root` / `vnprox-mock` / realm
+`pam`. See docs/features/demo-mode.md.
+
 ### Quick install (script)
 
 ```bash
@@ -29,13 +41,73 @@ bash install.sh
 The installer:
 1. Checks that a PVE install is present (runs `pveversion`, logs its output) and detects architecture, cluster membership, and node list. **Correction (flagged, T-607):** this doc previously said the installer "verifies" the PVE version, implying it enforces the documented 8.2+ minimum — `packaging/install.sh` only logs `pveversion`'s output today, it does not parse/enforce a minimum version. Low-risk (an incompatible architecture is still caught), but the check is weaker than "verifies" implies; follow-up: parse and enforce the minimum if this matters for a real early-PVE-version install attempt.
 2. Checks port 8007 (see above); asks for the listen port if needed.
-3. Installs the `vnprox` .deb (from the apt repo it configures, or a bundled offline .deb with `--offline <file>`).
+3. Installs the `vnprox` .deb (from the apt repo it configures, or a bundled offline .deb with `--offline <file>`), or falls back to the signed binary tarball on a host with no `apt-get` (`--tarball`, `--dist-url <url>`). **Signature verification (T-2801) is not skippable and there is no `--insecure`** — see "Signatures and trust" below.
 4. Optionally installs + enables `lldpd` on all nodes (`--with-lldp`, default yes).
 5. Creates the read-only PVE API token `vnprox@pve!daemon` (privilege: auditor-level on `/`), stores it root-only.
 6. Generates the cluster secret in `/etc/pve/priv/vnprox/` (first node only; pmxcfs replicates it). **Correction (T-608, hardware validation):** this is under `priv/` specifically — pmxcfs only auto-restricts files under `/etc/pve/priv/` to `0600` root-only; everywhere else under `/etc/pve` it silently coerces creation-time permissions to `0640 root:www-data` and rejects `chmod()` outright, confirmed against a real PVE 9.2.4 node.
 7. Writes `/etc/vnprox/vnprox.toml`, generates the session key, enables + starts `vnprox.service`.
 8. Repeats 3–7 on the remaining nodes (via SSH root, same mechanism `pvecm` setups already rely on), or prints per-node instructions if SSH between nodes is unavailable.
 9. Prints the URL and a first-login checklist.
+
+### Signatures and trust (T-2801)
+
+Every artifact the installer *downloads* is verified before anything is
+unpacked or installed:
+
+- **The apt repository's signing key is pinned by fingerprint.** The
+  installer carries `VNPROX_RELEASE_KEY_FPR` and refuses a fetched key whose
+  fingerprint does not match it. Without that check, "apt verified the
+  repository signature" says nothing — apt verifies against whatever key it
+  was given, and the key came from the same host as the packages.
+- **The binary tarball is verified against a detached signature**
+  (`vnprox_<version>_<arch>.tar.gz.asc`) by the same trusted key, before
+  `tar` is invoked. `latest.txt` is an unsigned pointer; the versions it can
+  name are limited to ones whose archive carries a valid signature, so a
+  tampered pointer can select a different *genuine* release (a rollback) but
+  not an artifact of an attacker's choosing. Rollback protection needs a
+  signed manifest and is not claimed here.
+- **A missing signature is a refusal, not a warning.** "Could not check" and
+  "checked and it was wrong" are the same thing from the point of view of
+  the machine about to run the binary.
+
+There is no flag, environment variable or fallback that installs an
+unverified download. `--release-key <file>` supplies a *different* trust
+anchor (for air-gapped installs, and for this repository's own tests, which
+sign with an ephemeral key); it changes which key is trusted, never whether
+a signature is checked.
+
+`--offline <file>` is the one path that does not *require* a signature: it
+installs a local package the operator already holds and chose, and nothing
+about it crossed a network on this run. It is still verified when a
+`<file>.asc` sits next to it — which is what a release download unpacked by
+hand looks like — and warns loudly when there is none.
+
+**Not verifiable here, and stated plainly:** there is no published vnprox
+release and no production signing key, so `VNPROX_RELEASE_KEY_FPR` is still
+a documented placeholder and every download path **fails closed** today with
+a message saying so. Generating the key, publishing it, and replacing that
+pinned line (it carries a `vnprox-release-key-fingerprint` marker so a
+release job can substitute it mechanically) is the remaining step. Until
+then use `--offline <file>` or `--release-key <file>`.
+
+### Unprivileged / air-gapped install
+
+```bash
+bash install.sh --prefix ~/.local --release-key vnprox-release.asc
+```
+
+Installs the verified binaries under `<prefix>/bin` and stops: no systemd
+unit, no PVE API token, no config, no root. Useful for trying
+`vnproxd --demo` (docs/features/demo-mode.md) on a machine that is not a
+Proxmox node.
+
+### Idempotence
+
+Running the installer twice leaves the same versions and one apt sources
+entry. The tarball path compares the version already installed at the prefix
+against the one it is about to install and reports "already installed"
+rather than re-extracting; the apt path strips any duplicate vnprox entry
+from other `sources.list` files before writing exactly one of its own.
 
 ### Manual install (per node)
 

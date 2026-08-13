@@ -22,6 +22,33 @@
   --color-accent-950: var(--color-blue-950);
 }
 
+/* T-2801: demo mode's distinct accent colour.
+ *
+ * The card asks for one, and this is the cheapest honest way to get it:
+ * `accent` is already an alias layer over a Tailwind scale (see @theme
+ * above), so re-pointing the alias under `<html class="demo">` re-tints
+ * every accent-* utility in the app — buttons, the nav rail's selection,
+ * focus rings — without touching a single component.
+ *
+ * Amber and not, say, green: it has to read as "this is not your cluster"
+ * at a glance from across a room, and it must not collide with the
+ * red/rose used for destructive affordances or the emerald used for
+ * healthy status. The class is stamped by detectDemoMode() in
+ * src/demo/useDemoMode.ts, from GET /health. */
+html.demo {
+  --color-accent-50: var(--color-amber-50);
+  --color-accent-100: var(--color-amber-100);
+  --color-accent-200: var(--color-amber-200);
+  --color-accent-300: var(--color-amber-300);
+  --color-accent-400: var(--color-amber-400);
+  --color-accent-500: var(--color-amber-500);
+  --color-accent-600: var(--color-amber-600);
+  --color-accent-700: var(--color-amber-700);
+  --color-accent-800: var(--color-amber-800);
+  --color-accent-900: var(--color-amber-900);
+  --color-accent-950: var(--color-amber-950);
+}
+
 html,
 body,
 #root {
