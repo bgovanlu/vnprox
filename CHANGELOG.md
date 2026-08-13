@@ -26,6 +26,25 @@ functionality is folded into `[2.0.0]`.
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-08-13
+
+**Arc 5 — "adoptable, not just proven."** Twenty-five cards across phases 25–28
+(`docs/roadmap-adopted.md`). The arc before this one asked whether vnprox was *true*; this one
+asks whether anyone else can run it, and whether the answer to the first question can be produced
+by a machine rather than by a person with a clipboard. Most of what follows wires together
+subsystems that already shipped, or turns an existing claim into something a command can check.
+
+**On the version number.** The phase-to-version map in `docs/roadmap-proven.md` reserves `v3.3`
+for phase 20 and `v4.0` for phase 21, and neither phase is complete — phase 20 has three cards
+outstanding and phase 21 four. This release takes `v3.5.0` so that Arc 5 ships under a number of
+its own without spending either of those before their content exists.
+
+**Two things this release does not have**, stated here because both are easy to assume from the
+entries below: there is no `get.vnprox.io` apt repository yet (the installer's own comments say
+so), and there is no hosted public demo instance — the demo *mode* ships and runs locally, but
+nobody is hosting one. Several features are also API- and CLI-only with no web UI; each says so
+where it appears.
+
 ### Added
 
 - **You can now help build the compatibility matrix, if you want to — and see exactly what that
@@ -105,12 +124,62 @@ functionality is folded into `[2.0.0]`.
   checklist, the key handling, and the index-key rotation procedure are written down in
   `docs/hub-registry.md` before the first submission rather than after.
 
+- **Try vnprox without a Proxmox cluster.** `vnproxd --demo` (T-2801) runs the whole product against
+  a synthetic three-node cluster embedded in the binary — SDN zones, guests, findings, drift, flows
+  — with no PVE endpoint and no outbound network at all. Every screen renders from it, and every
+  mutating API answers with what it *would* have done rather than touching anything: a store
+  checksum before and after a full staged-and-applied changeset in demo mode is unchanged. A
+  persistent banner and a distinct accent colour make it unmistakable, and the two modes cannot be
+  mixed — demo mode refuses any config naming a real `[pve]` endpoint, and a real endpoint refuses
+  to start in demo mode.
+
+  T-2801 also gives the install script real signature verification with no way to turn it off — no
+  `--insecure`, no `--no-verify`, no environment variable, checked by a test that greps the script
+  for their absence — plus a binary-tarball fallback for non-Debian hosts and idempotence on a
+  second run. **One caveat worth being direct about: there is no `get.vnprox.io` yet.** The signing
+  and verification machinery is real and tested against a local repository and an ephemeral key; the
+  public apt repository and tarball host the script points at by default don't exist as a live
+  service today, so the one-command install isn't something you can run against the internet yet.
+
+- **The infrastructure for a public, click-through demo exists; the public demo itself does not.**
+  T-2802 builds `vnproxd --demo --public-demo`: an edge in front of the whole daemon that refuses
+  anything that isn't `GET`/`HEAD`/`OPTIONS` with a 403, mints each visitor their own session with
+  no password and no login screen, keeps per-visitor UI state (layout, tour progress) in memory so
+  one visitor's changes are invisible to another, and caps resources per visitor so one hostile
+  session can't degrade it for anyone else. A six-step guided tour walks the surfaces
+  `docs/datasheet.md` leads with, using T-2801's demo dataset, resumable and skippable.
+
+  **There is no hosted instance to visit.** This repository has no domain, no object storage, and no
+  deploy target to publish one from — `docs/features/demo-mode.md` states that gap explicitly,
+  alongside the others (the path simulator, the diagnosis ladder, and MCP don't work against a
+  public demo, since they need a write-shaped request the edge refuses). What ships is everything
+  such an instance would need in order to be safe, tested end to end against a real daemon — not the
+  instance.
+
+- **Point vnprox at a git repository, and it will tell you when the cluster stops matching it.**
+  `internal/spec` could already export and import a declarative network document for your cluster;
+  T-2701 gives it somewhere to live. Configure `[gitsync]` — a remote, a ref, a path — and on every
+  poll vnprox fetches that one file, plans it against live inventory, and, only if the plan is
+  non-empty, opens a single draft changeset and stops. **It never applies anything.** A second
+  divergence updates that same draft rather than opening another one, and `vnproxctl gitsync
+  status` — there is deliberately no `gitsync sync` or `gitsync apply` — shows the last commit
+  fetched, the last plan, and why the current draft exists.
+
+  Off by default: no `[gitsync]` section means nothing is fetched and no credential file is read.
+  The fetch itself is a plain HTTPS read of one file, not a `git` clone — no `git` binary and no git
+  library, deliberately, since a subprocess given an operator-supplied remote URL would be a new
+  injection surface, and a full git implementation is a lot of dependency for reading one file. The
+  trade-off that follows, stated in `docs/security.md` rather than left for you to discover: with no
+  object graph to walk, `require_signed_commits` verifies a commit's own SSH-format signature
+  against your allowed-signers file rather than verifying history. An unreachable remote degrades to
+  a finding and a retry, never a blocked startup.
+
 - **A change you made in the GUI can now be proposed to the repository it belongs in.** If your
   intent lives in git (`[gitsync]`), a change staged in vnprox was, until now, a change made outside
   your system of record: the cluster moved, the repository did not, and the next sync reported your
-  own edit back to you as divergence. `POST /changesets/{id}/propose` closes the loop — it renders
-  the changeset as a spec delta, commits it on a branch, pushes, and opens a pull request, on
-  GitHub or GitLab. The changeset records the URL.
+  own edit back to you as divergence. T-2702's `POST /changesets/{id}/propose` closes the loop — it
+  renders the changeset as a spec delta, commits it on a branch, pushes, and opens a pull request,
+  on GitHub or GitLab. The changeset records the URL.
 
   What makes it trustworthy is what it refuses to do:
 
@@ -132,11 +201,50 @@ functionality is folded into `[2.0.0]`.
   summary, and the blast radius — which nodes, carriers and guests the change would disturb, and
   whether it touches a management path.
 
+- **See exactly what changed on the cluster since any point in time — including changes vnprox
+  didn't make.** T-2704's `GET /topology/diff?from=<ts|snapshotId>&to=<ts|snapshotId|now>` compares
+  two points in the snapshot series vnprox already records on a schedule, and reports added,
+  removed and modified entities with per-field before/after. The History page has a new
+  entity-level diff view (with a *Show on map* link), and the map itself can render a diff overlay
+  for a selected range.
+
+  The central claim is honesty about attribution, not completeness: a difference explained by a
+  changeset names it, and one that isn't is marked `attributed: false` rather than folded in
+  silently — an unattributed change is exactly the out-of-band edit the drift checker exists to
+  catch. The comparison currently covers `/etc/network/interfaces`, the one file every snapshot
+  captures and the only one `to=now` can read live; SDN config is listed as not compared rather
+  than reported as newly added on every diff. A range with no snapshot at either end is refused,
+  naming the nearest snapshots that do exist, rather than returned as an empty diff that reads as
+  "nothing changed".
+
+- **A drift finding can now name all three positions — spec, config, and live — and offer two
+  explicit fixes.** With a spec in git (above), there's a third position beyond "declared" and
+  "running". T-2703 adds `POST /drift/{id}/restore-intent` (stage a changeset bringing the cluster
+  back to the spec) and `POST /drift/{id}/adopt-reality` (propose a spec commit, via the pull
+  request path above, describing the cluster as it actually is). Neither fires automatically, at
+  any severity — both require an explicit call naming only the finding's id, with the actual change
+  computed server-side rather than accepted from the request, the same pattern the existing
+  one-click drift fix uses. **This is API-only for now**: the drift findings panel doesn't yet have
+  buttons for either action, so reaching them today means calling the route directly.
+
+- **Map your findings and policies onto compliance controls, with evidence attached.** T-2706 adds
+  a declarative profile format — control IDs mapped to the checks, policy rules, and posture
+  factors that evidence them — and ships one general-purpose profile as a worked example rather
+  than a certification claim (every rendered report says so in its own banner: "This is not a
+  certification."). `GET /compliance/{profile}` returns per-control status with the checks that
+  back it named as evidence, and `GET /export/compliance/{profile}` renders it as a timestamped
+  Markdown, HTML, or JSON report. **A control with no mapped evidence reports `unmapped`, never
+  `pass`** — enforced by the one predicate every output format goes through, so a control nobody
+  wired up cannot silently read as compliant. A report requested for a date outside the retention
+  window is refused with the earliest date that is available, not padded out as a partial one.
+  **This is API-only**: there's no `vnproxctl` command and no dedicated screen yet, only the two
+  routes and the exported document.
+
 - **An AI operator can now stage a change it cannot apply.** The MCP surface could already diagnose
-  a problem in full — and then had to hand you a paragraph of instructions to type. Four new tools
-  (`changesets.stage.bridge`, `changesets.stage.iface`, `changesets.stage.fwrule`,
-  `changesets.stage.ipam`) close that gap from the safe side: each turns a request into exactly one
-  op in a **draft** changeset and returns its id. You still review it and you still apply it.
+  a problem in full — and then had to hand you a paragraph of instructions to type. T-2705 adds four
+  new tools (`changesets.stage.bridge`, `changesets.stage.iface`, `changesets.stage.fwrule`,
+  `changesets.stage.ipam`) that close that gap from the safe side: each turns a request into exactly
+  one op in a **draft** changeset and returns its id. You still review it and you still apply it.
 
   The boundary that makes this safe is not a rule anyone has to remember:
 
@@ -152,13 +260,30 @@ functionality is folded into `[2.0.0]`.
   - **Budgeted**: staging is rate-limited per session and the number of open MCP drafts is capped;
     exceeding either is refused with a message naming the limit.
 
+- **An in-app panel that runs the same MCP read tools against your own daemon — no external MCP
+  client required.** T-2808 adds a right-hand drawer that calls `topology.get`, `findings.list`,
+  `flows.query`, `ipam.subnets.list`, `simulate.path` and `diagnose.run` over your own session and
+  your own `/api/v1` routes: no new backend capability, no new route, and no second authorization
+  model — a capability you lack is a capability the panel can't reach either, one assertion per
+  restricted surface. An answer is rendered only if it cites a tool result from that turn; a claim
+  with nothing behind it is not shown, by construction rather than by a renderer remembering to
+  check.
+
+  With the MCP staging tools above installed, the panel can stage a changeset from a closed set of
+  typed proposals — tagged `[assistant]` in its title — and hands off to the ordinary review screen.
+  The same compile-time guarantee that stops any MCP tool from applying is what makes "it never
+  applies" true here too, not a separate promise re-implemented for the UI. **No model backend ships
+  with vnprox and none is configured by default**; until you configure one, the panel says so
+  plainly and nothing leaves your browser. Prompts and answers are excluded from logs and support
+  bundles by default.
+
 - **`vnproxctl verify` — the hardware-validation checklist, executed.** vnprox has always had a
   gap it stated openly: almost every behaviour it claims has only ever been tested against a mock
   Proxmox, because validating one on real hardware meant a person reading a checklist line, doing
   the thing, and writing down what happened. That does not scale, does not repeat, and — the part
   that actually mattered — could not be handed to a user who has a cluster and would like to help.
 
-  `vnproxctl verify --suite=hardware` is that checklist as a command. Twenty-six checks, one per
+  T-2501's `vnproxctl verify --suite=hardware` is that checklist as a command. Twenty-six checks, one per
   claim, each deciding its own verdict against your cluster and carrying the API response, command
   output or file contents that verdict rests on. It is read-only and safe on a production cluster.
   **If you have a Proxmox cluster, this is the single most useful thing you can send us.**
@@ -189,13 +314,39 @@ functionality is folded into `[2.0.0]`.
   signature. `vnproxctl verify --list` prints every check with the hardware it needs, so you can see
   what the suite will ask of your cluster before running any of it.
 
+- **The confidence behind everything above is now harder to fake.** Four cards hardened the
+  machinery that verifies vnprox rather than adding a feature you'll click on — none of them change
+  what you can do, only how much you can trust the rest of this file:
+
+  - **T-2502** teaches the Proxmox test client to record real PVE traffic into replayable fixtures
+    (`make record`), because every fixture before this was hand-written — a guess at what PVE
+    returns, not an observation of it. A cassette containing a ticket, password, or private key
+    fails the write rather than being saved, and a replay request that doesn't match a recorded one
+    fails loudly instead of falling through to an invented default.
+  - **T-2504** adds `make soak`, which runs the real daemon against synthetic churn for a
+    configurable duration (30 minutes locally, 8 hours nightly) and fails on a *trend* in
+    goroutines, heap, RSS, file descriptors, and table row counts — never a threshold. A leak slow
+    enough to look flat still passes; one with a positive slope over the second half of the run
+    fails, naming the metric.
+  - **T-2505** shards the end-to-end suite across four workers and adds a flake quarantine with an
+    expiry — an expired quarantine fails the build even if the test it covers is still red — and,
+    along the way, found and fixed several real defects the old serial suite's timing had been
+    hiding, including that this suite's own test deadlines need to scale with how many CPU cores
+    are actually available.
+  - **T-2506** turns `docs/performance.md`'s stated render and collection budgets into an enforced
+    gate, compared against a fixed, host-normalised budget rather than the previous run, so a slow
+    drift that never regresses more than a few percent at a time still eventually fails.
+
+  All four are `make` targets and CI gates a contributor runs; none is reachable from the product,
+  and a cluster operator will never see any of them directly.
+
 - **Policy-as-code guardrails: the change engine can now say no.** Until now the engine's
   guarantees were strong and *advisory* — it told you what would happen, but it refused only one
   thing, hard-coded: cutting a node's management path. Every other rule an organisation has ("no
   guest on VLAN 1", "a bridge carrying guests keeps two uplinks", "nobody touches `vmbr9` on the
   storage nodes") lived in a wiki and was enforced by whoever happened to review the change.
 
-  You can now install a **declarative policy rule set** on the cluster. A rule is
+  T-2601 lets you install a **declarative policy rule set** on the cluster. A rule is
   `{id, description, severity, match, assert}`, and `severity: deny` blocks the changeset at the
   validate stage — before any diff or plan is computed — with the rule's id and description in the
   error. `severity: warn` annotates the changeset instead and travels with it to the review
@@ -222,6 +373,86 @@ functionality is folded into `[2.0.0]`.
   changed. New routes: `GET`/`PUT /policies` and `POST /policies/test`.
 
   **The default policy set is empty, and an empty set changes nothing.**
+
+- **A multi-node apply can now stop halfway and let you look, and the change engine can now notice
+  its own mistake.** Two guardrail cards, built to work together:
+
+  - **T-2602** adds a canary apply: `POST /changesets/{id}/apply` takes an optional
+    `applyStrategy: {mode: canary, canaryNodes, holdFor, gate}`. The apply touches only the canary
+    nodes, then **pauses in a resumable state** — the changeset is neither applied nor rolled back,
+    and the untouched nodes are never contacted. `gate: manual` waits for
+    `POST /changesets/{id}/continue`; `gate: auto` proceeds only on a clean health check during the
+    hold. Aborting restores exactly the nodes that were touched. A daemon restart mid-hold resumes
+    or rolls back from what was persisted rather than leaving a changeset in limbo, and the
+    commit-confirm deadline covers the *whole* sequence — a stalled canary cannot hold the cluster
+    open past the window. The default (`mode: all`) is byte-for-byte the existing apply.
+  - **T-2603** closes the gap commit-confirm never covered: "the change was wrong and the operator
+    is still staring at the screen." With `autoRollbackOnError` set — per changeset, or as a
+    `[changesets] auto_rollback_on_error` cluster default, both off by default — a **new** `error`
+    finding on an entity the changeset actually touched rolls it back immediately, inside the
+    confirm window. A finding that predates the apply never triggers, however severe; one outside
+    the changeset's blast radius never triggers, however severe; a `warning` never triggers, ever.
+    The audit entry and the changeset both name the finding that caused the rollback. During a
+    T-2602 canary hold, a trigger aborts the sequence and restores only the stages that ran.
+
+  **Both are API/CLI-only today** — there is no canary-strategy picker or auto-rollback toggle in
+  the review screen yet, only the request body and the cluster config.
+
+- **Some changes can now require more than one person to sign off, with a written-reason emergency
+  override.** T-2604 lets a deployment declare protected op classes
+  (`[[changesets.protected_class]]` — an op-type glob like `fw.*`, the reserved `mgmtPath`, or a tag
+  a policy rule above sets) that need N distinct approvers before `apply`, enforced server-side so a
+  request that bypasses the UI is refused identically. The review screen shows this directly: Apply
+  stays disabled with a message naming the class and exactly how many more approvals are needed.
+  Two approvals from the same person through two different tokens still count as one — distinctness
+  is a property of the stored sign-off, not of the token. An emergency **break-glass** override
+  exists for when nobody else is available (`POST /changesets/{id}/break-glass`): it requires a
+  written reason, is audited under its own action (`change.breakglass`), and raises an `error`
+  finding that cannot be acknowledged for 24 hours, so the override still gets reviewed by someone
+  who wasn't in the room. **It isn't a button on any screen** — reaching it means calling the route
+  directly.
+
+- **See what the map will look like before you click apply.** `GET /changesets/{id}/preview`
+  (T-2605) projects the changeset's ops onto the live topology in memory — nothing is written, and a
+  store checksum before and after is identical — and the map gains a distinct preview mode showing
+  added, removed, and modified entities. **It says plainly what it can't show**: an op whose effect
+  can't be projected (a raw `/etc/network/interfaces` edit, anything with an out-of-band-dependent
+  result) is listed by name as unprojectable rather than silently dropped or guessed at. A
+  changeset with blocking validation findings is refused rather than previewed into nonsense — a
+  changeset that can't apply has no post-apply map.
+
+- **When something breaks, one timeline instead of five open tabs.** "Start incident" (Incidents in
+  the nav) opens a view — not a mode — that assembles, at read time, the findings that appeared and
+  cleared, changesets staged or applied, diagnosis-ladder runs, captures, and flows across the
+  window, plus your own timestamped annotations sitting alongside them. Opening one doesn't start a
+  collector, subscribe to a stream, or copy an event: T-2804 stores only the window and your
+  annotations, so an incident opened **retroactively** over a past window shows the same timeline as
+  one opened live, and reopening a closed incident shows the same events it had when you closed it —
+  nothing is deleted by closing. Closing produces an export — the timeline plus a support bundle —
+  through the same secret-redaction path the existing support bundle uses.
+
+- **See who else is looking at a changeset, and get warned before you silently overwrite their
+  work.** T-2805 adds advisory locks: staging a draft against an entity another draft already
+  touches warns you who holds it and lets you proceed anyway — the override is audited, and a lock
+  **never** blocks an apply, even one it's still holding. Presence — who else is viewing this
+  changeset or entity — rides the existing WebSocket event stream and updates live in the changeset
+  drawer. A lock releases when its session disconnects (a closed laptop, not a timeout you have to
+  wait out) and also on an explicit timeout, so nothing outlives the person who staged it. This is
+  deliberately not a mandatory lock: **it prevents an accidental collision, never an emergency
+  change.**
+
+- **A scheduled push instead of three dashboards you have to remember to check.** T-2807 assembles
+  the posture score with its named factors and the change since the last digest, capacity
+  projections crossing their horizon, unresolved drift, and findings opened/closed in the period —
+  delivered through your existing alert targets, reusing the same scheduling, quiet-hours, and
+  retry machinery as the rest of vnprox's notifications. **A quiet period gets a one-line digest,
+  not a padded one** — under a stated 200-byte bound, with no manufactured "nothing to report, but
+  here's a chart anyway" filler, because a digest that arrives full every week regardless is the
+  fastest way to make people stop opening it. Deltas are always against the *previous* digest, not
+  an arbitrary window, and a first-ever digest says plainly it has no baseline rather than showing a
+  spurious jump from zero. The schedule is stored per-cluster and re-read on every tick, so changing
+  the cadence takes effect without restarting the daemon. **No dedicated screen yet** — the schedule
+  is set through the API.
 
 - **Certificate management for the cluster.** Every cross-node thing vnprox does — applying a
   changeset, arming a distributed rollback timer, reading a peer's state — rides peer-API TLS,
