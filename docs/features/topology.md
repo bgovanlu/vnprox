@@ -35,6 +35,13 @@ The chosen view is a per-session preference (like traffic mode), not part of the
 - **Command palette** (`⌘K`/`Ctrl+K`, T-903): one app-wide dialog merging this section's spotlight entity search with every page's registered action verbs ("edit vmbr0", "new VLAN zone", "open drafts", "simulate path from `<entity>`", ...) — `web/src/keyboard/CommandPalette.tsx` + `actions.ts`'s `usePaletteActions` registry. Targets whichever renderer (Switch/Graph) is currently mounted; adopts T-901/T-905's canvas accessibility bridge automatically once that lands, with no rework here.
 - **Roving keyboard focus** (T-903): once a map entity has DOM focus, arrow keys move focus to the next entity in on-screen visual-adjacency order (top-to-bottom, then left-to-right) across whichever view is mounted; Enter activates the focused entity exactly like a click (`web/src/keyboard/useRovingFocus.ts`/`rovingFocus.ts`).
 
+**Annotation layer (T-2806).** The map shows what is true; the annotation layer shows what is *known* — "temporary until the switch swap", "vendor-managed, do not touch". Two kinds, both shared across every `netRead`-capable user and both app-owned data (`annotations` / `map_regions`, docs/data-model.md §2, `docs/api.md`'s "Map annotation layer"):
+
+- **Notes** pinned to one entity's Ref, shown in the inspector's Notes tab and as a marker on that entity on the canvas. A note carries its author and timestamp, and optionally an **expiry**, so a temporary note announces its own staleness rather than becoming permanent. Expiry is computed on every read, so a stopped daemon cannot leave an expired note on display — and an expired note is hidden, never deleted.
+- **Regions**: labelled rectangles drawn on the graph canvas, in graph-space coordinates, so they hold their position relative to the entities they enclose under pan/zoom. They live in their own shared table rather than in the per-user `layouts` blob, which is what makes them survive layout auto-saves and view switches instead of being overwritten by whoever dragged a node last.
+
+A note whose entity has been deleted is **retained and shown as orphaned**, not dropped: the note is often the only record of why the entity was removed. Notes and region labels also appear in the config-doc export, which is where a note is most useful to a reader who cannot see the map. Every render path escapes the operator-authored text.
+
 ## 3. Rendering contract
 
 `GET /api/v1/topology` returns `nodes[]` (id=Ref, kind, label, layer, nodeGroup, status, badges[]) and `edges[]` (from, to, kind, badges[], status). The frontend owns layout; the backend owns structure and status. Deltas over WS (`topology.delta`) trigger targeted refetch, not full reload.

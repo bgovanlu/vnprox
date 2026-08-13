@@ -28,6 +28,32 @@ functionality is folded into `[2.0.0]`.
 
 ### Added
 
+- **The map can now carry what you know, not just what is true.** "This uplink is temporary until
+  the switch swap." "Vendor-managed, do not touch." That knowledge lived in a wiki that was wrong
+  within a month, because it was not next to the thing it described. T-2806 puts it on the map:
+  free-text notes pinned to an entity, and labelled regions drawn on the canvas. Both carry an
+  author and a timestamp, both are shared with the whole team, and both appear in the config-doc
+  export — which is where a note is most useful to a reader who cannot see the map at all.
+
+  Three things about it are deliberate:
+
+  - **A note can announce its own staleness.** Give a note an expiry and it stops being displayed
+    when that moment passes. Expiry is computed on every read, not by a background job, so a daemon
+    that was switched off for the week the expiry fell in cannot come back and show you a stale
+    note. An expired note is *hidden*, never deleted — you can still list, read and unpin it.
+
+  - **Deleting an entity does not delete what you wrote about it.** The note on a bridge you removed
+    is kept and shown as orphaned, because it is frequently the only surviving record of *why* the
+    bridge was removed. Nothing sweeps it away: not retention, not the expiry path, not collection.
+
+  - **Regions survive your colleagues.** They live in their own shared table rather than inside the
+    per-user layout blob that gets rewritten every time anyone drags a node, so a region persists
+    across layout changes and view switches instead of being overwritten by whoever moved something
+    last.
+
+  None of this is a copy of Proxmox's config: a note's entity reference names a PVE object, but the
+  row carries only the sentence a human typed, and a region corresponds to no PVE object at all.
+
 - **The Hub has a registry to talk to — and it is a signed file, not a service.** vnprox shipped a
   registry *client* with nothing on the other end. T-2803 supplies the other end: the index format,
   the tooling that produces it (`vnproxctl hub publish|index|revoke|verify|keygen`), and the

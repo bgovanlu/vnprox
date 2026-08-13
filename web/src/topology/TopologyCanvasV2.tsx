@@ -39,6 +39,8 @@ import {
 } from "./canvasScene";
 import { buildA11yProxies } from "./a11yBridge";
 import { TopologyA11yLayer } from "./TopologyA11yLayer";
+import { AnnotationLayer, type AnnotationAnchor } from "./AnnotationLayer";
+import type { Annotation, MapRegion } from "../api/types";
 import { drawScene, drawFlowOverlay, drawLatencyOverlay, drawMTUOverlay, drawDiffOverlay, pulseAlphaForPhase, type FlowOverlayEdge, type SceneTheme } from "./canvasDraw";
 import type { LatencyOverlayEdge } from "./latencyMode";
 import type { DiffMark } from "./diffOverlay";
@@ -124,11 +126,26 @@ export interface TopologyCanvasV2Props {
    * click that lands on a flow edge always opens its drill-down rather
    * than deselecting. */
   onFlowEdgeClick?: (edgeId: string) => void;
+  /** T-2806 map annotation layer: labelled canvas regions and the pinned
+   * notes to render over the graph. Both are the LIVE (non-expired) sets
+   * the daemon returned — this canvas never judges expiry itself.
+   * undefined/empty (the default) renders nothing extra, so every
+   * pre-T-2806 call site is unaffected. */
+  regions?: readonly MapRegion[];
+  notes?: readonly Annotation[];
 }
 
 // Distance (screen px) a pointer must travel after press before a gesture
 // counts as a drag rather than a click.
 const DRAG_THRESHOLD = 4;
+
+// T-2806: how far above an entity's top-left its note marker sits, in graph
+// space, plus the frozen empty defaults so an un-annotated canvas allocates
+// nothing and re-renders identically to the pre-T-2806 one.
+const ANNOTATION_MARKER_OFFSET = 26;
+const EMPTY_REGIONS: readonly MapRegion[] = [];
+const EMPTY_NOTES: readonly Annotation[] = [];
+const EMPTY_ANCHORS: readonly AnnotationAnchor[] = [];
 
 interface PointerGesture {
   kind: "pan" | "node";
@@ -190,6 +207,8 @@ export function TopologyCanvasV2({
   mtuBadges,
   diffMarks,
   onFlowEdgeClick,
+  regions,
+  notes,
 }: TopologyCanvasV2Props) {
   const storeTheme = useThemeStore((s) => s.theme);
   const effectiveTheme = theme ?? storeTheme;
@@ -262,6 +281,20 @@ export function TopologyCanvasV2({
   );
 
   const proxies = useMemo(() => buildA11yProxies(lodElements.nodes), [lodElements.nodes]);
+
+  // T-2806: where each annotated entity currently sits, in graph space, so
+  // the annotation overlay can pin a note marker to it. Derived from the
+  // SAME LOD-transformed node set the canvas draws, so a note follows its
+  // entity through zoom bands and capsule expansion rather than floating
+  // at a stale position. A note whose ref is not in this set is not
+  // dropped — AnnotationLayer lists it as an orphan (T-2806 AC2).
+  const annotationAnchors = useMemo(() => {
+    if (notes === undefined || notes.length === 0) return EMPTY_ANCHORS;
+    const wanted = new Set(notes.map((n) => n.ref));
+    return lodElements.nodes
+      .filter((n) => wanted.has(n.id))
+      .map((n) => ({ ref: n.id, x: n.position.x, y: n.position.y - ANNOTATION_MARKER_OFFSET }));
+  }, [notes, lodElements.nodes]);
 
   // T-906: report the LOD-transformed scene up to the page level on every
   // change, so "Export map" (which lives outside this component, in the
@@ -631,6 +664,7 @@ export function TopologyCanvasV2({
       }}
     >
       <canvas ref={canvasRef} className="block h-full w-full" style={{ width: "100%", height: "100%" }} />
+      <AnnotationLayer regions={regions ?? EMPTY_REGIONS} notes={notes ?? EMPTY_NOTES} anchors={annotationAnchors} viewport={viewport} />
       <TopologyA11yLayer
         proxies={proxies}
         viewport={viewport}

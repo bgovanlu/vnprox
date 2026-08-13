@@ -149,6 +149,9 @@ var Operations = map[string]Operation{
 	"GET /api/v1/annotations":         {Summary: "List map annotations.", Tag: "annotations", Auth: AuthSession},
 	"POST /api/v1/annotations":        {Summary: "Create a map annotation.", Tag: "annotations", Auth: AuthSession},
 	"DELETE /api/v1/annotations/{id}": {Summary: "Delete a map annotation.", Tag: "annotations", Auth: AuthSession},
+	"GET /api/v1/map-regions":         {Summary: "List labelled canvas regions.", Tag: "annotations", Auth: AuthSession},
+	"POST /api/v1/map-regions":        {Summary: "Draw a labelled canvas region.", Tag: "annotations", Auth: AuthSession},
+	"DELETE /api/v1/map-regions/{id}": {Summary: "Delete a labelled canvas region.", Tag: "annotations", Auth: AuthSession},
 
 	// --- Federation ------------------------------------------------------------
 	"GET /api/v1/federation/clusters":               {Summary: "List federated clusters.", Tag: "federation", Auth: AuthSession},

@@ -12,15 +12,54 @@ import (
 // blueprints.md §4), so a golden test can assert section presence once
 // against Data's shape and once against each renderer's output.
 type Data struct {
-	Interfaces  map[string][]InterfaceRow
-	SDNErr      string
-	Nodes       []string
-	VLANs       []VlanRow
-	Firewall    []FirewallRow
-	LLDP        []topology.PortRow
+	Interfaces map[string][]InterfaceRow
+	SDNErr     string
+	Nodes      []string
+	VLANs      []VlanRow
+	Firewall   []FirewallRow
+	LLDP       []topology.PortRow
+	// Annotations/Regions are T-2806's map annotation layer, included
+	// because a note is most useful to exactly the reader who cannot see
+	// the map. Only LIVE (non-expired) entries reach here — the read-time
+	// filter runs in internal/annotate before Gather ever sees them, so an
+	// export produced by a daemon that was stopped for a month cannot
+	// contain a note that expired during the outage.
+	Annotations []AnnotationRow
+	Regions     []RegionRow
 	Topology    topology.Topology
 	SDN         sdn.Tree
 	GeneratedAt int64
+}
+
+// AnnotationRow is one entity-pinned note in the export. Text is operator
+// free text and is escaped by every renderer that emits it (html.go,
+// markdown.go, svg.go) — see docs/api.md's Map annotation layer section.
+type AnnotationRow struct {
+	Ref       string
+	Content   string
+	CreatedBy string
+	// Expires is a rendered date, or "" for a note that never expires.
+	Expires string
+	// Created is a rendered date.
+	Created string
+	// Orphaned reports that the annotated entity no longer exists. The note
+	// is still rendered — deliberately, and prominently: it is often the
+	// only surviving record of why the entity was removed (T-2806 AC2).
+	Orphaned bool
+}
+
+// RegionRow is one labelled canvas region in the export. X/Y/W/H are the
+// canvas graph-space rectangle; the SVG render draws them behind the
+// topology so the document shows the same grouping the map does.
+type RegionRow struct {
+	Label     string
+	CreatedBy string
+	Created   string
+	Expires   string
+	X         float64
+	Y         float64
+	W         float64
+	H         float64
 }
 
 // InterfaceRow is one row of a per-node interface table: one physical NIC,

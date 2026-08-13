@@ -169,6 +169,7 @@ var versionSeeds = map[int]versionSeed{
 	41: {seedV41, assertV41},
 	42: {seedV42, assertV42},
 	43: {seedV43, assertV43},
+	44: {seedV44, assertV44},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -582,6 +583,17 @@ func assertV6(t *testing.T, db *sql.DB) {
 		t.Errorf("annotations row lost across migration: %v", err)
 	} else if content != "needs review before next maintenance window" {
 		t.Errorf("annotations.content = %q, unexpected", content)
+	}
+
+	// T-2806's 0045 ALTERs this very table to add expires_at. A note written
+	// before that column existed must upgrade to 0 = "never expires": any
+	// other value would make a years-old note vanish from the map on the
+	// first read after an upgrade.
+	var expiresAt int64
+	if err := db.QueryRowContext(ctx, `SELECT expires_at FROM annotations WHERE id = 'ann-v6'`).Scan(&expiresAt); err != nil {
+		t.Errorf("annotations.expires_at unreadable after migration: %v", err)
+	} else if expiresAt != 0 {
+		t.Errorf("annotations.expires_at = %d for a pre-0045 note, want 0 (never expires)", expiresAt)
 	}
 }
 
@@ -1563,10 +1575,77 @@ func assertV43(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 44 (0044_entity_locks.sql, entity_locks — T-2805) has no
-// versionSeeds entry because it is the current latest, not a "prior" version
-// any fixture in this file freezes at — its own forward application (as part
-// of every case's migrate() call to latest) is exercised by every case above,
-// and TestOpen_CreatesAllTables (store_test.go) exercises it from a fresh
-// database. The next migration to land becomes the new latest and picks up a
-// version 44 entry in versionSeeds at that time.
+func seedV44(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// T-2805's advisory entity locks, on the v1 changeset. Two rows, chosen
+	// to cover the two things 0044's own comment says the columns MEAN:
+	//
+	//   - one lock bound to a live session, still in force;
+	//   - one with session_id = '' (a bearer-token principal, or a session
+	//     already reaped) whose expires_at is in the PAST.
+	//
+	// The expired row is the interesting one across a migration. Expiry is a
+	// READ-time judgement (0044's comment; internal/presence.Service), so an
+	// expired lock is an ordinary row that must survive migration exactly
+	// like any other — a lossy rebuild that "helpfully" dropped expired rows,
+	// or coerced expires_at, would silently change who holds what after an
+	// upgrade. holder is asserted verbatim because it is the identity a
+	// colliding operator is shown and an override is audited against.
+	mustExec(t, db, `INSERT INTO entity_locks (ref, changeset_id, holder, session_id, acquired_at, expires_at)
+	                 VALUES ('bridge:pve1:vmbr0', 'cs-v1', 'alice@pam', 'sess-1', 1750000500, 1750000800)`)
+	mustExec(t, db, `INSERT INTO entity_locks (ref, changeset_id, holder, session_id, acquired_at, expires_at)
+	                 VALUES ('bond:pve1:bond0', 'cs-v1', 'bob@pam', '', 1750000000, 1750000100)`)
+}
+
+func assertV44(t *testing.T, db *sql.DB) {
+	t.Helper()
+
+	var changesetID, holder, sessionID string
+	var acquiredAt, expiresAt int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT changeset_id, holder, session_id, acquired_at, expires_at
+		 FROM entity_locks WHERE ref = 'bridge:pve1:vmbr0'`).
+		Scan(&changesetID, &holder, &sessionID, &acquiredAt, &expiresAt); err != nil {
+		t.Errorf("entity_locks row lost across migration: %v", err)
+	} else if changesetID != "cs-v1" || holder != "alice@pam" || sessionID != "sess-1" ||
+		acquiredAt != 1750000500 || expiresAt != 1750000800 {
+		t.Errorf("entity_locks = (%q, %q, %q, %d, %d), want the seeded row",
+			changesetID, holder, sessionID, acquiredAt, expiresAt)
+	}
+
+	// The expired, session-less lock must still be there, unchanged: nothing
+	// in a migration may decide expiry on the store's behalf.
+	var expiredHolder, expiredSession string
+	var expiredExpiresAt int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT holder, session_id, expires_at FROM entity_locks WHERE ref = 'bond:pve1:bond0'`).
+		Scan(&expiredHolder, &expiredSession, &expiredExpiresAt); err != nil {
+		t.Errorf("entity_locks expired row lost across migration: %v", err)
+	} else if expiredHolder != "bob@pam" || expiredSession != "" || expiredExpiresAt != 1750000100 {
+		t.Errorf("entity_locks expired row = (%q, %q, %d), want (bob@pam, \"\", 1750000100)",
+			expiredHolder, expiredSession, expiredExpiresAt)
+	}
+
+	var rows int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT count(*) FROM entity_locks WHERE changeset_id = 'cs-v1'`).Scan(&rows); err != nil {
+		t.Errorf("entity_locks count query failed: %v", err)
+	} else if rows != 2 {
+		t.Errorf("entity_locks rows for cs-v1 = %d, want 2", rows)
+	}
+}
+
+// Schema version 45 (0045_map_annotations.sql, annotations.expires_at +
+// map_regions — T-2806) has no versionSeeds entry because it is the current
+// latest, not a "prior" version any fixture in this file freezes at — its own
+// forward application (as part of every case's migrate() call to latest) is
+// exercised by every case above, and TestOpen_CreatesAllTables (store_test.go)
+// exercises it from a fresh database. The next migration to land becomes the
+// new latest and picks up a version 45 entry in versionSeeds at that time.
+//
+// Note what version 6's assertV6 now additionally proves, because 0045 is an
+// ALTER TABLE on the table 0006 created: a v6-era annotation (written before
+// expires_at existed) must come out of the upgrade with its content intact
+// and expires_at defaulted to 0 = "never expires". A note silently acquiring
+// an expiry across an upgrade would make it disappear from the map, which is
+// precisely the data loss T-2806 exists to prevent.

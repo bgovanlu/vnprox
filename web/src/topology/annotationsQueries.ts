@@ -6,16 +6,57 @@
 // queries.ts's guest-group expansion derives per-group data from a shared
 // cache rather than issuing one query per entity.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createAnnotation, deleteAnnotation, fetchAnnotations } from "../api/annotations";
-import type { Annotation } from "../api/types";
+import {
+  createAnnotation,
+  createMapRegion,
+  deleteAnnotation,
+  deleteMapRegion,
+  fetchAnnotations,
+  fetchMapRegions,
+} from "../api/annotations";
+import type { Annotation, MapRegion } from "../api/types";
 
 export const ANNOTATIONS_QUERY_KEY = ["annotations"] as const;
+export const MAP_REGIONS_QUERY_KEY = ["map-regions"] as const;
 
 export function useAnnotationsQuery() {
   return useQuery<Annotation[]>({
     queryKey: ANNOTATIONS_QUERY_KEY,
     queryFn: async () => (await fetchAnnotations()).items,
     staleTime: 15_000,
+  });
+}
+
+/** T-2806's canvas regions. Keyed independently of `layouts` — a layout
+ * save never invalidates or rewrites this cache, which is the client-side
+ * half of "regions persist across layout changes and view switches"
+ * (the server-side half is that they live in their own shared table). */
+export function useMapRegionsQuery() {
+  return useQuery<MapRegion[]>({
+    queryKey: MAP_REGIONS_QUERY_KEY,
+    queryFn: async () => (await fetchMapRegions()).items,
+    staleTime: 15_000,
+  });
+}
+
+export function useCreateMapRegionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { label: string; x: number; y: number; w: number; h: number; color?: string; expiresAt?: number }) =>
+      createMapRegion(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: MAP_REGIONS_QUERY_KEY });
+    },
+  });
+}
+
+export function useDeleteMapRegionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteMapRegion(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: MAP_REGIONS_QUERY_KEY });
+    },
   });
 }
 
@@ -31,7 +72,8 @@ export function useAnnotationsForRef(ref: string | undefined): Annotation[] {
 export function useCreateAnnotationMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ ref, content }: { ref: string; content: string }) => createAnnotation(ref, content),
+    mutationFn: ({ ref, content, expiresAt }: { ref: string; content: string; expiresAt?: number }) =>
+      createAnnotation(ref, content, expiresAt ?? 0),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ANNOTATIONS_QUERY_KEY });
     },
