@@ -1158,8 +1158,27 @@ is the part that needs hardware, and it is the whole point of the card.**
       not just pvemock's imitation of it. If real PVE returns the ticket under a different key, the
       guard is weaker on hardware than it is in CI, and that is worth knowing before anyone trusts
       a recorded directory.
-- [ ] **Confirm response-ordering stability.** `pvemock` answers several list endpoints
-      (`/cluster/resources`, `/cluster/sdn/vnets`, `/cluster/sdn/zones`, ...) in map-iteration
-      order, so it returns the same elements in a different order roughly one run in three. Whether
-      *real* PVE is order-stable across identical requests decides whether a recorded cassette can
-      be byte-compared on re-recording, or only compared by content.
+- [ ] **Confirm response-ordering stability.** ~~`pvemock` answers several list endpoints in
+      map-iteration order~~ — **the mock half of this was fixed on 2026-08-13
+      (`T-2502-followup-01`): every list endpoint now sorts by a documented key.** The hardware
+      question is unchanged and is now the only open half: whether *real* PVE is order-stable
+      across identical requests decides whether a recorded cassette can be byte-compared on
+      re-recording, or only compared by content. Note the mock being stable does not answer it —
+      it just means a difference observed on hardware is now attributable to PVE rather than to us.
+
+## T-2103 — PVE compatibility matrix (2026-08-13)
+
+The matrix in `docs/compat-matrix.json` is **entirely mock-validated**, and every cell says so.
+This section records the one thing it cannot tell you.
+
+- [ ] **Confirm the SDN Fabrics version boundary on real hardware.** The matrix's only enforced
+      version divergence is that PVE 9.0+ accepts `openfabric`/`ospf` SDN zone types and 8.2 does
+      not. That boundary is modelled **from Proxmox's documentation, not captured from a running
+      cluster** — this project has no PVE 8.2 or 9.0 to observe, and `pvecube` is 9.2.4. If the
+      real boundary sits elsewhere (a point release, a package rather than a version, an accepted
+      type that then fails at apply), the matrix is confidently wrong in a way no mock run can
+      surface, because the mock is asserting the same belief the matrix is testing.
+- [ ] **Confirm the per-version fixtures resemble their versions.** `testdata/clusters/compat/pve-
+      8.2.yaml`, `pve-9.0.yaml` and `pve-9.2.yaml` are minimal hand-written topologies, not
+      captures. Only `pve-9.2.yaml` has a real counterpart available (`pvecube`), and it has not
+      been diffed against it.
