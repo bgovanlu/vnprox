@@ -65,16 +65,29 @@ export function useSetGuestInteriorToggleMutation(ref: string) {
  * on — between the toggle query resolving and this one running) is
  * treated as "no data" rather than surfaced as a fetch error, since it is
  * an expected, non-exceptional state this hook's own `enabled` gate can
- * still race. */
+ * still race.
+ *
+ * That "no data" sentinel is `null`, not `undefined` (T-2505-followup-02):
+ * TanStack Query v5 treats a queryFn resolving to `undefined` as a bug —
+ * `Query.fetch()` throws "data is undefined" and forces the query into
+ * `isError`, converting this benign 404 into the exact error state
+ * InteriorTab renders as "Could not read this guest's interior right
+ * now...". Because that synthetic error is a plain `Error` (not
+ * `ApiError`), `lib/queryClient.ts`'s "skip retrying 4xx" rule doesn't
+ * recognize it either, so it gets queued into the default retry policy
+ * instead of settling immediately. Returning `null` keeps the query in a
+ * genuine `success` state, so the toggle mutation's own
+ * `invalidateQueries({ queryKey: guestInteriorKey(ref) })` (above) can
+ * actually refetch it once the toggle turns on for real. */
 export function useGuestInteriorQuery(ref: string | undefined, toggleEnabled: boolean) {
-  return useQuery<GuestInterior | undefined>({
+  return useQuery<GuestInterior | null>({
     queryKey: guestInteriorKey(ref ?? ""),
     queryFn: async () => {
       try {
         return await fetchGuestInterior(ref ?? "");
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
-          return undefined;
+          return null;
         }
         throw err;
       }
