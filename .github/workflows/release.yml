@@ -122,6 +122,36 @@ jobs:
           path: dist/contract
           if-no-files-found: error
 
+      # T-2103: "the published matrix is regenerated on release, not
+      # hand-maintained" (card AC4). Unlike the contract-stamping step
+      # above (which relabels a committed file), this one re-runs the
+      # whole mock-validated compatibility suite
+      # (internal/apicontract/compat) here, in the release job, so the
+      # published artifact is the literal output of that run — every
+      # cell's checks actually executed against a fresh compat-wrapped
+      # internal/pvemock server, not a copy. VNPROX_COMPAT_VERSION stamps
+      # the real release version onto it; the committed
+      # docs/compat-matrix.json keeps the "unversioned" placeholder
+      # (docs/compatibility.md's "How it runs" section explains why, same
+      # convention as docs/openapi.json). AC3's mock-vs-hardware line
+      # holds here too: this step, and everything it produces, is
+      # mock-validated — see docs/compatibility.md.
+      - name: Regenerate and publish the PVE compatibility matrix
+        run: |
+          set -euo pipefail
+          mkdir -p dist/compat
+          VNPROX_COMPAT_VERSION="${GITHUB_REF_NAME}" \
+            go test ./internal/apicontract/compat/... -run TestMatrix_MatchesPublishedArtifact -count=1
+          cp var/compat-matrix.json "dist/compat/vnprox-compat-matrix-${GITHUB_REF_NAME}.json"
+          ls -l dist/compat
+
+      - name: Upload compatibility matrix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnprox-compat-matrix
+          path: dist/compat
+          if-no-files-found: error
+
       - name: Publish apt repo to get.vnprox.io
         env:
           APT_REPO_DEPLOY_HOST: ${{ secrets.APT_REPO_DEPLOY_HOST }}
@@ -156,5 +186,6 @@ jobs:
           files: |
             dist/*.deb
             dist/contract/*.json
+            dist/compat/*.json
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}

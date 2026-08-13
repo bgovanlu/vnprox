@@ -1,0 +1,68 @@
+# pve-9.0.yaml (T-2103) — see pve-8.2.yaml's header comment for what this
+# fixture set is and, importantly, what it is NOT (a real-hardware capture).
+# Pairs with the pve-9.0 internal/pvemock.PVEVersionProfile.
+cluster:
+  name: pve-compat-9-0
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 192.168.50.12
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 902c0a3e-8f2d-4c11-9a57-0d2f6f3a9001
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 192.168.50.12/24
+        gateway: 192.168.50.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: false
+        comments: "management bridge (compat/pve-9.0)"
+    links:
+      eno1:
+        mac: "bc:24:90:00:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:02:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:90:00:00:01"
+        link_up: true
+        mtu: 1500
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []

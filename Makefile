@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve openapi contract-export conformance-external record record-mock soak perf e2e e2e-whole e2e-trend
+.PHONY: build dev test lint check deb mockpve openapi contract-export conformance-external record record-mock soak perf e2e e2e-whole e2e-trend compat-matrix
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -212,6 +212,13 @@ conformance-external: ## rehearse a downstream repo's CI: real pvemock+vnproxd, 
 	VNPROX_CONFORMANCE_PASSWORD="vnprox-mock" \
 	VNPROX_CONFORMANCE_INSECURE_SKIP_VERIFY=1 \
 	$(GO) test ./internal/apicontract/... -count=1 -v
+
+# --- compat-matrix (T-2103) -----------------------------------------------
+
+compat-matrix: ## regenerate docs/compat-matrix.json + docs/compatibility.md's table from internal/apicontract/compat
+	@echo ">> compat-matrix: regenerating docs/compat-matrix.json and docs/compatibility.md"
+	$(GO) test ./internal/apicontract/compat/... -run TestMatrix_MatchesPublishedArtifact -update -count=1
+	@echo ">> compat-matrix: docs/compat-matrix.json and docs/compatibility.md are up to date"
 
 # --- lint ----------------------------------------------------------------
 

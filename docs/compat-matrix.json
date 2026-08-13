@@ -1,0 +1,90 @@
+{
+  "vnprox_version": "unversioned",
+  "generated_at": "1970-01-01T00:00:00Z",
+  "cells": [
+    {
+      "pve_version": "8.2",
+      "fixture": "testdata/clusters/compat/pve-8.2.yaml",
+      "validation": "mock",
+      "checks": [
+        {
+          "name": "auth_ticket",
+          "pass": true,
+          "detail": "POST /access/ticket issued a ticket and CSRF token for root@pam"
+        },
+        {
+          "name": "network_read",
+          "pass": true,
+          "detail": "GET /nodes/pve1/network: 200"
+        },
+        {
+          "name": "sdn_zone_baseline",
+          "pass": true,
+          "detail": "POST zone type=vlan on PVE 8.2: status 200, accepted=true as expected"
+        },
+        {
+          "name": "sdn_fabric_zone_gate",
+          "pass": true,
+          "detail": "POST zone type=openfabric on PVE 8.2: status 400, accepted=false as expected"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "pve_version": "9.0",
+      "fixture": "testdata/clusters/compat/pve-9.0.yaml",
+      "validation": "mock",
+      "checks": [
+        {
+          "name": "auth_ticket",
+          "pass": true,
+          "detail": "POST /access/ticket issued a ticket and CSRF token for root@pam"
+        },
+        {
+          "name": "network_read",
+          "pass": true,
+          "detail": "GET /nodes/pve1/network: 200"
+        },
+        {
+          "name": "sdn_zone_baseline",
+          "pass": true,
+          "detail": "POST zone type=vlan on PVE 9.0: status 200, accepted=true as expected"
+        },
+        {
+          "name": "sdn_fabric_zone_gate",
+          "pass": true,
+          "detail": "POST zone type=openfabric on PVE 9.0: status 200, accepted=true as expected"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "pve_version": "9.2",
+      "fixture": "testdata/clusters/compat/pve-9.2.yaml",
+      "validation": "mock",
+      "checks": [
+        {
+          "name": "auth_ticket",
+          "pass": true,
+          "detail": "POST /access/ticket issued a ticket and CSRF token for root@pam"
+        },
+        {
+          "name": "network_read",
+          "pass": true,
+          "detail": "GET /nodes/pve1/network: 200"
+        },
+        {
+          "name": "sdn_zone_baseline",
+          "pass": true,
+          "detail": "POST zone type=vlan on PVE 9.2: status 200, accepted=true as expected"
+        },
+        {
+          "name": "sdn_fabric_zone_gate",
+          "pass": true,
+          "detail": "POST zone type=openfabric on PVE 9.2: status 200, accepted=true as expected"
+        }
+      ],
+      "pass": true
+    }
+  ]
+}

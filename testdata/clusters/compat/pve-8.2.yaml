@@ -1,0 +1,89 @@
+# pve-8.2.yaml (T-2103) — one of three near-identical per-PVE-version
+# compatibility fixtures (pve-8.2.yaml, pve-9.0.yaml, pve-9.2.yaml).
+#
+# These are deliberately almost topologically identical to single-node.yaml:
+# the point of this fixture set is NOT to re-test topology parsing (every
+# other fixture in this directory already does that) — it is to give
+# internal/apicontract/compat a minimal, cheap cluster to pair with each
+# internal/pvemock.PVEVersionProfile (compat_versions.go) when it drives
+# internal/pvemock.NewCompatServer over HTTP. The only thing that varies
+# fixture-to-fixture here is the file (and therefore which profile it is
+# paired with in internal/apicontract/compat/matrix.go's cell table) — the
+# version-specific *behavior* itself (e.g. SDN Fabric zone types, PVE 9.0+
+# only) lives in the profile and the compat server wrapper, not in this
+# YAML, because a plain fixture load has no mechanism to reject a request at
+# request time; only a running server does.
+#
+# This is a MOCK-VALIDATED fixture: see docs/compatibility.md. It is not a
+# capture from real PVE 8.2 (this repo has no PVE 8.2 hardware — CLAUDE.md's
+# "no live Proxmox cluster" applies here as everywhere else). A genuine
+# per-version capture pathway already exists (`make record`,
+# internal/pvemock/testdata/cassettes/, T-2502) and is the intended home for
+# real hardware-captured per-version wire shapes once hardware access
+# exists; this fixture set is deliberately NOT that, and does not claim to
+# be.
+cluster:
+  name: pve-compat-8-2
+  quorate: true
+  nodes:
+    - name: pve1
+      ip: 192.168.50.11
+      online: true
+
+users:
+  - userid: root@pam
+    password: vnprox-mock
+    privileges: ["*"]
+    tokens:
+      - tokenid: daemon
+        secret: 8a2c0a3e-8f2d-4c11-9a57-0d2f6f3a8201
+
+nodes:
+  pve1:
+    network:
+      - iface: lo
+        type: loopback
+        method: loopback
+        autostart: true
+      - iface: eno1
+        type: eth
+        method: manual
+        autostart: true
+        mtu: 1500
+      - iface: vmbr0
+        type: bridge
+        method: static
+        address: 192.168.50.11/24
+        gateway: 192.168.50.1
+        autostart: true
+        mtu: 1500
+        bridge_ports: eno1
+        bridge_vlan_aware: false
+        comments: "management bridge (compat/pve-8.2)"
+    links:
+      eno1:
+        mac: "bc:24:82:00:00:01"
+        driver: igb
+        speed_mbps: 1000
+        duplex: full
+        link_up: true
+        pci_addr: "0000:02:00.0"
+        mtu: 1500
+      vmbr0:
+        mac: "bc:24:82:00:00:01"
+        link_up: true
+        mtu: 1500
+
+sdn: {}
+
+firewall:
+  cluster:
+    enabled: false
+    policy_in: DROP
+    policy_out: ACCEPT
+    rules: []
+    aliases: []
+    ipsets: []
+    groups: []
+
+mess: []
