@@ -111,4 +111,20 @@ describe("HubPage", () => {
     await waitFor(() => { expect(installHubItem).toHaveBeenCalledTimes(2); });
     expect(installHubItem.mock.calls[1]?.[0]).toMatchObject({ trustUnsigned: true });
   });
+
+  // T-2104 AC2: a capability mismatch is a hard refusal with no trust
+  // dialog offered — there is no flag that makes "the catalog showed you
+  // something other than what this would grant" installable.
+  it("surfaces a capability mismatch as a refusal, never a trust prompt", async () => {
+    fetchHubIndex.mockResolvedValue({ items: [pluginEntry] });
+    installHubItem.mockResolvedValueOnce({ type: "plugin", status: "capabilityMismatch" } satisfies HubInstallResponse);
+
+    renderPage();
+    await userEvent.click(await screen.findByTestId("hub-tab-plugin"));
+    await userEvent.click(await screen.findByTestId("hub-install-acme-tiles"));
+
+    await waitFor(() => { expect(installHubItem).toHaveBeenCalledTimes(1); });
+    expect(screen.queryByTestId("hub-confirm-trust")).not.toBeInTheDocument();
+    expect(await screen.findByText(/capabilities than the catalog showed/i)).toBeInTheDocument();
+  });
 });

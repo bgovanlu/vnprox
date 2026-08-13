@@ -3421,8 +3421,13 @@ export interface HubPluginInstalled {
 /** POST /hub/install response. `status` reuses the blueprint-bundle
  * signature-gate vocabulary (unsigned / untrustedSignature /
  * invalidSignature) plus "imported" (blueprint success) / "installed"
- * (plugin success), so the same trust-status dialog covers both kinds. */
-export type HubInstallStatus = BundleImportStatus | "installed";
+ * (plugin success), so the same trust-status dialog covers both kinds.
+ * "capabilityMismatch" (T-2104 AC2) is plugin-only: the catalog entry's
+ * advertised capabilities/extensionPoints disagreed with the artifact's own
+ * manifest, so the install was refused unconditionally — no trust flag can
+ * make it proceed, because an operator can only consent to what the catalog
+ * showed them. */
+export type HubInstallStatus = BundleImportStatus | "installed" | "capabilityMismatch";
 
 export interface HubInstallResponse {
   type: HubEntryType;

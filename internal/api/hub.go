@@ -137,6 +137,13 @@ type hubInstallResponse struct {
 // reuses bundleStatusImported).
 const hubStatusInstalled = "installed"
 
+// hubStatusCapabilityMismatch (T-2104 AC2) is returned when a plugin
+// artifact's manifest declares a capability scope or extension-point set
+// different from what the catalog entry (GET /hub/index) advertised for it —
+// the install is refused unconditionally, independent of signature/trust,
+// because an operator can only consent to what they were shown.
+const hubStatusCapabilityMismatch = "capabilityMismatch"
+
 // mountHubRoutes registers the hub routes. Every dependency is nil-safe: a
 // missing hub client skips the whole family; within it, blueprint installs need
 // svc+trust and plugin installs need installer+trust, and a type whose backing
@@ -303,7 +310,7 @@ func installHubPlugin(w http.ResponseWriter, r *http.Request, client HubClient, 
 		writeJSONError(w, http.StatusBadGateway, "registry_unavailable", "could not download plugin artifact")
 		return
 	}
-	resp, status, err := installPluginCore(r.Context(), trust, installer, audit, username, art, req.TrustUnsigned, req.TrustNewKey)
+	resp, status, err := installPluginCore(r.Context(), trust, installer, audit, username, entry, art, req.TrustUnsigned, req.TrustNewKey)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal_error", "plugin install failed")
 		return
@@ -319,7 +326,20 @@ func installHubPlugin(w http.ResponseWriter, r *http.Request, client HubClient, 
 // wire response plus HTTP status; a non-nil error is an install (registry)
 // failure. Every outcome is audited under "hub.install" so a denied or
 // completed plugin install is always visible in GET /audit.
-func installPluginCore(ctx context.Context, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, username string, art hub.PluginArtifact, trustUnsigned, trustNewKey bool) (hubInstallResponse, int, error) {
+//
+// T-2104 AC2: before any trust decision is even considered, the capability
+// scope and extension points GET /hub/index showed the operator (entry) must
+// agree with the artifact actually being installed (art.Manifest) — the
+// catalog's own display data is never installed from, but an operator's
+// consent was given to what the catalog showed, and installing something
+// else would be routing around the very capability-gate review this hub
+// exists to preserve. A disagreement refuses the install outright, signed or
+// not, trusted or not: hub.CapabilityMismatch.
+func installPluginCore(ctx context.Context, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, username string, entry hub.Entry, art hub.PluginArtifact, trustUnsigned, trustNewKey bool) (hubInstallResponse, int, error) {
+	if mismatch := hub.CapabilityMismatch(entry, art.Manifest); mismatch != "" {
+		auditHubInstallDetail(ctx, audit, username, "plugin", art.Manifest.ID, hubStatusCapabilityMismatch, "", "", mismatch)
+		return hubInstallResponse{Type: string(hub.TypePlugin), Status: hubStatusCapabilityMismatch}, http.StatusOK, nil
+	}
 	msg, err := hub.CanonicalManifestBytes(art.Manifest)
 	if err != nil {
 		return hubInstallResponse{}, 0, err
@@ -414,6 +434,14 @@ func toPluginManifest(m hub.PluginManifest) plugin.Manifest {
 // no-op (narrow unit tests). Result is "success" for a completed install,
 // "denied" for any gate rejection.
 func auditHubInstall(ctx context.Context, audit blueprintBundleAuditor, username, itemType, id, status, trustDecision, signerFingerprint string) {
+	auditHubInstallDetail(ctx, audit, username, itemType, id, status, trustDecision, signerFingerprint, "")
+}
+
+// auditHubInstallDetail is auditHubInstall plus an optional free-text reason
+// (e.g. hub.CapabilityMismatch's description) recorded in the entry's detail
+// so a human reviewing GET /audit can see *why* a gate refused, not just that
+// it did.
+func auditHubInstallDetail(ctx context.Context, audit blueprintBundleAuditor, username, itemType, id, status, trustDecision, signerFingerprint, reason string) {
 	if audit == nil {
 		return
 	}
@@ -423,6 +451,9 @@ func auditHubInstall(ctx context.Context, audit blueprintBundleAuditor, username
 	}
 	if signerFingerprint != "" {
 		detail["signerFingerprint"] = signerFingerprint
+	}
+	if reason != "" {
+		detail["reason"] = reason
 	}
 	detailJSON, err := json.Marshal(detail)
 	if err != nil {

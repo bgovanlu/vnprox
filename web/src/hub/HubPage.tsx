@@ -46,6 +46,13 @@ export function HubPage() {
           variant: "error",
         });
         break;
+      case "capabilityMismatch":
+        toast({
+          title: "Capability mismatch",
+          description: `"${entry.name}" declares different capabilities than the catalog showed — it will not be installed.`,
+          variant: "error",
+        });
+        break;
     }
   }
 

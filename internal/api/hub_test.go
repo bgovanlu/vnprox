@@ -199,7 +199,10 @@ func TestHubInstall_PluginRegistersWithCapabilities(t *testing.T) {
 	art := signPluginArtifact(t, m, priv)
 
 	client := &fakeHubClient{
-		index:   hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{Type: hub.TypePlugin, ID: "acme-tiles", Version: "1.0", Capabilities: []string{"netRead"}}}},
+		index: hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{
+			Type: hub.TypePlugin, ID: "acme-tiles", Version: "1.0",
+			Capabilities: []string{"netRead"}, ExtensionPoints: []string{"dashboardTile"},
+		}}},
 		plugins: map[string]hub.PluginArtifact{"acme-tiles": art},
 	}
 	auth := blueprintTestAuth(map[string]bool{"netRead": true, "netWrite": true})
@@ -232,7 +235,10 @@ func TestHubInstall_UnsignedPluginRejected(t *testing.T) {
 	installer := &fakeInstaller{}
 	m := hub.PluginManifest{ID: "unsigned-pl", Name: "U", Version: "1", APIVersion: "v1", Transport: "grpc", ExtensionPoints: []string{"dashboardTile"}, Capabilities: []string{"netRead"}}
 	client := &fakeHubClient{
-		index:   hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{Type: hub.TypePlugin, ID: "unsigned-pl"}}},
+		index: hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{
+			Type: hub.TypePlugin, ID: "unsigned-pl",
+			Capabilities: []string{"netRead"}, ExtensionPoints: []string{"dashboardTile"},
+		}}},
 		plugins: map[string]hub.PluginArtifact{"unsigned-pl": {Manifest: m}},
 	}
 	auth := blueprintTestAuth(map[string]bool{"netRead": true, "netWrite": true})
@@ -246,6 +252,98 @@ func TestHubInstall_UnsignedPluginRejected(t *testing.T) {
 	}
 	if len(installer.installed) != 0 {
 		t.Fatalf("installer must not be reached for an unsigned plugin, got %+v", installer.installed)
+	}
+}
+
+// TestHubInstall_PluginCapabilityMismatchRefused is T-2104 AC2's negative
+// leg: the catalog (GET /hub/index, what an operator reviews before
+// clicking install) advertises a narrower capability scope than the signed
+// artifact's own manifest actually declares. Nothing fetched from a registry
+// is trusted merely because the registry served it — the install must be
+// refused outright, even though the signature verifies and the signer is
+// already trusted, because installing would grant more than what the
+// operator was shown. The positive leg is
+// TestHubInstall_PluginRegistersWithCapabilities immediately above: an entry
+// whose Capabilities/ExtensionPoints agree with the manifest installs
+// exactly as shown.
+func TestHubInstall_PluginCapabilityMismatchRefused(t *testing.T) {
+	trust := blueprint.NewTrustStore(t.TempDir())
+	installer := &fakeInstaller{}
+	audit := &fakeAuditor{}
+
+	_, priv, _ := ed25519.GenerateKey(nil)
+	pub, _ := priv.Public().(ed25519.PublicKey)
+	// The signer is trusted — a genuine signature and an already-trusted key
+	// alone must NOT be enough to install.
+	if err := trust.Add(blueprint.TrustedSigner{Fingerprint: blueprint.Fingerprint(pub), PublicKey: base64Std(pub)}); err != nil {
+		t.Fatalf("trust.Add: %v", err)
+	}
+	// The artifact's real manifest declares netWrite alongside netRead...
+	m := hub.PluginManifest{
+		ID: "sneaky-tiles", Name: "Sneaky Tiles", Version: "1.0", APIVersion: "v1", Transport: "grpc", Endpoint: "/opt/sneaky",
+		ExtensionPoints: []string{"dashboardTile"}, Capabilities: []string{"netRead", "netWrite"},
+	}
+	art := signPluginArtifact(t, m, priv)
+
+	// ...but the catalog entry an operator reviews before installing shows
+	// only netRead — the under-display an operator must be protected from.
+	client := &fakeHubClient{
+		index: hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{
+			Type: hub.TypePlugin, ID: "sneaky-tiles", Version: "1.0",
+			Capabilities: []string{"netRead"}, ExtensionPoints: []string{"dashboardTile"},
+		}}},
+		plugins: map[string]hub.PluginArtifact{"sneaky-tiles": art},
+	}
+	auth := blueprintTestAuth(map[string]bool{"netRead": true, "netWrite": true})
+	r := newHubTestRouter(t, client, nil, nil, trust, installer, audit, auth)
+
+	rec := do(t, r, http.MethodPost, "/api/v1/hub/install", map[string]any{"type": "plugin", "id": "sneaky-tiles", "version": "1.0"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 with a gate verdict: %s", rec.Code, rec.Body.String())
+	}
+	var resp hubInstallResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Status != hubStatusCapabilityMismatch {
+		t.Fatalf("status = %q, want %q", resp.Status, hubStatusCapabilityMismatch)
+	}
+	if len(installer.installed) != 0 {
+		t.Fatalf("installer must never be reached on a capability mismatch, got %+v", installer.installed)
+	}
+	var denied bool
+	for _, e := range audit.entries {
+		if e.Action == "hub.install" && e.Result == "denied" {
+			denied = true
+		}
+	}
+	if !denied {
+		t.Fatalf("the refused install wrote no denial audit row (rows: %+v)", audit.entries)
+	}
+
+	// A mismatched extensionPoints set is refused the same way, independent
+	// of Capabilities agreeing.
+	m2 := m
+	m2.ID = "sneaky-tiles-2"
+	m2.Capabilities = []string{"netRead"}
+	m2.ExtensionPoints = []string{"dashboardTile", "findingProducer"}
+	art2 := signPluginArtifact(t, m2, priv)
+	client2 := &fakeHubClient{
+		index: hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{
+			Type: hub.TypePlugin, ID: "sneaky-tiles-2", Version: "1.0",
+			Capabilities: []string{"netRead"}, ExtensionPoints: []string{"dashboardTile"},
+		}}},
+		plugins: map[string]hub.PluginArtifact{"sneaky-tiles-2": art2},
+	}
+	r2 := newHubTestRouter(t, client2, nil, nil, trust, installer, audit, auth)
+	rec2 := do(t, r2, http.MethodPost, "/api/v1/hub/install", map[string]any{"type": "plugin", "id": "sneaky-tiles-2", "version": "1.0"})
+	var resp2 hubInstallResponse
+	_ = json.Unmarshal(rec2.Body.Bytes(), &resp2)
+	if resp2.Status != hubStatusCapabilityMismatch {
+		t.Fatalf("status = %q, want %q (extensionPoints mismatch)", resp2.Status, hubStatusCapabilityMismatch)
+	}
+	if len(installer.installed) != 0 {
+		t.Fatalf("installer must never be reached on an extensionPoints mismatch, got %+v", installer.installed)
 	}
 }
 

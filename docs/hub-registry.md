@@ -1,4 +1,4 @@
-# The hosted blueprint & plugin registry (T-2803)
+# The hosted blueprint & plugin registry (T-2803, T-2104)
 
 How the registry `internal/hub` browses is published, reviewed, signed and
 revoked. Companion to `docs/features/blueprints.md` §7 (the client) and
@@ -140,7 +140,19 @@ A reviewer reads the submission diff and checks, at minimum:
 by reading a diff: that the artifact's identity agrees with its entry, that the
 entry advertises the artifact's *own* signature, that the artifact URL is the
 derived one, and that the signature verifies over the exact bytes being
-published.
+published. It does not need to separately re-check that a plugin entry's
+`capabilities`/`extensionPoints` agree with the artifact's manifest, because
+`vnproxctl hub publish` *derives* those catalog fields from the manifest in
+the first place (`hubreg.BuildSubmission`) — a submission built through the
+documented tooling cannot disagree with itself. The daemon does not lean on
+that alone, though: **`POST /hub/install` (T-2104) independently refuses an
+install whose catalog entry and downloaded artifact disagree about
+capabilities or extension points**, before any signature/trust decision —
+status `capabilityMismatch`, no trust flag overrides it (`docs/security.md`'s
+Hub section). That is the belt this table's "minimum scope" row is the
+suspenders for: an operator's install decision is made against what
+`GET /hub/index` showed them, so installing something else, however it
+happened, is refused rather than silently allowed.
 
 ### 3. Reviewer: index it
 
@@ -225,10 +237,27 @@ new key.
 
 - **Exists in this repository:** the index format, the signing/verification
   code (`internal/hubreg`), the client-side gate, the publisher/reviewer CLI
-  (`vnproxctl hub`), and this process.
+  (`vnproxctl hub`), this process, and (T-2104) the registry's first real
+  content: `internal/hub/seed` ships four seeded blueprints — homelab
+  single-node, three-node Ceph cluster storage, VLAN-segmented SMB branch
+  office, and a DMZ fronting a WireGuard site-to-site tunnel (the last one
+  PARTIAL, like the bundled EVPN starter: blueprint v1 has no `wg.*` entity
+  kind, so it provisions the DMZ segment only — see the package's doc
+  comment). Every seed is validated, instantiates to the documented
+  changeset against a bare fixture and to zero ops against an
+  already-conforming one, and the three-node Ceph seed's produced ops are
+  additionally applied through a real `internal/pve.Client` against a
+  running `internal/pvemock` server and read back to confirm the exact
+  zone/vnet/subnet topology landed (`internal/hub/seed`'s tests).
+  `cmd/vnproxctl`'s `TestHubCLI_SeedBlueprintsPublishReviewIndex` walks the
+  submission/review process above once, end to end, with each seed as the
+  real bundle: signed, submitted, indexed, verified, and the published
+  artifact read back and re-verified to confirm real multi-entity content —
+  not the placeholder fixture — survives the pipeline intact.
 - **Does not exist yet:** the hosted registry itself. No domain, no bucket, no
   `gh-pages` branch, and no CI job that deploys one — this repository has no
   registry hosting to point at, so nothing here has been exercised against a
-  real static host. The seeded blueprint library T-2104 describes (homelab,
-  three-node Ceph, VLAN-segmented SMB, DMZ with WireGuard) is likewise not
-  published; the tooling to publish it exists, the content does not.
+  real static host, and the four seeded blueprints above are not published
+  anywhere an operator's `[hub] registry_url` could reach. Publishing them is
+  the same `vnproxctl hub publish`/`hub index` steps this document already
+  describes, run once real hosting exists.

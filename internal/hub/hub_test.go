@@ -131,6 +131,58 @@ func TestVettedSet(t *testing.T) {
 	}
 }
 
+// TestCapabilityMismatch is T-2104 AC2's unit-level coverage for the
+// pre-install "what was shown must equal what is granted" gate: an entry
+// whose Capabilities/ExtensionPoints agree with the manifest (set-wise,
+// order-independent) reports no mismatch (the positive leg); one that
+// disagrees in either field does (the negative leg, both directions —
+// narrower-shown and wider-shown are both a mismatch, since either means the
+// catalog and the artifact disagree about what installing this grants).
+func TestCapabilityMismatch(t *testing.T) {
+	m := PluginManifest{ID: "p", Capabilities: []string{"netRead", "netWrite"}, ExtensionPoints: []string{"dashboardTile"}}
+
+	t.Run("agrees exactly", func(t *testing.T) {
+		e := Entry{Capabilities: []string{"netRead", "netWrite"}, ExtensionPoints: []string{"dashboardTile"}}
+		if got := CapabilityMismatch(e, m); got != "" {
+			t.Fatalf("CapabilityMismatch = %q, want no mismatch", got)
+		}
+	})
+
+	t.Run("agrees out of order", func(t *testing.T) {
+		e := Entry{Capabilities: []string{"netWrite", "netRead"}, ExtensionPoints: []string{"dashboardTile"}}
+		if got := CapabilityMismatch(e, m); got != "" {
+			t.Fatalf("CapabilityMismatch = %q, want no mismatch (order must not matter)", got)
+		}
+	})
+
+	t.Run("catalog under-advertises capabilities", func(t *testing.T) {
+		e := Entry{Capabilities: []string{"netRead"}, ExtensionPoints: []string{"dashboardTile"}}
+		if got := CapabilityMismatch(e, m); got == "" {
+			t.Fatal("expected a mismatch: the catalog showed less than the manifest grants")
+		}
+	})
+
+	t.Run("catalog over-advertises capabilities", func(t *testing.T) {
+		e := Entry{Capabilities: []string{"netRead", "netWrite", "fwWrite"}, ExtensionPoints: []string{"dashboardTile"}}
+		if got := CapabilityMismatch(e, m); got == "" {
+			t.Fatal("expected a mismatch: the catalog showed more than the manifest actually grants")
+		}
+	})
+
+	t.Run("extensionPoints disagree independent of capabilities agreeing", func(t *testing.T) {
+		e := Entry{Capabilities: []string{"netRead", "netWrite"}, ExtensionPoints: []string{"findingProducer"}}
+		if got := CapabilityMismatch(e, m); got == "" {
+			t.Fatal("expected a mismatch on extensionPoints")
+		}
+	})
+
+	t.Run("both empty is not a mismatch", func(t *testing.T) {
+		if got := CapabilityMismatch(Entry{}, PluginManifest{ID: "p"}); got != "" {
+			t.Fatalf("CapabilityMismatch = %q, want no mismatch for two empty sets", got)
+		}
+	})
+}
+
 func TestCanonicalManifestBytes_Deterministic(t *testing.T) {
 	m := PluginManifest{ID: "p", Name: "P", Version: "1", APIVersion: "v1", Transport: "grpc", ExtensionPoints: []string{"dashboardTile"}, Capabilities: []string{"netRead"}}
 	a, err := CanonicalManifestBytes(m)

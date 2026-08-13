@@ -109,6 +109,55 @@ func (e Entry) SignerFingerprint() string {
 	return e.Signature.PublicKeyFingerprint
 }
 
+// CapabilityMismatch compares a catalog entry's advertised plugin
+// Capabilities/ExtensionPoints (T-1705 AC4's pre-install review surface —
+// what GET /hub/index shows an operator before they click install) against
+// the manifest of the artifact that would actually be installed, and reports
+// a human-readable description of the first disagreement, or "" if they
+// agree.
+//
+// This exists because the index entry and the artifact are two separate
+// pieces of registry-served data: the entry is catalog metadata a reviewer
+// or a compromised/buggy registry controls, while the artifact's manifest
+// (downloaded and, when signed, cryptographically verified) is what
+// plugin.Registry.Install actually grants a scope from. Nothing fetched from
+// a registry is trusted merely because the registry served it — so a hub
+// plugin install must not silently install a wider (or merely different)
+// capability/extension-point scope than what the catalog showed the operator
+// before they consented (T-2104 AC2: "a mismatch fails a test"). The
+// comparison is order-independent (a set, not a sequence) so a reviewer
+// tool's re-ordering can never itself be flagged as a mismatch.
+func CapabilityMismatch(entry Entry, m PluginManifest) string {
+	if !sameStringSet(entry.Capabilities, m.Capabilities) {
+		return fmt.Sprintf("catalog capabilities %v disagree with the artifact manifest's own %v", entry.Capabilities, m.Capabilities)
+	}
+	if !sameStringSet(entry.ExtensionPoints, m.ExtensionPoints) {
+		return fmt.Sprintf("catalog extensionPoints %v disagree with the artifact manifest's own %v", entry.ExtensionPoints, m.ExtensionPoints)
+	}
+	return ""
+}
+
+// sameStringSet reports whether a and b contain the same strings, ignoring
+// order and nil-vs-empty.
+func sameStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[string]int, len(a))
+	for _, s := range a {
+		counts[s]++
+	}
+	for _, s := range b {
+		counts[s]--
+	}
+	for _, c := range counts {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // PluginManifest is the plugin artifact's self-description — the exact field
 // set internal/plugin.Manifest carries, as a stable JSON wire shape. A plugin
 // artifact is `{manifest, signature}` where the signature is an Ed25519
