@@ -39,7 +39,24 @@ func mainRun(args []string, stdout, stderr io.Writer) int {
 	// port and store path, and X must not configure a PVE endpoint.
 	demoMode := fs.Bool("demo", false, "run against the embedded synthetic cluster: no Proxmox VE endpoint, no outbound network, every mutating API a no-op that reports what it would have done")
 	demoDir := fs.String("demo-dir", "", "where `--demo` keeps its config, store and throwaway TLS keypair (default: $XDG_STATE_HOME/vnprox-demo). Ignored when --config is given.")
+	// T-2802: the hosted read-only demo. Strictly an addition to --demo, not
+	// an alternative to it — see the refusal below.
+	publicDemo := fs.Bool("public-demo", false, "serve a public, read-only demo: every mutating route is refused at the edge, each visitor gets their own session, and per-visitor resource caps apply. Requires --demo.")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	// A public demo is a demo with an edge in front of it. Allowing
+	// --public-demo alone would mean an operator could put a read-only
+	// façade in front of a daemon that still holds real PVE credentials and
+	// believe it safe — the edge refuses writes, but the daemon behind it
+	// can still reach the cluster, and that is one misconfigured route away
+	// from mattering. Demo mode is what makes "there is nothing real behind
+	// this" true; the edge only makes "and you cannot write to it" true.
+	if *publicDemo && !*demoMode {
+		if _, err := fmt.Fprintln(stderr, "vnproxd: --public-demo requires --demo: a public instance must have nothing real behind it"); err != nil {
+			return 1
+		}
 		return 2
 	}
 
@@ -57,7 +74,7 @@ func mainRun(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	opts := daemonOptions{ConfigPath: *configPath, Demo: *demoMode, DemoDir: *demoDir}
+	opts := daemonOptions{ConfigPath: *configPath, Demo: *demoMode, DemoDir: *demoDir, PublicDemo: *publicDemo}
 	if *demoMode && !isFlagSet(fs, "config") {
 		// The zero-argument demo form: there is no config file yet, and
 		// /etc/vnprox/vnprox.toml (this flag's default) is emphatically not
@@ -78,6 +95,9 @@ type daemonOptions struct {
 	ConfigPath string
 	DemoDir    string
 	Demo       bool
+	// PublicDemo (T-2802) puts internal/publicdemo's edge in front of the
+	// whole handler. Only ever true alongside Demo.
+	PublicDemo bool
 }
 
 // isFlagSet reports whether name was given on the command line, as opposed

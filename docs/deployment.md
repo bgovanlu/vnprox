@@ -29,6 +29,14 @@ root and no configuration — everything lands under
 `$XDG_STATE_HOME/vnprox-demo`. Log in with `root` / `vnprox-mock` / realm
 `pam`. See docs/features/demo-mode.md.
 
+Adding `--public-demo` (which requires `--demo`) puts a read-only edge in
+front of the whole daemon: every mutating route is refused with 403 before
+the router sees it, there is no login screen — each visitor gets their own
+session, minted server-side — and per-visitor request and state caps apply
+so one visitor cannot degrade the instance for another. That is the shape a
+hosted demo would run in. **There is no hosted instance**, and the gaps
+between this flag and one are listed in docs/features/demo-mode.md.
+
 ### Quick install (script)
 
 ```bash

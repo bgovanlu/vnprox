@@ -1,0 +1,57 @@
+# demo-public.toml — the e2e suite's HOSTED demo stack (T-2802).
+#
+#   vnproxd --demo --public-demo --config testdata/demo-public.toml
+#
+# A copy of testdata/demo.toml with its own port and its own state paths,
+# and NOT a reuse of it: the two daemons assert incompatible things about
+# the same routes (a plain demo answers POST /changesets with 200 "would
+# have"; a public demo answers 403 before the router sees it), so they
+# cannot be the same process, and a shared config file would put their
+# stores in the same place.
+#
+# THERE IS DELIBERATELY NO [pve] SECTION, AND THERE MUST NEVER BE ONE — see
+# testdata/demo.toml's header. --public-demo does not weaken that: it
+# requires --demo (cmd/vnproxd/main.go refuses the flag alone), so every
+# refusal config.LoadDemo makes applies here too.
+
+[server]
+# T-2108's dev-only login-limiter override, and here it is doing more work
+# than in the other configs: a public demo mints ONE SESSION PER VISITOR,
+# through the daemon's own login handler, from one source address in a test.
+# internal/auth's limiter is keyed (IP, username) and defaults to 10 —
+# which a public instance would hit for real behind a NAT. That is a named
+# gap in docs/features/demo-mode.md, not something this file fixes.
+dev_login_rate_capacity = 500
+dev_login_rate_refill_seconds = 1
+listen = "127.0.0.1:25007"
+tls_cert = "testdata/certs/dev-cert.pem"
+tls_key = "testdata/certs/dev-key.pem"
+read_only = false
+confirm_timeout_default = 120
+
+[safety]
+allow_dangerous_ops = false
+protected_path = "var/demo-public-protected.json"
+dev_interfaces_dir = "var/demo-public-host"
+
+[storage]
+db_path = "var/demo-public-vnprox.db"
+session_key_file = "var/demo-public-session.key"
+
+[peer]
+secret_path = "var/demo-public-cluster.secret"
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"
+
+[metrics]
+key_file = "var/demo-public-metrics.key"
+
+[blueprint]
+signing_key_file = "var/demo-public-blueprint-signing.key"
+trusted_signers_dir = "var/demo-public-trusted-signers"
+
+[capture]
+root = "var/demo-public-captures"

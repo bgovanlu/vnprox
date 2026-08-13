@@ -365,6 +365,31 @@ configuration:
 endpoint, and the API refuses to configure an external endpoint while one is
 running. See docs/features/demo-mode.md.
 
+### 9b. The public-demo edge (T-2802)
+
+`--public-demo` (which requires `--demo`) wraps the whole handler in
+`internal/publicdemo`, a fourth substitution and the only one that is not
+inside the daemon: it is in front of routing, authentication, and demo
+mode's own middleware.
+
+- **Refusal is by method, not by route.** Anything that is not GET, HEAD or
+  OPTIONS is 403 — including `POST /auth/login`, and including the
+  POST-shaped read surfaces (`/simulate/path`, `/diagnose`, MCP), which is a
+  known cost rather than an oversight.
+- **A session per visitor, minted server-side.** The edge drives the
+  daemon's own login handler in-process, so a visitor's session is an
+  ordinary session with an ordinary audit entry, and the session cookie
+  never leaves the server. Inbound session cookies are stripped.
+- **Per-visitor state lives at the edge**, under `/demo/visitor/*` — in
+  memory, keyed by an opaque cookie, and deliberately outside
+  `docs/openapi.json`, because the daemon's own app-owned-state routes are
+  refused like every other write.
+- **Every cap is per-visitor** except the visitor count, so exceeding one
+  degrades the visitor who did it and nobody else.
+
+This is the shape a hosted demo would run in. There is no hosted instance;
+see docs/features/demo-mode.md's gap list.
+
 ## 10. Key decisions (locked)
 
 | # | Decision | Rationale |

@@ -54,9 +54,10 @@
   {
     "name": "shard-4",
     "slot": 3,
-    "why": "Owns the phys-collapse and k8s stacks, and a11y.spec.ts — the single longest file in the suite at 78s.",
+    "why": "Owns the phys-collapse and k8s stacks, and a11y.spec.ts — the single longest file in the suite at 78s. T-2802's public-demo stack lives here: it is the cheapest kind of stack there is (one daemon, no mock, like T-2801's), this shard carried the fewest spec files before it was added, and putting it here keeps the two demo daemons in different shards — one shard failing must not take out both halves of the demo story, and shard-1 already pays for scale-lab's 180s boot.",
     "specs": [
       "a11y.spec.ts",
+      "public-demo.spec.ts",
       "conntrack.spec.ts",
       "dashboard.spec.ts",
       "guest-interior.spec.ts",
