@@ -845,6 +845,24 @@ Two changes came out of it:
 
 ### T-2505-followup-02 · the guest-interior panel never refetches after its toggle is enabled
 
+> **Resolved 2026-08-13 — and the title above is wrong.** The invalidation this card says is
+> missing was already present and always had been: `useSetGuestInteriorToggleMutation`'s
+> `onSuccess` invalidates both the toggle key and the interior key. The panel was stuck for a
+> different reason. `useGuestInteriorQuery` returned `undefined` from its queryFn to mean "nothing
+> to show yet", and TanStack Query v5 treats that as a bug — `Query.fetch()` throws "data is
+> undefined" and forces the query into `isError`, which *is* the amber "Could not read this
+> guest's interior right now" branch. The query was not holding a stale success; it was parked in
+> a **synthetic error**, and no amount of refetching could clear it. The sentinel is now `null`.
+>
+> Worth keeping as a reading lesson: the log below is a completely accurate record of the
+> requests, and the inference drawn from it — "nothing follows the PUT, therefore nothing
+> invalidated" — was still wrong. Silence after the PUT was consistent with two different causes,
+> and the card committed to the one that would have been fixed by adding code that was already
+> there. What distinguished them was not in the daemon log at all; it was in the client's own
+> query state.
+
+
+
 **kind:** defect · **found by:** T-2505's two-core reproduction · **reproduces:** `taskset -c 0,1`
 running shard-4 whole, 2 of 3 runs
 
