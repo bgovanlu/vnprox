@@ -215,6 +215,90 @@ The design rule is **redacted by construction, not by review**:
   health status and certificate metadata in a bundle. `--no-probe` makes a bundle from local files
   only.
 
+## Compatibility telemetry (T-2503)
+
+A support bundle is something an operator posts once, deliberately, about a problem. **Compatibility
+telemetry is something an operator opts into repeatedly, about a machine that is working fine** — so
+it gets a stricter rule than "redacted by construction": it is *enumerated* by construction. There
+is a fixed list of fields, it is below, and a field that is not on it does not exist in the code.
+
+**It is off, and off is structural.** `[telemetry] enabled` defaults to `false` and the shipped
+`/etc/vnprox/vnprox.toml` ships the section commented out entirely. There is also **no default
+endpoint**: vnprox runs no telemetry service, so opting in means naming an `https://` collector
+yourself. With either half missing, `internal/telemetry.Submit` returns before an HTTP client is
+constructed — the "nothing was sent" claim is asserted in tests by a transport that fails the test
+if it is called at all, with a control case proving that same transport *does* record a call when
+something genuinely reaches the network.
+
+**What you see is what is sent.** `vnproxctl telemetry preview` prints the exact bytes. Not an
+equivalent rendering: the payload is marshalled exactly once into a buffer, and preview writes that
+buffer while send posts that same buffer. A test captures the output of the preview command and the
+body observed by the transport and compares them byte for byte.
+
+**What is collected — the complete list.** Every field below is compared against the payload struct
+on every `make check` (`internal/telemetry.TestDocSectionMatchesPayload`), in both directions: a
+field added to the code without a row here fails the build, and a row here with no field behind it
+fails too.
+
+<!-- telemetry-fields:begin -->
+
+| Field | Type | What it is | Why it carries no identity |
+|---|---|---|---|
+| `payloadVersion` | number | The reduction's schema version, currently `1`. | A constant compiled into the build. |
+| `installId` | string | A ULID generated locally on first send; the only correlator. | Random (crypto/rand), never derived from the machine, resettable with `vnproxctl telemetry reset-id`. |
+| `vnproxVersion` | string | The `vnproxctl` build that ran the suite, e.g. `3.0.3`. | The same string for everyone running that release. |
+| `pveVersion` | string | What PVE reported, e.g. `pve-manager/9.2.4`. | A package version; identical across every cluster on that release. |
+| `kernel` | string | `uname -r` from the node the suite ran on, e.g. `6.8.12-4-pve`. | A kernel package version. Scanned before send anyway, because a locally built kernel can carry a hostname in its release string. |
+| `nicPciIds` | string list | PCI `vendor:device` ids of the NICs seen, e.g. `0x8086:0x1521`. | Hardware model ids. The interface names and modalias strings that sit beside them in the report are dropped, because `tap101i0` names a guest. |
+| `nodeCount` | number | How many cluster members the run saw. | A count. Node names are never in the payload. |
+| `suite` | string | Which suite ran: `hardware`, `multinode`, `destructive`, or `selection`. | One of four fixed words. |
+| `checks[].id` | string | The check's registry id, e.g. `drift.config_vs_live`. | Compiled into the binary; the same ids on every install. |
+| `checks[].status` | string | `pass`, `fail` or `skip`. | One of three fixed words. |
+| `checks[].durationMs` | number | How long that check took. | A duration, useful for spotting a check that has become a timeout on hardware we do not have. |
+
+<!-- telemetry-fields:end -->
+
+**What is deliberately absent**, all of which the report being reduced *does* contain: node names,
+the PVE endpoint URL, any IP address, any MAC, any guest name, the cluster name, every check's
+`detail`/`skipReason` free text, and every `evidence` body (which routinely quotes command output,
+API responses and addresses). No timestamp of ours is sent either — the collector's receipt time is
+enough, and a local clock is a fingerprint.
+
+**The payload is checked, not trusted.** Immediately before any send, and again before any preview,
+the marshalled bytes are scanned by `internal/telemetry.Guard`, which runs on the *payload* rather
+than on the *type* — a `string` field named `kernel` can hold a hostname, and the requirement is
+that such a payload fails rather than ships. Three layers:
+
+- **Shape rules**: anything that parses as an IPv4/IPv6 address, anything MAC-shaped, and any dotted
+  FQDN-shaped name, wherever in the document it appears — object keys included.
+- **Known-value rules**: hostnames and guest/cluster names have no recognisable shape, so the node
+  names and endpoint host of the report being reduced are searched for as literal substrings. This
+  over-matches on purpose: a node genuinely named `pve` matches the `-pve` in a Proxmox kernel
+  string and that install refuses to send until it is renamed. A refusal costs a data point; a miss
+  costs somebody their hostname.
+- **A closed schema**: every key must be one of the documented fields and every value must match its
+  documented shape (`installId` must be a ULID, `checks[].status` must be one of three words,
+  `nicPciIds` entries must be `0xVVVV:0xDDDD`). There is no pass-through branch, so an
+  undocumented field cannot be sent even if it were added to the struct.
+
+There is one exemption, stated rather than hidden: the FQDN shape rule does not run on
+`checks[].id`, because `drift.config_vs_live` is shape-identical to a hostname and the rule would
+refuse every payload ever built. That field is instead bounded by the closed schema, is populated
+only from the compiled-in check registry, and is still scanned by the MAC, address and known-value
+rules.
+
+**Reset.** `vnproxctl telemetry reset-id` deletes the stored id and inserts a fresh ULID; no query
+returns the old value afterwards, and nothing records what it was — no audit row, no log line, no
+"previous" column. The honest residual: SQLite may retain the freed page holding the old string in
+the database file until that page is reused or the store is compacted, so a reset is a promise about
+what the store *returns*, not about raw bytes on the disk.
+
+**Failure is never fatal.** A send from `vnproxctl verify` runs in the background and is never
+waited on: a collector that hangs cannot delay or block a verify run, and the run's verdicts, output
+and exit code do not depend on it. The consequence is stated rather than hidden — a send still in
+flight when the command exits is abandoned, which is why the reliable path is the operator's own
+foreground `vnproxctl telemetry send`.
+
 ## Authorization
 
 Two enforcement layers, both required:

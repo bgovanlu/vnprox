@@ -28,6 +28,28 @@ functionality is folded into `[2.0.0]`.
 
 ### Added
 
+- **You can now help build the compatibility matrix, if you want to — and see exactly what that
+  would send.** One cluster validated by us is an anecdote; a hundred clusters reporting which
+  `vnproxctl verify` checks pass on which PVE version, kernel and NIC is a matrix. T-2503 adds
+  `vnproxctl telemetry`, and every part of it is built around the fact that nobody should have to
+  take our word for what leaves their cluster:
+
+  - **It is off, and it has no endpoint.** `[telemetry] enabled` defaults to false and the shipped
+    `vnprox.toml` has the section commented out entirely. vnprox also ships no default collector
+    URL — there is no vnprox telemetry service — so opting in means naming an `https://` endpoint
+    yourself. `enabled = true` with no endpoint is a startup error rather than a quiet no-op.
+  - **`vnproxctl telemetry preview` prints the exact bytes.** Not an equivalent rendering: the
+    payload is encoded once and both the preview and the send read that one buffer, which a test
+    proves by capturing both and comparing them.
+  - **What is collected is a fixed, documented list**: check ids and verdicts, the vnprox/PVE/kernel
+    versions, the NICs' PCI vendor:device ids, and a node *count*. Never a hostname, address, MAC,
+    guest name or cluster name — `docs/security.md` lists every field, a build fails if that list
+    and the code disagree, and a payload containing any of those things is refused before it is
+    sent, naming the rule and the value.
+  - **The only correlator is a random local ULID**, thrown away by `vnproxctl telemetry reset-id`.
+  - **A failed or hanging collector cannot affect a `verify` run**, and a run against a mock PVE
+    endpoint is never sent at all.
+
 - **The map can now carry what you know, not just what is true.** "This uplink is temporary until
   the switch swap." "Vendor-managed, do not touch." That knowledge lived in a wiki that was wrong
   within a month, because it was not next to the thing it described. T-2806 puts it on the map:

@@ -288,6 +288,43 @@ type MCPConfig struct {
 	Enabled bool
 }
 
+// TelemetryConfig is the [telemetry] section (T-2503): the opt-in
+// compatibility report `vnproxctl telemetry send` submits — check ids and
+// verdicts, versions, kernel, NIC hardware ids and a node COUNT, and nothing
+// else (docs/security.md, "Compatibility telemetry (T-2503)").
+//
+// It is deliberately NOT a field on Config. The daemon never sends
+// telemetry — the sender is the operator's own `vnproxctl telemetry`, which
+// reads this section through LoadTelemetryOnly — so vnproxd does not carry
+// the endpoint in memory at all, and no future daemon-side code path can
+// pick it up by accident from a config struct it already had. What Load
+// DOES do is validate the section (ValidateTelemetry, below), so an opt-in
+// with a typo in it is a loud startup failure on the node the operator
+// edited rather than a silence they discover months later.
+//
+// The zero value is the shipped default and it is off in two independent
+// ways: Enabled is false, and Endpoint is empty. vnprox ships NO default
+// collector URL — there is no vnprox telemetry service, and a build that
+// carried an endpoint would be one config-parsing bug away from contacting
+// it. Turning telemetry on therefore requires an operator to name the
+// collector themselves, which is what makes "no endpoint is contacted until
+// an operator sets it" checkable rather than promised.
+//
+// enabled = true with no endpoint is FATAL rather than silently off: an
+// operator who opted in and got nothing would have no way to tell that from
+// a collector that never answered.
+type TelemetryConfig struct {
+	// Endpoint is the collector's absolute https:// URL. Required when
+	// Enabled; https is required — a compatibility report is not secret, but
+	// it carries the install-id correlator, and a plaintext default path
+	// invites a network that rewrites it.
+	Endpoint string
+	// Enabled is the master switch. False — the default, and the value in
+	// the shipped packaging/config/vnprox.toml — means no payload is built,
+	// no store read for the install-id, and no request made.
+	Enabled bool
+}
+
 // HAConfig is the [ha] section (T-1704: active/standby daemon high
 // availability). Disabled by default (Enabled false) — a single-daemon
 // deployment behaves exactly as it did pre-T-1704. When enabled, exactly one
@@ -790,7 +827,13 @@ func (c CertsConfig) ExpiryWarn() time.Duration {
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
-	PVE         rawPVE         `toml:"pve"`
+	PVE rawPVE `toml:"pve"`
+	// Telemetry sits here rather than at the end with the other late
+	// additions purely for govet's fieldalignment: it is the only new
+	// section carrying a pointer (its endpoint string), and appending it
+	// after the pointer-free tail ([flows], [switches], [mcp], ...) would
+	// lengthen this struct's pointer-bearing prefix.
+	Telemetry   rawTelemetry   `toml:"telemetry"`
 	Peer        rawPeer        `toml:"peer"`
 	Collect     rawCollect     `toml:"collect"`
 	FirewallLog rawFirewallLog `toml:"firewalllog"`
@@ -848,6 +891,14 @@ type rawProtectedClass struct {
 
 type rawMCP struct {
 	Enabled bool `toml:"enabled"`
+}
+
+// rawTelemetry is [telemetry] (T-2503). There is deliberately no default for
+// `endpoint`: an absent section decodes to the zero value, which is off with
+// nowhere to send to.
+type rawTelemetry struct {
+	Endpoint string `toml:"endpoint"`
+	Enabled  bool   `toml:"enabled"`
 }
 
 type rawGitSync struct {
@@ -1070,6 +1121,13 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 		logger.Warn("config: unrecognized key, ignoring", "key", key.String(), "file", path)
 	}
 
+	// T-2503: validated here rather than in validate() because the resolved
+	// value is deliberately not carried on Config — see TelemetryConfig. An
+	// opt-in the CLI would refuse must not be one the daemon starts on.
+	if telemetryErr := ValidateTelemetry(resolveTelemetryConfig(raw.Telemetry)); telemetryErr != nil {
+		return nil, fmt.Errorf("in %s: %w", path, telemetryErr)
+	}
+
 	collect, err := resolveCollectConfig(raw.Collect)
 	if err != nil {
 		return nil, err
@@ -1283,6 +1341,42 @@ func LoadStorageOnly(path string, logger *slog.Logger) (StorageConfig, error) {
 	}, nil
 }
 
+// LoadTelemetryOnly reads just the [telemetry] section (T-2503), for the same
+// reason LoadStorageOnly exists: `vnproxctl telemetry` is a local, daemon-
+// independent command family, and running the full Load would make it fail on
+// any host without a resolvable PVE TLS certificate — a dev box, or the very
+// broken node an operator is trying to report about.
+//
+// The section's own validation IS applied (ValidateTelemetry): a config that
+// opts in without naming an https endpoint is an error here exactly as it is
+// at daemon startup, because the failure mode this guards — "I turned it on
+// and assumed it worked" — is the same in both places.
+func LoadTelemetryOnly(path string, logger *slog.Logger) (TelemetryConfig, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return TelemetryConfig{}, fmt.Errorf("reading config file %s: %w", path, err)
+	}
+
+	var raw rawConfig
+	meta, err := toml.Decode(string(data), &raw)
+	if err != nil {
+		return TelemetryConfig{}, fmt.Errorf("%w: parsing config file %s: %v", ErrInvalidConfig, path, err)
+	}
+	for _, key := range meta.Undecoded() {
+		logger.Warn("config: unrecognized key, ignoring", "key", key.String(), "file", path)
+	}
+
+	cfg := resolveTelemetryConfig(raw.Telemetry)
+	if err := ValidateTelemetry(cfg); err != nil {
+		return TelemetryConfig{}, fmt.Errorf("in %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
 // validate checks semantic constraints beyond what TOML decoding enforces
 // and resolves the effective TLS certificate/key paths. It is the single
 // place acceptance-criterion-4 failures (bad listen address, missing cert
@@ -1334,6 +1428,42 @@ func (c *Config) validate() error {
 		return err
 	}
 
+	return nil
+}
+
+// resolveTelemetryConfig maps the raw [telemetry] section. It defaults
+// nothing: an absent section is off, with no endpoint.
+func resolveTelemetryConfig(raw rawTelemetry) TelemetryConfig {
+	return TelemetryConfig{
+		Enabled:  raw.Enabled,
+		Endpoint: strings.TrimSpace(raw.Endpoint),
+	}
+}
+
+// ValidateTelemetry is the [telemetry] section's semantic check, exported so
+// the CLI's LoadTelemetryOnly applies exactly the same rules the daemon's
+// full Load does rather than a second, drifting copy.
+//
+// Disabled (the default) is always valid, whatever else the section says —
+// an operator who left a commented-out endpoint behind after turning
+// telemetry off should not be unable to start.
+func ValidateTelemetry(t TelemetryConfig) error {
+	if !t.Enabled {
+		return nil
+	}
+	if t.Endpoint == "" {
+		return fmt.Errorf("%w: telemetry.enabled is true but telemetry.endpoint is empty. vnprox ships no default collector: opting in means naming the https:// endpoint the report goes to", ErrInvalidConfig)
+	}
+	u, err := url.ParseRequestURI(t.Endpoint)
+	if err != nil {
+		return fmt.Errorf("%w: telemetry.endpoint %q: %v", ErrInvalidConfig, t.Endpoint, err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("%w: telemetry.endpoint %q must be https (got scheme %q)", ErrInvalidConfig, t.Endpoint, u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("%w: telemetry.endpoint %q names no host", ErrInvalidConfig, t.Endpoint)
+	}
 	return nil
 }
 
