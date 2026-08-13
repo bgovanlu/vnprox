@@ -812,6 +812,35 @@ store check above was looking in the wrong place.
 
 **Do not close it by re-running until it is green.** It is deterministic in the arrangement above.
 
+**Attempt 2026-08-13 — still open. The experiment was set up wrong, and the setup is the finding.**
+
+Baseline first: `npx playwright test e2e/scale.spec.ts --workers=1` on `main` today reproduces
+**1 failed / 3 passed** at 3.5 min, so the defect is still live and still needs its two file-mates.
+
+The prescribed experiment then needs one long-lived daemon across three separate Playwright
+invocations. `shards.ts` sets `reuseExistingServer: false`, so each invocation starts and kills its
+own daemon; the daemon has to be started by hand and reuse temporarily enabled. Done that way, all
+**three** invocations failed — including the initial-render test, which passes in every normal
+arrangement. That result is not evidence about browser-vs-daemon; it is evidence the harness was
+broken, and the daemon log says exactly how:
+
+```
+auth: establishing session ... SQL logic error: no such table: sessions (1)
+```
+
+The hand-started daemon came up healthy (`/health` 200) and served the SPA, but its store had
+never been migrated — no `dev-scale-vnprox.db` was created at the configured `db_path` at all. So
+something other than `vnproxd --config` alone provisions that store in the real harness, and until
+that is understood a hand-started daemon is not the same daemon the failing run uses. Chasing it
+further was stopped deliberately rather than half-done.
+
+**Two things a later attempt should carry forward.** First, find how the store actually gets
+created/migrated for a stack (`scripts/e2e-shards.sh`, or whatever the webServer wrapper does)
+before hand-starting anything — a daemon that answers `/health` is not necessarily a daemon that
+works. Second, run it on a genuinely quiet machine: this attempt ran with four other agents
+active, and `T-2505-input-03` is the standing reminder that "idle" on this host has to be checked,
+not assumed. The quarantine (2026-09-15) has room for that.
+
 ### The load hypothesis, tested rather than assumed — and half-confirmed
 
 `T-2505-input-02` asked for one experiment: re-run the two specs the hosted runner fails under
