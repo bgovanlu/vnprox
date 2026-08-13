@@ -18,10 +18,28 @@ function formatTimestamp(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toLocaleString();
 }
 
-function CommentThread({ changesetId, comments }: { changesetId: string; comments: ChangesetComment[] }) {
+/** The posted comments. `label` gives the list an accessible name, which is
+ * not decoration: without it the only way to look for a comment is a bare
+ * text search over the whole review dialog, and that also matches the
+ * compose <textarea> next to it — React keeps a controlled textarea's typed
+ * value in its `defaultValue`, i.e. its textContent, so a test (or a
+ * screen-reader user walking the dialog) cannot tell "a comment that was
+ * saved" from "text someone is still typing". change-review.spec.ts asserted
+ * exactly that way and passed while the POST behind it was still in flight.
+ * A named list is the thing that makes "this comment is on the server"
+ * expressible at all. */
+function CommentThread({
+  changesetId,
+  comments,
+  label,
+}: {
+  changesetId: string;
+  comments: ChangesetComment[];
+  label: string;
+}) {
   const deleteMutation = useDeleteCommentMutation();
   return (
-    <ul className="space-y-1.5">
+    <ul aria-label={label} className="space-y-1.5">
       {comments.map((c) => (
         <li
           key={c.id}
@@ -126,7 +144,7 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
         <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400">Changeset comments</h3>
         {changesetLevel.length > 0 && (
           <div className="mt-1.5">
-            <CommentThread changesetId={changeset.id} comments={changesetLevel} />
+            <CommentThread changesetId={changeset.id} comments={changesetLevel} label="Changeset comments" />
           </div>
         )}
         <AddCommentForm changesetId={changeset.id} />
@@ -146,7 +164,11 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
                 </p>
                 {opComments.length > 0 && (
                   <div className="mt-1.5">
-                    <CommentThread changesetId={changeset.id} comments={opComments} />
+                    <CommentThread
+                      changesetId={changeset.id}
+                      comments={opComments}
+                      label={`Comments on ${summarizeOp(op)}`}
+                    />
                   </div>
                 )}
                 {op.id ? (
@@ -171,7 +193,7 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
           <ul className="mt-1.5 space-y-3">
             {orphaned.map(([opId, list]) => (
               <li key={opId} className="rounded border border-dashed border-slate-300 p-2 dark:border-slate-700">
-                <CommentThread changesetId={changeset.id} comments={list} />
+                <CommentThread changesetId={changeset.id} comments={list} label="Comments on a removed operation" />
               </li>
             ))}
           </ul>

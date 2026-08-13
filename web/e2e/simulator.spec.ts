@@ -21,7 +21,7 @@
 // policy_in DROP; the fixture scripts vm-a's live probe toward that exact
 // tuple as "reachable"), clicking Verify live surfaces the divergence
 // callout both in the result panel and on the embedded map overlay.
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { switchToGraphView } from "./helpers";
 
 test.use({ baseURL: "https://127.0.0.1:18007" });
@@ -63,6 +63,22 @@ async function pickGuestNic(page: Page, side: "Source" | "Destination", query: s
   const result = results.getByRole("button").first();
   await expect(result).toBeVisible();
   await result.click();
+}
+
+/** The Source / Destination endpoint pickers as their own scopes.
+ *
+ * EndpointPicker.tsx renders each side as a <fieldset> with a <legend>, which
+ * is role="group" named by that legend. Asserting a ref inside its own picker
+ * — rather than anywhere on the page — is what stops these assertions from
+ * colliding with the Findings panel and the topology map, both of which also
+ * render entity refs on /tools. `pickGuestNic` above already scopes for the
+ * same reason; these exist so the surrounding assertions can too. */
+function sourcePicker(page: Page): Locator {
+  return page.getByRole("group", { name: "Source" });
+}
+
+function destinationPicker(page: Page): Locator {
+  return page.getByRole("group", { name: "Destination" });
 }
 
 const VERDICT_TEXT = /^(Allowed|Blocked|Unreachable|Could not determine)$/;
@@ -142,7 +158,14 @@ test("T-504 AC5: Trace path from the map pre-fills and runs (guest->guest, guest
   // --- guest->guest: "Trace path from here" on vm-a, then pick vm-c -----
   await traceFromContextMenu(page, "vm-a/net0", "Trace path from here");
   await page.waitForURL(/\/tools\?srcKind=guest-nic/);
-  await expect(page.getByText(/guest-nic:pve1:300\/net0/)).toBeVisible();
+  // Scoped to the Source picker's own fieldset (EndpointPicker.tsx renders a
+  // <fieldset>/<legend>, i.e. role="group" named by the legend). Unscoped,
+  // this raced the findings engine: /tools also renders the Findings panel,
+  // and once a cycle produces a finding naming this same guest NIC the plain
+  // getByText resolves to two elements and fails on strict mode — passing or
+  // failing purely on whether collection had completed yet. Seen failing
+  // 2026-08-12, before the wave it surfaced in.
+  await expect(sourcePicker(page).getByText(/guest-nic:pve1:300\/net0/)).toBeVisible();
 
   await pickGuestNic(page, "Destination", "vm-c");
   await expect(page.getByText(VERDICT_TEXT).first()).toBeVisible();
@@ -159,7 +182,7 @@ test("T-504 AC5: Trace path from the map pre-fills and runs (guest->guest, guest
   await waitForLayout(page);
   await traceFromContextMenu(page, "vm-b/net0", "Trace path to here");
   await page.waitForURL(/\/tools\?dstKind=guest-nic/);
-  await expect(page.getByText(/guest-nic:pve2:302\/net0/)).toBeVisible();
+  await expect(destinationPicker(page).getByText(/guest-nic:pve2:302\/net0/)).toBeVisible();
 
   await page.getByRole("radio", { name: "IP address" }).first().click();
   await page.getByLabel("Source IP address").fill("10.20.0.99");

@@ -193,7 +193,17 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
         STATUS_CLASSES[data.status],
         // One opacity class per node (never two competing ones, whose CSS
         // order would decide): the VLAN filter's dim wins over staleness.
-        data.dimmed && !data.highlighted ? "opacity-25" : data.stale ? "opacity-60" : "opacity-100",
+        //
+        // Staleness no longer carries an opacity at all — `grayscale` below
+        // is the whole treatment, matching SwitchFaceplate (see the longer
+        // note there). `opacity` fades a node's TEXT along with its chrome:
+        // at 0.6 this node's kind badge measured 4.30:1 (axe: fg #798098 on
+        // #17193e) against a 4.5:1 AA floor, so a node was hardest to read
+        // exactly when it was reporting that its data had stopped
+        // refreshing. The VLAN filter's `dimmed` keeps its opacity — that is
+        // a deliberate "you filtered this out" de-emphasis the user just
+        // asked for, not a health signal about the node.
+        data.dimmed && !data.highlighted ? "opacity-25" : "opacity-100",
         data.stale && "grayscale",
         data.highlighted && "ring-2 ring-blue-500",
         selected && "outline outline-2 outline-offset-1 outline-blue-600",

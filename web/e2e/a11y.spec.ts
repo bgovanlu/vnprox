@@ -58,26 +58,47 @@ async function expectNoSeriousViolations(page: Page, label: string): Promise<voi
 }
 
 /**
- * Neutralizes the collector-staleness treatment on the Switch view's node
- * faceplates (SwitchFaceplate.tsx's `stale && "opacity-60 grayscale"`)
- * for the axe measurement only. On this dev host the fixture's peer nodes
- * (pve2/pve3) are genuinely unreachable, so their host collectors go stale
- * within a minute of boot and the faceplates render greyed — dropping the
- * text/badge colors (which pass at full opacity) below the 4.5:1 threshold
- * purely because of the 0.6 opacity + grayscale filter. This is the exact
- * environment artifact topology.spec.ts already documents and normalizes
- * away for its screenshot baseline; the axe run does the same so it
- * measures the intended dark-theme design, not "how long has the shared
- * server been up with unreachable peers". Scoped to the per-node
- * `section`s (never toolbars/dialogs, whose disabled-control dimming is
- * legitimately contrast-exempt and must be measured as-is). Sets inline
- * style (allowed under docs/security.md's `style-src 'self'` CSP, unlike an
- * injected <style> — the same nuance topology.spec.ts relies on).
+ * Waits until at least one entity has gone stale, so scans that care about
+ * the stale treatment measure it rather than racing it.
  */
-async function neutralizeStaleFaceplates(page: Page): Promise<void> {
+async function waitForAStaleEntity(page: Page): Promise<void> {
+  await expect(page.locator(".grayscale").first()).toBeVisible({ timeout: 90_000 });
+}
+
+/**
+ * Neutralizes opacity/filter over the node faceplates for the axe
+ * measurement — the de-emphasis dimming only, by the time this runs.
+ *
+ * This replaces `neutralizeStaleFaceplates`, which did the same thing but
+ * justified itself as normalizing a dev-host artifact: the fixture's
+ * pve2/pve3 peers are genuinely unreachable here, so their collectors go
+ * stale within a minute of boot and the faceplates render greyed. Part of
+ * that was wrong, and it mattered (T-2505-followup-04):
+ *
+ *  - The STALE dim was a real defect, not an artifact, and it is now fixed at
+ *    source instead of normalized away. `opacity` fades a node's TEXT along
+ *    with its chrome, so a node went sub-AA (the Graph view's kind badge
+ *    measured 4.30:1 against a 4.5:1 floor) exactly when it was reporting
+ *    that its data had stopped refreshing. `stale` now sets no opacity in
+ *    either view — `grayscale` alone carries the signal. The Graph view had
+ *    no equivalent suppression, which is how axe caught it there at all, and
+ *    only intermittently, as `axe: changeset drawer`.
+ *  - What still needs neutralizing is the DE-EMPHASIS dimming: `dimmed` and
+ *    `dimVid` drop filtered-out slots to opacity-25/40 (SwitchFaceplate.tsx),
+ *    and after the stale fix those are the only opacity sources left in that
+ *    subtree. Forcing opacity:1 clears every remaining violation; forcing
+ *    filter:none alone clears none of them, which is what pins the cause on
+ *    opacity rather than on the greying. Content the user has actively
+ *    filtered out is the same contrast-exempt case as a disabled control,
+ *    and axe cannot tell the difference.
+ *
+ * The callers below now wait for a stale entity BEFORE neutralizing, so the
+ * stale state is inside what gets measured rather than being raced past — the
+ * previous version scanned early enough that it often never saw one.
+ */
+async function neutralizeFaceplateDimming(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const scope = document.querySelectorAll('section[aria-label^="node "], section[aria-label^="node "] *');
-    scope.forEach((el) => {
+    document.querySelectorAll('section[aria-label^="node "], section[aria-label^="node "] *').forEach((el) => {
       if (el instanceof HTMLElement) {
         el.style.setProperty("opacity", "1", "important");
         el.style.setProperty("filter", "none", "important");
@@ -96,10 +117,12 @@ test("axe: Dashboard", async ({ page }) => {
 test("axe: Topology (Switch view, the default)", async ({ page }) => {
   await logIn(page);
   await expect(page.getByRole("radio", { name: "Switch" })).toHaveAttribute("aria-checked", "true");
-  // Wait for at least one faceplate to mount, then neutralize the dev-host
-  // stale-collector grey (see neutralizeStaleFaceplates' doc comment).
+  // Wait for a faceplate to mount AND for the stale grey to actually be on
+  // screen, then neutralize the VLAN-filter de-emphasis dimming that remains
+  // (see neutralizeFaceplateDimming — the stale dim itself is fixed at source).
   await expect(page.getByRole("button", { name: "vmbr0 switch" }).first()).toBeVisible();
-  await neutralizeStaleFaceplates(page);
+  await waitForAStaleEntity(page);
+  await neutralizeFaceplateDimming(page);
   await expectNoSeriousViolations(page, "Topology (Switch view)");
 });
 
@@ -149,6 +172,11 @@ test("axe: changeset drawer (open, with a drafted op)", async ({ page }) => {
   await logIn(page);
   await switchToGraphView(page);
   await page.waitForFunction(() => document.querySelectorAll(".react-flow__node").length >= 10);
+  // The graph behind the drawer is in scope for this scan, and its pve2/pve3
+  // nodes go stale part-way through a run. Waiting for that makes the stale
+  // treatment part of what this measures every time, instead of a coin flip
+  // that only failed once pve2 had been unreachable for long enough.
+  await waitForAStaleEntity(page);
 
   // Minimal draft (mirrors changesets.spec.ts's own bridge-editor setup) so
   // the drawer renders real content, not just its empty state.

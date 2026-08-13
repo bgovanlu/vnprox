@@ -338,7 +338,17 @@ export function SwitchFaceplate({
         reducedMotion ? "transition-none" : "transition-opacity",
         selected ? "border-accent-600 ring-2 ring-accent-500" : "border-slate-300 dark:border-slate-700",
         dimmed && "opacity-40",
-        stale && "opacity-60 grayscale",
+        // Staleness is desaturation ONLY — deliberately no opacity. `opacity`
+        // fades this faceplate's text along with its chrome, and its port /
+        // VLAN badges are 9px tints that clear AA at full strength with very
+        // little headroom: at 0.6 axe measured 90 nodes between 2.76:1 and
+        // 4.48:1 against a 4.5:1 floor, and even 0.75 left most of them
+        // failing. Greying them out made a switch least readable exactly when
+        // it was reporting that its data had stopped refreshing. `grayscale`
+        // carries the same "this is not live" signal without touching the
+        // contrast of a single glyph. See e2e/a11y.spec.ts, which now waits
+        // for a stale entity and measures it instead of forcing it opaque.
+        stale && "grayscale",
         // T-905: drift = pulse when motion is allowed (falls back to the
         // model's own static status border/dashed treatment otherwise) —
         // this faceplate's own equivalent of EntityNode's drift pulse, kept

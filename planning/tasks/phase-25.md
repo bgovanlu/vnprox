@@ -542,6 +542,120 @@ does not rule out load as a cause of the *four failures*, and these two sighting
 repository does contain deadline-based tests that fail under CPU pressure. T-2505 should test
 that hypothesis explicitly before concluding, and should not treat it as already refuted.
 
+### T-2505-input-03 · this host has a second, invisible load generator: another repo's CI runner
+
+**kind:** evidence · **feeds:** T-2505, T-2409 · **recorded:** 2026-08-13
+
+Every load-sensitivity sighting above attributes the CPU pressure to vnprox's own parallel agents.
+That attribution is incomplete. During a wave-10 `make e2e` run that failed one spec, the machine
+was carrying two `next build` processes at 100–162% CPU each, belonging to a **self-hosted GitHub
+Actions runner for an unrelated repository**:
+
+```
+/home/brian/actions-runner-2/bin/Runner.Listener run
+node .../actions-runner-2/_work/cmdash/cmdash/node_modules/.bin/next build
+     cwd: /home/brian/actions-runner-2/_work/cmdash/cmdash/apps/portal
+```
+
+The runner is a long-lived daemon that picks up jobs **on another project's push schedule**. It is
+idle most of the time and invisible when idle, so a check of "is the machine quiet?" that only
+looks for vnprox processes will report quiet while a multi-core Next.js build is running.
+
+Measured effect on the same commit, same command, same suite:
+
+| Run | Machine state | Wall clock | Result |
+|---|---|---|---|
+| 1 | `cmdash` build running | 4 min 55 s | 1 failed (`simulator.spec.ts:138`) |
+| 2 | `cmdash` build running | 7 min 9 s | 1 failed (`help.spec.ts` — *different spec*) |
+
+**What this changes.** It does not overturn any conclusion above — it strengthens the one they
+share. `T-2505-input-01` argued from four sightings that the suite has machine-dependent
+deadlines; the two-core `taskset` experiment then confirmed it directly and produced both the
+parallelism-scaled deadlines and a real defect (`T-2505-followup-02`). This datum adds that the
+pressure has a source nobody in this repository controls or can see, which means:
+
+1. **"I re-ran it on an idle machine" is not a controlled statement on this host** unless the
+   runner was checked. Any past measurement that rests on an idle-machine rerun — including
+   T-2409's order-vs-load conclusion, which rests on exactly that — has an unquantified confound.
+   Confirm with `pgrep -af actions-runner` before quoting a wall clock as evidence.
+2. **A different spec failing each run is the signature to look for.** Two runs, two different
+   specs, both `toBeVisible` timeouts, both green in isolation — that is the same shape as the
+   two-core shard runs and it means "the machine", not "the spec".
+
+The wave-10 `simulator.spec.ts:138` failure is the exception that proves the rule: it was
+investigated rather than re-run, and turned out **not** to be load at all but a genuine strict-mode
+violation (see `T-2505-followup-03`). Contention makes real defects look like flakes, which is the
+expensive part — not the lost wall clock.
+
+### T-2505-followup-03 · the simulator spec asserted on an unscoped, ambiguous locator
+
+**kind:** defect · **found by:** wave-10 merge gate · **fixed:** 2026-08-13
+
+`e2e/simulator.spec.ts:138` failed with a Playwright **strict mode violation**, not a timeout:
+
+```
+getByText(/guest-nic:pve1:300\/net0/) resolved to 2 elements
+```
+
+The entity ref renders in two places — the simulator's own endpoint picker, and the Findings panel
+once a collection cycle produces a finding that names the same NIC. Whether the assertion saw one
+element or two therefore depended on **whether collection had completed when it ran**, which is a
+race, not a deadline. The spec's own `pickGuestNic` helper already carried a comment about this
+exact ambiguity and scoped its queries to the picker; the two bare assertions had simply never been
+given the same treatment.
+
+Fixed by scoping both to their own `<fieldset>` via its legend —
+`page.getByRole("group", { name: "Source" | "Destination" })`. Before: failed 2 of 3 runs. After:
+**15/15 across 3 repeats.**
+
+Proven pre-existing before it was touched, so it was not attributed to the wave-10 merge: it
+reproduces on the pre-merge commit `b1969f0` in a separate worktree, and `var/e2e-runs/runs.jsonl`
+records the same spec failing at `20260812-152952` — before waves 9 and 10 existed.
+
+### T-2505-followup-04 · a stale node dimmed its own label below AA, and the a11y suite hid it
+
+**kind:** defect · **found by:** wave-10 merge gate · **fixed:** 2026-08-13
+
+`axe: changeset drawer` failed on `color-contrast`: the kind badge of
+`bridge:pve2:vmbr0` measured **4.30:1** (fg `#798098` on `#17193e`) against a 4.5:1 AA floor.
+pve2 is the fixture's unreachable peer, so its collector goes stale, and `stale` rendered as
+`opacity-60 grayscale` on the whole node — `opacity` fades a node's **text** along with its
+chrome. **A node became hardest to read exactly when it was reporting that its data had stopped
+refreshing**, which is when its label matters most. On a real cluster this needs no unreachable
+peer: any node whose collector stalls renders the same.
+
+Fixed at source in both views: `stale` now sets **no opacity at all** (`EntityNode.tsx`,
+`SwitchFaceplate.tsx`), and `grayscale` alone carries the signal. The VLAN filter's `dimmed`
+keeps its opacity — that is de-emphasis the user asked for, not a health signal.
+
+**The part worth recording is why it took this long to surface.** `e2e/a11y.spec.ts` carried a
+helper, `neutralizeStaleFaceplates`, that forced `opacity:1; filter:none` over the node sections
+before every Switch-view scan. Its doc comment described the greying as a dev-host artifact and
+stated the mechanism outright — *"dropping the text/badge colors (which pass at full opacity)
+below the 4.5:1 threshold purely because of the 0.6 opacity"*. The unreachable peers are an
+artifact; **the contrast failure they exposed was not**. The suppression meant the Switch view
+could never fail on it. The Graph view had no equivalent, which is the only reason axe caught it
+there — and only intermittently, since the scan usually ran before pve2 had been stale long
+enough.
+
+Two things changed so this cannot recur silently:
+
+1. The Graph-view scans now **wait for a stale entity** before measuring, so the stale treatment
+   is a guarantee rather than a coin flip.
+2. The remaining suppression is narrowed to what it actually covers — the `dimmed`/`dimVid`
+   opacity-25/40 de-emphasis, the same contrast-exempt case as a disabled control — and is named
+   `neutralizeFaceplateDimming` after it. Pinned by elimination: with the stale opacity gone,
+   forcing `opacity:1` clears every remaining violation while forcing `filter:none` alone clears
+   none, so the cause is opacity and not the greying.
+
+**Method note, because two intermediate conclusions here were wrong before the right one held.**
+"Desaturation collapses these hue-carried badges" and "axe does not model CSS `filter`" were both
+inferred from partial evidence and both refuted by the next measurement — the first by removing
+the opacity and watching the violations persist unchanged, the second by an isolating probe whose
+colours happened to pass either way, i.e. a vacuous probe. The conclusion that survived is the one
+where each candidate was toggled independently and the outcome flipped. A contrast story that has
+not had its proposed cause removed and re-measured is a hypothesis, not a finding.
+
 ---
 
 ## T-2505 — delivery record (2026-08-12)

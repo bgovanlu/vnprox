@@ -106,15 +106,24 @@ test("change review: comments, approve/reject, and the shareable review link", a
   // otherwise also match a bare "Comment" filter once the first comment
   // exists, shifting these nth() indices out from under this test.
   const commentButtons = review.getByRole("button", { name: "Comment", exact: true });
+  // Assert against the posted-comment LIST, never a bare text search of the
+  // dialog. A controlled <textarea>'s typed value lives in its textContent
+  // (React writes it to defaultValue), so `review.getByText(body)` matches
+  // the compose box the moment fill() returns — it went green before the
+  // POST was even sent, which is why step 4's reload could abort that POST
+  // and still leave steps 3 and 4 "passing". Scoping to the named list means
+  // these can only go green once the server has returned the comment.
+  const changesetComments = review.getByRole("list", { name: "Changeset comments" });
+  const opComments = review.getByRole("list", { name: /^Comments on / });
   await review.getByLabel("Add a changeset-level comment").fill("double-check the uplink before this lands");
   await commentButtons.nth(0).click();
-  await expect(review.getByText("double-check the uplink before this lands")).toBeVisible();
+  await expect(changesetComments).toContainText("double-check the uplink before this lands");
 
   // --- 4. A per-op comment -------------------------------------------------
   const opCommentBox = review.getByLabel("Comment on this operation");
   await opCommentBox.fill("MTU looks right");
   await commentButtons.nth(1).click();
-  await expect(review.getByText("MTU looks right")).toBeVisible();
+  await expect(opComments).toContainText("MTU looks right");
 
   // Both comments survive a page reload (persisted server-side, not local
   // component state) — the review screen re-fetches GET /changesets/{id}.
@@ -122,8 +131,10 @@ test("change review: comments, approve/reject, and the shareable review link", a
   const reviewAfterReload = page.getByRole("dialog");
   await expect(reviewAfterReload).toBeVisible();
   await reviewAfterReload.getByRole("tab", { name: /Discussion/ }).click();
-  await expect(reviewAfterReload.getByText("double-check the uplink before this lands")).toBeVisible();
-  await expect(reviewAfterReload.getByText("MTU looks right")).toBeVisible();
+  await expect(reviewAfterReload.getByRole("list", { name: "Changeset comments" })).toContainText(
+    "double-check the uplink before this lands",
+  );
+  await expect(reviewAfterReload.getByRole("list", { name: /^Comments on / })).toContainText("MTU looks right");
 
   // --- 5. Approve, then re-open and confirm it stuck ---------------------
   await reviewAfterReload.getByRole("button", { name: "Approve" }).click();
