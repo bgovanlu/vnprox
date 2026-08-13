@@ -16,6 +16,8 @@ import { AssistantPanel } from "../assistant/AssistantPanel";
 import { useHelpForRoute } from "../help/useHelpForRoute";
 import { DemoBanner } from "../demo/DemoBanner";
 import { GuidedTour } from "../tour/GuidedTour";
+import { OfflineShellBanner } from "./OfflineShellBanner";
+import { PushNavigationBridge } from "../push/PushNavigationBridge";
 
 /** Top-level layout for every authenticated route: nav rail + top bar
  * around a routed <Outlet/>, with the keyboard-shortcut framework wired
@@ -45,6 +47,10 @@ export function AppShell() {
          * mode. Placed directly under the TopBar and in normal flow for the
          * same reason OnboardingWalkthrough below is — see its comment. */}
         <DemoBanner />
+        {/* T-2005: offline + stale-data labeling, in normal flow next to
+         * DemoBanner for the same collision-avoidance reason (see this
+         * component's own doc comment). Renders nothing while online. */}
+        <OfflineShellBanner />
         {/* Rendered in normal document flow, between TopBar and <main> —
          * not a fixed overlay — so it pushes page content down instead of
          * floating on top of it. Every page's own top-row controls (the
@@ -109,6 +115,10 @@ export function AppShell() {
       <MgmtWizardHost />
       <ConnectClustersWizardHost />
       <MgmtProtectedRefreshPrompt />
+      {/* T-2005: relays a push notification's deep link (posted by
+       * web/public/sw.js's notificationclick handler to an already-open
+       * tab) into an in-app navigation, rather than a full page reload. */}
+      <PushNavigationBridge />
     </div>
   );
 }

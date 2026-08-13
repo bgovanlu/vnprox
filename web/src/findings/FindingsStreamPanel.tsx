@@ -18,7 +18,7 @@
 // reachable at narrow width.
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../components/Button";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
@@ -70,7 +70,19 @@ export function FindingsStreamPanel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [fixingId, setFixingId] = useState<string | undefined>(undefined);
-  const [filter, setFilter] = useState<FindingsFilterState>(EMPTY_FILTER);
+  // T-2005: a critical-finding push notification deep-links to
+  // /tools?pushCategory=critical (internal/push's CriticalFindingNotification
+  // — deliberately generic, carrying no specific finding id, see that
+  // function's doc comment) rather than a specific finding, since a
+  // finding's own id/detail can embed node/interface names and the push
+  // payload must not. Landing here pre-filtered to error severity ("what
+  // this app calls critical" — internal/push's Notifier doc comment) is
+  // what makes the deep link land somewhere useful instead of an
+  // unfiltered stream the reader has to search themselves.
+  const [searchParams] = useSearchParams();
+  const [filter, setFilter] = useState<FindingsFilterState>(() =>
+    searchParams.get("pushCategory") === "critical" ? { ...EMPTY_FILTER, severity: "error" } : EMPTY_FILTER,
+  );
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [ackTarget, setAckTarget] = useState<{ id: string; detail: string } | undefined>(undefined);
 

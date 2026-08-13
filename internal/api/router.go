@@ -200,6 +200,13 @@ type Options struct {
 	TokenAudit          tokenAuditor
 	Webhooks            WebhookStore
 	WebhookSecretCipher SecretCipher
+	// PushSubscriptions/PushSecretCipher/PushVAPIDPublicKey (T-2005) back
+	// GET /push/vapid-public-key and the POST/GET/DELETE /push/subscriptions
+	// family. PushVAPIDPublicKey empty (no VAPID identity configured) skips
+	// mounting the whole family — see push.go's mountPushRoutes doc comment.
+	PushSubscriptions   PushSubscriptionStore
+	PushSecretCipher    SecretCipher
+	PushVAPIDPublicKey  string
 	K8sClusters         K8sClusterStore
 	K8sSecretCipher     SecretCipher
 	K8sPoller           K8sPoller
@@ -400,6 +407,7 @@ func NewRouter(opts Options) http.Handler {
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountEmbedTokenRoute(r, opts.Tokens, opts.TokenAudit, opts.Auth)
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
+		mountPushRoutes(r, opts.PushSubscriptions, opts.PushSecretCipher, opts.TokenAudit, opts.PushVAPIDPublicKey, opts.Auth)
 		mountK8sRoutes(r, opts.K8sClusters, opts.K8sSecretCipher, opts.K8sPoller, opts.K8sGraph, opts.K8sIPAM, opts.K8sAudit, opts.Auth)
 		mountMigrationRoutes(r, opts.Migration, opts.Auth)
 		// T-1701 MCP server: mounted raw (its own bearer auth, no session/CSRF)

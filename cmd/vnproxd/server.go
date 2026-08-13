@@ -40,6 +40,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/peer"
 	"github.com/bgovanlu/vnprox/internal/plugin"
 	"github.com/bgovanlu/vnprox/internal/presence"
+	"github.com/bgovanlu/vnprox/internal/push"
 	"github.com/bgovanlu/vnprox/internal/reconcile"
 	"github.com/bgovanlu/vnprox/internal/sdn"
 	"github.com/bgovanlu/vnprox/internal/store"
@@ -241,6 +242,21 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	auditRepo := store.NewAuditRepo(db)
 	apiTokenRepo := store.NewAPITokenRepo(db)
 	webhookRepo := store.NewWebhookRepo(db)
+	// T-2005: web-push subscriptions, constructed alongside webhookRepo
+	// above for the same reason — both are consumed by a Dispatcher wired
+	// against topoSvc's shared event sink a little further down.
+	pushSubscriptionRepo := store.NewPushSubscriptionRepo(db)
+	// T-2005: this daemon's VAPID identity (push.go's doc comment explains
+	// why its path is derived from cfg.Blueprint.SigningKeyFile's own
+	// directory rather than a new config section), loaded here — ahead of
+	// setupAutomation below, which is where the push Dispatcher this key
+	// feeds gets chained onto topoSvc's shared event sink — so construction
+	// stays in dependency order top to bottom through this function, the
+	// same discipline metricsToken/blueprintSigningKey follow further down.
+	pushVAPIDKey, err := setupPushVAPIDKey(cfg, logger)
+	if err != nil {
+		return fmt.Errorf("initializing push VAPID key: %w", err)
+	}
 
 	authSvc, sessionCipher, err := setupAuth(cfg, logger, db, auditRepo, apiTokenRepo, demoRT)
 	if err != nil {
@@ -293,7 +309,23 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// webhook targets are fed from the exact same fan-in point (hub.go's
 	// eventsSourceTopics doc comment).
 	wireAuditAppendedEvents(auditRepo, topoSvc, logger)
-	setupAutomation(webhookRepo, sessionCipher, topoSvc, logger)
+	automationDispatcher := setupAutomation(webhookRepo, sessionCipher, topoSvc, logger)
+	// T-2005: the push Dispatcher is a SECOND, independent consumer of the
+	// exact same event fan-in setupAutomation's webhook Dispatcher just
+	// claimed (hub.go's eventsSourceTopics: changeset.status/drift.changed/
+	// findings.changed, plus audit.appended). internal/topology.Hub.
+	// SetEventSink only ever holds one func, so rather than have this
+	// package's two setup* functions race to overwrite each other's
+	// registration, only automation.go's setupAutomation calls
+	// SetEventSink directly (T-1104 claimed that responsibility first);
+	// this daemon instead installs ONE combined closure here, after both
+	// dispatchers exist, that fans every event out to both — the single
+	// place in this file that decides "what topoSvc's event sink is".
+	pushDispatcher := setupPush(pushSubscriptionRepo, sessionCipher, pushVAPIDKey, logger)
+	topoSvc.SetEventSink(func(payload []byte) {
+		automationDispatcher.Publish(payload)
+		pushDispatcher.Publish(payload)
+	})
 	// T-305: the drift detector runs its own 30s cycle over the same live
 	// graph the collectors populate, independent of any one poll loop
 	// (docs/features/topology.md §6); its findings changing broadcasts
@@ -591,7 +623,13 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// join the same multiNotifier call.
 	findingEventRepo := store.NewFindingEventRepo(db)
 	findingEventsNotifier := setupFindingEventsNotifier(findingEventRepo, logger)
-	findingsNotifier := newMultiNotifier(setupFindingsNotifier(sdnPVEClient, logger), webhookNotifier, findingEventsNotifier)
+	// T-2005: pushFindingsNotifier (push.go) fires a category-"critical"
+	// push on a new-or-escalated error-severity finding transition — a
+	// third, independent delivery path alongside PVE's own notification
+	// hook and the webhook notifier above, composed the same way this
+	// multiNotifier already composes those two.
+	pushFindingsNotify := pushFindingsNotifier{dispatcher: pushDispatcher}
+	findingsNotifier := newMultiNotifier(setupFindingsNotifier(sdnPVEClient, logger), webhookNotifier, findingEventsNotifier, pushFindingsNotify)
 	// T-806: the persisted sim_divergence finding store, created here (db
 	// is available; findingsEngine is built next) and reused verbatim as
 	// the router's api.Options.SimDivergence write-side seam below.
@@ -1622,6 +1660,15 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		TokenAudit:          auditRepo,
 		Webhooks:            webhookRepo,
 		WebhookSecretCipher: sessionCipher,
+		// T-2005: push subscription management — reuses the identical
+		// session-secret cipher WebhookSecretCipher above and
+		// K8sSecretCipher below already share; PushVAPIDPublicKey is the
+		// base64url encoding of pushVAPIDKey's public half, the exact
+		// string a browser's PushManager.subscribe({applicationServerKey})
+		// call needs (internal/push.PublicKeyBase64URL's doc comment).
+		PushSubscriptions:  pushSubscriptionRepo,
+		PushSecretCipher:   sessionCipher,
+		PushVAPIDPublicKey: push.PublicKeyBase64URL(&pushVAPIDKey.PublicKey),
 		// T-1501: Kubernetes overlay mapping engine (read-only forever).
 		// K8sClusters/K8sAudit reuse the same *store.AuditRepo/db
 		// everything else in this file wires in; K8sSecretCipher reuses

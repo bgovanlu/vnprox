@@ -135,6 +135,12 @@ var Operations = map[string]Operation{
 	"POST /api/v1/webhooks":              {Summary: "Register an outbound webhook.", Tag: "webhooks", Auth: AuthSession},
 	"DELETE /api/v1/webhooks/{id}":       {Summary: "Delete an outbound webhook.", Tag: "webhooks", Auth: AuthSession},
 
+	// --- Web push (T-2005) -------------------------------------------------------
+	"GET /api/v1/push/vapid-public-key":      {Summary: "Return this daemon's VAPID public key for PushManager.subscribe().", Tag: "push", Auth: AuthSession},
+	"GET /api/v1/push/subscriptions":         {Summary: "List the caller's own push subscriptions.", Tag: "push", Auth: AuthSession},
+	"POST /api/v1/push/subscriptions":        {Summary: "Register a push subscription, opted into a subset of critical/awaitingConfirm/drift.", Tag: "push", Auth: AuthSession},
+	"DELETE /api/v1/push/subscriptions/{id}": {Summary: "Revoke one of the caller's own push subscriptions.", Tag: "push", Auth: AuthSession},
+
 	// --- Tokens and embedding ---------------------------------------------------
 	"GET /api/v1/tokens":         {Summary: "List API tokens.", Tag: "tokens", Auth: AuthSession},
 	"POST /api/v1/tokens":        {Summary: "Mint an API token; the secret is returned once.", Tag: "tokens", Auth: AuthSession},

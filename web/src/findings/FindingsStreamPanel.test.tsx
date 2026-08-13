@@ -52,10 +52,10 @@ vi.mock("../api/ws", () => ({
   defaultWsUrl: () => "ws://unused",
 }));
 
-function renderPanel(): void {
+function renderPanel(initialRoute = "/tools"): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialRoute]}>
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <FindingsStreamPanel />
@@ -96,6 +96,29 @@ describe("FindingsStreamPanel", () => {
 
     expect(screen.getByText("bond0 slave eno2 is down")).toBeInTheDocument();
     expect(screen.queryByText("bridge diverges")).not.toBeInTheDocument();
+  });
+
+  it("T-2005: a critical-finding push deep link (?pushCategory=critical) pre-filters to error severity", async () => {
+    renderPanel("/tools?pushCategory=critical");
+    await waitFor(() => screen.getByText("bond0 slave eno2 is down"));
+
+    expect(screen.getByText("bond0 slave eno2 is down")).toBeInTheDocument();
+    expect(screen.queryByText("bridge diverges")).not.toBeInTheDocument();
+    expect(screen.queryByText("switch missing vlan 20")).not.toBeInTheDocument();
+    // The filter control itself reflects the state (not just the visible
+    // rows), so a reader can see WHY the stream looks pre-narrowed and
+    // clear it if they want the full list.
+    expect(screen.getByLabelText("Filter by severity")).toHaveValue("error");
+  });
+
+  it("an ordinary /tools visit (no pushCategory param) is unfiltered", async () => {
+    renderPanel("/tools");
+    await waitFor(() => screen.getByText("bridge diverges"));
+
+    expect(screen.getByText("bridge diverges")).toBeInTheDocument();
+    expect(screen.getByText("switch missing vlan 20")).toBeInTheDocument();
+    expect(screen.getByText("bond0 slave eno2 is down")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter by severity")).toHaveValue("");
   });
 
   it("filters by node", async () => {

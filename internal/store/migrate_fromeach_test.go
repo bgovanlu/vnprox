@@ -170,6 +170,7 @@ var versionSeeds = map[int]versionSeed{
 	42: {seedV42, assertV42},
 	43: {seedV43, assertV43},
 	44: {seedV44, assertV44},
+	45: {seedV45, assertV45},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1635,17 +1636,68 @@ func assertV44(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 45 (0045_map_annotations.sql, annotations.expires_at +
-// map_regions — T-2806) has no versionSeeds entry because it is the current
-// latest, not a "prior" version any fixture in this file freezes at — its own
-// forward application (as part of every case's migrate() call to latest) is
-// exercised by every case above, and TestOpen_CreatesAllTables (store_test.go)
-// exercises it from a fresh database. The next migration to land becomes the
-// new latest and picks up a version 45 entry in versionSeeds at that time.
-//
-// Note what version 6's assertV6 now additionally proves, because 0045 is an
+// Note what version 6's assertV6 additionally proves, because 0045 is an
 // ALTER TABLE on the table 0006 created: a v6-era annotation (written before
 // expires_at existed) must come out of the upgrade with its content intact
 // and expires_at defaulted to 0 = "never expires". A note silently acquiring
 // an expiry across an upgrade would make it disappear from the map, which is
 // precisely the data loss T-2806 exists to prevent.
+
+// ---------------------------------------------------------------------
+// Version 45 — 0045_map_annotations.sql
+// ---------------------------------------------------------------------
+
+func seedV45(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// A post-0045 annotation with a real, non-zero expires_at — assertV6
+	// above already covers the pre-0045-row-defaults-to-0 case; this row
+	// proves a genuinely set expiry value round-trips too, not just the
+	// default.
+	mustExec(t, db, `INSERT INTO annotations (id, ref, content, created_by, created_at, updated_at, expires_at)
+	      VALUES ('ann-v45', 'bridge:pve1:vmbr1', 'temporary until the switch swap', 'root@pam', 1750100000, 1750100000, 1750200000)`)
+	mustExec(t, db, `INSERT INTO map_regions (id, label, x, y, w, h, color, created_by, created_at, updated_at, expires_at)
+	      VALUES ('region-v45', 'DMZ rack', 10.5, 20.5, 300, 150, 'amber', 'root@pam', 1750100100, 1750100100, 0)`)
+}
+
+func assertV45(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	var content string
+	var expiresAt int64
+	if err := db.QueryRowContext(ctx, `SELECT content, expires_at FROM annotations WHERE id = 'ann-v45'`).
+		Scan(&content, &expiresAt); err != nil {
+		t.Errorf("annotations row (v45) lost across migration: %v", err)
+	} else if content != "temporary until the switch swap" || expiresAt != 1750200000 {
+		t.Errorf("annotations (v45) = (%q, %d), want the seeded row", content, expiresAt)
+	}
+
+	var label, color, createdBy string
+	var x, y, w, h float64
+	if err := db.QueryRowContext(ctx, `SELECT label, x, y, w, h, color, created_by FROM map_regions WHERE id = 'region-v45'`).
+		Scan(&label, &x, &y, &w, &h, &color, &createdBy); err != nil {
+		t.Errorf("map_regions row lost across migration: %v", err)
+	} else if label != "DMZ rack" || x != 10.5 || y != 20.5 || w != 300 || h != 150 || color != "amber" || createdBy != "root@pam" {
+		t.Errorf("map_regions = (%q, %v, %v, %v, %v, %q, %q), want the seeded row", label, x, y, w, h, color, createdBy)
+	}
+}
+
+// Schema version 46 (0046_push_subscriptions.sql, the push_subscriptions
+// table — T-2005) has no versionSeeds entry because it is the current
+// latest, not a "prior" version any fixture in this file freezes at — its
+// own forward application (as part of every case's migrate() call to
+// latest) is exercised by every case above, and TestOpen_CreatesAllTables
+// (store_test.go) exercises it from a fresh database. store.
+// SeededVersionsAvailable() (export_test.go) — consumed by
+// TestBackupRestore_AC3_AcrossASchemaUpgrade in this package — asserts its
+// return value stays strictly below the live latest schema version for the
+// identical reason: registering 46 here before some future migration
+// supersedes it would break that check, not just leave this version
+// un-exercised by it. The next migration to land becomes the new latest
+// and picks up a version 46 entry in versionSeeds at that time — see
+// version 45's identical treatment in this file, from the migration
+// immediately before this one, once it stopped being the latest.
+//
+// TestPushSubscriptionRepo_* (pushsubscriptions_test.go) covers this
+// table's own CRUD and cascade-delete behavior directly; that is this
+// migration's test coverage for now.

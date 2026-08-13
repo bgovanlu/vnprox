@@ -19,6 +19,7 @@ import { resumeOnboarding } from "../onboarding/onboardingMachine";
 import { useOnboardingProgressQuery, useSaveOnboardingProgressMutation } from "../onboarding/queries";
 import { useMgmtStatusQuery } from "../topology/queries";
 import { useInstanceConfigQuery } from "./queries";
+import { PushSettingsSection } from "../push/PushSettingsSection";
 
 function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -227,6 +228,13 @@ export function SettingsPage() {
             Manage alert rules
           </Button>
         </Link>
+      </Section>
+
+      <Section
+        title="Notifications"
+        description="Web push to this device (and any other you've enabled it on) for critical findings, changesets awaiting confirm, and drift — installable as an app, per docs/roadmap-universal.md's on-call phone workflow."
+      >
+        <PushSettingsSection />
       </Section>
 
       <Section

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/bgovanlu/vnprox/internal/push"
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
@@ -49,6 +50,16 @@ var secretMarkers = map[string]string{
 	"alert_target_secret":     "SEEDMARK-alert-target-secret-JJJJ",
 	"ingress_credential":      "SEEDMARK-ingress-credential-KKKK",
 	"revert_ticket":           "SEEDMARK-sealed-revert-ticket-LLLL",
+	// The web-push subscription endpoint is stored TWICE in the same row,
+	// in two different protected forms (0046's migration doc comment):
+	// encrypted (endpoint_enc) and, separately, one-way hashed
+	// (endpoint_hash, for lookup without decrypting) — so both classes
+	// below seed the SAME underlying marker value, since they cover the
+	// same secret in two forms, not two different secrets.
+	"push_subscription_endpoint":      "SEEDMARK-push-endpoint-https://push.example.com/send/OOOO",
+	"push_subscription_endpoint_hash": "SEEDMARK-push-endpoint-https://push.example.com/send/OOOO",
+	"push_subscription_p256dh":        "SEEDMARK-push-p256dh-PPPP",
+	"push_subscription_auth":          "SEEDMARK-push-auth-QQQQ",
 
 	// Hashed: seeded as a raw token whose HASH is what lands in the store.
 	// AC2 asserts the raw value never appears, which is a property of
@@ -263,6 +274,15 @@ func (f *fixture) seedStore(t *testing.T) {
 	must("api token", store.NewAPITokenRepo(db).Create(ctx, store.APIToken{
 		ID: "tok-1", Name: "ci", TokenHash: sha256Hex(secretMarkers["api_token"]),
 		ScopesJSON: `["netRead"]`, CreatedBy: "root@pam", CreatedAt: 1700000000,
+	}))
+	must("push subscription", store.NewPushSubscriptionRepo(db).Create(ctx, store.PushSubscription{
+		ID: "push-1", SessionID: "sess-1", Username: "root@pam",
+		EndpointHash:   push.EndpointHash(secretMarkers["push_subscription_endpoint"]),
+		EndpointEnc:    seal("push_subscription_endpoint"),
+		P256dhEnc:      seal("push_subscription_p256dh"),
+		AuthEnc:        seal("push_subscription_auth"),
+		CategoriesJSON: `["critical","awaitingConfirm"]`,
+		CreatedAt:      1700000000,
 	}))
 
 	// layout, tenants, blueprint state — the rest of what T-1901's
