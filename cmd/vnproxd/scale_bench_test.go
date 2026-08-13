@@ -73,7 +73,7 @@ func bootScaleDaemon(t testing.TB) *scaleDaemon {
 	logger := testLogger()
 	ctx, cancel := context.WithCancel(context.Background())
 	daemonDone := make(chan error, 1)
-	go func() { daemonDone <- runDaemon(ctx, cfgPath, logger) }()
+	go func() { daemonDone <- runDaemon(ctx, daemonOptions{ConfigPath: cfgPath}, logger) }()
 
 	client := &http.Client{
 		Timeout: 30 * time.Second,

@@ -2,10 +2,11 @@
   {
     "name": "shard-1",
     "slot": 0,
-    "why": "Owns the scale stack: everything that drives scale-lab must share a shard, because a second copy would need a second registered port pair for no gain.",
+    "why": "Owns the scale stack: everything that drives scale-lab must share a shard, because a second copy would need a second registered port pair for no gain. T-2801's demo stack lives here too — it is single-homed like scale, and this shard brings up the fewest mock processes, so a stack whose whole point is that it has no mock costs least here.",
     "specs": [
       "aa-shard-canary.spec.ts",
       "change-review.spec.ts",
+      "demo.spec.ts",
       "command-palette.spec.ts",
       "evpn-tab.spec.ts",
       "fwlog-analytics.spec.ts",

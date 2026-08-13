@@ -33,6 +33,12 @@ func mainRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "/etc/vnprox/vnprox.toml", "path to the vnprox config file (TOML)")
 	showVersion := fs.Bool("version", false, "print the vnproxd version and exit")
+	// T-2801: demo mode. A flag and not a config key on purpose — see
+	// config.Config.Demo. `--demo` alone needs no configuration at all;
+	// `--demo --config X` is for a harness that has to choose the listen
+	// port and store path, and X must not configure a PVE endpoint.
+	demoMode := fs.Bool("demo", false, "run against the embedded synthetic cluster: no Proxmox VE endpoint, no outbound network, every mutating API a no-op that reports what it would have done")
+	demoDir := fs.String("demo-dir", "", "where `--demo` keeps its config, store and throwaway TLS keypair (default: $XDG_STATE_HOME/vnprox-demo). Ignored when --config is given.")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -51,9 +57,38 @@ func mainRun(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := runDaemon(ctx, *configPath, logger); err != nil {
+	opts := daemonOptions{ConfigPath: *configPath, Demo: *demoMode, DemoDir: *demoDir}
+	if *demoMode && !isFlagSet(fs, "config") {
+		// The zero-argument demo form: there is no config file yet, and
+		// /etc/vnprox/vnprox.toml (this flag's default) is emphatically not
+		// one a demo may read — it is a real node's real configuration.
+		opts.ConfigPath = ""
+	}
+
+	if err := runDaemon(ctx, opts, logger); err != nil {
 		logger.Error("vnproxd exited with error", "error", err)
 		return 1
 	}
 	return 0
+}
+
+// daemonOptions is how the daemon was started: which config (if any), and
+// whether this is a demo.
+type daemonOptions struct {
+	ConfigPath string
+	DemoDir    string
+	Demo       bool
+}
+
+// isFlagSet reports whether name was given on the command line, as opposed
+// to left at its default. flag.FlagSet has no accessor for this; Visit
+// walks only the flags actually set.
+func isFlagSet(fs *flag.FlagSet, name string) bool {
+	found := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
 }

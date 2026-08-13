@@ -73,7 +73,7 @@ func revertTLSConfig(cfg *config.Config) pve.TLSConfig {
 	return tls
 }
 
-func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo *store.AuditRepo, tokens *store.APITokenRepo) (*auth.Service, *store.SessionCipher, error) {
+func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo *store.AuditRepo, tokens *store.APITokenRepo, demoRT *demoRuntime) (*auth.Service, *store.SessionCipher, error) {
 	if _, statErr := os.Stat(cfg.Storage.SessionKeyFile); errors.Is(statErr, os.ErrNotExist) {
 		logger.Info("auth: generating session key", "path", cfg.Storage.SessionKeyFile)
 		if genErr := store.GenerateKeyFile(cfg.Storage.SessionKeyFile); genErr != nil {
@@ -101,15 +101,20 @@ func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo 
 	// node's own pveproxy certificate the same way the collector client
 	// does.
 	loginTLS := revertTLSConfig(cfg)
+	// T-2801: in demo mode this is the in-process transport, so an operator
+	// logging in to the demo authenticates against the embedded fixture's
+	// own root@pam — the same credential path a real login takes, against a
+	// cluster that is not on any network.
 	identityFactory := auth.NewClientIdentityFactory(pve.Config{
-		APIURL: cfg.PVE.APIURL,
-		TLS:    loginTLS,
+		APIURL:     cfg.PVE.APIURL,
+		TLS:        loginTLS,
+		HTTPClient: demoRT.httpClient(),
 	})
 
 	// T-1207: OIDC SSO, wired only when [oidc] is configured (Enabled derived
 	// from a set issuer). A deployment with no [oidc] section gets a nil
 	// OIDCService, leaving the PVE-ticket-bridge-only login flow untouched.
-	oidcSvc, err := setupOIDC(cfg, logger, db, cipher, loginTLS)
+	oidcSvc, err := setupOIDC(cfg, logger, db, cipher, loginTLS, demoRT)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -147,7 +152,7 @@ func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo 
 // internal/auth.GroupMapping; and the per-cluster PVE-linkage resolver reads the
 // encrypted oidc_pve_links store table, building linked PVE clients against the
 // local cluster's PVE API with the same TLS trust the login client uses.
-func setupOIDC(cfg *config.Config, logger *slog.Logger, db *store.DB, cipher *store.SessionCipher, loginTLS pve.TLSConfig) (*auth.OIDCService, error) {
+func setupOIDC(cfg *config.Config, logger *slog.Logger, db *store.DB, cipher *store.SessionCipher, loginTLS pve.TLSConfig, demoRT *demoRuntime) (*auth.OIDCService, error) {
 	if !cfg.OIDC.Enabled {
 		return nil, nil
 	}
@@ -184,7 +189,7 @@ func setupOIDC(cfg *config.Config, logger *slog.Logger, db *store.DB, cipher *st
 
 	resolver := auth.NewStorePVELinkResolver(
 		store.NewOIDCPVELinkRepo(db), cipher, cfg.OIDC.ClusterID,
-		pve.Config{APIURL: cfg.PVE.APIURL, TLS: loginTLS},
+		pve.Config{APIURL: cfg.PVE.APIURL, TLS: loginTLS, HTTPClient: demoRT.httpClient()},
 	)
 
 	oidcSvc, err := auth.NewOIDCService(auth.OIDCConfig{

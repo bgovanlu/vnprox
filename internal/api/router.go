@@ -215,6 +215,14 @@ type Options struct {
 	Version             string
 	BlueprintSigningKey ed25519.PrivateKey
 	Instance            InstanceInfo
+	// Demo (T-2801) turns on demo mode's API half: every mutating route
+	// answers with a "would have" result and touches nothing, and the
+	// endpoint-configuring routes are refused by name. See demo.go.
+	//
+	// A plain bool rather than a service seam on purpose — there is nothing
+	// to inject. Demo mode is the absence of a real cluster, not a
+	// different implementation of one.
+	Demo bool
 }
 
 // DefaultMCPPath is the fixed mount path (under /api/v1) for the MCP transport
@@ -241,6 +249,15 @@ func NewRouter(opts Options) http.Handler {
 	// chi's route-pattern accumulates over the whole request (see
 	// redmetrics.go's routeLabel doc comment).
 	r.Use(redMetricsMiddleware(opts.SelfMetrics))
+	// T-2801: demo mode's write refusal, in front of routing so it covers
+	// every route this router has or will ever have — see demo.go on why
+	// this is a middleware and not a per-handler check. Registered after
+	// redMetricsMiddleware so an intercepted request is still counted; a
+	// demo instance's RED metrics should show the traffic it received, not
+	// only the traffic it acted on.
+	if opts.Demo {
+		r.Use(demoWriteMiddleware)
+	}
 
 	// T-1703: the server-side tenant-scoping middleware, built once and shared
 	// by every tenant-scoped read route. nil when multi-tenancy is disabled
@@ -264,7 +281,7 @@ func NewRouter(opts Options) http.Handler {
 	openAPI := &openAPIHolder{}
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/health", healthHandler(opts.Version, opts.Collectors))
+		r.Get("/health", healthHandler(opts.Version, opts.Collectors, opts.Demo))
 		// Unauthenticated by design: the contract, not the data. See
 		// handleOpenAPI.
 		r.Get("/openapi.json", handleOpenAPI(openAPI))

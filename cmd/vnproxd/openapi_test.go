@@ -65,7 +65,7 @@ func startDevDaemon(t *testing.T) (string, *http.Client) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	daemonDone := make(chan error, 1)
-	go func() { daemonDone <- runDaemon(ctx, cfgPath, testLogger()) }()
+	go func() { daemonDone <- runDaemon(ctx, daemonOptions{ConfigPath: cfgPath}, testLogger()) }()
 	t.Cleanup(func() {
 		cancel()
 		select {

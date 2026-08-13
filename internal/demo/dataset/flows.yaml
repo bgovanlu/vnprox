@@ -1,0 +1,54 @@
+# flows.yaml — T-2801's demo flow corpus.
+#
+# The Flow Explorer reads internal/flow's sample ring, which on a real node
+# is filled by a NetFlow/sFlow/IPFIX listener on a UDP socket or by the
+# host-local conntrack sampler reading /proc/net/nf_conntrack. A demo
+# daemon has neither: it must not bind a collector socket and must not read
+# the demo user's own machine. So the flows are a fixture too, replayed
+# into the same flow.Service.Ingest every real decoder feeds — there is no
+# demo-only flow path, only a demo-only *source* of records.
+#
+# TIMESTAMPS ARE RELATIVE, on purpose. `at_offset_sec` is seconds BEFORE
+# the moment the seeder runs (so it is always negative or zero). A fixture
+# with absolute timestamps would render an empty Flow Explorer the day
+# after it was written, because every "last 15 minutes" query would miss
+# it. internal/demo/flows.go turns these into flow.Record.At at seed time,
+# and the seeder re-runs on an interval so a long-lived demo instance never
+# goes quiet.
+#
+# The addresses are the demo cluster's own (internal/demo/dataset/
+# cluster.yaml): guests 10.100.0.50 (app01), 10.10.0.201 (cache01),
+# 10.200.0.60 (db01), the SDN subnet gateways, and one external peer. That
+# matters — internal/flow's resolver populates srcRef/dstRef only for
+# addresses it can resolve against the live inventory graph, so flows
+# against invented addresses would render as unattributed rows and the
+# map's flow painting would have nothing to paint.
+#
+# CONSUMED BY: internal/demo (go:embed) and, through it, T-2802.
+flows:
+  # app01 -> db01: the demo's headline east-west conversation, across two
+  # SDN vnets and two nodes.
+  - {node: pve1, src_ip: 10.100.0.50, dst_ip: 10.200.0.60, src_port: 40122, dst_port: 5432, proto: 6, bytes: 48211904, packets: 41204, vlan: 100, at_offset_sec: -30, source: conntrack}
+  - {node: pve1, src_ip: 10.100.0.50, dst_ip: 10.200.0.60, src_port: 40126, dst_port: 5432, proto: 6, bytes: 31002112, packets: 27140, vlan: 100, at_offset_sec: -95, source: conntrack}
+  - {node: pve3, src_ip: 10.200.0.60, dst_ip: 10.100.0.50, src_port: 5432, dst_port: 40122, proto: 6, bytes: 902144000, packets: 640210, vlan: 200, at_offset_sec: -30, source: conntrack}
+  # app01 -> cache01: same vnet, different node.
+  - {node: pve1, src_ip: 10.100.0.50, dst_ip: 10.10.0.201, src_port: 51002, dst_port: 11211, proto: 6, bytes: 7340032, packets: 20480, vlan: 100, at_offset_sec: -15, source: conntrack}
+  - {node: pve2, src_ip: 10.10.0.201, dst_ip: 10.100.0.50, src_port: 11211, dst_port: 51002, proto: 6, bytes: 20971520, packets: 30110, vlan: 100, at_offset_sec: -15, source: conntrack}
+  # DNS to the vnet gateway, so a UDP protocol row exists.
+  - {node: pve1, src_ip: 10.100.0.50, dst_ip: 10.100.0.1, src_port: 51811, dst_port: 53, proto: 17, bytes: 184320, packets: 1440, vlan: 100, at_offset_sec: -60, source: conntrack}
+  - {node: pve3, src_ip: 10.200.0.60, dst_ip: 10.200.0.1, src_port: 47122, dst_port: 53, proto: 17, bytes: 98304, packets: 768, vlan: 200, at_offset_sec: -75, source: conntrack}
+  # North-south: app01 out to the internet through the mgmt bridge, and an
+  # inbound HTTPS session. Gives the Flow Explorer an "external" side and
+  # the map an off-cluster edge to paint.
+  - {node: pve1, src_ip: 10.100.0.50, dst_ip: 198.51.100.24, src_port: 44444, dst_port: 443, proto: 6, bytes: 15728640, packets: 14002, vlan: 100, at_offset_sec: -45, source: netflow9}
+  - {node: pve1, src_ip: 203.0.113.5, dst_ip: 10.100.0.50, src_port: 51000, dst_port: 443, proto: 6, bytes: 5242880, packets: 6120, vlan: 100, at_offset_sec: -20, source: netflow9}
+  # Management-plane traffic on the storage VLAN, and node-to-node
+  # corosync/SSH, so the map's mgmt path is not silent either.
+  - {node: pve2, src_ip: 10.10.20.12, dst_ip: 10.10.20.11, src_port: 33001, dst_port: 3260, proto: 6, bytes: 2147483648, packets: 1520400, vlan: 20, at_offset_sec: -10, source: netflow9}
+  - {node: pve3, src_ip: 10.10.20.13, dst_ip: 10.10.20.11, src_port: 33002, dst_port: 3260, proto: 6, bytes: 1073741824, packets: 760200, vlan: 20, at_offset_sec: -10, source: netflow9}
+  - {node: pve1, src_ip: 10.10.0.100, dst_ip: 10.10.0.11, src_port: 54321, dst_port: 22, proto: 6, bytes: 262144, packets: 2048, at_offset_sec: -5, source: conntrack}
+  # A trickle of older samples, so the explorer's time histogram has shape
+  # rather than one spike at "now".
+  - {node: pve1, src_ip: 10.100.0.50, dst_ip: 10.200.0.60, src_port: 40080, dst_port: 5432, proto: 6, bytes: 12582912, packets: 11020, vlan: 100, at_offset_sec: -300, source: conntrack}
+  - {node: pve2, src_ip: 10.10.0.201, dst_ip: 10.100.0.1, src_port: 51999, dst_port: 53, proto: 17, bytes: 40960, packets: 320, vlan: 100, at_offset_sec: -420, source: conntrack}
+  - {node: pve3, src_ip: 10.200.0.60, dst_ip: 198.51.100.24, src_port: 40901, dst_port: 443, proto: 6, bytes: 3145728, packets: 3020, vlan: 200, at_offset_sec: -600, source: netflow9}

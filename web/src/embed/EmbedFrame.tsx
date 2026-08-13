@@ -10,6 +10,7 @@
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { setEmbedToken } from "./embedToken";
+import { DemoBanner } from "../demo/DemoBanner";
 
 interface EmbedFrameProps {
   title: string;
@@ -39,6 +40,9 @@ export function EmbedFrame({ title, children }: EmbedFrameProps) {
 
   return (
     <div className="flex h-full min-h-screen flex-col bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      {/* T-2801: an embed is a screen someone put on a wall. If it is a
+       * demo, the wall must say so. */}
+      <DemoBanner />
       <header className="flex items-center justify-between border-b border-slate-200 px-4 py-2 dark:border-slate-800">
         <span className="text-sm font-semibold">{title}</span>
         <span className="text-xs uppercase tracking-wide text-slate-400" data-testid="embed-readonly-badge">

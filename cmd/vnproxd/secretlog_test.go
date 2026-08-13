@@ -163,7 +163,7 @@ func TestSecretsNeverAppearInLogs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	daemonDone := make(chan error, 1)
-	go func() { daemonDone <- runDaemon(ctx, cfgPath, logger) }()
+	go func() { daemonDone <- runDaemon(ctx, daemonOptions{ConfigPath: cfgPath}, logger) }()
 
 	client := &http.Client{
 		Timeout: 5 * time.Second,

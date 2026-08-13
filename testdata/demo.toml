@@ -1,0 +1,62 @@
+# demo.toml — the e2e suite's demo-mode stack (T-2801).
+#
+#   vnproxd --demo --config testdata/demo.toml
+#
+# `vnproxd --demo` on its own needs no config at all: it writes one of these
+# into $XDG_STATE_HOME/vnprox-demo and loads it. This file exists because a
+# test harness has to choose the listen port and the store path, which the
+# generated one cannot know.
+#
+# THERE IS DELIBERATELY NO [pve] SECTION, AND THERE MUST NEVER BE ONE.
+# config.LoadDemo refuses any config that sets a [pve] key
+# (config.ErrDemoRealEndpoint) — that refusal is T-2801 AC3's first
+# direction, and this file is one of the two configs the assertion is run
+# against (the other is testdata/dev.toml, which does set api_url and is
+# therefore expected to be refused). A demo daemon's PVE identity is
+# supplied by internal/demo, over a transport with no dialer.
+#
+# Paths mirror testdata/dev.toml's var/ convention so a demo daemon runs
+# without root; web/e2e/shards.ts rewrites every one of them under the
+# shard's own scratch directory.
+
+[server]
+# T-2108's dev-only login-limiter override, same reasoning as dev.toml: the
+# Playwright suite logs in far more often than a human does.
+dev_login_rate_capacity = 500
+dev_login_rate_refill_seconds = 1
+listen = "127.0.0.1:24007"
+tls_cert = "testdata/certs/dev-cert.pem"
+tls_key = "testdata/certs/dev-key.pem"
+read_only = false
+confirm_timeout_default = 120
+
+[safety]
+allow_dangerous_ops = false
+protected_path = "var/demo-protected.json"
+# Belt and braces. The API refuses every mutation before the change engine
+# is reached, so the host writer is never invoked in demo mode — but a demo
+# daemon must not be one bug away from rewriting the interfaces file of
+# whatever machine it is being demonstrated on.
+dev_interfaces_dir = "var/demo-host"
+
+[storage]
+db_path = "var/demo-vnprox.db"
+session_key_file = "var/demo-session.key"
+
+[peer]
+secret_path = "var/demo-cluster.secret"
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"
+
+[metrics]
+key_file = "var/demo-metrics.key"
+
+[blueprint]
+signing_key_file = "var/demo-blueprint-signing.key"
+trusted_signers_dir = "var/demo-trusted-signers"
+
+[capture]
+root = "var/demo-captures"

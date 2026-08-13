@@ -49,6 +49,38 @@
 #     keys; it still needs hardware validation against an actual multi-node
 #     PVE cluster.
 
+# T-2801 added three things to this script, all in service of one sentence
+# on that card: "curl -fsSL <url> | sh detects the platform, verifies a
+# signature, installs from the signed apt repository where available and
+# falls back to a binary tarball. Signature verification is not skippable;
+# there is no --insecure."
+#
+#   1. SIGNATURE VERIFICATION ON EVERY DOWNLOAD. The apt repo's signing key
+#      is pinned by fingerprint (VNPROX_RELEASE_KEY_FPR below), so the key
+#      this script imports is checked against a value the script itself
+#      carries rather than trusted because the same server served it. The
+#      tarball fallback verifies a detached signature over the archive.
+#      Neither can be turned off: there is no --insecure, no --no-verify,
+#      no environment variable, and packaging/test asserts that by grepping
+#      this file.
+#
+#      --release-key <file> is NOT such an escape hatch and is worth being
+#      precise about, because it looks like one. It changes WHICH key is
+#      trusted; it cannot change WHETHER a signature is checked. A
+#      signature is verified on every path either way, and an attacker who
+#      could inject into the download stream cannot also add a flag to the
+#      operator's own command line. It exists for air-gapped installs
+#      (where the operator carries the key on the same medium as the
+#      artifact) and for this repository's tests, which sign with an
+#      ephemeral key exactly as packaging/build-apt-repo.sh already does.
+#
+#   2. A BINARY TARBALL FALLBACK (--tarball, and automatic on a host with
+#      no apt-get), so the one-command install works on a machine that is
+#      not Debian-derived. Same verification, same refusal.
+#
+#   3. IDEMPOTENCE (AC5). Running this twice leaves the same versions and
+#      one apt sources entry, and says so instead of reinstalling.
+
 set -euo pipefail
 
 PROG=$(basename "$0")
@@ -60,6 +92,34 @@ WITH_LLDP=""
 ASSUME_YES=0
 SKIP_PVE_CHECK=0
 APT_REPO_URL="https://get.vnprox.io/apt"
+DIST_URL="https://get.vnprox.io/dist"
+RELEASE_KEY_FILE=""
+INSTALL_PREFIX=""
+FORCE_TARBALL=0
+
+# VNPROX_RELEASE_KEY_FPR is the pinned fingerprint of the vnprox release
+# signing key: the trust anchor this script CARRIES, so that the key it
+# imports is not merely "whatever the download host served".
+#
+# THE VALUE BELOW IS A PLACEHOLDER, and this is deliberate rather than an
+# oversight. There is no published vnprox release and no production signing
+# key yet (packaging/apt-repo.md: the production key is documented as a
+# GitHub Actions secret that does not exist, and its fingerprint is
+# documented as "should be published out-of-band"). Writing a made-up
+# fingerprint here that verified nothing would be worse than useless: it
+# would look like a trust anchor.
+#
+# So the placeholder fails closed. Every download path refuses to proceed
+# while it is still in place, and says exactly what has to happen: generate
+# the release key, publish it, and replace the line below (it is matched by
+# the marker comment, so the release procedure can substitute it
+# mechanically). Until then, install from a local artifact with --offline,
+# or supply the trust anchor yourself with --release-key.
+#
+# vnprox-release-key-fingerprint {{{
+VNPROX_RELEASE_KEY_FPR="0000000000000000000000000000000000000000"
+# }}} vnprox-release-key-fingerprint
+VNPROX_RELEASE_KEY_PLACEHOLDER="0000000000000000000000000000000000000000"
 
 log() { printf '>> %s\n' "$*" >&2; } # stderr, for consistency with vnprox-setup's log() (see its comment)
 warn() { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
@@ -74,9 +134,23 @@ Usage: $PROG [options]
 
 Options:
   --offline <file>     Install from this local .deb instead of the apt repo.
+                        Verified against <file>.asc when that signature is
+                        present next to it.
   --apt-repo <url>      Base URL of the vnprox apt repo (default:
                         https://get.vnprox.io/apt; see packaging/apt-repo.md).
                         Ignored when --offline is given.
+  --tarball             Install from the signed binary tarball instead of apt
+                        (automatic on a host with no apt-get).
+  --dist-url <url>      Base URL of the tarball distribution (default:
+                        https://get.vnprox.io/dist).
+  --release-key <file>  Trust anchor for signature verification: an armored
+                        public key. Changes WHICH key is trusted; it cannot
+                        change whether a signature is checked. There is no
+                        way to skip verification.
+  --prefix <dir>        Install the tarball under this prefix instead of /usr
+                        (binaries land in <dir>/bin). Implies --tarball and
+                        skips the node setup steps, for an unprivileged or
+                        air-gapped install.
   --port <n>            Force the listen port (skips conflict detection).
   --with-lldp            Install lldpd on this node (default: ask).
   --no-lldp               Skip lldpd.
@@ -95,6 +169,23 @@ while [ $# -gt 0 ]; do
 		;;
 	--apt-repo)
 		APT_REPO_URL="$2"
+		shift 2
+		;;
+	--dist-url)
+		DIST_URL="$2"
+		shift 2
+		;;
+	--release-key)
+		RELEASE_KEY_FILE="$2"
+		shift 2
+		;;
+	--tarball)
+		FORCE_TARBALL=1
+		shift
+		;;
+	--prefix)
+		INSTALL_PREFIX="$2"
+		FORCE_TARBALL=1
 		shift 2
 		;;
 	--port)
@@ -127,8 +218,209 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-if [ "$(id -u)" -ne 0 ]; then
+if [ "$(id -u)" -ne 0 ] && [ -z "$INSTALL_PREFIX" ]; then
 	die "must run as root"
+fi
+
+# --- signature verification -----------------------------------------------
+#
+# One function, used by every path that puts bytes on this machine that came
+# off a network. It is not conditional on anything: there is no flag, no
+# environment variable and no fallback that reaches an install without
+# passing through here.
+
+# release_trust_anchor prints the path of an armored public key to verify
+# against, or dies. Exactly two sources, in this order:
+#
+#   1. --release-key <file>, the operator's own explicitly supplied anchor.
+#   2. The distribution's published key, ACCEPTED ONLY IF its fingerprint
+#      equals VNPROX_RELEASE_KEY_FPR — the value this script carries. That
+#      check is the whole point: fetching a key from the same host that
+#      serves the artifact and then trusting it because it arrived proves
+#      nothing at all.
+#
+# There is no third source, and in particular no "no key available, carry
+# on".
+release_trust_anchor() {
+	work="$1"
+
+	if [ -n "$RELEASE_KEY_FILE" ]; then
+		[ -f "$RELEASE_KEY_FILE" ] || die "--release-key file not found: $RELEASE_KEY_FILE"
+		printf '%s\n' "$RELEASE_KEY_FILE"
+		return 0
+	fi
+
+	if [ "$VNPROX_RELEASE_KEY_FPR" = "$VNPROX_RELEASE_KEY_PLACEHOLDER" ]; then
+		die "this build of $PROG carries no release-key fingerprint, so a downloaded artifact cannot be verified, and installing one unverified is not an option this script offers. Install from a local package with --offline <file>, or supply the trust anchor with --release-key <file>. (Maintainers: generate the release key, publish it, and replace the pinned fingerprint — see the vnprox-release-key-fingerprint marker in this file and packaging/apt-repo.md.)"
+	fi
+
+	fetched="$work/release-key.asc"
+	if ! curl -fsSL "$DIST_URL/vnprox-release-key.asc" -o "$fetched" 2>/dev/null &&
+		! curl -fsSL "$APT_REPO_URL/vnprox-archive-keyring.gpg" -o "$fetched" 2>/dev/null; then
+		die "could not fetch the vnprox release key from $DIST_URL or $APT_REPO_URL"
+	fi
+
+	got="$(GNUPGHOME="$work/gnupg-probe" gpg_probe_fingerprint "$fetched")" ||
+		die "could not read a key fingerprint from the fetched release key"
+	if [ "$got" != "$VNPROX_RELEASE_KEY_FPR" ]; then
+		die "the fetched release key's fingerprint ($got) is not the one this installer pins ($VNPROX_RELEASE_KEY_FPR) — refusing to trust it. This is either a key rotation this installer predates, or someone serving you a different key."
+	fi
+	printf '%s\n' "$fetched"
+}
+
+gpg_probe_fingerprint() {
+	keyfile="$1"
+	mkdir -p "$GNUPGHOME"
+	chmod 700 "$GNUPGHOME"
+	gpg --batch --quiet --import "$keyfile" >/dev/null 2>&1 || return 1
+	gpg --batch --with-colons --fingerprint 2>/dev/null |
+		awk -F: '$1 == "fpr" { print $10; exit }'
+}
+
+# verify_signature <artifact> <detached-signature> <trust-anchor>
+#
+# Dies on ANY failure — a bad signature, a signature by a key that is not
+# the anchor, a missing signature, a missing gpg. "Could not check" and
+# "checked and it was wrong" get the same treatment on purpose: they are the
+# same thing from the point of view of the machine about to run the binary.
+verify_signature() {
+	artifact="$1"
+	sigfile="$2"
+	anchor="$3"
+
+	command -v gpg >/dev/null 2>&1 ||
+		die "gpg not found, and signature verification is not optional — install gnupg and re-run"
+	[ -f "$artifact" ] || die "artifact not found: $artifact"
+	[ -f "$sigfile" ] || die "no signature found for $(basename "$artifact") — refusing to install an unverified artifact"
+
+	vwork="$(mktemp -d)"
+	export GNUPGHOME="$vwork/gnupg"
+	mkdir -p "$GNUPGHOME"
+	chmod 700 "$GNUPGHOME"
+
+	if ! gpg --batch --quiet --import "$anchor" >/dev/null 2>&1; then
+		rm -rf "$vwork"
+		unset GNUPGHOME
+		die "could not import the release trust anchor from $anchor"
+	fi
+	if ! gpg --batch --verify "$sigfile" "$artifact" >/dev/null 2>&1; then
+		rm -rf "$vwork"
+		unset GNUPGHOME
+		die "signature verification FAILED for $(basename "$artifact") — the artifact does not match its signature, or was not signed by the trusted release key. Not installing it."
+	fi
+	rm -rf "$vwork"
+	unset GNUPGHOME
+	log "signature verified: $(basename "$artifact")"
+}
+
+# --- the binary tarball fallback -------------------------------------------
+#
+# For a host with no apt-get (or an operator who asked for it with
+# --tarball/--prefix). Downloads the architecture's archive AND its detached
+# signature, verifies, and only then unpacks.
+#
+# Idempotent by construction (AC5): the version already installed at the
+# prefix is compared against the one about to be installed, and a match is
+# reported and skipped rather than re-extracted. Re-extracting would be
+# harmless today, but "running it twice leaves the same versions" should be
+# something the script knows, not something that happens to be true.
+
+detect_arch() {
+	a="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+	case "$a" in
+	amd64 | x86_64) echo amd64 ;;
+	arm64 | aarch64) echo arm64 ;;
+	*) echo "$a" ;;
+	esac
+}
+
+installed_version() {
+	bin="$1/bin/vnproxd"
+	[ -x "$bin" ] || return 1
+	# "vnproxd 1.2.3" -> "1.2.3"
+	"$bin" --version 2>/dev/null | awk '{print $2}'
+}
+
+install_tarball() {
+	prefix="${INSTALL_PREFIX:-/usr}"
+	arch="$(detect_arch)"
+	case "$arch" in
+	amd64 | arm64) ;;
+	*) die "unsupported architecture: $arch (vnprox ships amd64 and arm64 builds only)" ;;
+	esac
+
+	work="$(mktemp -d)"
+	trap 'rm -rf "$work"' EXIT
+
+	log "resolving the current vnprox version from $DIST_URL"
+	if ! curl -fsSL "$DIST_URL/latest.txt" -o "$work/latest.txt"; then
+		die "could not fetch $DIST_URL/latest.txt"
+	fi
+	version="$(tr -d '[:space:]' <"$work/latest.txt")"
+	[ -n "$version" ] || die "$DIST_URL/latest.txt is empty"
+	# latest.txt is an unsigned POINTER, and that is a deliberate, bounded
+	# trust decision rather than an oversight: it names a version, and the
+	# only versions it can name are ones whose archive carries a valid
+	# signature by the pinned release key, because that signature is checked
+	# below before anything is unpacked. A tampered pointer can therefore
+	# select a different *genuine* release (a rollback), not an artifact of
+	# the attacker's choosing. Rollback protection needs a signed manifest
+	# with monotonic version metadata; it is not solved here and is not
+	# claimed to be.
+	log "installing vnprox $version ($arch) under $prefix"
+
+	if current="$(installed_version "$prefix")" && [ "$current" = "$version" ]; then
+		log "vnprox $version is already installed at $prefix — nothing to do"
+		return 0
+	fi
+
+	tarball="vnprox_${version}_${arch}.tar.gz"
+	curl -fsSL "$DIST_URL/$tarball" -o "$work/$tarball" ||
+		die "could not download $DIST_URL/$tarball"
+	curl -fsSL "$DIST_URL/$tarball.asc" -o "$work/$tarball.asc" ||
+		die "could not download the signature $DIST_URL/$tarball.asc — refusing to install an unverified artifact"
+
+	anchor="$(release_trust_anchor "$work")"
+	verify_signature "$work/$tarball" "$work/$tarball.asc" "$anchor"
+
+	# Unpacked only after the signature has been checked. Into a staging
+	# directory first, so a truncated or hostile archive cannot leave a
+	# half-installed prefix behind.
+	stage="$work/stage"
+	mkdir -p "$stage"
+	tar -xzf "$work/$tarball" -C "$stage" || die "could not unpack $tarball"
+
+	install -d -m 0755 "$prefix/bin"
+	found=0
+	for binary in vnproxd vnproxctl vnprox-setup; do
+		src="$(find "$stage" -type f -name "$binary" -print -quit)"
+		if [ -n "$src" ]; then
+			install -m 0755 "$src" "$prefix/bin/$binary"
+			found=$((found + 1))
+		fi
+	done
+	[ "$found" -gt 0 ] || die "$tarball contained none of vnproxd/vnproxctl/vnprox-setup"
+
+	log "installed $found binaries into $prefix/bin"
+	rm -rf "$work"
+	trap - EXIT
+}
+
+if [ -n "$INSTALL_PREFIX" ]; then
+	# --prefix is the unprivileged/air-gapped shape: install the binaries and
+	# stop. Node setup (the PVE token, the cluster secret, systemd) needs root
+	# and a real PVE node, and neither is implied by "put the binaries here".
+	install_tarball
+	cat <<EOF
+
+vnprox binaries installed under $INSTALL_PREFIX/bin.
+
+This was a binaries-only install: no systemd unit, no PVE API token, no
+config. Run '$INSTALL_PREFIX/bin/vnproxd --demo' to explore vnprox against
+its built-in synthetic cluster, or re-run this installer as root without
+--prefix to set up a real node.
+EOF
+	exit 0
 fi
 
 # --- step 1: PVE version/arch + cluster membership ------------------------
@@ -255,28 +547,69 @@ APT_SOURCE_PATH="/etc/apt/sources.list.d/vnprox.list"
 
 if [ -n "$OFFLINE_DEB" ]; then
 	[ -f "$OFFLINE_DEB" ] || die "--offline file not found: $OFFLINE_DEB"
+	# A local file the operator chose and already holds is a different trust
+	# decision from a download: nothing about it passed through a network on
+	# this run. It is still verified when a detached signature sits next to
+	# it, which is what a release download unpacked by hand looks like. When
+	# there is none — a `make deb` artifact built on this machine, which is
+	# what this repository's own container tests install — the operator is
+	# told plainly what they are trusting instead of being stopped.
+	if [ -f "$OFFLINE_DEB.asc" ]; then
+		owork="$(mktemp -d)"
+		verify_signature "$OFFLINE_DEB" "$OFFLINE_DEB.asc" "$(release_trust_anchor "$owork")"
+		rm -rf "$owork"
+	else
+		warn "no $OFFLINE_DEB.asc next to the package: installing a local file on your say-so, unverified. A release download ships a .asc alongside the .deb; put it next to the package to have this verified."
+	fi
 	if command -v apt-get >/dev/null 2>&1; then
 		apt-get install -y "$OFFLINE_DEB"
 	else
 		dpkg -i "$OFFLINE_DEB" || die "dpkg -i $OFFLINE_DEB failed"
 	fi
+elif [ "$FORCE_TARBALL" -eq 1 ] || ! command -v apt-get >/dev/null 2>&1; then
+	# "installs from the signed apt repository where available and falls back
+	# to a binary tarball" — this is the fallback, taken automatically on a
+	# host with no apt-get rather than dying the way this script used to.
+	if [ "$FORCE_TARBALL" -ne 1 ]; then
+		log "no apt-get on this host: falling back to the signed binary tarball"
+	fi
+	install_tarball
 else
 	log "configuring the vnprox apt repo at $APT_REPO_URL"
-	if ! command -v apt-get >/dev/null 2>&1; then
-		die "apt-get not found and no --offline package given"
-	fi
 	if ! command -v gpg >/dev/null 2>&1; then
-		die "gpg not found (needed to install the apt repo signing key) — install gnupg, or use --offline <file>"
+		die "gpg not found (needed to verify the apt repo signing key) — install gnupg, or use --offline <file>"
 	fi
 
+	# The pinned-fingerprint check happens HERE, before the key is installed
+	# into the system keyring — apt will happily verify the repo against
+	# whatever key it is given, so "apt verified the signature" says nothing
+	# unless the key itself was checked first.
+	awork="$(mktemp -d)"
+	anchor="$(release_trust_anchor "$awork")"
+
 	install -d -m 0755 "$(dirname "$KEYRING_PATH")"
-	if ! curl -fsSL "$APT_REPO_URL/vnprox-archive-keyring.gpg" | gpg --dearmor >"$KEYRING_PATH.tmp" 2>/dev/null; then
+	if ! gpg --dearmor <"$anchor" >"$KEYRING_PATH.tmp" 2>/dev/null; then
 		rm -f "$KEYRING_PATH.tmp"
-		die "could not fetch/import the vnprox apt signing key from $APT_REPO_URL (no live vnprox apt repo reachable from this host? use --offline <path-to-deb> instead — see 'make deb' / dist/vnprox_*.deb)"
+		rm -rf "$awork"
+		die "could not convert the verified release key into an apt keyring"
 	fi
 	mv "$KEYRING_PATH.tmp" "$KEYRING_PATH"
 	chmod 0644 "$KEYRING_PATH"
+	rm -rf "$awork"
 
+	# AC5, the "no duplicate sources entry" half. Writing our own file with
+	# > is already idempotent, but an entry added by hand to another file
+	# (or by an older version of this script to another path) would leave
+	# apt with two sources for the same repo, which is the exact symptom the
+	# criterion names. Strip those first, then write exactly one.
+	for other in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+		[ -f "$other" ] || continue
+		[ "$other" = "$APT_SOURCE_PATH" ] && continue
+		if grep -qF "$APT_REPO_URL" "$other" 2>/dev/null; then
+			warn "removing a duplicate vnprox apt entry from $other"
+			grep -vF "$APT_REPO_URL" "$other" >"$other.vnprox-tmp" && mv "$other.vnprox-tmp" "$other"
+		fi
+	done
 	echo "deb [signed-by=$KEYRING_PATH] $APT_REPO_URL stable main" >"$APT_SOURCE_PATH"
 	log "wrote $APT_SOURCE_PATH"
 

@@ -102,6 +102,9 @@ func (c *Collector) pollClusterStatus(ctx context.Context) ([]string, error) {
 	if c.peerClient != nil {
 		c.setPeers(peers)
 	}
+	if c.hostServesCluster {
+		c.setClusterNodes(nodes)
+	}
 	return nodes, nil
 }
 

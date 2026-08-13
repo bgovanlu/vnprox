@@ -64,7 +64,7 @@ func TestRunDaemon_HoldsTheStoreRuntimeLock(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	daemonDone := make(chan error, 1)
-	go func() { daemonDone <- runDaemon(ctx, cfgPath, testLogger()) }()
+	go func() { daemonDone <- runDaemon(ctx, daemonOptions{ConfigPath: cfgPath}, testLogger()) }()
 
 	// vnprox.service is Type=simple and this is the same shape: the process
 	// exists long before the listener is bound (T-1807 found exactly this).

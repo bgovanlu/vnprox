@@ -25,6 +25,7 @@ const config: InstanceConfigResponse = {
   snapshotKeepDays: 90,
   snapshotPinDays: 7,
   readOnly: true,
+  demo: false,
   allowDangerousOps: false,
 };
 

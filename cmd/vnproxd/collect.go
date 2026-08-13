@@ -43,14 +43,20 @@ import (
 // building a second client — the same "returned alongside the collector so
 // callers can reuse it" pattern peerClient already established for T-303's
 // cluster fan-out.
-func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta), onStats func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats), onServices func(node string, status map[string]bool), peerSecrets *peer.SecretStore, peerTrust *peer.Trust, selfMetrics *metrics.Registry) (*collect.Collector, *peer.Client, *pve.Client, error) {
-	pveClient, err := buildCollectorPVEClient(cfg)
+func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logger, onDelta func(inventory.Delta), onStats func(ctx context.Context, node string, at time.Time, links []host.LinkState, stats map[string]host.IfaceStats), onServices func(node string, status map[string]bool), peerSecrets *peer.SecretStore, peerTrust *peer.Trust, selfMetrics *metrics.Registry, demoRT *demoRuntime) (*collect.Collector, *peer.Client, *pve.Client, error) {
+	pveClient, err := buildCollectorPVEClient(cfg, demoRT)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("building collectors' PVE client: %w", err)
 	}
 
+	// T-2801: a demo daemon builds NO peer client. Peer fan-out dials the
+	// addresses the fixture's own cluster status advertises (10.10.0.12,
+	// 10.10.0.13) — real addresses on a real network, which plenty of
+	// networks will route somewhere. The cluster-wide fixture reader below
+	// answers for those nodes instead, so nothing is lost and nothing is
+	// dialled.
 	var peerClient *peer.Client
-	if peerSecrets != nil {
+	if peerSecrets != nil && !demoRT.enabled() {
 		peerClient = peer.NewClient(peer.ClientOptions{
 			ClusterStatus: pveClient,
 			Secrets:       peerSecrets,
@@ -68,15 +74,22 @@ func setupCollect(cfg *config.Config, graph *inventory.Graph, logger *slog.Logge
 	}
 
 	c, err := collect.New(collect.Config{
-		PVE:          pveClient,
-		Host:         host.NewReal(),
-		Peer:         peerClient,
-		Graph:        graph,
-		PVEInterval:  cfg.Collect.PVEInterval,
-		HostInterval: cfg.Collect.HostInterval,
-		LLDPInterval: cfg.Collect.LLDPInterval,
-		Logger:       logger,
-		OnDelta:      onDelta,
+		PVE: pveClient,
+		// T-2801: a demo daemon reads the embedded fixture's host state, not
+		// the machine it is running on. demoRuntime.hostReader is nil-safe
+		// and returns host.NewReal() for a normal daemon, so this line is
+		// unchanged behaviour outside demo mode.
+		Host: demoRT.hostReader(),
+		// Cluster-wide only in demo mode: the fixture reader answers for
+		// every node, a real host.Reader answers only for its own.
+		HostServesCluster: demoRT.enabled(),
+		Peer:              peerClient,
+		Graph:             graph,
+		PVEInterval:       cfg.Collect.PVEInterval,
+		HostInterval:      cfg.Collect.HostInterval,
+		LLDPInterval:      cfg.Collect.LLDPInterval,
+		Logger:            logger,
+		OnDelta:           onDelta,
 		// T-601: the metrics sampler's counter-ingestion hook, piggybacked
 		// on this same host-loop poll (see collect.Config.OnStats's doc
 		// comment) rather than a second poll loop.
@@ -146,21 +159,31 @@ func peerMetricsRecorder(reg *metrics.Registry) peer.MetricsRecorder {
 // (typically plain-HTTP internal/pvemock for local dev). This is the only
 // way to exercise the collectors against pvemock at all: pvemock does not
 // implement PVE API-token authentication.
-func buildCollectorPVEClient(cfg *config.Config) (*pve.Client, error) {
+//
+// Demo path (T-2801): demoRT.httpClient() is the in-process transport that
+// answers from the embedded fixture and cannot dial. It is passed as
+// pve.Config.HTTPClient, which suppresses buildHTTPClient entirely — so a
+// demo daemon's collector client is not "a real client pointed somewhere
+// harmless", it is a client with no way to reach a network at all. Demo
+// mode sets TicketUsername (see demoPVEConfig), so it takes the ticket
+// branch below.
+func buildCollectorPVEClient(cfg *config.Config, demoRT *demoRuntime) (*pve.Client, error) {
 	if cfg.PVE.TicketUsername != "" {
 		return pve.New(pve.Config{
-			APIURL:   cfg.PVE.APIURL,
-			Auth:     pve.AuthTicket,
-			Username: cfg.PVE.TicketUsername,
-			Password: cfg.PVE.TicketPassword,
-			Realm:    cfg.PVE.TicketRealm,
+			APIURL:     cfg.PVE.APIURL,
+			Auth:       pve.AuthTicket,
+			Username:   cfg.PVE.TicketUsername,
+			Password:   cfg.PVE.TicketPassword,
+			Realm:      cfg.PVE.TicketRealm,
+			HTTPClient: demoRT.httpClient(),
 		})
 	}
 	return pve.New(pve.Config{
-		APIURL:    cfg.PVE.APIURL,
-		Auth:      pve.AuthAPIToken,
-		TokenFile: cfg.PVE.TokenFile,
-		TLS:       pve.TLSConfig{CACertFile: config.DefaultPVECertPath},
+		APIURL:     cfg.PVE.APIURL,
+		Auth:       pve.AuthAPIToken,
+		TokenFile:  cfg.PVE.TokenFile,
+		TLS:        pve.TLSConfig{CACertFile: config.DefaultPVECertPath},
+		HTTPClient: demoRT.httpClient(),
 	})
 }
 

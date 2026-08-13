@@ -2557,6 +2557,18 @@ export interface InstanceConfigResponse {
   snapshotPinDays: number;
   readOnly: boolean;
   allowDangerousOps: boolean;
+  /** T-2801: this daemon runs against the embedded synthetic cluster. */
+  demo: boolean;
+}
+
+/** GET `/health` (internal/api's healthResponse). The API's only
+ * unauthenticated route. */
+export interface HealthResponse {
+  status: string;
+  version: string;
+  /** T-2801. Absent (not false) on a normal daemon — the Go field is
+   * `omitempty`, so an existing consumer sees a byte-identical response. */
+  demo?: boolean;
 }
 
 export interface ProtectedInterfacesStatusResponse {

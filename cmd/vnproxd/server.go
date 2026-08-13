@@ -21,6 +21,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/certs"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/config"
+	"github.com/bgovanlu/vnprox/internal/demo"
 	"github.com/bgovanlu/vnprox/internal/dhcp"
 	"github.com/bgovanlu/vnprox/internal/docexport"
 	"github.com/bgovanlu/vnprox/internal/evpn"
@@ -116,10 +117,26 @@ func distRootFS() (fs.FS, error) {
 // runDaemon loads config, wires the HTTPS server + TLS cert watcher into a
 // supervised run group, and blocks until ctx is cancelled (SIGINT/SIGTERM)
 // or a subsystem fails.
-func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) error {
-	cfg, err := config.Load(configPath, logger)
-	if err != nil {
-		return fmt.Errorf("loading config %s: %w", configPath, err)
+func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) error {
+	var (
+		cfg    *config.Config
+		demoRT *demoRuntime
+		err    error
+	)
+	if opts.Demo {
+		// T-2801. setupDemo owns the whole demo config resolution, including
+		// AC3's refusal of a config that names a PVE endpoint — so a demo
+		// daemon has decided it has no real cluster before it opens a store,
+		// builds a client, or binds anything.
+		cfg, demoRT, err = setupDemo(opts.ConfigPath, opts.DemoDir, logger)
+		if err != nil {
+			return err
+		}
+	} else {
+		cfg, err = config.Load(opts.ConfigPath, logger)
+		if err != nil {
+			return fmt.Errorf("loading config %s: %w", opts.ConfigPath, err)
+		}
 	}
 
 	certProvider, err := config.NewCertProvider(cfg.Server.TLSCertPath, cfg.Server.TLSKeyPath, logger)
@@ -225,7 +242,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	apiTokenRepo := store.NewAPITokenRepo(db)
 	webhookRepo := store.NewWebhookRepo(db)
 
-	authSvc, sessionCipher, err := setupAuth(cfg, logger, db, auditRepo, apiTokenRepo)
+	authSvc, sessionCipher, err := setupAuth(cfg, logger, db, auditRepo, apiTokenRepo, demoRT)
 	if err != nil {
 		return fmt.Errorf("initializing auth: %w", err)
 	}
@@ -343,7 +360,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// non-nil — see setupCollect's doc comment — so every peerClient use
 	// below is already guarded by the same "collectors initialized OK"
 	// nil-safety collector's own uses need.
-	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, onServices, peerSecrets, peerTrust, selfMetrics)
+	collector, peerClient, sdnPVEClient, collectErr := setupCollect(cfg, graph, logger, topoSvc.OnDelta, metricsSampler.Ingest, onServices, peerSecrets, peerTrust, selfMetrics, demoRT)
 	if collectErr != nil {
 		logger.Error("collect: failed to initialize PVE/host collectors; starting without live inventory polling or cluster fan-out", "error", collectErr)
 	}
@@ -865,8 +882,23 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 	// (T-305/T-306 or a hardening pass) but not attempted here — see
 	// planning/reports/T-303.md and T-304.md, developed concurrently and
 	// integrated by hand.
+	// T-2801: a demo daemon leaves this nil. peer.Client.Peers() then
+	// reports zero peers (its documented single-node case), so every
+	// cluster fan-out in this binary — coordination, the peer-API audit and
+	// snapshot readers, the API's cluster-merge handlers — resolves to the
+	// local node and dials nothing. That is what makes "no network access"
+	// a property of the process rather than of the fixture's addresses.
 	var clusterStatusSource peer.ClusterStatusSource
-	if discoveryClient, discErr := buildCollectorPVEClient(cfg); discErr != nil {
+	if demoRT.enabled() {
+		// Left nil deliberately. peer.Client.Peers() then reports zero peers
+		// (its documented single-node case), so every cluster fan-out in this
+		// binary — coordination, the peer-API audit and snapshot readers, the
+		// API's cluster-merge handlers — resolves to the local node and dials
+		// nothing. That is what makes "no network access" a property of the
+		// process rather than of the fixture's node addresses, which are
+		// ordinary RFC1918 addresses that plenty of networks route somewhere.
+		logger.Info("demo: peer discovery disabled; every cluster fan-out resolves to the local node")
+	} else if discoveryClient, discErr := buildCollectorPVEClient(cfg, demoRT); discErr != nil {
 		logger.Warn("change: building peer-discovery PVE client; multi-node coordination unavailable until this succeeds", "error", discErr)
 	} else {
 		clusterStatusSource = discoveryClient
@@ -928,7 +960,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		// turns an unsealed ticket back into a non-renewing PVE client so the
 		// commit-confirm-timeout and crash-recovery reverts can restore a
 		// changeset's firewall/SDN portion with no live user session.
-		RevertGateways: revertGatewayFactory{apiURL: cfg.PVE.APIURL, tls: revertTLSConfig(cfg)},
+		RevertGateways: revertGatewayFactory{apiURL: cfg.PVE.APIURL, tls: revertTLSConfig(cfg), httpClient: demoRT.httpClient()},
 		// T-1401 Finding 2: resolve an existing tunnel's stored carrier so a
 		// carrier-less wg op (peer add/remove, delete, MTU-only update) on a
 		// mgmt-path tunnel is caught by the scheduling gate the same way the
@@ -1372,7 +1404,12 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 			AllowDangerousOps:        cfg.Safety.AllowDangerousOps,
 			MetricsEnabled:           cfg.Metrics.Enabled,
 			HostSampler:              activeHostSampler,
+			Demo:                     cfg.Demo,
 		},
+		// T-2801: turns on the write refusal in front of every route
+		// (internal/api/demo.go) and the `demo` flag on GET /health that the
+		// SPA's banner reads before login.
+		Demo:       cfg.Demo,
 		DistFS:     distFS,
 		Logger:     logger,
 		Auth:       authServiceAdapter{authSvc},
@@ -1464,7 +1501,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		HistoryFindingEvents: findingEventRepo,
 		// T-2804: the incident view. Built from the repositories above and
 		// changeSvc's T-2704 diff; it starts nothing and collects nothing.
-		Incidents: setupIncidents(cfg, configPath, db, auditRepo, findingEventRepo,
+		Incidents: setupIncidents(cfg, opts.ConfigPath, db, auditRepo, findingEventRepo,
 			flowRepo, changeSvc, localNode, logger),
 		IncidentAudit:     auditRepo,
 		SDN:               sdnSvc,
@@ -1653,6 +1690,15 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		g.add(pprofActor)
 	}
 	g.add(authSvc.RunRenewalLoop)
+	// T-2801: a demo daemon replays its checked-in flow corpus into the same
+	// flow.Service every real decoder feeds. Registered here so it is
+	// cancelled with every other actor; absent entirely outside demo mode.
+	if demoRT.enabled() {
+		corpus := demoRT.mode.Dataset().Flows
+		g.add(func(ctx context.Context) error {
+			return demo.RunFlowSeeder(ctx, corpus, flowSvc, demo.DefaultFlowSeedInterval, logger)
+		})
+	}
 	// metric_samples retention (store.MetricRetention): RunPruneLoop's doc
 	// comment assigns the wiring to the daemon, and without it the table
 	// grows unboundedly once metrics flow (audit phase-0 F-01). Reuses the

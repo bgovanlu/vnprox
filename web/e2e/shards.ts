@@ -64,18 +64,25 @@ interface Endpoint {
  * its own polls — k8s-overlay.spec.ts registers it against the default
  * stack's daemon. */
 interface Instance {
-  readonly mock: Endpoint;
+  /** Absent for a stack with no mock server of its own — see the `demo`
+   * stack, whose synthetic cluster runs inside its daemon. */
+  readonly mock?: Endpoint;
   readonly daemon?: Endpoint;
 }
 
 /** The stacks the suite can bring up. */
-export type StackName = "default" | "sim" | "scale" | "mgmt" | "alert" | "flow" | "physcollapse" | "k8s";
+export type StackName = "default" | "sim" | "scale" | "mgmt" | "alert" | "flow" | "physcollapse" | "k8s" | "demo";
 
 interface StackDef {
-  /** Which mock server serves this stack's fixture. */
-  readonly mockCommand: "pvemock" | "k8smock";
-  /** Repo-relative fixture the mock serves. */
-  readonly fixture: string;
+  /** Which mock server serves this stack's fixture. Absent when the stack
+   * has no mock process at all. */
+  readonly mockCommand?: "pvemock" | "k8smock";
+  /** Repo-relative fixture the mock serves. Absent alongside mockCommand. */
+  readonly fixture?: string;
+  /** Extra arguments the daemon needs beyond `--config`. `--demo` is the
+   * only current user: it is a mode the process is started in, not a
+   * setting a config file can carry (see internal/config.Config.Demo). */
+  readonly daemonArgs?: readonly string[];
   /** Repo-relative vnproxd config template. Absent when the stack has no
    * daemon of its own. */
   readonly config?: string;
@@ -170,6 +177,18 @@ const STACKS: Readonly<Record<StackName, StackDef>> = {
     instances: [{ mock: { port: 8008 } }],
     why: "T-1502's mock Kubernetes API, registered as a cluster against whichever default daemon the shard owns.",
   },
+  // T-2801. The only stack with no mock process: `vnproxd --demo` serves
+  // its synthetic cluster from inside itself, over an http.RoundTripper
+  // that never dials (internal/demo/transport.go). That is the property
+  // demo.spec.ts asserts, so giving this stack a pvemock on a port would
+  // quietly remove the thing under test.
+  demo: {
+    config: "testdata/demo.toml",
+    daemonArgs: ["--demo"],
+    daemonTimeoutMS: 120_000,
+    instances: [{ daemon: { port: 24007 } }],
+    why: "T-2801's demo mode: no PVE endpoint, no outbound network, every mutating route a no-op that reports what it would have done.",
+  },
 };
 
 /** Specs needing something other than the default stack alone.
@@ -192,6 +211,10 @@ const SPEC_STACKS: Readonly<Record<string, readonly StackName[]>> = {
   "history.spec.ts": ["flow"],
   "physical-collapse.spec.ts": ["physcollapse"],
   "k8s-overlay.spec.ts": ["default", "k8s"],
+  // T-2801: the demo daemon is the whole subject — it needs no default
+  // stack, and must not be handed one, since "there is no PVE reachable"
+  // is the first thing it asserts.
+  "demo.spec.ts": ["demo"],
 };
 
 export interface ShardDef {
@@ -320,7 +343,11 @@ export function stackURL(stack: StackName = "default"): string {
 /** The base URL of a stack's mock cluster API (plain HTTP, as pvemock and
  * k8smock serve). */
 export function mockURL(stack: StackName = "default"): string {
-  return `http://127.0.0.1:${String(instanceFor(stack, activeSlot()).mock.port)}`;
+  const mock = instanceFor(stack, activeSlot()).mock;
+  if (mock === undefined) {
+    throw new Error(`stack ${stack} has no mock server; its cluster runs inside its own daemon`);
+  }
+  return `http://127.0.0.1:${String(mock.port)}`;
 }
 
 /** Per-shard scratch root. Every var/ path in a generated config is redirected
@@ -368,7 +395,7 @@ function writeShardConfig(stack: StackName, shardName: string, slot: number): st
         replaced.add("listen");
         return `listen = "127.0.0.1:${String(daemon.port)}"`;
       }
-      if (trimmed.startsWith("api_url ")) {
+      if (trimmed.startsWith("api_url ") && inst.mock !== undefined) {
         replaced.add("api_url");
         return `api_url = "http://127.0.0.1:${String(inst.mock.port)}"`;
       }
@@ -466,16 +493,21 @@ export function webServers(shardName: string, specs: readonly string[], slot: nu
   for (const stack of stacksFor(specs)) {
     const def = STACKS[stack];
     const inst = instanceFor(stack, slot);
-    servers.push({
-      command: command(def.mockCommand, ["--addr", `127.0.0.1:${String(inst.mock.port)}`, "--fixture", def.fixture]),
-      cwd: "..",
-      port: inst.mock.port,
-      reuseExistingServer: false,
-      timeout: 120_000,
-    });
+    // A stack may have no mock process of its own (the demo stack serves
+    // its cluster from inside the daemon). mockCommand/fixture/mock travel
+    // together — all three or none.
+    if (def.mockCommand !== undefined && def.fixture !== undefined && inst.mock !== undefined) {
+      servers.push({
+        command: command(def.mockCommand, ["--addr", `127.0.0.1:${String(inst.mock.port)}`, "--fixture", def.fixture]),
+        cwd: "..",
+        port: inst.mock.port,
+        reuseExistingServer: false,
+        timeout: 120_000,
+      });
+    }
     if (def.config !== undefined && inst.daemon !== undefined) {
       servers.push({
-        command: command("vnproxd", ["--config", writeShardConfig(stack, shardName, slot)]),
+        command: command("vnproxd", [...(def.daemonArgs ?? []), "--config", writeShardConfig(stack, shardName, slot)]),
         cwd: "..",
         url: `https://127.0.0.1:${String(inst.daemon.port)}/api/v1/health`,
         ignoreHTTPSErrors: true,
