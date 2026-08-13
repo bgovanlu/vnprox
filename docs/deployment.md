@@ -302,6 +302,26 @@ enabled = true             # mounts GET /metrics (Prometheus exporter, T-1001); 
 #                                   # Unset: proposing answers 501 and nothing is contacted.
 #                                   # Requires provider github or gitlab (a raw file host has no
 #                                   # branch or pull-request API).
+
+# [telemetry]                      # T-2503: opt-in compatibility reporting. OFF by default, and the
+#                                   # shipped vnprox.toml has this whole section commented out.
+# enabled = false                  # With this false (or no section at all) no payload is built, the
+#                                   # store is not read for an install-id, and no endpoint is
+#                                   # contacted by anything.
+# endpoint = "https://collector.example/vnprox"   # REQUIRED when enabled, https only. vnprox ships
+#                                   # NO default: there is no vnprox telemetry service, so opting in
+#                                   # means naming the collector yourself. enabled = true with no
+#                                   # endpoint is a FATAL config error, not a quiet no-op — an
+#                                   # operator who opted in must never be silently sending nothing.
+#                                   #
+#                                   # What would be sent: a `vnproxctl verify` run reduced to check
+#                                   # ids and verdicts, the vnprox/PVE/kernel versions, the NICs' PCI
+#                                   # vendor:device ids, and a node COUNT. Never a hostname, address,
+#                                   # MAC, guest name or cluster name — docs/security.md
+#                                   # ("Compatibility telemetry") lists every field, and
+#                                   # `vnproxctl telemetry preview --report <file>` prints the exact
+#                                   # bytes. The install-id correlator is a random local ULID,
+#                                   # thrown away by `vnproxctl telemetry reset-id`.
 ```
 
 ### Git spec sync operating notes (T-2701)
@@ -855,6 +875,37 @@ it and this one is not.
   run, no external IPAM configured. Each says what to do to make itself run. That is the honest
   state: a suite that reported `pass` for "we looked and there was nothing to look at" would be
   back to the problem this command exists to solve.
+
+## `vnproxctl telemetry` — opt-in compatibility reporting (T-2503)
+
+One cluster validated by us is an anecdote. A hundred clusters reporting which `verify` checks pass
+on which PVE version, kernel and NIC is a compatibility matrix. This command family is how you help
+with that, if you want to — **it is off, it has no endpoint, and it sends nothing until you
+configure both** (see `[telemetry]` in the configuration reference above).
+
+```bash
+vnproxctl verify --suite=hardware --out report.json   # produce a report first
+vnproxctl telemetry preview --report report.json      # print the exact bytes that would be sent
+vnproxctl telemetry status                            # on/off, endpoint, install-id
+vnproxctl telemetry send --report report.json         # submit one report (requires the opt-in)
+vnproxctl telemetry reset-id                          # throw away the correlator
+```
+
+- **`preview` is the point.** It prints the same buffer `send` posts — not an equivalent rendering;
+  the payload is marshalled once and both paths read that one allocation, which a test asserts by
+  capturing both and comparing. What you read is what leaves.
+- **What is collected** is listed field by field in [`security.md`](security.md) under
+  "Compatibility telemetry", and that list is compared against the code on every build. Never a
+  hostname, address, MAC, guest name or cluster name; a payload containing one is refused before it
+  is sent, and the refusal names the rule and the value.
+- **The install-id** is a random ULID generated locally on first preview or send, and is the only
+  correlator. `reset-id` replaces it; the old one is deleted and recorded nowhere.
+- **`verify` may send in the background** once you have opted in, and never waits for it: a
+  collector that hangs cannot delay or fail a verify run. That also means a send still in flight
+  when the command exits is abandoned — `telemetry send` is the path that waits and tells you what
+  happened.
+- **A run against a mock PVE endpoint is never sent**, whatever the config says. It is not hardware
+  evidence, and a matrix polluted with mock runs would look larger than it is.
 
 ## Troubleshooting quick refs
 

@@ -199,6 +199,13 @@ func runVerify(args []string, stdout, stderr io.Writer) int {
 		return ExitError
 	}
 
+	// T-2503: hand the report to telemetry BEFORE the artifact is written and
+	// rendered, so whatever time those take is time the send already had.
+	// This call does not wait and nothing below it depends on the result —
+	// see startVerifyTelemetry. With [telemetry] enabled = false (the shipped
+	// default) it returns having contacted nothing.
+	_ = startVerifyTelemetry(*configPath, report)
+
 	if *outPath != "" {
 		if code := writeVerifyArtifact(report, *signKey, *outPath, stdout, stderr); code != ExitSuccess {
 			return code

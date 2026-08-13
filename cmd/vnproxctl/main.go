@@ -81,6 +81,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runVerify(args[1:], stdout, stderr)
 	case "support-bundle":
 		return runSupportBundle(args[1:], stdout, stderr)
+	case "telemetry":
+		return runTelemetry(args[1:], stdout, stderr)
 	case "remote":
 		return runRemote(args[1:], stdout, stderr)
 	case "policy":
@@ -132,6 +134,13 @@ Usage:
                                        a support thread: environment, allowlisted config, store
                                        facts (never the store), redacted changesets, scrubbed logs,
                                        peer reachability and live probes. Contains no credential.
+  vnproxctl telemetry <sub>             Opt-in compatibility reporting, OFF by default and with no
+                                       default endpoint: check ids and verdicts, versions, kernel,
+                                       NIC hardware ids and a node count — never a hostname,
+                                       address, MAC, guest or cluster name. "preview" prints the
+                                       exact bytes that would be sent, "status" says whether it is
+                                       on, "send" submits one report, "reset-id" throws away the
+                                       correlator. See docs/security.md for the full field list.
 
 HTTP-backed commands (T-1105) — require the daemon up and --token/VNPROX_TOKEN
 (a T-1104 bearer token; never a PVE username/password from this CLI):

@@ -91,3 +91,21 @@ snapshot_pin_days = 7
 #                       # behaviour: an unauthenticated catalog, no revocation.
 #                       # It says who may publish the CATALOG — it never makes an
 #                       # artifact trusted.
+
+# Opt-in compatibility telemetry (T-2503) — OFF, and this whole section is
+# commented out on purpose.
+#
+# What it would send is a `vnproxctl verify` run reduced to: check ids and
+# verdicts, the vnprox/PVE/kernel versions, the NICs' PCI vendor:device ids,
+# and a node COUNT. Never a hostname, an address, a MAC, a guest name or the
+# cluster name — docs/security.md ("Compatibility telemetry") lists every
+# field, and `vnproxctl telemetry preview --report <file>` prints the exact
+# bytes that would leave this machine.
+#
+# There is NO default endpoint: vnprox runs no telemetry service, so opting
+# in means naming an https collector yourself. enabled = true without an
+# endpoint is a fatal config error rather than a quiet no-op — an operator
+# who opted in should never be silently sending nothing.
+# [telemetry]
+# enabled = false
+# endpoint = "https://telemetry.example.com/vnprox/compat"
