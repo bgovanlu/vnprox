@@ -30,6 +30,25 @@ type point struct{ x, y float64 }
 // the L2 and Guest bands, matching the user guide's "SDN: zones and VNets
 // spanning nodes" description — they are not assigned to any one column.
 func RenderSVG(t topology.Topology) string {
+	return RenderSVGWithRegions(t, nil)
+}
+
+// RenderSVGWithRegions is RenderSVG plus T-2806's canvas regions, drawn as
+// a labelled legend band beneath the diagram.
+//
+// A legend rather than positioned rectangles, deliberately: a region's
+// x/y/w/h are in the interactive canvas's own graph space, and this export
+// is explicitly NOT that layout (see RenderSVG's doc comment — it is a
+// deterministic column/band grid, not the map's force-directed positions).
+// Drawing the rectangles at their literal coordinates here would place them
+// over unrelated entities and assert a grouping that isn't there. The
+// legend carries the one thing that survives the change of layout: the
+// operator's labels.
+//
+// The labels are operator free text and are escaped here, in this
+// renderer, on their own — not by a helper shared with html.go/markdown.go
+// (T-2806 AC6).
+func RenderSVGWithRegions(t topology.Topology, regions []RegionRow) string {
 	const (
 		colWidth   = 240
 		rowHeight  = 28
@@ -69,7 +88,10 @@ func RenderSVG(t topology.Topology) string {
 	physHeight := writeColumnBand(&body, t, nodeCols, string(topology.LayerPhysical), y, colWidth, leftMargin, rowHeight, maxPerBand, pos)
 	y += physHeight + bandGap
 
-	height := y + 20
+	var legend strings.Builder
+	legendHeight := writeRegionLegend(&legend, regions, y, leftMargin, rowHeight)
+
+	height := y + legendHeight + 20
 
 	var edges strings.Builder
 	for _, e := range t.Edges {
@@ -101,12 +123,34 @@ func RenderSVG(t topology.Topology) string {
     .entity-box.status-degraded { fill: #fde68a; stroke: #d97706; }
     .entity-label { fill: #0f172a; }
     .edge { stroke: #94a3b8; stroke-width: 1; }
+    .region-swatch { fill: #ede9fe; stroke: #7c3aed; stroke-width: 1; }
+    .region-label { fill: #4c1d95; }
   </style>` + "\n")
 	svg.WriteString(headers.String())
 	svg.WriteString(edges.String())
 	svg.WriteString(body.String())
+	svg.WriteString(legend.String())
 	svg.WriteString("</svg>")
 	return svg.String()
+}
+
+// writeRegionLegend draws one swatch+label row per region and returns the
+// vertical space it consumed (0 for no regions, so an export with no
+// annotation layer is byte-identical to the pre-T-2806 one).
+func writeRegionLegend(b *strings.Builder, regions []RegionRow, y, leftMargin, rowHeight float64) float64 {
+	if len(regions) == 0 {
+		return 0
+	}
+	fmt.Fprintf(b, `<text x="%.1f" y="%.1f" class="band-label">%s</text>`+"\n",
+		leftMargin, y, html.EscapeString(strings.ToUpper(RegionsSubheading)))
+	for i, r := range regions {
+		ry := y + float64(i+1)*rowHeight
+		fmt.Fprintf(b, `<rect x="%.1f" y="%.1f" width="16" height="12" rx="2" class="region-swatch"/>`+"\n",
+			leftMargin, ry-10)
+		fmt.Fprintf(b, `<text x="%.1f" y="%.1f" class="region-label">%s</text>`+"\n",
+			leftMargin+24, ry, html.EscapeString(truncateLabel(r.Label)))
+	}
+	return float64(len(regions)+1) * rowHeight
 }
 
 // clusterColumns returns the sorted, distinct non-empty NodeGroup values in

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bgovanlu/vnprox/internal/annotate"
 	"github.com/bgovanlu/vnprox/internal/fw"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/sdn"
@@ -230,6 +231,50 @@ func sortedCopy(in []string) []string {
 	out := append([]string(nil), in...)
 	sort.Strings(out)
 	return out
+}
+
+// AnnotationRows converts internal/annotate's read model into export rows.
+// It performs no expiry or orphan logic of its own — both are already
+// decided by the read that produced notes (T-2806 AC2/AC3 live in exactly
+// one place, internal/annotate) — it only renders timestamps for display.
+func AnnotationRows(notes []annotate.Note) []AnnotationRow {
+	if len(notes) == 0 {
+		return nil
+	}
+	out := make([]AnnotationRow, 0, len(notes))
+	for _, n := range notes {
+		out = append(out, AnnotationRow{
+			Ref: n.Ref, Content: n.Content, CreatedBy: n.CreatedBy,
+			Created: stampOf(n.CreatedAt), Expires: stampOf(n.ExpiresAt),
+			Orphaned: n.Orphaned,
+		})
+	}
+	return out
+}
+
+// RegionRows converts internal/annotate's regions into export rows.
+func RegionRows(regions []annotate.Region) []RegionRow {
+	if len(regions) == 0 {
+		return nil
+	}
+	out := make([]RegionRow, 0, len(regions))
+	for _, r := range regions {
+		out = append(out, RegionRow{
+			Label: r.Label, CreatedBy: r.CreatedBy,
+			Created: stampOf(r.CreatedAt), Expires: stampOf(r.ExpiresAt),
+			X: r.X, Y: r.Y, W: r.W, H: r.H,
+		})
+	}
+	return out
+}
+
+// stampOf renders a unix second as a UTC RFC3339 date, mapping the 0
+// sentinel ("never expires", and an unset timestamp) to "".
+func stampOf(unixSec int64) string {
+	if unixSec == 0 {
+		return ""
+	}
+	return time.Unix(unixSec, 0).UTC().Format(time.RFC3339)
 }
 
 func vidsString(vids []inventory.VidRange) string {

@@ -55,6 +55,7 @@ import { StalenessBanner } from "./StalenessBanner";
 import { summarizeStaleness } from "./staleness";
 import { TopologyCanvas } from "./TopologyCanvas";
 import { TopologyCanvasV2 } from "./TopologyCanvasV2";
+import { useAnnotationsQuery, useMapRegionsQuery } from "./annotationsQueries";
 import { SwitchView } from "./SwitchView";
 import { buildSwitchModel } from "./switchModel";
 import { ViewModeToggle } from "./ViewModeToggle";
@@ -230,6 +231,15 @@ function TopologyPageContent() {
   // this is the "paste a link and land on it" read, not a live subscription.
   const [searchParams] = useSearchParams();
   const urlView = useMemo(() => decodeViewFromSearch(searchParams), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // T-2806: the map annotation layer. Both reads are the daemon's LIVE view
+  // — expiry is judged server-side on each read, so nothing here (and no
+  // timer) decides whether a note is still current. Their query keys are
+  // their own: a layout save never invalidates them, which is half of why
+  // regions survive layout changes and view switches (the other half is
+  // that they live in their own shared table, not in the layout blob).
+  const { data: mapNotes } = useAnnotationsQuery();
+  const { data: mapRegions } = useMapRegionsQuery();
 
   // v2 canvas viewport: TopologyCanvasV2 owns pan/zoom internally (an
   // uncontrolled seed/notify seam — see its initialViewport/onViewportChange
@@ -1172,6 +1182,11 @@ function TopologyPageContent() {
             onFlowEdgeClick={(id) => {
               setSelectedFlowEdgeId(id);
             }}
+            // T-2806: the map annotation layer. Both come from their own
+            // query caches, which no layout save or view switch touches —
+            // that independence is what makes regions survive both.
+            regions={mapRegions}
+            notes={mapNotes}
           />
         )}
       </div>

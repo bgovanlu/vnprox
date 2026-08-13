@@ -1200,11 +1200,33 @@ Entity-pinned sticky notes, persisted additively in a **new** table (`annotation
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/annotations` | list every pinned note, cluster/topology-wide (not scoped to the requesting user — see below): `{items: [Annotation]}`, ordered oldest-first |
-| POST | `/annotations` | pin a new note: `{ref, content}` → `201` with the created `Annotation`; `400 validation_failed` if `ref` or `content` is empty, or `content` exceeds 4000 characters |
+| GET | `/annotations?includeExpired=` | list pinned notes, cluster/topology-wide (not scoped to the requesting user — see below): `{items: [Annotation]}`, ordered oldest-first. Expired notes are omitted unless `includeExpired=true` |
+| POST | `/annotations` | pin a new note: `{ref, content, expiresAt?}` → `201` with the created `Annotation`; `400 validation_failed` if `ref` or `content` is empty, `content` exceeds 4000 characters, or `expiresAt` is negative or not in the future |
 | DELETE | `/annotations/{id}` | unpin a note; `204` whether or not it previously existed (idempotent) |
 
-`Annotation` is `{id, ref, content, createdBy, createdAt, updatedAt}` — `id` is a server-assigned ULID; `ref` is the pinned entity's `Ref` string; `content` is free text, never interpreted by vnproxd; `createdBy` is the authenticated username that pinned it (server-stamped from the session, never client-supplied) and `createdAt`/`updatedAt` are unix seconds. Unlike `layouts`, annotations carry **no per-note ownership ACL** — any authenticated `netRead`-capable user can list, create, or delete any annotation (a deliberate product choice: a sticky note on the shared map is visible and manageable by the whole team, the same way the map itself is; `createdBy` is display/audit metadata only, not an access-control field). The frontend renders an entity's pinned notes wherever that entity's own detail is shown (the inspector panel), keyed by matching `ref` — there is no separate per-entity route; a client filters the one `GET /annotations` list.
+`Annotation` is `{id, ref, content, createdBy, createdAt, updatedAt, expiresAt, expired, orphaned}` — `id` is a server-assigned ULID; `ref` is the pinned entity's `Ref` string; `content` is free text, never interpreted by vnproxd; `createdBy` is the authenticated username that pinned it (server-stamped from the session, never client-supplied) and `createdAt`/`updatedAt` are unix seconds. Unlike `layouts`, annotations carry **no per-note ownership ACL** — any authenticated `netRead`-capable user can list, create, or delete any annotation (a deliberate product choice: a sticky note on the shared map is visible and manageable by the whole team, the same way the map itself is; `createdBy` is display/audit metadata only, not an access-control field). The frontend renders an entity's pinned notes wherever that entity's own detail is shown (the inspector panel), keyed by matching `ref` — there is no separate per-entity route; a client filters the one `GET /annotations` list.
+
+### Map annotation layer: expiry, orphans, and regions (T-2806)
+
+`expiresAt`, `expired`, `orphaned` and the `/map-regions` routes below are T-2806's additions (`internal/annotate`, migration `0045_map_annotations.sql`). All of it is app-owned map furniture in exactly the sense CLAUDE.md's storage rule permits — a note's `ref` names a PVE entity, but the row carries only what a human wrote about it, and a region's rectangle corresponds to no PVE object at all.
+
+**Expiry is computed at read time, on every read.** `expiresAt` is unix seconds, `0` = never (the default, and what every pre-T-2806 note reads as). `expired` is that value judged against the daemon's clock at the instant of the request; it is never a stored flag, and there is no sweep whose having-run is a precondition for correctness. The consequence is the point: a daemon that was **stopped** when a note's expiry passed cannot display that note on its first read after coming back. `GET /annotations` (and the doc export, and the map) therefore ask for the live view; `?includeExpired=true` is the management view an operator uses to read and unpin an expired note. **Nothing ever deletes an expired row** — expiry hides a note, it does not destroy it.
+
+**An annotation on a deleted entity is retained and marked `orphaned`.** `orphaned` is likewise derived on each read, by checking `ref` against the live inventory — never stored, because whether an entity exists is Proxmox's truth, not vnprox's. Nothing in the store, the retention job, or any cleanup path removes an orphaned note: the note is frequently the only surviving record of *why* the entity was removed, so a cascade delete here would destroy exactly the information the feature exists to preserve. The derivation fails safe — when the inventory has no entities at all (a degraded daemon, or one that has not finished its first collection) nothing is reported orphaned, rather than every note being labelled "the entity is gone".
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/map-regions?includeExpired=` | list labelled canvas regions: `{items: [MapRegion]}`, oldest-first; same expiry filter as `/annotations` |
+| POST | `/map-regions` | draw a region: `{label, x, y, w, h, color?, expiresAt?}` → `201` with the created `MapRegion`; `400 validation_failed` if `label` is empty or over 200 characters, `w`/`h` is not positive, or `expiresAt` is not in the future |
+| DELETE | `/map-regions/{id}` | remove a region; `204` whether or not it previously existed (idempotent) |
+
+`MapRegion` is `{id, label, color, x, y, w, h, createdBy, createdAt, updatedAt, expiresAt, expired}`. `x`/`y`/`w`/`h` are the rectangle in the canvas's own **graph coordinate space** (`web/src/topology/canvasScene.ts`) — the same space node positions use, so a region keeps its relationship to the entities it encloses under any pan/zoom. `color` is an optional client-chosen palette key (`""` = default). Regions are shared team artifacts with no per-region ACL, exactly like annotations.
+
+**Why regions are not part of `layouts`.** `layouts` is per-user and is rewritten wholesale every time the canvas auto-saves, so a region stored there would be private to one operator and destroyed by the next drag. Its own table makes "regions persist across layout changes and view switches" a property of the schema rather than a promise about client behaviour.
+
+**Annotation text is escaped at every render path**, per path rather than by one shared helper: the API's JSON encoder, the doc export's HTML renderer, the doc export's Markdown renderer (where the hazards are raw-HTML passthrough, table-breaking `|`, and embedded newlines rather than HTML's), the embedded topology SVG, and the frontend's inspector and canvas layers. Free text one operator authors and another renders is the classic injection surface, and `internal/docexport` emits a standalone HTML document.
+
+**Annotations in the config-doc export.** `GET /export/doc` carries an "Operator annotations" section in both formats — the notes, their authors, their expiry, an explicit orphan marker, and the region labels (also drawn as a legend under the embedded SVG diagram). The export asks the read model for the live view and has no expiry logic of its own.
 
 ## Alert Rules
 

@@ -78,7 +78,7 @@ type Options struct {
 	Certs             CertsService
 	FDB               FDBService
 	Layouts           LayoutStore
-	Annotations       AnnotationStore
+	Annotations       AnnotationService
 	AlertRules        AlertRuleStore
 	AlertDeliveries   AlertDeliveryStore
 	AlertSecretCipher SecretCipher

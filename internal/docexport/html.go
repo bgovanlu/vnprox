@@ -33,6 +33,7 @@ func HTML(d Data) string {
 	writeSDNHTML(&b, d)
 	writeFirewallHTML(&b, d)
 	writeLLDPHTML(&b, d)
+	writeAnnotationsHTML(&b, d)
 
 	b.WriteString("</body></html>\n")
 	return b.String()
@@ -57,7 +58,7 @@ func writeTopologyHTML(b *strings.Builder, d Data) {
 	fmt.Fprintf(b, "<p>%d cluster nodes, %d topology elements, %d edges.</p>\n",
 		len(d.Nodes), len(d.Topology.Nodes), len(d.Topology.Edges))
 	b.WriteString("<div class=\"topology-svg\">\n")
-	b.WriteString(RenderSVG(d.Topology))
+	b.WriteString(RenderSVGWithRegions(d.Topology, d.Regions))
 	b.WriteString("\n</div>\n")
 }
 
@@ -182,6 +183,52 @@ func writeLLDPHTML(b *strings.Builder, d Data) {
 			htmlCell(speedCell(p.SpeedMbps, p.SpeedDescr)), boolCell(p.Stale))
 	}
 	b.WriteString("</tbody></table>\n")
+}
+
+// writeAnnotationsHTML renders T-2806's annotation layer into the
+// standalone HTML document.
+//
+// This renderer is the sharpest edge of AC6: the output is a complete HTML
+// page an operator opens in a browser, assembled from text a DIFFERENT
+// operator typed. Every operator-authored string below therefore goes
+// through html.EscapeString on its own — not via a shared cross-renderer
+// helper, so this path is independently mutation-tested.
+func writeAnnotationsHTML(b *strings.Builder, d Data) {
+	fmt.Fprintf(b, "<h2>%s</h2>\n", html.EscapeString(HeadingAnnotations))
+	if len(d.Annotations) == 0 && len(d.Regions) == 0 {
+		writeNoneHTML(b)
+		return
+	}
+
+	if len(d.Annotations) > 0 {
+		b.WriteString("<table><thead><tr><th>Entity</th><th>Note</th><th>Author</th><th>Created</th><th>Expires</th><th>Status</th></tr></thead><tbody>\n")
+		for _, a := range d.Annotations {
+			fmt.Fprintf(b, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				html.EscapeString(a.Ref), html.EscapeString(a.Content), html.EscapeString(a.CreatedBy),
+				htmlCell(a.Created), html.EscapeString(htmlExpiresCell(a.Expires)), html.EscapeString(orphanCell(a.Orphaned)))
+		}
+		b.WriteString("</tbody></table>\n")
+	}
+
+	if len(d.Regions) > 0 {
+		fmt.Fprintf(b, "<h3>%s</h3>\n", html.EscapeString(RegionsSubheading))
+		b.WriteString("<table><thead><tr><th>Region</th><th>Author</th><th>Created</th><th>Expires</th></tr></thead><tbody>\n")
+		for _, r := range d.Regions {
+			fmt.Fprintf(b, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				html.EscapeString(r.Label), html.EscapeString(r.CreatedBy),
+				htmlCell(r.Created), html.EscapeString(htmlExpiresCell(r.Expires)))
+		}
+		b.WriteString("</tbody></table>\n")
+	}
+}
+
+// htmlExpiresCell mirrors markdown.go's expiresCell: the 0 sentinel reads
+// as an explicit "never" rather than an empty cell.
+func htmlExpiresCell(stamp string) string {
+	if stamp == "" {
+		return NeverExpiresMarker
+	}
+	return stamp
 }
 
 func writeNoneHTML(b *strings.Builder) {

@@ -88,6 +88,9 @@ var documentedSections = []string{
 	docexport.HeadingSDN,
 	docexport.HeadingFirewall,
 	docexport.HeadingLLDP,
+	// T-2806 AC4: the operator's own annotations are a documented section
+	// of the export, present (as "none observed") even when there are none.
+	docexport.HeadingAnnotations,
 }
 
 func TestExportGolden_ThreeNodeVlan(t *testing.T) {

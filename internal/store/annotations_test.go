@@ -43,6 +43,50 @@ func TestAnnotationRepo_InsertGetList(t *testing.T) {
 	}
 }
 
+// TestAnnotationRepo_ExpiryIsStoredNotEnforced is the store half of
+// T-2806 AC3: expires_at round-trips, and an expired row is still returned
+// by List/Get. Whether a note is expired is decided on the read, by
+// internal/annotate's injected clock — never here, against SQLite's own
+// notion of now.
+func TestAnnotationRepo_ExpiryIsStoredNotEnforced(t *testing.T) {
+	db := openTestDB(t)
+	repo := NewAnnotationRepo(db)
+	ctx := context.Background()
+
+	expired := Annotation{
+		ID: "01E", Ref: "bridge:pve1:vmbr0", Content: "expired long ago", CreatedBy: "alice@pve",
+		CreatedAt: 100, UpdatedAt: 100, ExpiresAt: 101,
+	}
+	never := Annotation{
+		ID: "01F", Ref: "bridge:pve1:vmbr0", Content: "no expiry", CreatedBy: "alice@pve",
+		CreatedAt: 200, UpdatedAt: 200,
+	}
+	for _, a := range []Annotation{expired, never} {
+		if err := repo.Insert(ctx, a); err != nil {
+			t.Fatalf("Insert(%s): %v", a.ID, err)
+		}
+	}
+
+	got, err := repo.Get(ctx, expired.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got != expired {
+		t.Errorf("Get() = %+v, want %+v", got, expired)
+	}
+
+	list, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("List() len = %d, want 2 — an expired note is still a row", len(list))
+	}
+	if list[1].ExpiresAt != 0 {
+		t.Errorf("a note with no expiry stored expires_at = %d, want 0", list[1].ExpiresAt)
+	}
+}
+
 func TestAnnotationRepo_GetNotFound(t *testing.T) {
 	db := openTestDB(t)
 	repo := NewAnnotationRepo(db)

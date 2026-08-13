@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bgovanlu/vnprox/internal/annotate"
 	"github.com/bgovanlu/vnprox/internal/api"
 	"github.com/bgovanlu/vnprox/internal/blueprint"
 	"github.com/bgovanlu/vnprox/internal/certs"
@@ -246,6 +247,19 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		return fmt.Errorf("initializing presence: %w", err)
 	}
 	topoSvc.SetConnObserver(presenceSvc)
+	// T-2806: the map annotation layer's read model — sticky notes and
+	// labelled canvas regions. It reads the SAME live inventory graph every
+	// other read surface does, because that is what makes "this note's
+	// entity has been deleted" a fact derived on each read rather than a
+	// second, persisted copy of what PVE owns (internal/annotate/doc.go).
+	annotateSvc, err := annotate.NewService(annotate.Config{
+		Notes:    store.NewAnnotationRepo(db),
+		Regions:  store.NewMapRegionRepo(db),
+		Entities: graph,
+	})
+	if err != nil {
+		return fmt.Errorf("initializing annotation layer: %w", err)
+	}
 	// T-1102: the pinned-spec table (the GitOps reconciler's declared
 	// desired state) — constructed here, ahead of driftSvc below, so its
 	// spec_drift check family can read it every cycle via specPinAdapter.
@@ -700,6 +714,11 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		SDN:       docExportSDN,
 		Ports:     topoSvc,
 		Topo:      topoSvc,
+		// T-2806: the operator's own notes and canvas regions, read
+		// live-only through the same read model GET /annotations serves —
+		// the export never re-derives expiry or orphan status itself.
+		Annotations: annotateSvc,
+		Logger:      logger,
 	}
 
 	// T-1607: the network posture score & report — a scheduled computation job
@@ -1395,7 +1414,7 @@ func runDaemon(ctx context.Context, configPath string, logger *slog.Logger) erro
 		SelfMetrics:       selfMetrics,
 		Store:             db,
 		Layouts:           store.NewLayoutRepo(db),
-		Annotations:       store.NewAnnotationRepo(db),
+		Annotations:       annotateSvc,
 		AlertRules:        alertRuleRepo,
 		AlertDeliveries:   alertDeliveryRepo,
 		AlertSecretCipher: sessionCipher,

@@ -18,6 +18,15 @@ const (
 	HeadingSDN         = "SDN inventory"
 	HeadingFirewall    = "Firewall summary"
 	HeadingLLDP        = "LLDP wiring"
+	HeadingAnnotations = "Operator annotations"
+	// RegionsSubheading names the canvas-regions subsection, and
+	// OrphanedMarker is how a note whose entity is gone is flagged in both
+	// text formats. Exported so the golden test asserts one string rather
+	// than two renderer-specific ones.
+	RegionsSubheading = "Canvas regions"
+	OrphanedMarker    = "orphaned - entity no longer exists"
+	// NeverExpiresMarker is the rendered form of the 0 "no expiry" sentinel.
+	NeverExpiresMarker = "never"
 	docTitle           = "vnprox network documentation"
 	noneObservedMarker = "_none observed_"
 )
@@ -38,8 +47,45 @@ func Markdown(d Data) string {
 	writeSDNMD(&b, d)
 	writeFirewallMD(&b, d)
 	writeLLDPMD(&b, d)
+	writeAnnotationsMD(&b, d)
 
 	return b.String()
+}
+
+// writeAnnotationsMD renders T-2806's annotation layer: the notes and
+// regions an operator wrote on the map, for the reader who cannot see it.
+//
+// Every operator-authored string on this path goes through mdText, never
+// raw and never mdCell (which escapes only the table delimiter). A note is
+// free text one operator typed and another reads inside a rendered
+// document, which is the classic injection surface; see mdText.
+func writeAnnotationsMD(b *strings.Builder, d Data) {
+	fmt.Fprintf(b, "## %s\n\n", HeadingAnnotations)
+	if len(d.Annotations) == 0 && len(d.Regions) == 0 {
+		fmt.Fprintf(b, "%s\n\n", noneObservedMarker)
+		return
+	}
+
+	if len(d.Annotations) > 0 {
+		b.WriteString("| Entity | Note | Author | Created | Expires | Status |\n")
+		b.WriteString("|---|---|---|---|---|---|\n")
+		for _, a := range d.Annotations {
+			fmt.Fprintf(b, "| %s | %s | %s | %s | %s | %s |\n",
+				mdText(a.Ref), mdText(a.Content), mdText(a.CreatedBy),
+				mdText(a.Created), expiresCell(a.Expires), orphanCell(a.Orphaned))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(d.Regions) > 0 {
+		fmt.Fprintf(b, "### %s\n\n", RegionsSubheading)
+		b.WriteString("| Region | Author | Created | Expires |\n|---|---|---|---|\n")
+		for _, r := range d.Regions {
+			fmt.Fprintf(b, "| %s | %s | %s | %s |\n",
+				mdText(r.Label), mdText(r.CreatedBy), mdText(r.Created), expiresCell(r.Expires))
+		}
+		b.WriteString("\n")
+	}
 }
 
 func writeTopologySummaryMD(b *strings.Builder, d Data) {
@@ -189,6 +235,57 @@ func mdCell(s string) string {
 		return "-"
 	}
 	return strings.ReplaceAll(s, "|", "\\|")
+}
+
+// mdTextReplacer neutralises operator-authored free text for the Markdown
+// renderer (T-2806 AC6). Three distinct hazards, one pass:
+//
+//   - `&`, `<`, `>` become entities. CommonMark passes raw HTML straight
+//     through to whatever renders the Markdown, so a note reading
+//     `<script>...` would otherwise become a live script tag in every
+//     downstream HTML view of this document. Entity-escaping keeps it a
+//     sentence.
+//   - `|` is escaped, or a note containing one silently invents table
+//     columns and corrupts every following cell.
+//   - newlines collapse to spaces: a multi-line note (the textarea allows
+//     them) would otherwise terminate the table row mid-note and drop the
+//     rest of the text out of the document entirely.
+//
+// Deliberately NOT shared with html.go's escaping: each renderer owns and
+// is tested on its own escape, so a mutation to one cannot be masked by
+// the other still being correct.
+var mdTextReplacer = strings.NewReplacer(
+	"&", "&amp;",
+	"<", "&lt;",
+	">", "&gt;",
+	"|", "\\|",
+	"\r\n", " ",
+	"\n", " ",
+	"\r", " ",
+)
+
+func mdText(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return mdTextReplacer.Replace(s)
+}
+
+// expiresCell renders an annotation's expiry, mapping "" (the 0 sentinel)
+// to the explicit "never" rather than a bare dash: "this note has no
+// expiry" is a fact worth stating in a document someone reads a year later.
+func expiresCell(stamp string) string {
+	if stamp == "" {
+		return NeverExpiresMarker
+	}
+	return mdText(stamp)
+}
+
+func orphanCell(orphaned bool) string {
+	if orphaned {
+		return OrphanedMarker
+	}
+	return "-"
 }
 
 func boolCell(b bool) string {

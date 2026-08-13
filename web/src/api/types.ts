@@ -414,10 +414,47 @@ export interface Annotation {
   createdBy: string;
   createdAt: number;
   updatedAt: number;
+  /** T-2806: unix seconds, 0 = never expires. */
+  expiresAt: number;
+  /** T-2806: `expiresAt` judged by the daemon at the instant of this read —
+   * never a stored flag, so a stopped daemon cannot leave an expired note
+   * on display. The default list omits expired notes entirely; they appear
+   * only via `?includeExpired=true`. */
+  expired: boolean;
+  /** T-2806: `ref` names no entity in the current inventory — the annotated
+   * thing was deleted and this note outlived it. Derived per read, and the
+   * note is deliberately retained: it may be the only record of why the
+   * entity was removed. */
+  orphaned: boolean;
 }
 
 export interface AnnotationListResponse {
   items: Annotation[];
+}
+
+/** GET/POST /map-regions' MapRegion shape (T-2806): a labelled rectangle
+ * drawn on the topology canvas in GRAPH coordinate space — the same space
+ * node positions use, so a region holds its position relative to the
+ * entities it encloses under any pan/zoom. Shared across every user, and
+ * stored server-side in its own table rather than inside the per-user
+ * layout blob, which is what makes it survive layout auto-saves. */
+export interface MapRegion {
+  id: string;
+  label: string;
+  color: string;
+  createdBy: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+  expired: boolean;
+}
+
+export interface MapRegionListResponse {
+  items: MapRegion[];
 }
 
 // --- Changesets (docs/api.md §Changesets; internal/change's Go types) -----
