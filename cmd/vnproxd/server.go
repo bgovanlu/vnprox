@@ -1658,6 +1658,18 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 
 	handler := api.NewRouter(apiOpts)
 
+	// T-2802: the hosted read-only demo's edge, in front of EVERYTHING —
+	// routing, authentication, and T-2801's own demo middleware. A public
+	// visitor's request is classified and possibly refused before the
+	// router has decided what it even is. See internal/publicdemo's doc.go
+	// for why the classification is the method and nothing else.
+	if opts.PublicDemo {
+		handler, err = publicDemoEdge(handler, logger)
+		if err != nil {
+			return err
+		}
+	}
+
 	srv := &http.Server{
 		Addr:    cfg.Server.Listen,
 		Handler: handler,

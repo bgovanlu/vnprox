@@ -15,6 +15,7 @@ import { HelpPanel } from "../help/HelpPanel";
 import { AssistantPanel } from "../assistant/AssistantPanel";
 import { useHelpForRoute } from "../help/useHelpForRoute";
 import { DemoBanner } from "../demo/DemoBanner";
+import { GuidedTour } from "../tour/GuidedTour";
 
 /** Top-level layout for every authenticated route: nav rail + top bar
  * around a routed <Outlet/>, with the keyboard-shortcut framework wired
@@ -58,6 +59,14 @@ export function AppShell() {
          * unoccupied floating corner, since this app's pages don't
          * reliably have one. */}
         <OnboardingWalkthrough />
+        {/* T-2802: the hosted demo's guided tour. Renders nothing on any
+         * instance that is not the public demo — including a local
+         * `vnproxd --demo`, which has no edge in front of it. Placed next
+         * to OnboardingWalkthrough because it is the same kind of thing in
+         * the same flow position; the two are mutually exclusive in
+         * practice (the walkthrough's steps write, so a read-only public
+         * instance never gets past its first). */}
+        <GuidedTour />
         {/* T-909: tighter padding below `sm` (640px) — p-6 (24px) eats
          * noticeably into a 375-414px phone viewport's usable width; p-3
          * keeps content from feeling cramped against the screen edge

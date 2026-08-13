@@ -163,8 +163,128 @@ ds, err := demo.LoadDataset()   // ds.Fixture (*pvemock.Fixture), ds.Flows
 m, err := demo.New(logger)      // + the in-process server, transport, host reader
 ```
 
+## The hosted read-only demo (T-2802)
+
+```
+vnproxd --demo --public-demo
+```
+
+`--public-demo` requires `--demo` and is refused without it: a read-only
+façade in front of a daemon that still holds real PVE credentials is a
+worse thing than no façade at all. Demo mode is what makes "there is
+nothing real behind this" true; the edge is what makes "and you cannot
+write to it" true.
+
+### Every write is refused at the edge
+
+`internal/publicdemo` wraps the entire daemon handler — in front of
+routing, in front of authentication, in front of demo mode's own
+middleware. A request whose method is not `GET`, `HEAD` or `OPTIONS` gets:
+
+```
+403 Forbidden
+X-Vnprox-Public-Demo: 1
+X-Vnprox-Public-Demo-Refused: public_demo_read_only
+{"error":{"code":"public_demo_read_only","message":"this is a public, read-only vnprox demo: ..."}}
+```
+
+`X-Vnprox-Public-Demo` is on every response, refused or not.
+`X-Vnprox-Public-Demo-Refused` is only on the ones the edge produced
+itself — which is what lets a test tell "the edge refused this" apart from
+"the daemon answered 403 for its own reasons".
+
+**The classification is the method and nothing else.** There is no
+allowlist of "POSTs that are really reads", and that is a deliberate
+tightening of T-2801's position rather than an oversight: the only thing
+standing behind such a list at a public edge is somebody's continued
+correctness about which of ~215 routes are safe, and one wrong entry is a
+stranger writing to the instance. The cost is stated in the gap list
+below.
+
+**Not even `POST /auth/login`.** A public demo has no login screen. The
+edge mints a session per visitor by driving the daemon's own login handler
+in-process with the fixture's built-in superuser, so a visitor's session is
+indistinguishable from an operator's — same route, same audit entry — while
+the session cookie never leaves the server. An inbound session cookie is
+stripped before forwarding, so a visitor cannot present a session the edge
+did not mint.
+
+### One visitor, one everything
+
+A visitor is an opaque `vnprox_demo_visitor` cookie: `HttpOnly`, `Secure`,
+`SameSite=Strict`. Each one gets its own daemon session, its own request
+budget, and its own scratch state.
+
+Because the daemon's `/layouts` routes are refused like every other write,
+the edge serves a visitor-scoped scratch surface of its own:
+
+```
+GET /demo/visitor/session          who am I, and what are my limits
+GET /demo/visitor/state/{key}      read one scratch value
+PUT /demo/visitor/state/{key}      write one scratch value
+```
+
+It is deliberately **not** in `docs/openapi.json`: it is not the product's
+API, nothing under it reaches the daemon or its store, it is held in memory,
+and it is discarded when the visitor goes idle. The SPA persists the tour's
+progress and the map's layout through it (`web/src/tour/`), which is what
+makes one visitor's layout invisible to another. A normal daemon serves no
+such route, and the 404 it answers is exactly how the SPA learns it is not
+in a public demo — no config flag, so no daemon without an edge can get it
+wrong.
+
+### Caps
+
+Every cap is per-visitor except the visitor count, which is the point: a
+cap that took the instance down for everyone is the failure they exist to
+prevent.
+
+| Cap | Default | Exceeded |
+|---|---|---|
+| Requests per visitor | 120 burst, +1 every 500 ms | `429 public_demo_rate_limited`, that visitor only |
+| Scratch state per visitor | 256 KiB, 32 keys | `413 public_demo_state_too_large`; nothing already stored is disturbed |
+| Visitors | 200 | `503 public_demo_at_capacity` for the **arriving** visitor; nobody seated is evicted |
+| Idle visitor | 30 min | Reclaimed only when a new arrival needs the room |
+
+### The tour
+
+`web/src/tour/tourScript.ts` is a script — data, not components — covering
+six surfaces of `docs/datasheet.md`, one from each thing the datasheet
+claims vnprox does: the topology map, physical discovery, the findings
+stream, the flow explorer, the SDN cockpit, and history. It is resumable
+(progress lives in the visitor's own scratch state, so a reload finds it)
+and skippable (a skipped step is recorded as skipped, never as completed).
+
 ## Known gaps
 
+- **There is no hosted instance.** T-2802's first bullet is "a public
+  instance serving demo mode", and this repository has no domain, no object
+  storage, no deploy target and no CI budget to deploy from — the same wall
+  `T-2803` recorded rather than papering over. Everything such an instance
+  would need in order to be safe is built and tested here; the instance is
+  not. Concretely unmet: nothing at a public URL, no TLS certificate for a
+  public name, no rate limiting or abuse handling in front of the process,
+  and no operational story for restarting it.
+- **A public instance's login limiter needs configuring, and there is no
+  supported knob.** The edge mints one session per visitor through the real
+  login route, and `internal/auth`'s limiter is keyed `(IP, username)` with
+  a default of 10 attempts refilling one per 30 s. Every visitor shares the
+  demo's one username, so visitors behind one NAT would throttle each
+  other. `testdata/demo-public.toml` raises it with the dev-only
+  `dev_login_rate_*` keys, which is fine for the e2e stack and not fine for
+  a public instance. Fixing it properly means either a supported `[server]`
+  login-rate setting or a mint path that does not go through the login
+  handler — both widen the authentication surface, and neither is worth
+  doing speculatively for an instance that does not exist.
+- **The path simulator and the diagnosis ladder do not work in a public
+  demo**, because `POST /simulate/path` and `POST /diagnose` are read
+  surfaces with mutating methods and the edge classifies by method. Both are
+  datasheet lead items, and the tour routes around them rather than walking
+  a visitor into a 403. This is `T-2801-followup-01`, still open and
+  deliberately not resolved in the permissive direction here.
+- The MCP transport is unreachable in a public demo for the same reason.
+  That one is not a loss: an unauthenticated public MCP endpoint is not
+  something to want.
 - A demo daemon reports a handful of findings about its own host rather than
   the synthetic cluster — `cert_missing`, `cert_unreadable`,
   `peer_trust_degraded` — because `/etc/pve` does not exist off a Proxmox

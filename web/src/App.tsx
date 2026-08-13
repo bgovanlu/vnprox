@@ -33,6 +33,7 @@ import { EmbedDashboard } from "./embed/EmbedDashboard";
 import { EmbedPosture } from "./embed/EmbedPosture";
 import { applyThemeClass, useThemeStore } from "./store/theme";
 import { detectDemoMode } from "./demo/useDemoMode";
+import { detectPublicDemo } from "./tour/usePublicDemo";
 
 export function App() {
   const theme = useThemeStore((s) => s.theme);
@@ -46,6 +47,15 @@ export function App() {
   // daemon does not stop being a demo while you look at it.
   useEffect(() => {
     void detectDemoMode();
+  }, []);
+
+  // T-2802: and once whether it is the HOSTED demo, which is a different
+  // question — a public instance has an edge in front of it that refuses
+  // every write and hands each visitor their own session. Asked of the edge
+  // itself (a route no normal daemon serves), so a daemon without one
+  // cannot answer it wrongly.
+  useEffect(() => {
+    void detectPublicDemo();
   }, []);
 
   return (

@@ -71,7 +71,7 @@ interface Instance {
 }
 
 /** The stacks the suite can bring up. */
-export type StackName = "default" | "sim" | "scale" | "mgmt" | "alert" | "flow" | "physcollapse" | "k8s" | "demo";
+export type StackName = "default" | "sim" | "scale" | "mgmt" | "alert" | "flow" | "physcollapse" | "k8s" | "demo" | "publicdemo";
 
 interface StackDef {
   /** Which mock server serves this stack's fixture. Absent when the stack
@@ -189,6 +189,18 @@ const STACKS: Readonly<Record<StackName, StackDef>> = {
     instances: [{ daemon: { port: 24007 } }],
     why: "T-2801's demo mode: no PVE endpoint, no outbound network, every mutating route a no-op that reports what it would have done.",
   },
+  // T-2802. The demo stack's sibling, and deliberately a SECOND daemon
+  // rather than a flag on the first: the two assert incompatible things
+  // about the same routes. On 24007 POST /changesets is 200 "would have";
+  // on 25007 it is 403 before the router sees it. One process cannot be
+  // both, so demo.spec.ts and public-demo.spec.ts cannot share one.
+  publicdemo: {
+    config: "testdata/demo-public.toml",
+    daemonArgs: ["--demo", "--public-demo"],
+    daemonTimeoutMS: 120_000,
+    instances: [{ daemon: { port: 25007 } }],
+    why: "T-2802's hosted demo: every mutating route refused at the edge, a session per visitor, per-visitor resource caps.",
+  },
 };
 
 /** Specs needing something other than the default stack alone.
@@ -215,6 +227,10 @@ const SPEC_STACKS: Readonly<Record<string, readonly StackName[]>> = {
   // stack, and must not be handed one, since "there is no PVE reachable"
   // is the first thing it asserts.
   "demo.spec.ts": ["demo"],
+  // T-2802: same reasoning as demo.spec.ts, one stack further out. It must
+  // not be handed a default stack either — "there is nothing real behind
+  // this" is the first thing a public demo claims.
+  "public-demo.spec.ts": ["publicdemo"],
 };
 
 export interface ShardDef {
