@@ -7,6 +7,7 @@ import { useSession, SESSION_QUERY_KEY } from "../api/useSession";
 import { useDemoSessionStore } from "../store/authStub";
 import { logout } from "../api/auth";
 import { useTopologyStore } from "../topology/store";
+import { useAssistantStore } from "../assistant/store";
 
 export interface TopBarProps {
   /** The `?` keyboard-shortcut list (ShortcutHelpDialog). */
@@ -22,6 +23,9 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const setSpotlightOpen = useTopologyStore((s) => s.setSpotlightOpen);
+  // T-2808: the assistant panel reads its own store (like the help panel),
+  // so opening it needs no new prop on this component.
+  const openAssistant = useAssistantStore((s) => s.openPanel);
 
   const displayName = demoSession ? "demo" : (session?.user.username ?? "");
 
@@ -76,6 +80,15 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
          * one menu — "what does this screen do" and "what are the keys"
          * are different questions, and burying the first behind a dropdown
          * is how help ends up unused. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={openAssistant}
+          aria-label="Assistant"
+          title="Ask the assistant (read-only tools, your own permissions)"
+        >
+          Assistant
+        </Button>
         <Button variant="ghost" size="sm" onClick={onOpenPageHelp} aria-label="Help" title="Help for this screen (F1)">
           Help
         </Button>
