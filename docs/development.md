@@ -272,12 +272,30 @@ the outcome either way.
 
 ## CI
 
-> **Status, 2026-08-11: Actions billing is exhausted; treat the hosted pipeline as unavailable and
-> run `scripts/ci-local.sh` instead.** Note carefully what this does *not* mean — as of this
-> writing runs still appear in `gh run list` and still complete. Do not infer from a green or red
-> hosted run that the pipeline is funded, and do not infer from "unfunded" that nothing ran.
-> **Check, don't assume, in both directions** — that is the durable lesson from the correction
-> below, and it survives the funding status changing again.
+> **Status, 2026-08-13: all three workflows are DISABLED on GitHub.** `CI`, `Packaging matrix` and
+> `Release` are each `disabled_manually` (`gh workflow list --all` confirms). Billing has been
+> exhausted since 2026-08-11, and every triggered job since then failed with *"The job was not
+> started because recent account payments have failed"* — 37 of the last 50 runs, on commits that
+> were green locally. That is not a signal, it is a red X on healthy work, and leaving it on made
+> the failure state meaningless. **`scripts/ci-local.sh` on the dev host is the only gate.**
+>
+> To turn the hosted pipeline back on once billing is restored:
+>
+> ```
+> gh workflow enable "CI" && gh workflow enable "Packaging matrix" && gh workflow enable "Release"
+> ```
+>
+> **A tag no longer publishes anything.** `Release` runs on `v*` tags; with it disabled, tagging
+> builds no artifact and cuts no GitHub release. Build the .deb locally from a clean worktree at
+> the tag (`git worktree add <dir> vX.Y.Z && cd <dir> && make deb`) so the version string has no
+> `+dirty` suffix — see the v3.5.0 cut for the pattern.
+>
+> **The 2026-08-11 note this replaces, kept because its lesson outlives the funding state:** that
+> note said to treat the pipeline as unavailable while runs still appeared in `gh run list` and
+> still completed. Do not infer from a green or red hosted run that the pipeline is funded, and do
+> not infer from "unfunded" that nothing ran. **Check, don't assume, in both directions** — which
+> now cuts the other way too: workflows being *disabled* is also a thing to verify rather than
+> remember, because someone will re-enable them.
 >
 > **The 2026-08-08 (T-2410) correction this replaces, kept because its lesson still applies:** this
 > note once said Actions was unfunded and that no workflow ran. That was wrong, and it was

@@ -1,5 +1,15 @@
 name: Packaging matrix
 
+# DISABLED ON GITHUB (2026-08-13). This workflow is `disabled_manually` and does
+# not run: Actions billing is exhausted, so every trigger since 2026-08-11 failed
+# with "recent account payments have failed" — a red X on work that was green
+# locally, which made the failure state meaningless.
+#
+# The gate is `scripts/ci-local.sh` on the dev host, which reproduces every job
+# here. See docs/development.md §CI. Re-enable with:
+#   gh workflow enable "<name>"
+# Keep this file accurate anyway — it is the specification ci-local.sh mirrors.
+
 # T-606 (planning/tasks/phase-6.md#T-606) acceptance criteria 1-5: the
 # container-based install/upgrade/remove/purge/cluster/token test matrix,
 # on both supported Debian bases. Kept as its own workflow (parallel to
