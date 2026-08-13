@@ -1,0 +1,14 @@
+# This file only has an effect once GitHub Issues is enabled on a public
+# github.com/bgovanlu/vnprox — not yet true as of this writing (see
+# docs/support.md). The links below assume that repository path, matching
+# go.mod's module path and the one existing reference to it in docs/api.md.
+blank_issues_enabled: true
+contact_links:
+  - name: Support path and known maturity gaps
+    url: https://github.com/bgovanlu/vnprox/blob/main/docs/support.md
+    about: >-
+      Read this before filing — it names what to attach and which cluster-aware
+      behaviors are already known to be unproven on real multi-node hardware.
+  - name: Security vulnerability
+    url: https://github.com/bgovanlu/vnprox/blob/main/CONTRIBUTING.md#reporting-a-security-issue
+    about: Do not open a public issue for a security report — read this first.

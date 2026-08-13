@@ -1,5 +1,10 @@
 # Deployment guide
 
+This is the complete install/upgrade/configuration reference. If you're looking for a shorter,
+reader-first path (including a plain statement of what installs today vs. what's built but not
+yet reachable), start at [`install.md`](install.md) instead — it links back here for everything
+below.
+
 ## Supported platforms
 
 - Proxmox VE 8.2+ (Debian 12) and 9.x (Debian 13), amd64 and arm64.

@@ -8,14 +8,19 @@ It runs as a single service on your PVE nodes and serves its UI at **`https://<n
 
 ## Status
 
-**Shipped through v3.0.2.** All three implementation arcs are complete — the core product
-([`planning/implementation-plan.md`](planning/implementation-plan.md)), multi-cluster federation
-([`planning/implementation-plan-next.md`](planning/implementation-plan-next.md)), and the open
-platform arc ([`planning/implementation-plan-universal.md`](planning/implementation-plan-universal.md))
-— per the phased task cards executed by AI sub-agents. See [`CHANGELOG.md`](CHANGELOG.md) for
-what shipped in each release, and
+**Shipped through v3.5.0** ([`CHANGELOG.md`](CHANGELOG.md)), across five implementation arcs — the
+core product ([`planning/implementation-plan.md`](planning/implementation-plan.md)), multi-cluster
+federation ([`planning/implementation-plan-next.md`](planning/implementation-plan-next.md)), the
+open platform ([`planning/implementation-plan-universal.md`](planning/implementation-plan-universal.md)),
+proving it on real hardware ([`planning/implementation-plan-proven.md`](planning/implementation-plan-proven.md),
+the arc this document is itself a small part of — its last phase, "ecosystem and reach"), and
+making it adoptable by someone other than its own developers
+([`planning/implementation-plan-adopted.md`](planning/implementation-plan-adopted.md)) — per the
+phased task cards executed by AI sub-agents.
+[`docs/project-status.md`](docs/project-status.md) has the current, precise delivery breakdown;
+this is also where "feature-complete" and "validated on real hardware" diverge most —
 [`planning/reports/needs-hardware-validation.md`](planning/reports/needs-hardware-validation.md)
-for the items still awaiting validation on real Proxmox hardware.
+and [`docs/status-matrix.md`](docs/status-matrix.md) track exactly what's still owed there.
 
 ## Why vnprox
 
@@ -43,21 +48,31 @@ Full list: [`docs/features.md`](docs/features.md).
 
 ## Documentation map
 
+**New here?** [`docs/README.md`](docs/README.md) is the reader-facing entry point — install, your
+first hour, task guides, then reference — organized for someone *running* vnprox rather than
+building it. The table below is the full corpus, contributor-dense documents included.
+
 | Document | Contents |
 |---|---|
-| [`docs/datasheet.md`](docs/datasheet.md) | **Shipped capability, requirements, and stated limits — start here** |
+| [`docs/README.md`](docs/README.md) | **Reader-facing docs site entry point — start here if you're evaluating or running vnprox** |
+| [`docs/install.md`](docs/install.md) | What actually installs vnprox today vs. what the finished distribution story looks like |
+| [`docs/first-hour.md`](docs/first-hour.md) | Log in, read the map, make your first change safely |
+| [`docs/support.md`](docs/support.md) | Where to file a bug, what to attach, what response to expect |
+| [`docs/datasheet.md`](docs/datasheet.md) | Shipped capability, requirements, and stated limits |
 | [`docs/project-status.md`](docs/project-status.md) | Percent complete, open items ranked, recommended sequence |
 | [`docs/status-matrix.md`](docs/status-matrix.md) | Full-stack audit grid (feature × backend × GUI × API × docs × tests × validation) |
 | [`docs/architecture.md`](docs/architecture.md) | System architecture, components, diagrams, key design decisions |
 | [`docs/data-model.md`](docs/data-model.md) | Core entities and persistence design |
 | [`docs/api.md`](docs/api.md) | REST + WebSocket API design |
 | [`docs/security.md`](docs/security.md) | AuthN/AuthZ, TLS, threat model |
-| [`docs/features.md`](docs/features.md) | v1.0 feature matrix and priorities; per-feature specs in [`docs/features/`](docs/features/). **Stale — describes the v1.0 scope and lists since-shipped capabilities as non-goals; use `datasheet.md` for current capability** |
+| [`docs/features.md`](docs/features.md) | Current feature index by area, with a pointer to each detailed spec in [`docs/features/`](docs/features/) |
 | [`docs/roadmap.md`](docs/roadmap.md) | Release phases and milestones |
 | [`docs/roadmap-adopted.md`](docs/roadmap-adopted.md) | Arc 5 (phases 25–28) — the current planned arc: proof, guardrails, config-as-code, adoption |
 | [`docs/deployment.md`](docs/deployment.md) | Install, upgrade, uninstall, port-conflict handling |
 | [`docs/user-guide.md`](docs/user-guide.md) | End-user guide (first run, common tasks) |
 | [`docs/development.md`](docs/development.md) | Tech stack, repo layout, standards, testing, CI |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Build, test, and the PR process for human contributors |
+| [`docs/community-repo-assessment.md`](docs/community-repo-assessment.md) | Whether inclusion in a Proxmox community repository (e.g. Community-Scripts) makes sense, and why |
 | [`planning/implementation-plan.md`](planning/implementation-plan.md) | Phased plan, dependency graph, sub-agent task index |
 | [`planning/tasks/`](planning/tasks/) | Exact, self-contained task cards for implementation sub-agents |
 
@@ -69,4 +84,6 @@ Full list: [`docs/features.md`](docs/features.md).
 
 ## License
 
-AGPL-3.0 (matching the Proxmox ecosystem). License file to be added before first release.
+Apache-2.0. See [`LICENSE`](LICENSE), [`NOTICE`](NOTICE), and
+[`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) — the last enumerates every bundled
+third-party component, notably `elkjs` (EPL-2.0) which ships inside the SPA.

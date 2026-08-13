@@ -1,0 +1,43 @@
+<!-- vnprox docs site — see docs/docs-site.md for what this is and what it needs
+     (GitHub Pages enabled, deployed from this branch's repository root, so
+     the site serves at .../docs/) before it is reachable at a URL. Zero
+     build step: docsify renders docs/*.md client-side, in the visitor's
+     browser, using its public CDN build. -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>vnprox docs</title>
+  <meta name="description" content="vnprox — visual networking for Proxmox VE: install, first hour, guides, and reference." />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css" />
+  <style>
+    :root { --theme-color: #2563eb; }
+    .app-name-link img { height: 1.4em; vertical-align: middle; margin-right: .4em; }
+  </style>
+</head>
+<body>
+  <div id="app">Loading vnprox docs…</div>
+  <script>
+    window.$docsify = {
+      name: 'vnprox',
+      homepage: 'README.md',
+      loadSidebar: '_sidebar.md',
+      subMaxLevel: 2,
+      auto2top: true,
+      search: {
+        paths: 'auto',
+        placeholder: 'Search the docs',
+        noData: 'No results'
+      }
+      // Deliberately no `repo:` option (docsify's GitHub-corner ribbon and
+      // "view source" links): as of this writing github.com/bgovanlu/vnprox
+      // is not a publicly reachable repository (see docs/support.md and
+      // docs/docs-site.md), so this page does not render a link that would
+      // 404 for a reader. Add it back once that is no longer true.
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>
+</body>
+</html>

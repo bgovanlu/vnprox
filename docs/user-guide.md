@@ -2,6 +2,9 @@
 
 This guide is written for the shipped product; during development it doubles as the UX specification — implementation agents build what this document describes.
 
+New to vnprox? [`first-hour.md`](first-hour.md) is a shorter path through §1–§4 below for your
+first session; come back here for the complete reference.
+
 ## 1. First login
 
 Browse to `https://<any-node>:8007`. Log in with your **Proxmox credentials** (same username, password, realm, and second factor as the PVE UI — vnprox has no separate accounts).
