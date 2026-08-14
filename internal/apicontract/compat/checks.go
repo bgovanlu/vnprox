@@ -78,7 +78,7 @@ func compatLogin(client *http.Client, baseURL string) (ticket, csrf string, err 
 	if err != nil {
 		return "", "", fmt.Errorf("POST /access/ticket: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("POST /access/ticket: status %d", resp.StatusCode)
 	}
@@ -104,7 +104,7 @@ func checkNetworkRead(client *http.Client, baseURL, ticket string) CheckResult {
 	if err != nil {
 		return CheckResult{Name: "network_read", Pass: false, Detail: err.Error()}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return CheckResult{Name: "network_read", Pass: false, Detail: fmt.Sprintf("GET .../network: status %d", resp.StatusCode)}
 	}
@@ -132,7 +132,7 @@ func checkSDNZoneCreate(client *http.Client, baseURL, ticket, csrf, checkName, z
 	if err != nil {
 		return CheckResult{Name: checkName, Pass: false, Detail: err.Error()}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	accepted := resp.StatusCode == http.StatusOK
 	if accepted == wantAccepted {

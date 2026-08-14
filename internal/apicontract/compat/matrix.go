@@ -76,8 +76,8 @@ func fixturePath(name string) string {
 // compat-wrapped mock server.
 type CheckResult struct {
 	Name   string `json:"name"`
-	Pass   bool   `json:"pass"`
 	Detail string `json:"detail"`
+	Pass   bool   `json:"pass"`
 }
 
 // CellResult is one matrix cell: a PVE version, the fixture it was run

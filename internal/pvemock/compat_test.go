@@ -124,13 +124,13 @@ func TestCompatServer_SDNFabricZoneGate(t *testing.T) {
 	tests := []struct {
 		fixture     string
 		version     string
-		wantStatus  int
 		wantHeader  string
 		description string
+		wantStatus  int
 	}{
-		{"compat/pve-8.2.yaml", "8.2", http.StatusBadRequest, "8.2", "PVE 8.2 has no SDN Fabrics zone type"},
-		{"compat/pve-9.0.yaml", "9.0", http.StatusOK, "9.0", "PVE 9.0 introduced SDN Fabrics"},
-		{"compat/pve-9.2.yaml", "9.2", http.StatusOK, "9.2", "PVE 9.2 still supports SDN Fabrics"},
+		{fixture: "compat/pve-8.2.yaml", version: "8.2", wantHeader: "8.2", wantStatus: http.StatusBadRequest, description: "PVE 8.2 has no SDN Fabrics zone type"},
+		{fixture: "compat/pve-9.0.yaml", version: "9.0", wantHeader: "9.0", wantStatus: http.StatusOK, description: "PVE 9.0 introduced SDN Fabrics"},
+		{fixture: "compat/pve-9.2.yaml", version: "9.2", wantHeader: "9.2", wantStatus: http.StatusOK, description: "PVE 9.2 still supports SDN Fabrics"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.description, func(t *testing.T) {

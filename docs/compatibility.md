@@ -85,7 +85,7 @@ hardware capture.
 
 <!-- BEGIN T-2103 GENERATED MATRIX (source: internal/apicontract/compat, `make compat-matrix`) -->
 
-vnprox version: `unversioned` — generated 2026-08-13T18:09:45Z
+vnprox version: `unversioned` — generated 2026-08-14T13:22:53Z
 
 | PVE version | Validation | Result | Checks | Fixture |
 |---|---|---|---|---|

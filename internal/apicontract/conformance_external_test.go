@@ -202,7 +202,7 @@ func newExternalContractHarness(t *testing.T, cfg *externalConfig) *contractHarn
 
 func newExternalHTTPClient(cfg *externalConfig) *http.Client {
 	jar, _ := cookiejar.New(nil) // nil error only ever returned for a non-nil Options with a broken PublicSuffixList; not used here
-	var transport http.RoundTripper = http.DefaultTransport
+	var transport = http.DefaultTransport
 	if cfg.insecureSkipVerify {
 		transport = &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in via VNPROX_CONFORMANCE_INSECURE_SKIP_VERIFY, external conformance mode only — see this file's package doc

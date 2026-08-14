@@ -74,9 +74,9 @@ type contractHarness struct {
 	// the "consumable by an external CI run" half of this package. mintToken
 	// hands back one of these two pre-bootstrapped tokens instead of writing
 	// to a local store.
-	external        bool
 	externalRWToken string
 	externalROToken string
+	external        bool
 }
 
 // newContractHarness builds a full harness for fixturePath. Every scenario

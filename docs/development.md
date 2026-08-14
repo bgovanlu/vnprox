@@ -362,7 +362,7 @@ make e2e     # when touching UI flows — Playwright, sharded; the gate decides 
 
 Every job pins the same versions so a CI run is reproducible and a local `make check` matches it exactly:
 
-- **Go**: `1.26.5` (`actions/setup-go`'s `go-version`, identical across `ci.yml`, `packaging-matrix.yml`, `release.yml`); `go.mod` floors at `go 1.25.0`.
+- **Go**: `1.26.6` (`actions/setup-go`'s `go-version`, identical across `ci.yml`, `packaging-matrix.yml`, `release.yml`); `go.mod` floors at `go 1.25.0`. Bumped from `1.26.5` on 2026-08-14: `govulncheck` failed `make check` on five stdlib advisories (GO-2026-6218 `net/url`, GO-2026-6090 `crypto/tls`, GO-2026-6089 `net/http`, GO-2026-5972 `encoding/asn1`, GO-2026-5026 `net/http`/idna), every one of them reachable from vnprox code and every one fixed in `1.26.6`. Since the workflows are disabled, the version that actually matters is the one on the dev host that builds the `.deb` — check `go version` before cutting a release.
 - **Node**: `22` (`actions/setup-node`'s `node-version`, identical across all workflows); `web/package.json`'s `engines.node` floors at `>=20.19.0`.
 - **golangci-lint**: `v2.12.2` (`Makefile`'s `GOLANGCI_LINT_VERSION`, invoked via `go run .../golangci-lint@$(GOLANGCI_LINT_VERSION)` when no local binary is on `PATH` — same version locally and in CI).
 - **govulncheck**: `v1.5.0` (`Makefile`'s `GOVULNCHECK_VERSION`, same `go run ...@version` pattern).
