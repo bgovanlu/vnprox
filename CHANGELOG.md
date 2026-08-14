@@ -26,6 +26,154 @@ functionality is folded into `[2.0.0]`.
 
 ## [Unreleased]
 
+### Added
+
+- **The API contract has something on the other side of it, ready for a downstream repo to consume
+  — the provider and collection themselves stay outside this repository.** T-1106 froze the
+  automation contract; T-2101 publishes it. `docs/automation-contract.json` is a versioned,
+  machine-readable manifest of the 11 automation routes at stability v1.7, kept in step with
+  `docs/api.md` by a golden test and configured for publication as a release asset alongside
+  `openapi.json` — though see the CI note under *Changed*: the workflow that would publish it is
+  currently disabled, so no tag actually emits that asset today. The
+  conformance scenarios now run unchanged against either the in-process stack or an already-running
+  `vnproxd` (`VNPROX_CONFORMANCE_BASE_URL`), authenticating over real HTTP and minting bearer
+  tokens through `POST /tokens` with the CSRF double-submit flow — closing a gap in T-1106's own
+  suite, which had never exercised that route over the wire. `make conformance-external` is the one
+  canonical invocation, and `ci.yml` carries a job for it — which, per the *Changed* note below,
+  means it runs locally via `scripts/ci-local.sh` and nowhere else at present. **`terraform-provider-vnprox` and `ansible-collection-vnprox`
+  do not exist yet**: T-1106 always scoped those as separate, independently-published repositories,
+  and this card's deliverable is the cross-repo wiring they would consume, not the providers
+  themselves. One divergence is recorded rather than smoothed over: `touchesMgmtPath` depends on an
+  LLDP-identified uplink the minimal in-process harness never wires, so it always reads `false`
+  there while a fully-wired daemon can return `true` — redacted in external mode, with the reason
+  in the code.
+
+- **A PVE compatibility matrix, generated from mock fixtures rather than hand-maintained — and
+  labelled as exactly that.** `docs/roadmap.md` has long promised "a compatibility validation task
+  within one phase of each new PVE release" with no mechanism behind it; T-2103 is that mechanism.
+  Three version profiles (8.2, 9.0, 9.2) run through a compat-server wrapper that gates the one
+  documented, checkable divergence between them — PVE 9.0's SDN Fabrics zone types
+  (`openfabric`/`ospf`), rejected with a PVE-shaped 400 on 8.2 — alongside a baseline smoke check
+  (ticket auth, a network read, an ordinary VLAN zone create) run per version. `make compat-matrix`
+  regenerates `docs/compat-matrix.json` and the published table in `docs/compatibility.md` from
+  those runs; nothing in either file is typed by hand.
+
+  **Every cell says `validation: mock`, and none of this is hardware-validated.** The one real data
+  point this repository has — a single-node deployment note in
+  `planning/reports/needs-hardware-validation.md` — is deliberately *not* folded into the table,
+  because mixing a hardware observation into a mock-generated row is exactly the blur this document
+  exists to prevent. `docs/compatibility.md` points at `vnproxctl verify`/`vnproxctl telemetry`
+  (v3.5.0) as the separate, field-validated pathway instead. The SDN Fabrics behaviour itself is
+  modelled from Proxmox's documentation, not captured from hardware — this repository has no PVE
+  8.2 or 9.0 to observe, and the docs say so rather than implying otherwise.
+
+- **A plugin's declared capabilities are now checked against what the registry actually listed —
+  before a signature or a trust decision ever gets asked.** v3.5.0 shipped the Hub's signed
+  registry (T-2803); T-2104 fills in the two things `docs/hub-registry.md` had already named as
+  outstanding. First, a real gap: `GET /hub/index` is what an operator reads before deciding to
+  install, but nothing enforced that the downloaded artifact's manifest actually matched that
+  listing — a registry could advertise one capability scope and deliver another, and the consent
+  an operator gave would have been for something they were never shown. Installing a plugin now
+  refuses on any scope disagreement, unconditionally, audited as `hub.install/denied`, with no
+  trust flag able to override it: a correctly signed artifact from a fully trusted signer is still
+  refused, because a valid signature proves who produced a manifest, not that it matches the
+  listing that was consented to. Second, content: four seeded blueprints (a homelab single-node, a
+  three-node Ceph cluster over a VXLAN overlay, a VLAN-segmented branch office, and a DMZ with
+  WireGuard site-to-site), each tested against `internal/pvemock`. The DMZ+WireGuard seed is marked
+  **PARTIAL** in its own description, matching the bundled EVPN starter's existing caveat, because
+  blueprint v1 has no `wg.*` entity kind. **There is still no hosted registry** — no domain, no
+  object storage, no publish job — so these seeds are real, tested content that isn't published
+  anywhere `[hub] registry_url` could currently reach.
+
+- **A front door for the documentation, and an honest accounting of what distribution
+  infrastructure does and doesn't exist yet.** T-2105 adds a docsify-based, zero-build docs site
+  (`docs/README.md`, `_sidebar.md`, CDN-loaded, no new toolchain) restructured for a reader rather
+  than a contributor: an install guide, a first-hour walkthrough, a support guide, and
+  `CONTRIBUTING.md` with issue templates. Every install path in it was checked against source
+  rather than retyped — make targets against the `Makefile`, flags against `install.sh`'s own usage
+  text — and the apt/curl blocks are copied verbatim from `packaging/apt-repo.md` so they can't
+  drift. It also recommends **against** pursuing Proxmox VE Helper-Scripts inclusion: that project
+  installs apps into a fresh LXC, and vnprox has to run as a privileged daemon on the host, which is
+  an architectural mismatch rather than a priority call.
+
+  **What this does not change**: this repository is currently private (an anonymous request
+  returns a 404, not a "you need permission" error), so there is no public issue tracker and no
+  public clone URL — on top of the already-stated absence of a hosted apt repository, a hosted
+  registry, and a hosted demo. GitHub Pages is not enabled, so there is no live docs site URL yet,
+  and there is still no security-disclosure contact, flagged in the docs as a real gap rather than
+  routed around. A forum announcement is written but marked **DRAFT — NOT YET POSTED**.
+
+- **An installable mobile app, with push notifications for critical findings and changesets
+  awaiting confirm.** T-2005 adds a PWA manifest, service worker, and an offline shell that fails
+  honestly: cached views are labelled with the age of the data they're showing rather than
+  presenting stale topology as current. Web-push subscriptions ride the existing event stream, with
+  per-category opt-in (critical findings, awaiting-confirm changesets, drift), are listable and
+  revocable per device, and are sealed at rest and tied to the session that created them
+  (`ON DELETE CASCADE`), so a subscription dies with its session rather than through a cleanup step
+  that can be forgotten. The encryption (RFC 8291) and signing (RFC 8292/VAPID) are implemented
+  against the Go standard library with no new dependency, and proven byte-for-byte against RFC
+  8291's own worked example rather than only against vnprox's own encryptor.
+
+  **A push notification cannot leak the network's shape to whoever is holding the phone.** A
+  critical-finding notification's title and body are fixed literals with no finding-specific detail
+  and no node or guest name; the deep link opens a filtered view (`/tools?pushCategory=critical`),
+  never a specific finding. Leakage is prevented by the notification-building function having
+  nothing to leak, not by a redaction step someone has to remember. **Confirming a changeset from a
+  notification still requires a real authenticated session with the capability** — the notification
+  is a deep link, never an action token, so a lock-screen tap can open the review screen but cannot
+  itself confirm anything. **Not verified**: delivery to a real device through FCM, APNs, or Mozilla
+  autopush, and installability on real iOS/Android hardware — everything here has been tested
+  against synthetic subscriptions and an in-process test server only.
+
+### Changed
+
+- **All three GitHub Actions workflows are disabled; the dev host is the gate.** `CI`, `Packaging
+  matrix`, and `Release` are each `disabled_manually`. GitHub Actions billing has been exhausted
+  since 2026-08-11, and every trigger after that failed with a payment error rather than a test
+  result — 37 of the last 50 runs went red on commits that were green locally. A red X that means
+  "unfunded" rather than "broken" trains everyone to ignore the one place a real failure would
+  show, which is worse than no signal at all. `scripts/ci-local.sh` reproduces every job in
+  `ci.yml` and `packaging-matrix.yml` and is the actual gate. Re-enable with
+  `gh workflow enable "<name>"`.
+
+  Two consequences worth stating plainly, because they change what a tag *does*: **a `v*` tag now
+  publishes nothing** — no GitHub release, no `.deb`, no `openapi.json` or automation-contract
+  asset — so a release has to be built by hand from a clean worktree at the tag; and any workflow
+  file referenced elsewhere in this changelog describes configuration that is present but dormant.
+
+### Fixed
+
+- **The topology map's guest network interior panel could get stuck showing a permanent error
+  after enabling the toggle, on a raced fetch.** A prior diagnosis of this symptom (`T-2505-followup-02`)
+  concluded the interior query was never invalidated after the toggle mutation; that invalidation
+  was already present and always had been. The real cause: the interior query treated the expected
+  `interior_not_enabled` 404 as "nothing to show yet" and resolved to `undefined`, which TanStack
+  Query v5 treats as a bug and forces into a genuine error state — one the later invalidation could
+  never clear, because it wasn't a stale success, it was a synthetic error the query was parked in.
+  The sentinel is now `null` rather than `undefined`, so the query stays in a real success state and
+  the always-present invalidation can do its job once the toggle actually turns on. Reproducible only
+  under CPU restriction, which is why it had read as a flake rather than a real race.
+
+- **Contrast failures on the switch faceplate view, and a measurement bug that was hiding more of
+  them than it found.** Two real WCAG AA failures in the light theme — the access-port VLAN marker
+  (4.4:1) and the VNet tag suffix (2.32:1), plus a five-site copy-paste (`text-slate-400
+  dark:text-slate-400`) that had only ever been checked against a dark surface and measured
+  2.4–2.63:1 against this app's actual light-mode surfaces — are fixed to 5.14–9.82:1. Chasing the
+  rest of the previously-reported violations down turned up why they'd looked so inconsistent: axe
+  was catching a drift-badged switch's `animate-pulse` ancestor mid-pulse, at whatever opacity the
+  scan happened to land on, so two runs of identical code reported different ratios. The
+  accessibility test harness now emulates `prefers-reduced-motion` (driving the app's own
+  `useReducedMotion()` hook, not a workaround), which removes the pulse and makes the true residual
+  cost of the existing "dim what doesn't match the VLAN filter" suppression visible — and much
+  smaller than it looked. That suppression is narrowed to touch only the elements it's actually
+  fading rather than every element under a node section, and a new test engages the VLAN filter and
+  asserts something is really dimmed before measuring, closing the gap that let this go unexercised.
+
+### Security
+
+- Upgraded the Go toolchain to 1.26.6, which carries fixes for five stdlib advisories reachable
+  from vnprox code (`net/url`, `crypto/tls`, `net/http` ×2, `encoding/asn1`).
+
 ## [3.5.0] - 2026-08-13
 
 **Arc 5 — "adoptable, not just proven."** Twenty-five cards across phases 25–28
