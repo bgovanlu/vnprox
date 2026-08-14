@@ -26,6 +26,22 @@ functionality is folded into `[2.0.0]`.
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-08-14
+
+**Phases 20 and 21 are complete, which is what makes this 4.0.** `docs/roadmap-proven.md` reserves
+`v3.3` for phase 20 ("Sharper daily use") and `v4.0` for phase 21 ("Ecosystem and reach"); v3.5.0
+shipped with three cards outstanding in the former and four in the latter, and named that fact in
+its own release note. Those seven have now landed, so this release takes the number the roadmap set
+aside for the end of the arc rather than another point release. `v3.1`, `v3.2` and `v3.3` were never
+tagged — phases 18 and 19 shipped inside the v3.0.x line, and Arc 5 took `v3.5.0` — so the
+phase-to-version map has always been a plan rather than a ledger; this is the point where following
+it and describing what shipped agree.
+
+**What 4.0 does not mean.** No breaking change to the API, the data model, or the on-disk store: the
+schema migrates forward as always (0046 is the newest), `docs/api.md`'s contract is unchanged, and
+an upgrade from 3.x is an ordinary package upgrade. The major number marks the completion of the
+proven-in-production arc, not an incompatibility.
+
 ### Added
 
 - **The API contract has something on the other side of it, ready for a downstream repo to consume
@@ -168,6 +184,23 @@ functionality is folded into `[2.0.0]`.
   smaller than it looked. That suppression is narrowed to touch only the elements it's actually
   fading rather than every element under a node section, and a new test engages the VLAN filter and
   asserts something is really dimmed before measuring, closing the gap that let this go unexercised.
+
+- **The in-app help now covers the installable app, the offline shell, and push notifications.**
+  T-2005's PWA shipped with no online help at all — the only "notification" text in the help was
+  about webhooks and Proxmox's own notification system, a different and older feature, so a reader
+  looking for push found something that wasn't it. Two topics now cover installing (which is the
+  browser's own affordance, not an in-app button), what the offline shell shows and the fact that
+  it never caches an API response — so there is no offline editing mode to reason about — and the
+  push categories, their per-device scope, and why a critical-finding push deliberately carries no
+  detail about the finding.
+
+  Worth recording how this was missed, because the gate involved is a good one: `coverage.test.ts`
+  derives its screen inventory from the router and the nav rail rather than a hand-maintained
+  checklist, which is what makes "every screen has help" checkable at all. But it can only see
+  *routes*, and push settings is a panel inside the Settings route — that route already resolved to
+  a topic, so the gate stayed green over an undocumented feature. Extending it to panel-level
+  features is a real follow-up; it is deliberately not done here, and nothing in that test was
+  weakened to accommodate this change.
 
 ### Security
 
