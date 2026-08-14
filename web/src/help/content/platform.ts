@@ -218,4 +218,60 @@ export const PLATFORM_TOPICS: readonly HelpTopic[] = [
     ],
     seeAlso: ["topology-paint-modes", "service-class-traffic", "flows-page"],
   },
+  {
+    id: "installable-app-offline-shell",
+    title: "Installing vnprox, and what still works offline",
+    surface: "concept",
+    summary:
+      "vnprox is an installable app (a manifest and a service worker, no separate download) with an offline shell that opens even with no connection — and is explicit about the fact that whatever it's showing you is no longer live.",
+    docRef: "docs/features/monitoring.md",
+    keywords: ["pwa", "install", "add to home screen", "offline", "service worker", "app", "manifest", "standalone"],
+    sections: [
+      {
+        heading: "Installing is your browser's own affordance",
+        body: "There's no install button inside vnprox itself. Visit it once and a Chromium-based browser offers to install it from its own UI — an icon in the address bar, or 'Install app' in the browser menu; iOS Safari uses Share → **Add to Home Screen**. Either way you get the same web app in its own window, not a separate binary to keep updated.",
+      },
+      {
+        heading: "What the offline shell gets you",
+        body: "The app shell and static assets are cached as you use them, so losing connectivity gets you the last screen you had rather than the browser's own offline error page. The moment the browser reports itself offline, a banner says so and states the age of whatever data is on screen, in normal page flow rather than a dismissible toast you could miss.",
+      },
+      {
+        heading: "What it deliberately does not do",
+        body: "It never caches an API response — a stale topology presented as though it were current would be dangerous, and on a shared device a cached response could leak one session's data to whoever logs in next. That means it also can't queue up changes made offline to replay later: staging, applying and confirming all need a live round trip to the change engine, exactly like every other network request, so there is no offline editing mode to reason about.",
+      },
+    ],
+    seeAlso: ["push-notifications", "safety-model", "settings-page"],
+  },
+  {
+    id: "push-notifications",
+    title: "Push notifications",
+    surface: "panel",
+    summary:
+      "Web push to this device for the three things worth being interrupted for: a new critical finding, a changeset awaiting confirm, and drift. Opt in per category, per device, from Settings → Notifications.",
+    docRef: "docs/features/monitoring.md",
+    keywords: ["push", "notification", "notify", "subscribe", "device", "on-call", "lock screen", "vapid"],
+    sections: [
+      {
+        heading: "Three categories, chosen per device",
+        body: "**Critical findings** — a new finding at the highest defined severity. **Awaiting-confirm changesets** — an applied change is waiting on its confirm window before it becomes permanent. **Drift** — something changed outside vnprox. Enabling asks the browser for notification permission and registers this device against whichever categories you ticked; each device keeps its own selection.",
+      },
+      {
+        heading: "A critical-finding push tells you nothing about the finding",
+        body: "Its title and body are fixed text — 'New critical finding', nothing more — and the deep link opens the findings stream pre-filtered to critical, never the specific finding. No finding id, node name, guest name or IP ever leaves the daemon in this payload. That's deliberate: a notification can render on a locked phone before anyone has authenticated on it, and this is the one channel that must never let a glance at a lock screen reveal the shape of your network. Awaiting-confirm and drift pushes carry a little more (a changeset's opaque id, a plain count) but the same rule holds — no hostname, guest name or IP ever rides in a push payload.",
+      },
+      {
+        heading: "A notification is a deep link, never an action token",
+        body: "Tapping one opens or focuses a vnprox tab and navigates it — that's all it does. It cannot confirm a changeset, acknowledge a finding, or do anything else on your behalf. Whatever screen it lands on still runs its own authenticated-session and capability check, exactly as if you'd typed the URL in yourself; a stolen or spoofed notification has nothing to hand a phone but a URL.",
+      },
+      {
+        heading: "Per device, listable, and revocable",
+        body: "'Your devices' lists every device subscribed under your account — not just this one — with its label and the categories it opted into. Revoke any of them from here, including a device you no longer have in hand. A subscription's endpoint and keys are stored encrypted, the same way a session credential is, because anyone who held them could push arbitrary notifications to that device.",
+      },
+      {
+        heading: "A subscription belongs to the session that created it",
+        body: "Logging out — on this device or from a session that later expires — deletes that session's push subscription along with it, structurally, not as a cleanup step something has to remember to run. A device that stops receiving pushes without being explicitly revoked usually means the session behind it ended; re-enable it after logging back in.",
+      },
+    ],
+    seeAlso: ["installable-app-offline-shell", "findings-stream", "changeset-review-page", "safety-model"],
+  },
 ];

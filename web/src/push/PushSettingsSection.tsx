@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
+import { HelpAnchor } from "../help/HelpAnchor";
 import {
   ALL_PUSH_CATEGORIES,
   type PushCategory,
@@ -140,6 +141,9 @@ export function PushSettingsSection() {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <HelpAnchor topic="push-notifications" />
+      </div>
       <fieldset className="space-y-2">
         <legend className="text-xs font-medium text-slate-600 dark:text-slate-300">Notify me about</legend>
         {ALL_PUSH_CATEGORIES.map((cat) => (

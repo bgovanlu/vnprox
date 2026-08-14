@@ -576,6 +576,8 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
       "oidc-sso",
       "ha-pair",
       "certificates-page",
+      "push-notifications",
+      "installable-app-offline-shell",
     ],
   },
   {
