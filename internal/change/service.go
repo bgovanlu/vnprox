@@ -791,6 +791,7 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 // *ErrIllegalTransition for a changeset that is no longer a draft (already
 // applying, or a terminal historical record).
 func (s *Service) Discard(ctx context.Context, id, author string) error {
+	ctx = withHostWriteActor(ctx, author) // T-2902
 	c, err := s.Get(ctx, id)
 	if err != nil {
 		return err
@@ -1076,10 +1077,14 @@ func (s *Service) appendAudit(ctx context.Context, username, action, result, cha
 		}
 	}
 	entry := store.AuditEntry{
-		At:          s.now().Unix(),
-		Username:    username,
-		Action:      action,
-		Result:      result,
+		At:       s.now().Unix(),
+		Username: username,
+		Action:   action,
+		Result:   result,
+		// T-2902: the client IP internal/api's auditIPMiddleware stamped
+		// into this request's context; '' for non-HTTP paths (confirm-timer
+		// rollbacks and other system actions), per AuditEntry.IP.
+		IP:          store.AuditClientIPFromContext(ctx),
 		ChangesetID: sql.NullString{String: changesetID, Valid: changesetID != ""},
 		DetailJSON:  detailJSON,
 	}

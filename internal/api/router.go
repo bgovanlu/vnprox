@@ -204,9 +204,15 @@ type Options struct {
 	// GET /push/vapid-public-key and the POST/GET/DELETE /push/subscriptions
 	// family. PushVAPIDPublicKey empty (no VAPID identity configured) skips
 	// mounting the whole family — see push.go's mountPushRoutes doc comment.
-	PushSubscriptions   PushSubscriptionStore
-	PushSecretCipher    SecretCipher
-	PushVAPIDPublicKey  string
+	PushSubscriptions  PushSubscriptionStore
+	PushSecretCipher   SecretCipher
+	PushVAPIDPublicKey string
+	// EmbedFrameAncestors ([server] embed_frame_ancestors, T-2901) is the
+	// list of origins allowed to iframe the /embed/* views in addition to
+	// same-origin ('self', always included). Validated as
+	// scheme://host[:port] origins by internal/config at startup; empty
+	// means same-origin embedding only.
+	EmbedFrameAncestors []string
 	K8sClusters         K8sClusterStore
 	K8sSecretCipher     SecretCipher
 	K8sPoller           K8sPoller
@@ -230,6 +236,11 @@ type Options struct {
 	// to inject. Demo mode is the absence of a real cluster, not a
 	// different implementation of one.
 	Demo bool
+	// HubTrustUnsigned is [hub] trust_unsigned (T-2904): whether
+	// POST /hub/install may honor a request's trustUnsigned flag for an
+	// unsigned artifact. False — the default — refuses such a request with
+	// an error naming the config key; it is never silently ignored.
+	HubTrustUnsigned bool
 }
 
 // DefaultMCPPath is the fixed mount path (under /api/v1) for the MCP transport
@@ -288,6 +299,9 @@ func NewRouter(opts Options) http.Handler {
 	openAPI := &openAPIHolder{}
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// T-2902: every route under /api/v1 carries the client IP in its
+		// context so audit appends can record it (docs/security.md §Audit).
+		r.Use(auditIPMiddleware)
 		r.Get("/health", healthHandler(opts.Version, opts.Collectors, opts.Demo))
 		// Unauthenticated by design: the contract, not the data. See
 		// handleOpenAPI.
@@ -402,7 +416,7 @@ func NewRouter(opts Options) http.Handler {
 		mountPostureRoutes(r, opts.Posture, opts.Auth)
 		mountComplianceRoutes(r, opts.Compliance, opts.Auth)
 		mountPluginRoutes(r, opts.Plugins, opts.Auth)
-		mountHubRoutes(r, opts.HubClient, opts.HubVetting, opts.Blueprints, opts.BlueprintTrust, opts.PluginInstaller, opts.BlueprintSignersAudit, opts.Auth)
+		mountHubRoutes(r, opts.HubClient, opts.HubVetting, opts.Blueprints, opts.BlueprintTrust, opts.PluginInstaller, opts.BlueprintSignersAudit, opts.Auth, opts.HubTrustUnsigned)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountEmbedTokenRoute(r, opts.Tokens, opts.TokenAudit, opts.Auth)
@@ -438,7 +452,7 @@ func NewRouter(opts Options) http.Handler {
 	// never a session cookie (docs/security.md's embed-token model). Mounted
 	// before the SPA NotFound fallback so a valid-token request serves the
 	// shell while an invalid one gets a clean 401 rather than the SPA.
-	mountEmbedViewRoutes(r, opts.Tokens, opts.DistFS, opts.Posture != nil)
+	mountEmbedViewRoutes(r, opts.Tokens, opts.DistFS, opts.Posture != nil, opts.EmbedFrameAncestors)
 
 	// Unmatched /api/* routes get a JSON 404 (per docs/api.md's error
 	// envelope), not the SPA fallback; everything else falls back to the

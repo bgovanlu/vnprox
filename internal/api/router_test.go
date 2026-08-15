@@ -155,46 +155,19 @@ func TestSecurityHeaders(t *testing.T) {
 		}
 	}
 
-	csp := rec.Header().Get("Content-Security-Policy")
-	if strings.Contains(csp, "unsafe-inline") {
-		t.Errorf("CSP must not allow inline script: %q", csp)
-	}
-	if !strings.Contains(csp, "script-src 'self'") {
-		t.Errorf("CSP must restrict script-src to 'self': %q", csp)
-	}
-
-	// docs/security.md "Transport": "WS to self". connect-src must include
-	// 'self' and no bare ws:/wss: scheme sources — those would allow
-	// WebSocket connections to arbitrary hosts (ws: additionally plaintext).
-	if !strings.Contains(csp, "connect-src 'self'") {
-		t.Errorf("CSP connect-src must include 'self': %q", csp)
-	}
-	for _, dir := range strings.Split(csp, ";") {
-		dir = strings.TrimSpace(dir)
-		if !strings.HasPrefix(dir, "connect-src") {
-			continue
-		}
-		for _, src := range strings.Fields(dir)[1:] {
-			if src == "ws:" || src == "wss:" {
-				t.Errorf("CSP connect-src must not contain bare scheme source %q: %q", src, csp)
-			}
-		}
-	}
-
-	// T-604: tightened to the minimum the SPA actually uses — no
-	// <object>/<embed>, no iframes, no Worker()/service worker, no web app
-	// manifest, and mutations are always fetch() (TanStack Query), never an
-	// HTML <form> submit. See securityHeadersMiddleware's doc comment.
-	for _, want := range []string{
-		"object-src 'none'",
-		"frame-src 'none'",
-		"worker-src 'none'",
-		"manifest-src 'none'",
-		"form-action 'self'",
-	} {
-		if !strings.Contains(csp, want) {
-			t.Errorf("CSP must contain %q: %q", want, csp)
-		}
+	// T-2901 AC1: the FULL policy, asserted exactly — not substrings. Every
+	// directive is deliberate (see securityHeadersMiddleware's doc comment):
+	// worker-src/manifest-src 'self' because T-2005's PWA registers sw.js
+	// and links manifest.webmanifest (both same-origin; 'none' here is what
+	// broke the installable app, T-2901); object-src/frame-src 'none'
+	// because the SPA renders no plugins and no iframes; connect-src 'self'
+	// with no bare ws:/wss: scheme sources (docs/security.md "WS to self" —
+	// same-origin wss:// matches 'self' under CSP3's scheme-upgrade rule);
+	// frame-ancestors 'none' because the app itself is never framed — only
+	// /embed/* relaxes that, per-route.
+	const wantCSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'"
+	if csp := rec.Header().Get("Content-Security-Policy"); csp != wantCSP {
+		t.Errorf("CSP on an app route = %q, want exactly %q", csp, wantCSP)
 	}
 }
 

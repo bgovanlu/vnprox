@@ -54,6 +54,19 @@ type mutation struct {
 func brokenFixtures() []mutation {
 	return []mutation{
 		{
+			// The v4.0.0 defect class T-2901 fixed: the daemon regresses to a
+			// CSP whose worker-src refuses the service worker — every API
+			// test stays green while the PWA is dead in a real browser.
+			name:  "the CSP stops admitting the service worker",
+			check: "pwa.servable",
+			apply: func(d *Deps) {
+				daemonOf(d).rootResponses["/"] = fakeRootResponse{header: map[string]string{
+					"Content-Security-Policy": "default-src 'self'; worker-src 'none'; manifest-src 'self'",
+				}, body: "<!doctype html>"}
+			},
+			wantDetail: "worker-src does not allow 'self'",
+		},
+		{
 			// The engine recorded an apply against real PVE whose effect it
 			// can no longer describe: the audit story falling over.
 			name:  "a committed changeset's diff is gone",

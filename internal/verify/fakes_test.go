@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"sort"
 	"strings"
 	"testing"
@@ -36,6 +37,10 @@ type fakeResponse struct {
 // same reason.
 type fakeDaemon struct {
 	responses map[string]fakeResponse
+	// rootResponses backs GetRoot (RootProbe, checks_pwa.go): SPA-surface
+	// paths outside /api/v1, with headers. An unmapped path 404s, same
+	// discipline as responses.
+	rootResponses map[string]fakeRootResponse
 	// seq lets one path answer differently on successive reads, which is how
 	// a state transition (a standby promoting, a changeset rolling back) is
 	// modelled without real time passing. The last entry sticks.
@@ -63,6 +68,33 @@ func (f *fakeDaemon) Get(_ context.Context, path string) (int, []byte, error) {
 		status = 200
 	}
 	return status, []byte(r.body), nil
+}
+
+// fakeRootResponse is one GetRoot answer: status, selected headers, body.
+type fakeRootResponse struct {
+	header map[string]string
+	err    error
+	body   string
+	status int
+}
+
+func (f *fakeDaemon) GetRoot(_ context.Context, path string) (int, http.Header, []byte, error) {
+	r, ok := f.rootResponses[path]
+	if !ok {
+		return 404, http.Header{}, []byte(path + " is not in the root fixture"), nil
+	}
+	if r.err != nil {
+		return 0, nil, nil, r.err
+	}
+	h := http.Header{}
+	for k, v := range r.header {
+		h.Set(k, v)
+	}
+	status := r.status
+	if status == 0 {
+		status = 200
+	}
+	return status, h, []byte(r.body), nil
 }
 
 func (f *fakeDaemon) Post(_ context.Context, path string, _ any) (int, []byte, error) {
@@ -214,6 +246,15 @@ func healthyDaemon() *fakeDaemon {
 		"/ha/status": {body: fmt.Sprintf(`{"role":"active","term":7,"leaseExpiresAt":%d,"replicationLag":2,"replicationDegraded":false}`, now+60)},
 		"/certs": {body: `{"inventory":{"scannedAt":"2026-08-10T00:00:00Z","clusterCA":{"subject":"pve-root-ca"},` +
 			`"certificates":[{"path":"/etc/pve/nodes/pve1/pve-ssl.pem","node":"pve1"},{"path":"/etc/pve/nodes/pve2/pve-ssl.pem","node":"pve2"}],"errors":[]},"issues":[]}`},
+	}, rootResponses: map[string]fakeRootResponse{
+		// The SPA surface a real daemon serves (checks_pwa.go): the shell
+		// with the T-2901 CSP, the manifest with its registered media type,
+		// and the service worker script.
+		"/": {header: map[string]string{
+			"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'",
+		}, body: "<!doctype html>"},
+		"/manifest.webmanifest": {header: map[string]string{"Content-Type": "application/manifest+json"}, body: `{"name":"vnprox","start_url":"/"}`},
+		"/sw.js":                {header: map[string]string{"Content-Type": "text/javascript; charset=utf-8"}, body: "// sw"},
 	}}
 }
 

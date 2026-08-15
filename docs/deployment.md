@@ -138,6 +138,12 @@ listen = "0.0.0.0:8007"
 # tls_cert / tls_key: default = reuse PVE's node certificate
 read_only = false          # observe-only mode
 confirm_timeout_default = 120
+# Origins allowed to <iframe> the read-only /embed/* views (T-2901), in
+# addition to same-origin — e.g. a wiki or NOC dashboard. Each entry must be
+# an origin (scheme://host[:port]); anything else refuses startup. Empty or
+# absent = same-origin embedding only. Every non-embed route stays
+# unframeable regardless.
+# embed_frame_ancestors = ["https://wiki.example"]
 
 [pve]
 api_url = "https://127.0.0.1:8006"

@@ -268,9 +268,12 @@ CREATE TABLE audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
   username TEXT NOT NULL, action TEXT NOT NULL, target TEXT,
   changeset_id TEXT, result TEXT NOT NULL, detail_json TEXT,
-  cluster_id TEXT NOT NULL DEFAULT ''   -- T-1201: attached cluster the action targeted;
+  cluster_id TEXT NOT NULL DEFAULT '',  -- T-1201: attached cluster the action targeted;
                                         -- '' = implicit default/local cluster. GET /audit's
                                         -- cluster dimension (docs/architecture §7) filters/tags on this.
+  ip TEXT NOT NULL DEFAULT ''           -- T-2902 (0047): requesting client's source IP, stamped by
+                                        -- internal/api's audit-IP middleware; '' = no HTTP client
+                                        -- behind the row (pre-0047 rows, timers, system actions).
 );  -- COMPLIANCE ARTIFACT (T-1905): pruned by age only to [retention]
     -- audit_keep_days (default 730d/2y — internal/store.
     -- DefaultAuditRetentionDays' own doc comment has the argument); no

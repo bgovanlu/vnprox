@@ -2,10 +2,21 @@ package api
 
 import (
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
 )
+
+func init() {
+	// .webmanifest is absent from Go's built-in mime table (and not
+	// guaranteed present in /etc/mime.types), so without this the PWA
+	// manifest (web/public/manifest.webmanifest, T-2005) would be served
+	// with a content-sniffed text/plain instead of a manifest media type
+	// (T-2901 AC2). application/manifest+json is the registered type
+	// (W3C appmanifest §6).
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 // newSPAHandler serves static files out of distFS, falling back to
 // index.html for any path that isn't a real file in the tree — the

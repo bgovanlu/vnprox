@@ -355,7 +355,9 @@ func (c *Client) Services(ctx context.Context, p Peer, node string) (map[string]
 
 // StageInterfaces asks peer p to stage content as node's interfaces.new.
 func (c *Client) StageInterfaces(ctx context.Context, p Peer, node, content string) error {
-	body, err := json.Marshal(stageRequest{Node: node, Content: content})
+	a := AttributionFromContext(ctx)
+	body, err := json.Marshal(stageRequest{Node: node, Content: content,
+		writeAttribution: writeAttribution(a)})
 	if err != nil {
 		return fmt.Errorf("peer: encoding stage-interfaces request: %w", err)
 	}
@@ -368,7 +370,9 @@ func (c *Client) StageInterfaces(ctx context.Context, p Peer, node, content stri
 
 // Ifreload asks peer p to apply node's staged interfaces.new and reload.
 func (c *Client) Ifreload(ctx context.Context, p Peer, node string) error {
-	body, err := json.Marshal(nodeRequest{Node: node})
+	a := AttributionFromContext(ctx)
+	body, err := json.Marshal(nodeRequest{Node: node,
+		writeAttribution: writeAttribution(a)})
 	if err != nil {
 		return fmt.Errorf("peer: encoding ifreload request: %w", err)
 	}
@@ -382,7 +386,9 @@ func (c *Client) Ifreload(ctx context.Context, p Peer, node string) error {
 // Restore asks peer p to directly write content as node's committed
 // interfaces file and reload (the rollback path).
 func (c *Client) Restore(ctx context.Context, p Peer, node, content string) error {
-	body, err := json.Marshal(stageRequest{Node: node, Content: content})
+	a := AttributionFromContext(ctx)
+	body, err := json.Marshal(stageRequest{Node: node, Content: content,
+		writeAttribution: writeAttribution(a)})
 	if err != nil {
 		return fmt.Errorf("peer: encoding restore request: %w", err)
 	}
@@ -707,7 +713,9 @@ func (c *Client) Port() int { return c.opts.Port }
 // DiscardStaged asks peer p to drop node's staged interfaces.new, leaving
 // the committed file untouched.
 func (c *Client) DiscardStaged(ctx context.Context, p Peer, node string) error {
-	body, err := json.Marshal(nodeRequest{Node: node})
+	a := AttributionFromContext(ctx)
+	body, err := json.Marshal(nodeRequest{Node: node,
+		writeAttribution: writeAttribution(a)})
 	if err != nil {
 		return fmt.Errorf("peer: encoding discard-staged request: %w", err)
 	}
@@ -722,7 +730,9 @@ func (c *Client) DiscardStaged(ctx context.Context, p Peer, node string) error {
 // (docs/features/lldp-discovery.md §1's guided-install flow). confirm must
 // be true or the peer rejects the request with validation_failed.
 func (c *Client) InstallLLDPD(ctx context.Context, p Peer, confirm bool) error {
-	body, err := json.Marshal(installLLDPRequest{Confirm: confirm})
+	a := AttributionFromContext(ctx)
+	body, err := json.Marshal(installLLDPRequest{Confirm: confirm,
+		writeAttribution: writeAttribution(a)})
 	if err != nil {
 		return fmt.Errorf("peer: encoding lldp install request: %w", err)
 	}

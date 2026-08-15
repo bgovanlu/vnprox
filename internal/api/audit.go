@@ -42,8 +42,11 @@ type AuditService interface {
 // that link; the frontend fetches the changeset (and, transitively, its
 // snapshots) by id to expand a row.
 type auditEntryResponse struct {
-	Username    string          `json:"username"`
-	Action      string          `json:"action"`
+	Username string `json:"username"`
+	Action   string `json:"action"`
+	// IP (T-2902, additive) is the requesting client's source IP as
+	// recorded at append time; empty for pre-0047 rows and system actions.
+	IP          string          `json:"ip,omitempty"`
 	Target      string          `json:"target,omitempty"`
 	ChangesetID string          `json:"changesetId,omitempty"`
 	Result      string          `json:"result"`
@@ -67,7 +70,7 @@ type auditListResponse struct {
 func toAuditEntryResponse(e store.AuditEntry) auditEntryResponse {
 	resp := auditEntryResponse{
 		ID: e.ID, At: e.At, Username: e.Username, Action: e.Action, Result: e.Result,
-		Target: e.Target.String, ChangesetID: e.ChangesetID.String,
+		IP: e.IP, Target: e.Target.String, ChangesetID: e.ChangesetID.String,
 	}
 	if e.DetailJSON.Valid {
 		resp.Detail = json.RawMessage(e.DetailJSON.String)

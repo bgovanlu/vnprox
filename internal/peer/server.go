@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -270,7 +271,16 @@ type ServerOptions struct {
 	// Replication backs POST /api/peer/ha/replicate (T-1704). Optional
 	// (nil-safe, 503 when unset): a daemon with HA disabled has no standby to
 	// receive replication for.
-	Replication  ReplicationSink
+	Replication ReplicationSink
+	// WriteGuard (T-2902) is the receiving-side safety validation for the
+	// /host/{stage-interfaces,restore} write routes — see hostwrite.go.
+	// Production wiring (cmd/vnproxd) always sets it; nil (tests, partial
+	// wiring) skips validation with a per-write WARN rather than silently,
+	// because absence here weakens a documented guarantee.
+	WriteGuard HostWriteGuard
+	// WriteAudit (T-2902) records a receiving-side audit row for every
+	// /host/* write — allowed, refused, or failed. Nil-safe (no rows).
+	WriteAudit   HostWriteAuditor
 	Secrets      *SecretStore
 	Logger       *slog.Logger
 	Now          func() time.Time
@@ -953,10 +963,31 @@ func (s *Server) handleStageInterfaces(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed", "node and content are required")
 		return
 	}
+	audit := HostWriteAudit{
+		Action: "peer.host.stage", Node: req.Node,
+		Actor: req.Actor, OriginNode: req.OriginNode, OriginIP: req.OriginIP,
+		ContentSHA256: contentSHA256(req.Content),
+	}
+	// T-2902: the receiving node runs its own change-engine safety
+	// validation before anything touches the host writer — a peer call is
+	// not a privileged shortcut past the interlocks the coordinator
+	// enforces. Refusals are audited and carry the findings on the wire.
+	if s.opts.WriteGuard == nil {
+		s.opts.Logger.Warn("peer: host stage-interfaces without a WriteGuard — receiving-side safety validation skipped (T-2902 production wiring always sets one)", "node", req.Node)
+	} else if findings := s.opts.WriteGuard.ValidateStagedContent(r.Context(), req.Node, req.Content); len(findings) > 0 {
+		audit.Result, audit.Detail = "refused", strings.Join(findings, "; ")
+		s.auditHostWrite(r.Context(), audit)
+		writeJSONError(w, http.StatusBadRequest, "safety_refused", "receiving-side safety validation refused this write: "+strings.Join(findings, "; "))
+		return
+	}
 	if err := s.opts.Writer.StageInterfaces(r.Context(), req.Node, req.Content); err != nil {
+		audit.Result, audit.Detail = "failed", err.Error()
+		s.auditHostWrite(r.Context(), audit)
 		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
 		return
 	}
+	audit.Result = "allowed"
+	s.auditHostWrite(r.Context(), audit)
 	writeJSON(w, http.StatusOK, okResponse{OK: true})
 }
 
@@ -970,10 +1001,21 @@ func (s *Server) handleIfreload(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed", "node is required")
 		return
 	}
+	// T-2902: no content to validate (the staged file was validated when it
+	// was staged); the reload itself is still a host mutation and is
+	// audited on the receiving side like every other one.
+	audit := HostWriteAudit{
+		Action: "peer.host.ifreload", Node: req.Node,
+		Actor: req.Actor, OriginNode: req.OriginNode, OriginIP: req.OriginIP,
+	}
 	if err := s.opts.Writer.ReloadInterfaces(r.Context(), req.Node); err != nil {
+		audit.Result, audit.Detail = "failed", err.Error()
+		s.auditHostWrite(r.Context(), audit)
 		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
 		return
 	}
+	audit.Result = "allowed"
+	s.auditHostWrite(r.Context(), audit)
 	writeJSON(w, http.StatusOK, okResponse{OK: true})
 }
 
@@ -987,10 +1029,38 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed", "node and content are required")
 		return
 	}
+	audit := HostWriteAudit{
+		Action: "peer.host.restore", Node: req.Node,
+		Actor: req.Actor, OriginNode: req.OriginNode, OriginIP: req.OriginIP,
+		ContentSHA256: contentSHA256(req.Content),
+	}
+	// T-2902: a restore whose content matches a snapshot this node itself
+	// recorded is a distributed rollback to a known-good state — exempt by
+	// provenance (a rollback legitimately re-arms the management path a
+	// fresh write may not touch), never by skipping validation wholesale.
+	// Content this node has no record of is just a write, validated like
+	// one.
+	switch {
+	case s.opts.WriteGuard == nil:
+		s.opts.Logger.Warn("peer: host restore without a WriteGuard — receiving-side safety validation skipped (T-2902 production wiring always sets one)", "node", req.Node)
+	case s.opts.WriteGuard.KnownContent(r.Context(), req.Node, req.Content):
+		audit.Provenance = "snapshot"
+	default:
+		if findings := s.opts.WriteGuard.ValidateStagedContent(r.Context(), req.Node, req.Content); len(findings) > 0 {
+			audit.Result, audit.Detail = "refused", strings.Join(findings, "; ")
+			s.auditHostWrite(r.Context(), audit)
+			writeJSONError(w, http.StatusBadRequest, "safety_refused", "receiving-side safety validation refused this restore (content matches no snapshot on this node): "+strings.Join(findings, "; "))
+			return
+		}
+	}
 	if err := s.opts.Writer.RestoreInterfaces(r.Context(), req.Node, req.Content); err != nil {
+		audit.Result, audit.Detail = "failed", err.Error()
+		s.auditHostWrite(r.Context(), audit)
 		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
 		return
 	}
+	audit.Result = "allowed"
+	s.auditHostWrite(r.Context(), audit)
 	writeJSON(w, http.StatusOK, okResponse{OK: true})
 }
 
@@ -1004,10 +1074,20 @@ func (s *Server) handleDiscardStaged(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed", "node is required")
 		return
 	}
+	// T-2902: discarding a staged file destroys no committed state, but it
+	// is still a host mutation with an actor behind it — audited.
+	audit := HostWriteAudit{
+		Action: "peer.host.discard-staged", Node: req.Node,
+		Actor: req.Actor, OriginNode: req.OriginNode, OriginIP: req.OriginIP,
+	}
 	if err := s.opts.Writer.DiscardStaged(r.Context(), req.Node); err != nil {
+		audit.Result, audit.Detail = "failed", err.Error()
+		s.auditHostWrite(r.Context(), audit)
 		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
 		return
 	}
+	audit.Result = "allowed"
+	s.auditHostWrite(r.Context(), audit)
 	writeJSON(w, http.StatusOK, okResponse{OK: true})
 }
 
@@ -1033,10 +1113,22 @@ func (s *Server) handleInstallLLDPD(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed", "confirm must be true")
 		return
 	}
+	// T-2902: package installation is a host mutation; the receiving node
+	// records it (the doc comment above previously delegated all audit to
+	// the coordinator — the coordinator's row still exists, this one says
+	// what happened *here*).
+	audit := HostWriteAudit{
+		Action: "peer.host.lldp-install",
+		Actor:  req.Actor, OriginNode: req.OriginNode, OriginIP: req.OriginIP,
+	}
 	if err := s.opts.LLDPInstaller.InstallLLDPD(r.Context()); err != nil {
+		audit.Result, audit.Detail = "failed", err.Error()
+		s.auditHostWrite(r.Context(), audit)
 		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
 		return
 	}
+	audit.Result = "allowed"
+	s.auditHostWrite(r.Context(), audit)
 	writeJSON(w, http.StatusOK, okResponse{OK: true})
 }
 

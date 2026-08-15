@@ -261,6 +261,75 @@ tls_key = "` + keyPath + `"
 	}
 }
 
+// TestLoad_EmbedFrameAncestors (T-2901): valid origins parse verbatim; the
+// key absent means nil (same-origin embedding only).
+func TestLoad_EmbedFrameAncestors(t *testing.T) {
+	certPath, keyPath := writeTestCert(t, t.TempDir())
+	toml := `
+[server]
+embed_frame_ancestors = ["https://wiki.example", "http://noc.internal:8080"]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+	path := writeTemp(t, "embed.toml", toml)
+
+	cfg, err := Load(path, discardLogger())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+	want := []string{"https://wiki.example", "http://noc.internal:8080"}
+	if len(cfg.Server.EmbedFrameAncestors) != len(want) {
+		t.Fatalf("EmbedFrameAncestors = %v, want %v", cfg.Server.EmbedFrameAncestors, want)
+	}
+	for i, w := range want {
+		if cfg.Server.EmbedFrameAncestors[i] != w {
+			t.Errorf("EmbedFrameAncestors[%d] = %q, want %q", i, cfg.Server.EmbedFrameAncestors[i], w)
+		}
+	}
+}
+
+// TestLoad_EmbedFrameAncestorsMalformedFailsFast (T-2901 AC4): a malformed
+// origin fails startup, and the error names both the key and the value —
+// each entry is emitted verbatim into a CSP header, so nothing malformed
+// may pass.
+func TestLoad_EmbedFrameAncestorsMalformedFailsFast(t *testing.T) {
+	bad := []string{
+		`"wiki.example"`,                       // no scheme
+		`"ftp://wiki.example"`,                 // wrong scheme
+		`"https://wiki.example/path"`,          // path present
+		`"https://user@wiki.example"`,          // credentials present
+		`"https://wiki.example; script-src *"`, // directive injection
+		`"https://"`,                           // missing host
+	}
+	for _, entry := range bad {
+		t.Run(entry, func(t *testing.T) {
+			certPath, keyPath := writeTestCert(t, t.TempDir())
+			toml := `
+[server]
+embed_frame_ancestors = [` + entry + `]
+tls_cert = "` + certPath + `"
+tls_key = "` + keyPath + `"
+`
+			path := writeTemp(t, "badembed.toml", toml)
+
+			_, err := Load(path, discardLogger())
+			if err == nil {
+				t.Fatalf("expected an error for embed_frame_ancestors entry %s, got nil", entry)
+			}
+			if !errors.Is(err, ErrInvalidConfig) {
+				t.Errorf("expected ErrInvalidConfig, got: %v", err)
+			}
+			// The message must name the key and the offending value.
+			if !strings.Contains(err.Error(), "server.embed_frame_ancestors") {
+				t.Errorf("error %q does not name the key server.embed_frame_ancestors", err)
+			}
+			if !strings.Contains(err.Error(), strings.Trim(entry, `"`)) {
+				t.Errorf("error %q does not name the offending value %s", err, entry)
+			}
+		})
+	}
+}
+
 func TestLoad_MissingExplicitCertFailsFast(t *testing.T) {
 	toml := `
 [server]

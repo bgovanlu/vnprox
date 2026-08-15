@@ -112,6 +112,17 @@ func NewClusterNodeAgent(localNode func() string, local NodeAgent, client *peer.
 
 var _ NodeAgent = (*ClusterNodeAgent)(nil)
 
+// withOrigin merges this coordinator's node name into the T-2902
+// attribution the peer client will stamp into its host-write request —
+// Actor/OriginIP were set (if at all) further up by the Service's
+// withHostWriteActor at the Apply/Confirm/Rollback/Discard entry points;
+// this is the one place the "which daemon coordinated this" half is known.
+func (c *ClusterNodeAgent) withOrigin(ctx context.Context) context.Context {
+	a := peer.AttributionFromContext(ctx)
+	a.OriginNode = c.localNode()
+	return peer.WithAttribution(ctx, a)
+}
+
 func (c *ClusterNodeAgent) ReadInterfaces(ctx context.Context, node string) (string, error) {
 	if node == c.localNode() {
 		return c.local.ReadInterfaces(ctx, node)
@@ -131,6 +142,7 @@ func (c *ClusterNodeAgent) StageInterfaces(ctx context.Context, node, content st
 	if err != nil {
 		return err
 	}
+	ctx = c.withOrigin(ctx)
 	return c.client.StageInterfaces(ctx, p, node, content)
 }
 
@@ -142,6 +154,7 @@ func (c *ClusterNodeAgent) ReloadInterfaces(ctx context.Context, node string) er
 	if err != nil {
 		return err
 	}
+	ctx = c.withOrigin(ctx)
 	return c.client.Ifreload(ctx, p, node)
 }
 
@@ -153,6 +166,7 @@ func (c *ClusterNodeAgent) DiscardStaged(ctx context.Context, node string) error
 	if err != nil {
 		return err
 	}
+	ctx = c.withOrigin(ctx)
 	return c.client.DiscardStaged(ctx, p, node)
 }
 

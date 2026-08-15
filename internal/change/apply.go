@@ -99,6 +99,7 @@ func (s *Service) ApplyStaged(ctx context.Context, id, author string, pveGW PVEG
 // the cluster default is itself off — so ApplyStaged above, and therefore
 // Apply, and therefore every caller that predates this card, is unaffected.
 func (s *Service) ApplyWithOptions(ctx context.Context, id, author string, pveGW PVEGateway, confirmTimeout time.Duration, strategy ApplyStrategy, opts ApplyOptions) (Changeset, error) {
+	ctx = withHostWriteActor(ctx, author) // T-2902
 	if !s.applyConfigured() {
 		return Changeset{}, &ErrApplyNotConfigured{}
 	}
@@ -440,6 +441,7 @@ func (s *Service) finishAwaitingConfirm(ctx context.Context, cs Changeset, plan 
 // post-state snapshot, and refreshes inventory. It returns *ErrNotConfirmable
 // if the changeset is not currently awaiting confirmation.
 func (s *Service) Confirm(ctx context.Context, id, author string) (Changeset, error) {
+	ctx = withHostWriteActor(ctx, author) // T-2902
 	if !s.applyConfigured() {
 		return Changeset{}, &ErrApplyNotConfigured{}
 	}
@@ -537,6 +539,7 @@ func (s *Service) Confirm(ctx context.Context, id, author string) (Changeset, er
 // "sdn restore skipped" rollback-log entry (doRollbackLocked) rather than
 // failing the whole rollback — the node-file half still completes.
 func (s *Service) Rollback(ctx context.Context, id, author string, pveGW PVEGateway) (Changeset, error) {
+	ctx = withHostWriteActor(ctx, author) // T-2902
 	if !s.applyConfigured() {
 		return Changeset{}, &ErrApplyNotConfigured{}
 	}

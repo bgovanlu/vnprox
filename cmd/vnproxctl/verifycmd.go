@@ -325,6 +325,29 @@ func (p daemonProbe) Post(ctx context.Context, path string, body any) (int, []by
 	return p.do(ctx, http.MethodPost, path, body)
 }
 
+// GetRoot implements verify.RootProbe (T-2902 wave's pwa.servable check,
+// checks_pwa.go): a GET against the daemon's ROOT — the SPA surface where
+// the manifest, service worker, and CSP header live — rather than the
+// /api/v1 base every other probe call uses. Headers are returned because
+// the check's whole subject is a response header.
+func (p daemonProbe) GetRoot(ctx context.Context, path string) (int, http.Header, []byte, error) {
+	base := strings.TrimSuffix(p.client.baseURL, "/api/v1")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("building root request: %w", err)
+	}
+	resp, err := p.client.http.Do(req)
+	if err != nil {
+		return 0, nil, nil, &requestError{err: fmt.Errorf("GET %s: %w", path, err)}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return resp.StatusCode, resp.Header, nil, fmt.Errorf("reading root response body: %w", err)
+	}
+	return resp.StatusCode, resp.Header, body, nil
+}
+
 // do returns the raw body rather than a decoded value, because verify's
 // checks assert on the response the daemon actually sent — see DaemonProbe's
 // doc comment for why a shared typed client would defeat the point.

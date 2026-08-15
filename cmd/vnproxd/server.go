@@ -1134,7 +1134,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// T-1705: the hub's plugin-install adapter — turns a hub-verified manifest
 	// into a live registration and installs it through the same registry above
 	// (which re-validates the capability scope). See hubinstall.go.
-	hubInstaller := hubPluginInstaller{registry: pluginRegistry}
+	hubInstaller := hubPluginInstaller{registry: pluginRegistry, installRoot: defaultPluginInstallRoot}
 	// T-1103: an eager tick right at startup — mirrors ArmPendingRollbacks
 	// above — so a schedule whose window (or, for missedWindowPolicy "skip",
 	// whose windowEnd) already passed while this daemon was down is resolved
@@ -1289,11 +1289,17 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		replicationSink = ha.NewReceiveSink(haMgr)
 	}
 	peerSrv := peer.NewServer(peer.ServerOptions{
-		Secrets:       peerSecrets,
-		Reader:        realHost,
-		Writer:        nodeAgent,
-		Audit:         auditPeerAdapter{auditRepo},
-		Snapshots:     snapshotPeerAdapter{changeSvc},
+		Secrets:   peerSecrets,
+		Reader:    realHost,
+		Writer:    nodeAgent,
+		Audit:     auditPeerAdapter{auditRepo},
+		Snapshots: snapshotPeerAdapter{changeSvc},
+		// T-2902: the receiving side of /api/peer/host/* runs this node's
+		// own change-engine safety validation (with snapshot provenance
+		// exempting legitimate distributed rollbacks) and audits every host
+		// write locally — a peer call is not a shortcut past the interlocks.
+		WriteGuard:    hostWriteGuardAdapter{change: changeSvc, snapshots: snapshotRepo, logger: logger},
+		WriteAudit:    hostWriteAuditAdapter{repo: auditRepo, logger: logger},
 		Timers:        localTimers,
 		LLDPInstaller: realHost,
 		FirewallLog:   fwLogReader,
@@ -1456,6 +1462,9 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		LLDP:       topoSvc,
 		Drift:      driftSvc,
 		Findings:   findingsEngine,
+		// T-2901: origins allowed to iframe the /embed/* views beyond
+		// same-origin ([server] embed_frame_ancestors, validated at Load).
+		EmbedFrameAncestors: cfg.Server.EmbedFrameAncestors,
 		// T-2402: acknowledgement is app-owned triage state, so it needs the
 		// store. The ack routes mount only when this is non-nil; GET
 		// /findings behaves exactly as it did before when it is not.
@@ -1646,8 +1655,11 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// T-1705: Blueprint & plugin hub. HubClient nil (no [hub] registry_url)
 		// skips the routes; PluginInstaller reuses pluginRegistry above so a hub
 		// plugin install goes through T-1702's capability-scoped registry.
-		HubClient:         hubClientOrNil(hubClient),
-		HubVetting:        hubVetted,
+		HubClient:  hubClientOrNil(hubClient),
+		HubVetting: hubVetted,
+		// T-2904: [hub] trust_unsigned — whether a hub-install request's
+		// trustUnsigned flag may be honored for an unsigned artifact.
+		HubTrustUnsigned:  cfg.Hub.TrustUnsigned,
 		PluginInstaller:   hubInstaller,
 		LLDPInstaller:     realHost,
 		LLDPPeerInstaller: lldpPeerInstaller,

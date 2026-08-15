@@ -2,7 +2,7 @@
   {
     "name": "shard-1",
     "slot": 0,
-    "why": "Owns the scale stack: everything that drives scale-lab must share a shard, because a second copy would need a second registered port pair for no gain. T-2801's demo stack lives here too — it is single-homed like scale, and this shard brings up the fewest mock processes, so a stack whose whole point is that it has no mock costs least here.",
+    "why": "Owns the scale stack: everything that drives scale-lab must share a shard, because a second copy would need a second registered port pair for no gain. T-2801's demo stack lives here too \u2014 it is single-homed like scale, and this shard brings up the fewest mock processes, so a stack whose whole point is that it has no mock costs least here.",
     "specs": [
       "aa-shard-canary.spec.ts",
       "change-review.spec.ts",
@@ -19,13 +19,14 @@
   {
     "name": "shard-2",
     "slot": 1,
-    "why": "Owns the simulator and alert stacks, and the isolation witness — which must not be in shard-1, since proving it cannot see shard-1's canary is the point.",
+    "why": "Owns the simulator and alert stacks, and the isolation witness \u2014 which must not be in shard-1, since proving it cannot see shard-1's canary is the point.",
     "specs": [
       "alert-rules.spec.ts",
       "capture.spec.ts",
       "changesets.spec.ts",
       "lacp-inspector.spec.ts",
       "onboarding.spec.ts",
+      "pwa.spec.ts",
       "responsive-triage.spec.ts",
       "simulator.spec.ts",
       "wireguard-wizard.spec.ts",
@@ -54,7 +55,7 @@
   {
     "name": "shard-4",
     "slot": 3,
-    "why": "Owns the phys-collapse and k8s stacks, and a11y.spec.ts — the single longest file in the suite at 78s. T-2802's public-demo stack lives here: it is the cheapest kind of stack there is (one daemon, no mock, like T-2801's), this shard carried the fewest spec files before it was added, and putting it here keeps the two demo daemons in different shards — one shard failing must not take out both halves of the demo story, and shard-1 already pays for scale-lab's 180s boot.",
+    "why": "Owns the phys-collapse and k8s stacks, and a11y.spec.ts \u2014 the single longest file in the suite at 78s. T-2802's public-demo stack lives here: it is the cheapest kind of stack there is (one daemon, no mock, like T-2801's), this shard carried the fewest spec files before it was added, and putting it here keeps the two demo daemons in different shards \u2014 one shard failing must not take out both halves of the demo story, and shard-1 already pays for scale-lab's 180s boot.",
     "specs": [
       "a11y.spec.ts",
       "public-demo.spec.ts",

@@ -121,7 +121,17 @@ publisher-supplied prose), derives the artifact URL, and writes a submission
 file. **Submitting is opening a pull request** against the registry repository
 with that file. Publishing an unsigned artifact requires `--allow-unsigned` and
 is reported loudly, because an unsigned artifact can only be installed behind
-the operator's explicit `trustUnsigned` step.
+the operator's explicit `trustUnsigned` step — which is itself double-gated
+(T-2904): the request flag alone is never sufficient. The **server** must also
+opt in with `[hub] trust_unsigned = true`, which warns at every startup; with
+it off (the default), a `trustUnsigned: true` request is refused with a `403`
+naming the config key. Signed artifacts are unaffected by both flags —
+signature verification is never optional. A plugin's declared `endpoint` is
+additionally constrained at install (T-2904): it must be an absolute path that
+resolves — symlinks included — to a regular file inside the vnprox-owned
+plugin install root (`/var/lib/vnprox/plugins`); bare names are never looked
+up via `$PATH`, and any path or symlink escaping the root is refused with the
+constraint named.
 
 ### 2. Reviewer: what gets checked
 

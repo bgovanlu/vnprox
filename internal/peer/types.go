@@ -26,18 +26,40 @@ type servicesResponse struct {
 	Services map[string]bool `json:"services"`
 }
 
+// writeAttribution (T-2902) is the coordinating daemon's account of who is
+// behind a host write, embedded in every /api/peer/host/* request body and
+// copied verbatim into the receiving node's audit row (HostWriteAudit).
+// All three fields are additive and optional — a pre-T-2902 coordinator
+// simply sends none, and the receiver records the absence rather than
+// refusing the request or inventing values. Attribution is trust-carried
+// over the already-authenticated channel (cluster-secret HMAC + pinned
+// TLS): it identifies who the *coordinator* says asked, which is exactly
+// as trustworthy as the coordinator itself — the same standing the
+// coordinator's own audit trail has.
+type writeAttribution struct {
+	// Actor is the acting username on the coordinating node ("" for
+	// system-initiated actions like confirm-timer rollbacks).
+	Actor string `json:"actor,omitempty"`
+	// OriginNode is the coordinating daemon's node name.
+	OriginNode string `json:"originNode,omitempty"`
+	// OriginIP is the client IP the coordinator attributed the action to.
+	OriginIP string `json:"originIP,omitempty"`
+}
+
 // stageRequest is POST /api/peer/host/stage-interfaces and
 // POST /api/peer/host/restore's shared body shape: the target node and the
 // full interfaces(5) content to write.
 type stageRequest struct {
 	Node    string `json:"node"`
 	Content string `json:"content"`
+	writeAttribution
 }
 
 // nodeRequest is POST /api/peer/host/{ifreload,discard-staged}'s body: just
 // the target node.
 type nodeRequest struct {
 	Node string `json:"node"`
+	writeAttribution
 }
 
 // linksResponse is GET /api/peer/host/links's body (T-303: the
@@ -135,8 +157,11 @@ type dhcpLeasesResponse struct {
 // internal/api's cluster merge can decode a peer's page directly into the
 // same representation it renders locally, with no lossy conversion.
 type AuditRecord struct {
-	Username    string          `json:"username"`
-	Action      string          `json:"action"`
+	Username string `json:"username"`
+	Action   string `json:"action"`
+	// IP (T-2902, additive): the source IP the recording node attributed
+	// this row to; "" from a pre-T-2902 peer, which is recorded, not filled.
+	IP          string          `json:"ip,omitempty"`
 	Target      string          `json:"target,omitempty"`
 	ChangesetID string          `json:"changesetId,omitempty"`
 	Result      string          `json:"result"`
@@ -241,6 +266,7 @@ type flowPageResponse struct {
 // explicit confirmation flag (docs/features/lldp-discovery.md §1's
 // "changeset-like confirmation" for the guided-install flow).
 type installLLDPRequest struct {
+	writeAttribution
 	Confirm bool `json:"confirm"`
 }
 

@@ -1,6 +1,6 @@
 # vnprox — project status
 
-**As of:** 2026-08-08 · **Commit:** phase 24 in flight (7 of 10 cards) · **Latest release:** `v3.0.4` · **Deployed:** `3.0.4+62+g7a8ef6d`
+**As of:** 2026-08-15 · **Latest release:** `v4.0.0` (tag `v4.0.0`, commit `5c19dcc`, 2026-08-14) · **Active arc:** Arc 6 — Earned (`docs/roadmap-earned.md`), Phase 29 in flight
 
 Companion documents: [`status-matrix.md`](status-matrix.md) (the per-feature audit grid and its method) and [`datasheet.md`](datasheet.md) (shipped capability, for external readers).
 
@@ -8,148 +8,147 @@ Companion documents: [`status-matrix.md`](status-matrix.md) (the per-feature aud
 
 ## 1. Headline
 
-vnprox is **feature-complete against three shipped arcs and materially under-validated against real hardware.**
+vnprox is feature-complete against five shipped arcs — v1.0 through v3.5.0, plus the
+"proven, not just built" arc, which closed as **v4.0.0** on 2026-08-14 (phases 20 and 21's
+seven outstanding cards landed, taking the version number `docs/roadmap-proven.md` reserved
+for the end of that arc; `v3.1`/`v3.2`/`v3.3` were never tagged individually — see CHANGELOG
+`[4.0.0]`).
 
-| Dimension | Complete | Basis |
+The current work is **Arc 6 — "Earned"** (`docs/roadmap-earned.md`, phases 29–33), scoped from
+a 2026-08-15 audit that found several things v4.0.0's release note and `docs/security.md`
+claim as true are not, in production. Phase 29 is in flight now — see `docs/roadmap-earned.md`
+for the finding-by-finding detail and `planning/tasks/phase-29.md` for its six cards.
+
+| Dimension | State | Basis |
 |---|---|---|
-| **Feature delivery** | **91%** | 152 of 167 feature cards shipped (phase 24 added 10) |
-| **Backend implementation** | **97%** | 68 of 77 feature areas complete, 6 partial, 3 not started |
-| **GUI coverage** | **99%** | 26 of 26 screens, all with help; 1 open navigation defect |
-| **API surface** | **100%** | Contract frozen at v3.0, additive-only since |
-| **Docs currency** | **100%** | `features.md` refreshed 2026-08-06 (`T-2107`) |
-| **Automated test gate** | **100%** | `make check` green: 2,594 Go tests + 1,520 web tests, lint, vet, govulncheck, npm audit. **GitHub Actions IS running** — the earlier "unfunded" claim was wrong and is corrected in `status-matrix.md` §5.7; it cost two days on `T-1806-bug-02` |
-| **E2E gate** | **required** | Gate landed 2026-08-06, green and blocking 2026-08-07. **29 failed / 59 passed → 89 passed / 0 failed / 2 skipped**, run time 29.6m → ~10m. **Ten real product defects** fixed along the way, four of them with green unit tests sitting on fixtures that invented the shape the code expected (`T-2108`, closed) |
-| **Hardware validation** | **9%** | **12 of 130 items validated on real PVE** (was 6 of 123; the `doctor` deploy run added six) |
+| Feature delivery (Arcs 1–5) | **All scoped cards shipped, one AC left explicitly open** | 157 cards across Arcs 1–4 (`status-matrix.md` §2, frozen at `6c0957e`) plus 25 cards across Arc 5, phases 25–28 (§6.4 below); `T-2505` shipped with two acceptance criteria recorded as not met rather than faked closed |
+| Backend implementation | **97% as of the pre-Arc-5 sweep** | `status-matrix.md` §2's 77-area matrix predates Arc 5 and was deliberately not re-run against the current tree — see that document's own note at its top |
+| Automated test gate | `make check` green locally | Go + web tests, lint, vet, govulncheck, npm audit |
+| CI | **Disabled, not running** | All three GitHub Actions workflows (`CI`, `Packaging matrix`, `Release`) are `disabled_manually`: GitHub Actions billing was exhausted 2026-08-11, and every trigger since then has failed on a payment error rather than a test result (CHANGELOG `[4.0.0]`, "Changed"). `scripts/ci-local.sh` reproduces every job in `ci.yml`/`packaging-matrix.yml` and is the actual gate on the dev host today. **This corrects a claim this document used to make in the other direction**: §6.2 below records `status-matrix.md` §5.7 correcting an earlier "CI is unfunded" claim as wrong, on 2026-08-08 — and that correction was itself accurate only until 2026-08-11 |
+| Hardware validation | **~11%** | 15 validated against 127 open items, per `docs/roadmap-earned.md`'s 2026-08-15 audit (`planning/reports/needs-hardware-validation.md`) |
+| Docs currency | **in progress, this pass** | This document, `status-matrix.md`, `datasheet.md`, `README.md`, and the doc indexes were rewritten 2026-08-15 for v4.0.0 (`T-2906`, phase 29); the truth/visibility gaps the audit found in the *product* (not the docs) are Phase 29–30 code cards, not this one |
 
-The first six rows describe a mature product. The last two are why the current arc exists. **The gap between "our tests pass" and "this works on your cluster" is the project's dominant risk, and it is not shrinking quickly** — five of the six validated items were validated a day ago; before that the number was one.
+The headline risk is unchanged in kind from the last two arcs: **the gap between "our tests
+pass" and "this works, safely, on your cluster and in a real production browser" is still the
+project's dominant risk.** Phase 29 is a direct response to that gap as of v4.0.0 specifically —
+a shipped-but-CSP-blocked PWA and embed views, a peer host-write path with no safety validation
+on the receiving side, bearer tokens that keep write capability after `read_only` is turned on,
+and a hub-install path reachable to arbitrary root execution — closed before Phase 30 adds
+anything new.
 
 ---
 
 ## 2. Arc and phase status
 
-| Arc | Phases | Target | Feature cards | Done | State |
+| Arc / phase | Phases | Target | Cards | Done | State |
 |---|---|---|---|---|---|
 | 1 — Visual network manager | 0–7 | v1.0 | 49 | 49 | ● Shipped |
 | 2 — Beyond the cluster | 8–12 | v2.0 | 37 | 37 | ● Shipped |
 | 3 — Universal networking tool | 13–17 | v3.0 | 35 | 35 | ● Shipped |
-| 4 — **Proven, not just built** | 18–21 | v3.1 → v4.0 | 26 | 14 | ◐ **54%** |
-| 22 — Online help | 22 | — | 5 | 5 | ● Shipped (unreleased) |
-| 23 — Certificate management | 23 | — | 5 | 5 | ● Shipped (unreleased) |
-| **Total** | | | **157** | **145** | **92%** |
+| 4 — Proven, not just built | 18–21 | v3.1 → v4.0 (**shipped as v4.0.0**; `v3.1`/`v3.2`/`v3.3` never tagged) | 26 | 24 | ● **Shipped, two cards rescheduled** — `T-2006` (i18n, no code) → `T-3106` and `T-2102`'s hosting half → `T-3301`; see the paragraph below |
+| 22 — Online help | 22 | folded into v3.5.0 | 5 | 5 | ● Shipped |
+| 23 — Certificate management | 23 | folded into v3.5.0 | 5 | 5 | ● Shipped |
+| 24 — Operator leverage | 24 | folded into v3.5.0 | 10 | 10 | ● Shipped (two cards landed in a second pass — `planning/tasks/phase-24.md`) |
+| 5 — Adoptable, not just proven | 25–28 | v3.5.0 | 25 | 25 | ◐ **Shipped, one AC explicitly open** (`T-2505`'s `--repeat-each=2` criterion — `planning/tasks/phase-25.md`) |
+| 6 — Earned | 29–33 | v4.1 → v5.0 | 25 | 0 | ○ **Proposed 2026-08-15, Phase 29 in flight** — `docs/roadmap-earned.md` |
+| **Total shipped** | | | **157 + 25 = 182** | **182** (Arc 4's 26 folds into the 157) | — |
 
-Defect cards (`*-bug-*`) sit outside this table; four are open — see §3. `T-1807-bug-01` closed
-2026-08-06 (by `T-1807-bug-02`), as did `T-2106` and `T-2107`.
-
-### Arc 4 detail — the only arc in flight
-
-| Phase | Theme | Cards | Done | Open |
-|---|---|---|---|---|
-| 18 | Prove it on hardware | 8 | 4 | `T-1802`, `T-1803`, `T-1804`, `T-1808` — **all human-blocked** |
-| 19 | Operate it | 7 | 7 | — **complete 2026-08-06** |
-| 20 | Finish the product | 6 | 3 | `T-2004` (a11y pass 2), `T-2005` (PWA), `T-2006` (i18n) |
-| 21 | Distribute it | 5 | 0 | `T-2101`…`T-2105` — none started |
-
-**Phase 21 has not begun.** Its dependency (`T-1902`, support bundles) shipped, so it is unblocked — but it is also the arc's release line: Terraform/Ansible artifacts, a signed apt repository, a compatibility matrix, a hosted registry, and community distribution. Nothing external can consume vnprox until some of it lands.
+**Arc 4's phase 21 line ("distribute it") is worth naming precisely**, because the v4.0.0
+release note oversold it: `T-2101` (Terraform/Ansible cross-repo wiring), `T-2103` (compat
+matrix), `T-2104` (registry capability-agreement gate), and `T-2105` (docs site) all shipped
+code. `T-2102` (signed apt repository) shipped the **machinery**
+(`packaging/build-apt-repo.sh`, `packaging/apt-repo.md`) but not a hosted repository — the
+thing an operator actually needs in order to `apt install` anything from the internet. That
+gap, and `T-2006` (i18n, phase 20, zero code in the tree), were **not descoped on the record**
+when v4.0.0 shipped claiming "phases 20 and 21 complete." Both are now rescheduled —
+`T-2006` as `T-3106`, `T-2102` as `T-3301` — in `docs/roadmap-earned.md`, and this paragraph is
+that correction going on the record.
 
 ---
 
-## 3. Open items, ranked
+## 3. Open items
 
-Ranked by *what it costs to leave this alone*, not by effort.
+The open-items backlog that used to live in this section is **superseded by
+[`docs/roadmap-earned.md`](roadmap-earned.md)**, which states plainly: "this document
+supersedes the open-items sections of every earlier roadmap." Every item that was open here as
+of the previous revision of this section is now either shipped (§2 above, §6 below) or absorbed
+into a Phase 29–33 card — `roadmap-earned.md`'s "Where every leftover went" table is the
+authoritative cross-reference; do not re-derive it here.
 
-### P0 — blocking a trustworthy release
+The six cards in flight right now, most urgent first (`planning/tasks/phase-29.md`):
 
-| # | Item | Card | Why it blocks | Who can do it |
-|---|---|---|---|---|
-| 1 | **Hardware-validation burndown** — 117 unvalidated items | `T-1802` | Every behavioural claim rests on a mock | **Human only** (needs real PVE) |
-| 2 | **Multi-node proof**: apply, distributed rollback, drift, federation, HA failover | `T-1803` | The product's core safety guarantee is unproven where it matters | **Human only** (needs 2+ nodes) |
-| 3 | **Failure-injection proof of commit-confirm** | `T-1804` | "It rolls back if it cuts you off" has never been observed doing so on hardware | **Human only** |
-| 4 | ~~No `LICENSE` file~~ | `T-2106` | **Closed 2026-08-06** — Apache-2.0, with `NOTICE`, a generated `THIRD-PARTY-LICENSES.md`, Debian `copyright`, and a test that fails if any of them is dropped | Done |
-| 5 | ~~E2E suite runs in no gate~~ → ~~triage the backlog~~ | `T-1806-bug-01` → `T-2108` | **Closed 2026-08-07: 29 failed / 59 passed → 89 passed / 0 failed**, and the job is required. Ten real product defects found and fixed, including a feature that returned 400 to every browser request since it shipped, an app-wide navigation dead end, and two SDN wizards reading a field shape the API has never sent | Done |
-| 6 | **Packaging matrix red** (`cluster-ssh`) | `T-1806-bug-02` | Cannot tag a release with a red pipeline in good conscience | Agent-completable |
-
-### P1 — user-visible or operationally important
-
-| # | Item | Card | Note |
+| # | Card | Item | Pri |
 |---|---|---|---|
-| 7 | ~~Nav-rail dead-end from the Graph view~~ | `T-2003-bug-01` | **Closed 2026-08-07** — an infinite render loop in `HistoryTimeline` starved react-router v7's navigation transition, so the URL changed and the page never did. Not the inspector, as reported and twice re-reported: the precondition is the Graph view being mounted, which is why the original regression spec passed against the live bug. It was also the single cause of three separate e2e failures |
-| 8 | ~~`vnproxctl doctor`~~ | `T-1904` | **Closed 2026-08-06** — ten checks, each with a broken fixture proving it can fail; remediation enforced structurally by `Report.Validate()`, not merely asserted. Four checks await a live-daemon wiring (`T-1904-followup-02`), which is also where the certificate/SAN preflight belongs |
-| 9 | ~~`docs/features.md` is stale~~ | `T-2107` | **Closed 2026-08-06** — rewritten to cover all four arcs; the non-goals section now states what is genuinely still out of scope |
-| 10 | Accessibility second pass | `T-2004` | Pass 1 shipped (WCAG AA, axe-gated) |
-| 11 | Terraform provider + Ansible collection | `T-2101` | API contract and conformance suite already exist |
-| 12 | Signed apt repository | `T-2102` | Decision made (GitHub Pages); unimplemented |
-| 13 | ~~Test tooling assumes an exclusive machine~~ | `T-1807-bug-01` → `T-1807-bug-02` | **Closed 2026-08-06** — enforced port registry (`testdata/dev-ports.tsv` + `internal/devports` + `make ports`). Proven against the real historical collision: replaying commit `9047685` now fails `make check`. Surfaced 3 unregistered binds nobody had written down |
-| 14 | Extend help anchors beyond the 6 placed | `T-2202-followup-01` | 20+ panel topics reachable only via search/index |
-| 15 | Field-level inline help in editors | `T-2202-followup-02` | `change-management.md` §5 asks for it |
+| 1 | `T-2901` | Un-break the PWA and the embeds: CSP/headers vs. shipped features | P0 |
+| 2 | `T-2902` | Peer host-write safety parity + audit attribution (incl. source IP) | P0 |
+| 3 | `T-2903` | Bearer tokens honor `read_only`; token expiry; `token.use` flood control | P0 |
+| 4 | `T-2904` | Hub plugin install hardening (endpoint constraints, config-gated trust) | P0 |
+| 5 | `T-2905` | Auth/daemon hardening punch list (sessions, limiter, SSRF, timeouts, perms) | P1 |
+| 6 | `T-2906` | Documentation truth pass + single doc index — this card | P1 |
 
-### P2 — wanted, cut first
-
-| # | Item | Card |
-|---|---|---|
-| 16 | PVE compatibility matrix + automated compat testing | `T-2103` |
-| 17 | Hosted blueprint/plugin registry | `T-2104` |
-| 18 | Mobile PWA with push | `T-2005` |
-| 19 | Localization (German first) | `T-2006` |
-| 20 | Community distribution + docs site | `T-2105` |
-| 21 | Standalone map SVG/PNG export | *flagged, T-607* |
+One hard external deadline holds regardless of phase order: the `scale.spec.ts` quarantine
+entry (`web/e2e/quarantine.json`, `T-2505-followup-01`) **expires 2026-09-15**; an expired
+quarantine fails the build.
 
 ---
 
 ## 4. What is genuinely strong
 
-Worth stating plainly, because an audit that only lists gaps misrepresents the artifact.
+Worth stating plainly, because an audit that only lists gaps misrepresents the artifact. This
+section predates Arc 5 and Arc 6 and none of it has been contradicted since — if anything, Arc 5
+added more of the same shape (a policy engine that refuses, a canary apply that pauses, a
+two-person rule enforced server-side).
 
-- **Every safety invariant the product claims has a test whose failure is loud.** An AI operator cannot apply a change — not by policy but because adding a mutating tool name makes a guard test *panic*. A plugin's capability scope is a ceiling the installer enforces. Peer TLS cannot silently fall back to the system trust pool. Certificate scanning cannot read a private key, because the type has nowhere to put one. See `status-matrix.md` §4 — eleven invariants, none failing.
-- **93% of Go packages and 100% of web feature modules have tests**, and the five untested packages are all mock servers. 4,058 automated tests, 0.82 test:prod LOC ratio on the backend.
-- **The v3.0 API contract has held.** Frozen, additive-only, and the one change that removed a frozen field was caught at review and reworked with regression guards added.
-- **Documentation is unusually honest.** Simplifications are labelled as simplifications (firewall resolve order, firewall-log rule correlation, the simulator's fourth "indeterminate" verdict). Partial implementations say they are partial. `needs-hardware-validation.md` exists at all, which most projects skip.
-- **Recent process discipline held under pressure.** A speculative CI fix was written, failed to reproduce at three sizes, and was **reverted rather than shipped**. A vacuous secret scan was caught by its own author and redone with a control. A wrong reading of certificate SANs was corrected in the commit message rather than quietly dropped.
+- **Every safety invariant the product claims has a test whose failure is loud.** An AI operator
+  cannot apply a change — not by policy but because adding a mutating tool name makes a guard
+  test *panic*. A plugin's capability scope is a ceiling the installer enforces. Peer TLS cannot
+  silently fall back to the system trust pool. Certificate scanning cannot read a private key,
+  because the type has nowhere to put one. See `status-matrix.md` §4 — eleven invariants, none
+  failing, as of that document's own commit.
+- **The v3.0 API contract has held**, and grew a machine-readable form (`docs/openapi.json`,
+  `T-2405`) rather than breaking. Frozen, additive-only, and enforced by a gate.
+- **Documentation is unusually honest about its own gaps**, including this one: Arc 6 exists
+  specifically because a docs audit found the honesty had lapsed for a couple of releases, and
+  this document is one of the corrections.
+- **Recent process discipline held under pressure.** A speculative CI fix was written, failed to
+  reproduce at three sizes, and was **reverted rather than shipped** (Arc 4). `T-2505` shipped
+  with two acceptance criteria explicitly unmet rather than narrated as done (Arc 5). `T-2505-followup-02`
+  was root-caused a second time, correctly, after a first diagnosis turned out to name a fix that
+  was already present (v4.0.0's own "Fixed" section, CHANGELOG).
 
 ---
 
 ## 5. Trajectory and recommended sequence
 
-### 5.1 The one thing that changes the risk profile
+The recommended order is now Arc 6's own phase order, stated in full in
+[`docs/roadmap-earned.md`](roadmap-earned.md) — this section does not restate it, to avoid a
+second place for it to go stale. In short:
 
-Arc 4 is titled *"proven, not just built"* and is **54% complete by card count but ~5% complete by its own premise.** Phases 19 and 20 delivered agent-completable operability work — phase 19 is now **complete** — but phase 18's four hardware cards, the reason the arc exists, remain untouched because no agent can touch them.
+1. **Phase 29 first** ("Make v4.0 true") — several of its six cards are live defects or open
+   security gaps in the release currently deployed: the PWA/embed CSP break, the unvalidated
+   peer host-write path, bearer tokens ignoring `read_only`, and the hub-install exec path.
+   Everything after Phase 29 builds on a release whose claims are true.
+2. **Phase 30** ("The visible product") — ~19 backend feature areas with zero frontend client
+   get their screens.
+3. **Phase 31** ("All of Proxmox networking") — PVE 9's SDN Fabrics and VNet-scope firewall,
+   currently unmodeled.
+4. **Phase 32** ("Proven on iron") — before Phase 33, because nothing should go public carrying
+   a safety claim (commit-confirm) that has never been observed working on real hardware.
+5. **Phase 33** ("In the world") — CI decision, a real apt host, public repo, docs site,
+   security-disclosure contact, hosted demo.
 
-`T-1801` shipped the machinery for this: eight harness scripts, an evidence schema, and a standalone runbook at `planning/validation/README.md`, designed to cost roughly **eight human turns rather than sixty**. It has been ready since before the last three phases were built.
-
-### 5.2 Recommended order
-
-Revised 2026-08-06. Items 1, 4, and half of 3 from the previous list are done; what remains is
-almost entirely the same shape as before, which is the point — the agent-completable backlog keeps
-shrinking while the hardware number does not move.
-
-1. **Run the phase-18 validation loop** (`T-1802`, then `T-1804`). **This is now the only item on
-   this list that improves the headline number, and the only one no agent can do.** Turns ~100
-   mock-validated claims into evidence.
-2. ~~**Triage the e2e backlog** (`T-2108`) and make the gate blocking.~~ **Done 2026-08-07** — the
-   suite is green and the job is required.
-3. **Explain `T-1806-bug-02`.** The packaging matrix is what proves the `.deb` installs; a release
-   cut over an unexplained red signal is the habit `T-1806-bug-01` exists to break.
-4. **Phase 21**, starting with `T-2102` (signed apt repo) and `T-2101` (Terraform/Ansible) — the two
-   items that make vnprox consumable by anyone who is not building it. Now unblocked in every
-   respect: its licence dependency closed with `T-2106`.
-5. Multi-node work (`T-1803`) whenever a second node exists.
-
-Closed since the previous revision: the licence decision (`T-2106`), the e2e gate landing
-(`T-1806-bug-01`), `docs/features.md` (`T-2107`), the port-collision class (`T-1807-bug-02`), and
-`vnproxctl doctor` (`T-1904`).
-
-### 5.3 Release readiness
-
-| Cut | Ready? | Blocking |
-|---|---|---|
-| `v3.1` (help + certificates + doctor) | **Nearly** | `Packaging matrix` red (`T-1806-bug-02`) is the only remaining blocker; the e2e suite is green and required |
-| `v4.0` (arc 4 complete) | No | Phase 21 not started; phase 18 unvalidated |
-| Public/community release | No | ~~No license~~ (closed); no signed repository; no compatibility matrix |
-
-A `v3.1` tag is defensible today once `T-1806-bug-02` is understood. `T-2003-bug-01` is fixed (2026-08-07).
+**One hard external deadline, phase order notwithstanding:** the `scale.spec.ts` quarantine
+entry expires 2026-09-15 (§3 above); `T-3204` must resolve or consciously renew it before then.
 
 ---
 
-## 6. Changes since the last status snapshot
+## 6. Delivery history
+
+Dated snapshots, kept in order rather than rewritten in place. §1–§5 above are the current
+state; everything below is historical record — read a date range's own paragraph as true as of
+that date, not as of today.
+
+### 6.1 2026-08-05 to 2026-08-06 — deploy-time validation, phases 22–23
 
 | Date | Change |
 |---|---|
@@ -163,13 +162,10 @@ A `v3.1` tag is defensible today once `T-1806-bug-02` is understood. `T-2003-bug
 | 2026-08-06 | `T-1807-bug-02`: enforced port registry closes the collision class that had recurred five times in one phase. Also eliminated two candidate explanations for `T-1806-bug-02` (recorded on that card so they are not re-derived) |
 | 2026-08-06 | `T-1904` (`vnproxctl doctor`) shipped — **phase 19 complete**. Ten checks, remediation structurally enforced; two follow-ups filed rather than left implicit |
 
-
----
-
-## 7. Phase 24 — operator leverage (added 2026-08-08)
+### 6.2 Phase 24 — operator leverage (added 2026-08-08)
 
 A full-stack audit at `7a8ef6d` found the binding constraint had moved from *"can vnprox do this"*
-to *"can one operator stay on top of what vnprox is telling them"*. Ten cards follow —
+to *"can one operator stay on top of what vnprox is telling them"*. Ten cards followed —
 [`docs/roadmap-leverage.md`](roadmap-leverage.md), [`planning/tasks/phase-24.md`](../planning/tasks/phase-24.md).
 
 **Three candidates were dropped on contact with the code, and that is worth recording** because
@@ -181,54 +177,24 @@ each had a plausible-sounding case for existing:
 | Standalone map SVG/PNG export | **Already ships** — `web/src/topology/ExportMapMenu.tsx`. `features.md` still calls it a known gap at T-607; that line is stale, not the product |
 | Four-eyes approval | **Already ships** — `ApprovalPolicy.AllowSelfApproval`, enforced server-side |
 
-### Delivery
+**Delivery:** six cards shipped in the first pass (`T-2401`, `T-2402`, `T-2403`, `T-2404`,
+`T-2408`, `T-2410`), one partial (`T-2406`), three deferred; a second pass on 2026-08-09 shipped
+two more (`T-2405`, `T-2407`) and closed `T-2411` (untracking the built binaries from git).
+`T-2409` (per-spec e2e store isolation) remains **built but not merged** — it works and is
+proven, but misses its own wall-clock and green-suite acceptance criteria; the branch is
+`t-2409-e2e-store-isolation`. Full per-card notes, the packaging-job root cause
+(`T-1806-bug-02`, a `SIGPIPE`/`pipefail` race in a `grep -q` pipeline that failed *when the
+pattern matched*), and the two GitHub-Actions-billing corrections are in
+`planning/tasks/phase-24.md`'s own delivery-record sections — not restated here to avoid a
+second place for them to go stale.
 
-| Card | Item | State |
-|---|---|---|
-| `T-2401` | Scheduled automatic config snapshots | ● Shipped |
-| `T-2402` | Finding acknowledgement and mute | ● Shipped |
-| `T-2403` | Entity change history ("blame") | ● Shipped |
-| `T-2404` | Blast-radius preview before apply | ● Shipped |
-| `T-2405` | OpenAPI 3.1 document + completeness gate | ○ **Not started** |
-| `T-2406` | `vnproxctl doctor --live` | ◐ **Partial** — 2 of 4 checks closed; see below |
-| `T-2407` | Alert quiet hours and digest coalescing | ○ **Not started** |
-| `T-2408` | Batch-fix findings into one changeset | ● Shipped |
-| `T-2409` | Per-spec e2e store isolation | ○ **Not started** |
-| `T-2410` | Packaging matrix `cluster-ssh` root cause | ● **Root-caused and fixed** |
-
-**`T-2406` is partial, deliberately and on the record.** `--live` closes `pve_reachable` and
-`pve_privileges`, taking a single-node install from 6 of 10 checks answered to 8. `clock_skew` needs
-a PVE server-time surface neither `internal/pve` nor `internal/pvemock` exposes
-(`T-2406-followup-01`). `peer_secret` needs a peer route reporting another node's digest, which does
-not exist and cannot be validated on one node — and a local-only probe would be **worse than
-skipping**, because `checkPeerSecret` reads a one-entry map as "single-node cluster; nothing to
-agree with" and would report **pass** on a five-node cluster whose secrets disagree
-(`T-2406-followup-02`).
-
-### What T-2410 changed beyond the packaging job
-
-`T-1806-bug-02` was the last blocker on a `v3.1` tag and had been unexplained for two days. The
-root cause — `echo "$OUT" | grep -q` failing *when the pattern matches*, because the runner's shell
-inherits `SIGPIPE=SIG_IGN` from the Node-based Actions runner — was sitting in a job log the whole
-time. **The reason nobody read it is that this project's own docs said CI was not running.** That
-claim is now corrected in three places, and the lesson is recorded in `development.md`: before
-writing off a CI signal as absent, run `gh run list`.
-
-Three consecutive green runner runs (the card's AC3) are still outstanding.
-
----
-
-## 8. Arc 5 — adoptable, not just proven (planned 2026-08-10)
-
-> **Note on §7's delivery table above:** it records the state partway through phase 24's first
-> pass. The authoritative shipped/blocked state is the "second pass" section of
-> [`planning/tasks/phase-24.md`](../planning/tasks/phase-24.md) — nine of ten shipped, `T-2409`
-> open. This table is not restated here to avoid a second place to keep current.
+### 6.3 Arc 5 — adoptable, not just proven (planned 2026-08-10)
 
 A second full-stack audit at `42ba175` scoped a fifth arc. Its organising finding is that the
-headline figures in §1 disagree with each other in a specific way: **feature delivery 91%,
-backend implementation 97%, hardware validation 9%, external consumers 0.** Adding a sixth
-networking domain does not move any of those; the remaining value is in *assembly and proof*.
+headline figures in the then-current §1 disagreed with each other in a specific way: **feature
+delivery 91%, backend implementation 97%, hardware validation 9%, external consumers 0.** Adding
+a sixth networking domain does not move any of those; the remaining value is in *assembly and
+proof*.
 
 Twenty-five cards across four phases — [`docs/roadmap-adopted.md`](roadmap-adopted.md),
 [`planning/implementation-plan-adopted.md`](../planning/implementation-plan-adopted.md):
@@ -248,14 +214,9 @@ T-1601) all already ship.
 `T-2505` subsumes the open `T-2409` and inherits its unfinished investigation, including the two
 hypotheses already refuted and recorded, so they are not re-derived a third time.
 
----
+### 6.4 Arc 5 — delivery (2026-08-13)
 
-## 9. Arc 5 — delivery (2026-08-13)
-
-All 25 cards across phases 25–28 have shipped code, merged to `main`. This section is the
-delivery record §8 was written before; it does not restate §1's headline percentages, which
-predate this arc and are not recomputed here — see the note at the end of this section for what
-that means and does not mean.
+All 25 cards across phases 25–28 shipped, merged to `main`, and cut as **v3.5.0**.
 
 | Card | Item | State |
 |---|---|---|
@@ -263,7 +224,7 @@ that means and does not mean.
 | `T-2502` | Record/replay real PVE traffic into fixtures | ● Shipped — no cassette here is from real PVE hardware yet, stated in the cassette directory's own name (`mock-three-node-vlan`) |
 | `T-2503` | Opt-in compatibility telemetry (`vnproxctl telemetry`) | ● Shipped |
 | `T-2504` | Nightly soak and resource-leak gate (`make soak`) | ● Shipped |
-| `T-2505` | E2E sharding, isolation, and flake quarantine | ◐ **Shipped with two ACs explicitly not met, recorded rather than faked closed**: one of the four original failures is bisected but its mechanism is unexplained and the spec is quarantined (`web/e2e/quarantine.json`, expires 2026-09-15); `--repeat-each=2` still fails because most specs assume a fresh store, which shard-level isolation doesn't provide. See `planning/tasks/phase-25.md`'s delivery record and `status-matrix.md` §5.11 |
+| `T-2505` | E2E sharding, isolation, and flake quarantine | ◐ **Shipped with two ACs explicitly not met, recorded rather than faked closed**: one of the four original failures is bisected but its mechanism is unexplained and the spec is quarantined (`web/e2e/quarantine.json`, expires 2026-09-15, `T-2505-followup-01`); `--repeat-each=2` still fails because most specs assume a fresh store, which shard-level isolation doesn't provide. See `planning/tasks/phase-25.md`'s delivery record and `status-matrix.md` §5.11 |
 | `T-2506` | Performance regression budget gate (`make perf`) | ● Shipped |
 | `T-2601` | Policy-as-code guardrails at the validate stage | ● Shipped |
 | `T-2602` | Canary / staged multi-node apply | ● Shipped |
@@ -285,22 +246,42 @@ that means and does not mean.
 | `T-2807` | Scheduled digest reports | ● Shipped — the API route (`GET`/`PUT /digest/schedule`) landed in a follow-up commit after the card's first pass, since no acceptance criterion named one and three other cards were touching `docs/openapi.json` at the time |
 | `T-2808` | In-app assistant over the MCP read tools | ● Shipped |
 
-**Two real product defects surfaced during this arc and remain open, both disclosed on their
-originating cards rather than fixed silently:**
+**Two real product defects surfaced during this arc.** Both disclosed on their originating
+cards rather than fixed silently, and one has since closed:
 
-- The guest-interior panel doesn't refetch after its own toggle is switched on, so it keeps
-  showing a stale "could not read this guest's interior" error until the tab is remounted
-  (`T-2505-followup-02`). Frontend cache-invalidation defect; out of `T-2505`'s scope by design.
-- `scale.spec.ts › v2 canvas renderer` fails only after two specific preceding specs in the same
-  browser process — reproducible, but its mechanism is unexplained (`T-2505-followup-01`,
-  quarantined, expires 2026-09-15).
+- `T-2505-followup-02`, the guest-interior panel's stuck error state, is **fixed as of v4.0.0**
+  (2026-08-14) — see §6.5 below. The original diagnosis (missing cache invalidation) was wrong;
+  the invalidation was already present. The real cause was a `TanStack Query v5` `undefined`
+  sentinel being treated as an error state.
+- `scale.spec.ts › v2 canvas renderer` still fails only after two specific preceding specs in
+  the same browser process — reproducible, but its mechanism remains unexplained
+  (`T-2505-followup-01`, quarantined, expires 2026-09-15).
 
-**What this section does not claim.** §1's headline table (feature delivery, hardware validation,
-etc.) is a mechanical sweep against a specific commit, predates this arc, and is not recomputed
-here — recomputing it needs the same commands `status-matrix.md` §6 describes, re-run against the
-current tree, which this delivery record does not do. What *is* true without re-running anything:
-`T-2501` makes the 9%-hardware-validation figure *movable* by someone with a cluster — it does not
-move it itself, because no card can validate hardware without hardware — and `T-2801`/`T-2802`
-answer "can someone who has never met us run this" for the *installed* case (yes) while leaving
-the *hosted-demo* case exactly where `T-2803`'s registry hosting also sits: designed, tested, and
+**What §6.3–6.4 do not claim.** §1's headline figures are a mechanical sweep against a specific
+commit, predate Arc 5 and Arc 6, and are not recomputed here — recomputing them needs the same
+commands `status-matrix.md` §6 describes, re-run against the current tree, which no card in
+either arc has done. What *is* true without re-running anything: `T-2501` makes the
+hardware-validation figure *movable* by someone with a cluster — it does not move it itself,
+because no card can validate hardware without hardware — and `T-2801`/`T-2802` answer "can
+someone who has never met us run this" for the *installed* case (yes) while leaving the
+*hosted-demo* case exactly where `T-2803`'s registry hosting also sits: designed, tested, and
 not actually deployed anywhere.
+
+### 6.5 v4.0.0 release and Arc 6 proposed (2026-08-14 to 2026-08-15)
+
+**v4.0.0 tagged 2026-08-14** (commit `5c19dcc`): phases 20 and 21's seven outstanding cards
+(three in phase 20, four in phase 21) landed, closing Arc 4 under the version number
+`docs/roadmap-proven.md` reserved for the end of that arc. No schema break, no API break — an
+upgrade from any 3.x is an ordinary package upgrade (migrations run through 0046). The same
+release recorded that GitHub Actions billing had been exhausted since 2026-08-11 and all three
+workflows were switched to `disabled_manually`, and fixed the `T-2505-followup-02` guest-interior
+defect (see §6.4).
+
+**A 2026-08-15 four-dimension audit** (features, docs, security, planning leftovers) found that
+several things v4.0.0's own release note and `docs/security.md` claim as true are not, in
+production — a CSP that blocks the PWA/service-worker and embed views it also shipped, a peer
+host-write path with no receiving-side validation, bearer tokens that outlive `read_only`, a hub
+install path reachable to arbitrary root execution, and a documentation set that had stopped
+being updated two releases back (this document included). That audit is
+[`docs/roadmap-earned.md`](roadmap-earned.md), Arc 6. Phase 29 ("Make v4.0 true") is in flight;
+`T-2906`, this document's own rewrite, is one of its six cards.

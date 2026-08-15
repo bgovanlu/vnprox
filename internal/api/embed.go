@@ -208,8 +208,10 @@ func handleCreateEmbedToken(tokens APITokenStore, audit tokenAuditor, minter Tok
 // cannot look up by hash skips mounting the whole family. postureAvailable
 // reflects whether T-1607's posture service is wired (opts.Posture != nil):
 // when false, /embed/posture serves the documented "wired but dark" state
-// instead of the shell (AC5).
-func mountEmbedViewRoutes(r chi.Router, tokens APITokenStore, distFS fs.FS, postureAvailable bool) {
+// instead of the shell (AC5). frameAncestors is [server]
+// embed_frame_ancestors, validated at startup (internal/config) — the
+// origins allowed to iframe these views beyond same-origin (T-2901).
+func mountEmbedViewRoutes(r chi.Router, tokens APITokenStore, distFS fs.FS, postureAvailable bool, frameAncestors []string) {
 	if tokens == nil || distFS == nil {
 		return
 	}
@@ -219,9 +221,43 @@ func mountEmbedViewRoutes(r chi.Router, tokens APITokenStore, distFS fs.FS, post
 	}
 	shell := newSPAHandler(distFS)
 	r.Group(func(r chi.Router) {
+		r.Use(embedFrameHeadersMiddleware(frameAncestors))
 		r.Use(embedViewAuth(reader))
 		r.Get("/embed/{view}", handleEmbedView(shell, postureAvailable))
 	})
+}
+
+// embedFrameHeadersMiddleware relaxes the two anti-framing headers for the
+// /embed/* views only (T-2901). The router-wide securityHeadersMiddleware
+// has already set `frame-ancestors 'none'` and `X-Frame-Options: DENY` by
+// the time this group middleware runs — correct for the app, which is never
+// framed, and exactly wrong for these three views, which exist to be
+// iframed into wikis / NOC screens / status pages (docs/security.md's embed
+// section). This middleware overwrites the CSP with the same policy
+// (middleware.go's cspPolicy — no other directive changes) carrying
+// `frame-ancestors 'self' [origins...]` and removes X-Frame-Options: that
+// header cannot express an origin list, frame-ancestors supersedes it in
+// every browser that supports CSP2, and leaving DENY in place would forbid
+// precisely the embedding these routes are for.
+//
+// origins is [server] embed_frame_ancestors, already validated as
+// scheme://host[:port] origins at startup (internal/config). Empty means
+// same-origin embedding only — the operator opts into external origins,
+// never gets them by default.
+func embedFrameHeadersMiddleware(origins []string) func(http.Handler) http.Handler {
+	sources := "'self'"
+	for _, o := range origins {
+		sources += " " + o
+	}
+	embedCSP := cspPolicy(sources)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := w.Header()
+			h.Set("Content-Security-Policy", embedCSP)
+			h.Del("X-Frame-Options")
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // embedViewAuth is the embed routes' dedicated authentication middleware —

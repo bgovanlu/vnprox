@@ -1,0 +1,24 @@
+-- 0047_audit_ip.sql — T-2902: the client source IP on every audit row.
+--
+-- docs/security.md's Audit section has claimed since v1.0 that every
+-- mutation attempt is recorded "with user, source IP, changeset id, op
+-- summaries, and result" — but audit_log never had an IP column; only
+-- internal/auth's own login/logout/token.use rows carried one, tucked
+-- inside detail_json. T-2902 makes the documented claim true: the API
+-- layer stamps the requesting client's IP into the request context
+-- (internal/api's audit-IP middleware), and every append — the change
+-- engine's, auth's, and the new peer host-write rows — copies it here.
+--
+-- `NOT NULL DEFAULT ''` rather than NULL: pre-0047 rows (and appends from
+-- contexts with no HTTP client, e.g. confirm-timer rollbacks or peer
+-- writes attributed to a coordinating node instead) read as '' — the same
+-- "empty string means not applicable" convention device_label (0046) and
+-- map_regions.color (0045) already use, and it keeps scanAuditEntry free
+-- of a NullString for a column that is semantically "possibly empty",
+-- not "possibly unknown".
+--
+-- Migrations are forward-only: this file, once released, must never be
+-- edited again. Schema changes land as a new NNNN_*.sql file with a higher
+-- version number.
+
+ALTER TABLE audit_log ADD COLUMN ip TEXT NOT NULL DEFAULT '';

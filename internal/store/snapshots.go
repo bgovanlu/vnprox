@@ -84,6 +84,25 @@ func (r *SnapshotRepo) InsertFiles(ctx context.Context, refs []SnapshotFileRef) 
 	return nil
 }
 
+// HasFileHash reports whether any snapshot on this node records a file for
+// node with exactly this sha256 — T-2902's provenance check: a peer-routed
+// restore whose content matches a snapshot this daemon itself recorded is a
+// legitimate distributed rollback (restoring a known-good prior state, which
+// may deliberately re-arm the management path), while content matching no
+// snapshot here is just a write and gets validated like one.
+func (r *SnapshotRepo) HasFileHash(ctx context.Context, node, sha256 string) (bool, error) {
+	var one int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT 1 FROM snapshot_files WHERE node = ? AND sha256 = ? LIMIT 1`, node, sha256).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("store: checking snapshot file hash for node %s: %w", node, err)
+	}
+	return true, nil
+}
+
 // Get returns the snapshot with the given id, or ErrNotFound.
 func (r *SnapshotRepo) Get(ctx context.Context, id string) (Snapshot, error) {
 	row := r.db.QueryRowContext(ctx, `

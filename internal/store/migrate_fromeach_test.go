@@ -171,6 +171,7 @@ var versionSeeds = map[int]versionSeed{
 	43: {seedV43, assertV43},
 	44: {seedV44, assertV44},
 	45: {seedV45, assertV45},
+	46: {seedV46, assertV46},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1682,20 +1683,55 @@ func assertV45(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 46 (0046_push_subscriptions.sql, the push_subscriptions
-// table — T-2005) has no versionSeeds entry because it is the current
-// latest, not a "prior" version any fixture in this file freezes at — its
-// own forward application (as part of every case's migrate() call to
-// latest) is exercised by every case above, and TestOpen_CreatesAllTables
+func seedV46(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// A push subscription (0046) with its own session row to satisfy the
+	// sessions(id) foreign key — cascade-delete semantics belong to the
+	// push tests; here the row just has to survive the walk to latest.
+	mustExec(t, db, `INSERT INTO sessions (id, username, realm, pve_ticket_enc, csrf_token_enc, caps_json, created_at, expires_at)
+	      VALUES ('sess-v46', 'root@pam', 'pam', x'01020304', x'05060708', '{"sysModify":true}', 1760000000, 1760007200)`)
+	mustExec(t, db, `INSERT INTO push_subscriptions (id, session_id, username, endpoint_hash, endpoint_enc, p256dh_enc, auth_enc, categories_json, device_label, created_at, last_used_at)
+	      VALUES ('push-v46', 'sess-v46', 'root@pam', 'a1b2c3', x'0a0b0c', x'0d0e0f', x'101112', '["critical"]', 'iPhone — Safari', 1760000100, NULL)`)
+}
+
+func assertV46(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	var categories, label string
+	if err := db.QueryRowContext(ctx, `SELECT categories_json, device_label FROM push_subscriptions WHERE id = 'push-v46'`).
+		Scan(&categories, &label); err != nil {
+		t.Errorf("push_subscriptions row (v46) lost across migration: %v", err)
+	} else if categories != `["critical"]` || label != "iPhone — Safari" {
+		t.Errorf("push_subscriptions (v46) = (%q, %q), want the seeded row", categories, label)
+	}
+
+	// 0047's ip column backfill: the audit row seeded at v1 — written long
+	// before the column existed — must read as '' (0047_audit_ip.sql's
+	// NOT NULL DEFAULT ''), not NULL and not an error.
+	var ip string
+	if err := db.QueryRowContext(ctx, `SELECT ip FROM audit_log WHERE changeset_id = 'cs-v1' AND action = 'changeset.apply'`).
+		Scan(&ip); err != nil {
+		t.Errorf("pre-0047 audit row's ip column: %v", err)
+	} else if ip != "" {
+		t.Errorf("pre-0047 audit row ip = %q, want ''", ip)
+	}
+}
+
+// Schema version 47 (0047_audit_ip.sql, audit_log's ip column — T-2902)
+// has no versionSeeds entry because it is the current latest, not a
+// "prior" version any fixture in this file freezes at — its own forward
+// application (as part of every case's migrate() call to latest) is
+// exercised by every case above, and TestOpen_CreatesAllTables
 // (store_test.go) exercises it from a fresh database. store.
 // SeededVersionsAvailable() (export_test.go) — consumed by
 // TestBackupRestore_AC3_AcrossASchemaUpgrade in this package — asserts its
 // return value stays strictly below the live latest schema version for the
-// identical reason: registering 46 here before some future migration
+// identical reason: registering 47 here before some future migration
 // supersedes it would break that check, not just leave this version
 // un-exercised by it. The next migration to land becomes the new latest
-// and picks up a version 46 entry in versionSeeds at that time — see
-// version 45's identical treatment in this file, from the migration
+// and picks up a version 47 entry in versionSeeds at that time — see
+// version 46's identical treatment in this file, from the migration
 // immediately before this one, once it stopped being the latest.
 //
 // TestPushSubscriptionRepo_* (pushsubscriptions_test.go) covers this

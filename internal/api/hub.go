@@ -29,6 +29,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -144,12 +145,30 @@ const hubStatusInstalled = "installed"
 // because an operator can only consent to what they were shown.
 const hubStatusCapabilityMismatch = "capabilityMismatch"
 
+// hubStatusTrustUnsignedForbidden (T-2904) is the audit-detail status recorded
+// when a request asked to trust an unsigned artifact but the server config
+// forbids it. Unlike the gate statuses above it is never a 200 response body:
+// the request is refused with errHubTrustUnsignedForbidden (a 403 on the
+// wire), because the caller asked for something this server is configured to
+// never do.
+const hubStatusTrustUnsignedForbidden = "trustUnsignedForbidden"
+
+// errHubTrustUnsignedForbidden is T-2904's config gate on the request-body
+// trustUnsigned flag: honoring it for an unsigned artifact requires
+// [hub] trust_unsigned = true in the server config. The request field stays
+// schema-valid — it is refused out loud (never silently ignored), and the
+// error names the config key so an operator knows exactly which knob the
+// request needed. Signature verification for signed artifacts is a separate,
+// never-optional gate this error has nothing to do with.
+var errHubTrustUnsignedForbidden = errors.New("the server config forbids trusting unsigned hub artifacts: honoring trustUnsigned requires [hub] trust_unsigned = true")
+
 // mountHubRoutes registers the hub routes. Every dependency is nil-safe: a
 // missing hub client skips the whole family; within it, blueprint installs need
 // svc+trust and plugin installs need installer+trust, and a type whose backing
 // dependency is absent returns a clean 501 rather than a panic (the standard
-// degraded-mode convention).
-func mountHubRoutes(r chi.Router, client HubClient, vetting HubVetting, svc BlueprintService, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, auth AuthService) {
+// degraded-mode convention). trustUnsigned is [hub] trust_unsigned (T-2904):
+// whether a request's trustUnsigned flag may be honored at all.
+func mountHubRoutes(r chi.Router, client HubClient, vetting HubVetting, svc BlueprintService, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, auth AuthService, trustUnsigned bool) {
 	if client == nil || auth == nil {
 		return
 	}
@@ -169,7 +188,7 @@ func mountHubRoutes(r chi.Router, client HubClient, vetting HubVetting, svc Blue
 			r.Use(csrf.CSRFMiddleware)
 		}
 		r.Use(auth.RequireCap(capNetWrite))
-		r.Post("/hub/install", handleHubInstall(client, svc, trust, installer, audit, lookup))
+		r.Post("/hub/install", handleHubInstall(client, svc, trust, installer, audit, lookup, trustUnsigned))
 	})
 }
 
@@ -219,7 +238,7 @@ func toHubEntryResponse(e hub.Entry, vetting HubVetting) hubEntryResponse {
 	}
 }
 
-func handleHubInstall(client HubClient, svc BlueprintService, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, lookup UsernameLookup) http.HandlerFunc {
+func handleHubInstall(client HubClient, svc BlueprintService, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, lookup UsernameLookup, trustUnsignedAllowed bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -250,9 +269,9 @@ func handleHubInstall(client HubClient, svc BlueprintService, trust BlueprintTru
 
 		switch entryType {
 		case hub.TypeBlueprint:
-			installHubBlueprint(w, r, client, svc, trust, audit, username, entry, req)
+			installHubBlueprint(w, r, client, svc, trust, audit, username, entry, req, trustUnsignedAllowed)
 		case hub.TypePlugin:
-			installHubPlugin(w, r, client, trust, installer, audit, username, entry, req)
+			installHubPlugin(w, r, client, trust, installer, audit, username, entry, req, trustUnsignedAllowed)
 		}
 	}
 }
@@ -275,7 +294,7 @@ func findHubEntry(ctx context.Context, client HubClient, t hub.EntryType, id, ve
 	return hub.Entry{}, false
 }
 
-func installHubBlueprint(w http.ResponseWriter, r *http.Request, client HubClient, svc BlueprintService, trust BlueprintTrustStore, audit blueprintBundleAuditor, username string, entry hub.Entry, req hubInstallRequest) {
+func installHubBlueprint(w http.ResponseWriter, r *http.Request, client HubClient, svc BlueprintService, trust BlueprintTrustStore, audit blueprintBundleAuditor, username string, entry hub.Entry, req hubInstallRequest, trustUnsignedAllowed bool) {
 	if svc == nil || trust == nil {
 		writeJSONError(w, http.StatusNotImplemented, "not_available", "blueprint hub installs are not configured on this node")
 		return
@@ -283,6 +302,16 @@ func installHubBlueprint(w http.ResponseWriter, r *http.Request, client HubClien
 	bundle, err := client.FetchBlueprintBundle(r.Context(), entry)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "registry_unavailable", "could not download blueprint bundle")
+		return
+	}
+	// T-2904: honoring the request's trustUnsigned flag for an unsigned
+	// bundle needs [hub] trust_unsigned = true — refused out loud with the
+	// config key named, never silently downgraded to an "unsigned" verdict.
+	// Without the flag the request asked for nothing the config forbids, and
+	// the ordinary unsigned rejection below applies unchanged.
+	if bundle.Signature == nil && req.TrustUnsigned && !trustUnsignedAllowed {
+		auditHubInstallDetail(r.Context(), audit, username, "blueprint", entry.ID, hubStatusTrustUnsignedForbidden, "", "", errHubTrustUnsignedForbidden.Error())
+		writeJSONError(w, http.StatusForbidden, "trust_unsigned_forbidden", errHubTrustUnsignedForbidden.Error())
 		return
 	}
 	// The one and only blueprint verify/trust/save path (T-1107's import
@@ -300,7 +329,7 @@ func installHubBlueprint(w http.ResponseWriter, r *http.Request, client HubClien
 	})
 }
 
-func installHubPlugin(w http.ResponseWriter, r *http.Request, client HubClient, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, username string, entry hub.Entry, req hubInstallRequest) {
+func installHubPlugin(w http.ResponseWriter, r *http.Request, client HubClient, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, username string, entry hub.Entry, req hubInstallRequest, trustUnsignedAllowed bool) {
 	if installer == nil || trust == nil {
 		writeJSONError(w, http.StatusNotImplemented, "not_available", "plugin hub installs are not configured on this node")
 		return
@@ -310,7 +339,11 @@ func installHubPlugin(w http.ResponseWriter, r *http.Request, client HubClient, 
 		writeJSONError(w, http.StatusBadGateway, "registry_unavailable", "could not download plugin artifact")
 		return
 	}
-	resp, status, err := installPluginCore(r.Context(), trust, installer, audit, username, entry, art, req.TrustUnsigned, req.TrustNewKey)
+	resp, status, err := installPluginCore(r.Context(), trust, installer, audit, username, entry, art, req.TrustUnsigned, req.TrustNewKey, trustUnsignedAllowed)
+	if errors.Is(err, errHubTrustUnsignedForbidden) {
+		writeJSONError(w, http.StatusForbidden, "trust_unsigned_forbidden", errHubTrustUnsignedForbidden.Error())
+		return
+	}
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal_error", "plugin install failed")
 		return
@@ -335,7 +368,7 @@ func installHubPlugin(w http.ResponseWriter, r *http.Request, client HubClient, 
 // else would be routing around the very capability-gate review this hub
 // exists to preserve. A disagreement refuses the install outright, signed or
 // not, trusted or not: hub.CapabilityMismatch.
-func installPluginCore(ctx context.Context, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, username string, entry hub.Entry, art hub.PluginArtifact, trustUnsigned, trustNewKey bool) (hubInstallResponse, int, error) {
+func installPluginCore(ctx context.Context, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, username string, entry hub.Entry, art hub.PluginArtifact, trustUnsigned, trustNewKey, trustUnsignedAllowed bool) (hubInstallResponse, int, error) {
 	if mismatch := hub.CapabilityMismatch(entry, art.Manifest); mismatch != "" {
 		auditHubInstallDetail(ctx, audit, username, "plugin", art.Manifest.ID, hubStatusCapabilityMismatch, "", "", mismatch)
 		return hubInstallResponse{Type: string(hub.TypePlugin), Status: hubStatusCapabilityMismatch}, http.StatusOK, nil
@@ -346,11 +379,19 @@ func installPluginCore(ctx context.Context, trust BlueprintTrustStore, installer
 	}
 
 	// Unsigned artifact: same default-reject-unless-trustUnsigned gate as an
-	// unsigned blueprint bundle.
+	// unsigned blueprint bundle — and (T-2904) the request flag alone is not
+	// sufficient: the server config must also allow unsigned trust
+	// ([hub] trust_unsigned = true), or the request is refused with the
+	// config key named. Signed artifacts never reach this branch and are
+	// never affected by either flag.
 	if art.Signature == nil {
 		if !trustUnsigned {
 			auditHubInstall(ctx, audit, username, "plugin", art.Manifest.ID, bundleStatusUnsigned, "", "")
 			return hubInstallResponse{Type: string(hub.TypePlugin), Status: bundleStatusUnsigned}, http.StatusOK, nil
+		}
+		if !trustUnsignedAllowed {
+			auditHubInstallDetail(ctx, audit, username, "plugin", art.Manifest.ID, hubStatusTrustUnsignedForbidden, "", "", errHubTrustUnsignedForbidden.Error())
+			return hubInstallResponse{}, 0, errHubTrustUnsignedForbidden
 		}
 		return finishPluginInstall(ctx, installer, audit, username, art, "trustUnsigned", "")
 	}

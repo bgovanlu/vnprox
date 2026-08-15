@@ -1182,3 +1182,23 @@ This section records the one thing it cannot tell you.
       8.2.yaml`, `pve-9.0.yaml` and `pve-9.2.yaml` are minimal hand-written topologies, not
       captures. Only `pve-9.2.yaml` has a real counterpart available (`pvecube`), and it has not
       been diffed against it.
+
+## T-2901 — PWA un-broken: real-device half (2026-08-15)
+
+T-2901 fixed the v4.0.0 CSP that blocked service-worker registration and the manifest outright
+(`worker-src`/`manifest-src` were `'none'`), and `web/e2e/pwa.spec.ts` now asserts in real
+Chromium that the worker activates, the manifest serves as `application/manifest+json`, and an
+`/embed/*` view renders inside an iframe. What Chromium-on-the-dev-host cannot prove:
+
+- [ ] **Install the PWA on a real phone.** iOS Safari and Android Chrome each apply their own
+      installability heuristics beyond the manifest being reachable; "Add to Home Screen"
+      producing a standalone-window app has never been observed on either.
+- [ ] **Deliver one push end-to-end through a real push service.** Every push test so far uses
+      synthetic subscriptions against an httptest endpoint. A `critical` push traversing FCM
+      (Android), APNs (iOS 16.4+ web push), or Mozilla autopush (Firefox) and rendering on a
+      lock screen — with the fixed generic title/body and the `/tools?pushCategory=critical`
+      deep link opening the installed app — closes the last unverified claim in T-2005's
+      release note.
+- [ ] **Confirm the offline shell on a device.** Airplane-mode relaunch of the installed app
+      should serve the cached shell with `/api/*` uncached (the sw.js invariant), which a
+      desktop Chromium run approximates but a phone's actual eviction behavior decides.

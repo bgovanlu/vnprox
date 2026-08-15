@@ -34,7 +34,7 @@ func newEmbedMintRouter(t *testing.T, tokens APITokenStore, audit tokenAuditor, 
 func newEmbedViewRouter(t *testing.T, tokens APITokenStore, postureAvailable bool) *httptest.Server {
 	t.Helper()
 	r := chi.NewRouter()
-	mountEmbedViewRoutes(r, tokens, embedShellFS, postureAvailable)
+	mountEmbedViewRoutes(r, tokens, embedShellFS, postureAvailable, nil)
 	ts := httptest.NewServer(r)
 	t.Cleanup(ts.Close)
 	return ts
@@ -257,6 +257,84 @@ func TestEmbedPosture_DarkState(t *testing.T) {
 	defer func() { _ = mapResp.Body.Close() }()
 	if mapResp.StatusCode != http.StatusOK {
 		t.Errorf("map status = %d, want 200 regardless of posture availability", mapResp.StatusCode)
+	}
+}
+
+// TestEmbedView_FrameHeaders_DefaultSelfOnly is T-2901 AC3, asserted
+// through the full router so the interplay with the router-wide
+// securityHeadersMiddleware is what's under test: an /embed/* response
+// carries no X-Frame-Options and `frame-ancestors 'self'` (same-origin
+// embedding only — the default with no embed_frame_ancestors configured),
+// while an app route still carries DENY + `frame-ancestors 'none'`.
+func TestEmbedView_FrameHeaders_DefaultSelfOnly(t *testing.T) {
+	tokens := newFakeAPITokenStore()
+	seedEmbedToken(t, tokens, "e1", "raw-embed", []string{"netRead"}, false)
+	r := NewRouter(Options{Version: "test", DistFS: embedShellFS, Logger: testLogger(), Tokens: tokens})
+
+	req := httptest.NewRequest(http.MethodGet, "/embed/map?token=raw-embed", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /embed/map status = %d, want 200", rec.Code)
+	}
+	if got, present := rec.Header()["X-Frame-Options"]; present {
+		t.Errorf("X-Frame-Options = %q on an embed route, want the header absent", got)
+	}
+	// The full policy, exactly: identical to the app CSP except for
+	// frame-ancestors — the embed relaxation must not drift any other
+	// directive.
+	const wantCSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'self'; base-uri 'self'"
+	if csp := rec.Header().Get("Content-Security-Policy"); csp != wantCSP {
+		t.Errorf("embed CSP = %q, want exactly %q", csp, wantCSP)
+	}
+
+	// An app route through the same router is unchanged: still DENY + 'none'.
+	appReq := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	appRec := httptest.NewRecorder()
+	r.ServeHTTP(appRec, appReq)
+	if got := appRec.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Errorf("app-route X-Frame-Options = %q, want DENY", got)
+	}
+	if csp := appRec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Errorf("app-route CSP = %q, want frame-ancestors 'none'", csp)
+	}
+}
+
+// TestEmbedView_FrameHeaders_ConfiguredOrigins is T-2901 AC4's directive
+// half: with embed_frame_ancestors = ["https://wiki.example"], the emitted
+// directive is exactly `frame-ancestors 'self' https://wiki.example` —
+// 'self' always first, the configured origins verbatim after it.
+func TestEmbedView_FrameHeaders_ConfiguredOrigins(t *testing.T) {
+	tokens := newFakeAPITokenStore()
+	seedEmbedToken(t, tokens, "e1", "raw-embed", []string{"netRead"}, false)
+	r := NewRouter(Options{
+		Version:             "test",
+		DistFS:              embedShellFS,
+		Logger:              testLogger(),
+		Tokens:              tokens,
+		EmbedFrameAncestors: []string{"https://wiki.example"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/embed/dashboard?token=raw-embed", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /embed/dashboard status = %d, want 200", rec.Code)
+	}
+	csp := rec.Header().Get("Content-Security-Policy")
+	var got string
+	for _, dir := range strings.Split(csp, ";") {
+		if dir = strings.TrimSpace(dir); strings.HasPrefix(dir, "frame-ancestors") {
+			got = dir
+		}
+	}
+	if want := "frame-ancestors 'self' https://wiki.example"; got != want {
+		t.Errorf("frame-ancestors directive = %q, want exactly %q (full CSP: %q)", got, want, csp)
+	}
+	if got, present := rec.Header()["X-Frame-Options"]; present {
+		t.Errorf("X-Frame-Options = %q on an embed route, want the header absent", got)
 	}
 }
 

@@ -22,12 +22,36 @@ type AuditEntry struct {
 	// targeted; '' is the implicit default/local cluster, so every
 	// pre-federation row keeps its meaning. GET /audit's cluster-dimension
 	// fan-out (docs/architecture §7) reads this.
-	ClusterID   string
+	ClusterID string
+	// IP (T-2902) is the requesting client's source IP, stamped into the
+	// request context by internal/api's audit-IP middleware and copied here
+	// by every append site — the field docs/security.md's Audit section
+	// always claimed. '' means "no HTTP client behind this row" (pre-0047
+	// rows, confirm-timer rollbacks, system actions), per 0047_audit_ip.sql.
+	IP          string
 	Target      sql.NullString
 	ChangesetID sql.NullString
 	DetailJSON  sql.NullString
 	ID          int64
 	At          int64
+}
+
+// auditIPKey carries the requesting client's IP through a request context
+// to whatever append site eventually writes the audit row — internal/api
+// sets it once per request, so neither the change engine nor auth needs an
+// extra parameter on every call path in between (T-2902).
+type auditIPKey struct{}
+
+// WithAuditClientIP returns ctx carrying ip for AuditClientIPFromContext.
+func WithAuditClientIP(ctx context.Context, ip string) context.Context {
+	return context.WithValue(ctx, auditIPKey{}, ip)
+}
+
+// AuditClientIPFromContext returns the client IP WithAuditClientIP stored,
+// or "" — the "no HTTP client" value AuditEntry.IP documents.
+func AuditClientIPFromContext(ctx context.Context) string {
+	ip, _ := ctx.Value(auditIPKey{}).(string)
+	return ip
 }
 
 // AuditRepo is the audit_log table repository.
@@ -56,9 +80,9 @@ func (r *AuditRepo) SetOnAppend(fn func(AuditEntry)) { r.onAppend = fn }
 // Append inserts a new audit entry and returns its assigned id.
 func (r *AuditRepo) Append(ctx context.Context, e AuditEntry) (int64, error) {
 	res, err := r.db.ExecContext(ctx, `
-		INSERT INTO audit_log (at, username, action, target, changeset_id, result, detail_json, cluster_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.At, e.Username, e.Action, e.Target, e.ChangesetID, e.Result, e.DetailJSON, e.ClusterID,
+		INSERT INTO audit_log (at, username, action, target, changeset_id, result, detail_json, cluster_id, ip)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.At, e.Username, e.Action, e.Target, e.ChangesetID, e.Result, e.DetailJSON, e.ClusterID, e.IP,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("store: appending audit entry: %w", err)
@@ -77,7 +101,7 @@ func (r *AuditRepo) Append(ctx context.Context, e AuditEntry) (int64, error) {
 // Get returns the audit entry with the given id, or ErrNotFound.
 func (r *AuditRepo) Get(ctx context.Context, id int64) (AuditEntry, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id
+		SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id, ip
 		FROM audit_log WHERE id = ?`, id,
 	)
 	e, err := scanAuditEntry(row)
@@ -91,7 +115,7 @@ func (r *AuditRepo) Get(ctx context.Context, id int64) (AuditEntry, error) {
 // optionally filtered to a single changeset. Pass an empty changesetID to
 // list all. limit <= 0 means "no limit".
 func (r *AuditRepo) List(ctx context.Context, changesetID string, limit int) ([]AuditEntry, error) {
-	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id FROM audit_log`
+	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id, ip FROM audit_log`
 	args := []any{}
 	if changesetID != "" {
 		query += ` WHERE changeset_id = ?`
@@ -150,7 +174,7 @@ func (r *AuditRepo) ListPage(ctx context.Context, filter AuditFilter, cursor str
 	if limit <= 0 {
 		limit = 50
 	}
-	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id FROM audit_log WHERE 1=1`
+	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id, ip FROM audit_log WHERE 1=1`
 	var args []any
 	if filter.User != "" {
 		query += ` AND username = ?`
@@ -255,7 +279,7 @@ func (r *AuditRepo) ListActionsInRange(ctx context.Context, actions []string, fr
 		placeholders[i] = "?"
 		args = append(args, a)
 	}
-	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id FROM audit_log WHERE action IN (` +
+	query := `SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id, ip FROM audit_log WHERE action IN (` +
 		strings.Join(placeholders, ",") + `)`
 	if from > 0 {
 		query += ` AND at >= ?`
@@ -299,10 +323,10 @@ func (r *AuditRepo) ListActionsInRange(ctx context.Context, actions []string, fr
 // as if it had just performed them).
 func (r *AuditRepo) UpsertReplicated(ctx context.Context, e AuditEntry) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO audit_log (id, at, username, action, target, changeset_id, result, detail_json, cluster_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO audit_log (id, at, username, action, target, changeset_id, result, detail_json, cluster_id, ip)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO NOTHING`,
-		e.ID, e.At, e.Username, e.Action, e.Target, e.ChangesetID, e.Result, e.DetailJSON, e.ClusterID,
+		e.ID, e.At, e.Username, e.Action, e.Target, e.ChangesetID, e.Result, e.DetailJSON, e.ClusterID, e.IP,
 	)
 	if err != nil {
 		return fmt.Errorf("store: upserting replicated audit entry %d: %w", e.ID, err)
@@ -335,7 +359,7 @@ func (r *AuditRepo) ListSince(ctx context.Context, sinceID int64, limit int) ([]
 		limit = 500
 	}
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id
+		SELECT id, at, username, action, target, changeset_id, result, detail_json, cluster_id, ip
 		FROM audit_log WHERE id > ? ORDER BY id ASC LIMIT ?`, sinceID, limit,
 	)
 	if err != nil {
@@ -458,7 +482,7 @@ func decodeAuditCursor(cursor string) (int64, int64, error) {
 
 func scanAuditEntry(row rowScanner) (AuditEntry, error) {
 	var e AuditEntry
-	err := row.Scan(&e.ID, &e.At, &e.Username, &e.Action, &e.Target, &e.ChangesetID, &e.Result, &e.DetailJSON, &e.ClusterID)
+	err := row.Scan(&e.ID, &e.At, &e.Username, &e.Action, &e.Target, &e.ChangesetID, &e.Result, &e.DetailJSON, &e.ClusterID, &e.IP)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AuditEntry{}, err

@@ -365,10 +365,19 @@ type HAConfig struct {
 // on every artifact fetch. It is a third, distinct list from the two above —
 // it says who may publish the *catalog*, never who may sign an *artifact*, and
 // it can no more make an artifact installable than the vetted badge can.
+//
+// TrustUnsigned (T-2904) is `trust_unsigned`: whether POST /hub/install may
+// honor a request's `trustUnsigned: true` flag for an UNSIGNED hub artifact.
+// Off — the default — refuses such a request with an error naming this key;
+// the request field stays schema-valid, it is just never sufficient on its
+// own. On, the daemon warns at startup (the [peer] tls_trust precedent) and
+// the existing explicit-trust flow applies. It has no effect whatsoever on
+// signed artifacts: signature verification is never optional.
 type HubConfig struct {
 	RegistryURL   string
 	VettedSigners []string
 	IndexSigners  []string
+	TrustUnsigned bool
 }
 
 // GitSyncConfig is the [gitsync] section (T-2701): a git repository as the
@@ -499,11 +508,21 @@ type CaptureConfig struct {
 
 // ServerConfig is the [server] section.
 type ServerConfig struct {
-	Listen                string
-	TLSCert               string
-	TLSKey                string
-	TLSCertPath           string
-	TLSKeyPath            string
+	Listen      string
+	TLSCert     string
+	TLSKey      string
+	TLSCertPath string
+	TLSKeyPath  string
+
+	// EmbedFrameAncestors (T-2901, TOML `embed_frame_ancestors`) lists the
+	// origins allowed to iframe the /embed/* views in addition to
+	// same-origin — each is emitted verbatim into those routes'
+	// `frame-ancestors 'self' ...` CSP directive (internal/api). Empty or
+	// absent means same-origin embedding only; every other route keeps
+	// `frame-ancestors 'none'` regardless. Entries must be
+	// scheme://host[:port] origins; anything else fails validate().
+	EmbedFrameAncestors []string
+
 	ConfirmTimeoutDefault int
 
 	// DevLoginRateCapacity and DevLoginRateRefillSeconds are a
@@ -973,13 +992,14 @@ type rawSwitches struct {
 }
 
 type rawServer struct {
-	Listen                    string `toml:"listen"`
-	TLSCert                   string `toml:"tls_cert"`
-	TLSKey                    string `toml:"tls_key"`
-	ReadOnly                  bool   `toml:"read_only"`
-	ConfirmTimeoutDefault     int    `toml:"confirm_timeout_default"`
-	DevLoginRateCapacity      int    `toml:"dev_login_rate_capacity"`
-	DevLoginRateRefillSeconds int    `toml:"dev_login_rate_refill_seconds"`
+	Listen                    string   `toml:"listen"`
+	TLSCert                   string   `toml:"tls_cert"`
+	TLSKey                    string   `toml:"tls_key"`
+	EmbedFrameAncestors       []string `toml:"embed_frame_ancestors"`
+	ConfirmTimeoutDefault     int      `toml:"confirm_timeout_default"`
+	DevLoginRateCapacity      int      `toml:"dev_login_rate_capacity"`
+	DevLoginRateRefillSeconds int      `toml:"dev_login_rate_refill_seconds"`
+	ReadOnly                  bool     `toml:"read_only"`
 }
 
 type rawPVE struct {
@@ -1051,6 +1071,7 @@ type rawHub struct {
 	RegistryURL   string   `toml:"registry_url"`
 	VettedSigners []string `toml:"vetted_signers"`
 	IndexSigners  []string `toml:"index_signers"`
+	TrustUnsigned bool     `toml:"trust_unsigned"`
 }
 
 type rawFlows struct {
@@ -1172,6 +1193,8 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 			// default, so omitting these keys changes nothing.
 			DevLoginRateCapacity:      raw.Server.DevLoginRateCapacity,
 			DevLoginRateRefillSeconds: raw.Server.DevLoginRateRefillSeconds,
+			// T-2901: nil stays nil — same-origin embedding only.
+			EmbedFrameAncestors: raw.Server.EmbedFrameAncestors,
 		},
 		PVE: PVEConfig{
 			APIURL:         firstNonEmpty(raw.PVE.APIURL, DefaultPVEAPIURL),
@@ -1233,6 +1256,7 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 			RegistryURL:   raw.Hub.RegistryURL,
 			VettedSigners: raw.Hub.VettedSigners,
 			IndexSigners:  raw.Hub.IndexSigners,
+			TrustUnsigned: raw.Hub.TrustUnsigned,
 		},
 		Flows: FlowsConfig{
 			SFlowEnabled:     raw.Flows.SFlowEnabled,
@@ -1390,6 +1414,16 @@ func (c *Config) validate() error {
 		return fmt.Errorf("%w: server.confirm_timeout_default must be positive, got %d", ErrInvalidConfig, c.Server.ConfirmTimeoutDefault)
 	}
 
+	// T-2901: each embed_frame_ancestors entry is emitted verbatim into the
+	// /embed/* routes' frame-ancestors CSP directive, so a malformed one
+	// would silently corrupt the whole header — fail startup instead,
+	// naming the key and the value.
+	for _, origin := range c.Server.EmbedFrameAncestors {
+		if err := validateEmbedFrameAncestor(origin); err != nil {
+			return fmt.Errorf("%w: server.embed_frame_ancestors entry %q: %v", ErrInvalidConfig, origin, err)
+		}
+	}
+
 	if c.Retention.SnapshotKeepDays <= 0 {
 		return fmt.Errorf("%w: retention.snapshot_keep_days must be positive, got %d", ErrInvalidConfig, c.Retention.SnapshotKeepDays)
 	}
@@ -1483,6 +1517,31 @@ func validateListen(addr string) error {
 	}
 	if host != "" && net.ParseIP(host) == nil && strings.ContainsAny(host, " \t/\\") {
 		return fmt.Errorf("%w: %q has an invalid host", ErrInvalidConfig, addr)
+	}
+	return nil
+}
+
+// validateEmbedFrameAncestor checks one [server] embed_frame_ancestors
+// entry (T-2901): a web origin of the form scheme://host[:port], e.g.
+// "https://wiki.example" — the shape CSP3 frame-ancestors accepts as a
+// host-source. No path, query, fragment or credentials, and none of the
+// characters that would break out of the emitted header directive.
+func validateEmbedFrameAncestor(v string) error {
+	if strings.ContainsAny(v, " \t;,'\"") {
+		return fmt.Errorf("must be an origin like \"https://wiki.example\" (no spaces, quotes, ';' or ',')")
+	}
+	u, err := url.Parse(v)
+	if err != nil {
+		return fmt.Errorf("must be an origin like \"https://wiki.example\": %v", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("scheme must be http or https, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("missing host")
+	}
+	if u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("must be an origin only (scheme://host[:port]), with no path, query or credentials")
 	}
 	return nil
 }

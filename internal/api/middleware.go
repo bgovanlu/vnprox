@@ -55,6 +55,17 @@ func recovererMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// cspPolicy renders the daemon's one CSP with the given frame-ancestors
+// source list — the single directive that differs between the app (never
+// framed: 'none', set by securityHeadersMiddleware below) and the /embed/*
+// views (framed on purpose: 'self' plus [server] embed_frame_ancestors, set
+// by embed.go's embedFrameHeadersMiddleware). Every other directive is
+// shared by construction, so the embed relaxation can never silently drift
+// the rest of the policy.
+func cspPolicy(frameAncestors string) string {
+	return "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors " + frameAncestors + "; base-uri 'self'"
+}
+
 // securityHeadersMiddleware sets the headers mandated by docs/security.md
 // "Transport": HSTS, a strict self-only/no-inline-script CSP, and the
 // standard clickjacking/MIME-sniffing hardening headers.
@@ -65,23 +76,35 @@ func recovererMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 // would allow connections to arbitrary hosts, contradicting docs/security.md's
 // "WS to self".
 //
-// T-604 (security hardening pass) tightened this further, adding five
-// directives the original policy left at the (safe, since default-src
-// 'self' already covers them) implicit default rather than pinning
-// explicitly: object-src/frame-src/worker-src/manifest-src 'none' (the SPA
-// has no <object>/<embed>, no iframes, no Worker()/service worker — elkjs's
-// layout runs via elk.bundled.js on the main thread, not a Worker — and no
-// web app manifest, so all four attack surfaces are dead weight to leave
-// open) and form-action 'self' (every mutation is a fetch() through
-// TanStack Query per docs/architecture.md §8, never an HTML <form> submit,
-// but pinning it stops an injected <form> from ever exfiltrating to a
-// third-party action= origin). Verified against the full Playwright suite
-// (web/e2e) with no regressions — see planning/reports/T-604.md.
+// The fetch directives beyond default-src are pinned explicitly (T-604)
+// rather than left at the implicit default-src 'self' value, each set to
+// the minimum the SPA actually uses:
+//
+//   - object-src/frame-src 'none': the SPA renders no <object>/<embed> and
+//     no iframes, so both surfaces stay closed. (elkjs's layout runs via
+//     elk.bundled.js on the main thread, not inside a frame or plugin.)
+//   - worker-src/manifest-src 'self': T-2005's installable PWA registers
+//     web/public/sw.js as a service worker on every load and links
+//     web/public/manifest.webmanifest — both strictly same-origin, so 'self'
+//     is exact. (T-604 originally pinned both 'none', which was correct
+//     before T-2005 and wrong after it: a production browser refused the
+//     service worker and the manifest outright, so the PWA could neither
+//     install nor receive push. Fixed by T-2901.)
+//   - form-action 'self': every mutation is a fetch() through TanStack
+//     Query per docs/architecture.md §8, never an HTML <form> submit, but
+//     pinning it stops an injected <form> from ever exfiltrating to a
+//     third-party action= origin.
+//   - frame-ancestors 'none' (+ X-Frame-Options: DENY, its legacy
+//     equivalent): the app itself is never framed. The three /embed/* views
+//     exist to be framed and get a per-route relaxation instead — see
+//     embed.go's embedFrameHeadersMiddleware, driven by
+//     [server] embed_frame_ancestors.
 func securityHeadersMiddleware(next http.Handler) http.Handler {
+	appCSP := cspPolicy("'none'")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'")
+		h.Set("Content-Security-Policy", appCSP)
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "same-origin")

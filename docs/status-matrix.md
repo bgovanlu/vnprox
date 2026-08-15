@@ -1,17 +1,21 @@
 # vnprox — full-stack audit matrix
 
-**Audit date:** 2026-08-06 · **Commit:** `6c0957e` · **Released:** `v3.0.4` · **Deployed:** `3.0.4+43+g6c0957e` (pvecube)
+**Audit date:** 2026-08-06 · **Commit:** `6c0957e` · **Sweep taken against:** `v3.0.4` · **Deployed at sweep time:** `3.0.4+43+g6c0957e` (pvecube) · **Current release: `v4.0.0`** (2026-08-14) — this document's §2/§3/§4 numbers were never re-run against it; see the note below and §7
 
 This is a mechanical sweep of the whole stack: feature area × backend × GUI × API × docs × tests × hardware validation. Every figure below is derived from the repository at the commit above by a command recorded in the *Method* section, not from a task report's own claim about itself.
 
 Companion documents: [`project-status.md`](project-status.md) (open items, percent complete, roadmap) and [`datasheet.md`](datasheet.md) (shipped capability, for external readers).
 
-> **This matrix predates Arc 5** (phases 25–28, 25 cards, shipped 2026-08-10 to 2026-08-13 —
-> `project-status.md` §9 has the per-card delivery record). Retagging §2's rows for the new
-> feature areas needs the same mechanical sweep this file's own method requires, re-run against
-> the current tree, which has not been done here — so no new rows were added rather than adding
-> ones with invented cells. §5.11 and §5.4 below are the two places this file *was* updated for
-> Arc 5, both narrowly.
+> **This matrix predates Arc 5 and Arc 6** (phases 25–28, 25 cards, shipped as `v3.5.0`
+> 2026-08-10 to 2026-08-13, and phases 29–33, proposed 2026-08-15 as `docs/roadmap-earned.md` —
+> `project-status.md` §6.4 has the Arc 5 per-card delivery record). Retagging §2's rows for the
+> new feature areas needs the same mechanical sweep this file's own method requires, re-run
+> against the current tree, which has not been done here — so no new rows were added to §2
+> rather than adding ones with invented cells. §5.11 and §5.4 below are the two places this file
+> *was* updated for Arc 5, both narrowly. **§7 (new, 2026-08-15) is a third, deliberately
+> partial update**: a stub listing of the Arc 5/v4.0 feature areas §2 is missing, with `●/◐/○`
+> marks and a pointer each, not the full 77-row-style re-audit this note above says has not been
+> done.
 
 ---
 
@@ -104,12 +108,12 @@ Companion documents: [`project-status.md`](project-status.md) (open items, perce
 | 69 | Keyboard shortcuts + command palette | ● | ● | — | ● | ● | ● | ● | — | |
 | 70 | Responsive / narrow-viewport triage | ● | ● | — | ● | ● | ● | ● | — | |
 | 71 | Accessibility (WCAG AA pass 1) | ● | ● | — | ● | ● | ● | ● | — | Second pass open (`T-2004`) |
-| 72 | i18n | ○ | ○ | — | ○ | ○ | ○ | ○ | — | Not started (`T-2006`) |
-| 73 | Mobile PWA + push | ○ | ○ | ○ | ○ | ○ | ○ | ○ | — | Not started (`T-2005`) |
-| 74 | `vnproxctl` operator CLI | ● | — | ● | ● | ● | ● | — | **V** | `certs`, `backup`, `support-bundle` validated |
-| 75 | `vnproxctl doctor` | ○ | — | — | ○ | ◐ | ○ | — | — | Not started (`T-1904`) |
-| 76 | Terraform provider / Ansible collection | ○ | — | ● | — | ◐ | ○ | — | — | API contract exists; artifacts unpublished (`T-2101`) |
-| 77 | Signed apt repository | ○ | — | — | — | ◐ | ○ | — | — | Not started (`T-2102`) |
+| 72 | i18n | ○ | ○ | — | ○ | ○ | ○ | ○ | — | **Still not started** (`T-2006`) — zero code in the tree as of `v4.0.0`; rescheduled as `T-3106` (`docs/roadmap-earned.md`) |
+| 73 | Mobile PWA + push | ● | ● | ● | ● | ● | ● | ○ | **B** | **Shipped** (`T-2005`, `v4.0.0`) — manifest, service worker, offline shell, web-push. **Row updated 2026-08-15: the shipped CSP (`worker-src 'none'; manifest-src 'none'`) blocks the service worker and manifest in a real browser**, so the feature could not actually run in production until `T-2901` (Phase 29) relaxes it. Push delivery to a real device (FCM/APNs/autopush) and install on real iOS/Android are unverified — `planning/reports/needs-hardware-validation.md` |
+| 74 | `vnproxctl` operator CLI | ● | — | ● | ● | ● | ● | — | **V** | `certs`, `backup`, `support-bundle` validated; `doctor`/`verify`/`telemetry` added since (rows 75/76 area) |
+| 75 | `vnproxctl doctor` | ● | — | ◐ | — | ● | ● | — | ◐ | **Shipped** (`T-1904`, phase 19) — ten checks; `--live` (`T-2406`) answers `pve_reachable`/`pve_privileges` over `GET /doctor/live`. `clock_skew` and `peer_secret` still `skip` by design pending `T-2406-followup-01`/`-02` |
+| 76 | Terraform provider / Ansible collection | ○ | — | ● | — | ● | ● | ○ | — | Contract published (`docs/automation-contract.json`, `T-2101`, `v4.0.0`) with a conformance suite runnable externally. **`terraform-provider-vnprox` and `ansible-collection-vnprox` still do not exist** as repositories — always scoped as separate, independently-published projects |
+| 77 | Signed apt repository | ◐ | — | — | — | ● | ○ | — | — | **Machinery built, not hosted** (`T-2102`, `v4.0.0`: `packaging/build-apt-repo.sh`, `docs/../packaging/apt-repo.md`). `get.vnprox.io` does not exist; `install.sh` fails closed with no signing key to verify against. Rescheduled as `T-3301` |
 
 **Totals:** 77 feature areas · **68 complete (●) · 6 partial (◐) · 3 not started (○)** on the backend axis.
 
@@ -140,7 +144,8 @@ Companion documents: [`project-status.md`](project-status.md) (open items, perce
 | **Docs** | Files / lines | 24 / 5,970 | ◐ One file materially stale (§5.4) |
 | **E2E** | Playwright specs | 35 | ✗ **Run by no automated gate** (§5.1) |
 | **Quality gate** | `make check` | lint + vet + 4,058 tests + govulncheck + npm audit | ● Exit 0 at this commit |
-| **CI** | GitHub Actions | **running** (corrected 2026-08-08) | ● `CI` + `Packaging matrix` on every push; §5.7 records the earlier, wrong claim |
+| **CI** | GitHub Actions | **disabled** (`disabled_manually` since 2026-08-13, billing exhausted 2026-08-11) | ✗ `CI`, `Packaging matrix`, and `Release` are all off; §5.7 records both the 2026-08-08 "actually it's running" correction and this later reversal — read it in full rather than by title |
+| | `scripts/ci-local.sh` (the actual gate) | green at this commit | ● reproduces every job in `ci.yml`/`packaging-matrix.yml` on the dev host — CHANGELOG `[4.0.0]` |
 | | `make ci` (local equivalent) | green at this commit | ● check + arm64 cross-build + 7 fuzz targets + package |
 | | `Packaging matrix` (last runs) | 2 of last 3 red | ✗ `cluster-ssh` job only (§5.2) |
 | **Validation** | Hardware-validated items | **6 / 123 (4.9%)** | ✗ **The single largest gap** (§5.3) |
@@ -288,6 +293,15 @@ unexplained for two days with a "reproduce under runner-like conditions" next st
 runner's own log was one `gh api` call away and contained the answer.
 
 `make ci` still reproduces every job locally and remains the fastest gate for a working tree.
+
+**Dated update, 2026-08-15, stated plainly rather than as another correction-to-a-correction:**
+GitHub Actions billing was exhausted 2026-08-11. `CI`, `Packaging matrix`, and `Release` were
+each set to `disabled_manually` on 2026-08-13. As of today, no GitHub Actions workflow runs on
+this repository. `scripts/ci-local.sh` is the gate that actually runs, on the dev host
+(CHANGELOG `[4.0.0]`, "Changed"). The heading above this paragraph is kept as written on
+2026-08-08 rather than edited in place, because it was true when written — this paragraph is
+the record of it becoming false again, not a rewrite of history. §3's CI row above states the
+current fact without needing this section's history to make sense of it.
 
 ### 5.8 Partial implementations, honestly labelled
 

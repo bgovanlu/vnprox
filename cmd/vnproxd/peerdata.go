@@ -2,6 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"log/slog"
+	"time"
 
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/peer"
@@ -34,7 +40,7 @@ func (a auditPeerAdapter) ListAuditPage(ctx context.Context, filter peer.AuditFi
 	out := make([]peer.AuditRecord, len(entries))
 	for i, e := range entries {
 		out[i] = peer.AuditRecord{
-			ID: e.ID, At: e.At, Username: e.Username, Action: e.Action,
+			ID: e.ID, At: e.At, Username: e.Username, Action: e.Action, IP: e.IP,
 			Target: e.Target.String, ChangesetID: e.ChangesetID.String, Result: e.Result,
 		}
 		if e.DetailJSON.Valid {
@@ -92,4 +98,78 @@ func (a snapshotPeerAdapter) ListSnapshotPage(ctx context.Context, cursor string
 		}
 	}
 	return out, next, nil
+}
+
+// hostWriteGuardAdapter (T-2902) adapts the receiving-side safety seams —
+// change.Service.ValidatePeerHostWrite (the exact validator pipeline a
+// local changeset runs, protected-path interlocks included) and
+// store.SnapshotRepo.HasFileHash (the provenance check that keeps
+// distributed rollback working) — to peer.HostWriteGuard.
+type hostWriteGuardAdapter struct {
+	change    *change.Service
+	snapshots *store.SnapshotRepo
+	logger    *slog.Logger
+}
+
+func (g hostWriteGuardAdapter) ValidateStagedContent(ctx context.Context, node, content string) []string {
+	return g.change.ValidatePeerHostWrite(ctx, node, content)
+}
+
+func (g hostWriteGuardAdapter) KnownContent(ctx context.Context, node, content string) bool {
+	sum := sha256.Sum256([]byte(content))
+	ok, err := g.snapshots.HasFileHash(ctx, node, hex.EncodeToString(sum[:]))
+	if err != nil {
+		// Soft-fail to "not known": the content then goes through full
+		// validation instead of the provenance exemption — the safe
+		// direction (a transient store error must never widen what an
+		// unvalidated restore may write).
+		g.logger.Warn("peer: snapshot provenance check failed; treating restore content as unknown", "node", node, "error", err)
+		return false
+	}
+	return ok
+}
+
+// hostWriteAuditAdapter (T-2902) appends the receiving-side audit row for
+// every peer host write to this node's own audit_log — origin attribution
+// in detail_json, the coordinator-attributed client IP in the first-class
+// ip column (0047).
+type hostWriteAuditAdapter struct {
+	repo   *store.AuditRepo
+	logger *slog.Logger
+}
+
+func (a hostWriteAuditAdapter) AppendHostWrite(ctx context.Context, e peer.HostWriteAudit) {
+	detail := map[string]any{}
+	if e.OriginNode != "" {
+		detail["originNode"] = e.OriginNode
+	}
+	if e.ContentSHA256 != "" {
+		detail["contentSha256"] = e.ContentSHA256
+	}
+	if e.Provenance != "" {
+		detail["provenance"] = e.Provenance
+	}
+	if e.Detail != "" {
+		detail["detail"] = e.Detail
+	}
+	var detailJSON sql.NullString
+	if len(detail) > 0 {
+		if b, err := json.Marshal(detail); err == nil {
+			detailJSON = sql.NullString{String: string(b), Valid: true}
+		}
+	}
+	entry := store.AuditEntry{
+		At:         time.Now().Unix(),
+		Username:   e.Actor,
+		Action:     e.Action,
+		Result:     e.Result,
+		IP:         e.OriginIP,
+		Target:     sql.NullString{String: e.Node, Valid: e.Node != ""},
+		DetailJSON: detailJSON,
+	}
+	if _, err := a.repo.Append(ctx, entry); err != nil {
+		// Log-and-continue by contract (peer.HostWriteAuditor): the write
+		// path never blocks on audit storage.
+		a.logger.Error("peer: appending host-write audit entry", "action", e.Action, "error", err)
+	}
 }

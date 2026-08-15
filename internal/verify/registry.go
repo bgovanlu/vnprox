@@ -308,6 +308,17 @@ func Checks() []Check {
 			Run:          checkCertsInventory,
 		},
 
+		// --- Row 73: Mobile PWA + push ----------------------------------------
+		{
+			ID:           "pwa.servable",
+			MatrixRow:    73,
+			Area:         "Mobile PWA + push",
+			Suite:        SuiteHardware,
+			MinNodes:     1,
+			Precondition: "a real vnprox install reachable over HTTPS; the on-device half (install on real iOS/Android, one push delivered through FCM/APNs/autopush) stays a human item — needs-hardware-validation.md §T-2901",
+			Run:          checkPWAServable,
+		},
+
 		// --- Row 74: vnproxctl -------------------------------------------------
 		{
 			ID:           "cli.daemon_independent_commands",

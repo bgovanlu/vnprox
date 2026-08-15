@@ -350,7 +350,7 @@ func toPeerAuditFilter(f store.AuditFilter) peer.AuditFilter {
 
 func auditRecordToResponse(r peer.AuditRecord) auditEntryResponse {
 	return auditEntryResponse{
-		ID: r.ID, At: r.At, Username: r.Username, Action: r.Action,
+		ID: r.ID, At: r.At, Username: r.Username, Action: r.Action, IP: r.IP,
 		Target: r.Target, ChangesetID: r.ChangesetID, Result: r.Result, Detail: r.Detail,
 	}
 }

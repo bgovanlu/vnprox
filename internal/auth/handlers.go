@@ -280,10 +280,14 @@ func (s *Service) appendAudit(ctx context.Context, username, action, result, ip 
 		detailJSON = string(b)
 	}
 	entry := store.AuditEntry{
-		At:         s.now().Unix(),
-		Username:   username,
-		Action:     action,
-		Result:     result,
+		At:       s.now().Unix(),
+		Username: username,
+		Action:   action,
+		Result:   result,
+		// T-2902: the ip parameter now also lands in the first-class column
+		// every other append site uses; the detail_json copy above is kept
+		// so pre-0047 consumers of these rows keep working unchanged.
+		IP:         ip,
 		DetailJSON: nullString(detailJSON),
 	}
 	if _, err := s.audit.Append(ctx, entry); err != nil {

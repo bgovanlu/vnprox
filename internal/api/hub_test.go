@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/bgovanlu/vnprox/internal/blueprint"
@@ -44,7 +45,23 @@ func (f *fakeInstaller) Install(_ context.Context, _ string, m plugin.Manifest) 
 	return nil
 }
 
+// newHubTestRouter builds a hub router with [hub] trust_unsigned = true — the
+// pre-T-2904 request-flag behavior these tests were written against, now an
+// explicit config-on deployment. The T-2904 config-off legs
+// (TestHubInstall_TrustUnsignedConfigGate) build their own router.
 func newHubTestRouter(t *testing.T, client HubClient, vetting HubVetting, svc BlueprintService, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, auth AuthService) http.Handler {
+	t.Helper()
+	return NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: auth, HubClient: client, HubVetting: vetting,
+		Blueprints: svc, BlueprintTrust: trust, PluginInstaller: installer, BlueprintSignersAudit: audit,
+		HubTrustUnsigned: true,
+	})
+}
+
+// newHubTestRouterTrustOff is newHubTestRouter with [hub] trust_unsigned left
+// at its default (off) — the shape of every deployment that has not opted in.
+func newHubTestRouterTrustOff(t *testing.T, client HubClient, vetting HubVetting, svc BlueprintService, trust BlueprintTrustStore, installer PluginInstaller, audit blueprintBundleAuditor, auth AuthService) http.Handler {
 	t.Helper()
 	return NewRouter(Options{
 		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
@@ -398,6 +415,153 @@ func TestHubInstall_VettedButUntrusted(t *testing.T) {
 	_ = json.Unmarshal(idxRec2.Body.Bytes(), &idxResp2)
 	if idxResp2.Items[0].Vetted {
 		t.Fatal("a non-allowlisted fingerprint must not be vetted")
+	}
+}
+
+// TestHubInstall_TrustUnsignedConfigGate is T-2904 AC2: the request-body
+// trustUnsigned flag is no longer sufficient on its own. With
+// [hub] trust_unsigned off (the default), a request that asks to trust an
+// unsigned artifact is refused — a 403 whose error names the config key,
+// audited as a denial, never silently ignored and never silently downgraded —
+// while the same request against a config-on deployment proceeds through the
+// existing explicit-trust install path.
+func TestHubInstall_TrustUnsignedConfigGate(t *testing.T) {
+	pluginManifest := hub.PluginManifest{ID: "unsigned-pl", Name: "U", Version: "1", APIVersion: "v1", Transport: "grpc", ExtensionPoints: []string{"dashboardTile"}, Capabilities: []string{"netRead"}}
+	newPluginClient := func() *fakeHubClient {
+		return &fakeHubClient{
+			index: hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{
+				Type: hub.TypePlugin, ID: "unsigned-pl",
+				Capabilities: []string{"netRead"}, ExtensionPoints: []string{"dashboardTile"},
+			}}},
+			plugins: map[string]hub.PluginArtifact{"unsigned-pl": {Manifest: pluginManifest}},
+		}
+	}
+	auth := blueprintTestAuth(map[string]bool{"netRead": true, "netWrite": true})
+
+	t.Run("plugin: config off refuses with the key named", func(t *testing.T) {
+		installer := &fakeInstaller{}
+		audit := &fakeAuditor{}
+		r := newHubTestRouterTrustOff(t, newPluginClient(), nil, nil, blueprint.NewTrustStore(t.TempDir()), installer, audit, auth)
+
+		rec := do(t, r, http.MethodPost, "/api/v1/hub/install", map[string]any{"type": "plugin", "id": "unsigned-pl", "trustUnsigned": true})
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403: %s", rec.Code, rec.Body.String())
+		}
+		if body := rec.Body.String(); !strings.Contains(body, "trust_unsigned_forbidden") || !strings.Contains(body, "[hub] trust_unsigned") {
+			t.Fatalf("the refusal must carry code trust_unsigned_forbidden and name the config key, got: %s", body)
+		}
+		if len(installer.installed) != 0 {
+			t.Fatalf("installer must not be reached, got %+v", installer.installed)
+		}
+		if len(audit.entries) != 1 || audit.entries[0].Action != "hub.install" || audit.entries[0].Result != "denied" {
+			t.Fatalf("audit = %+v, want one denied hub.install", audit.entries)
+		}
+		if detail := audit.entries[0].DetailJSON.String; !strings.Contains(detail, hubStatusTrustUnsignedForbidden) {
+			t.Fatalf("audit detail = %s, want the %s status recorded", detail, hubStatusTrustUnsignedForbidden)
+		}
+	})
+
+	t.Run("plugin: config off without the flag is the ordinary unsigned verdict", func(t *testing.T) {
+		installer := &fakeInstaller{}
+		r := newHubTestRouterTrustOff(t, newPluginClient(), nil, nil, blueprint.NewTrustStore(t.TempDir()), installer, &fakeAuditor{}, auth)
+
+		rec := do(t, r, http.MethodPost, "/api/v1/hub/install", map[string]any{"type": "plugin", "id": "unsigned-pl"})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (no forbidden ask, no 403): %s", rec.Code, rec.Body.String())
+		}
+		var resp hubInstallResponse
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		if resp.Status != bundleStatusUnsigned {
+			t.Fatalf("status = %q, want %q", resp.Status, bundleStatusUnsigned)
+		}
+		if len(installer.installed) != 0 {
+			t.Fatalf("installer must not be reached, got %+v", installer.installed)
+		}
+	})
+
+	t.Run("plugin: config on proceeds through the existing unsigned-audit path", func(t *testing.T) {
+		installer := &fakeInstaller{}
+		audit := &fakeAuditor{}
+		r := newHubTestRouter(t, newPluginClient(), nil, nil, blueprint.NewTrustStore(t.TempDir()), installer, audit, auth)
+
+		rec := do(t, r, http.MethodPost, "/api/v1/hub/install", map[string]any{"type": "plugin", "id": "unsigned-pl", "trustUnsigned": true})
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body.String())
+		}
+		if len(installer.installed) != 1 || installer.installed[0].ID != "unsigned-pl" {
+			t.Fatalf("installer.installed = %+v, want unsigned-pl", installer.installed)
+		}
+		if len(audit.entries) != 1 || audit.entries[0].Action != "hub.install" || audit.entries[0].Result != "success" {
+			t.Fatalf("audit = %+v, want one success hub.install", audit.entries)
+		}
+		if detail := audit.entries[0].DetailJSON.String; !strings.Contains(detail, "trustUnsigned") {
+			t.Fatalf("audit detail = %s, want the trustUnsigned trust decision recorded", detail)
+		}
+	})
+
+	t.Run("blueprint: config off refuses with the key named", func(t *testing.T) {
+		svc := newBlueprintTestService(t, "pve1")
+		audit := &fakeAuditor{}
+		unsigned := blueprint.Bundle{BundleVersion: blueprint.CurrentBundleVersion, Blueprint: testBlueprint("u")}
+		client := &fakeHubClient{
+			index:   hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{Type: hub.TypeBlueprint, ID: "u"}}},
+			bundles: map[string]blueprint.Bundle{"u": unsigned},
+		}
+		r := newHubTestRouterTrustOff(t, client, nil, svc, blueprint.NewTrustStore(t.TempDir()), nil, audit, auth)
+
+		rec := do(t, r, http.MethodPost, "/api/v1/hub/install", map[string]any{"type": "blueprint", "id": "u", "trustUnsigned": true})
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403: %s", rec.Code, rec.Body.String())
+		}
+		if body := rec.Body.String(); !strings.Contains(body, "[hub] trust_unsigned") {
+			t.Fatalf("the refusal must name the config key, got: %s", body)
+		}
+		if len(audit.entries) != 1 || audit.entries[0].Action != "hub.install" || audit.entries[0].Result != "denied" {
+			t.Fatalf("audit = %+v, want one denied hub.install", audit.entries)
+		}
+	})
+}
+
+// TestHubInstall_BadSignatureRefusedRegardlessOfTrustFlags is T-2904 AC3,
+// re-asserting the never-optional invariant with a fixture in this card: a
+// SIGNED artifact whose signature does not verify is refused no matter what —
+// signer already trusted, trustUnsigned and trustNewKey both set,
+// [hub] trust_unsigned on. Signature verification is not a knob.
+func TestHubInstall_BadSignatureRefusedRegardlessOfTrustFlags(t *testing.T) {
+	trust := blueprint.NewTrustStore(t.TempDir())
+	installer := &fakeInstaller{}
+
+	_, priv, _ := ed25519.GenerateKey(nil)
+	pub, _ := priv.Public().(ed25519.PublicKey)
+	if err := trust.Add(blueprint.TrustedSigner{Fingerprint: blueprint.Fingerprint(pub), PublicKey: base64Std(pub)}); err != nil {
+		t.Fatalf("trust.Add: %v", err)
+	}
+	m := hub.PluginManifest{ID: "tampered-pl", Name: "T", Version: "1", APIVersion: "v1", Transport: "grpc", Endpoint: "/var/lib/vnprox/plugins/t", ExtensionPoints: []string{"dashboardTile"}, Capabilities: []string{"netRead"}}
+	art := signPluginArtifact(t, m, priv)
+	// Corrupt the signature: signed bytes over a different message.
+	art.Signature.Sig = base64Std(ed25519.Sign(priv, []byte("some other manifest entirely")))
+
+	client := &fakeHubClient{
+		index: hub.Index{SchemaVersion: hub.CurrentIndexSchema, Entries: []hub.Entry{{
+			Type: hub.TypePlugin, ID: "tampered-pl", Version: "1",
+			Capabilities: []string{"netRead"}, ExtensionPoints: []string{"dashboardTile"},
+		}}},
+		plugins: map[string]hub.PluginArtifact{"tampered-pl": art},
+	}
+	auth := blueprintTestAuth(map[string]bool{"netRead": true, "netWrite": true})
+	r := newHubTestRouter(t, client, nil, nil, trust, installer, &fakeAuditor{}, auth)
+
+	rec := do(t, r, http.MethodPost, "/api/v1/hub/install", map[string]any{"type": "plugin", "id": "tampered-pl", "trustUnsigned": true, "trustNewKey": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 with a gate verdict: %s", rec.Code, rec.Body.String())
+	}
+	var resp hubInstallResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.Status != bundleStatusInvalidSignature {
+		t.Fatalf("status = %q, want %q (no trust flag may rescue a bad signature)", resp.Status, bundleStatusInvalidSignature)
+	}
+	if len(installer.installed) != 0 {
+		t.Fatalf("installer must never be reached on a bad signature, got %+v", installer.installed)
 	}
 }
 
