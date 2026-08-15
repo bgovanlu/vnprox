@@ -29,4 +29,5 @@
 - **Project**
   - [Status](project-status.md)
   - [Roadmap](roadmap.md)
+  - [Roadmap — Arc 6 (active)](roadmap-earned.md)
   - [Changelog](../CHANGELOG.md)

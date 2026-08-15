@@ -2,7 +2,7 @@
 
 Phases map 1:1 to the implementation plan (`planning/implementation-plan.md`). Each phase ends with a working, demoable increment; releases cut where marked.
 
-**This arc (Phases 0–7) is shipped.** The next arc — Phases 8–12, v1.4 → v2.0 — lives in [`roadmap-next.md`](roadmap-next.md); it absorbs the Post-1.0 backlog below. Two arcs followed it: Phases 13–17 (v2.1 → v3.0) in [`roadmap-universal.md`](roadmap-universal.md), shipped; and Phases 18–21 (v3.1 → v4.0) in [`roadmap-proven.md`](roadmap-proven.md), proposed.
+**This arc (Phases 0–7) is shipped.** Five arcs followed it, all shipped: Phases 8–12 (v1.4 → v2.0) in [`roadmap-next.md`](roadmap-next.md), which absorbs the Post-1.0 backlog below; Phases 13–17 (v2.1 → v3.0) in [`roadmap-universal.md`](roadmap-universal.md); Phases 18–21 (v3.1 → v4.0, cut as v4.0.0) in [`roadmap-proven.md`](roadmap-proven.md); Phase 24 in [`roadmap-leverage.md`](roadmap-leverage.md) (Phases 22–23 sit outside the arc structure); and Phases 25–28 (v3.5.0) in [`roadmap-adopted.md`](roadmap-adopted.md). **The active arc is Phases 29–33 (v4.1 → v5.0) in [`roadmap-earned.md`](roadmap-earned.md), proposed** — it consolidates every open item left by the arcs above into a single backlog.
 
 ```mermaid
 gantt
