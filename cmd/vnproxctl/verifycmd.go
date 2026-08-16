@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -166,12 +167,26 @@ func runVerify(args []string, stdout, stderr io.Writer) int {
 	}
 	if client, code := buildRemoteClient(rf, "verify", io.Discard); code == ExitSuccess && client != nil {
 		deps.Daemon = daemonProbe{client: client}
+		deps.Root = daemonProbe{client: client}
 		if *understand {
 			// The interlock: the write client exists only under consent.
 			deps.Mutator = daemonProbe{client: client}
 		}
 	} else {
 		_, _ = fmt.Fprintf(stderr, "vnproxctl verify: no daemon client (no --token/%s, or the daemon URL could not be determined) — the checks that need one will skip naming it\n", remoteTokenEnvVar)
+		// The daemon's ROOT surface — app shell, manifest, service worker,
+		// and the security headers on them — is unauthenticated, so the
+		// checks that read it must not be gated on having a bearer token.
+		// A freshly installed node has no token by default, and that is
+		// exactly the deployment `pwa.servable` exists to inspect: gating
+		// it on Daemon meant the check skipped on every node that had the
+		// v4.0.0 CSP defect (found deploying Phase 29 to pvecube).
+		if anon, anonErr := buildAnonymousRootProbe(rf); anonErr == nil {
+			deps.Root = anon
+			_, _ = fmt.Fprintf(stderr, "vnproxctl verify: continuing with an unauthenticated probe of the daemon's root surface (%s) — the checks that only read public paths still run\n", anon.client.baseURL)
+		} else {
+			_, _ = fmt.Fprintf(stderr, "vnproxctl verify: no daemon URL either (%v) — the root-surface checks will skip too\n", anonErr)
+		}
 	}
 
 	hostNode := ""
@@ -401,4 +416,39 @@ func splitCommaList(raw string) []string {
 		}
 	}
 	return out
+}
+
+// buildAnonymousRootProbe builds a daemonProbe carrying no bearer token, for
+// the checks that read only the daemon's unauthenticated root surface (the
+// SPA shell, manifest.webmanifest, sw.js and their headers — verify's
+// RootProbe seam). It deliberately reuses buildRemoteClient's URL derivation
+// rather than repeating it, and differs from that function in exactly one
+// way: it does not require a token, because none of the paths it serves need
+// one.
+//
+// Its Get/Post methods are unusable without a token and are never called:
+// only Deps.Root is wired from it, and RootProbe declares GetRoot alone.
+func buildAnonymousRootProbe(rf *remoteFlags) (daemonProbe, error) {
+	base := *rf.url
+	if base == "" {
+		cfg, err := config.Load(*rf.configPath, discardLogger())
+		if err != nil {
+			return daemonProbe{}, fmt.Errorf("loading %s: %w", *rf.configPath, err)
+		}
+		derived, err := apiBaseFromListen(cfg.Server.Listen)
+		if err != nil {
+			return daemonProbe{}, err
+		}
+		base = derived
+	}
+	if _, err := url.Parse(base); err != nil {
+		return daemonProbe{}, fmt.Errorf("invalid --url %q: %w", base, err)
+	}
+	client := &http.Client{
+		Timeout: *rf.timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: *rf.insecure}, //nolint:gosec // opt-out flag; see buildRemoteClient's identical justification
+		},
+	}
+	return daemonProbe{client: &remoteClient{http: client, baseURL: base}}, nil
 }

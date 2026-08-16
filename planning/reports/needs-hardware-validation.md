@@ -1202,3 +1202,30 @@ Chromium that the worker activates, the manifest serves as `application/manifest
 - [ ] **Confirm the offline shell on a device.** Airplane-mode relaunch of the installed app
       should serve the cached shell with `/api/*` uncached (the sw.js invariant), which a
       desktop Chromium run approximates but a phone's actual eviction behavior decides.
+
+### Validated on `pvecube` (2026-08-16, `4.0.0+5+g0af968b+dirty`)
+
+- [x] **The daemon actually serves an installable PWA on a real node.** The Phase 29 package was
+      deployed to `pvecube` and `vnproxctl verify -only pwa.servable` reported **`1 passed, 0
+      failed, 0 skipped`** against it — the app shell's CSP admits `worker-src 'self'` and
+      `manifest-src 'self'`, `/manifest.webmanifest` returns 200 as `application/manifest+json`,
+      and `/sw.js` returns 200. Before the upgrade the same node served
+      `worker-src 'none'; manifest-src 'none'` and the manifest as `text/plain; charset=utf-8`
+      (captured with `curl -D-` immediately before `apt install`), so this is a before/after on
+      real hardware, not a fixture. This closes the machine-checkable half of status-matrix
+      row 73; the three items above are the human half and remain open.
+
+**A defect in the check itself, found by this deployment and fixed the same day.** The first run
+on `pvecube` reported `0 passed, 0 failed, 1 skipped`. `pwa.servable` read its `RootProbe` off
+`Deps.Daemon`, which `vnproxctl` only builds when a bearer token is configured — and a freshly
+installed node has no token. **The one check written to detect the v4.0.0 CSP defect therefore
+skipped on exactly the deployments that had it**, while printing a message telling the operator
+to supply a `--token` that none of its three (unauthenticated) fetches needs. `Deps.Root` now
+carries an anonymous prober built from the daemon URL alone. Three regression tests cover it, and
+the fix was mutation-verified: reverting `rp := d.Root` to ignore the new field turns both the
+pass and the fail case back into skips.
+
+The lesson generalises past this check, and is why it is written here rather than only in a commit
+message: **a check that skips is indistinguishable from a check that is not wired**, and this one
+had passed its own unit fixtures — which supplied a `Deps.Daemon` — for a week. Only running it
+against a real deployment in that deployment's default state exposed it.

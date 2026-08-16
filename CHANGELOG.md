@@ -38,6 +38,17 @@ verified defect or security gap in v4.0.0; none adds a feature.
 
 ### Fixed
 
+- **`vnproxctl verify`'s PWA check now runs on a node that has no API token — which is every
+  freshly installed node (T-2901 follow-up, found deploying Phase 29 to real hardware).**
+  `pwa.servable` read its root prober off the authenticated daemon client, so on a node with no
+  bearer token minted it reported `0 passed, 0 failed, 1 skipped` and printed a message telling
+  the operator to supply a `--token` that none of its three fetches needs — the app shell, the
+  manifest and `sw.js` are all unauthenticated. **The one check written to detect the v4.0.0 CSP
+  defect therefore skipped on exactly the deployments that had it.** `verify.Deps` gained a
+  `Root` seam fed by an anonymous prober built from the daemon URL alone. The fix is
+  mutation-verified, and the check now passes against a real node — see
+  `planning/reports/needs-hardware-validation.md` §T-2901, which records the before/after
+  capture from `pvecube`.
 - **The v4.0.0 PWA actually works in a production browser now (T-2901).** The shipped CSP
   still pinned `worker-src 'none'; manifest-src 'none'` from before the PWA existed, so
   service-worker registration and the manifest fetch were refused in any real browser — the

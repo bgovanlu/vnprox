@@ -34,12 +34,19 @@ type RootProbe interface {
 // class T-2901 fixed; a regression to `worker-src 'none'` fails here on a
 // live deployment rather than in a field report.
 func checkPWAServable(ctx context.Context, d Deps) Outcome {
-	if d.Daemon == nil {
-		return skipNoDaemon("fetching the app shell, manifest, and service worker")
-	}
-	rp, ok := d.Daemon.(RootProbe)
-	if !ok {
-		return Skip("this daemon probe cannot fetch non-API paths (no RootProbe capability); run through vnproxctl verify against a live daemon")
+	// Deps.Root first: all three fetches below are anonymous, so this check
+	// must not need a bearer token. Falling back to Daemon keeps existing
+	// callers (and the fixtures) working when they only wire that one.
+	rp := d.Root
+	if rp == nil {
+		if d.Daemon == nil {
+			return Skip("no daemon URL was available, so the app shell, manifest, and service worker could not be fetched; point --url at this node's daemon (no token is needed — every path this check reads is unauthenticated)")
+		}
+		var ok bool
+		rp, ok = d.Daemon.(RootProbe)
+		if !ok {
+			return Skip("this daemon probe cannot fetch non-API paths (no RootProbe capability); run through vnproxctl verify against a live daemon")
+		}
 	}
 
 	status, header, _, err := rp.GetRoot(ctx, "/")

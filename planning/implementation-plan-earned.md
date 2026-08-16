@@ -23,8 +23,26 @@ ownership and by the one-migration-per-wave rule:
 | 2 | `T-2903` bearer read_only + token expiry | Owns `internal/auth/middleware.go` (incl. the CSRF constant-time fix, moved here from T-2905 for file ownership) + **migration 0048** |
 | 2 | `T-2905` hardening punch list | Everything else in `internal/auth` + daemon/webhook/prober/packaging items |
 
-Waves within later phases are decided when their cards are written; the standing rules below
+Phase 30's cards are written ([`tasks/phase-30.md`](tasks/phase-30.md), 2026-08-16) and run in
+two waves, again by file ownership. Every card is UI-only, so no migration number is claimed by
+either wave:
+
+| Wave | Card | Why here |
+|---|---|---|
+| 1 | `T-3005` canary apply UI | Owns `web/src/changesets/ReviewApplyScreen.tsx`; unblocks the review-screen work `T-3002` also needs |
+| 1 | `T-3001` config-as-code cockpit | Owns `web/src/drift/`; independent of the others |
+| 1 | `T-3004` analysis surfaces | Six independent read-mostly areas; touches nobody else's files |
+| 2 | `T-3002` governance surfaces | Also touches `ReviewApplyScreen.tsx` (policy verdicts, break-glass) — must follow `T-3005` |
+| 2 | `T-3003` platform panel | Owns `web/src/settings/`; surfaces `T-2903`/`T-2905` semantics, so it wants Phase 29 settled |
+| 2 | `T-3006` help completion + panel-aware gate | Gates every panel the five cards above add, so it runs last by construction |
+
+Waves within phases 31–33 are decided when their cards are written; the standing rules below
 apply to all of them.
+
+**One rule specific to Phase 30, because it inverts the usual instinct:** these are assembly
+cards over routes that already exist and are contract-frozen. Every card asserts
+`docs/openapi.json` is byte-identical before and after. An agent that reaches for a new route
+has misread its scope — it reports that rather than adding one.
 
 ## Cross-cutting rules for this arc
 

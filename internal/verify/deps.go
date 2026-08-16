@@ -36,6 +36,19 @@ type Deps struct {
 	// Daemon reads the local vnprox daemon's /api/v1 surface. Nil when no
 	// daemon URL/token was available.
 	Daemon DaemonProbe
+	// Root reads the daemon's ROOT surface — the SPA shell, its manifest,
+	// its service worker, and the security headers on all three. Nil only
+	// when no daemon URL could be determined at all.
+	//
+	// It is separate from Daemon on purpose, and the reason is a defect this
+	// separation exists to prevent recurring. `pwa.servable` originally read
+	// its RootProbe off Daemon, so it skipped whenever no bearer token was
+	// configured — which is the default state of a freshly installed node.
+	// The check built to catch the v4.0.0 CSP defect therefore could not run
+	// on precisely the deployment that had it (found 2026-08-16, deploying
+	// Phase 29 to pvecube). None of the three fetches is authenticated, so
+	// requiring a token was never anything but an accident of wiring.
+	Root RootProbe
 	// Host reads local (and, cluster-aware, peer) host state. Nil when the
 	// suite is running somewhere that cannot reach a node shell.
 	Host HostProbe
