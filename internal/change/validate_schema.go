@@ -124,7 +124,31 @@ var validXmitHashPolicies = map[string]bool{
 	"layer2": true, "layer2+3": true, "layer3+4": true, "encap2+3": true, "encap3+4": true,
 }
 
-var validSdnZoneTypes = map[string]bool{"simple": true, "vlan": true, "qinq": true, "vxlan": true, "evpn": true}
+// validSdnZoneTypes mirrors real PVE's SDN zone `type` enum, captured from
+// a running PVE 9.2.4 node rather than transcribed from documentation:
+//
+//	--type <evpn | faucet | qinq | simple | vlan | vxlan>
+//
+// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt). Keep it in sync
+// with that capture — TestValidSdnZoneTypesMatchTheCapturedEnum fails if
+// it drifts, and says which file to re-read.
+//
+// "faucet" was missing until 2026-08-16, which meant vnprox refused to
+// stage a zone real Proxmox accepts. Note what this map does and does not
+// decide: it is the *validator*, not the wizard. Accepting faucet here lets
+// an operator who already has a faucet zone edit their SDN config without
+// vnprox rejecting it; it deliberately does not add a faucet zone wizard,
+// because a faucet zone needs a faucet controller and offering a wizard for
+// a combination vnprox cannot complete is worse than offering none. That
+// half is T-3101/T-3102.
+//
+// Note also that "openfabric" and "ospf" are NOT zone types and must not be
+// added here — they are SDN *fabric* protocols, a different object family.
+// The repository believed otherwise for four phases; see
+// pvemock.PVEVersionProfile.SDNFabrics.
+var validSdnZoneTypes = map[string]bool{
+	"simple": true, "vlan": true, "qinq": true, "vxlan": true, "evpn": true, "faucet": true,
+}
 
 // validFwDirections includes "group" alongside the real traffic
 // directions "in"/"out": a rule row whose Direction is "group" is not a

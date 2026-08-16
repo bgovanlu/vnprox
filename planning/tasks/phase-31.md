@@ -200,8 +200,21 @@ Three items, and hardware reordered them — the one the roadmap ranked last is 
 `{in, out, group}`; real PVE 9.2 accepts `<forward | group | in | out>` at **cluster, node, and
 vnet scope**, with `policy_forward` and `log_level_forward` options alongside. An operator with a
 single `forward` rule anywhere in their firewall hits a validation failure from vnprox on an
-unrelated edit. This was not in the roadmap's audit at all. Fix the direction set, model the two
-options, and pin the set against the captured enum.
+unrelated edit. This was not in the roadmap's audit at all.
+
+**It looks like a one-line fix to `validFwDirections` and it is not — do not treat it as one.**
+`internal/fw/resolve.go:58` declares `Direction` as `"in" | "out"` and line 207 branches on
+`direction == "out"`, so a `forward` rule admitted by the validator alone would resolve down the
+inbound path and the simulator would report a **confidently wrong** answer about whether traffic
+is permitted. That is worse than today's honest rejection. The direction set and the resolver
+must move together, and the result must be compared against real pve-firewall output (item 3
+below) before either is called done.
+
+The equivalent gap on the SDN side, `faucet`, *was* safe to fix alone and was fixed on
+2026-08-16 — one gate, one call site, and every other branch already keyed on specific types
+with a generic fallthrough. The difference between the two is the whole reason this note exists:
+**check the consumers before widening a validator.** A validator that accepts more than its
+consumers understand converts a visible refusal into a silent wrong answer.
 
 **2. VNet-scope firewall**, exactly as the roadmap said, now with its shape:
 `/cluster/sdn/vnets/{vnet}/firewall/{options,rules}`. `FwScope` gains a fourth value

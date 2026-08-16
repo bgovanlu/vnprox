@@ -1671,9 +1671,17 @@ export interface SdnVnet {
 
 export interface SdnZone {
   id: string;
-  /** "simple" | "vlan" | "qinq" | "vxlan" | "evpn" in practice
-   * (docs/features/sdn.md §2's five wizards), kept as a plain string per
-   * SdnNodeStatus.status's doc comment. */
+  /** Real PVE 9.2's enum is
+   * "evpn" | "faucet" | "qinq" | "simple" | "vlan" | "vxlan"
+   * (captured: planning/reports/evidence/pve-9.2.4-sdn-schema.txt).
+   * Kept as a plain string per SdnNodeStatus.status's doc comment.
+   *
+   * Note this is wider than the set the UI offers a wizard for
+   * (docs/features/sdn.md §2's five): a faucet zone needs a faucet
+   * controller, so vnprox accepts and displays one without offering to
+   * create one. Do not narrow this comment back to the wizard list — the
+   * gap between "types PVE has" and "types we can create" is real and
+   * load-bearing. */
   type: string;
   bridge?: string;
   controller?: string;
