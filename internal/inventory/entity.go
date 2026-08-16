@@ -235,8 +235,23 @@ type Bond struct {
 	LACPRate       string
 	XmitHashPolicy string
 	rawSrc
-	ActiveSlave    string
-	Pending        string
+	ActiveSlave string
+	Pending     string
+
+	// OVSBridge is the OVS bridge this bond attaches to, parsed from the
+	// stanza's ovs_bridge option. It is meaningful only when Kind is
+	// KindOVSBond and is empty for a Linux bond.
+	//
+	// It exists because an OVS bond is not re-creatable without it: unlike
+	// a Linux bond, whose slaves fully describe it, an OVS bond is a member
+	// of exactly one bridge and the create op requires that name
+	// (BondCreateParams.Bridge, rendered as ovs_bridge by
+	// internal/change/ifaces.BondCreate). Before T-3105 the model dropped
+	// this field, so time-machine restore could not rebuild an OVS bond it
+	// had faithfully snapshotted — internal/change/restore_ops.go refused
+	// with ErrRestoreUnsupported naming this exact absence.
+	OVSBridge string
+
 	Slaves         []string
 	DeclaredSlaves []string
 	SlaveDetail    []BondSlaveState
@@ -276,6 +291,9 @@ func (b *Bond) fieldMap() map[string]string {
 		"declaredSlaves": sortedJoin(b.DeclaredSlaves), "slaveDetail": strings.Join(sd, ";"),
 		"mtu": strconv.Itoa(b.MTU), "mtuDeclared": strconv.Itoa(b.MTUDeclared),
 		"pending": b.Pending,
+		// Declared config, so a bond moved between OVS bridges out of band
+		// registers as drift exactly like a slave list change does.
+		"ovsBridge": b.OVSBridge,
 	}
 }
 

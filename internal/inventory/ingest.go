@@ -873,6 +873,10 @@ func interfacesOVSBond(node, name string, entries []*host.Entry) Entity {
 	if v, ok := ifaceOpt(entries, "ovs-bonds"); ok {
 		b.DeclaredSlaves = fields(v)
 	}
+	// The bridge this bond is a member of. Same option interfacesOVSIntPort
+	// reads for its ParentName; carried here so restore can re-create the
+	// bond (T-3105 — see Bond.OVSBridge).
+	b.OVSBridge, _ = ifaceOpt(entries, "ovs-bridge")
 	// OVS declares the bond mode inside ovs_options ("bond_mode=..."),
 	// not as a dedicated option line.
 	b.Mode = ovsOption(entries, "bond_mode")

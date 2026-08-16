@@ -3,6 +3,7 @@ package change
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,12 +79,59 @@ func TestRestoreOpsForNode_BridgePortAndMTUUpdate(t *testing.T) {
 	}
 }
 
-func TestRestoreOpsForNode_OVSBondCreateUnsupported(t *testing.T) {
+// TestRestoreOpsForNode_OVSBondIsRestorable is the T-3105 fix, and it is
+// the same fixture that used to prove the opposite: this exact stanza —
+// carrying an ovs_bridge line all along — was refused with
+// ErrRestoreUnsupported, because inventory.Bond dropped the attachment on
+// the way in. The snapshot was never missing the information; the model
+// was. Reverting Bond.OVSBridge (or interfacesOVSBond's read of it) turns
+// this test red.
+func TestRestoreOpsForNode_OVSBondIsRestorable(t *testing.T) {
 	target := restoreTestLo + "auto bond0\niface bond0 inet manual\n\tovs_bonds eth0 eth1\n\tovs_type OVSBond\n\tovs_bridge vmbr0\n"
+	ops, err := restoreOpsForNode("pve1", target, restoreTestLo)
+	if err != nil {
+		t.Fatalf("restoreOpsForNode = %v, want an OVS bond create op", err)
+	}
+	var create *Op
+	for i := range ops {
+		if ops[i].Type == OpBondCreate {
+			create = &ops[i]
+		}
+	}
+	if create == nil {
+		t.Fatalf("restoreOpsForNode produced no bond.create op (got %d ops)", len(ops))
+	}
+	if create.Target.Kind != inventory.KindOVSBond {
+		t.Errorf("op target kind = %s, want %s", create.Target.Kind, inventory.KindOVSBond)
+	}
+	p, ok := create.Params.(*BondCreateParams)
+	if !ok {
+		t.Fatalf("op params = %T, want *BondCreateParams", create.Params)
+	}
+	// The whole point of the card: without this, the op renders an OVS bond
+	// attached to nothing.
+	if p.Bridge != "vmbr0" {
+		t.Errorf("BondCreateParams.Bridge = %q, want %q — the ovs_bridge attachment was dropped", p.Bridge, "vmbr0")
+	}
+	if got := strings.Join(p.Slaves, ","); got != "eth0,eth1" {
+		t.Errorf("BondCreateParams.Slaves = %q, want %q", got, "eth0,eth1")
+	}
+}
+
+// TestRestoreOpsForNode_OVSBondWithoutBridgeStillRefused pins the narrowed
+// half. Snapshots outlive the code that wrote them: one taken before
+// Bond.OVSBridge existed carries no attachment, and restoring it would
+// render a bond attached to nothing. The refusal must survive for that
+// case rather than being deleted along with the general one.
+func TestRestoreOpsForNode_OVSBondWithoutBridgeStillRefused(t *testing.T) {
+	target := restoreTestLo + "auto bond0\niface bond0 inet manual\n\tovs_bonds eth0 eth1\n\tovs_type OVSBond\n"
 	_, err := restoreOpsForNode("pve1", target, restoreTestLo)
 	var unsupp *ErrRestoreUnsupported
 	if !errors.As(err, &unsupp) {
 		t.Fatalf("restoreOpsForNode err = %v, want *ErrRestoreUnsupported", err)
+	}
+	if unsupp.Kind != inventory.KindOVSBond {
+		t.Errorf("refusal Kind = %s, want %s", unsupp.Kind, inventory.KindOVSBond)
 	}
 }
 

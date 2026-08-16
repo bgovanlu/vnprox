@@ -9,10 +9,16 @@ import (
 
 // ErrRestoreUnsupported is returned by restoreOpsForNode when a node's
 // target (snapshot) and live interfaces(5) files differ in a way the typed
-// op vocabulary cannot express — today, only re-creating an OVS bond, whose
-// ovs_bridge attachment inventory.Bond does not model. Every other
-// difference (bridge/bond/vlan create, delete, or field update; physical
-// NIC MTU updates) is synthesized as one or more ops.
+// op vocabulary cannot express — today, only re-creating an OVS bond whose
+// snapshot carries no ovs_bridge attachment. Every other difference
+// (bridge/bond/vlan create, delete, or field update; physical NIC MTU
+// updates) is synthesized as one or more ops.
+//
+// Until T-3105 this covered *every* OVS bond, because inventory.Bond did
+// not model the attachment at all. It now does, so an OVS bond snapshotted
+// by a current build restores; the refusal survives for snapshots taken
+// before that field existed, which is a real case and not a hypothetical —
+// snapshots outlive the code that wrote them.
 type ErrRestoreUnsupported struct {
 	Node   string
 	Kind   inventory.Kind
@@ -170,13 +176,21 @@ func createOpFor(e inventory.Entity) (*Op, error) {
 			STP:       v.STP,
 		}}, nil
 	case *inventory.Bond:
-		if ref.Kind == inventory.KindOVSBond {
+		// An OVS bond is a member of exactly one bridge and cannot be
+		// rendered without that name (BondCreateParams.Bridge → ovs_bridge).
+		// inventory.Bond carries it since T-3105; a snapshot that predates
+		// that, or one taken from a stanza with no ovs_bridge line, still
+		// cannot be restored — so the refusal narrows to the case that
+		// actually lacks the attachment rather than to every OVS bond.
+		if ref.Kind == inventory.KindOVSBond && v.OVSBridge == "" {
 			return nil, &ErrRestoreUnsupported{Node: ref.Node, Kind: ref.Kind, ID: ref.ID,
-				Reason: "OVS bond re-creation needs its ovs_bridge attachment, which the inventory model does not carry"}
+				Reason: "OVS bond re-creation needs its ovs_bridge attachment, and this snapshot carries none " +
+					"(snapshots taken before T-3105 did not record it)"}
 		}
 		return &Op{Type: OpBondCreate, Target: ref, Params: &BondCreateParams{
 			Mode: v.Mode, LACPRate: v.LACPRate, XmitHashPolicy: v.XmitHashPolicy,
 			Slaves: append([]string(nil), v.DeclaredSlaves...), MTU: v.MTUDeclared,
+			Bridge: v.OVSBridge,
 		}}, nil
 	case *inventory.VlanIface:
 		return &Op{Type: OpVlanCreate, Target: ref, Params: &VlanCreateParams{
