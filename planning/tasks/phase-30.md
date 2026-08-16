@@ -331,3 +331,60 @@ zero help topics and no test noticed. Every card in this phase adds panels.
 - **The gate is the orchestrator's to run.** Implementation agents do not run `make check`,
   `make e2e`, or Playwright.
 - **One migration number per wave**, if any card needs one at all — none is expected to.
+
+---
+
+## `T-3001-followup-01` · every `terraform plan` leaves a draft changeset behind (open)
+
+**Found:** 2026-08-16, by the T-3001 agent reading the contract instead of the card, and confirmed
+by the orchestrator against the code. **Not a UI defect — out of Phase 30's scope, filed rather
+than fixed.**
+
+`docs/api.md`'s automation contract specifies **`POST /spec/import`'s empty-ops response** as the
+route external tooling uses to answer "would `apply` change anything" — the `terraform plan`
+primitive. That paragraph also says, correctly, that it is *"idempotent by construction:
+re-importing the same unchanged content repeatedly always yields zero ops"*.
+
+Idempotent in **ops**. Not in **rows**.
+
+`internal/api/spec.go:128` calls `changesets.Create` unconditionally, before it knows whether the
+diff is empty, and the route is `netWrite` + CSRF. `docs/api.md:1050` and `:1054` both state this
+plainly, so the *documentation* is accurate — what nothing states is the consequence of combining
+the two paragraphs:
+
+- Every `terraform plan` creates a draft changeset.
+- **Nothing ever prunes drafts.** `internal/store/retention.go` retains *snapshots*
+  (`snapshot_keep_days`, committed-changeset snapshots, the 7-day manual-rollback window). There
+  is no `DELETE FROM changesets` anywhere in `internal/store` outside the explicit
+  `DELETE /changesets/{id}` discard endpoint. Grep confirms it.
+
+So a provider polling `plan` on a schedule — which is the normal way Terraform is operated — grows
+the changeset table without bound, and fills the operator's changeset list with drafts nobody
+staged deliberately. At a 15-minute poll that is ~35,000 drafts a year, per cluster.
+
+**Do not "fix" this by making the UI hide them.** The T-3001 screen already does the honest thing:
+its button is labelled "Plan against live state (stages a draft)" and the result links to the draft
+noting it can be discarded. The question this card raises is a product one, and it has at least
+three defensible answers, which is exactly why it is filed rather than decided here:
+
+1. A side-effect-free plan mode (`?dryRun=1`) that runs the same `spec.Import` diff and returns the
+   ops without calling `Create`. Additive, contract-compatible, and it makes the automation
+   contract's own words true. **Most likely right.**
+2. Retention for drafts — but a draft an operator staged by hand and left overnight must not
+   evaporate, so this needs a provenance distinction (`origin: spec_import`) the store does not
+   currently carry.
+3. Leave it, and document the accumulation plus the expectation that callers
+   `DELETE /changesets/{id}` after reading the plan. Cheapest, and it makes every integrator
+   responsible for cleanup they will forget.
+
+**Already checked, so nobody repeats it:** `internal/apicontract`'s `TestSpecImportIdempotency`
+(`internal/apicontract/specimport_test.go`) asserts `len(ops) == 0` and `len(notInSpec) == 0` on
+**both** imports and asserts a read-only token gets 403. It asserts **nothing about how many
+changesets now exist**, and never compares the two responses' changeset ids — which will differ.
+Its own comment says the second import yields "the same 'no changes' result, not an accumulating
+diff", and that is exactly true and exactly the wrong dimension: the *diff* does not accumulate,
+the *rows* do. The test passes identically whether the route creates zero drafts or two.
+
+So the contract's "idempotent by construction" has never been tested in the dimension that
+matters, and whichever of the three answers above is chosen, the fix ships with a row-count
+assertion in that test — otherwise the same claim stays untested afterwards.
