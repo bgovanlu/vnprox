@@ -1171,13 +1171,38 @@ is the part that needs hardware, and it is the whole point of the card.**
 The matrix in `docs/compat-matrix.json` is **entirely mock-validated**, and every cell says so.
 This section records the one thing it cannot tell you.
 
-- [ ] **Confirm the SDN Fabrics version boundary on real hardware.** The matrix's only enforced
-      version divergence is that PVE 9.0+ accepts `openfabric`/`ospf` SDN zone types and 8.2 does
-      not. That boundary is modelled **from Proxmox's documentation, not captured from a running
-      cluster** — this project has no PVE 8.2 or 9.0 to observe, and `pvecube` is 9.2.4. If the
-      real boundary sits elsewhere (a point release, a package rather than a version, an accepted
-      type that then fails at apply), the matrix is confidently wrong in a way no mock run can
-      surface, because the mock is asserting the same belief the matrix is testing.
+- [x] **Confirm the SDN Fabrics version boundary on real hardware.** — **ANSWERED 2026-08-16, and
+      the answer was "the boundary was on the wrong surface entirely."** This item read: *"If the
+      real boundary sits elsewhere ... the matrix is confidently wrong in a way no mock run can
+      surface, because the mock is asserting the same belief the matrix is testing."* That is
+      precisely what had happened, for four phases.
+
+      Queried against `pvecube` (PVE 9.2.4), read-only, capture at
+      `planning/reports/evidence/pve-9.2.4-sdn-schema.txt`:
+
+      - The real 9.2 SDN zone type enum is `<evpn | faucet | qinq | simple | vlan | vxlan>`.
+        `openfabric` and `ospf` **are not zone types on PVE 9**. Real 8.2 and real 9.2 both reject
+        an `openfabric` zone, so the modelled divergence did not exist in either direction.
+      - Fabrics are a separate family: `POST /cluster/sdn/fabrics/fabric --id <string> --protocol
+        <bgp | openfabric | ospf | wireguard>`. `openfabric`/`ospf` are two of four fabric
+        *protocols*. The other two, `bgp` and `wireguard`, appear in no vnprox document.
+      - `GET /cluster/sdn/fabrics/all` on 9.2 returns `{"fabrics":[],"nodes":[]}`.
+
+      The gate was repointed to the divergence that does exist (presence of the
+      `/cluster/sdn/fabrics` family), renamed `sdn_fabrics_api_gate`, and mutation-proved at both
+      layers. See `docs/compatibility.md`'s "What is modeled" for the correction notice, and
+      `T-3101` for the modelling work this unblocks.
+
+      Two further gaps the same capture exposed, both carded in `T-3101` rather than fixed in
+      passing: `faucet` is a real zone type **and** a real controller type that
+      `internal/change.validSdnZoneTypes` rejects, and `/cluster/sdn` carries `prefix-lists` and
+      `route-maps` families vnprox does not model at all.
+
+- [ ] **Confirm the 8.2 half of that boundary.** The correction above is captured from 9.2.4 only.
+      That PVE 8.2 does not serve `/cluster/sdn/fabrics` is inference from the feature's 9.0
+      release, not observation — this project still has no 8.2 to query. It is a much safer
+      inference than the one it replaced (the family demonstrably post-dates 8.2), but it is an
+      inference, and this line exists so nobody mistakes it for a capture.
 - [ ] **Confirm the per-version fixtures resemble their versions.** `testdata/clusters/compat/pve-
       8.2.yaml`, `pve-9.0.yaml` and `pve-9.2.yaml` are minimal hand-written topologies, not
       captures. Only `pve-9.2.yaml` has a real counterpart available (`pvecube`), and it has not

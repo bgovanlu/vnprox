@@ -34,18 +34,43 @@ mock-generated row, which is exactly the blurring this document exists to preven
 ## What is modeled
 
 The mock-validated mechanism does not attempt to re-derive every difference between PVE releases —
-that would mean inventing facts about a product this repository has no hardware to observe
-(`CLAUDE.md`'s "no live Proxmox cluster" note applies here as everywhere else). It currently models
-exactly one documented, checkable divergence:
+that would mean inventing facts about a product this repository could not observe. It currently
+models exactly one checkable divergence:
 
-- **SDN Fabrics (PVE 9.0+).** PVE 9.0 added SDN "Fabric" zone types (OSPF/OpenFabric-managed
-  underlay routing) to the SDN zone `type` enumeration — documented in Proxmox's 9.0 release notes
-  and SDN documentation. PVE 8.2 has no such zone type. `internal/pvemock.PVEVersionProfile` encodes
-  this as `SDNFabricZones`, and `internal/pvemock.NewCompatServer` rejects an `openfabric`/`ospf`
-  zone create/update with a PVE-shaped 400 on any profile where it is false. This is the one case the
-  matrix's `sdn_fabric_zone_gate` check exercises per cell, and the case
-  `internal/apicontract/compat`'s and `internal/pvemock`'s own tests mutation-prove (see those
-  packages' doc comments, and this task's report, for the actual red/green run).
+- **SDN Fabrics (PVE 9.0+).** PVE 9.0 added SDN "Fabrics" — underlay routing, reachable at its own
+  API family, `/cluster/sdn/fabrics`, with `fabric` and `node` sub-collections and an `all` read.
+  PVE 8.2 does not serve that path. `internal/pvemock.PVEVersionProfile` encodes this as
+  `SDNFabrics`, and `internal/pvemock.NewCompatServer` answers a PVE-shaped **501** for any request
+  at or below that path on a profile where it is false, and the shape hardware returns
+  (`{"fabrics":[],"nodes":[]}`) where it is true. This is the one case the matrix's
+  `sdn_fabrics_api_gate` check exercises per cell, and the case `internal/apicontract/compat`'s and
+  `internal/pvemock`'s own tests mutation-prove.
+
+> **This entry was wrong from T-2103 until 2026-08-16, and its check passed the entire time.**
+> The previous model asserted that PVE 9 added `openfabric`/`ospf` to the SDN *zone type*
+> enumeration, and the matrix published a green `sdn_fabric_zone_gate` cell for every release on
+> every commit. It was written from Proxmox's 9.0 release notes, which describe the feature but not
+> the surface it landed on. The first PVE 9 node this project ever had access to (pvecube, 9.2.4)
+> reports a zone type enum of `<evpn | faucet | qinq | simple | vlan | vxlan>` — `openfabric` and
+> `ospf` are not zone types at all, so real 8.2 and real 9.2 *both* reject an `openfabric` zone and
+> the gate tested a difference that does not exist in either direction. Fabric protocols
+> (`bgp | openfabric | ospf | wireguard`) are a field on a fabric object, a different namespace.
+> The capture is checked in at
+> [`planning/reports/evidence/pve-9.2.4-sdn-schema.txt`](../planning/reports/evidence/pve-9.2.4-sdn-schema.txt).
+>
+> The general lesson, which applies to every future entry in this list: **a compatibility check
+> derived from release notes tests the release notes.** A mock and a check written from the same
+> secondary source will agree with each other indefinitely. Every entry added here from now on
+> states the surface its expectation was read off, and prefers a capture to a changelog.
+
+Two facts that same capture turned up, recorded here because they are compatibility facts even
+though neither is version-gated, and both are carded rather than fixed in passing:
+
+- `faucet` is a real SDN **zone** type on PVE 9.2 and is absent from `internal/change`'s
+  `validSdnZoneTypes` — vnprox refuses to stage a zone real PVE would accept.
+- `faucet` is likewise a real SDN **controller** type (`bgp | evpn | faucet | isis`), and
+  `/cluster/sdn` carries two further families vnprox does not model at all: `prefix-lists` and
+  `route-maps`.
 
 Everything else this matrix checks (ticket auth, a network read, an ordinary `vlan` zone create) is
 checked because it is the minimum viable "does the mock even come up and answer for this version"
@@ -86,13 +111,13 @@ hardware capture.
 
 <!-- BEGIN T-2103 GENERATED MATRIX (source: internal/apicontract/compat, `make compat-matrix`) -->
 
-vnprox version: `unversioned` — generated 2026-08-14T13:22:53Z
+vnprox version: `unversioned` — generated 2026-08-16T23:09:47Z
 
 | PVE version | Validation | Result | Checks | Fixture |
 |---|---|---|---|---|
-| 8.2 | mock | pass | auth_ticket:ok, network_read:ok, sdn_zone_baseline:ok, sdn_fabric_zone_gate:ok | `testdata/clusters/compat/pve-8.2.yaml` |
-| 9.0 | mock | pass | auth_ticket:ok, network_read:ok, sdn_zone_baseline:ok, sdn_fabric_zone_gate:ok | `testdata/clusters/compat/pve-9.0.yaml` |
-| 9.2 | mock | pass | auth_ticket:ok, network_read:ok, sdn_zone_baseline:ok, sdn_fabric_zone_gate:ok | `testdata/clusters/compat/pve-9.2.yaml` |
+| 8.2 | mock | pass | auth_ticket:ok, network_read:ok, sdn_zone_baseline:ok, sdn_fabrics_api_gate:ok | `testdata/clusters/compat/pve-8.2.yaml` |
+| 9.0 | mock | pass | auth_ticket:ok, network_read:ok, sdn_zone_baseline:ok, sdn_fabrics_api_gate:ok | `testdata/clusters/compat/pve-9.0.yaml` |
+| 9.2 | mock | pass | auth_ticket:ok, network_read:ok, sdn_zone_baseline:ok, sdn_fabrics_api_gate:ok | `testdata/clusters/compat/pve-9.2.yaml` |
 
 <!-- END T-2103 GENERATED MATRIX -->
 
@@ -102,7 +127,10 @@ a silent edit of the `mock` label on an existing one.
 
 ## Reading a cell
 
-Each cell records every check's individual pass/fail, not just a single bit. `sdn_fabric_zone_gate`
+Each cell records every check's individual pass/fail, not just a single bit. `sdn_fabrics_api_gate`
 failing on the 8.2 row would mean pvemock's version gate stopped enforcing the divergence it exists
-to catch — see "What is modeled" above. `auth_ticket` or `network_read` failing on any row would mean
+to catch — see "What is modeled" above. Note that on the 8.2 row this check passes by being
+*refused*: the tests assert each cell's detail string, not just its boolean, because a check whose
+name survives a rewrite while its meaning changes underneath is precisely how the previous gate
+stayed green for four phases while describing a PVE that does not exist. `auth_ticket` or `network_read` failing on any row would mean
 something broke in the mock server itself, unrelated to version-specific behavior.

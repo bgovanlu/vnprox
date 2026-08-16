@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -117,41 +118,55 @@ func writeCIArtifact(t *testing.T, m Matrix) {
 	}
 }
 
-// TestSDNFabricZoneGate_IsCaughtPerVersion is this package's own copy of
+// TestSDNFabricsAPIGate_IsCaughtPerVersion is this package's own copy of
 // the T-2103 AC2 demonstration (internal/pvemock/compat_test.go's
-// TestCompatServer_SDNFabricZoneGate proves the same thing one layer down,
-// directly against NewCompatServer): every cell's sdn_fabric_zone_gate
-// check must PASS, and "pass" means the mock's accept/reject decision
-// matched what that PVE version is documented to support — which for the
-// 8.2 cell means the zone create was correctly *rejected*. If
-// pvemock.PVEVersionProfile.ValidateSDNZoneType's gate is ever weakened
-// (see this repo's T-2103 report for the mutation run that proves it),
-// this specific subtest is the one that reddens, not the whole suite.
-func TestSDNFabricZoneGate_IsCaughtPerVersion(t *testing.T) {
+// TestCompatServer_SDNFabricsAPIGate proves the same thing one layer down,
+// directly against NewCompatServer): every cell's sdn_fabrics_api_gate
+// check must PASS, and "pass" means the mock's answer matched what that
+// PVE version actually serves — which for the 8.2 cell means the fabrics
+// read was correctly *refused* with a 501.
+//
+// It replaced TestSDNFabricZoneGate_IsCaughtPerVersion on 2026-08-16. The
+// old test asserted a zone-type divergence that hardware disproved, and it
+// is the reason this one asserts the *detail* string too: a check whose
+// name survives a rewrite while its meaning changes underneath is exactly
+// the failure the old one embodied for four phases.
+func TestSDNFabricsAPIGate_IsCaughtPerVersion(t *testing.T) {
 	m, err := Generate("test")
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	wantAccepted := map[string]bool{"8.2": false, "9.0": true, "9.2": true}
+	wantServed := map[string]bool{"8.2": false, "9.0": true, "9.2": true}
 	for _, cell := range m.Cells {
 		cell := cell
 		t.Run("PVE "+cell.PVEVersion, func(t *testing.T) {
-			want, ok := wantAccepted[cell.PVEVersion]
+			want, ok := wantServed[cell.PVEVersion]
 			if !ok {
 				t.Fatalf("no expectation registered for PVE version %q — update this test's table", cell.PVEVersion)
 			}
 			var gate *CheckResult
 			for i := range cell.Checks {
-				if cell.Checks[i].Name == "sdn_fabric_zone_gate" {
+				if cell.Checks[i].Name == "sdn_fabrics_api_gate" {
 					gate = &cell.Checks[i]
 				}
 			}
 			if gate == nil {
-				t.Fatalf("cell PVE %s carries no sdn_fabric_zone_gate check", cell.PVEVersion)
+				t.Fatalf("cell PVE %s carries no sdn_fabrics_api_gate check", cell.PVEVersion)
 			}
 			if !gate.Pass {
-				t.Errorf("sdn_fabric_zone_gate on PVE %s did not behave as documented (want accepted=%v): %s",
+				t.Errorf("sdn_fabrics_api_gate on PVE %s did not behave as documented (want served=%v): %s",
 					cell.PVEVersion, want, gate.Detail)
+			}
+			// Pin which direction each cell passed in. Without this, both
+			// "8.2 correctly refuses" and "8.2 wrongly serves, and the
+			// expectation was flipped to match" read as a green cell.
+			wantDetail := "status 200 with fabrics+nodes keys"
+			if !want {
+				wantDetail = "status 501, absent as expected"
+			}
+			if !strings.Contains(gate.Detail, wantDetail) {
+				t.Errorf("sdn_fabrics_api_gate on PVE %s: detail = %q, want it to contain %q",
+					cell.PVEVersion, gate.Detail, wantDetail)
 			}
 			if cell.Validation != ValidationKindMock {
 				t.Errorf("cell PVE %s Validation = %q, want %q — T-2103 AC3: this matrix never claims hardware validation", cell.PVEVersion, cell.Validation, ValidationKindMock)
@@ -169,9 +184,9 @@ func TestMarkdownTable_ReflectsCellStatus(t *testing.T) {
 		GeneratedAt:   timePlaceholder,
 		Cells: []CellResult{
 			{PVEVersion: "8.2", Fixture: "testdata/clusters/compat/pve-8.2.yaml", Validation: ValidationKindMock, Pass: true,
-				Checks: []CheckResult{{Name: "auth_ticket", Pass: true}, {Name: "sdn_fabric_zone_gate", Pass: true}}},
+				Checks: []CheckResult{{Name: "auth_ticket", Pass: true}, {Name: "sdn_fabrics_api_gate", Pass: true}}},
 			{PVEVersion: "9.0", Fixture: "testdata/clusters/compat/pve-9.0.yaml", Validation: ValidationKindMock, Pass: false,
-				Checks: []CheckResult{{Name: "auth_ticket", Pass: true}, {Name: "sdn_fabric_zone_gate", Pass: false, Detail: "boom"}}},
+				Checks: []CheckResult{{Name: "auth_ticket", Pass: true}, {Name: "sdn_fabrics_api_gate", Pass: false, Detail: "boom"}}},
 		},
 	}
 	table := m.MarkdownTable()
@@ -184,7 +199,7 @@ func TestMarkdownTable_ReflectsCellStatus(t *testing.T) {
 	if !bytes.Contains([]byte(table), []byte("**FAIL**")) {
 		t.Errorf("table does not mark the 9.0 row as failing:\n%s", table)
 	}
-	if !bytes.Contains([]byte(table), []byte("sdn_fabric_zone_gate:FAIL")) {
+	if !bytes.Contains([]byte(table), []byte("sdn_fabrics_api_gate:FAIL")) {
 		t.Errorf("table does not name the failing check:\n%s", table)
 	}
 	for _, cell := range m.Cells {

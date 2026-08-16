@@ -190,11 +190,25 @@ the next T-2005 fails a test instead of an audit.
 | 17 | `T-3105` | Restore & rename fidelity: OVS bond restore, NIC renaming, ingress write support | P2 |
 | 18 | `T-3106` | Localization (i18n) — the rescheduled T-2006 | P2 |
 
-**`T-3101`** — the sharpest intent gap in the audit: `validSdnZoneTypes` stops at `evpn`
-(`internal/change/validate_schema.go:127`); `openfabric`/`ospf` exist only inside `pvemock`'s
-compat gate. A PVE 9.x user cannot see or manage fabrics from the product that promises "the
-SDN stack" — model the zone types, add wizard + editors + map overlay, and extend the compat
-matrix rows from "rejected correctly on 8.2" to "managed on 9.x".
+**`T-3101`** — the sharpest intent gap in the audit: a PVE 9.x user cannot see or manage SDN
+Fabrics from the product that promises "the SDN stack".
+
+**This card's original scoping was wrong and was rewritten on 2026-08-16 against captured
+hardware** (`planning/reports/evidence/pve-9.2.4-sdn-schema.txt`). It said: *"`validSdnZoneTypes`
+stops at `evpn`; `openfabric`/`ospf` exist only inside `pvemock`'s compat gate — model the zone
+types, add wizard + editors + map overlay, and extend the compat matrix rows from 'rejected
+correctly on 8.2' to 'managed on 9.x'."* Every clause after the first is built on a false premise.
+`openfabric`/`ospf` are **not SDN zone types** on PVE 9 — the real 9.2 zone enum is
+`<evpn | faucet | qinq | simple | vlan | vxlan>`. Fabrics are a separate API family,
+`/cluster/sdn/fabrics`, and `openfabric`/`ospf` are two of four fabric *protocols*
+(`bgp | openfabric | ospf | wireguard`). Modelling them as zone types would have shipped the
+wrong object graph, wizard, and map overlay, and the compat matrix row it names was itself
+asserting a divergence that does not exist (now corrected — see `docs/compatibility.md`).
+
+The card as it now stands is in [`planning/tasks/phase-31.md`](../planning/tasks/phase-31.md).
+It also picks up two defects the same capture exposed: `faucet` is a real zone **and** controller
+type vnprox rejects, and `/cluster/sdn` carries `prefix-lists` and `route-maps` families vnprox
+does not model at all.
 
 **`T-3102`** — controllers today are a string field on a zone (`internal/sdn/service.go:77`).
 First-class objects with CRUD ops (`sdn.controller.*`) through the change engine, shown in the

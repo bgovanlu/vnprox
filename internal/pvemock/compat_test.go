@@ -9,52 +9,49 @@ import (
 	"testing"
 )
 
-// TestValidateSDNZoneType_TableDriven is the pure-function guard for
-// PVEVersionProfile.ValidateSDNZoneType. It is table-driven across every
+// TestSupportsSDNFabricsAPI_TableDriven is the pure-function guard for
+// PVEVersionProfile.SupportsSDNFabricsAPI. It is table-driven across every
 // registered CompatProfiles entry so a new profile added to
-// compat_versions.go without a corresponding case here is at least exercised
-// against every existing zone type, not just the ones this table happens to
-// list.
-func TestValidateSDNZoneType_TableDriven(t *testing.T) {
-	tests := []struct {
-		name     string
-		version  string
-		zoneType string
-		wantErr  bool
-	}{
-		{"8.2 rejects openfabric", "8.2", "openfabric", true},
-		{"8.2 rejects ospf", "8.2", "ospf", true},
-		{"8.2 accepts vlan", "8.2", "vlan", false},
-		{"8.2 accepts simple", "8.2", "simple", false},
-		{"8.2 accepts empty (PUT with no type change)", "8.2", "", false},
-		{"9.0 accepts openfabric", "9.0", "openfabric", false},
-		{"9.0 accepts ospf", "9.0", "ospf", false},
-		{"9.0 accepts vlan", "9.0", "vlan", false},
-		{"9.2 accepts openfabric", "9.2", "openfabric", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			profile, ok := ProfileByVersion(tt.version)
+// compat_versions.go without a corresponding case here is still asserted
+// to make a definite claim about the fabrics family.
+//
+// It replaced TestValidateSDNZoneType_TableDriven, which asserted that PVE
+// 9 added "openfabric"/"ospf" as SDN zone types. That was false — real PVE
+// 9.2.4 offers <evpn | faucet | qinq | simple | vlan | vxlan> and rejects
+// "openfabric" exactly as 8.2 does. The old test passed on every commit
+// because both sides of it were written from the same wrong premise.
+func TestSupportsSDNFabricsAPI_TableDriven(t *testing.T) {
+	want := map[string]bool{"8.2": false, "9.0": true, "9.2": true}
+	for _, p := range CompatProfiles {
+		t.Run("PVE "+p.Version, func(t *testing.T) {
+			w, ok := want[p.Version]
 			if !ok {
-				t.Fatalf("ProfileByVersion(%q): not registered", tt.version)
+				t.Fatalf("profile %q is registered in CompatProfiles but this test states no expectation for it; "+
+					"add one rather than letting a new profile go unasserted", p.Version)
 			}
-			err := profile.ValidateSDNZoneType(tt.zoneType)
-			if tt.wantErr && err == nil {
-				t.Fatalf("ValidateSDNZoneType(%q) on PVE %s = nil, want an error", tt.zoneType, tt.version)
-			}
-			if !tt.wantErr && err != nil {
-				t.Fatalf("ValidateSDNZoneType(%q) on PVE %s = %v, want nil", tt.zoneType, tt.version, err)
-			}
-			if tt.wantErr && err != nil && !errorsIsSDNZoneTypeUnsupported(err) {
-				t.Fatalf("ValidateSDNZoneType(%q) on PVE %s: error %v does not wrap ErrSDNZoneTypeUnsupported", tt.zoneType, tt.version, err)
+			if got := p.SupportsSDNFabricsAPI(); got != w {
+				t.Fatalf("PVE %s SupportsSDNFabricsAPI() = %v, want %v", p.Version, got, w)
 			}
 		})
 	}
 }
 
-func errorsIsSDNZoneTypeUnsupported(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "sdn zone type unsupported")
+// TestNoProfileClaimsFabricZoneTypes is a regression guard against the
+// specific wrong idea this package used to hold. Zone types and fabric
+// protocols are different namespaces; nothing in pvemock may gate a zone
+// type named "openfabric" or "ospf" again without new hardware evidence
+// that contradicts planning/reports/evidence/pve-9.2.4-sdn-schema.txt.
+func TestNoProfileClaimsFabricZoneTypes(t *testing.T) {
+	h := newCompatTestServer(t, "compat/pve-8.2.yaml", "8.2")
+	ticket, csrf := compatLogin(t, h)
+	rec := compatCreateZone(t, h, ticket, csrf, "fabric1", "openfabric")
+	if rec.Code == http.StatusBadRequest {
+		t.Fatalf("PVE 8.2 rejected zone type \"openfabric\" with 400: pvemock has reintroduced a zone-type "+
+			"version gate. Real 8.2 and real 9.2 both reject that zone type, so gating it by version "+
+			"asserts a divergence that does not exist — see PVEVersionProfile.SDNFabrics.")
+	}
 }
+
 
 // --- HTTP-level compat server tests (AC2 demonstration) --------------------
 //
@@ -112,50 +109,98 @@ func compatCreateZone(t *testing.T, h http.Handler, ticket, csrf, zoneID, zoneTy
 	return rec
 }
 
-// TestCompatServer_SDNFabricZoneGate is the concrete AC2 demonstration: the
-// exact same request (create an "openfabric" SDN zone) is fired at the
+// TestCompatServer_SDNFabricsAPIGate is the concrete AC2 demonstration:
+// the exact same request (GET /cluster/sdn/fabrics/all) is fired at the
 // exact same fixture topology, and only the PVEVersionProfile changes
-// between subtests. PVE 8.2 must reject it; PVE 9.0/9.2 must accept it —
-// this is the "fixture divergence between PVE versions is caught" case the
-// T-2103 task card asks for. See this package's report for the mutation
-// evidence (break ValidateSDNZoneType's gate, watch the 8.2 subtest go
-// red, restore it, watch it go green).
-func TestCompatServer_SDNFabricZoneGate(t *testing.T) {
+// between subtests. PVE 8.2 must answer 501; PVE 9.0/9.2 must answer 200
+// with the shape real hardware returns — this is the "fixture divergence
+// between PVE versions is caught" case the T-2103 task card asks for.
+//
+// The mutation proof for this gate: flip SDNFabrics to true for 8.2 in
+// CompatProfiles and the 8.2 subtest goes red on the status assertion;
+// drop the body assertion's key check and the 9.x subtests stop noticing a
+// wrapper that answers 200 with nothing in it.
+func TestCompatServer_SDNFabricsAPIGate(t *testing.T) {
 	tests := []struct {
 		fixture     string
 		version     string
-		wantHeader  string
 		description string
 		wantStatus  int
 	}{
-		{fixture: "compat/pve-8.2.yaml", version: "8.2", wantHeader: "8.2", wantStatus: http.StatusBadRequest, description: "PVE 8.2 has no SDN Fabrics zone type"},
-		{fixture: "compat/pve-9.0.yaml", version: "9.0", wantHeader: "9.0", wantStatus: http.StatusOK, description: "PVE 9.0 introduced SDN Fabrics"},
-		{fixture: "compat/pve-9.2.yaml", version: "9.2", wantHeader: "9.2", wantStatus: http.StatusOK, description: "PVE 9.2 still supports SDN Fabrics"},
+		{fixture: "compat/pve-8.2.yaml", version: "8.2", wantStatus: http.StatusNotImplemented, description: "PVE 8.2 has no /cluster/sdn/fabrics"},
+		{fixture: "compat/pve-9.0.yaml", version: "9.0", wantStatus: http.StatusOK, description: "PVE 9.0 introduced SDN Fabrics"},
+		{fixture: "compat/pve-9.2.yaml", version: "9.2", wantStatus: http.StatusOK, description: "PVE 9.2 still serves SDN Fabrics"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.description, func(t *testing.T) {
 			h := newCompatTestServer(t, tt.fixture, tt.version)
-			ticket, csrf := compatLogin(t, h)
-			rec := compatCreateZone(t, h, ticket, csrf, "fabric1", "openfabric")
+			ticket, _ := compatLogin(t, h)
+			req := httptest.NewRequest(http.MethodGet, sdnFabricsAllPath, nil)
+			req.AddCookie(&http.Cookie{Name: "PVEAuthCookie", Value: ticket})
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
 			if rec.Code != tt.wantStatus {
-				t.Fatalf("POST zone type=openfabric against PVE %s: status = %d, want %d (body=%s)",
-					tt.version, rec.Code, tt.wantStatus, rec.Body.String())
+				t.Fatalf("GET %s against PVE %s: status = %d, want %d (body=%s)",
+					sdnFabricsAllPath, tt.version, rec.Code, tt.wantStatus, rec.Body.String())
 			}
-			if got := rec.Header().Get(CompatVersionHeader); got != tt.wantHeader {
-				t.Errorf("%s = %q, want %q", CompatVersionHeader, got, tt.wantHeader)
+			if got := rec.Header().Get(CompatVersionHeader); got != tt.version {
+				t.Errorf("%s = %q, want %q", CompatVersionHeader, got, tt.version)
 			}
-			if rec.Code == http.StatusBadRequest {
-				var envelope struct {
-					Message string `json:"message"`
+
+			var envelope struct {
+				Message string `json:"message"`
+				Data    struct {
+					Fabrics []json.RawMessage `json:"fabrics"`
+					Nodes   []json.RawMessage `json:"nodes"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("decoding response: %v (body=%s)", err, rec.Body.String())
+			}
+
+			if tt.wantStatus == http.StatusNotImplemented {
+				if !strings.Contains(envelope.Message, "/cluster/sdn/fabrics") {
+					t.Errorf("rejection message = %q, want it to name the unsupported path", envelope.Message)
 				}
-				if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
-					t.Fatalf("decoding error response: %v", err)
-				}
-				if !strings.Contains(envelope.Message, "openfabric") {
-					t.Errorf("rejection message = %q, want it to name the rejected zone type", envelope.Message)
-				}
+				return
+			}
+			// A supporting profile must return the real shape — both keys
+			// present, not an empty object. "fabrics" and "nodes" are the
+			// two keys pvecube (9.2.4) returned; asserting on them is what
+			// keeps a 200 with an empty body from counting as support.
+			if envelope.Data.Fabrics == nil || envelope.Data.Nodes == nil {
+				t.Errorf("PVE %s GET %s: body = %s, want both \"fabrics\" and \"nodes\" keys "+
+					"(the shape planning/reports/evidence/pve-9.2.4-sdn-schema.txt captured)",
+					tt.version, sdnFabricsAllPath, rec.Body.String())
 			}
 		})
+	}
+}
+
+// TestCompatServer_UnmodeledFabricRouteIsNotSilentlyOK pins the difference
+// between "this PVE version lacks the family" and "this mock has not
+// modeled that route yet". Both answer 501, and a caller that cannot tell
+// them apart would read fabric CRUD support into a mock that has none.
+func TestCompatServer_UnmodeledFabricRouteIsNotSilentlyOK(t *testing.T) {
+	h := newCompatTestServer(t, "compat/pve-9.2.yaml", "9.2")
+	ticket, _ := compatLogin(t, h)
+	req := httptest.NewRequest(http.MethodGet, SDNFabricsPath+"/fabric", nil)
+	req.AddCookie(&http.Cookie{Name: "PVEAuthCookie", Value: ticket})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("GET %s/fabric on PVE 9.2: status = %d, want 501", SDNFabricsPath, rec.Code)
+	}
+	var envelope struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if !strings.Contains(envelope.Message, "not modeled yet") {
+		t.Errorf("message = %q, want it to say the route is unmodeled rather than the version unsupported", envelope.Message)
 	}
 }
 

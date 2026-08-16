@@ -23,8 +23,8 @@
           "pass": true
         },
         {
-          "name": "sdn_fabric_zone_gate",
-          "detail": "POST zone type=openfabric on PVE 8.2: status 400, accepted=false as expected",
+          "name": "sdn_fabrics_api_gate",
+          "detail": "GET /cluster/sdn/fabrics/all on PVE 8.2: status 501, absent as expected",
           "pass": true
         }
       ],
@@ -51,8 +51,8 @@
           "pass": true
         },
         {
-          "name": "sdn_fabric_zone_gate",
-          "detail": "POST zone type=openfabric on PVE 9.0: status 200, accepted=true as expected",
+          "name": "sdn_fabrics_api_gate",
+          "detail": "GET /cluster/sdn/fabrics/all on PVE 9.0: status 200 with fabrics+nodes keys",
           "pass": true
         }
       ],
@@ -79,8 +79,8 @@
           "pass": true
         },
         {
-          "name": "sdn_fabric_zone_gate",
-          "detail": "POST zone type=openfabric on PVE 9.2: status 200, accepted=true as expected",
+          "name": "sdn_fabrics_api_gate",
+          "detail": "GET /cluster/sdn/fabrics/all on PVE 9.2: status 200 with fabrics+nodes keys",
           "pass": true
         }
       ],

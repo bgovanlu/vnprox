@@ -52,7 +52,7 @@ func runChecks(f *pvemock.Fixture, profile pvemock.PVEVersionProfile) []CheckRes
 		// (rather than silently omitting them) keeps the cell's check
 		// list shape stable across every cell, which matters for a
 		// reader comparing rows in the published matrix.
-		for _, name := range []string{"network_read", "sdn_zone_baseline", "sdn_fabric_zone_gate"} {
+		for _, name := range []string{"network_read", "sdn_zone_baseline", "sdn_fabrics_api_gate"} {
 			results = append(results, CheckResult{Name: name, Pass: false, Detail: "skipped: auth_ticket failed"})
 		}
 		return results
@@ -62,7 +62,7 @@ func runChecks(f *pvemock.Fixture, profile pvemock.PVEVersionProfile) []CheckRes
 
 	results = append(results, checkNetworkRead(client, srv.URL, ticket))
 	results = append(results, checkSDNZoneCreate(client, srv.URL, ticket, csrf, "sdn_zone_baseline", "cbaseline", "vlan", true, profile))
-	results = append(results, checkSDNZoneCreate(client, srv.URL, ticket, csrf, "sdn_fabric_zone_gate", "cfabric", "openfabric", profile.SDNFabricZones, profile))
+	results = append(results, checkSDNFabricsAPI(client, srv.URL, ticket, profile))
 
 	return results
 }
@@ -113,12 +113,16 @@ func checkNetworkRead(client *http.Client, baseURL, ticket string) CheckResult {
 
 // checkSDNZoneCreate POSTs an SDN zone of zoneType and records whether the
 // mock's behavior matched wantAccepted. wantAccepted is derived from the
-// profile by the caller (runChecks) rather than hardcoded here, so this one
-// function serves both the always-accepted baseline check and the
-// version-gated fabric-zone check — the latter being the concrete AC2
-// "fixture divergence between PVE versions is caught" case this task card
-// asks for: on the 8.2 cell, wantAccepted is false, and the check counts as
-// PASSING exactly when the mock correctly rejects the request.
+// profile by the caller (runChecks) rather than hardcoded here.
+//
+// It has one caller now (the always-accepted `vlan` baseline). Its second
+// caller used to be `sdn_fabric_zone_gate`, which posted an "openfabric"
+// zone and expected a version-dependent answer. That check was removed on
+// 2026-08-16: real PVE 9.2.4's zone type enum is
+// <evpn | faucet | qinq | simple | vlan | vxlan>, so 8.2 and 9.2 both
+// reject an "openfabric" zone and the gate tested a difference that does
+// not exist. See checkSDNFabricsAPI for the divergence that does, and
+// pvemock.PVEVersionProfile.SDNFabrics for the capture behind it.
 func checkSDNZoneCreate(client *http.Client, baseURL, ticket, csrf, checkName, zoneID, zoneType string, wantAccepted bool, profile pvemock.PVEVersionProfile) CheckResult {
 	body, err := json.Marshal(pvemock.SDNZoneSpec{ID: zoneID, Type: zoneType})
 	if err != nil {
@@ -141,4 +145,57 @@ func checkSDNZoneCreate(client *http.Client, baseURL, ticket, csrf, checkName, z
 	}
 	return CheckResult{Name: checkName, Pass: false, Detail: fmt.Sprintf(
 		"POST zone type=%s on PVE %s: status %d, accepted=%v, want accepted=%v", zoneType, profile.Version, resp.StatusCode, accepted, wantAccepted)}
+}
+
+// checkSDNFabricsAPI is the matrix's one genuine version divergence: PVE
+// 9.0 added the /cluster/sdn/fabrics API family and PVE 8.2 does not serve
+// it. On an 8.2 cell the check PASSES exactly when the mock answers 501; on
+// a 9.x cell it passes only on a 200 that carries both keys real hardware
+// returns ("fabrics" and "nodes"), so a wrapper that answered 200 with an
+// empty body would fail rather than score a pass.
+//
+// This replaced sdn_fabric_zone_gate, whose premise hardware disproved.
+// Unlike its predecessor, this check's expectation was read off a running
+// PVE 9.2.4 node — planning/reports/evidence/pve-9.2.4-sdn-schema.txt.
+func checkSDNFabricsAPI(client *http.Client, baseURL, ticket string, profile pvemock.PVEVersionProfile) CheckResult {
+	const name = "sdn_fabrics_api_gate"
+	req, _ := http.NewRequest(http.MethodGet, baseURL+pvemock.SDNFabricsPath+"/all", nil)
+	req.AddCookie(&http.Cookie{Name: "PVEAuthCookie", Value: ticket})
+	resp, err := client.Do(req)
+	if err != nil {
+		return CheckResult{Name: name, Pass: false, Detail: err.Error()}
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var envelope struct {
+		Data struct {
+			Fabrics []json.RawMessage `json:"fabrics"`
+			Nodes   []json.RawMessage `json:"nodes"`
+		} `json:"data"`
+	}
+	// A decode failure is not fatal on its own: the 501 branch below only
+	// needs the status, and the 200 branch reports the missing keys itself.
+	_ = json.NewDecoder(resp.Body).Decode(&envelope)
+
+	if !profile.SupportsSDNFabricsAPI() {
+		if resp.StatusCode == http.StatusNotImplemented {
+			return CheckResult{Name: name, Pass: true, Detail: fmt.Sprintf(
+				"GET /cluster/sdn/fabrics/all on PVE %s: status 501, absent as expected", profile.Version)}
+		}
+		return CheckResult{Name: name, Pass: false, Detail: fmt.Sprintf(
+			"GET /cluster/sdn/fabrics/all on PVE %s: status %d, want 501 (this version predates SDN Fabrics)",
+			profile.Version, resp.StatusCode)}
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return CheckResult{Name: name, Pass: false, Detail: fmt.Sprintf(
+			"GET /cluster/sdn/fabrics/all on PVE %s: status %d, want 200", profile.Version, resp.StatusCode)}
+	}
+	if envelope.Data.Fabrics == nil || envelope.Data.Nodes == nil {
+		return CheckResult{Name: name, Pass: false, Detail: fmt.Sprintf(
+			"GET /cluster/sdn/fabrics/all on PVE %s: 200 without both \"fabrics\" and \"nodes\" keys",
+			profile.Version)}
+	}
+	return CheckResult{Name: name, Pass: true, Detail: fmt.Sprintf(
+		"GET /cluster/sdn/fabrics/all on PVE %s: status 200 with fabrics+nodes keys", profile.Version)}
 }

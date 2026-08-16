@@ -35,18 +35,37 @@ type PVEVersionProfile struct {
 	Major   int
 	Minor   int
 
-	// SDNFabricZones: PVE 9.0 added SDN "Fabrics" (OSPF/OpenFabric
-	// underlay-routing zone types, e.g. "openfabric") to the SDN zone type
-	// enumeration — documented in Proxmox's 9.0 release notes and SDN
-	// documentation. PVE 8.2 has no such zone type. This is the one
-	// concrete, checkable divergence this matrix currently enforces at the
-	// mock layer (ValidateSDNZoneType, compat_server.go) — modeled from
-	// Proxmox's published feature list, NOT captured from real hardware
-	// (this repo has no PVE 8.2 or 9.0 cluster to capture from; see
-	// docs/compatibility.md and CLAUDE.md's "no live Proxmox cluster"
-	// note). Treat it as a documented-shape approximation, same standing as
-	// every other entry in planning/reports/needs-hardware-validation.md.
-	SDNFabricZones bool
+	// SDNFabrics: PVE 9.0 added SDN "Fabrics" — an underlay-routing feature
+	// reachable at its own API family, /cluster/sdn/fabrics, with `fabric`
+	// and `node` sub-collections and an `all` read. PVE 8.2 has no such
+	// path. This is the one concrete, checkable divergence this matrix
+	// enforces at the mock layer (SupportsSDNFabricsAPI, compat_server.go).
+	//
+	// This field replaced SDNFabricZones on 2026-08-16, because that model
+	// was wrong and its check could never have failed for the right reason.
+	// SDNFabricZones asserted that PVE 9 added "openfabric"/"ospf" to the
+	// SDN *zone type* enumeration — modeled from Proxmox's 9.0 release
+	// notes, never captured from hardware. The first PVE 9 node this
+	// project ever had access to (pvecube, 9.2.4) says otherwise, and the
+	// capture is checked in at planning/reports/evidence/
+	// pve-9.2.4-sdn-schema.txt:
+	//
+	//   - the real 9.2 zone type enum is
+	//     <evpn | faucet | qinq | simple | vlan | vxlan>. "openfabric" and
+	//     "ospf" are not zone types on PVE 9 at all, so the old gate
+	//     asserted a divergence that does not exist in either direction:
+	//     real 8.2 and real 9.2 both reject an "openfabric" zone.
+	//   - fabrics are a separate object family, created with
+	//     POST /cluster/sdn/fabrics/fabric --id <string> --protocol
+	//     <bgp | openfabric | ospf | wireguard>. openfabric/ospf are two of
+	//     four fabric *protocols*, not zone types — and the other two
+	//     (bgp, wireguard) appear in no vnprox document.
+	//
+	// The lesson is worth keeping next to the field: a compatibility check
+	// derived from release notes tests the release notes. This one passed
+	// on every commit since T-2103 while describing a PVE that does not
+	// exist. Any future field here states the surface it was captured from.
+	SDNFabrics bool
 }
 
 // CompatVersionHeader is set by NewCompatServer on every response, naming
@@ -56,21 +75,29 @@ type PVEVersionProfile struct {
 // actually behind a response.
 const CompatVersionHeader = "X-Pvemock-Compat-Version"
 
-// fabricZoneTypes are the SDN zone `type` values gated by
-// PVEVersionProfile.SDNFabricZones.
-var fabricZoneTypes = map[string]bool{
-	"openfabric": true,
-	"ospf":       true,
-}
+// SDNFabricsPath is the API family PVE 9.0 added and PVE 8.2 does not
+// serve, spelled as it appears under this mock's shared "/api2/json"
+// prefix. compat_server.go gates every request at or below it.
+const SDNFabricsPath = "/api2/json/cluster/sdn/fabrics"
+
+// sdnFabricsAllResponse is the body a supporting profile returns for
+// GET /cluster/sdn/fabrics/all, copied verbatim from what pvecube (PVE
+// 9.2.4) returned for that request with no fabrics configured — see
+// planning/reports/evidence/pve-9.2.4-sdn-schema.txt. The mock serves this
+// itself rather than deferring to the base Server, which has no fabrics
+// routes: modeling the *presence* of the family is exactly the version
+// divergence this profile exists to encode. Modeling fabric contents is
+// T-3101's job, not this file's.
+const sdnFabricsAllResponse = `{"fabrics":[],"nodes":[]}`
 
 // CompatProfiles is the fixed set of PVE version profiles the matrix
 // (internal/apicontract/compat) currently runs: the two lines
 // docs/roadmap.md's Compatibility policy names explicitly (8.2, and 9.x
 // represented by 9.0 and 9.2 — "whatever is current").
 var CompatProfiles = []PVEVersionProfile{
-	{Version: "8.2", Major: 8, Minor: 2, SDNFabricZones: false},
-	{Version: "9.0", Major: 9, Minor: 0, SDNFabricZones: true},
-	{Version: "9.2", Major: 9, Minor: 2, SDNFabricZones: true},
+	{Version: "8.2", Major: 8, Minor: 2, SDNFabrics: false},
+	{Version: "9.0", Major: 9, Minor: 0, SDNFabrics: true},
+	{Version: "9.2", Major: 9, Minor: 2, SDNFabrics: true},
 }
 
 // ProfileByVersion looks up a profile in CompatProfiles by its Version
@@ -84,23 +111,29 @@ func ProfileByVersion(version string) (PVEVersionProfile, bool) {
 	return PVEVersionProfile{}, false
 }
 
-// ValidateSDNZoneType reports whether zoneType is a valid SDN zone `type`
-// value under this profile. It returns nil for every zone type this mock
-// already supports version-independently (vlan, qinq, vxlan, evpn, simple,
-// ...) — pvemock never enumerated an exhaustive zone-type allowlist before
-// T-2103 (SDNZoneSpec.Type is an unvalidated string, sdn.go), and this
-// function deliberately does not start: it only ever rejects the specific,
-// documented, version-gated types this package models (currently the SDN
-// Fabric types), never an arbitrary/unknown one.
-func (p PVEVersionProfile) ValidateSDNZoneType(zoneType string) error {
-	if fabricZoneTypes[zoneType] && !p.SDNFabricZones {
-		return fmt.Errorf("%w: zone type %q needs PVE 9.0 or later (SDN Fabrics); this mock server is modeling PVE %s",
-			ErrSDNZoneTypeUnsupported, zoneType, p.Version)
-	}
-	return nil
-}
+// SupportsSDNFabricsAPI reports whether this profile serves the
+// /cluster/sdn/fabrics family at all. Note what this deliberately does not
+// do: it does not validate zone types. pvemock has never enumerated an
+// exhaustive zone-type allowlist (SDNZoneSpec.Type is an unvalidated
+// string, sdn.go) and it still does not — partly because the previous
+// attempt to gate one was wrong (see SDNFabrics), and partly because the
+// real 9.2 enum contains a type vnprox itself rejects: "faucet" is
+// accepted by real PVE zone create and is absent from
+// internal/change.validSdnZoneTypes. That gap is vnprox's, not this
+// mock's, and it is carded rather than papered over here.
+func (p PVEVersionProfile) SupportsSDNFabricsAPI() bool { return p.SDNFabrics }
 
-// ErrSDNZoneTypeUnsupported is returned by ValidateSDNZoneType (and
-// surfaced as the mock HTTP server's 400 response body) when a zone type
-// this profile does not support is requested.
-var ErrSDNZoneTypeUnsupported = errors.New("pvemock: sdn zone type unsupported on this PVE version")
+// ErrSDNFabricsUnsupported is returned (and surfaced as the mock HTTP
+// server's PVE-shaped 501 response body) when the /cluster/sdn/fabrics
+// family is requested from a profile that predates it. 501 rather than 404
+// because that is what real PVE answers for an API path its running
+// version does not implement.
+var ErrSDNFabricsUnsupported = errors.New("pvemock: sdn fabrics api unsupported on this PVE version")
+
+// fabricsUnsupportedError renders ErrSDNFabricsUnsupported with the
+// requesting profile named, so a failing check never has to infer which
+// version answered.
+func (p PVEVersionProfile) fabricsUnsupportedError() error {
+	return fmt.Errorf("%w: /cluster/sdn/fabrics needs PVE 9.0 or later; this mock server is modeling PVE %s",
+		ErrSDNFabricsUnsupported, p.Version)
+}

@@ -1,38 +1,34 @@
 package pvemock
 
 import (
-	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 )
 
 // compat_server.go (T-2103) wraps a normal Server with the one
-// version-gated behavior compat_versions.go currently models (SDN Fabric
-// zone types). It is a new file, not an edit to server.go/sdn.go: every
-// existing pvemock test and consumer keeps talking to the
-// version-independent NewServer exactly as before, and this wrapper only
-// engages for callers that explicitly ask for a version profile.
-
-// zoneTypeBody is the subset of an SDN zone create/update request body this
-// wrapper needs to read. SDNZoneSpec.Type carries json:"type"
-// (types.go); the zone id itself is irrelevant here.
-type zoneTypeBody struct {
-	Type string `json:"type"`
-}
+// version-gated behavior compat_versions.go currently models: whether the
+// /cluster/sdn/fabrics API family exists. It is a new file, not an edit to
+// server.go/sdn.go: every existing pvemock test and consumer keeps talking
+// to the version-independent NewServer exactly as before, and this wrapper
+// only engages for callers that explicitly ask for a version profile.
+//
+// Until 2026-08-16 this wrapper gated SDN *zone types* instead
+// ("openfabric"/"ospf" rejected below PVE 9.0). Hardware disproved that
+// model — see PVEVersionProfile.SDNFabrics for the capture and the
+// reasoning. The gate now sits on the surface the feature actually has.
 
 // NewCompatServer wraps NewServer(f, opts...) with profile's version-gated
-// SDN zone-type enforcement: a POST to create a zone, or a PUT to update
-// one, naming a zone `type` that profile.ValidateSDNZoneType rejects gets a
-// PVE-shaped 400 before it ever reaches the underlying Server — mirroring
-// how real PVE would reject a zone type its own running version doesn't
-// know about, at the same request. Every other request passes through to
-// base unmodified.
+// SDN Fabrics enforcement: any request at or below /cluster/sdn/fabrics
+// gets a PVE-shaped 501 on a profile that predates the family, and is
+// answered by this wrapper on a profile that has it — the base Server has
+// no fabrics routes of its own, and modeling fabric *contents* is T-3101's
+// work, not this file's. Every other request passes through to base
+// unmodified.
 //
 // The returned handler also sets CompatVersionHeader on every response
-// (including the ones it rejects itself), so a test or an external caller
-// can always confirm which profile actually answered.
+// (including the ones it answers or rejects itself), so a test or an
+// external caller can always confirm which profile actually answered.
 func NewCompatServer(f *Fixture, profile PVEVersionProfile, opts ...Option) http.Handler {
 	base := NewServer(f, opts...)
 	return &compatServer{base: base, profile: profile}
@@ -43,49 +39,45 @@ type compatServer struct {
 	profile PVEVersionProfile
 }
 
-// sdnZonesPath and sdnZonePathPrefix match server.go's own route
-// registrations (buildRouter: api.Post("/cluster/sdn/zones", ...),
-// api.Put("/cluster/sdn/zones/{zone}", ...)) under the shared "/api2/json"
-// prefix.
-const (
-	sdnZonesPath      = "/api2/json/cluster/sdn/zones"
-	sdnZonePathPrefix = sdnZonesPath + "/"
-)
+// sdnZonesPath matches server.go's own route registration (buildRouter:
+// api.Post("/cluster/sdn/zones", ...)) under the shared "/api2/json"
+// prefix. It is no longer gated — it is kept because the package's tests
+// post ordinary zones through it to prove this wrapper stays additive.
+const sdnZonesPath = "/api2/json/cluster/sdn/zones"
+
+// sdnFabricsAllPath is the one fabrics read this wrapper answers with a
+// body. Every other path under SDNFabricsPath is a real route on PVE 9
+// that this mock does not model yet; it answers those 501 on every
+// profile, so a caller can never mistake "modeled as absent" for
+// "supported and empty".
+const sdnFabricsAllPath = SDNFabricsPath + "/all"
 
 func (s *compatServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(CompatVersionHeader, s.profile.Version)
 
-	gatesZoneType := (r.Method == http.MethodPost && r.URL.Path == sdnZonesPath) ||
-		(r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, sdnZonePathPrefix))
-	if !gatesZoneType {
+	if r.URL.Path != SDNFabricsPath && !strings.HasPrefix(r.URL.Path, SDNFabricsPath+"/") {
 		s.base.ServeHTTP(w, r)
 		return
 	}
 
-	raw, err := io.ReadAll(r.Body)
-	_ = r.Body.Close()
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "reading request body: "+err.Error())
+	if !s.profile.SupportsSDNFabricsAPI() {
+		writeError(w, http.StatusNotImplemented, s.profile.fabricsUnsupportedError().Error())
 		return
 	}
-	r.Body = io.NopCloser(bytes.NewReader(raw))
 
-	var body zoneTypeBody
-	// A zone update (PUT) legitimately omits `type` (PVE's PUT merges,
-	// same as every other PUT this mock serves — see README.md's curl
-	// walkthrough step 3); an empty/absent type is not this wrapper's
-	// concern, and json.Unmarshal leaves body.Type == "" for it, which
-	// ValidateSDNZoneType always accepts (fabricZoneTypes has no ""
-	// entry). A malformed body is left for the underlying handler's own
-	// decodeRequest to reject with its normal error, not this wrapper's.
-	if len(raw) > 0 {
-		_ = json.Unmarshal(raw, &body)
+	if r.Method == http.MethodGet && r.URL.Path == sdnFabricsAllPath {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"data":`+sdnFabricsAllResponse+`}`)
+		return
 	}
-	if body.Type != "" {
-		if verr := s.profile.ValidateSDNZoneType(body.Type); verr != nil {
-			writeError(w, http.StatusBadRequest, verr.Error())
-			return
-		}
-	}
-	s.base.ServeHTTP(w, r)
+
+	// A fabrics path this mock has not modeled, on a profile that does have
+	// the family. Answering 501 with a message that says which case this is
+	// keeps it distinguishable from the version gate above: a check that
+	// starts exercising fabric CRUD should fail loudly here rather than
+	// read a silence as success.
+	writeError(w, http.StatusNotImplemented,
+		"pvemock: PVE "+s.profile.Version+" has /cluster/sdn/fabrics, but this mock models only "+
+			sdnFabricsAllPath+"; fabric CRUD is not modeled yet (T-3101)")
 }
