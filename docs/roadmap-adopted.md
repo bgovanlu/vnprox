@@ -1,6 +1,12 @@
 # Arc 5 — Adoptable, not just proven
 
-**Status: planned 2026-08-10.** The four arcs before this one are described in
+**Status: shipped, cut as `v3.5.0` on 2026-08-13** (planned 2026-08-10). All 25 cards across
+phases 25–28 landed; `T-2505` shipped with two acceptance criteria recorded as **not met** rather
+than faked closed — one spec remains quarantined (`web/e2e/quarantine.json`, `T-2505-followup-01`,
+**expiry 2026-09-15**) and `--repeat-each=2` still fails. The arc after this one,
+[`roadmap-earned.md`](roadmap-earned.md) (Arc 6, Phases 29–33), is active.
+
+The four arcs before this one are described in
 [`roadmap.md`](roadmap.md) (Phases 0–7, v1.0), [`roadmap-next.md`](roadmap-next.md) (8–12, v2.0),
 [`roadmap-universal.md`](roadmap-universal.md) (13–17, v3.0) and
 [`roadmap-proven.md`](roadmap-proven.md) (18–21, v3.1 → v4.0). Phases 22 (online help), 23

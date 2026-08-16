@@ -10,8 +10,12 @@ networking tool for Proxmox** — one pane of glass where you *see*, *understand
 
 The arc after this one — Phases 13–17, v2.1 → v3.0, the *universal* networking tool — lives in
 [`roadmap-universal.md`](roadmap-universal.md); it too is shipped, complete as of `v3.0.4`. The
-fourth arc — Phases 18–21, v3.1 → v4.0, hardware validation, operability, and distribution —
-lives in [`roadmap-proven.md`](roadmap-proven.md) and is proposed, not started.
+fourth arc — Phases 18–21, hardware validation, operability, and distribution — lives in
+[`roadmap-proven.md`](roadmap-proven.md); **it too is shipped, cut as `v4.0.0` on 2026-08-14**
+(its `v3.1`/`v3.2`/`v3.3` version plan was never tagged — phases 18 and 19 landed inside the
+`v3.0.x` line and Arc 5 took `v3.5.0`). Arc 5 — Phases 25–28, [`roadmap-adopted.md`](roadmap-adopted.md)
+— is shipped as `v3.5.0`, and **Arc 6, [`roadmap-earned.md`](roadmap-earned.md) (Phases 29–33,
+v4.1 → v5.0), is active**.
 
 Inputs: the Post-1.0 (P2) backlog in `docs/roadmap.md`, the gaps flagged at T-607, and field
 feedback since v1.0 (Phase 7's origin). Every item below either extends a feature already in

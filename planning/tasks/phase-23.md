@@ -167,3 +167,25 @@ IPAM writes).
 
 What this phase does instead is name the exact command for each condition in the
 finding's remediation text, so the operator runs it knowing precisely why.
+
+---
+
+## Phase 23 — delivery record (2026-08-06)
+
+| Card | State | Note |
+|---|---|---|
+| `T-2301` | ● Shipped | `internal/certs` inventory: a local pmxcfs directory walk (no peer fan-out needed — the reasoning the phase premise gives), paths built only from a fixed filename allowlist, no raw-key-bytes field on the certificate type |
+| `T-2302` | ● Shipped | `cert` finding family: expiry, name coverage, chain to the cluster CA, key strength, missing/unreadable certificates — each names the exact PVE command that fixes it |
+| `T-2303` | ● Shipped | Closes `T-1906-bug-01` for real, not just reports it: peers are now verified against the PVE node name where the certificate covers it (still dialling by IP, still pinning the cluster CA), so a stale IP-SAN no longer fails every peer closed at once. `cert_san_mismatch` now raises at startup instead of surfacing as an opaque handshake error later. Three properties held by adversarial tests (CA pin still enforced; candidate names come from PVE's node name, not the presented cert; an FQDN candidate must be rooted at the node name) |
+| `T-2304` | ● Shipped | `GET /certs` API and `vnproxctl certs`; the CLI reads the same pmxcfs data with the daemon down |
+| `T-2305` | ● Shipped | Settings → Certificates screen, plus the required help topic (phase 22's coverage gate enforces it) |
+
+All five cards landed in one squash commit (`d919ecc`, 2026-08-06: "certs: cluster certificate
+management, and fix pinned peer TLS against a stale SAN (T-2301..T-2305)"), merged the same day
+(`6c0957e`), and are described together in `CHANGELOG.md`'s `v3.5.0` entry ("Certificate
+management for the cluster") and the `T-1906-bug-01` fix note directly beneath it.
+`docs/project-status.md` §2 records "23 — Certificate management … 5/5 ● Shipped." No commit
+message or doc consulted separates the five cards' fates from one another, so this table reflects
+one bundled delivery rather than five independently-verified ones — a distinction worth naming
+even though the evidence for all five points the same way. Certificate renewal/reissue is
+deliberately out of scope (see above), not a card this phase left undone.

@@ -164,3 +164,24 @@ phase did not do. The gate makes no claim about it either way.
 - `T-2202-followup-02` — field-level help in the entity editors, per
   `docs/features/change-management.md` §5. Consider whether the gate should grow
   a field-coverage dimension, or whether that belongs to the editors' own tests.
+
+---
+
+## Phase 22 — delivery record (2026-08-05)
+
+| Card | State | Note |
+|---|---|---|
+| `T-2201` | ● Shipped | Help panel (F1 / top-bar Help / per-panel `?`), full-text search, See-also links, Back — bundled into the SPA, no new API surface (commit `4f88325`) |
+| `T-2202` | ● Shipped | Topics registered across `web/src/help/content/{pages,panels,concepts,platform}.ts`, each citing the repo doc it was written from (`docRef`). **81 as counted at 2026-08-16**, not the figure at ship time — the registry has grown since, so recount rather than quoting this number. Covers the change engine, commit-confirm, protected interfaces, drift, findings, permissions, read-only mode, cluster awareness, every routed screen, and the v2.0/v3.0 opt-ins (federation, AI operators, plugins, tenants, HA, switch push, embeds, OIDC, PBS) |
+| `T-2203` | ● Shipped | `web/src/help/coverage.test.ts` derives the screen inventory from `App.tsx`/`NavRail.tsx` rather than a hand-maintained list, and is verified by mutation (deleting the `/ipam` mapping, adding an unmapped route, typoing a `<HelpAnchor topic>` each fail the suite naming the offender), not merely by passing |
+| `T-2204` | ● Shipped | Screen- and panel-level entry points wired per the coverage gate above; six panel anchors placed at launch (see the followups below for the rest) |
+| `T-2205` | ● Shipped | Docs and gate wired together; `make check` green at ship time (216 files / 1492 tests) |
+
+All five cards landed in one commit (`4f88325`, 2026-08-05, tagged into the tree ahead of any
+version bump as `3.0.4+40+g4f88325`) per this file's own `## Status` section above, and are
+folded into the `v3.5.0` release note (`CHANGELOG.md`, "Online help, on every screen") and
+`docs/project-status.md` §2 ("22 — Online help … 5/5 ● Shipped"). The scope boundary is explicit,
+not a gap found later: "100% coverage" means every routed screen and placed panel anchor, not
+every form field — field-level help is `T-2202-followup-02`, carried forward (with
+`T-2202-followup-01`, the remaining panel anchors) into `T-3006` in `docs/roadmap-earned.md`. No
+card in this phase is unverified or contradicted by any other source consulted.

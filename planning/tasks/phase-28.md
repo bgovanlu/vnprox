@@ -241,3 +241,27 @@ configure one, so the capability is invisible to the people it was built for.
 5. No apply path is reachable, inherited from `T-2705`'s compile-time guarantee and re-asserted
    here.
 6. Prompt content and answers are excluded from logs and support bundles by default.
+
+---
+
+## Phase 28 — delivery record (2026-08-13)
+
+| Card | State | Note |
+|---|---|---|
+| `T-2801` | ● Shipped | `vnproxd --demo` runs the whole product without a Proxmox cluster; `install.sh` gained real signature verification with no way to turn it off (`6f8b284`) |
+| `T-2802` | ◐ Partial | `vnproxd --demo --public-demo` (the edge that refuses every write, session isolation, rate caps) and the guided tour are built and tested (`bf3a7fa`). The card's own title is "**Hosted** read-only demo": there is no domain, object storage, deploy target, or CI budget to actually run one — stated in `docs/features/demo-mode.md`'s own "Known gaps" and in `docs/project-status.md` §6.4 as ◐. Rescheduled (the instance) as `T-3303` |
+| `T-2803` | ◐ Partial | The signed-index format and publisher tooling shipped (`db69c6c`, `1308df0`) — same shape as `T-2104`'s registry-capability half. But the card's title is "**Hosted** signed registry", and, exactly as with `T-2802`, no instance is hosted: no domain, no object storage, no publish job (`docs/hub-registry.md`). **Noting a real inconsistency rather than resolving it quietly**: `docs/project-status.md` §6.4 marks this row plain `● Shipped` despite its own note text describing the identical gap it marks `T-2802` ◐ for one row above — I've scored it ◐ here for consistency with `T-2802` and with `T-2104`'s ◐ in `docs/status-matrix.md`, but the source doc itself is not internally consistent on this point. Rescheduled (the instance) as `T-3303` |
+| `T-2804` | ● Shipped | Incident mode stitches diagnosis, capture, findings and flows into one timeline; stores only the window plus the operator's own work (`30fea09`) |
+| `T-2805` | ● Shipped | Advisory entity locks and multi-user presence (`f34046e`, `64e938d`). Node-local: a peer-API fan-out for cross-node presence is a stated, unfilled gap (matches `docs/project-status.md` §6.4), absorbed into `T-3201` |
+| `T-2806` | ● Shipped | Map annotation layer (`173d616`) |
+| `T-2807` | ● Shipped | Scheduled digest reports, delivered through existing alert targets, under a stated 200-byte bound for a quiet period, deltas always against the previous digest (`ea9a379`). The HTTP route (`GET`/`PUT /digest/schedule`) landed in a follow-up commit (`4968bf3`) after the card's first pass — no screen yet, the schedule is set through the API |
+| `T-2808` | ● Shipped | In-app assistant panel calling the existing MCP read tools; every answer carries a citation or is not rendered; no backend configured by default and nothing is sent anywhere in that state (`f60f825`) |
+
+Six of eight cards shipped cleanly, each with its own commit dated 2026-08-11 through
+2026-08-13, corroborated by `CHANGELOG.md`'s `v3.5.0` entry. The two marked partial here
+(`T-2802`, `T-2803`) both ship the mechanism their card describes and both fall short of the word
+"hosted" in their own title for the identical reason — no infrastructure was ever stood up to run
+one — which is also the reason `T-2104` (phase 21) gets the same ◐. `docs/project-status.md`
+§6.4 already carries this exact judgment for `T-2802`; this record extends it to `T-2803` and
+says plainly where the source documents disagree with each other rather than picking a side
+silently.

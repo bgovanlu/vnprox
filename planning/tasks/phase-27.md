@@ -203,3 +203,23 @@ segmentation control 1.2".
    available date, not a partial report.
 6. Adding a check to the codebase without mapping it does not silently degrade any control — a
    test asserts the unmapped-check list is reported rather than ignored.
+
+---
+
+## Phase 27 — delivery record (2026-08-11)
+
+| Card | State | Note |
+|---|---|---|
+| `T-2701` | ● Shipped | `[gitsync]` (remote, ref, path); opens a changeset when the repo and the cluster disagree (`3e4ef09`) |
+| `T-2702` | ● Shipped | `POST /changesets/{id}/propose` closes the loop the other direction — an applied changeset proposes itself back as a pull request against the spec repo (`a4f00bb`) |
+| `T-2703` | ● Shipped | `POST /drift/{id}/restore-intent` stages a changeset bringing the cluster back to spec, plus the reconcile-by-adopting-drift path — two explicit actions, no silent auto-reconciliation (`0ad45fe`) |
+| `T-2704` | ● Shipped | `GET /topology/diff?from=<ts\|snapshotId>&to=<ts\|snapshotId\|now>`; a follow-on commit (`424d6d2`) gates the card's own stated scope limit at the code level instead of leaving it only documented (`46c7ed2`) |
+| `T-2705` | ● Shipped | MCP tools that let an AI operator stage a changeset it structurally cannot apply — a compile-time guarantee, not a policy (`3213ef8`) |
+| `T-2706` | ● Shipped | One general compliance profile mapping control IDs to checks/policies/posture factors; a control with no mapped evidence reports `unmapped`, never `pass`. Explicitly the format, not a certification claim (`1b7f4c7`) |
+
+All six cards have their own commit (`3e4ef09`, `a4f00bb`, `0ad45fe`, `46c7ed2`, `3213ef8`,
+`1b7f4c7`, 2026-08-10 through 2026-08-11), each also has its own merge commit into `main`, and
+`CHANGELOG.md`'s `v3.5.0` entry and `docs/project-status.md` §6.4 corroborate all six as shipped
+with no discrepancy between the two. Nothing in this phase's own text, the changelog, or the
+status docs records a card as partial or deferred — this is the one phase of the six covered by
+this pass where every card's evidence agreed cleanly.

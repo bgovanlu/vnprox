@@ -241,7 +241,11 @@ the outcome either way.
 - Components: function components only; server state via TanStack Query only (no fetch in components); canvas state in zustand.
 - Testing: Vitest + Testing Library on logic-bearing components (drawer, validators display, simulator result rendering); Playwright smoke suite (P6) against `make dev` + mock PVE.
 
-  **`web/e2e/` runs in CI and is BLOCKING (T-1806-bug-01 and T-2108, both closed 2026-08-07).**
+  **`web/e2e/` is wired into the gate and is BLOCKING (T-1806-bug-01 and T-2108, both closed
+  2026-08-07).** Read "CI" throughout this document as "the gate": the GitHub Actions workflows
+  have been `disabled_manually` since 2026-08-13 (Actions billing exhausted), so the jobs described
+  below are executed by `scripts/ci-local.sh` on the dev host and by `make check`/`make e2e`, not
+  on push.
   For three arcs the Playwright suite was run by nothing: no `make` target, no CI job. Task reports
   across those arcs cite passing e2e specs as evidence, and none of those claims had been
   re-checked since the day it was written.
@@ -337,7 +341,13 @@ the outcome either way.
 
 ### Workflow definitions (GitHub Actions)
 
-`ci.yml` runs five jobs on every PR and push to `main`:
+> **These workflows do not currently run.** `CI`, `Packaging matrix` and `Release` were set to
+> `disabled_manually` on 2026-08-13 after GitHub Actions billing was exhausted on 2026-08-11.
+> The job definitions below are still accurate as *definitions*, and `scripts/ci-local.sh`
+> executes all seven of them sequentially on the dev host — that is the gate that actually runs.
+> Nothing runs on push.
+
+`ci.yml` defines five jobs, nominally on every PR and push to `main`:
 
 | Job | What it does | Required? |
 |---|---|---|

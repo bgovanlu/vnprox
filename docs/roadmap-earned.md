@@ -24,7 +24,7 @@ carried"). There is no other backlog.
 |---|---|---|
 | **Truth** | The shipped CSP (`worker-src 'none'; manifest-src 'none'`, `internal/api/middleware.go:84`) predates T-2005 and blocks service-worker registration and the manifest — **the v4.0.0 PWA/push feature cannot work in a production browser**. Embed views are similarly dead under global `frame-ancestors 'none'`. Both fail safe; neither works as documented. | `internal/api/middleware.go:70-86` |
 | **Safety** | `/api/peer/host/*` writes `/etc/network/interfaces` and reloads with **no safety validation, no interlocks, no audit row** on the receiving side (`internal/peer/server.go:946`). `read_only = true` does not constrain bearer tokens. Hub install `exec`s a registry-supplied endpoint string, and `trustUnsigned` is a request field. | security audit §b1–b3 |
-| **Visibility** | **~19 backend feature areas have zero frontend client** (gitsync, spec import, policies, compliance, digests, webhooks, tokens, HA, doctor-live, failsim, WAN, capacity, PBS, QoS, tenant approval, SR-IOV, canary — which also returns 501 by default). For a product whose identity is "visual", a headless feature is half-shipped. | features audit §b1 |
+| **Visibility** | **~19 backend feature areas have zero frontend client** (gitsync, spec import, policies, compliance, digests, webhooks, tokens, HA, doctor-live, failsim, WAN, capacity, PBS, QoS, tenant approval, SR-IOV, canary). For a product whose identity is "visual", a headless feature is half-shipped. *(The audit also claimed canary apply "returns 501 by default"; that was re-checked against the code on 2026-08-16 and is false — see the `T-3005` note in Phase 30.)* | features audit §b1 |
 | **Coverage** | PVE 9's SDN Fabrics (`openfabric`/`ospf`) are **not modeled at all** — the compat matrix gates on them but no user can create one. SDN controllers are a string field, not objects. VNet-scope firewall (PVE 8.2+) is unmodeled. README promises "**all** Proxmox networking". | `internal/change/validate_schema.go:127` |
 | **Proof** | **127 open hardware-validation items vs 15 validated (~11%)**, everything validated from one single-node box. The blocked register (T-1803) that Arc 4 named as the authoritative ledger was never written. Commit-confirm — the product's central safety claim — has never been observed self-healing on real iron (T-1804). | `planning/reports/needs-hardware-validation.md` |
 | **Public existence** | CI disabled (billing), a `v*` tag publishes nothing, repo private, docs site not enabled, no security-disclosure contact, no apt repo host, no hosted registry, no demo instance, no Terraform/Ansible repos, forum announcement still a draft. External consumers: **0**. | `CHANGELOG.md:146-158`, `docs/README.md:11-19` |
@@ -163,11 +163,15 @@ zero `web/src` clients) and gives them their screens, wired to the routes that a
 these are assembly cards, not design-from-scratch cards. `docs/status-matrix.md` marks most of
 these GUI `●` today; that column becomes true rather than aspirational.
 
-**`T-3005`** is called out separately because it is not only headless — staged/canary apply
-returns **501 "not available on this deployment" by default** (`internal/api/changesets.go:578`)
-while `docs/features.md:54` lists it as shipped P0. Implement the default path (ordering the
-existing fan-out, per the Arc 5 invariant), surface it in the changeset review screen, and add
-the rollout-state view.
+**`T-3005`** is called out separately because staged/canary apply is headless while
+`docs/features.md:54` lists it as shipped P0. **Correction, 2026-08-16 (T-2906):** the audit that
+produced this card said the route "returns 501 by default" (`internal/api/changesets.go:578`).
+**That is wrong, and the card must not be implemented against it.** The 501 is behind a type
+assertion (`svc.(StagedApplyService)`) and fires only for a changeset service that does not
+implement `ApplyStaged` — a test-double escape hatch. The production wiring injects
+`*change.Service`, which implements all three staged-apply methods (`internal/change/apply.go:92`),
+so the backend works. The real gap is **UI only**: surface staged apply in the changeset review
+screen and add the rollout-state view. Scope the card to that.
 
 **`T-3006`** absorbs `T-2202-followup-01` (20+ help topics with no `?` anchor at their own
 panel), `T-2202-followup-02` (field-level inline help in entity editors), and the deliberate

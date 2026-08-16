@@ -8,14 +8,27 @@
   - [Deployment guide](deployment.md)
   - [Feature index](features.md)
 
+- **Feature specs**
+  - [Topology](features/topology.md)
+  - [Change management](features/change-management.md)
+  - [SDN](features/sdn.md)
+  - [IPAM](features/ipam.md)
+  - [Firewall](features/firewall.md)
+  - [Monitoring](features/monitoring.md)
+  - [LLDP discovery](features/lldp-discovery.md)
+  - [Blueprints](features/blueprints.md)
+  - [Demo mode](features/demo-mode.md)
+
 - **Reference**
   - [Datasheet](datasheet.md)
   - [Architecture](architecture.md)
   - [Data model](data-model.md)
   - [API](api.md)
   - [Security](security.md)
+  - [Security verification](security-verification.md)
   - [PVE compatibility](compatibility.md)
   - [Performance](performance.md)
+  - [Development](development.md)
 
 - **Community**
   - [Support](support.md)
@@ -28,6 +41,15 @@
 
 - **Project**
   - [Status](project-status.md)
-  - [Roadmap](roadmap.md)
-  - [Roadmap — Arc 6 (active)](roadmap-earned.md)
+  - [Status matrix (full audit grid)](status-matrix.md)
   - [Changelog](../CHANGELOG.md)
+  - [Licence (Apache-2.0)](../LICENSE)
+
+- **Roadmaps**
+  - [Roadmap — Arc 6, "Earned" (active)](roadmap-earned.md)
+  - [Arc 1 — core product (shipped)](roadmap.md)
+  - [Arc 2 — beyond the cluster (shipped)](roadmap-next.md)
+  - [Arc 3 — the open platform (shipped)](roadmap-universal.md)
+  - [Arc 4 — proven in production (shipped)](roadmap-proven.md)
+  - [Operator leverage — phase 24, outside the arcs (shipped)](roadmap-leverage.md)
+  - [Arc 5 — adoptable, not just proven (shipped)](roadmap-adopted.md)

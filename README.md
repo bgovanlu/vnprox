@@ -8,15 +8,26 @@ It runs as a single service on your PVE nodes and serves its UI at **`https://<n
 
 ## Status
 
-**Shipped through v3.5.0** ([`CHANGELOG.md`](CHANGELOG.md)), across five implementation arcs — the
-core product ([`planning/implementation-plan.md`](planning/implementation-plan.md)), multi-cluster
-federation ([`planning/implementation-plan-next.md`](planning/implementation-plan-next.md)), the
-open platform ([`planning/implementation-plan-universal.md`](planning/implementation-plan-universal.md)),
-proving it on real hardware ([`planning/implementation-plan-proven.md`](planning/implementation-plan-proven.md),
-the arc this document is itself a small part of — its last phase, "ecosystem and reach"), and
-making it adoptable by someone other than its own developers
+**Shipped through v4.0.0** (2026-08-14, [`CHANGELOG.md`](CHANGELOG.md)), across five implementation
+arcs — the core product ([`planning/implementation-plan.md`](planning/implementation-plan.md)),
+multi-cluster federation ([`planning/implementation-plan-next.md`](planning/implementation-plan-next.md)),
+the open platform ([`planning/implementation-plan-universal.md`](planning/implementation-plan-universal.md)),
+proving it on real hardware ([`planning/implementation-plan-proven.md`](planning/implementation-plan-proven.md)
+— its last phase, "ecosystem and reach", is what made this release 4.0), and making it
+adoptable by someone other than its own developers
 ([`planning/implementation-plan-adopted.md`](planning/implementation-plan-adopted.md)) — per the
-phased task cards executed by AI sub-agents.
+phased task cards executed by AI sub-agents. Three phases sit outside that numbering and shipped
+in the v3.5.0 line: online help, certificate management, and operator leverage
+([`docs/roadmap-leverage.md`](docs/roadmap-leverage.md)).
+
+**Arc 6, [`docs/roadmap-earned.md`](docs/roadmap-earned.md) ("Earned"), is now active**, and it
+exists because of what an audit on 2026-08-15 found: vnprox's distance from this README is not
+missing features but **claims running ahead of truth**. The shipped v4.0.0 PWA, for one, could not
+register its own service worker in any real browser — the CSP refused it. Arc 6 adds no headline
+feature; every card closes a verified gap between what is written here and what a user actually
+gets. Two things v4.0.0 counted as delivered were not — localization, and the *hosting* of the
+signed apt repository — and both are named and rescheduled there rather than quietly carried.
+
 [`docs/project-status.md`](docs/project-status.md) has the current, precise delivery breakdown;
 this is also where "feature-complete" and "validated on real hardware" diverge most —
 [`planning/reports/needs-hardware-validation.md`](planning/reports/needs-hardware-validation.md)

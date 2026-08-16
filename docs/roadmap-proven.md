@@ -1,6 +1,19 @@
 # Proven-in-production roadmap — v3.1 → v4.0
 
-**Status: proposed, not started.** The three arcs before this one are shipped:
+**Status: shipped, cut as `v4.0.0` on 2026-08-14** — see `CHANGELOG.md`'s `[4.0.0]` entry.
+
+> **Two corrections to "shipped" — found by the 2026-08-15 audit, written down here 2026-08-16
+> (`T-2906`) rather than left implied.** The `v3.1 → v4.0`
+> version plan in this document's title was never followed literally: **`v3.1`, `v3.2` and `v3.3`
+> were never tagged.** Phases 18 and 19 landed inside the `v3.0.x` line and Arc 5 took `v3.5.0`,
+> so the phase-to-version map here was always a plan rather than a ledger.
+> And **two cards this arc counted as delivered were not**: `T-2006` (localization) and the
+> *hosting* half of `T-2102` (signed apt repository — the tooling and signing pipeline shipped,
+> the published repository does not exist). Both are rescheduled into Arc 6 as `T-3106` and
+> `T-3301` respectively; see [`roadmap-earned.md`](roadmap-earned.md). Arc 4's real count is
+> **24 of 26 cards**, not 26.
+
+The three arcs before this one are shipped:
 `roadmap.md` (Phases 0–7, v1.0) made vnprox the visual network manager for a PVE cluster;
 `roadmap-next.md` (Phases 8–12, v2.0) made it the all-in-one visual networking tool for
 Proxmox; `roadmap-universal.md` (Phases 13–17, v3.0) made it the universal networking tool

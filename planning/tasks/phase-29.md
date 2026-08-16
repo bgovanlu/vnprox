@@ -370,13 +370,11 @@ broken under the syscall filter" suspicion was **refuted by inspection**:
 config-gated `trustUnsigned` with startup WARN; signed-artifact
 verification untouched and re-asserted.
 
-**T-2906 — partial at wave 2.** `project-status.md` + `status-matrix.md`
-rewritten for v4.0.0 (agent partial, reviewed; one overstated cell — Arc 4
-"26/26" — corrected to 24/26 with the two reschedules named). Remaining
-scope (datasheet, README, roadmap status lines, index reconciliation,
-deployment upgrade section, followup report files, phase delivery records
-for 21/22/23/26/27/28) is open and tracked; the CI-claims corrections in
-`security.md`/`security-verification.md` are also still open.
+**T-2906 — partial at wave 2, closed at wave 3 (2026-08-16).**
+`project-status.md` + `status-matrix.md` were rewritten for v4.0.0 at wave 2
+(agent partial, reviewed; one overstated cell — Arc 4 "26/26" — corrected to
+24/26 with the two reschedules named). Wave 3 closed the remainder; see the
+wave-3 record below.
 
 ---
 
@@ -427,3 +425,86 @@ transition that has already happened, so a longer wait does not make it arrive.
 investigation silently died on port collisions with a leftover manual probe stack and were
 briefly mistaken for real failures. When A/B-ing e2e behavior, always assert
 `grep -c "already used"` on the run log before believing its verdict.
+
+---
+
+## Delivery record — wave 3 (2026-08-16): T-2906 closed
+
+The card's remaining scope was split: a Sonnet sub-agent took the mechanical
+half (six phase delivery records, the two missing follow-up report files) on a
+strict file allowlist with the gate withheld; the orchestrator took the
+truth-critical half and independently re-verified every claim the agent made
+before committing.
+
+**Shipped in this wave.**
+
+| Scope | Where |
+|---|---|
+| `README.md` status paragraph | v3.5.0 → v4.0.0; Arc 6 named active with the reason it exists; the two undelivered v4.0.0 cards named in the README itself |
+| `docs/datasheet.md` | header 3.0.4 → 4.0.0; every engineering-facts figure **recounted** (below); "Not yet shipped" rewritten; a "Shipped since this row last said otherwise" row added; `/embed/*` frame exception recorded under Security posture |
+| `docs/README.md` + `docs/_sidebar.md` | reconciled to the same link set; Feature specs (9) and Roadmaps (7) sections added; `status-matrix`, `security-verification`, `development`, `hub-registry`, `docs-site`, `apt-repo.md` indexed |
+| `docs/deployment.md` | new "Upgrading a v3.x install to v4.0"; migration list extended 0034 → 0048; the "pre-v3.2 daemon" phrasing replaced (no such tag) |
+| Roadmap status lines | `-next`, `-universal`, `-proven`, `-leverage`, `-adopted` marked shipped with their real cut; `roadmap.md` Arc 6 "proposed" → active/Phase 29 shipped |
+| `CHANGELOG.md` | preamble now maps v3.5.0 → Arc 5 and v4.0.0 → Arc 4 (and says why they are out of document order); a dated correction note under `[4.0.0]`, leaving the entry itself intact |
+| CI claims | `security.md`, `security-verification.md` (×2), `development.md` (×2), `compatibility.md`, `api.md`, `status-matrix.md` legend — all now say the gate is `scripts/ci-local.sh` on the dev host, workflows `disabled_manually` since 2026-08-13 |
+| Delivery records | `planning/tasks/phase-2{1,2,3,6,7,8}.md` |
+| Follow-up reports | `planning/reports/T-2505-followup-0{1,2}.md` |
+
+**Figures that had gone stale by a whole arc**, all recounted from the tree and
+each now naming the file it can be rechecked from: REST surface 186 routes →
+**250 operations over 211 paths**; schema migrations 34 → **48**; automated
+tests 4,058 → **5,358**; Go 138k/113k → **187k/164k** lines; changeset op types
+76 → **65** (`internal/change/op.go`; `internal/change/ifaces` re-declares 23
+of them and adds none); packages with tests 68/73 → **93/102**; e2e 35 specs
+"run by no automated gate" → **41 specs, sharded, one quarantined with a hard
+2026-09-15 expiry**; hardware validation "6 of 123" → **15 of 151**.
+
+**Two defects found while verifying, fixed here rather than filed.**
+
+1. `docs/api.md`'s copy-pasteable conformance invocation was
+   `git clone --branch v3.1.0` — **that tag has never existed**. An integrator
+   following the documented instruction gets a clone failure. Now `v4.0.0`,
+   with the reason inline.
+2. `docs/roadmap-earned.md` claimed staged/canary apply "returns 501 by
+   default" and built card `T-3005` on that premise. **False.** The 501 is
+   behind `svc.(StagedApplyService)` and fires only for a changeset service
+   that does not implement `ApplyStaged`; production injects `*change.Service`,
+   which does (`internal/change/apply.go:92`). The backend works; the gap is
+   UI-only. `T-3005` is rescoped in place, and the audit table carries the
+   correction — an Arc-6 card built on an unverified audit claim is exactly the
+   failure mode this arc exists to end.
+
+**Sub-agent claims I corrected before committing** (all three were the agent's
+own words being more confident than its evidence, not wrong conclusions):
+"no commit ever names `T-2102`" → two commits do, neither an implementation
+(one authored the card, one cites it in passing) — the conclusion stands, the
+stated evidence did not; "`get.vnprox.io` resolves to nothing" → the agent
+never probed DNS, so this is now an evidence-of-absence-in-the-repo claim;
+"72 help topics" → **81** as counted today, now stated with the count method
+so it is recheckable rather than quotable.
+
+**Sub-agent findings I verified and adopted.** `POST /changesets/{id}/break-glass`
+exists on the backend and no `web/src` client ever calls it (T-2604 is
+API-only — confirmed). `T-2803` was marked plain `● Shipped` in
+`project-status.md` §6.4 while its own note text described the identical
+"hosted, but no instance" gap that `T-2802` is marked `◐` for one row above;
+scored `◐` in the phase-28 record with the disagreement named rather than
+silently picking a side. Every commit hash the agent cited (17 checked)
+resolves and its subject matches the claim made about it.
+
+**Also fixed, outside the card's literal list:** `docs/status-matrix.md` still
+described `T-2505-followup-02` as "still open" with the superseded
+missing-invalidation diagnosis. It is fixed as of `v4.0.0` (`da58781`) and the
+root cause was an `undefined` `queryFn` sentinel, not a missing invalidation —
+corrected in place, pointing at the new report file.
+
+**Acceptance.** AC2 verified mechanically (a script diffs the two indexes' link
+sets and asserts every `docs/*.md` and `docs/features/*.md` is a target of at
+least one — zero unreachable, zero broken, the only asymmetries being external
+URLs and the sidebar's self-link). AC3 and AC4 verified by inspection. AC1's
+greps pass, with one deliberate exception recorded here rather than papered
+over: `docs/roadmap-proven.md`'s phase headings still read "→ **v3.1**",
+"→ **v3.2**", "→ **v3.3**", and `roadmap-leverage.md`'s mermaid diagram still
+has a `v3.1 tag` node. Those are historical plan text; both documents now open
+with a prominent never-tagged banner instead of rewriting the plans they
+recorded. AC5 (`make check`) green.

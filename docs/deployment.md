@@ -381,15 +381,15 @@ apt update && apt install vnprox        # per node; any order
 
 ### Supported upgrade path
 
-**Every schema version vnprox has ever shipped (1 through the current latest, 34) can upgrade
+**Every schema version vnprox has ever shipped (1 through the current latest, 48) can upgrade
 directly to current in a single `apt install vnprox` — no intermediate hop through an in-between
 release is ever required.** Schema version 1 (`0001_init.sql`) is the very first release's schema;
 there is no vnprox install older than that, so "how far back is upgrading-directly supported"
 has one answer: **all the way**, for every install that has ever run a real vnprox build.
 `internal/store`'s `TestMigrate_FromEachPriorSchemaVersion` (T-1807) proves this directly rather
 than by induction over intermediate hops: it freezes a database at **each** of schema versions
-0 (a brand-new file, i.e. a fresh install) through 33, seeds every one of them with representative
-rows in that version's own on-disk shape, migrates straight to 34, and asserts — per table, not
+0 (a brand-new file, i.e. a fresh install) through 47, seeds every one of them with representative
+rows in that version's own on-disk shape, migrates straight to 48, and asserts — per table, not
 just "migrate() returned nil" — that every seeded row is still present and correct afterward. A
 second test, `TestMigrate_DestructiveMigrationIsCaught`, injects a synthetic migration that
 deliberately deletes rows and confirms the same assertions notice — evidence the data-preservation
@@ -424,7 +424,7 @@ a pre-upgrade backup of the database is not supported.
   first daemon start at or after the release that introduced them and touch **only** new app-owned
   tables/columns — no existing row from an earlier schema is ever rewritten. This is pinned by
   `internal/store`'s `TestMigrate_FromEachPriorSchemaVersion` (freezes a DB at **every** prior
-  schema version 0 through latest-1, migrates each to the current version — **34** as of this
+  schema version 0 through latest-1, migrates each to the current version — **48** as of this
   writing — and asserts every pre-existing row survives, per table; see "Supported upgrade path"
   above for the full guarantee this test backs).
 - **Every v3.0 platform feature is opt-in / dormant until configured.** A v2.x install that upgrades
@@ -436,6 +436,46 @@ a pre-upgrade backup of the database is not supported.
 - New v3.0 config stanzas (`[mcp]`, `[ha]`, `[hub]`) are optional; omitting them preserves v2.x
   behavior exactly (unknown/absent keys are warnings, not fatals). See the HA section below for the
   **standby-first** sequence an HA pair must follow.
+
+### Upgrading a v3.x install to v4.0
+
+**It is an ordinary package upgrade.** `apt install vnprox` per node, any order. The major version
+number marks the completion of the proven-in-production arc, not an incompatibility: the REST
+contract in `docs/api.md` is unchanged and additive-only, the data model is unchanged, and the
+store migrates forward as it always has. There is no cutover step, no export/import, and no
+config rewrite.
+
+- **Note on version numbering, so the gap is not mistaken for a missing upgrade.** `v3.1`, `v3.2`
+  and `v3.3` were **never tagged**. Phases 18 and 19 shipped inside the `v3.0.x` line and Arc 5
+  took `v3.5.0`, so the phase-to-version map in the roadmap documents has always been a plan
+  rather than a ledger. An install at `v3.0.4` or `v3.5.0` upgrades straight to `v4.0.0`; there is
+  no intermediate release to pass through, and none is missing.
+- **Schema.** The v3.0 → v4.0 line adds migrations `0035_finding_acks` … `0046_push_subscriptions`
+  — finding acknowledgement/mute, alert quiet hours, policy sets, per-stage changeset apply,
+  changeset origin tooling, the two-person rule, incidents, changeset proposals, digest schedules,
+  entity locks, map annotations, and PWA push subscriptions. Each touches only new app-owned
+  tables/columns; no existing row is rewritten. The **Supported upgrade path** guarantee above
+  covers this line like every other: any schema version from 1 upward reaches current in one hop,
+  proven per-version by `TestMigrate_FromEachPriorSchemaVersion`.
+- **Phase 29 (unreleased, on top of v4.0.0)** adds `0047_audit_ip` (a `NOT NULL DEFAULT ''` client
+  IP column on `audit_log`) and `0048_token_expiry` (a nullable `expires_at` on `api_tokens`).
+  Neither is retroactive: existing audit rows keep an empty IP, and **existing API tokens keep no
+  expiry** — the 90-day default applies only to tokens minted after the upgrade.
+- **Every v4.0 feature is opt-in or inert until configured**, same as the arcs before it. An
+  install that changes nothing in `vnprox.toml` behaves exactly as it did on v3.x.
+- **Two config stanzas are new in Phase 29**, both absent by default and both fail-closed when
+  absent: `[server] embed_frame_ancestors` (an empty list, i.e. `/embed/*` is same-origin-only)
+  and `[webhooks]` (`allow_private_targets` / `allow_insecure_targets`, both `false`, so webhook
+  and alert destinations may not resolve to private/loopback/link-local addresses or use plain
+  HTTP). If you already point alert webhooks at an internal address, set
+  `allow_private_targets = true` **before** upgrading, or those destinations will be refused at
+  registration and at dial time. The daemon logs a startup `WARN` naming each relaxation that is
+  in effect.
+- **If you use the mobile PWA, this upgrade is the one that makes it work.** The v4.0.0 CSP still
+  carried `worker-src 'none'; manifest-src 'none'` from before the PWA existed, so a production
+  browser refused the service worker and the manifest outright — installability and push were
+  dead on arrival. Phase 29 fixes it (`T-2901`). After upgrading, force-reload the page once so
+  the browser drops the previously-failed registration.
 
 ## Uninstall
 
@@ -549,7 +589,9 @@ Four refusals, all of them deliberate:
 1. **A running daemon.** Restoring would swap the store file out from under a daemon holding open
    descriptors onto it. Detected two ways — an advisory lock the daemon holds on
    `/var/lib/vnprox/vnprox.db.lock` for its whole lifetime, and a probe of `[server] listen` (which
-   also catches a pre-v3.2 daemon that takes no lock). Either one refuses.
+   also catches an older daemon from before the lock existed — the lock landed inside the v3.0.x
+  line; `v3.1`/`v3.2`/`v3.3` were never tagged, so there is no released version to name here).
+  Either one refuses.
 2. **A store from a newer vnprox.** Forward migration is supported and runs automatically; the
    downgrade direction is refused with a message naming both versions. Install the newer vnprox
    first, then restore. The check is made against the archive's manifest *and* re-made against the

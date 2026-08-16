@@ -12,10 +12,12 @@ Companion documents: [`project-status.md`](project-status.md) (open items, perce
 > new feature areas needs the same mechanical sweep this file's own method requires, re-run
 > against the current tree, which has not been done here — so no new rows were added to §2
 > rather than adding ones with invented cells. §5.11 and §5.4 below are the two places this file
-> *was* updated for Arc 5, both narrowly. **§7 (new, 2026-08-15) is a third, deliberately
-> partial update**: a stub listing of the Arc 5/v4.0 feature areas §2 is missing, with `●/◐/○`
-> marks and a pointer each, not the full 77-row-style re-audit this note above says has not been
-> done.
+> *was* updated for Arc 5, both narrowly. **§7 (added 2026-08-15, filled in 2026-08-16 by `T-2906`)
+> is a third, deliberately partial update**: 40 Arc 5/v4.0 feature areas §2 has no row for, each
+> with one overall `●`/`◐` mark, a mechanically-derived "does a `web/src` client exist" answer,
+> and a pointer — **not** the full eight-column re-audit this note says has not been done. Its
+> closing paragraph carries the finding that only becomes visible once those areas are listed
+> together: ten of them ship a backend an operator cannot reach.
 
 ---
 
@@ -23,7 +25,7 @@ Companion documents: [`project-status.md`](project-status.md) (open items, perce
 
 | Mark | Meaning |
 |---|---|
-| ● | Complete and verified by a gate that runs on every push |
+| ● | Complete and verified by a gate. **"Gate" means `make check`/`make e2e`, run on the dev host via `scripts/ci-local.sh` — see §5.7: no GitHub Actions workflow has run on this repository since 2026-08-13** |
 | ◐ | Implemented and tested, but with a stated limitation or an open follow-up |
 | ○ | Specified, not implemented |
 | — | Not applicable to this feature area |
@@ -103,7 +105,7 @@ Companion documents: [`project-status.md`](project-status.md) (open items, perce
 | 64 | Retention / rotation / compaction | ● | — | ● | ● | ● | ● | — | M | |
 | 65 | Peer-API CA pinning + verify-names | ● | ● | ● | ● | ● | ● | ○ | **V** | CA load + chain validated; name fix mock-tested |
 | 66 | **Certificate management** (new) | ● | ● | ● | ● | ● | ● | ○ | **V** | Validated against real pvecube certs |
-| 67 | **Online help** (new) | ● | ● | — | ● | ● | ● | ◐ | — | Coverage gate enforced on every push |
+| 67 | **Online help** (new) | ● | ● | — | ● | ● | ● | ◐ | — | Coverage gate enforced by `make check` (see the legend note on where the gate runs) |
 | 68 | Onboarding walkthrough | ● | ● | ● | ● | ● | ● | ● | M | |
 | 69 | Keyboard shortcuts + command palette | ● | ● | — | ● | ● | ● | ● | — | |
 | 70 | Responsive / narrow-viewport triage | ● | ● | — | ● | ● | ● | ● | — | |
@@ -236,7 +238,13 @@ Fixed by converting all seven instances to here-strings (no pipe, so no mechanis
 `packaging/test/lib/sigpipe-guard.sh` failing the build if the pattern returns. See
 `planning/tasks/phase-18.md`. **Three consecutive green runner runs (AC3) are still outstanding.**
 
-### 5.3 Hardware validation: 6 of 123 items — the arc's whole premise
+### 5.3 Hardware validation: 15 of 151 items — the arc's whole premise
+
+> **Recount, 2026-08-16 (T-2906).** This heading read "6 of 123" when the sweep was taken at
+> `6c0957e`. Counting the `[x]`/`[ ]` marks in `planning/reports/needs-hardware-validation.md`
+> today gives **15 validated, 136 open, 151 total** — the denominator moves as cards add items
+> (Phase 29's `T-2901` added the PWA install/push items). The ratio, ~10%, is what the prose
+> below is about and it has not materially changed.
 
 | State | Count |
 |---|---|
@@ -365,13 +373,18 @@ the defect list a reader actually checks:
   arrangement, passing alone or in the full serial suite — and the mechanism is unexplained. An
   expired quarantine fails the build, so this either gets re-triaged or starts failing the gate on
   its own by the expiry date.
-- **The guest-interior panel does not refetch after its toggle is enabled**
-  (`T-2505-followup-02`, found by `T-2505`'s two-core reproduction, still open). The panel issues
-  its one `GET .../interior` read before the toggle flips on, gets a `404`, and never invalidates
-  that query when the toggle later turns on — so it keeps showing "could not read this guest's
-  interior" until the tab is remounted. Fast machines rarely see it, which is why the hosted CI
-  runner failed this spec on a commit that passed locally. Frontend cache-invalidation defect,
-  unfixed as of this writing; out of `T-2505`'s scope by design.
+- ~~**The guest-interior panel does not refetch after its toggle is enabled**~~
+  (`T-2505-followup-02`, found by `T-2505`'s two-core reproduction) — **FIXED in `v4.0.0`,
+  commit `da58781` (2026-08-13); the diagnosis above was also wrong.** The symptom is as
+  described: the panel issues its one `GET .../interior` read before the toggle flips on, gets a
+  `404`, and stays showing "could not read this guest's interior" until the tab is remounted.
+  Fast machines rarely see it, which is why the hosted runner failed this spec on a commit that
+  passed locally. But it was **not** a missing cache invalidation — `onSuccess` always invalidated
+  both query keys. The real cause was `useGuestInteriorQuery`'s `queryFn` resolving to
+  **`undefined`** for the expected `interior_not_enabled` 404; TanStack Query v5 treats that as a
+  caller bug, throws `"data is undefined"`, and parks the query in a synthetic `isError` state
+  that no invalidation can clear. The sentinel is now `null`. Full evidence trail:
+  `planning/reports/T-2505-followup-02.md`.
 
 ---
 
@@ -402,4 +415,73 @@ grep -oE '^\- \[[x ]\]' planning/reports/needs-hardware-validation.md | sort | u
 make check ; gh run list --limit 8
 ```
 
-**What this audit does not establish.** It measures presence, structure, and gate state. It does not re-derive whether each feature's *behaviour* is correct — that rests on the 4,058 automated tests, which themselves rest overwhelmingly on `internal/pvemock` rather than on real Proxmox. §5.3 is the honest boundary of everything else in this document.
+**What this audit does not establish.** It measures presence, structure, and gate state. It does not re-derive whether each feature's *behaviour* is correct — that rests on the automated tests (**4,058** at `6c0957e`; **5,358** as recounted 2026-08-16 — see `datasheet.md`), which themselves rest overwhelmingly on `internal/pvemock` rather than on real Proxmox. §5.3 is the honest boundary of everything else in this document.
+
+---
+
+## 7. Arc 5 / v4.0 feature areas §2 does not cover (stub, 2026-08-15; filled in 2026-08-16, T-2906)
+
+§2's 77 rows were swept at `6c0957e` (`v3.0.4`). Phases 20–21 and 24–28 added the areas below and
+§2 has no row for any of them. **This is deliberately a stub, not a re-audit.** It carries one
+overall state mark and a pointer per area — the eight-column backend/GUI/API/help/docs/tests/e2e/HW
+grid is *absent on purpose*, because filling it would mean inventing cells rather than deriving
+them, which is exactly what this document's own method forbids. Re-running the mechanical sweep
+against the current tree is `T-3204`'s to schedule, not this section's.
+
+The one column that *is* derived mechanically, because it can be: **UI** — whether a `web/src`
+client for the area exists at all (`ls web/src/<area>`, `grep -rl` across `*.tsx`). It answers
+"can an operator reach this without curl", which is the specific question
+`docs/roadmap-earned.md`'s Phase 30 was scoped from.
+
+| Area | Card | State | UI | Pointer |
+|---|---|---|---|---|
+| Scheduled automatic config snapshots | `T-2401` | ● | yes | `planning/tasks/phase-24.md` delivery record |
+| Finding acknowledgement and mute | `T-2402` | ● | yes | phase-24 record; `vnprox_findings_acked` metric |
+| Entity change history ("blame") | `T-2403` | ● | yes | `GET /inventory/history?ref=` |
+| Blast-radius preview before apply | `T-2404` | ● | yes | `GET /changesets/{id}/impact` |
+| OpenAPI 3.1 document + completeness gate | `T-2405` | ● | — | `docs/openapi.json`, 250 ops / 211 paths; **no body schemas** — stated in `docs/api.md` |
+| `vnproxctl doctor --live` | `T-2406` | ◐ | — | §2 row 75; two checks still `skip` |
+| Alert quiet hours + digest coalescing | `T-2407` | ● | yes | `web/src/settings/AlertRules.tsx` |
+| Batch-fix findings into one changeset | `T-2408` | ● | yes | phase-24 record |
+| Per-spec e2e store isolation | `T-2409` | ◐ | — | Built, missed 2 of its 4 ACs, parked on a branch — phase-24 second pass |
+| Hardware-validation suite (`vnproxctl verify`) | `T-2501` | ● | — | `docs/deployment.md`; refuses to run against a mock |
+| Record/replay real PVE traffic into fixtures | `T-2502` | ● | — | phase-25 |
+| Opt-in compatibility telemetry | `T-2503` | ● | — | `vnproxctl telemetry`; separate from the mock compat matrix by design |
+| Nightly soak / resource-leak gate | `T-2504` | ● | — | phase-25 |
+| E2E sharding, isolation, flake quarantine | `T-2505` | ◐ | — | **Two ACs explicitly unmet**; one spec quarantined, expiry **2026-09-15** — §5.11, `planning/reports/T-2505-followup-01.md` |
+| Performance regression budget gate | `T-2506` | ● | — | phase-25 |
+| Policy-as-code guardrails at validate | `T-2601` | ● | no | `vnproxctl policy`; **no `web/src` client** |
+| Canary / staged multi-node apply | `T-2602` | ◐ | no | Backend complete and reachable; **API/CLI only** — `T-3005`. The claim that it "returns 501 by default" is false; see that card's note |
+| Finding-triggered auto-rollback | `T-2603` | ◐ | no | API/CLI only — `T-3005` |
+| Two-person rule on protected op classes | `T-2604` | ◐ | partial | The approval gate is enforced in `ReviewApplyScreen.tsx`; **break-glass has no button** — `POST /changesets/{id}/break-glass` is route-only |
+| Post-apply topology preview | `T-2605` | ● | yes | `GET /changesets/{id}/preview` |
+| Git-backed spec sync | `T-2701` | ● | no | `[gitsync]`; **no `web/src` client** |
+| Changeset → pull request | `T-2702` | ● | no | `POST /changesets/{id}/propose`; no UI |
+| Drift-to-git reconciliation | `T-2703` | ● | yes | `POST /drift/{id}/restore-intent` |
+| Point-in-time topology diff | `T-2704` | ● | yes | `GET /topology/diff` |
+| MCP stage-only AI operator surface | `T-2705` | ● | — | Compile-time non-apply guarantee (`internal/mcp/stageonly.go`) |
+| Compliance control mapping | `T-2706` | ● | no | Unmapped controls report `unmapped`, never `pass`; **no `web/src` client** |
+| Demo mode / one-command install | `T-2801` | ● | yes | `vnproxd --demo`; `web/src/demo` |
+| Hosted read-only demo | `T-2802` | ◐ | yes | Edge + tour built; **no instance hosted** — `T-3303` |
+| Hosted signed registry | `T-2803` | ◐ | yes | Format + publisher tooling built; **no instance hosted** — `T-3303`. §6.4 of `project-status.md` marks this `●`; that disagrees with its own note text and with `T-2802`/`T-2104` — see `planning/tasks/phase-28.md`'s record |
+| Incident mode | `T-2804` | ● | yes | `web/src/incidents`, `IncidentsPage.tsx` |
+| Advisory entity locks + presence | `T-2805` | ◐ | yes | Node-local only; cross-node presence fan-out unbuilt — `T-3201` |
+| Map annotation layer | `T-2806` | ● | yes | phase-28 record |
+| Scheduled digest reports | `T-2807` | ◐ | partial | `GET`/`PUT /digest/schedule`; schedule is set through the API, no dedicated screen |
+| In-app assistant over MCP read tools | `T-2808` | ● | yes | `web/src/assistant`; no backend configured by default |
+| PWA CSP / embed frameability | `T-2901` | ● | yes | §2 row 73; `pwa.servable` verify check |
+| Peer host-write validation + audit IP | `T-2902` | ● | — | Migration 0047; `planning/tasks/phase-29.md` |
+| Bearer `read_only` + token expiry | `T-2903` | ● | — | Migration 0048; expiry never retroactive |
+| Hub endpoint containment | `T-2904` | ● | — | `resolvePluginEndpoint`, symlink-escape tested |
+| Hardening punch list | `T-2905` | ● | — | Session sweep, webhook SSRF policy, HTTP timeouts, config 0640 |
+| Documentation truth pass | `T-2906` | ● | — | This section is part of it |
+
+**What this stub says that §2 cannot.** Ten of the 40 areas are `◐`, and the largest single cause
+is not incompleteness — it is unreachability. **Ten areas ship a working backend that an operator
+cannot reach from the product**: six have no `web/src` client at all (`T-2601` policy-as-code,
+`T-2602` canary apply, `T-2603` auto-rollback, `T-2701` git spec sync, `T-2702` changeset→PR,
+`T-2706` compliance mapping), two are reachable only in part (`T-2604`'s break-glass, `T-2807`'s
+schedule), and two are built but have no hosted instance (`T-2802`, `T-2803`). Four of those ten
+are nonetheless marked `●` here, because the card delivered exactly what it promised — the gap is
+the product's, not the card's. That distinction is the whole reason Arc 6's Phase 30 exists, and
+none of it is visible in §2's grid, which predates all of it.

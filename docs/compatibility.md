@@ -66,8 +66,9 @@ hardware capture.
 
 - `internal/apicontract/compat` (`matrix.go`, `checks.go`) drives the checks and produces a
   `Matrix` — one `CellResult` per `(fixture, PVEVersionProfile)` pair in `Cells`.
-- `TestMatrix_MatchesPublishedArtifact` runs on every `go test ./...` (therefore in CI, via `make
-  check` — T-2103 AC1): it regenerates the matrix from scratch each time (real HTTP checks against a
+- `TestMatrix_MatchesPublishedArtifact` runs on every `go test ./...` (therefore in the gate, via
+  `make check` — T-2103 AC1; that gate runs on the dev host via `scripts/ci-local.sh`, not on
+  GitHub Actions, which has been disabled since 2026-08-13): it regenerates the matrix from scratch each time (real HTTP checks against a
   real, in-process compat-wrapped mock server, not a cached fixture) and fails if the result no
   longer matches the committed `docs/compat-matrix.json`. The same run also writes the freshly
   generated result to `var/compat-matrix.json`, version-stamped from `VNPROX_COMPAT_VERSION` if set

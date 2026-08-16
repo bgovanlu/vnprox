@@ -6,7 +6,7 @@
 - For delivery state and open items, see [`project-status.md`](project-status.md).
 - For the per-feature implementation grid, see [`status-matrix.md`](status-matrix.md).
 
-**Priorities** below are historical: **P0** = shipped in v1.0, **P1** = v1.x, **P2** = later. The **Arc** column says which release arc delivered it — 1 (v1.0, phases 0–7), 2 (v2.0, phases 8–12), 3 (v3.0, phases 13–17), 4 (v3.1+, phases 18–23), 5 (phases 25–28, "adoptable, not just proven" — `docs/roadmap-adopted.md`).
+**Priorities** below are historical: **P0** = shipped in v1.0, **P1** = v1.x, **P2** = later. The **Arc** column says which release arc delivered it — 1 (v1.0, phases 0–7), 2 (v2.0, phases 8–12), 3 (v3.0, phases 13–17), 4 (phases 18–23, shipped as v4.0.0 — `v3.1`/`v3.2`/`v3.3` were never tagged), 5 (phases 25–28, "adoptable, not just proven" — `docs/roadmap-adopted.md`).
 
 > **Correction (T-2107, 2026-08-06).** This file previously described only the v1.0 scope and listed five since-shipped capabilities under "explicit non-goals": flow collection, Proxmox Backup Server networking, multi-cluster federation, physical switch config push, and the Prometheus exporter. All five now ship. The non-goals section below has been rewritten to state what is *still* out of scope, and the arcs 2–4 features have been added.
 
@@ -51,9 +51,9 @@
 | Unattended revert for `fw.*`/`sdn.*` via apply-time sealed ticket | P0 | 4 | change-management.md §4 |
 | Policy-as-code guardrails at validate (`deny` blocks, `warn` annotates; declarative, no interpreter) | P0 | 5 | change-management.md §2 |
 | Post-apply topology preview (render the map with a changeset's ops folded in, before applying) | P1 | 5 | change-management.md §3.0 |
-| Canary / staged multi-node apply (hold between stages, `gate: manual\|auto`) | P0 | 5 | change-management.md §4 |
-| Finding-triggered auto-rollback inside the commit-confirm window | P1 | 5 | change-management.md §4 |
-| Enforced two-person rule on protected op classes, with audited break-glass | P0 | 5 | change-management.md §4 |
+| Canary / staged multi-node apply (hold between stages, `gate: manual\|auto`) — **API/CLI only; no review-screen picker yet (`T-3005`)** | P0 | 5 | change-management.md §4 |
+| Finding-triggered auto-rollback inside the commit-confirm window — **API/CLI only; no review-screen toggle yet (`T-3005`)** | P1 | 5 | change-management.md §4 |
+| Enforced two-person rule on protected op classes, with audited break-glass — **the rule is enforced in the UI; break-glass itself is route-only, no button (`T-3002`)** | P0 | 5 | change-management.md §4 |
 | Advisory entity locks + multi-user presence on staged drafts | P1 | 5 | [api.md](api.md) "Advisory locks and presence" |
 
 ## SDN, IPAM & addressing

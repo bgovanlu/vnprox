@@ -8,7 +8,14 @@ vnprox uses semantic versioning; the SQLite schema migrates forward-only.
 Versions up to v1.0 correspond to the milestones in `docs/roadmap.md`;
 v2.0 is the milestone cut of the second arc in `docs/roadmap-next.md`
 ("Beyond the cluster"); v3.0 is the platform cut of the third arc in
-`docs/roadmap-universal.md` ("The open platform"). Phase 3 ("Discovery &
+`docs/roadmap-universal.md` ("The open platform"); **v3.5.0 is the cut of
+Arc 5, `docs/roadmap-adopted.md` ("Adoptable, not just proven", phases
+25–28), and v4.0.0 is the end-of-arc cut of Arc 4, `docs/roadmap-proven.md`
+("Proven in production", phases 18–21) — which is why the two are out of
+document order.** `docs/roadmap-leverage.md` (phase 24) and the
+out-of-structure phases 22–23 fold into the v3.5.0 line. **`v3.1`, `v3.2`
+and `v3.3` were never tagged**, so `roadmap-proven.md`'s "v3.1 → v4.0"
+title is a plan, not a ledger. Phase 3 ("Discovery &
 true cluster") does not have its own version cut per the roadmap — its
 functionality (peer clustering, LLDP discovery, drift detection, FDB
 browsing) shipped as part of the v0.8 development cycle and is listed under
@@ -81,6 +88,17 @@ verified defect or security gap in v4.0.0; none adds a feature.
   verified allowed under the existing syscall filter, by inspection).
 
 ## [4.0.0] - 2026-08-14
+
+> **Correction, 2026-08-16 (T-2906) — the entry below is left as published; this note says what it
+> got wrong.** "Phases 20 and 21 are complete" was **not accurate for two of the seven cards it
+> claimed**. `T-2006` (localization) was never implemented. `T-2102` (signed apt repository) shipped
+> its tooling and signing pipeline but **not the hosting** — there is no published repository, so
+> `apt install vnprox` still resolves to nothing. Arc 4's real delivery is **24 of 26 cards**, not
+> 26. Both are rescheduled into Arc 6 (`docs/roadmap-earned.md`) as `T-3106` and `T-3301`.
+> Separately, the mobile PWA listed under *Added* below **could not function in any production
+> browser as released** — the CSP still carried `worker-src 'none'; manifest-src 'none'` from
+> before the PWA existed, so service-worker registration and the manifest fetch were refused; only
+> synthetic-subscription tests had ever exercised it. Fixed in `[Unreleased]` above (`T-2901`).
 
 **Phases 20 and 21 are complete, which is what makes this 4.0.** `docs/roadmap-proven.md` reserves
 `v3.3` for phase 20 ("Sharper daily use") and `v4.0` for phase 21 ("Ecosystem and reach"); v3.5.0

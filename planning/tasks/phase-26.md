@@ -206,3 +206,24 @@ anything. The same machinery can produce a post-apply snapshot for rendering.
    mock records zero write calls.
 5. Projecting a changeset that fails validation is refused rather than projecting nonsense.
 6. Projection of the empty changeset equals the live snapshot exactly.
+
+---
+
+## Phase 26 — delivery record (2026-08-12)
+
+| Card | State | Note |
+|---|---|---|
+| `T-2601` | ● Shipped | Declarative policy rule set (`{id, description, severity, match, assert}`) enforced at validate; `severity: deny` blocks before diff/plan is computed, `severity: warn` annotates and travels to review. Data, not a scripting language — no embedded interpreter. `vnproxctl policy test/lint/examples`; default policy set is empty (`24c48fb`) |
+| `T-2602` | ● Shipped | Canary apply (`applyStrategy: {mode: canary, ...}`) pauses in a resumable state after touching only the canary nodes; `gate: manual`/`gate: auto`; survives a daemon restart mid-hold; commit-confirm covers the whole sequence (`c535750`). **API/CLI-only** — CHANGELOG's own v3.5.0 note is explicit that there is no canary-strategy picker in the review screen yet |
+| `T-2603` | ● Shipped | `autoRollbackOnError`, off by default per-changeset or as a cluster default; a new `error` finding on a touched entity rolls back inside the confirm window; a pre-existing or out-of-blast-radius finding never triggers, nor does a `warning`. Wires the canary health checker into `cmd/vnproxd`'s findings watcher, closing `T-2602`'s `gate: auto` gap (`2fb8c4e`; confirmed wired, not left dangling, by `docs/project-status.md:231`) |
+| `T-2604` | ● Shipped | N-approver protected op classes (`[[changesets.protected_class]]`); review screen disables Apply with a named count of approvals still needed; two approvals from the same person through two tokens still count as one. Break-glass override requires a written reason, is audited (`change.breakglass`), and raises a 24h-unacknowledgeable finding — but **isn't a button on any screen**, reachable only by calling the route directly (`0856607`) |
+| `T-2605` | ● Shipped | `GET /changesets/{id}/preview` projects a post-apply `inventory.Snapshot` in memory (read-only, side-effect free); unprojectable ops are named rather than silently dropped (`432bd86`) |
+
+All five cards have their own commit (`24c48fb`, `c535750`, `2fb8c4e`, `0856607`, `432bd86`,
+2026-08-10 through 2026-08-12) and are corroborated by `CHANGELOG.md`'s `v3.5.0` entry and
+`docs/project-status.md` §6.4, which agree on every card's state. The one qualification worth
+repeating rather than smoothing over: two of the five guardrail cards (`T-2602`, `T-2603`) are
+real, working, and reachable only through the API and CLI — CHANGELOG says so directly ("there is
+no canary-strategy picker or auto-rollback toggle in the review screen yet"), and `T-2604`'s
+break-glass path shares the same gap. Giving these a screen is `T-3002`/`T-3005` in
+`docs/roadmap-earned.md`, not a re-open of this phase.

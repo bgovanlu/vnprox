@@ -6,6 +6,27 @@ signature and capability gates — and almost none of them have anything on the 
 There is no Terraform provider, no Ansible collection, no apt repository, no registry, and no
 docs site. The material exists; the distribution does not.
 
+---
+
+## Phase 21 — delivery record (2026-08-13)
+
+| Card | State | Note |
+|---|---|---|
+| `T-2101` | ● Shipped | `docs/automation-contract.json` published (11 routes, stability v1.7), golden-tested against `docs/api.md`, conformance suite runs externally over real HTTP (`8bd930c`, `dbcb682`). The Terraform provider and Ansible collection repos themselves do not exist — always scoped as separate, independently-published repos (`docs/status-matrix.md:115`), not this card's deliverable |
+| `T-2102` | ◐ **Not delivered — machinery only** | `packaging/build-apt-repo.sh` and `packaging/apt-repo.md` exist, **no commit delivers `T-2102`**: `git log --all --grep=T-2102` returns exactly two, and neither is an implementation — `0029eb9` is the commit that *authored* this card, and `db69c6c` (T-2803) only cites it in passing ("static hosting, not a service — the T-2102 posture"). No hosted repository exists: `packaging/install.sh` and `packaging/build-apt-repo.sh` both point at `get.vnprox.io`, which has never been stood up (no deploy job, no publish target, no key committed for `install.sh` to verify against — the host itself was not probed from here, so this is an evidence-of-absence-in-the-repo claim, not a DNS one). This card was the phase's own stated "spine" (line 12 above) and it is the one that didn't land. Rescheduled as `T-3301` (`docs/roadmap-earned.md`); `docs/status-matrix.md:116` carries the same ◐ |
+| `T-2103` | ● Shipped | PVE compat matrix generated from mock fixtures across three version profiles (8.2/9.0/9.2), gating PVE 9.0's SDN Fabrics zone types; `make compat-matrix` regenerates `docs/compat-matrix.json` (`96549d5`, `2d2c06e`). Every cell is `validation: mock` — no hardware behind any row, stated in the doc itself, not hidden |
+| `T-2104` | ◐ Partial | The real gap it closes shipped: install now refuses on any capability-scope disagreement between a registry listing and the delivered manifest, audited, no trust-flag override (`a231699`). Four tested blueprints seeded (one, the DMZ+WireGuard seed, marked PARTIAL in its own description for lacking a `wg.*` entity kind). But the card's own title is "**Hosted** blueprint and plugin registry", and there is no hosted registry — no domain, no object storage, no publish job (`docs/status-matrix.md:74`, `docs/roadmap-earned.md`'s stale-claims table). Rescheduled (hosting half) as `T-3303` |
+| `T-2105` | ◐ Partial | Docsify docs site, install guide, first-hour walkthrough, support guide, and `CONTRIBUTING.md` are built and checked against source (`8cecebb`). Not delivered: the repo is private (anonymous request 404s, not a permission error), GitHub Pages is not enabled so there is no live docs URL, there is still no security-disclosure contact, and the forum announcement is written but marked DRAFT — NOT YET POSTED. Rescheduled (the remainder) as `T-3302` |
+
+Three of five cards shipped code; two carry the word "hosted" or "distribution" in their own
+title and neither actually got there. `T-2102`, the phase's declared spine, has no commit at all
+under its own number — everything downstream of it (the compat matrix's suites, the "installable,
+verifiable package" `T-2105` was supposed to sit behind) exists only as generated artifacts with
+nowhere public to publish them. The v4.0.0 release note's claim that "phases 20 and 21 are
+complete" is the specific claim `docs/roadmap-earned.md` and `docs/project-status.md` (§2, §Arc 4
+paragraph) already went on record correcting: `T-2102`'s hosting half and `T-2006` (phase 20,
+i18n) were not descoped when that release shipped, and both are now rescheduled into Arc 6.
+
 Decisions this phase is built on: **D6** — distribution is a static signed apt repository
 published from CI to GitHub Pages, no infrastructure to run.
 

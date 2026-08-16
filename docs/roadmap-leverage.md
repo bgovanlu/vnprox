@@ -1,10 +1,14 @@
 # Operator-leverage roadmap — Phase 24
 
-**Status: planned 2026-08-08.** The four arcs before this one are described in
+**Status: shipped** (planned 2026-08-08; all ten cards delivered across two passes on 2026-08-08
+and 2026-08-09 — see `planning/tasks/phase-24.md`'s delivery records — and folded into the
+`v3.5.0` line). The four arcs before this one are described in
 [`roadmap.md`](roadmap.md) (Phases 0–7, v1.0), [`roadmap-next.md`](roadmap-next.md) (8–12, v2.0),
 [`roadmap-universal.md`](roadmap-universal.md) (13–17, v3.0) and
 [`roadmap-proven.md`](roadmap-proven.md) (18–21, v3.1 → v4.0). Phases 22 (online help) and 23
-(certificate management) shipped outside that structure.
+(certificate management) shipped outside that structure. The `v3.1` tag this document plans toward below **was never cut** — phases 18 and 19
+shipped inside the `v3.0.x` line, this phase folded into `v3.5.0`, and Arc 4 closed as `v4.0.0`.
+Read every version number below as the plan at the time, not the release ledger.
 
 This phase is not a fifth arc. It is a single phase of **leverage work**: ten items chosen
 because the product's feature surface is now large enough that the binding constraint has moved
