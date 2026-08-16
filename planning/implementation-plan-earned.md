@@ -36,8 +36,31 @@ either wave:
 | 2 | `T-3003` platform panel | Owns `web/src/settings/`; surfaces `T-2903`/`T-2905` semantics, so it wants Phase 29 settled |
 | 2 | `T-3006` help completion + panel-aware gate | Gates every panel the five cards above add, so it runs last by construction |
 
-Waves within phases 31–33 are decided when their cards are written; the standing rules below
+Phase 31's cards are written ([`tasks/phase-31.md`](tasks/phase-31.md), 2026-08-16) and run in
+four waves. Contention is exactly two files — `internal/change/op.go` and
+`internal/change/validate_schema.go` — so the rule is **one op-adding card per wave**:
+
+| Wave | Card | Why here |
+|---|---|---|
+| 1 | `T-3101` SDN Fabrics | Owns `validate_schema.go` and the SDN object graph; P0, and every SDN-shaped card waits on it |
+| 1 | `T-3105` restore fidelity | Owns `restore_ops.go` + the inventory Bond model; disjoint from T-3101 |
+| 2 | `T-3102` controllers | Owns the wave's op-const block |
+| 2 | `T-3103` firewall fidelity | Owns `internal/fw/` + `inventory/entity.go`; disjoint from T-3102 |
+| 3 | `T-3104` IPAM completion | Owns the wave's op-const block |
+| 4 | `T-3106` localization | Touches every component the waves above wrote; cannot overlap with any |
+
+Migration numbers are claimed per wave as usual (0049–0052), but **none is expected**: every
+object in Phase 31 is PVE-owned, and vnprox never persists PVE config as authoritative state.
+
+Waves within phases 32–33 are decided when their cards are written; the standing rules below
 apply to all of them.
+
+**One rule specific to Phase 31, and it generalizes:** before modelling a PVE object, run
+`pvesh usage` against it on pvecube (PVE 9.2.4) and check the capture in. Phase 31's scoping
+found the repo's model of SDN Fabrics wrong in `pvemock`, in `docs/compatibility.md`, in the
+compatibility matrix's only enforced check, and in the roadmap card itself — all four agreeing
+with each other because all four were written from the same Proxmox release notes rather than
+from the API. Do not model from `pvemock`, from `docs/`, or from release notes.
 
 **One rule specific to Phase 30, because it inverts the usual instinct:** these are assembly
 cards over routes that already exist and are contract-frozen. Every card asserts

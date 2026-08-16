@@ -16,7 +16,12 @@ You are implementing **vnprox**, a visual networking add-on for Proxmox VE. All 
 - **Never apply network changes outside the change engine** (`internal/change/`). All mutations flow: stage → validate → diff → apply → confirm/rollback. This is the product's core safety guarantee.
 - **Everything is cluster-aware.** Any feature that reads or writes node state must work when that node is a peer, not just localhost.
 - **Testing:** every task card lists acceptance criteria; they are the definition of done. Backend: table-driven Go tests + the mock PVE server in `internal/pvemock/`. Frontend: Vitest + Testing Library for logic-bearing components. Run `make check` (lint + typecheck + tests) before declaring done.
-- **Real PVE access:** you do NOT have a live Proxmox cluster. Develop against `internal/pvemock/` fixtures. If a task requires validating against real PVE behavior, note it in your report as "needs hardware validation".
+- **Real PVE access:** you have **one** real node — `pvecube`, PVE 9.2.4, root SSH — and **no cluster**. Those are different limits and conflating them has cost this project real defects.
+  - **API *shape* is observable, so observe it.** Before modelling any PVE object, run `pvesh usage <path> -v` against pvecube and check the transcript into `planning/reports/evidence/`. `pvesh ls` and `pvesh usage` are read-only. A type enum read off a running node is worth more than any amount of documentation.
+  - **Never model a PVE object from `internal/pvemock/`, from `docs/`, or from Proxmox release notes.** Phase 31's scoping found all four sources agreeing that SDN Fabrics were zone types — wrong, and agreeing only because each was written from the last. A mock and the check that tests it, both derived from the same secondary source, will pass together forever.
+  - **Cluster *behaviour* is still unobservable**: cross-node validation, peer round-trips, distributed rollback, drift between nodes, fabric/controller convergence. One node cannot answer any of it. Note those in your report as "needs hardware validation" and file them in `planning/reports/needs-hardware-validation.md`.
+  - **Develop against `internal/pvemock/` fixtures** as before — but a fixture's job is to match what pvecube says, and when they disagree the fixture is wrong.
+  - **Read-only unless the task says otherwise.** pvecube is a live host running the deployed product; a mutating `pvesh` call against it is a change to real network config, outside the change engine.
 
 ## Conventions
 

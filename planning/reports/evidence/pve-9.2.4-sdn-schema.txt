@@ -290,3 +290,173 @@ USAGE: pvesh create /cluster/sdn/controllers --controller <string> --type <strin
   --type     <bgp | evpn | faucet | isis>
 	     Plugin type.
 
+
+### ls /cluster/sdn/ipams
+-rw-d        pve
+
+### usage /cluster/sdn/ipams
+USAGE: pvesh get /cluster/sdn/ipams  [OPTIONS]
+
+  SDN ipams index.
+
+  --type     <netbox | phpipam | pve>
+	     Only list sdn ipams of specific type
+
+USAGE: pvesh create /cluster/sdn/ipams --ipam <string> --type <string> [OPTIONS]
+
+  Create a new sdn ipam object.
+
+  --fingerprint ([A-Fa-f0-9]{2}:){31}[A-Fa-f0-9]{2}
+	     Certificate SHA 256 fingerprint.
+
+  --ipam     [a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]
+	     The SDN ipam object identifier.
+
+  --lock-token <string>
+	     the token for unlocking the global SDN configuration
+
+  --section  <integer>
+	     no description available
+
+  --token    <string>
+	     no description available
+
+  --type     <netbox | phpipam | pve>
+	     Plugin type.
+
+  --url      <string>
+	     no description available
+
+
+### ls /cluster/sdn/prefix-lists (empty = family exists, no entries)
+
+### ls /cluster/sdn/route-maps
+
+### ls /cluster/sdn/vnets/labnet/firewall
+-rw--        options
+Dr-c-        rules
+
+### usage /cluster/sdn/vnets/labnet/firewall/rules
+USAGE: pvesh get /cluster/sdn/vnets/labnet/firewall/rules 
+
+  List rules.
+
+USAGE: pvesh create /cluster/sdn/vnets/labnet/firewall/rules --action <string> --type <string> [OPTIONS]
+
+  Create new rule.
+
+  --action   [A-Za-z][A-Za-z0-9\-\_]+
+	     Rule action ('ACCEPT', 'DROP', 'REJECT') or security group
+	     name.
+
+  --comment  <string>
+	     Descriptive comment.
+
+  --dest     <string>
+	     Restrict packet destination address. This can refer to a
+	     single IP address, an IP set ('+ipsetname') or an IP alias
+	     definition. You can also specify an address range like
+	     '20.34.101.207-201.3.9.99', or a list of IP addresses and
+	     networks (entries are separated by comma). Please do not mix
+	     IPv4 and IPv6 addresses inside such lists.
+
+  --digest   <string>
+	     Prevent changes if current configuration file has a different
+	     digest. This can be used to prevent concurrent modifications.
+
+  --dport    <string>
+	     Restrict TCP/UDP destination port. You can use service names
+	     or simple numbers (0-65535), as defined in '/etc/services'.
+	     Port ranges can be specified with '\d+:\d+', for example
+	     '80:85', and you can use comma separated list to match several
+	     ports or ranges.
+
+  --enable   <integer> (0 - N)
+	     Flag to enable/disable a rule.
+
+  --icmp-type <string>
+	     Specify icmp-type. Only valid if proto equals 'icmp' or
+	     'icmpv6'/'ipv6-icmp'.
+
+  --iface    <string>
+	     Network interface name. You have to use network configuration
+	     key names for VMs and containers ('net\d+'). Host related
+	     rules can use arbitrary strings.
+
+  --log      <alert | crit | debug | emerg | err | info | nolog | notice |
+	     warning>
+	     Log level for firewall rule.
+
+  --macro    <string>
+	     Use predefined standard macro.
+
+  --pos      <integer> (0 - N)
+	     Update rule at position <pos>.
+
+  --proto    <string>
+	     IP protocol. You can use protocol names ('tcp'/'udp') or
+	     simple numbers, as defined in '/etc/protocols'.
+
+  --source   <string>
+	     Restrict packet source address. This can refer to a single IP
+	     address, an IP set ('+ipsetname') or an IP alias definition.
+	     You can also specify an address range like
+	     '20.34.101.207-201.3.9.99', or a list of IP addresses and
+	     networks (entries are separated by comma). Please do not mix
+	     IPv4 and IPv6 addresses inside such lists.
+
+  --sport    <string>
+	     Restrict TCP/UDP source port. You can use service names or
+	     simple numbers (0-65535), as defined in '/etc/services'. Port
+	     ranges can be specified with '\d+:\d+', for example '80:85',
+	     and you can use comma separated list to match several ports or
+	     ranges.
+
+  --type     <forward | group | in | out>
+	     Rule type.
+
+
+### usage /cluster/sdn/vnets/labnet/firewall/options
+USAGE: pvesh get /cluster/sdn/vnets/labnet/firewall/options 
+
+  Get vnet firewall options.
+
+USAGE: pvesh set /cluster/sdn/vnets/labnet/firewall/options  [OPTIONS]
+
+  Set Firewall options.
+
+  --delete   <string>
+	     A list of settings you want to delete.
+
+  --digest   <string>
+	     Prevent changes if current configuration file has a different
+	     digest. This can be used to prevent concurrent modifications.
+
+  --enable   <boolean>	 (default=0)
+	     Enable/disable firewall rules.
+
+  --log_level_forward <alert | crit | debug | emerg | err | info | nolog |
+	     notice | warning>
+	     Log level for forwarded traffic.
+
+  --policy_forward <ACCEPT | DROP>
+	     Forward policy.
+
+
+### usage /cluster/firewall/rules (type enum scope check)
+  --type     <forward | group | in | out>
+	     Rule type.
+
+
+### usage /nodes/pvecube/firewall/rules (type enum scope check)
+  --type     <forward | group | in | out>
+	     Rule type.
+
+
+### usage /cluster/firewall/options | forward
+
+  --policy_forward <ACCEPT | DROP>
+	     Forward policy.
+
+  --policy_in <ACCEPT | DROP | REJECT>
+	     Input policy.

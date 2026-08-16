@@ -46,12 +46,11 @@ func TestNoProfileClaimsFabricZoneTypes(t *testing.T) {
 	ticket, csrf := compatLogin(t, h)
 	rec := compatCreateZone(t, h, ticket, csrf, "fabric1", "openfabric")
 	if rec.Code == http.StatusBadRequest {
-		t.Fatalf("PVE 8.2 rejected zone type \"openfabric\" with 400: pvemock has reintroduced a zone-type "+
-			"version gate. Real 8.2 and real 9.2 both reject that zone type, so gating it by version "+
+		t.Fatalf("PVE 8.2 rejected zone type \"openfabric\" with 400: pvemock has reintroduced a zone-type " +
+			"version gate. Real 8.2 and real 9.2 both reject that zone type, so gating it by version " +
 			"asserts a divergence that does not exist — see PVEVersionProfile.SDNFabrics.")
 	}
 }
-
 
 // --- HTTP-level compat server tests (AC2 demonstration) --------------------
 //
