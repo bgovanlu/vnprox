@@ -7,6 +7,7 @@
 // It says nothing at all when nobody else is here — an empty presence
 // indicator is noise on every screen for the single-operator case, which is
 // most of them.
+import { HelpAnchor } from "../help/HelpAnchor";
 import { usePresenceQuery, usePresenceWsBridge } from "./presenceQueries";
 import { othersPresent, presenceSentence } from "./lockWarning";
 import { changesetScope } from "../api/locks";
@@ -42,13 +43,14 @@ export function PresenceIndicator({ changesetId, currentUser }: PresenceIndicato
   return (
     <p
       data-testid="presence-indicator"
-      className="text-xs text-slate-600 dark:text-slate-400"
+      className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400"
       // A status, not an alert: presence changing must never steal focus or
       // interrupt a screen reader mid-sentence.
       role="status"
       aria-live="polite"
     >
       {sentence}
+      <HelpAnchor topic="presence-and-locks" />
     </p>
   );
 }

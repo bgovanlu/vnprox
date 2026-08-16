@@ -622,3 +622,59 @@ them.
 
 Both tests in `internal/api/tenant_leak_test.go` assert **today's** behaviour deliberately. They
 go red when this is fixed, and their failure messages say to delete them and update the docs.
+
+---
+
+## `T-3006` — what the reverse check found (recorded 2026-08-16)
+
+`T-3006` shipped a panel-aware help gate. The forward half (panel → topic) is what the card asked
+for. The **reverse** half — every topic whose own `surface` is `panel` or `dialog` must be placed
+at a `?` somewhere in the tree — was the fourth item added to the card mid-phase, and it is the
+half that found things.
+
+It cannot check that prose is accurate; no test can. It checks the decidable claim: **the surface a
+topic says it documents must be one you can put a cursor on.** A topic about vapourware has nowhere
+to be placed.
+
+Five topics failed it. Each describes a feature with a **real daemon route and no frontend caller**:
+
+| Topic | Route that exists | Screen that does not |
+|---|---|---|
+| `ipv6-planning` | `GET /ipam/subnets/{prefix}/v6-plan` | the /64 planning grid |
+| `topology-paint-modes` (in part) | — (PBS is `analysis/PbsPanel.tsx`) | a backup-path paint mode; `grep -r paintMode web/src` → zero hits |
+| `ipam-external-sync` | `/ipam/external-subnets`, `/ipam/external-sync/{preview,apply}` | the NetBox/phpIPAM preview-and-apply UI |
+| `ipam-cross-cluster` | `/federation/ipam/conflicts` | the conflicts view |
+| `scheduled-apply` | `/changesets/{id}/schedule`, `/schedule/ack` | the scheduling UI |
+
+**None was deleted.** Deleting a topic to make a check pass is how a gate becomes decoration. They
+carry a new `surface: "headless"`, browsed under "Not in the web UI yet", fenced by two assertions:
+a `headless` topic must name the route or CLI verb that reaches it **and** must say in its own prose
+that there is no screen. Demoting a real panel topic to dodge the reverse check trips a count floor
+(verified by mutation).
+
+### Three more headless route families, and why the Phase 30 census missed them
+
+The phase preamble said to "treat 17 as a floor". There are now three independent reasons it was
+right, and only the first was known when it was written:
+
+1. The census is **per-family**: `/ipam/external-subnets` and `/federation/ipam/conflicts` are
+   invisible because sibling `ipam` and `federation` routes *are* called (`T-3004-followup-01`).
+2. `GET /ipam/subnets/{prefix}/v6-plan` **is not in `docs/openapi.json` at all** — it is dispatched
+   by suffix-trim inside the `/ipam/subnets` handler, so the generator cannot see it. A census built
+   from that file cannot count what the file omits.
+3. `/changesets/{id}/schedule` is a headless *sub-route* of the most-called family in the product.
+
+The reverse check found all three without being pointed at them, because a help topic had been
+written for each — somebody documented the feature, and the screen never arrived.
+
+### Also found, and left for whoever picks it up
+
+- **`docs/development.md` did not contain the word "help"** — `T-2205` claimed it "gains the rule
+  the gate enforces", and that rule existed only inside the gate for four arcs. Written now, in the
+  same change, with the gate's four assertions stated so the rule and the test say the same thing.
+- **`drift/DriftFindingsPanel.tsx` is dead code**, superseded by `findings/FindingsStreamPanel.tsx`
+  and imported by nothing. The reachability filter excludes it from the census correctly; deleting
+  it is a separate call and was not made here.
+- Phase 22's delivery record says "81 topics as counted at 2026-08-16". The real count at that
+  moment was **105**; it is **119** now. The record's own instruction — recount rather than quote —
+  applies to itself.

@@ -5,6 +5,7 @@
 // inspector open at the same time) plus a "view in Flow Explorer" deep
 // link carrying the same pair as URL state (flows/urlState.ts).
 import { Link } from "react-router-dom";
+import { HelpAnchor } from "../help/HelpAnchor";
 import type { FlowEdge } from "./flowEdges";
 import { flowPairExplorerPath } from "../flows/urlState";
 import { conntrackNodeLinkPath } from "../conntrack/urlState";
@@ -52,7 +53,10 @@ export function FlowPairPanel({ edge, onClose }: FlowPairPanelProps) {
       className="fixed right-4 top-20 z-30 w-80 max-w-full rounded-lg border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
     >
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-semibold">Conversation</h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+          Conversation
+          <HelpAnchor topic="flow-pair-panel" />
+        </h3>
         <button
           type="button"
           aria-label="Close"

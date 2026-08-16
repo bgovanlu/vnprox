@@ -15,6 +15,7 @@ import { capsForNode } from "../changesets/capabilities";
 import { buildBulkGuestNicOps, buildGuestNicUpdateOp } from "../changesets/opBuilders";
 import { refId } from "../changesets/opSummary";
 import { useDrawerActions } from "../changesets/useDrawerActions";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { useTopologyQuery } from "../topology/queries";
 import { filterGuestNicRows, targetLabel, type GuestNicFilter } from "./guestNics";
 import { useAllGuestNicsQuery } from "./queries";
@@ -161,7 +162,10 @@ export function GuestsPage() {
         <>
           {selected.size > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-accent-300 bg-accent-50 p-2 text-sm dark:border-accent-700 dark:bg-accent-950">
-              <span>{selected.size} selected</span>
+              <span className="flex items-center gap-1.5">
+                {selected.size} selected
+                <HelpAnchor topic="guest-bulk-reattach" />
+              </span>
               <select
                 aria-label="Reattach selected guests to"
                 className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"

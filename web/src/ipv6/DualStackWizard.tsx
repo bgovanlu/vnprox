@@ -30,6 +30,7 @@ import { useMemo, useState } from "react";
 import type { Blueprint, BlueprintParamDef, BlueprintParamValue, Changeset, IPv6Segment } from "../api/types";
 import { useBlueprintsQuery, useInstantiateBlueprintMutation, useSaveBlueprintMutation } from "../blueprints/queries";
 import { ParamForm } from "../blueprints/ParamForm";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { segmentsForVnet, useIPv6SegmentsQuery } from "./ipv6Queries";
 
 /** Fixed, well-known id for this wizard's own backing blueprint — created
@@ -148,6 +149,10 @@ export function DualStackWizard({ vnets, onInstantiated }: DualStackWizardProps)
         <label htmlFor="dualstack-vnet" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
           VLAN / VNet
         </label>
+        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <span>Adds an IPv6 subnet to a VNet that has only IPv4 today.</span>
+          <HelpAnchor topic="ipv6-dual-stack" />
+        </p>
         <select
           id="dualstack-vnet"
           className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"

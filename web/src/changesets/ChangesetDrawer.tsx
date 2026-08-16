@@ -14,6 +14,7 @@ import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
 import type { Finding, Op } from "../api/types";
 import { useSession } from "../api/useSession";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
 import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { canReview, computeDrawerView, isDraftEditable } from "./drawerMachine";
@@ -160,23 +161,29 @@ export function ChangesetDrawer() {
           "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
         )}
       >
-        <button
-          type="button"
-          onClick={() => {
-            setDrawerOpen(!drawerOpen);
-          }}
-          className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2 text-left text-sm font-medium dark:bg-slate-800/60"
-        >
-          <span>
-            {changeset ? changeset.title || "Untitled draft" : "Changes"}
-            {changeset && changeset.ops.length > 0 && (
-              <span className="ml-2 rounded-full bg-accent-600/15 px-1.5 py-0.5 text-xs text-accent-700 dark:text-accent-300">
-                {changeset.ops.length}
-              </span>
-            )}
-          </span>
-          <span aria-hidden>{drawerOpen ? "▾" : "▴"}</span>
-        </button>
+        {/* The `?` is a sibling of the collapse toggle, not a child of it:
+         * a button inside a button is invalid HTML and the nested control
+         * becomes unreachable to a keyboard. */}
+        <div className="flex items-center gap-1 bg-slate-50 pr-2 dark:bg-slate-800/60">
+          <button
+            type="button"
+            onClick={() => {
+              setDrawerOpen(!drawerOpen);
+            }}
+            className="flex flex-1 items-center justify-between gap-2 px-3 py-2 text-left text-sm font-medium"
+          >
+            <span>
+              {changeset ? changeset.title || "Untitled draft" : "Changes"}
+              {changeset && changeset.ops.length > 0 && (
+                <span className="ml-2 rounded-full bg-accent-600/15 px-1.5 py-0.5 text-xs text-accent-700 dark:text-accent-300">
+                  {changeset.ops.length}
+                </span>
+              )}
+            </span>
+            <span aria-hidden>{drawerOpen ? "▾" : "▴"}</span>
+          </button>
+          <HelpAnchor topic="change-drawer" />
+        </div>
 
         {drawerOpen && (
           <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto p-3 text-sm">

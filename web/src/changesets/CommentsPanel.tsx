@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
+import { HelpAnchor } from "../help/HelpAnchor";
 import type { Changeset, ChangesetComment, Op } from "../api/types";
 import { groupCommentsByOp } from "./commentGrouping";
 import { opKindLabel, summarizeOp } from "./opSummary";
@@ -141,7 +142,10 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
   return (
     <div className="space-y-4 text-sm">
       <section>
-        <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400">Changeset comments</h3>
+        <h3 className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+          Changeset comments
+          <HelpAnchor topic="changeset-comments" />
+        </h3>
         {changesetLevel.length > 0 && (
           <div className="mt-1.5">
             <CommentThread changesetId={changeset.id} comments={changesetLevel} label="Changeset comments" />

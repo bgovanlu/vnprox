@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { useSearchQuery } from "./queries";
 
 export interface SpotlightSearchProps {
@@ -25,7 +26,10 @@ export function SpotlightSearch({ open, onOpenChange, onSelect }: SpotlightSearc
       }}
     >
       <DialogContent aria-describedby="spotlight-search-description" className="top-1/4 -translate-y-0">
-        <DialogTitle>Search</DialogTitle>
+        <div className="flex items-center gap-1.5">
+          <DialogTitle>Search</DialogTitle>
+          <HelpAnchor topic="spotlight-search" />
+        </div>
         <DialogDescription id="spotlight-search-description">
           Search by name, MAC, IP, VMID, or comment.
         </DialogDescription>

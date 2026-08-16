@@ -11,6 +11,7 @@
 // warning is the same as an absent one. If the server cannot explain a verdict
 // it does not produce one — `reason` is never empty in the API shape.
 import clsx from "clsx";
+import { HelpAnchor } from "../help/HelpAnchor";
 import type { ChangesetImpact, DisruptionClass } from "../api/types";
 
 const DISRUPTION_LABEL: Record<DisruptionClass, string> = {
@@ -49,7 +50,10 @@ export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
   return (
     <div className="flex flex-col gap-3" aria-label="Blast radius">
       <div className={clsx("rounded-md border p-3 text-sm", DISRUPTION_CLASSES[impact.disruption])}>
-        <p className="font-semibold">{DISRUPTION_LABEL[impact.disruption]}</p>
+        <p className="flex items-center gap-1.5 font-semibold">
+          {DISRUPTION_LABEL[impact.disruption]}
+          <HelpAnchor topic="changeset-impact" />
+        </p>
         <p className="mt-1 text-xs">
           {impact.nodes.length} node{impact.nodes.length === 1 ? "" : "s"}
           {impact.nodes.length > 0 ? ` (${impact.nodes.join(", ")})` : ""}

@@ -14,6 +14,7 @@
 // independent facts, and the callout below only ever says they disagree,
 // never which one is "right".
 import clsx from "clsx";
+import { HelpAnchor } from "../help/HelpAnchor";
 import type { VerifyResult } from "../api/types";
 
 const VERDICT_LABEL: Record<string, string> = {
@@ -42,7 +43,10 @@ export function VerifyPanel({ verify }: { verify: VerifyResult }) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Verify live</h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          Verify live
+          <HelpAnchor topic="verify-live" />
+        </h3>
         <span className="rounded bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide dark:bg-white/10">
           Live probe
         </span>

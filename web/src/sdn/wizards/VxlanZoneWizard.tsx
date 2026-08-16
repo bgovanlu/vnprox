@@ -227,6 +227,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
       open={open}
       onOpenChange={onOpenChange}
       title={S.vxlan.title}
+      helpTopic="sdn-zone-wizard"
       intro={S.vxlan.intro}
       steps={steps}
       preview={<WizardPreviewPane graph={graph} />}

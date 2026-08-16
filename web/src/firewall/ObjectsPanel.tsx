@@ -8,6 +8,7 @@ import { useState } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { useToast } from "../components/Toast";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useDrawerActions } from "../changesets/useDrawerActions";
@@ -217,7 +218,10 @@ export function ObjectsPanel({ objects, onNavigate, onInspectGroup }: ObjectsPan
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold">Aliases</h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+          Aliases
+          <HelpAnchor topic="firewall-objects" />
+        </h3>
         <UsageTable items={objects.aliases} onNavigate={onNavigate} />
       </div>
       <div className="flex flex-col gap-2">

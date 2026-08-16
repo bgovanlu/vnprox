@@ -20,7 +20,23 @@ export type HelpSurface =
   /** A cross-cutting idea the UI assumes you already hold. */
   | "concept"
   /** Lookup material: keys, exit codes, glossary-shaped things. */
-  | "reference";
+  | "reference"
+  /** A capability the daemon implements that has **no screen in this
+   * build** — reachable from the API or `vnproxctl` only.
+   *
+   * T-3006 added this because the alternative was worse in both
+   * directions. Four topics (`ipv6-planning`, `ipam-external-sync`,
+   * `ipam-cross-cluster`, `scheduled-apply`) were written as `panel` and
+   * described panels that have never existed in `web/src`; the daemon
+   * serves every route behind them. Deleting the topics would hide a
+   * shipped capability, and leaving them as `panel` sends an operator
+   * hunting a screen that isn't there — the same "an absent thing
+   * rendered as a present one" defect this repo keeps finding.
+   *
+   * So the absence is modelled instead of papered over: the browse index
+   * groups these under their own heading, and coverage.test.ts requires
+   * each one to name the route or CLI verb that does reach it. */
+  | "headless";
 
 export interface HelpSection {
   readonly heading: string;

@@ -139,7 +139,15 @@ export function VlanEditor({
 
       {isCreate && (
         <>
-          <Field label={isOVS ? "OVS bridge" : "Parent interface"} errors={findings.byField.parent}>
+          <Field
+            label={isOVS ? "OVS bridge" : "Parent interface"}
+            errors={findings.byField.parent}
+            help={
+              isOVS
+                ? "The OVS bridge this internal port lives inside. The port is a virtual NIC on that switch, not a child of a physical interface."
+                : "The interface this VLAN rides on — a NIC, a bond, or a VLAN-aware bridge. The switch port at the other end has to be carrying this VLAN as tagged traffic, or the sub-interface comes up and carries nothing."
+            }
+          >
             <select className={inputClass} value={parent} onChange={(e) => { setParent(e.target.value); }}>
               <option value="" disabled>
                 {isOVS ? "Choose an OVS bridge…" : "Choose a parent…"}
@@ -177,7 +185,11 @@ export function VlanEditor({
       <Field
         label="MTU"
         errors={findings.byField.mtu}
-        help={exceedsParent ? `Warning: exceeds the parent's MTU (${String(parentMtu)}) — traffic may be dropped.` : undefined}
+        help={
+          exceedsParent
+            ? `A VLAN cannot carry a larger frame than the interface it rides on. Warning: this exceeds the parent's MTU (${String(parentMtu)}) — traffic at that size may be dropped.`
+            : "The largest frame this VLAN will carry. It cannot exceed the parent interface's MTU; leave at 1500 unless the whole path is set for jumbo frames."
+        }
       >
         <input
           type="number"

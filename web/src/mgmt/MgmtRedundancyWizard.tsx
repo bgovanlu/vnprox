@@ -340,6 +340,7 @@ export function MgmtRedundancyWizard({ node, open, onOpenChange }: MgmtRedundanc
       open={open}
       onOpenChange={onOpenChange}
       title={S.picker.title}
+      helpTopic="mgmt-redundancy-wizard"
       intro={S.picker.description}
       steps={steps}
       preview={<PreviewPanel node={node} flow={activeFlow} ops={configValid ? buildOps() : []} />}

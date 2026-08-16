@@ -21,6 +21,7 @@ import { fetchFlows } from "../../api/flows";
 import { fetchHistoryEvents } from "../../api/history";
 import type { FlowRecord } from "../../api/types";
 import { useChangesetDrawerStore } from "../../changesets/store";
+import { HelpAnchor } from "../../help/HelpAnchor";
 import { DEFAULT_WINDOW_SECONDS } from "../flowEdges";
 import {
   DEFAULT_FLOW_RETENTION_MINUTES,
@@ -251,7 +252,10 @@ export function HistoryTimeline({
       data-testid="history-timeline"
     >
       <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-300">History</span>
+        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+          History
+          <HelpAnchor topic="history-playback" />
+        </span>
         <input
           type="range"
           aria-label="Scrub map history"

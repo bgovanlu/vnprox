@@ -230,6 +230,7 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
       open={open}
       onOpenChange={onOpenChange}
       title={S.evpn.title}
+      helpTopic="sdn-zone-wizard"
       intro={S.evpn.intro}
       steps={steps}
       preview={<WizardPreviewPane graph={graph} />}

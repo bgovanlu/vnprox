@@ -10,6 +10,7 @@ import * as RadixTabs from "@radix-ui/react-tabs";
 import clsx from "clsx";
 import type { WsClient } from "../api/ws";
 import { Button } from "../components/Button";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { fieldRows } from "./fields";
 import { InspectorPanel } from "./InspectorPanel";
 import { METRICS_KINDS } from "./metricsKinds";
@@ -148,7 +149,9 @@ export function InspectorCompareView({
       aria-label={`Compare ${dataA.label} vs ${dataB.label}`}
     >
       <div className="mb-2 grid grid-cols-[minmax(6rem,auto)_1fr_1fr] items-start gap-2">
-        <div />
+        <div className="pt-1">
+          <HelpAnchor topic="inspector-compare" />
+        </div>
         <ComparePaneHeader
           label={dataA.label}
           node={dataA.node}

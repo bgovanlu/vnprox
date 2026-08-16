@@ -184,7 +184,11 @@ export function BondEditor({
 
       {kind === "linux" && mode === "802.3ad" && (
         <div className="grid grid-cols-2 gap-3">
-          <Field label="LACP rate" errors={findings.byField.lacpRate}>
+          <Field
+            label="LACP rate"
+            errors={findings.byField.lacpRate}
+            help="How often the two ends exchange LACP packets. `fast` detects a dead link in about 3 seconds instead of about 90, at the cost of one small packet per second per link — but **both ends must agree**, and a switch left on `slow` against a host on `fast` renegotiates constantly. Leave it on `slow` unless you have set the switch side too."
+          >
             <select className={inputClass} value={lacpRate} onChange={(e) => { setLacpRate(e.target.value); }}>
               <option value="slow">slow (30s)</option>
               <option value="fast">fast (1s)</option>
@@ -206,12 +210,19 @@ export function BondEditor({
             <input type="number" className={inputClass} value={miimon} onChange={(e) => { setMiimon(Number(e.target.value)); }} />
           </Field>
         )}
-        <Field label="MTU" errors={findings.byField.mtu}>
+        <Field
+          label="MTU"
+          errors={findings.byField.mtu}
+          help="The largest frame this bond will carry. It cannot usefully exceed the smallest member NIC's MTU — the bond will accept the number and the traffic will drop on whichever member cannot carry it. Leave at 1500 unless every switch port in the path is set for jumbo frames too."
+        >
           <input type="number" className={inputClass} value={mtu} onChange={(e) => { setMtu(Number(e.target.value)); }} />
         </Field>
       </div>
 
-      <Field label="Comment">
+      <Field
+        label="Comment"
+        help="A free-text note written into the interfaces file beside this bond. Useful for the thing the config cannot say — which switch stack the members land on, or which ticket asked for it."
+      >
         <input className={inputClass} value={comments} onChange={(e) => { setComments(e.target.value); }} />
       </Field>
     </EditorDialog>

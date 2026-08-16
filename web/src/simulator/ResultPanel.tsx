@@ -8,6 +8,7 @@ import clsx from "clsx";
 import { Link } from "react-router-dom";
 import type { SimCaveat, SimCaveatSeverity, SimResolvedEndpoint, SimVerdict, SimulateResult } from "../api/types";
 import { ruleMatchLabel } from "../firewall/format";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { blockingRuleDeepLinkPath, blockingRuleGuestRef } from "./deeplink";
 
 const VERDICT_LABEL: Record<SimVerdict, string> = {
@@ -186,6 +187,10 @@ function CaveatList({ result }: { result: SimulateResult }) {
 export function ResultPanel({ result }: { result: SimulateResult }) {
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        Simulated result
+        <HelpAnchor topic="path-simulator" />
+      </div>
       <VerdictBanner result={result} />
 
       <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">

@@ -64,22 +64,36 @@ export function InterfaceEditor({ open, onOpenChange, node, target, existing }: 
       disabledReason={!capsForNode(session, node).netWrite ? disabledReason : undefined}
       generalErrors={findings.general}
     >
-      <Field label="MTU" errors={findings.byField.mtu}>
+      <Field
+        label="MTU"
+        errors={findings.byField.mtu}
+        help="The largest frame this NIC will carry. Every device in the path — the switch port, and anything this NIC is enslaved to — has to agree, so raising it here alone usually produces traffic that works for small packets and stalls for large ones."
+      >
         <input type="number" className={inputClass} value={mtu} onChange={(e) => { setMtu(Number(e.target.value)); }} />
       </Field>
       <Field label="Addresses" errors={findings.byField.addresses} help="Comma-separated CIDRs. Usually empty for a NIC that's a bond/bridge member.">
         <input className={inputClass} value={addressesText} onChange={(e) => { setAddressesText(e.target.value); }} />
       </Field>
-      <Field label="Gateway" errors={findings.byField.gateway}>
+      <Field
+        label="Gateway"
+        errors={findings.byField.gateway}
+        help="The router this node uses for traffic leaving its subnet. Set it on exactly one interface per address family — usually the management bridge, not a bare NIC."
+      >
         <input className={inputClass} value={gateway} onChange={(e) => { setGateway(e.target.value); }} />
       </Field>
-      <Field label="Autostart">
+      <Field
+        label="Autostart"
+        help="Whether this interface is brought up at boot (`auto` in the interfaces file). Turning it off on an interface carrying the management path is how a node comes back from a reboot unreachable."
+      >
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={autostart} onChange={(e) => { setAutostart(e.target.checked); }} />
           Bring up at boot
         </label>
       </Field>
-      <Field label="Comment">
+      <Field
+        label="Comment"
+        help="A free-text note written into the interfaces file beside this NIC — which switch port it is patched to, for instance."
+      >
         <input className={inputClass} value={comments} onChange={(e) => { setComments(e.target.value); }} />
       </Field>
       <FieldHelp>

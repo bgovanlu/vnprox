@@ -78,7 +78,10 @@ export function BridgeDeleteDialog({
     >
       {needsReattach && (
         <>
-          <Field label="Attached guest NICs">
+          <Field
+            label="Attached guest NICs"
+            help="Every guest NIC currently on this bridge. Deleting the bridge without moving them would leave each of these guests attached to nothing — which is why the target below is required rather than optional."
+          >
             <ul className="max-h-28 space-y-0.5 overflow-y-auto text-xs text-slate-500 dark:text-slate-400">
               {attachedGuestNics.map((g) => (
                 <li key={g.ref}>{g.label}</li>

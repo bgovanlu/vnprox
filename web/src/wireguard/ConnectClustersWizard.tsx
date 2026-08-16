@@ -319,6 +319,7 @@ export function ConnectClustersWizard({ open, onOpenChange, initialSourceNode }:
       open={open}
       onOpenChange={onOpenChange}
       title={S.title}
+      helpTopic="wireguard-connect-clusters"
       intro={S.intro}
       steps={steps}
       preview={<WizardPreviewPane graph={graph} />}

@@ -432,10 +432,45 @@ This requires all four `ci.yml` job names as required status checks (`strict: tr
 
 The fix: `make lint`/`make check` now invoke `golangci-lint run --allow-serial-runners ./...` (both the local-binary and `go run ...@version` code paths in the `lint` target) instead of the default `--allow-parallel-runners=false` behavior. `--allow-serial-runners` makes a second concurrent invocation **wait for the lock and then run**, rather than erroring out immediately — verified locally by launching two `golangci-lint run --allow-serial-runners ./...` invocations against this repo at the same time and confirming both exit 0 (the second's start is simply delayed until the first releases the lock). If you see the old "parallel golangci-lint is running" error, you're on a golangci-lint invocation that bypassed this flag (e.g. calling the binary directly outside `make lint`).
 
+## Online help is part of the change, not a follow-up (T-2205, written down 2026-08-16)
+
+**A new routed screen ships with a help topic, and a new panel ships with a `?` anchor, in the
+same change.** `web/src/help/coverage.test.ts` enforces both, and it fails the build — it is not
+advisory.
+
+`T-2205`'s card claimed this rule was written here. It was not: until 2026-08-16 the string
+"help" appeared in this document **zero times**, so for four arcs the gate enforced a rule that
+existed only in the gate. It is written now because `T-3006` went looking for it.
+
+What the gate actually checks, so the rule and the test say the same thing:
+
+| Direction | Assertion |
+|---|---|
+| Screen → topic | Every route in `App.tsx`/`NavRail.tsx` has a `ROUTE_HELP` entry. The route inventory is **derived from the source**, never hand-maintained. |
+| Panel → topic | Every panel-shaped component reachable in the import graph from `main.tsx` declares a topic, via `<HelpAnchor topic="…">` or by handing a literal to a wrapper that renders one. |
+| Topic → surface | Every topic whose own `surface` is `panel` or `dialog` is placed at a `?` **somewhere**. A topic describing a screen nobody built has nowhere to be placed and fails. |
+| Field → help | Every `<Field>` in the entity editors carries a `help=` prop. |
+
+The third row is the one worth understanding before adding a topic. It cannot check that prose is
+*accurate* — no test can — but it checks the decidable half: the surface a topic claims to
+document has to be one you can put a cursor on. That check found four topics describing features
+this app has never had (`ipv6-planning`'s grid, `topology-paint-modes`' backup overlay,
+`ipam-external-sync`, `ipam-cross-cluster`, `scheduled-apply`), each backed by a real daemon route
+with no frontend caller.
+
+Those became `surface: "headless"`, browsed under **"Not in the web UI yet"**. That surface is a
+deliberate escape hatch and is fenced as one: a `headless` topic **must** name the `/api/v1` route
+or `vnproxctl` verb that reaches it, **and** must say in its own prose that there is no screen.
+Demoting a real panel topic to dodge the reverse check trips a count floor. Do not reach for
+`headless` to make a check go quiet — reach for it when the honest thing to tell a reader is
+"this exists, and not here".
+
 ## Definition of done (every task)
 
 1. Acceptance criteria on the task card all pass.
 2. `make check` green.
 3. Works against the required pvemock fixtures.
 4. New API routes/types match `docs/api.md`/`docs/data-model.md` exactly (or the doc was updated in the same change with a flagged note).
-5. Report written (per `CLAUDE.md`).
+5. **A new screen has a help topic; a new panel has a `?` anchor.** Enforced by
+   `web/src/help/coverage.test.ts` — see the section above.
+6. Report written (per `CLAUDE.md`).

@@ -19,6 +19,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "../components/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { useToast } from "../components/Toast";
 import type { Blueprint, BlueprintBundle, ImportBundleRequest, ImportBundleResponse } from "../api/types";
 import { useImportBundleMutation } from "./queries";
@@ -95,7 +96,10 @@ export function BlueprintImportDialog({ open, onOpenChange, bundle, onImported }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle>Import blueprint</DialogTitle>
+        <div className="flex items-center gap-1.5">
+          <DialogTitle>Import blueprint</DialogTitle>
+          <HelpAnchor topic="blueprint-import" />
+        </div>
         <DialogDescription>
           {!bundle ? "Choose a blueprint bundle file to import." : !probeResult && !probeError ? "Checking signature…" : null}
         </DialogDescription>

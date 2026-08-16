@@ -15,6 +15,7 @@
 import { useState } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { MicrosegPlanner } from "../microseg/MicrosegPlanner";
 import { ruleMatchLabel } from "./format";
 import { useFirewallEffectsQuery, useGroupRulesetQuery } from "./queries";
@@ -89,7 +90,10 @@ export function GroupInspector({ name, onBack }: GroupInspectorProps) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold">Guests this group reaches</h3>
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+              Guests this group reaches
+              <HelpAnchor topic="firewall-rule-effects" />
+            </h3>
             {effectsLoading && <p className="text-sm text-slate-400">Computing matched guests…</p>}
             {effects && effects.guests.length === 0 && (
               <p className="text-sm text-amber-600 dark:text-amber-400">

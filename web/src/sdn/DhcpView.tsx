@@ -8,6 +8,7 @@
 // dataset"), not a separate reservation store.
 import { useMemo, useState } from "react";
 import { EmptyState } from "../components/EmptyState";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { inputClass } from "../changesets/editors/EditorDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import type { DhcpLease, DhcpReservation } from "../api/types";
@@ -108,7 +109,10 @@ export function DhcpView() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">DHCP</h2>
+        <h2 className="flex items-center gap-1.5 text-lg font-semibold">
+          DHCP
+          <HelpAnchor topic="sdn-dhcp" />
+        </h2>
         <select
           aria-label="Filter by zone"
           className={inputClass + " w-auto"}

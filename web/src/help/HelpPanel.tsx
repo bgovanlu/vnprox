@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "../components/Drawer";
 import { Button } from "../components/Button";
+import { HelpAnchor } from "./HelpAnchor";
 import { HelpText } from "./HelpText";
 import { useHelpStore, helpOpenerElement } from "./store";
 import { getHelpTopic, searchHelp, allHelpTopics } from "./registry";
@@ -12,12 +13,22 @@ const SURFACE_LABEL: Record<HelpSurface, string> = {
   dialog: "Dialogs & wizards",
   concept: "How vnprox works",
   reference: "Reference",
+  headless: "Not in the web UI yet",
 };
 
 // Browse order: what a lost user wants first. Concepts lead, because "why
 // won't this apply" is answered by the safety model far more often than by
-// any one screen's page.
-const SURFACE_ORDER: readonly HelpSurface[] = ["concept", "page", "panel", "dialog", "reference"];
+// any one screen's page. `headless` sorts last and is named for what it is
+// — a reader scanning this list must not mistake an API-only capability for
+// a screen they've failed to find.
+const SURFACE_ORDER: readonly HelpSurface[] = [
+  "concept",
+  "page",
+  "panel",
+  "dialog",
+  "reference",
+  "headless",
+];
 
 function TopicBody({ topic }: { topic: HelpTopic }) {
   const goToTopic = useHelpStore((s) => s.goToTopic);
@@ -217,9 +228,20 @@ export function HelpPanel() {
             </Button>
           )}
           <div className="min-w-0 flex-1">
-            <DrawerTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
-              {searching ? "Search help" : (topic?.title ?? "Help")}
-            </DrawerTitle>
+            <div className="flex items-center gap-1.5">
+              <DrawerTitle className="min-w-0 truncate text-base font-semibold text-slate-900 dark:text-slate-100">
+                {searching ? "Search help" : (topic?.title ?? "Help")}
+              </DrawerTitle>
+              {/* The drawer documents itself. It is a panel like any other,
+               * so the panel census requires it to carry a topic — and the
+               * one thing a first-time reader most needs (F1, search,
+               * "Not in the web UI yet") had nowhere else to live.
+               *
+               * A sibling of <DrawerTitle>, not a child: Radix names the
+               * drawer from its title's subtree, and a nested button's
+               * aria-label would become part of the drawer's own name. */}
+              <HelpAnchor topic="using-online-help" />
+            </div>
             <DrawerDescription
               id="help-panel-summary"
               className="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400"

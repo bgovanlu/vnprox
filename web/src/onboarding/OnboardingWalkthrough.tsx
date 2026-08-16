@@ -19,6 +19,7 @@ import { useSession } from "../api/useSession";
 import { Button } from "../components/Button";
 import { Tooltip } from "../components/Tooltip";
 import { useToast } from "../components/Toast";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useDriftQuery } from "../drift/queries";
 import { useTopologyQuery } from "../topology/queries";
@@ -79,8 +80,9 @@ function FoundSummaryStep({ onComplete }: StepProps) {
 
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <p className="text-slate-600 dark:text-slate-300">
-        Your cluster&apos;s network, drawn. Nothing was changed; vnprox only read.
+      <p className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+        <span>Your cluster&apos;s network, drawn. Nothing was changed; vnprox only read.</span>
+        <HelpAnchor topic="onboarding-walkthrough" />
       </p>
       {isLoading ? (
         <p className="text-slate-400">Scanning the cluster…</p>

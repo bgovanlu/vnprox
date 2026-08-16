@@ -37,6 +37,7 @@ export function ServiceClassTile() {
   return (
     <DashboardTile
       title="Service-network traffic"
+      helpTopic="service-class-traffic"
       description="Migration/backup/Ceph/corosync traffic, ranked by bytes/sec over the recent flow window."
       isLoading={isLoading}
       error={error ? "Could not load flow records." : undefined}

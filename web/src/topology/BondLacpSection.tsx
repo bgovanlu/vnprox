@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { HelpAnchor } from "../help/HelpAnchor";
 
 // T-804: the bond inspector's live LACP section. `fields` is an
 // EntityDetail's generic `Record<string, unknown>` (see fields.ts) —
@@ -90,6 +91,10 @@ export function BondLacpSection({ fields }: { fields: Record<string, unknown> })
 
   return (
     <div className="space-y-3 text-xs">
+      <p className="flex items-center gap-1.5 font-medium text-slate-600 dark:text-slate-300">
+        Live LACP state
+        <HelpAnchor topic="bond-lacp-state" />
+      </p>
       <div
         role="status"
         className={clsx(

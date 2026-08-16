@@ -4,6 +4,7 @@
 // unchanged TopologyPage, scoped by `?cluster=<id>`). This view renders only
 // when >=2 clusters are attached; the gate never mounts it otherwise.
 import type { ClusterSummary } from "../../api/federation";
+import { HelpAnchor } from "../../help/HelpAnchor";
 import { ClusterCapsule } from "./ClusterCapsule";
 
 export interface GlobalTopologyViewProps {
@@ -17,7 +18,10 @@ export function GlobalTopologyView({ clusters, partial, onDrill }: GlobalTopolog
     <section aria-label="Global cluster map" className="flex h-full flex-col gap-4 p-6">
       <header className="flex items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Global map</h1>
+          <h1 className="flex items-center gap-1.5 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            Global map
+            <HelpAnchor topic="federation" />
+          </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {clusters.length} attached clusters — select one to open its topology.
           </p>

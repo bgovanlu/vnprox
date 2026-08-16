@@ -7,6 +7,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { EmptyState } from "../components/EmptyState";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import type { FindingItem } from "../findings/FindingsList";
 import { FindingsList } from "../findings/FindingsList";
@@ -243,7 +244,10 @@ export function EvpnView({ enabled = true }: { enabled?: boolean }) {
       />
 
       <div>
-        <h2 className="mb-2 text-base font-semibold">Peering matrix</h2>
+        <h2 className="mb-2 flex items-center gap-1.5 text-base font-semibold">
+          Peering matrix
+          <HelpAnchor topic="sdn-evpn" />
+        </h2>
         <div className="grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-[1fr_320px]">
           <PeeringMatrix status={status} selection={selection} onSelect={setSelection} />
           <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">

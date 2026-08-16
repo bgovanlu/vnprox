@@ -151,6 +151,7 @@ export function SimpleZoneWizard({ open, onOpenChange }: SimpleZoneWizardProps) 
       open={open}
       onOpenChange={onOpenChange}
       title={S.simple.title}
+      helpTopic="sdn-zone-wizard"
       intro={S.simple.intro}
       steps={steps}
       preview={<WizardPreviewPane graph={graph} />}

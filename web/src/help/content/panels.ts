@@ -34,7 +34,7 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
     title: "Paint modes",
     surface: "panel",
     summary:
-      "Overlays that colour the map by something other than structure: current traffic, measured latency, a simulated path, or the backup path to a PBS host.",
+      "Overlays that colour the map by something other than structure: current traffic, measured latency, and the hop-by-hop result of a path simulation.",
     docRef: "docs/features/monitoring.md",
     keywords: ["paint", "overlay", "heatmap", "traffic", "latency", "utilization", "colour"],
     sections: [
@@ -47,8 +47,12 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
         body: "A separate overlay colouring each node-to-node link by its rolling round-trip time and loss, from continuous low-rate probes across the fabrics vnprox can identify. Its colour scale never shares a value with traffic mode's, so the two read as clearly distinct layers. A bridge carrying both IPv4 and IPv6 is probed on each family independently — a v6-only degradation can't hide behind a healthy v4 number.",
       },
       {
-        heading: "Path and backup overlays",
-        body: "The path simulator draws its hop-by-hop result directly on the map. Where Proxmox Backup Server hosts are known, a backup-path mode lights up the node-to-PBS traffic path for nodes with a job targeting that storage.",
+        heading: "Path",
+        body: "The path simulator draws its hop-by-hop result directly on the map, so a verdict you can read as a list is also a shape you can read at a glance. It is the only overlay driven by something you asked for rather than by something being measured continuously.",
+      },
+      {
+        heading: "There is no backup-path overlay",
+        body: "This topic previously described a paint mode that lit up the node-to-PBS traffic path. **No such mode exists** — `web/src` has no backup or PBS overlay, and never had one. Proxmox Backup Server awareness is real, but it is a panel on the Analysis screen listing datastores, jobs and the interface each job's traffic actually leaves by; it does not colour the map.",
       },
     ],
     seeAlso: ["topology-page", "path-simulator", "flows-page", "pbs-awareness"],
@@ -304,12 +308,16 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
   {
     id: "ipam-external-sync",
     title: "External IPAM sync",
-    surface: "panel",
+    surface: "headless",
     summary:
-      "Two-way bridge to NetBox or phpIPAM: preview shows exactly what would change on either side and writes nothing; only an explicit confirmed apply performs the sync.",
+      "Two-way bridge to NetBox or phpIPAM: preview shows exactly what would change on either side and writes nothing; only an explicit confirmed apply performs the sync — reachable from the API and the CLI only; this build has no screen for it.",
     docRef: "docs/features/ipam.md",
     keywords: ["netbox", "phpipam", "sync", "external", "preview", "dry run", "bidirectional"],
     sections: [
+      {
+        heading: "There is no screen for this yet",
+        body: "The daemon serves `GET /api/v1/ipam/external-subnets`, `GET/PUT /api/v1/ipam/external-subnets/{id}`, `POST /api/v1/ipam/external-sync/preview` and `POST /api/v1/ipam/external-sync/apply`. Nothing under the IPAM screen calls any of them, so the preview and apply described below are things you drive from `vnproxctl` or your own tooling, not controls you will find in this app.",
+      },
       {
         heading: "Preview first, always",
         body: "The preview is a pure dry-run. It classifies each difference as an **add** (vnprox has it, the external system doesn't), a **remove** (the external system has it, vnprox no longer allocates it), or a **conflict** (both hold the address but disagree about its hostname). Conflicts are never auto-written in either direction.",
@@ -328,12 +336,16 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
   {
     id: "ipam-cross-cluster",
     title: "Cross-cluster IPAM",
-    surface: "panel",
+    surface: "headless",
     summary:
-      "Surfaces the same or an overlapping CIDR allocated in two attached clusters — the 'we used 10.20.0.0/24 in two places' problem, which no single cluster's own view can see.",
+      "Surfaces the same or an overlapping CIDR allocated in two attached clusters — the 'we used 10.20.0.0/24 in two places' problem, which no single cluster's own view can see — reachable from the API and the CLI only; this build has no screen for it.",
     docRef: "docs/features/ipam.md",
     keywords: ["cross cluster", "overlap", "duplicate", "cidr", "conflict", "federation", "ipam"],
     sections: [
+      {
+        heading: "There is no screen for this yet",
+        body: "The conflict detection runs in the daemon and answers on `GET /api/v1/federation/ipam/conflicts`, but no component in this app calls that route — the federation screens cover clusters, search and topology, not IPAM. Read it with `vnproxctl` or directly; the behaviour below is what you will get back.",
+      },
       {
         heading: "What it detects",
         body: "Duplicate and overlapping subnets across every attached cluster, reported as a conflict naming both clusters. It's a latent addressing hazard that only becomes visible when something federates the view — which is exactly what this is.",
@@ -347,27 +359,51 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
   },
   {
     id: "ipv6-planning",
-    title: "IPv6 planning grid and dual-stack wizard",
-    surface: "panel",
+    title: "IPv6 /64 planning grid",
+    surface: "headless",
     summary:
-      "Takes a delegated prefix, enumerates its /64 blocks, and proposes one per currently v4-only network — a read-only planning aid, with a wizard to turn a proposal into a real subnet.",
+      "Takes a delegated prefix, enumerates its /64 blocks, and proposes one per currently v4-only network — a read-only planning aid, reachable from the API and the CLI only; this build has no screen for it.",
     docRef: "docs/features/ipam.md",
     keywords: ["ipv6", "v6", "prefix", "dual stack", "slaac", "ra", "delegation", "/64"],
     sections: [
       {
-        heading: "The grid is a plan, not a write",
-        body: "Given something like a /56 from your ISP, the grid enumerates its /64-aligned blocks — the atomic unit for PVE SDN and for nearly every real v6 addressing plan — and proposes one per v4-only VLAN or VNet, aligned in ascending order for a deterministic, reviewable proposal. Blocks already occupied by a configured subnet render as allocated. Nothing here writes.",
+        heading: "There is no screen for this yet",
+        body: "This topic used to describe a planning grid drawn on the IPAM screen. **That grid has never existed in this app** — the enumeration runs in the daemon and answers on `GET /api/v1/ipam/subnets/{prefix}/v6-plan`, and nothing in the web UI calls it. (The route is also missing from `docs/openapi.json`, so a route census built from that file cannot see it either.) The wizard that *does* exist is a separate thing: see 'Dual-stack IPv6 rollout'.",
       },
       {
-        heading: "The dual-stack wizard",
-        body: "Turning a proposed block into a real subnet goes through an ordinary `sdn.subnet.create` changeset. The wizard is idempotent: re-running it against a VNet that already has the requested v6 subnet yields a zero-operation changeset rendered as 'already up to date', not a duplicate.",
+        heading: "The plan is a proposal, not a write",
+        body: "Given something like a /56 from your ISP, the response enumerates its /64-aligned blocks — the atomic unit for PVE SDN and for nearly every real v6 addressing plan — and proposes one per v4-only VLAN or VNet, aligned in ascending order for a deterministic, reviewable proposal. Blocks already occupied by a configured subnet come back marked allocated. Nothing here writes.",
       },
       {
         heading: "What vnprox doesn't do here",
         body: "Prefix delegation from an upstream device vnprox doesn't manage is visibility-only — observed through router advertisements, never requested or configured by vnprox. Router-advertisement parameters beyond addressing (the M and O flags, DHCPv6 ranges) aren't controllable because PVE SDN's own subnet model has no such fields yet.",
       },
     ],
-    seeAlso: ["ipam-page", "sdn-page", "sdn-zone-wizard"],
+    seeAlso: ["ipam-page", "sdn-page", "ipv6-dual-stack"],
+  },
+  {
+    id: "ipv6-dual-stack",
+    title: "Dual-stack IPv6 rollout",
+    surface: "panel",
+    summary:
+      "Adds an IPv6 subnet to a VNet that has only IPv4 today, as one reviewable changeset — and shows you what IPv6 is already live on that VNet before you add to it.",
+    docRef: "docs/features/ipam.md",
+    keywords: ["ipv6", "v6", "dual stack", "dualstack", "wizard", "slaac", "subnet", "vnet"],
+    sections: [
+      {
+        heading: "It is a blueprint, so it is idempotent",
+        body: "The wizard fixes a saved blueprint and its target entity kind rather than letting you pick either, then instantiates it. Instantiation always re-derives its diff against current state, so running the wizard a second time against a VNet that already has the requested v6 subnet produces a changeset with zero operations — 'already up to date' — not a duplicate or a conflict.",
+      },
+      {
+        heading: "'No IPv6 observed' is the normal starting state",
+        body: "The panel above the form reads `GET /ipv6/segments`, which carries one entry per interface where a router advertisement was actually **observed**. A v4-only VNet — precisely what this wizard is for — therefore has none, and that is the expected precondition rather than an error. The VNet list itself comes from the real SDN inventory, not from the segment list, which would otherwise offer you only the VNets that need this wizard least.",
+      },
+      {
+        heading: "Addressing only",
+        body: "The wizard stages addressing. Router advertisements and DHCPv6 are then emitted by the zone's own `dnsmasq`/`radvd` once addressing exists; RA *parameter* control beyond addressing is not something PVE SDN's subnet model can express, so this wizard does not pretend to offer it.",
+      },
+    ],
+    seeAlso: ["ipv6-segments", "sdn-page", "blueprint-import", "change-drawer"],
   },
   {
     id: "service-class-traffic",
@@ -460,12 +496,16 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
   {
     id: "scheduled-apply",
     title: "Scheduled apply and maintenance windows",
-    surface: "panel",
+    surface: "headless",
     summary:
-      "Stage a change now and have it apply inside a future window, with the whole apply, confirm and rollback machinery running unchanged when it fires.",
+      "Stage a change now and have it apply inside a future window, with the whole apply, confirm and rollback machinery running unchanged when it fires — reachable from the API and the CLI only; this build has no screen for it.",
     docRef: "docs/features/change-management.md",
     keywords: ["schedule", "maintenance", "window", "later", "deferred", "cron", "unattended"],
     sections: [
+      {
+        heading: "There is no screen for this yet",
+        body: "The daemon serves `POST /api/v1/changesets/{id}/schedule` and `POST /api/v1/changesets/{id}/schedule/ack`, and `vnproxctl` drives them, but nothing in the web UI calls either route — so do not go looking for a scheduling control on the review screen. Everything below describes behaviour that is real and running; only the way you reach it is a CLI, not a button.",
+      },
       {
         heading: "Re-validated at fire time",
         body: "The scheduler re-runs validation and recomputes whether the change touches a management path *fresh* at the window's start, never trusting the values from when you scheduled it. A change that was safe last Tuesday may not be safe tonight.",
@@ -937,7 +977,7 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
         body: "A DHCPv6 server the advertisement's managed flag implies and a DHCPv6 server actually seen answering are shown differently on purpose. The first is what the router claims should exist; the second is what does. Collapsing them would turn a misconfiguration into a clean reading.",
       },
     ],
-    seeAlso: ["analysis-page", "ipv6-planning", "sdn-page", "ipam-page"],
+    seeAlso: ["analysis-page", "ipv6-dual-stack", "ipv6-planning", "sdn-page", "ipam-page"],
   },
   {
     id: "wan-health",
@@ -1230,5 +1270,305 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
       },
     ],
     seeAlso: ["governance-page", "alert-rules-page", "findings-stream", "doc-export"],
+  },
+
+  // ---------------------------------------------------------------------
+  // T-3006. Every topic below documents a panel that had no `?` of its own
+  // — either because no topic existed for it (the majority), or because
+  // the panel census added by this card found it. They are written from
+  // the component and the doc it cites together; where the two disagreed,
+  // the component won and the disagreement is in the card's report.
+  // ---------------------------------------------------------------------
+  {
+    id: "changeset-approvals",
+    title: "Review approval",
+    surface: "panel",
+    summary:
+      "Records a second person's approve-or-reject decision on a staged changeset, and shows whether apply is currently waiting on one.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["approve", "approval", "reject", "two-person", "four eyes", "reviewer", "sign off"],
+    sections: [
+      {
+        heading: "This panel grants nothing",
+        body: "It is a convenience for recording a decision, not the thing that enforces one. Whether an apply actually requires an approved decision is decided in the daemon, which re-reads the stored approvals fresh on every apply attempt. A build with this panel hidden, or a reject button removed, changes nothing about what the server will accept — which is the property that makes the two-person rule worth having.",
+      },
+      {
+        heading: "Reading the state",
+        body: "Four states, kept distinct on purpose: not yet reviewed, approved, rejected, and 'required before this changeset can apply'. The last is the one that matters at 2am — it says the block you are looking at is a missing approval rather than a validation failure, so you go and find a colleague instead of re-reading the diff.",
+      },
+      {
+        heading: "Rejection carries a reason",
+        body: "A rejection may record why, and the reason travels with the changeset into the audit trail. A changeset that was rejected and then re-staged with no explanation is exactly the shape of an incident review nobody can reconstruct.",
+      },
+    ],
+    seeAlso: ["changeset-review-page", "break-glass", "policy-verdict", "change-drawer"],
+  },
+  {
+    id: "changeset-comments",
+    title: "Review comments",
+    surface: "panel",
+    summary:
+      "Threaded comments on a staged changeset as a whole and on individual operations within it — the review conversation, kept beside the change rather than in a chat window nobody will find later.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["comment", "review", "thread", "note", "discussion", "annotate"],
+    sections: [
+      {
+        heading: "Changeset-level and per-operation",
+        body: "Every operation currently in the changeset gets its own thread, whether or not anything has been said on it, so there is one canonical place to comment on an operation rather than a 'pick an op' list beside a separate 'existing threads' list. Comments about the change as a whole live in their own section above them.",
+      },
+      {
+        heading: "A comment on an operation that no longer exists",
+        body: "Editing a changeset can remove the operation a comment was attached to. Those comments are shown in a separate, clearly-labelled group rather than being dropped from the view — a review remark that silently vanishes when someone edits the thing it criticised is worse than no comment system at all.",
+      },
+    ],
+    seeAlso: ["changeset-review-page", "changeset-approvals", "change-drawer", "audit-page"],
+  },
+  {
+    id: "changeset-impact",
+    title: "Blast radius",
+    surface: "panel",
+    summary:
+      "What an operator would actually notice if this changeset applied: which nodes and guests are affected, whether the interruption is brief or an outage, and whether a management path is involved.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["impact", "blast radius", "disruption", "outage", "who notices", "affected guests"],
+    sections: [
+      {
+        heading: "The diff says what changes; this says who notices",
+        body: "They are different questions and the review screen shows them side by side for that reason. A one-line diff can be an outage and a twenty-line diff can be invisible; reading only the diff gives you no way to tell which one you are holding.",
+      },
+      {
+        heading: "Three disruption classes, and the reason for each",
+        body: "**No disruption**, **brief interruption**, and **outage**. Every verdict carries the daemon's own reason rather than a phrase invented in the browser — an impact panel that over-claims without explaining trains people to skip it, and a skipped warning is the same as an absent one.",
+      },
+      {
+        heading: "A failure to compute is not 'no impact'",
+        body: "If the blast radius cannot be worked out, the panel says so in those words and refuses to render an empty result. 'We could not work out the blast radius' and 'the blast radius is nothing' must never look the same, and here they do not.",
+      },
+    ],
+    seeAlso: ["changeset-review-page", "protected-interfaces", "commit-confirm", "post-apply-preview"],
+  },
+  {
+    id: "firewall-objects",
+    title: "Firewall objects: aliases, IPsets and groups",
+    surface: "panel",
+    summary:
+      "The named things firewall rules refer to — aliases, IPsets, security groups — with a live count of what references each one, and the built-in macro catalog with its expansions.",
+    docRef: "docs/features/firewall.md",
+    keywords: ["alias", "ipset", "security group", "macro", "object", "reference", "usage"],
+    sections: [
+      {
+        heading: "Usage is shown before deletion, not after",
+        body: "Each object lists how many rules reference it, and each reference deep-links to the rule's own editor. Deleting a referenced object is blocked rather than cascaded: the reference list is rendered so you can go and unpick it deliberately. A firewall object that disappears out from under nine rules is an outage with no obvious cause.",
+      },
+      {
+        heading: "The macro catalog",
+        body: "Proxmox's built-in macros are listed with the port and protocol set each one expands to, so a rule written as `HTTP` can be read as what it actually permits. The expansion is shown rather than summarised — a macro you have to guess at is a rule you cannot review.",
+      },
+      {
+        heading: "Deletions are changesets like everything else",
+        body: "Removing an alias, IPset or group builds an operation in the change drawer; nothing on this panel writes to PVE directly. Cluster-scoped and per-guest rulesets are addressed separately, so a delete always names which ruleset it lands in.",
+      },
+    ],
+    seeAlso: ["firewall-page", "firewall-rule-effects", "change-drawer", "microseg-planner"],
+  },
+  {
+    id: "using-online-help",
+    title: "Using this help panel",
+    surface: "panel",
+    summary:
+      "How the help drawer itself works — opening it on the screen you are on, searching every topic, browsing by kind, and following the cross-links back and forth.",
+    docRef: "docs/user-guide.md",
+    keywords: ["help", "f1", "search", "browse", "topic", "docs", "manual", "question mark"],
+    sections: [
+      {
+        heading: "Three ways in",
+        body: "`F1` anywhere, the **Help** button in the top bar, or the small `?` beside a panel heading. The first two open on the topic for the screen you are on; the `?` opens directly on that particular panel, which is usually the one you actually wanted. Escape closes the drawer and puts keyboard focus back on whatever opened it.",
+      },
+      {
+        heading: "Search covers the prose, not just the titles",
+        body: "The search box matches titles, summaries, section headings and bodies, keywords and step text, and every word you type has to appear somewhere in a topic for it to be returned. When a match came from a section body rather than the title, the result says which section — so a hit does not look arbitrary.",
+      },
+      {
+        heading: "It works when the daemon does not",
+        body: "Every topic is bundled into the app rather than fetched from the daemon, which is deliberate: the moments you most need the rollback and CLI-escape-hatch topics are exactly the moments the daemon is unreachable. Each topic also names the file in the vnprox repository it was written from, at the bottom, so you can check the source rather than trust the summary.",
+      },
+      {
+        heading: "'Not in the web UI yet'",
+        body: "One group in the browse index is named that. Those topics document capabilities the daemon really implements and this build has no screen for — reachable from `vnproxctl` or the API. They are listed rather than hidden so that a capability with no button is visibly a capability with no button, instead of looking like a screen you failed to find.",
+      },
+    ],
+    seeAlso: ["keyboard-and-palette", "cli-escape-hatch", "safety-model"],
+  },
+  {
+    id: "config-diff-view",
+    title: "Unified diff",
+    surface: "panel",
+    summary:
+      "The line-by-line diff of a configuration file between two points in time, coloured by added, removed and context lines.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["diff", "unified", "patch", "lines", "added", "removed", "interfaces"],
+    sections: [
+      {
+        heading: "The file, not the model",
+        body: "This is a textual diff of the configuration as it was written to disk — the same thing you would get from `diff -u` between two snapshots. It shows comments, ordering and whitespace that a structural comparison of entities would normalise away, which is the point: a change that only moved a stanza is still a change to the file the kernel reads at boot.",
+      },
+      {
+        heading: "Reading it beside the entity diff",
+        body: "The map's point-in-time diff answers 'what is different about the network'; this answers 'what is different about the file'. Where a hand edit landed outside vnprox, the two disagree, and that disagreement is drift — worth following up rather than reconciling by eye.",
+      },
+    ],
+    seeAlso: ["history-page", "topology-point-in-time-diff", "snapshots-time-machine", "drift"],
+  },
+  {
+    id: "sdn-dhcp",
+    title: "DHCP reservations and leases",
+    surface: "panel",
+    summary:
+      "Static reservations bound to guest MAC addresses, and the live leases each node's DHCP server is currently handing out, in one view.",
+    docRef: "docs/features/sdn.md",
+    keywords: ["dhcp", "lease", "reservation", "mac", "dnsmasq", "static", "binding"],
+    sections: [
+      {
+        heading: "One dataset, two renderings",
+        body: "Reservations here are the same PVE-IPAM records the IPAM grid renders as allocated cells — not a second reservation store that could drift out of step with it. If an address is reserved, both surfaces agree about it because both are reading the same rows.",
+      },
+      {
+        heading: "Leases are observed, reservations are configured",
+        body: "The lease list is parsed per node and shows what is actually held right now, including leases with no matching guest — rendered as **unmatched** rather than hidden. An unmatched lease is usually the interesting one: something on the network holding an address vnprox cannot account for.",
+      },
+    ],
+    seeAlso: ["sdn-page", "ipam-page", "ipam-address-list", "guests-page"],
+  },
+  {
+    id: "sdn-evpn",
+    title: "EVPN and BGP status",
+    surface: "panel",
+    summary:
+      "Read-only observability for an EVPN fabric: the node-by-peer session matrix, per-session detail with prefix counts and last error, the VNI list, and exit-node health.",
+    docRef: "docs/features/sdn.md",
+    keywords: ["evpn", "bgp", "vni", "peer", "session", "exit node", "vtep", "frr"],
+    sections: [
+      {
+        heading: "The matrix first, the session second",
+        body: "Nodes across one axis and peers across the other, coloured by session state, because an EVPN problem is almost always asymmetric — one node not peering with one other. A flat list of sessions hides exactly that shape. Selecting a cell opens the session's own detail: prefixes exchanged, uptime, and the last error the daemon reported verbatim.",
+      },
+      {
+        heading: "Observability only",
+        body: "Nothing on this panel writes. EVPN configuration is edited through the zone editors and staged as an ordinary changeset like every other SDN change; this is where you look afterwards to see whether the fabric agreed with you.",
+      },
+      {
+        heading: "Findings appear beside the state",
+        body: "Health checks about the fabric are rendered here rather than only in the global findings stream, so a peer that has been flapping is visible next to the session it concerns instead of one screen away.",
+      },
+    ],
+    seeAlso: ["sdn-page", "sdn-zone-wizard", "findings-stream", "topology-page"],
+  },
+  {
+    id: "sdn-pending-diff",
+    title: "Staged SDN changes",
+    surface: "panel",
+    summary:
+      "The delta between what PVE's SDN configuration says today and what has been staged but not yet applied, for one zone, VNet or subnet.",
+    docRef: "docs/features/sdn.md",
+    keywords: ["pending", "staged", "apply", "sdn", "diff", "unapplied", "reload"],
+    sections: [
+      {
+        heading: "Staged-versus-running as a first-class state",
+        body: "PVE's SDN keeps a staged configuration separate from the running one, and something has to apply the former onto the latter. Rather than showing you a single blended value, this renders the three cases distinctly: created and not yet applied, changed and not yet applied, marked for deletion and not yet applied — with the specific fields that differ for a change.",
+      },
+      {
+        heading: "Why this is not merged into the normal view",
+        body: "A staged value shown as though it were live is the same defect family as a skipped check shown as a pass. An operator reading a VNet's MTU needs to know whether the number in front of them is what the network is doing or what someone intends it to do, and the amber framing exists to make that impossible to miss.",
+      },
+    ],
+    seeAlso: ["sdn-page", "drift", "change-drawer", "commit-confirm"],
+  },
+  {
+    id: "verify-live",
+    title: "Verify live",
+    surface: "panel",
+    summary:
+      "Runs a real probe along the path you just simulated and shows the simulated verdict and the observed one side by side — never merging them, and saying plainly when they disagree.",
+    docRef: "docs/features/firewall.md",
+    keywords: ["verify", "live", "probe", "observed", "simulated", "divergence", "disagree"],
+    sections: [
+      {
+        heading: "Two independent facts, not a correction",
+        body: "The observed result never overwrites, strikes through or 'corrects' the simulated one. Both are shown as what they are: one is what vnprox's model of your rules predicts, the other is what a packet actually did. Presenting the live probe as the truth that fixes the simulation would hide the case worth caring about.",
+      },
+      {
+        heading: "Divergence is the finding",
+        body: "When the two disagree the panel says so explicitly, and says only that — it never asserts which one is right. A simulator that says **allow** where a probe says **blocked** means your rule model and your kernel disagree, and which of them is wrong is a question for you, not for a colour.",
+      },
+      {
+        heading: "It appears only when there is something to show",
+        body: "The plain simulated result renders unconditionally; this appears beneath it once a live probe has actually run. An empty verify panel would otherwise read as 'verified, nothing wrong'.",
+      },
+    ],
+    seeAlso: ["path-simulator", "diagnose-page", "firewall-page", "capture-panel"],
+  },
+  {
+    id: "bond-lacp-state",
+    title: "Live LACP state",
+    surface: "panel",
+    summary:
+      "What a bond's 802.3ad negotiation actually settled on: actor and partner system IDs, priorities and keys, and each slave's synchronised/collecting/distributing port state.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["lacp", "802.3ad", "bond", "partner", "actor", "aggregation", "mii", "slave"],
+    sections: [
+      {
+        heading: "Configured mode versus negotiated result",
+        body: "A bond configured for LACP is not a bond running LACP. This section reads the live negotiation out of the running kernel, so a bond whose slaves disagree about the partner system or key — the classic 'the switch ports were never put in the same LAG' failure — is visibly different from one that negotiated correctly, rather than both rendering as `802.3ad`.",
+      },
+      {
+        heading: "Per-slave, because that is where it breaks",
+        body: "MII status, link failure count, which slave is active, and the 802.3ad port-state flags are shown per slave. One member out of four that is up but not distributing is invisible in any bond-level summary and is exactly the state that halves your throughput without raising a link-down anywhere.",
+      },
+      {
+        heading: "Best effort, and it says so",
+        body: "Some of this is refined from kernel netlink attributes where the running kernel exposes them and falls back to parsing the bonding file where it does not. Values the kernel did not provide are absent rather than defaulted, and a mismatch also raises its own health finding so it does not depend on somebody opening this inspector.",
+      },
+    ],
+    seeAlso: ["topology-inspector", "findings-stream", "topology-page", "protected-interfaces"],
+  },
+  {
+    id: "flow-pair-panel",
+    title: "Guest-pair flow drill-down",
+    surface: "panel",
+    summary:
+      "Opened by clicking a flow overlay edge on the map: what that pair of guests is actually exchanging, with links onward to the Flow Explorer and to the live connection table.",
+    docRef: "docs/features/monitoring.md",
+    keywords: ["flow", "pair", "guest", "drill down", "conntrack", "explorer", "edge"],
+    sections: [
+      {
+        heading: "From a line on the map to the traffic behind it",
+        body: "The flows layer draws an edge between two guests that are talking. Clicking it opens this summary rather than navigating away, so you keep the map's context; the deep links then carry the same pair into the Flow Explorer or the connection table with the filter already applied, instead of making you retype it.",
+      },
+      {
+        heading: "It sits opposite the entity inspector",
+        body: "Deliberately anchored in the opposite corner of the map from the inspector stack, so drilling into a flow while an entity inspector is open does not hide either one behind the other.",
+      },
+    ],
+    seeAlso: ["flows-page", "conntrack-page", "topology-page", "service-class-traffic"],
+  },
+  {
+    id: "inspector-compare",
+    title: "Comparing two entities",
+    surface: "panel",
+    summary:
+      "Two entities of the same kind — two bonds, or `vmbr0` on two nodes — with their fields and metrics laid out in aligned columns so a difference is visible rather than remembered.",
+    docRef: "docs/features/topology.md",
+    keywords: ["compare", "side by side", "two", "diff", "inspector", "columns", "drift"],
+    sections: [
+      {
+        heading: "Same kind, one tab strip",
+        body: "When both entities are the same kind, they share a single Fields | Metrics tab strip and each tab renders as two aligned columns, so the same field is on the same row for both. That alignment is the whole feature: comparing two nodes' `vmbr0` by scrolling between two panels is how an MTU mismatch survives three people looking at it.",
+      },
+      {
+        heading: "A mismatched pair degrades honestly",
+        body: "Comparing two entities of different kinds — or one that is still loading — falls back to two plain independent inspector panes and says why, rather than forcing a grid that would silently line up unrelated fields against each other.",
+      },
+    ],
+    seeAlso: ["topology-inspector", "topology-page", "topology-point-in-time-diff", "cluster-awareness"],
   },
 ];

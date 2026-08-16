@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
+import { HelpAnchor } from "../help/HelpAnchor";
 import type { ApprovalState } from "../api/types";
 import { useReviewApproveMutation, useReviewRejectMutation } from "./queries";
 
@@ -72,9 +73,12 @@ export function ApprovalPanel({ changesetId, approval }: ApprovalPanelProps) {
     >
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="font-medium">
-            {statusLabel[status]}
-            {required && status !== "approved" && " — required before this changeset can apply"}
+          <p className="flex items-center gap-1.5 font-medium">
+            <span>
+              {statusLabel[status]}
+              {required && status !== "approved" && " — required before this changeset can apply"}
+            </span>
+            <HelpAnchor topic="changeset-approvals" />
           </p>
           {approval?.decidedBy && approval.decidedAt !== undefined && (
             <p className="mt-0.5 text-[11px] opacity-80">

@@ -5,6 +5,7 @@
 // wherever that entity's own detail is shown", which this component is.
 import { useState } from "react";
 import { Button } from "../components/Button";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { useAnnotationsForRef, useCreateAnnotationMutation, useDeleteAnnotationMutation } from "./annotationsQueries";
 
 export interface AnnotationsSectionProps {
@@ -64,8 +65,9 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
 
   return (
     <div className="space-y-3 text-xs">
-      <p className="text-slate-400">
-        Sticky notes pinned to this entity — visible to every user, never a copy of any PVE config.
+      <p className="flex items-center gap-1.5 text-slate-400">
+        <span>Sticky notes pinned to this entity — visible to every user, never a copy of any PVE config.</span>
+        <HelpAnchor topic="map-annotations" />
       </p>
       <ul className="space-y-2">
         {notes.map((note) => (

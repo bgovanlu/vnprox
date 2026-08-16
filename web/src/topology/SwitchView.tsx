@@ -6,6 +6,7 @@
 // staleness, and WS deltas all flow through unchanged) plus the shared UI
 // state (selection, VLAN filter, layer toggles) and two callbacks.
 import { EmptyState } from "../components/EmptyState";
+import { HelpAnchor } from "../help/HelpAnchor";
 import type { Layer } from "../api/types";
 import { SwitchFaceplate } from "./SwitchFaceplate";
 import { switchCarriesVlan, type SwitchTopology, type SwitchUplink } from "./switchModel";
@@ -121,6 +122,7 @@ export function SwitchView({
             <section key={group.node} aria-label={`node ${group.node}`}>
               <div className="mb-2 flex items-center gap-2">
                 <h2 className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-200">{group.node}</h2>
+                <HelpAnchor topic="switch-push" />
                 {/* T-2004: text-slate-400 dark:text-slate-400 (identical
                     both themes) measured 2.4:1 against this page's
                     bg-slate-100 — passes only in dark mode. slate-600

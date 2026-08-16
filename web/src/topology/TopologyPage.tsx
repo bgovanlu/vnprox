@@ -31,6 +31,7 @@ import { computeLatencyOverlayEdges } from "./latencyMode";
 import { useLatMeshHeatmapQuery } from "./latMeshQueries";
 import { computeDiffOverlay, summarizeDiffOverlay } from "./diffOverlay";
 import { useTopologyDiffQuery } from "./topologyDiffQuery";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { buildPreviewScene, summarizePreviewScene, summarizeUnprojectable } from "./previewOverlay";
 import { useChangesetPreviewQuery } from "./previewQuery";
 import { computeMTUOverlayEdges } from "./mtuOverlay";
@@ -932,14 +933,20 @@ function TopologyPageContent() {
             onToggleK8s={toggleK8sLayer}
           />
           {viewMode === "graph" && (
-            <Button
-              size="sm"
-              variant={trafficMode ? "primary" : "secondary"}
-              aria-pressed={trafficMode}
-              onClick={toggleTrafficMode}
-            >
-              Traffic
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant={trafficMode ? "primary" : "secondary"}
+                aria-pressed={trafficMode}
+                onClick={toggleTrafficMode}
+              >
+                Traffic
+              </Button>
+              {/* The `?` covers the paint modes as a set (traffic, latency,
+               * and the simulated path) rather than sitting on one of the
+               * three toggles. */}
+              <HelpAnchor topic="topology-paint-modes" />
+            </>
           )}
           {viewMode === "graph" && (
             // T-901 experimental feature flag: switch the Graph renderer
@@ -1029,7 +1036,11 @@ function TopologyPageContent() {
           className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100 print:hidden"
           role="status"
         >
-          <span className="font-medium">Post-apply preview of changeset {preview.changesetId}</span> —{" "}
+          <span className="inline-flex items-center gap-1.5 font-medium">
+            Post-apply preview of changeset {preview.changesetId}
+            <HelpAnchor topic="post-apply-preview" />
+          </span>{" "}
+          —{" "}
           {summarizePreviewScene(previewScene)}{" "}
           <span className="italic">Best-effort projection: nothing has been applied.</span>
           {summarizeUnprojectable(preview) !== "" && (

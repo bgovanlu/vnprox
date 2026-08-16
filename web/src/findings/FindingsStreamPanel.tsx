@@ -23,6 +23,7 @@ import { Button } from "../components/Button";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
 import type { FindingSource, Severity } from "../api/types";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
 import { mgmtStrings } from "../mgmt/strings";
@@ -180,6 +181,7 @@ export function FindingsStreamPanel() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter findings">
+        <HelpAnchor topic="findings-stream" />
         <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
           Source
           <select

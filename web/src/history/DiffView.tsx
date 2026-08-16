@@ -3,6 +3,7 @@
 // classification lives in parseDiff.ts so it's unit-testable without
 // rendering and this file only exports components.
 import clsx from "clsx";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { parseUnifiedDiff, type DiffLineKind } from "./parseDiff";
 
 const lineClasses: Record<DiffLineKind, string> = {
@@ -29,18 +30,23 @@ export function DiffView({ unified, className }: DiffViewProps) {
     );
   }
   return (
-    <pre
-      className={clsx(
-        "overflow-x-auto rounded-md border border-slate-200 bg-white p-3 text-xs leading-5",
-        "dark:border-slate-800 dark:bg-slate-950",
-        className,
-      )}
-    >
-      {lines.map((line, i) => (
-        <div key={i} className={clsx("whitespace-pre px-1", lineClasses[line.kind])}>
-          {line.text || " "}
-        </div>
-      ))}
-    </pre>
+    <div className={clsx("flex flex-col gap-1", className)}>
+      <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+        <span>Unified diff</span>
+        <HelpAnchor topic="config-diff-view" />
+      </div>
+      <pre
+        className={clsx(
+          "overflow-x-auto rounded-md border border-slate-200 bg-white p-3 text-xs leading-5",
+          "dark:border-slate-800 dark:bg-slate-950",
+        )}
+      >
+        {lines.map((line, i) => (
+          <div key={i} className={clsx("whitespace-pre px-1", lineClasses[line.kind])}>
+            {line.text || " "}
+          </div>
+        ))}
+      </pre>
+    </div>
   );
 }

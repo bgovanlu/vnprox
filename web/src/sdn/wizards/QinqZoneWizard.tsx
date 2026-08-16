@@ -183,6 +183,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
       open={open}
       onOpenChange={onOpenChange}
       title={S.qinq.title}
+      helpTopic="sdn-zone-wizard"
       intro={S.qinq.intro}
       steps={steps}
       preview={<WizardPreviewPane graph={graph} />}

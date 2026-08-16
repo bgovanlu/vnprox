@@ -190,6 +190,7 @@ export function VlanZoneWizard({ open, onOpenChange }: VlanZoneWizardProps) {
       open={open}
       onOpenChange={onOpenChange}
       title={S.vlan.title}
+      helpTopic="sdn-zone-wizard"
       intro={S.vlan.intro}
       steps={steps}
       preview={<WizardPreviewPane graph={graph} />}

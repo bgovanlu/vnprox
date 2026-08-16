@@ -337,7 +337,10 @@ export function HistoryPage() {
         }}
       >
         <DialogContent>
-          <DialogTitle>Restore snapshot?</DialogTitle>
+          <div className="flex items-center gap-1.5">
+            <DialogTitle>Restore snapshot?</DialogTitle>
+            <HelpAnchor topic="snapshot-restore" />
+          </div>
           <DialogDescription>
             This creates a <strong>draft changeset</strong> that would bring{" "}
             {restoreTarget?.nodes.join(", ") ?? "the captured nodes"} back to the state captured at{" "}

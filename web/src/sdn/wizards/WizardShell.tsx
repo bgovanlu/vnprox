@@ -14,6 +14,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "../../components/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/Dialog";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { HelpAnchor } from "../../help/HelpAnchor";
 import { wizardStrings } from "./strings";
 
 export interface WizardStep {
@@ -30,13 +31,28 @@ export interface WizardShellProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   intro: string;
+  /** The wizard's own help topic. Required rather than optional: every
+   * wizard built on this shell is a `dialog`-surface help topic that
+   * coverage.test.ts requires to be placed somewhere, and a shell that
+   * let a caller omit it would put that back on a reviewer to notice. */
+  helpTopic: string;
   steps: WizardStep[];
   preview: ReactNode;
   onFinish: () => void;
   finishing?: boolean;
 }
 
-export function WizardShell({ open, onOpenChange, title, intro, steps, preview, onFinish, finishing }: WizardShellProps) {
+export function WizardShell({
+  open,
+  onOpenChange,
+  title,
+  intro,
+  helpTopic,
+  steps,
+  preview,
+  onFinish,
+  finishing,
+}: WizardShellProps) {
   const [stepIndex, setStepIndex] = useState(0);
 
   // Reset to the first step every time the wizard (re)opens — a
@@ -64,7 +80,10 @@ export function WizardShell({ open, onOpenChange, title, intro, steps, preview, 
         className="max-h-[90vh] overflow-y-auto"
         aria-describedby="wizard-shell-description"
       >
-        <DialogTitle>{title}</DialogTitle>
+        <div className="flex items-center gap-1.5">
+          <DialogTitle>{title}</DialogTitle>
+          <HelpAnchor topic={helpTopic} />
+        </div>
         <DialogDescription id="wizard-shell-description">{intro}</DialogDescription>
 
         <div className="mt-3 flex flex-wrap items-center gap-1 text-xs text-slate-500 dark:text-slate-400">

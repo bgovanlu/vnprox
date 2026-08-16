@@ -3,6 +3,7 @@
 // acceptance criterion 2 asks for ("Fixture with staged-but-unapplied SDN
 // change -> pending diff renders exactly the staged delta").
 import type { SdnPendingDiff } from "../api/types";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { formatDiffValue } from "./tree";
 
 const STATE_LABEL: Record<SdnPendingDiff["state"], string> = {
@@ -18,7 +19,10 @@ export function PendingDiffView({ diff }: { diff: SdnPendingDiff }) {
       role="status"
       className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950"
     >
-      <p className="font-medium text-amber-800 dark:text-amber-200">{STATE_LABEL[diff.state]}</p>
+      <p className="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-200">
+        {STATE_LABEL[diff.state]}
+        <HelpAnchor topic="sdn-pending-diff" />
+      </p>
       {diff.state === "changed" && fields.length > 0 && (
         <table className="mt-2 w-full text-xs">
           <thead>

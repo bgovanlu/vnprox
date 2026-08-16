@@ -23,6 +23,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { Button } from "../components/Button";
 import { useSession } from "../api/useSession";
 import { missingCapTooltip } from "../changesets/capabilities";
@@ -166,7 +167,10 @@ export function CaptureDialog() {
   return (
     <Dialog open={request !== undefined} onOpenChange={handleOpenChange}>
       <DialogContent widthClassName="max-w-3xl" density="compact">
-        <DialogTitle>Capture{request ? ` on ${request.label ?? request.targetRef}` : ""}</DialogTitle>
+        <div className="flex items-center gap-1.5">
+          <DialogTitle>Capture{request ? ` on ${request.label ?? request.targetRef}` : ""}</DialogTitle>
+          <HelpAnchor topic="capture-panel" />
+        </div>
         <DialogDescription>
           {request?.node ? `Node: ${request.node}. ` : ""}
           Payload bytes only ever live in the downloadable pcap file — vnprox never stores or displays packet contents

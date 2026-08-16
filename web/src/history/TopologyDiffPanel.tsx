@@ -20,6 +20,7 @@ import {
   type TopologyEntityDiff,
 } from "../api/topologyDiff";
 import { EmptyState } from "../components/EmptyState";
+import { HelpAnchor } from "../help/HelpAnchor";
 
 export interface TopologyDiffPanelProps {
   /** Snapshot id, unix/RFC3339 timestamp, or "" for "nothing selected". */
@@ -156,6 +157,7 @@ export function TopologyDiffPanel({ from, to }: TopologyDiffPanelProps) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+        <HelpAnchor topic="topology-point-in-time-diff" />
         <span>
           {rows.length} {rows.length === 1 ? "difference" : "differences"} across{" "}
           {diff.coverage.nodes.length || "no"} {diff.coverage.nodes.length === 1 ? "node" : "nodes"}

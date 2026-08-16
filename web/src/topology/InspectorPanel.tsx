@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { useNavigate } from "react-router-dom";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "../components/Drawer";
 import { EmptyState } from "../components/EmptyState";
+import { HelpAnchor } from "../help/HelpAnchor";
 import { Button } from "../components/Button";
 import { Tooltip } from "../components/Tooltip";
 import { useSession } from "../api/useSession";
@@ -248,8 +249,9 @@ export function InspectorPanel({
           // own aria-label (set by the embedded branch below) supplies the
           // accessible name instead of Radix's aria-labelledby wiring.
           <div>
-            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold text-slate-900 dark:text-slate-100">
               {data?.label ?? "Inspector"}
+              <HelpAnchor topic="topology-inspector" />
             </h2>
             <p id="inspector-description" className="text-sm text-slate-500 dark:text-slate-400">
               {data ? `${data.kind} on ${data.node || "cluster"}` : "Entity detail"}

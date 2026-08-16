@@ -215,7 +215,11 @@ export function BridgeEditor({ open, onOpenChange, node, target, existing, newBr
         />
       </Field>
 
-      <Field label="Gateway" errors={findings.byField.gateway}>
+      <Field
+        label="Gateway"
+        errors={findings.byField.gateway}
+        help="The router this node uses for traffic leaving its subnet. Set it on exactly one interface per address family — a second default gateway does not add redundancy, it makes which one wins depend on boot order."
+      >
         <input className={inputClass} value={gateway} onChange={(e) => { setGateway(e.target.value); }} />
       </Field>
 
@@ -224,7 +228,10 @@ export function BridgeEditor({ open, onOpenChange, node, target, existing, newBr
           <input type="number" className={inputClass} value={mtu} onChange={(e) => { setMtu(Number(e.target.value)); }} />
         </Field>
         {kind === "linux" && (
-          <Field label="STP">
+          <Field
+            label="STP"
+            help="Spanning tree stops a cabling loop from melting the network, at the cost of a port taking up to ~30 seconds to start forwarding after it comes up. Leave it off for the ordinary case (bridge with one uplink or one bond); turn it on if this bridge could ever have two paths to the same switch."
+          >
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={stp} onChange={(e) => { setStp(e.target.checked); }} />
               Spanning tree
@@ -233,7 +240,10 @@ export function BridgeEditor({ open, onOpenChange, node, target, existing, newBr
         )}
       </div>
 
-      <Field label="Comment">
+      <Field
+        label="Comment"
+        help="A free-text note written into the interfaces file beside this bridge — what it is for, or which VLAN the guests on it are meant to be in."
+      >
         <input className={inputClass} value={comments} onChange={(e) => { setComments(e.target.value); }} />
       </Field>
     </EditorDialog>

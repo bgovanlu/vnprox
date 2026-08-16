@@ -9,6 +9,7 @@
 // `min-h-[16rem]` panel is sized for a full-page placeholder, not a small
 // grid tile, so this renders a lighter-weight equivalent instead.
 import type { ReactNode } from "react";
+import { HelpAnchor } from "../help/HelpAnchor";
 
 export interface DashboardTileEmpty {
   title: string;
@@ -18,6 +19,10 @@ export interface DashboardTileEmpty {
 export interface DashboardTileProps {
   title: string;
   description?: string;
+  /** The tile's help topic, rendered as a `?` beside its heading. Optional
+   * because not every tile is a surface with vocabulary of its own — but
+   * where one is, this is how it gets into the help coverage census. */
+  helpTopic?: string;
   isLoading?: boolean;
   error?: string;
   empty?: DashboardTileEmpty;
@@ -34,6 +39,7 @@ export interface DashboardTileProps {
 export function DashboardTile({
   title,
   description,
+  helpTopic,
   isLoading,
   error,
   empty,
@@ -48,7 +54,10 @@ export function DashboardTile({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</h2>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            {title}
+            {helpTopic !== undefined && <HelpAnchor topic={helpTopic} />}
+          </h2>
           {description ? <p className="text-xs text-slate-500 dark:text-slate-400">{description}</p> : null}
         </div>
         <button

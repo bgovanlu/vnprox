@@ -231,7 +231,7 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
         body: "Office LANs, upstream transit, colo ranges — address space Proxmox knows nothing about — can be recorded as **external subnets** so your plan is complete. They're plain records; they are never staged as PVE SDN changes. If you run NetBox or phpIPAM, the external sync gives you a dry-run preview before anything is written either way.",
       },
     ],
-    seeAlso: ["ipam-address-list", "ipam-external-sync", "ipam-cross-cluster", "ipv6-planning"],
+    seeAlso: ["ipam-address-list", "ipam-external-sync", "ipam-cross-cluster", "ipv6-dual-stack"],
   },
   {
     id: "flows-page",

@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
+import { HelpAnchor } from "../help/HelpAnchor";
 import type { IpamCell, IpamCellState, IpamCounts, IpamFreeRange } from "../api/types";
 import { stateChipClasses, stateLabel, stateSwatchClasses } from "./labels";
 import { useIpamAllocationsQuery } from "./queries";
@@ -202,6 +203,10 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+        Addresses in {subnetCidr}
+        <HelpAnchor topic="ipam-address-list" />
+      </p>
       <UtilizationStrip counts={data.counts} onPick={setFilter} active={filter} />
 
       {data.conflicts.length > 0 && (
