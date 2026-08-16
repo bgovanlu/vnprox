@@ -13,10 +13,24 @@
 // "entities that already match are skipped"), so running this wizard a
 // second time against a VNet that already has the requested v6 subnet
 // produces a changeset with zero ops, not a duplicate/conflicting one.
+//
+// T-3004: the wizard now reads GET /ipv6/segments and shows what IPv6 is
+// actually live on the selected VNet before you add to it — a wizard that
+// cannot read the state it edits is worse than no wizard.
+//
+// One subtlety worth keeping straight, because it inverts the obvious
+// reading: **no observed segment is the normal precondition here, not an
+// error.** GET /ipv6/segments carries one entry per interface where a
+// router advertisement was actually observed, so a v4-only VNet — precisely
+// what this wizard targets — has none. "No IPv6 observed" is therefore the
+// starting state, and the VNet list deliberately comes from GET /sdn (the
+// real VNet inventory) rather than from the segment list, which would
+// otherwise offer only the VNets that need this wizard least.
 import { useMemo, useState } from "react";
-import type { Blueprint, BlueprintParamDef, BlueprintParamValue, Changeset } from "../api/types";
+import type { Blueprint, BlueprintParamDef, BlueprintParamValue, Changeset, IPv6Segment } from "../api/types";
 import { useBlueprintsQuery, useInstantiateBlueprintMutation, useSaveBlueprintMutation } from "../blueprints/queries";
 import { ParamForm } from "../blueprints/ParamForm";
+import { segmentsForVnet, useIPv6SegmentsQuery } from "./ipv6Queries";
 
 /** Fixed, well-known id for this wizard's own backing blueprint — created
  * on first use (POST /blueprints upserts by id, docs/api.md's Blueprints
@@ -85,6 +99,7 @@ export function DualStackWizard({ vnets, onInstantiated }: DualStackWizardProps)
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
 
   const blueprintsQuery = useBlueprintsQuery();
+  const segmentsQuery = useIPv6SegmentsQuery();
   const saveMutation = useSaveBlueprintMutation();
   const instantiateMutation = useInstantiateBlueprintMutation();
 
@@ -125,6 +140,7 @@ export function DualStackWizard({ vnets, onInstantiated }: DualStackWizardProps)
   }
 
   const selectedVnet = vnets.find((v) => v.id === vnetId);
+  const observed = segmentsForVnet(segmentsQuery.data?.items ?? [], vnetId);
 
   return (
     <div className="flex flex-col gap-4" data-testid="dualstack-wizard">
@@ -148,6 +164,15 @@ export function DualStackWizard({ vnets, onInstantiated }: DualStackWizardProps)
           ))}
         </select>
       </div>
+
+      <ObservedIPv6
+        vnetId={vnetId}
+        segments={observed}
+        loading={segmentsQuery.isLoading}
+        failed={segmentsQuery.error !== null}
+        partial={segmentsQuery.data?.partial === true}
+        failedNodes={segmentsQuery.data?.failedNodes ?? []}
+      />
 
       <ParamForm
         blueprintId={DUALSTACK_BLUEPRINT_ID}
@@ -174,6 +199,81 @@ export function DualStackWizard({ vnets, onInstantiated }: DualStackWizardProps)
           {errorMessage}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** What IPv6 is already live on the VNet about to be edited, read from
+ * GET /ipv6/segments.
+ *
+ * Three distinct states, kept distinct on purpose:
+ *
+ *   - the read failed, or the cluster fan-out was partial — say so, and do
+ *     not claim there is no IPv6. A failed read is not an observation.
+ *   - the read succeeded and observed nothing — the ordinary v4-only
+ *     starting point this wizard exists for.
+ *   - the read observed router advertisements — show them, so an operator
+ *     adding a second prefix is doing it knowingly.
+ */
+function ObservedIPv6({
+  vnetId,
+  segments,
+  loading,
+  failed,
+  partial,
+  failedNodes,
+}: {
+  vnetId: string;
+  segments: IPv6Segment[];
+  loading: boolean;
+  failed: boolean;
+  partial: boolean;
+  failedNodes: string[];
+}) {
+  if (!vnetId) {
+    return null;
+  }
+  if (loading) {
+    return <p className="text-xs text-slate-400">Checking what IPv6 is live on {vnetId}…</p>;
+  }
+  if (failed) {
+    return (
+      <p role="status" data-testid="dualstack-observed" className="text-xs text-amber-700 dark:text-amber-400">
+        Could not read the current IPv6 state of {vnetId}. That is a failed read, not an absence of IPv6 — check what is
+        already configured before rolling out.
+      </p>
+    );
+  }
+
+  return (
+    <div data-testid="dualstack-observed" className="rounded-md border border-slate-200 p-2 text-xs dark:border-slate-700">
+      <h4 className="font-medium text-slate-700 dark:text-slate-200">IPv6 observed on {vnetId} today</h4>
+      {segments.length === 0 ? (
+        <p className="mt-1 text-slate-500 dark:text-slate-400">
+          No router advertisement observed on this VNet — the ordinary starting point for a dual-stack rollout.
+        </p>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-0.5">
+          {segments.map((s) => (
+            <li key={`${s.node}-${s.iface}`} className="text-slate-600 dark:text-slate-300">
+              <span className="font-mono">
+                {s.node}/{s.iface}
+              </span>
+              {": "}
+              {s.raPresent ? "RA present" : "no RA"}
+              {s.prefixes && s.prefixes.length > 0 ? ` · ${s.prefixes.join(", ")}` : ""}
+              {s.dhcpv6ServerPresent ? " · DHCPv6 server" : ""}
+              {s.managedFlag ? " · managed flag" : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+      {partial && (
+        <p className="mt-1 text-amber-700 dark:text-amber-400">
+          Partial read: {failedNodes.length > 0 ? failedNodes.join(", ") : "one or more nodes"} did not answer, so this
+          list may be incomplete.
+        </p>
+      )}
     </div>
   );
 }

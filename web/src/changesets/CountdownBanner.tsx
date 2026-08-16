@@ -18,6 +18,8 @@ import { useReducedMotion } from "../lib/useReducedMotion";
 import { useChangesetDrawerStore } from "./store";
 import { revertCoverageBanner } from "./revertCoverage";
 import { useConfirmChangesetMutation, useRollbackChangesetMutation } from "./queries";
+import { RolloutPanel } from "./RolloutPanel";
+import { deriveRollout } from "./rolloutState";
 
 function secondsRemaining(confirmDeadline: number | undefined, nowMs: number): number {
   if (confirmDeadline === undefined) return 0;
@@ -49,12 +51,26 @@ export function CountdownBanner({ changeset }: CountdownBannerProps) {
   }, [changeset.status]);
 
   if (changeset.status === "applying") {
+    // T-3005: a staged (canary) apply spends its hold in `applying` too, and
+    // "each step's outcome streams in" is exactly the wrong thing to tell
+    // someone whose rollout has stopped and is waiting for them. When the
+    // server reports an `applyStage`, the rollout view replaces that line.
+    // Derived here purely to choose the wording — RolloutPanel re-derives it
+    // for itself from the same prop.
+    const staged = deriveRollout(changeset) !== undefined;
     return (
       <div
         role="status"
-        className="fixed inset-x-0 top-0 z-40 border-b border-sky-300 bg-sky-50 px-4 py-2 text-center text-sm text-sky-800 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-200"
+        className="fixed inset-x-0 top-0 z-40 flex flex-col items-center gap-2 border-b border-sky-300 bg-sky-50 px-4 py-2 text-center text-sm text-sky-800 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-200"
       >
-        Applying changeset "{changeset.title}" — each step's outcome streams in as it completes.
+        <span>
+          {staged
+            ? `Staged apply of "${changeset.title}" is in progress — this rollout is not finished.`
+            : `Applying changeset "${changeset.title}" — each step's outcome streams in as it completes.`}
+        </span>
+        <div className="w-full max-w-2xl">
+          <RolloutPanel changeset={changeset} />
+        </div>
       </div>
     );
   }

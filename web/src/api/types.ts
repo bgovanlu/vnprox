@@ -983,6 +983,12 @@ export type OpParams =
   | WgTunnelDeleteParams
   | WgPeerAddParams
   | WgPeerRemoveParams
+  // T-3004: QoS shapes are edited exclusively through these three ops (see
+  // their declarations near the bottom of this file) — GET /qos/shapes is
+  // the only QoS route, and it is a read.
+  | QosShapeCreateParams
+  | QosShapeUpdateParams
+  | QosShapeDeleteParams
   | Record<string, unknown>;
 
 /** One changeset operation, the wire shape internal/change/op.go's Op
@@ -1028,6 +1034,67 @@ export interface DriftFinding {
   nodes: string[];
   refs?: string[];
   fixable: boolean;
+  /** T-2703's three-position report, set only by the `spec_reconciliation`
+   * check family and omitted by every other one — a finding with no spec
+   * position has no third position to report. */
+  reconciliation?: Reconciliation;
+}
+
+/** One of the three positions a reconciliation compares (internal/drift.Position):
+ * `spec` is the declarative document, `config` is /etc/network/interfaces as
+ * PVE reports it, `live` is the running kernel. */
+export type SpecPosition = "spec" | "config" | "live";
+
+/** One position's rendering of one field. `known: false` means that position
+ * never reported the field — which is NOT the same as reporting it empty, and
+ * must never be rendered as a value. */
+export interface PositionValue {
+  position: SpecPosition;
+  value: string;
+  known: boolean;
+}
+
+/** One field's value at all three positions, plus the pairs that disagree
+ * about it (`"spec/config"`, `"config/live"`, `"spec/live"`). */
+export interface FieldPositions {
+  field: string;
+  values: PositionValue[];
+  differs: string[];
+}
+
+/** One of the three pairwise comparisons. All three are always present,
+ * including the ones that agree — a three-way divergence must not read as a
+ * two-way diff. `comparable: false` means the two positions shared no field
+ * either of them reported: "they agree" and "there was nothing to compare"
+ * are different statements. */
+export interface PairDiff {
+  a: SpecPosition;
+  b: SpecPosition;
+  fields: string[];
+  comparable: boolean;
+}
+
+/** What a finding OFFERS — never what was done. Each is true if and only if
+ * performing it would produce a non-empty artifact, so a finding offering
+ * neither is ordinary and honest (docs/api.md's `spec_reconciliation`
+ * paragraph). */
+export interface ReconciliationActions {
+  /** Propose a spec commit describing the cluster as it is. */
+  adoptReality: boolean;
+  /** Stage a changeset bringing the cluster back to the document. */
+  restoreIntent: boolean;
+}
+
+/** T-2703's three-position report attached to a `spec_reconciliation`
+ * finding (internal/drift.Reconciliation). */
+export interface Reconciliation {
+  ref: string;
+  inSpec: boolean;
+  inConfig: boolean;
+  inLive: boolean;
+  fields: FieldPositions[];
+  pairs: PairDiff[];
+  actions: ReconciliationActions;
 }
 
 /** WS `drift.changed` payload (docs/api.md's WebSocket section). */
@@ -1144,7 +1211,25 @@ export type ChangesetStatus =
 /** One apply-plan step (internal/change/apply_plan.go's Step) — the Plan
  * tab's row shape. `opIdx` indexes into the changeset's own `ops` array. */
 export interface PlanStep {
-  kind: "sdn_stage" | "ipam_alloc" | "stage_file" | "reload" | "wg_apply" | "fw_apply" | "fw_verify" | "sdn_apply";
+  // `switch_apply` AND `qos_apply` were both missing here until 2026-08-16,
+  // though change.StepSwitchApply and change.StepQosApply have always
+  // existed — so two real plan step kinds were silently mistyped. T-3005
+  // found the first (it needed the kind to decide canary eligibility, since
+  // switch_apply is one of internal/change's canaryUnstageableKinds, and had
+  // to key off a raw string instead); writing the drift guard below found the
+  // second. internal/change's TestPlanStepKindsMatchTheTypeScriptUnion now
+  // fails if this list and change.StepKind ever disagree again.
+  kind:
+    | "sdn_stage"
+    | "ipam_alloc"
+    | "stage_file"
+    | "reload"
+    | "wg_apply"
+    | "fw_apply"
+    | "fw_verify"
+    | "sdn_apply"
+    | "switch_apply"
+    | "qos_apply";
   node?: string;
   summary: string;
   opIdx?: number[];
@@ -1222,6 +1307,53 @@ export interface Changeset {
    * was already created or updated, and no route refuses anything because of
    * a lock. */
   locks?: ChangesetLocks;
+  /** T-2602: the paused staged (canary) apply, if this changeset is
+   * currently between stages. Present ONLY while a pause exists — every
+   * ordinary apply, and every changeset not mid-hold, omits it entirely.
+   * Persisted server-side (`changeset_apply_stages`), so it is the thing to
+   * re-derive the rollout view from on load rather than any client state. */
+  applyStage?: StagedApplyState;
+}
+
+/** T-2602 apply modes. `all` is what apply has always done: fan out to every
+ * affected node at once. */
+export type ApplyMode = "all" | "canary";
+
+/** T-2602 canary gates. `manual` waits for `POST /changesets/{id}/continue`;
+ * `auto` promotes at the hold deadline only on clean evidence. */
+export type ApplyGate = "manual" | "auto";
+
+/** `applyStrategy` on the apply body (docs/api.md's "Canary / staged
+ * multi-node apply"). Omitting the whole object is `mode: "all"`, and
+ * `mode: "all"` may NOT carry `canaryNodes`, `holdForSec` or `gate` — the
+ * server refuses such a body rather than ignoring the fields. */
+export interface ApplyStrategy {
+  mode: ApplyMode;
+  gate?: ApplyGate;
+  canaryNodes?: string[];
+  holdForSec?: number;
+}
+
+/** `applyStage` on a changeset response (internal/change.StagedApplyState).
+ *
+ * `appliedNodes`/`pendingNodes` are documented as always-present arrays, but
+ * they are typed optional here deliberately: a response that omits one is an
+ * ABSENT answer, not an empty one, and rolloutState.ts renders the
+ * difference rather than collapsing it into "nothing pending". */
+export interface StagedApplyState {
+  /** `canary_hold` (paused between stages) or `promoting` (the remaining
+   * stage is executing right now). Typed as a plain string because the
+   * server's set is closed but versioned independently of this client — an
+   * unrecognised state must render as unrecognised, never as either known
+   * one. */
+  state: string;
+  author?: string;
+  strategy: ApplyStrategy;
+  appliedNodes?: string[];
+  pendingNodes?: string[];
+  holdStartedAt?: number;
+  holdDeadline?: number;
+  confirmDeadline?: number;
 }
 
 /** One advisory lock a staged draft holds on an entity (docs/api.md's
@@ -1392,6 +1524,16 @@ export interface ApplyChangesetRequest {
   /** T-703: the typed management-path acknowledgement, recorded to the
    * audit log when the changeset touches a management path. */
   mgmtAck?: { node: string };
+  /** T-2602: how the apply fans out. OMITTED for the default all-at-once
+   * apply — the server treats an absent object and `{mode:"all"}` the same,
+   * but sending nothing keeps the historical request body byte-for-byte
+   * unchanged, which is what the regression assertion in
+   * ReviewApplyScreen.canary.test.tsx pins. */
+  applyStrategy?: ApplyStrategy;
+  /** T-2603: arm finding-triggered rollback for this apply. Omitted means
+   * "the cluster default" (itself false), so an apply that says nothing
+   * behaves exactly as it always did. */
+  autoRollbackOnError?: boolean;
 }
 
 /** One file's rendered diff for one node (internal/change/ifaces.FileDiff). */
@@ -3435,4 +3577,240 @@ export interface HubInstallResponse {
   blueprint?: Blueprint;
   signer?: BlueprintSigner;
   plugin?: HubPluginInstalled;
+}
+
+// --- T-3004's analysis surfaces (failure simulation, WAN health, capacity
+// export, PBS backup paths, QoS shapes, IPv6 segments). Every one of these
+// is a read shape; the only write in the set is PUT /wan/targets, and QoS
+// editing is an ordinary qos.shape.* changeset op (below), never a route.
+
+/** `internal/failsim.Impact.severity` (docs/api.md's Failure-impact
+ * simulation section): a coarse rollup, explicitly "never a substitute for
+ * the structured fields". `info` means nothing known-broken *and* at least
+ * one dimension could not be assessed — which is an unknown, not a pass. */
+export type SpofSeverity = "none" | "info" | "warning" | "critical";
+
+/** One `internal/failsim.Impact`. `target` and the ref arrays are
+ * `inventory.Ref` strings; `mgmtPathLoss` is a list of node names. Every
+ * array field is always emitted by the server (never omitted), so a caller
+ * can tell "checked, nothing there" from "not checked" — the latter is what
+ * `notEvaluated` names. `severity` is widened to `string` on the wire on
+ * purpose: an unrecognised value must render as indeterminate rather than
+ * being cast into one of the four known ones. */
+export interface FailsimImpact {
+  target: string;
+  severity: string;
+  disconnectedGuests: string[];
+  strandedVlans: string[];
+  mgmtPathLoss: string[];
+  /** The load-bearing honesty channel: dimension codes (`quorum`, `ceph`,
+   * `tunnels`, `guest-connectivity`) the simulator could not assess. A
+   * dimension named here is unknown, never safe. */
+  notEvaluated: string[];
+  quorumRisk: boolean;
+  cephRisk: boolean;
+}
+
+/** One `GET /failsim/spof-score` entry: the entity whose removal was
+ * simulated, and what that removal costs. */
+export interface SpofEntry {
+  ref: string;
+  impact: FailsimImpact;
+}
+
+/** `GET /failsim/spof-score` — `score` is 100 minus each SPOF's severity
+ * weight, floored at 0 (higher is better). `generatedAt` is RFC 3339, not
+ * unix seconds: this is the one route in the set that stamps a string. */
+export interface SpofScore {
+  score: number;
+  entries: SpofEntry[];
+  generatedAt: string;
+}
+
+/** `GET /wan/status` per-target reading. `at` is unix seconds. */
+export interface WanTargetStatus {
+  host: string;
+  at: number;
+  rttMs: number;
+  lossPct: number;
+  rollingRttMs: number;
+  rollingLossPct: number;
+  reachable: boolean;
+}
+
+/** One uplink's rollup. `status` is `healthy`|`degraded`|`unreachable` on
+ * the wire; widened to `string` so an unknown value renders as unknown. */
+export interface WanUplinkStatus {
+  node: string;
+  uplink: string;
+  status: string;
+  targets?: WanTargetStatus[];
+  availabilityPct: number;
+  rttMs: number;
+  lossPct: number;
+}
+
+/** `GET /wan/status`. `verdict` is `healthy`|`wan_degraded`|`likely_isp`|
+ * `no_targets`; `summary` is the daemon's own operator-facing sentence for
+ * it, which the UI renders verbatim rather than re-deriving. */
+export interface WanStatus {
+  verdict: string;
+  summary: string;
+  uplinks?: WanUplinkStatus[];
+  generatedAt: number;
+}
+
+/** One `GET`/`PUT /wan/targets` item. `uplink` is a caller-chosen label —
+ * in practice a `GET /edge/routes` default-route interface name. */
+export interface WanTarget {
+  uplink: string;
+  host: string;
+}
+
+/** `GET`/`PUT /wan/targets`. `node` is response-only (a computed field —
+ * both verbs act on the requesting session's own node). */
+export interface WanTargetsView {
+  node: string;
+  targets: WanTarget[];
+}
+
+/** `GET /capacity/export`'s two `kind` values (`store.CapacityKindLink` /
+ * `CapacityKindIPAMPool`). A link ref is a `physnic:<node>:<iface>` Ref
+ * string; an IPAM pool ref is the subnet's CIDR, not a Ref. */
+export type CapacityKind = "link" | "ipam_pool";
+
+/** One daily bucket. `bucketAt`/`createdAt` are unix seconds; the
+ * utilizations are percentages. */
+export interface CapacityAggregate {
+  bucketAt: number;
+  avgUtilization: number;
+  maxUtilization: number;
+  createdAt: number;
+}
+
+/** `GET /capacity/export?...&format=json`. The CSV form of the same data is
+ * a file download, not this shape. */
+export interface CapacityExport {
+  ref: string;
+  kind: CapacityKind;
+  aggregates: CapacityAggregate[];
+}
+
+/** One discovered PBS host (`GET /pbs`). */
+export interface PbsHost {
+  ref: string;
+  address: string;
+  fingerprint?: string;
+  datastores?: string[];
+  storageIds?: string[];
+  port?: number;
+}
+
+/** One backup job riding a resolved path. */
+export interface PbsJob {
+  id: string;
+  storage: string;
+  schedule?: string;
+  guests: number;
+  all: boolean;
+}
+
+/** One resolved node -> PBS host backup path. `carrier`/`ridingOn` are Ref
+ * strings, omitted when vnprox could not resolve them ("never a guess").
+ * `linkSpeedKnown` is always emitted: `linkMbps` without it is meaningless,
+ * and an unknown link speed must not render as a number. */
+export interface PbsPath {
+  node: string;
+  host: string;
+  carrier?: string;
+  ridingOn?: string;
+  sizingHint: string;
+  path?: string[];
+  storageIds?: string[];
+  jobs?: PbsJob[];
+  linkMbps?: number;
+  linkSpeedKnown: boolean;
+}
+
+/** `GET /pbs` — the read-only PBS overlay. */
+export interface PbsOverlay {
+  hosts: PbsHost[];
+  paths: PbsPath[];
+}
+
+/** One `GET /qos/shapes` row (docs/api.md's QoS section) — a read view onto
+ * the app-owned `qos_shapes` table, never a live `tc` read. */
+export interface QosShape {
+  id: string;
+  node: string;
+  bridge: string;
+  matchCidr?: string;
+  matchVlan?: number;
+  rateMbit: number;
+  ceilMbit?: number;
+  priority?: number;
+}
+
+/** `GET /qos/shapes`. */
+export interface QosShapesView {
+  shapes: QosShape[];
+}
+
+/** op "qos.shape.create" (internal/change/params_qos.go). `bridge` is the
+ * plain interface name — the op target's own Node already supplies the
+ * node. Both match fields empty means the shape governs the bridge's whole
+ * otherwise-unclassified egress. */
+export interface QosShapeCreateParams {
+  bridge: string;
+  rateMbit: number;
+  matchCidr?: string;
+  matchVlan?: number;
+  ceilMbit?: number;
+  priority?: number;
+}
+
+/** op "qos.shape.update": absent means unchanged, the same partial-patch
+ * convention every other *UpdateParams uses. */
+export interface QosShapeUpdateParams {
+  bridge?: string;
+  matchCidr?: string;
+  matchVlan?: number;
+  rateMbit?: number;
+  ceilMbit?: number;
+  priority?: number;
+}
+
+/** op "qos.shape.delete" — no params; the target Ref is the whole input. */
+export type QosShapeDeleteParams = Record<string, never>;
+
+/** One node's per-interface IPv6 RA/DHCPv6 observation (`GET
+ * /ipv6/segments`). `raPresent` is always emitted; every other flag is
+ * omitted when false, so absence means "not observed", never "off". */
+export interface IPv6Segment {
+  ref?: string;
+  node: string;
+  iface: string;
+  /** "bridge" | "vnet" | "" — "" when the observation could not be
+   * correlated to a known inventory entity. */
+  kind?: string;
+  vnet?: string;
+  zone?: string;
+  prefixes?: string[];
+  vid?: number;
+  routerLifetimeSec?: number;
+  raPresent: boolean;
+  managedFlag?: boolean;
+  otherFlag?: boolean;
+  dhcpv6ServerPresent?: boolean;
+  dhcpv6InferredFromRA?: boolean;
+}
+
+/** `GET /ipv6/segments` — the same `partial`/`failedNodes` cluster-fan-out
+ * convention `GET /sdn/evpn/status` uses: one node's RA read failing never
+ * blanks every other node's. */
+export interface IPv6SegmentsView {
+  items: IPv6Segment[];
+  generatedAt: number;
+  partial?: boolean;
+  failedNodes?: string[];
 }

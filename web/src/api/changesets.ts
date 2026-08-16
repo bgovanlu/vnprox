@@ -86,6 +86,18 @@ export function applyChangeset(id: string, req: ApplyChangesetRequest = { confir
   });
 }
 
+/** POST /changesets/{id}/continue — T-2602's manual gate: promote a staged
+ * (canary) apply past its hold to the remaining nodes, moving the changeset
+ * into the ordinary commit-confirm window with the deadline the WHOLE
+ * sequence started with. `409 invalid_transition` if the changeset is not
+ * currently paused between stages. */
+export function continueChangeset(id: string): Promise<Changeset> {
+  return apiFetch<Changeset>(`/changesets/${encodeURIComponent(id)}/continue`, {
+    method: "POST",
+    csrfToken: readCsrfCookie(),
+  });
+}
+
 /** POST /changesets/{id}/confirm — commit within the countdown window. */
 export function confirmChangeset(id: string): Promise<Changeset> {
   return apiFetch<Changeset>(`/changesets/${encodeURIComponent(id)}/confirm`, {

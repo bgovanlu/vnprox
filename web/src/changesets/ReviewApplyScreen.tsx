@@ -36,6 +36,8 @@ import {
   twoPersonRequiredMessage,
 } from "./approvalGate";
 import { reviewLinkFor } from "./reviewLink";
+import { ApplyStrategyPanel } from "./ApplyStrategyPanel";
+import { buildApplyStrategy, canaryEligibility, defaultSelection, selectionError } from "./applyStrategy";
 
 export interface ReviewApplyScreenProps {
   changeset: Changeset;
@@ -86,6 +88,12 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   // it matches for a management-path changeset.
   const [ackText, setAckText] = useState("");
   const ackSatisfied = !touchesMgmt || ackText.trim() === mgmtNode;
+  // T-3005: the apply-strategy picker's own state. Its default is `mode:
+  // all` with auto-rollback off, which is exactly today's behaviour — an
+  // operator who never opens this panel sends the same request body as
+  // before.
+  const [strategySelection, setStrategySelection] = useState(defaultSelection);
+  const [autoRollbackOnError, setAutoRollbackOnError] = useState(false);
 
   // Re-run validation on open ("Runs on every draft change and again
   // immediately before apply — state may have moved", docs/features/
@@ -107,12 +115,6 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   // op classes — the server's own two_person_required refusal at apply is
   // what actually enforces it.
   const twoPersonBlocks = twoPersonBlocksApply(changeset.approval);
-  const applyEnabled =
-    canApply(changeset, warningsAcknowledged) &&
-    ackSatisfied &&
-    !approvalBlocks &&
-    !twoPersonBlocks &&
-    !applyMutation.isPending;
 
   // Pre-apply the server hasn't built a plan yet (plan_json is written at
   // apply time) — show the client-side preview mirroring BuildPlan so the
@@ -122,6 +124,20 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   const planPreview = useMemo(() => buildPlanPreview(changeset.ops), [changeset.ops]);
   const planSteps = changeset.plan && changeset.plan.steps.length > 0 ? changeset.plan.steps : planPreview.plan.steps;
   const planIsPreview = !(changeset.plan && changeset.plan.steps.length > 0);
+
+  // T-3005: an unsendable canary selection disables Apply here rather than
+  // being discovered as a 422 after the click. The server refuses it either
+  // way (before any snapshot or mutation) — this is only the echo.
+  const canaryElig = useMemo(() => canaryEligibility(planSteps), [planSteps]);
+  const strategyError = selectionError(strategySelection, canaryElig, confirmTimeoutSec);
+
+  const applyEnabled =
+    canApply(changeset, warningsAcknowledged) &&
+    ackSatisfied &&
+    !approvalBlocks &&
+    !twoPersonBlocks &&
+    strategyError === undefined &&
+    !applyMutation.isPending;
 
   // T-1805: state plainly, before apply, which parts of this changeset depend
   // on the sealed PVE ticket to undo themselves and for how long — no
@@ -133,11 +149,18 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   );
 
   async function handleApply(): Promise<void> {
+    // `applyStrategy` is undefined for `mode: all` — omitted from the body
+    // entirely, so the default apply path's request is unchanged. Likewise
+    // `autoRollbackOnError` is only sent when the operator ticked it; an
+    // absent field means "the cluster default", which is itself false.
+    const applyStrategy = buildApplyStrategy(strategySelection, canaryElig);
     try {
       await applyMutation.mutateAsync({
         id: changeset.id,
         confirmTimeoutSec,
         ...(touchesMgmt && mgmtNode ? { mgmtAck: { node: mgmtNode } } : {}),
+        ...(applyStrategy ? { applyStrategy } : {}),
+        ...(autoRollbackOnError ? { autoRollbackOnError: true } : {}),
       });
       onClose();
     } catch {
@@ -316,6 +339,20 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             </label>
           </div>
         )}
+
+        {/* T-3005: how this apply fans out, and whether a new error finding
+            cuts the window short. Placed above the mgmt-path acknowledgement
+            and the confirm-window control because the hold is clamped to
+            that window and the operator should pick the strategy before
+            sizing the window around it. */}
+        <ApplyStrategyPanel
+          planSteps={planSteps}
+          selection={strategySelection}
+          onSelectionChange={setStrategySelection}
+          autoRollbackOnError={autoRollbackOnError}
+          onAutoRollbackChange={setAutoRollbackOnError}
+          confirmTimeoutSec={confirmTimeoutSec}
+        />
 
         {revertNotice.show && (
           <div

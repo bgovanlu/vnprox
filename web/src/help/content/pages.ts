@@ -705,6 +705,42 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["tokens-and-embeds", "embed-map-page", "dashboard-page"],
   },
   {
+    id: "config-as-code-page",
+    title: "Config as code",
+    surface: "page",
+    summary:
+      "One screen for the three answers to 'what is this cluster's network': the declarative document (spec), the on-disk configuration (config), and the running kernel (live) — plus the two ways of resolving a disagreement between them.",
+    docRef: "docs/api.md",
+    keywords: [
+      "gitops",
+      "git",
+      "spec",
+      "declarative",
+      "yaml",
+      "terraform",
+      "plan",
+      "pin",
+      "reconcile",
+      "config as code",
+      "intent",
+    ],
+    sections: [
+      {
+        heading: "Three positions, not two",
+        body: "**Spec** is the declarative document — what the cluster is supposed to be, held in a git repository or pinned here. **Config** is `/etc/network/interfaces` as PVE reports it: what the cluster will be after the next reload. **Live** is the running kernel right now. Any two of them can agree while the third does not, and which pair agrees is what tells you where the problem actually is.",
+      },
+      {
+        heading: "Nothing on this screen applies anything",
+        body: "Every action here either stages a draft changeset you then take through the ordinary review screen, or moves the document. There is no apply, no confirm and no rollback on this page — resolving a spec disagreement uses exactly the same review-and-confirm flow as any other network change, because it is the same flow.",
+      },
+      {
+        heading: "Two directions, never one button",
+        body: "'Restore intent' moves the cluster to match the document. 'Adopt reality' moves the document to match the cluster. They have opposite blast radii — one changes your network, the other opens a pull request and touches nothing — so they are separate controls with separate confirmations, and the daemon audits them separately. There is deliberately no combined 'reconcile'.",
+      },
+    ],
+    seeAlso: ["gitsync-status", "spec-pin", "spec-plan", "spec-reconciliation", "drift", "changeset-review-page"],
+  },
+  {
     id: "embed-posture-page",
     title: "Embedded posture report",
     surface: "page",
@@ -723,5 +759,29 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
       },
     ],
     seeAlso: ["tokens-and-embeds", "findings-stream", "embed-map-page"],
+  },
+  {
+    id: "analysis-page",
+    title: "Analysis",
+    surface: "page",
+    summary:
+      "Five read-mostly analyses in one place: what breaks if something dies, where capacity is heading, what is shaped, where backup traffic actually flows, and what IPv6 is really doing on each segment.",
+    docRef: "docs/features/monitoring.md",
+    keywords: ["analysis", "spof", "resilience", "capacity", "qos", "shaping", "pbs", "backup", "ipv6"],
+    sections: [
+      {
+        heading: "Judgements, not configuration",
+        body: "Every panel here reads something vnprox already knows and turns it into a claim about the cluster — a single point of failure, a projected exhaustion, a shaped bridge, a backup path, an advertised prefix. That is why they share a screen rather than sitting on the pages whose entities they happen to name. Nothing on this screen probes your network to produce its answer.",
+      },
+      {
+        heading: "One editable thing, and it still stages",
+        body: "QoS shaping is the only panel here that changes anything, and it changes it the same way everything else in vnprox does: the edit becomes a `qos.shape.create`, `qos.shape.update` or `qos.shape.delete` operation in the change drawer, which you then review, apply and confirm. There is no QoS write route for it to take a shortcut through.",
+      },
+      {
+        heading: "What is not here",
+        body: "WAN and upstream health is the sixth analysis in this set and lives on the Edge screen instead — 'how does traffic leave' and 'does it get anywhere once it has' are one question, and the Edge cockpit already asks the first half. Capacity *forecasts* are not here either: a projected crossing arrives as an ordinary finding in the findings stream, where it can be acknowledged like any other.",
+      },
+    ],
+    seeAlso: ["spof-score", "capacity-export", "qos-shaping", "pbs-awareness", "ipv6-segments", "wan-health"],
   },
 ];

@@ -12,7 +12,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchEdgeNAT, fetchEdgeRoutes } from "../api/edge";
 import { createIngressTarget, deleteIngressTarget, fetchIngressStatus, fetchIngressTargets } from "../api/ingress";
-import type { EdgeNATView, EdgeRoutesView, IngressStatusView, IngressTargetCreateRequest, IngressTargetsListResponse } from "../api/types";
+import { fetchWanStatus, fetchWanTargets, replaceWanTargets } from "../api/wan";
+import type {
+  EdgeNATView,
+  EdgeRoutesView,
+  IngressStatusView,
+  IngressTargetCreateRequest,
+  IngressTargetsListResponse,
+  WanStatus,
+  WanTarget,
+  WanTargetsView,
+} from "../api/types";
 
 export const EDGE_REFETCH_MS = 15_000;
 
@@ -74,6 +84,52 @@ export function useDeleteIngressTargetMutation() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: INGRESS_TARGETS_QUERY_KEY });
       void queryClient.invalidateQueries({ queryKey: INGRESS_STATUS_QUERY_KEY });
+    },
+  });
+}
+
+// --- T-3004: WAN & upstream health (GET /wan/status, GET/PUT /wan/targets).
+// It lives in this file because the Edge cockpit is where "how does traffic
+// leave" already is, and because a WAN target's `uplink` label is in
+// practice one of GET /edge/routes' own default-route interface names — the
+// two reads are consumed together on one page.
+//
+// Node-local, deliberately: /wan/targets carries no {node} param and acts on
+// the requesting node's own store, so the response's `node` field is what
+// says whose targets these are. See api/wan.ts.
+
+export const WAN_STATUS_QUERY_KEY = ["wan", "status"] as const;
+export const WAN_TARGETS_QUERY_KEY = ["wan", "targets"] as const;
+
+/** The probe loop writes a fresh reading per target on its own cadence; a
+ * slower poll than /edge/nat would let a WAN outage sit invisible for
+ * longer than it needs to, so this shares EDGE_REFETCH_MS. */
+export function useWanStatusQuery() {
+  return useQuery<WanStatus>({
+    queryKey: WAN_STATUS_QUERY_KEY,
+    queryFn: fetchWanStatus,
+    refetchInterval: EDGE_REFETCH_MS,
+  });
+}
+
+export function useWanTargetsQuery() {
+  return useQuery<WanTargetsView>({
+    queryKey: WAN_TARGETS_QUERY_KEY,
+    queryFn: fetchWanTargets,
+    staleTime: 15_000,
+  });
+}
+
+/** PUT /wan/targets — a full-set replace. Invalidates the status query too:
+ * removing a target removes its readings, so a stale status would keep
+ * showing an uplink that no longer has anything to probe. */
+export function useReplaceWanTargetsMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (targets: WanTarget[]) => replaceWanTargets(targets),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: WAN_TARGETS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: WAN_STATUS_QUERY_KEY });
     },
   });
 }

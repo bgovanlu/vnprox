@@ -8,6 +8,7 @@ import {
   addChangesetComment,
   applyChangeset,
   confirmChangeset,
+  continueChangeset,
   createChangeset,
   deleteChangesetComment,
   changesetImpact,
@@ -22,7 +23,7 @@ import {
   validateChangeset,
 } from "../api/changesets";
 import { createWsClient, defaultWsUrl, type WsClient, type WsServerEvent } from "../api/ws";
-import type { Changeset, ChangesetDiff, ChangesetImpact, ChangesetStatusEvent, Op } from "../api/types";
+import type { ApplyStrategy, Changeset, ChangesetDiff, ChangesetImpact, ChangesetStatusEvent, Op } from "../api/types";
 
 export const changesetKey = (id: string) => ["changesets", id] as const;
 export const changesetListKey = (status?: string) => ["changesets", "list", status ?? ""] as const;
@@ -126,11 +127,46 @@ export function useValidateChangesetMutation() {
   });
 }
 
+/** T-3005: `applyStrategy` and `autoRollbackOnError` are both spread in only
+ * when the caller actually supplied one, so the default apply's request body
+ * stays byte-for-byte what it has always been — `{confirmTimeoutSec}` (plus
+ * T-703's `mgmtAck` where it applies) and nothing else. */
 export function useApplyChangesetMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, confirmTimeoutSec, mgmtAck }: { id: string; confirmTimeoutSec: number; mgmtAck?: { node: string } }) =>
-      applyChangeset(id, { confirmTimeoutSec, ...(mgmtAck ? { mgmtAck } : {}) }),
+    mutationFn: ({
+      id,
+      confirmTimeoutSec,
+      mgmtAck,
+      applyStrategy,
+      autoRollbackOnError,
+    }: {
+      id: string;
+      confirmTimeoutSec: number;
+      mgmtAck?: { node: string };
+      applyStrategy?: ApplyStrategy;
+      autoRollbackOnError?: boolean;
+    }) =>
+      applyChangeset(id, {
+        confirmTimeoutSec,
+        ...(mgmtAck ? { mgmtAck } : {}),
+        ...(applyStrategy ? { applyStrategy } : {}),
+        ...(autoRollbackOnError === undefined ? {} : { autoRollbackOnError }),
+      }),
+    onSuccess: (c) => {
+      queryClient.setQueryData(changesetKey(c.id), c);
+    },
+  });
+}
+
+/** T-2602's manual gate. The response is the changeset with the hold
+ * resolved, so it replaces the cached one exactly like confirm/rollback do;
+ * `applyStage` is absent from it once the sequence has moved on, which is
+ * what makes the rollout panel disappear on its own. */
+export function useContinueStagedApplyMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => continueChangeset(id),
     onSuccess: (c) => {
       queryClient.setQueryData(changesetKey(c.id), c);
     },

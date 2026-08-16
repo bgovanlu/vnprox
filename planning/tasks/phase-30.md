@@ -214,12 +214,19 @@ read-mostly, and several already have a partial component waiting for data.
 - **WAN health** (`T-2905` added `validWANHost` validation): uplink status, and the validation
   failure surfaced as a named refusal.
 - **Capacity**: `GET /capacity/export?ref=&kind=link|ipam_pool[&format=csv|json]` — a per-entity
-  history export, bounded server-side to `aggregate_retention_days`. **Correction to this card,
-  2026-08-16, made before any agent read it:** capacity *forecasts* are not headless — they
-  already reach the operator as `SourceCapacity` findings, which have a UI. Do **not** build a
-  second forecast screen. The headless thing is the export, so the deliverable is an export
-  affordance on the entity that owns the data (link, IPAM pool), stating the retention bound it
-  is subject to.
+  history export, bounded server-side to `aggregate_retention_days`. The deliverable is an export
+  affordance on the entity that owns the data (link, IPAM pool), stating the retention bound.
+
+  > **Correction to a correction, and this one was the orchestrator's own.** An earlier revision
+  > of this bullet told the implementer *"capacity forecasts are not headless — they already reach
+  > the operator as `SourceCapacity` findings, which have a UI"*. **That is false**, and the
+  > T-3004 agent caught it by checking rather than complying. The findings *stream* has a UI, but
+  > it does not model the capacity source: `FindingSource` in `web/src/api/types.ts` lists five of
+  > the backend's sixteen `findings.Source` constants, `capacity` is not one of them, and
+  > `SOURCE_LABELS[f.source]` therefore evaluates to `undefined` — a capacity finding renders
+  > literally as `undefined · capacity_link_forecast` and cannot be filtered for. Filed as
+  > `T-3004-followup-01`. The instruction "do not build a second forecast screen" still stands,
+  > because the fix belongs in the findings stream, not here.
 - **PBS backup-path awareness** and **QoS editing**: QoS is the one write path in this card, so
   it goes through the change engine like everything else.
 - **IPv6 segments**: `DualStackWizard.tsx` exists and calls no route. Wire it to
@@ -388,3 +395,58 @@ the *rows* do. The test passes identically whether the route creates zero drafts
 So the contract's "idempotent by construction" has never been tested in the dimension that
 matters, and whichever of the three answers above is chosen, the fix ships with a row-count
 assertion in that test — otherwise the same claim stays untested afterwards.
+
+---
+
+## `T-3004-followup-01` · eleven of sixteen finding sources render as `undefined` (open)
+
+**Found:** 2026-08-16 by the T-3004 agent, verifying a claim this card made rather than complying
+with it. Confirmed by the orchestrator. **UI-only; in Phase 30's spirit but not in any card's file
+set, so it is filed rather than smuggled into one.**
+
+`web/src/api/types.ts:1107` declares:
+
+```ts
+export type FindingSource = "drift" | "lldp" | "ipam" | "health" | "probe";
+```
+
+`internal/findings` declares **sixteen**: `baseline`, `capacity`, `cert`, `drift`, `federation`,
+`flow`, `gitsync`, `health`, `ipam`, `lldp`, `peer`, `probe`, `rogue`, `store`, `wan`, `wireguard`.
+
+Eleven are missing, and the consequence is visible to users rather than merely typed wrong:
+
+- `FindingsStreamPanel.tsx:307` builds each row's category as
+  `` `${SOURCE_LABELS[f.source]} · ${f.check}` ``. `SOURCE_LABELS` is a
+  `Record<FindingSource, string>` with five keys, so a capacity finding renders literally as
+  **`undefined · capacity_link_forecast`**.
+- The source filter (`FindingsStreamPanel.tsx:194`) enumerates `Object.keys(SOURCE_LABELS)`, so
+  eleven sources cannot be filtered for at all.
+
+This is the same family as everything else this arc keeps finding — an unmodelled state rendering
+as a definite-looking one — except here the definite-looking thing is the string `"undefined"`.
+
+**Why it was not fixed in place:** `web/src/findings/**` belonged to no wave-1 card, and widening
+the union without also widening `SOURCE_LABELS` breaks the `Record<FindingSource, string>`
+exhaustiveness that is the only thing currently keeping the two in step. Both must move together.
+
+**Scope when taken:**
+
+1. Widen `FindingSource` to all sixteen and give every one a label. The `Record<FindingSource,
+   string>` type already forces exhaustiveness — keep it, it is what will catch the seventeenth.
+2. A test that fails when the two lists disagree. The union is hand-maintained against a Go
+   package the frontend cannot import, which is exactly the shape that produced the
+   `vnproxctl backup` field-name defect (see `planning/tasks/phase-29.md`'s wave-4 record) — so
+   pin it the same way, with a golden the Go side also asserts against rather than a second
+   hand-written list.
+3. Check the same class elsewhere before closing: any other `Record<SomeUnion, string>` in
+   `web/src` whose union is a hand-copied subset of a Go constant set.
+
+**Two smaller findings recorded here rather than lost**, both from the same agent:
+
+- `GET /ipam/subnets/{prefix}/v6-plan` has no frontend caller, and a family-level headless audit
+  cannot see it because sibling `ipam` routes are called. The phase preamble's "treat 17 as a
+  floor" is right for a second reason: the census is per-family, not per-route.
+- Help topic `ipv6-planning` describes a planning grid that does not exist in `web/src`, and
+  `topology-paint-modes` describes a backup-path paint mode that does not exist either. The help
+  coverage gate proves every screen *has* a topic; nothing proves a topic describes something
+  real. That is `T-3006`'s natural extension and should be considered when it is written.

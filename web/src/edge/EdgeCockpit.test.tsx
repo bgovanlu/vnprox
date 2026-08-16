@@ -5,7 +5,15 @@
 // never touch fetch.
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { EdgeNATView, EdgeRoutesView, IngressStatusView, IngressTargetsListResponse, MeResponse } from "../api/types";
+import type {
+  EdgeNATView,
+  EdgeRoutesView,
+  IngressStatusView,
+  IngressTargetsListResponse,
+  MeResponse,
+  WanStatus,
+  WanTargetsView,
+} from "../api/types";
 import { ToastProvider } from "../components/Toast";
 import { EdgeCockpit } from "./EdgeCockpit";
 
@@ -43,6 +51,17 @@ let ingressStatusResult: { data: IngressStatusView | undefined; isLoading: boole
   error: null,
 };
 
+// T-3004 added the WAN health panel to this page; its three hooks live in
+// the same module, and this mock is exhaustive, so they are stubbed here
+// too. WanHealthPanel has its own test file — these stubs only need to keep
+// the panel mountable so the Edge assertions below stay about Edge.
+const wanStatusResult: { data: WanStatus | undefined; isLoading: boolean; error: Error | null } = {
+  data: { verdict: "no_targets", summary: "No WAN reference targets are configured yet.", uplinks: [], generatedAt: 0 },
+  isLoading: false,
+  error: null,
+};
+const wanTargetsResult: { data: WanTargetsView | undefined } = { data: { node: "pve1", targets: [] } };
+
 vi.mock("./edgeQueries", () => ({
   useEdgeRoutesQuery: () => routesResult,
   useEdgeNATQuery: () => natResult,
@@ -50,6 +69,9 @@ vi.mock("./edgeQueries", () => ({
   useIngressStatusQuery: () => ingressStatusResult,
   useCreateIngressTargetMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteIngressTargetMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useWanStatusQuery: () => wanStatusResult,
+  useWanTargetsQuery: () => wanTargetsResult,
+  useReplaceWanTargetsMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("../api/useSession", () => ({

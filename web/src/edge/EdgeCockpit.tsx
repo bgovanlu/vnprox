@@ -12,6 +12,11 @@
 // and an ingress target line up. Discovery itself is read-only; the only
 // mutations this section makes are POST/DELETE /ingress/targets (adding/
 // removing which targets to poll), never a call into the proxy itself.
+//
+// T-3004 adds the other end of the same question — WAN & upstream health
+// (WanHealthPanel.tsx). Default routes say how traffic is *meant* to leave;
+// the WAN probes say whether it actually gets anywhere once it has. Neither
+// half fails over: no changeset op for WAN uplink switching exists.
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Button } from "../components/Button";
@@ -29,6 +34,7 @@ import {
   useIngressStatusQuery,
   useIngressTargetsQuery,
 } from "./edgeQueries";
+import { WanHealthPanel } from "./WanHealthPanel";
 
 function nodeSummary(defaultRoutes: EdgeDefaultRoute[], portForwards: EdgePortForward[]): Map<string, number> {
   const nodes = new Map<string, number>();
@@ -98,6 +104,12 @@ export function EdgeCockpit() {
           <IngressSection />
         </>
       )}
+
+      {/* Outside the isLoading/error guard on purpose: the WAN probes are a
+       * separate read with a separate failure mode, and an unreadable
+       * /edge/nat must not hide a perfectly readable WAN verdict — which is
+       * exactly the read an operator wants when the cluster looks unwell. */}
+      <WanHealthPanel />
     </div>
   );
 }

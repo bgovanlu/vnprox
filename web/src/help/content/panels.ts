@@ -681,4 +681,290 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
     ],
     seeAlso: ["changeset-review-page", "topology-page", "validation-findings"],
   },
+  {
+    id: "canary-apply",
+    title: "Canary apply and the rollout hold",
+    surface: "panel",
+    summary:
+      "Apply a multi-node changeset to a few nodes first, hold there while you look at them, and only then apply the rest — with the commit-confirm window covering the whole sequence rather than each stage.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["canary", "staged apply", "rollout", "hold", "continue", "gate", "auto-rollback", "phased"],
+    sections: [
+      {
+        heading: "All at once, or a canary first",
+        body: "**All nodes at once** is the default and is what apply has always done: every affected node changes together. **Canary** applies only the nodes you pick, then pauses. The pause is recorded on the server, not in your browser — reload the page, open another tab, or restart the daemon and the same hold is still there, with the same nodes on each side of it.",
+      },
+      {
+        heading: "What the gate is waiting for",
+        body: "A **manual** gate waits for you to press Continue after looking at the canary nodes. An **automatic** gate promotes at the hold deadline only when the canary nodes are healthy and no new error-severity finding is attributable to them; a hold that no findings cycle completed inside is reported un-clean rather than promoted on silence. Either way, aborting restores exactly the nodes that were applied and never contacts the ones that were not.",
+      },
+      {
+        heading: "The window covers the whole sequence",
+        body: "The commit-confirm deadline is set once, when the sequence starts, and every hold deadline is clamped to it. A hold still pending when the window elapses rolls back everything applied so far — a stalled canary cannot hold the cluster open. That is also why a hold must be shorter than the window: a hold that fills it leaves no time to apply the remaining nodes.",
+      },
+      {
+        heading: "Auto-rollback on a new error finding",
+        body: "Off by default, and orthogonal to the fan-out: it governs the commit-confirm **window**, not which nodes are applied or in what order. When armed, a new error-severity finding attributable to something the changeset touched, arriving inside the window, rolls it back immediately instead of waiting the window out. Pre-existing findings never trigger it, and warnings never trigger it at all. During a canary hold it aborts the sequence rather than rolling back a plan half of which was never applied. Leaving the box unticked asks for the cluster default (`auto_rollback_on_error`, itself off) rather than asserting off — the browser cannot read that setting. It is an in-memory guard: a daemon restart drops it, and the commit-confirm timer remains the safety net either way.",
+      },
+      {
+        heading: "When canary is not offered",
+        body: "A changeset touching fewer than two nodes has no second stage to hold before, and a plan carrying cluster-scope steps that must run before every per-node step cannot be split in either direction without violating the plan's own ordering. In both cases the option is disabled with the reason stated — vnprox refuses the strategy before taking a snapshot or mutating anything, leaving the changeset exactly where it was.",
+      },
+      {
+        heading: "Reading the rollout view",
+        body: "While a rollout is held, each affected node is shown as applied, not contacted, or unknown. **Unknown is a real answer**: it means the server did not place that node on either side of the hold, and it is never quietly drawn as one of the other two. A node reported as unknown should be checked directly before you continue or abort.",
+      },
+    ],
+    seeAlso: ["changeset-review-page", "commit-confirm", "safety-model", "findings-stream", "scheduled-apply"],
+  },
+  {
+    id: "gitsync-status",
+    title: "Git spec sync",
+    surface: "panel",
+    summary:
+      "What the git repository holding your cluster's declared intent is doing: which remote, which ref, which document, when it last fetched, and — the part that matters on a bad day — what went wrong.",
+    docRef: "docs/api.md",
+    keywords: ["gitsync", "git", "gitops", "repo", "remote", "ref", "branch", "sync", "signed", "commit"],
+    sections: [
+      {
+        heading: "Off is an answer, not an error",
+        body: "With no `[gitsync]` section in the daemon's configuration, nothing is fetched and no endpoint is contacted — the panel says so plainly and offers no controls. That state is deliberately rendered differently from a sync that is configured and failing, and differently again from vnprox being unable to read the status at all. Those are three different situations and only one of them needs your attention right now.",
+      },
+      {
+        heading: "A failing sync says why",
+        body: "A bad ref, an unreachable remote and an authentication failure are different problems, so the panel shows the daemon's own error text rather than a generic 'sync failed'. It also keeps showing the details from the last cycle that got far enough to produce them, since a failed cycle stages nothing and tells you nothing new about the plan.",
+      },
+      {
+        heading: "The sync stages, never applies",
+        body: "When the repository and the cluster disagree, vnprox opens one draft changeset and stops — it never applies, never pushes, never merges and never decides the document wins. There is only ever one open sync draft: a second detected divergence updates it rather than piling up drafts. The link here takes you to that draft in the ordinary review screen.",
+      },
+      {
+        heading: "Signature verification",
+        body: "With signed commits required, a commit whose signature this daemon cannot verify locally is refused and nothing is staged — an unsigned commit, an unsupported key algorithm and a signer missing from the allowed-signers file are all refusals. The last verified signer is shown when signatures are required, and explicitly as not applicable when they are not.",
+      },
+    ],
+    seeAlso: ["config-as-code-page", "spec-pin", "spec-reconciliation", "changeset-review-page"],
+  },
+  {
+    id: "spec-pin",
+    title: "The spec document",
+    surface: "panel",
+    summary:
+      "The declarative YAML document describing this cluster's L2 and SDN intent — rendered from live state, pasted in, or pinned so the drift checks have something to compare against.",
+    docRef: "docs/api.md",
+    keywords: ["spec", "pin", "pinned", "yaml", "document", "declarative", "export", "intent"],
+    sections: [
+      {
+        heading: "Rendering the live cluster",
+        body: "'Render the live cluster' exports what the cluster currently is as a `specVersion: 1` document. The export is byte-stable — two exports of an unchanged cluster are byte-identical, which is what makes a `git diff` against it empty when nothing has changed. It reads only; producing it changes nothing.",
+      },
+      {
+        heading: "What pinning does and does not do",
+        body: "Pinning stores that document as the declared desired state, so the drift checks compare live state against it every cycle. It applies nothing by itself, and it is app-owned data — never a shadow copy of PVE's configuration. Re-pinning replaces the previous document in place; you do not need to unpin first. Clearing the pin removes the comparison, not anything on the cluster.",
+      },
+      {
+        heading: "Pin or git, or both",
+        body: "The spec position can come from the pin or from the git sync. With neither, there is no spec position at all, and the reconciliation panel says so rather than reporting agreement — a question nobody asked is not a clean bill of health.",
+      },
+    ],
+    seeAlso: ["config-as-code-page", "spec-plan", "gitsync-status", "blueprints-page"],
+  },
+  {
+    id: "spec-plan",
+    title: "Planning a spec against live state",
+    surface: "panel",
+    summary:
+      "Diffs the working document against the cluster as it is and shows what it would take to make them agree — the drift-detection primitive the automation contract specifies for a terraform-plan-shaped check.",
+    docRef: "docs/api.md",
+    keywords: ["plan", "import", "diff", "dry run", "terraform", "spec", "notinspec", "preview"],
+    sections: [
+      {
+        heading: "A plan stages a draft",
+        body: "There is no read-only plan route: the plan is the response to a spec import, and that import creates a draft changeset for its result — every time, including when the result is empty. The button says so. Nothing is applied, and a draft you only wanted as a question can be discarded from the review screen.",
+      },
+      {
+        heading: "Two different facts",
+        body: "**Operations** are what the document says has to change about the cluster. **Not in the document** are entities the cluster has that the document never mentions. Both are always reported, including when both are zero, because they answer different questions — 'nothing to change' and 'nothing undeclared' are separate statements and a clean plan is both of them.",
+      },
+      {
+        heading: "Nothing is ever pruned",
+        body: "An entity absent from the document is reported and left alone. Spec import has no prune path and emits no delete operations, so importing a partial document can never quietly remove the bridges it happens not to mention.",
+      },
+    ],
+    seeAlso: ["config-as-code-page", "spec-pin", "changeset-review-page", "validation-findings"],
+  },
+  {
+    id: "spec-reconciliation",
+    title: "Restoring intent and adopting reality",
+    surface: "panel",
+    summary:
+      "When spec, config and live disagree about one entity, these are the two ways out — one moves the cluster to match the document, the other moves the document to match the cluster.",
+    docRef: "docs/api.md",
+    keywords: [
+      "reconcile",
+      "restore intent",
+      "adopt reality",
+      "three-way",
+      "spec",
+      "config",
+      "live",
+      "pull request",
+      "propose",
+    ],
+    sections: [
+      {
+        heading: "All three pairs, always",
+        body: "Each finding shows spec-vs-config, config-vs-live and spec-vs-live — including the pairs that agree, because which pair agrees is what identifies the odd position out. A field a position never reported is shown as not reported, never as an empty value: 'we don't know' and 'it is blank' are different, and collapsing them would invent divergence.",
+      },
+      {
+        heading: "Restore intent",
+        body: "Stages a draft changeset bringing the cluster back to what the document declares. The operations are computed by the daemon from the finding itself and are never sent from the browser. It stages and stops — validating, applying and confirming it are your own separate steps in the ordinary review screen, with the usual blast radius and commit-confirm window.",
+      },
+      {
+        heading: "Adopt reality",
+        body: "Rewrites the document to describe the entity as the cluster currently has it, as a pull request on the spec repository. It changes nothing about the cluster. vnprox opens the request and stops: it never merges, approves or polls one. It needs a write-capable spec repository configured; without one, the daemon refuses with that reason rather than failing vaguely.",
+      },
+      {
+        heading: "Offered only when it would do something",
+        body: "Each action appears only if performing it would produce a non-empty result. A finding offering neither is ordinary and honest — a divergence that exists only between the file and the kernel is real, and no spec commit resolves it. Neither action is ever taken automatically, at any severity.",
+      },
+    ],
+    seeAlso: ["config-as-code-page", "gitsync-status", "drift", "changeset-review-page", "safety-model"],
+  },
+  {
+    id: "spof-score",
+    title: "Failure simulation and the SPOF score",
+    surface: "panel",
+    summary:
+      "Answers 'what breaks if this NIC, bond or switch dies?' by removing each element from a copy of the current inventory and recomputing connectivity — and says so plainly when it cannot decide.",
+    docRef: "docs/api.md",
+    keywords: ["spof", "failure", "simulation", "resilience", "single point of failure", "quorum", "score"],
+    sections: [
+      {
+        heading: "Simulated, never induced",
+        body: "The simulation removes an entity from a *copy* of the live inventory snapshot. It never takes anything down, never writes, and never stores a result — every verdict is recomputed fresh from the current snapshot each time you look. There is no changeset operation anywhere in vnprox that a failure simulation can produce.",
+      },
+      {
+        heading: "Four verdicts, and one of them is 'indeterminate'",
+        body: "Critical means quorum, a management path or a Ceph network is at risk. Degrades means guests lose an uplink or SDN segments are stranded. No known impact is claimed only when every dimension was actually evaluated. Anything else — including a dimension the simulator had no model for — reads as **indeterminate**, which is not a mild verdict: it means nobody knows, and it sorts immediately after critical for that reason.",
+      },
+      {
+        heading: "Why a dimension goes unevaluated",
+        body: "Quorum needs a corosync configuration whose ring addresses resolve to real interfaces. Ceph needs a Ceph read model that declares networks. Tunnels need a WireGuard model. Guest connectivity needs every guest's NIC attachment to resolve. Where one of those is missing, that dimension is named as not evaluated rather than reported as safe — a distinction the entire panel is built around.",
+      },
+      {
+        heading: "The score",
+        body: "One hundred minus a weight per single point of failure, floored at zero, so fewer and lower-impact single points of failure score higher. It is a summary of the list below it, not an independent measurement, and an empty list genuinely means none were found — purely redundant elements are excluded before the list is built.",
+      },
+    ],
+    seeAlso: ["analysis-page", "path-simulator", "protected-interfaces", "topology-page"],
+  },
+  {
+    id: "capacity-export",
+    title: "Capacity history export",
+    surface: "panel",
+    summary:
+      "Downloads one link's or one IPAM pool's daily utilization history as CSV or JSON, bounded to the retention window the daemon is configured to keep.",
+    docRef: "docs/features/monitoring.md",
+    keywords: ["capacity", "export", "csv", "history", "utilization", "retention", "forecast", "trend"],
+    sections: [
+      {
+        heading: "History, not forecast",
+        body: "This is the raw daily series behind the forecasts, not the forecast itself. A projected capacity crossing reaches you as an ordinary finding in the findings stream, where it can be acknowledged, filtered and alerted on like any other — so there is deliberately no second forecast screen here to keep in sync with it.",
+      },
+      {
+        heading: "What has history at all",
+        body: "Links are rolled up only for physical NICs with a negotiated speed: without one there is no percentage to record. Bonds are not rolled up individually. Pools are rolled up per subnet with a nonzero size. Only entities the rollup actually writes are offered, because an empty export from an entity that was never collected reads exactly like an entity with no traffic, and they are not the same thing.",
+      },
+      {
+        heading: "The retention bound",
+        body: "The daemon clamps every export to its configured `[capacity] aggregate_retention_days`, computed from its own clock, so buckets older than that are absent even in the gap between prune ticks. That configured value is not exposed to the browser, so this panel names the setting and its default rather than claiming to know yours — an export that silently stops at a boundary nobody stated is a trap.",
+      },
+      {
+        heading: "One bucket per complete day",
+        body: "The rollup writes one bucket per complete UTC day, so an entity discovered today has none yet and that is not a fault. Buckets are stamped at midnight UTC and rendered in UTC here, because showing them in your own timezone would move a bucket onto the wrong calendar day west of Greenwich.",
+      },
+    ],
+    seeAlso: ["analysis-page", "findings-stream", "ipam-page", "topology-inspector"],
+  },
+  {
+    id: "qos-shaping",
+    title: "QoS shaping",
+    surface: "panel",
+    summary:
+      "Every traffic shape vnprox has applied to a bridge, and the three edits you can make to them — each of which becomes an ordinary reviewable changeset rather than a direct write.",
+    docRef: "docs/api.md",
+    keywords: ["qos", "shaping", "rate", "ceiling", "htb", "tc", "bandwidth", "priority"],
+    sections: [
+      {
+        heading: "Applied, not observed",
+        body: "The list is read from vnprox's own store of shapes it has applied, not from a live `tc` dump. So a shape here is one vnprox put there. A rate limit somebody applied by hand outside vnprox will not appear, which is the honest reading of what this store can know — and it is also why the map's shaping badge draws from the same source.",
+      },
+      {
+        heading: "Editing stages a changeset",
+        body: "There is no QoS write route. Creating, changing or removing a shape builds a `qos.shape.create`, `qos.shape.update` or `qos.shape.delete` operation and lands it in the change drawer, where it goes through the same validate, diff, apply and confirm path as an interface edit. Nothing on this panel touches a shape directly, and a staged edit is not applied until you apply it.",
+      },
+      {
+        heading: "Re-scoping is remove-and-recreate",
+        body: "Changing a shape's rate, ceiling or priority is an edit. Changing which traffic it selects — its match CIDR or VLAN — is not: that is a different shape, and it is expressed as two visible operations, a delete and a create. The edit form therefore does not offer the match fields, so the operation list always says what actually happened.",
+      },
+    ],
+    seeAlso: ["analysis-page", "change-drawer", "topology-page", "safety-model"],
+  },
+  {
+    id: "ipv6-segments",
+    title: "IPv6 segments",
+    surface: "panel",
+    summary:
+      "What each segment is actually advertising — router advertisements, their prefixes, and whether a DHCPv6 server answered — observed live per node rather than read from configuration.",
+    docRef: "docs/features/sdn.md",
+    keywords: ["ipv6", "ra", "router advertisement", "slaac", "dhcpv6", "dual stack", "prefix", "segment"],
+    sections: [
+      {
+        heading: "An observation, not a configuration read",
+        body: "Each entry comes from an actual router-advertisement solicitation on that interface, on that node. That makes it the ground truth for 'is v6 really working on this segment', and it is why the read is slow and polls infrequently: it is a live measurement across every bridge and VLAN interface in the cluster.",
+      },
+      {
+        heading: "An empty table means none were seen",
+        body: "An interface appears here only when an advertisement was actually observed, so nothing listed means nothing was seen — it does not mean IPv6 is disabled, and it does not mean no subnet is configured. For the same reason, a VLAN or VNet that is still v4-only has no row at all, which is the normal starting point for a dual-stack rollout rather than a problem.",
+      },
+      {
+        heading: "A node that did not answer",
+        body: "The cluster fan-out tolerates individual node failures: one node's read failing never blanks the rest. When that happens the panel names the nodes that did not answer alongside the rows it did get, so a missing segment is visibly missing rather than quietly absent.",
+      },
+      {
+        heading: "Implied is not observed",
+        body: "A DHCPv6 server the advertisement's managed flag implies and a DHCPv6 server actually seen answering are shown differently on purpose. The first is what the router claims should exist; the second is what does. Collapsing them would turn a misconfiguration into a clean reading.",
+      },
+    ],
+    seeAlso: ["analysis-page", "ipv6-planning", "sdn-page", "ipam-page"],
+  },
+  {
+    id: "wan-health",
+    title: "WAN and upstream health",
+    surface: "panel",
+    summary:
+      "Continuous reachability, latency and loss against reference hosts you name, per uplink — the evidence for 'it is the ISP, not the cluster'.",
+    docRef: "docs/api.md",
+    keywords: ["wan", "uplink", "isp", "upstream", "latency", "loss", "availability", "multi-wan"],
+    sections: [
+      {
+        heading: "The verdict is computed where both halves are visible",
+        body: "'Likely your ISP' is a deliberately narrow claim: it fires only when a WAN uplink is degraded **and** every other finding in the cluster is below warning severity. Without that second half the verdict is the plainer 'WAN degraded' — the same upstream signal without the confirmation that nothing else is wrong. The daemon computes this, because it is the only place that can see both the probe results and the findings stream at once.",
+      },
+      {
+        heading: "Per uplink, never blended",
+        body: "Multiple uplinks on one node are always reported independently. An uplink whose configured target has produced no reading yet has no entry at all rather than a stale placeholder, so an empty row is never mistaken for a healthy one. This node probes only its own targets; the cluster-wide picture is the union of each node's own view.",
+      },
+      {
+        heading: "Naming a target",
+        body: "A reference host must be an IP address or a DNS name. Targets are dialed by a root-owned prober, so anything option-shaped or shell-hostile is refused outright — and the refusal names the value it rejected instead of failing vaguely. Saving targets replaces the whole set for this node rather than patching it, so removing one means saving the rest.",
+      },
+      {
+        heading: "Diagnosis, not failover",
+        body: "Nothing here switches an uplink or reroutes anything. There is no changeset operation for WAN failover anywhere in vnprox, and the probe loop calls no mutating route. What this panel gives you is the evidence to take to whoever owns the link.",
+      },
+    ],
+    seeAlso: ["analysis-page", "edge-page", "findings-stream", "path-simulator"],
+  },
 ];

@@ -8,11 +8,25 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Blueprint, Changeset } from "../api/types";
+import type { Blueprint, Changeset, IPv6SegmentsView } from "../api/types";
 import { DUALSTACK_BLUEPRINT_ID, DualStackWizard } from "./DualStackWizard";
 
 const saveMock = vi.fn<(bp: Blueprint) => Promise<Blueprint>>();
 const instantiateMock = vi.fn<(args: { id: string; req: { params: Record<string, unknown> } }) => Promise<Changeset>>();
+
+// T-3004: the wizard now reads GET /ipv6/segments. Mocked at the query-hook
+// seam so these tests never touch fetch, matching how every other panel test
+// in this repo isolates its network reads.
+let segmentsResult: { data: IPv6SegmentsView | undefined; isLoading: boolean; error: Error | null } = {
+  data: { items: [], generatedAt: 0 },
+  isLoading: false,
+  error: null,
+};
+
+vi.mock("./ipv6Queries", async () => {
+  const actual = await vi.importActual<typeof import("./ipv6Queries")>("./ipv6Queries");
+  return { ...actual, useIPv6SegmentsQuery: () => segmentsResult };
+});
 
 vi.mock("../blueprints/queries", async () => {
   const actual = await vi.importActual<typeof import("../blueprints/queries")>("../blueprints/queries");
@@ -87,5 +101,72 @@ describe("DualStackWizard — T-1404 AC6", () => {
     await waitFor(() => { expect(instantiateMock).toHaveBeenCalledTimes(2); });
     expect(saveMock).toHaveBeenCalledTimes(1); // still just once
     await screen.findByText(/vnet20 is already up to date — no changes needed\./);
+  });
+});
+
+// T-3004 AC4: the wizard reads the state it edits. The component was
+// previously mounted nowhere and called no route at all; these tests pin the
+// three distinct readings of GET /ipv6/segments so none of them can quietly
+// collapse into another.
+describe("DualStackWizard — reads GET /ipv6/segments", () => {
+  afterEach(() => {
+    saveMock.mockReset();
+    instantiateMock.mockReset();
+    segmentsResult = { data: { items: [], generatedAt: 0 }, isLoading: false, error: null };
+  });
+
+  it("shows the IPv6 already live on the selected VNet", () => {
+    segmentsResult = {
+      data: {
+        generatedAt: 0,
+        items: [
+          {
+            node: "pve1",
+            iface: "vnet20",
+            kind: "vnet",
+            vnet: "vnet20",
+            zone: "dsz",
+            raPresent: true,
+            prefixes: ["2001:db8:20::/64"],
+          },
+          // A different VNet's segment must not leak into this readout.
+          { node: "pve1", iface: "vnet99", kind: "vnet", vnet: "vnet99", raPresent: true, prefixes: ["2001:db8:99::/64"] },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    };
+    renderWizard();
+
+    const observed = screen.getByTestId("dualstack-observed");
+    expect(observed).toHaveTextContent("2001:db8:20::/64");
+    expect(observed).not.toHaveTextContent("2001:db8:99::/64");
+  });
+
+  it("reads 'no RA observed' as the ordinary starting point, not a fault", () => {
+    renderWizard();
+    const observed = screen.getByTestId("dualstack-observed");
+    expect(observed).toHaveTextContent("No router advertisement observed");
+    expect(observed).toHaveTextContent("ordinary starting point");
+  });
+
+  it("distinguishes a failed read from an absence of IPv6", () => {
+    segmentsResult = { data: undefined, isLoading: false, error: new Error("peer unreachable") };
+    renderWizard();
+
+    const observed = screen.getByTestId("dualstack-observed");
+    expect(observed).toHaveTextContent("failed read, not an absence of IPv6");
+    expect(observed).not.toHaveTextContent("No router advertisement observed");
+  });
+
+  it("names the nodes that did not answer on a partial read", () => {
+    segmentsResult = {
+      data: { generatedAt: 0, items: [], partial: true, failedNodes: ["pve3"] },
+      isLoading: false,
+      error: null,
+    };
+    renderWizard();
+
+    expect(screen.getByTestId("dualstack-observed")).toHaveTextContent("pve3");
   });
 });

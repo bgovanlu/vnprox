@@ -13,11 +13,13 @@ import { FlowExplorerPage } from "./pages/FlowExplorerPage";
 import { ConntrackPage } from "./pages/ConntrackPage";
 import { EdgePage } from "./pages/EdgePage";
 import { DiagnosePage } from "./pages/DiagnosePage";
+import { AnalysisPage } from "./pages/AnalysisPage";
 import { IpamPage } from "./pages/IpamPage";
 import { ManagementPage } from "./pages/ManagementPage";
 import { PortsPage } from "./pages/PortsPage";
 import { BlueprintsPage } from "./pages/BlueprintsPage";
 import { HubPage } from "./hub/HubPage";
+import { ConfigAsCodePage } from "./drift/ConfigAsCodePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
 import { AuditPage } from "./pages/AuditPage";
@@ -186,6 +188,17 @@ export function App() {
                 </DesktopOnlyRoute>
               }
             />
+            {/* T-3004: the analysis surfaces — failure simulation, capacity
+             * export, QoS shaping, PBS backup paths, IPv6 segments. Desktop
+             * only like every other dense read screen. */}
+            <Route
+              path="/analysis"
+              element={
+                <DesktopOnlyRoute pageLabel="Analysis">
+                  <AnalysisPage />
+                </DesktopOnlyRoute>
+              }
+            />
             <Route
               path="/ports"
               element={
@@ -207,6 +220,18 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Hub">
                   <HubPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            {/* T-3001: the config-as-code cockpit — the git sync's status,
+              * the spec document and its plan, and the two reconciliation
+              * actions. Desktop-only like every other editing surface: it
+              * carries a YAML editor and two confirmations. */}
+            <Route
+              path="/config-as-code"
+              element={
+                <DesktopOnlyRoute pageLabel="Config as code">
+                  <ConfigAsCodePage />
                 </DesktopOnlyRoute>
               }
             />

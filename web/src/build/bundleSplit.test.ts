@@ -81,7 +81,26 @@ describe("production bundle: Monaco code-split (T-208 AC4)", () => {
         // reason recorded — this ceiling exists to catch an accidental
         // dependency landing in the wrong chunk, not to ratchet quietly
         // every time content grows.
-        expect(mainSize).toBeLessThan(3_800_000);
+        //
+        // Phase 30 wave 1 raised it again, from 3_800_000, and the reason is
+        // recorded to the same standard because the previous note asked for
+        // it. Three cards (T-3001 config-as-code, T-3004 analysis surfaces,
+        // T-3005 canary apply) added ~236KB of source and ~20KB of help prose
+        // between them, giving screens to backend features that previously had
+        // none — which is the entire point of the phase. Measured: 3_826_289,
+        // i.e. 0.7% over the old ceiling.
+        //
+        // What was checked before raising it, because "the number went up" is
+        // not by itself a reason to move the number:
+        //   - `git diff web/package.json web/package-lock.json` is EMPTY. No
+        //     dependency was added, so this is content, not a stray import.
+        //   - The MonacoEnvironment content assertion below — the load-bearing
+        //     one — still passes, so the split itself is intact.
+        // Raised to 4_000_000 rather than to just above the measurement, so
+        // the next card does not have to re-litigate 20KB; the guard still
+        // catches a real dependency (React Flow, Recharts and Monaco are each
+        // an order of magnitude more than the headroom this leaves).
+        expect(mainSize).toBeLessThan(4_000_000);
 
         // The load-bearing check: Monaco's own distinctive runtime marker
         // must appear in the Monaco chunk and must NOT appear in the main

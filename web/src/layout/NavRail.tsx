@@ -25,6 +25,13 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/flows", label: "Flows", glyph: "W" },
   { path: "/conntrack", label: "Conntrack", glyph: "N" },
   { path: "/edge", label: "Edge", glyph: "E" },
+  // T-3004: SPOF, capacity export, QoS, PBS paths, IPv6 segments. "Y" for
+  // analysis — A is already Audit, N is Conntrack, L is Tools.
+  { path: "/analysis", label: "Analysis", glyph: "Y" },
+  // T-3001: the config-as-code cockpit — git sync status, the spec document
+  // and its pin, the plan, and the spec/config/live three-way with both
+  // reconciliation directions. "C" was free; A/N/L/E are taken.
+  { path: "/config-as-code", label: "Config as code", glyph: "C" },
   { path: "/ports", label: "Ports", glyph: "P" },
   { path: "/blueprints", label: "Blueprints", glyph: "B" },
   { path: "/hub", label: "Hub", glyph: "U" },
