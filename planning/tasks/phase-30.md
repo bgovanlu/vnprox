@@ -39,7 +39,7 @@ grep -rhoE 'apiFetch[^(]*\(\s*[\`\"]/[A-Za-z0-9/{}._$-]+' web/src --include=*.ts
 | Headless route family | Ops | Card | Note |
 |---|---|---|---|
 | `gitsync` | 1 | `T-3001` | |
-| `spec` | 5 | `T-3001` | import, pin, plan, diff |
+| `spec` | 5 | `T-3001` | `GET /spec`, `POST /spec/import`, `GET`/`POST`/`DELETE /spec/pin` — there is no `plan` or `diff` route; the plan IS `POST /spec/import`'s empty-ops response |
 | `policies` | 3 | `T-3002` | `vnproxctl policy` is the only client |
 | `compliance` | 2 | `T-3002` | |
 | `digest` | 2 | `T-3002` | schedule is API-only; `AlertRules.tsx` covers delivery targets, not the schedule |
@@ -50,7 +50,7 @@ grep -rhoE 'apiFetch[^(]*\(\s*[\`\"]/[A-Za-z0-9/{}._$-]+' web/src --include=*.ts
 | `doctor` | 1 | `T-3003` | `--live` |
 | `failsim` | 1 | `T-3004` | |
 | `wan` | 3 | `T-3004` | |
-| `capacity` | 1 | `T-3004` | |
+| `capacity` | 1 | `T-3004` | export only; forecasts already surface as findings — see the card |
 | `pbs` | 1 | `T-3004` | |
 | `qos` | 1 | `T-3004` | |
 | `ipv6/segments` | 1 | `T-3004` | `DualStackWizard.tsx` exists and calls nothing |
@@ -80,7 +80,14 @@ and covers none of it.
 
 - One screen presenting the three-way state — **spec, config, live** — as the product's own
   vocabulary rather than three separate API concepts. The drift page is the natural home.
-- Surface `GET /gitsync` status: repo, ref, path, last sync, last error. A `[gitsync]`
+- The exact route set, verified against `docs/openapi.json` on 2026-08-16 so nobody has to guess:
+  `GET /gitsync/status` · `GET /spec` · `POST /spec/import` · `GET`/`POST`/`DELETE /spec/pin` ·
+  `GET /drift` · `GET /drift/{id}/adoption` · `POST /drift/{id}/adopt-reality` ·
+  `POST /drift/{id}/restore-intent` · `POST /drift/{id}/fix`. Read each one's contract in
+  `docs/api.md` before building against it, and **report any mismatch between this card and the
+  contract rather than coding around it** — two claims in this phase's roadmap have already
+  turned out to be wrong that way.
+- Surface `GET /gitsync/status` (**that is the exact path — there is no bare `/gitsync`**): repo, ref, path, last sync, last error. A `[gitsync]`
   configuration that is failing must be visible without reading the journal.
 - Both reconciliation directions as explicit, separately-confirmed actions — "restore intent"
   (bring the cluster back to spec) and "adopt reality" (rewrite spec from live). **Never a single
@@ -206,8 +213,13 @@ read-mostly, and several already have a partial component waiting for data.
   rather than listed. The existing paint-mode machinery is the right vehicle.
 - **WAN health** (`T-2905` added `validWANHost` validation): uplink status, and the validation
   failure surfaced as a named refusal.
-- **Capacity forecasting**: the daily rollup already computes; render it with the forecast
-  horizon stated, and **never extrapolate past the retention window** the datasheet promises.
+- **Capacity**: `GET /capacity/export?ref=&kind=link|ipam_pool[&format=csv|json]` — a per-entity
+  history export, bounded server-side to `aggregate_retention_days`. **Correction to this card,
+  2026-08-16, made before any agent read it:** capacity *forecasts* are not headless — they
+  already reach the operator as `SourceCapacity` findings, which have a UI. Do **not** build a
+  second forecast screen. The headless thing is the export, so the deliverable is an export
+  affordance on the entity that owns the data (link, IPAM pool), stating the retention bound it
+  is subject to.
 - **PBS backup-path awareness** and **QoS editing**: QoS is the one write path in this card, so
   it goes through the change engine like everything else.
 - **IPv6 segments**: `DualStackWizard.tsx` exists and calls no route. Wire it to
@@ -218,7 +230,9 @@ read-mostly, and several already have a partial component waiting for data.
 
 1. A failure simulation names the affected entities as map links, and states "indeterminate"
    where it cannot decide — matching the simulator's existing four-verdict honesty.
-2. Capacity forecasts state their horizon and do not render beyond the retention window.
+2. The capacity export is reachable from a link and from an IPAM pool, passes both required
+   query parameters, and states the retention bound. No second forecast screen is added — the
+   report says explicitly that `SourceCapacity` findings were checked and already have a UI.
 3. QoS edits stage a changeset; no direct write path exists (grep-level or type-level assertion).
 4. The IPv6 wizard either reads `/ipv6/segments` or is removed; the report says which and why.
 5. Every one of the six areas is reachable from the nav or from an entity inspector — a screen
