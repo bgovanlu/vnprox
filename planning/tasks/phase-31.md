@@ -110,15 +110,27 @@ Note three things the shape tells you that prose would not:
    chosen. This is the first PVE object vnprox models with that property; decide deliberately
    whether `validate_schema.go` grows a conditional arm or the params types split by protocol,
    and write the reason down.
-2. **`wireguard` is a fabric protocol.** vnprox already has a WireGuard subsystem
-   (`internal/change/params_wg.go`, T-1401's tunnels). These are almost certainly unrelated
-   mechanisms with a shared name — **confirm that before either one grows a reference to the
-   other**, and record the answer either way. Getting this wrong conflates two features.
-3. **`--lock-token` is a global SDN config lock.** vnprox's change engine has its own concurrency
-   story (`BaseHash` conflict guards, `docs/features/change-management.md` §7). Whether PVE's SDN
-   lock must be held across a vnprox fabric apply is a **correctness** question, not a polish
-   one. Answer it explicitly in the report; a wrong answer here corrupts SDN config under
-   concurrent edit, which is the exact class of failure the change engine exists to prevent.
+2. **`wireguard` is a fabric protocol — and it is genuinely WireGuard.** *(Answered
+   2026-08-16 from hardware, so the card does not have to guess: `protocol=wireguard` takes
+   `--persistent_keepalive`, a real WireGuard parameter.)* vnprox already has a WireGuard
+   subsystem (`internal/change/params_wg.go`, T-1401's tunnels). **These are two different
+   management planes over the same protocol** — T-1401's tunnels are vnprox-managed peer links;
+   a WireGuard fabric is PVE-managed underlay transport. They must not share a model, and a
+   fabric must not appear as a T-1401 tunnel or vice versa. Say in the report how you kept them
+   apart, and make sure the topology map distinguishes them.
+3. **`--lock-token` is a global SDN config lock — and vnprox does not take it.** *(Answered
+   2026-08-16, and the answer turned into a filed safety gap:
+   [`../reports/T-3101-followup-01.md`](../reports/T-3101-followup-01.md).)* `PUT /cluster/sdn`
+   applies **all** pending SDN changes cluster-wide, vnprox issues it with empty params, and no
+   validator anywhere reads SDN pending state. An operator can therefore approve a one-line
+   vnprox changeset and commit an unrelated change staged in the PVE GUI — never validated,
+   never diffed, not in the audit trail as applied, and outside the rollback they believe they
+   have.
+
+   **This card does not fix that** — three defensible fixes exist and choosing between them is a
+   product decision. What this card must do is **not widen it**: every fabric op inherits the
+   same apply path. If T-3101 lands before the decision, its report says so explicitly rather
+   than letting new surface inherit the problem silently.
 
 ### Also in scope — the two defects the same capture exposed
 
