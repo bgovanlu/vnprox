@@ -967,4 +967,268 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
     ],
     seeAlso: ["analysis-page", "edge-page", "findings-stream", "path-simulator"],
   },
+  {
+    id: "platform-tokens",
+    title: "Automation tokens: stored scope and effective scope",
+    surface: "panel",
+    summary:
+      "Mint a capability-scoped bearer token without curl, see when each one expires, and see whether this deployment is currently narrowing what a token can actually do.",
+    docRef: "docs/api.md",
+    keywords: ["token", "bearer", "mint", "scope", "expiry", "read only", "revoke", "automation", "curl"],
+    sections: [
+      {
+        heading: "A token never exceeds you",
+        body: "Every scope you can tick is one you already hold on at least one node; the rest are disabled and say why. The daemon re-checks this when it mints, so a token can never carry a capability its creator did not have at the moment of creation. The one exception is `automation`, which is not derived from any Proxmox privilege at all — holding a vnprox session is the whole bound on granting it.",
+      },
+      {
+        heading: "Expiry is now the default, not the exception",
+        body: "A token minted with nothing said about expiry lives 90 days. You can pin a different instant, or opt out of expiry entirely, but opting out is an explicit choice rather than what happens when you say nothing. Tokens minted before expiry existed have none and keep working — expiry is never applied backwards — so 'never expires' in the list is a real state, not a missing value.",
+      },
+      {
+        heading: "Stored scope is not always effective scope",
+        body: "In a read-only deployment the daemon removes every write scope from a token on every request, whatever the token's stored scope says. The list shows both, and names the scopes being removed, because a token that looks write-capable and is not is precisely the confusion this panel exists to end. Until the instance configuration has loaded, the effective scope is reported as unknown rather than assumed unchanged.",
+      },
+      {
+        heading: "Shown once",
+        body: "The raw bearer value crosses the wire exactly once, in the response to the mint request. It is stored only as a hash, so no route can ever hand it back. If you lose it, revoke the token and mint another; revoking also force-closes any live event subscription that token had authenticated.",
+      },
+    ],
+    seeAlso: ["platform-panel-page", "tokens-and-embeds", "read-only-mode", "permissions"],
+  },
+  {
+    id: "platform-webhooks",
+    title: "Webhooks and the destination policy",
+    surface: "panel",
+    summary:
+      "Delivery targets for vnprox's event stream, and — more usefully — the reason the daemon gives when it refuses one of them.",
+    docRef: "docs/security.md",
+    keywords: ["webhook", "delivery", "hmac", "ssrf", "private address", "metadata", "loopback", "signature"],
+    sections: [
+      {
+        heading: "Why a destination gets refused",
+        body: "The daemon runs as root on a hypervisor with reach into your management network, so an unconstrained webhook target is a way to make it fetch things on an attacker's behalf. Public HTTPS destinations are permitted by default; plain HTTP, loopback, RFC1918, and link-local addresses — which includes the cloud metadata address — are not. Each refusal names the configuration knob that would permit it, and this panel shows that message unedited.",
+      },
+      {
+        heading: "Refused twice, on purpose",
+        body: "The address class is checked when you register a target, and checked again against the address actually being connected to at every single delivery. A hostname that resolves publicly today and to loopback tomorrow is refused at the socket rather than at the URL, so re-pointing DNS after registration does not get past the guard.",
+      },
+      {
+        heading: "This screen may not be able to reach it",
+        body: "The webhook routes require the automation capability, and that capability is never granted by logging in — it exists only on a bearer token minted with it in scope. A browser session therefore gets a refusal here rather than a list, and the panel shows that refusal instead of an empty table, because 'you may not look' and 'there is nothing here' are different facts. Mint an automation-scoped token in the section above and use it from a client that can send it.",
+      },
+      {
+        heading: "Delivery health is not assumed",
+        body: "A registration that has never had an event match it shows as never attempted, not as healthy: a zero failure count before any attempt says nothing. Three consecutive failed delivery sequences raise a finding in the ordinary findings stream, and a subsequent success clears it on the next cycle.",
+      },
+    ],
+    seeAlso: ["platform-panel-page", "findings-stream", "alert-rules-page", "tokens-and-embeds"],
+  },
+  {
+    id: "platform-plugins",
+    title: "Installed plugins and their capability ceiling",
+    surface: "panel",
+    summary:
+      "What extensions this deployment is carrying, exactly what each one is permitted to touch, and how to stop or remove one — but never how to install one.",
+    docRef: "docs/api.md",
+    keywords: ["plugin", "extension", "capability", "enable", "disable", "uninstall", "sdk", "ceiling"],
+    sections: [
+      {
+        heading: "The capability list is a ceiling",
+        body: "What a plugin declares is the maximum it may ever reach: which internal seams it can read and which classes of change-engine operation it may stage. It is not a description of what the plugin usually does. A plugin can put a change into the drawer for you to review, and is never itself a way to apply one — that boundary holds regardless of what it declared.",
+      },
+      {
+        heading: "Installing happens somewhere else, deliberately",
+        body: "There is no install control here, and adding one would be a way around the trust gate. Installation goes through the Hub, which verifies the artifact's signature against the same trust store blueprint bundles use, refuses outright when the downloaded manifest declares different capabilities than the catalog listing you read before consenting, and only then registers it — where the scope is validated a second time, independently.",
+      },
+      {
+        heading: "Disable is not uninstall",
+        body: "Disabling stops dispatch to a plugin's extension points while leaving it installed, which is the right first move when you suspect one is misbehaving. Uninstalling additionally tears down any supervised subprocess it was running. Both transitions, like installing, write an audit row recording the plugin's capability scope, so a capability that appeared in your deployment is traceable to when and by whom.",
+      },
+    ],
+    seeAlso: ["platform-panel-page", "plugins", "hub-page", "audit-page"],
+  },
+  {
+    id: "platform-doctor-live",
+    title: "The daemon's live self-check",
+    surface: "panel",
+    summary:
+      "The four health checks that need a credential only the running daemon holds, reported as four distinct verdicts — and a skipped check is never one of the passing ones.",
+    docRef: "docs/deployment.md",
+    keywords: ["doctor", "self check", "live", "diagnostics", "skip", "pve token", "clock skew", "peer secret"],
+    sections: [
+      {
+        heading: "Four checks, not ten",
+        body: "The command-line doctor runs ten checks; this route runs the four that cannot be answered without the daemon's own credentials — whether Proxmox is reachable, whether its token holds the privileges vnprox uses, whether every node agrees on the cluster secret, and whether the clock is close enough to a reference. The other six observe the machine the command line is standing on, and the daemon deliberately does not answer them on its behalf.",
+      },
+      {
+        heading: "Skipped is not passed",
+        body: "A skipped check means the daemon could not look, and it says why. It is counted separately, styled separately, and worded separately from a pass, because a wall of skips under a 'nothing failed' summary reads as success to a tired operator. If nothing passed, the verdict says so outright rather than reporting a clean run. Two of these four still skip by design on an ordinary deployment.",
+      },
+      {
+        heading: "Warned is not failed either",
+        body: "A warning means the check ran and found something degraded but working — an optional privilege missing, a clock a little further out than ideal. It does not make the run a failure, and it is deliberately not folded into either neighbouring verdict. Every warning and every failure carries a remediation line; that is the difference between a diagnostic and a complaint.",
+      },
+      {
+        heading: "Not being allowed to look",
+        body: "Reading this section needs the audit capability, the same one the audit log and the support bundle need, because the result says which privileges the configured Proxmox token holds. If your session lacks it you get an explicit refusal here — which is emphatically not a report that the checks failed.",
+      },
+    ],
+    seeAlso: ["platform-panel-page", "permissions", "audit-page", "safety-model"],
+  },
+  {
+    id: "policies-panel",
+    title: "Policy as code",
+    surface: "panel",
+    summary:
+      "The cluster's declarative rule set: which rules are installed, what each one matches and asserts, whether it blocks or only annotates, and how often it has actually fired.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["policy", "policy as code", "rules", "deny", "warn", "assert", "match", "guardrail"],
+    sections: [
+      {
+        heading: "What a rule is",
+        body: "A rule matches operations by their fields and asserts something that must hold for every operation it matched. A `deny` rule blocks the apply inside the change engine's validate stage; a `warn` rule annotates the changeset and blocks nothing. A rule with no assertions at all is not a rule that always passes — it means the match itself is the violation, which is how you express \"never touch this\" with nothing to assert beyond the operation's existence.",
+      },
+      {
+        heading: "A rule that never matches is reported",
+        body: "The daemon tracks how many evaluations each rule has been through and how many operations it has matched. A rule that has been evaluated enough times over a long enough window without ever matching anything is flagged as probably misconfigured — because a rule guarding nothing looks exactly like a rule guarding something until the day you need it. It is a report and never a refusal: a rule you know is simply rare stays installed and keeps working.",
+      },
+      {
+        heading: "Installing is wholesale",
+        body: "There is no per-rule edit. A rule set is reviewed and installed as a unit, so the editor takes the whole document and the daemon validates all of it before writing any of it — a malformed set stores nothing and audits nothing, and the refusal names the offending rule and field. Re-installing an identical set is a no-op with no new revision. A successful install audits the full body of every rule added, removed or changed.",
+      },
+    ],
+    seeAlso: ["governance-page", "policy-verdict", "validation-findings", "change-drawer"],
+  },
+  {
+    id: "policy-verdict",
+    title: "Why policy refused this change",
+    surface: "panel",
+    summary:
+      "Inside the review screen: which installed rule objects to this changeset, at what severity, and exactly which assertions had to hold — rather than one more line in a list of validation errors.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["policy", "deny", "refused", "blocked", "rule", "assert", "violation", "review"],
+    sections: [
+      {
+        heading: "Where the rule id comes from",
+        body: "The change engine folds a violation into the changeset as a message, not as structured data — there is no rule id anywhere on that wire shape. So this panel asks the daemon two questions instead of reading the message: which installed rules this changeset violates, and what each of those rules asserts. Everything you read beside a rule came from one of those two answers. Nothing here composes a reason of its own.",
+      },
+      {
+        heading: "Three unknowns that are not the same as anything else",
+        body: "If the rule set could not be read, this says so rather than reporting that nothing applies — being unable to see your guardrails is not the same as not having any. If a violated rule is no longer in the installed set, its assertions are reported as unreadable rather than as absent, because a rule with genuinely no assertions means something stronger, not weaker. And a severity this build does not recognise is shown as unrecognised and treated as blocking, never quietly folded into `warn`.",
+      },
+      {
+        heading: "It counts operations, it does not name them",
+        body: "A rule reports how many of the daemon's evaluated operations violated it, not which of your changeset's operations they were. The evaluator runs over an expanded operation list — a single raw-replace operation becomes several — so the positions it reports are not positions in the list on your screen. Naming an operation from them would name the wrong one.",
+      },
+    ],
+    seeAlso: ["policies-panel", "changeset-review-page", "validation-findings", "governance-page"],
+  },
+  {
+    id: "break-glass",
+    title: "Emergency break-glass",
+    surface: "panel",
+    summary:
+      "The reasoned override of the two-person rule, for when the second approver genuinely cannot be reached — audited under its own action and raising a finding nobody can clear for a day.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["break glass", "breakglass", "override", "emergency", "two person", "approval", "audit"],
+    sections: [
+      {
+        heading: "What it actually overrides",
+        body: "The distinct-approver count, and nothing else. Validation still runs, the review-approval requirement still applies, peer compatibility is still checked, and the apply is still refused if any of those refuses. If your change is blocked by a policy `deny` or by a validation error, break-glass will not move it — that is not what it is for.",
+      },
+      {
+        heading: "What it costs you",
+        body: "An audit entry under its own action, `change.breakglass`, naming you, the changeset and the reason you typed — deliberately not a result value on the apply, so an auditor filtering for overrides finds it without knowing which apply outcomes imply one. And an error-severity finding that nobody, including you, can acknowledge for twenty-four hours: it is meant to be reviewed by someone who was not in the room when it was taken.",
+      },
+      {
+        heading: "Why it takes three clicks",
+        body: "Opening the panel shows you the consequences; a separate control acknowledges them; only then does the reason field and the record button exist. A written reason is required, and the daemon refuses an override without one rather than relying on the form to insist. An override you could take by accident, or without having read what it does, would be worse than the refusal it replaces.",
+      },
+      {
+        heading: "It does not survive an edit",
+        body: "The override is pinned to the operations it was taken for. Edit the draft afterwards and it no longer applies — the apply is refused again and a fresh override has to be taken, with a fresh reason and a fresh audit entry. That is what stops an override taken for one emergency from quietly authorising a different change later.",
+      },
+    ],
+    seeAlso: ["changeset-review-page", "policy-verdict", "safety-model", "audit-page"],
+  },
+  {
+    id: "compliance-panel",
+    title: "Compliance profiles",
+    surface: "panel",
+    summary:
+      "What this cluster can evidence about itself, control by control, mapped from findings, posture factors and policy rules — with three distinct ways of saying \"not a pass\".",
+    docRef: "docs/api.md",
+    keywords: ["compliance", "control", "evidence", "unmapped", "not evaluated", "profile", "audit", "report"],
+    sections: [
+      {
+        heading: "This is not a certification surface",
+        body: "No report here asserts compliance with CIS, PCI-DSS, HIPAA, SOC 2, ISO 27001 or any other published framework, and no profile vnprox ships is named after one. Each report carries the profile's own notice saying what it does not claim, and a standing test fails the build if a shipped profile names a framework. What a profile is is a declarative mapping from control ids onto evidence vnprox already produces.",
+      },
+      {
+        heading: "Four statuses, exactly one of which is a pass",
+        body: "`pass` means every mapped evidence item was evaluated and satisfied. `fail` means at least one was evaluated and is not satisfied. `not_evaluated` means the control has a mapping but something in it could not be assessed — absence of evidence is not evidence of compliance. `unmapped` means the control has no mapped evidence at all and vnprox observes nothing that speaks to it, so it says so instead of passing it. An acknowledged finding still fails its control: acknowledgement is triage, not remediation.",
+      },
+      {
+        heading: "Unmapped checks are reported, not ignored",
+        body: "Every check this build can emit that no control in the profile maps is listed, along with where that list was computed from. Adding a check to vnprox without mapping it therefore degrades no control silently — the gap shows up as a gap. The same reasoning applies to the counts above the table: they are recounted from the controls on screen, so a status this build does not model cannot hide inside a summary that still adds up.",
+      },
+    ],
+    seeAlso: ["governance-page", "findings-stream", "policies-panel", "doc-export"],
+  },
+  {
+    id: "tenants-panel",
+    title: "Tenant administration",
+    surface: "panel",
+    summary:
+      "Creating tenants, declaring what each one may see, and managing its members and approvers — the administrative side of the delegated, server-side-scoped views.",
+    docRef: "docs/api.md",
+    keywords: ["tenant", "scope", "member", "approver", "multi-tenant", "delegation", "admin"],
+    sections: [
+      {
+        heading: "Scope is a list of refs, typed rather than picked",
+        body: "A tenant's scope is inventory Ref strings — a guest, a subnet, or a coarser VLAN or VNet that is expanded to its members live at read time. You type them; this screen deliberately offers no guest picker, because enumerating the cluster's inventory to fill a dropdown is a read this administration screen has no business making and would be the exact leak the server-side scoping exists to prevent.",
+      },
+      {
+        heading: "The list and the detail answer different questions",
+        body: "Listing tenants tells you which exist. It tells you nothing about their scopes or their members — the list route reports both as empty without consulting the store, so an empty list there is an absent answer wearing an empty one's clothes. Select a tenant to read either. This screen never concludes \"no members\" from a list it knows did not look.",
+      },
+      {
+        heading: "There is no request or approve control here",
+        body: "Tenancy has no self-service request or approval route. A member requests a change by staging a changeset against the tenant; an approver of that tenant converts it to an ordinary draft from the changeset itself, and then drives the usual review flow — approval is not apply. Nothing on this screen approves anything, and an approver may never approve their own request.",
+      },
+      {
+        heading: "Out of scope is reported as not found",
+        body: "Asking for something a session may not see answers \"no such thing\" rather than \"you may not\" — existence is not confirmed to someone who is not allowed to know. That means a not-found answer here does not distinguish \"it does not exist\" from \"it is not yours\", and that ambiguity is the point rather than a rough edge.",
+      },
+    ],
+    seeAlso: ["governance-page", "tenants", "permissions", "read-only-mode"],
+  },
+  {
+    id: "digest-schedule-panel",
+    title: "Digest schedule",
+    surface: "panel",
+    summary:
+      "How often the periodic summary goes out, which alert rules it draws from, and what the last run actually did — the half of scheduled digests that used to need a SQLite client.",
+    docRef: "docs/api.md",
+    keywords: ["digest", "schedule", "summary", "cadence", "weekly", "quiet", "alert rules", "delivery"],
+    sections: [
+      {
+        heading: "No cadence is not a cadence",
+        body: "A schedule nobody has ever written reports a cadence of zero, and this panel says exactly that rather than showing \"every 0 seconds\" or quietly displaying \"weekly\". The runner does substitute a weekly default when it finds a stored cadence of zero, but only for an enabled schedule and only at tick time — that substitution is not recorded anywhere, so if you want a cadence that is written down, write one.",
+      },
+      {
+        heading: "Rule ids are a filter, not an address book",
+        body: "A digest carries no delivery target of its own. It is handed to the same alert-rule delivery path everything else uses, so quiet hours defer it, coalescing applies, failures retry with the same backoff, and every attempt shows up in the delivery log. Naming rule ids narrows which rules' targets receive it; naming none means every rule, which is the no-filter convention used throughout — never \"no recipients\".",
+      },
+      {
+        heading: "Enabled needs a workable cadence; disabled does not",
+        body: "An enabled schedule must be at least an hour, because a digest is a summary of a period and a period shorter than that produces a report with nothing in it plus a delivery attempt per tick. A disabled schedule may carry any cadence including none, because disabling is how you silence a digest without losing the cadence you chose. The daemon enforces both; this form only saves you discovering it as an error.",
+      },
+      {
+        heading: "The quiet form",
+        body: "A digest covering a period with nothing to report renders as a single line, under a stated size — no sections, no tables, no \"none observed\" filler. Deltas are measured against the previous digest rather than an arbitrary window, so consecutive digests abut exactly, and a first-ever digest states that it has no baseline instead of rendering a delta against zero.",
+      },
+    ],
+    seeAlso: ["governance-page", "alert-rules-page", "findings-stream", "doc-export"],
+  },
 ];

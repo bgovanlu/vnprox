@@ -32,6 +32,10 @@ const NAV_ITEMS: NavItem[] = [
   // and its pin, the plan, and the spec/config/live three-way with both
   // reconciliation directions. "C" was free; A/N/L/E are taken.
   { path: "/config-as-code", label: "Config as code", glyph: "C" },
+  // T-3002: policy-as-code, compliance profiles, tenants and the digest
+  // schedule. "O" for gOvernance — G is Settings, C is Config as code, and
+  // P/T are already taken.
+  { path: "/governance", label: "Governance", glyph: "O" },
   { path: "/ports", label: "Ports", glyph: "P" },
   { path: "/blueprints", label: "Blueprints", glyph: "B" },
   { path: "/hub", label: "Hub", glyph: "U" },

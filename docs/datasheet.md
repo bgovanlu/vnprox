@@ -88,7 +88,7 @@ Every network change follows the same five steps, with no path around them — t
 
 - **Federation** — attach other PVE clusters for one map, one search, one audit log. A changeset always belongs to exactly one cluster and is rejected if it would reach across the boundary: federation federates views and workflows, **never ownership**.
 - **WireGuard interconnect** — guided tunnel setup between clusters.
-- **Multi-tenancy** — tenants scoped to guests/VLANs/subnets, where out-of-scope means genuinely invisible (a lookup returns "not found"). Members request; approvers approve; applying stays a separate step.
+- **Multi-tenancy** — tenants scoped to guests/VLANs/subnets, where out-of-scope means genuinely invisible (a lookup returns "not found"). Members request; approvers approve; applying stays a separate step. **Known gap (2026-08-16, `T-3002-followup-01`):** the invisibility holds for topology/flows/findings/IPAM but not for the tenant records themselves — `GET /tenants{,/id}` is gated on `netRead` alone, so one tenant's member can read another tenant's scope refs and membership. Disclosure only; no cross-tenant action is possible.
 - **High availability** — active/standby pair where **in-flight rollback deadlines survive failover**: a change due to auto-revert at 12:03:30 still does, on the standby, at 12:03:30.
 - **Switch config push** — opt-in, enabled twice, limited to LLDP-confirmed PVE-facing ports and to VLAN membership, descriptions and LACP only. Ships with its residual risk stated: a switch made unreachable **cannot be rolled back remotely**.
 - **AI operators (MCP)** — read surfaces plus stage-only drafting, capability-token scoped, every action audited with an `mcp:` actor.

@@ -541,3 +541,84 @@ reachable by any session whose PVE ACLs grant `Sys.Modify` + `Sys.Console`.
 **Whoever takes this:** `internal/auth`'s `TestForceReadOnly_PinsExactlyWhichFlagsItClears` pins
 today's behaviour on purpose. It is not asserting the behaviour is right — it is there so that
 changing it cannot happen by accident, and its failure message says which document to move with it.
+
+---
+
+## `T-3002-followup-01` · a tenant member can read every other tenant's scope and membership (open, security)
+
+**Found:** 2026-08-16 by the T-3002 agent, reading the tenant routes to build the screen its card
+asked for. **Demonstrated by a passing test** (`internal/api/tenant_leak_test.go`), not inferred.
+**Backend defect — out of Phase 30's UI-only scope, filed rather than fixed.**
+
+### The promise
+
+> "A tenant member sees only their own slice of the topology, findings, and IPAM — everything
+> outside their scope is not just hidden but genuinely invisible (a lookup of something out of
+> scope returns 'not found,' never confirming it exists)."
+> — `docs/user-guide.md:156`; `docs/datasheet.md:91` says the same more tersely.
+
+### What actually happens
+
+`mountTenantRoutes` (`internal/api/tenant.go:265-270`) mounts both read routes like this:
+
+```go
+// Admin CRUD: reads require netRead, mutations require netWrite (+ CSRF).
+r.Group(func(r chi.Router) {
+    r.Use(auth.SessionMiddleware)
+    r.Use(auth.RequireCap(capNetRead))
+    r.Get("/tenants", handleListTenants(adminStore))
+    r.Get("/tenants/{id}", handleGetTenant(adminStore))
+})
+```
+
+No `tenantScopeMiddleware`. No membership check. No filter. The comment says "Admin CRUD", but
+**`netRead` is not an admin capability** — it is derived from ordinary PVE network-read ACLs, so
+every tenant member holds it.
+
+`handleGetTenant` (`tenant.go:374-396`) then returns the tenant's real `scopes` (guest and subnet
+refs) and its real `members` (identities). Verified end to end: a member of `t1` reads
+`guest:pve2:200` and `bob@pve` out of `t2`. That is not "never confirming it exists" — it confirms
+the tenant exists, names which guests and subnets it owns, and names who is in it.
+
+**Why the existing test did not catch it:** `TestTenantScoping_NoCrossTenantLeakage`
+(`tenant_test.go:241`) is precisely the test that should. It exercises `/topology` and `/flows`
+and never calls `/tenants`. A leak-test that does not enumerate the routes it is protecting is
+covering the ones somebody already thought of.
+
+### Severity, stated without inflation
+
+This is **information disclosure, not privilege escalation**. A tenant member learns which guests
+and subnets belong to other tenants and who those tenants' members are. They cannot act on any of
+it: every mutating tenant route requires `netWrite` + CSRF, and the scoping middleware still
+governs `/topology`, `/flows`, IPAM and findings. On a single-tenant deployment (the overwhelming
+majority) there is nothing to disclose. It matters exactly where multi-tenancy is used for its
+stated purpose — a shared cluster whose tenants are meant not to know about each other.
+
+### Second defect in the same handler, same family as the rest of this arc
+
+`handleListTenants` (`tenant.go:366-371`) hard-codes `Scopes: []string{}, Members:
+[]tenantMemberOutput{}` into every item **without querying either table**. A caller cannot tell
+"this tenant has no scopes" from "this endpoint does not report scopes", and `docs/api.md`
+documents the `Tenant` shape as carrying both without noting the omission. Pinned by
+`TestListTenantsReportsEmptyScopesWithoutReadingThem`.
+
+Related, and not called out by the agent: that same handler swallows both errors
+(`scopes, _ := s.ScopesForTenant(...)`), so a database failure also renders as an empty list.
+Three ways to produce `[]`, one of which means "it is empty", and the caller cannot distinguish
+them.
+
+### What a fix has to decide
+
+1. **What gates admin CRUD.** There is no admin capability today. Options: require `netWrite` for
+   the reads too (crude, but consistent with "only someone who could create a tenant may list
+   them"); add scoping so a member sees only their own tenants; or introduce an explicit admin
+   capability, which is a larger change with its own ACL-mapping question.
+2. **Whether `GET /tenants/{id}` should 404 rather than 403** for a non-member — the user-guide
+   promise says "not found, never confirming it exists", so 403 would still leak existence.
+3. **Make `handleListTenants` read the tables, or document that it does not.** Either is fine;
+   the current state is the one that is not.
+4. **Extend `TestTenantScoping_NoCrossTenantLeakage` to enumerate `/tenants*`** as part of the
+   fix, or the next route added to this family repeats the miss.
+
+Both tests in `internal/api/tenant_leak_test.go` assert **today's** behaviour deliberately. They
+go red when this is fixed, and their failure messages say to delete them and update the docs.

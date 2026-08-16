@@ -38,6 +38,10 @@ import {
 import { reviewLinkFor } from "./reviewLink";
 import { ApplyStrategyPanel } from "./ApplyStrategyPanel";
 import { buildApplyStrategy, canaryEligibility, defaultSelection, selectionError } from "./applyStrategy";
+import { PolicyVerdictPanel } from "./PolicyVerdictPanel";
+import { BreakGlassPanel } from "./BreakGlassPanel";
+import { policyFindings, policyVerdict } from "./policyVerdict";
+import { useBreakGlassMutation, usePoliciesQuery, usePolicyVerdictQuery } from "./governanceQueries";
 
 export interface ReviewApplyScreenProps {
   changeset: Changeset;
@@ -116,6 +120,28 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   // what actually enforces it.
   const twoPersonBlocks = twoPersonBlocksApply(changeset.approval);
 
+  // T-3002: what the cluster's INSTALLED policy set says about this exact
+  // changeset. The changeset's own findings carry the refusal as prose with
+  // no rule id on the wire, so the rule and its assertions are read from the
+  // two policy routes and joined here — see policyVerdict.ts.
+  const policiesQuery = usePoliciesQuery();
+  const policyTestQuery = usePolicyVerdictQuery(changeset.id);
+  const verdict = policyVerdict({
+    status: policiesQuery.data,
+    statusError: policiesQuery.error,
+    result: policyTestQuery.data,
+    resultError: policyTestQuery.error,
+    isLoading: policiesQuery.isLoading || policyTestQuery.isLoading,
+  });
+  const changesetPolicyFindings = useMemo(() => policyFindings(changeset.findings), [changeset.findings]);
+
+  // T-3002: T-2604's break-glass, which had no caller in web/src. It
+  // overrides the distinct-approver count and nothing else, so it is offered
+  // only while that is what blocks.
+  const breakGlass = useBreakGlassMutation(changeset.id);
+  const breakGlassError =
+    breakGlass.error instanceof Error && breakGlass.error.message !== "" ? breakGlass.error.message : undefined;
+
   // Pre-apply the server hasn't built a plan yet (plan_json is written at
   // apply time) — show the client-side preview mirroring BuildPlan so the
   // user still sees the exact ordered steps before clicking Apply
@@ -193,6 +219,13 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
         </DrawerDescription>
 
         <ApprovalPanel changesetId={changeset.id} approval={changeset.approval} />
+
+        {/* T-3002: above the generic blocking-errors list on purpose. A
+            `deny` also arrives there as a `policy.violation` message, but as
+            one line among any other validation failure; this is the same
+            refusal with the rule id, its severity and its assertions
+            attached, which is what an operator needs to act on it. */}
+        <PolicyVerdictPanel verdict={verdict} findings={changesetPolicyFindings} />
 
         {errors.length > 0 && (
           <div className="mt-3 rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
@@ -392,6 +425,20 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             </label>
           </div>
         )}
+
+        {/* T-3002: the emergency override, three deliberate actions away and
+            never fewer. Offered only while the two-person rule is what
+            blocks — it overrides the distinct-approver count and nothing
+            else. */}
+        <BreakGlassPanel
+          record={changeset.approval?.twoPerson?.breakGlass}
+          blocked={twoPersonBlocks}
+          pending={breakGlass.isPending}
+          error={breakGlassError}
+          onInvoke={(reason) => {
+            breakGlass.mutate(reason);
+          }}
+        />
 
         <div className="mt-4 flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">

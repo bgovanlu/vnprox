@@ -20,6 +20,7 @@ import { PortsPage } from "./pages/PortsPage";
 import { BlueprintsPage } from "./pages/BlueprintsPage";
 import { HubPage } from "./hub/HubPage";
 import { ConfigAsCodePage } from "./drift/ConfigAsCodePage";
+import { GovernancePage } from "./governance/GovernancePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
 import { AuditPage } from "./pages/AuditPage";
@@ -28,6 +29,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { AlertRulesPage } from "./pages/AlertRulesPage";
 import { FederationClustersPage } from "./pages/FederationClustersPage";
 import { CertificatesPage } from "./pages/CertificatesPage";
+import { PlatformPanel } from "./settings/PlatformPanel";
 import { ChangesetReviewPage } from "./changesets/ChangesetReviewPage";
 import { EmbedFrame } from "./embed/EmbedFrame";
 import { EmbedMap } from "./embed/EmbedMap";
@@ -235,6 +237,19 @@ export function App() {
                 </DesktopOnlyRoute>
               }
             />
+            {/* T-3002: the governance surfaces — policy-as-code, compliance
+              * profiles, tenant administration and the digest schedule.
+              * Desktop-only like every other dense administration screen; the
+              * policy DENY verdict and the break-glass override deliberately
+              * live in the review screen instead, where they block. */}
+            <Route
+              path="/governance"
+              element={
+                <DesktopOnlyRoute pageLabel="Governance">
+                  <GovernancePage />
+                </DesktopOnlyRoute>
+              }
+            />
             <Route
               path="/history"
               element={
@@ -287,6 +302,18 @@ export function App() {
               element={
                 <DesktopOnlyRoute pageLabel="Certificates">
                   <CertificatesPage />
+                </DesktopOnlyRoute>
+              }
+            />
+            {/* T-3003: tokens, webhooks, plugin lifecycle and the daemon's
+              * live self-check. A Settings sub-route like alert-rules and
+              * certificates, so it inherits the nav rail's Settings entry
+              * rather than claiming a top-level glyph of its own. */}
+            <Route
+              path="/settings/platform"
+              element={
+                <DesktopOnlyRoute pageLabel="Platform">
+                  <PlatformPanel />
                 </DesktopOnlyRoute>
               }
             />

@@ -784,4 +784,52 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
     ],
     seeAlso: ["spof-score", "capacity-export", "qos-shaping", "pbs-awareness", "ipv6-segments", "wan-health"],
   },
+  {
+    id: "platform-panel-page",
+    title: "Platform",
+    surface: "page",
+    summary:
+      "Automation credentials, event delivery targets, installed extensions, and the daemon's own live self-check — the four administrative surfaces that used to be reachable only with curl.",
+    docRef: "docs/api.md",
+    keywords: ["platform", "token", "bearer", "webhook", "plugin", "doctor", "self-check", "automation", "settings"],
+    sections: [
+      {
+        heading: "Four surfaces, four independent answers",
+        body: "Tokens, webhooks, plugins and the self-check each read a different route family, and each degrades on its own. A daemon with no plugin registry wired still shows your tokens; a session without the audit capability still sees everything except the self-check. When a section cannot answer, it says which of the two reasons applies — you are not allowed to look, or this daemon does not carry that subsystem at all.",
+      },
+      {
+        heading: "It never re-states a rule the daemon owns",
+        body: "Whether a webhook destination is permitted, whether a scope may be granted, whether a plugin's manifest matches what its listing advertised — every one of those decisions is made by the daemon, and this screen renders the answer it gave, word for word, including the name of the configuration knob that would change it. Nothing here re-implements a policy check, because a second copy would drift from the one that actually decides.",
+      },
+      {
+        heading: "Nothing is installed from here",
+        body: "The plugin section manages the lifecycle of plugins that are already installed — enable, disable, uninstall. Installing goes through the Hub, where the signature check, the trust decision and the capability-scope agreement check live. Adding a second install path here would be a way around that gate, so there deliberately is not one.",
+      },
+    ],
+    seeAlso: ["settings-page", "platform-tokens", "platform-webhooks", "platform-plugins", "platform-doctor-live", "tokens-and-embeds", "plugins"],
+  },
+  {
+    id: "governance-page",
+    title: "Governance",
+    surface: "page",
+    summary:
+      "The rules a change is measured against, what the cluster can evidence about itself, who is allowed to see what, and when the periodic summary goes out — four administrative surfaces that had no screen at all.",
+    docRef: "docs/features/change-management.md",
+    keywords: ["governance", "policy", "compliance", "tenant", "digest", "rules", "approval", "audit"],
+    sections: [
+      {
+        heading: "What is on this screen and what is not",
+        body: "Policies, compliance profiles, tenants and the digest schedule live here. The two governance surfaces you actually meet while making a change do not: a policy `deny` verdict and the emergency break-glass override appear inside the review screen, where they block, rather than on an administration page you would have to think to visit. That is deliberate — a refusal an operator has to go looking for is a refusal they will not read.",
+      },
+      {
+        heading: "Nothing here applies anything",
+        body: "Replacing a rule set writes a document, the tenant controls write tenant rows, and the digest control writes a schedule. None of them touches the network, none of them goes near the change engine, and none of them is a way around the stage-validate-diff-apply-confirm path every real change still takes.",
+      },
+      {
+        heading: "Every refusal shown here is the daemon's",
+        body: "Whether a rule set parses, whether a cadence is workable, whether a tenant exists — the daemon decides each of those and this screen renders the answer it gave. There is no second, weaker copy of any of those checks in the browser, because a second copy drifts from the one that actually decides and then two different things are true at once.",
+      },
+    ],
+    seeAlso: ["policies-panel", "compliance-panel", "tenants-panel", "digest-schedule-panel", "policy-verdict", "break-glass", "tenants"],
+  },
 ];

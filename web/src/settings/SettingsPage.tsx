@@ -256,6 +256,17 @@ export function SettingsPage() {
         </Link>
       </Section>
 
+      <Section
+        title="Platform"
+        description="Automation tokens and their effective scope, webhook delivery targets, installed plugins and what each may touch, and the daemon's own live self-check."
+      >
+        <Link to="/settings/platform">
+          <Button size="sm" variant="secondary">
+            Open platform panel
+          </Button>
+        </Link>
+      </Section>
+
       <Section title="About">
         <Row label="vnprox">{config?.version ? `v${config.version}` : "visual networking add-on for Proxmox VE"}</Row>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">

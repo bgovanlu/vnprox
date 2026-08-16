@@ -36,6 +36,17 @@ export interface Capabilities {
    * strictly stronger than netWrite (Sys.Modify AND Sys.Console); holding
    * netRead/netWrite alone never implies this. */
   capture: boolean;
+  // KNOWN GAP, deliberately left open by T-3003 rather than closed silently:
+  // `internal/auth.Capabilities` also carries `automation` (T-1104's
+  // CapAutomation) and emits it on every `GET /auth/me` response with no
+  // `omitempty`, so this mirror is one field short of the wire. It is not
+  // added here because `keyof Capabilities` is consumed as an exhaustive key
+  // set elsewhere (`changesets/capabilities.ts`'s CAP_LABELS), so widening it
+  // is a cross-module change this card does not own. Nothing is lost in
+  // practice: `automation` is never derived from a PVE privilege, so a cookie
+  // session's value is always false, and `settings/WebhooksSection.tsx`
+  // decides reachability from the daemon's own answer to `GET /webhooks`
+  // rather than from this map. See the T-3003 report.
 }
 
 export interface AuthUser {
@@ -3813,4 +3824,138 @@ export interface IPv6SegmentsView {
   generatedAt: number;
   partial?: boolean;
   failedNodes?: string[];
+}
+
+// --- Tokens (docs/api.md §"Tokens & Webhooks (T-1104, automation)") --------
+// Mirrors internal/api/tokens.go's tokenResponse / tokenCreateRequest /
+// tokenCreateResponse exactly. Every optional field below is `omitempty` on
+// the Go side, so "absent" is a real, distinct state — never a zero.
+
+/** One row of `GET /tokens` (the caller's own tokens only — the route filters
+ * by `created_by`). The raw bearer value is never part of this shape.
+ *
+ * `expiresAt` absent is **not** "unknown": it is the documented, deliberate
+ * non-expiring token — either minted before v4.1, or minted with an explicit
+ * JSON `null` (docs/api.md: "an explicit JSON `null` → a non-expiring token
+ * ... now an explicit ceremony rather than the silent default"). Rendering it
+ * must say so rather than leaving a blank cell. */
+export interface ApiToken {
+  id: string;
+  name: string;
+  /** The token's *stored* scope list. Not necessarily what a request
+   * authenticated by it actually gets — see `effectiveTokenScopes` in
+   * `settings/tokenScope.ts` for the `[server] read_only` narrowing. */
+  scopes: string[];
+  createdBy: string;
+  createdAt: number;
+  lastUsedAt?: number;
+  revokedAt?: number;
+  expiresAt?: number;
+}
+
+export interface ApiTokensListResponse {
+  items: ApiToken[];
+}
+
+/** `POST /tokens` body. The three-way `expiresAt` contract is load-bearing and
+ * is why this is `number | null | undefined` rather than `number | undefined`:
+ *
+ *   - field omitted  → the daemon's 90-day default (T-2903)
+ *   - `null`         → a non-expiring token (explicit opt-out)
+ *   - unix seconds   → that instant; must be in the future, else 400
+ *
+ * `JSON.stringify` drops `undefined` properties and keeps `null`, so the three
+ * cases survive the wire exactly as `internal/api/tokens.go`'s
+ * `json.RawMessage` field distinguishes them. */
+export interface ApiTokenCreateRequest {
+  name: string;
+  scopes: string[];
+  expiresAt?: number | null;
+}
+
+/** `POST /tokens`' 201 body: the token row **plus** the one-time reveal of the
+ * raw bearer value. `token` is the only time this string ever crosses the
+ * wire; it is not retrievable afterwards from any route. */
+export interface ApiTokenCreateResponse extends ApiToken {
+  token: string;
+}
+
+// --- Webhooks (docs/api.md §"Tokens & Webhooks (T-1104, automation)") ------
+
+/** One row of `GET /webhooks` (internal/api/webhooks.go's webhookResponse).
+ * The HMAC signing secret is never echoed back by any route. */
+export interface Webhook {
+  id: string;
+  url: string;
+  events?: string[];
+  createdBy: string;
+  createdAt: number;
+  consecutiveFailures: number;
+  lastAttemptAt?: number;
+  lastSuccessAt?: number;
+  lastError?: string;
+}
+
+export interface WebhooksListResponse {
+  items: Webhook[];
+}
+
+/** `POST /webhooks` body. `secret` is create-only and required — there is no
+ * update route, so there is no "leave unchanged" case to model. */
+export interface WebhookCreateRequest {
+  url: string;
+  secret: string;
+  events?: string[];
+}
+
+// --- Plugins (docs/api.md §"Plugins (T-1702)") -----------------------------
+
+/** One installed plugin (internal/api/plugins.go's pluginResponse). The
+ * internal launch `endpoint` is deliberately absent from the wire shape.
+ *
+ * `capabilities` is the plugin's **declared capability ceiling**, not a
+ * grant this UI can widen: `Registry.Install` re-validates it, and
+ * `POST /hub/install` refuses a manifest that disagrees with the listing
+ * (`capabilityMismatch`, T-2904) before any signature or trust decision. */
+export interface Plugin {
+  id: string;
+  name: string;
+  version: string;
+  apiVersion: string;
+  transport: string;
+  extensionPoints: string[];
+  capabilities: string[];
+  installedBy: string;
+  installedAt: number;
+  enabled: boolean;
+}
+
+export interface PluginsListResponse {
+  items: Plugin[];
+}
+
+// --- Doctor (GET /doctor/live, T-2406) -------------------------------------
+
+/** The four statuses `internal/doctor.Status` defines. `warn` exists and is
+ * NOT a failure (it does not drive `vnproxctl doctor`'s exit code); `skip`
+ * means "could not be checked, with a reason" and is explicitly not a pass. */
+export type DoctorStatus = "pass" | "warn" | "fail" | "skip";
+
+/** One check result. `status` is typed as the raw wire `string` on purpose:
+ * a status this build does not recognise must render as an explicit unknown,
+ * never fall through to a definite verdict. Narrow it with
+ * `asDoctorStatus()` from `api/doctor.ts` rather than casting. */
+export interface DoctorResult {
+  check: string;
+  status: string;
+  detail: string;
+  remediation?: string;
+}
+
+/** `GET /doctor/live`'s envelope (internal/api/doctor.go's
+ * doctorLiveResponse). Carries exactly `internal/doctor.LiveChecks` — the
+ * four daemon-credentialed checks — never the full ten-check `vnproxctl
+ * doctor` suite. */
+export interface DoctorLiveResponse {
+  results: DoctorResult[];
 }
