@@ -62,7 +62,7 @@ deb:
 	# docs/deployment.md's "Backup and disaster recovery" section.
 	install -m 0644 systemd/vnprox-backup.service $(PKG_ROOT)/lib/systemd/system/vnprox-backup.service
 	install -m 0644 systemd/vnprox-backup.timer $(PKG_ROOT)/lib/systemd/system/vnprox-backup.timer
-	install -m 0644 config/vnprox.toml $(PKG_ROOT)/etc/vnprox/vnprox.toml
+	install -m 0640 config/vnprox.toml $(PKG_ROOT)/etc/vnprox/vnprox.toml  # T-2905: can carry dev_ticket_password — never world-readable
 
 	# T-2106: licence and attribution. Debian policy requires a copyright
 	# file at /usr/share/doc/<pkg>/copyright; LICENSE/NOTICE/THIRD-PARTY

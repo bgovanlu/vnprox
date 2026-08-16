@@ -34,9 +34,11 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -104,6 +106,7 @@ type TokenMinter interface {
 type tokenResponse struct {
 	LastUsedAt *int64   `json:"lastUsedAt,omitempty"`
 	RevokedAt  *int64   `json:"revokedAt,omitempty"`
+	ExpiresAt  *int64   `json:"expiresAt,omitempty"`
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
 	CreatedBy  string   `json:"createdBy"`
@@ -125,6 +128,37 @@ type tokenCreateResponse struct {
 type tokenCreateRequest struct {
 	Name   string   `json:"name"`
 	Scopes []string `json:"scopes"`
+	// ExpiresAt (T-2903, additive): absent → the 90-day default
+	// (defaultTokenTTL); explicit JSON null → a non-expiring token (the
+	// pre-0048 behavior, now an opt-in ceremony rather than the silent
+	// default); a unix-seconds value → that instant, which must be in the
+	// future. RawMessage because "absent" and "null" mean different things
+	// here and encoding/json flattens both into a nil pointer.
+	ExpiresAt json.RawMessage `json:"expiresAt,omitempty"`
+}
+
+// defaultTokenTTL is how long a newly minted token lives when the request
+// says nothing about expiry (T-2903): 90 days.
+const defaultTokenTTL = 90 * 24 * time.Hour
+
+// resolveTokenExpiry maps a tokenCreateRequest.ExpiresAt to the stored
+// expires_at value. ok=false means the value was present but invalid.
+func resolveTokenExpiry(raw json.RawMessage, now time.Time) (exp sql.NullInt64, errMsg string) {
+	trimmed := strings.TrimSpace(string(raw))
+	switch trimmed {
+	case "": // absent — the default TTL
+		return sql.NullInt64{Int64: now.Add(defaultTokenTTL).Unix(), Valid: true}, ""
+	case "null": // explicit opt-out — non-expiring
+		return sql.NullInt64{}, ""
+	}
+	var v int64
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return sql.NullInt64{}, "expiresAt must be a unix-seconds integer or null"
+	}
+	if v <= now.Unix() {
+		return sql.NullInt64{}, "expiresAt must be in the future"
+	}
+	return sql.NullInt64{Int64: v, Valid: true}, ""
 }
 
 func toTokenResponse(t store.APIToken, scopes []string) tokenResponse {
@@ -136,6 +170,10 @@ func toTokenResponse(t store.APIToken, scopes []string) tokenResponse {
 	if t.RevokedAt.Valid {
 		v := t.RevokedAt.Int64
 		resp.RevokedAt = &v
+	}
+	if t.ExpiresAt.Valid {
+		v := t.ExpiresAt.Int64
+		resp.ExpiresAt = &v
 	}
 	return resp
 }
@@ -238,10 +276,15 @@ func handleCreateToken(tokens APITokenStore, audit tokenAuditor, minter TokenMin
 			return
 		}
 
+		expiresAt, expErr := resolveTokenExpiry(req.ExpiresAt, time.Now())
+		if expErr != "" {
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", expErr)
+			return
+		}
 		now := time.Now().Unix()
 		t := store.APIToken{
 			ID: store.NewULID(), Name: req.Name, TokenHash: hash, ScopesJSON: string(scopesJSON),
-			CreatedBy: username, CreatedAt: now,
+			CreatedBy: username, CreatedAt: now, ExpiresAt: expiresAt,
 		}
 		if err := tokens.Create(r.Context(), t); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not save token")

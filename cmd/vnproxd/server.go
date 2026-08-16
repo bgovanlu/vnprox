@@ -17,6 +17,7 @@ import (
 
 	"github.com/bgovanlu/vnprox/internal/annotate"
 	"github.com/bgovanlu/vnprox/internal/api"
+	"github.com/bgovanlu/vnprox/internal/automation"
 	"github.com/bgovanlu/vnprox/internal/blueprint"
 	"github.com/bgovanlu/vnprox/internal/certs"
 	"github.com/bgovanlu/vnprox/internal/change"
@@ -309,7 +310,33 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// webhook targets are fed from the exact same fan-in point (hub.go's
 	// eventsSourceTopics doc comment).
 	wireAuditAppendedEvents(auditRepo, topoSvc, logger)
-	automationDispatcher := setupAutomation(webhookRepo, sessionCipher, topoSvc, logger)
+	// T-2905: every active dev knob is named out loud at startup — the same
+	// treatment the fwlog/server dev knobs already get, extended to the two
+	// families that silently changed security posture: the login-limiter
+	// overrides and the dev ticket identity (which replaces the documented
+	// read-only vnprox@pve!daemon token wholesale).
+	if cfg.Server.DevLoginRateCapacity > 0 || cfg.Server.DevLoginRateRefillSeconds > 0 {
+		logger.Warn("DEV KNOB ACTIVE: [server] dev_login_rate_capacity/dev_login_rate_refill_seconds override the login brute-force limiter — production defaults are NOT in effect",
+			"capacity", cfg.Server.DevLoginRateCapacity, "refill_seconds", cfg.Server.DevLoginRateRefillSeconds)
+	}
+	if cfg.PVE.TicketUsername != "" || cfg.PVE.TicketPassword != "" {
+		logger.Warn("DEV KNOB ACTIVE: [pve] dev_ticket_username/dev_ticket_password replace the daemon's documented read-only API-token identity with ticket credentials — docs/security.md's one-privileged-identity model is NOT in effect",
+			"username", cfg.PVE.TicketUsername)
+	}
+
+	webhookPolicy := automation.TargetPolicy{
+		AllowPrivate:  cfg.Webhooks.AllowPrivateTargets,
+		AllowInsecure: cfg.Webhooks.AllowInsecureTargets,
+	}
+	// T-2905: each active escape hatch is said out loud at every startup,
+	// the [peer] tls_trust precedent.
+	if webhookPolicy.AllowPrivate {
+		logger.Warn("webhooks: PRIVATE-ADDRESS TARGETS ENABLED ([webhooks] allow_private_targets = true) — webhook deliveries may reach loopback/RFC1918/link-local destinations, including cloud metadata addresses")
+	}
+	if webhookPolicy.AllowInsecure {
+		logger.Warn("webhooks: PLAIN-HTTP TARGETS ENABLED ([webhooks] allow_insecure_targets = true) — webhook payloads and signatures may travel unencrypted")
+	}
+	automationDispatcher := setupAutomation(webhookRepo, sessionCipher, topoSvc, webhookPolicy, logger)
 	// T-2005: the push Dispatcher is a SECOND, independent consumer of the
 	// exact same event fan-in setupAutomation's webhook Dispatcher just
 	// claimed (hub.go's eventsSourceTopics: changeset.status/drift.changed/
@@ -1668,9 +1695,12 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// T-1104: automation tokens + webhook registrations, both audited
 		// via the same shared auditRepo every other route in this daemon
 		// uses.
-		Tokens:              apiTokenRepo,
-		TokenAudit:          auditRepo,
-		Webhooks:            webhookRepo,
+		Tokens:     apiTokenRepo,
+		TokenAudit: auditRepo,
+		Webhooks:   webhookRepo,
+		// T-2905: registration-time destination policy; the dispatcher
+		// re-checks resolved addresses at dial time.
+		WebhookTargetCheck:  webhookPolicy.ValidateURL,
 		WebhookSecretCipher: sessionCipher,
 		// T-2005: push subscription management — reuses the identical
 		// session-secret cipher WebhookSecretCipher above and
@@ -1737,6 +1767,18 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 			MinVersion:     tls.VersionTLS12,
 		},
 		ReadHeaderTimeout: 10 * time.Second,
+		// T-2905: bound the whole request, not just its header — before
+		// this, a slow-body or idle-connection flood against the
+		// root-privileged daemon was limited only by ReadHeaderTimeout plus
+		// per-handler MaxBytesReader where present. The WebSocket route is
+		// unaffected by ReadTimeout/WriteTimeout: /api/ws hijacks the
+		// connection (coder/websocket clears the deadlines on hijack) and
+		// manages its own read/ping deadlines from then on — asserted by the
+		// existing long-lived WS tests in internal/topology and the e2e
+		// suite, which hold connections far past these values.
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	sighup := make(chan os.Signal, 1)

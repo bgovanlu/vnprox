@@ -145,6 +145,12 @@ confirm_timeout_default = 120
 # unframeable regardless.
 # embed_frame_ancestors = ["https://wiki.example"]
 
+[webhooks]
+# T-2905: webhook deliveries reach public https targets only, by default.
+# Each override warns at every startup.
+# allow_private_targets = false   # admit loopback/RFC1918/link-local targets
+# allow_insecure_targets = false  # admit plain-http targets
+
 [pve]
 api_url = "https://127.0.0.1:8006"
 token_file = "/etc/vnprox/keys/pve-token"

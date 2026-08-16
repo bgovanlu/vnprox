@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -144,6 +145,14 @@ func (s *Service) authenticateBearer(w http.ResponseWriter, r *http.Request, nex
 		writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "token revoked", nil)
 		return
 	}
+	// T-2903: an expired token is refused with the same shape as a revoked
+	// one — the caller's remediation (mint a new token) is identical, so the
+	// error class is too. NULL expires_at (every pre-0048 token, and
+	// explicit non-expiring mints) never trips this.
+	if rec.ExpiresAt.Valid && s.now().Unix() >= rec.ExpiresAt.Int64 {
+		writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "token expired", nil)
+		return
+	}
 	if !s.bearerLimiter.allow(rec.ID) {
 		writeJSONError(w, http.StatusTooManyRequests, "rate_limited", "too many requests for this token", nil)
 		return
@@ -164,16 +173,38 @@ func (s *Service) authenticateBearer(w http.ResponseWriter, r *http.Request, nex
 	if err := s.tokens.UpdateLastUsed(r.Context(), rec.ID, now.Unix()); err != nil {
 		s.log.Warn("auth: updating token last_used_at", "token_id", rec.ID, "error", err)
 	}
-	s.appendAudit(r.Context(), rec.CreatedBy, "token.use", "allowed", clientIP(r), map[string]any{
-		"tokenId": rec.ID, "path": r.URL.Path, "method": r.Method,
-	})
+	// T-2903: token.use is aggregated to one audit row per token per UTC
+	// hour — at the default 60-burst/1-rps limit, a busy automation client
+	// otherwise writes ~3.6k rows an hour into an append-only table with a
+	// two-year retention. The first use in an hour appends (so the trail
+	// shows activity promptly); that row's detail carries the PREVIOUS
+	// hour's request count, since audit rows are append-only by design and
+	// can never be updated in place.
+	if emit, prevCount := s.tokenUse.observe(rec.ID, now); emit {
+		detail := map[string]any{
+			"tokenId": rec.ID, "path": r.URL.Path, "method": r.Method, "aggregated": "hourly",
+		}
+		if prevCount > 0 {
+			detail["prevHourCount"] = prevCount
+		}
+		s.appendAudit(r.Context(), rec.CreatedBy, "token.use", "allowed", clientIP(r), detail)
+	}
 
+	caps := map[string]Capabilities{"": CapabilitiesFromScopes(scopes)}
+	// T-2903: read_only constrains bearer tokens exactly as it constrains
+	// cookie sessions (deriveCapabilities). Without this, a write-scoped
+	// token minted before the flag was flipped kept full write capability
+	// in a read-only deployment — the exact invariant docs/security.md's
+	// "server-enforced restriction" line documents.
+	if s.readOnly {
+		forceReadOnly(caps)
+	}
 	sr := sessionRecord{
 		Identity: Identity{
 			SessionID: "token:" + rec.ID,
 			Username:  rec.CreatedBy,
 			TokenID:   rec.ID,
-			Caps:      map[string]Capabilities{"": CapabilitiesFromScopes(scopes)},
+			Caps:      caps,
 		},
 		Bearer: true,
 	}
@@ -214,8 +245,12 @@ func (s *Service) CSRFMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// T-2903: constant-time, like every other credential comparison in
+		// this codebase (docs/security.md: "never a plain ==") — the CSRF
+		// token is a credential even though its double-submit design already
+		// limits what a timing oracle could recover.
 		got := r.Header.Get(CSRFHeaderName)
-		if got == "" || got != rec.CSRFToken {
+		if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(rec.CSRFToken)) != 1 {
 			writeJSONError(w, http.StatusForbidden, "csrf_required", "missing or invalid "+CSRFHeaderName+" header", nil)
 			return
 		}

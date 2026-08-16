@@ -664,7 +664,7 @@ DHCPv6-PD from an upstream device vnprox doesn't manage is surfaced through this
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/guests/{ref}/interior-toggle` | current opt-in state for this guest's interior inspector → `{ref, enabled}` |
-| PUT | `/guests/{ref}/interior-toggle` | `{enabled}` → flips the opt-in → `{ref, enabled}` |
+| PUT | `/guests/{ref}/interior-toggle` | `{enabled}` → flips the opt-in → `{ref, enabled}`. **Permission change (T-2905, v4.1):** requires `netWrite` (was `netRead`) — enabling the toggle turns on `nsenter`-based reads inside the guest's namespace, a write-class decision |
 | GET | `/guests/{ref}/interior` | the guest's own inside network view (opt-in, off by default) |
 
 `ref` is a `guest:<node>:<vmid>` Ref triplet (`internal/inventory.KindGuest`) — not a `guest-nic` ref; the map's own presence for a guest is its NIC entity (docs/features/topology.md), so the frontend's InteriorTab resolves the owning guest ref from the selected NIC's `Guest` field, or from a direct guest-kind search/inventory result.
@@ -1312,7 +1312,7 @@ Vnprox-local, capability-scoped bearer tokens a logged-in user mints, plus webho
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/tokens` | mint a token: `{name, scopes: [string]}` → `201` with the token `AND` a one-time `token` field carrying the raw bearer value — never retrievable again |
+| POST | `/tokens` | mint a token: `{name, scopes: [string], expiresAt?}` → `201` with the token `AND` a one-time `token` field carrying the raw bearer value — never retrievable again. `expiresAt` (T-2903, additive): omitted → the token expires **90 days** from mint; a unix-seconds value → that instant (must be in the future, else `400`); an explicit JSON `null` → a non-expiring token (the pre-v4.1 behavior, now an explicit ceremony rather than the silent default). Token responses carry `expiresAt` when set; an expired token gets the same `401` a revoked one does. Existing tokens minted before v4.1 have no expiry and keep working — expiry is never applied retroactively. `token.use` audit rows are aggregated to one per token per UTC hour (the row's detail says `aggregated: "hourly"`, and carries `prevHourCount` for the finished previous hour), replacing the row-per-request behavior that grew the audit table unboundedly |
 | GET | `/tokens` | list the caller's own tokens (no secret, ever): `{items: [Token]}` |
 | DELETE | `/tokens/{id}` | revoke one of the caller's own tokens; `204`; force-closes any open WS subscription that token authenticated within the same request |
 | POST | `/webhooks` | register a delivery target: `{url, events?: [string], secret}` → `201` with the created `Webhook` (secret never echoed back) |

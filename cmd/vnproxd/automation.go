@@ -124,11 +124,15 @@ func decodeWebhookRowEvents(row store.Webhook) []string {
 // the direct audit.appended push, see hub.go's eventsSourceTopics doc
 // comment) is handed to the exact same webhook fan-out an "events"
 // subscriber would see over WS.
-func setupAutomation(webhooks *store.WebhookRepo, cipher webhookSecretCipher, ws eventSinkSetter, logger *slog.Logger) *automation.Dispatcher {
+func setupAutomation(webhooks *store.WebhookRepo, cipher webhookSecretCipher, ws eventSinkSetter, policy automation.TargetPolicy, logger *slog.Logger) *automation.Dispatcher {
 	dispatcher := automation.NewDispatcher(automation.DispatcherConfig{
 		Provider: webhookProviderAdapter{repo: webhooks, cipher: cipher, logger: logger},
 		Tracker:  webhooks,
-		Logger:   logger,
+		// T-2905: every delivery dials through the destination-policy guard,
+		// which re-checks the RESOLVED address per connection — the
+		// registration-time URL check alone would miss DNS rebinding.
+		Client: policy.GuardedClient(nil),
+		Logger: logger,
 	})
 	ws.SetEventSink(dispatcher.Publish)
 	return dispatcher

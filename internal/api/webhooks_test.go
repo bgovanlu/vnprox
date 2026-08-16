@@ -51,7 +51,7 @@ func (f *fakeWebhookStore) Delete(_ context.Context, id string) error {
 func newWebhookTestRouter(t *testing.T, webhooks WebhookStore, cipher SecretCipher, audit tokenAuditor, auth AuthService) *httptest.Server {
 	t.Helper()
 	r := chi.NewRouter()
-	mountWebhookRoutes(r, webhooks, cipher, audit, auth)
+	mountWebhookRoutes(r, webhooks, cipher, audit, auth, nil)
 	ts := httptest.NewServer(r)
 	t.Cleanup(ts.Close)
 	return ts
@@ -208,7 +208,7 @@ func TestDeleteWebhook_UnknownIDIs404(t *testing.T) {
 
 func TestWebhookRoutes_NotMountedWithoutUsernameLookup(t *testing.T) {
 	r := chi.NewRouter()
-	mountWebhookRoutes(r, newFakeWebhookStore(), fakeSecretCipher{}, &fakeTokenAuditor{}, fakeAuth{authenticated: true})
+	mountWebhookRoutes(r, newFakeWebhookStore(), fakeSecretCipher{}, &fakeTokenAuditor{}, fakeAuth{authenticated: true}, nil)
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 

@@ -205,7 +205,8 @@ type Config struct {
 	// purpose: demo mode is a way the daemon was started, visible in the
 	// process's own argv, not a setting a config file can turn on behind
 	// an operator's back.
-	Demo bool
+	Demo     bool
+	Webhooks WebhooksConfig
 }
 
 // ChangesetsConfig is the [changesets] section (T-2003: change review —
@@ -751,6 +752,18 @@ type BlueprintConfig struct {
 // EBPFSamplingEnabled additionally gates a systemd unit capability grant at
 // install/upgrade time (packaging/debian/postinst; docs/security.md's Host
 // footprint section) — never granted unconditionally.
+// WebhooksConfig is the [webhooks] section (T-2905): the destination
+// policy for T-1005's outbound webhook deliveries. Both knobs default off
+// — public https targets only — and each one active is WARNed at startup,
+// the same loud-escape-hatch posture [peer] tls_trust and
+// [hub] trust_unsigned use. AllowPrivateTargets admits loopback/RFC1918/
+// link-local (incl. cloud metadata addresses) destinations;
+// AllowInsecureTargets admits plain http.
+type WebhooksConfig struct {
+	AllowPrivateTargets  bool
+	AllowInsecureTargets bool
+}
+
 type FlowsConfig struct {
 	SFlowPort                int
 	NetFlowPort              int
@@ -878,6 +891,7 @@ type rawConfig struct {
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
 	Switches    rawSwitches    `toml:"switches"`
 	MCP         rawMCP         `toml:"mcp"`
+	Webhooks    rawWebhooks    `toml:"webhooks"`
 }
 
 // rawChangesets mirrors [changesets] (T-2003). AllowSelfApproval is a *bool
@@ -1074,6 +1088,11 @@ type rawHub struct {
 	TrustUnsigned bool     `toml:"trust_unsigned"`
 }
 
+type rawWebhooks struct {
+	AllowPrivateTargets  bool `toml:"allow_private_targets"`
+	AllowInsecureTargets bool `toml:"allow_insecure_targets"`
+}
+
 type rawFlows struct {
 	SFlowPort                int   `toml:"sflow_port"`
 	NetFlowPort              int   `toml:"netflow_port"`
@@ -1257,6 +1276,10 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 			VettedSigners: raw.Hub.VettedSigners,
 			IndexSigners:  raw.Hub.IndexSigners,
 			TrustUnsigned: raw.Hub.TrustUnsigned,
+		},
+		Webhooks: WebhooksConfig{
+			AllowPrivateTargets:  raw.Webhooks.AllowPrivateTargets,
+			AllowInsecureTargets: raw.Webhooks.AllowInsecureTargets,
 		},
 		Flows: FlowsConfig{
 			SFlowEnabled:     raw.Flows.SFlowEnabled,

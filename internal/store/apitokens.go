@@ -23,6 +23,10 @@ type APIToken struct {
 	CreatedAt  int64
 	LastUsedAt sql.NullInt64
 	RevokedAt  sql.NullInt64
+	// ExpiresAt (T-2903, 0048) is the unix second past which the bearer
+	// path refuses this token like a revoked one. Invalid/NULL = no expiry
+	// (every pre-0048 row, and explicitly non-expiring mints).
+	ExpiresAt sql.NullInt64
 }
 
 // APITokenRepo is the api_tokens table repository.
@@ -36,9 +40,9 @@ func NewAPITokenRepo(db *DB) *APITokenRepo { return &APITokenRepo{db: db} }
 // Create inserts a new token row.
 func (r *APITokenRepo) Create(ctx context.Context, t APIToken) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO api_tokens (id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.Name, t.TokenHash, t.ScopesJSON, t.CreatedBy, t.CreatedAt, t.LastUsedAt, t.RevokedAt,
+		INSERT INTO api_tokens (id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.Name, t.TokenHash, t.ScopesJSON, t.CreatedBy, t.CreatedAt, t.LastUsedAt, t.RevokedAt, t.ExpiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("store: creating api token %s: %w", t.ID, err)
@@ -49,7 +53,7 @@ func (r *APITokenRepo) Create(ctx context.Context, t APIToken) error {
 // Get returns the token with the given id, or ErrNotFound.
 func (r *APITokenRepo) Get(ctx context.Context, id string) (APIToken, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at
+		SELECT id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at, expires_at
 		FROM api_tokens WHERE id = ?`, id,
 	)
 	t, err := scanAPIToken(row)
@@ -63,7 +67,7 @@ func (r *APITokenRepo) Get(ctx context.Context, id string) (APIToken, error) {
 // ErrNotFound — the bearer-auth middleware's lookup path.
 func (r *APITokenRepo) GetByHash(ctx context.Context, hash string) (APIToken, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at
+		SELECT id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at, expires_at
 		FROM api_tokens WHERE token_hash = ?`, hash,
 	)
 	t, err := scanAPIToken(row)
@@ -77,7 +81,7 @@ func (r *APITokenRepo) GetByHash(ctx context.Context, hash string) (APIToken, er
 // revocation status rather than hiding history), newest-first.
 func (r *APITokenRepo) List(ctx context.Context) ([]APIToken, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at
+		SELECT id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at, expires_at
 		FROM api_tokens ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -161,7 +165,7 @@ func (r *APITokenRepo) Upsert(ctx context.Context, t APIToken) error {
 
 func scanAPIToken(row rowScanner) (APIToken, error) {
 	var t APIToken
-	err := row.Scan(&t.ID, &t.Name, &t.TokenHash, &t.ScopesJSON, &t.CreatedBy, &t.CreatedAt, &t.LastUsedAt, &t.RevokedAt)
+	err := row.Scan(&t.ID, &t.Name, &t.TokenHash, &t.ScopesJSON, &t.CreatedBy, &t.CreatedAt, &t.LastUsedAt, &t.RevokedAt, &t.ExpiresAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return APIToken{}, err

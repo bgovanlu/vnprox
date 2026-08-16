@@ -116,6 +116,15 @@ case "$1" in
       echo "vnprox: generated new session encryption key at $SESSION_KEY_FILE"
     fi
 
+    # T-2905: the config can carry an inline credential ([pve]
+    # dev_ticket_password), so it is never world-readable. Fresh installs
+    # get 0640 from packaging; this fixes upgrades from the 0644 era in
+    # place, conffile-preserved copies included.
+    if [ -f "$CONFIG_FILE" ]; then
+      chown root:root "$CONFIG_FILE"
+      chmod 0640 "$CONFIG_FILE"
+    fi
+
     sync_ebpf_caps_dropin
 
     # /run/systemd/system only exists when systemd is the running init

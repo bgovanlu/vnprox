@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -86,5 +87,28 @@ func TestTokenBucket_TenRapidAttemptsThenBlocked(t *testing.T) {
 	}
 	if b.allow("attacker") {
 		t.Fatal("11th rapid attempt: allow = true, want false")
+	}
+}
+
+// TestTokenBucket_BoundedUnderDistinctKeyFlood is T-2905: the buckets map
+// is keyed on attacker-supplied usernames, so a spray of distinct names
+// must not grow it without bound. With a fake clock advancing past the
+// full-refill window, swept entries disappear; even inside one window the
+// hard ceiling holds.
+func TestTokenBucket_BoundedUnderDistinctKeyFlood(t *testing.T) {
+	clock := time.Unix(1_700_000_000, 0)
+	b := newTokenBucket(RateLimitConfig{Capacity: 10, RefillEvery: 30 * time.Second}, func() time.Time { return clock })
+
+	for i := 0; i < 200_000; i++ {
+		b.allow(fmt.Sprintf("user-%d@pam", i))
+		if i%10_000 == 0 {
+			clock = clock.Add(time.Minute) // let sweeps run
+		}
+	}
+	b.mu.Lock()
+	n := len(b.buckets)
+	b.mu.Unlock()
+	if n > maxBucketEntries {
+		t.Fatalf("bucket map grew to %d entries under a distinct-key flood, ceiling is %d", n, maxBucketEntries)
 	}
 }

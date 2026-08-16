@@ -140,6 +140,22 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
 SystemCallFilter=@system-service
 SystemCallFilter=~@mount @reboot @swap @privileged @resources @raw-io @debug @module @cpu-emulation @obsolete @clock
 SystemCallErrorNumber=EPERM
+# T-2905: verified (systemd-analyze syscall-filter): setns lives in
+# @process, which @system-service includes, and appears in none of the
+# groups denied above — so the nsenter-based guest-interior read path works
+# under this exact filter. Recorded here so nobody re-tightens this into
+# breaking it without noticing.
+
+# T-2905: files this daemon creates default to owner-only. Everything
+# secret already gets an explicit chmod (the store's 0600s, postinst's key
+# handling); UMask is the backstop for every os.WriteFile that never
+# thought about permissions.
+UMask=0077
+# T-2905: the daemon may JOIN existing namespaces (setns for the
+# guest-interior lxc reads — net/mnt/pid) but never needs to create USER
+# namespaces, the primitive most kernel-LPE chains want. ~user denies
+# exactly that and nothing the documented operations use.
+RestrictNamespaces=~user
 
 StandardOutput=journal
 StandardError=journal

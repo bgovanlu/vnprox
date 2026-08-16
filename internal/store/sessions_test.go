@@ -252,3 +252,62 @@ func TestLoadKeyFile_RejectsWrongSize(t *testing.T) {
 		t.Errorf("LoadKeyFile(wrong size): got %v, want ErrInvalidKey", err)
 	}
 }
+
+// TestSessionRepo_DeleteExpired is T-2905: the sweep removes rows past
+// idle expiry OR past the hard lifetime cap, leaves live rows alone, and
+// — via 0046's ON DELETE CASCADE, which this store's foreign_keys pragma
+// makes real — takes each dead session's push subscriptions with it, the
+// cleanup docs/security.md's push section documents.
+func TestSessionRepo_DeleteExpired(t *testing.T) {
+	db := openTestDB(t)
+	repo := NewSessionRepo(db, testCipher(t))
+	pushRepo := NewPushSubscriptionRepo(db)
+	ctx := context.Background()
+
+	const now, hardCap = int64(100_000), int64(12 * 3600)
+	mk := func(id string, createdAt, expiresAt int64) {
+		t.Helper()
+		if err := repo.Insert(ctx, Session{
+			ID: id, Username: "root", Realm: "pam", PVETicket: "tkt", CSRFToken: "csrf",
+			CapsJSON: "{}", CreatedAt: createdAt, ExpiresAt: expiresAt,
+		}); err != nil {
+			t.Fatalf("Insert(%s): %v", id, err)
+		}
+	}
+	mk("live", now-3600, now+3600)              // healthy
+	mk("idle-expired", now-7200, now-60)        // past expires_at
+	mk("hard-capped", now-hardCap-60, now+3600) // expires_at fine, lifetime over
+
+	// A push subscription riding the doomed session, and one on the live one.
+	for _, tt := range []struct{ id, sess string }{{"push-dead", "idle-expired"}, {"push-live", "live"}} {
+		if err := pushRepo.Create(ctx, PushSubscription{
+			ID: tt.id, SessionID: tt.sess, Username: "root",
+			EndpointHash: "h-" + tt.id, EndpointEnc: []byte("e"), P256dhEnc: []byte("p"), AuthEnc: []byte("a"),
+			CategoriesJSON: `["critical"]`, CreatedAt: now,
+		}); err != nil {
+			t.Fatalf("push Create(%s): %v", tt.id, err)
+		}
+	}
+
+	n, err := repo.DeleteExpired(ctx, now, hardCap)
+	if err != nil {
+		t.Fatalf("DeleteExpired: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("DeleteExpired swept %d rows, want 2 (idle-expired + hard-capped)", n)
+	}
+	if _, err := repo.Get(ctx, "live"); err != nil {
+		t.Errorf("live session swept: %v", err)
+	}
+	for _, id := range []string{"idle-expired", "hard-capped"} {
+		if _, err := repo.Get(ctx, id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("session %s still present after sweep (err=%v)", id, err)
+		}
+	}
+	if _, err := pushRepo.Get(ctx, "push-dead"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("push subscription of a swept session survived (err=%v) — the CASCADE is not real", err)
+	}
+	if _, err := pushRepo.Get(ctx, "push-live"); err != nil {
+		t.Errorf("live session's push subscription swept: %v", err)
+	}
+}

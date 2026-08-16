@@ -87,7 +87,14 @@ func dfProbe(ctx context.Context, target string, size int, timeout time.Duration
 		secs = 1
 	}
 
-	cmd := exec.CommandContext(ctx, "ping", "-M", "do", "-c", "1", "-W", strconv.Itoa(secs), "-s", strconv.Itoa(payload), target) //nolint:gosec // fixed argv shape, target is a cluster-known node address/name, not external user input
+	// "--" ends option parsing (T-2905): without it a target beginning with
+	// "-" is parsed by ping as an option — root running `ping -f` on
+	// attacker-influenced input is exactly the class internal/latmesh's
+	// sibling prober already guards against with the same two bytes. Targets
+	// are cluster-derived today, but PUT /wan/targets feeds the same Pair
+	// type one wiring change away, so the guard is defense in depth, not
+	// decoration.
+	cmd := exec.CommandContext(ctx, "ping", "-M", "do", "-c", "1", "-W", strconv.Itoa(secs), "-s", strconv.Itoa(payload), "--", target) //nolint:gosec // fixed argv shape with end-of-options guard; target can never be parsed as an option
 	out, err := cmd.CombinedOutput()
 	text := string(out)
 

@@ -26,6 +26,60 @@ functionality is folded into `[2.0.0]`.
 
 ## [Unreleased]
 
+Phase 29 ("Make v4.0 true", `docs/roadmap-earned.md`) — every entry below closes a
+verified defect or security gap in v4.0.0; none adds a feature.
+
+### Fixed
+
+- **The v4.0.0 PWA actually works in a production browser now (T-2901).** The shipped CSP
+  still pinned `worker-src 'none'; manifest-src 'none'` from before the PWA existed, so
+  service-worker registration and the manifest fetch were refused in any real browser — the
+  installable app and push notifications shipped dead, and only synthetic-subscription tests
+  ever ran. Both directives are now `'self'`, the manifest is served as
+  `application/manifest+json`, and `web/e2e/pwa.spec.ts` asserts registration, manifest
+  type, and embed frameability in real Chromium. `vnproxctl verify` gains `pwa.servable`,
+  which detects this defect class on a live deployment.
+- **The `/embed/*` views are actually embeddable (T-2901).** They existed to be iframed and
+  the global `frame-ancestors 'none'` + `X-Frame-Options: DENY` forbade exactly that. They
+  now carry `frame-ancestors 'self'` plus whatever origins `[server] embed_frame_ancestors`
+  lists (validated at startup; default same-origin only).
+
+### Security
+
+- **Peer host writes are validated and audited on the receiving side (T-2902).**
+  `POST /api/peer/host/{stage-interfaces,restore}` previously handed content straight to the
+  host writer — holding the cluster secret was a validation-free, audit-free path to any
+  node's `/etc/network/interfaces`. The receiving node now runs its own change-engine
+  pipeline (parity with a local changeset, asserted in one table), with restores of
+  snapshot-known content exempt by provenance so distributed rollback keeps working, and
+  every host write is audited locally with coordinator attribution. Migration 0047 adds the
+  `audit_log.ip` column docs/security.md always claimed; `GET /audit` items now carry `ip`.
+- **`read_only = true` now constrains bearer tokens (T-2903).** A write-scoped token minted
+  before the flag flipped previously kept full write capability. Tokens also expire now:
+  migration 0048 adds `expires_at`, newly minted tokens default to 90 days (explicit
+  `expiresAt: null` opts out), and an expired token gets the same 401 as a revoked one —
+  never applied retroactively to existing tokens. `token.use` audit rows are aggregated
+  hourly instead of per-request. The CSRF compare is constant-time.
+- **Hub plugin install is containment-checked (T-2904).** A registry manifest's `endpoint`
+  must resolve — symlinks included — to a regular file inside `/var/lib/vnprox/plugins`
+  (never `$PATH`), and trusting an unsigned artifact now requires
+  `[hub] trust_unsigned = true` in server config (startup WARN) — the request flag alone is
+  refused with a 403 naming the key. Signed-artifact verification is unchanged.
+- **Webhooks lost their blind-SSRF shape (T-2905).** Deliveries reach public https targets
+  only by default; loopback/RFC1918/link-local (metadata addresses included) and plain http
+  are refused at registration and re-checked against the resolved address at every dial.
+  `[webhooks] allow_private_targets` / `allow_insecure_targets` opt out per class, loudly.
+- **Auth lifecycle hygiene (T-2903/T-2905).** Sessions past idle/hard expiry are now
+  actually swept (taking their push subscriptions via the 0046 cascade), and a session at
+  the 12h hard cap stops having its PVE ticket renewed. The login limiter's bucket map is
+  bounded (it grew forever on attacker-supplied usernames). The HTTP server gained
+  Read/Write/Idle timeouts. `PUT /guests/{ref}/interior-toggle` now requires `netWrite`
+  (was `netRead`). The MTU prober's `ping` argv carries a `--` guard; WAN targets are
+  validated as IP/hostname. The packaged config installs 0640 (it can hold
+  `dev_ticket_password`); active dev knobs WARN at startup; the systemd unit adds
+  `UMask=0077` and `RestrictNamespaces=~user` (and the guest-interior `setns` path was
+  verified allowed under the existing syscall filter, by inspection).
+
 ## [4.0.0] - 2026-08-14
 
 **Phases 20 and 21 are complete, which is what makes this 4.0.** `docs/roadmap-proven.md` reserves

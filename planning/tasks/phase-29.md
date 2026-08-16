@@ -305,3 +305,125 @@ Make the documentation stop lying by omission, without rewriting history.
 3. The two `T-2505-followup` files exist and match what cites them.
 4. Phase files 21/22/23/26/27/28 each carry a delivery-record section naming every card.
 5. `make check` passes (docs changes can still break help `docRef` checks and link gates).
+
+---
+
+## Delivery record (2026-08-15)
+
+The four wave-1 implementation agents were killed mid-flight by an API spend
+limit; T-2901/T-2904/T-2906 partials were reviewed, verified, and completed
+by the orchestrator, and T-2902/T-2903/T-2905 were implemented by the
+orchestrator directly. Gate discipline unchanged: `make check` green on every
+commit, new browser-level behavior exercised in real Chromium.
+
+**T-2901 — shipped** (wave-1 commit). CSP `worker-src`/`manifest-src` →
+`'self'`; per-route `/embed/*` frame relaxation behind
+`[server] embed_frame_ancestors` (origin-validated, default same-origin);
+`.webmanifest` mime registration; `web/e2e/pwa.spec.ts` (3/3 in real
+Chromium against a fresh stack). Bonus deliverable forced by the
+status-matrix reconciliation gate: `vnproxctl verify` check `pwa.servable`
+(row 73) with pass + fail fixtures — run against a live daemon it detects
+exactly the defect class that shipped in v4.0.0. Two findings from the spec
+run worth keeping: Chromium's service-worker fetch ignores Playwright's
+`ignoreHTTPSErrors` (needs `--ignore-certificate-errors`, a test-env
+accommodation), and same-origin iframing is impossible BY DESIGN (every
+page pins `frame-src 'none'`) — the embedding consumer is an external
+origin, so AC3's iframe assertion became headers + session-free top-level
+render, recorded as a deviation. Real-device install/push remain open in
+`needs-hardware-validation.md` §T-2901.
+
+**T-2902 — shipped** (wave-1 commit). Receiving-side validation via
+`change.Service.ValidatePeerHostWrite` (parity with the local raw-op
+pipeline asserted in one table); snapshot-provenance exemption for
+distributed rollback (validation *never consulted* in the exempt case —
+asserted); receiving-side audit rows with wire-carried attribution;
+migration 0047 (`audit_log.ip`) + client-IP threading through
+API→change/auth appends and `GET /audit`. Deviation: `ip` is
+`NOT NULL DEFAULT ''` rather than nullable — same compatibility property,
+matches the store's `''`-means-absent convention.
+
+**T-2903 — shipped** (wave-2 commit). `forceReadOnly` on the bearer path;
+migration 0048 (`api_tokens.expires_at`, 90-day default, explicit-`null`
+opt-out, never retroactive); expired ⇒ same 401 as revoked; CSRF compare →
+`subtle.ConstantTimeCompare`. **AC4 amended in delivery:** audit rows are
+append-only by design (no Update exists), so "one row with count N" became
+one row per token per UTC hour at FIRST use (prompt visibility), with the
+finished previous hour's count carried in the next row's
+`prevHourCount` — same bound, honest mechanics.
+
+**T-2905 — shipped** (wave-2 commit). Session sweep (`DeleteExpired` +
+renewal-loop hook; 0046 CASCADE to push subscriptions proven in-test) and
+hard-cap renewal stop; limiter map sweep + 65k ceiling (IP-before-username
+charging already existed — audit item was stale on that half); webhook
+destination policy (`automation.TargetPolicy`: registration check + dial-time
+resolved-address re-check, `[webhooks]` knobs, startup WARNs); server
+Read/Write/Idle timeouts (WS unaffected post-hijack); mtuprobe `--` guard +
+WAN host validation; config 0640 + postinst upgrade fix; dev-knob startup
+WARNs; `PUT /guests/{ref}/interior-toggle` → `netWrite` + CSRF; systemd
+`UMask=0077` + `RestrictNamespaces=~user`. The audit's "nsenter probably
+broken under the syscall filter" suspicion was **refuted by inspection**:
+`setns` is in `@process` ⊂ `@system-service` and in no denied group
+(`systemd-analyze syscall-filter`), recorded as a comment in the unit.
+
+**T-2904 — shipped** (wave-1 commit). Endpoint containment
+(`resolvePluginEndpoint`, 10-case table incl. symlink escape),
+config-gated `trustUnsigned` with startup WARN; signed-artifact
+verification untouched and re-asserted.
+
+**T-2906 — partial at wave 2.** `project-status.md` + `status-matrix.md`
+rewritten for v4.0.0 (agent partial, reviewed; one overstated cell — Arc 4
+"26/26" — corrected to 24/26 with the two reschedules named). Remaining
+scope (datasheet, README, roadmap status lines, index reconciliation,
+deployment upgrade section, followup report files, phase delivery records
+for 21/22/23/26/27/28) is open and tracked; the CI-claims corrections in
+`security.md`/`security-verification.md` are also still open.
+
+---
+
+## `T-2905-bug-01` · `a11y.spec.ts` "Switch view" is start-timing dependent (open)
+
+**Found:** 2026-08-15, during wave-2 verification. **Not caused by wave 2** — proven below.
+
+`a11y.spec.ts:165` ("axe: Topology (Switch view, the default)") waits up to 90s for a
+`.grayscale` element via `waitForAStaleEntity`. Whether that element ever appears depends on
+**how fast the daemon starts**, not on the code under test:
+
+| Code | Daemon start path | Result |
+|---|---|---|
+| pre-wave-1 (`544219e`) | `go run` (no prebuilt binary) | pass ×2 |
+| wave-1 (`666234d`) | `go run` | pass ×2 |
+| **wave-1 (`666234d`)** | **prebuilt binary** | **FAIL** |
+| wave-2 (full tree) | prebuilt binary | FAIL ×4 |
+| wave-2, `internal/auth`+`internal/store` only | prebuilt binary | FAIL |
+| **wave-2 (full tree)** | **`go run`** | **pass ×2** |
+
+The mechanism: the fixture's pve2/pve3 peers are unreachable, so their host collectors need
+three consecutive failures (~15s at `host_interval = 5s`) before `/topology` reports them
+stale. With `go run`, compilation delays daemon readiness enough that staleness already
+exists when the browser first paints. With a prebuilt binary — **which is what
+`scripts/e2e-shards.sh` always does, so this is the path `make e2e` takes** — the page loads
+first, and the stale transition must then arrive at an already-rendered page. It does not
+arrive within 90s.
+
+Independently verified NOT to be the cause (each disabled in isolation, clean ports, failure
+persisted): the T-2901 CSP change (service worker now registering), the T-2905 HTTP server
+timeouts, and the T-2905 session sweep. Also verified: the **product is fine** — driving the
+real stack manually with the full wave-2 daemon, `.grayscale` renders within 10s of page load
+and `GET /topology` reports `staleness.stale=true` with `host:pve2`/`host:pve3` stale, which
+is byte-identical to what the wave-1 daemon reports.
+
+So this is a **test defect, not a product defect**, and it is latent in `main` today: the
+flake ledger already lists this test at 11% (1/9). What changed is that the dev host now
+builds fast enough to lose the race consistently.
+
+**Fix (not attempted here — it belongs to whoever owns T-3204's test-debt sweep):**
+`waitForAStaleEntity` should make staleness deterministic rather than race it — e.g. drive
+the collector clock, seed an already-stale fixture, or assert on the API's `staleness`
+payload (which is correct and immediate) instead of a CSS class that depends on when the
+browser happened to connect. Do **not** simply raise the 90s timeout: the wait is for a
+transition that has already happened, so a longer wait does not make it arrive.
+
+**Investigation cost note for the next agent:** three of the intermediate experiments in this
+investigation silently died on port collisions with a leftover manual probe stack and were
+briefly mistaken for real failures. When A/B-ing e2e behavior, always assert
+`grep -c "already used"` on the run log before believing its verdict.

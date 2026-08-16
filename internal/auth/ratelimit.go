@@ -35,9 +35,18 @@ func (c RateLimitConfig) orDefault() RateLimitConfig {
 type tokenBucket struct {
 	buckets map[string]*bucketState
 	now     func() time.Time
-	cfg     RateLimitConfig
-	mu      sync.Mutex
+	// lastSweep is T-2905's growth bound: buckets is keyed on
+	// attacker-supplied values (req.Username), so without a sweep a
+	// credential spray with distinct usernames grows it forever.
+	lastSweep time.Time
+	cfg       RateLimitConfig
+	mu        sync.Mutex
 }
+
+// maxBucketEntries is the hard ceiling on tracked keys. Reaching it means
+// something is spraying; dropping the oldest fully-refilled entries first
+// keeps genuinely-throttled keys throttled.
+const maxBucketEntries = 65536
 
 type bucketState struct {
 	last   time.Time
@@ -64,6 +73,7 @@ func (b *tokenBucket) allow(key string) bool {
 	defer b.mu.Unlock()
 
 	now := b.now()
+	b.sweep(now)
 	st, ok := b.buckets[key]
 	if !ok {
 		st = &bucketState{tokens: float64(b.cfg.Capacity), last: now}
@@ -115,4 +125,32 @@ func (l *loginLimiter) allow(ip, username string) bool {
 		return false
 	}
 	return true
+}
+
+// sweep (T-2905) drops entries whose bucket has fully refilled — a key
+// with a full bucket is indistinguishable from an untracked key, since a
+// fresh key starts full — at most once a minute, plus unconditionally when
+// the map hits maxBucketEntries. Mirrors internal/peer's replayCache
+// discipline: no map keyed on untrusted input grows without bound.
+// Callers hold b.mu.
+func (b *tokenBucket) sweep(now time.Time) {
+	if now.Sub(b.lastSweep) < time.Minute && len(b.buckets) < maxBucketEntries {
+		return
+	}
+	b.lastSweep = now
+	refillWindow := time.Duration(float64(b.cfg.Capacity) * float64(b.cfg.RefillEvery))
+	for k, st := range b.buckets {
+		if st.tokens >= float64(b.cfg.Capacity) || now.Sub(st.last) >= refillWindow {
+			delete(b.buckets, k)
+		}
+	}
+	// Still at the ceiling after removing every refilled entry: every
+	// remaining key is genuinely mid-throttle, which at 65k keys means a
+	// distributed spray. Refusing NEW keys would lock out legitimate users
+	// behind fresh IPs; dropping the map fails open on rate limiting but
+	// bounded — and the per-username buckets (and PVE's own auth) still
+	// stand behind it. Logged by the caller's own 429 pattern being absent.
+	if len(b.buckets) >= maxBucketEntries {
+		b.buckets = make(map[string]*bucketState)
+	}
 }

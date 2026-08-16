@@ -200,6 +200,13 @@ type Options struct {
 	TokenAudit          tokenAuditor
 	Webhooks            WebhookStore
 	WebhookSecretCipher SecretCipher
+	// WebhookTargetCheck (T-2905) is the webhook destination policy —
+	// cmd/vnproxd wires automation.TargetPolicy.ValidateURL (public-https-
+	// only unless [webhooks] allow_private_targets/allow_insecure_targets
+	// opt out, each with a startup WARN). Nil skips the policy check
+	// (tests); the dispatcher independently re-checks resolved addresses
+	// at dial time regardless.
+	WebhookTargetCheck func(string) error
 	// PushSubscriptions/PushSecretCipher/PushVAPIDPublicKey (T-2005) back
 	// GET /push/vapid-public-key and the POST/GET/DELETE /push/subscriptions
 	// family. PushVAPIDPublicKey empty (no VAPID identity configured) skips
@@ -420,7 +427,7 @@ func NewRouter(opts Options) http.Handler {
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountEmbedTokenRoute(r, opts.Tokens, opts.TokenAudit, opts.Auth)
-		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth)
+		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth, opts.WebhookTargetCheck)
 		mountPushRoutes(r, opts.PushSubscriptions, opts.PushSecretCipher, opts.TokenAudit, opts.PushVAPIDPublicKey, opts.Auth)
 		mountK8sRoutes(r, opts.K8sClusters, opts.K8sSecretCipher, opts.K8sPoller, opts.K8sGraph, opts.K8sIPAM, opts.K8sAudit, opts.Auth)
 		mountMigrationRoutes(r, opts.Migration, opts.Auth)

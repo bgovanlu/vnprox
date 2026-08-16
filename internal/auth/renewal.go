@@ -36,6 +36,7 @@ func (s *Service) RunRenewalLoop(ctx context.Context) error {
 }
 
 func (s *Service) renewAndRefreshAll(ctx context.Context) {
+	s.sweepExpired(ctx)
 	s.mu.Lock()
 	ids := make([]string, 0, len(s.live))
 	for id := range s.live {
@@ -54,6 +55,18 @@ func (s *Service) renewAndRefreshOne(ctx context.Context, sessionID string) {
 	s.mu.Unlock()
 	if !ok {
 		return // logged out / expired concurrently.
+	}
+
+	// T-2905: a session past the 12h hard cap is DROPPED, never renewed.
+	// Before this check the loop happily kept calling identity.Renew forever
+	// — a live PVE credential held past the documented hard lifetime, for a
+	// session the middleware would refuse anyway on its next request.
+	if rec, err := s.sessions.Get(ctx, sessionID); err == nil {
+		if s.now().Unix()-rec.CreatedAt > int64(s.hardTimeout.Seconds()) {
+			s.log.Info("auth: session reached its hard lifetime cap, dropping instead of renewing", "session_id", logSessionID(sessionID))
+			s.invalidate(ctx, sessionID)
+			return
+		}
 	}
 
 	ticket, csrf, err := live.identity.Renew(ctx)
@@ -106,4 +119,37 @@ func (s *Service) invalidate(ctx context.Context, sessionID string) {
 	s.mu.Lock()
 	delete(s.live, sessionID)
 	s.mu.Unlock()
+}
+
+// sweepExpired is T-2905's periodic session sweep, run on the renewal
+// loop's own ticker: rows past idle expiry or the hard cap are deleted in
+// one statement (store.SessionRepo.DeleteExpired — ON DELETE CASCADE takes
+// their push subscriptions, the cleanup docs/security.md's push section
+// documents), and the in-memory live map is pruned to match. Before this,
+// expired rows lingered until their next request happened to touch them —
+// which for an abandoned session is never.
+func (s *Service) sweepExpired(ctx context.Context) {
+	n, err := s.sessions.DeleteExpired(ctx, s.now().Unix(), int64(s.hardTimeout.Seconds()))
+	if err != nil {
+		s.log.Error("auth: sweeping expired sessions", "error", err)
+		return
+	}
+	if n > 0 {
+		s.log.Info("auth: swept expired sessions", "count", n)
+	}
+	// Prune live entries whose rows are gone (swept here or deleted
+	// elsewhere) so the renewal loop stops renewing tickets for them.
+	s.mu.Lock()
+	ids := make([]string, 0, len(s.live))
+	for id := range s.live {
+		ids = append(ids, id)
+	}
+	s.mu.Unlock()
+	for _, id := range ids {
+		if _, err := s.sessions.Get(ctx, id); errors.Is(err, store.ErrNotFound) {
+			s.mu.Lock()
+			delete(s.live, id)
+			s.mu.Unlock()
+		}
+	}
 }

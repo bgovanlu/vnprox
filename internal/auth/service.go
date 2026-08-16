@@ -81,6 +81,7 @@ type Service struct {
 	limiter       *loginLimiter
 	tokens        *store.APITokenRepo
 	bearerLimiter *tokenBucket
+	tokenUse      *tokenUseAggregator
 	oidc          *OIDCService
 	now           func() time.Time
 	log           *slog.Logger
@@ -161,6 +162,7 @@ func NewService(cfg Config) (*Service, error) {
 		limiter:       newLoginLimiter(cfg.RateLimit, now),
 		tokens:        cfg.Tokens,
 		bearerLimiter: newTokenBucket(bearerLimit, now),
+		tokenUse:      newTokenUseAggregator(),
 		oidc:          cfg.OIDC,
 		now:           now,
 		log:           logger,

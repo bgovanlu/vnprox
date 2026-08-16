@@ -118,6 +118,28 @@ func (r *SessionRepo) Update(ctx context.Context, s Session) error {
 
 // Delete removes a session (logout, expiry sweep). It is not an error to
 // delete an already-absent session.
+// DeleteExpired removes every session past its idle expiry or past the
+// hard lifetime cap (T-2905): rows whose expires_at has passed, or whose
+// created_at is more than hardCapSeconds ago. Both conditions in SQL so
+// the sweep needs no decryption and no per-row round trips; ON DELETE
+// CASCADE (0046) takes each dead session's push subscriptions with it —
+// the sweep docs/security.md's push section always said it relied on.
+// Returns how many rows went.
+func (r *SessionRepo) DeleteExpired(ctx context.Context, now, hardCapSeconds int64) (int64, error) {
+	res, err := r.db.ExecContext(ctx, `
+		DELETE FROM sessions WHERE expires_at < ? OR created_at < ?`,
+		now, now-hardCapSeconds,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("store: sweeping expired sessions: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("store: counting swept sessions: %w", err)
+	}
+	return n, nil
+}
+
 func (r *SessionRepo) Delete(ctx context.Context, id string) error {
 	if _, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: deleting session %s: %w", id, err)

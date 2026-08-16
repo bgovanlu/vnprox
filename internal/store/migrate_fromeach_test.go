@@ -172,6 +172,7 @@ var versionSeeds = map[int]versionSeed{
 	44: {seedV44, assertV44},
 	45: {seedV45, assertV45},
 	46: {seedV46, assertV46},
+	47: {seedV47, assertV47},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1718,8 +1719,30 @@ func assertV46(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 47 (0047_audit_ip.sql, audit_log's ip column — T-2902)
-// has no versionSeeds entry because it is the current latest, not a
+func seedV47(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// A post-0047 audit row with a real, non-empty ip — assertV46 above
+	// covers the pre-0047-row-defaults-to-'' case; this row proves a
+	// genuinely recorded IP round-trips too.
+	mustExec(t, db, `INSERT INTO audit_log (at, username, action, target, changeset_id, result, detail_json, cluster_id, ip)
+	      VALUES (1770000000, 'alice@pam', 'changeset.create', NULL, 'cs-v47', 'success', '{}', '', '192.0.2.9')`)
+}
+
+func assertV47(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	var ip string
+	if err := db.QueryRowContext(ctx, `SELECT ip FROM audit_log WHERE changeset_id = 'cs-v47'`).
+		Scan(&ip); err != nil {
+		t.Errorf("audit_log row (v47) lost across migration: %v", err)
+	} else if ip != "192.0.2.9" {
+		t.Errorf("audit_log (v47) ip = %q, want the seeded 192.0.2.9", ip)
+	}
+}
+
+// Schema version 48 (0048_token_expiry.sql, api_tokens' expires_at column —
+// T-2903) has no versionSeeds entry because it is the current latest, not a
 // "prior" version any fixture in this file freezes at — its own forward
 // application (as part of every case's migrate() call to latest) is
 // exercised by every case above, and TestOpen_CreatesAllTables
@@ -1727,11 +1750,11 @@ func assertV46(t *testing.T, db *sql.DB) {
 // SeededVersionsAvailable() (export_test.go) — consumed by
 // TestBackupRestore_AC3_AcrossASchemaUpgrade in this package — asserts its
 // return value stays strictly below the live latest schema version for the
-// identical reason: registering 47 here before some future migration
+// identical reason: registering 48 here before some future migration
 // supersedes it would break that check, not just leave this version
 // un-exercised by it. The next migration to land becomes the new latest
-// and picks up a version 47 entry in versionSeeds at that time — see
-// version 46's identical treatment in this file, from the migration
+// and picks up a version 48 entry in versionSeeds at that time — see
+// version 47's identical treatment in this file, from the migration
 // immediately before this one, once it stopped being the latest.
 //
 // TestPushSubscriptionRepo_* (pushsubscriptions_test.go) covers this

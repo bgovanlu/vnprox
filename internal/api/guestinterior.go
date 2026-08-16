@@ -128,10 +128,25 @@ func mountGuestInteriorRoutes(r chi.Router, toggles GuestInteriorToggleStore, gr
 		r.Use(auth.RequireCap(capNetRead))
 		r.Get("/guests/{ref}/interior-toggle", handleGetGuestInteriorToggle(toggles))
 		if lookup, ok := auth.(UsernameLookup); ok {
-			r.Put("/guests/{ref}/interior-toggle", handlePutGuestInteriorToggle(toggles, lookup))
 			r.Get("/guests/{ref}/interior", handleGetGuestInterior(toggles, graph, probeClients, hostReader, peers, ipamSvc, localNode, audit, lookup))
 		}
 	})
+	// T-2905: ENABLING the interior read path is a write gated on a write
+	// capability. It flips on nsenter-based reads inside a guest's
+	// namespace — materially more sensitive than reading host network
+	// config, and exactly the class of read that earned `capture` its own
+	// dedicated capability. Before this the PUT rode the read group above,
+	// so any netRead-only user could switch it on.
+	if lookup, ok := auth.(UsernameLookup); ok {
+		r.Group(func(r chi.Router) {
+			r.Use(auth.SessionMiddleware)
+			if csrf, ok := auth.(CSRFEnforcer); ok {
+				r.Use(csrf.CSRFMiddleware)
+			}
+			r.Use(auth.RequireCap(capNetWrite))
+			r.Put("/guests/{ref}/interior-toggle", handlePutGuestInteriorToggle(toggles, lookup))
+		})
+	}
 }
 
 // guestInteriorToggleResponse is GET/PUT .../interior-toggle's body.

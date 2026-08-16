@@ -127,10 +127,20 @@ func toWebhookResponse(w store.Webhook) webhookResponse {
 	return resp
 }
 
-func validateWebhookRequest(req webhookRequest) string {
+func validateWebhookRequest(req webhookRequest, targetCheck func(string) error) string {
 	u, err := url.ParseRequestURI(req.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "url must be an absolute http(s) URL"
+	}
+	// T-2905: the destination policy (public-https-only by default, with
+	// loud config escape hatches) — cmd/vnproxd wires
+	// automation.TargetPolicy.ValidateURL here, and the dispatcher re-checks
+	// the resolved address at every dial. Nil (tests without a policy)
+	// preserves the pre-T-2905 shape.
+	if targetCheck != nil {
+		if err := targetCheck(req.URL); err != nil {
+			return err.Error()
+		}
 	}
 	if req.Secret == "" {
 		return "secret is required"
@@ -143,7 +153,7 @@ func validateWebhookRequest(req webhookRequest) string {
 // family, matching every other optional Options field's degraded-mode
 // convention. If auth doesn't also implement UsernameLookup, the routes
 // are likewise not mounted (same precedent as mountLayoutsRoutes).
-func mountWebhookRoutes(r chi.Router, webhooks WebhookStore, cipher SecretCipher, audit tokenAuditor, auth AuthService) {
+func mountWebhookRoutes(r chi.Router, webhooks WebhookStore, cipher SecretCipher, audit tokenAuditor, auth AuthService, targetCheck func(string) error) {
 	if webhooks == nil || cipher == nil || audit == nil || auth == nil {
 		return
 	}
@@ -164,7 +174,7 @@ func mountWebhookRoutes(r chi.Router, webhooks WebhookStore, cipher SecretCipher
 			r.Use(csrf.CSRFMiddleware)
 		}
 		r.Use(auth.RequireCap(capAutomation))
-		r.Post("/webhooks", handleCreateWebhook(webhooks, cipher, audit, lookup))
+		r.Post("/webhooks", handleCreateWebhook(webhooks, cipher, audit, lookup, targetCheck))
 		r.Delete("/webhooks/{id}", handleDeleteWebhook(webhooks, audit, lookup))
 	})
 }
@@ -184,7 +194,7 @@ func handleListWebhooks(webhooks WebhookStore) http.HandlerFunc {
 	}
 }
 
-func handleCreateWebhook(webhooks WebhookStore, cipher SecretCipher, audit tokenAuditor, lookup UsernameLookup) http.HandlerFunc {
+func handleCreateWebhook(webhooks WebhookStore, cipher SecretCipher, audit tokenAuditor, lookup UsernameLookup, targetCheck func(string) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
@@ -198,7 +208,7 @@ func handleCreateWebhook(webhooks WebhookStore, cipher SecretCipher, audit token
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", "malformed webhook body: "+err.Error())
 			return
 		}
-		if msg := validateWebhookRequest(req); msg != "" {
+		if msg := validateWebhookRequest(req, targetCheck); msg != "" {
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", msg)
 			return
 		}

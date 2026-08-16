@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -152,6 +153,13 @@ func handlePutWanTargets(svc WanService, localNode func() string, audit wanAudit
 			host := strings.TrimSpace(t.Host)
 			if uplink == "" || host == "" {
 				writeJSONError(w, http.StatusBadRequest, "validation_failed", "uplink and host are both required for every target")
+				return
+			}
+			// T-2905: a WAN target is dialed/pinged by root-owned probers —
+			// constrain it to an IP or a plausible DNS name so nothing
+			// option-shaped or shell-hostile is ever stored as a target.
+			if !validWANHost(host) {
+				writeJSONError(w, http.StatusBadRequest, "validation_failed", "host must be an IP address or DNS name: "+host)
 				return
 			}
 			targets = append(targets, wan.Target{Uplink: uplink, Host: host})
@@ -305,6 +313,32 @@ func otherFindingsQuiet(fs []findings.Finding) bool {
 		}
 		if f.Severity == findings.SeverityWarning || f.Severity == findings.SeverityError {
 			return false
+		}
+	}
+	return true
+}
+
+// validWANHost accepts an IP literal or an RFC 1123 hostname — and nothing
+// else (T-2905): no leading dash, no slashes, no spaces, none of the shapes
+// an argv or URL could reinterpret.
+func validWANHost(host string) bool {
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	if len(host) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if label == "" || len(label) > 63 {
+			return false
+		}
+		for i, r := range label {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			case r == '-' && i > 0 && i < len(label)-1:
+			default:
+				return false
+			}
 		}
 	}
 	return true

@@ -1,0 +1,22 @@
+-- 0048_token_expiry.sql — T-2903: automation tokens expire.
+--
+-- api_tokens (0011) had exactly one way for a token to stop working:
+-- explicit revocation. A minted token was otherwise valid forever, its
+-- scopes frozen at mint time even after the minting user's PVE privileges
+-- changed. `expires_at` (unix seconds) gives every NEW token a bounded
+-- life — internal/auth's mint path defaults it to 90 days out and accepts
+-- an explicit request value; an expired token is refused exactly like a
+-- revoked one (401), and the session sweep treats it as garbage.
+--
+-- NULL means "no expiry": every pre-0048 row reads NULL, so nothing an
+-- operator already relies on stops working at upgrade — expiry is a
+-- property of newly minted tokens, applied retroactively to none. An
+-- operator who wants a non-expiring token can still mint one by passing
+-- `expiresAt: null` explicitly (docs/api.md's token section documents the
+-- ceremony); the default just stopped being forever.
+--
+-- Migrations are forward-only: this file, once released, must never be
+-- edited again. Schema changes land as a new NNNN_*.sql file with a higher
+-- version number.
+
+ALTER TABLE api_tokens ADD COLUMN expires_at INTEGER;
