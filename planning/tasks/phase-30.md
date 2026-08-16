@@ -133,9 +133,17 @@ Multi-tenancy (`T-2605`-era) is eight routes with no screen. Compliance mapping 
   emergency override reachable only by hand-crafting a request is not an emergency override.
   Give it a deliberately high-friction affordance: written reason required, the audit
   consequence (`change.breakglass` plus a 24h-unacknowledgeable finding) stated *before* confirm.
-- **Tenants**: the eight routes as a management screen — create, scope, membership, the
-  request/approve flow. Out-of-scope objects must stay genuinely invisible, so this screen is
-  also the place to prove the "returns not found" property in a browser test.
+- **Tenants**: the eight routes as an **admin** management screen — list, get, create, delete,
+  put/delete scope, put/delete member (`internal/api/tenant.go:268-282`). Out-of-scope objects
+  must stay genuinely invisible, so this screen is also the place to prove the "returns not found"
+  property in a browser test.
+
+  > **Card corrected 2026-08-16 before dispatch.** An earlier revision said these eight routes
+  > include "the request/approve flow". **They do not.** The only approval routes in the API are
+  > `POST /changesets/{id}/approve` and `POST /changesets/{id}/review/approve`, which belong to
+  > the two-person rule, not to tenancy. There is no tenant self-service request or approval
+  > route. If self-service tenancy is wanted it is a backend card, not this one — build the admin
+  > surface that exists and say so.
 - **Digest schedules**: `GET`/`PUT /digest/schedule` beside the existing alert-rule settings.
 
 **Acceptance**
@@ -172,7 +180,15 @@ semantics with no UI to observe the change:
   when they resolve to private/loopback/link-local addresses, unless `[webhooks]
   allow_private_targets` is set. An operator whose webhook silently stopped working after
   upgrading needs to see *which policy refused it*, not a generic delivery failure.
-- **Plugins**: install/list/remove with the declared capability scope shown as the ceiling it is.
+- **Plugins**: list, enable, disable, remove — `GET /plugins`, `POST /plugins/{id}/enable`,
+  `POST /plugins/{id}/disable`, `DELETE /plugins/{id}` — with the declared capability scope shown
+  as the ceiling it is.
+
+  > **Card corrected 2026-08-16 before dispatch.** An earlier revision said "install/list/remove".
+  > **There is no plugin install route under `/api/v1/plugins`.** Installing goes through
+  > `POST /hub/install`, which already has a UI (`web/src/hub/`). Do not build a second install
+  > path. What is headless is the *lifecycle* of an already-installed plugin.
+
   Signature verification stays mandatory; this card adds no trust bypass, and a registry-supplied
   manifest must not be able to widen anything (`T-2904`).
 - **`doctor --live`**: render `GET /doctor/live`'s ten checks, including the two that still
