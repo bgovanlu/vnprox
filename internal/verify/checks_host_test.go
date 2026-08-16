@@ -3,6 +3,7 @@ package verify
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -169,4 +170,53 @@ func TestPeerCAChainFailsWhenNothingIsCovered(t *testing.T) {
 	if !strings.Contains(got.Detail, "someone-elses-node") {
 		t.Errorf("failure detail %q does not include the actual SAN list — an operator cannot act on an empty one", got.Detail)
 	}
+}
+
+// TestSRIOVCheckDistinguishesNoNICFromNoAnswer is the regression test for the
+// fourth instance of this arc's recurring bug, found on pvecube 2026-08-16.
+//
+// The enumeration command ended in `[ -e "$f" ] && echo ...`, whose status is
+// the loop's status. On a host with no SR-IOV-capable NIC the glob stays
+// literal, the test fails, and sh exits 1 — so a DEFINITE NEGATIVE ("there is
+// no such NIC here") was reported as an UNKNOWN ("could not enumerate SR-IOV
+// capability... This needs a shell on the node itself"), and the honest branch
+// that says the useful thing was unreachable on exactly the hosts it was
+// written for.
+func TestSRIOVCheckDistinguishesNoNICFromNoAnswer(t *testing.T) {
+	t.Parallel()
+
+	const cmd = `sh -c for f in /sys/class/net/*/device/sriov_totalvfs; do [ -e "$f" ] && echo "$f=$(cat $f)"; done; exit 0`
+
+	t.Run("an empty listing is a definite negative, not an unknown", func(t *testing.T) {
+		t.Parallel()
+		d := healthyDeps()
+		hostOf(&d).cmds[cmd] = ""
+
+		got := checkSRIOVCapableNIC(context.Background(), d)
+		if got.Status != StatusSkip {
+			t.Fatalf("status = %v (%s), want skip", got.Status, got.Detail)
+		}
+		if !strings.Contains(got.Detail, "no NIC on") {
+			t.Errorf("detail %q should state the fact (no SR-IOV-capable NIC), not that enumeration failed", got.Detail)
+		}
+		if strings.Contains(got.Detail, "could not enumerate") {
+			t.Errorf("detail %q reports an unknown for what is actually a known negative", got.Detail)
+		}
+	})
+
+	t.Run("a command that genuinely could not run is still an unknown", func(t *testing.T) {
+		t.Parallel()
+		d := healthyDeps()
+		h := hostOf(&d)
+		delete(h.cmds, cmd)
+		h.errs = map[string]error{cmd: errors.New("ssh: connect: connection refused")}
+
+		got := checkSRIOVCapableNIC(context.Background(), d)
+		if got.Status != StatusSkip {
+			t.Fatalf("status = %v (%s), want skip", got.Status, got.Detail)
+		}
+		if !strings.Contains(got.Detail, "could not enumerate") {
+			t.Errorf("detail %q should report the unknown when the shell itself failed", got.Detail)
+		}
+	})
 }

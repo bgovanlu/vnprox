@@ -234,7 +234,7 @@ func checkSRIOVVFLifecycle(ctx context.Context, d Deps) Outcome {
 	}
 	node := localNode(d.Nodes)
 
-	listing, err := d.Host.Run(ctx, node, "sh", "-c", "for f in /sys/class/net/*/device/sriov_totalvfs; do [ -e \"$f\" ] && echo \"$f=$(cat $f)\"; done")
+	listing, err := d.Host.Run(ctx, node, "sh", "-c", "for f in /sys/class/net/*/device/sriov_totalvfs; do [ -e \"$f\" ] && echo \"$f=$(cat $f)\"; done; exit 0")
 	if err != nil {
 		return Skip(fmt.Sprintf("could not enumerate SR-IOV NICs on %s: %v", node, err),
 			NewEvidence(SourceCommand, "cat /sys/class/net/*/device/sriov_totalvfs", err.Error()))

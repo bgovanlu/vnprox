@@ -287,8 +287,8 @@ func healthyHost() *fakeHost {
 	return &fakeHost{
 		cmds: map[string]string{
 			"uname -r": "6.12.0-1-pve\n",
-			"sh -c for f in /sys/class/net/*/device/sriov_totalvfs; do [ -e \"$f\" ] && echo \"$f=$(cat $f)\"; done": sriovListing,
-			"sh -c ls -1 /etc/pve/nodes/*/pve-ssl.pem 2>/dev/null":                                                   "/etc/pve/nodes/pve1/pve-ssl.pem\n/etc/pve/nodes/pve2/pve-ssl.pem\n",
+			"sh -c for f in /sys/class/net/*/device/sriov_totalvfs; do [ -e \"$f\" ] && echo \"$f=$(cat $f)\"; done; exit 0": sriovListing,
+			"sh -c ls -1 /etc/pve/nodes/*/pve-ssl.pem 2>/dev/null":                                                           "/etc/pve/nodes/pve1/pve-ssl.pem\n/etc/pve/nodes/pve2/pve-ssl.pem\n",
 			"sh -c for d in /sys/class/net/*/device/; do n=${d%/device/}; n=${n##*/}; m=$(cat $d/modalias 2>/dev/null); v=$(cat $d/vendor 2>/dev/null); p=$(cat $d/device 2>/dev/null); echo \"$n $v:$p $m\"; done": "eno1 0x8086:0x1572 pci:v00008086d00001572\n",
 			"vnproxctl backup -o json":                   `{"path":"/var/lib/vnprox/backups/b.tar.gz","bytes":652902,"node":"pve1","schemaVersion":48,"includesKeyMaterial":false,"secretClasses":[],"entries":3,"pruned":[],"warnings":[]}`,
 			"vnproxctl support-bundle --dry-run -o json": `{"node":"pve1","entries":["env.txt","config.toml","changesets.json"],"redacted":true}`,

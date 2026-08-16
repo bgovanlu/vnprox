@@ -195,7 +195,7 @@ func brokenFixtures() []mutation {
 			name:  "the NIC advertises SR-IOV and the platform delivers none",
 			check: "sriov.vf_capable_nic_present",
 			apply: func(d *Deps) {
-				hostOf(d).cmds["sh -c for f in /sys/class/net/*/device/sriov_totalvfs; do [ -e \"$f\" ] && echo \"$f=$(cat $f)\"; done"] =
+				hostOf(d).cmds["sh -c for f in /sys/class/net/*/device/sriov_totalvfs; do [ -e \"$f\" ] && echo \"$f=$(cat $f)\"; done; exit 0"] =
 					"/sys/class/net/eno1/device/sriov_totalvfs=0\n"
 			},
 			wantDetail: "not delivering it",

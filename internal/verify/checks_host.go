@@ -112,7 +112,23 @@ func checkSRIOVCapableNIC(ctx context.Context, d Deps) Outcome {
 	}
 	node := localNode(d.Nodes)
 
-	listing, err := d.Host.Run(ctx, node, "sh", "-c", "for f in /sys/class/net/*/device/sriov_totalvfs; do [ -e \"$f\" ] && echo \"$f=$(cat $f)\"; done")
+	// The trailing `exit 0` is load-bearing, not tidiness.
+	//
+	// A `for` loop's exit status is its last command's, and the last command
+	// here is `[ -e "$f" ] && echo ...`. On a host where NO NIC exposes
+	// sriov_totalvfs the glob stays literal, the test fails, and the shell
+	// exits 1 — so this check reported "could not enumerate SR-IOV capability"
+	// on every such host, when the truth is the far more useful "there is no
+	// SR-IOV-capable NIC here", which the len(total)==0 branch below already
+	// says properly and could never reach. Observed on pvecube 2026-08-16.
+	// (The same status leak could fire on a mixed host whose last glob entry
+	// happens not to exist, so this is not only about the empty case.)
+	//
+	// A non-zero status now means what it should: the shell itself could not
+	// run, which IS an unknown. An empty listing means a definite negative.
+	// Collapsing those two into one message is this arc's recurring bug —
+	// see planning/tasks/phase-29.md's wave-4 record.
+	listing, err := d.Host.Run(ctx, node, "sh", "-c", "for f in /sys/class/net/*/device/sriov_totalvfs; do [ -e \"$f\" ] && echo \"$f=$(cat $f)\"; done; exit 0")
 	if err != nil {
 		return Skip(fmt.Sprintf("could not enumerate SR-IOV capability on %s: %v. This needs a shell on the node itself", node, err),
 			NewEvidence(SourceCommand, "for f in /sys/class/net/*/device/sriov_totalvfs; ...", err.Error()))

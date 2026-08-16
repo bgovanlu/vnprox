@@ -1267,6 +1267,17 @@ memory of an interface rather than from the interface.
 **Suite state after the fixes: `5 passed, 0 failed, 13 skipped`.** Eleven of the thirteen skips
 are legitimately token-gated — unlike `pwa.servable`, they read authenticated API surfaces — and
 two are environmental (`pvecube` has no LACP bond; switch push is dark by config). One,
-`sriov.vf_capable_nic_present`, skips because its enumeration command errors rather than because
-the hardware is absent, and is worth a look: **a skip that is really a broken command is the
-third instance of this arc's recurring bug, and it should not be closed by assuming.**
+`sriov.vf_capable_nic_present`, skipped because its enumeration command errored rather than
+because the hardware was absent — **and looking at it found the fourth instance of this arc's
+recurring bug rather than a false alarm.**
+
+- [x] **`sriov.vf_capable_nic_present` reported an unknown for a known negative.** The enumeration
+      ends in `[ -e "$f" ] && echo ...`, which is also the `for` loop's exit status, so a host with
+      no SR-IOV-capable NIC makes `sh` exit 1 and the check said *"could not enumerate SR-IOV
+      capability"* instead of *"this host has no SR-IOV-capable NIC, or IOMMU is not enabled"* —
+      the branch that says the useful thing was unreachable on exactly the hosts it was written
+      for. This one hides a known behind an unknown, the mirror of the other three; the defect is
+      the same in both directions. A trailing `exit 0` restores the distinction, and `pvecube` now
+      reports the fact. Still a skip — the hardware genuinely is absent — but for a reason an
+      operator can act on. `checks_destructive.go` carried the identical command and is fixed with
+      it.

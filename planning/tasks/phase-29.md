@@ -586,9 +586,23 @@ golden captured from the real CLI, and the run against the real node, disagreed.
 
 ### Open, not closed
 
-- `sriov.vf_capable_nic_present` skips because its enumeration command *errors*,
-  not because the hardware is absent. That is the same class as the three above
-  and is deliberately left open rather than assumed benign.
+- ~~`sriov.vf_capable_nic_present` skips because its enumeration command
+  *errors*, not because the hardware is absent.~~ **Closed 2026-08-16, same
+  day, and it was the fourth instance rather than a false alarm.** The
+  enumeration ended in `[ -e "$f" ] && echo ...`, whose status is the `for`
+  loop's status, so on a host where no NIC exposes `sriov_totalvfs` the glob
+  stays literal, the test fails, and `sh` exits 1. The check therefore reported
+  *"could not enumerate SR-IOV capability... This needs a shell on the node
+  itself"* — an **unknown** — for what is actually a **definite negative**, and
+  the branch that says the useful thing ("this host has no SR-IOV-capable NIC,
+  or IOMMU is off in firmware") was unreachable on precisely the hosts it was
+  written for. Note the direction: this one hid a *known* behind an *unknown*,
+  the mirror image of the other three, and it is the same defect either way.
+  A trailing `exit 0` makes a non-zero status mean what it should — the shell
+  could not run — and the empty case now reaches its honest branch. Confirmed
+  against `pvecube`, which reports the fact rather than the failure. The same
+  command in `checks_destructive.go` had the identical bug and is fixed with
+  it.
 - Eleven of the thirteen skips are legitimately token-gated: they read
   authenticated API surfaces, unlike `pwa.servable`. Closing them needs a minted
   bearer token on the node, which needs a real PVE login this environment does

@@ -49,6 +49,13 @@ verified defect or security gap in v4.0.0; none adds a feature.
   mutation-verified, and the check now passes against a real node — see
   `planning/reports/needs-hardware-validation.md` §T-2901, which records the before/after
   capture from `pvecube`.
+- **`vnproxctl verify`'s SR-IOV check reported "could not enumerate" on every host that simply
+  has no SR-IOV NIC.** Its enumeration ends in `[ -e "$f" ] && echo ...`, which is also the `for`
+  loop's exit status, so an empty glob made `sh` exit 1 and a **definite negative** was reported
+  as an **unknown** — while the branch that says the useful thing ("this host has no SR-IOV-capable
+  NIC, or IOMMU is not enabled in firmware/kernel") was unreachable on exactly the hosts it was
+  written for. Fixed with a trailing `exit 0`, so a non-zero status once again means the shell
+  itself could not run. The same command in the destructive suite had the identical bug.
 - **Two `vnproxctl verify` hardware checks were not checking what they claimed, both found by
   running the suite on a real node (2026-08-16).** `backup.archive_round_trip` decoded
   `sizeBytes`/`includedKeys` while the CLI emits `bytes`/`includesKeyMaterial`, so it called every
