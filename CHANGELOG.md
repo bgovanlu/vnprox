@@ -33,8 +33,19 @@ functionality is folded into `[2.0.0]`.
 
 ## [Unreleased]
 
-Phase 29 ("Make v4.0 true", `docs/roadmap-earned.md`) — every entry below closes a
-verified defect or security gap in v4.0.0; none adds a feature.
+Two phases of Arc 6 (`docs/roadmap-earned.md`).
+
+**Phase 30 ("The visible product")** gave screens to backend features that had none — the
+config-as-code cockpit (`/config-as-code`), governance (`/governance`: policies, compliance,
+tenants, digest schedules), the platform panel (`/settings/platform`: tokens, webhooks, plugins,
+`doctor --live`), analysis surfaces (`/analysis`: SPOF, capacity export, QoS, PBS, IPv6 segments)
+plus WAN health, a canary-apply strategy picker with a mid-hold rollout view, and break-glass,
+which previously had no caller in the web app at all. Every one of those routes already existed:
+`docs/openapi.json` is unchanged. The online-help gate now covers panels as well as routes, and
+gained a reverse check that catches help describing a screen nobody built — it found five.
+
+**Phase 29 ("Make v4.0 true")** — every entry below closes a verified defect or security gap in
+v4.0.0; none adds a feature.
 
 ### Fixed
 

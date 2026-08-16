@@ -1,6 +1,6 @@
 # vnprox — project status
 
-**As of:** 2026-08-15 · **Latest release:** `v4.0.0` (tag `v4.0.0`, commit `5c19dcc`, 2026-08-14) · **Active arc:** Arc 6 — Earned (`docs/roadmap-earned.md`), Phase 29 in flight
+**As of:** 2026-08-15 · **Latest release:** `v4.0.0` (tag `v4.0.0`, commit `5c19dcc`, 2026-08-14) · **Active arc:** Arc 6 — Earned (`docs/roadmap-earned.md`), Phases 29 and 30 shipped, Phase 31 next
 
 Companion documents: [`status-matrix.md`](status-matrix.md) (the per-feature audit grid and its method) and [`datasheet.md`](datasheet.md) (shipped capability, for external readers).
 

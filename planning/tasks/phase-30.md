@@ -678,3 +678,77 @@ written for each — somebody documented the feature, and the screen never arriv
 - Phase 22's delivery record says "81 topics as counted at 2026-08-16". The real count at that
   moment was **105**; it is **119** now. The record's own instruction — recount rather than quote —
   applies to itself.
+
+---
+
+## Phase 30 — delivery record (2026-08-16)
+
+Six cards, two waves, five sub-agents. **All six shipped.** Every card was UI-only:
+`docs/openapi.json` is byte-identical to its Phase 29 state, and no sub-agent touched a Go file.
+
+| Card | State | Note |
+|---|---|---|
+| `T-3001` | ● Shipped | `/config-as-code` — gitsync status, spec document + pin, the plan, and the spec/config/live three-way with both reconciliation directions kept deliberately apart |
+| `T-3002` | ● Shipped | `/governance` — policies, compliance, tenants, digest; plus a policy `deny` surfaced in the review screen where it blocks, and break-glass, which had no caller in `web/src` at all |
+| `T-3003` | ● Shipped | `/settings/platform` — tokens (stored vs effective scope), webhooks, plugins, `doctor --live` |
+| `T-3004` | ● Shipped | `/analysis` — SPOF, capacity export, QoS, PBS, IPv6 segments; WAN health on `/edge`; `DualStackWizard`, previously mounted nowhere, wired to a real route |
+| `T-3005` | ● Shipped | Canary strategy picker and the rollout view for a changeset mid-hold |
+| `T-3006` | ● Shipped | Panel-aware help gate, and the reverse check that closes the loop |
+
+Web tests **1,807 → 2,042** across **247 → 273** files. Bundle ceiling raised once, 3.8 MB → 4 MB,
+with the check the test's own comment demands recorded (no dependency added; the Monaco split
+assertion still passes).
+
+### The organising finding
+
+The phase's rule was "a backend feature without a UI is not shipped in this product". The work
+proved a sharper version of it: **a claim nobody can execute is not a fact.** Of the card and
+roadmap claims checked against the actual contract during this phase, **eleven were wrong in some
+detail, and three of those were the orchestrator's own** — including one correction to a correction
+(`T-3004`'s capacity note). Checking a card against `docs/openapi.json` before dispatch costs
+minutes; reviewing a wave built on a wrong premise costs the wave.
+
+The three that would have caused real wasted work: canary apply "returns 501 by default" (false —
+the backend works, the gap was UI-only), "build a capacity forecast screen" (forecasts already
+reach the operator; only the export is headless), and `doctor --live` "renders ten checks" (it
+returns four).
+
+### Filed, not fixed — four findings that are backend or product questions
+
+| Card | What | Why not fixed here |
+|---|---|---|
+| `T-3001-followup-01` | Every `terraform plan` leaves a draft changeset behind, and nothing prunes drafts (~35k rows/cluster/year at a 15-min poll). `TestSpecImportIdempotency` asserts ops, never row count. | Needs a product decision between a dry-run mode, draft retention with provenance, or documenting caller cleanup |
+| `T-3002-followup-01` | **Security.** A tenant member can read every other tenant's scope refs and membership — against an explicit "genuinely invisible, never confirming it exists" promise. Demonstrated by a passing test. | There is no admin capability today to gate admin CRUD on; four decisions listed on the card |
+| `T-3003-followup-01` | `read_only` does not restrain `capture` or `automation`, though its own comment and `docs/security.md` both said it restrained every write-shaped flag | Clearing `automation` would remove a read capability (the WS `events` topic) along with the write |
+| `T-3004-followup-01` | Eleven of sixteen finding sources render as literal `undefined · <check>` and cannot be filtered | `web/src/findings/**` belonged to no card, and the union and its `Record` must move together |
+
+Both security findings had their **documentation corrected in the same change** — `security.md`,
+`user-guide.md`, `datasheet.md` — and both are pinned by tests asserting *today's* behaviour, so
+neither can be changed by accident and neither can quietly persist. Those tests do not claim the
+behaviour is right; their failure messages name the document that must move with them.
+
+### Guards added, because a hand-copied constant is a defect waiting
+
+`internal/change/canary_ts_contract_test.go` — five assertions over the TypeScript mirrors of this
+package's constants (unstageable kinds, PVE-session kinds, hold bounds, the full `StepKind` union),
+plus a self-check so adding a `StepKind` cannot rot the list. Writing it found a second missing
+kind beyond the one `T-3005` reported: `switch_apply` **and** `qos_apply` were both absent from the
+frontend union, silently mistyping two real plan steps.
+
+This is the same shape as Phase 29's `vnproxctl backup` field-name defect. A copy of another
+language's constants agrees with its own tests and with nothing else.
+
+### Not done
+
+- **No Playwright spec and no axe pass for any of the five new screens.** `web/e2e/` was outside
+  every agent's file set and Playwright is on their forbidden list. This is the largest gap in the
+  phase and it belongs to whoever runs the next e2e sweep.
+- **No live daemon.** Every response shape was read from Go handlers rather than captured from a
+  running one. Strings are copied verbatim from Go source rather than paraphrased, which is the
+  mitigation, not a substitute — Phase 29's wave-4 record is the standing warning about exactly
+  this.
+- `T-3006` moved the `?` out of `DialogTitle`/`DrawerTitle` in six places, reasoning that Radix
+  computes a dialog's accessible name from its title subtree. No test catches it either way. That
+  is reasoning, not measurement, and it wants the axe pass above.
+- `drift/DriftFindingsPanel.tsx` is dead code superseded by `findings/FindingsStreamPanel.tsx`.
+  Correctly excluded from the help census by reachability; deleting it was left as a separate call.
