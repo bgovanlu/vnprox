@@ -508,3 +508,90 @@ over: `docs/roadmap-proven.md`'s phase headings still read "→ **v3.1**",
 has a `v3.1 tag` node. Those are historical plan text; both documents now open
 with a prominent never-tagged banner instead of rewriting the plans they
 recorded. AC5 (`make check`) green.
+
+
+---
+
+## Delivery record — wave 4 (2026-08-16): deployed to `pvecube`, and what the deployment found
+
+Phase 29 is now live on real hardware. The deployment itself produced three
+defects that no amount of local testing had surfaced, all in the same family,
+and all in code this arc had written or relied on.
+
+**The upgrade.** `v4.0.0` → `4.0.0+6+g4798f25`, via `apt install` of the built
+`.deb`. Migrations `0047`/`0048` applied on first start (`audit_log.ip` present
+as `NOT NULL DEFAULT ''`, `api_tokens.expires_at` present and nullable), the
+service restarted itself per the postinst upgrade path, and the daemon came up
+clean. The store was backed up first.
+
+**The fix, observed before and after on the node itself:**
+
+| | Before (`v4.0.0`) | After |
+|---|---|---|
+| CSP | `worker-src 'none'; manifest-src 'none'` | `worker-src 'self'; manifest-src 'self'` |
+| `/manifest.webmanifest` | `200`, `text/plain; charset=utf-8` | `200`, `application/manifest+json` |
+| `vnproxctl verify -only pwa.servable` | *(could not run — see below)* | `1 passed, 0 failed, 0 skipped` |
+
+Both captures are `curl -D-` against `https://localhost:8007` on `pvecube`,
+minutes apart. This is the first evidence for row 73 that is not a fixture.
+
+### Three checks that were not checking
+
+Each was found by running against a real node in that node's default state.
+Each had passed its own unit fixtures, because in every case **the fixture had
+been written from the author's memory of an interface rather than from the
+interface**. They are recorded together because the pattern is the finding.
+
+1. **`pwa.servable` skipped on every node that had the defect it was written
+   for.** It took its `RootProbe` from `Deps.Daemon`, which `vnproxctl` only
+   builds when a bearer token is configured — and a fresh install has none. So
+   the check written to detect the v4.0.0 CSP defect reported
+   `0 passed, 0 failed, 1 skipped` against a node serving `worker-src 'none'`,
+   while telling the operator to supply a `--token` that none of its three
+   unauthenticated fetches needs. `Deps.Root` now carries an anonymous prober.
+2. **`backup.archive_round_trip` called every healthy backup empty**, decoding
+   `sizeBytes`/`includedKeys` against a CLI that emits `bytes`/
+   `includesKeyMaterial`. The false alarm was the visible half; the invisible
+   half is worse — **its "a backup must not carry key material without
+   `--include-keys`" assertion read an absent field and could never fire.** A
+   security assertion, dead since it was written. Pinned now by a golden
+   captured from the CLI (`internal/verify/testdata/vnproxctl-backup.json`)
+   that both sides assert against.
+3. **`peer.ca_pins_real_chain` failed a node that was correct.** It demanded
+   the dial address appear in the SAN list — the rule **T-2303 deliberately
+   replaced**. Real PVE issues `DNS:<nodename>`, `certs.ResolveVerifyName`
+   resolves to it, and that is precisely what makes a stale IP SAN survivable.
+   The check reported `T-1906-bug-01`'s failure mode against a node where the
+   fix for that bug was working. Its evidence also went through `firstLine()`,
+   and `openssl x509 -ext subjectAltName` prints values on the line *after* the
+   header — so the failure displayed an empty SAN list for a certificate
+   carrying six.
+
+**Suite state after: `5 passed, 0 failed, 13 skipped`** (from `3 passed,
+2 failed, 13 skipped`).
+
+### The generalisation, because it has now happened four times
+
+`T-2505-followup-02` (a synthetic error state read as a real one), the doctor's
+confident skip (`status-matrix` §5.10), and all three above are the same bug:
+**an absent, skipped, or unknown state rendering as a definite one.** A skipped
+check is indistinguishable from a check that is not wired; a zero-valued field
+is indistinguishable from a real zero. `planning/tasks/phase-30.md` carries this
+as a phase invariant rather than a per-card criterion.
+
+The other half of the lesson is narrower and sharper: **a fixture that the
+author wrote and the code the author wrote will agree with each other whether or
+not either matches the program.** All three checks had green tests. Only the
+golden captured from the real CLI, and the run against the real node, disagreed.
+
+### Open, not closed
+
+- `sriov.vf_capable_nic_present` skips because its enumeration command *errors*,
+  not because the hardware is absent. That is the same class as the three above
+  and is deliberately left open rather than assumed benign.
+- Eleven of the thirteen skips are legitimately token-gated: they read
+  authenticated API surfaces, unlike `pwa.servable`. Closing them needs a minted
+  bearer token on the node, which needs a real PVE login this environment does
+  not have.
+- The on-device half of row 73 (install on iOS/Android, one real push, offline
+  shell) remains human-only work in `needs-hardware-validation.md` §T-2901.

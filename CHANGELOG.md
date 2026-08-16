@@ -49,6 +49,19 @@ verified defect or security gap in v4.0.0; none adds a feature.
   mutation-verified, and the check now passes against a real node — see
   `planning/reports/needs-hardware-validation.md` §T-2901, which records the before/after
   capture from `pvecube`.
+- **Two `vnproxctl verify` hardware checks were not checking what they claimed, both found by
+  running the suite on a real node (2026-08-16).** `backup.archive_round_trip` decoded
+  `sizeBytes`/`includedKeys` while the CLI emits `bytes`/`includesKeyMaterial`, so it called every
+  healthy node's backup a "0-byte archive" — and, more seriously, its assertion that a backup must
+  not contain key material without `--include-keys` read an absent field and **could never fail**.
+  `peer.ca_pins_real_chain` demanded the dial address appear in the leaf's SAN list, which is the
+  rule T-2303 deliberately replaced: a PVE-issued certificate covering the node name is now
+  verified against that name, so the check reported `T-1906-bug-01`'s failure mode against a node
+  where the fix for it was working. Its evidence was also rendered with `firstLine()`, which
+  printed an empty SAN list for a certificate carrying six, because `openssl` puts the values on
+  the line after the header. Both checks now pass on `pvecube`; the backup contract is pinned by a
+  golden captured from the CLI itself, and both broken unit fixtures — which had encoded the same
+  wrong expectations as the checks — were corrected.
 - **The v4.0.0 PWA actually works in a production browser now (T-2901).** The shipped CSP
   still pinned `worker-src 'none'; manifest-src 'none'` from before the PWA existed, so
   service-worker registration and the manifest fetch were refused in any real browser — the

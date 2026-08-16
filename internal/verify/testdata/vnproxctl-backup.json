@@ -1,0 +1,12 @@
+{
+  "path": "/var/lib/vnprox/backups/vnprox-backup-pvecube-20260816-163248.tar.gz",
+  "bytes": 739398,
+  "node": "pvecube",
+  "createdAt": "2026-08-16T16:32:48Z",
+  "schemaVersion": 48,
+  "includesKeyMaterial": false,
+  "secretClasses": [],
+  "entries": 3,
+  "pruned": [],
+  "warnings": []
+}

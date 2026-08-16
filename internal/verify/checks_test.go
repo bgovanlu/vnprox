@@ -212,7 +212,7 @@ func brokenFixtures() []mutation {
 			name:  "the backup archive is empty",
 			check: "backup.archive_round_trip",
 			apply: func(d *Deps) {
-				hostOf(d).cmds["vnproxctl backup -o json"] = `{"path":"/tmp/b","sizeBytes":0,"schemaVersion":34,"entries":0,"includedKeys":false}`
+				hostOf(d).cmds["vnproxctl backup -o json"] = `{"path":"/tmp/b","bytes":0,"schemaVersion":48,"entries":0,"includesKeyMaterial":false}`
 			},
 			wantDetail: "empty backup",
 		},
@@ -237,13 +237,21 @@ func brokenFixtures() []mutation {
 			wantDetail: "Control failed",
 		},
 		{
-			name:  "the node's PVE-issued leaf does not cover the address peers dial it on",
+			// Corrected 2026-08-16. This row used to keep `DNS:pve1` and drop
+			// only the dial address — but that shape is a PASS under the rule
+			// T-2303 actually implements (resolve the dial host to the node
+			// name and verify against that), and the check reporting it as a
+			// failure produced a false FAIL on real hardware. Breaking it
+			// properly means covering NEITHER the node name nor the address,
+			// which is the only state that genuinely fails closed on the
+			// first peer call.
+			name:  "the node's PVE-issued leaf covers neither its node name nor the address peers dial it on",
 			check: "peer.ca_pins_real_chain",
 			apply: func(d *Deps) {
 				hostOf(d).cmds["openssl x509 -in /etc/pve/local/pve-ssl.pem -noout -ext subjectAltName"] =
-					"X509v3 Subject Alternative Name:\n    DNS:pve1, IP Address:192.168.100.99\n"
+					"X509v3 Subject Alternative Name:\n    DNS:some-other-node, IP Address:192.168.100.99\n"
 			},
-			wantDetail: "does not cover",
+			wantDetail: "covers neither",
 		},
 		{
 			name:  "a certificate on the real pmxcfs mount is missing from the inventory",

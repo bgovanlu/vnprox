@@ -222,12 +222,27 @@ func checkBackupRoundTrip(ctx context.Context, d Deps) Outcome {
 		return Fail(fmt.Sprintf("vnproxctl backup failed on %s: %v", node, err), NewEvidence(SourceCommand, "vnproxctl backup -o json", out+"\n"+err.Error()))
 	}
 
+	// These names are `vnproxctl backup -o json`'s actual keys
+	// (cmd/vnproxctl/backupcmd.go), pinned by the shared golden at
+	// testdata/vnproxctl-backup.json — see backupContractGolden in
+	// checks_host_test.go for why this file exists at all.
+	//
+	// The struct originally read "sizeBytes" and "includedKeys", which the
+	// CLI has never emitted. json.Unmarshal ignores absent fields, so
+	// SizeBytes was always 0 and this check reported "wrote a 0-byte
+	// archive: an empty backup of a live store" on every healthy node —
+	// while IncludedKeys, always false, made the key-material assertion
+	// permanently dead. Found 2026-08-16 on pvecube, where a hand-run
+	// `vnproxctl backup` wrote 720 KiB at the same moment this check called
+	// it empty. Its unit fixture had invented the same wrong names, so the
+	// check and its test agreed with each other and both disagreed with the
+	// program.
 	var body struct {
 		Path         string `json:"path"`
-		SizeBytes    int64  `json:"sizeBytes"`
+		SizeBytes    int64  `json:"bytes"`
 		SchemaVer    int    `json:"schemaVersion"`
 		Entries      int    `json:"entries"`
-		IncludedKeys bool   `json:"includedKeys"`
+		IncludedKeys bool   `json:"includesKeyMaterial"`
 	}
 	if err := json.Unmarshal([]byte(out), &body); err != nil {
 		return Fail(fmt.Sprintf("vnproxctl backup on %s produced output that is not the documented JSON: %v", node, err), ev)
@@ -349,18 +364,64 @@ func checkPeerCAPinsRealChain(ctx context.Context, d Deps) Outcome {
 		return Fail(fmt.Sprintf("the leaf on %s verifies but its SAN list could not be read: %v", node, sanErr), verifyEv, sanEv)
 	}
 
-	// Peers are dialled by address (internal/peer builds the URL from
-	// GET /cluster/status), so an address missing from the SAN list is a
-	// pinned-verification failure waiting for the first peer call.
+	// What must be covered is a name internal/peer can actually verify
+	// against — NOT necessarily the dial address.
+	//
+	// This assertion was wrong until 2026-08-16, and wrong in the direction
+	// that costs the most: it demanded the dial address appear in the SAN
+	// list, which is the pre-T-2303 rule. T-2303 changed peer verification
+	// precisely so a certificate that covers the node name works even when
+	// no IP SAN matches (certs.ResolveVerifyName, rules 1 and 2; the trust
+	// layer then sets ServerName to the resolved name — internal/peer/trust.go).
+	// On pvecube, whose real PVE leaf carries `DNS:pvecube`,
+	// `DNS:pvecube.localdomain.` and an IP SAN for a different interface than
+	// the one the operator reaches it on, this check reported a FAIL against
+	// a node the product handles correctly. A hardware suite that cries wolf
+	// gets ignored, which costs more than the check was ever worth.
+	//
+	// So: the node name (or an FQDN rooted at it) is the primary covered
+	// name, and the dial address is an accepted alternative — the same
+	// precedence ResolveVerifyName itself applies.
+	sanList := strings.TrimSpace(sanOut)
 	addr := nodeAddress(d.Nodes, node)
-	if addr == "" {
-		return Pass(fmt.Sprintf("%s's PVE-issued leaf verifies against the real cluster CA (PVE reported no management address for it, so the SAN coverage of that address was not checked)", node), verifyEv, sanEv)
+	coversNodeName := sanCovers(sanOut, node)
+	coversAddr := addr != "" && sanCovers(sanOut, addr)
+
+	switch {
+	case coversNodeName:
+		detail := fmt.Sprintf("%s's PVE-issued leaf verifies against the real cluster CA and its SAN list covers the node name %q, which is what internal/peer resolves a peer's dial host to (T-2303)", node, node)
+		if addr != "" && !coversAddr {
+			detail += fmt.Sprintf(". The dial address %s is NOT in the SAN list, and that is fine by design — this is exactly the T-1906-bug-01 shape T-2303 stopped failing closed", addr)
+		}
+		return Pass(detail, verifyEv, sanEv)
+	case coversAddr:
+		return Pass(fmt.Sprintf("%s's PVE-issued leaf verifies against the real cluster CA and its SAN list covers the dial address %s (rule 3 of certs.ResolveVerifyName). It does not cover the node name, which is unusual for PVE-issued certificates but valid", node, addr), verifyEv, sanEv)
+	default:
+		return Fail(fmt.Sprintf("%s's leaf verifies against the cluster CA but its SAN list covers neither the node name %q nor the dial address %q, so certs.ResolveVerifyName reports covered=false and the first peer call fails closed. Full SAN list: %s",
+			node, node, addr, sanList), verifyEv, sanEv)
 	}
-	if !strings.Contains(sanOut, addr) {
-		return Fail(fmt.Sprintf("%s's leaf verifies against the cluster CA but its SAN list does not cover %s, the address peers dial it on: %s. This is T-1906-bug-01's failure mode, observable only on real PVE-issued certificates",
-			node, addr, firstLine(strings.TrimSpace(sanOut))), verifyEv, sanEv)
+}
+
+// sanCovers reports whether an `openssl x509 -ext subjectAltName` dump names
+// the given host.
+//
+// It exists because the surrounding check used to report its evidence through
+// firstLine(), and openssl prints the header on line 1 with every SAN on the
+// line *after* it — so a failing verdict rendered as
+// "X509v3 Subject Alternative Name:" with nothing after the colon, which reads
+// as "this certificate has no SANs" for a certificate carrying six. In a
+// report designed to be sent to strangers, that is worse than saying nothing.
+//
+// Matching is substring-based on purpose: the openssl dump interleaves
+// `DNS:` and `IP Address:` prefixes and PVE emits a root-dotted FQDN
+// ("pvecube.localdomain."), so parsing it into a typed list would add a second
+// place for the format to be wrong. The comparison is case-insensitive because
+// DNS names are.
+func sanCovers(sanDump, host string) bool {
+	if host == "" {
+		return false
 	}
-	return Pass(fmt.Sprintf("%s's PVE-issued leaf verifies against the real cluster CA and its SAN list covers %s, the address peers dial", node, addr), verifyEv, sanEv)
+	return strings.Contains(strings.ToLower(sanDump), strings.ToLower(host))
 }
 
 func nodeAddress(nodes []Node, name string) string {
@@ -453,9 +514,13 @@ func checkCLIDaemonIndependent(ctx context.Context, d Deps) Outcome {
 
 	var report struct {
 		Results []struct {
-			Check       string `json:"check"`
-			Status      string `json:"status"`
-			Remediation string `json:"remediation"`
+			Check  string `json:"check"`
+			Status string `json:"status"`
+			// `vnproxctl doctor -o json` emits "detail", not "remediation".
+			// The old "remediation" field decoded to "" on every real run;
+			// nothing read it, so unlike the backup mismatch above this was
+			// harmless — removed rather than corrected because the check has
+			// no use for it.
 		} `json:"results"`
 		Summary struct {
 			Pass int `json:"pass"`

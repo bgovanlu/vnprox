@@ -1229,3 +1229,44 @@ The lesson generalises past this check, and is why it is written here rather tha
 message: **a check that skips is indistinguishable from a check that is not wired**, and this one
 had passed its own unit fixtures — which supplied a `Deps.Daemon` — for a week. Only running it
 against a real deployment in that deployment's default state exposed it.
+
+### Two more checks that were not checking (2026-08-16, same deployment)
+
+With `pwa.servable` running, the full hardware suite was run on `pvecube` for the first time since
+Phase 29. It reported **2 failed**. Both were defects in the checks, not in the product — and both
+had the same root cause as the skip above: the check's own fixture was written from the author's
+memory of an interface rather than from the interface.
+
+- [x] **`backup.archive_round_trip` called every healthy node's backup empty.** It reported
+      "wrote a 0-byte archive: an empty backup of a live store" while a hand-run
+      `vnproxctl backup` on the same node, at the same moment, wrote 720 KiB. The check decoded
+      `sizeBytes` and `includedKeys`; `vnproxctl backup -o json` emits `bytes` and
+      `includesKeyMaterial`, and has never emitted the other two. `encoding/json` leaves absent
+      fields at their zero value, so the size assertion failed permanently **and the key-material
+      assertion — "a backup must not include key material unless `--include-keys` was passed" —
+      could never fire at all.** That second half is the one that matters: it is a security
+      assertion that had been dead for its whole life. Now passes on `pvecube` with real numbers
+      (742,360 bytes, schema 48). Pinned by a golden captured from the CLI itself
+      (`internal/verify/testdata/vnproxctl-backup.json`) which both sides assert against, so a
+      future rename fails a test instead of a deployment.
+- [x] **`peer.ca_pins_real_chain` reported a false failure against a correct node.** It demanded
+      the dial address appear in the leaf's SAN list — **the pre-T-2303 rule**. T-2303 changed
+      peer verification specifically so a certificate covering the node name is verified against
+      that name (`certs.ResolveVerifyName` rules 1 and 2), which is what makes a stale or absent
+      IP SAN survivable. `pvecube`'s real PVE leaf carries `DNS:pvecube`,
+      `DNS:pvecube.localdomain.` and an IP SAN for a different interface than the one it is
+      reached on, so the check flagged `T-1906-bug-01`'s "failure mode" against a node where the
+      fix for that bug was working exactly as designed. Its evidence was also rendered through
+      `firstLine()`, and `openssl x509 -ext subjectAltName` prints the header on line 1 with every
+      SAN on line 2 — so the failure displayed an **empty** SAN list for a certificate carrying
+      six. In a report built to be sent to strangers, that is worse than saying nothing. The check
+      now asserts what the product asserts, and the broken fixture in `checks_test.go` (which had
+      encoded the same wrong expectation) was corrected to break the check the only way that
+      genuinely fails closed: covering neither the node name nor the address.
+
+**Suite state after the fixes: `5 passed, 0 failed, 13 skipped`.** Eleven of the thirteen skips
+are legitimately token-gated — unlike `pwa.servable`, they read authenticated API surfaces — and
+two are environmental (`pvecube` has no LACP bond; switch push is dark by config). One,
+`sriov.vf_capable_nic_present`, skips because its enumeration command errors rather than because
+the hardware is absent, and is worth a look: **a skip that is really a broken command is the
+third instance of this arc's recurring bug, and it should not be closed by assuming.**
