@@ -223,10 +223,37 @@ func (s *Service) deriveCapabilities(ctx context.Context, identity PVEIdentity) 
 	return caps, nil
 }
 
-// forceReadOnly zeroes every write-shaped flag (every flag except netRead/
-// sdnRead/fwRead/audit) in place across every node's Capabilities, per
-// Config.ReadOnly's doc comment — the config's "observe-only until you
-// trust it" mode (docs/features/blueprints.md §3).
+// forceReadOnly zeroes the four config-write flags in place across every
+// node's Capabilities, per Config.ReadOnly — the config's "observe-only until
+// you trust it" mode (docs/features/blueprints.md §3). Applied on both the
+// cookie path (above) and, since T-2903, the bearer path
+// (middleware.go:200).
+//
+// It does NOT zero every write-shaped flag, and this comment used to say it
+// did ("every flag except netRead/sdnRead/fwRead/audit"). Two capabilities
+// survive read_only, each gating a mutating route family:
+//
+//   - Capture — POST /captures and POST /captures/{id}/stop
+//     (internal/api/captures.go:94-95) start and stop real packet captures on
+//     hosts. docs/security.md's own capture paragraph argues capture is
+//     "at least as strict as netWrite's" gate and a "materially stronger
+//     read", so a read_only deployment permitting it while forbidding a bridge
+//     rename is at best surprising.
+//   - Automation — POST /webhooks registers an outbound destination the
+//     daemon will then POST to (internal/api/webhooks.go:167). It is never
+//     derived from a PVE ACL, so on the cookie path zeroing it would be a
+//     no-op; on the T-2903 bearer path it is not, because an automation-scoped
+//     token carries it into a read_only deployment.
+//
+// Whether that is the intended behaviour is a product question, not a comment
+// fix: Automation also gates the read-only WS "events" topic, and capture is
+// arguably observation. Both are deliberately left as-is and recorded in
+// planning/tasks/phase-30.md (T-3003-followup-01) rather than changed here,
+// with TestForceReadOnly_PinsExactlyWhichFlagsItClears below pinning today's
+// behaviour so whichever way it is decided, the change is deliberate.
+//
+// Found 2026-08-16 by the T-3003 agent, reading this function to render a
+// token's effective scope honestly rather than trusting its documentation.
 func forceReadOnly(caps map[string]Capabilities) {
 	for node, c := range caps {
 		c.NetWrite = false

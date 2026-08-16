@@ -180,6 +180,16 @@ semantics with no UI to observe the change:
   when they resolve to private/loopback/link-local addresses, unless `[webhooks]
   allow_private_targets` is set. An operator whose webhook silently stopped working after
   upgrading needs to see *which policy refused it*, not a generic delivery failure.
+
+  > **Card corrected 2026-08-16 (T-3003 found it).** All three webhook routes sit behind
+  > `RequireCap("automation")` (`internal/api/webhooks.go:167,176`), and `automation` is **never**
+  > derived from a PVE privilege — `DeriveCapabilities` never sets it
+  > (`internal/auth/caps.go:27-39`), and `docs/api.md` states the consequence outright: a browser
+  > session alone can never reach them; only a token minted with `automation` in its scopes can.
+  > So `GET /webhooks` from the SPA is a guaranteed 403, and a registration form would be a
+  > control that could only ever fail. The deliverable is therefore to render the 403 as a
+  > **named refusal** — which capability, why logging in cannot grant it, how to actually reach
+  > it — and to gate any form on the daemon's own 200, never on a client-side capability guess.
 - **Plugins**: list, enable, disable, remove — `GET /plugins`, `POST /plugins/{id}/enable`,
   `POST /plugins/{id}/disable`, `DELETE /plugins/{id}` — with the declared capability scope shown
   as the ceiling it is.
@@ -191,8 +201,16 @@ semantics with no UI to observe the change:
 
   Signature verification stays mandatory; this card adds no trust bypass, and a registry-supplied
   manifest must not be able to widen anything (`T-2904`).
-- **`doctor --live`**: render `GET /doctor/live`'s ten checks, including the two that still
-  `skip` by design (`T-2406-followup-01`/`-02`). **A skipped check must not render as a passing
+- **`doctor --live`**: render `GET /doctor/live`'s checks, including the two that still
+  `skip` by design (`T-2406-followup-01`/`-02`).
+
+  > **Card corrected 2026-08-16 (T-3003 found it).** An earlier revision said "ten checks".
+  > `internal/doctor.LiveChecks` is **four**: `pve_reachable`, `pve_privileges`, `peer_secret`,
+  > `clock_skew`. Ten is the full `vnproxctl doctor` suite; the other six are CLI-local
+  > observations the daemon deliberately declines to answer on a CLI's behalf (`RunLive`'s doc
+  > comment: mixing them "would blur which half of a report came from where"), and
+  > `docs/deployment.md` says `--live` takes the CLI from 6-of-10 to 8-of-10 answered. The screen
+  > must state its scope, so a green four is never read as a green ten. **A skipped check must not render as a passing
   one** — that is the same failure this arc keeps finding, and `vnproxctl verify`'s own exit-code
   rule is the precedent to copy.
 
@@ -466,3 +484,60 @@ exhaustiveness that is the only thing currently keeping the two in step. Both mu
   `topology-paint-modes` describes a backup-path paint mode that does not exist either. The help
   coverage gate proves every screen *has* a topic; nothing proves a topic describes something
   real. That is `T-3006`'s natural extension and should be considered when it is written.
+
+---
+
+## `T-3003-followup-01` · `read_only` does not restrain `capture` or `automation` (open)
+
+**Found:** 2026-08-16 by the T-3003 agent, reading `forceReadOnly` in order to render a token's
+*effective* scope honestly rather than trusting the function's own documentation. Confirmed by the
+orchestrator. **A product decision, not an obvious bug — filed with the evidence and the options
+rather than fixed.**
+
+`internal/auth.forceReadOnly` clears four flags: `NetWrite`, `SDNWrite`, `FWWrite`, `GuestNet`.
+Its doc comment claimed it cleared "every write-shaped flag (every flag except netRead/sdnRead/
+fwRead/audit)", and `docs/security.md` claimed "every `RequireCap`-gated mutating route in
+`internal/api` gates on these same flags". **Both statements were false**, and both have been
+corrected in place; this card is about the behaviour they described.
+
+Two capabilities survive `read_only`, and each gates a route family that mutates real state:
+
+| Capability | Survives `read_only`? | Mutating routes it gates |
+|---|---|---|
+| `capture` | **yes** | `POST /captures`, `POST /captures/{id}/stop` (`internal/api/captures.go:94-95`) — starts and stops packet captures on hosts |
+| `automation` | **yes** | `POST /webhooks`, `DELETE /webhooks/{id}` (`internal/api/webhooks.go:167,176`) — registers an outbound destination the daemon then POSTs to |
+
+So a deployment configured "observe-only until you trust it" will today refuse a bridge rename and
+permit starting a packet capture on a node.
+
+**Why this is not just "fix it":**
+
+- `automation` also gates the **read-only** WS `events` topic. Zeroing the flag removes a read
+  capability along with the write one, which is its own kind of wrong.
+- A packet capture is arguably observation — it is precisely the argument `docs/security.md`'s
+  capture paragraph makes for capture being a *stronger read*. An operator who set `read_only` to
+  watch a cluster safely may well want capture to keep working.
+- Against both: `capture` is derived from `Sys.Modify` **and** `Sys.Console` — root-shell-
+  equivalent — and the same paragraph calls it "at least as strict as `netWrite`'s" gate. A mode
+  that forbids the weaker action and permits the stronger one is hard to defend whichever way the
+  words are read.
+
+**Reachability, stated precisely so the risk is not overstated:** on a cookie session `automation`
+is always `false` — `DeriveCapabilities` never sets it (`internal/auth/caps.go:27-39`). The
+automation half of this gap is reachable **only** with an `automation`-scoped bearer token, which
+is exactly the surface `T-2903` brought under `read_only` in Phase 29. The capture half is
+reachable by any session whose PVE ACLs grant `Sys.Modify` + `Sys.Console`.
+
+**Options:**
+
+1. Split `automation` into a read half (WS `events`) and a write half (webhook registration), and
+   clear only the write half. Most correct; most work.
+2. Clear both flags in `read_only` and accept that the events topic and packet capture go with
+   them. Simplest, and defensible given `read_only`'s stated intent — but it silently removes
+   capability from anyone relying on it today.
+3. Leave the behaviour and keep the corrected documentation. Cheapest, and now honest, but it
+   leaves a mode whose name promises more than it delivers.
+
+**Whoever takes this:** `internal/auth`'s `TestForceReadOnly_PinsExactlyWhichFlagsItClears` pins
+today's behaviour on purpose. It is not asserting the behaviour is right — it is there so that
+changing it cannot happen by accident, and its failure message says which document to move with it.
