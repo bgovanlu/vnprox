@@ -105,6 +105,19 @@ describe("policyVerdict", () => {
     expect(v2.rules[0]?.assert).toEqual([]);
   });
 
+  // T-3204: internal/change.PolicySet's Go zero value leaves Rules nil, and a
+  // nil slice marshals to JSON `null`, not `[]` — this is what a cluster with
+  // no installed policy set genuinely sends over the wire (confirmed against
+  // a real daemon: GET /policies returns `"set":{"rules":null,...}`), not the
+  // `rules: []` the test above already covers. Found via a real crash
+  // ("Cannot read properties of null (reading 'length')") reproducing on
+  // every changeset review dialog for such a cluster.
+  it("treats a null (not just empty) installed rules array as no policy installed", () => {
+    const nullRules = status({ set: { version: 1, rules: null } });
+    const v = verdictFor(nullRules, denied);
+    expect(v.kind).toBe("none-installed");
+  });
+
   it("distinguishes a rule that genuinely asserts nothing", () => {
     const v = verdictFor(status(), {
       rules: [{ ruleId: "never-vmbr9", description: "", severity: "deny", violatingOps: [0] }],

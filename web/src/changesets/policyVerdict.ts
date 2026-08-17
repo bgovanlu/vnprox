@@ -140,7 +140,16 @@ export function policyVerdict(input: PolicyVerdictInput): PolicyVerdict {
     return { kind: "loading" };
   }
 
-  const installed = status.set.rules;
+  // status.set.rules is a Go nil slice ([]PolicyRule) whenever a cluster has
+  // no installed policy set (internal/change.PolicySet's documented "zero
+  // value is a valid, empty set" — internal/change/policy_service.go's
+  // PolicyStatus never re-initializes it) — that marshals as JSON `null`,
+  // not `[]` (T-3204: found via a crash in ReviewApplyScreen, "Cannot read
+  // properties of null (reading 'length')", on every changeset review for a
+  // cluster with no configured policy — the common case). `result.rules ??
+  // []` below already guards the analogous field; this is the same
+  // established convention, applied here too.
+  const installed = status.set.rules ?? [];
   if (installed.length === 0) {
     return { kind: "none-installed" };
   }

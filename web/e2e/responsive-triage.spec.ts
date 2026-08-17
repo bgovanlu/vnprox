@@ -23,6 +23,15 @@
 // touchesMgmtPath ack-block variant of this same ceremony, staged through
 // the real wizard at desktop width first.
 import { expect, test, type Page } from "@playwright/test";
+import { isolateFile } from "./isolate";
+import { mockURL } from "./shards";
+
+// T-3204: this file stages/applies+confirms a changeset via the API and
+// then asserts on that pending/committed state; run twice in a row
+// (`--repeat-each=2`) against a shared daemon the second repeat inherited
+// the first repeat's already-confirmed changeset (T-2505's AC3). Its own
+// vnproxd (web/e2e/isolate.ts) removes the sharing.
+isolateFile({ config: "testdata/dev.toml", port: 64003, mockURL: mockURL("default") });
 
 test.use({ viewport: { width: 390, height: 844 } });
 

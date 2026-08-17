@@ -21,10 +21,35 @@
 // policy_in DROP; the fixture scripts vm-a's live probe toward that exact
 // tuple as "reachable"), clicking Verify live surfaces the divergence
 // callout both in the result panel and on the embedded map overlay.
+import { availableParallelism } from "node:os";
+
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { switchToGraphView } from "./helpers";
+import { coresFactor } from "../perf/budgets";
+import { isolateFile } from "./isolate";
+import { mockURL } from "./shards";
 
-test.use({ baseURL: "https://127.0.0.1:18007" });
+// T-3204: T-806's "Verify live" tests below mute/ack findings and drive
+// real divergence probes through the daemon's own store; `--repeat-each=2`
+// against a shared daemon ran the second repeat against state the first
+// repeat had already mutated (T-2505's AC3). Its own vnproxd
+// (web/e2e/isolate.ts) removes the sharing — sim-lab's pvemock (18006)
+// stays shared and read-only.
+isolateFile({ config: "testdata/dev-sim.toml", port: 64009, mockURL: mockURL("sim") });
+
+/** T-2505's deadline ladder (web/playwright.config.ts's `slowFactor`), applied
+ * here explicitly: traceFromContextMenu's per-action/toPass timeouts below are
+ * literals, not `expect()` calls, so they never inherited the config's
+ * `expect: { timeout: 30_000 * slowFactor }` scaling the rest of this suite
+ * gets for free. T-3204's flake investigation (30-37.5% failure rate on this
+ * exact test, evidence in web/test-results/e2e-wave2*.log and
+ * var/e2e-runs/runs.jsonl, all citing full concurrent-shard runs — never
+ * reproduced in 15/15 isolated repeats on an idle machine) is consistent with
+ * exactly this: a machine slow/contended enough that a mid-gesture re-layout
+ * (this function's own doc comment) does not settle inside a fixed 5s/60s
+ * budget, the same "deadlines are a function of the machine" conclusion
+ * T-2505-input-01/02 reached for the rest of the suite. */
+const slowFactor = coresFactor(availableParallelism());
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");
@@ -98,9 +123,9 @@ const VERDICT_TEXT = /^(Allowed|Blocked|Unreachable|Could not determine)$/;
  * genuinely missing node/menu item still fails after the outer timeout. */
 async function traceFromContextMenu(page: Page, nodeName: string, action: string): Promise<void> {
   await expect(async () => {
-    await page.getByRole("button", { name: nodeName }).click({ button: "right", timeout: 5_000 });
-    await page.getByRole("menuitem", { name: action }).click({ timeout: 5_000 });
-  }).toPass({ timeout: 60_000 });
+    await page.getByRole("button", { name: nodeName }).click({ button: "right", timeout: 5_000 * slowFactor });
+    await page.getByRole("menuitem", { name: action }).click({ timeout: 5_000 * slowFactor });
+  }).toPass({ timeout: 60_000 * slowFactor });
 }
 
 test("T-504 AC1/AC3: guest deny verdict deep-links into the focused firewall rule", async ({ page }) => {

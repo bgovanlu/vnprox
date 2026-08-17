@@ -74,6 +74,20 @@ func classifyRecordFromPeer(r peer.FlowRecord) flow.Record {
 	return flow.Record{SrcIP: r.SrcIP, DstIP: r.DstIP, SrcPort: r.SrcPort, DstPort: r.DstPort, Proto: r.Proto, VLAN: r.VLAN, Node: r.Node}
 }
 
+// FlowRecordJSON exports toFlowRecordResponse's conversion for the
+// `flows.query` MCP tool (cmd/vnproxd/mcpwire.go's mcpQueryFlows), so that
+// tool's payload is docs/api.md's documented flow.Record shape — not
+// store.FlowSample's own bare Go field names (Node, SrcIP, ID, IngressIf...),
+// which is what mcpQueryFlows returned verbatim before T-3204 found it: a
+// `netRead` MCP client reading `flows.query` got PascalCase/abbreviated
+// field names matching no documented contract anywhere, including
+// `GET /flows`'s own response for the identical underlying data. Same
+// function REST already uses — not a second, potentially-drifting copy of
+// the conversion.
+func FlowRecordJSON(s store.FlowSample, classifier *flow.Classifier) any {
+	return toFlowRecordResponse(s, classifier)
+}
+
 func toFlowRecordResponse(s store.FlowSample, classifier *flow.Classifier) flowRecordResponse {
 	resp := flowRecordResponse{
 		Node: s.Node, SrcIP: s.SrcIP, DstIP: s.DstIP, SrcRef: s.SrcRef, DstRef: s.DstRef,

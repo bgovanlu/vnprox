@@ -10,6 +10,7 @@ import (
 	"github.com/bgovanlu/vnprox/internal/auth"
 	"github.com/bgovanlu/vnprox/internal/change"
 	"github.com/bgovanlu/vnprox/internal/findings"
+	"github.com/bgovanlu/vnprox/internal/flow"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 	"github.com/bgovanlu/vnprox/internal/mcp"
 	"github.com/bgovanlu/vnprox/internal/sim"
@@ -66,7 +67,7 @@ func setupMCP(
 	}
 	if flowRepo != nil {
 		deps.Flows = func(ctx context.Context, args json.RawMessage) (any, error) {
-			return mcpQueryFlows(ctx, flowRepo, args)
+			return mcpQueryFlows(ctx, flowRepo, opts.FlowClassifier, args)
 		}
 	}
 	if ipamSvc != nil {
@@ -130,7 +131,13 @@ func (a mcpTokenAuth) Live(ctx context.Context, id string) bool {
 
 // mcpQueryFlows parses the flows.query arguments into a store.FlowFilter and
 // returns one page of matching flows.
-func mcpQueryFlows(ctx context.Context, repo *store.FlowSampleRepo, args json.RawMessage) (any, error) {
+// mcpQueryFlows answers the frozen `flows.query` MCP tool. Its payload is
+// docs/api.md's documented flow.Record shape (api.FlowRecordJSON — the exact
+// conversion GET /flows itself uses, classifier included), not
+// store.FlowSample's bare Go field names verbatim (T-3204: found with no
+// prior regression guard, so this was already wrong on the wire — see
+// api.FlowRecordJSON's doc comment).
+func mcpQueryFlows(ctx context.Context, repo *store.FlowSampleRepo, classifier *flow.Classifier, args json.RawMessage) (any, error) {
 	var q struct {
 		Guest  string `json:"guest"`
 		Subnet string `json:"subnet"`
@@ -150,12 +157,13 @@ func mcpQueryFlows(ctx context.Context, repo *store.FlowSampleRepo, args json.Ra
 		limit = 100
 	}
 	filter := store.FlowFilter{Guest: q.Guest, Subnet: q.Subnet, Source: q.Source, VLAN: q.VLAN, Port: q.Port, Proto: q.Proto}
-	items, next, err := repo.Query(ctx, filter, "", limit)
+	samples, next, err := repo.Query(ctx, filter, "", limit)
 	if err != nil {
 		return nil, err
 	}
-	if items == nil {
-		items = []store.FlowSample{}
+	items := make([]any, len(samples))
+	for i, s := range samples {
+		items[i] = api.FlowRecordJSON(s, classifier)
 	}
 	return map[string]any{"items": items, "nextCursor": next}, nil
 }

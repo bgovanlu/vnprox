@@ -10,6 +10,15 @@
 // network state — the same reason POST /simulate/verify's own e2e
 // coverage (simulator.spec.ts) is deterministic against sim-lab.
 import { expect, test, type Page } from "@playwright/test";
+import { isolateFile } from "./isolate";
+import { mockURL } from "./shards";
+
+// T-3204: this file toggles the interior inspector's own enable/mute state
+// server-side; `--repeat-each=2` against a shared daemon ran the second
+// repeat against the first repeat's already-toggled state (T-2505's AC3).
+// Its own vnproxd (web/e2e/isolate.ts) removes the sharing — shard-4's
+// default pvemock (read-only) is unaffected.
+isolateFile({ config: "testdata/dev.toml", port: 64004, mockURL: mockURL("default") });
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

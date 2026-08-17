@@ -7,13 +7,26 @@
 // the finding clears on the next poll. A second test covers the no-confirm
 // path: the deadline expires → rolled_back and the finding is still present.
 //
-// This spec runs against its OWN vnproxd+pvemock pair (ports 38006/38007,
-// single-node fixture) — the suite's default three-node-vlan cluster is
-// already redundant and raises no mgmt_single_path finding. See
-// web/playwright.config.ts's webServer array and testdata/dev-mgmt.toml.
+// This spec runs against its own pvemock (port 38006, single-node fixture,
+// read-only, shared per web/e2e/shards.ts) — the suite's default
+// three-node-vlan cluster is already redundant and raises no
+// mgmt_single_path finding. See testdata/dev-mgmt.toml.
+//
+// T-3204: as of this file's own doc comment above, this spec already ran
+// against a dedicated mgmt-stack vnproxd rather than the shared default
+// one — but that vnproxd was still shared with federation.spec.ts and
+// federation-clusters.spec.ts (both also list "mgmt" in
+// web/e2e/shards.ts's SPEC_STACKS) and, before T-2505, with the whole
+// suite. This file's own apply/confirm and expire/rollback tests mutate
+// the SAME mgmt_single_path finding + changeset lifecycle, so
+// `--repeat-each=2` ran its second repeat against the first repeat's
+// already-committed changeset (T-2505's AC3). It now gets its OWN vnproxd
+// (web/e2e/isolate.ts, port 64005) rather than sharing 38007 with anything.
 import { expect, test, type Page } from "@playwright/test";
+import { isolateFile } from "./isolate";
+import { mockURL } from "./shards";
 
-test.use({ baseURL: "https://127.0.0.1:38007" });
+isolateFile({ config: "testdata/dev-mgmt.toml", port: 64005, mockURL: mockURL("mgmt") });
 
 // Hides the first-login onboarding walkthrough banner so it doesn't push
 // the finding/wizard affordances around (the exact CSS-via-.style approach

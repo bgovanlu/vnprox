@@ -46,10 +46,17 @@ export interface PolicyRule {
   assert?: PolicyCondition[];
 }
 
-/** A whole policy document. */
+/** A whole policy document. `rules` is `null` on the wire (never `[]`)
+ * whenever a cluster has no installed policy set — internal/change.PolicySet's
+ * Go zero value leaves its `Rules` slice nil, and a nil slice marshals to
+ * JSON `null` (T-3204: found via a crash reproducing on every review dialog
+ * and the Policies panel for a cluster with no configured policy — the
+ * common/default case). Every reader of a *decoded* `PolicySet.rules` must
+ * guard it (`?? []`); a `PolicySet` the CLIENT constructs to send in a PUT
+ * body should still always populate a real array. */
 export interface PolicySet {
   version: number;
-  rules: PolicyRule[];
+  rules: PolicyRule[] | null;
 }
 
 /** One rule's runtime bookkeeping. `probablyMisconfigured` is a report, never

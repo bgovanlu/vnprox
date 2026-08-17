@@ -47,3 +47,32 @@ func TestChangesetView_JSONSchema_Stable(t *testing.T) {
 		t.Error("changesetView JSON unexpectedly carries T-2003's review-surface \"comments\" field — that addition is deliberately scoped to the HTTP API's GET /changesets/{id}, not this MCP view")
 	}
 }
+
+// TestChangesetView_OriginTool_SurvivesForStageTools is T-3204's addition:
+// the test above never sets OriginTool, so it never actually proves that
+// field reaches the wire — and OriginTool is the ONE field that
+// distinguishes the four frozen `changesets.stage.*` tools' payload
+// (internal/mcp/stage.go's stage(), "return toChangesetView(c), nil") from
+// `changesets.create`/`changesets.validate`'s (docs/api.md: "the same
+// changesets.create/validate payload, plus originTool"). Since all six
+// tools share this one function verbatim, this one extra assertion closes
+// the gap for all four stage tools at once rather than needing a fifth
+// near-duplicate test per tool.
+func TestChangesetView_OriginTool_SurvivesForStageTools(t *testing.T) {
+	view := toChangesetView(change.Changeset{
+		ID: "cs1", Title: "t", Author: "root", Status: change.StatusDraft,
+		Origin: change.OriginMCP, OriginTokenID: "tok-1", OriginTool: "changesets.stage.bridge",
+		CreatedAt: 1, UpdatedAt: 2,
+	})
+	got, err := json.Marshal(view)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var generic map[string]any
+	if err := json.Unmarshal(got, &generic); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if generic["originTool"] != "changesets.stage.bridge" {
+		t.Errorf("changesetView JSON missing/wrong frozen field \"originTool\" for a stage-tool-created draft (got %v)", generic["originTool"])
+	}
+}

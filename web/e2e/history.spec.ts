@@ -19,10 +19,24 @@
 // this is the read-only enforcement AC5 also calls out).
 import dgram from "node:dgram";
 import { expect, request, test, type Page } from "@playwright/test";
+import { isolateFile } from "./isolate";
+import { mockURL } from "./shards";
 
-const BASE = "https://127.0.0.1:58007";
+// T-3204: this file both seeds a committed changeset via the API AND
+// scrubs the history timeline against it; flows.spec.ts (the previous
+// sharer of this stack's 58007 daemon) does the same with a NetFlow
+// record. `--repeat-each=2` against the shared daemon ran a file's second
+// repeat against its own first repeat's already-committed changeset
+// (T-2505's AC3). This file's own vnproxd (web/e2e/isolate.ts) is on its
+// own port — deliberately NOT 58007, and deliberately a different port
+// than flows.spec.ts's own isolated daemon (see testdata/dev-ports.tsv),
+// even though both still read the same shared, read-only flow-stack
+// pvemock (mockURL("flow"), 58006).
+isolateFile({ config: "testdata/dev-flow.toml", port: 64006, mockURL: mockURL("flow"), netflowPort: 64016 });
+
+const BASE = "https://127.0.0.1:64006";
 const NETFLOW_HOST = "127.0.0.1";
-const NETFLOW_PORT = 52055;
+const NETFLOW_PORT = 64016; // matches isolateFile's netflowPort override above
 
 const SRC_REF = "bridge:pve1:vmbr0";
 const DST_REF = "bridge:pve2:vmbr0";

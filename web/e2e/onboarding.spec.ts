@@ -6,21 +6,27 @@
 //
 // Fixture note (documented per this repo's own convention — see
 // changesets.spec.ts's "NOT automatable here" doc comment for the
-// precedent): web/playwright.config.ts's webServer pair always runs
-// pvemock against testdata/clusters/three-node-vlan.yaml, and its vnproxd
-// command wipes var/dev-vnprox.db and var/dev-host on every run before
-// starting — so every e2e run already IS a fresh-DB first login by
-// construction, on every spec file, not just this one. This spec
-// deliberately reuses that existing webServer pair against
-// three-node-vlan.yaml rather than standing up a second pvemock+vnproxd
-// pair against testdata/clusters/messy-brownfield.yaml: three-node-vlan's
-// three bridges (vmbr0 on pve1/pve2/pve3) each carry that node's own
-// management IP (10.10.0.1x/24, matching cluster.nodes[].ip in the
-// fixture), so internal/change.DetectProtected (already unit-tested
-// server-side) has exactly the same "detect the management bridge per
-// node" job to do against it as it would against messy-brownfield's
-// vmbr0s — this is a faithful exercise of AC2, not a weakened one, and
-// avoids a second, flakier pvemock+vnproxd pair for equivalent test value.
+// precedent): this spec deliberately reuses its shard's existing default
+// pvemock+vnproxd pair against three-node-vlan.yaml (read-only, via its own
+// isolated daemon below) rather than standing up a second pvemock pair
+// against testdata/clusters/messy-brownfield.yaml: three-node-vlan's three
+// bridges (vmbr0 on pve1/pve2/pve3) each carry that node's own management
+// IP (10.10.0.1x/24, matching cluster.nodes[].ip in the fixture), so
+// internal/change.DetectProtected (already unit-tested server-side) has
+// exactly the same "detect the management bridge per node" job to do
+// against it as it would against messy-brownfield's vmbr0s — this is a
+// faithful exercise of AC2, not a weakened one, and avoids a second,
+// flakier pvemock pair for equivalent test value.
+//
+// T-3204: this file gets its OWN vnproxd (web/e2e/isolate.ts), started
+// fresh before this file's tests and torn down after, rather than sharing
+// its shard's daemon with every other file. "Fresh-DB first login" is this
+// file's own AC1 — under the shard-wide shared daemon T-2505 introduced,
+// that was only true for whichever spec file happened to run first in a
+// shard (and never true twice in a row, which is what made
+// `--repeat-each=2` fail here — see T-2505's AC3). Isolating this file
+// makes the fixture note above and AC1's "fresh-DB" premise actually true on
+// every run, not just the lucky first one.
 //
 // NOT automatable here: actually clicking "Enable LLDP discovery" (step
 // 3). POST /lldp/install runs a REAL `apt-get install -y lldpd` +
@@ -37,6 +43,10 @@
 // (mirroring dev_interfaces_dir's pattern) would let a future task
 // exercise the actual install path end-to-end.
 import { expect, test, type Page } from "@playwright/test";
+import { isolateFile } from "./isolate";
+import { mockURL } from "./shards";
+
+isolateFile({ config: "testdata/dev.toml", port: 64001, mockURL: mockURL("default") });
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

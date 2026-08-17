@@ -29,10 +29,23 @@
 // sit in separate columns with clear space between them.)
 import dgram from "node:dgram";
 import { expect, request, test, type Page } from "@playwright/test";
+import { isolateFile } from "./isolate";
+import { mockURL } from "./shards";
 
-const BASE = "https://127.0.0.1:58007";
+// T-3204: this file sends real NetFlow ingest through the daemon's own
+// listener/store, and history.spec.ts (the previous sharer of this
+// stack's 58007 daemon) also seeds a committed changeset through it.
+// `--repeat-each=2` against the shared daemon accumulated flow records
+// across repeats (T-2505's AC3). This file's own vnproxd
+// (web/e2e/isolate.ts) is on its own port — deliberately NOT 58007, and
+// deliberately different from history.spec.ts's own isolated daemon (see
+// testdata/dev-ports.tsv) — while still reading the same shared,
+// read-only flow-stack pvemock (mockURL("flow"), 58006).
+isolateFile({ config: "testdata/dev-flow.toml", port: 64007, mockURL: mockURL("flow"), netflowPort: 64017 });
+
+const BASE = "https://127.0.0.1:64007";
 const NETFLOW_HOST = "127.0.0.1";
-const NETFLOW_PORT = 52055;
+const NETFLOW_PORT = 64017; // matches isolateFile's netflowPort override above
 
 const SRC_REF = "bridge:pve1:vmbr0";
 const DST_REF = "bridge:pve2:vmbr0";

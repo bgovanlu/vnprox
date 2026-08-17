@@ -19,8 +19,16 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test, type Page } from "@playwright/test";
+import { isolateFile } from "./isolate";
+import { mockURL } from "./shards";
 
-test.use({ baseURL: "https://127.0.0.1:48007" });
+// T-3204: this test's whole premise is "a genuinely NEW finding
+// transition" (see the doc comment above) — a transition that, by
+// definition, fires once. Run twice in a row against a shared daemon
+// (`--repeat-each=2`), the second repeat's finding was no longer new
+// (T-2505's AC3). Its own vnproxd (web/e2e/isolate.ts) gives it a fresh
+// findings engine every run instead.
+isolateFile({ config: "testdata/dev-alert.toml", port: 64008, mockURL: mockURL("alert") });
 
 async function logIn(page: Page): Promise<void> {
   await page.goto("/login");

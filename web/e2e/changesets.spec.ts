@@ -39,6 +39,17 @@
 //     with unenslaved NICs; three-node-vlan deliberately has none.
 import { expect, test, type Page } from "@playwright/test";
 import { switchToGraphView } from "./helpers";
+import { isolateFile } from "./isolate";
+import { mockURL } from "./shards";
+
+// T-3204: this file creates and applies real changesets against its
+// daemon's store, then a later test in this same file re-navigates and
+// asserts on that store's state (drawer re-hydration, draft survival). Run
+// twice in a row against a shared daemon (`--repeat-each=2`), the second
+// repeat's assertions raced/collided with the first repeat's leftover
+// changesets (T-2505's AC3). Its own vnproxd (web/e2e/isolate.ts) removes
+// the daemon-sharing rather than the assertions.
+isolateFile({ config: "testdata/dev.toml", port: 64002, mockURL: mockURL("default") });
 
 // T-605: see topology.spec.ts's identical helper doc comment — suppressing
 // the onboarding walkthrough banner via an injected stylesheet (rather

@@ -14,6 +14,69 @@ import (
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
+// TestMCPQueryFlows_FrozenPayloadFields is a regression guard against the
+// exact shape of drift T-2002 almost shipped for internal/sim.RuleRef,
+// caught here for real (T-3204: no test guarded this tool before): before
+// this fix, mcpQueryFlows returned []store.FlowSample verbatim, whose bare
+// Go field names (Node, SrcIP, ID, IngressIf, ...) matched neither
+// docs/api.md's documented flow.Record shape nor GET /flows' own response
+// for the identical underlying data. It now goes through the same
+// api.FlowRecordJSON conversion GET /flows uses. This test drives a real
+// insert through store.FlowSampleRepo and asserts the frozen `flows.query`
+// payload's marshaled JSON carries docs/api.md's documented field set.
+func TestMCPQueryFlows_FrozenPayloadFields(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "flows.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	repo := store.NewFlowSampleRepo(db)
+	if insertErr := repo.InsertBatch(ctx, []store.FlowSample{{
+		Node: "pve1", SrcIP: "10.0.0.5", DstIP: "10.1.1.50", SrcRef: "bridge:pve1:vmbr0", DstRef: "bridge:pve2:vmbr0",
+		Source: "netflow5", At: 1, Bytes: 150_000, Packets: 100, SrcPort: 51000, DstPort: 443, Proto: 6, VLAN: 100,
+		IngressIf: 1, EgressIf: 2,
+	}}); insertErr != nil {
+		t.Fatalf("InsertBatch: %v", insertErr)
+	}
+
+	res, err := mcpQueryFlows(ctx, repo, nil, nil)
+	if err != nil {
+		t.Fatalf("mcpQueryFlows: %v", err)
+	}
+	payload, err := json.Marshal(res)
+	if err != nil {
+		t.Fatalf("marshal result: %v", err)
+	}
+	var generic struct {
+		NextCursor string           `json:"nextCursor"`
+		Items      []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(payload, &generic); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if len(generic.Items) != 1 {
+		t.Fatalf("items = %v, want one entry (payload: %s)", generic.Items, payload)
+	}
+	item := generic.Items[0]
+	// docs/api.md's flow.Record shape: "{at, node, srcIp, dstIp, srcPort?,
+	// dstPort?, proto, bytes, packets, vlan?, srcRef?, dstRef?,
+	// ingressIfIndex?, egressIfIndex?, source, serviceClass?}".
+	for _, field := range []string{"at", "node", "srcIp", "dstIp", "srcPort", "dstPort", "proto", "bytes", "packets", "vlan", "srcRef", "dstRef", "ingressIfIndex", "egressIfIndex", "source"} {
+		if _, ok := item[field]; !ok {
+			t.Errorf("flows.query item missing frozen field %q (payload: %s)", field, payload)
+		}
+	}
+	// The Go-struct-verbatim shape this test guards against: none of these
+	// bare Go field names may leak onto the wire.
+	for _, leaked := range []string{"Node", "SrcIP", "DstIP", "ID", "IngressIf", "EgressIf"} {
+		if _, ok := item[leaked]; ok {
+			t.Errorf("flows.query item leaks store.FlowSample's bare Go field %q onto the wire (payload: %s)", leaked, payload)
+		}
+	}
+}
+
 // TestMCPPathConstantsAgree pins config.DefaultMCPPath equal to
 // api.DefaultMCPPath, so the config docs and the router mount can never drift
 // (the two packages don't import each other).

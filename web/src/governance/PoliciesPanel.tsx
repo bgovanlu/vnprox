@@ -78,7 +78,8 @@ export function PoliciesPanel() {
   const unreadable = query.error !== null && !notConfigured;
 
   const documentText =
-    draft ?? (status === undefined ? "" : JSON.stringify({ version: status.set.version, rules: status.set.rules }, null, 2));
+    draft ??
+    (status === undefined ? "" : JSON.stringify({ version: status.set.version, rules: status.set.rules ?? [] }, null, 2));
 
   function handleInstall(): void {
     const parsed = parseDocument(documentText);
@@ -134,13 +135,13 @@ export function PoliciesPanel() {
               : ""}
           </p>
 
-          {status.set.rules.length === 0 ? (
+          {(status.set.rules ?? []).length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">
               No rules are installed, so policy-as-code guards nothing on this cluster today.
             </p>
           ) : (
             <ul className="flex flex-col gap-2" data-testid="policy-rule-list">
-              {status.set.rules.map((rule) => {
+              {(status.set.rules ?? []).map((rule) => {
                 const severity = classifySeverity(rule.severity);
                 const stat = statsById.get(rule.id);
                 return (
