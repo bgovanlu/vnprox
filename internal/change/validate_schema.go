@@ -223,15 +223,131 @@ func schemaSDNFabricProtocolFields(protocol string, set map[string]bool, ref str
 	}
 }
 
+// sdnControllerIDRe is real PVE's SDN controller id charset, captured
+// verbatim (planning/reports/evidence/pve-9.2.4-sdn-schema.txt):
+//
+//	[a-zA-Z][a-zA-Z0-9_-]*[a-zA-Z0-9]
+//
+// — a leading letter, then any mix of letters/digits/underscore/hyphen, then
+// a trailing letter or digit (so a lone-letter id is valid but a trailing
+// underscore/hyphen is not) — a materially different charset from both
+// sdnIDRe's zone/vnet pattern (no underscore/hyphen at all) and
+// sdnFabricIDRe's fabric pattern (no underscore, and length-capped at 8;
+// this one carries no captured length cap), so it is its own regex.
+var sdnControllerIDRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*[a-zA-Z0-9]$`)
+
+// schemaSDNControllerID flags an ill-formed SDN controller id.
+func schemaSDNControllerID(id, ref string, out *[]Finding) {
+	if id == "" {
+		return // emptiness is a referential/required-field concern, not charset
+	}
+	if !sdnControllerIDRe.MatchString(id) {
+		*out = append(*out, errorf(codeSDNControllerIDInvalid, ref,
+			"sdn controller id %q is not valid — must start with a letter, end with a letter or digit, and contain only letters, digits, underscores and hyphens in between (Proxmox rejects other shapes)", id))
+	}
+}
+
+// validSdnControllerTypes mirrors real PVE's SDN controller `--type` enum,
+// captured from the same PVE 9.2.4 node as validSdnZoneTypes/
+// validSdnFabricProtocols (planning/reports/evidence/
+// pve-9.2.4-sdn-schema.txt):
+//
+//	--type <bgp | evpn | faucet | isis>
+//
+// Keep it in sync with that capture — TestValidSdnControllerTypesMatchTheCapturedEnum
+// (validate_schema_enum_test.go) fails if it drifts, the same discipline
+// validSdnZoneTypes'/validSdnFabricProtocols' guard tests use. "faucet" here
+// is the controller a faucet zone needs (validSdnZoneTypes' own "faucet"
+// entry's doc comment: "a faucet zone needs a faucet controller") — landing
+// both consistently is this task's own explicit brief, not a coincidence.
+var validSdnControllerTypes = map[string]bool{
+	"bgp": true, "evpn": true, "faucet": true, "isis": true,
+}
+
+// sdnControllerTypeFields names which of SdnControllerCreateParams'
+// type-conditional fields are legal for each controller type — the
+// controller counterpart of sdnFabricProtocolFields. Unlike the fabric
+// capture, the controller capture has no "Conditional options:" grouping,
+// so this assignment is inferred from each field's own description
+// (params_sdn_controller.go's doc comment states the same inference and
+// flags it in needs-hardware-validation.md) rather than read directly off a
+// grouped block: bgp gets asn/bgpMode/bgpMultipathAsPathRelax/ebgp/
+// ebgpMultihop/peers; evpn gets fabric/peerGroupName/routeMapIn/
+// routeMapOut; isis gets isisDomain/isisIfaces/isisNet; faucet gets none —
+// do not invent fields for it. node/nodes/loopback are general (every type
+// may set them) and so are deliberately absent from every entry below, the
+// same "general fields excluded from the conditional check" convention
+// schemaSDNFabricProtocolFields' caller already uses for a fabric's
+// ipPrefix/ip6Prefix.
+var sdnControllerTypeFields = map[string]map[string]bool{
+	"bgp": {
+		"asn": true, "bgpMode": true, "bgpMultipathAsPathRelax": true,
+		"ebgp": true, "ebgpMultihop": true, "peers": true,
+	},
+	"evpn": {
+		"fabric": true, "peerGroupName": true, "routeMapIn": true, "routeMapOut": true,
+	},
+	"isis": {
+		"isisDomain": true, "isisIfaces": true, "isisNet": true,
+	},
+	"faucet": {},
+}
+
+// schemaSDNControllerTypeFields flags an sdn.controller.create/update whose
+// type-conditional fields don't match the allowed set for typ — e.g. asn
+// set on an "isis" controller. typ must already be known valid (callers
+// check validSdnControllerTypes first, same discipline
+// schemaSDNFabricProtocolFields' caller uses).
+func schemaSDNControllerTypeFields(typ string, set map[string]bool, ref string, out *[]Finding) {
+	allowed := sdnControllerTypeFields[typ]
+	for field, isSet := range set {
+		if isSet && !allowed[field] {
+			*out = append(*out, errorf(codeSDNControllerTypeInvalid, ref,
+				"sdn controller field %q is not valid for type %q", field, typ))
+		}
+	}
+}
+
 // validFwDirections includes "group" alongside the real traffic
-// directions "in"/"out": a rule row whose Direction is "group" is not a
-// traffic-direction rule at all but a security-group reference (T-501's
-// documented convention, matching real PVE's own "type":"group" rule
-// shape — see internal/fw/resolve.go's appendRule doc comment), so it must
-// pass this same-field schema check too.
-var validFwDirections = map[string]bool{"in": true, "out": true, "group": true}
+// directions "in"/"out"/"forward": a rule row whose Direction is "group" is
+// not a traffic-direction rule at all but a security-group reference
+// (T-501's documented convention, matching real PVE's own "type":"group"
+// rule shape — see internal/fw/resolve.go's appendRule doc comment), so it
+// must pass this same-field schema check too.
+//
+// "forward" (T-3103) is hardware-captured at cluster, node, and vnet scope
+// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt's "--type <forward |
+// group | in | out>", independently confirmed at all three) — pinned
+// against that capture by validate_schema_enum_test.go. It is deliberately
+// NOT unconditionally valid everywhere: guest scope was not part of that
+// capture, and real pve-firewall has no FORWARD chain on a guest's own
+// vNIC (only a routing/host enforcement point has one) — see
+// schemaFwDirectionForTarget, which rejects "forward" specifically at
+// guest scope using this same base set for everything else.
+var validFwDirections = map[string]bool{"in": true, "out": true, "group": true, "forward": true}
 
 var validFwActions = map[string]bool{"ACCEPT": true, "DROP": true, "REJECT": true}
+
+// validFwForwardPolicies is policy_forward's own accepted set (T-3103,
+// hardware-captured at cluster and vnet scope: planning/reports/evidence/
+// pve-9.2.4-sdn-schema.txt's "--policy_forward <ACCEPT | DROP>") —
+// deliberately narrower than validFwActions: REJECT is not a valid forward
+// policy, unlike policy_in/policy_out.
+var validFwForwardPolicies = map[string]bool{"ACCEPT": true, "DROP": true}
+
+// validFwLogLevelsForward is log_level_forward's own accepted set (T-3103,
+// hardware-captured only at vnet scope: planning/reports/evidence/
+// pve-9.2.4-sdn-schema.txt's "--log_level_forward <alert | crit | debug |
+// emerg | err | info | nolog | notice | warning>"). Deliberately a
+// separate set from validFwLogLevels (the per-rule Log field's enum,
+// unrelated to this ruleset-level option) rather than reused: that set's
+// "low"/"" entries were never captured for log_level_forward, and this one
+// carries "debug", which validFwLogLevels does not — the two enums are not
+// confirmed to be the same set, so this task does not assume they are.
+var validFwLogLevelsForward = map[string]bool{
+	"alert": true, "crit": true, "debug": true, "emerg": true, "err": true,
+	"info": true, "nolog": true, "notice": true, "warning": true,
+}
 
 // validFwLogLevels are PVE's documented firewall log levels; "" is always
 // allowed since Log is an omitempty field on every fw op that carries it.
@@ -570,6 +686,51 @@ func schemaValidateOp(op Op) []Finding {
 	case *SdnFabricDeleteParams:
 		// no params to validate.
 
+	case *SdnControllerCreateParams:
+		schemaSDNControllerID(op.Target.ID, ref, &out)
+		if !validSdnControllerTypes[p.Type] {
+			out = append(out, errorf(codeSDNControllerTypeInvalid, ref, "sdn controller type %q is not recognized", p.Type))
+		} else {
+			schemaSDNControllerTypeFields(p.Type, map[string]bool{
+				"asn":                     p.ASN != 0,
+				"bgpMode":                 p.BgpMode != "",
+				"bgpMultipathAsPathRelax": p.BgpMultipathAsPathRelax,
+				"ebgp":                    p.Ebgp,
+				"ebgpMultihop":            p.EbgpMultihop != 0,
+				"peers":                   len(p.Peers) > 0,
+				"fabric":                  p.Fabric != "",
+				"peerGroupName":           p.PeerGroupName != "",
+				"routeMapIn":              p.RouteMapIn != "",
+				"routeMapOut":             p.RouteMapOut != "",
+				"isisDomain":              p.IsisDomain != "",
+				"isisIfaces":              len(p.IsisIfaces) > 0,
+				"isisNet":                 p.IsisNet != "",
+			}, ref, &out)
+		}
+		if p.BgpMode != "" && p.BgpMode != "auto" && p.BgpMode != "external" && p.BgpMode != "internal" {
+			out = append(out, errorf(codeSDNControllerTypeInvalid, ref, "bgpMode %q must be one of auto, external, internal", p.BgpMode))
+		}
+		if p.ASN < 0 || p.ASN > 4294967295 {
+			out = append(out, errorf(codeSDNControllerTypeInvalid, ref, "asn %d out of range [0,4294967295]", p.ASN))
+		}
+
+	case *SdnControllerUpdateParams:
+		// Type is not part of this params type (immutable — see
+		// params_sdn_controller.go's SdnControllerUpdateParams doc comment),
+		// so the per-type conditional check above cannot run here without
+		// knowing the controller's existing type, which schema class 1
+		// (pure, per-op, no snapshot) does not have — the same deliberate
+		// gap SdnFabricUpdateParams' case leaves for its own protocol.
+		if p.BgpMode != nil && *p.BgpMode != "" && *p.BgpMode != "auto" && *p.BgpMode != "external" && *p.BgpMode != "internal" {
+			out = append(out, errorf(codeSDNControllerTypeInvalid, ref, "bgpMode %q must be one of auto, external, internal", *p.BgpMode))
+		}
+		if p.ASN != nil && (*p.ASN < 0 || *p.ASN > 4294967295) {
+			out = append(out, errorf(codeSDNControllerTypeInvalid, ref, "asn %d out of range [0,4294967295]", *p.ASN))
+		}
+
+	case *SdnControllerDeleteParams:
+		// no params to validate.
+
 	case *SdnDnsZoneCreateParams:
 		if !validDNSName(op.Target.ID) {
 			out = append(out, errorf(codeDNSNameInvalid, ref, "dns zone %q is not a valid domain name", op.Target.ID))
@@ -630,7 +791,7 @@ func schemaValidateOp(op Op) []Finding {
 		}
 
 	case *FwRuleCreateParams:
-		schemaFwDirection(p.Direction, ref, &out)
+		schemaFwDirectionForTarget(p.Direction, op.Target, ref, &out)
 		schemaFwActionForDirection(p.Direction, p.Action, ref, &out)
 		schemaFwLog(p.Log, ref, &out)
 		schemaFwMacro(p.Macro, ref, &out)
@@ -641,7 +802,7 @@ func schemaValidateOp(op Op) []Finding {
 	case *FwRuleUpdateParams:
 		direction := ""
 		if p.Direction != nil {
-			schemaFwDirection(*p.Direction, ref, &out)
+			schemaFwDirectionForTarget(*p.Direction, op.Target, ref, &out)
 			direction = *p.Direction
 		}
 		if p.Action != nil {
@@ -671,12 +832,7 @@ func schemaValidateOp(op Op) []Finding {
 		}
 
 	case *FwOptionsUpdateParams:
-		if p.DefaultIn != nil && !validFwActions[*p.DefaultIn] {
-			out = append(out, errorf(codeFwPolicyInvalid, ref, "defaultIn %q must be one of ACCEPT, DROP, REJECT", *p.DefaultIn))
-		}
-		if p.DefaultOut != nil && !validFwActions[*p.DefaultOut] {
-			out = append(out, errorf(codeFwPolicyInvalid, ref, "defaultOut %q must be one of ACCEPT, DROP, REJECT", *p.DefaultOut))
-		}
+		schemaFwOptionsForScope(p, op.Target, ref, &out)
 
 	case *FwAliasCreateParams:
 		if p.Name == "" {
@@ -1000,7 +1156,23 @@ func schemaVFProvision(p *VFProvisionParams, ref string, out *[]Finding) {
 
 func schemaFwDirection(v, ref string, out *[]Finding) {
 	if !validFwDirections[v] {
-		*out = append(*out, errorf(codeFwDirectionInvalid, ref, "direction %q must be one of in, out", v))
+		*out = append(*out, errorf(codeFwDirectionInvalid, ref, "direction %q must be one of forward, group, in, out", v))
+	}
+}
+
+// schemaFwDirectionForTarget is schemaFwDirection plus a scope-aware guard
+// (T-3103): "forward" is hardware-captured at cluster/node/vnet scope but
+// not guest scope (see validFwDirections' doc comment for why that is not
+// treated as unconditionally valid). Only fw.rule.create/update call this —
+// fw.group.create/update's member rules use the unscoped schemaFwDirection
+// directly, since a security group is not itself scope-bound (it is
+// referenced from whichever scope's rule list names it, and could in
+// principle be referenced from more than one scope at once).
+func schemaFwDirectionForTarget(v string, target inventory.Ref, ref string, out *[]Finding) {
+	schemaFwDirection(v, ref, out)
+	if v == "forward" && fwScopeOfRef(target) == inventory.FwScopeGuest {
+		*out = append(*out, errorf(codeFwScopeInvalid, ref,
+			"direction \"forward\" is not valid for a guest-scope firewall rule — real pve-firewall has no forward chain on a guest's own network interface (only cluster, node, and vnet scope do)"))
 	}
 }
 
@@ -1045,6 +1217,55 @@ func schemaFwMacro(macro, ref string, out *[]Finding) {
 func schemaFwLog(v, ref string, out *[]Finding) {
 	if !validFwLogLevels[v] {
 		*out = append(*out, errorf(codeFwLogInvalid, ref, "log %q is not a recognized log level", v))
+	}
+}
+
+// schemaFwOptionsForScope validates an fw.options.update op's fields
+// against both their own enums and the scope its target names (T-3103):
+//
+//   - defaultIn/defaultOut: valid at cluster/node/guest scope (validFwActions);
+//     rejected outright at vnet scope — real PVE's vnet options endpoint has
+//     no policy_in/policy_out fields at all (hardware-captured,
+//     planning/reports/evidence/pve-9.2.4-sdn-schema.txt's "/cluster/sdn/
+//     vnets/labnet/firewall/options" usage: only enable/policy_forward/
+//     log_level_forward).
+//   - defaultForward: valid at cluster/node/vnet scope (validFwForwardPolicies,
+//     ACCEPT|DROP only — no REJECT); rejected at guest scope (no forward
+//     chain there).
+//   - logLevelForward: only hardware-confirmed at vnet scope
+//     (validFwLogLevelsForward); rejected everywhere else rather than
+//     guessed at, per this task's "an honest rejection beats a silent wrong
+//     write" discipline.
+func schemaFwOptionsForScope(p *FwOptionsUpdateParams, target inventory.Ref, ref string, out *[]Finding) {
+	scope := fwScopeOfRef(target)
+
+	if p.DefaultIn != nil {
+		if scope == inventory.FwScopeVNet {
+			*out = append(*out, errorf(codeFwScopeInvalid, ref, "defaultIn is not valid for a vnet-scope firewall ruleset — real PVE's vnet firewall options have no policy_in"))
+		} else if !validFwActions[*p.DefaultIn] {
+			*out = append(*out, errorf(codeFwPolicyInvalid, ref, "defaultIn %q must be one of ACCEPT, DROP, REJECT", *p.DefaultIn))
+		}
+	}
+	if p.DefaultOut != nil {
+		if scope == inventory.FwScopeVNet {
+			*out = append(*out, errorf(codeFwScopeInvalid, ref, "defaultOut is not valid for a vnet-scope firewall ruleset — real PVE's vnet firewall options have no policy_out"))
+		} else if !validFwActions[*p.DefaultOut] {
+			*out = append(*out, errorf(codeFwPolicyInvalid, ref, "defaultOut %q must be one of ACCEPT, DROP, REJECT", *p.DefaultOut))
+		}
+	}
+	if p.DefaultForward != nil {
+		if scope == inventory.FwScopeGuest {
+			*out = append(*out, errorf(codeFwScopeInvalid, ref, "defaultForward is not valid for a guest-scope firewall ruleset — real pve-firewall has no forward chain on a guest's own network interface"))
+		} else if !validFwForwardPolicies[*p.DefaultForward] {
+			*out = append(*out, errorf(codeFwPolicyInvalid, ref, "defaultForward %q must be one of ACCEPT, DROP", *p.DefaultForward))
+		}
+	}
+	if p.LogLevelForward != nil {
+		if scope != inventory.FwScopeVNet {
+			*out = append(*out, errorf(codeFwScopeInvalid, ref, "logLevelForward is only confirmed valid for a vnet-scope firewall ruleset"))
+		} else if !validFwLogLevelsForward[*p.LogLevelForward] {
+			*out = append(*out, errorf(codeFwLogInvalid, ref, "logLevelForward %q is not a recognized log level", *p.LogLevelForward))
+		}
 	}
 }
 

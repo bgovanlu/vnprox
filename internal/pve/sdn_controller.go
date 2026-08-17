@@ -1,0 +1,140 @@
+package pve
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+)
+
+// SDN Controllers (T-3102): PVE's underlay-control-plane object family,
+// captured read-only from a live PVE 9.2.4 node — planning/reports/
+// evidence/pve-9.2.4-sdn-schema.txt. A controller predates T-3102 as a bare
+// string on a zone's `--controller` field (sdn.go's SDNZone.Controller,
+// which stays a *reference* by id — unchanged by this file); this file adds
+// the controller object itself as a first-class read/write family, mirroring
+// sdn_fabric.go's structure (this package's closest precedent: a different
+// object family from a zone/vnet/subnet, addressed at its own top-level
+// /cluster/sdn/controllers[/{id}] path, writes stage a pending edit only,
+// realized by the same PUT /cluster/sdn ApplySDN already issues —
+// internal/change/apply_sdn.go never gives controllers a bespoke apply
+// path, for the same `--lock-token` reason fabrics don't — see
+// planning/reports/T-3101-followup-01.md).
+//
+// The capture's four types (`--type <bgp | evpn | faucet | isis>`) each use
+// a different subset of the fields below; this struct carries every field
+// from every type (like SDNFabric carries every protocol's fields) —
+// internal/change's schema validator enforces which combination is legal
+// for a given Type. Unlike the fabric capture, this one has no
+// "Conditional options:" grouping in the `pvesh usage` transcript, so the
+// per-type field assignment below is inferred from each field's own
+// description rather than read directly off a grouped block — flagged in
+// planning/reports/needs-hardware-validation.md pending a capture that
+// exercises `pvesh usage /cluster/sdn/controllers -v` against a
+// non-empty/populated set of each type.
+type SDNController struct {
+	ID            string       `json:"controller"`
+	Type          string       `json:"type"`
+	BgpMode       string       `json:"bgp-mode,omitempty"`
+	Fabric        string       `json:"fabric,omitempty"`
+	IsisDomain    string       `json:"isis-domain,omitempty"`
+	IsisNet       string       `json:"isis-net,omitempty"`
+	Loopback      string       `json:"loopback,omitempty"`
+	Node          string       `json:"node,omitempty"`
+	PeerGroupName string       `json:"peer-group-name,omitempty"`
+	RouteMapIn    string       `json:"route-map-in,omitempty"`
+	RouteMapOut   string       `json:"route-map-out,omitempty"`
+	Pending       PendingState `json:"pending,omitempty"`
+	Nodes         []string     `json:"nodes,omitempty"`
+	Peers         []string     `json:"peers,omitempty"`
+	// IsisIfaces is real PVE's "Comma-separated list of interfaces" field
+	// (isis-only); modeled as []string like Nodes/Peers above rather than
+	// the single un-split string the capture's description literally says,
+	// for the same reason Nodes/Peers already are — a caller-facing list is
+	// more useful than a caller-facing comma string, and the wire
+	// conversion is symmetric with commaList's existing convention.
+	IsisIfaces              []string `json:"isis-ifaces,omitempty"`
+	ASN                     int      `json:"asn,omitempty"`
+	EbgpMultihop            int      `json:"ebgp-multihop,omitempty"`
+	Ebgp                    bool     `json:"ebgp,omitempty"`
+	BgpMultipathAsPathRelax bool     `json:"bgp-multipath-as-path-relax,omitempty"`
+}
+
+// MarshalJSON/UnmarshalJSON translate SDNController's comma-list fields
+// (nodes/peers/isis-ifaces) and numeric-boolean fields (ebgp/
+// bgp-multipath-as-path-relax) to and from PVE's own wire conventions — see
+// commaList's and pveBool's doc comments (sdn_commalist.go/pvebool.go),
+// reused verbatim rather than forked, the same way SDNZone's own
+// MarshalJSON/UnmarshalJSON already do for its own comma-list fields.
+func (c SDNController) MarshalJSON() ([]byte, error) {
+	type alias SDNController
+	return json.Marshal(struct {
+		Nodes      commaList `json:"nodes,omitempty"`
+		Peers      commaList `json:"peers,omitempty"`
+		IsisIfaces commaList `json:"isis-ifaces,omitempty"`
+		alias
+		Ebgp                    pveBool `json:"ebgp,omitempty"`
+		BgpMultipathAsPathRelax pveBool `json:"bgp-multipath-as-path-relax,omitempty"`
+	}{
+		Nodes: commaList(c.Nodes), Peers: commaList(c.Peers), IsisIfaces: commaList(c.IsisIfaces),
+		alias:                   alias(c),
+		Ebgp:                    pveBool(c.Ebgp),
+		BgpMultipathAsPathRelax: pveBool(c.BgpMultipathAsPathRelax),
+	})
+}
+
+func (c *SDNController) UnmarshalJSON(data []byte) error {
+	type alias SDNController
+	aux := struct {
+		*alias
+		Nodes      commaList `json:"nodes,omitempty"`
+		Peers      commaList `json:"peers,omitempty"`
+		IsisIfaces commaList `json:"isis-ifaces,omitempty"`
+
+		Ebgp                    pveBool `json:"ebgp,omitempty"`
+		BgpMultipathAsPathRelax pveBool `json:"bgp-multipath-as-path-relax,omitempty"`
+	}{alias: (*alias)(c)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	c.Nodes, c.Peers, c.IsisIfaces = aux.Nodes, aux.Peers, aux.IsisIfaces
+	c.Ebgp, c.BgpMultipathAsPathRelax = bool(aux.Ebgp), bool(aux.BgpMultipathAsPathRelax)
+	return nil
+}
+
+// ListSDNControllers calls GET /cluster/sdn/controllers.
+func (c *Client) ListSDNControllers(ctx context.Context) ([]SDNController, error) {
+	var out []SDNController
+	if err := c.do(ctx, "GET", "/cluster/sdn/controllers", requestParams{}, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetSDNController calls GET /cluster/sdn/controllers/{id}.
+func (c *Client) GetSDNController(ctx context.Context, id string) (*SDNController, error) {
+	var out SDNController
+	path := fmt.Sprintf("/cluster/sdn/controllers/%s", id)
+	if err := c.do(ctx, "GET", path, requestParams{}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CreateSDNController calls POST /cluster/sdn/controllers. Deliberately
+// does not send --lock-token — see this file's package doc comment and
+// planning/reports/T-3101-followup-01.md.
+func (c *Client) CreateSDNController(ctx context.Context, ctl SDNController) error {
+	return c.do(ctx, "POST", "/cluster/sdn/controllers", requestParams{body: ctl}, nil)
+}
+
+// UpdateSDNController calls PUT /cluster/sdn/controllers/{id}.
+func (c *Client) UpdateSDNController(ctx context.Context, id string, ctl SDNController) error {
+	path := fmt.Sprintf("/cluster/sdn/controllers/%s", id)
+	return c.do(ctx, "PUT", path, requestParams{body: ctl}, nil)
+}
+
+// DeleteSDNController calls DELETE /cluster/sdn/controllers/{id}.
+func (c *Client) DeleteSDNController(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/cluster/sdn/controllers/%s", id)
+	return c.do(ctx, "DELETE", path, requestParams{}, nil)
+}

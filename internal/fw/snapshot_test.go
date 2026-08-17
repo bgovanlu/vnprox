@@ -28,6 +28,31 @@ func TestBuildSnapshot_AssemblesAllThreeScopes(t *testing.T) {
 	}
 }
 
+// TestBuildSnapshot_AssemblesVNetScope is T-3103's own version of
+// TestBuildSnapshot_AssemblesAllThreeScopes above — a vnet-scope ruleset
+// must land in Snapshot.VNets keyed by the *owning vnet's* Ref, not be
+// silently dropped by a switch arm that only knew about three scopes.
+func TestBuildSnapshot_AssemblesVNetScope(t *testing.T) {
+	vnet := &inventory.FwRuleset{Ref: vnetRulesetRef("zone1", "vnet1"), Scope: inventory.FwScopeVNet}
+	snap := fw.BuildSnapshot([]inventory.Entity{vnet})
+
+	want := vnetRef("zone1", "vnet1")
+	if snap.VNets[want] == nil {
+		t.Fatalf("VNets[%v] not assembled; have keys %v", want, snap.VNets)
+	}
+}
+
+func TestBuildSnapshot_MalformedVNetRulesetIDSkipped(t *testing.T) {
+	malformed := &inventory.FwRuleset{
+		Ref:   inventory.Ref{Kind: inventory.KindFwRuleset, ID: "not-the-expected-shape"},
+		Scope: inventory.FwScopeVNet,
+	}
+	snap := fw.BuildSnapshot([]inventory.Entity{malformed})
+	if len(snap.VNets) != 0 {
+		t.Errorf("VNets = %v, want empty (malformed ID must be skipped, not misfiled)", snap.VNets)
+	}
+}
+
 func TestBuildSnapshot_MalformedGuestRulesetIDSkipped(t *testing.T) {
 	malformed := &inventory.FwRuleset{
 		Ref:   inventory.Ref{Kind: inventory.KindFwRuleset, Node: "pve1", ID: "not-the-expected-shape"},

@@ -37,7 +37,9 @@ func TestOutageRecovery(t *testing.T) {
 	go func() { _ = c.RunHostLoop(ctx) }()
 	go func() { _ = c.RunLLDPLoop(ctx) }()
 
-	const wantTotal = 36
+	// T-3103: +2 for the two vnet-scope firewall rulesets (vnet100/vnet200)
+	// pollFirewall now polls alongside the cluster ruleset.
+	const wantTotal = 38
 	waitFor(t, 3*time.Second, "graph to converge before the outage", func() bool {
 		return graph.Snapshot().Len() == wantTotal
 	})

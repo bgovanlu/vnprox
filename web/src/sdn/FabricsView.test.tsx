@@ -35,6 +35,7 @@ const tree: SdnTree = {
       nodeStatus: [],
     },
   ],
+  controllers: [],
   prefixLists: [{ id: "pl1" }],
   routeMaps: [{ id: "rm1" }],
 };

@@ -34,19 +34,22 @@ import {
   useGuestRulesetsQuery,
   useNodeRulesetQuery,
   useNodeRulesetsQuery,
+  useVnetRulesetQuery,
+  useVnetRulesetsQuery,
 } from "./queries";
 import { guestRefFromFwRulesetRef, type FwRulesetLocation } from "./refs";
 
 // "group" (T-2002) is reached only via the Objects tab's per-group
-// "Inspect" action, never a top-level tab (TABS below stays at four) — a
-// security group isn't a hierarchy level the way Datacenter/Nodes/Guests
-// are, it's an object drilled into from the Objects list.
-type Scope = "cluster" | "node" | "guest" | "objects" | "group";
+// "Inspect" action, never a top-level tab (TABS below stays at five) — a
+// security group isn't a hierarchy level the way Datacenter/Nodes/Guests/
+// VNets are, it's an object drilled into from the Objects list.
+type Scope = "cluster" | "node" | "guest" | "vnet" | "objects" | "group";
 
 const TABS: { scope: Scope; label: string }[] = [
   { scope: "cluster", label: "Datacenter" },
   { scope: "node", label: "Nodes" },
   { scope: "guest", label: "Guests" },
+  { scope: "vnet", label: "VNets" },
   { scope: "objects", label: "Objects" },
 ];
 
@@ -243,6 +246,77 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
   );
 }
 
+interface VNetPanelProps {
+  selected: string | undefined;
+  onSelect: (vnetRef: string) => void;
+}
+
+// VNetPanel is T-3103's fourth hierarchy tab: a vnet's forward-chain
+// firewall ruleset. Addressed by ref (like GuestPanel — a vnet ruleset's id
+// is a "<zone>/<vnet>" composite, not a plain name a `<select>` keyed by
+// node name would work for) but, unlike GuestPanel, carries no resolved-
+// view section: this scope has no hardware-confirmed cluster+group cascade
+// model (see fw.Snapshot.VNets' Go doc comment), so only the raw editable
+// rule table is shown — the same "raw only" treatment scope=node already
+// gets.
+function VNetPanel({ selected, onSelect }: VNetPanelProps) {
+  const { data: list, isLoading: listLoading } = useVnetRulesetsQuery();
+  const { data: objects } = useFirewallObjectsQuery();
+  const vnets = useMemo(
+    () => (list?.items ?? []).map((r) => ({ ref: r.vnet, label: vnetLabelFromRef(r.vnet) })).filter((v): v is { ref: string; label: string } => v.ref !== undefined),
+    [list],
+  );
+
+  useEffect(() => {
+    if (selected === undefined && vnets.length > 0 && vnets[0] !== undefined) {
+      onSelect(vnets[0].ref);
+    }
+  }, [vnets, selected, onSelect]);
+
+  const { data: ruleset, isLoading: rulesetLoading } = useVnetRulesetQuery(selected);
+
+  if (listLoading) return <p className="text-sm text-slate-400">Loading vnets…</p>;
+  if (vnets.length === 0) {
+    return <EmptyState title="No vnet firewall data" description="No vnet firewall configuration has been observed yet." />;
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <select
+        aria-label="Select vnet"
+        className="w-fit rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+        value={selected ?? ""}
+        onChange={(e) => { onSelect(e.target.value); }}
+      >
+        {vnets.map((v) => (
+          <option key={v.ref} value={v.ref}>
+            {v.label}
+          </option>
+        ))}
+      </select>
+      {rulesetLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {ruleset && (
+        <>
+          <ScopeToggle scope="vnet" target={ruleset.ref} enabled={ruleset.enabled} vnetLabel={vnetLabelFromRef(ruleset.vnet) ?? ruleset.vnet} />
+          <FirewallBanners banners={ruleset.banners} />
+          <RuleEditor rules={ruleset.rules} target={ruleset.ref} objects={objects} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Extracts a vnet's bare display name from its ref ("sdn-vnet::zone1/vnet1"
+ * -> "vnet1") for the tab's `<select>` options and the scope-toggle label —
+ * showing the zone/vnet composite everywhere would be noisier than useful
+ * once a cluster has more than a couple of zones. */
+function vnetLabelFromRef(vnetRef: string | undefined): string | undefined {
+  if (!vnetRef) return undefined;
+  const id = vnetRef.split(":")[2];
+  if (!id) return undefined;
+  const parts = id.split("/");
+  return parts[parts.length - 1];
+}
+
 interface ObjectsTabProps {
   onNavigate: (loc: FwRulesetLocation) => void;
   onInspectGroup: (name: string) => void;
@@ -270,6 +344,7 @@ export function FirewallPage() {
   const [selectedGuestRef, setSelectedGuestRef] = useState<string | undefined>(
     deepLink.scope === "guest" ? deepLink.ref : undefined,
   );
+  const [selectedVnetRef, setSelectedVnetRef] = useState<string | undefined>(undefined);
   // T-2002: which security group the Objects tab's "Inspect" action last
   // opened. Cleared (not required to be) when navigating away — reopening
   // the same group re-fetches, which is fine at this data size/staleness.
@@ -284,6 +359,7 @@ export function FirewallPage() {
     setScope(loc.scope);
     if (loc.scope === "node" && loc.node) setSelectedNode(loc.node);
     if (loc.scope === "guest" && loc.guestRef) setSelectedGuestRef(loc.guestRef);
+    if (loc.scope === "vnet" && loc.vnetRef) setSelectedVnetRef(loc.vnetRef);
   }
 
   function inspectGroup(name: string): void {
@@ -312,6 +388,7 @@ export function FirewallPage() {
       {scope === "guest" && (
         <GuestPanel selected={selectedGuestRef} onSelect={setSelectedGuestRef} focusRule={deepLink.focusRule} />
       )}
+      {scope === "vnet" && <VNetPanel selected={selectedVnetRef} onSelect={setSelectedVnetRef} />}
       {scope === "objects" && <ObjectsTab onNavigate={navigateToRuleset} onInspectGroup={inspectGroup} />}
       {scope === "group" && inspectedGroup && (
         <GroupInspector name={inspectedGroup} onBack={() => { setScope("objects"); }} />

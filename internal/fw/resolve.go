@@ -257,6 +257,29 @@ func ScopeBanners(snap Snapshot, scope inventory.FwScope, node string, ruleset *
 		return gates
 	case inventory.FwScopeGuest:
 		return guestGates(snap, ruleset)
+	case inventory.FwScopeVNet:
+		// Mirrors FwScopeNode's cascade shape (datacenter-off, then the
+		// vnet's own toggle) — the closest existing precedent, since a vnet
+		// ruleset is (like a node's) not a cascade *target* the way a guest
+		// is, just a ruleset with its own enable flag. Not itself hardware-
+		// captured: T-3103 scoped hardware validation to item 3's guest
+		// resolution-order question, not to whether a vnet's forward chain
+		// actually goes inert when the datacenter firewall is off. Flagged
+		// in that task's report as needs-hardware-validation.
+		var gates []EnablementGate
+		if clusterOff {
+			gates = append(gates, EnablementGate{
+				Scope:   inventory.FwScopeCluster,
+				Message: fmt.Sprintf("Datacenter firewall is OFF: none of vnet %s's forward-chain rules are active.", node),
+			})
+		}
+		if ruleset == nil || !ruleset.Enabled {
+			gates = append(gates, EnablementGate{
+				Scope:   inventory.FwScopeVNet,
+				Message: fmt.Sprintf("Firewall is OFF for vnet %s: none of its forward-chain rules are active.", node),
+			})
+		}
+		return gates
 	default:
 		return nil
 	}

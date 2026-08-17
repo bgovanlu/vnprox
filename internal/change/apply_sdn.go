@@ -128,6 +128,7 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 	preVnets, curVnets := vnetMapOf(pre.Vnets), vnetMapOf(current.Vnets)
 	preSubnets, curSubnets := subnetMapOf(pre.Subnets), subnetMapOf(current.Subnets)
 	preFabrics, curFabrics := fabricMapOf(pre.Fabrics), fabricMapOf(current.Fabrics)
+	preControllers, curControllers := controllerMapOf(pre.Controllers), controllerMapOf(current.Controllers)
 
 	var out []sdnRestoreOp
 
@@ -161,9 +162,19 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 		}
 		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnZoneDelete, Target: inventory.Ref{Kind: inventory.KindSDNZone, ID: id}, Params: &SdnZoneDeleteParams{}}})
 	}
-	// A fabric is deleted last in this phase (after every zone that might
-	// reference it via its own `--fabric` field is already gone) — the
-	// mirror image of phase 2's fabric-created-first ordering below.
+	// A controller is deleted after every zone that might reference it via
+	// its own `--controller` field, and before the fabric it might in turn
+	// reference via its own `--fabric` field (T-3102: fabric <- controller
+	// <- zone is the dependency chain, so removal walks it back to front).
+	for _, id := range sortedKeys(curControllers) {
+		if _, ok := preControllers[id]; ok {
+			continue
+		}
+		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnControllerDelete, Target: inventory.Ref{Kind: inventory.KindSDNController, ID: id}, Params: &SdnControllerDeleteParams{}}})
+	}
+	// A fabric is deleted last in this phase (after every zone/controller
+	// that might reference it is already gone) — the mirror image of phase
+	// 2's fabric-created-first ordering below.
 	for _, id := range sortedKeys(curFabrics) {
 		if _, ok := preFabrics[id]; ok {
 			continue
@@ -172,7 +183,10 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 	}
 
 	// Phase 2: recreate removals, shallowest first. A fabric is recreated
-	// before any zone that might reference it via `--fabric`.
+	// before any controller that might reference it via `--fabric`, and a
+	// controller before any zone that might reference it via `--controller`
+	// (T-3102: the same fabric <- controller <- zone chain phase 1 walked
+	// back to front, walked forward here).
 	for _, id := range sortedKeys(preFabrics) {
 		if _, ok := curFabrics[id]; ok {
 			continue
@@ -182,6 +196,18 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 			Protocol: f.Protocol, IPPrefix: f.IPPrefix, IP6Prefix: f.IP6Prefix,
 			CSNPInterval: f.CSNPInterval, HelloInterval: f.HelloInterval, RouteFilter: f.RouteFilter,
 			Area: f.Area, Redistribute: f.Redistribute, PersistentKeepalive: f.PersistentKeepalive,
+		}}})
+	}
+	for _, id := range sortedKeys(preControllers) {
+		if _, ok := curControllers[id]; ok {
+			continue
+		}
+		c := preControllers[id]
+		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnControllerCreate, Target: inventory.Ref{Kind: inventory.KindSDNController, ID: id}, Params: &SdnControllerCreateParams{
+			Type: c.Type, BgpMode: c.BgpMode, Fabric: c.Fabric, IsisDomain: c.IsisDomain, IsisNet: c.IsisNet,
+			Loopback: c.Loopback, Node: c.Node, PeerGroupName: c.PeerGroupName, RouteMapIn: c.RouteMapIn, RouteMapOut: c.RouteMapOut,
+			Nodes: c.Nodes, Peers: c.Peers, IsisIfaces: c.IsisIfaces,
+			ASN: c.ASN, EbgpMultihop: c.EbgpMultihop, Ebgp: c.Ebgp, BgpMultipathAsPathRelax: c.BgpMultipathAsPathRelax,
 		}}})
 	}
 	for _, id := range sortedKeys(preZones) {
@@ -271,6 +297,28 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 		}}})
 	}
 
+	// Phase 3 (controllers): restore changed fields on controllers present
+	// in both.
+	for _, id := range sortedKeys(preControllers) {
+		cc, ok := curControllers[id]
+		if !ok || reflect.DeepEqual(preControllers[id], cc) {
+			continue
+		}
+		c := preControllers[id]
+		bgpMode, fabric, isisDomain, isisNet := c.BgpMode, c.Fabric, c.IsisDomain, c.IsisNet
+		loopback, node, peerGroupName := c.Loopback, c.Node, c.PeerGroupName
+		routeMapIn, routeMapOut := c.RouteMapIn, c.RouteMapOut
+		nodes, peers, isisIfaces := c.Nodes, c.Peers, c.IsisIfaces
+		asn, ebgpMultihop, ebgp, relax := c.ASN, c.EbgpMultihop, c.Ebgp, c.BgpMultipathAsPathRelax
+		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnControllerUpdate, Target: inventory.Ref{Kind: inventory.KindSDNController, ID: id}, Params: &SdnControllerUpdateParams{
+			BgpMode: &bgpMode, Fabric: &fabric, IsisDomain: &isisDomain, IsisNet: &isisNet,
+			Loopback: &loopback, Node: &node, PeerGroupName: &peerGroupName,
+			RouteMapIn: &routeMapIn, RouteMapOut: &routeMapOut,
+			Nodes: &nodes, Peers: &peers, IsisIfaces: &isisIfaces,
+			ASN: &asn, EbgpMultihop: &ebgpMultihop, Ebgp: &ebgp, BgpMultipathAsPathRelax: &relax,
+		}}})
+	}
+
 	out = append(out, dnsRecreations...)
 
 	return out
@@ -280,6 +328,14 @@ func fabricMapOf(fs []SDNFabricConfig) map[string]SDNFabricConfig {
 	m := make(map[string]SDNFabricConfig, len(fs))
 	for _, f := range fs {
 		m[f.ID] = f
+	}
+	return m
+}
+
+func controllerMapOf(cs []SDNControllerConfig) map[string]SDNControllerConfig {
+	m := make(map[string]SDNControllerConfig, len(cs))
+	for _, c := range cs {
+		m[c.ID] = c
 	}
 	return m
 }

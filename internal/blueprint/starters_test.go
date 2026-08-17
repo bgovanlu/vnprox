@@ -94,8 +94,11 @@ func TestStarters_BareAndConforming(t *testing.T) {
 		},
 		{
 			id: blueprint.StarterEVPNDatacenter, nodes: []string{"pve1", "pve2", "pve3"},
-			wantTypes: []change.OpType{change.OpSdnZoneCreate, change.OpSdnVnetCreate, change.OpSdnSubnetCreate},
+			wantTypes: []change.OpType{
+				change.OpSdnControllerCreate, change.OpSdnZoneCreate, change.OpSdnVnetCreate, change.OpSdnSubnetCreate,
+			},
 			seed: func(g *inventory.Graph, nodes []string) {
+				applySdnController(g, "evpn1", sdnControllerOpts{typ: "bgp", asn: 65000})
 				applySdnZone(g, "evpnzone1", sdnZoneOpts{typ: "evpn", controller: "evpn1", nodes: nodes, vrfVxlan: 20000})
 				applySdnVnet(g, "evpnzone1", "evpnnet1", 0, false)
 				applySdnSubnet(g, "evpnzone1/evpnnet1", "10.200.0.0/24", "10.200.0.1", true)

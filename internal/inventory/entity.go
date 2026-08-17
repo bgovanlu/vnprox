@@ -704,6 +704,18 @@ const (
 	FwScopeCluster FwScope = "cluster"
 	FwScopeNode    FwScope = "node"
 	FwScopeGuest   FwScope = "guest"
+	// FwScopeVNet (T-3103) is PVE 9.2's fourth firewall scope:
+	// /cluster/sdn/vnets/{vnet}/firewall/{options,rules}, a forward-chain
+	// ruleset governing traffic routed through an SDN vnet's L3 gateway.
+	// Hardware-captured (planning/reports/evidence/pve-9.2.4-sdn-schema.txt,
+	// "### ls /cluster/sdn/vnets/labnet/firewall"): unlike cluster/node/
+	// guest scope, a vnet ruleset exposes only rules+options — real PVE has
+	// no aliases/ipset endpoint under this prefix at all (mirrors the
+	// node-scope gap FwRuleset's own doc comment already documents, one
+	// step further) — and its options carry only enable/policy_forward/
+	// log_level_forward, never policy_in/policy_out (see FwRuleset's
+	// DefaultForward/LogLevelForward doc comments).
+	FwScopeVNet FwScope = "vnet"
 )
 
 // FwAlias is a named IP/CIDR alias defined within a ruleset's scope. Per
@@ -784,11 +796,28 @@ type FwRuleset struct {
 	Scope      FwScope
 	DefaultIn  string
 	DefaultOut string
-	Rules      []FwRule
-	Aliases    []FwAlias
-	IPSets     []FwIPSet
-	Groups     []FwGroup
-	Enabled    bool
+	// DefaultForward is policy_forward (T-3103): the forward chain's
+	// fallthrough policy, hardware-captured at cluster and vnet scope
+	// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt's "--policy_forward
+	// <ACCEPT | DROP>" — note REJECT is not a valid forward policy, unlike
+	// DefaultIn/DefaultOut's ACCEPT|DROP|REJECT). Node scope is assumed
+	// symmetric with cluster (same shared PVE options schema every scope
+	// already uses for policy_in/policy_out) but was not itself captured;
+	// empty at guest scope, which has no forward chain.
+	DefaultForward string
+	// LogLevelForward is log_level_forward (T-3103): only hardware-captured
+	// at vnet scope (the same evidence file's cluster/firewall/options
+	// excerpt shows policy_forward but never independently matches
+	// log_level_forward the way the vnet section does) — left empty and
+	// never written at cluster/node/guest scope until that is captured too.
+	// See internal/change's schemaFwOptionsForScope for the write-side
+	// guard this asymmetry drives.
+	LogLevelForward string
+	Rules           []FwRule
+	Aliases         []FwAlias
+	IPSets          []FwIPSet
+	Groups          []FwGroup
+	Enabled         bool
 }
 
 func (f *FwRuleset) GetRef() Ref { return f.Ref }
@@ -829,6 +858,7 @@ func (f *FwRuleset) fieldMap() map[string]string {
 	return map[string]string{
 		"scope": string(f.Scope), "enabled": boolStr(f.Enabled),
 		"defaultIn": f.DefaultIn, "defaultOut": f.DefaultOut,
+		"defaultForward": f.DefaultForward, "logLevelForward": f.LogLevelForward,
 		"rules":   strings.Join(rules, "\n"),
 		"aliases": strings.Join(aliases, "\n"), "ipsets": strings.Join(ipsets, "\n"),
 		"groups": strings.Join(groups, "\n"),

@@ -486,6 +486,71 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 	case *change.SdnFabricDeleteParams:
 		return g.client.DeleteSDNFabric(ctx, op.Target.ID)
 
+	// T-3102 SDN Controller ops. Like fabrics above, these stage into the
+	// same PUT /cluster/sdn commit — no bespoke apply path (op.go's
+	// OpSdnControllerCreate doc comment).
+	case *change.SdnControllerCreateParams:
+		return g.client.CreateSDNController(ctx, pve.SDNController{
+			ID: op.Target.ID, Type: p.Type, BgpMode: p.BgpMode, Fabric: p.Fabric,
+			IsisDomain: p.IsisDomain, IsisNet: p.IsisNet, Loopback: p.Loopback, Node: p.Node,
+			PeerGroupName: p.PeerGroupName, RouteMapIn: p.RouteMapIn, RouteMapOut: p.RouteMapOut,
+			Nodes: p.Nodes, Peers: p.Peers, IsisIfaces: p.IsisIfaces,
+			ASN: p.ASN, EbgpMultihop: p.EbgpMultihop, Ebgp: p.Ebgp, BgpMultipathAsPathRelax: p.BgpMultipathAsPathRelax,
+		})
+	case *change.SdnControllerUpdateParams:
+		ctl := pve.SDNController{ID: op.Target.ID}
+		if p.BgpMode != nil {
+			ctl.BgpMode = *p.BgpMode
+		}
+		if p.Fabric != nil {
+			ctl.Fabric = *p.Fabric
+		}
+		if p.IsisDomain != nil {
+			ctl.IsisDomain = *p.IsisDomain
+		}
+		if p.IsisNet != nil {
+			ctl.IsisNet = *p.IsisNet
+		}
+		if p.Loopback != nil {
+			ctl.Loopback = *p.Loopback
+		}
+		if p.Node != nil {
+			ctl.Node = *p.Node
+		}
+		if p.PeerGroupName != nil {
+			ctl.PeerGroupName = *p.PeerGroupName
+		}
+		if p.RouteMapIn != nil {
+			ctl.RouteMapIn = *p.RouteMapIn
+		}
+		if p.RouteMapOut != nil {
+			ctl.RouteMapOut = *p.RouteMapOut
+		}
+		if p.Nodes != nil {
+			ctl.Nodes = *p.Nodes
+		}
+		if p.Peers != nil {
+			ctl.Peers = *p.Peers
+		}
+		if p.IsisIfaces != nil {
+			ctl.IsisIfaces = *p.IsisIfaces
+		}
+		if p.ASN != nil {
+			ctl.ASN = *p.ASN
+		}
+		if p.EbgpMultihop != nil {
+			ctl.EbgpMultihop = *p.EbgpMultihop
+		}
+		if p.Ebgp != nil {
+			ctl.Ebgp = *p.Ebgp
+		}
+		if p.BgpMultipathAsPathRelax != nil {
+			ctl.BgpMultipathAsPathRelax = *p.BgpMultipathAsPathRelax
+		}
+		return g.client.UpdateSDNController(ctx, op.Target.ID, ctl)
+	case *change.SdnControllerDeleteParams:
+		return g.client.DeleteSDNController(ctx, op.Target.ID)
+
 	default:
 		return fmt.Errorf("changeagent: SDNStageOp: unsupported op type %q", op.Type)
 	}
@@ -638,6 +703,21 @@ func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 		})
 	}
 
+	// T-3102: controllers, for the same pre-apply/rollback snapshot.
+	controllers, err := g.client.ListSDNControllers(ctx)
+	if err != nil {
+		return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn controllers: %w", err)
+	}
+	for _, c := range controllers {
+		cfg.Controllers = append(cfg.Controllers, change.SDNControllerConfig{
+			ID: c.ID, Type: c.Type, BgpMode: c.BgpMode, Fabric: c.Fabric,
+			IsisDomain: c.IsisDomain, IsisNet: c.IsisNet, Loopback: c.Loopback, Node: c.Node,
+			PeerGroupName: c.PeerGroupName, RouteMapIn: c.RouteMapIn, RouteMapOut: c.RouteMapOut,
+			Nodes: c.Nodes, Peers: c.Peers, IsisIfaces: c.IsisIfaces,
+			ASN: c.ASN, EbgpMultihop: c.EbgpMultihop, Ebgp: c.Ebgp, BgpMultipathAsPathRelax: c.BgpMultipathAsPathRelax,
+		})
+	}
+
 	return cfg, nil
 }
 
@@ -685,14 +765,24 @@ func upidNode(upid string) string {
 // --- T-502: firewall op family --------------------------------------------
 
 // fwScope resolves a firewall ruleset Ref (internal/inventory's cluster/
-// node/"guest/<kind>/<vmid>" ID convention — see internal/change/
-// params_fw.go's doc comment) to the pve.FirewallScope its API calls need.
+// node/"guest/<kind>/<vmid>"/"vnet/<zone>/<vnet>" ID convention — see
+// internal/change/params_fw.go's doc comment; the vnet shape was added by
+// T-3103) to the pve.FirewallScope its API calls need.
 func (g *pveGateway) fwScope(target inventory.Ref) (pve.FirewallScope, error) {
-	switch target.ID {
-	case "cluster":
+	switch {
+	case target.ID == "cluster":
 		return pve.ClusterFirewallScope(), nil
-	case "node":
+	case target.ID == "node":
 		return pve.NodeFirewallScope(target.Node), nil
+	case strings.HasPrefix(target.ID, "vnet/"):
+		parts := strings.SplitN(target.ID, "/", 3)
+		if len(parts) != 3 {
+			return pve.FirewallScope{}, fmt.Errorf("pve gateway: unrecognized firewall ruleset target %s", target)
+		}
+		// parts[1] is the owning zone, kept in the Ref for identity/display
+		// but not needed on the wire: real PVE's vnet firewall path is keyed
+		// by vnet name alone (vnet ids are unique cluster-wide).
+		return pve.VnetFirewallScope(parts[2]), nil
 	default:
 		parts := strings.SplitN(target.ID, "/", 3)
 		if len(parts) != 3 || parts[0] != "guest" {
@@ -704,6 +794,48 @@ func (g *pveGateway) fwScope(target inventory.Ref) (pve.FirewallScope, error) {
 		}
 		return pve.GuestFirewallScope(target.Node, pve.GuestKind(parts[1]), vmid), nil
 	}
+}
+
+// fwLogicalScope recovers the inventory.FwScope a firewall ruleset Ref
+// names, mirroring internal/change's unexported fwScopeOfRef (same Ref
+// convention, params_fw.go's doc comment) — duplicated rather than
+// exported/imported since internal/change does not otherwise expose it and
+// this package already owns its own fwScope (pve.FirewallScope) resolver
+// right above.
+func fwLogicalScope(target inventory.Ref) inventory.FwScope {
+	switch {
+	case target.ID == "cluster":
+		return inventory.FwScopeCluster
+	case target.ID == "node":
+		return inventory.FwScopeNode
+	case strings.HasPrefix(target.ID, "vnet/"):
+		return inventory.FwScopeVNet
+	default:
+		return inventory.FwScopeGuest
+	}
+}
+
+// fwScopeIncludesObjects reports whether scope supports the aliases/ipset
+// endpoints at all: real PVE mounts them at cluster and guest scope only
+// (T-608's hardware validation), never at node or vnet scope (vnet scope
+// hardware-captured in the same file, planning/reports/evidence/
+// pve-9.2.4-sdn-schema.txt's "### ls /cluster/sdn/vnets/labnet/firewall":
+// only rules+options). captureFwScope/reconcileFwScope use this to skip
+// those calls where the endpoint simply does not exist, rather than
+// erroring the whole snapshot/restore on a 404.
+func fwScopeIncludesObjects(scope inventory.FwScope) bool {
+	return scope == inventory.FwScopeCluster || scope == inventory.FwScopeGuest
+}
+
+// fwScopeIncludesInOut reports whether scope's options carry policy_in/
+// policy_out at all: every scope except vnet does (vnet's options endpoint
+// is hardware-captured to expose only enable/policy_forward/
+// log_level_forward — planning/reports/evidence/pve-9.2.4-sdn-schema.txt).
+// reconcileFwScope uses this so a vnet-scope restore never sends
+// policy_in/policy_out (always empty in a vnet snapshot) to an endpoint
+// that, per that capture, does not have those fields.
+func fwScopeIncludesInOut(scope inventory.FwScope) bool {
+	return scope != inventory.FwScopeVNet
 }
 
 // FirewallRuleFields implements change.PVEGateway.
@@ -764,6 +896,7 @@ func (g *pveGateway) ApplyFwOp(ctx context.Context, op change.Op) error {
 	case *change.FwOptionsUpdateParams:
 		return g.client.UpdateFirewallOptions(ctx, scope, pve.FirewallOptionsUpdate{
 			Enable: p.Enabled, PolicyIn: p.DefaultIn, PolicyOut: p.DefaultOut,
+			PolicyForward: p.DefaultForward, LogLevelForward: p.LogLevelForward,
 		})
 	case *change.FwAliasCreateParams:
 		return g.client.CreateFirewallAlias(ctx, scope, pve.FirewallAlias{Name: p.Name, CIDR: p.CIDR, Comment: p.Comment})
@@ -1022,7 +1155,8 @@ func (g *pveGateway) SnapshotFirewallScope(ctx context.Context, ref inventory.Re
 	if err != nil {
 		return "", err
 	}
-	snap, err := g.captureFwScope(ctx, scope, ref.ID == "cluster")
+	logical := fwLogicalScope(ref)
+	snap, err := g.captureFwScope(ctx, scope, logical == inventory.FwScopeCluster, fwScopeIncludesObjects(logical))
 	if err != nil {
 		return "", fmt.Errorf("capturing firewall scope %s: %w", ref, err)
 	}
@@ -1033,7 +1167,7 @@ func (g *pveGateway) SnapshotFirewallScope(ctx context.Context, ref inventory.Re
 	return string(b), nil
 }
 
-func (g *pveGateway) captureFwScope(ctx context.Context, scope pve.FirewallScope, includeGroups bool) (fwScopeSnapshot, error) {
+func (g *pveGateway) captureFwScope(ctx context.Context, scope pve.FirewallScope, includeGroups, includeObjects bool) (fwScopeSnapshot, error) {
 	var out fwScopeSnapshot
 	rules, err := g.client.ListFirewallRules(ctx, scope)
 	if err != nil {
@@ -1045,21 +1179,23 @@ func (g *pveGateway) captureFwScope(ctx context.Context, scope pve.FirewallScope
 		return out, err
 	}
 	out.Options = *opts
-	aliases, err := g.client.ListFirewallAliases(ctx, scope)
-	if err != nil {
-		return out, err
-	}
-	out.Aliases = aliases
-	ipsets, err := g.client.ListFirewallIPSets(ctx, scope)
-	if err != nil {
-		return out, err
-	}
-	for _, s := range ipsets {
-		entries, err := g.client.ListFirewallIPSetEntries(ctx, scope, s.Name)
+	if includeObjects {
+		aliases, err := g.client.ListFirewallAliases(ctx, scope)
 		if err != nil {
 			return out, err
 		}
-		out.IPSets = append(out.IPSets, fwIPSetSnapshot{Name: s.Name, Comment: s.Comment, Entries: entries})
+		out.Aliases = aliases
+		ipsets, err := g.client.ListFirewallIPSets(ctx, scope)
+		if err != nil {
+			return out, err
+		}
+		for _, s := range ipsets {
+			entries, err := g.client.ListFirewallIPSetEntries(ctx, scope, s.Name)
+			if err != nil {
+				return out, err
+			}
+			out.IPSets = append(out.IPSets, fwIPSetSnapshot{Name: s.Name, Comment: s.Comment, Entries: entries})
+		}
 	}
 	if includeGroups {
 		groups, err := g.client.ListFirewallGroups(ctx)
@@ -1092,13 +1228,14 @@ func (g *pveGateway) RestoreFirewallScope(ctx context.Context, ref inventory.Ref
 	if err := json.Unmarshal([]byte(snapshot), &want); err != nil {
 		return fmt.Errorf("decoding firewall scope snapshot for %s: %w", ref, err)
 	}
-	if err := g.reconcileFwScope(ctx, scope, ref.ID == "cluster", want); err != nil {
+	logical := fwLogicalScope(ref)
+	if err := g.reconcileFwScope(ctx, scope, logical == inventory.FwScopeCluster, fwScopeIncludesObjects(logical), fwScopeIncludesInOut(logical), want); err != nil {
 		return fmt.Errorf("restoring firewall scope %s: %w", ref, err)
 	}
 	return nil
 }
 
-func (g *pveGateway) reconcileFwScope(ctx context.Context, scope pve.FirewallScope, includeGroups bool, want fwScopeSnapshot) error {
+func (g *pveGateway) reconcileFwScope(ctx context.Context, scope pve.FirewallScope, includeGroups, includeObjects, includeInOut bool, want fwScopeSnapshot) error {
 	live, err := g.client.ListFirewallRules(ctx, scope)
 	if err != nil {
 		return fmt.Errorf("listing live rules: %w", err)
@@ -1114,9 +1251,32 @@ func (g *pveGateway) reconcileFwScope(ctx context.Context, scope pve.FirewallSco
 		}
 	}
 
-	enable, policyIn, policyOut := want.Options.Enable, want.Options.PolicyIn, want.Options.PolicyOut
-	if err = g.client.UpdateFirewallOptions(ctx, scope, pve.FirewallOptionsUpdate{Enable: &enable, PolicyIn: &policyIn, PolicyOut: &policyOut}); err != nil {
+	enable := want.Options.Enable
+	upd := pve.FirewallOptionsUpdate{Enable: &enable}
+	if includeInOut {
+		policyIn, policyOut := want.Options.PolicyIn, want.Options.PolicyOut
+		upd.PolicyIn, upd.PolicyOut = &policyIn, &policyOut
+	}
+	// PolicyForward/LogLevelForward (T-3103) are only restored when the
+	// snapshot actually captured a value — an empty string is not itself a
+	// valid policy_forward/log_level_forward, so sending it unconditionally
+	// (the way PolicyIn/PolicyOut are sent above, where "" round-trips
+	// harmlessly through a scope that never set them) risks a 400 from a
+	// scope whose forward-chain policy really was never explicitly set.
+	if want.Options.PolicyForward != "" {
+		pf := want.Options.PolicyForward
+		upd.PolicyForward = &pf
+	}
+	if want.Options.LogLevelForward != "" {
+		llf := want.Options.LogLevelForward
+		upd.LogLevelForward = &llf
+	}
+	if err = g.client.UpdateFirewallOptions(ctx, scope, upd); err != nil {
 		return fmt.Errorf("restoring options: %w", err)
+	}
+
+	if !includeObjects {
+		return nil
 	}
 
 	liveAliases, err := g.client.ListFirewallAliases(ctx, scope)

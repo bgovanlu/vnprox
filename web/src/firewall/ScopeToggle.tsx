@@ -15,14 +15,21 @@ export interface ScopeToggleProps {
   enabled: boolean;
   node?: string;
   guestLabel?: string;
+  /** Required (and only meaningful) for scope "vnet" (T-3103) — the vnet's
+   * display label (its bare name). */
+  vnetLabel?: string;
 }
 
-export function ScopeToggle({ scope, target, enabled, node, guestLabel }: ScopeToggleProps) {
+export function ScopeToggle({ scope, target, enabled, node, guestLabel, vnetLabel }: ScopeToggleProps) {
   const { addOps } = useDrawerActions();
   const { toast } = useToast();
   const [pendingEnable, setPendingEnable] = useState<boolean | undefined>(undefined);
 
-  const label = scope === "cluster" ? "Datacenter firewall" : scope === "node" ? `Node ${node ?? ""} firewall` : `${guestLabel ?? "Guest"} firewall`;
+  const label =
+    scope === "cluster" ? "Datacenter firewall"
+    : scope === "node" ? `Node ${node ?? ""} firewall`
+    : scope === "vnet" ? `VNet ${vnetLabel ?? ""} firewall`
+    : `${guestLabel ?? "Guest"} firewall`;
 
   function requestToggle(next: boolean): void {
     setPendingEnable(next);
@@ -49,7 +56,7 @@ export function ScopeToggle({ scope, target, enabled, node, guestLabel }: ScopeT
       </label>
       {pendingEnable !== undefined && pendingEnable !== enabled && (
         <div className="flex flex-col gap-2 rounded bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          <p>{scopeToggleSummary({ scope, enabling: pendingEnable, node, guestLabel })}</p>
+          <p>{scopeToggleSummary({ scope, enabling: pendingEnable, node, guestLabel, vnetLabel })}</p>
           <div className="flex gap-2">
             <button type="button" onClick={confirmToggle} className="rounded bg-accent-600 px-2 py-1 font-medium text-white">
               Stage this change

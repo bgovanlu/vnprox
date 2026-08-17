@@ -1,11 +1,13 @@
 package change
 
 // FwRuleCreateParams is op "fw.rule.create". Target is the FwRuleset the
-// rule is added to (cluster/node/guest scope, per internal/inventory's
-// FwRuleset.Ref). Pos is the position to insert at (docs/data-model.md's
+// rule is added to (cluster/node/guest/vnet scope, per internal/inventory's
+// FwRuleset.Ref — a vnet-scope target's ID is "vnet/<zone>/<vnet>", the
+// same "<kind>/<...>" shape guest's "guest/<kind>/<vmid>" already uses,
+// added by T-3103). Pos is the position to insert at (docs/data-model.md's
 // FwRule.Pos is order-significant).
 type FwRuleCreateParams struct {
-	Direction string `json:"direction"` // in|out
+	Direction string `json:"direction"` // forward|group|in|out
 	Action    string `json:"action"`    // ACCEPT|DROP|REJECT
 	Proto     string `json:"proto,omitempty"`
 	Source    string `json:"source,omitempty"`
@@ -99,12 +101,22 @@ type FwRuleMoveParams struct {
 func (FwRuleMoveParams) isChangeParams() {}
 
 // FwOptionsUpdateParams is op "fw.options.update": the ruleset-level
-// enabled flag and default in/out policies (docs/data-model.md's
-// FwRuleset.Enabled/DefaultIn/DefaultOut).
+// enabled flag and default in/out/forward policies (docs/data-model.md's
+// FwRuleset.Enabled/DefaultIn/DefaultOut/DefaultForward).
+//
+// DefaultForward/LogLevelForward (T-3103) are the forward chain's own
+// fallthrough policy and log level. DefaultForward is valid at cluster,
+// node, and vnet scope (never guest, which has no forward chain);
+// LogLevelForward is only hardware-captured at vnet scope and is rejected
+// at every other scope — see validate_schema.go's schemaFwOptionsForScope,
+// which also rejects DefaultIn/DefaultOut at vnet scope (real PVE's vnet
+// options endpoint has no policy_in/policy_out fields at all).
 type FwOptionsUpdateParams struct {
-	DefaultIn  *string `json:"defaultIn,omitempty"`
-	DefaultOut *string `json:"defaultOut,omitempty"`
-	Enabled    *bool   `json:"enabled,omitempty"`
+	DefaultIn       *string `json:"defaultIn,omitempty"`
+	DefaultOut      *string `json:"defaultOut,omitempty"`
+	DefaultForward  *string `json:"defaultForward,omitempty"`
+	LogLevelForward *string `json:"logLevelForward,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
 }
 
 func (FwOptionsUpdateParams) isChangeParams() {}

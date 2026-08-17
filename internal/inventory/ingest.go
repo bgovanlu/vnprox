@@ -630,6 +630,34 @@ func FromPVESDN(
 	return out
 }
 
+// FromPVESDNControllers maps the SDN controllers list to cluster-scoped
+// SdnController partials (T-3102). Unlike FromPVESDN above, there is no
+// per-controller status sub-read to fold in — the capture's `ls
+// /cluster/sdn/controllers` shows no `.../status` child route the way a
+// zone has one, so a controller's realization health is not observable
+// from this poll (see internal/evpn's re-attachment of EVPN/BGP session
+// health onto the controller instead, which reads live FRR state rather
+// than a PVE-side status read).
+func FromPVESDNControllers(controllers []pve.SDNController) []Entity {
+	out := make([]Entity, 0, len(controllers))
+	for _, c := range controllers {
+		ctl := &SdnController{
+			Ref: Ref{Kind: KindSDNController, ID: c.ID},
+			ID:  c.ID, Type: c.Type, Pending: string(c.Pending),
+			ASN: c.ASN, BgpMode: c.BgpMode, BgpMultipathAsPathRelax: c.BgpMultipathAsPathRelax,
+			Ebgp: c.Ebgp, EbgpMultihop: c.EbgpMultihop, Fabric: c.Fabric,
+			IsisDomain: c.IsisDomain, IsisNet: c.IsisNet,
+			Loopback: c.Loopback, Node: c.Node, PeerGroupName: c.PeerGroupName,
+			RouteMapIn: c.RouteMapIn, RouteMapOut: c.RouteMapOut,
+			Nodes: append([]string(nil), c.Nodes...), Peers: append([]string(nil), c.Peers...),
+			IsisIfaces: append([]string(nil), c.IsisIfaces...),
+		}
+		setRaw(ctl, prettyJSON(c))
+		out = append(out, ctl)
+	}
+	return out
+}
+
 // FirewallObjects bundles one scope's alias/ipset/security-group
 // definitions (docs/features/firewall.md §2), fetched by the collector
 // alongside the scope's rules/options (see internal/collect's
@@ -651,11 +679,13 @@ type FirewallObjects struct {
 // ref identifies the ruleset (scope-specific); rules are in PVE order.
 func FromPVEFirewall(ref Ref, scope FwScope, opts pve.FirewallOptions, rules []pve.FirewallRule, objs FirewallObjects) []Entity {
 	rs := &FwRuleset{
-		Ref:        ref,
-		Scope:      scope,
-		Enabled:    opts.Enable,
-		DefaultIn:  opts.PolicyIn,
-		DefaultOut: opts.PolicyOut,
+		Ref:             ref,
+		Scope:           scope,
+		Enabled:         opts.Enable,
+		DefaultIn:       opts.PolicyIn,
+		DefaultOut:      opts.PolicyOut,
+		DefaultForward:  opts.PolicyForward,
+		LogLevelForward: opts.LogLevelForward,
 	}
 	for _, r := range rules {
 		rs.Rules = append(rs.Rules, FwRule{

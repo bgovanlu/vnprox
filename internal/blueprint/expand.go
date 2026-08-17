@@ -98,6 +98,11 @@ func refFor(kind Kind, node, id string) (inventory.Ref, error) {
 			return inventory.Ref{}, fmt.Errorf("sdn-subnet is cluster-scoped and cannot use nodeSelector.mode=all")
 		}
 		return inventory.Ref{Kind: inventory.KindSDNSubnet, ID: id}, nil
+	case KindSdnController:
+		if node != "" {
+			return inventory.Ref{}, fmt.Errorf("sdn-controller is cluster-scoped and cannot use nodeSelector.mode=all")
+		}
+		return inventory.Ref{Kind: inventory.KindSDNController, ID: id}, nil
 	default:
 		return inventory.Ref{}, fmt.Errorf("unknown entity kind %q", kind)
 	}

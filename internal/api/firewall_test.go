@@ -240,6 +240,73 @@ func TestFirewallRulesets_NodeScope_ListsAllNodes(t *testing.T) {
 	}
 }
 
+// TestFirewallRulesets_VNetScope is T-3103's own version of
+// TestFirewallRulesets_NodeScope_ListsAllNodes/TestFirewallRulesets_GuestScope_ResolvedView:
+// vnet scope is addressed by `ref` (an sdn-vnet Ref, since a vnet ruleset's
+// id is a "<zone>/<vnet>" composite, not a plain name a `?node=`-style
+// query param could carry unambiguously) rather than resolved (cluster+
+// group cascade) the way scope=guest is — see fw.Snapshot.VNets' doc
+// comment for why this package has no hardware-confirmed model for that.
+func TestFirewallRulesets_VNetScope(t *testing.T) {
+	vnetRef := inventory.Ref{Kind: inventory.KindSDNVnet, ID: "zone1/vnet1"}
+	rs := &inventory.FwRuleset{
+		Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "vnet/zone1/vnet1"}, Scope: inventory.FwScopeVNet,
+		Enabled: true, DefaultForward: "DROP", LogLevelForward: "debug",
+		Rules: []inventory.FwRule{{Pos: 0, Enabled: true, Direction: "forward", Action: "ACCEPT", Source: "10.100.0.0/24"}},
+	}
+	graph := buildTestGraph(t, rs)
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: firewallTestAuth(map[string]bool{"netRead": true}), Firewall: graph,
+	})
+
+	t.Run("list", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/rulesets?scope=vnet", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+		}
+		var body struct {
+			Items []rulesetView `json:"items"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(body.Items) != 1 || body.Items[0].Vnet != vnetRef.String() {
+			t.Fatalf("items = %+v, want one item with vnet=%q", body.Items, vnetRef.String())
+		}
+	})
+
+	t.Run("single by ref", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/rulesets?scope=vnet&ref="+vnetRef.String(), nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+		}
+		var got rulesetView
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if got.Scope != "vnet" || len(got.Rules) != 1 || got.Rules[0].Direction != "forward" {
+			t.Fatalf("got %+v, want one forward rule", got)
+		}
+		if got.DefaultForward != "DROP" || got.LogLevelForward != "debug" {
+			t.Errorf("got.DefaultForward/LogLevelForward = %q/%q, want DROP/debug", got.DefaultForward, got.LogLevelForward)
+		}
+	})
+
+	t.Run("unknown ref 404s", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/firewall/rulesets?scope=vnet&ref=sdn-vnet::zone1/ghost", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+	})
+}
+
 func TestFirewallObjects_UsageCountsAndMacros(t *testing.T) {
 	cluster := &inventory.FwRuleset{
 		Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}, Scope: inventory.FwScopeCluster, Enabled: true,

@@ -83,6 +83,38 @@ func (srv *Server) resolveGuestScope(kind, node, vmid string, write bool) (*scop
 	return &scopeCtx{scope: g.Firewall, unlock: unlock}, nil
 }
 
+// vnetScope resolves a vnet firewall scope from the request's {vnet} URL
+// param, lazily creating the ruleset on first access (mirrors
+// resolveGuestScope's own "nil until touched" convention) — protected by
+// sdnState's own mutex (T-3103 stores vnet firewall state there, alongside
+// the rest of the SDN tree, rather than adding a dedicated lock).
+func (srv *Server) vnetScope(r *http.Request, write bool) (*scopeCtx, error) {
+	vnet := chi.URLParam(r, "vnet")
+	if write {
+		srv.state.sdn.mu.Lock()
+	} else {
+		srv.state.sdn.mu.RLock()
+	}
+	if _, ok := srv.state.sdn.vnets[vnet]; !ok {
+		if write {
+			srv.state.sdn.mu.Unlock()
+		} else {
+			srv.state.sdn.mu.RUnlock()
+		}
+		return nil, fmt.Errorf("%w: vnet %q", ErrNotFound, vnet)
+	}
+	fw, ok := srv.state.sdn.vnetFW[vnet]
+	if !ok {
+		fw = &FirewallScope{}
+		srv.state.sdn.vnetFW[vnet] = fw
+	}
+	unlock := srv.state.sdn.mu.RUnlock
+	if write {
+		unlock = srv.state.sdn.mu.Unlock
+	}
+	return &scopeCtx{scope: fw, unlock: unlock}, nil
+}
+
 func (srv *Server) mountFirewall(api chi.Router) {
 	srv.mountFirewallScope(api, "/cluster/firewall", PrivSysAudit, PrivSysModify, srv.clusterScope, true)
 	// includeObjects=false for node scope: hardware validation (T-608)
@@ -93,6 +125,15 @@ func (srv *Server) mountFirewall(api chi.Router) {
 	srv.mountFirewallScope(api, "/nodes/{node}/firewall", PrivSysAudit, PrivSysModify, srv.nodeScope, false)
 	srv.mountFirewallScope(api, "/nodes/{node}/qemu/{vmid}/firewall", PrivVMAudit, PrivVMConfigNet, srv.guestScope("qemu"), true)
 	srv.mountFirewallScope(api, "/nodes/{node}/lxc/{vmid}/firewall", PrivVMAudit, PrivVMConfigNet, srv.guestScope("lxc"), true)
+	// includeObjects=false for vnet scope too (T-3103): hardware-captured,
+	// planning/reports/evidence/pve-9.2.4-sdn-schema.txt's "### ls
+	// /cluster/sdn/vnets/labnet/firewall" lists only options+rules, no
+	// aliases/ipset entries. Privilege pair matches the other three
+	// firewall scopes (Sys.Audit/Sys.Modify), not the SDN.* pair the rest
+	// of this vnet's own routes use — vnprox's fwWrite capability already
+	// assumes Sys.Modify governs every fw.* op regardless of scope (see
+	// web/src/firewall/RuleEditor.tsx's doc comment).
+	srv.mountFirewallScope(api, "/cluster/sdn/vnets/{vnet}/firewall", PrivSysAudit, PrivSysModify, srv.vnetScope, false)
 
 	// T-502's post-apply verification (docs/features/firewall.md §3) needs
 	// somewhere to read "did this node's firewall compile cleanly" — see
@@ -343,9 +384,11 @@ func (srv *Server) handleFwRuleDelete(get scopeGetter) http.HandlerFunc {
 // --- options -----------------------------------------------------------------
 
 type fwOptions struct {
-	PolicyIn  string `json:"policy_in,omitempty"`
-	PolicyOut string `json:"policy_out,omitempty"`
-	Enable    bool   `json:"enable"`
+	PolicyIn        string `json:"policy_in,omitempty"`
+	PolicyOut       string `json:"policy_out,omitempty"`
+	PolicyForward   string `json:"policy_forward,omitempty"`
+	LogLevelForward string `json:"log_level_forward,omitempty"`
+	Enable          bool   `json:"enable"`
 }
 
 func (srv *Server) handleFwOptionsGet(get scopeGetter) http.HandlerFunc {
@@ -356,7 +399,10 @@ func (srv *Server) handleFwOptionsGet(get scopeGetter) http.HandlerFunc {
 			return
 		}
 		defer sc.unlock()
-		writeData(w, http.StatusOK, fwOptions{Enable: sc.scope.Enabled, PolicyIn: sc.scope.PolicyIn, PolicyOut: sc.scope.PolicyOut})
+		writeData(w, http.StatusOK, fwOptions{
+			Enable: sc.scope.Enabled, PolicyIn: sc.scope.PolicyIn, PolicyOut: sc.scope.PolicyOut,
+			PolicyForward: sc.scope.PolicyForward, LogLevelForward: sc.scope.LogLevelForward,
+		})
 	}
 }
 
@@ -381,6 +427,12 @@ func (srv *Server) handleFwOptionsPut(get scopeGetter) http.HandlerFunc {
 		}
 		if v, ok := body["policy_out"]; ok {
 			sc.scope.PolicyOut = v
+		}
+		if v, ok := body["policy_forward"]; ok {
+			sc.scope.PolicyForward = v
+		}
+		if v, ok := body["log_level_forward"]; ok {
+			sc.scope.LogLevelForward = v
 		}
 		writeData(w, http.StatusOK, nil)
 	}

@@ -1339,3 +1339,113 @@ API's *shape* only — none of the following is observed against real hardware:
       is asserted in prose only — establishing it against a populated capture is T-3102's job.
 
 File these under `T-3201` per this file's own convention (cross-node/hardware-only checks).
+
+## T-3102 — SDN Controllers (2026-08-17)
+
+pvecube has no controllers configured and is a single node, so the capture
+(`planning/reports/evidence/pve-9.2.4-sdn-schema.txt`) proves the controllers API's *shape* only —
+none of the following is observed against real hardware:
+
+- [ ] **Per-type field assignment is inferred, not captured.** Unlike the fabrics section's
+      `pvesh usage` transcript (which has explicit "Conditional options:" groupings per protocol),
+      the controllers section's transcript has no equivalent grouping — every field
+      (`asn`/`bgpMode`/`ebgp`/`ebgpMultihop`/`peers`/`fabric`/`peerGroupName`/`routeMapIn`/
+      `routeMapOut`/`isisDomain`/`isisIfaces`/`isisNet`/`node`/`nodes`/`loopback`) is listed flat,
+      with only its own English description to go on. `internal/change/validate_schema.go`'s
+      `sdnControllerTypeFields` and `internal/pvemock/sdn_controller.go`'s mirrored map assign bgp
+      -> asn/bgpMode/bgpMultipathAsPathRelax/ebgp/ebgpMultihop/peers, evpn ->
+      fabric/peerGroupName/routeMapIn/routeMapOut, isis -> isisDomain/isisIfaces/isisNet, faucet ->
+      none, by reading each field's description rather than a captured grouping. Whether real PVE's
+      own parameter-schema enforcement actually draws the line there (as opposed to, say, letting an
+      evpn controller also carry an asn) is unconfirmed — re-run
+      `pvesh create /cluster/sdn/controllers --controller test1 --type evpn --asn 65000` (or the
+      isis/faucet equivalents with a field this model excludes) against pvecube and check whether it
+      is accepted or rejected, then correct both maps together if it disagrees.
+- [ ] **Controller convergence and per-node realization.** The captured API has no
+      `/cluster/sdn/controllers/{id}/status` route the way a zone has
+      `/cluster/sdn/zones/{zone}/status`, and (unlike fabrics) no separate
+      `/cluster/sdn/controllers/node` per-node-membership collection either —
+      `internal/sdn.Controller` therefore carries no `nodeStatus` at all. Whether real PVE exposes
+      controller health or per-node membership any other way is unconfirmed.
+- [ ] **`sdn.controller.update`'s type immutability.** `internal/change.SdnControllerUpdateParams`
+      omits `Type` on the assumption that changing a controller's type is a delete+create, mirroring
+      `SdnFabricUpdateParams`'/`SdnZoneUpdateParams`' own immutability — but the capture has no
+      `pvesh usage /cluster/sdn/controllers -v`'s `set`/PUT usage block at all (only `get`/`create`),
+      so this is unconfirmed either way.
+- [ ] **EVPN/BGP session-health re-attachment (`internal/evpn.controllerHealth`).** The
+      controller<->session matching is by peer IP address (`SdnController.peers` against observed
+      `NodeStatus.Peer.PeerAddr`) — never exercised against a real controller with a real configured
+      peer list and a real FRR session to it, only against pvemock/unit-test fixtures. Whether real
+      PVE's controller `peers` field is formatted/populated exactly the way this matching assumes is
+      unconfirmed.
+- [ ] **What a controller actually does to the underlay.** The capture proves the API's shape, not
+      FRR/BGP session establishment, EVPN route exchange, or IS-IS adjacency formation for a real
+      controller on a real multi-node cluster.
+
+File these under `T-3201` per this file's own convention (cross-node/hardware-only checks).
+
+## Firewall fidelity: `forward` direction and vnet scope (T-3103, items 1–2)
+
+`planning/reports/evidence/pve-9.2.4-sdn-schema.txt` directly confirms the `forward` rule
+direction at cluster, node, and vnet scope, and `policy_forward` at cluster and vnet scope; a few
+narrower corners were not directly captured and are modelled conservatively (honest rejection)
+rather than guessed at:
+
+- [ ] **`policy_forward` at node scope.** The capture's `--type <forward | group | in | out>` rule
+      enum is independently confirmed at `/nodes/pvecube/firewall/rules`, but the capture never ran
+      `pvesh usage /nodes/pvecube/firewall/options -v` — only `/cluster/firewall/options` and
+      `/cluster/sdn/vnets/labnet/firewall/options` were captured. `internal/change.
+      schemaFwOptionsForScope` allows `defaultForward` at node scope by inference (node/cluster
+      already share one `FirewallOptions` wire shape for `policy_in`/`policy_out`, and the rule-type
+      enum is confirmed symmetric across all three scopes), not from a direct capture. Confirm
+      `pvesh usage /nodes/pvecube/firewall/options -v` shows `--policy_forward` before trusting a
+      node-scope `fw.options.update` with `defaultForward` set against real hardware.
+- [ ] **`log_level_forward` at cluster and node scope.** The capture's `"### usage /cluster/
+      firewall/options | forward"` excerpt shows `--policy_forward` and (as apparent alphabetical
+      context) `--policy_in`, but never independently matches a `--log_level_forward` line the way
+      the vnet-scope options section does — despite `log_level_forward` itself containing the word
+      "forward" and so being just as matchable by whatever process produced that excerpt. Read at
+      face value, this means real PVE 9.2.4's cluster-scope (and, by the same node/cluster-shared-
+      shape reasoning above, node-scope) firewall options do **not** expose `log_level_forward`,
+      only vnet scope does. `internal/change.schemaFwOptionsForScope` takes this literally and
+      rejects `logLevelForward` at every scope except vnet (`codeFwScopeInvalid`). If a fuller
+      re-capture (`pvesh usage /cluster/firewall/options -v`, unfiltered, and the same for
+      `/nodes/<node>/firewall/options`) shows `log_level_forward` after all, widen
+      `schemaFwOptionsForScope` and `inventory.FwRuleset.LogLevelForward`'s population
+      (`internal/inventory/ingest.go`'s `FromPVEFirewall`) accordingly — the asymmetry as currently
+      modelled is a direct, literal reading of an admittedly partial capture excerpt, not something
+      independently re-derived from a second source.
+- [ ] **`forward` direction at guest scope.** Real PVE 9.2 was captured accepting `forward` at
+      cluster, node, and vnet scope; guest scope (`/nodes/<node>/qemu/<vmid>/firewall/rules` or the
+      lxc equivalent) was never captured with `pvesh usage ... -v`. `internal/change.
+      schemaFwDirectionForTarget` rejects `forward` specifically at guest scope
+      (`codeFwScopeInvalid`), on the reasoning that pve-firewall's FORWARD chain is a routing/host
+      enforcement point, not something a single guest's own vNIC chain has — but this is inference,
+      not a captured negative. Confirm with `pvesh usage /nodes/pvecube/qemu/<vmid>/firewall/rules -v`
+      (or lxc) whether guest scope's `--type` enum also lists `forward`; if it does, `forward` needs
+      its own real semantics defined for guest scope (not simply admitted) before the rejection is
+      lifted — see item 1's own warning about not letting the validator get ahead of the resolver.
+- [ ] **Vnet-scope enablement cascade.** `internal/fw.ScopeBanners`'s new `FwScopeVNet` case
+      (`internal/fw/resolve.go`) assumes a vnet's forward-chain ruleset cascades from the
+      datacenter-off footgun and gates on its own `enable` flag, mirroring node scope's cascade
+      shape — the closest existing precedent, not a captured or otherwise confirmed behavior.
+      Whether turning the datacenter firewall off on real PVE actually makes a vnet's forward-chain
+      rules inert (the same way it does for node/guest scope) is unconfirmed. Confirm against a
+      real vnet with `policy_forward`/rules configured, toggling `/cluster/firewall/options`'
+      `enable` and observing the vnet's actual forward-chain enforcement (e.g. via `iptables`/`nft`
+      output on a zone's underlying node, or observed traffic behavior).
+- [ ] **What a vnet-scope forward-chain rule actually governs, end to end.** The capture proves the
+      API's shape (`/cluster/sdn/vnets/{vnet}/firewall/{rules,options}`), not which traffic actually
+      traverses it (guest-to-guest within the vnet? only traffic crossing the vnet's L3 gateway to
+      another vnet/the outside? both?), nor how it composes with cluster-scope rules or a guest's
+      own in/out chain. `internal/sim`'s path simulator (`noteVNetFirewall`,
+      `internal/sim/firewall.go`) deliberately does **not** enforce vnet-scope rules for this reason
+      — it only discloses that an enabled ruleset exists on the path's attached vnet
+      (`CodeVNetFirewall`), the same "disclose, don't guess" treatment `CodeNodeFirewall` already
+      gives node-scope host-chain rules for guest-to-guest forwarded traffic. Confirm the actual
+      enforcement point/composition against real hardware before ever attempting to model vnet-scope
+      verdicts in the simulator.
+
+File these alongside T-3103's own report; item 3 (resolution-order hardware comparison) is a
+separate, already-tracked line of work — see `docs/features/firewall.md` and this file's other
+firewall entries for that.

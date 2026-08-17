@@ -199,6 +199,17 @@ func gatherFirewall(snap fw.Snapshot) []FirewallRow {
 		rows = append(rows, firewallRow(snap, inventory.FwScopeGuest, ref.Node, snap.Guests[ref]))
 	}
 
+	// T-3103: vnet-scope rulesets, sorted the same way guest refs are above
+	// (fw.Snapshot.VNets is a plain map — unordered iteration).
+	vnetRefs := make([]inventory.Ref, 0, len(snap.VNets))
+	for ref := range snap.VNets {
+		vnetRefs = append(vnetRefs, ref)
+	}
+	sort.Slice(vnetRefs, func(i, j int) bool { return vnetRefs[i].String() < vnetRefs[j].String() })
+	for _, ref := range vnetRefs {
+		rows = append(rows, firewallRow(snap, inventory.FwScopeVNet, ref.String(), snap.VNets[ref]))
+	}
+
 	return rows
 }
 

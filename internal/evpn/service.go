@@ -77,6 +77,12 @@ func (r peerFRRReader) FRREVPNVNI(ctx context.Context, node string) ([]byte, err
 	return raw, nil
 }
 
+// errNoSDN is sdnTree's internal sentinel for "no SDN dependency wired" —
+// never returned across the package boundary (Status swallows it exactly
+// like a real Tree() fetch failure, both degrading to empty
+// Controllers/ExitNodes rather than a failed call).
+var errNoSDN = errors.New("evpn: no SDN dependency configured")
+
 // SDNZoneSource is the small, optional seam Service uses to compute
 // exit-node health (docs/features/sdn.md §3: "exit-node health"):
 // *sdn.Service's own Tree method satisfies this directly. Nil-safe —
@@ -186,12 +192,36 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		status.Findings = []Finding{}
 	}
 
-	status.ExitNodes = s.exitNodeHealth(ctx, status.Nodes)
+	tree, treeErr := s.sdnTree(ctx)
+
+	status.ExitNodes = s.exitNodeHealth(status.Nodes, tree)
 	if status.ExitNodes == nil {
 		status.ExitNodes = []ExitNodeHealth{}
 	}
 
+	if treeErr == nil {
+		status.Controllers = s.controllerHealth(status.Nodes, tree)
+	}
+	if status.Controllers == nil {
+		status.Controllers = []ControllerHealth{}
+	}
+
 	return status, nil
+}
+
+// sdnTree fetches the SDN tree once per Status call (both exitNodeHealth
+// and controllerHealth need it — zone->controller resolution and
+// controller->zone/peer resolution are two views of the same tree, not two
+// reads), returning the zero Tree and the nil-dependency/fetch-failure
+// error uniformly so both callers degrade identically (nil Controllers/
+// ExitNodes carrying no attribution, never a failed Status call — the same
+// "degrades cleanly, same as every other optional dependency" posture
+// exitNodeHealth already had before T-3102).
+func (s *Service) sdnTree(ctx context.Context) (sdn.Tree, error) {
+	if s.cfg.SDN == nil {
+		return sdn.Tree{}, errNoSDN
+	}
+	return s.cfg.SDN.Tree(ctx)
 }
 
 // fetchNode fetches and parses one node's BGP summary and EVPN VNI table,
@@ -339,20 +369,13 @@ func (s *Service) collectFindings(nodes []NodeStatus) []Finding {
 	return findings
 }
 
-// exitNodeHealth computes per-exit-node health for every EVPN zone
-// SDNZoneSource reports (docs/features/sdn.md §3: "exit-node health"). A
-// node is healthy iff it has FRR installed and every one of its observed
-// peer sessions is Established; nil SDN dependency or a Tree() failure
-// yields no exit-node entries at all (degrades cleanly, same as every
-// other optional dependency).
-func (s *Service) exitNodeHealth(ctx context.Context, nodes []NodeStatus) []ExitNodeHealth {
-	if s.cfg.SDN == nil {
-		return nil
-	}
-	tree, err := s.cfg.SDN.Tree(ctx)
-	if err != nil {
-		return nil
-	}
+// exitNodeHealth computes per-exit-node health for every EVPN zone tree
+// reports (docs/features/sdn.md §3: "exit-node health"). A node is healthy
+// iff it has FRR installed and every one of its observed peer sessions is
+// Established; a zero Tree (nil SDN dependency or a Tree() failure —
+// sdnTree's uniform degrade) yields no exit-node entries at all (degrades
+// cleanly, same as every other optional dependency).
+func (s *Service) exitNodeHealth(nodes []NodeStatus, tree sdn.Tree) []ExitNodeHealth {
 	byNode := map[string]NodeStatus{}
 	for _, ns := range nodes {
 		byNode[ns.Node] = ns
@@ -364,7 +387,7 @@ func (s *Service) exitNodeHealth(ctx context.Context, nodes []NodeStatus) []Exit
 			continue
 		}
 		for _, en := range zone.ExitNodes {
-			eh := ExitNodeHealth{Zone: zone.ID, Node: en}
+			eh := ExitNodeHealth{Zone: zone.ID, Node: en, Controller: zone.Controller}
 			ns, ok := byNode[en]
 			switch {
 			case !ok:
@@ -392,5 +415,84 @@ func (s *Service) exitNodeHealth(ctx context.Context, nodes []NodeStatus) []Exit
 		}
 		return out[i].Node < out[j].Node
 	})
+	return out
+}
+
+// controllerHealth is T-3102 acceptance criterion 3's re-attachment: builds
+// one ControllerHealth per tree.Controllers entry, keyed by controller id
+// rather than by node or zone.
+//
+// Zones is every zone whose own `controller` field names this controller
+// (reverse of ExitNodeHealth.Controller) — a controller can back more than
+// one zone, and an operator asking "what does this controller carry" wants
+// that list, not just its own config fields.
+//
+// Peers/Healthy are computed only for bgp/evpn controllers, whose Peers
+// field names the underlay's configured peer address list: every
+// cluster-fan-out NodeStatus.Peer whose PeerAddr matches one of those
+// addresses is folded in, and the controller is Healthy iff at least one
+// matching session is Established and none is anything else — the same
+// "every observed session must be Established" rule ExitNodeHealth already
+// applies, now scoped to the sessions this specific controller's own peer
+// list actually claims rather than to every session an exit node happens
+// to carry. A controller with a configured peer list but zero matching
+// observed sessions is NOT healthy (nothing confirms the underlay is up);
+// one with no configured peer list at all (a bgp controller an operator has
+// not finished wiring, or a faucet/isis controller) reports Healthy true
+// with an empty Peers/Detail explaining why — "nothing observed" and
+// "nothing to observe" are different facts and this keeps them
+// distinguishable rather than collapsing both into a false negative.
+func (s *Service) controllerHealth(nodes []NodeStatus, tree sdn.Tree) []ControllerHealth {
+	sessionsByAddr := map[string][]Peer{}
+	for _, ns := range nodes {
+		for _, p := range ns.Peers {
+			sessionsByAddr[p.PeerAddr] = append(sessionsByAddr[p.PeerAddr], p)
+		}
+	}
+	zonesByController := map[string][]string{}
+	for _, z := range tree.Zones {
+		if z.Controller == "" {
+			continue
+		}
+		zonesByController[z.Controller] = append(zonesByController[z.Controller], z.ID)
+	}
+
+	out := make([]ControllerHealth, 0, len(tree.Controllers))
+	for _, c := range tree.Controllers {
+		ch := ControllerHealth{ID: c.ID, Type: c.Type, Zones: zonesByController[c.ID], Healthy: true}
+		sort.Strings(ch.Zones)
+
+		if c.Type != "bgp" && c.Type != "evpn" {
+			ch.Detail = fmt.Sprintf("controller type %q carries no BGP/EVPN peering session", c.Type)
+			out = append(out, ch)
+			continue
+		}
+		if len(c.Peers) == 0 {
+			ch.Detail = "no peer addresses configured on this controller"
+			out = append(out, ch)
+			continue
+		}
+
+		for _, addr := range c.Peers {
+			sessions, observed := sessionsByAddr[addr]
+			if !observed {
+				ch.Healthy = false
+				ch.Detail = fmt.Sprintf("no observed BGP session to configured peer %s", addr)
+				continue
+			}
+			for _, sess := range sessions {
+				ch.Peers = append(ch.Peers, sess.PeerAddr)
+				if sess.State != "Established" {
+					ch.Healthy = false
+					if ch.Detail == "" {
+						ch.Detail = fmt.Sprintf("session to %s is %s, not Established", sess.PeerAddr, sess.State)
+					}
+				}
+			}
+		}
+		sort.Strings(ch.Peers)
+		out = append(out, ch)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }

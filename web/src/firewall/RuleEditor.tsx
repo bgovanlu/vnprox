@@ -95,6 +95,7 @@ function RuleBuilderRow({ target, nextPos, objects, fwWriteDisabled, fwWriteTool
         <select aria-label="Direction" className="rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800" value={form.direction} onChange={(e) => { update("direction", e.target.value); }}>
           <option value="in">in</option>
           <option value="out">out</option>
+          <option value="forward">forward</option>
           <option value="group">security group</option>
         </select>
         {form.direction === "group" ? (

@@ -63,6 +63,7 @@ const tree: SdnTree = {
     },
   ],
   fabrics: [],
+  controllers: [],
   prefixLists: [],
   routeMaps: [],
 };
@@ -81,7 +82,7 @@ function renderPage() {
 // URL so that query gets a shape-correct (if empty) EvpnStatus rather than
 // the SdnTree fixture above (EvpnView.test.tsx covers EVPN content itself
 // in depth; this file only needs the tab switch not to crash).
-const emptyEvpnStatus = { nodes: [], exitNodes: [], findings: [], generatedAt: 1_752_000_000 };
+const emptyEvpnStatus = { nodes: [], exitNodes: [], controllers: [], findings: [], generatedAt: 1_752_000_000 };
 
 describe("SdnPage", () => {
   beforeEach(() => {

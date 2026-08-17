@@ -56,6 +56,41 @@ func TestUsageCounts_ClusterObjectVisibleEverywhere(t *testing.T) {
 	}
 }
 
+// TestUsageCounts_VNetRuleCountsAgainstClusterObject is T-3103's guard
+// against exactly the failure mode its task card warns about: a vnet-scope
+// rule referencing a cluster-scope alias must count toward that alias's
+// usage — a switch site (allRulesetRules) that forgot to add a vnet arm
+// would silently under-count here, and checkFwObjectDeletable (validate_
+// referential.go) would then let the alias be deleted while a live vnet
+// rule still referenced it.
+func TestUsageCounts_VNetRuleCountsAgainstClusterObject(t *testing.T) {
+	cluster := &inventory.FwRuleset{
+		Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}, Scope: inventory.FwScopeCluster, Enabled: true,
+		Aliases: []inventory.FwAlias{{Name: "office_net", CIDR: "192.168.1.0/24"}},
+	}
+	vnetRS := &inventory.FwRuleset{
+		Ref: vnetRulesetRef("zone1", "vnet1"), Scope: inventory.FwScopeVNet, Enabled: true,
+		Rules: []inventory.FwRule{
+			{Pos: 0, Enabled: true, Direction: "forward", Action: "ACCEPT", Source: "office_net", Comment: "vnet ref to alias"},
+		},
+	}
+	snap := buildSnapshot(t, cluster, vnetRS)
+
+	usage := fw.UsageCounts(snap)
+	for _, u := range usage {
+		if u.Kind == fw.ObjectAlias && u.Name == "office_net" {
+			if u.Count != 1 {
+				t.Fatalf("alias office_net count = %d, want 1 (the vnet rule's reference)", u.Count)
+			}
+			if len(u.ReferencedBy) != 1 || u.ReferencedBy[0].Scope != inventory.FwScopeVNet {
+				t.Fatalf("ReferencedBy = %+v, want one entry scoped %q", u.ReferencedBy, inventory.FwScopeVNet)
+			}
+			return
+		}
+	}
+	t.Fatal("alias/office_net not present in UsageCounts output")
+}
+
 // TestUsageCounts_LocalScopeObjectOnlyCountsLocalRules covers the other
 // half of acceptance criterion 4's scoping model: a guest-defined alias is
 // only visible (and so only referenceable) within that same guest's own

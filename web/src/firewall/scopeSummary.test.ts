@@ -43,4 +43,20 @@ describe("scopeToggleSummary", () => {
       "Turning the firewall ON for web01 activates its own rules and any security groups it includes. The datacenter firewall and node firewall are unaffected by this change.",
     );
   });
+
+  it("vnet OFF: scoped to that vnet's forward chain only, names it", () => {
+    expect(scopeToggleSummary({ scope: "vnet", enabling: false, vnetLabel: "vnet100" })).toBe(
+      "Turning the firewall OFF for vnet100 deactivates its own forward-chain rules; the datacenter firewall and every node's and guest's firewall are unaffected.",
+    );
+  });
+
+  it("vnet ON: scoped to that vnet's forward chain only, names it", () => {
+    expect(scopeToggleSummary({ scope: "vnet", enabling: true, vnetLabel: "vnet100" })).toBe(
+      "Turning the firewall ON for vnet100 activates its own forward-chain rules. The datacenter firewall and every node's and guest's firewall are unaffected by this change.",
+    );
+  });
+
+  it("vnet with no name falls back to a generic label", () => {
+    expect(scopeToggleSummary({ scope: "vnet", enabling: false })).toContain("for this vnet");
+  });
 });

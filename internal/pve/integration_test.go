@@ -420,6 +420,68 @@ func TestTicketAuth_FirewallReadsAllScopes(t *testing.T) {
 	_ = groups // fixture may or may not define groups; just confirm the call succeeds.
 }
 
+// TestTicketAuth_VNetFirewallReadWriteAndNoObjects is T-3103's own version
+// of TestTicketAuth_FirewallReadsAllScopes: vnet scope is a fourth firewall
+// scope (/cluster/sdn/vnets/{vnet}/firewall), hardware-captured to expose
+// only rules+options — no aliases/ipset endpoint at all, the same gap node
+// scope has (T-608). This proves both the positive (rules/options CRUD
+// round-trips, including the "forward" direction and policy_forward/
+// log_level_forward — real fields nothing else in this scope's options has)
+// and the negative (aliases/ipset must keep 404ing, not silently start
+// succeeding).
+func TestTicketAuth_VNetFirewallReadWriteAndNoObjects(t *testing.T) {
+	ts := newMockServer(t, fixtureThreeNode)
+	c := newTicketClient(t, ts.URL, "root@pam", "vnprox-mock")
+	ctx := context.Background()
+	scope := pve.VnetFirewallScope("vnet100")
+
+	// Starts empty — the fixture doesn't seed vnet100's firewall.
+	rules, err := c.ListFirewallRules(ctx, scope)
+	if err != nil {
+		t.Fatalf("ListFirewallRules (vnet): %v", err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("ListFirewallRules (vnet) = %+v, want empty", rules)
+	}
+
+	if createErr := c.CreateFirewallRule(ctx, scope, pve.FirewallRule{
+		Type: "forward", Action: "ACCEPT", Source: "10.100.0.0/24", Comment: "T-3103", Enabled: true,
+	}); createErr != nil {
+		t.Fatalf("CreateFirewallRule (vnet, forward): %v", createErr)
+	}
+	rules, err = c.ListFirewallRules(ctx, scope)
+	if err != nil {
+		t.Fatalf("ListFirewallRules (vnet) after create: %v", err)
+	}
+	if len(rules) != 1 || rules[0].Type != "forward" || rules[0].Action != "ACCEPT" {
+		t.Fatalf("ListFirewallRules (vnet) = %+v, want one forward/ACCEPT rule", rules)
+	}
+
+	policyForward, logLevelForward := "DROP", "debug"
+	if updErr := c.UpdateFirewallOptions(ctx, scope, pve.FirewallOptionsUpdate{
+		PolicyForward: &policyForward, LogLevelForward: &logLevelForward,
+	}); updErr != nil {
+		t.Fatalf("UpdateFirewallOptions (vnet): %v", updErr)
+	}
+	opts, err := c.GetFirewallOptions(ctx, scope)
+	if err != nil {
+		t.Fatalf("GetFirewallOptions (vnet): %v", err)
+	}
+	if opts.PolicyForward != "DROP" || opts.LogLevelForward != "debug" {
+		t.Fatalf("GetFirewallOptions (vnet) = %+v, want policy_forward=DROP log_level_forward=debug", opts)
+	}
+
+	// No aliases/ipset endpoint at vnet scope (hardware-captured — see
+	// FwScopeVNet's doc comment). Must keep erroring, mirroring node scope's
+	// own assertion above.
+	if _, err := c.ListFirewallAliases(ctx, scope); err == nil {
+		t.Fatalf("ListFirewallAliases (vnet): want an error (real PVE has no vnet-scoped aliases endpoint), got success")
+	}
+	if _, err := c.ListFirewallIPSets(ctx, scope); err == nil {
+		t.Fatalf("ListFirewallIPSets (vnet): want an error (real PVE has no vnet-scoped ipset endpoint), got success")
+	}
+}
+
 // --- IPAM reads --------------------------------------------------------------
 
 func TestIPAMReads_ThreeNodeVlan(t *testing.T) {

@@ -45,6 +45,13 @@ const (
 	// not traverse the host INPUT/OUTPUT chains, so those rules are not
 	// evaluated for this path.
 	CodeNodeFirewall = "node-firewall-not-on-path"
+	// CodeVNetFirewall (T-3103) notes a vnet-scope forward-chain firewall
+	// ruleset exists and is enabled on an endpoint's attached vnet; this
+	// engine has no hardware-confirmed model of how/when a vnet's forward
+	// chain actually applies to guest-nic traffic, so — like
+	// CodeNodeFirewall — it is disclosed, not enforced. Needs hardware
+	// validation.
+	CodeVNetFirewall = "vnet-firewall-not-on-path"
 	// CodeOVS notes an Open vSwitch bridge/bond is on the path; the engine's
 	// L2 VLAN reasoning is validated against Linux-bridge semantics only.
 	CodeOVS = "ovs-l2"

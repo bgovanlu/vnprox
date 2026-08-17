@@ -154,6 +154,7 @@ func (srv *Server) buildRouter() chi.Router {
 		srv.mountSDN(api)
 		srv.mountSDNDNS(api)
 		srv.mountSDNFabric(api)
+		srv.mountSDNController(api)
 		srv.mountIPAM(api)
 		srv.mountFirewall(api)
 	})

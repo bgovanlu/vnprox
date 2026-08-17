@@ -59,6 +59,22 @@ const (
 	// (internal/pvemock/sdn_fabric.go) so the two validators can never
 	// quietly disagree about which combination is legal.
 	codeSDNFabricProtocolInvalid = "schema.sdn_fabric_protocol_invalid"
+	// codeSDNControllerIDInvalid flags an sdn.controller.create whose id
+	// does not match real PVE's captured controller id pattern
+	// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt's `--controller`
+	// pattern: `[a-zA-Z][a-zA-Z0-9_-]*[a-zA-Z0-9]`) — a materially different
+	// charset from both codeSDNNameInvalid's zone/vnet pattern and
+	// codeSDNFabricIDInvalid's fabric pattern (this one permits underscores
+	// and has no fixed length cap), so it gets its own code.
+	codeSDNControllerIDInvalid = "schema.sdn_controller_id_invalid"
+	// codeSDNControllerTypeInvalid flags an sdn.controller.create/update
+	// whose type is not one of bgp|evpn|faucet|isis, or whose
+	// type-conditional fields don't match the combination this file's
+	// sdnControllerTypeFields allows for the chosen type — the controller
+	// counterpart of codeSDNFabricProtocolInvalid, symmetric with
+	// pvemock's own sdnControllerTypeError (internal/pvemock/
+	// sdn_controller.go) so the two validators can never quietly disagree.
+	codeSDNControllerTypeInvalid = "schema.sdn_controller_type_invalid"
 	// codeGatewayNotInSubnet is T-701 acceptance criterion 2: a
 	// sdn.subnet.create/update whose gateway is a syntactically valid IP
 	// (codeIPInvalid already covers "not an IP at all") but does not fall
@@ -81,6 +97,17 @@ const (
 	codeFwPolicyInvalid    = "schema.fw_policy_invalid"
 	codeFwLogInvalid       = "schema.fw_log_invalid"
 	codeFwPosInvalid       = "schema.fw_pos_invalid"
+	// codeFwScopeInvalid (T-3103) flags an fw.rule/fw.options op whose
+	// field is syntactically valid but not valid for the *scope* its target
+	// names: a "forward" direction rule at guest scope (real PVE has no
+	// forward chain on a guest's own vNIC — only cluster, node, and vnet
+	// scope do); defaultIn/defaultOut on an fw.options.update targeting a
+	// vnet ruleset (real PVE's vnet options endpoint has no policy_in/
+	// policy_out fields, hardware-captured — planning/reports/evidence/
+	// pve-9.2.4-sdn-schema.txt); logLevelForward set anywhere except vnet
+	// scope (only vnet scope is hardware-confirmed to accept it); or
+	// defaultForward at guest scope (no forward chain there either).
+	codeFwScopeInvalid = "schema.fw_scope_invalid"
 	// codeOVSTrunkNotAllowed flags a vlan.create with a non-empty Trunks
 	// list but OVS false: trunks are an OVS Int Port concept (ovs-vsctl's
 	// Port "trunks" column) — a plain 802.1q sub-interface always carries
@@ -183,6 +210,12 @@ const (
 	// list (scope, ruleset ref, position) the editor UI's deep-links need
 	// — see checkFwObjectDeletable's doc comment.
 	codeFwObjectInUse = "referential.fw_object_in_use"
+	// codeSdnControllerInUse is T-3102 acceptance criterion 5: deleting an
+	// SDN controller still named by at least one zone's `controller` field
+	// is blocked, with the referencing zone count/list — the SDN-object
+	// counterpart of codeFwObjectInUse, same "Validate()-time blocking
+	// Finding, not a bare Go error" shape (checkSdnControllerDeletable).
+	codeSdnControllerInUse = "referential.sdn_controller_in_use"
 	// codePFNotFound (T-1506) flags a vf.provision op whose Target does not
 	// resolve to an existing physnic — the standard "target must exist"
 	// referential check every op family already gets, named for this one

@@ -55,11 +55,35 @@ const (
 	// manages a wg-tunnel's peer links directly) — the two must never share
 	// a model, and this Kind is what keeps a fabric's op targets and a
 	// tunnel's op targets from ever colliding on the wire.
-	KindSDNFabric    Kind = "sdn-fabric"
-	KindGuest        Kind = "guest"
-	KindGuestNic     Kind = "guest-nic"
-	KindLldpNeighbor Kind = "lldp-neighbor"
-	KindFwRuleset    Kind = "fw-ruleset"
+	KindSDNFabric Kind = "sdn-fabric"
+	// KindSDNController (T-3102: SDN controllers as first-class objects,
+	// /cluster/sdn/controllers) names one controller: a cluster-scoped
+	// (Node empty, like every other sdn-* kind) BGP/EVPN/FRR-Faucet/IS-IS
+	// underlay-control-plane object, keyed by its own id
+	// ([a-zA-Z][a-zA-Z0-9_-]*[a-zA-Z0-9], planning/reports/evidence/
+	// pve-9.2.4-sdn-schema.txt's `--controller` pattern). A controller
+	// predates T-3102 as a bare string on a zone (SdnZone.Controller,
+	// which stays a *reference* by id — this Kind is what the string now
+	// resolves to as a first-class sibling object, the same "sibling
+	// collection, not nested under Zone" shape KindSDNFabric already set,
+	// since a controller (like a fabric) is infrastructure a zone rides
+	// on, not a zone's child the way a Vnet is. Unlike Fabric, a
+	// controller IS live-polled into this graph (ingested by the SDN poll,
+	// internal/collect.pollSDN, mirroring KindSDNDnsZone/KindSDNDnsRecord's
+	// precedent rather than Fabric's): a zone's `controller` reference
+	// needs a live existence/in-use check (T-3102 acceptance criterion 5),
+	// which a live-polled entity gives for free the way a Fabric's own
+	// "not live-polled" choice does not support. Like Fabric/DNS it is
+	// deliberately NOT rendered as a topology-map node (topology.layerOf
+	// returns false for it, by having no case there) — it gets its own
+	// status view instead (web/src/sdn/controllers/), with EVPN/BGP
+	// session health re-attached to it rather than inferred purely from
+	// zone state (internal/evpn).
+	KindSDNController Kind = "sdn-controller"
+	KindGuest         Kind = "guest"
+	KindGuestNic      Kind = "guest-nic"
+	KindLldpNeighbor  Kind = "lldp-neighbor"
+	KindFwRuleset     Kind = "fw-ruleset"
 	// KindQosShape (T-1505: QoS & traffic shaping) names a qos.shape.*
 	// changeset op's target: a bridge-level tc/HTB shape, node-scoped with a
 	// caller-chosen id. It has no dedicated live-polled inventory entity of
@@ -151,8 +175,9 @@ var knownKinds = map[Kind]bool{
 	KindNatRule: true, KindStaticRoute: true, KindVF: true, KindCephOSD: true,
 	KindPBSHost:    true,
 	KindSDNDnsZone: true, KindSDNDnsRecord: true,
-	KindSwitchPort: true,
-	KindSDNFabric:  true,
+	KindSwitchPort:    true,
+	KindSDNFabric:     true,
+	KindSDNController: true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)

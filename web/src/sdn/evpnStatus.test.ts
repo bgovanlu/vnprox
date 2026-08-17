@@ -48,6 +48,7 @@ const status: EvpnStatus = {
     { node: "pve3", frrInstalled: false, peers: [], vnis: [] },
   ],
   exitNodes: [],
+  controllers: [],
   findings: [],
 };
 

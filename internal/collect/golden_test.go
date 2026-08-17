@@ -36,6 +36,10 @@ func threeNodeVlanRefs() []string {
 		"sdn-subnet::10.100.0.0/24",
 		"sdn-subnet::10.200.0.0/24",
 		"fw-ruleset::cluster",
+		// T-3103: vnet-scope firewall rulesets, one per vnet (polled
+		// alongside the cluster ruleset — cluster-scoped, no Node).
+		"fw-ruleset::vnet/vlanz/vnet100",
+		"fw-ruleset::vnet/vlanz/vnet200",
 		// guests (+ their NICs and firewall rulesets)
 		"guest:pve1:200",
 		"guest-nic:pve1:200/net0",

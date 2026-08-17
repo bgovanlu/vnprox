@@ -27,6 +27,7 @@ type fakeReader struct {
 	fabricNodes    []pve.SDNFabricNode
 	prefixLists    []pve.SDNPrefixList
 	routeMaps      []pve.SDNRouteMap
+	controllers    []pve.SDNController
 }
 
 func (f *fakeReader) ListSDNZones(context.Context) ([]pve.SDNZone, error) { return f.zones, nil }
@@ -55,6 +56,9 @@ func (f *fakeReader) ListSDNPrefixLists(context.Context) ([]pve.SDNPrefixList, e
 }
 func (f *fakeReader) ListSDNRouteMaps(context.Context) ([]pve.SDNRouteMap, error) {
 	return f.routeMaps, nil
+}
+func (f *fakeReader) ListSDNControllers(context.Context) ([]pve.SDNController, error) {
+	return f.controllers, nil
 }
 
 var _ PVEReader = (*fakeReader)(nil)

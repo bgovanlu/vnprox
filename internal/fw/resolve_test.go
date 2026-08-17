@@ -19,6 +19,19 @@ func nodeRulesetRef(node string) inventory.Ref {
 	return inventory.Ref{Kind: inventory.KindFwRuleset, Node: node, ID: "node"}
 }
 
+// vnetRulesetRef is vnetRulesetRef's T-3103 counterpart: a vnet-scope
+// firewall ruleset's own Ref ("vnet/<zone>/<vnet>", per params_fw.go's doc
+// comment) — distinct from vnetRef, the owning SDN vnet's own Ref
+// ("<zone>/<vnet>", Kind==KindSDNVnet) that Snapshot.VNets is actually keyed
+// by.
+func vnetRulesetRef(zone, vnet string) inventory.Ref {
+	return inventory.Ref{Kind: inventory.KindFwRuleset, ID: "vnet/" + zone + "/" + vnet}
+}
+
+func vnetRef(zone, vnet string) inventory.Ref {
+	return inventory.Ref{Kind: inventory.KindSDNVnet, ID: zone + "/" + vnet}
+}
+
 // buildSnapshot constructs a fw.Snapshot the same way the API layer does
 // (via BuildSnapshot over a flat entity list), so these tests exercise the
 // exact assembly path production code uses, not a hand-built Snapshot.
@@ -380,6 +393,21 @@ func TestScopeBanners_DatacenterOffCascades(t *testing.T) {
 
 	t.Run("guest tab, even though guest's own firewall is on", func(t *testing.T) {
 		gates := fw.ScopeBanners(snap, inventory.FwScopeGuest, "pve1", snap.Guests[guestRef("pve1", "100")])
+		if len(gates) != 1 {
+			t.Fatalf("gates = %+v, want exactly one (cascaded) gate", gates)
+		}
+		if gates[0].Scope != inventory.FwScopeCluster {
+			t.Errorf("gates[0].Scope = %q, want cluster (cascaded cause)", gates[0].Scope)
+		}
+	})
+
+	// T-3103: vnet scope must cascade the same way node/guest do — a
+	// `default: return nil` arm added instead of an explicit vnet case
+	// would silently swallow this gate.
+	t.Run("vnet tab, even though vnet's own firewall is on", func(t *testing.T) {
+		vnetRS := &inventory.FwRuleset{Ref: vnetRulesetRef("zone1", "vnet1"), Scope: inventory.FwScopeVNet, Enabled: true}
+		vnetSnap := buildSnapshot(t, cluster, vnetRS)
+		gates := fw.ScopeBanners(vnetSnap, inventory.FwScopeVNet, "zone1/vnet1", vnetRS)
 		if len(gates) != 1 {
 			t.Fatalf("gates = %+v, want exactly one (cascaded) gate", gates)
 		}

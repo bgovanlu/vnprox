@@ -50,6 +50,8 @@ func (e *Engine) evaluateFirewall(src, dst resolvedEP, req Request, res *Result)
 	}
 	e.noteNodeFirewall(src, res)
 	e.noteNodeFirewall(dst, res)
+	e.noteVNetFirewall(src, res)
+	e.noteVNetFirewall(dst, res)
 	return fwOutcome{state: fwAllow}
 }
 
@@ -246,6 +248,25 @@ func (e *Engine) noteNodeFirewall(ep resolvedEP, res *Result) {
 	if rs, ok := e.fw.Nodes[ep.node]; ok && rs != nil && rs.Enabled && len(rs.Rules) > 0 {
 		res.addCaveat(warnCaveat(CodeNodeFirewall, fmt.Sprintf(
 			"Node %s has host-scope firewall rules; guest-to-guest forwarded traffic does not traverse the host INPUT/OUTPUT chains, so those rules are not evaluated for this path.", ep.node)))
+	}
+}
+
+// noteVNetFirewall discloses that an endpoint's vnet has an enabled
+// forward-chain firewall ruleset with rules configured, without attempting
+// to enforce it (T-3103) — the vnet-scope counterpart of noteNodeFirewall,
+// same caveat-only treatment for the same reason: this engine has no
+// hardware-confirmed model of how a vnet's forward chain composes with the
+// rest of a simulated path (whether/when it actually applies to guest-nic
+// traffic attached to that vnet is unconfirmed — needs hardware
+// validation), so it is disclosed rather than guessed at.
+func (e *Engine) noteVNetFirewall(ep resolvedEP, res *Result) {
+	if ep.attach != attachVnet || ep.vnet == nil {
+		return
+	}
+	ref := ep.vnet.GetRef()
+	if rs, ok := e.fw.VNets[ref]; ok && rs != nil && rs.Enabled && len(rs.Rules) > 0 {
+		res.addCaveat(warnCaveat(CodeVNetFirewall, fmt.Sprintf(
+			"VNet %s has enabled forward-chain firewall rules; this simulator does not evaluate them for this path.", ep.vnet.ID)))
 	}
 }
 

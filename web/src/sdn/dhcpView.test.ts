@@ -9,6 +9,7 @@ const tree: SdnTree = {
     { id: "otherz", type: "simple", nodeStatus: [], vnets: [] },
   ],
   fabrics: [],
+  controllers: [],
   prefixLists: [],
   routeMaps: [],
 };

@@ -366,6 +366,14 @@ type SDNConfig struct {
 	// children to order around (see this task's report on why this landed
 	// in full rather than scoped down to create/delete only).
 	Fabrics []SDNFabricConfig `json:"fabrics,omitempty"`
+	// Controllers (T-3102) is the pre-apply/rollback snapshot's controller
+	// set, reconciled the same three-phase way Fabrics is — except a
+	// controller can itself depend on a fabric (an evpn controller's
+	// `--fabric` field) and is in turn depended on by a zone (`--controller`),
+	// so apply_sdn.go's sdnRestoreOps orders controller reconciliation
+	// between fabric and zone in both directions (fabric, then controller,
+	// then zone on create; the reverse on delete).
+	Controllers []SDNControllerConfig `json:"controllers,omitempty"`
 }
 
 // SDNDnsZoneConfig mirrors SdnDnsZoneCreateParams' field set plus the zone's
@@ -423,6 +431,30 @@ type SDNFabricConfig struct {
 	CSNPInterval        int      `json:"csnpInterval,omitempty"`
 	HelloInterval       int      `json:"helloInterval,omitempty"`
 	PersistentKeepalive int      `json:"persistentKeepalive,omitempty"`
+}
+
+// SDNControllerConfig mirrors SdnControllerCreateParams' field set (T-3102)
+// plus the controller's own id.
+type SDNControllerConfig struct {
+	ID            string   `json:"id"`
+	Type          string   `json:"type"`
+	BgpMode       string   `json:"bgpMode,omitempty"`
+	Fabric        string   `json:"fabric,omitempty"`
+	IsisDomain    string   `json:"isisDomain,omitempty"`
+	IsisNet       string   `json:"isisNet,omitempty"`
+	Loopback      string   `json:"loopback,omitempty"`
+	Node          string   `json:"node,omitempty"`
+	PeerGroupName string   `json:"peerGroupName,omitempty"`
+	RouteMapIn    string   `json:"routeMapIn,omitempty"`
+	RouteMapOut   string   `json:"routeMapOut,omitempty"`
+	Nodes         []string `json:"nodes,omitempty"`
+	Peers         []string `json:"peers,omitempty"`
+	IsisIfaces    []string `json:"isisIfaces,omitempty"`
+
+	ASN                     int  `json:"asn,omitempty"`
+	EbgpMultihop            int  `json:"ebgpMultihop,omitempty"`
+	Ebgp                    bool `json:"ebgp,omitempty"`
+	BgpMultipathAsPathRelax bool `json:"bgpMultipathAsPathRelax,omitempty"`
 }
 
 // SDNSubnetConfig mirrors SdnSubnetCreateParams' field set.

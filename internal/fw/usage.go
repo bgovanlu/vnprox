@@ -128,6 +128,17 @@ func allRulesetRules(snap Snapshot) []rulesetRules {
 		rs := snap.Guests[g]
 		out = append(out, rulesetRules{Scope: inventory.FwScopeGuest, Ref: rs.Ref, Rules: rs.Rules})
 	}
+	// vnet-scope rulesets (T-3103) have no aliases/ipsets of their own
+	// (real PVE exposes no such endpoint under this prefix — see
+	// inventory.FwScopeVNet's doc comment), so unlike the node/guest loops
+	// above there is no "enumerate rs.Aliases/rs.IPSets" counterpart here —
+	// but a vnet rule can still *reference* a cluster-scope alias/ipset/
+	// group, so it must still be scanned for that, the same reason group
+	// member rules are folded in above.
+	for _, v := range snap.sortedVNetRefs() {
+		rs := snap.VNets[v]
+		out = append(out, rulesetRules{Scope: inventory.FwScopeVNet, Ref: rs.Ref, Rules: rs.Rules})
+	}
 	return out
 }
 

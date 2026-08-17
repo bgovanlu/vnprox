@@ -20,6 +20,7 @@ const tree: SdnTree = {
     { id: "evpnz", type: "evpn", nodeStatus: [], vnets: [] },
   ],
   fabrics: [],
+  controllers: [],
   prefixLists: [],
   routeMaps: [],
 };
@@ -85,6 +86,8 @@ describe("firstSelection", () => {
     expect(firstSelection(tree)).toEqual({ kind: "zone", zoneId: "vlanz" });
   });
   it("returns undefined for an empty tree", () => {
-    expect(firstSelection({ zones: [], fabrics: [], prefixLists: [], routeMaps: [], generatedAt: 1 })).toBeUndefined();
+    expect(
+      firstSelection({ zones: [], fabrics: [], controllers: [], prefixLists: [], routeMaps: [], generatedAt: 1 }),
+    ).toBeUndefined();
   });
 });

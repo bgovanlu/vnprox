@@ -81,6 +81,22 @@ const (
 	OpSdnFabricUpdate OpType = "sdn.fabric.update"
 	OpSdnFabricDelete OpType = "sdn.fabric.delete"
 
+	// SDN Controller op family (T-3102). Controllers stage and apply through
+	// the exact same PUT /cluster/sdn commit every other sdn.* op uses
+	// (apply_plan.go's sdnStageOpTypes) — the same "no bespoke apply path"
+	// discipline OpSdnFabricCreate's doc comment states, so this family does
+	// not widen planning/reports/T-3101-followup-01.md's filed `--lock-token`
+	// gap either. A controller target is Ref{Kind: KindSDNController, ID:
+	// <controllerID>} (cluster-scoped, Node empty like every other sdn-*
+	// Kind). A zone's own `controller` field (SdnZoneCreateParams.Controller)
+	// is unchanged by this family — it stays a plain string reference by id,
+	// now resolving to a first-class sibling object instead of an opaque
+	// name (internal/sdn.Service's Tree.Controllers, KindSDNController's doc
+	// comment).
+	OpSdnControllerCreate OpType = "sdn.controller.create"
+	OpSdnControllerUpdate OpType = "sdn.controller.update"
+	OpSdnControllerDelete OpType = "sdn.controller.delete"
+
 	OpSdnApply OpType = "sdn.apply"
 
 	OpGuestNicUpdate OpType = "guest.nic.update"
@@ -224,6 +240,10 @@ var paramFactories = map[OpType]func() Params{
 	OpSdnFabricCreate: func() Params { return &SdnFabricCreateParams{} },
 	OpSdnFabricUpdate: func() Params { return &SdnFabricUpdateParams{} },
 	OpSdnFabricDelete: func() Params { return &SdnFabricDeleteParams{} },
+
+	OpSdnControllerCreate: func() Params { return &SdnControllerCreateParams{} },
+	OpSdnControllerUpdate: func() Params { return &SdnControllerUpdateParams{} },
+	OpSdnControllerDelete: func() Params { return &SdnControllerDeleteParams{} },
 
 	OpSdnApply: func() Params { return &SdnApplyParams{} },
 

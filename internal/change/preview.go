@@ -137,6 +137,9 @@ func buildUnprojectableReasons() map[OpType]string {
 	for _, t := range []OpType{OpSdnFabricCreate, OpSdnFabricUpdate, OpSdnFabricDelete} {
 		reasons[t] = "an SDN fabric is PVE-managed underlay routing config, not a drawable entity in the topology graph; see the SDN cockpit's Fabrics view instead"
 	}
+	for _, t := range []OpType{OpSdnControllerCreate, OpSdnControllerUpdate, OpSdnControllerDelete} {
+		reasons[t] = "an SDN controller is PVE-managed underlay control-plane config, not a drawable entity in the topology graph; see the SDN cockpit's Controllers view instead"
+	}
 	return reasons
 }
 

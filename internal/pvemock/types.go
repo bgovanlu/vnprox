@@ -621,6 +621,10 @@ type SDNSpec struct {
 	// the fixture-seeded list this field feeds.
 	PrefixLists []SDNPrefixListSpec `yaml:"prefix_lists,omitempty"`
 	RouteMaps   []SDNRouteMapSpec   `yaml:"route_maps,omitempty"`
+	// Controllers (T-3102) seeds the fixture-loaded controller set, staged/
+	// applied exactly like Fabrics above (its own Running pair, sdn_controller.go's
+	// runningController mirroring runningFabric).
+	Controllers []SDNControllerSpec `yaml:"controllers,omitempty"`
 }
 
 // SDNDnsZoneSpec is one DNS zone (T-1204): a forward domain registered in
@@ -704,13 +708,14 @@ type SDNZoneSpec struct {
 
 // SDNVnetSpec is one VNet inside a zone.
 type SDNVnetSpec struct {
-	Running   *SDNVnetSpec `yaml:"running,omitempty" json:"-"`
-	ID        string       `yaml:"id" json:"vnet"`
-	Zone      string       `yaml:"zone" json:"zone"`
-	Alias     string       `yaml:"alias,omitempty" json:"alias,omitempty"`
-	Pending   PendingState `yaml:"pending,omitempty" json:"pending,omitempty"`
-	Tag       int          `yaml:"tag,omitempty" json:"tag,omitempty"`
-	VlanAware bool         `yaml:"vlan_aware,omitempty" json:"vlan_aware,omitempty"`
+	Running   *SDNVnetSpec   `yaml:"running,omitempty" json:"-"`
+	Firewall  *FirewallScope `yaml:"firewall,omitempty" json:"-"`
+	ID        string         `yaml:"id" json:"vnet"`
+	Zone      string         `yaml:"zone" json:"zone"`
+	Alias     string         `yaml:"alias,omitempty" json:"alias,omitempty"`
+	Pending   PendingState   `yaml:"pending,omitempty" json:"pending,omitempty"`
+	Tag       int            `yaml:"tag,omitempty" json:"tag,omitempty"`
+	VlanAware bool           `yaml:"vlan_aware,omitempty" json:"vlan_aware,omitempty"`
 }
 
 // SDNSubnetSpec is one subnet inside a VNet.
@@ -756,6 +761,37 @@ type SDNFabricNodeSpec struct {
 	IP6    string `yaml:"ip6,omitempty" json:"ip6,omitempty"`
 }
 
+// SDNControllerSpec is one SDN controller (T-3102), mirroring
+// pve.SDNController's field set — see internal/pve/sdn_controller.go's
+// package doc comment for the type-conditional field meanings. Running
+// mirrors SDNFabricSpec's staged/last-applied pair convention exactly
+// (runningController in sdn_controller.go). Nodes/Peers/IsisIfaces are
+// plain []string here (not the comma-string wire form) — pve.Client's own
+// commaList unmarshaling already accepts a JSON array, the same convention
+// SDNZoneSpec's Nodes/ExitNodes/Peers fields already use.
+type SDNControllerSpec struct {
+	Running                 *SDNControllerSpec `yaml:"running,omitempty" json:"-"`
+	ID                      string             `yaml:"id" json:"controller"`
+	Type                    string             `yaml:"type" json:"type"`
+	Pending                 PendingState       `yaml:"pending,omitempty" json:"pending,omitempty"`
+	BgpMode                 string             `yaml:"bgp_mode,omitempty" json:"bgp-mode,omitempty"`
+	Fabric                  string             `yaml:"fabric,omitempty" json:"fabric,omitempty"`
+	IsisDomain              string             `yaml:"isis_domain,omitempty" json:"isis-domain,omitempty"`
+	IsisNet                 string             `yaml:"isis_net,omitempty" json:"isis-net,omitempty"`
+	Loopback                string             `yaml:"loopback,omitempty" json:"loopback,omitempty"`
+	Node                    string             `yaml:"node,omitempty" json:"node,omitempty"`
+	PeerGroupName           string             `yaml:"peer_group_name,omitempty" json:"peer-group-name,omitempty"`
+	RouteMapIn              string             `yaml:"route_map_in,omitempty" json:"route-map-in,omitempty"`
+	RouteMapOut             string             `yaml:"route_map_out,omitempty" json:"route-map-out,omitempty"`
+	Nodes                   []string           `yaml:"nodes,omitempty" json:"nodes,omitempty"`
+	Peers                   []string           `yaml:"peers,omitempty" json:"peers,omitempty"`
+	IsisIfaces              []string           `yaml:"isis_ifaces,omitempty" json:"isis-ifaces,omitempty"`
+	ASN                     int                `yaml:"asn,omitempty" json:"asn,omitempty"`
+	EbgpMultihop            int                `yaml:"ebgp_multihop,omitempty" json:"ebgp-multihop,omitempty"`
+	Ebgp                    bool               `yaml:"ebgp,omitempty" json:"ebgp,omitempty"`
+	BgpMultipathAsPathRelax bool               `yaml:"bgp_multipath_as_path_relax,omitempty" json:"bgp-multipath-as-path-relax,omitempty"`
+}
+
 // SDNPrefixListSpec is one read-only fixture-seeded prefix-list entry
 // (T-3101) — see internal/pve/sdn_fabric.go's package doc comment on why
 // its field shape beyond ID is unconfirmed against hardware.
@@ -778,13 +814,18 @@ type FirewallSpec struct {
 // FirewallScope is one ruleset at any of the three PVE firewall scopes
 // (cluster/node/guest).
 type FirewallScope struct {
-	PolicyIn  string        `yaml:"policy_in,omitempty" json:"policy_in,omitempty"`
-	PolicyOut string        `yaml:"policy_out,omitempty" json:"policy_out,omitempty"`
-	Rules     []FwRuleSpec  `yaml:"rules" json:"-"`
-	Aliases   []FwAliasSpec `yaml:"aliases" json:"-"`
-	IPSets    []FwIPSetSpec `yaml:"ipsets" json:"-"`
-	Groups    []FwGroupSpec `yaml:"groups" json:"-"`
-	Enabled   bool          `yaml:"enabled" json:"enable"`
+	PolicyIn  string `yaml:"policy_in,omitempty" json:"policy_in,omitempty"`
+	PolicyOut string `yaml:"policy_out,omitempty" json:"policy_out,omitempty"`
+	// PolicyForward/LogLevelForward (T-3103) are the forward chain's own
+	// fallthrough policy/log level — see pve.FirewallOptions' doc comment
+	// for which scopes are hardware-confirmed to accept each.
+	PolicyForward   string        `yaml:"policy_forward,omitempty" json:"policy_forward,omitempty"`
+	LogLevelForward string        `yaml:"log_level_forward,omitempty" json:"log_level_forward,omitempty"`
+	Rules           []FwRuleSpec  `yaml:"rules" json:"-"`
+	Aliases         []FwAliasSpec `yaml:"aliases" json:"-"`
+	IPSets          []FwIPSetSpec `yaml:"ipsets" json:"-"`
+	Groups          []FwGroupSpec `yaml:"groups" json:"-"`
+	Enabled         bool          `yaml:"enabled" json:"enable"`
 }
 
 // FwRuleSpec is one firewall rule.

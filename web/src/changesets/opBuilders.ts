@@ -13,6 +13,8 @@ import type {
   IfaceUpdateParams,
   IpamAllocCreateParams,
   Op,
+  SdnControllerCreateParams,
+  SdnControllerUpdateParams,
   SdnFabricCreateParams,
   SdnFabricUpdateParams,
   SdnSubnetCreateParams,
@@ -365,6 +367,79 @@ export function buildSdnFabricUpdateOp(target: string, initial: SdnFabricFormVal
 
 export function buildSdnFabricDeleteOp(target: string): Op {
   return { op: "sdn.fabric.delete", target, params: {} };
+}
+
+// --- SDN Controller op builders (T-3102) ----------------------------------
+// target is `sdn-controller::<id>`. type is create-only, mirroring
+// params_sdn_controller.go's SdnControllerUpdateParams doc comment
+// (immutable — an assumption, not a hardware-confirmed fact).
+
+export interface SdnControllerFormValues {
+  type: string;
+  bgpMode: string;
+  fabric: string;
+  isisDomain: string;
+  isisNet: string;
+  loopback: string;
+  node: string;
+  peerGroupName: string;
+  routeMapIn: string;
+  routeMapOut: string;
+  nodes: string[];
+  peers: string[];
+  isisIfaces: string[];
+  asn: number;
+  ebgpMultihop: number;
+  ebgp: boolean;
+  bgpMultipathAsPathRelax: boolean;
+}
+
+export function buildSdnControllerCreateOp(target: string, form: SdnControllerFormValues): Op {
+  const params: SdnControllerCreateParams = {
+    type: form.type,
+    bgpMode: form.bgpMode || undefined,
+    fabric: form.fabric || undefined,
+    isisDomain: form.isisDomain || undefined,
+    isisNet: form.isisNet || undefined,
+    loopback: form.loopback || undefined,
+    node: form.node || undefined,
+    peerGroupName: form.peerGroupName || undefined,
+    routeMapIn: form.routeMapIn || undefined,
+    routeMapOut: form.routeMapOut || undefined,
+    nodes: form.nodes.length > 0 ? form.nodes : undefined,
+    peers: form.peers.length > 0 ? form.peers : undefined,
+    isisIfaces: form.isisIfaces.length > 0 ? form.isisIfaces : undefined,
+    asn: form.asn || undefined,
+    ebgpMultihop: form.ebgpMultihop || undefined,
+    ebgp: form.ebgp || undefined,
+    bgpMultipathAsPathRelax: form.bgpMultipathAsPathRelax || undefined,
+  };
+  return { op: "sdn.controller.create", target, params };
+}
+
+export function buildSdnControllerUpdateOp(target: string, initial: SdnControllerFormValues, form: SdnControllerFormValues): Op {
+  const params: SdnControllerUpdateParams = {};
+  if (form.bgpMode !== initial.bgpMode) params.bgpMode = form.bgpMode;
+  if (form.fabric !== initial.fabric) params.fabric = form.fabric;
+  if (form.isisDomain !== initial.isisDomain) params.isisDomain = form.isisDomain;
+  if (form.isisNet !== initial.isisNet) params.isisNet = form.isisNet;
+  if (form.loopback !== initial.loopback) params.loopback = form.loopback;
+  if (form.node !== initial.node) params.node = form.node;
+  if (form.peerGroupName !== initial.peerGroupName) params.peerGroupName = form.peerGroupName;
+  if (form.routeMapIn !== initial.routeMapIn) params.routeMapIn = form.routeMapIn;
+  if (form.routeMapOut !== initial.routeMapOut) params.routeMapOut = form.routeMapOut;
+  if (JSON.stringify(form.nodes) !== JSON.stringify(initial.nodes)) params.nodes = form.nodes;
+  if (JSON.stringify(form.peers) !== JSON.stringify(initial.peers)) params.peers = form.peers;
+  if (JSON.stringify(form.isisIfaces) !== JSON.stringify(initial.isisIfaces)) params.isisIfaces = form.isisIfaces;
+  if (form.asn !== initial.asn) params.asn = form.asn;
+  if (form.ebgpMultihop !== initial.ebgpMultihop) params.ebgpMultihop = form.ebgpMultihop;
+  if (form.ebgp !== initial.ebgp) params.ebgp = form.ebgp;
+  if (form.bgpMultipathAsPathRelax !== initial.bgpMultipathAsPathRelax) params.bgpMultipathAsPathRelax = form.bgpMultipathAsPathRelax;
+  return { op: "sdn.controller.update", target, params };
+}
+
+export function buildSdnControllerDeleteOp(target: string): Op {
+  return { op: "sdn.controller.delete", target, params: {} };
 }
 
 /** The trailing `sdn.apply` step every SDN-carrying changeset needs

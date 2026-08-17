@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/bgovanlu/vnprox/internal/fw"
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
 
@@ -247,6 +248,69 @@ func TestVnetMissingZoneIndeterminate(t *testing.T) {
 	if !hasCaveat(res, CodeNotEvaluated) {
 		t.Errorf("expected not-evaluated caveat, have %s", caveatCodes(res))
 	}
+}
+
+// TestNoteVNetFirewall_DisclosesEnabledForwardChain is a direct, engine-
+// internals-level test of T-3103's noteVNetFirewall (rather than going
+// through full endpoint resolution/world building, which has its own
+// unrelated pre-existing e.vnetByID lookup mismatch between a guest NIC's
+// resolved BridgeOrVnet Ref — production-observed as "<zone>/<vnet>", see
+// internal/inventory/link.go's resolveGuestNic — and the sim engine's own
+// bare-vnet-name-keyed vnetByID cache; flagged in this task's report as a
+// separate, unrelated finding rather than fixed here). This test exercises
+// the actual new logic directly: given a resolved endpoint attached to a
+// vnet with an enabled, non-empty forward-chain ruleset, the simulator adds
+// a disclosure caveat rather than either crashing or silently enforcing
+// rules it has no hardware-confirmed model for.
+func TestNoteVNetFirewall_DisclosesEnabledForwardChain(t *testing.T) {
+	vnetEnt := &inventory.SdnVnet{
+		Ref: inventory.Ref{Kind: inventory.KindSDNVnet, ID: "zone1/vnet1"},
+		ID:  "vnet1", Zone: "zone1",
+	}
+	vnetRuleset := &inventory.FwRuleset{
+		Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "vnet/zone1/vnet1"}, Scope: inventory.FwScopeVNet,
+		Enabled: true, Rules: []inventory.FwRule{{Pos: 0, Enabled: true, Direction: "forward", Action: "ACCEPT"}},
+	}
+
+	t.Run("enabled ruleset with rules is disclosed", func(t *testing.T) {
+		e := &Engine{fw: fw.BuildSnapshot([]inventory.Entity{vnetRuleset})}
+		var res Result
+		e.noteVNetFirewall(resolvedEP{attach: attachVnet, vnet: vnetEnt}, &res)
+		if !hasCaveat(res, CodeVNetFirewall) {
+			t.Errorf("expected %s caveat, have %s", CodeVNetFirewall, caveatCodes(res))
+		}
+	})
+
+	t.Run("not attached to a vnet: no caveat", func(t *testing.T) {
+		e := &Engine{fw: fw.BuildSnapshot([]inventory.Entity{vnetRuleset})}
+		var res Result
+		e.noteVNetFirewall(resolvedEP{attach: attachBridge}, &res)
+		if hasCaveat(res, CodeVNetFirewall) {
+			t.Errorf("unexpected %s caveat for a non-vnet endpoint, have %s", CodeVNetFirewall, caveatCodes(res))
+		}
+	})
+
+	t.Run("vnet firewall disabled: no caveat", func(t *testing.T) {
+		disabled := &inventory.FwRuleset{
+			Ref: inventory.Ref{Kind: inventory.KindFwRuleset, ID: "vnet/zone1/vnet1"}, Scope: inventory.FwScopeVNet,
+			Enabled: false, Rules: vnetRuleset.Rules,
+		}
+		e := &Engine{fw: fw.BuildSnapshot([]inventory.Entity{disabled})}
+		var res Result
+		e.noteVNetFirewall(resolvedEP{attach: attachVnet, vnet: vnetEnt}, &res)
+		if hasCaveat(res, CodeVNetFirewall) {
+			t.Errorf("unexpected %s caveat for a disabled vnet ruleset, have %s", CodeVNetFirewall, caveatCodes(res))
+		}
+	})
+
+	t.Run("no ruleset observed for this vnet: no caveat", func(t *testing.T) {
+		e := &Engine{fw: fw.BuildSnapshot(nil)}
+		var res Result
+		e.noteVNetFirewall(resolvedEP{attach: attachVnet, vnet: vnetEnt}, &res)
+		if hasCaveat(res, CodeVNetFirewall) {
+			t.Errorf("unexpected %s caveat with no observed vnet ruleset, have %s", CodeVNetFirewall, caveatCodes(res))
+		}
+	})
 }
 
 func TestContainsHelpers(t *testing.T) {

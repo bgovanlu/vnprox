@@ -1489,7 +1489,35 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
         body: "Both are BGP route-policy objects PVE's SDN exposes; this view can display them but not create, edit, or delete them.",
       },
     ],
-    seeAlso: ["sdn-page", "sdn-evpn", "sdn-zone-wizard"],
+    seeAlso: ["sdn-page", "sdn-evpn", "sdn-zone-wizard", "sdn-controllers"],
+  },
+  {
+    id: "sdn-controllers",
+    title: "SDN Controllers",
+    surface: "panel",
+    summary:
+      "The BGP/EVPN/Faucet/IS-IS underlay control-plane object family: controller list with type badge, a type-conditional create/edit form, and delete blocked while a zone still references it.",
+    docRef: "docs/features/sdn.md",
+    keywords: ["controller", "controllers", "bgp", "evpn", "faucet", "isis", "asn", "peers", "underlay"],
+    sections: [
+      {
+        heading: "A first-class object, not a string on a zone",
+        body: "A zone's own controller field used to be an opaque name with nothing behind it in this UI. A controller is now its own object here, with its own inspector — the zone's field is a reference by id to the entry on this page, the same way a vxlan/evpn zone's fabric field references a fabric.",
+      },
+      {
+        heading: "Fields reveal per type",
+        body: "bgp carries an ASN, eBGP settings, and a peer address list. evpn carries the underlay fabric and BGP EVPN route-map/peer-group settings. isis carries its domain, interfaces, and network entity title. faucet carries none of the above — node/nodes/loopback are the only fields every type shares.",
+      },
+      {
+        heading: "Deleting a referenced controller is blocked",
+        body: "A controller still named by at least one zone's controller field cannot be deleted — the changeset validates with a blocking finding naming which zones reference it, the same protection an in-use firewall alias or ipset already gets.",
+      },
+      {
+        heading: "EVPN/BGP session health lives on the EVPN/BGP tab",
+        body: "This page shows configuration, not live peering state. The EVPN/BGP tab's session health is attached to the controller that owns each session, not just inferred from the zone that rides on it.",
+      },
+    ],
+    seeAlso: ["sdn-page", "sdn-evpn", "sdn-fabrics", "sdn-zone-wizard"],
   },
   {
     id: "sdn-pending-diff",

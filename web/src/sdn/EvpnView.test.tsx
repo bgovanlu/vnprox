@@ -34,6 +34,7 @@ const status: EvpnStatus = {
     { node: "pve3", frrInstalled: false, peers: [], vnis: [] },
   ],
   exitNodes: [{ zone: "evpnz", node: "pve3", healthy: false, detail: "session to 10.20.0.11 is Idle, not Established" }],
+  controllers: [],
   findings: [
     { id: "evpn_bgp_flapping:pve1:10.20.0.13", code: "evpn_bgp_flapping", severity: "warning", node: "pve1", peerAddr: "10.20.0.13", detail: "session pve1<->10.20.0.13 changed state 4 times in the last 10m0s" },
   ],

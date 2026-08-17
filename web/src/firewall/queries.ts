@@ -12,6 +12,8 @@ import {
   fetchGuestRulesets,
   fetchNodeRuleset,
   fetchNodeRulesets,
+  fetchVnetRuleset,
+  fetchVnetRulesets,
 } from "../api/firewall";
 
 export function useClusterRulesetQuery() {
@@ -51,6 +53,27 @@ export function useGuestRulesetQuery(ref: string | undefined) {
   return useQuery({
     queryKey: ["firewall", "ruleset", "guest", ref],
     queryFn: () => fetchGuestRuleset(ref ?? ""),
+    enabled: ref !== undefined,
+    staleTime: 15_000,
+  });
+}
+
+/** T-3103: vnet scope's hierarchy-nav list, mirroring useNodeRulesetsQuery. */
+export function useVnetRulesetsQuery() {
+  return useQuery({
+    queryKey: ["firewall", "rulesets", "vnet"],
+    queryFn: fetchVnetRulesets,
+    staleTime: 15_000,
+  });
+}
+
+/** T-3103: one vnet's raw ruleset by its own ref, mirroring
+ * useGuestRulesetQuery's ref-addressed convention (a vnet ruleset's id is a
+ * "<zone>/<vnet>" composite, not a plain name). */
+export function useVnetRulesetQuery(ref: string | undefined) {
+  return useQuery({
+    queryKey: ["firewall", "ruleset", "vnet", ref],
+    queryFn: () => fetchVnetRuleset(ref ?? ""),
     enabled: ref !== undefined,
     staleTime: 15_000,
   });

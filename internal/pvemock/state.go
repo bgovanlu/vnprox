@@ -39,36 +39,22 @@ type nodeState struct {
 // handleSDNApply, exactly mirroring what a real apply does to PVE's own
 // running config.
 type sdnState struct {
-	zones          map[string]SDNZoneSpec
-	vnets          map[string]SDNVnetSpec
-	subnets        map[string]SDNSubnetSpec
-	zonesRunning   map[string]SDNZoneSpec
-	vnetsRunning   map[string]SDNVnetSpec
-	subnetsRunning map[string]SDNSubnetSpec
-	// dnsZones (T-1204) holds the SDN DNS plugin config plus each zone's
-	// authoritative record set. Unlike zones/vnets/subnets, DNS writes apply
-	// immediately (real PVE writes records straight into PowerDNS per-record,
-	// not into a staged cfg an apply later flushes), so there is no separate
-	// running/pending pair here — the config store IS the truth, and the
-	// live "resolve" read reflects it unless the zone is marked Unreachable.
-	dnsZones map[string]SDNDnsZoneSpec
-	// fabrics/fabricsRunning (T-3101) mirror the zones/zonesRunning
-	// staged-vs-running pair exactly — a fabric stages and applies through
-	// the same PUT /cluster/sdn as every other SDN object family
-	// (internal/pve/sdn_fabric.go's package doc comment).
-	fabrics        map[string]SDNFabricSpec
-	fabricsRunning map[string]SDNFabricSpec
-	// fabricNodes (T-3101) is GET /cluster/sdn/fabrics/node's own
-	// collection — fixture-seeded and read-only at runtime (no handler
-	// mutates it; real per-node fabric realization needs cluster hardware
-	// this mock does not model, see needs-hardware-validation.md).
-	fabricNodes []SDNFabricNodeSpec
-	// prefixLists/routeMaps (T-3101) are read-only fixture-seeded lists —
-	// no handler mutates either (sdn_fabric.go's guard: T-3101 scopes CRUD
-	// out entirely).
-	prefixLists []SDNPrefixListSpec
-	routeMaps   []SDNRouteMapSpec
-	mu          sync.RWMutex
+	fabricsRunning     map[string]SDNFabricSpec
+	controllers        map[string]SDNControllerSpec
+	subnets            map[string]SDNSubnetSpec
+	zonesRunning       map[string]SDNZoneSpec
+	vnetsRunning       map[string]SDNVnetSpec
+	subnetsRunning     map[string]SDNSubnetSpec
+	vnets              map[string]SDNVnetSpec
+	dnsZones           map[string]SDNDnsZoneSpec
+	zones              map[string]SDNZoneSpec
+	fabrics            map[string]SDNFabricSpec
+	vnetFW             map[string]*FirewallScope
+	controllersRunning map[string]SDNControllerSpec
+	fabricNodes        []SDNFabricNodeSpec
+	routeMaps          []SDNRouteMapSpec
+	prefixLists        []SDNPrefixListSpec
+	mu                 sync.RWMutex
 }
 
 // ipamState is the mutable runtime allocation set for every configured IPAM
@@ -129,10 +115,15 @@ func NewState(f *Fixture) *State {
 			s.sdn.zonesRunning[z.ID] = r
 		}
 	}
+	s.sdn.vnetFW = make(map[string]*FirewallScope, len(f.SDN.Vnets))
 	for _, v := range f.SDN.Vnets {
 		s.sdn.vnets[v.ID] = v
 		if r, ok := runningVnet(v); ok {
 			s.sdn.vnetsRunning[v.ID] = r
+		}
+		if v.Firewall != nil {
+			fw := *v.Firewall
+			s.sdn.vnetFW[v.ID] = &fw
 		}
 	}
 	for _, sub := range f.SDN.Subnets {
@@ -161,6 +152,17 @@ func NewState(f *Fixture) *State {
 	s.sdn.fabricNodes = append([]SDNFabricNodeSpec(nil), f.SDN.FabricNodes...)
 	s.sdn.prefixLists = append([]SDNPrefixListSpec(nil), f.SDN.PrefixLists...)
 	s.sdn.routeMaps = append([]SDNRouteMapSpec(nil), f.SDN.RouteMaps...)
+
+	// T-3102: controllers/controllersRunning, seeded exactly like
+	// fabrics/fabricsRunning above (runningController mirrors runningFabric).
+	s.sdn.controllers = make(map[string]SDNControllerSpec, len(f.SDN.Controllers))
+	s.sdn.controllersRunning = make(map[string]SDNControllerSpec, len(f.SDN.Controllers))
+	for _, ctl := range f.SDN.Controllers {
+		s.sdn.controllers[ctl.ID] = ctl
+		if r, ok := runningController(ctl); ok {
+			s.sdn.controllersRunning[ctl.ID] = r
+		}
+	}
 
 	s.ipam.entries = make(map[string][]IPAMEntrySpec, len(f.SDN.Ipams))
 	for _, ip := range f.SDN.Ipams {

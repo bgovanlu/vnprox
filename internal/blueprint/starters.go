@@ -11,18 +11,17 @@
 // against Validate in starters_test.go so a typo here fails the build's
 // tests, not a user's instantiate call.
 //
-// SDN starter note (T-603 report, flagged per the task card): the VXLAN
-// overlay starter is fully self-sufficient (a vxlan zone needs no
-// pre-existing PVE object). The EVPN starter is **partial**: PVE's EVPN
-// zone type references a controller (BGP ASN/peers) by ID
-// (SdnZoneCreateParams.Controller), but this codebase's op vocabulary
-// (internal/change/op.go) has no `sdn.controller.create` op — creating an
-// EVPN controller itself isn't a changeset operation yet anywhere in this
-// codebase, on any branch, independent of T-401/T-402's inventory-read/
-// apply-orchestration status. The starter therefore assumes a controller
-// with the given ID already exists (e.g. hand-configured in PVE, or via a
-// future T-403 controller wizard) and only creates the zone/vnet/subnet
-// that reference it. See the report for the follow-up this implies.
+// SDN starter note (T-603 report originally flagged this; closed by T-3102):
+// the VXLAN overlay starter is fully self-sufficient (a vxlan zone needs no
+// pre-existing PVE object). The EVPN starter used to be partial — PVE's EVPN
+// zone type references a controller by ID (SdnZoneCreateParams.Controller),
+// and this codebase's op vocabulary had no `sdn.controller.create` op to
+// create one with, so the starter assumed a controller already existed and
+// only created the zone/vnet/subnet that reference it. T-3102 added
+// `sdn.controller.*` (internal/change/op.go), so starterEVPNDatacenter now
+// creates its own controller as the first entity in its list (a bgp-type
+// controller — see that function's own doc comment for why bgp rather than
+// evpn) and completes end-to-end.
 
 package blueprint
 
@@ -235,21 +234,42 @@ func starterVXLANOverlay() *Blueprint {
 	}
 }
 
+// starterEVPNDatacenter builds a controller + EVPN zone/VNet/subnet for a
+// BGP-EVPN datacenter fabric (T-3102: completes the T-603 gap this file's
+// own doc comment describes). The controller entity is listed FIRST — like
+// every other multi-entity starter in this file, entities are expanded and
+// diffed in list order (EntityTemplate's own doc comment), and the zone's
+// "controller" field is a live reference the controller must exist before
+// the zone can validate/apply against.
+//
+// The created controller is type "bgp", not "evpn": the captured
+// /cluster/sdn/controllers schema (planning/reports/evidence/
+// pve-9.2.4-sdn-schema.txt) gives an "evpn"-type controller only
+// fabric/peerGroupName/routeMapIn/routeMapOut — no asn/peers of its own
+// (params_sdn_controller.go's doc comment) — so an "evpn" controller alone
+// carries no BGP session config to establish. A "bgp"-type controller is
+// what actually owns asn/peers/ebgp, which is the underlay a BGP-EVPN
+// datacenter fabric needs; PVE's own EVPN zone `--controller` field accepts
+// either type's id (the capture does not distinguish), and this starter
+// picks the one with a session to configure. Peers is deliberately left
+// unset (Required: false, no default) rather than guessed — a BGP peer
+// address is site-specific in a way no starter default could stand in for,
+// and an omitted field on SdnControllerCreateParams is a legal, complete
+// create (PVE accepts a controller with no configured peers; it simply has
+// nothing to peer with until edited).
 func starterEVPNDatacenter() *Blueprint {
 	return &Blueprint{
 		BlueprintVersion: CurrentBlueprintVersion,
 		ID:               StarterEVPNDatacenter,
 		Name:             "EVPN datacenter starter",
-		Description: "An EVPN zone/VNet/subnet for a BGP-EVPN datacenter fabric. PARTIAL: this starter " +
-			"assumes an EVPN controller (BGP ASN/peers) with the given id already exists — creating the " +
-			"controller itself is not yet a supported changeset operation in this codebase " +
-			"(no sdn.controller.create op; see the T-603 report). Use once a controller has been " +
-			"configured (directly in PVE, or via a future controller wizard).",
+		Description: "A BGP controller plus an EVPN zone/VNet/subnet for a BGP-EVPN datacenter fabric. " +
+			"Creates its own controller (type bgp) rather than assuming one already exists.",
 		ReadOnly:     true,
 		NodeSelector: NodeSelector{Mode: SelectSingle},
 		Params: []ParamDef{
+			{Name: "controllerId", Type: ParamString, Label: "Controller id", Default: "evpn1", Required: true},
+			{Name: "controllerAsn", Type: ParamInt, Label: "Controller ASN", Default: 65000, Required: true},
 			{Name: "zoneId", Type: ParamString, Label: "Zone id", Default: "evpnzone1", Required: true},
-			{Name: "controller", Type: ParamString, Label: "Existing EVPN controller id", Default: "evpn1", Required: true},
 			{Name: "vnetName", Type: ParamString, Label: "VNet name", Default: "evpnnet1", Required: true},
 			{Name: "vni", Type: ParamInt, Label: "VXLAN VNI (vrfVxlan)", Default: 20000, Required: true},
 			{Name: "subnetCidr", Type: ParamCIDR, Label: "Subnet", Default: "10.200.0.0/24", Required: true},
@@ -258,11 +278,19 @@ func starterEVPNDatacenter() *Blueprint {
 		},
 		Entities: []EntityTemplate{
 			{
+				Kind:       KindSdnController,
+				IDTemplate: "{{controllerId}}",
+				Fields: map[string]any{
+					"type": "bgp",
+					"asn":  "{{controllerAsn}}",
+				},
+			},
+			{
 				Kind:       KindSdnZone,
 				IDTemplate: "{{zoneId}}",
 				Fields: map[string]any{
 					"type":       "evpn",
-					"controller": "{{controller}}",
+					"controller": "{{controllerId}}",
 					"nodes":      "{{__nodes__}}",
 					"vrfVxlan":   "{{vni}}",
 				},

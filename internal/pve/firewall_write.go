@@ -52,6 +52,11 @@ type FirewallOptionsUpdate struct {
 	Enable    *bool
 	PolicyIn  *string
 	PolicyOut *string
+	// PolicyForward/LogLevelForward (T-3103): the forward chain's own
+	// fallthrough policy and log level — see FirewallOptions' doc comment
+	// for which scopes are hardware-confirmed to accept each.
+	PolicyForward   *string
+	LogLevelForward *string
 }
 
 // UpdateFirewallOptions calls PUT {scope}/options with only the fields
@@ -71,6 +76,12 @@ func (c *Client) UpdateFirewallOptions(ctx context.Context, scope FirewallScope,
 	}
 	if upd.PolicyOut != nil {
 		body["policy_out"] = *upd.PolicyOut
+	}
+	if upd.PolicyForward != nil {
+		body["policy_forward"] = *upd.PolicyForward
+	}
+	if upd.LogLevelForward != nil {
+		body["log_level_forward"] = *upd.LogLevelForward
 	}
 	return c.do(ctx, "PUT", scope.prefix+"/options", requestParams{body: body}, nil)
 }

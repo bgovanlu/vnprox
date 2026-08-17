@@ -15,6 +15,7 @@ import { SdnEditorLauncher } from "./SdnEditorLauncher";
 import { DhcpView } from "./DhcpView";
 import { EvpnView } from "./EvpnView";
 import { FabricsView } from "./FabricsView";
+import { ControllersView } from "./controllers/ControllersView";
 import { InSyncBadge, PendingDiffView } from "./PendingDiffView";
 import { useSdnEditorStore } from "./sdnEditorStore";
 import { StatusDot } from "./StatusDot";
@@ -23,7 +24,7 @@ import { firstSelection, resolveSdnSelection, type SdnSelection } from "./tree";
 import { useSdnQuery } from "./queries";
 import { ZoneWizardPicker, type WizardKind } from "./wizards/ZoneWizardPicker";
 
-type SdnTab = "configuration" | "evpn" | "dhcp" | "fabrics";
+type SdnTab = "configuration" | "evpn" | "dhcp" | "fabrics" | "controllers";
 
 function TreeRow({
   depth,
@@ -443,6 +444,7 @@ export function SdnPage() {
             <TabButton active={tab === "evpn"} label="EVPN / BGP" onClick={() => { setTab("evpn"); }} />
             <TabButton active={tab === "dhcp"} label="DHCP" onClick={() => { setTab("dhcp"); }} />
             <TabButton active={tab === "fabrics"} label="Fabrics" onClick={() => { setTab("fabrics"); }} />
+            <TabButton active={tab === "controllers"} label="Controllers" onClick={() => { setTab("controllers"); }} />
           </div>
           {tab === "configuration" && (
             <>
@@ -520,6 +522,12 @@ export function SdnPage() {
       {tab === "fabrics" && (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <FabricsView />
+        </div>
+      )}
+
+      {tab === "controllers" && (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ControllersView />
         </div>
       )}
     </div>

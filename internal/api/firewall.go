@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -50,14 +51,27 @@ func firewallSnapshot(graph FirewallGraph) fw.Snapshot {
 // the per-scope, read-only rule table the UI renders per
 // docs/features/firewall.md §2).
 type rulesetView struct {
-	Ref        string       `json:"ref"`
-	Scope      string       `json:"scope"`
-	Node       string       `json:"node,omitempty"`
-	DefaultIn  string       `json:"defaultIn,omitempty"`
-	DefaultOut string       `json:"defaultOut,omitempty"`
-	Rules      []ruleView   `json:"rules"`
-	Banners    []bannerView `json:"banners,omitempty"`
-	Enabled    bool         `json:"enabled"`
+	Ref        string `json:"ref"`
+	Scope      string `json:"scope"`
+	Node       string `json:"node,omitempty"`
+	DefaultIn  string `json:"defaultIn,omitempty"`
+	DefaultOut string `json:"defaultOut,omitempty"`
+	// Vnet (T-3103) is the owning SDN vnet's own Ref string
+	// ("sdn-vnet::<zone>/<vnet>"), populated only for scope=vnet — the
+	// vnet-scope counterpart of Node, since a vnet ruleset's own Ref has no
+	// Node component (it is cluster-scoped, like the SDN vnet it belongs
+	// to) and the UI needs something to label/link the ruleset by.
+	Vnet string `json:"vnet,omitempty"`
+	// DefaultForward/LogLevelForward (T-3103) are the forward chain's own
+	// fallthrough policy/log level. DefaultForward is populated at
+	// cluster/node/vnet scope; LogLevelForward only at vnet scope (see
+	// inventory.FwRuleset's doc comments — the asymmetry is hardware-
+	// captured, not an oversight).
+	DefaultForward  string       `json:"defaultForward,omitempty"`
+	LogLevelForward string       `json:"logLevelForward,omitempty"`
+	Rules           []ruleView   `json:"rules"`
+	Banners         []bannerView `json:"banners,omitempty"`
+	Enabled         bool         `json:"enabled"`
 }
 
 type ruleView struct {
@@ -116,11 +130,32 @@ func toBannerViews(gates []fw.EnablementGate) []bannerView {
 }
 
 func toRulesetView(rs *inventory.FwRuleset, banners []fw.EnablementGate) rulesetView {
-	return rulesetView{
+	v := rulesetView{
 		Ref: rs.String(), Scope: string(rs.Scope), Node: rs.Node,
 		Enabled: rs.Enabled, DefaultIn: rs.DefaultIn, DefaultOut: rs.DefaultOut,
+		DefaultForward: rs.DefaultForward, LogLevelForward: rs.LogLevelForward,
 		Rules: toRuleViews(rs.Rules), Banners: toBannerViews(banners),
 	}
+	if rs.Scope == inventory.FwScopeVNet {
+		if vnetRef, ok := vnetRefFromFwRulesetRef(rs.Ref); ok {
+			v.Vnet = vnetRef.String()
+		}
+	}
+	return v
+}
+
+// vnetRefFromFwRulesetRef recovers a vnet-scope firewall ruleset's owning
+// SDN vnet Ref (Kind==KindSDNVnet, ID "<zone>/<vnet>") from its own Ref,
+// whose ID is "vnet/<zone>/<vnet>" (internal/collect's pollFirewall) —
+// the server-side counterpart of web/src/firewall/refs.ts's
+// guestRefFromFwRulesetRef, for the same "which owning object does this
+// ruleset belong to" purpose one level up (vnet instead of guest).
+func vnetRefFromFwRulesetRef(rsRef inventory.Ref) (inventory.Ref, bool) {
+	parts := strings.SplitN(rsRef.ID, "/", 3)
+	if len(parts) != 3 || parts[0] != "vnet" {
+		return inventory.Ref{}, false
+	}
+	return inventory.Ref{Kind: inventory.KindSDNVnet, ID: parts[1] + "/" + parts[2]}, true
 }
 
 type resolvedRuleView struct {
@@ -261,6 +296,39 @@ func handleFirewallRulesets(graph FirewallGraph) http.HandlerFunc {
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"items": out})
 
+		case inventory.FwScopeVNet:
+			// T-3103: addressed by `ref` (the SDN vnet's own Ref), the same
+			// convention scope=guest uses — a vnet's ruleset id is a
+			// composite ("<zone>/<vnet>"), not a plain name a `?vnet=`
+			// query param could carry unambiguously the way `?node=` does.
+			// No resolved (cluster+group cascade) view for vnet scope: this
+			// package has no hardware-confirmed model of how a vnet's
+			// forward chain composes with cluster rules — see
+			// fw.Snapshot.VNets' doc comment — so it serves the raw
+			// ruleset only, the same shape scope=node already returns.
+			if rawRef := r.URL.Query().Get("ref"); rawRef != "" {
+				ref, err := inventory.ParseRef(rawRef)
+				if err != nil || ref.Kind != inventory.KindSDNVnet {
+					writeJSONError(w, http.StatusBadRequest, "validation_failed", "ref must be a valid sdn-vnet ref (kind:node:id)")
+					return
+				}
+				rs, ok := snap.VNets[ref]
+				if !ok {
+					writeJSONError(w, http.StatusNotFound, "not_found", "no firewall ruleset observed for that vnet")
+					return
+				}
+				banners := fw.ScopeBanners(snap, inventory.FwScopeVNet, ref.String(), rs)
+				writeJSON(w, http.StatusOK, toRulesetView(rs, banners))
+				return
+			}
+			out := make([]rulesetView, 0, len(snap.VNets))
+			for _, v := range sortedVNetRefs(snap) {
+				rs := snap.VNets[v]
+				banners := fw.ScopeBanners(snap, inventory.FwScopeVNet, v.String(), rs)
+				out = append(out, toRulesetView(rs, banners))
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": out})
+
 		case "group":
 			name := r.URL.Query().Get("name")
 			if name == "" {
@@ -275,7 +343,7 @@ func handleFirewallRulesets(graph FirewallGraph) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, toGroupRulesetView(group))
 
 		default:
-			writeJSONError(w, http.StatusBadRequest, "validation_failed", "scope must be one of cluster, node, guest, group")
+			writeJSONError(w, http.StatusBadRequest, "validation_failed", "scope must be one of cluster, node, guest, vnet, group")
 		}
 	}
 }
@@ -423,6 +491,17 @@ func sortedGuestRefs(snap fw.Snapshot) []inventory.Ref {
 	out := make([]inventory.Ref, 0, len(snap.Guests))
 	for g := range snap.Guests {
 		out = append(out, g)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	return out
+}
+
+// sortedVNetRefs mirrors sortedGuestRefs, for scope=vnet's list branch
+// (T-3103).
+func sortedVNetRefs(snap fw.Snapshot) []inventory.Ref {
+	out := make([]inventory.Ref, 0, len(snap.VNets))
+	for v := range snap.VNets {
+		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out

@@ -22,11 +22,17 @@ const (
 	KindSdnZone   Kind = "sdn-zone"
 	KindSdnVnet   Kind = "sdn-vnet"
 	KindSdnSubnet Kind = "sdn-subnet"
+	// KindSdnController (T-3102) lets a blueprint create the SDN controller
+	// a zone's own "controller" field references, closing the gap
+	// starterEVPNDatacenter's own report used to document (T-603's "no
+	// sdn.controller.create op; see the T-603 report").
+	KindSdnController Kind = "sdn-controller"
 )
 
 var knownKinds = map[Kind]bool{
 	KindBridge: true, KindBond: true, KindVlan: true,
 	KindSdnZone: true, KindSdnVnet: true, KindSdnSubnet: true,
+	KindSdnController: true,
 }
 
 // ParamType names the type validation/coercion applied to one blueprint

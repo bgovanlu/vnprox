@@ -169,6 +169,13 @@ var sdnStageOpTypes = map[OpType]bool{
 	OpSdnFabricCreate: true,
 	OpSdnFabricUpdate: true,
 	OpSdnFabricDelete: true,
+
+	// T-3102: a controller create/update/delete stages and applies through
+	// this exact same StepSDNStage/StepSDNApply pair too — the same
+	// discipline op.go's OpSdnControllerCreate doc comment states.
+	OpSdnControllerCreate: true,
+	OpSdnControllerUpdate: true,
+	OpSdnControllerDelete: true,
 }
 
 // wgOpTypes is T-1401's WireGuard op vocabulary: each becomes a StepWgApply

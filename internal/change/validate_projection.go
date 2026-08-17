@@ -87,6 +87,13 @@ type projection struct {
 	dnsZones   map[string]inventory.Ref
 	dnsRecords map[string]inventory.Ref
 
+	// controllerNames indexes cluster-scoped SDN controllers (T-3102) by id
+	// (Ref.ID), "as of now" — seeded from the snapshot (a controller IS a
+	// live-polled inventory entity, unlike a fabric — see KindSDNController's
+	// doc comment) and folded from sdn.controller.create/delete ops, the
+	// same "as of now" discipline zoneNames/vnetNames use.
+	controllerNames map[string]inventory.Ref
+
 	// allocsBySubnet tracks ipam.alloc.create CIDRs created earlier in
 	// this same changeset, keyed by the owning subnet Ref. IpAllocation
 	// has no dedicated inventory.Kind (docs/data-model.md's ER diagram
@@ -144,22 +151,23 @@ func (p *projection) deletedLater(ref inventory.Ref) bool {
 // changeset has been folded in).
 func newProjection(snap inventory.Snapshot) *projection {
 	p := &projection{
-		snap:           snap,
-		names:          map[ifaceKey]inventory.Ref{},
-		enslaved:       map[inventory.Ref]inventory.Ref{},
-		vlanIfaces:     map[vlanKey]inventory.Ref{},
-		addrs:          map[string][]addrEntry{},
-		zoneNames:      map[string]inventory.Ref{},
-		vnetNames:      map[string]inventory.Ref{},
-		subnetNames:    map[string]inventory.Ref{},
-		subnetsByVnet:  map[string][]inventory.Ref{},
-		dnsZones:       map[string]inventory.Ref{},
-		dnsRecords:     map[string]inventory.Ref{},
-		allocsBySubnet: map[inventory.Ref][]string{},
-		nodeNames:      map[string]bool{},
-		fwNames:        map[string]bool{},
-		fwRuleDelta:    map[inventory.Ref]int{},
-		pendingDelete:  map[inventory.Ref]int{},
+		snap:            snap,
+		names:           map[ifaceKey]inventory.Ref{},
+		enslaved:        map[inventory.Ref]inventory.Ref{},
+		vlanIfaces:      map[vlanKey]inventory.Ref{},
+		addrs:           map[string][]addrEntry{},
+		zoneNames:       map[string]inventory.Ref{},
+		vnetNames:       map[string]inventory.Ref{},
+		subnetNames:     map[string]inventory.Ref{},
+		subnetsByVnet:   map[string][]inventory.Ref{},
+		dnsZones:        map[string]inventory.Ref{},
+		dnsRecords:      map[string]inventory.Ref{},
+		controllerNames: map[string]inventory.Ref{},
+		allocsBySubnet:  map[inventory.Ref][]string{},
+		nodeNames:       map[string]bool{},
+		fwNames:         map[string]bool{},
+		fwRuleDelta:     map[inventory.Ref]int{},
+		pendingDelete:   map[inventory.Ref]int{},
 	}
 
 	// Bond slaves are plain *names* that must be resolved through p.names,
@@ -202,6 +210,8 @@ func newProjection(snap inventory.Snapshot) *projection {
 			p.dnsZones[v.ID] = ref
 		case *inventory.SdnDnsRecord:
 			p.dnsRecords[ref.ID] = ref
+		case *inventory.SdnController:
+			p.controllerNames[v.ID] = ref
 		}
 	}
 
@@ -341,6 +351,9 @@ func (p *projection) exists(ref inventory.Ref) bool {
 		return ok
 	case inventory.KindSDNDnsRecord:
 		_, ok := p.dnsRecords[ref.ID]
+		return ok
+	case inventory.KindSDNController:
+		_, ok := p.controllerNames[ref.ID]
 		return ok
 	default:
 		_, ok := p.snap.Get(ref)
@@ -534,6 +547,12 @@ func (p *projection) fold(op Op) {
 
 	case *SdnDnsRecordDeleteParams:
 		delete(p.dnsRecords, op.Target.ID)
+
+	case *SdnControllerCreateParams:
+		p.controllerNames[op.Target.ID] = op.Target
+
+	case *SdnControllerDeleteParams:
+		delete(p.controllerNames, op.Target.ID)
 
 	case *IpamAllocCreateParams:
 		p.allocsBySubnet[op.Target] = append(p.allocsBySubnet[op.Target], params.CIDR)

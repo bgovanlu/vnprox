@@ -272,14 +272,25 @@ func (c *Collector) pollSDN(ctx context.Context) error {
 	} else {
 		dnsRecords := make(map[string][]pve.SDNDnsRecord, len(dnsZones))
 		for _, z := range dnsZones {
-			recs, err := c.pve.ListSDNDnsRecords(ctx, z.ID)
-			if err != nil {
-				c.log.Warn("collect: listing SDN DNS records failed, skipping", "zone", z.ID, "error", err)
+			recs, recErr := c.pve.ListSDNDnsRecords(ctx, z.ID)
+			if recErr != nil {
+				c.log.Warn("collect: listing SDN DNS records failed, skipping", "zone", z.ID, "error", recErr)
 				continue
 			}
 			dnsRecords[z.ID] = recs
 		}
 		entities = append(entities, inventory.FromPVEDNS(dnsZones, dnsRecords)...)
+	}
+
+	// T-3102: SDN controllers, folded into the same SourcePVESDN poll (a
+	// controller IS live-polled here, unlike a fabric — see
+	// inventory.KindSDNController's doc comment). A cluster with no
+	// controllers configured contributes nothing.
+	controllers, err := c.pve.ListSDNControllers(ctx)
+	if err != nil {
+		c.log.Warn("collect: listing SDN controllers failed, skipping", "error", err)
+	} else {
+		entities = append(entities, inventory.FromPVESDNControllers(controllers)...)
 	}
 
 	c.graph.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{}, entities)
@@ -306,6 +317,28 @@ func (c *Collector) pollFirewall(ctx context.Context, targetNodes []string, reso
 			ref := inventory.Ref{Kind: inventory.KindFwRuleset, ID: "cluster"}
 			objs := c.fetchFirewallObjects(ctx, pve.ClusterFirewallScope(), true)
 			clusterEnts = inventory.FromPVEFirewall(ref, inventory.FwScopeCluster, opts, rules, objs)
+		}
+		// T-3103: vnet-scope firewall rulesets are cluster-wide like the
+		// cluster ruleset itself (not per-node), so they are polled and
+		// reconciled in this same includeCluster block/ApplyPoll call —
+		// folding them into a *second* Scope{Kinds: fwKinds} call would
+		// retire whichever set was applied first (both calls share the same
+		// unscoped Scope, so the second overwrites rather than merges).
+		if vnets, err := c.pve.ListSDNVnets(ctx); err != nil {
+			c.log.Warn("collect: listing SDN vnets for firewall poll failed, skipping", "error", err)
+		} else {
+			for _, v := range vnets {
+				opts, rules, ferr := c.fetchFirewall(ctx, pve.VnetFirewallScope(v.ID))
+				if ferr != nil {
+					c.log.Warn("collect: fetching vnet firewall failed, skipping", "vnet", v.ID, "error", ferr)
+					continue
+				}
+				ref := inventory.Ref{Kind: inventory.KindFwRuleset, ID: "vnet/" + v.Zone + "/" + v.ID}
+				// No fetchFirewallObjects call: hardware-captured, vnet
+				// scope has no aliases/ipset endpoint (see FwScopeVNet's
+				// doc comment) — mirrors node scope's own omission above.
+				clusterEnts = append(clusterEnts, inventory.FromPVEFirewall(ref, inventory.FwScopeVNet, opts, rules, inventory.FirewallObjects{})...)
+			}
 		}
 		c.graph.ApplyPoll(inventory.SourcePVEFirewall, inventory.Scope{Kinds: fwKinds}, clusterEnts)
 	}

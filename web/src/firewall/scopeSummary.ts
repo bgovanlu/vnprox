@@ -4,7 +4,7 @@
 // Pure string generation — acceptance criterion 5 wants exact golden
 // strings per scope, so every word here is deliberate; changing the
 // wording is a product decision, not a refactor.
-export type FwToggleScope = "cluster" | "node" | "guest";
+export type FwToggleScope = "cluster" | "node" | "guest" | "vnet";
 
 export interface ScopeToggleSummaryInput {
   scope: FwToggleScope;
@@ -16,6 +16,9 @@ export interface ScopeToggleSummaryInput {
   /** Required (and only meaningful) for scope "guest" — the guest's
    * display label (hostname or ref), not the raw Ref string. */
   guestLabel?: string;
+  /** Required (and only meaningful) for scope "vnet" (T-3103) — the vnet's
+   * display label (its bare name), not the raw Ref string. */
+  vnetLabel?: string;
 }
 
 /**
@@ -44,6 +47,18 @@ export function scopeToggleSummary(input: ScopeToggleSummaryInput): string {
       return input.enabling
         ? `Turning the firewall ON for ${guest} activates its own rules and any security groups it includes. The datacenter firewall and node firewall are unaffected by this change.`
         : `Turning the firewall OFF for ${guest} deactivates its own rules and any security groups it includes; the datacenter firewall and node firewall are unaffected.`;
+    }
+    case "vnet": {
+      // T-3103: a vnet ruleset only ever governs the forward chain (real
+      // PVE's vnet firewall options have no policy_in/policy_out — see
+      // internal/inventory.FwRuleset's doc comment), so this wording says
+      // "forward-chain rules", not just "rules", to avoid implying it also
+      // covers in/out traffic the way cluster/node/guest scope's summaries
+      // do.
+      const vnet = input.vnetLabel ?? "this vnet";
+      return input.enabling
+        ? `Turning the firewall ON for ${vnet} activates its own forward-chain rules. The datacenter firewall and every node's and guest's firewall are unaffected by this change.`
+        : `Turning the firewall OFF for ${vnet} deactivates its own forward-chain rules; the datacenter firewall and every node's and guest's firewall are unaffected.`;
     }
     default:
       return "";

@@ -18,7 +18,11 @@ describe("validateRuleBuilder", () => {
 
   it("rejects an unknown direction", () => {
     const errors = validateRuleBuilder({ ...base(), direction: "sideways" }, knownMacros);
-    expect(errors).toContain("Direction must be in, out, or a security-group reference.");
+    expect(errors).toContain("Direction must be in, out, forward, or a security-group reference.");
+  });
+
+  it("accepts the forward direction (T-3103)", () => {
+    expect(validateRuleBuilder({ ...base(), direction: "forward" }, knownMacros)).toEqual([]);
   });
 
   it("rejects an unknown action", () => {

@@ -14,7 +14,14 @@ export interface RuleBuilderFormValues {
   dport: string;
 }
 
-const VALID_DIRECTIONS = new Set(["in", "out", "group"]);
+// "forward" (T-3103) is hardware-captured at cluster/node/vnet scope
+// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt); the server's own
+// schemaFwDirectionForTarget additionally rejects it at guest scope
+// specifically — this client-side check stays scope-blind like the rest of
+// this file (UX only, not a security boundary, per this file's own doc
+// comment), so a guest-scope "forward" rule still round-trips to the server
+// to get that specific rejection with its explanation.
+const VALID_DIRECTIONS = new Set(["in", "out", "forward", "group"]);
 const VALID_ACTIONS = new Set(["ACCEPT", "DROP", "REJECT"]);
 const VALID_PROTOS = new Set(["", "tcp", "udp", "icmp"]);
 
@@ -28,7 +35,7 @@ export function validateRuleBuilder(form: RuleBuilderFormValues, knownMacros: Re
   const errors: string[] = [];
 
   if (!VALID_DIRECTIONS.has(form.direction)) {
-    errors.push("Direction must be in, out, or a security-group reference.");
+    errors.push("Direction must be in, out, forward, or a security-group reference.");
   }
 
   if (form.direction === "group") {

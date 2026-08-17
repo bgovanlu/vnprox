@@ -28,6 +28,17 @@ type Snapshot struct {
 	// triplet convention. BuildSnapshot derives this key from each guest
 	// ruleset's "guest/<kind>/<vmid>" ID by joining on the ruleset's Node.
 	Guests map[inventory.Ref]*inventory.FwRuleset
+	// VNets (T-3103) is keyed by the vnet's own inventory.Ref (Kind ==
+	// inventory.KindSDNVnet, ID "<zone>/<vnet>" — the same convention
+	// internal/sdn already uses), mirroring Guests. BuildSnapshot derives
+	// this key from each vnet ruleset's "vnet/<zone>/<vnet>" ID
+	// (internal/collect's pollFirewall). A vnet ruleset has no resolved
+	// (cluster+group cascade) view of its own — unlike guest scope, this
+	// package has no hardware-confirmed model of how a vnet's forward chain
+	// composes with cluster rules, so it is deliberately not invented here
+	// (see internal/api/firewall.go's handleFirewallRulesets scope=vnet
+	// case, which serves the raw ruleset only, same as node scope).
+	VNets map[inventory.Ref]*inventory.FwRuleset
 }
 
 // BuildSnapshot assembles a Snapshot from a flat entity list (typically
@@ -39,6 +50,7 @@ func BuildSnapshot(entities []inventory.Entity) Snapshot {
 	snap := Snapshot{
 		Nodes:  map[string]*inventory.FwRuleset{},
 		Guests: map[inventory.Ref]*inventory.FwRuleset{},
+		VNets:  map[inventory.Ref]*inventory.FwRuleset{},
 	}
 	for _, e := range entities {
 		rs, ok := e.(*inventory.FwRuleset)
@@ -54,6 +66,10 @@ func BuildSnapshot(entities []inventory.Entity) Snapshot {
 		case inventory.FwScopeGuest:
 			if ref, ok := guestRefFromRulesetID(rs.Ref); ok {
 				snap.Guests[ref] = cp
+			}
+		case inventory.FwScopeVNet:
+			if ref, ok := vnetRefFromRulesetID(rs.Ref); ok {
+				snap.VNets[ref] = cp
 			}
 		}
 	}
@@ -84,6 +100,20 @@ func guestRefFromRulesetID(rsRef inventory.Ref) (inventory.Ref, bool) {
 	return inventory.Ref{Kind: inventory.KindGuest, Node: rsRef.Node, ID: parts[2]}, true
 }
 
+// vnetRefFromRulesetID recovers the vnet's own inventory.Ref
+// (Kind==KindSDNVnet, ID "<zone>/<vnet>", internal/sdn's existing
+// convention) from a vnet-scope firewall ruleset's Ref, whose ID is
+// "vnet/<zone>/<vnet>" (internal/collect's pollFirewall). A vnet ruleset is
+// cluster-scoped like the SDN vnet it belongs to, so Node is always empty
+// on both sides.
+func vnetRefFromRulesetID(rsRef inventory.Ref) (inventory.Ref, bool) {
+	parts := strings.SplitN(rsRef.ID, "/", 3)
+	if len(parts) != 3 || parts[0] != "vnet" {
+		return inventory.Ref{}, false
+	}
+	return inventory.Ref{Kind: inventory.KindSDNVnet, ID: parts[1] + "/" + parts[2]}, true
+}
+
 // sortedNodeNames returns snap.Nodes' keys sorted, for deterministic
 // iteration.
 func (s Snapshot) sortedNodeNames() []string {
@@ -101,6 +131,17 @@ func (s Snapshot) sortedGuestRefs() []inventory.Ref {
 	out := make([]inventory.Ref, 0, len(s.Guests))
 	for g := range s.Guests {
 		out = append(out, g)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	return out
+}
+
+// sortedVNetRefs returns snap.VNets' keys sorted, for deterministic
+// iteration.
+func (s Snapshot) sortedVNetRefs() []inventory.Ref {
+	out := make([]inventory.Ref, 0, len(s.VNets))
+	for v := range s.VNets {
+		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out

@@ -26,6 +26,7 @@ var allOpTypeConstants = []OpType{
 	OpSdnDnsZoneCreate, OpSdnDnsZoneUpdate, OpSdnDnsZoneDelete,
 	OpSdnDnsRecordCreate, OpSdnDnsRecordUpdate, OpSdnDnsRecordDelete,
 	OpSdnFabricCreate, OpSdnFabricUpdate, OpSdnFabricDelete,
+	OpSdnControllerCreate, OpSdnControllerUpdate, OpSdnControllerDelete,
 	OpSdnApply,
 	OpGuestNicUpdate,
 	OpFwRuleCreate, OpFwRuleUpdate, OpFwRuleDelete, OpFwRuleMove, OpFwOptionsUpdate,
@@ -46,9 +47,10 @@ var allOpTypeConstants = []OpType{
 // T-208's iface.raw.replace), bond(3), bridge(5), vlan(3), sdn(10), guest(1),
 // fw(14), ipam(2), qos(3, T-1505), wg(5, T-1401), nat(5, T-1403),
 // route(3, T-1403), vf(1, T-1506) = 58, plus T-1204's sdn.dns.zone.*(3) +
-// sdn.dns.record.*(3) = 6, T-1205's switch.port.update(1) = 65, and
-// T-3101's sdn.fabric.create/update/delete(3) = 68.
-const wantOpVocabularySize = 68
+// sdn.dns.record.*(3) = 6, T-1205's switch.port.update(1) = 65,
+// T-3101's sdn.fabric.create/update/delete(3) = 68, and T-3102's
+// sdn.controller.create/update/delete(3) = 71.
+const wantOpVocabularySize = 71
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -263,6 +265,21 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "sdn.fabric.delete", opType: OpSdnFabricDelete,
 			target: ref(inventory.KindSDNFabric, "", "fab1"),
 			params: &SdnFabricDeleteParams{},
+		},
+		{
+			name: "sdn.controller.create", opType: OpSdnControllerCreate,
+			target: ref(inventory.KindSDNController, "", "bgp1"),
+			params: &SdnControllerCreateParams{Type: "bgp", ASN: 65000, Peers: []string{"10.0.0.1"}, Ebgp: true},
+		},
+		{
+			name: "sdn.controller.update", opType: OpSdnControllerUpdate,
+			target: ref(inventory.KindSDNController, "", "bgp1"),
+			params: &SdnControllerUpdateParams{ASN: i(65001)},
+		},
+		{
+			name: "sdn.controller.delete", opType: OpSdnControllerDelete,
+			target: ref(inventory.KindSDNController, "", "bgp1"),
+			params: &SdnControllerDeleteParams{},
 		},
 		{
 			name: "sdn.apply", opType: OpSdnApply,

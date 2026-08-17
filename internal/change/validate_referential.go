@@ -2,6 +2,7 @@ package change
 
 import (
 	"net"
+	"sort"
 	"strings"
 
 	"github.com/bgovanlu/vnprox/internal/fw"
@@ -289,6 +290,23 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 		if !p.exists(op.Target) {
 			out = append(out, errorf(codeTargetNotFound, ref, "sdn dns record %s does not exist", op.Target))
 		}
+
+	case *SdnControllerCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "an sdn controller named %q already exists", op.Target.ID))
+		}
+
+	case *SdnControllerUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn controller %s does not exist", op.Target))
+		}
+
+	case *SdnControllerDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn controller %s does not exist", op.Target))
+			break
+		}
+		checkSdnControllerDeletable(p, op.Target.ID, ref, &out)
 
 	case *SdnApplyParams:
 		// no referential checks: cluster-wide, no single target.
@@ -706,15 +724,22 @@ func checkFwNameCollision(p *projection, kind, name, ref string, out *[]Finding)
 	}
 }
 
-// fwScopeOfRef recovers the FwScope an fw.alias/ipset/group op's Target
-// names, from the same Ref convention params_fw.go documents (cluster:
-// ID=="cluster"; node: ID=="node"; guest: ID=="guest/<kind>/<vmid>").
+// fwScopeOfRef recovers the FwScope an fw.rule/alias/ipset/group op's
+// Target names, from the same Ref convention params_fw.go documents
+// (cluster: ID=="cluster"; node: ID=="node"; guest: ID=="guest/<kind>/
+// <vmid>"; vnet (T-3103): ID=="vnet/<zone>/<vnet>"). Anything not matching
+// "cluster", "node", or the "vnet/" prefix falls through to guest — this
+// predates T-3103 and stays that way rather than validating the guest
+// shape strictly here; a malformed guest ID is caught elsewhere (the
+// target-exists referential check).
 func fwScopeOfRef(target inventory.Ref) inventory.FwScope {
-	switch target.ID {
-	case "cluster":
+	switch {
+	case target.ID == "cluster":
 		return inventory.FwScopeCluster
-	case "node":
+	case target.ID == "node":
 		return inventory.FwScopeNode
+	case strings.HasPrefix(target.ID, "vnet/"):
+		return inventory.FwScopeVNet
 	default:
 		return inventory.FwScopeGuest
 	}
@@ -753,4 +778,42 @@ func checkFwObjectDeletable(p *projection, kind fw.ObjectKind, target inventory.
 		return
 	}
 	*out = append(*out, errorf(codeFwObjectNotFound, ref, "%s %q does not exist at this scope", kind, name))
+}
+
+// checkSdnControllerDeletable is T-3102 acceptance criterion 5: deleting an
+// SDN controller still named by at least one zone's `controller` field is
+// blocked, with the referencing zone count/list — checkFwObjectDeletable's
+// exact precedent (TestValidate_FwAliasDelete_BlockedWhenReferenced),
+// applied to an SDN object instead of a firewall one.
+//
+// Scanned from p.snap.All() (a controller reference lives on inventory.
+// SdnZone.Controller, a live-polled field — no second index needs
+// maintaining on projection for this), filtered to zones this changeset's
+// own net effect still has (p.zoneNames): a zone this same changeset
+// deletes earlier no longer counts as a reference, mirroring
+// checkFwObjectDeletable's own net-effect-unaware-but-existence-aware
+// scope. A zone that *retargets* its controller field to something else in
+// this same changeset (an sdn.zone.update naming a different controller)
+// is a known, narrow edge this snapshot-only view does not catch — the same
+// class of gap checkFwObjectDeletable's own doc comment documents for its
+// own intra-changeset create/delete edge, not a new one.
+func checkSdnControllerDeletable(p *projection, controllerID, ref string, out *[]Finding) {
+	var referencing []string
+	for _, e := range p.snap.All() {
+		z, ok := e.(*inventory.SdnZone)
+		if !ok || z.Controller != controllerID {
+			continue
+		}
+		if _, stillPresent := p.zoneNames[z.ID]; !stillPresent {
+			continue
+		}
+		referencing = append(referencing, z.ID)
+	}
+	if len(referencing) == 0 {
+		return
+	}
+	sort.Strings(referencing)
+	*out = append(*out, errorf(codeSdnControllerInUse, ref,
+		"sdn controller %q is referenced by %d zone(s) (%s) and cannot be deleted while referenced",
+		controllerID, len(referencing), strings.Join(referencing, ", ")))
 }

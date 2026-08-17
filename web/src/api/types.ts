@@ -511,6 +511,9 @@ export type OpType =
   | "sdn.fabric.create"
   | "sdn.fabric.update"
   | "sdn.fabric.delete"
+  | "sdn.controller.create"
+  | "sdn.controller.update"
+  | "sdn.controller.delete"
   | "sdn.apply"
   | "guest.nic.update"
   | "fw.rule.create"
@@ -844,6 +847,55 @@ export interface SdnFabricUpdateParams {
 
 export type SdnFabricDeleteParams = Record<string, never>;
 
+// --- SDN Controller op params (T-3102; internal/change/params_sdn_controller.go) --
+// Mirrors that file field-for-field. `type` is conditional-schema, the same
+// "one struct, schema-validated combination" choice SdnFabricCreateParams
+// documents: bgp gets asn/bgpMode/bgpMultipathAsPathRelax/ebgp/
+// ebgpMultihop/peers; evpn gets fabric/peerGroupName/routeMapIn/
+// routeMapOut; isis gets isisDomain/isisIfaces/isisNet; faucet gets none of
+// the above (node/nodes/loopback are general — every type may set them).
+
+export interface SdnControllerCreateParams {
+  type: string; // "bgp" | "evpn" | "faucet" | "isis"
+  bgpMode?: string; // bgp-only: "auto" | "external" | "internal"
+  fabric?: string; // evpn-only
+  isisDomain?: string; // isis-only
+  isisNet?: string; // isis-only
+  loopback?: string;
+  node?: string;
+  peerGroupName?: string; // evpn-only
+  routeMapIn?: string; // evpn-only
+  routeMapOut?: string; // evpn-only
+  nodes?: string[];
+  peers?: string[]; // bgp-only
+  isisIfaces?: string[]; // isis-only
+  asn?: number; // bgp-only
+  ebgpMultihop?: number; // bgp-only
+  ebgp?: boolean; // bgp-only
+  bgpMultipathAsPathRelax?: boolean; // bgp-only
+}
+
+export interface SdnControllerUpdateParams {
+  bgpMode?: string;
+  fabric?: string;
+  isisDomain?: string;
+  isisNet?: string;
+  loopback?: string;
+  node?: string;
+  peerGroupName?: string;
+  routeMapIn?: string;
+  routeMapOut?: string;
+  nodes?: string[];
+  peers?: string[];
+  isisIfaces?: string[];
+  asn?: number;
+  ebgpMultihop?: number;
+  ebgp?: boolean;
+  bgpMultipathAsPathRelax?: boolean;
+}
+
+export type SdnControllerDeleteParams = Record<string, never>;
+
 export type SdnApplyParams = Record<string, never>;
 
 // --- Firewall op params (T-502; internal/change/params_fw.go) -------------
@@ -917,6 +969,14 @@ export interface FwRuleMoveParams {
 export interface FwOptionsUpdateParams {
   defaultIn?: string;
   defaultOut?: string;
+  /** The forward chain's own fallthrough policy/log level (T-3103).
+   * defaultForward is valid at cluster/node/vnet scope (ACCEPT|DROP only —
+   * no REJECT); logLevelForward is only hardware-confirmed at vnet scope.
+   * See internal/change's schemaFwOptionsForScope — the server rejects
+   * either at a scope it isn't valid for, so the UI should only ever send
+   * defaultForward outside guest scope and logLevelForward at vnet scope. */
+  defaultForward?: string;
+  logLevelForward?: string;
   enabled?: boolean;
 }
 
@@ -1019,6 +1079,9 @@ export type OpParams =
   | SdnFabricCreateParams
   | SdnFabricUpdateParams
   | SdnFabricDeleteParams
+  | SdnControllerCreateParams
+  | SdnControllerUpdateParams
+  | SdnControllerDeleteParams
   | SdnApplyParams
   | FwRuleCreateParams
   | FwRuleUpdateParams
@@ -1769,6 +1832,40 @@ export interface SdnFabric {
   nodeStatus: SdnNodeStatus[];
 }
 
+/** One SDN controller (T-3102), mirroring internal/sdn/service.go's
+ * Controller exactly. A sibling top-level collection on SdnTree, not nested
+ * under SdnZone — a controller is infrastructure a zone may ride on
+ * (SdnZone.controller is a *reference* by id), not a zone's child the way
+ * SdnVnet is; deleting a zone must never delete the controller it named.
+ * `type` is real PVE 9.2's captured enum (planning/reports/evidence/
+ * pve-9.2.4-sdn-schema.txt): "bgp" | "evpn" | "faucet" | "isis". Unlike
+ * SdnFabric it carries no nodeStatus — the captured API has no per-
+ * controller status route AND no separate per-node-membership collection
+ * the way fabrics have (see ControllersView.tsx). EVPN/BGP session health
+ * is reported separately (EvpnStatus.controllers) and re-attached by id,
+ * not inferred here. */
+export interface SdnController {
+  id: string;
+  type: string;
+  pending?: string;
+  bgpMode?: string;
+  fabric?: string;
+  isisDomain?: string;
+  isisNet?: string;
+  loopback?: string;
+  node?: string;
+  peerGroupName?: string;
+  routeMapIn?: string;
+  routeMapOut?: string;
+  nodes?: string[];
+  peers?: string[];
+  isisIfaces?: string[];
+  asn?: number;
+  ebgpMultihop?: number;
+  ebgp?: boolean;
+  bgpMultipathAsPathRelax?: boolean;
+}
+
 /** A read-only BGP prefix-list object (T-3101) — no changeset op exists for
  * either this or SdnRouteMap; field shape beyond `id` is unconfirmed
  * against hardware (planning/reports/needs-hardware-validation.md's T-3101
@@ -1787,6 +1884,7 @@ export interface SdnRouteMap {
 export interface SdnTree {
   zones: SdnZone[];
   fabrics: SdnFabric[];
+  controllers: SdnController[];
   prefixLists: SdnPrefixList[];
   routeMaps: SdnRouteMap[];
   generatedAt: number;
@@ -1982,10 +2080,32 @@ export interface EvpnNodeStatus {
   error?: string;
 }
 
-/** One EVPN zone exit node's derived health. */
+/** One EVPN zone exit node's derived health. `controller` (T-3102,
+ * additive) names the zone's own controller reference when it resolves to
+ * a real SdnController — omitted when the zone has none set or the id
+ * doesn't resolve. */
 export interface EvpnExitNodeHealth {
   zone: string;
   node: string;
+  controller?: string;
+  healthy: boolean;
+  detail?: string;
+}
+
+/** One SDN controller's BGP/EVPN peering health (T-3102 acceptance
+ * criterion 3: EVPN/BGP status attaches to the controller rather than
+ * being inferred). `zones` lists every zone whose own `controller` field
+ * names this controller. `peers`/`healthy` are computed only for bgp/evpn
+ * controllers, by matching the controller's configured peer address list
+ * against observed sessions across the cluster fan-out (EvpnNodeStatus.
+ * peers) — a faucet/isis controller, or a bgp/evpn one with no peers
+ * configured, still appears with `healthy: true` and a `detail` explaining
+ * why, rather than being omitted. */
+export interface EvpnControllerHealth {
+  id: string;
+  type: string;
+  zones?: string[];
+  peers?: string[];
   healthy: boolean;
   detail?: string;
 }
@@ -2005,6 +2125,9 @@ export interface EvpnFinding {
 export interface EvpnStatus {
   nodes: EvpnNodeStatus[];
   exitNodes: EvpnExitNodeHealth[];
+  /** T-3102 acceptance criterion 3's re-attachment — the same route, same
+   * envelope, one additive field. */
+  controllers: EvpnControllerHealth[];
   findings: EvpnFinding[];
   generatedAt: number;
   partial?: boolean;
@@ -2019,7 +2142,7 @@ export interface EvpnStatus {
 // "Datacenter firewall is OFF" footgun, docs/features/firewall.md §2), and
 // alias/ipset/security-group usage tracking with macro expansion previews.
 
-export type FwScope = "cluster" | "node" | "guest";
+export type FwScope = "cluster" | "node" | "guest" | "vnet";
 
 /** One documented evaluation step's origin label
  * (docs/features/firewall.md §1: "cluster rules → security groups → guest
@@ -2074,9 +2197,18 @@ export interface RulesetView {
   ref: string;
   scope: FwScope;
   node?: string;
+  /** The owning SDN vnet's own ref ("sdn-vnet::<zone>/<vnet>"), populated
+   * only for scope="vnet" — the vnet-scope counterpart of `node` (T-3103). */
+  vnet?: string;
   enabled: boolean;
   defaultIn?: string;
   defaultOut?: string;
+  /** The forward chain's own fallthrough policy/log level (T-3103).
+   * defaultForward is set at cluster/node/vnet scope; logLevelForward only
+   * at vnet scope — see internal/inventory.FwRuleset's Go doc comments for
+   * why that asymmetry is real (hardware-captured), not an oversight. */
+  defaultForward?: string;
+  logLevelForward?: string;
   rules: RuleView[];
   banners?: BannerView[];
 }

@@ -31,6 +31,8 @@ The change engine enforces the two shapes real PVE actually rejects at subnet st
 
 `GET /sdn/evpn/status` aggregates per-node FRR state (via `vtysh -c "show bgp summary json"` and `show evpn vni json` through the peer API): session state per peer, prefixes received, VNI list, exit-node health. UI: a peering matrix (nodes × peers, green/amber/red) and per-session detail. Flapping sessions raise a health finding.
 
+**Session health attaches to the controller, not just the zone (T-3102).** Before SDN Controllers existed as first-class objects (§7), the only per-zone signal this route offered was `exitNodes` (derived from a zone's own `exitNodes` list). The same response now also carries `controllers`: one entry per §7 controller, `healthy`/`peers` computed by matching the controller's own configured peer address list against observed sessions across the cluster fan-out — an operator asking "is this controller's underlay up" gets a direct answer keyed by the controller they configured, not only an answer inferred by cross-referencing a zone's exit nodes. `exitNodes` itself also gained a `controller` field (the owning zone's own reference, when it resolves) so the two views can be cross-linked. See docs/api.md's `GET /sdn/evpn/status` section for the exact shape.
+
 ## 4. SDN apply orchestration
 
 vnprox wraps the SDN apply (`PUT /cluster/sdn`) with: pre-apply validation (zone node coverage, bridge existence on member nodes, MTU sanity), per-node progress from the resulting PVE tasks, and post-apply verification that each node's status reports the zone healthy. Failures link straight to the failing node's task log.
@@ -47,6 +49,18 @@ PVE 9 added SDN Fabrics — an underlay-routing object family (`/cluster/sdn/fab
 
 Fabric create/update/delete are ordinary changeset ops, staging into the same pending SDN config every zone/vnet/subnet edit does and applying through the same trailing `sdn.apply` (docs/data-model.md §3) — there is no fabric-specific apply path, deliberately: `PUT /cluster/sdn`'s `--lock-token` gap (an operator's vnprox changeset can silently commit an unrelated PVE-GUI-staged edit alongside it) applies identically to a fabric op as to a zone op, and this card does not widen it — see `planning/reports/T-3101-followup-01.md` for the filed, not-yet-fixed gap.
 
-## 7. Out of scope v1
+## 7. SDN Controllers (T-3102)
+
+A controller was a bare string on a zone's own `controller` field before this task — an EVPN/BGP-EVPN wizard (§2) could reference one by ID, but nothing in this codebase could create, edit, delete, or independently inspect one, and `internal/blueprint`'s EVPN datacenter starter documented the gap explicitly rather than papering over it. This section closes it: a controller is now a first-class SDN object family (`/cluster/sdn/controllers`), the same "sibling top-level collection, own status view, ordinary changeset ops" shape §6 gave fabrics.
+
+**Controllers tab.** Controller list with type badge (`bgp`\|`evpn`\|`faucet`\|`isis` — real PVE 9.2 enum), and a create/edit form whose fields reveal per the selected type: ASN, BGP mode, eBGP settings, and a peer address list for `bgp`; the underlying fabric, peer-group name, and BGP-EVPN route-map settings for `evpn`; domain, interfaces, and network entity title for `isis`; `faucet` carries none of the type-specific fields — only the general `node`/`nodes`/`loopback` fields every type shares. Unlike a fabric, a controller carries no per-node membership/health read at all (the captured API has neither route); EVPN/BGP session health is reported on §3's EVPN/BGP tab instead, attached to the controller by id.
+
+**A zone's `controller` field is a reference, not an opaque string.** The zone editors/wizards are unchanged at the wire level (`SdnZoneCreateParams.Controller` still names a controller by plain id string) — what changed is that the id now resolves to a real inspectable object on the Controllers tab rather than dangling.
+
+**Deleting a referenced controller is blocked**, the same protection an in-use firewall alias/ipset/security-group already gets (`internal/fw`'s `UsageCounts`): a `sdn.controller.delete` targeting a controller at least one zone's `controller` field still names fails `Validate()` with a blocking finding naming the referencing zone(s), rather than either silently orphaning the zone or leaving the operator to discover the breakage only when PVE itself rejects the apply.
+
+Controller create/update/delete are ordinary changeset ops, staging into the same pending SDN config every zone/vnet/subnet/fabric edit does and applying through the same trailing `sdn.apply` — no controller-specific apply path, the identical `--lock-token` posture §6 states for fabrics.
+
+## 8. Out of scope v1
 
 Custom FRR config beyond what PVE's EVPN controller writes; BGP to external fabrics beyond PVE's controller/exit-node model (view-only where present); IPv6 SLAAC management — **display now real** (T-1404: `GET /ipv6/segments` surfaces per-segment RA presence, M/O flags, advertised prefixes, and DHCPv6-server presence, cluster-wide — `docs/api.md`'s IPv6 section, `docs/features/ipam.md` §4-§5), **basic addressing config now real** (a v6 subnet is an ordinary `sdn.subnet.create` op, staged directly or via the dual-stack rollout wizard); full RA/DHCPv6 *parameter* control (M/O flags, DHCPv6 ranges) beyond addressing remains P1 — PVE SDN's own subnet model has no such fields to set yet.

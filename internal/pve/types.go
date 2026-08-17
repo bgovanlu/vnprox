@@ -229,9 +229,10 @@ type SDNStatusEntry struct {
 
 // --- firewall ----------------------------------------------------------
 
-// FirewallScope names one of PVE's three firewall scopes (cluster, node,
-// or guest) and resolves to the corresponding API path prefix. Construct
-// with ClusterFirewallScope, NodeFirewallScope, or GuestFirewallScope.
+// FirewallScope names one of PVE's four firewall scopes (cluster, node,
+// guest, or vnet) and resolves to the corresponding API path prefix.
+// Construct with ClusterFirewallScope, NodeFirewallScope, GuestFirewallScope,
+// or VnetFirewallScope.
 type FirewallScope struct {
 	prefix string
 }
@@ -249,6 +250,16 @@ func NodeFirewallScope(node string) FirewallScope {
 // GuestFirewallScope is one guest's firewall ruleset.
 func GuestFirewallScope(node string, kind GuestKind, vmid int) FirewallScope {
 	return FirewallScope{prefix: fmt.Sprintf("/nodes/%s/%s/%d/firewall", node, kind, vmid)}
+}
+
+// VnetFirewallScope is one SDN vnet's firewall ruleset (T-3103): GET/PUT
+// /cluster/sdn/vnets/{vnet}/firewall/{rules,options} — hardware-captured
+// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt's "### ls
+// /cluster/sdn/vnets/labnet/firewall"). vnet names are unique cluster-wide
+// (real PVE's own vnet id namespace), so the path needs only the vnet name,
+// not its owning zone.
+func VnetFirewallScope(vnet string) FirewallScope {
+	return FirewallScope{prefix: "/cluster/sdn/vnets/" + vnet + "/firewall"}
 }
 
 // FirewallRule is one rule at any scope.
@@ -269,10 +280,22 @@ type FirewallRule struct {
 }
 
 // FirewallOptions is the ruleset-level policy/enable state at any scope.
+//
+// PolicyForward/LogLevelForward (T-3103) are the forward chain's own
+// fallthrough policy and log level. PolicyForward is hardware-captured at
+// cluster and vnet scope (planning/reports/evidence/
+// pve-9.2.4-sdn-schema.txt); LogLevelForward only at vnet scope — the same
+// capture's cluster/firewall/options excerpt shows policy_forward but never
+// independently matches a log_level_forward line the way the vnet section
+// does, so it is modelled here (for round-tripping whatever a scope's GET
+// actually returns) but only ever written at vnet scope — see
+// internal/change's schemaFwOptionsForScope.
 type FirewallOptions struct {
-	PolicyIn  string `json:"policy_in,omitempty"`
-	PolicyOut string `json:"policy_out,omitempty"`
-	Enable    bool   `json:"enable"`
+	PolicyIn        string `json:"policy_in,omitempty"`
+	PolicyOut       string `json:"policy_out,omitempty"`
+	PolicyForward   string `json:"policy_forward,omitempty"`
+	LogLevelForward string `json:"log_level_forward,omitempty"`
+	Enable          bool   `json:"enable"`
 }
 
 // FirewallAlias is a named IP/CIDR alias at any scope.

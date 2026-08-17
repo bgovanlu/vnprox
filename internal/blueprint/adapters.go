@@ -39,6 +39,8 @@ func diffEntity(e expandedEntity, snap inventory.Snapshot) ([]change.Op, error) 
 		return diffSdnVnet(e.ref, e.fields, snap)
 	case KindSdnSubnet:
 		return diffSdnSubnet(e.ref, e.fields, snap)
+	case KindSdnController:
+		return diffSdnController(e.ref, e.fields, snap)
 	default:
 		return nil, fmt.Errorf("unknown entity kind %q", e.kind)
 	}
@@ -578,4 +580,130 @@ func diffSdnSubnet(ref inventory.Ref, fields map[string]any, snap inventory.Snap
 		return nil, nil
 	}
 	return []change.Op{{Type: change.OpSdnSubnetUpdate, Target: ref, Params: upd}}, nil
+}
+
+// --- sdn controller (T-3102) -----------------------------------------------
+
+func diffSdnController(ref inventory.Ref, fields map[string]any, snap inventory.Snapshot) ([]change.Op, error) {
+	typ, _, err := fieldString(fields, "type")
+	if err != nil {
+		return nil, err
+	}
+	asn, hasASN, err := fieldInt(fields, "asn")
+	if err != nil {
+		return nil, err
+	}
+	bgpMode, hasBgpMode, err := fieldString(fields, "bgpMode")
+	if err != nil {
+		return nil, err
+	}
+	ebgp, hasEbgp, err := fieldBool(fields, "ebgp")
+	if err != nil {
+		return nil, err
+	}
+	ebgpMultihop, hasEbgpMultihop, err := fieldInt(fields, "ebgpMultihop")
+	if err != nil {
+		return nil, err
+	}
+	peers, hasPeers, err := fieldStringSlice(fields, "peers")
+	if err != nil {
+		return nil, err
+	}
+	fabric, hasFabric, err := fieldString(fields, "fabric")
+	if err != nil {
+		return nil, err
+	}
+	peerGroupName, hasPeerGroupName, err := fieldString(fields, "peerGroupName")
+	if err != nil {
+		return nil, err
+	}
+	nodes, hasNodes, err := fieldStringSlice(fields, "nodes")
+	if err != nil {
+		return nil, err
+	}
+
+	existing, found := snap.Get(ref)
+	if !found {
+		create := &change.SdnControllerCreateParams{Type: typ}
+		if hasASN {
+			create.ASN = asn
+		}
+		if hasBgpMode {
+			create.BgpMode = bgpMode
+		}
+		if hasEbgp {
+			create.Ebgp = ebgp
+		}
+		if hasEbgpMultihop {
+			create.EbgpMultihop = ebgpMultihop
+		}
+		if hasPeers {
+			create.Peers = peers
+		}
+		if hasFabric {
+			create.Fabric = fabric
+		}
+		if hasPeerGroupName {
+			create.PeerGroupName = peerGroupName
+		}
+		if hasNodes {
+			create.Nodes = nodes
+		}
+		return []change.Op{{Type: change.OpSdnControllerCreate, Target: ref, Params: create}}, nil
+	}
+
+	c, ok := existing.(*inventory.SdnController)
+	if !ok {
+		return nil, fmt.Errorf("%s already exists but is not an sdn controller", ref)
+	}
+
+	// Type is not editable (SdnControllerUpdateParams has no Type field;
+	// see its doc comment: changing a controller's type is a delete+create
+	// in real PVE too, unconfirmed but assumed the same as a zone/fabric).
+	upd := &change.SdnControllerUpdateParams{}
+	changed := false
+	if hasASN && asn != c.ASN {
+		a := asn
+		upd.ASN = &a
+		changed = true
+	}
+	if hasBgpMode && bgpMode != c.BgpMode {
+		b := bgpMode
+		upd.BgpMode = &b
+		changed = true
+	}
+	if hasEbgp && ebgp != c.Ebgp {
+		e := ebgp
+		upd.Ebgp = &e
+		changed = true
+	}
+	if hasEbgpMultihop && ebgpMultihop != c.EbgpMultihop {
+		e := ebgpMultihop
+		upd.EbgpMultihop = &e
+		changed = true
+	}
+	if hasPeers && !setEqual(peers, c.Peers) {
+		p := peers
+		upd.Peers = &p
+		changed = true
+	}
+	if hasFabric && fabric != c.Fabric {
+		f := fabric
+		upd.Fabric = &f
+		changed = true
+	}
+	if hasPeerGroupName && peerGroupName != c.PeerGroupName {
+		pg := peerGroupName
+		upd.PeerGroupName = &pg
+		changed = true
+	}
+	if hasNodes && !setEqual(nodes, c.Nodes) {
+		n := nodes
+		upd.Nodes = &n
+		changed = true
+	}
+	if !changed {
+		return nil, nil
+	}
+	return []change.Op{{Type: change.OpSdnControllerUpdate, Target: ref, Params: upd}}, nil
 }

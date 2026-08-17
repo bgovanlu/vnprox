@@ -54,6 +54,11 @@ type PVEReader interface {
 	ListSDNFabricNodes(ctx context.Context) ([]pve.SDNFabricNode, error)
 	ListSDNPrefixLists(ctx context.Context) ([]pve.SDNPrefixList, error)
 	ListSDNRouteMaps(ctx context.Context) ([]pve.SDNRouteMap, error)
+
+	// ListSDNControllers (T-3102) is Controller's own read — see Controller's
+	// doc comment for why it has no per-controller status sub-read the way
+	// Fabric's ListSDNFabricNodes does.
+	ListSDNControllers(ctx context.Context) ([]pve.SDNController, error)
 }
 
 // Service builds the GET /sdn tree from a PVEReader.
@@ -79,12 +84,52 @@ type Tree struct {
 	// (a vxlan zone's `--fabric` field), not a zone's child the way a Vnet
 	// is.
 	Fabrics []Fabric `json:"fabrics"`
+	// Controllers (T-3102) is a sibling top-level collection too, not
+	// nested under Zone — a controller is infrastructure a zone may ride on
+	// (a zone's `controller` field, now a *reference* by id rather than an
+	// opaque string, KindSDNController's doc comment) the same "sibling,
+	// not child" shape Fabrics already established, since a controller is
+	// referenced BY a zone, not owned BY one — deleting a zone must never
+	// delete the controller it named.
+	Controllers []Controller `json:"controllers"`
 	// PrefixLists/RouteMaps (T-3101) are read-only BGP route-policy
 	// objects — display only, no diff/pending (they carry no staged-vs-
 	// running distinction of their own to render, unlike Zone/Vnet/Subnet).
 	PrefixLists []PrefixList `json:"prefixLists"`
 	RouteMaps   []RouteMap   `json:"routeMaps"`
 	GeneratedAt int64        `json:"generatedAt"`
+}
+
+// Controller is one SDN controller (T-3102), mirroring pve.SDNController's
+// field set — see internal/pve/sdn_controller.go's package doc comment for
+// what each type-conditional field means. Unlike Fabric, it carries no
+// NodeStatus: the captured API has no per-controller status route (like
+// Fabric) AND no separate per-node-membership collection the way
+// ListSDNFabricNodes gives Fabric either — a controller's Nodes/Node fields
+// are pure configuration, not a membership list this service independently
+// observes. EVPN/BGP session health is reported separately and re-attached
+// to a controller's id by internal/evpn.Service (T-3102 acceptance
+// criterion 3), not inferred here.
+type Controller struct {
+	ID                      string   `json:"id"`
+	Type                    string   `json:"type"`
+	Pending                 string   `json:"pending,omitempty"`
+	BgpMode                 string   `json:"bgpMode,omitempty"`
+	Fabric                  string   `json:"fabric,omitempty"`
+	IsisDomain              string   `json:"isisDomain,omitempty"`
+	IsisNet                 string   `json:"isisNet,omitempty"`
+	Loopback                string   `json:"loopback,omitempty"`
+	Node                    string   `json:"node,omitempty"`
+	PeerGroupName           string   `json:"peerGroupName,omitempty"`
+	RouteMapIn              string   `json:"routeMapIn,omitempty"`
+	RouteMapOut             string   `json:"routeMapOut,omitempty"`
+	Nodes                   []string `json:"nodes,omitempty"`
+	Peers                   []string `json:"peers,omitempty"`
+	IsisIfaces              []string `json:"isisIfaces,omitempty"`
+	ASN                     int      `json:"asn,omitempty"`
+	EbgpMultihop            int      `json:"ebgpMultihop,omitempty"`
+	Ebgp                    bool     `json:"ebgp,omitempty"`
+	BgpMultipathAsPathRelax bool     `json:"bgpMultipathAsPathRelax,omitempty"`
 }
 
 // Fabric is one SDN fabric (T-3101), mirroring pve.SDNFabric's field set —
@@ -292,6 +337,11 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 		return Tree{}, err
 	}
 
+	controllers, err := s.buildControllers(ctx)
+	if err != nil {
+		return Tree{}, err
+	}
+
 	prefixLists, err := s.pve.ListSDNPrefixLists(ctx)
 	if err != nil {
 		return Tree{}, fmt.Errorf("sdn: listing prefix-lists: %w", err)
@@ -312,7 +362,34 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 	}
 	sort.Slice(rms, func(i, j int) bool { return rms[i].ID < rms[j].ID })
 
-	return Tree{Zones: zones, Fabrics: fabrics, PrefixLists: pls, RouteMaps: rms, GeneratedAt: s.now().Unix()}, nil
+	return Tree{
+		Zones: zones, Fabrics: fabrics, Controllers: controllers,
+		PrefixLists: pls, RouteMaps: rms, GeneratedAt: s.now().Unix(),
+	}, nil
+}
+
+// buildControllers fetches the controller list and maps it straight to
+// Controller — unlike buildFabrics, there is no per-node membership
+// sub-read to fold in (see Controller's own doc comment).
+func (s *Service) buildControllers(ctx context.Context) ([]Controller, error) {
+	staged, err := s.pve.ListSDNControllers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sdn: listing controllers: %w", err)
+	}
+	out := make([]Controller, 0, len(staged))
+	for _, c := range staged {
+		out = append(out, Controller{
+			ID: c.ID, Type: c.Type, Pending: string(c.Pending),
+			BgpMode: c.BgpMode, Fabric: c.Fabric, IsisDomain: c.IsisDomain, IsisNet: c.IsisNet,
+			Loopback: c.Loopback, Node: c.Node, PeerGroupName: c.PeerGroupName,
+			RouteMapIn: c.RouteMapIn, RouteMapOut: c.RouteMapOut,
+			Nodes: c.Nodes, Peers: c.Peers, IsisIfaces: c.IsisIfaces,
+			ASN: c.ASN, EbgpMultihop: c.EbgpMultihop, Ebgp: c.Ebgp,
+			BgpMultipathAsPathRelax: c.BgpMultipathAsPathRelax,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
 }
 
 // buildFabrics fetches the fabric list plus the cluster-wide per-node

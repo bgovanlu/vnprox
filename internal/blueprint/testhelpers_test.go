@@ -120,6 +120,19 @@ func applySdnZone(g *inventory.Graph, id string, o sdnZoneOpts) {
 	g.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{Kinds: []inventory.Kind{inventory.KindSDNZone}}, entities)
 }
 
+type sdnControllerOpts struct {
+	typ string
+	asn int
+}
+
+func applySdnController(g *inventory.Graph, id string, o sdnControllerOpts) {
+	c := &inventory.SdnController{
+		Ref: inventory.Ref{Kind: inventory.KindSDNController, ID: id}, ID: id, Type: o.typ, ASN: o.asn,
+	}
+	entities := replaceByRef(entitiesOfKind(g, "", inventory.KindSDNController), c)
+	g.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{Kinds: []inventory.Kind{inventory.KindSDNController}}, entities)
+}
+
 func applySdnVnet(g *inventory.Graph, zone, name string, tag int, vlanAware bool) {
 	v := &inventory.SdnVnet{
 		Ref: inventory.Ref{Kind: inventory.KindSDNVnet, ID: zone + "/" + name}, ID: name, Zone: zone, Tag: tag, VlanAware: vlanAware,
