@@ -1,7 +1,6 @@
 package pvemock
 
 import (
-	"io"
 	"net/http"
 	"strings"
 )
@@ -17,18 +16,30 @@ import (
 // ("openfabric"/"ospf" rejected below PVE 9.0). Hardware disproved that
 // model — see PVEVersionProfile.SDNFabrics for the capture and the
 // reasoning. The gate now sits on the surface the feature actually has.
+//
+// Until T-3101, this wrapper also self-answered GET .../fabrics/all with a
+// hardcoded literal and 501'd every other fabrics path, because the base
+// *Server had no fabric routes of its own to fall through to — "modeling
+// fabric contents is T-3101's job, not this file's" (the comment this file
+// used to carry). T-3101 gave the base Server real fabric routes
+// (sdn_fabric.go: GET/POST /cluster/sdn/fabrics/fabric, GET/PUT/DELETE
+// .../fabric/{id}, GET .../all, GET .../node), so that job is done, and
+// this wrapper's only remaining responsibility is the version gate itself:
+// on a supporting profile it falls straight through to the base Server for
+// every fabrics path; on a profile that predates the family it still
+// answers 501 for all of them, so PVE 8.2 continues to look like it has no
+// fabrics family at all.
 
 // NewCompatServer wraps NewServer(f, opts...) with profile's version-gated
-// SDN Fabrics enforcement: any request at or below /cluster/sdn/fabrics
-// gets a PVE-shaped 501 on a profile that predates the family, and is
-// answered by this wrapper on a profile that has it — the base Server has
-// no fabrics routes of its own, and modeling fabric *contents* is T-3101's
-// work, not this file's. Every other request passes through to base
-// unmodified.
+// SDN Fabrics enforcement: any request at or below /cluster/sdn/fabrics is
+// rejected with a PVE-shaped 501 on a profile that predates the family, and
+// falls through unmodified to the base Server (which now has real fabric
+// routes, T-3101) on a profile that has it. Every other request passes
+// through to base unmodified regardless of profile.
 //
 // The returned handler also sets CompatVersionHeader on every response
-// (including the ones it answers or rejects itself), so a test or an
-// external caller can always confirm which profile actually answered.
+// (including the ones it rejects itself), so a test or an external caller
+// can always confirm which profile actually answered.
 func NewCompatServer(f *Fixture, profile PVEVersionProfile, opts ...Option) http.Handler {
 	base := NewServer(f, opts...)
 	return &compatServer{base: base, profile: profile}
@@ -45,11 +56,12 @@ type compatServer struct {
 // post ordinary zones through it to prove this wrapper stays additive.
 const sdnZonesPath = "/api2/json/cluster/sdn/zones"
 
-// sdnFabricsAllPath is the one fabrics read this wrapper answers with a
-// body. Every other path under SDNFabricsPath is a real route on PVE 9
-// that this mock does not model yet; it answers those 501 on every
-// profile, so a caller can never mistake "modeled as absent" for
-// "supported and empty".
+// sdnFabricsAllPath names GET .../fabrics/all specifically — kept as a
+// named constant purely because several tests in this package address it
+// directly; it carries no special handling of its own any more (every
+// fabrics path, this one included, is either 501-gated or passed straight
+// through to the base Server's own real route, sdn_fabric.go's
+// handleSDNFabricsAll).
 const sdnFabricsAllPath = SDNFabricsPath + "/all"
 
 func (s *compatServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -65,19 +77,8 @@ func (s *compatServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method == http.MethodGet && r.URL.Path == sdnFabricsAllPath {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, `{"data":`+sdnFabricsAllResponse+`}`)
-		return
-	}
-
-	// A fabrics path this mock has not modeled, on a profile that does have
-	// the family. Answering 501 with a message that says which case this is
-	// keeps it distinguishable from the version gate above: a check that
-	// starts exercising fabric CRUD should fail loudly here rather than
-	// read a silence as success.
-	writeError(w, http.StatusNotImplemented,
-		"pvemock: PVE "+s.profile.Version+" has /cluster/sdn/fabrics, but this mock models only "+
-			sdnFabricsAllPath+"; fabric CRUD is not modeled yet (T-3101)")
+	// A supporting profile: the base Server now has real fabric routes
+	// (T-3101), so every fabrics path — not just .../all — falls straight
+	// through to them.
+	s.base.ServeHTTP(w, r)
 }

@@ -160,6 +160,15 @@ var sdnStageOpTypes = map[OpType]bool{
 	OpSdnDnsRecordCreate: true,
 	OpSdnDnsRecordUpdate: true,
 	OpSdnDnsRecordDelete: true,
+
+	// T-3101: a fabric create/update/delete stages and applies through this
+	// exact same StepSDNStage/StepSDNApply pair, deliberately — see
+	// op.go's OpSdnFabricCreate doc comment on why this must not widen
+	// planning/reports/T-3101-followup-01.md's filed gap with a bespoke
+	// apply path.
+	OpSdnFabricCreate: true,
+	OpSdnFabricUpdate: true,
+	OpSdnFabricDelete: true,
 }
 
 // wgOpTypes is T-1401's WireGuard op vocabulary: each becomes a StepWgApply

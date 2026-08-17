@@ -62,6 +62,9 @@ const tree: SdnTree = {
       vnets: [],
     },
   ],
+  fabrics: [],
+  prefixLists: [],
+  routeMaps: [],
 };
 
 function renderPage() {

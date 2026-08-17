@@ -150,6 +150,79 @@ var validSdnZoneTypes = map[string]bool{
 	"simple": true, "vlan": true, "qinq": true, "vxlan": true, "evpn": true, "faucet": true,
 }
 
+// sdnFabricIDRe is real PVE's SDN fabric id charset+length, captured
+// verbatim (planning/reports/evidence/pve-9.2.4-sdn-schema.txt):
+//
+//	[a-zA-Z0-9][a-zA-Z0-9-]{0,6}[a-zA-Z0-9]
+//
+// 2 to 8 characters, alphanumeric with interior hyphens — a materially
+// different (shorter, hyphen-permitting) charset from sdnIDRe's zone/vnet
+// pattern above, so it is its own regex rather than a variant of that one.
+var sdnFabricIDRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]{0,6}[a-zA-Z0-9]$`)
+
+// schemaSDNFabricID flags an ill-formed SDN fabric id — unlike
+// schemaSDNName, PVE's own regex already bounds the length (2-8 chars), so
+// (unlike codeSDNNameInvalid's zone/vnet charset check) there is no
+// separate non-blocking length warning: an out-of-range fabric id is
+// blocking here.
+func schemaSDNFabricID(id, ref string, out *[]Finding) {
+	if id == "" {
+		return // emptiness is a referential/required-field concern, not charset
+	}
+	if !sdnFabricIDRe.MatchString(id) {
+		*out = append(*out, errorf(codeSDNFabricIDInvalid, ref,
+			"sdn fabric id %q is not valid — must be 2-8 characters, alphanumeric with interior hyphens (Proxmox rejects other shapes)", id))
+	}
+}
+
+// validSdnFabricProtocols mirrors real PVE's SDN fabric `--protocol` enum,
+// captured from the same PVE 9.2.4 node as validSdnZoneTypes (planning/
+// reports/evidence/pve-9.2.4-sdn-schema.txt):
+//
+//	--protocol  <bgp | openfabric | ospf | wireguard>
+//
+// Keep it in sync with that capture — TestValidSdnFabricProtocolsMatchTheCapturedEnum
+// (validate_schema_enum_test.go) fails if it drifts, and says which file to
+// re-read, the same discipline validSdnZoneTypes' guard test uses. One of
+// these — wireguard — is genuinely WireGuard, but a different management
+// plane than params_wg.go's T-1401 tunnels (see inventory.KindSDNFabric's
+// doc comment); nothing here or in params_wg.go references the other
+// family's types.
+var validSdnFabricProtocols = map[string]bool{
+	"bgp": true, "openfabric": true, "ospf": true, "wireguard": true,
+}
+
+// sdnFabricProtocolFields names which of SdnFabricCreateParams' protocol-
+// conditional fields the capture's "Conditional options:" blocks allow for
+// each protocol — the schema-validator half of the same rule pvemock's own
+// sdnFabricProtocolError (internal/pvemock/sdn_fabric.go) enforces
+// server-side. Field names are this file's own vocabulary (matching the
+// switch below), not the wire's camelCase or PVE's snake_case.
+var sdnFabricProtocolFields = map[string]map[string]bool{
+	"bgp":        {"redistribute": true},
+	"openfabric": {"csnpInterval": true, "helloInterval": true, "routeFilter": true},
+	"ospf":       {"area": true, "redistribute": true, "routeFilter": true},
+	"wireguard":  {"persistentKeepalive": true},
+}
+
+// schemaSDNFabricProtocolFields flags an sdn.fabric.create/update whose
+// protocol-conditional fields don't match the allowed set for protocol —
+// e.g. csnpInterval set on a "bgp" fabric. protocol must already be known
+// valid (schemaValidateOp only calls this after the enum check above
+// passes) — an unrecognized protocol has no entry in
+// sdnFabricProtocolFields, so every conditional field would spuriously
+// flag; callers guard against that by checking validSdnFabricProtocols
+// first.
+func schemaSDNFabricProtocolFields(protocol string, set map[string]bool, ref string, out *[]Finding) {
+	allowed := sdnFabricProtocolFields[protocol]
+	for field, isSet := range set {
+		if isSet && !allowed[field] {
+			*out = append(*out, errorf(codeSDNFabricProtocolInvalid, ref,
+				"sdn fabric field %q is not valid for protocol %q", field, protocol))
+		}
+	}
+}
+
 // validFwDirections includes "group" alongside the real traffic
 // directions "in"/"out": a rule row whose Direction is "group" is not a
 // traffic-direction rule at all but a security-group reference (T-501's
@@ -449,6 +522,52 @@ func schemaValidateOp(op Op) []Finding {
 		}
 
 	case *SdnSubnetDeleteParams:
+		// no params to validate.
+
+	case *SdnFabricCreateParams:
+		schemaSDNFabricID(op.Target.ID, ref, &out)
+		if !validSdnFabricProtocols[p.Protocol] {
+			out = append(out, errorf(codeSDNFabricProtocolInvalid, ref, "sdn fabric protocol %q is not recognized", p.Protocol))
+		} else {
+			schemaSDNFabricProtocolFields(p.Protocol, map[string]bool{
+				"csnpInterval":        p.CSNPInterval != 0,
+				"helloInterval":       p.HelloInterval != 0,
+				"routeFilter":         p.RouteFilter != "",
+				"area":                p.Area != "",
+				"redistribute":        len(p.Redistribute) > 0,
+				"persistentKeepalive": p.PersistentKeepalive != 0,
+			}, ref, &out)
+		}
+		if p.CSNPInterval != 0 && (p.CSNPInterval < 1 || p.CSNPInterval > 600) {
+			out = append(out, errorf(codeSDNFabricProtocolInvalid, ref, "csnpInterval %d out of range [1,600]", p.CSNPInterval))
+		}
+		if p.HelloInterval != 0 && (p.HelloInterval < 1 || p.HelloInterval > 600) {
+			out = append(out, errorf(codeSDNFabricProtocolInvalid, ref, "helloInterval %d out of range [1,600]", p.HelloInterval))
+		}
+		if p.PersistentKeepalive < 0 || p.PersistentKeepalive > 65535 {
+			out = append(out, errorf(codeSDNFabricProtocolInvalid, ref, "persistentKeepalive %d out of range [0,65535]", p.PersistentKeepalive))
+		}
+
+	case *SdnFabricUpdateParams:
+		// Protocol is not part of this params type (immutable — see
+		// params_sdn_fabric.go's SdnFabricUpdateParams doc comment), so the
+		// per-protocol conditional check above cannot run here without
+		// knowing the fabric's existing protocol, which schema class 1
+		// (pure, per-op, no snapshot) does not have. Only the bare numeric
+		// ranges are checked at this class; a field set for the wrong
+		// protocol on update is a referential-class concern this card
+		// deliberately does not add (see the task report).
+		if p.CSNPInterval != nil && *p.CSNPInterval != 0 && (*p.CSNPInterval < 1 || *p.CSNPInterval > 600) {
+			out = append(out, errorf(codeSDNFabricProtocolInvalid, ref, "csnpInterval %d out of range [1,600]", *p.CSNPInterval))
+		}
+		if p.HelloInterval != nil && *p.HelloInterval != 0 && (*p.HelloInterval < 1 || *p.HelloInterval > 600) {
+			out = append(out, errorf(codeSDNFabricProtocolInvalid, ref, "helloInterval %d out of range [1,600]", *p.HelloInterval))
+		}
+		if p.PersistentKeepalive != nil && (*p.PersistentKeepalive < 0 || *p.PersistentKeepalive > 65535) {
+			out = append(out, errorf(codeSDNFabricProtocolInvalid, ref, "persistentKeepalive %d out of range [0,65535]", *p.PersistentKeepalive))
+		}
+
+	case *SdnFabricDeleteParams:
 		// no params to validate.
 
 	case *SdnDnsZoneCreateParams:

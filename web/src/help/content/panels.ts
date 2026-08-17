@@ -1464,6 +1464,34 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["sdn-page", "sdn-zone-wizard", "findings-stream", "topology-page"],
   },
   {
+    id: "sdn-fabrics",
+    title: "SDN Fabrics",
+    surface: "panel",
+    summary:
+      "PVE 9's underlay-routing object family: fabric list with per-node membership, a protocol-conditional create/edit form, and read-only prefix-list/route-map tables.",
+    docRef: "docs/features/sdn.md",
+    keywords: ["fabric", "fabrics", "bgp", "openfabric", "ospf", "wireguard", "underlay", "prefix-list", "route-map"],
+    sections: [
+      {
+        heading: "Underlay, not a tenant network",
+        body: "A fabric configures the routing (BGP, OpenFabric, OSPF, or WireGuard) a vxlan/evpn zone can ride on via its own fabric field — it is not a zone, a VNet, or a subnet, and it does not appear on the topology map. It gets this dedicated status view instead, the same choice EVPN/BGP observability made for a different complex SDN L3 concept.",
+      },
+      {
+        heading: "A WireGuard fabric is not a WireGuard tunnel",
+        body: "One of the four protocols is WireGuard, and it is genuinely WireGuard — but PVE-managed underlay transport, not the peer links this product's own WireGuard tunnels feature manages. The two never share a model or a map badge; a fabric never shows up as a tunnel and vice versa.",
+      },
+      {
+        heading: "Membership, not verified health",
+        body: "The per-node dots here reflect which nodes PVE reports as fabric members, not a confirmed-healthy realization check the way a zone's own status does — Proxmox's fabrics API has no equivalent per-fabric health read yet.",
+      },
+      {
+        heading: "Prefix-lists and route-maps are read-only",
+        body: "Both are BGP route-policy objects PVE's SDN exposes; this view can display them but not create, edit, or delete them.",
+      },
+    ],
+    seeAlso: ["sdn-page", "sdn-evpn", "sdn-zone-wizard"],
+  },
+  {
     id: "sdn-pending-diff",
     title: "Staged SDN changes",
     surface: "panel",

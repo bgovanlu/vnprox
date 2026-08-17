@@ -358,6 +358,14 @@ type SDNConfig struct {
 	Subnets    []SDNSubnetConfig    `json:"subnets"`
 	DnsZones   []SDNDnsZoneConfig   `json:"dnsZones,omitempty"`
 	DnsRecords []SDNDnsRecordConfig `json:"dnsRecords,omitempty"`
+	// Fabrics (T-3101) is the pre-apply/rollback snapshot's fabric set,
+	// reconciled by apply_sdn.go's sdnRestoreOps exactly like Zones above —
+	// create/delete/field-update are all reconciled, the same three-phase
+	// (remove additions, recreate removals, restore changed fields)
+	// dependency order zones use, since a fabric has no vnet/subnet
+	// children to order around (see this task's report on why this landed
+	// in full rather than scoped down to create/delete only).
+	Fabrics []SDNFabricConfig `json:"fabrics,omitempty"`
 }
 
 // SDNDnsZoneConfig mirrors SdnDnsZoneCreateParams' field set plus the zone's
@@ -400,6 +408,21 @@ type SDNVnetConfig struct {
 	Alias     string `json:"alias,omitempty"`
 	Tag       int    `json:"tag,omitempty"`
 	VlanAware bool   `json:"vlanAware,omitempty"`
+}
+
+// SDNFabricConfig mirrors SdnFabricCreateParams' field set (T-3101) plus
+// the fabric's own id.
+type SDNFabricConfig struct {
+	ID                  string   `json:"id"`
+	Protocol            string   `json:"protocol"`
+	IPPrefix            string   `json:"ipPrefix,omitempty"`
+	IP6Prefix           string   `json:"ip6Prefix,omitempty"`
+	RouteFilter         string   `json:"routeFilter,omitempty"`
+	Area                string   `json:"area,omitempty"`
+	Redistribute        []string `json:"redistribute,omitempty"`
+	CSNPInterval        int      `json:"csnpInterval,omitempty"`
+	HelloInterval       int      `json:"helloInterval,omitempty"`
+	PersistentKeepalive int      `json:"persistentKeepalive,omitempty"`
 }
 
 // SDNSubnetConfig mirrors SdnSubnetCreateParams' field set.

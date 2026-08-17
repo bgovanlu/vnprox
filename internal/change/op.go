@@ -70,6 +70,17 @@ const (
 	OpSdnDnsRecordUpdate OpType = "sdn.dns.record.update"
 	OpSdnDnsRecordDelete OpType = "sdn.dns.record.delete"
 
+	// SDN Fabric op family (T-3101). Fabrics stage and apply through the
+	// exact same PUT /cluster/sdn commit every other sdn.* op uses
+	// (apply_plan.go's sdnStageOpTypes) — deliberately, per the task card:
+	// a fabric op must not widen planning/reports/T-3101-followup-01.md's
+	// filed `--lock-token` gap by inventing a bespoke apply path. A fabric
+	// target is Ref{Kind: KindSDNFabric, ID: <fabricID>} (cluster-scoped,
+	// Node empty like every other sdn-* Kind).
+	OpSdnFabricCreate OpType = "sdn.fabric.create"
+	OpSdnFabricUpdate OpType = "sdn.fabric.update"
+	OpSdnFabricDelete OpType = "sdn.fabric.delete"
+
 	OpSdnApply OpType = "sdn.apply"
 
 	OpGuestNicUpdate OpType = "guest.nic.update"
@@ -209,6 +220,10 @@ var paramFactories = map[OpType]func() Params{
 	OpSdnDnsRecordCreate: func() Params { return &SdnDnsRecordCreateParams{} },
 	OpSdnDnsRecordUpdate: func() Params { return &SdnDnsRecordUpdateParams{} },
 	OpSdnDnsRecordDelete: func() Params { return &SdnDnsRecordDeleteParams{} },
+
+	OpSdnFabricCreate: func() Params { return &SdnFabricCreateParams{} },
+	OpSdnFabricUpdate: func() Params { return &SdnFabricUpdateParams{} },
+	OpSdnFabricDelete: func() Params { return &SdnFabricDeleteParams{} },
 
 	OpSdnApply: func() Params { return &SdnApplyParams{} },
 

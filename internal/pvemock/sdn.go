@@ -575,6 +575,17 @@ func (srv *Server) handleSDNApply(w http.ResponseWriter, r *http.Request) {
 			s.Pending = PendingNone
 			srv.state.sdn.subnets[id] = s
 		}
+		// T-3101: fabrics apply through this same PUT /cluster/sdn commit —
+		// no bespoke apply path (internal/change/op.go's OpSdnFabricCreate
+		// doc comment).
+		for id, f := range srv.state.sdn.fabrics {
+			if f.Pending == PendingDeleted {
+				delete(srv.state.sdn.fabrics, id)
+				continue
+			}
+			f.Pending = PendingNone
+			srv.state.sdn.fabrics[id] = f
+		}
 
 		// T-401: the running (last-applied) view now matches the
 		// just-applied staged view exactly — a deep copy with every
@@ -594,6 +605,11 @@ func (srv *Server) handleSDNApply(w http.ResponseWriter, r *http.Request) {
 		for id, s := range srv.state.sdn.subnets {
 			s.Running = nil
 			srv.state.sdn.subnetsRunning[id] = s
+		}
+		srv.state.sdn.fabricsRunning = make(map[string]SDNFabricSpec, len(srv.state.sdn.fabrics))
+		for id, f := range srv.state.sdn.fabrics {
+			f.Running = nil
+			srv.state.sdn.fabricsRunning[id] = f
 		}
 	})
 	writeData(w, http.StatusOK, task.UPID)

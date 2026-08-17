@@ -13,6 +13,8 @@ import type {
   IfaceUpdateParams,
   IpamAllocCreateParams,
   Op,
+  SdnFabricCreateParams,
+  SdnFabricUpdateParams,
   SdnSubnetCreateParams,
   SdnSubnetUpdateParams,
   SdnVnetCreateParams,
@@ -314,6 +316,55 @@ export function buildSdnSubnetUpdateOp(target: string, initial: SdnSubnetFormVal
 
 export function buildSdnSubnetDeleteOp(target: string): Op {
   return { op: "sdn.subnet.delete", target, params: {} };
+}
+
+// --- SDN Fabric op builders (T-3101) --------------------------------------
+// target is `sdn-fabric::<id>` (cluster-scoped, id 2-8 chars). protocol is
+// create-only, mirroring params_sdn_fabric.go's SdnFabricUpdateParams doc
+// comment (immutable — an assumption, not a hardware-confirmed fact).
+
+export interface SdnFabricFormValues {
+  protocol: string;
+  ipPrefix: string;
+  ip6Prefix: string;
+  csnpInterval: number;
+  helloInterval: number;
+  routeFilter: string;
+  area: string;
+  redistribute: string[];
+  persistentKeepalive: number;
+}
+
+export function buildSdnFabricCreateOp(target: string, form: SdnFabricFormValues): Op {
+  const params: SdnFabricCreateParams = {
+    protocol: form.protocol,
+    ipPrefix: form.ipPrefix || undefined,
+    ip6Prefix: form.ip6Prefix || undefined,
+    csnpInterval: form.csnpInterval || undefined,
+    helloInterval: form.helloInterval || undefined,
+    routeFilter: form.routeFilter || undefined,
+    area: form.area || undefined,
+    redistribute: form.redistribute.length > 0 ? form.redistribute : undefined,
+    persistentKeepalive: form.persistentKeepalive || undefined,
+  };
+  return { op: "sdn.fabric.create", target, params };
+}
+
+export function buildSdnFabricUpdateOp(target: string, initial: SdnFabricFormValues, form: SdnFabricFormValues): Op {
+  const params: SdnFabricUpdateParams = {};
+  if (form.ipPrefix !== initial.ipPrefix) params.ipPrefix = form.ipPrefix;
+  if (form.ip6Prefix !== initial.ip6Prefix) params.ip6Prefix = form.ip6Prefix;
+  if (form.csnpInterval !== initial.csnpInterval) params.csnpInterval = form.csnpInterval;
+  if (form.helloInterval !== initial.helloInterval) params.helloInterval = form.helloInterval;
+  if (form.routeFilter !== initial.routeFilter) params.routeFilter = form.routeFilter;
+  if (form.area !== initial.area) params.area = form.area;
+  if (JSON.stringify(form.redistribute) !== JSON.stringify(initial.redistribute)) params.redistribute = form.redistribute;
+  if (form.persistentKeepalive !== initial.persistentKeepalive) params.persistentKeepalive = form.persistentKeepalive;
+  return { op: "sdn.fabric.update", target, params };
+}
+
+export function buildSdnFabricDeleteOp(target: string): Op {
+  return { op: "sdn.fabric.delete", target, params: {} };
 }
 
 /** The trailing `sdn.apply` step every SDN-carrying changeset needs

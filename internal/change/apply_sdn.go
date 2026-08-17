@@ -127,6 +127,7 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 	preZones, curZones := zoneMapOf(pre.Zones), zoneMapOf(current.Zones)
 	preVnets, curVnets := vnetMapOf(pre.Vnets), vnetMapOf(current.Vnets)
 	preSubnets, curSubnets := subnetMapOf(pre.Subnets), subnetMapOf(current.Subnets)
+	preFabrics, curFabrics := fabricMapOf(pre.Fabrics), fabricMapOf(current.Fabrics)
 
 	var out []sdnRestoreOp
 
@@ -160,8 +161,29 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 		}
 		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnZoneDelete, Target: inventory.Ref{Kind: inventory.KindSDNZone, ID: id}, Params: &SdnZoneDeleteParams{}}})
 	}
+	// A fabric is deleted last in this phase (after every zone that might
+	// reference it via its own `--fabric` field is already gone) — the
+	// mirror image of phase 2's fabric-created-first ordering below.
+	for _, id := range sortedKeys(curFabrics) {
+		if _, ok := preFabrics[id]; ok {
+			continue
+		}
+		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnFabricDelete, Target: inventory.Ref{Kind: inventory.KindSDNFabric, ID: id}, Params: &SdnFabricDeleteParams{}}})
+	}
 
-	// Phase 2: recreate removals, shallowest first.
+	// Phase 2: recreate removals, shallowest first. A fabric is recreated
+	// before any zone that might reference it via `--fabric`.
+	for _, id := range sortedKeys(preFabrics) {
+		if _, ok := curFabrics[id]; ok {
+			continue
+		}
+		f := preFabrics[id]
+		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnFabricCreate, Target: inventory.Ref{Kind: inventory.KindSDNFabric, ID: id}, Params: &SdnFabricCreateParams{
+			Protocol: f.Protocol, IPPrefix: f.IPPrefix, IP6Prefix: f.IP6Prefix,
+			CSNPInterval: f.CSNPInterval, HelloInterval: f.HelloInterval, RouteFilter: f.RouteFilter,
+			Area: f.Area, Redistribute: f.Redistribute, PersistentKeepalive: f.PersistentKeepalive,
+		}}})
+	}
 	for _, id := range sortedKeys(preZones) {
 		if _, ok := curZones[id]; ok {
 			continue
@@ -231,9 +253,35 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 		})
 	}
 
+	// Phase 3 (fabrics): restore changed fields on fabrics present in both.
+	for _, id := range sortedKeys(preFabrics) {
+		cf, ok := curFabrics[id]
+		if !ok || reflect.DeepEqual(preFabrics[id], cf) {
+			continue
+		}
+		f := preFabrics[id]
+		ipPrefix, ip6Prefix := f.IPPrefix, f.IP6Prefix
+		csnp, hello := f.CSNPInterval, f.HelloInterval
+		routeFilter, area := f.RouteFilter, f.Area
+		redistribute := f.Redistribute
+		keepalive := f.PersistentKeepalive
+		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnFabricUpdate, Target: inventory.Ref{Kind: inventory.KindSDNFabric, ID: id}, Params: &SdnFabricUpdateParams{
+			IPPrefix: &ipPrefix, IP6Prefix: &ip6Prefix, CSNPInterval: &csnp, HelloInterval: &hello,
+			RouteFilter: &routeFilter, Area: &area, Redistribute: &redistribute, PersistentKeepalive: &keepalive,
+		}}})
+	}
+
 	out = append(out, dnsRecreations...)
 
 	return out
+}
+
+func fabricMapOf(fs []SDNFabricConfig) map[string]SDNFabricConfig {
+	m := make(map[string]SDNFabricConfig, len(fs))
+	for _, f := range fs {
+		m[f.ID] = f
+	}
+	return m
 }
 
 // sdnDnsRestoreOps computes the inverse DNS ops (T-1204) that transform

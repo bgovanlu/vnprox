@@ -609,6 +609,18 @@ type SDNSpec struct {
 	Subnets  []SDNSubnetSpec  `yaml:"subnets"`
 	Ipams    []SDNIpamSpec    `yaml:"ipams,omitempty"`
 	DNSZones []SDNDnsZoneSpec `yaml:"dns_zones,omitempty"`
+	// Fabrics (T-3101) seeds the fixture-loaded fabric set. FabricNodes is a
+	// separate collection (mirroring real PVE's own separate
+	// /cluster/sdn/fabrics/{fabric,node} routes — internal/pve/sdn_fabric.go's
+	// package doc comment) rather than nested under Fabrics: a fabric's
+	// per-node membership is its own read.
+	Fabrics     []SDNFabricSpec     `yaml:"fabrics,omitempty"`
+	FabricNodes []SDNFabricNodeSpec `yaml:"fabric_nodes,omitempty"`
+	// PrefixLists/RouteMaps (T-3101) are read-only in this mock too — no
+	// create/update/delete handler exists for either (sdn_fabric.go), only
+	// the fixture-seeded list this field feeds.
+	PrefixLists []SDNPrefixListSpec `yaml:"prefix_lists,omitempty"`
+	RouteMaps   []SDNRouteMapSpec   `yaml:"route_maps,omitempty"`
 }
 
 // SDNDnsZoneSpec is one DNS zone (T-1204): a forward domain registered in
@@ -712,6 +724,49 @@ type SDNSubnetSpec struct {
 	DHCPRangeEnd   string         `yaml:"dhcp_range_end,omitempty" json:"dhcp_range_end,omitempty"`
 	Pending        PendingState   `yaml:"pending,omitempty" json:"pending,omitempty"`
 	SNAT           bool           `yaml:"snat,omitempty" json:"snat,omitempty"`
+}
+
+// SDNFabricSpec is one SDN fabric (T-3101), mirroring pve.SDNFabric's field
+// set — see internal/pve/sdn_fabric.go's package doc comment for the
+// conditional-per-protocol field meanings. Running mirrors SDNZoneSpec's
+// staged/last-applied pair convention exactly (runningFabric in
+// sdn_fabric.go).
+type SDNFabricSpec struct {
+	Running             *SDNFabricSpec `yaml:"running,omitempty" json:"-"`
+	ID                  string         `yaml:"id" json:"id"`
+	Protocol            string         `yaml:"protocol" json:"protocol"`
+	Pending             PendingState   `yaml:"pending,omitempty" json:"pending,omitempty"`
+	IPPrefix            string         `yaml:"ip_prefix,omitempty" json:"ip_prefix,omitempty"`
+	IP6Prefix           string         `yaml:"ip6_prefix,omitempty" json:"ip6_prefix,omitempty"`
+	RouteFilter         string         `yaml:"route_filter,omitempty" json:"route_filter,omitempty"`
+	Area                string         `yaml:"area,omitempty" json:"area,omitempty"`
+	Redistribute        []string       `yaml:"redistribute,omitempty" json:"redistribute,omitempty"`
+	CSNPInterval        int            `yaml:"csnp_interval,omitempty" json:"csnp_interval,omitempty"`
+	HelloInterval       int            `yaml:"hello_interval,omitempty" json:"hello_interval,omitempty"`
+	PersistentKeepalive int            `yaml:"persistent_keepalive,omitempty" json:"persistent_keepalive,omitempty"`
+}
+
+// SDNFabricNodeSpec is one row of GET /cluster/sdn/fabrics/node (T-3101):
+// one node's membership in one fabric. See pve.SDNFabricNode's doc comment
+// on why IP/IP6 are inferred rather than captured.
+type SDNFabricNodeSpec struct {
+	Fabric string `yaml:"fabric" json:"fabric"`
+	Node   string `yaml:"node" json:"node"`
+	IP     string `yaml:"ip,omitempty" json:"ip,omitempty"`
+	IP6    string `yaml:"ip6,omitempty" json:"ip6,omitempty"`
+}
+
+// SDNPrefixListSpec is one read-only fixture-seeded prefix-list entry
+// (T-3101) — see internal/pve/sdn_fabric.go's package doc comment on why
+// its field shape beyond ID is unconfirmed against hardware.
+type SDNPrefixListSpec struct {
+	ID string `yaml:"id" json:"name"`
+}
+
+// SDNRouteMapSpec is one read-only fixture-seeded route-map entry
+// (T-3101). See SDNPrefixListSpec's doc comment.
+type SDNRouteMapSpec struct {
+	ID string `yaml:"id" json:"name"`
 }
 
 // FirewallSpec is the cluster-scope firewall tree. Node-scope and

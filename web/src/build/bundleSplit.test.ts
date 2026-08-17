@@ -100,7 +100,20 @@ describe("production bundle: Monaco code-split (T-208 AC4)", () => {
         // the next card does not have to re-litigate 20KB; the guard still
         // catches a real dependency (React Flow, Recharts and Monaco are each
         // an order of magnitude more than the headroom this leaves).
-        expect(mainSize).toBeLessThan(4_000_000);
+        //
+        // T-3101 raised it again, from 4_000_000 to 4_100_000, for the same
+        // reason and checked the same way: `git diff web/package.json
+        // web/package-lock.json` is EMPTY (SDN Fabrics needed no new
+        // dependency — the create/edit form reuses this codebase's existing
+        // EditorDialog/Field/Table primitives), and the MonacoEnvironment
+        // split assertion below still passes. Measured: 4_014_027, i.e. 0.35%
+        // over the old ceiling — `web/src/sdn/FabricsView.tsx` (a new
+        // panel-shaped view, eagerly imported by SdnPage.tsx exactly like its
+        // EvpnView/DhcpView siblings already are — none of the SDN cockpit's
+        // sub-views are code-split from each other), the accompanying
+        // `SdnFabric*`/`Fabric`/`PrefixList`/`RouteMap` types and op builders,
+        // and one new help topic account for it.
+        expect(mainSize).toBeLessThan(4_100_000);
 
         // The load-bearing check: Monaco's own distinctive runtime marker
         // must appear in the Monaco chunk and must NOT appear in the main

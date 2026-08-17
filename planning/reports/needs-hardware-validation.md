@@ -1306,3 +1306,36 @@ recurring bug rather than a false alarm.**
       reports the fact. Still a skip — the hardware genuinely is absent — but for a reason an
       operator can act on. `checks_destructive.go` carried the identical command and is fixed with
       it.
+
+## T-3101 — SDN Fabrics (2026-08-17)
+
+pvecube has no fabrics configured and is a single node, so the capture
+(`planning/reports/evidence/pve-9.2.4-sdn-schema.txt`) proves the fabrics/prefix-lists/route-maps
+API's *shape* only — none of the following is observed against real hardware:
+
+- [ ] **Fabric convergence and per-node realization.** The captured API has no
+      `/cluster/sdn/fabrics/fabric/{id}/status` route the way a zone has
+      `/cluster/sdn/zones/{zone}/status` — `internal/sdn.Fabric.NodeStatus` (built from
+      `GET /cluster/sdn/fabrics/node`) therefore reports configured *membership* only, with every
+      member node hardcoded to `status: "ok"`. Whether real PVE exposes fabric health any other
+      way (a task log, a different route, `journalctl` on the node) is unconfirmed.
+  - [ ] `pve.SDNFabricNode`'s `ip`/`ip6` fields are this package's inference from `--ip_prefix`'s
+        stated purpose ("The IP prefix for Node IPs"), not a captured field name — the fixture
+        cluster's fabrics were all empty, so `GET /cluster/sdn/fabrics/node` was never observed
+        with real rows.
+- [ ] **`sdn.fabric.update`'s protocol immutability.** `internal/change.SdnFabricUpdateParams`
+      omits `Protocol` on the assumption that changing a fabric's protocol is a delete+create,
+      mirroring `SdnZoneUpdateParams`' `Type` immutability — but the capture has no
+      `pvesh usage /cluster/sdn/fabrics/fabric -v`'s `set`/PUT usage block at all (only
+      `get`/`create`), so this is unconfirmed either way.
+- [ ] **What a fabric actually does to the underlay.** The capture proves the API's shape, not FRR
+      convergence, VRF wiring, or WireGuard tunnel establishment for a `protocol=wireguard`
+      fabric on a real multi-node cluster.
+- [ ] **`prefix-lists`/`route-maps` field shape.** `ls /cluster/sdn/prefix-lists` and
+      `ls /cluster/sdn/route-maps` both returned empty (family exists, no entries) — no
+      `pvesh usage` output was captured for either, so `pve.SDNPrefixList{ID}`/`pve.SDNRouteMap{ID}`
+      model only a name/id field, inferred from this package's own SDN-object convention rather
+      than observed. Their coupling to T-3102's controllers (`--route-map-in`/`--route-map-out`)
+      is asserted in prose only — establishing it against a populated capture is T-3102's job.
+
+File these under `T-3201` per this file's own convention (cross-node/hardware-only checks).

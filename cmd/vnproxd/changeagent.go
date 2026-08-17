@@ -447,6 +447,45 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 		zone, name, typ := splitDNSRecordID(op.Target.ID)
 		return g.client.DeleteSDNDnsRecord(ctx, zone, name, typ)
 
+	// T-3101 SDN Fabric ops. Like DNS above, these stage into the same
+	// PUT /cluster/sdn commit — no bespoke apply path (op.go's
+	// OpSdnFabricCreate doc comment).
+	case *change.SdnFabricCreateParams:
+		return g.client.CreateSDNFabric(ctx, pve.SDNFabric{
+			ID: op.Target.ID, Protocol: p.Protocol, IPPrefix: p.IPPrefix, IP6Prefix: p.IP6Prefix,
+			CSNPInterval: p.CSNPInterval, HelloInterval: p.HelloInterval, RouteFilter: p.RouteFilter,
+			Area: p.Area, Redistribute: p.Redistribute, PersistentKeepalive: p.PersistentKeepalive,
+		})
+	case *change.SdnFabricUpdateParams:
+		f := pve.SDNFabric{ID: op.Target.ID}
+		if p.IPPrefix != nil {
+			f.IPPrefix = *p.IPPrefix
+		}
+		if p.IP6Prefix != nil {
+			f.IP6Prefix = *p.IP6Prefix
+		}
+		if p.CSNPInterval != nil {
+			f.CSNPInterval = *p.CSNPInterval
+		}
+		if p.HelloInterval != nil {
+			f.HelloInterval = *p.HelloInterval
+		}
+		if p.RouteFilter != nil {
+			f.RouteFilter = *p.RouteFilter
+		}
+		if p.Area != nil {
+			f.Area = *p.Area
+		}
+		if p.Redistribute != nil {
+			f.Redistribute = *p.Redistribute
+		}
+		if p.PersistentKeepalive != nil {
+			f.PersistentKeepalive = *p.PersistentKeepalive
+		}
+		return g.client.UpdateSDNFabric(ctx, op.Target.ID, f)
+	case *change.SdnFabricDeleteParams:
+		return g.client.DeleteSDNFabric(ctx, op.Target.ID)
+
 	default:
 		return fmt.Errorf("changeagent: SDNStageOp: unsupported op type %q", op.Type)
 	}
@@ -575,15 +614,28 @@ func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 	}
 	for _, z := range dnsZones {
 		cfg.DnsZones = append(cfg.DnsZones, change.SDNDnsZoneConfig{ID: z.ID, DNS: z.DNS, TTL: z.TTL})
-		recs, err := g.client.ListSDNDnsRecords(ctx, z.ID)
-		if err != nil {
-			return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn dns records for zone %s: %w", z.ID, err)
+		recs, recErr := g.client.ListSDNDnsRecords(ctx, z.ID)
+		if recErr != nil {
+			return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn dns records for zone %s: %w", z.ID, recErr)
 		}
 		for _, r := range recs {
 			cfg.DnsRecords = append(cfg.DnsRecords, change.SDNDnsRecordConfig{
 				ID: z.ID + "/" + r.Name + "/" + r.Type, Zone: z.ID, Name: r.Name, Type: r.Type, Value: r.Value, TTL: r.TTL,
 			})
 		}
+	}
+
+	// T-3101: fabrics, for the same pre-apply/rollback snapshot.
+	fabrics, err := g.client.ListSDNFabrics(ctx)
+	if err != nil {
+		return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn fabrics: %w", err)
+	}
+	for _, f := range fabrics {
+		cfg.Fabrics = append(cfg.Fabrics, change.SDNFabricConfig{
+			ID: f.ID, Protocol: f.Protocol, IPPrefix: f.IPPrefix, IP6Prefix: f.IP6Prefix,
+			CSNPInterval: f.CSNPInterval, HelloInterval: f.HelloInterval, RouteFilter: f.RouteFilter,
+			Area: f.Area, Redistribute: f.Redistribute, PersistentKeepalive: f.PersistentKeepalive,
+		})
 	}
 
 	return cfg, nil

@@ -45,6 +45,15 @@ type PVEReader interface {
 	ListSDNVnetsRunning(ctx context.Context) ([]pve.SDNVnet, error)
 	ListSDNSubnets(ctx context.Context, vnet string) ([]pve.SDNSubnet, error)
 	ListSDNSubnetsRunning(ctx context.Context, vnet string) ([]pve.SDNSubnet, error)
+
+	// T-3101: SDN Fabrics + the two read-only route-policy families the
+	// same capture exposed. ListSDNFabricNodes is its own read (real PVE's
+	// own separate /cluster/sdn/fabrics/node collection — per-node fabric
+	// membership is never inferred from ListSDNFabrics' own response).
+	ListSDNFabrics(ctx context.Context) ([]pve.SDNFabric, error)
+	ListSDNFabricNodes(ctx context.Context) ([]pve.SDNFabricNode, error)
+	ListSDNPrefixLists(ctx context.Context) ([]pve.SDNPrefixList, error)
+	ListSDNRouteMaps(ctx context.Context) ([]pve.SDNRouteMap, error)
 }
 
 // Service builds the GET /sdn tree from a PVEReader.
@@ -64,8 +73,58 @@ func NewService(reader PVEReader) *Service {
 // the original contract — flagged and documented in docs/api.md in this
 // same change per docs/development.md's definition-of-done #4).
 type Tree struct {
-	Zones       []Zone `json:"zones"`
-	GeneratedAt int64  `json:"generatedAt"`
+	Zones []Zone `json:"zones"`
+	// Fabrics (T-3101) is a sibling top-level collection, not nested under
+	// Zone — a fabric is cluster underlay routing config a zone may ride on
+	// (a vxlan zone's `--fabric` field), not a zone's child the way a Vnet
+	// is.
+	Fabrics []Fabric `json:"fabrics"`
+	// PrefixLists/RouteMaps (T-3101) are read-only BGP route-policy
+	// objects — display only, no diff/pending (they carry no staged-vs-
+	// running distinction of their own to render, unlike Zone/Vnet/Subnet).
+	PrefixLists []PrefixList `json:"prefixLists"`
+	RouteMaps   []RouteMap   `json:"routeMaps"`
+	GeneratedAt int64        `json:"generatedAt"`
+}
+
+// Fabric is one SDN fabric (T-3101), mirroring pve.SDNFabric's field set —
+// see internal/pve/sdn_fabric.go's package doc comment for what each
+// protocol-conditional field means. NodeStatus is built from
+// ListSDNFabricNodes filtered by this fabric's ID, mirroring how Zone.
+// NodeStatus is built from GetSDNZoneStatus (Tree's own doc comment on the
+// pattern) — except a fabric has no per-node *health* read in the captured
+// API (no /cluster/sdn/fabrics/fabric/{id}/status route exists the way a
+// zone's does), so NodeStatus here reports configured membership only:
+// every node returned by ListSDNFabricNodes for this fabric gets Status
+// "ok" (this mock/PVE gives no other signal to report), and Detail carries
+// the node's assigned underlay IP (from IPPrefix/IP6Prefix's allocation)
+// when known.
+type Fabric struct {
+	ID                  string       `json:"id"`
+	Protocol            string       `json:"protocol"`
+	Pending             string       `json:"pending,omitempty"`
+	IPPrefix            string       `json:"ipPrefix,omitempty"`
+	IP6Prefix           string       `json:"ip6Prefix,omitempty"`
+	RouteFilter         string       `json:"routeFilter,omitempty"`
+	Area                string       `json:"area,omitempty"`
+	Redistribute        []string     `json:"redistribute,omitempty"`
+	NodeStatus          []NodeStatus `json:"nodeStatus"`
+	CSNPInterval        int          `json:"csnpInterval,omitempty"`
+	HelloInterval       int          `json:"helloInterval,omitempty"`
+	PersistentKeepalive int          `json:"persistentKeepalive,omitempty"`
+}
+
+// PrefixList is one read-only BGP prefix-list object (T-3101). Field shape
+// beyond ID is unconfirmed against hardware — see internal/pve/
+// sdn_fabric.go's package doc comment.
+type PrefixList struct {
+	ID string `json:"id"`
+}
+
+// RouteMap is one read-only BGP route-map object (T-3101). See
+// PrefixList's doc comment.
+type RouteMap struct {
+	ID string `json:"id"`
 }
 
 // Zone is one zone in the tree, with its VNets nested and its per-node
@@ -228,7 +287,76 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 	}
 	sort.Slice(zones, func(i, j int) bool { return zones[i].ID < zones[j].ID })
 
-	return Tree{Zones: zones, GeneratedAt: s.now().Unix()}, nil
+	fabrics, err := s.buildFabrics(ctx)
+	if err != nil {
+		return Tree{}, err
+	}
+
+	prefixLists, err := s.pve.ListSDNPrefixLists(ctx)
+	if err != nil {
+		return Tree{}, fmt.Errorf("sdn: listing prefix-lists: %w", err)
+	}
+	pls := make([]PrefixList, 0, len(prefixLists))
+	for _, pl := range prefixLists {
+		pls = append(pls, PrefixList{ID: pl.ID})
+	}
+	sort.Slice(pls, func(i, j int) bool { return pls[i].ID < pls[j].ID })
+
+	routeMaps, err := s.pve.ListSDNRouteMaps(ctx)
+	if err != nil {
+		return Tree{}, fmt.Errorf("sdn: listing route-maps: %w", err)
+	}
+	rms := make([]RouteMap, 0, len(routeMaps))
+	for _, rm := range routeMaps {
+		rms = append(rms, RouteMap{ID: rm.ID})
+	}
+	sort.Slice(rms, func(i, j int) bool { return rms[i].ID < rms[j].ID })
+
+	return Tree{Zones: zones, Fabrics: fabrics, PrefixLists: pls, RouteMaps: rms, GeneratedAt: s.now().Unix()}, nil
+}
+
+// buildFabrics fetches the fabric list plus the cluster-wide per-node
+// membership read, grouping the latter by fabric id — the same "sibling
+// per-node read, grouped by owning id" pattern Tree already uses for a
+// zone's own status (GetSDNZoneStatus), except fabrics have no independent
+// per-node health signal to poll (see Fabric's own doc comment).
+func (s *Service) buildFabrics(ctx context.Context) ([]Fabric, error) {
+	staged, err := s.pve.ListSDNFabrics(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sdn: listing fabrics: %w", err)
+	}
+	nodes, err := s.pve.ListSDNFabricNodes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sdn: listing fabric nodes: %w", err)
+	}
+	nodesByFabric := map[string][]pve.SDNFabricNode{}
+	for _, n := range nodes {
+		nodesByFabric[n.Fabric] = append(nodesByFabric[n.Fabric], n)
+	}
+
+	fabrics := make([]Fabric, 0, len(staged))
+	for _, f := range staged {
+		fab := Fabric{
+			ID: f.ID, Protocol: f.Protocol, Pending: string(f.Pending),
+			IPPrefix: f.IPPrefix, IP6Prefix: f.IP6Prefix,
+			CSNPInterval: f.CSNPInterval, HelloInterval: f.HelloInterval, RouteFilter: f.RouteFilter,
+			Area: f.Area, Redistribute: f.Redistribute, PersistentKeepalive: f.PersistentKeepalive,
+		}
+		for _, n := range nodesByFabric[f.ID] {
+			detail := n.IP
+			if detail == "" {
+				detail = n.IP6
+			}
+			fab.NodeStatus = append(fab.NodeStatus, NodeStatus{Node: n.Node, Status: "ok", Detail: detail})
+		}
+		sort.Slice(fab.NodeStatus, func(i, j int) bool { return fab.NodeStatus[i].Node < fab.NodeStatus[j].Node })
+		if fab.NodeStatus == nil {
+			fab.NodeStatus = []NodeStatus{}
+		}
+		fabrics = append(fabrics, fab)
+	}
+	sort.Slice(fabrics, func(i, j int) bool { return fabrics[i].ID < fabrics[j].ID })
+	return fabrics, nil
 }
 
 // indexByJSON indexes items by keyOf into a map, for matching a staged

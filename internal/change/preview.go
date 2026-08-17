@@ -84,21 +84,12 @@ type PreviewChange struct {
 //
 //nolint:govet // fieldalignment: field order is the documented wire shape (docs/api.md), not packing.
 type Preview struct {
-	ChangesetID string `json:"changesetId"`
-	// Topology is the projected snapshot rendered through the same
-	// topology.Project the live map is rendered through — same node ids, same
-	// layers, same status painting — so the frontend renders a preview with the
-	// renderer it already has rather than a parallel one.
-	Topology      topology.Topology `json:"topology"`
+	ChangesetID   string            `json:"changesetId"`
 	Changes       []PreviewChange   `json:"changes"`
 	Unprojectable []UnprojectableOp `json:"unprojectable"`
-	// BestEffort is always true and is serialized unconditionally. It is the
-	// response saying out loud what this file's doc comment says: this is a
-	// projection, not a promise. A client must never have to infer that from
-	// the presence of an `unprojectable` entry, because an empty list means
-	// "everything projected", not "this is exact".
-	BestEffort  bool  `json:"bestEffort"`
-	GeneratedAt int64 `json:"generatedAt"`
+	Topology      topology.Topology `json:"topology"`
+	GeneratedAt   int64             `json:"generatedAt"`
+	BestEffort    bool              `json:"bestEffort"`
 }
 
 // unprojectableReasons is the DECLARED half of the op vocabulary: op types
@@ -143,6 +134,9 @@ func buildUnprojectableReasons() map[OpType]string {
 	}
 	reasons[OpVFProvision] = "SR-IOV virtual functions are carried on their PF rather than tracked as graph entities; the pool a provision produces is only known once the node re-reads the PF"
 	reasons[OpSwitchPortUpdate] = "a physical switch is an external device, not a PVE node; its ports are not entities in the topology graph"
+	for _, t := range []OpType{OpSdnFabricCreate, OpSdnFabricUpdate, OpSdnFabricDelete} {
+		reasons[t] = "an SDN fabric is PVE-managed underlay routing config, not a drawable entity in the topology graph; see the SDN cockpit's Fabrics view instead"
+	}
 	return reasons
 }
 

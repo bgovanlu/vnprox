@@ -68,6 +68,8 @@ Selected entities (full field lists are the implementing task's responsibility; 
 | `SdnZone` | id, type (simple|vlan|qinq|vxlan|evpn|faucet — real PVE 9.2 enum, captured in `planning/reports/evidence/pve-9.2.4-sdn-schema.txt`; `faucet` is accepted and displayed but has no wizard, see T-3101), bridge, mtu, nodes []string, exitNodes []string (evpn), peers []string (vxlan/evpn underlay peer addresses), controller, vrfVxlan, ipam |
 | `SdnVnet` | id, zone, tag, alias, vlanAware |
 | `SdnSubnet` | id (cidr), vnet, gateway, snat bool, dhcpRanges, dnsZonePrefix |
+| `SdnFabric`¹ | id (2-8 chars, hyphens allowed — a shorter/different charset than zone/vnet ids), protocol (bgp\|openfabric\|ospf\|wireguard — real PVE 9.2 enum, captured in `planning/reports/evidence/pve-9.2.4-sdn-schema.txt`), ipPrefix, ip6Prefix, plus protocol-conditional fields: csnpInterval/helloInterval/routeFilter (openfabric), area/redistribute/routeFilter (ospf), redistribute (bgp), persistentKeepalive (wireguard — genuinely WireGuard, but a *different* management plane than `KindWgTunnel`/`KindWgPeer` above, T-3101) |
+| `SdnPrefixList`¹ / `SdnRouteMap`¹ | id — read-only BGP route-policy objects; field shape beyond id is unconfirmed against hardware (the capture's fixture had zero of either configured), see `planning/reports/needs-hardware-validation.md`'s T-3101 entry |
 | `Guest` | vmid, name, type (qemu|lxc), node, status, hostPci map[string]string (T-1506: raw `hostpciN` PCI-passthrough config verbatim from PVE guest config, e.g. `{"hostpci0": "0000:01:00.1,pcie=1"}` — read by `internal/topology.ResolveVFAssignments` to correlate against VF inventory; a resource-mapping form like `"mapping=<name>"` is left uncorrelated, never guessed) |
 | `GuestNic` | guest Ref, key ("net0"), bridgeOrVnet Ref, vid, model, mac, firewall bool, rateMbps, linkDown bool |
 | `LldpNeighbor` | localNic Ref, chassisName, chassisId, portId, portDescr, mgmtIP, vlan info, ttl |
@@ -79,6 +81,16 @@ Selected entities (full field lists are the implementing task's responsibility; 
 | `FwGroup` (T-501) | name, comment, rules []FwRule — a reusable, cluster-scope-only security group (real PVE has no node/guest-scope groups); only ever populated on the cluster-scope FwRuleset, referenced from any rule anywhere via a rule whose direction is "group" and whose action names the group |
 
 `pending` (added by T-305, `PhysNic`/`Bond`/`Bridge`/`VlanIface` only) mirrors PVE's own `pending` marker on `GET /nodes/{node}/network` (`""`\|`"new"`\|`"changed"`\|`"deleted"`) — a staged `interfaces.new` edit that was never applied via reload. It is exclusively `pve-network`-sourced (no other collector observes PVE's staging concept), which is what T-305's `pending_interfaces` drift check reads.
+
+¹ Unlike every other row in this table, `SdnFabric`/`SdnPrefixList`/`SdnRouteMap` (T-3101) are **not**
+`internal/inventory` graph entities — no collector emits one, `inventory.Kind` has no matching
+Kind for `SdnPrefixList`/`SdnRouteMap` at all, and `KindSDNFabric` exists solely so a
+`sdn.fabric.*` op has a first-class target Ref (mirroring `KindQosShape`/`KindWgTunnel`'s "Ref
+only" pattern, not `KindSDNDnsZone`'s live-polled-entity one). They are read live, per request, by
+`internal/sdn.Service` exactly like `GET /sdn/evpn/status`'s `Peer`/`VNI` types already are — this
+table lists them anyway, alongside the true inventory entities, because they are still part of the
+SDN object model an operator reasons about; `docs/api.md`'s `GET /sdn` section has their full wire
+shape.
 
 T-401 adds the identical `pending` field (same `""`\|`"new"`\|`"changed"`\|`"deleted"` marker, `pve-sdn`-sourced) to `SdnZone`/`SdnVnet`/`SdnSubnet`, for the same reason: PVE stages SDN edits until `PUT /cluster/sdn` applies them. It is structural/badge-only on these entities (topology map painting, `GET /sdn` tree rows) — the authoritative, field-level staged-vs-running diff `GET /sdn` renders (docs/api.md's `PendingDiff`) is computed live against PVE by `internal/sdn.Service`, not read off this field, since a diff view must never be stale relative to what an apply would actually do.
 
@@ -712,7 +724,7 @@ CREATE TABLE changeset_requests (     -- T-1703: the tenant linkage of a request
 | vlan | `vlan.create`, `vlan.update`, `vlan.delete` |
 | bridge/bond kind | OVS bridges/bonds reuse the same op names above with `target.kind` = `ovs-bridge`/`ovs-bond` (Kind alone disambiguates Linux vs OVS for these two, per Ref's closed kind set) — no separate op types. `bond.create`'s params carry an OVS-only `bridge` field (the OVS bridge this bond attaches to, rendered as `ovs_bridge`; required when `target.kind` is `ovs-bond`, ignored otherwise) — this is the "params carry ovs-specific fields" case data-model review flagged for T-407. |
 | vlan kind | `KindVlan` has no dedicated OVS sibling (an OVS Int Port is a `VlanIface` with `virt: "ovs"` — see the entity table above), so `vlan.create`'s params instead carry `ovs` (bool: true selects `ovs_type=OVSIntPort`/`ovs_bridge`/`ovs_options` instead of `vlan-raw-device`; `parent` then names an OVS bridge) and `trunks` (`[]VidRange`, OVS-only, rejected when `ovs` is false: additional trunked VLAN ranges alongside `vid`'s single access tag). T-407. |
-| sdn | `sdn.zone.create/update/delete`, `sdn.vnet.create/update/delete`, `sdn.subnet.create/update/delete`, `sdn.apply` |
+| sdn | `sdn.zone.create/update/delete`, `sdn.vnet.create/update/delete`, `sdn.subnet.create/update/delete`, `sdn.fabric.create/update/delete` (T-3101 — an SDN Fabric, PVE 9's underlay-routing object family; stages/applies through this same group's `sdn.apply`, no bespoke path), `sdn.apply` |
 | guest | `guest.nic.update` (reattach bridge/vnet, vid, rate, firewall flag) |
 | fw | `fw.rule.create/update/delete/move`, `fw.options.update`, `fw.alias.*`, `fw.ipset.*`, `fw.group.*` — **T-1602's microsegmentation planner (`internal/microseg`) reuses this group unchanged**: a proposed policy stages as ordinary `fw.rule.create` ops (the ACCEPT allow-list plus one trailing match-all `DROP` per governed direction — the whole default-deny policy expressed as rule-creates, no new op type, no schema change, no second mutation path). The planner only PROPOSES and dry-runs (`POST /microseg/propose`/`dry-run`, docs/api.md); a human applies through the ordinary changeset lifecycle. |
 | ipam | `ipam.alloc.create/delete` |

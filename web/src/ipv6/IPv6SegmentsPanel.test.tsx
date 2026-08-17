@@ -11,7 +11,9 @@ let segmentsResult: { data: IPv6SegmentsView | undefined; isLoading: boolean; er
   isLoading: false,
   error: null,
 };
-const sdnResult: { data: SdnTree | undefined } = { data: { zones: [], generatedAt: 0 } };
+const sdnResult: { data: SdnTree | undefined } = {
+  data: { zones: [], fabrics: [], prefixLists: [], routeMaps: [], generatedAt: 0 },
+};
 
 vi.mock("./ipv6Queries", async () => {
   const actual = await vi.importActual<typeof import("./ipv6Queries")>("./ipv6Queries");

@@ -177,11 +177,16 @@ func TestCompatServer_SDNFabricsAPIGate(t *testing.T) {
 	}
 }
 
-// TestCompatServer_UnmodeledFabricRouteIsNotSilentlyOK pins the difference
-// between "this PVE version lacks the family" and "this mock has not
-// modeled that route yet". Both answer 501, and a caller that cannot tell
-// them apart would read fabric CRUD support into a mock that has none.
-func TestCompatServer_UnmodeledFabricRouteIsNotSilentlyOK(t *testing.T) {
+// TestCompatServer_FabricCRUDPathFallsThroughOnSupportingProfile is
+// T-3101's replacement for the old TestCompatServer_
+// UnmodeledFabricRouteIsNotSilentlyOK: until T-3101 the base *Server had no
+// fabric routes at all, so every fabrics path beyond .../all necessarily
+// 501'd even on a supporting profile — this test used to pin exactly that
+// gap. Fabric CRUD is modeled now (sdn_fabric.go), so the same request
+// (GET /cluster/sdn/fabrics/fabric on PVE 9.2) must fall through to the
+// base Server's real handler and succeed with the real "no fabrics
+// configured yet" empty-list shape, not a 501.
+func TestCompatServer_FabricCRUDPathFallsThroughOnSupportingProfile(t *testing.T) {
 	h := newCompatTestServer(t, "compat/pve-9.2.yaml", "9.2")
 	ticket, _ := compatLogin(t, h)
 	req := httptest.NewRequest(http.MethodGet, SDNFabricsPath+"/fabric", nil)
@@ -189,8 +194,36 @@ func TestCompatServer_UnmodeledFabricRouteIsNotSilentlyOK(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET %s/fabric on PVE 9.2: status = %d, want 200 (body=%s) — fabric CRUD is modeled now, "+
+			"this path should no longer 501 on a supporting profile", SDNFabricsPath, rec.Code, rec.Body.String())
+	}
+	var envelope struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decoding response: %v (body=%s)", err, rec.Body.String())
+	}
+	if envelope.Data == nil {
+		t.Errorf("data = %s, want an empty array (no fabrics configured), not null", rec.Body.String())
+	}
+}
+
+// TestCompatServer_FabricCRUDPathStillGatedOnPredatingProfile proves the
+// version gate T-3101 kept ("PVE 8.2 must still look like it has no
+// fabrics family at all") applies to every fabrics path, not just .../all:
+// the same GET .../fabrics/fabric request that succeeds on PVE 9.2 above
+// must still 501 on PVE 8.2.
+func TestCompatServer_FabricCRUDPathStillGatedOnPredatingProfile(t *testing.T) {
+	h := newCompatTestServer(t, "compat/pve-8.2.yaml", "8.2")
+	ticket, _ := compatLogin(t, h)
+	req := httptest.NewRequest(http.MethodGet, SDNFabricsPath+"/fabric", nil)
+	req.AddCookie(&http.Cookie{Name: "PVEAuthCookie", Value: ticket})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("GET %s/fabric on PVE 9.2: status = %d, want 501", SDNFabricsPath, rec.Code)
+		t.Fatalf("GET %s/fabric on PVE 8.2: status = %d, want 501", SDNFabricsPath, rec.Code)
 	}
 	var envelope struct {
 		Message string `json:"message"`
@@ -198,8 +231,8 @@ func TestCompatServer_UnmodeledFabricRouteIsNotSilentlyOK(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decoding response: %v", err)
 	}
-	if !strings.Contains(envelope.Message, "not modeled yet") {
-		t.Errorf("message = %q, want it to say the route is unmodeled rather than the version unsupported", envelope.Message)
+	if !strings.Contains(envelope.Message, "/cluster/sdn/fabrics") {
+		t.Errorf("rejection message = %q, want it to name the unsupported path", envelope.Message)
 	}
 }
 

@@ -23,6 +23,10 @@ type fakeReader struct {
 	zonesRunning   []pve.SDNZone
 	vnets          []pve.SDNVnet
 	vnetsRunning   []pve.SDNVnet
+	fabrics        []pve.SDNFabric
+	fabricNodes    []pve.SDNFabricNode
+	prefixLists    []pve.SDNPrefixList
+	routeMaps      []pve.SDNRouteMap
 }
 
 func (f *fakeReader) ListSDNZones(context.Context) ([]pve.SDNZone, error) { return f.zones, nil }
@@ -41,6 +45,16 @@ func (f *fakeReader) ListSDNSubnets(_ context.Context, vnet string) ([]pve.SDNSu
 }
 func (f *fakeReader) ListSDNSubnetsRunning(_ context.Context, vnet string) ([]pve.SDNSubnet, error) {
 	return f.subnetsRunning[vnet], nil
+}
+func (f *fakeReader) ListSDNFabrics(context.Context) ([]pve.SDNFabric, error) { return f.fabrics, nil }
+func (f *fakeReader) ListSDNFabricNodes(context.Context) ([]pve.SDNFabricNode, error) {
+	return f.fabricNodes, nil
+}
+func (f *fakeReader) ListSDNPrefixLists(context.Context) ([]pve.SDNPrefixList, error) {
+	return f.prefixLists, nil
+}
+func (f *fakeReader) ListSDNRouteMaps(context.Context) ([]pve.SDNRouteMap, error) {
+	return f.routeMaps, nil
 }
 
 var _ PVEReader = (*fakeReader)(nil)
@@ -94,6 +108,67 @@ func TestTree_Structure(t *testing.T) {
 	vnet := zone.Vnets[0]
 	if len(vnet.Subnets) != 1 || vnet.Subnets[0].ID != "10.0.0.0/24" {
 		t.Fatalf("subnets = %+v", vnet.Subnets)
+	}
+}
+
+// TestTree_Fabrics (T-3101) proves fabrics arrive as a sibling top-level
+// Tree collection (not nested under a zone), with per-node membership
+// grouped from the fabrics/node collection rather than inferred from any
+// zone.
+func TestTree_Fabrics(t *testing.T) {
+	reader := &fakeReader{
+		fabrics: []pve.SDNFabric{
+			{ID: "fab1", Protocol: "ospf", Area: "0.0.0.0", Redistribute: []string{"connected"}},
+			{ID: "fab2", Protocol: "wireguard", PersistentKeepalive: 25},
+		},
+		fabricNodes: []pve.SDNFabricNode{
+			{Fabric: "fab1", Node: "pve2", IP: "10.255.0.2"},
+			{Fabric: "fab1", Node: "pve1", IP: "10.255.0.1"},
+		},
+		prefixLists: []pve.SDNPrefixList{{ID: "pl1"}},
+		routeMaps:   []pve.SDNRouteMap{{ID: "rm1"}},
+	}
+
+	svc := NewService(reader)
+	tree, err := svc.Tree(context.Background())
+	if err != nil {
+		t.Fatalf("Tree: %v", err)
+	}
+
+	if len(tree.Fabrics) != 2 {
+		t.Fatalf("fabrics = %d, want 2 (%+v)", len(tree.Fabrics), tree.Fabrics)
+	}
+	fab1 := tree.Fabrics[0]
+	if fab1.ID != "fab1" || fab1.Protocol != "ospf" || fab1.Area != "0.0.0.0" {
+		t.Fatalf("fab1 = %+v", fab1)
+	}
+	if len(fab1.NodeStatus) != 2 {
+		t.Fatalf("fab1.NodeStatus = %+v, want 2 entries", fab1.NodeStatus)
+	}
+	// Sorted by node — pve1 before pve2 despite fixture declaration order.
+	if fab1.NodeStatus[0].Node != "pve1" || fab1.NodeStatus[1].Node != "pve2" {
+		t.Fatalf("fab1.NodeStatus not sorted by node: %+v", fab1.NodeStatus)
+	}
+	if fab1.NodeStatus[0].Status != "ok" || fab1.NodeStatus[0].Detail != "10.255.0.1" {
+		t.Fatalf("fab1.NodeStatus[0] = %+v", fab1.NodeStatus[0])
+	}
+
+	fab2 := tree.Fabrics[1]
+	if fab2.ID != "fab2" || fab2.Protocol != "wireguard" || fab2.PersistentKeepalive != 25 {
+		t.Fatalf("fab2 = %+v", fab2)
+	}
+	// fab2 has no fabrics/node rows — NodeStatus must be an empty slice,
+	// never nil (Tree's own nil-to-empty-slice discipline for every list
+	// field it renders, mirroring Zone.Vnets/Vnet.Subnets).
+	if fab2.NodeStatus == nil || len(fab2.NodeStatus) != 0 {
+		t.Fatalf("fab2.NodeStatus = %+v, want a non-nil empty slice", fab2.NodeStatus)
+	}
+
+	if len(tree.PrefixLists) != 1 || tree.PrefixLists[0].ID != "pl1" {
+		t.Fatalf("prefixLists = %+v", tree.PrefixLists)
+	}
+	if len(tree.RouteMaps) != 1 || tree.RouteMaps[0].ID != "rm1" {
+		t.Fatalf("routeMaps = %+v", tree.RouteMaps)
 	}
 }
 

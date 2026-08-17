@@ -11,6 +11,9 @@ import {
   buildGuestReattachOps,
   buildIfaceUpdateOp,
   buildSdnApplyOp,
+  buildSdnFabricCreateOp,
+  buildSdnFabricDeleteOp,
+  buildSdnFabricUpdateOp,
   buildSdnSubnetCreateOp,
   buildSdnSubnetDeleteOp,
   buildSdnSubnetUpdateOp,
@@ -25,6 +28,7 @@ import {
   type BondFormValues,
   type BridgeFormValues,
   type IfaceFormValues,
+  type SdnFabricFormValues,
   type SdnSubnetFormValues,
   type SdnVnetFormValues,
   type SdnZoneFormValues,
@@ -322,6 +326,53 @@ describe("sdn subnet op builders", () => {
     expect(buildSdnSubnetDeleteOp("sdn-subnet::10.100.0.0/24")).toEqual({
       op: "sdn.subnet.delete",
       target: "sdn-subnet::10.100.0.0/24",
+      params: {},
+    });
+  });
+});
+
+const ospfFabricForm: SdnFabricFormValues = {
+  protocol: "ospf",
+  ipPrefix: "10.255.0.0/24",
+  ip6Prefix: "",
+  csnpInterval: 0,
+  helloInterval: 0,
+  routeFilter: "pl1",
+  area: "0.0.0.0",
+  redistribute: ["connected"],
+  persistentKeepalive: 0,
+};
+
+describe("sdn fabric op builders", () => {
+  it("create carries protocol and only the fields this protocol uses", () => {
+    const op = buildSdnFabricCreateOp("sdn-fabric::fab1", ospfFabricForm);
+    expect(op).toEqual({
+      op: "sdn.fabric.create",
+      target: "sdn-fabric::fab1",
+      params: {
+        protocol: "ospf",
+        ipPrefix: "10.255.0.0/24",
+        area: "0.0.0.0",
+        redistribute: ["connected"],
+        routeFilter: "pl1",
+      },
+    });
+  });
+
+  it("update carries only fields that changed, and never protocol (immutable)", () => {
+    const form: SdnFabricFormValues = { ...ospfFabricForm, area: "0.0.0.1" };
+    const op = buildSdnFabricUpdateOp("sdn-fabric::fab1", ospfFabricForm, form);
+    expect(op).toEqual({
+      op: "sdn.fabric.update",
+      target: "sdn-fabric::fab1",
+      params: { area: "0.0.0.1" },
+    });
+  });
+
+  it("delete carries no params", () => {
+    expect(buildSdnFabricDeleteOp("sdn-fabric::fab1")).toEqual({
+      op: "sdn.fabric.delete",
+      target: "sdn-fabric::fab1",
       params: {},
     });
   });

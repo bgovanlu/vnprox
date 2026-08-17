@@ -115,6 +115,90 @@ func TestValidSdnZoneTypesMatchTheCapturedEnum(t *testing.T) {
 	}
 }
 
+// sdnFabricProtocolEnumPattern matches the fabric `--protocol` enum line as
+// `pvesh usage` prints it, e.g.:
+//
+//	--protocol <bgp | openfabric | ospf | wireguard>
+//
+// Anchored on "--protocol" so it cannot be confused with the zone `--type`
+// enum sdnZoneTypeEnumPattern reads — the exact confusion this whole file
+// exists to prevent, from the other direction. The fabrics section's own
+// `pvesh create ... --protocol <string>` synopsis line (a generic
+// placeholder, not the enum) appears *before* the detailed conditional-
+// options enum in the transcript, unlike the zones section where the
+// detailed enum comes first — so, unlike sdnZoneTypeEnumPattern, this
+// pattern requires at least one "|" alternation to skip that placeholder
+// and land on the real enum below it.
+var sdnFabricProtocolEnumPattern = regexp.MustCompile(`--protocol\s+<([a-z0-9]+(?:\s*\|\s*[a-z0-9]+)+)>`)
+
+// readCapturedFabricProtocolEnum pulls the fabric protocol enum out of the
+// capture, from the section headed by the fabrics usage call.
+func readCapturedFabricProtocolEnum(t *testing.T) []string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Clean(capturePath))
+	if err != nil {
+		t.Fatalf("reading the hardware capture at %s: %v", capturePath, err)
+	}
+
+	const marker = "### usage /cluster/sdn/fabrics/fabric"
+	idx := strings.Index(string(raw), marker)
+	if idx < 0 {
+		t.Fatalf("capture %s has no %q section; it may have been re-captured with a different script", capturePath, marker)
+	}
+	section := string(raw)[idx:]
+
+	m := sdnFabricProtocolEnumPattern.FindStringSubmatch(section)
+	if m == nil {
+		t.Fatalf("capture %s: could not find a `--protocol <...>` enum in the fabrics section", capturePath)
+	}
+
+	var out []string
+	for _, part := range strings.Split(m[1], "|") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TestValidSdnFabricProtocolsMatchTheCapturedEnum is validSdnZoneTypes'
+// guard test, restated for the fabric protocol enum — same discipline,
+// same reason: it reads the capture rather than restating it, so the two
+// cannot be made to agree by construction.
+func TestValidSdnFabricProtocolsMatchTheCapturedEnum(t *testing.T) {
+	captured := readCapturedFabricProtocolEnum(t)
+
+	var mirrored []string
+	for k := range validSdnFabricProtocols {
+		mirrored = append(mirrored, k)
+	}
+	sort.Strings(mirrored)
+
+	capturedSet := map[string]bool{}
+	for _, c := range captured {
+		capturedSet[c] = true
+	}
+
+	for _, c := range captured {
+		if !validSdnFabricProtocols[c] {
+			t.Errorf("real PVE accepts SDN fabric protocol %q and validSdnFabricProtocols rejects it: "+
+				"vnprox refuses to stage a fabric Proxmox would accept.\n"+
+				"  captured (%s): %v\n  mirrored:  %v",
+				c, capturePath, captured, mirrored)
+		}
+	}
+	for _, m := range mirrored {
+		if !capturedSet[m] {
+			t.Errorf("validSdnFabricProtocols accepts %q and the captured PVE 9.2.4 enum does not list it. "+
+				"Either the capture is stale (re-run `pvesh usage /cluster/sdn/fabrics/fabric -v`), "+
+				"or vnprox is modelling a protocol that does not exist.\n"+
+				"  captured (%s): %v\n  mirrored:  %v",
+				m, capturePath, captured, mirrored)
+		}
+	}
+}
+
 // TestFabricProtocolsAreNotZoneTypes pins the specific wrong idea, by name.
 // "openfabric" and "ospf" are SDN *fabric* protocols living under
 // /cluster/sdn/fabrics; they are not zone types and never were. This

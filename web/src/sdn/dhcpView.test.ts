@@ -8,6 +8,9 @@ const tree: SdnTree = {
     { id: "labz", type: "vlan", nodeStatus: [], vnets: [] },
     { id: "otherz", type: "simple", nodeStatus: [], vnets: [] },
   ],
+  fabrics: [],
+  prefixLists: [],
+  routeMaps: [],
 };
 
 describe("zoneOptions", () => {

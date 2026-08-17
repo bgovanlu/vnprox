@@ -52,7 +52,23 @@ type sdnState struct {
 	// running/pending pair here — the config store IS the truth, and the
 	// live "resolve" read reflects it unless the zone is marked Unreachable.
 	dnsZones map[string]SDNDnsZoneSpec
-	mu       sync.RWMutex
+	// fabrics/fabricsRunning (T-3101) mirror the zones/zonesRunning
+	// staged-vs-running pair exactly — a fabric stages and applies through
+	// the same PUT /cluster/sdn as every other SDN object family
+	// (internal/pve/sdn_fabric.go's package doc comment).
+	fabrics        map[string]SDNFabricSpec
+	fabricsRunning map[string]SDNFabricSpec
+	// fabricNodes (T-3101) is GET /cluster/sdn/fabrics/node's own
+	// collection — fixture-seeded and read-only at runtime (no handler
+	// mutates it; real per-node fabric realization needs cluster hardware
+	// this mock does not model, see needs-hardware-validation.md).
+	fabricNodes []SDNFabricNodeSpec
+	// prefixLists/routeMaps (T-3101) are read-only fixture-seeded lists —
+	// no handler mutates either (sdn_fabric.go's guard: T-3101 scopes CRUD
+	// out entirely).
+	prefixLists []SDNPrefixListSpec
+	routeMaps   []SDNRouteMapSpec
+	mu          sync.RWMutex
 }
 
 // ipamState is the mutable runtime allocation set for every configured IPAM
@@ -71,36 +87,21 @@ type ipamState struct {
 // an immutable Fixture. Server handlers read/write State; Fixture itself is
 // never mutated after load.
 type State struct {
-	sdn      sdnState
-	ipam     ipamState
-	fixture  *Fixture
-	nodes    map[string]*nodeState
-	sessions *sessionStore
-	tasks    *taskManager
-	clock    func() time.Time
-	// execs is T-802's scripted guest-agent exec run table: pid ->
-	// synthesized exec-status result. handleGuestAgentExec assigns a pid
-	// (execSeq, monotonically increasing — real PVE pids aren't globally
-	// unique across guests, but a mock never needs to model that) and
-	// stores the outcome the guest's fixture-declared AgentExecOutcomes (or
-	// AgentUnreachable) table resolves to; handleGuestAgentExecStatus just
-	// reads it back. Never a real process — see internal/probe's package
-	// doc comment for why this mock intentionally never runs commands.
-	execs map[int]execResult
-	// nodeOnlineOverride is T-2504's cluster-membership churn lever
-	// (churn.go): a per-node override of the Fixture's declared `online`
-	// flag, consulted by the two cluster handlers that report it. Absent a
-	// SetNodeOnline call it is empty and every node reports exactly what the
-	// fixture says, so this is invisible to every pre-T-2504 caller. Guarded
-	// by churnMu rather than nodesMu because it is keyed by *cluster member*
-	// (Fixture.Cluster.Nodes), not by the runtime nodes map.
+	clock              func() time.Time
+	execs              map[int]execResult
+	fixture            *Fixture
+	nodes              map[string]*nodeState
+	sessions           *sessionStore
+	tasks              *taskManager
 	nodeOnlineOverride map[string]bool
 	clusterFW          FirewallScope
+	ipam               ipamState
+	sdn                sdnState
 	execSeq            int
 	nodesMu            sync.RWMutex
 	clusterFWMu        sync.RWMutex
-	execMu             sync.Mutex
 	churnMu            sync.RWMutex
+	execMu             sync.Mutex
 }
 
 // NewState builds runtime State from a validated Fixture.
@@ -146,6 +147,20 @@ func NewState(f *Fixture) *State {
 		z.Records = append([]SDNDnsRecordSpec(nil), z.Records...)
 		s.sdn.dnsZones[z.ID] = z
 	}
+
+	// T-3101: fabrics/fabricsRunning, seeded exactly like zones/zonesRunning
+	// above (runningFabric mirrors runningZone).
+	s.sdn.fabrics = make(map[string]SDNFabricSpec, len(f.SDN.Fabrics))
+	s.sdn.fabricsRunning = make(map[string]SDNFabricSpec, len(f.SDN.Fabrics))
+	for _, fab := range f.SDN.Fabrics {
+		s.sdn.fabrics[fab.ID] = fab
+		if r, ok := runningFabric(fab); ok {
+			s.sdn.fabricsRunning[fab.ID] = r
+		}
+	}
+	s.sdn.fabricNodes = append([]SDNFabricNodeSpec(nil), f.SDN.FabricNodes...)
+	s.sdn.prefixLists = append([]SDNPrefixListSpec(nil), f.SDN.PrefixLists...)
+	s.sdn.routeMaps = append([]SDNRouteMapSpec(nil), f.SDN.RouteMaps...)
 
 	s.ipam.entries = make(map[string][]IPAMEntrySpec, len(f.SDN.Ipams))
 	for _, ip := range f.SDN.Ipams {

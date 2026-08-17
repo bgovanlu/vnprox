@@ -8,6 +8,9 @@ import { DhcpView } from "./DhcpView";
 const tree: SdnTree = {
   generatedAt: 1_752_000_000,
   zones: [{ id: "labz", type: "vlan", nodeStatus: [], vnets: [] }],
+  fabrics: [],
+  prefixLists: [],
+  routeMaps: [],
 };
 
 const view: DhcpViewData = {

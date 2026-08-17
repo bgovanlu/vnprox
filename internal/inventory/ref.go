@@ -35,6 +35,27 @@ const (
 	// (docs/features/sdn.md §6), not as a node of its own.
 	KindSDNDnsZone   Kind = "sdn-dns-zone"
 	KindSDNDnsRecord Kind = "sdn-dns-record"
+	// KindSDNFabric (T-3101: SDN Fabrics — PVE 9's underlay-routing object
+	// family, /cluster/sdn/fabrics) names one fabric: a cluster-scoped
+	// (Node empty, like every other sdn-* kind) underlay routing config
+	// keyed by its own id (2-8 chars, planning/reports/evidence/
+	// pve-9.2.4-sdn-schema.txt's `--id` pattern). A fabric is genuinely
+	// distinct from a PVE zone/vnet/subnet — it configures the underlay a
+	// zone can ride on (a vxlan zone's `--fabric` field), not a tenant
+	// network itself — so it gets its own Kind rather than folding into
+	// KindSDNZone. Like KindSDNDnsZone it is deliberately NOT rendered as a
+	// topology-map node (topology.layerOf returns false for it, by simply
+	// having no case there — underlay routing config is not a drawable
+	// link); it gets its own read-only status view instead
+	// (web/src/sdn/FabricsView.tsx), mirroring how EVPN/BGP observability
+	// is a dedicated panel rather than new map geometry. One of the four
+	// fabric protocols is `wireguard` — genuinely WireGuard, but a
+	// different management plane than KindWgTunnel/KindWgPeer above (PVE
+	// itself manages a WireGuard fabric's underlay realization; vnprox
+	// manages a wg-tunnel's peer links directly) — the two must never share
+	// a model, and this Kind is what keeps a fabric's op targets and a
+	// tunnel's op targets from ever colliding on the wire.
+	KindSDNFabric    Kind = "sdn-fabric"
 	KindGuest        Kind = "guest"
 	KindGuestNic     Kind = "guest-nic"
 	KindLldpNeighbor Kind = "lldp-neighbor"
@@ -131,6 +152,7 @@ var knownKinds = map[Kind]bool{
 	KindPBSHost:    true,
 	KindSDNDnsZone: true, KindSDNDnsRecord: true,
 	KindSwitchPort: true,
+	KindSDNFabric:  true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)

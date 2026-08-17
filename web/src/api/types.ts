@@ -508,6 +508,9 @@ export type OpType =
   | "sdn.subnet.create"
   | "sdn.subnet.update"
   | "sdn.subnet.delete"
+  | "sdn.fabric.create"
+  | "sdn.fabric.update"
+  | "sdn.fabric.delete"
   | "sdn.apply"
   | "guest.nic.update"
   | "fw.rule.create"
@@ -802,6 +805,45 @@ export interface SdnSubnetUpdateParams {
 
 export type SdnSubnetDeleteParams = Record<string, never>;
 
+// --- SDN Fabric op params (T-3101; internal/change/params_sdn_fabric.go) --
+// Mirrors that file field-for-field. `protocol` is conditional-schema: only
+// the fields listed for the chosen protocol are meaningful (see
+// FabricsView.tsx's protocol-conditional form and docs/api.md's `GET /sdn`
+// section). `protocol` is real WireGuard when `"wireguard"` — a different
+// management plane from `WgTunnelCreateParams` above (T-1401); the two
+// never share a shape.
+
+export interface SdnFabricCreateParams {
+  protocol: string; // "bgp" | "openfabric" | "ospf" | "wireguard"
+  ipPrefix?: string;
+  ip6Prefix?: string;
+  /** openfabric-only. */
+  csnpInterval?: number;
+  /** openfabric-only. */
+  helloInterval?: number;
+  /** openfabric and ospf both carry this. */
+  routeFilter?: string;
+  /** ospf-only. */
+  area?: string;
+  /** bgp and ospf both carry this. */
+  redistribute?: string[];
+  /** wireguard-only — real WireGuard's persistent-keepalive interval. */
+  persistentKeepalive?: number;
+}
+
+export interface SdnFabricUpdateParams {
+  ipPrefix?: string;
+  ip6Prefix?: string;
+  csnpInterval?: number;
+  helloInterval?: number;
+  routeFilter?: string;
+  area?: string;
+  redistribute?: string[];
+  persistentKeepalive?: number;
+}
+
+export type SdnFabricDeleteParams = Record<string, never>;
+
 export type SdnApplyParams = Record<string, never>;
 
 // --- Firewall op params (T-502; internal/change/params_fw.go) -------------
@@ -974,6 +1016,9 @@ export type OpParams =
   | SdnSubnetCreateParams
   | SdnSubnetUpdateParams
   | SdnSubnetDeleteParams
+  | SdnFabricCreateParams
+  | SdnFabricUpdateParams
+  | SdnFabricDeleteParams
   | SdnApplyParams
   | FwRuleCreateParams
   | FwRuleUpdateParams
@@ -1696,9 +1741,54 @@ export interface SdnZone {
   vnets: SdnVnet[];
 }
 
+/** One SDN fabric (T-3101), mirroring internal/sdn/service.go's Fabric
+ * exactly. A sibling top-level collection on SdnTree, not nested under
+ * SdnZone — a fabric is cluster underlay a zone may ride on, not a zone's
+ * child the way SdnVnet is. `protocol` is real PVE 9.2's captured enum
+ * (planning/reports/evidence/pve-9.2.4-sdn-schema.txt): "bgp" | "openfabric"
+ * | "ospf" | "wireguard" — the last one is genuinely WireGuard, but PVE-
+ * managed underlay transport, a different management plane from this file's
+ * WireGuardTunnel above (T-1401) — the two never share a shape or a map
+ * badge, see FabricsView.tsx. */
+export interface SdnFabric {
+  id: string;
+  protocol: string;
+  pending?: string;
+  ipPrefix?: string;
+  ip6Prefix?: string;
+  csnpInterval?: number;
+  helloInterval?: number;
+  routeFilter?: string;
+  area?: string;
+  redistribute?: string[];
+  persistentKeepalive?: number;
+  /** Configured membership, not verified realization health — the captured
+   * fabrics API has no per-fabric status route the way a zone has one, so
+   * every entry here is "ok" unconditionally (see docs/api.md's `GET /sdn`
+   * section). */
+  nodeStatus: SdnNodeStatus[];
+}
+
+/** A read-only BGP prefix-list object (T-3101) — no changeset op exists for
+ * either this or SdnRouteMap; field shape beyond `id` is unconfirmed
+ * against hardware (planning/reports/needs-hardware-validation.md's T-3101
+ * entry). */
+export interface SdnPrefixList {
+  id: string;
+}
+
+/** A read-only BGP route-map object (T-3101). See SdnPrefixList's doc
+ * comment. */
+export interface SdnRouteMap {
+  id: string;
+}
+
 /** GET /sdn response. */
 export interface SdnTree {
   zones: SdnZone[];
+  fabrics: SdnFabric[];
+  prefixLists: SdnPrefixList[];
+  routeMaps: SdnRouteMap[];
   generatedAt: number;
 }
 

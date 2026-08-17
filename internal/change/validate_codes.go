@@ -42,6 +42,23 @@ const (
 	// longer ids — so length is surfaced as a non-blocking wizard warning
 	// (web/src/sdn/wizards/validation.ts) instead.
 	codeSDNNameInvalid = "schema.sdn_name_invalid"
+	// codeSDNFabricIDInvalid flags an sdn.fabric.create whose id does not
+	// match real PVE's captured fabric id pattern — 2 to 8 characters,
+	// alphanumeric with interior hyphens allowed
+	// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt's `--id` pattern),
+	// a materially different (shorter, hyphen-permitting) charset from
+	// codeSDNNameInvalid's zone/vnet pattern, so it gets its own code
+	// rather than reusing that one.
+	codeSDNFabricIDInvalid = "schema.sdn_fabric_id_invalid"
+	// codeSDNFabricProtocolInvalid flags an sdn.fabric.create/update whose
+	// protocol is not one of bgp|openfabric|ospf|wireguard, or whose
+	// protocol-conditional fields (csnpInterval/helloInterval/routeFilter/
+	// area/redistribute/persistentKeepalive) don't match the combination
+	// real PVE's own conditional schema allows for the chosen protocol —
+	// symmetric with pvemock's own sdnFabricProtocolError
+	// (internal/pvemock/sdn_fabric.go) so the two validators can never
+	// quietly disagree about which combination is legal.
+	codeSDNFabricProtocolInvalid = "schema.sdn_fabric_protocol_invalid"
 	// codeGatewayNotInSubnet is T-701 acceptance criterion 2: a
 	// sdn.subnet.create/update whose gateway is a syntactically valid IP
 	// (codeIPInvalid already covers "not an IP at all") but does not fall

@@ -80,15 +80,15 @@ const CompatVersionHeader = "X-Pvemock-Compat-Version"
 // prefix. compat_server.go gates every request at or below it.
 const SDNFabricsPath = "/api2/json/cluster/sdn/fabrics"
 
-// sdnFabricsAllResponse is the body a supporting profile returns for
-// GET /cluster/sdn/fabrics/all, copied verbatim from what pvecube (PVE
-// 9.2.4) returned for that request with no fabrics configured — see
-// planning/reports/evidence/pve-9.2.4-sdn-schema.txt. The mock serves this
-// itself rather than deferring to the base Server, which has no fabrics
-// routes: modeling the *presence* of the family is exactly the version
-// divergence this profile exists to encode. Modeling fabric contents is
-// T-3101's job, not this file's.
-const sdnFabricsAllResponse = `{"fabrics":[],"nodes":[]}`
+// sdnFabricsAllResponse (removed by T-3101) used to be the hardcoded body
+// compatServer self-answered for GET /cluster/sdn/fabrics/all, copied
+// verbatim from what pvecube (PVE 9.2.4) returned with no fabrics
+// configured — planning/reports/evidence/pve-9.2.4-sdn-schema.txt. The base
+// *Server now has a real handler for that route (sdn_fabric.go's
+// handleSDNFabricsAll, serving live fixture-backed content) and
+// compatServer.ServeHTTP falls through to it on every supporting profile,
+// so this literal has no reader left. Modeling fabric contents was T-3101's
+// job; it's done — see internal/pvemock/sdn_fabric.go.
 
 // CompatProfiles is the fixed set of PVE version profiles the matrix
 // (internal/apicontract/compat) currently runs: the two lines
