@@ -158,7 +158,13 @@ func (e *Engine) resolveNicAttachment(rep *resolvedEP, nic *inventory.GuestNic, 
 		}
 	case inventory.KindSDNVnet:
 		rep.attach = attachVnet
-		rep.vnet = e.vnetByID[nic.BridgeOrVnet.ID]
+		// nic.BridgeOrVnet.ID is the "<zone>/<vnet>" composite form
+		// (internal/inventory/link.go's resolveGuestNic sets it from the
+		// vnet's own Ref, minted with that convention by ingest.go) — look
+		// it up by the full Ref, not vnetByID's bare-name keys (which exist
+		// for a different purpose: matching a guest's raw bridge= config
+		// value, itself always bare, in link.go's own resolution).
+		rep.vnet = e.vnetByRef[nic.BridgeOrVnet]
 		if rep.vnet == nil {
 			rep.unattached = true
 			rep.attach = attachNone

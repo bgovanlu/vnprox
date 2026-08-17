@@ -28,9 +28,18 @@ type Engine struct {
 	// together.
 	bridgeByNodeName map[string]map[string]*inventory.Bridge
 	vnetByID         map[string]*inventory.SdnVnet
-	zoneByID         map[string]*inventory.SdnZone
-	subnetsByVnet    map[string][]*inventory.SdnSubnet
-	subnets          []*inventory.SdnSubnet
+	// vnetByRef indexes the same vnets as vnetByID, but by their full Ref
+	// (Kind+ID+Node) rather than the bare SdnVnet.ID string. A guest NIC's
+	// resolved BridgeOrVnet (internal/inventory/link.go's resolveGuestNic)
+	// is a Ref whose ID is the "<zone>/<vnet>" composite form
+	// (ingest.go's SdnVnet.Ref.ID convention), not the bare vnet name
+	// SdnVnet.ID/vnetByID carry — resolveNicAttachment must look a NIC's
+	// attachment up by that full Ref, the same way bridgesByRef already
+	// does for bridge attachments, not by re-deriving a bare name from it.
+	vnetByRef     map[inventory.Ref]*inventory.SdnVnet
+	zoneByID      map[string]*inventory.SdnZone
+	subnetsByVnet map[string][]*inventory.SdnSubnet
+	subnets       []*inventory.SdnSubnet
 }
 
 // NewEngine builds an Engine from in. The inventory Snapshot is required;
@@ -52,6 +61,7 @@ func NewEngine(in Input) *Engine {
 		bridgesByRef:     map[inventory.Ref]*inventory.Bridge{},
 		bridgeByNodeName: map[string]map[string]*inventory.Bridge{},
 		vnetByID:         map[string]*inventory.SdnVnet{},
+		vnetByRef:        map[inventory.Ref]*inventory.SdnVnet{},
 		zoneByID:         map[string]*inventory.SdnZone{},
 		subnetsByVnet:    map[string][]*inventory.SdnSubnet{},
 	}
@@ -72,6 +82,7 @@ func NewEngine(in Input) *Engine {
 			m[v.Name] = v
 		case *inventory.SdnVnet:
 			e.vnetByID[v.ID] = v
+			e.vnetByRef[v.GetRef()] = v
 		case *inventory.SdnZone:
 			e.zoneByID[v.ID] = v
 		case *inventory.SdnSubnet:

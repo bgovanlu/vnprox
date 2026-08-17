@@ -1,8 +1,11 @@
-# Bug: `internal/sim` cannot resolve a guest NIC attached to a real SDN vnet
+# Bug: `internal/sim` cannot resolve a guest NIC attached to a real SDN vnet — FIXED 2026-08-17
 
 **Found:** 2026-08-17, incidentally, by the agent implementing T-3103 (VNet-scope
 firewall). Not part of that card's scope — filed separately so it doesn't
-evaporate as chat output. Not yet triaged into a task card.
+evaporate as chat output. **Fixed the same day**, on triage, once the actual
+scope turned out to be a contained, one-map fix rather than the 16-test
+migration the discovering agent's report estimated (see "What actually
+shipped" at the bottom) — no separate task card was needed.
 
 ## The defect
 
@@ -68,21 +71,43 @@ The T-3103 agent confirmed this and worked around it for its own new test
 (`noteVNetFirewall`) with a direct unit test rather than a full fixture-based
 case, specifically to avoid exercising this path.
 
-## Scope estimate (unverified — from the discovering agent's report, not independently confirmed)
+## Scope estimate that turned out to be too pessimistic
 
-Fixing `endpoint.go:161` to key by the bare name (matching `link.go`'s and
-`sim/engine.go`'s own convention) is likely the correct one-line fix, but the
-agent flagged 16+ existing tests in `internal/sim` as depending on the
-bug-compatible fixture shape — those fixtures would need to switch to
-minting Refs the same composite way `ingest.go` does, or the fix needs a
-compatibility shim, before this is safe to land. Whoever picks this up
-should scope it properly rather than trust this estimate.
+The discovering agent's report guessed the fix needed either re-keying
+`endpoint.go:161` to the bare name (which would have required threading a
+zone lookup through a call site that doesn't have one) or migrating 16+
+existing `internal/sim` tests off their bug-compatible bare-ID fixtures. On
+triage, the actual fix went the other direction and was smaller: add a
+second index, `Engine.vnetByRef map[inventory.Ref]*inventory.SdnVnet`
+(keyed by the vnet's full `Ref`, exactly the pattern `bridgesByRef` already
+used three lines above the bug in the same function), and look a NIC's
+vnet attachment up by `nic.BridgeOrVnet` — the full Ref, composite ID and
+all — instead of re-deriving a bare name from it. No zone lookup, no
+compatibility shim.
 
-## Recommendation
+That fix also made it *safe* to correct `world_test.go`'s `vnet()` helper
+to mint the real `"<zone>/<vnet>"` composite `Ref.ID` (previously bare,
+matching the bug) instead of leaving it bug-compatible — done in the same
+change, and every existing vnet-attached test in the suite (the
+`TestVerdictMatrix` evpn/vxlan-zone cases included) now exercises the real
+production lookup path and still passes, which is a stronger proof the fix
+is correct than an isolated regression test would have been.
 
-Needs its own task card. Priority judgment call for the person triaging it:
-this is a simulator correctness bug in the product's core "does the honesty
-contract hold" promise (`docs/features/firewall.md` §5's "No silent
-approximations" bar) — arguably P0/P1 rather than routine backlog, but that
-call belongs to whoever owns the roadmap, not to the agent that found it in
-passing.
+## What actually shipped
+
+- `internal/sim/engine.go`: new `vnetByRef` index, populated alongside the
+  existing bare-name `vnetByID` (which stays — `resolveIP`'s
+  `sub.Vnet`-keyed lookup at `endpoint.go:86` still legitimately needs bare
+  names, and `link.go`'s own same-named map still needs them for matching a
+  guest's raw `bridge=` config value).
+- `internal/sim/endpoint.go:161`: `rep.vnet = e.vnetByRef[nic.BridgeOrVnet]`,
+  replacing the broken `e.vnetByID[nic.BridgeOrVnet.ID]`.
+- `internal/sim/world_test.go`: `vnet()` helper now mints the real composite
+  `Ref.ID`, so the whole existing suite validates the fix rather than merely
+  failing to contradict it.
+- `internal/sim/unit_test.go`: the stale comment on
+  `TestNoteVNetFirewall_DisclosesEnabledForwardChain` (written when the bug
+  was still open) updated to stop describing it as unresolved.
+- Verified: `go build`, `go vet`, full `go test ./...`, frontend `tsc`
+  + `vitest` (2060 tests), and `make check` (lint/govulncheck/npm audit) all
+  clean.

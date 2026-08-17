@@ -113,9 +113,15 @@ func (w *world) zone(id, ztype, bridge string, nodes []string, exitNodes []strin
 	return w
 }
 
+// vnet's Ref uses the real "<zone>/<vnet>" composite id
+// (internal/inventory/ingest.go's SdnVnet.Ref.ID convention), not the bare
+// vnet id — this is what makes every vnet-attached-guest test in this file
+// exercise the real production lookup path (internal/sim/engine.go's
+// vnetByRef), not a bug-compatible shortcut. See planning/reports/
+// sim-vnet-resolution-bug.md.
 func (w *world) vnet(id, zone string, tag int) *world {
 	w.sdn = append(w.sdn, &inventory.SdnVnet{
-		Ref: inventory.Ref{Kind: inventory.KindSDNVnet, ID: id},
+		Ref: inventory.Ref{Kind: inventory.KindSDNVnet, ID: zone + "/" + id},
 		ID:  id, Zone: zone, Tag: tag,
 	})
 	return w

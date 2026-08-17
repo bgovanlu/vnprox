@@ -251,17 +251,17 @@ func TestVnetMissingZoneIndeterminate(t *testing.T) {
 }
 
 // TestNoteVNetFirewall_DisclosesEnabledForwardChain is a direct, engine-
-// internals-level test of T-3103's noteVNetFirewall (rather than going
-// through full endpoint resolution/world building, which has its own
-// unrelated pre-existing e.vnetByID lookup mismatch between a guest NIC's
-// resolved BridgeOrVnet Ref — production-observed as "<zone>/<vnet>", see
-// internal/inventory/link.go's resolveGuestNic — and the sim engine's own
-// bare-vnet-name-keyed vnetByID cache; flagged in this task's report as a
-// separate, unrelated finding rather than fixed here). This test exercises
-// the actual new logic directly: given a resolved endpoint attached to a
-// vnet with an enabled, non-empty forward-chain ruleset, the simulator adds
-// a disclosure caveat rather than either crashing or silently enforcing
-// rules it has no hardware-confirmed model for.
+// internals-level test of T-3103's noteVNetFirewall, exercising the
+// function directly rather than through full endpoint resolution/world
+// building. (world_test.go's vnet-attached scenarios now go through the
+// real endpoint-resolution path too — see engine.go's vnetByRef and
+// planning/reports/sim-vnet-resolution-bug.md for the lookup-by-composite-
+// Ref fix that made that safe; this test predates the fix and stayed a
+// direct unit test since it doesn't need full resolution.) Given a
+// resolved endpoint attached to a vnet with an enabled, non-empty
+// forward-chain ruleset, the simulator adds a disclosure caveat rather
+// than either crashing or silently enforcing rules it has no
+// hardware-confirmed model for.
 func TestNoteVNetFirewall_DisclosesEnabledForwardChain(t *testing.T) {
 	vnetEnt := &inventory.SdnVnet{
 		Ref: inventory.Ref{Kind: inventory.KindSDNVnet, ID: "zone1/vnet1"},
