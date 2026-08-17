@@ -14,6 +14,9 @@ import {
   buildSdnFabricCreateOp,
   buildSdnFabricDeleteOp,
   buildSdnFabricUpdateOp,
+  buildSdnIpamCreateOp,
+  buildSdnIpamDeleteOp,
+  buildSdnIpamUpdateOp,
   buildSdnSubnetCreateOp,
   buildSdnSubnetDeleteOp,
   buildSdnSubnetUpdateOp,
@@ -29,6 +32,7 @@ import {
   type BridgeFormValues,
   type IfaceFormValues,
   type SdnFabricFormValues,
+  type SdnIpamFormValues,
   type SdnSubnetFormValues,
   type SdnVnetFormValues,
   type SdnZoneFormValues,
@@ -381,5 +385,58 @@ describe("sdn fabric op builders", () => {
 describe("sdn.apply op builder", () => {
   it("carries no target (cluster-wide, no single entity) and no params", () => {
     expect(buildSdnApplyOp()).toEqual({ op: "sdn.apply", target: undefined, params: {} });
+  });
+});
+
+const netboxIpamForm: SdnIpamFormValues = {
+  type: "netbox",
+  url: "https://netbox.example.com",
+  token: "",
+  fingerprint: "",
+  section: 0,
+};
+
+describe("sdn ipam op builders", () => {
+  it("create carries type and only the fields set", () => {
+    const form: SdnIpamFormValues = { ...netboxIpamForm, token: "secret" };
+    const op = buildSdnIpamCreateOp("sdn-ipam::nb1", form);
+    expect(op).toEqual({
+      op: "sdn.ipam.create",
+      target: "sdn-ipam::nb1",
+      params: { type: "netbox", url: "https://netbox.example.com", token: "secret" },
+    });
+  });
+
+  it("update carries only fields that changed, and never type (immutable)", () => {
+    const form: SdnIpamFormValues = { ...netboxIpamForm, url: "https://netbox2.example.com" };
+    const op = buildSdnIpamUpdateOp("sdn-ipam::nb1", netboxIpamForm, form);
+    expect(op).toEqual({
+      op: "sdn.ipam.update",
+      target: "sdn-ipam::nb1",
+      params: { url: "https://netbox2.example.com" },
+    });
+  });
+
+  it("update never sends an empty token (leaving it blank keeps the existing one unchanged)", () => {
+    const op = buildSdnIpamUpdateOp("sdn-ipam::nb1", netboxIpamForm, netboxIpamForm);
+    expect(op.params).toEqual({});
+  });
+
+  it("update sends token only when the operator retyped it this session", () => {
+    const form: SdnIpamFormValues = { ...netboxIpamForm, token: "new-secret" };
+    const op = buildSdnIpamUpdateOp("sdn-ipam::nb1", netboxIpamForm, form);
+    expect(op).toEqual({
+      op: "sdn.ipam.update",
+      target: "sdn-ipam::nb1",
+      params: { token: "new-secret" },
+    });
+  });
+
+  it("delete carries no params", () => {
+    expect(buildSdnIpamDeleteOp("sdn-ipam::nb1")).toEqual({
+      op: "sdn.ipam.delete",
+      target: "sdn-ipam::nb1",
+      params: {},
+    });
   });
 });

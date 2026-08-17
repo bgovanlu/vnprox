@@ -9,10 +9,24 @@ import (
 // GET /cluster/sdn/ipams. PVE ships a built-in "pve" IPAM; NetBox and
 // phpIPAM instances appear here too when configured in PVE (vnprox reads
 // through the plugin transparently — docs/features/ipam.md §1).
+//
+// Pending/Token/Fingerprint/Section (T-3104, sdn_ipam.go's write path) are
+// additive: Pending mirrors SDNFabric/SDNController's staged-vs-running
+// state (an ipam instance is a /cluster/sdn family too — the capture's `ls
+// /cluster/sdn/ipams` shows the same `-rw-d` writable-directory marker
+// fabrics/controllers/zones do). Token is write-only: the capture gives no
+// evidence GET ever echoes a configured secret back (see
+// internal/inventory/sdn_ipam.go's doc comment), so this field is only ever
+// populated by a caller constructing a create/update request — a value
+// read off ListIPAMs/GetIPAMStatus will never have it set.
 type IPAM struct {
-	ID   string `json:"ipam"`
-	Type string `json:"type"` // pve|netbox|phpipam
-	URL  string `json:"url,omitempty"`
+	ID          string       `json:"ipam"`
+	Type        string       `json:"type"` // pve|netbox|phpipam
+	URL         string       `json:"url,omitempty"`
+	Pending     PendingState `json:"pending,omitempty"`
+	Token       string       `json:"token,omitempty"`
+	Fingerprint string       `json:"fingerprint,omitempty"`
+	Section     int          `json:"section,omitempty"`
 }
 
 // IPAMEntry is one allocation row of GET /cluster/sdn/ipams/{ipam}/status:

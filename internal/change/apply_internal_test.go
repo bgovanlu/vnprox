@@ -206,6 +206,7 @@ func TestParamsUnion_Membership(t *testing.T) {
 		&SdnDnsRecordCreateParams{}, &SdnDnsRecordUpdateParams{}, &SdnDnsRecordDeleteParams{},
 		&SdnFabricCreateParams{}, &SdnFabricUpdateParams{}, &SdnFabricDeleteParams{},
 		&SdnControllerCreateParams{}, &SdnControllerUpdateParams{}, &SdnControllerDeleteParams{},
+		&SdnIpamCreateParams{}, &SdnIpamUpdateParams{}, &SdnIpamDeleteParams{},
 		&SdnApplyParams{},
 		&GuestNicUpdateParams{},
 		&FwRuleCreateParams{}, &FwRuleUpdateParams{}, &FwRuleDeleteParams{}, &FwRuleMoveParams{},

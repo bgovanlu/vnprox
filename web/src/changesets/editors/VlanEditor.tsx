@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useSession } from "../../api/useSession";
 import { useToast } from "../../components/Toast";
 import type { EntityDetail, VidRange } from "../../api/types";
+import { AddressSuggest } from "../../ipam/AddressSuggest";
 import { capsForNode, missingCapTooltip } from "../capabilities";
 import { fieldNum, fieldStr, fieldStrArray } from "./fieldGetters";
 import { buildVlanCreateOp, buildVlanUpdateOp, type VlanFormValues } from "../opBuilders";
@@ -180,6 +181,11 @@ export function VlanEditor({
 
       <Field label="Addresses" errors={findings.byField.addresses} help="Comma-separated CIDRs, e.g. 10.10.20.11/24.">
         <input className={inputClass} value={addressesText} onChange={(e) => { setAddressesText(e.target.value); }} />
+        <AddressSuggest
+          onAppend={(cidr) => {
+            setAddressesText((prev) => (prev.trim() ? `${prev}, ${cidr}` : cidr));
+          }}
+        />
       </Field>
 
       <Field

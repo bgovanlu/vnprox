@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useSession } from "../../api/useSession";
 import type { EntityDetail } from "../../api/types";
+import { AddressSuggest } from "../../ipam/AddressSuggest";
 import { capsForNode, missingCapTooltip } from "../capabilities";
 import { fieldBool, fieldNum, fieldStr, fieldStrArray } from "./fieldGetters";
 import { buildIfaceUpdateOp, type IfaceFormValues } from "../opBuilders";
@@ -73,12 +74,30 @@ export function InterfaceEditor({ open, onOpenChange, node, target, existing }: 
       </Field>
       <Field label="Addresses" errors={findings.byField.addresses} help="Comma-separated CIDRs. Usually empty for a NIC that's a bond/bridge member.">
         <input className={inputClass} value={addressesText} onChange={(e) => { setAddressesText(e.target.value); }} />
+        <AddressSuggest
+          onAppend={(cidr) => {
+            setAddressesText((prev) => (prev.trim() ? `${prev}, ${cidr}` : cidr));
+          }}
+        />
       </Field>
       <Field
         label="Gateway"
         errors={findings.byField.gateway}
         help="The router this node uses for traffic leaving its subnet. Set it on exactly one interface per address family — usually the management bridge, not a bare NIC."
       >
+        {/* No next-free suggestion here (T-3104): a gateway is a specific,
+            deliberately-chosen address (usually .1, or whatever the
+            upstream router already answers to), not "any free one" the
+            way an Addresses field is — NextFreePicker's data source (the
+            subnet's free-range list) has no notion of "this is the
+            gateway-shaped address", so surfacing it here would suggest an
+            arbitrary free address with no more claim to being the gateway
+            than any other. web/src/sdn/wizards/SubnetStep.tsx's gateway
+            field is the one place a gateway *does* get an auto-suggestion,
+            and only because it layers gateway-specific logic (default to
+            the CIDR's first usable address, then refine from the live
+            allocation grid, never overwriting a value the user typed) on
+            top of the same query — logic this plain input has no room for. */}
         <input className={inputClass} value={gateway} onChange={(e) => { setGateway(e.target.value); }} />
       </Field>
       <Field

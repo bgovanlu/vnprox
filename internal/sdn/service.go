@@ -59,6 +59,14 @@ type PVEReader interface {
 	// doc comment for why it has no per-controller status sub-read the way
 	// Fabric's ListSDNFabricNodes does.
 	ListSDNControllers(ctx context.Context) ([]pve.SDNController, error)
+
+	// ListIPAMs (T-3104) is Ipam's own read — the same pre-existing
+	// internal/pve method internal/ipam's read views already use, reused
+	// here rather than a parallel ListSDNIpams name (internal/pve/
+	// sdn_ipam.go's package doc comment explains why the type/method names
+	// stayed IPAM/ListIPAMs rather than following Fabric/Controller's
+	// "new type, new name" pattern).
+	ListIPAMs(ctx context.Context) ([]pve.IPAM, error)
 }
 
 // Service builds the GET /sdn tree from a PVEReader.
@@ -92,6 +100,13 @@ type Tree struct {
 	// referenced BY a zone, not owned BY one — deleting a zone must never
 	// delete the controller it named.
 	Controllers []Controller `json:"controllers"`
+	// Ipams (T-3104) is a sibling top-level collection too, not nested under
+	// Zone — an ipam plugin instance is infrastructure a zone may ride on (a
+	// zone's `ipam` field, now a *reference* by id rather than an opaque
+	// name, KindSDNIpam's doc comment), the same "sibling, not child" shape
+	// Fabrics/Controllers already established, since an ipam instance is
+	// referenced BY a zone, not owned BY one.
+	Ipams []Ipam `json:"ipams"`
 	// PrefixLists/RouteMaps (T-3101) are read-only BGP route-policy
 	// objects — display only, no diff/pending (they carry no staged-vs-
 	// running distinction of their own to render, unlike Zone/Vnet/Subnet).
@@ -130,6 +145,19 @@ type Controller struct {
 	EbgpMultihop            int      `json:"ebgpMultihop,omitempty"`
 	Ebgp                    bool     `json:"ebgp,omitempty"`
 	BgpMultipathAsPathRelax bool     `json:"bgpMultipathAsPathRelax,omitempty"`
+}
+
+// Ipam is one configured SDN ipam plugin instance (T-3104), mirroring
+// pve.IPAM's field set — see internal/pve/sdn_ipam.go's package doc comment
+// for why Token is never included here (or on pve.IPAM's read side at all):
+// it is a write-only secret vnprox never gets to read back.
+type Ipam struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	Pending     string `json:"pending,omitempty"`
+	URL         string `json:"url,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	Section     int    `json:"section,omitempty"`
 }
 
 // Fabric is one SDN fabric (T-3101), mirroring pve.SDNFabric's field set —
@@ -179,6 +207,15 @@ type Zone struct {
 	Pending    string       `json:"pending,omitempty"`
 	Bridge     string       `json:"bridge,omitempty"`
 	Controller string       `json:"controller,omitempty"`
+	// IPAM (T-3104) is a reference by id to an Ipam entry in this same
+	// Tree's Ipams collection — mirrors Controller's own "reference by id
+	// to a sibling object" shape. Real, captured PVE zone parameter
+	// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt's `--ipam`), only
+	// wired end to end (this field included) by T-3104 — see
+	// internal/pve.SDNZone.IPAM's doc comment for why it was previously
+	// present in internal/change/internal/inventory's types but silently
+	// never read or written anywhere.
+	IPAM       string       `json:"ipam,omitempty"`
 	ID         string       `json:"id"`
 	Type       string       `json:"type"`
 	Nodes      []string     `json:"nodes,omitempty"`
@@ -275,7 +312,7 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 	zones := make([]Zone, 0, len(staged))
 	for _, z := range staged {
 		zone := Zone{
-			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller,
+			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller, IPAM: z.IPAM,
 			Nodes: z.Nodes, ExitNodes: z.ExitNodes, Peers: z.Peers,
 			MTU: z.MTU, VrfVxlan: z.VrfVxlan, Pending: string(z.Pending),
 		}
@@ -342,6 +379,11 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 		return Tree{}, err
 	}
 
+	ipams, err := s.buildIpams(ctx)
+	if err != nil {
+		return Tree{}, err
+	}
+
 	prefixLists, err := s.pve.ListSDNPrefixLists(ctx)
 	if err != nil {
 		return Tree{}, fmt.Errorf("sdn: listing prefix-lists: %w", err)
@@ -363,9 +405,31 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 	sort.Slice(rms, func(i, j int) bool { return rms[i].ID < rms[j].ID })
 
 	return Tree{
-		Zones: zones, Fabrics: fabrics, Controllers: controllers,
+		Zones: zones, Fabrics: fabrics, Controllers: controllers, Ipams: ipams,
 		PrefixLists: pls, RouteMaps: rms, GeneratedAt: s.now().Unix(),
 	}, nil
+}
+
+// buildIpams fetches the configured ipam plugin instance list and maps it
+// straight to Ipam — unlike buildFabrics, there is no per-instance status
+// sub-read to fold in here either (Controller's own doc comment on why
+// applies verbatim: an instance's allocation-set status route is a
+// different read internal/ipam already consumes directly, not a
+// realization-health read).
+func (s *Service) buildIpams(ctx context.Context) ([]Ipam, error) {
+	staged, err := s.pve.ListIPAMs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sdn: listing ipams: %w", err)
+	}
+	out := make([]Ipam, 0, len(staged))
+	for _, i := range staged {
+		out = append(out, Ipam{
+			ID: i.ID, Type: i.Type, Pending: string(i.Pending),
+			URL: i.URL, Fingerprint: i.Fingerprint, Section: i.Section,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
 }
 
 // buildControllers fetches the controller list and maps it straight to

@@ -80,10 +80,31 @@ const (
 	// session health re-attached to it rather than inferred purely from
 	// zone state (internal/evpn).
 	KindSDNController Kind = "sdn-controller"
-	KindGuest         Kind = "guest"
-	KindGuestNic      Kind = "guest-nic"
-	KindLldpNeighbor  Kind = "lldp-neighbor"
-	KindFwRuleset     Kind = "fw-ruleset"
+	// KindSDNIpam (T-3104: SDN IPAM plugin instances as first-class objects,
+	// /cluster/sdn/ipams) names one configured IPAM plugin instance: a
+	// cluster-scoped (Node empty, like every other sdn-* kind) netbox/
+	// phpipam/pve plugin object, keyed by its own id
+	// ([a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9], planning/reports/evidence/
+	// pve-9.2.4-sdn-schema.txt's `--ipam` pattern). An ipam instance
+	// predates T-3104 as a bare string on a zone (SdnZone.IPAM, which stays
+	// a *reference* by id — this Kind is what the string now resolves to as
+	// a first-class sibling object), the same "sibling collection, not
+	// nested under Zone" shape KindSDNFabric/KindSDNController already set.
+	// Like Controller (and unlike Fabric — see KindSDNFabric's doc comment),
+	// an ipam instance IS live-polled into this graph (ingested by the SDN
+	// poll, internal/collect.pollSDN, mirroring FromPVESDNControllers): a
+	// zone's `ipam` reference needs the same live existence/in-use check on
+	// delete T-3102 acceptance criterion 5 gave Controller
+	// (checkSdnIpamDeletable, internal/change/validate_referential.go),
+	// which a live-polled entity gives for free. Deliberately NOT rendered
+	// as a topology-map node, like Fabric/Controller/DNS — it gets its own
+	// status view instead (web/src/ipam/), alongside the IPAM page's
+	// existing subnet/allocation views.
+	KindSDNIpam      Kind = "sdn-ipam"
+	KindGuest        Kind = "guest"
+	KindGuestNic     Kind = "guest-nic"
+	KindLldpNeighbor Kind = "lldp-neighbor"
+	KindFwRuleset    Kind = "fw-ruleset"
 	// KindQosShape (T-1505: QoS & traffic shaping) names a qos.shape.*
 	// changeset op's target: a bridge-level tc/HTB shape, node-scoped with a
 	// caller-chosen id. It has no dedicated live-polled inventory entity of
@@ -178,6 +199,7 @@ var knownKinds = map[Kind]bool{
 	KindSwitchPort:    true,
 	KindSDNFabric:     true,
 	KindSDNController: true,
+	KindSDNIpam:       true,
 }
 
 // Ref is the stable identity of one inventory entity: a (Kind, Node, ID)

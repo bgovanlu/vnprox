@@ -1520,6 +1520,34 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
     seeAlso: ["sdn-page", "sdn-evpn", "sdn-fabrics", "sdn-zone-wizard"],
   },
   {
+    id: "sdn-ipams",
+    title: "SDN IPAM plugins",
+    surface: "panel",
+    summary:
+      "The configured IPAM plugin instance family (netbox/phpipam/pve): instance list with type badge, a type-conditional create/edit form, and delete blocked while a zone still references it.",
+    docRef: "docs/features/ipam.md",
+    keywords: ["ipam", "netbox", "phpipam", "pve", "plugin", "instance", "token", "external ipam"],
+    sections: [
+      {
+        heading: "A first-class object, not a string on a zone",
+        body: "A zone's own ipam field used to be an opaque name with nothing behind it in this UI. An IPAM plugin instance is now its own object here, with its own inspector — the zone's field is a reference by id to the entry on this page, the same way a zone's controller field references a controller.",
+      },
+      {
+        heading: "The plugin object, not its allocations",
+        body: "This view is the instance's connection config (url/token/section/fingerprint) — the addresses it has allocated live on the IPAM page's own subnet/address-list views instead, which read through this same instance transparently.",
+      },
+      {
+        heading: "Token is write-only",
+        body: "PVE never reports a configured token back on a read, so editing an existing netbox/phpipam instance always starts with an empty token field. Leaving it blank on save keeps whatever PVE already has stored; retype it only to replace it.",
+      },
+      {
+        heading: "Deleting a referenced instance is blocked",
+        body: "An IPAM plugin instance still named by at least one zone's ipam field cannot be deleted — the changeset validates with a blocking finding naming which zones reference it, the same protection an in-use controller already gets.",
+      },
+    ],
+    seeAlso: ["sdn-page", "sdn-controllers", "ipam-page"],
+  },
+  {
     id: "sdn-pending-diff",
     title: "Staged SDN changes",
     surface: "panel",

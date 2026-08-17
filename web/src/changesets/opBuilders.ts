@@ -17,6 +17,8 @@ import type {
   SdnControllerUpdateParams,
   SdnFabricCreateParams,
   SdnFabricUpdateParams,
+  SdnIpamCreateParams,
+  SdnIpamUpdateParams,
   SdnSubnetCreateParams,
   SdnSubnetUpdateParams,
   SdnVnetCreateParams,
@@ -440,6 +442,49 @@ export function buildSdnControllerUpdateOp(target: string, initial: SdnControlle
 
 export function buildSdnControllerDeleteOp(target: string): Op {
   return { op: "sdn.controller.delete", target, params: {} };
+}
+
+/** T-3104's SDN ipam plugin-instance form values. `token` is write-only
+ * (never populated from an existing instance — SdnIpam carries no token
+ * field at all, since PVE never echoes one back on a read; see
+ * IpamPluginsView.tsx's doc comment). Editing an existing netbox/phpipam
+ * instance therefore starts with an empty token field, submitted only if
+ * the operator retypes it — an update that leaves it blank does not clear
+ * whatever real PVE already has stored (buildSdnIpamUpdateOp below only
+ * ever sends `token` when the field is non-empty). */
+export interface SdnIpamFormValues {
+  type: string;
+  url: string;
+  token: string;
+  fingerprint: string;
+  section: number;
+}
+
+export function buildSdnIpamCreateOp(target: string, form: SdnIpamFormValues): Op {
+  const params: SdnIpamCreateParams = {
+    type: form.type,
+    url: form.url || undefined,
+    token: form.token || undefined,
+    fingerprint: form.fingerprint || undefined,
+    section: form.section || undefined,
+  };
+  return { op: "sdn.ipam.create", target, params };
+}
+
+export function buildSdnIpamUpdateOp(target: string, initial: SdnIpamFormValues, form: SdnIpamFormValues): Op {
+  const params: SdnIpamUpdateParams = {};
+  if (form.url !== initial.url) params.url = form.url;
+  // Token is never diffed against `initial` (initial.token is always "" —
+  // see SdnIpamFormValues' doc comment): only send it when the operator
+  // actually typed something this session.
+  if (form.token !== "") params.token = form.token;
+  if (form.fingerprint !== initial.fingerprint) params.fingerprint = form.fingerprint;
+  if (form.section !== initial.section) params.section = form.section;
+  return { op: "sdn.ipam.update", target, params };
+}
+
+export function buildSdnIpamDeleteOp(target: string): Op {
+  return { op: "sdn.ipam.delete", target, params: {} };
 }
 
 /** The trailing `sdn.apply` step every SDN-carrying changeset needs

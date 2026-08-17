@@ -586,6 +586,32 @@ func (srv *Server) handleSDNApply(w http.ResponseWriter, r *http.Request) {
 			f.Pending = PendingNone
 			srv.state.sdn.fabrics[id] = f
 		}
+		// T-3102: controllers apply through this same commit too. This loop
+		// (and controllersRunning's own resync below) was missing until
+		// T-3104 added the identical ipam case right after it and noticed no
+		// test had ever exercised a controller surviving an apply — a
+		// pre-existing gap from T-3102, fixed here as a drive-by rather than
+		// left to silently diverge from the pattern this same commit adds
+		// for ipams.
+		for id, c := range srv.state.sdn.controllers {
+			if c.Pending == PendingDeleted {
+				delete(srv.state.sdn.controllers, id)
+				continue
+			}
+			c.Pending = PendingNone
+			srv.state.sdn.controllers[id] = c
+		}
+		// T-3104: ipam plugin instances apply through this same commit too —
+		// no bespoke apply path (internal/change/op.go's OpSdnIpamCreate doc
+		// comment).
+		for id, i := range srv.state.sdn.ipams {
+			if i.Pending == PendingDeleted {
+				delete(srv.state.sdn.ipams, id)
+				continue
+			}
+			i.Pending = PendingNone
+			srv.state.sdn.ipams[id] = i
+		}
 
 		// T-401: the running (last-applied) view now matches the
 		// just-applied staged view exactly — a deep copy with every
@@ -610,6 +636,16 @@ func (srv *Server) handleSDNApply(w http.ResponseWriter, r *http.Request) {
 		for id, f := range srv.state.sdn.fabrics {
 			f.Running = nil
 			srv.state.sdn.fabricsRunning[id] = f
+		}
+		srv.state.sdn.controllersRunning = make(map[string]SDNControllerSpec, len(srv.state.sdn.controllers))
+		for id, c := range srv.state.sdn.controllers {
+			c.Running = nil
+			srv.state.sdn.controllersRunning[id] = c
+		}
+		srv.state.sdn.ipamsRunning = make(map[string]SDNIpamSpec, len(srv.state.sdn.ipams))
+		for id, i := range srv.state.sdn.ipams {
+			i.Running = nil
+			srv.state.sdn.ipamsRunning[id] = i
 		}
 	})
 	writeData(w, http.StatusOK, task.UPID)

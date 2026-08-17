@@ -129,6 +129,7 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 	preSubnets, curSubnets := subnetMapOf(pre.Subnets), subnetMapOf(current.Subnets)
 	preFabrics, curFabrics := fabricMapOf(pre.Fabrics), fabricMapOf(current.Fabrics)
 	preControllers, curControllers := controllerMapOf(pre.Controllers), controllerMapOf(current.Controllers)
+	preIpams, curIpams := ipamMapOf(pre.Ipams), ipamMapOf(current.Ipams)
 
 	var out []sdnRestoreOp
 
@@ -172,6 +173,17 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 		}
 		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnControllerDelete, Target: inventory.Ref{Kind: inventory.KindSDNController, ID: id}, Params: &SdnControllerDeleteParams{}}})
 	}
+	// An ipam instance is deleted after every zone that might reference it
+	// via its own `--ipam` field (T-3104: the same "referenced by a zone"
+	// relationship a controller has — no dependency on a fabric/controller
+	// of its own, so its relative order against those two families does not
+	// matter, only that it comes after every zone).
+	for _, id := range sortedKeys(curIpams) {
+		if _, ok := preIpams[id]; ok {
+			continue
+		}
+		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnIpamDelete, Target: inventory.Ref{Kind: inventory.KindSDNIpam, ID: id}, Params: &SdnIpamDeleteParams{}}})
+	}
 	// A fabric is deleted last in this phase (after every zone/controller
 	// that might reference it is already gone) — the mirror image of phase
 	// 2's fabric-created-first ordering below.
@@ -210,13 +222,34 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 			ASN: c.ASN, EbgpMultihop: c.EbgpMultihop, Ebgp: c.Ebgp, BgpMultipathAsPathRelax: c.BgpMultipathAsPathRelax,
 		}}})
 	}
+	// An ipam instance is recreated before any zone that might reference it
+	// via `--ipam` — the same relative-to-zone ordering as controllers,
+	// with no dependency of its own on fabric/controller. Token is not
+	// restorable (SDNIpamConfig carries no Token field — see its doc
+	// comment): a rolled-back netbox/phpipam instance is recreated without
+	// its token, which real PVE's own schema (and this package's
+	// schemaSDNIpamTypeFields, if this op were validated rather than
+	// applied directly the way a rollback op is) would reject outright.
+	// This is a known, flagged gap (planning/reports/
+	// needs-hardware-validation.md) rather than a silently-assumed-fine
+	// path — the honest consequence of a write-only secret field, not a
+	// bug this task's own scope can close.
+	for _, id := range sortedKeys(preIpams) {
+		if _, ok := curIpams[id]; ok {
+			continue
+		}
+		i := preIpams[id]
+		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnIpamCreate, Target: inventory.Ref{Kind: inventory.KindSDNIpam, ID: id}, Params: &SdnIpamCreateParams{
+			Type: i.Type, URL: i.URL, Fingerprint: i.Fingerprint, Section: i.Section,
+		}}})
+	}
 	for _, id := range sortedKeys(preZones) {
 		if _, ok := curZones[id]; ok {
 			continue
 		}
 		z := preZones[id]
 		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnZoneCreate, Target: inventory.Ref{Kind: inventory.KindSDNZone, ID: id}, Params: &SdnZoneCreateParams{
-			Type: z.Type, Bridge: z.Bridge, Controller: z.Controller, Nodes: z.Nodes, ExitNodes: z.ExitNodes, Peers: z.Peers, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
+			Type: z.Type, Bridge: z.Bridge, Controller: z.Controller, IPAM: z.IPAM, Nodes: z.Nodes, ExitNodes: z.ExitNodes, Peers: z.Peers, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
 		}}})
 	}
 	for _, id := range sortedKeys(preVnets) {
@@ -248,9 +281,9 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 			continue
 		}
 		z := preZones[id]
-		bridge, controller, nodes, exitNodes, peers, vrf, mtu := z.Bridge, z.Controller, z.Nodes, z.ExitNodes, z.Peers, z.VrfVxlan, z.MTU
+		bridge, controller, ipamID, nodes, exitNodes, peers, vrf, mtu := z.Bridge, z.Controller, z.IPAM, z.Nodes, z.ExitNodes, z.Peers, z.VrfVxlan, z.MTU
 		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnZoneUpdate, Target: inventory.Ref{Kind: inventory.KindSDNZone, ID: id}, Params: &SdnZoneUpdateParams{
-			Bridge: &bridge, Controller: &controller, Nodes: &nodes, ExitNodes: &exitNodes, Peers: &peers, VrfVxlan: &vrf, MTU: &mtu,
+			Bridge: &bridge, Controller: &controller, IPAM: &ipamID, Nodes: &nodes, ExitNodes: &exitNodes, Peers: &peers, VrfVxlan: &vrf, MTU: &mtu,
 		}}})
 	}
 	for _, id := range sortedKeys(preVnets) {
@@ -319,6 +352,25 @@ func sdnRestoreOps(pre, current SDNConfig) []sdnRestoreOp {
 		}}})
 	}
 
+	// Phase 3 (ipams): restore changed fields on ipam instances present in
+	// both. Type is immutable (params_sdn_ipam.go's SdnIpamUpdateParams doc
+	// comment) so it is never part of this restore. Token is, again, not
+	// restorable — see the phase-2 recreation loop's comment above; a field
+	// update at least does not risk PVE rejecting the whole op the way a
+	// missing-token create can, since Token here is simply left unset
+	// (unchanged from whatever real PVE already has staged).
+	for _, id := range sortedKeys(preIpams) {
+		ci, ok := curIpams[id]
+		if !ok || reflect.DeepEqual(preIpams[id], ci) {
+			continue
+		}
+		i := preIpams[id]
+		url, fingerprint, section := i.URL, i.Fingerprint, i.Section
+		out = append(out, sdnRestoreOp{op: Op{Type: OpSdnIpamUpdate, Target: inventory.Ref{Kind: inventory.KindSDNIpam, ID: id}, Params: &SdnIpamUpdateParams{
+			URL: &url, Fingerprint: &fingerprint, Section: &section,
+		}}})
+	}
+
 	out = append(out, dnsRecreations...)
 
 	return out
@@ -336,6 +388,14 @@ func controllerMapOf(cs []SDNControllerConfig) map[string]SDNControllerConfig {
 	m := make(map[string]SDNControllerConfig, len(cs))
 	for _, c := range cs {
 		m[c.ID] = c
+	}
+	return m
+}
+
+func ipamMapOf(is []SDNIpamConfig) map[string]SDNIpamConfig {
+	m := make(map[string]SDNIpamConfig, len(is))
+	for _, i := range is {
+		m[i.ID] = i
 	}
 	return m
 }

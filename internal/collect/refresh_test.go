@@ -43,9 +43,10 @@ func TestRefreshNow(t *testing.T) {
 		t.Fatalf("delta batches after full refresh = %d, want exactly 1", got)
 	}
 	// T-3103: +2 for the two vnet-scope firewall rulesets (vnet100/vnet200)
-	// pollFirewall now polls alongside the cluster ruleset.
-	if got := graph.Snapshot().Len(); got != 38 {
-		t.Fatalf("entity count after full refresh = %d, want 38", got)
+	// pollFirewall now polls alongside the cluster ruleset. T-3104: +1 for
+	// the fixture's one configured ipam plugin instance ("pve").
+	if got := graph.Snapshot().Len(); got != 39 {
+		t.Fatalf("entity count after full refresh = %d, want 39", got)
 	}
 
 	// --- targeted single-node refresh (no-op change, so its own delta is

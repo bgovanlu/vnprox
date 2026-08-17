@@ -35,6 +35,10 @@ func threeNodeVlanRefs() []string {
 		"sdn-vnet::vlanz/vnet200",
 		"sdn-subnet::10.100.0.0/24",
 		"sdn-subnet::10.200.0.0/24",
+		// T-3104: the fixture's one configured ipam plugin instance (id
+		// "pve", type "pve" — testdata/clusters/three-node-vlan.yaml's
+		// sdn.ipams section).
+		"sdn-ipam::pve",
 		"fw-ruleset::cluster",
 		// T-3103: vnet-scope firewall rulesets, one per vnet (polled
 		// alongside the cluster ruleset — cluster-scoped, no Node).
@@ -80,6 +84,7 @@ func snapshotRefs(snap inventory.Snapshot) []string {
 //     redundancy candidate) = 1.
 //   - SDN: zone "vlanz", vnets "vlanz/vnet100" + "vlanz/vnet200", subnets
 //     "10.100.0.0/24" + "10.200.0.0/24" — 5 entities, cluster-scoped.
+//   - T-3104: 1 configured ipam plugin instance ("pve") — cluster-scoped.
 //   - Guests: qemu 200 "app01" on pve1 (Guest + GuestNic net0), lxc 201
 //     "cache01" on pve2 (Guest + GuestNic net0) — 4 entities; pve3 has none.
 //   - Firewall rulesets: 1 cluster + 3 node (one per node) + 2 guest (one
@@ -91,7 +96,7 @@ func snapshotRefs(snap inventory.Snapshot) []string {
 //     node" — reading a peer's host/LLDP state is a future peer-client
 //     task, not T-104's). 2 entities.
 //
-// Total: 3 + 15 + 1 + 5 + 4 + 6 + 2 = 36 entities.
+// Total: 3 + 15 + 1 + 5 + 1 + 4 + 6 + 2 = 37 entities.
 func TestGolden_ThreeNodeVLAN(t *testing.T) {
 	srv := loadFixtureServer(t, fixtureThreeNode)
 	c, graph, _ := newTestCollector(t, srv)

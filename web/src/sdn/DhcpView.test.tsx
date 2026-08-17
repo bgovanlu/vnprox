@@ -10,6 +10,7 @@ const tree: SdnTree = {
   zones: [{ id: "labz", type: "vlan", nodeStatus: [], vnets: [] }],
   fabrics: [],
   controllers: [],
+  ipams: [],
   prefixLists: [],
   routeMaps: [],
 };

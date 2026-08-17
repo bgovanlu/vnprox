@@ -36,6 +36,11 @@ func ovsLabRefs() []string {
 		"vlan:pve1:vlan30",
 		"fw-ruleset:pve1:node",
 		"fw-ruleset::cluster",
+		// T-3104: ovs-lab.yaml declares no sdn.ipams section, so
+		// pvemock's effectiveIpams synthesizes the built-in "pve" plugin
+		// instance every real PVE cluster has available — see
+		// internal/pvemock/ipam.go's defaultIpamID doc comment.
+		"sdn-ipam::pve",
 	}
 	sort.Strings(refs)
 	return refs

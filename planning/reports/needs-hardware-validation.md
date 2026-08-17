@@ -1449,3 +1449,81 @@ rather than guessed at:
 File these alongside T-3103's own report; item 3 (resolution-order hardware comparison) is a
 separate, already-tracked line of work — see `docs/features/firewall.md` and this file's other
 firewall entries for that.
+
+## T-3104 — IPAM completion (2026-08-17)
+
+Item 2 (PVE IPAM plugin instance CRUD) has real captured evidence for the enum
+(`planning/reports/evidence/pve-9.2.4-sdn-schema.txt`'s `### usage /cluster/sdn/ipams` section) but,
+like T-3102's controllers, no per-type field breakdown; item 3 (the NetBox/phpIPAM write client) has
+no captured evidence at all — there is no NetBox or phpIPAM instance reachable from pvecube, and
+CLAUDE.md's "capture from pvecube" discipline does not extend to a third-party system vnprox merely
+talks to. None of the following is observed against real hardware:
+
+- [ ] **Per-type field assignment for ipam instances is inferred, not captured.** Unlike the
+      fabrics section's transcript (explicit "Conditional options:" groupings), the ipams section's
+      `pvesh usage create` block lists `--fingerprint`/`--section`/`--token`/`--type`/`--url` flat,
+      with no per-type grouping at all — not even the controllers section's own field descriptions
+      to lean on (`--section`/`--token` both say "no description available"). `internal/change/
+      validate_schema.go`'s `sdnIpamTypeFields`/`sdnIpamRequiredFields` and
+      `internal/pvemock/sdn_ipam.go`'s mirrored maps assign url+token+section+fingerprint to
+      netbox/phpipam (url+token required, section+fingerprint optional) and nothing to pve, purely
+      from each field's own evident purpose ("connection config for an external system"). Confirm
+      with `pvesh create /cluster/sdn/ipams --ipam test1 --type pve --url http://example.com` (want:
+      rejected) and `pvesh create /cluster/sdn/ipams --ipam test2 --type netbox --url
+      http://example.com` (no `--token`; want: rejected if token truly is required, accepted if it
+      is not) against a real cluster, then correct both maps together if either disagrees.
+- [ ] **Whether a token-less create/update is even possible for netbox/phpipam.** See the item
+      above — `sdnIpamRequiredFields` currently hard-requires `token` for both external types. If
+      real PVE allows creating a netbox/phpipam ipam instance without one (e.g. relying on an
+      unauthenticated or IP-allowlisted external API), this model is stricter than PVE's own.
+- [ ] **`sdn.ipam.update`'s type immutability.** `internal/change.SdnIpamUpdateParams` omits `Type`
+      on the assumption that changing an ipam instance's type is a delete+create, mirroring
+      `SdnFabricUpdateParams`'/`SdnControllerUpdateParams`' own immutability — but the capture has
+      no `pvesh usage /cluster/sdn/ipams -v`'s `set`/PUT usage block at all (only `get`/`create`),
+      so this is unconfirmed either way.
+- [ ] **Whether `GET /cluster/sdn/ipams` on a cluster with zero configured instances actually lists
+      the built-in "pve" plugin, or comes back empty.** Pre-dates T-3104 (`internal/pvemock/
+      ipam.go`'s `defaultIpamID` doc comment already flagged this) but is now more consequential:
+      T-3104 wired ipam instances into the live-polled inventory graph
+      (`internal/collect.pollSDN` -> `inventory.FromPVESDNIpams`), so this mock's "always synthesize
+      a `pve` entry when none is configured" choice now means *every* fixture without an explicit
+      `sdn.ipams:` section shows a `sdn-ipam::pve` entity — a real, else-untestable claim about
+      production behavior. If real PVE actually returns an empty list on a cluster with nothing
+      explicitly configured, every such cluster's inventory graph gains one entity vnprox invented,
+      not one PVE reported. Confirm with `pvesh get /cluster/sdn/ipams` against pvecube (which has
+      never had an ipam plugin explicitly configured) and correct `effectiveIpams`'s fallback (and
+      `pollSDN`'s ingestion of it) if it disagrees.
+- [ ] **Whether PVE ever echoes a configured ipam plugin's token back on a read.** This task's
+      entire design for item 3's production wiring (`cmd/vnproxd/ipam_external.go`'s
+      `buildExternalIPAMClient`) rests on the assumption that it does not — inferred from the
+      capture giving no evidence either way (no populated ipams fixture existed to observe a
+      real `GET` against) and from how PVE treats other plugin secrets (the SDN DNS plugin's own
+      key) as write-only. If real PVE *does* return the token, `buildExternalIPAMClient`'s
+      "always nil" behavior is needlessly conservative and should read `ip.Token` directly instead.
+      Confirm with `pvesh set /cluster/sdn/ipams/<id> --token <secret>` followed immediately by
+      `pvesh get /cluster/sdn/ipams` against a real cluster (a synthetic/throwaway netbox entry is
+      enough — no real NetBox instance is needed for this specific check, only PVE's own read
+      behavior).
+- [ ] **NetBox/phpIPAM API request/response shapes (`internal/ipam/netbox.go`,
+      `internal/ipam/phpipam.go`).** Modeled entirely from each system's public REST API
+      documentation, never exercised against a live instance of either. Specific points flagged in
+      each file's own package doc comment: NetBox's `/32`-qualified address convention (a real
+      deployment may already hold the same addresses at a different prefix length, which this
+      client's own id-lookup-by-exact-address would miss on update/delete); phpIPAM's
+      authentication (this client sends the configured token as a static `token` header on every
+      request, bypassing phpIPAM's documented session-exchange flow — unconfirmed against a real
+      App API configuration); and phpIPAM's lack of a flat "list every address" endpoint (this
+      client fans out one request per subnet from `/subnets/`, aggregating — correct per the
+      documented shape, but unverified against real per-app subnet visibility scoping). phpIPAM
+      also needs its own "app id" (a phpIPAM-side identifier PVE's ipam config has no field for),
+      a second, independent blocker from the token problem above.
+- [ ] **What deleting a referenced ipam instance actually does to a zone on real PVE.**
+      `checkSdnIpamDeletable` (mirroring `checkSdnControllerDeletable`) blocks the *changeset*, but
+      whether real PVE's own server-side validation also rejects the raw API call
+      (`DELETE /cluster/sdn/ipams/{id}` while a zone's `ipam` field still names it) — or silently
+      leaves the zone with a dangling reference — is unconfirmed.
+
+File these under `T-3201` per this file's own convention (cross-node/hardware-only checks), except
+the NetBox/phpIPAM API-shape entry, which needs a real NetBox/phpIPAM instance rather than PVE
+hardware and so does not fit that convention cleanly — flagged here regardless rather than dropped
+for lack of a clean bucket.

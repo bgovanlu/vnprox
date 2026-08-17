@@ -176,6 +176,14 @@ var sdnStageOpTypes = map[OpType]bool{
 	OpSdnControllerCreate: true,
 	OpSdnControllerUpdate: true,
 	OpSdnControllerDelete: true,
+
+	// T-3104: an ipam plugin instance create/update/delete stages and
+	// applies through this exact same StepSDNStage/StepSDNApply pair too —
+	// the same discipline op.go's OpSdnFabricCreate/OpSdnControllerCreate
+	// doc comments state.
+	OpSdnIpamCreate: true,
+	OpSdnIpamUpdate: true,
+	OpSdnIpamDelete: true,
 }
 
 // wgOpTypes is T-1401's WireGuard op vocabulary: each becomes a StepWgApply

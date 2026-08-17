@@ -308,6 +308,95 @@ func schemaSDNControllerTypeFields(typ string, set map[string]bool, ref string, 
 	}
 }
 
+// sdnIpamIDRe is real PVE's SDN ipam id charset, captured verbatim
+// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt's `--ipam` pattern):
+//
+//	[a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]
+//
+// — a leading letter, then any mix of letters/digits, then a trailing
+// letter or digit; no underscores or hyphens at all (unlike
+// sdnControllerIDRe), so it gets its own regex.
+var sdnIpamIDRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]$`)
+
+// schemaSDNIpamID flags an ill-formed SDN ipam id.
+func schemaSDNIpamID(id, ref string, out *[]Finding) {
+	if id == "" {
+		return // emptiness is a referential/required-field concern, not charset
+	}
+	if !sdnIpamIDRe.MatchString(id) {
+		*out = append(*out, errorf(codeSDNIpamIDInvalid, ref,
+			"sdn ipam id %q is not valid — must start and end with a letter or digit and contain only letters and digits in between (Proxmox rejects other shapes)", id))
+	}
+}
+
+// validSdnIpamTypes mirrors real PVE's SDN ipam `--type` enum, captured from
+// the same PVE 9.2.4 node as validSdnZoneTypes/validSdnFabricProtocols/
+// validSdnControllerTypes (planning/reports/evidence/
+// pve-9.2.4-sdn-schema.txt):
+//
+//	--type     <netbox | phpipam | pve>
+//
+// Keep it in sync with that capture —
+// TestValidSdnIpamTypesMatchTheCapturedEnum (validate_schema_enum_test.go)
+// fails if it drifts, the same discipline every other captured-enum mirror
+// in this file uses. Unlike every prior card this phase, this enum needed
+// no correction at all — the task card confirms vnprox already modeled it
+// right (docs/features/ipam.md, T-3104's own scoping note).
+var validSdnIpamTypes = map[string]bool{
+	"netbox": true, "phpipam": true, "pve": true,
+}
+
+// sdnIpamTypeFields names which of SdnIpamCreateParams' type-conditional
+// fields are legal for each ipam type. Unlike sdnFabricProtocolFields'
+// grouping (read directly off the capture's "Conditional options:" blocks),
+// the ipams capture gives no per-type breakdown at all — see
+// params_sdn_ipam.go's doc comment for the full reasoning. This assignment
+// is this task's own documented inference: url/token/section/fingerprint
+// are all connection config for an *external* IPAM system, so they apply to
+// netbox/phpipam; the built-in "pve" plugin has nothing external to connect
+// to, so none of them apply to it.
+var sdnIpamTypeFields = map[string]map[string]bool{
+	"netbox":  {"url": true, "token": true, "section": true, "fingerprint": true},
+	"phpipam": {"url": true, "token": true, "section": true, "fingerprint": true},
+	"pve":     {},
+}
+
+// sdnIpamRequiredFields names which of sdnIpamTypeFields' allowed fields are
+// mandatory (not just permitted) for a given type. netbox/phpipam require
+// url+token — enough to authenticate and reach the external API; section
+// and fingerprint stay optional (a certificate fingerprint only matters for
+// an https endpoint with a self-signed cert, and phpIPAM's "section" concept
+// has no netbox equivalent the capture confirms is mandatory there either).
+// This is this task's own defensible choice, not a captured fact — see
+// params_sdn_ipam.go's doc comment.
+var sdnIpamRequiredFields = map[string]map[string]bool{
+	"netbox":  {"url": true, "token": true},
+	"phpipam": {"url": true, "token": true},
+	"pve":     {},
+}
+
+// schemaSDNIpamTypeFields flags an sdn.ipam.create whose type-conditional
+// fields don't match the allowed set for typ (e.g. url set on a "pve"
+// ipam), or whose required fields for typ are missing (e.g. no token on a
+// "netbox" ipam). typ must already be known valid (callers check
+// validSdnIpamTypes first, same discipline schemaSDNFabricProtocolFields'/
+// schemaSDNControllerTypeFields' callers use).
+func schemaSDNIpamTypeFields(typ string, set map[string]bool, ref string, out *[]Finding) {
+	allowed := sdnIpamTypeFields[typ]
+	for field, isSet := range set {
+		if isSet && !allowed[field] {
+			*out = append(*out, errorf(codeSDNIpamTypeInvalid, ref,
+				"sdn ipam field %q is not valid for type %q", field, typ))
+		}
+	}
+	for field := range sdnIpamRequiredFields[typ] {
+		if !set[field] {
+			*out = append(*out, errorf(codeSDNIpamTypeInvalid, ref,
+				"sdn ipam type %q requires field %q", typ, field))
+		}
+	}
+}
+
 // validFwDirections includes "group" alongside the real traffic
 // directions "in"/"out"/"forward": a rule row whose Direction is "group" is
 // not a traffic-direction rule at all but a security-group reference
@@ -729,6 +818,31 @@ func schemaValidateOp(op Op) []Finding {
 		}
 
 	case *SdnControllerDeleteParams:
+		// no params to validate.
+
+	case *SdnIpamCreateParams:
+		schemaSDNIpamID(op.Target.ID, ref, &out)
+		if !validSdnIpamTypes[p.Type] {
+			out = append(out, errorf(codeSDNIpamTypeInvalid, ref, "sdn ipam type %q is not recognized", p.Type))
+		} else {
+			schemaSDNIpamTypeFields(p.Type, map[string]bool{
+				"url":         p.URL != "",
+				"token":       p.Token != "",
+				"section":     p.Section != 0,
+				"fingerprint": p.Fingerprint != "",
+			}, ref, &out)
+		}
+
+	case *SdnIpamUpdateParams:
+		// Type is not part of this params type (immutable — see
+		// params_sdn_ipam.go's SdnIpamUpdateParams doc comment), so the
+		// per-type conditional/required check above cannot run here without
+		// knowing the ipam's existing type — the same deliberate gap
+		// SdnControllerUpdateParams'/SdnFabricUpdateParams' own case leaves.
+		// url/token/section/fingerprint are otherwise free-form (a string, an
+		// int) with no further shape to validate at this schema class.
+
+	case *SdnIpamDeleteParams:
 		// no params to validate.
 
 	case *SdnDnsZoneCreateParams:

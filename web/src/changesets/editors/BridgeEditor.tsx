@@ -5,8 +5,7 @@ import { useState } from "react";
 import { useSession } from "../../api/useSession";
 import { useToast } from "../../components/Toast";
 import type { EntityDetail, VidRange } from "../../api/types";
-import { NextFreePicker } from "../../ipam/NextFreePicker";
-import { useIpamSubnetsQuery } from "../../ipam/queries";
+import { AddressSuggest } from "../../ipam/AddressSuggest";
 import { capsForNode, missingCapTooltip } from "../capabilities";
 import type { CandidateNode } from "../entityCandidates";
 import { fieldBool, fieldNum, fieldStr, fieldStrArray } from "./fieldGetters";
@@ -14,46 +13,6 @@ import { buildBridgeCreateOp, buildBridgeUpdateOp, type BridgeFormValues } from 
 import { refId } from "../opSummary";
 import { EditorDialog, Field, inputClass } from "./EditorDialog";
 import { useEditorSubmit } from "./useEditorSubmit";
-
-/** T-405 acceptance criterion 4's proof-of-interface: the same
- * NextFreePicker component the IPAM page's reserve dialog uses, dropped
- * into this unrelated form. Lets the operator pick a known SDN subnet and
- * append its next free address to the bridge's Addresses field, instead of
- * having to cross-reference the IPAM page by hand. */
-function BridgeAddressSuggest({ onAppend }: { onAppend: (cidr: string) => void }) {
-  const { data: subnets } = useIpamSubnetsQuery();
-  const [subnetCidr, setSubnetCidr] = useState<string | undefined>(undefined);
-  const options = subnets?.items.filter((s) => s.source === "sdn") ?? [];
-  if (options.length === 0) {
-    return null;
-  }
-  const prefix = subnetCidr?.split("/")[1];
-  return (
-    <div className="mt-1 flex items-center gap-2">
-      <select
-        className={inputClass}
-        aria-label="Suggest address from subnet"
-        value={subnetCidr ?? ""}
-        onChange={(e) => {
-          setSubnetCidr(e.target.value || undefined);
-        }}
-      >
-        <option value="">Suggest from a subnet…</option>
-        {options.map((s) => (
-          <option key={s.cidr} value={s.cidr}>
-            {s.cidr}
-          </option>
-        ))}
-      </select>
-      <NextFreePicker
-        subnetCidr={subnetCidr}
-        onPick={(ip) => {
-          onAppend(prefix ? `${ip}/${prefix}` : ip);
-        }}
-      />
-    </div>
-  );
-}
 
 export interface BridgeEditorProps {
   open: boolean;
@@ -208,7 +167,7 @@ export function BridgeEditor({ open, onOpenChange, node, target, existing, newBr
 
       <Field label="Addresses" errors={findings.byField.addresses} help="Comma-separated CIDRs, e.g. 10.10.0.11/24. Leave blank for an unmanaged bridge.">
         <input className={inputClass} value={addressesText} onChange={(e) => { setAddressesText(e.target.value); }} />
-        <BridgeAddressSuggest
+        <AddressSuggest
           onAppend={(cidr) => {
             setAddressesText((prev) => (prev.trim() ? `${prev}, ${cidr}` : cidr));
           }}

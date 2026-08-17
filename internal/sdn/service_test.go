@@ -28,6 +28,7 @@ type fakeReader struct {
 	prefixLists    []pve.SDNPrefixList
 	routeMaps      []pve.SDNRouteMap
 	controllers    []pve.SDNController
+	ipams          []pve.IPAM
 }
 
 func (f *fakeReader) ListSDNZones(context.Context) ([]pve.SDNZone, error) { return f.zones, nil }
@@ -60,6 +61,7 @@ func (f *fakeReader) ListSDNRouteMaps(context.Context) ([]pve.SDNRouteMap, error
 func (f *fakeReader) ListSDNControllers(context.Context) ([]pve.SDNController, error) {
 	return f.controllers, nil
 }
+func (f *fakeReader) ListIPAMs(context.Context) ([]pve.IPAM, error) { return f.ipams, nil }
 
 var _ PVEReader = (*fakeReader)(nil)
 

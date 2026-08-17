@@ -374,6 +374,17 @@ type SDNConfig struct {
 	// between fabric and zone in both directions (fabric, then controller,
 	// then zone on create; the reverse on delete).
 	Controllers []SDNControllerConfig `json:"controllers,omitempty"`
+	// Ipams (T-3104) is the pre-apply/rollback snapshot's ipam plugin
+	// instance set, reconciled the same three-phase way Fabrics/Controllers
+	// are — an ipam instance has no dependency on a fabric/controller/zone
+	// the way a controller can depend on a fabric, so apply_sdn.go's
+	// sdnRestoreOps orders ipam reconciliation the same "no cross-family
+	// ordering needed" way Fabrics' own doc comment describes for itself,
+	// except an ipam instance CAN be referenced by a zone (SdnZone.IPAM,
+	// the same "referenced by a zone" relationship a controller has), so it
+	// is still reconciled before zones on create and after zones on delete
+	// — the same ordering Controllers gets, for the same reason.
+	Ipams []SDNIpamConfig `json:"ipams,omitempty"`
 }
 
 // SDNDnsZoneConfig mirrors SdnDnsZoneCreateParams' field set plus the zone's
@@ -398,15 +409,18 @@ type SDNDnsRecordConfig struct {
 // SDNZoneConfig mirrors SdnZoneCreateParams' field set (the params struct
 // already has everything a zone's identity needs).
 type SDNZoneConfig struct {
-	ID         string   `json:"id"`
-	Type       string   `json:"type"`
-	Bridge     string   `json:"bridge,omitempty"`
-	Controller string   `json:"controller,omitempty"`
-	Nodes      []string `json:"nodes,omitempty"`
-	ExitNodes  []string `json:"exitNodes,omitempty"`
-	Peers      []string `json:"peers,omitempty"`
-	VrfVxlan   int      `json:"vrfVxlan,omitempty"`
-	MTU        int      `json:"mtu,omitempty"`
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Bridge     string `json:"bridge,omitempty"`
+	Controller string `json:"controller,omitempty"`
+	// IPAM (T-3104) mirrors internal/pve.SDNZone.IPAM's doc comment — a
+	// real captured zone parameter this snapshot never carried until now.
+	IPAM      string   `json:"ipam,omitempty"`
+	Nodes     []string `json:"nodes,omitempty"`
+	ExitNodes []string `json:"exitNodes,omitempty"`
+	Peers     []string `json:"peers,omitempty"`
+	VrfVxlan  int      `json:"vrfVxlan,omitempty"`
+	MTU       int      `json:"mtu,omitempty"`
 }
 
 // SDNVnetConfig mirrors SdnVnetCreateParams' field set.
@@ -455,6 +469,21 @@ type SDNControllerConfig struct {
 	EbgpMultihop            int  `json:"ebgpMultihop,omitempty"`
 	Ebgp                    bool `json:"ebgp,omitempty"`
 	BgpMultipathAsPathRelax bool `json:"bgpMultipathAsPathRelax,omitempty"`
+}
+
+// SDNIpamConfig mirrors SdnIpamCreateParams' field set (T-3104) plus the
+// ipam instance's own id. Token is deliberately absent — see internal/pve/
+// sdn_ipam.go's package doc comment: PVE never returns it on a read, so
+// there is nothing here for a rollback restore to recreate it from either
+// (a rollback that re-creates a deleted netbox/phpipam ipam instance will
+// therefore recreate it without its token — flagged in this task's report,
+// not silently assumed fine).
+type SDNIpamConfig struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	URL         string `json:"url,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	Section     int    `json:"section,omitempty"`
 }
 
 // SDNSubnetConfig mirrors SdnSubnetCreateParams' field set.

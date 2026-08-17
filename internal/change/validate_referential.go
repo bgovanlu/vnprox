@@ -308,6 +308,23 @@ func referentialValidateOp(p *projection, op Op) []Finding {
 		}
 		checkSdnControllerDeletable(p, op.Target.ID, ref, &out)
 
+	case *SdnIpamCreateParams:
+		if p.exists(op.Target) {
+			out = append(out, errorf(codeAlreadyExists, ref, "an sdn ipam named %q already exists", op.Target.ID))
+		}
+
+	case *SdnIpamUpdateParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn ipam %s does not exist", op.Target))
+		}
+
+	case *SdnIpamDeleteParams:
+		if !p.exists(op.Target) {
+			out = append(out, errorf(codeTargetNotFound, ref, "sdn ipam %s does not exist", op.Target))
+			break
+		}
+		checkSdnIpamDeletable(p, op.Target.ID, ref, &out)
+
 	case *SdnApplyParams:
 		// no referential checks: cluster-wide, no single target.
 
@@ -816,4 +833,32 @@ func checkSdnControllerDeletable(p *projection, controllerID, ref string, out *[
 	*out = append(*out, errorf(codeSdnControllerInUse, ref,
 		"sdn controller %q is referenced by %d zone(s) (%s) and cannot be deleted while referenced",
 		controllerID, len(referencing), strings.Join(referencing, ", ")))
+}
+
+// checkSdnIpamDeletable is T-3104's acceptance criterion 2 analogue of
+// checkSdnControllerDeletable: deleting an SDN ipam plugin instance still
+// named by at least one zone's `ipam` field (inventory.SdnZone.IPAM) is
+// blocked, with the referencing zone count/list. Scanned the same way
+// (p.snap.All(), filtered to zones this changeset's own net effect still
+// has via p.zoneNames) — same intra-changeset retarget-edge caveat
+// checkSdnControllerDeletable's own doc comment documents.
+func checkSdnIpamDeletable(p *projection, ipamID, ref string, out *[]Finding) {
+	var referencing []string
+	for _, e := range p.snap.All() {
+		z, ok := e.(*inventory.SdnZone)
+		if !ok || z.IPAM != ipamID {
+			continue
+		}
+		if _, stillPresent := p.zoneNames[z.ID]; !stillPresent {
+			continue
+		}
+		referencing = append(referencing, z.ID)
+	}
+	if len(referencing) == 0 {
+		return
+	}
+	sort.Strings(referencing)
+	*out = append(*out, errorf(codeSdnIpamInUse, ref,
+		"sdn ipam %q is referenced by %d zone(s) (%s) and cannot be deleted while referenced",
+		ipamID, len(referencing), strings.Join(referencing, ", ")))
 }

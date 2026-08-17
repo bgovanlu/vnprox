@@ -12,7 +12,7 @@ let segmentsResult: { data: IPv6SegmentsView | undefined; isLoading: boolean; er
   error: null,
 };
 const sdnResult: { data: SdnTree | undefined } = {
-  data: { zones: [], fabrics: [], controllers: [], prefixLists: [], routeMaps: [], generatedAt: 0 },
+  data: { zones: [], fabrics: [], controllers: [], ipams: [], prefixLists: [], routeMaps: [], generatedAt: 0 },
 };
 
 vi.mock("./ipv6Queries", async () => {

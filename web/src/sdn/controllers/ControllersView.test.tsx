@@ -17,6 +17,7 @@ const tree: SdnTree = {
   generatedAt: 1_752_000_000,
   zones: [],
   fabrics: [],
+  ipams: [],
   controllers: [
     { id: "bgp1", type: "bgp", asn: 65000, peers: ["10.0.0.1", "10.0.0.2"] },
     { id: "faucet1", type: "faucet" },

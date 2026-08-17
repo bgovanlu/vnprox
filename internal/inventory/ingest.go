@@ -577,6 +577,7 @@ func FromPVESDN(
 			Type:       z.Type,
 			Bridge:     z.Bridge,
 			Controller: z.Controller,
+			IPAM:       z.IPAM,
 			Pending:    string(z.Pending),
 			VrfVxlan:   z.VrfVxlan,
 			MTU:        z.MTU,
@@ -654,6 +655,26 @@ func FromPVESDNControllers(controllers []pve.SDNController) []Entity {
 		}
 		setRaw(ctl, prettyJSON(c))
 		out = append(out, ctl)
+	}
+	return out
+}
+
+// FromPVESDNIpams maps the SDN ipams list to cluster-scoped SdnIpam
+// partials (T-3104), mirroring FromPVESDNControllers — no per-instance
+// status sub-read to fold in (an ipam plugin instance's own GET
+// /cluster/sdn/ipams/{ipam}/status route is the allocation-set read
+// internal/ipam already consumes directly, not a realization-health read
+// the way a zone's status route is).
+func FromPVESDNIpams(ipams []pve.IPAM) []Entity {
+	out := make([]Entity, 0, len(ipams))
+	for _, i := range ipams {
+		ip := &SdnIpam{
+			Ref: Ref{Kind: KindSDNIpam, ID: i.ID},
+			ID:  i.ID, Type: i.Type, Pending: string(i.Pending),
+			URL: i.URL, Fingerprint: i.Fingerprint, Section: i.Section,
+		}
+		setRaw(ip, prettyJSON(i))
+		out = append(out, ip)
 	}
 	return out
 }

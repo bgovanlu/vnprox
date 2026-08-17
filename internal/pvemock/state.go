@@ -39,21 +39,23 @@ type nodeState struct {
 // handleSDNApply, exactly mirroring what a real apply does to PVE's own
 // running config.
 type sdnState struct {
-	fabricsRunning     map[string]SDNFabricSpec
-	controllers        map[string]SDNControllerSpec
+	zones              map[string]SDNZoneSpec
+	vnetFW             map[string]*FirewallScope
 	subnets            map[string]SDNSubnetSpec
 	zonesRunning       map[string]SDNZoneSpec
 	vnetsRunning       map[string]SDNVnetSpec
 	subnetsRunning     map[string]SDNSubnetSpec
 	vnets              map[string]SDNVnetSpec
 	dnsZones           map[string]SDNDnsZoneSpec
-	zones              map[string]SDNZoneSpec
+	controllers        map[string]SDNControllerSpec
+	fabricsRunning     map[string]SDNFabricSpec
 	fabrics            map[string]SDNFabricSpec
-	vnetFW             map[string]*FirewallScope
 	controllersRunning map[string]SDNControllerSpec
-	fabricNodes        []SDNFabricNodeSpec
-	routeMaps          []SDNRouteMapSpec
+	ipamsRunning       map[string]SDNIpamSpec
+	ipams              map[string]SDNIpamSpec
 	prefixLists        []SDNPrefixListSpec
+	routeMaps          []SDNRouteMapSpec
+	fabricNodes        []SDNFabricNodeSpec
 	mu                 sync.RWMutex
 }
 
@@ -167,6 +169,18 @@ func NewState(f *Fixture) *State {
 	s.ipam.entries = make(map[string][]IPAMEntrySpec, len(f.SDN.Ipams))
 	for _, ip := range f.SDN.Ipams {
 		s.ipam.entries[ip.ID] = append([]IPAMEntrySpec(nil), ip.Entries...)
+	}
+
+	// T-3104: ipams/ipamsRunning, seeded exactly like
+	// controllers/controllersRunning above (runningIpam mirrors
+	// runningController/runningFabric).
+	s.sdn.ipams = make(map[string]SDNIpamSpec, len(f.SDN.Ipams))
+	s.sdn.ipamsRunning = make(map[string]SDNIpamSpec, len(f.SDN.Ipams))
+	for _, ip := range f.SDN.Ipams {
+		s.sdn.ipams[ip.ID] = ip
+		if r, ok := runningIpam(ip); ok {
+			s.sdn.ipamsRunning[ip.ID] = r
+		}
 	}
 
 	for name, ns := range f.Nodes {

@@ -655,11 +655,28 @@ type SDNDnsRecordSpec struct {
 // configured with external NetBox/phpIPAM plugins). Entries is the mock's
 // backing data for GET /cluster/sdn/ipams/{ipam}/status — the current
 // allocation set that endpoint reports.
+//
+// Running/Pending/Token/Fingerprint/Section (T-3104) mirror
+// SDNControllerSpec's own staged-vs-running/write-path fields exactly — an
+// ipam instance is a /cluster/sdn family too. Token's JSON tag stays a
+// normal round-trippable field (POST/PUT decode it into this struct like
+// every other field) — it is deliberately NOT tagged `json:"-"`, because
+// that would also block a caller's create/update request body from ever
+// setting it. Instead, every GET response path in this file redacts Token
+// to "" just before writeData (ipam.go's redactIpamsForResponse) — modeling
+// this task's own documented assumption about real PVE (internal/pve/
+// sdn_ipam.go's package doc comment): a create/update request carries a
+// token, but no read ever echoes one back.
 type SDNIpamSpec struct {
-	ID      string          `yaml:"id" json:"ipam"`
-	Type    string          `yaml:"type" json:"type"` // pve|netbox|phpipam
-	URL     string          `yaml:"url,omitempty" json:"url,omitempty"`
-	Entries []IPAMEntrySpec `yaml:"entries" json:"-"`
+	Running     *SDNIpamSpec    `yaml:"running,omitempty" json:"-"`
+	ID          string          `yaml:"id" json:"ipam"`
+	Type        string          `yaml:"type" json:"type"`
+	Pending     PendingState    `yaml:"pending,omitempty" json:"pending,omitempty"`
+	URL         string          `yaml:"url,omitempty" json:"url,omitempty"`
+	Token       string          `yaml:"token,omitempty" json:"token,omitempty"`
+	Fingerprint string          `yaml:"fingerprint,omitempty" json:"fingerprint,omitempty"`
+	Entries     []IPAMEntrySpec `yaml:"entries" json:"-"`
+	Section     int             `yaml:"section,omitempty" json:"section,omitempty"`
 }
 
 // IPAMEntrySpec is one IPAM allocation row, as reported by
@@ -698,12 +715,15 @@ type SDNZoneSpec struct {
 	Type       string       `yaml:"type" json:"type"`
 	Bridge     string       `yaml:"bridge,omitempty" json:"bridge,omitempty"`
 	Controller string       `yaml:"controller,omitempty" json:"controller,omitempty"`
-	Pending    PendingState `yaml:"pending,omitempty" json:"pending,omitempty"`
-	Nodes      []string     `yaml:"nodes,omitempty" json:"nodes,omitempty"`
-	ExitNodes  []string     `yaml:"exit_nodes,omitempty" json:"exit_nodes,omitempty"`
-	Peers      []string     `yaml:"peers,omitempty" json:"peers,omitempty"`
-	MTU        int          `yaml:"mtu,omitempty" json:"mtu,omitempty"`
-	VrfVxlan   int          `yaml:"vrf_vxlan,omitempty" json:"vrf_vxlan,omitempty"`
+	// IPAM (T-3104) mirrors internal/pve.SDNZone.IPAM's doc comment — a
+	// real captured zone parameter this mock never modeled until now.
+	IPAM      string       `yaml:"ipam,omitempty" json:"ipam,omitempty"`
+	Pending   PendingState `yaml:"pending,omitempty" json:"pending,omitempty"`
+	Nodes     []string     `yaml:"nodes,omitempty" json:"nodes,omitempty"`
+	ExitNodes []string     `yaml:"exit_nodes,omitempty" json:"exit_nodes,omitempty"`
+	Peers     []string     `yaml:"peers,omitempty" json:"peers,omitempty"`
+	MTU       int          `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	VrfVxlan  int          `yaml:"vrf_vxlan,omitempty" json:"vrf_vxlan,omitempty"`
 }
 
 // SDNVnetSpec is one VNet inside a zone.

@@ -94,6 +94,14 @@ type projection struct {
 	// same "as of now" discipline zoneNames/vnetNames use.
 	controllerNames map[string]inventory.Ref
 
+	// ipamNames indexes cluster-scoped SDN ipam plugin instances (T-3104) by
+	// id (Ref.ID), "as of now" — seeded from the snapshot (an ipam instance
+	// IS a live-polled inventory entity, unlike a fabric — see KindSDNIpam's
+	// doc comment, the same reasoning controllerNames' doc comment gives for
+	// Controller) and folded from sdn.ipam.create/delete ops, the same "as
+	// of now" discipline controllerNames uses.
+	ipamNames map[string]inventory.Ref
+
 	// allocsBySubnet tracks ipam.alloc.create CIDRs created earlier in
 	// this same changeset, keyed by the owning subnet Ref. IpAllocation
 	// has no dedicated inventory.Kind (docs/data-model.md's ER diagram
@@ -163,6 +171,7 @@ func newProjection(snap inventory.Snapshot) *projection {
 		dnsZones:        map[string]inventory.Ref{},
 		dnsRecords:      map[string]inventory.Ref{},
 		controllerNames: map[string]inventory.Ref{},
+		ipamNames:       map[string]inventory.Ref{},
 		allocsBySubnet:  map[inventory.Ref][]string{},
 		nodeNames:       map[string]bool{},
 		fwNames:         map[string]bool{},
@@ -212,6 +221,8 @@ func newProjection(snap inventory.Snapshot) *projection {
 			p.dnsRecords[ref.ID] = ref
 		case *inventory.SdnController:
 			p.controllerNames[v.ID] = ref
+		case *inventory.SdnIpam:
+			p.ipamNames[v.ID] = ref
 		}
 	}
 
@@ -354,6 +365,9 @@ func (p *projection) exists(ref inventory.Ref) bool {
 		return ok
 	case inventory.KindSDNController:
 		_, ok := p.controllerNames[ref.ID]
+		return ok
+	case inventory.KindSDNIpam:
+		_, ok := p.ipamNames[ref.ID]
 		return ok
 	default:
 		_, ok := p.snap.Get(ref)
@@ -553,6 +567,12 @@ func (p *projection) fold(op Op) {
 
 	case *SdnControllerDeleteParams:
 		delete(p.controllerNames, op.Target.ID)
+
+	case *SdnIpamCreateParams:
+		p.ipamNames[op.Target.ID] = op.Target
+
+	case *SdnIpamDeleteParams:
+		delete(p.ipamNames, op.Target.ID)
 
 	case *IpamAllocCreateParams:
 		p.allocsBySubnet[op.Target] = append(p.allocsBySubnet[op.Target], params.CIDR)

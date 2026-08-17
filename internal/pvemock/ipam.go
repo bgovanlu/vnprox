@@ -31,11 +31,24 @@ func (srv *Server) mountIPAM(api chi.Router) {
 	api.Delete("/cluster/sdn/vnets/{vnet}/ips", srv.requirePrivilege(PrivSDNAllocate, srv.handleIPAMDeleteIP))
 }
 
-func (srv *Server) handleIPAMList(w http.ResponseWriter, _ *http.Request) {
-	ipams := srv.effectiveIpams()
-	out := make([]SDNIpamSpec, 0, len(ipams))
-	out = append(out, ipams...)
-	writeData(w, http.StatusOK, out)
+// redactIpamsForResponse strips Token from every ipam before it is ever
+// written to an HTTP response — see SDNIpamSpec's doc comment on why the
+// field's JSON tag alone cannot do this (it must still round-trip on a
+// create/update request body).
+func redactIpamsForResponse(ipams []SDNIpamSpec) []SDNIpamSpec {
+	out := make([]SDNIpamSpec, len(ipams))
+	for i, ip := range ipams {
+		ip.Token = ""
+		out[i] = ip
+	}
+	return out
+}
+
+func (srv *Server) handleIPAMList(w http.ResponseWriter, r *http.Request) {
+	srv.state.sdn.mu.RLock()
+	ipams := srv.effectiveIpamsLocked(isRunningRequest(r))
+	srv.state.sdn.mu.RUnlock()
+	writeData(w, http.StatusOK, redactIpamsForResponse(ipams))
 }
 
 // defaultIpamID is real PVE's built-in IPAM plugin id: every PVE cluster
@@ -52,14 +65,35 @@ func (srv *Server) handleIPAMList(w http.ResponseWriter, _ *http.Request) {
 // this task's "pvemock stops being more permissive than real PVE" brief.
 const defaultIpamID = "pve"
 
-// effectiveIpams is srv.state.fixture.SDN.Ipams with defaultIpamID
-// synthesized in when the fixture declares none at all (see that
-// constant's doc comment) — every other read/write path in this file goes
-// through this instead of the raw fixture field so the synthesized default
-// is indistinguishable from a real one.
+// effectiveIpams is srv.state.sdn.ipams (T-3104: the mutable staged set —
+// create/update/delete land here now, not just at fixture load) with
+// defaultIpamID synthesized in when it is empty (see that constant's doc
+// comment) — every other read/write path in this file goes through this
+// instead of the raw map so the synthesized default is indistinguishable
+// from a real one. Callers must not already hold srv.state.sdn.mu.
 func (srv *Server) effectiveIpams() []SDNIpamSpec {
-	if len(srv.state.fixture.SDN.Ipams) > 0 {
-		return srv.state.fixture.SDN.Ipams
+	srv.state.sdn.mu.RLock()
+	defer srv.state.sdn.mu.RUnlock()
+	return srv.effectiveIpamsLocked(false)
+}
+
+// effectiveIpamsLocked is effectiveIpams' lock-already-held form (running
+// selects srv.state.sdn.ipamsRunning instead of srv.state.sdn.ipams, the
+// same "?running=1" convention every other sdn.go/sdn_fabric.go/
+// sdn_controller.go list handler uses) — callers (this file's own
+// handlers, sdn_ipam.go's write handlers) must already hold
+// srv.state.sdn.mu for either read or write.
+func (srv *Server) effectiveIpamsLocked(running bool) []SDNIpamSpec {
+	ipams := srv.state.sdn.ipams
+	if running {
+		ipams = srv.state.sdn.ipamsRunning
+	}
+	if len(ipams) > 0 {
+		out := make([]SDNIpamSpec, 0, len(ipams))
+		for _, id := range sortedKeys(ipams) {
+			out = append(out, ipams[id])
+		}
+		return out
 	}
 	return []SDNIpamSpec{{ID: defaultIpamID, Type: "pve"}}
 }
@@ -79,12 +113,17 @@ func (srv *Server) ipamSpec(id string) (SDNIpamSpec, bool) {
 
 func (srv *Server) handleIPAMGet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "ipam")
-	spec, ok := srv.ipamSpec(id)
-	if !ok {
-		writeError(w, http.StatusNotFound, fmt.Sprintf("ipam %q not found", id))
-		return
+	srv.state.sdn.mu.RLock()
+	ipams := srv.effectiveIpamsLocked(isRunningRequest(r))
+	srv.state.sdn.mu.RUnlock()
+	for _, ip := range ipams {
+		if ip.ID == id {
+			ip.Token = ""
+			writeData(w, http.StatusOK, ip)
+			return
+		}
 	}
-	writeData(w, http.StatusOK, spec)
+	writeError(w, http.StatusNotFound, fmt.Sprintf("ipam %q not found", id))
 }
 
 // ipamEntryWire is IPAMEntrySpec's on-the-wire form: PVE reports the
@@ -112,16 +151,33 @@ func (srv *Server) handleIPAMStatus(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusOK, out)
 }
 
-// ipamForVnet resolves which configured IPAM plugin instance owns vnet:
-// the plugin with an existing entry referencing it, or — for a vnet with
-// no allocations yet — the sole configured plugin (real single-"pve"-IPAM
+// ipamForVnet resolves which configured IPAM plugin instance owns vnet — see
+// ipamForVnetLocked's doc comment for the resolution rule. This wrapper
+// RLocks state.sdn.mu itself, for callers (handleIPAMCreateIP/
+// handleIPAMDeleteIP) that do not already hold it. registerSubnetGateway
+// calls ipamForVnetLocked directly instead — see that function's own doc
+// comment on why (it is always called with state.sdn.mu already held by its
+// caller, and effectiveIpamsLocked's addition in T-3104 means re-acquiring
+// the same RWMutex here would deadlock a caller already holding it for
+// writing).
+func (srv *Server) ipamForVnet(vnet string) (string, bool) {
+	srv.state.sdn.mu.RLock()
+	defer srv.state.sdn.mu.RUnlock()
+	return srv.ipamForVnetLocked(vnet)
+}
+
+// ipamForVnetLocked is ipamForVnet's lock-already-held form: the plugin
+// with an existing entry referencing vnet, or — for a vnet with no
+// allocations yet — the sole configured plugin (real single-"pve"-IPAM
 // deployments, the common case fixtures model) when there is exactly one.
 // A fixture wiring multiple IPAM plugins must therefore seed at least one
 // entry per vnet-to-plugin mapping it wants create/delete requests to
 // resolve unambiguously — reasonable for a mock, since real PVE resolves
 // this server-side from the zone's own config, which this mock's
-// SDNZoneSpec does not (yet) model.
-func (srv *Server) ipamForVnet(vnet string) (string, bool) {
+// SDNZoneSpec does not (yet) model. Callers must already hold
+// state.sdn.mu (for either read or write); this function only additionally
+// locks state.ipam.mu itself, a separate mutex.
+func (srv *Server) ipamForVnetLocked(vnet string) (string, bool) {
 	srv.state.ipam.mu.RLock()
 	defer srv.state.ipam.mu.RUnlock()
 	for id, entries := range srv.state.ipam.entries {
@@ -131,7 +187,7 @@ func (srv *Server) ipamForVnet(vnet string) (string, bool) {
 			}
 		}
 	}
-	ipams := srv.effectiveIpams()
+	ipams := srv.effectiveIpamsLocked(false)
 	if len(ipams) == 1 {
 		return ipams[0].ID, true
 	}
@@ -147,13 +203,14 @@ func (srv *Server) ipamForVnet(vnet string) (string, bool) {
 // live cluster (see needs-hardware-validation.md); this mock takes the
 // simpler, testable position that the record exists as soon as the subnet
 // does — matching how three-node-vlan.yaml/evpn-lab.yaml/ipam-lab.yaml
-// already hand-model their own gateway records. Callers must not hold
-// state.sdn.mu when calling this — it only ever locks state.ipam.mu, but a
-// caller resolving zone from state.sdn first (as both subnet handlers do)
-// should read that field while it already holds state.sdn.mu and pass the
-// plain string in, rather than have this function re-acquire it.
+// already hand-model their own gateway records. Callers (both subnet
+// handlers, sdn.go) already hold state.sdn.mu (for writing) for the whole
+// of their own critical section, including this call — so this function
+// calls ipamForVnetLocked rather than ipamForVnet (T-3104:
+// effectiveIpamsLocked's addition means the plain ipamForVnet wrapper would
+// re-acquire state.sdn.mu and deadlock a caller already holding it).
 func (srv *Server) registerSubnetGateway(zone, vnet, cidr, gateway string) {
-	ipamID, ok := srv.ipamForVnet(vnet)
+	ipamID, ok := srv.ipamForVnetLocked(vnet)
 	if !ok {
 		return
 	}

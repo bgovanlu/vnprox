@@ -10,6 +10,7 @@ const tree: SdnTree = {
   ],
   fabrics: [],
   controllers: [],
+  ipams: [],
   prefixLists: [],
   routeMaps: [],
 };

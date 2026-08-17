@@ -545,14 +545,24 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	if sdnPVEClient != nil {
 		ipamConcrete = ipam.NewService(ipam.Config{
 			PVE: sdnPVEClient, Inventory: graph, Leases: dhcpSvc, Neighbors: neighborSvc,
-			// T-1203: the app-owned external-subnet store. ExternalIPAM (the
-			// concrete NetBox/phpIPAM write client) is deliberately left nil —
-			// the sync engine + preview/apply/audit ceremony are complete and
-			// tested against internal/ipam's HTTP double, but a production
-			// client keyed to real NetBox/phpIPAM API shapes needs hardware
-			// validation (see planning/reports/needs-hardware-validation.md),
-			// so sync routes report "not configured" until that lands.
+			// T-1203: the app-owned external-subnet store.
 			External: store.NewExternalSubnetRepo(db),
+			// T-3104 item 3: ExternalIPAM (the concrete NetBox/phpIPAM write
+			// client) is built from a live, netbox/phpipam-type entry in
+			// PVE's own `GET /cluster/sdn/ipams` (T-3104 item 2's
+			// sdn.ipam.* op family) rather than a separate vnprox-side
+			// settings surface — see buildExternalIPAMClient's own doc
+			// comment (cmd/vnproxd/ipam_external.go) for why it still
+			// always returns nil today regardless: PVE never returns a
+			// configured instance's token on read, and there is no
+			// mechanism yet for vnprox to recover one after creation — the
+			// sync engine + preview/apply/audit ceremony are complete and
+			// tested against internal/ipam's HTTP double (and, as of this
+			// task, NetBoxClient/PhpIPAMClient are real, API-shape-tested
+			// implementations of the interface), but that specific gap is
+			// what still makes sync routes report "not configured" — see
+			// planning/reports/needs-hardware-validation.md.
+			ExternalIPAM: buildExternalIPAMClient(ctx, sdnPVEClient, logger),
 		})
 		ipamSvc = ipamConcrete
 		dhcpAPISvc = ipamConcrete

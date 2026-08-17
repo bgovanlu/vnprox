@@ -274,6 +274,18 @@ func TestValidSdnControllerTypesMatchTheCapturedEnum(t *testing.T) {
 	}
 }
 
+// TestValidSdnIpamTypesMatchTheCapturedEnum is validSdnZoneTypes' guard
+// test, restated for the ipam type enum. The ipams section's `pvesh get`
+// usage block lists the detailed `--type <netbox | phpipam | pve>` enum
+// before the `pvesh create` synopsis's own `--type <string>` placeholder
+// (the same ordering sdnControllerTypeEnumPattern's doc comment describes
+// for controllers), so captureEnumAfterMarker's "first match with an
+// alternation" rule lands on it directly.
+func TestValidSdnIpamTypesMatchTheCapturedEnum(t *testing.T) {
+	captured := captureEnumAfterMarker(t, "### usage /cluster/sdn/ipams", "type")
+	assertEnumMatchesCapture(t, "sdn ipam type", validSdnIpamTypes, captured)
+}
+
 // --- T-3103: fw direction / policy_forward / log_level_forward enums -------
 //
 // Same discipline as the SDN enums above, applied to T-3103's own capture

@@ -52,7 +52,7 @@ Companion documents: [`project-status.md`](project-status.md) (open items, perce
 | 11 | EVPN/BGP health (FRR) | ● | ● | ● | ● | ● | ● | ○ | M | |
 | 12 | DHCP / DNS (PowerDNS) management | ● | ● | ● | ● | ● | ● | ○ | M | |
 | 13 | Visual IPAM + conflicts | ● | ● | ● | ● | ● | ● | ◐ | M | |
-| 14 | External subnets + NetBox/phpIPAM sync | ◐ | ● | ● | ● | ● | ● | ○ | **B** | Production write client unwritten; reports "not configured" |
+| 14 | External subnets + NetBox/phpIPAM sync | ◐ | ● | ● | ● | ● | ● | ○ | **B** | T-3104: `internal/ipam/netbox.go`/`phpipam.go` are now real clients (modeled from each system's public API docs, no hardware to verify against — see needs-hardware-validation.md), and the T-3104 `sdn.ipam.*` op family gives production wiring a live PVE-stored url/fingerprint to build from — but PVE never returns a configured instance's *token* on read, so `cmd/vnproxd`'s `ExternalIPAM` wiring still resolves to nil and sync routes still report "not configured" until a token-supply mechanism exists |
 | 15 | IPv6 planning grid + dual-stack wizard | ● | ● | ● | ● | ● | ● | ○ | M | |
 | 16 | Firewall editor (3 scopes, objects) | ● | ● | ● | ● | ● | ● | ◐ | M | Resolve order is a documented simplification |
 | 17 | Path simulator (4 verdicts) + verify-live | ● | ● | ● | ● | ● | ● | ● | M | In-guest probe command per OS unvalidated |

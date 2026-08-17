@@ -293,6 +293,17 @@ func (c *Collector) pollSDN(ctx context.Context) error {
 		entities = append(entities, inventory.FromPVESDNControllers(controllers)...)
 	}
 
+	// T-3104: SDN ipam plugin instances, folded into the same SourcePVESDN
+	// poll — an ipam instance IS live-polled here too, the same reasoning
+	// (and the same "a cluster with none configured contributes nothing")
+	// as controllers above (see inventory.KindSDNIpam's doc comment).
+	ipams, err := c.pve.ListIPAMs(ctx)
+	if err != nil {
+		c.log.Warn("collect: listing SDN ipams failed, skipping", "error", err)
+	} else {
+		entities = append(entities, inventory.FromPVESDNIpams(ipams)...)
+	}
+
 	c.graph.ApplyPoll(inventory.SourcePVESDN, inventory.Scope{}, entities)
 	return nil
 }

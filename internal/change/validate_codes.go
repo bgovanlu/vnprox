@@ -75,6 +75,23 @@ const (
 	// pvemock's own sdnControllerTypeError (internal/pvemock/
 	// sdn_controller.go) so the two validators can never quietly disagree.
 	codeSDNControllerTypeInvalid = "schema.sdn_controller_type_invalid"
+	// codeSDNIpamIDInvalid flags an sdn.ipam.create whose id does not match
+	// real PVE's captured ipam id pattern (planning/reports/evidence/
+	// pve-9.2.4-sdn-schema.txt's `--ipam` pattern:
+	// `[a-zA-Z][a-zA-Z0-9]*[a-zA-Z0-9]`) — no underscores/hyphens allowed at
+	// all, unlike codeSDNControllerIDInvalid's pattern, so it gets its own
+	// code.
+	codeSDNIpamIDInvalid = "schema.sdn_ipam_id_invalid"
+	// codeSDNIpamTypeInvalid flags an sdn.ipam.create/update whose type is
+	// not one of netbox|phpipam|pve, or whose type-conditional fields don't
+	// match the combination this file's sdnIpamTypeFields allows for the
+	// chosen type — the ipam counterpart of codeSDNControllerTypeInvalid,
+	// symmetric with pvemock's own sdnIpamTypeError (internal/pvemock/
+	// sdn_ipam.go) so the two validators can never quietly disagree. Unlike
+	// Fabric/Controller's per-type field split, this one is params_sdn_ipam.go's
+	// own documented inference (the capture gives no per-type breakdown for
+	// this family) rather than a captured fact.
+	codeSDNIpamTypeInvalid = "schema.sdn_ipam_type_invalid"
 	// codeGatewayNotInSubnet is T-701 acceptance criterion 2: a
 	// sdn.subnet.create/update whose gateway is a syntactically valid IP
 	// (codeIPInvalid already covers "not an IP at all") but does not fall
@@ -216,6 +233,12 @@ const (
 	// counterpart of codeFwObjectInUse, same "Validate()-time blocking
 	// Finding, not a bare Go error" shape (checkSdnControllerDeletable).
 	codeSdnControllerInUse = "referential.sdn_controller_in_use"
+	// codeSdnIpamInUse is T-3104's acceptance criterion 2 analogue of T-3102
+	// acceptance criterion 5: deleting an SDN ipam plugin instance still
+	// named by at least one zone's `ipam` field is blocked, with the
+	// referencing zone count/list — the ipam counterpart of
+	// codeSdnControllerInUse (checkSdnIpamDeletable).
+	codeSdnIpamInUse = "referential.sdn_ipam_in_use"
 	// codePFNotFound (T-1506) flags a vf.provision op whose Target does not
 	// resolve to an existing physnic — the standard "target must exist"
 	// referential check every op family already gets, named for this one

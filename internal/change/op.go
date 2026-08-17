@@ -97,6 +97,31 @@ const (
 	OpSdnControllerUpdate OpType = "sdn.controller.update"
 	OpSdnControllerDelete OpType = "sdn.controller.delete"
 
+	// SDN IPAM plugin-instance op family (T-3104). This is the configured
+	// IPAM *plugin object* itself (its connection config: url/token/section/
+	// fingerprint, at /cluster/sdn/ipams) — NOT an address allocation, which
+	// stays OpIpamAllocCreate/OpIpamAllocDelete below unchanged. Like
+	// Fabric/Controller above, an ipam create/update/delete stages and
+	// applies through the exact same PUT /cluster/sdn commit every other
+	// sdn.* op uses (apply_plan.go's sdnStageOpTypes) — the same "no bespoke
+	// apply path" discipline, so this family does not widen planning/
+	// reports/T-3101-followup-01.md's filed `--lock-token` gap either. An
+	// ipam target is Ref{Kind: KindSDNIpam, ID: <ipamID>} (cluster-scoped,
+	// Node empty like every other sdn-* Kind). A zone's own `ipam` field
+	// (SdnZoneCreateParams.IPAM) is unchanged by this family — it stays a
+	// plain string reference by id, now resolving to a first-class sibling
+	// object instead of an opaque name (internal/sdn.Service's Tree.Ipams,
+	// KindSDNIpam's doc comment), the same "reference by id to a sibling
+	// object" shape OpSdnControllerCreate's doc comment establishes for
+	// Controller. Unlike Fabric (display-only, never zone-referenced), an
+	// ipam instance IS live-polled (KindSDNIpam's doc comment) for the same
+	// reason Controller is: a zone's `ipam` field needs a live in-use check
+	// on delete (this family's acceptance criterion, mirroring T-3102
+	// acceptance criterion 5 for controllers).
+	OpSdnIpamCreate OpType = "sdn.ipam.create"
+	OpSdnIpamUpdate OpType = "sdn.ipam.update"
+	OpSdnIpamDelete OpType = "sdn.ipam.delete"
+
 	OpSdnApply OpType = "sdn.apply"
 
 	OpGuestNicUpdate OpType = "guest.nic.update"
@@ -244,6 +269,10 @@ var paramFactories = map[OpType]func() Params{
 	OpSdnControllerCreate: func() Params { return &SdnControllerCreateParams{} },
 	OpSdnControllerUpdate: func() Params { return &SdnControllerUpdateParams{} },
 	OpSdnControllerDelete: func() Params { return &SdnControllerDeleteParams{} },
+
+	OpSdnIpamCreate: func() Params { return &SdnIpamCreateParams{} },
+	OpSdnIpamUpdate: func() Params { return &SdnIpamUpdateParams{} },
+	OpSdnIpamDelete: func() Params { return &SdnIpamDeleteParams{} },
 
 	OpSdnApply: func() Params { return &SdnApplyParams{} },
 

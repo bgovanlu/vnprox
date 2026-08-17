@@ -27,6 +27,7 @@ var allOpTypeConstants = []OpType{
 	OpSdnDnsRecordCreate, OpSdnDnsRecordUpdate, OpSdnDnsRecordDelete,
 	OpSdnFabricCreate, OpSdnFabricUpdate, OpSdnFabricDelete,
 	OpSdnControllerCreate, OpSdnControllerUpdate, OpSdnControllerDelete,
+	OpSdnIpamCreate, OpSdnIpamUpdate, OpSdnIpamDelete,
 	OpSdnApply,
 	OpGuestNicUpdate,
 	OpFwRuleCreate, OpFwRuleUpdate, OpFwRuleDelete, OpFwRuleMove, OpFwOptionsUpdate,
@@ -48,9 +49,10 @@ var allOpTypeConstants = []OpType{
 // fw(14), ipam(2), qos(3, T-1505), wg(5, T-1401), nat(5, T-1403),
 // route(3, T-1403), vf(1, T-1506) = 58, plus T-1204's sdn.dns.zone.*(3) +
 // sdn.dns.record.*(3) = 6, T-1205's switch.port.update(1) = 65,
-// T-3101's sdn.fabric.create/update/delete(3) = 68, and T-3102's
-// sdn.controller.create/update/delete(3) = 71.
-const wantOpVocabularySize = 71
+// T-3101's sdn.fabric.create/update/delete(3) = 68, T-3102's
+// sdn.controller.create/update/delete(3) = 71, and T-3104's
+// sdn.ipam.create/update/delete(3) = 74.
+const wantOpVocabularySize = 74
 
 func TestOpVocabulary_SizeMatchesDataModelDoc(t *testing.T) {
 	if len(allOpTypeConstants) != wantOpVocabularySize {
@@ -280,6 +282,21 @@ func opRoundTripCases() []opRoundTripCase {
 			name: "sdn.controller.delete", opType: OpSdnControllerDelete,
 			target: ref(inventory.KindSDNController, "", "bgp1"),
 			params: &SdnControllerDeleteParams{},
+		},
+		{
+			name: "sdn.ipam.create", opType: OpSdnIpamCreate,
+			target: ref(inventory.KindSDNIpam, "", "nb1"),
+			params: &SdnIpamCreateParams{Type: "netbox", URL: "https://netbox.example.com", Token: "secret"},
+		},
+		{
+			name: "sdn.ipam.update", opType: OpSdnIpamUpdate,
+			target: ref(inventory.KindSDNIpam, "", "nb1"),
+			params: &SdnIpamUpdateParams{URL: str("https://netbox2.example.com")},
+		},
+		{
+			name: "sdn.ipam.delete", opType: OpSdnIpamDelete,
+			target: ref(inventory.KindSDNIpam, "", "nb1"),
+			params: &SdnIpamDeleteParams{},
 		},
 		{
 			name: "sdn.apply", opType: OpSdnApply,

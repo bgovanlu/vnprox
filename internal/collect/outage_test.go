@@ -38,8 +38,9 @@ func TestOutageRecovery(t *testing.T) {
 	go func() { _ = c.RunLLDPLoop(ctx) }()
 
 	// T-3103: +2 for the two vnet-scope firewall rulesets (vnet100/vnet200)
-	// pollFirewall now polls alongside the cluster ruleset.
-	const wantTotal = 38
+	// pollFirewall now polls alongside the cluster ruleset. T-3104: +1 for
+	// the fixture's one configured ipam plugin instance ("pve").
+	const wantTotal = 39
 	waitFor(t, 3*time.Second, "graph to converge before the outage", func() bool {
 		return graph.Snapshot().Len() == wantTotal
 	})

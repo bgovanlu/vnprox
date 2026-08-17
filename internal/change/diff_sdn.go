@@ -114,7 +114,7 @@ func projectSDNZoneConfigs(ops []Op, snap inventory.Snapshot) (before, after []S
 			continue
 		}
 		m[z.ID] = SDNZoneConfig{
-			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller,
+			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller, IPAM: z.IPAM,
 			Nodes: z.Nodes, ExitNodes: z.ExitNodes, Peers: z.Peers, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
 		}
 	}
@@ -124,7 +124,7 @@ func projectSDNZoneConfigs(ops []Op, snap inventory.Snapshot) (before, after []S
 		switch p := op.Params.(type) {
 		case *SdnZoneCreateParams:
 			m[op.Target.ID] = SDNZoneConfig{
-				ID: op.Target.ID, Type: p.Type, Bridge: p.Bridge, Controller: p.Controller,
+				ID: op.Target.ID, Type: p.Type, Bridge: p.Bridge, Controller: p.Controller, IPAM: p.IPAM,
 				Nodes: p.Nodes, ExitNodes: p.ExitNodes, Peers: p.Peers, VrfVxlan: p.VrfVxlan, MTU: p.MTU,
 			}
 		case *SdnZoneUpdateParams:
@@ -134,6 +134,9 @@ func projectSDNZoneConfigs(ops []Op, snap inventory.Snapshot) (before, after []S
 			}
 			if p.Controller != nil {
 				z.Controller = *p.Controller
+			}
+			if p.IPAM != nil {
+				z.IPAM = *p.IPAM
 			}
 			if p.Nodes != nil {
 				z.Nodes = *p.Nodes

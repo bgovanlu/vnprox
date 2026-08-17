@@ -514,6 +514,9 @@ export type OpType =
   | "sdn.controller.create"
   | "sdn.controller.update"
   | "sdn.controller.delete"
+  | "sdn.ipam.create"
+  | "sdn.ipam.update"
+  | "sdn.ipam.delete"
   | "sdn.apply"
   | "guest.nic.update"
   | "fw.rule.create"
@@ -896,6 +899,34 @@ export interface SdnControllerUpdateParams {
 
 export type SdnControllerDeleteParams = Record<string, never>;
 
+// --- SDN IPAM plugin-instance op params (T-3104;
+// internal/change/params_sdn_ipam.go) --- Mirrors that file field-for-field.
+// This is the configured IPAM *plugin object* itself (its connection
+// config), not an allocation — see IpamAllocCreateParams below, unchanged.
+// `type` is conditional-schema, the same "one struct, schema-validated
+// combination" choice SdnFabricCreateParams/SdnControllerCreateParams
+// document — except (params_sdn_ipam.go's own doc comment) the capture
+// gives no per-type field breakdown for this family at all, so which
+// fields apply to which type is this task's own documented inference:
+// url/token/section/fingerprint apply to netbox/phpipam (url+token
+// required); none apply to pve.
+export interface SdnIpamCreateParams {
+  type: string; // "netbox" | "phpipam" | "pve"
+  url?: string; // required for netbox/phpipam
+  token?: string; // required for netbox/phpipam; write-only, never read back
+  fingerprint?: string;
+  section?: number;
+}
+
+export interface SdnIpamUpdateParams {
+  url?: string;
+  token?: string;
+  fingerprint?: string;
+  section?: number;
+}
+
+export type SdnIpamDeleteParams = Record<string, never>;
+
 export type SdnApplyParams = Record<string, never>;
 
 // --- Firewall op params (T-502; internal/change/params_fw.go) -------------
@@ -1082,6 +1113,9 @@ export type OpParams =
   | SdnControllerCreateParams
   | SdnControllerUpdateParams
   | SdnControllerDeleteParams
+  | SdnIpamCreateParams
+  | SdnIpamUpdateParams
+  | SdnIpamDeleteParams
   | SdnApplyParams
   | FwRuleCreateParams
   | FwRuleUpdateParams
@@ -1793,6 +1827,14 @@ export interface SdnZone {
   type: string;
   bridge?: string;
   controller?: string;
+  /** Reference by id to an SdnIpam entry in this same SdnTree's `ipams`
+   * array — mirrors `controller`'s own "reference by id to a sibling
+   * object" shape. Real, captured PVE zone parameter (planning/reports/
+   * evidence/pve-9.2.4-sdn-schema.txt's `--ipam`), only wired end to end
+   * by T-3104 — this field existed on SdnZoneCreateParams/
+   * SdnZoneUpdateParams before that but was never actually populated on a
+   * read (internal/pve.SDNZone.IPAM's doc comment). */
+  ipam?: string;
   nodes?: string[];
   exitNodes?: string[];
   peers?: string[];
@@ -1866,6 +1908,27 @@ export interface SdnController {
   bgpMultipathAsPathRelax?: boolean;
 }
 
+/** One configured SDN ipam plugin instance (T-3104), mirroring
+ * internal/sdn/service.go's Ipam exactly. A sibling top-level collection on
+ * SdnTree, not nested under SdnZone — an ipam instance is infrastructure a
+ * zone may ride on (SdnZone.ipam is a *reference* by id), not a zone's
+ * child. `type` is real PVE 9.2's captured enum (planning/reports/evidence/
+ * pve-9.2.4-sdn-schema.txt): "netbox" | "phpipam" | "pve" — vnprox already
+ * modeled this correctly (no capture-vs-model mismatch here, unlike every
+ * other SDN family this phase touched). `token` is deliberately absent:
+ * real PVE never echoes a configured secret back on a read (see
+ * internal/pve/sdn_ipam.go's package doc comment) — a create/update form
+ * takes it as write-only input (SdnIpamCreateParams.token above), but
+ * nothing in this response shape carries it back out. */
+export interface SdnIpam {
+  id: string;
+  type: string;
+  pending?: string;
+  url?: string;
+  fingerprint?: string;
+  section?: number;
+}
+
 /** A read-only BGP prefix-list object (T-3101) — no changeset op exists for
  * either this or SdnRouteMap; field shape beyond `id` is unconfirmed
  * against hardware (planning/reports/needs-hardware-validation.md's T-3101
@@ -1885,6 +1948,7 @@ export interface SdnTree {
   zones: SdnZone[];
   fabrics: SdnFabric[];
   controllers: SdnController[];
+  ipams: SdnIpam[];
   prefixLists: SdnPrefixList[];
   routeMaps: SdnRouteMap[];
   generatedAt: number;

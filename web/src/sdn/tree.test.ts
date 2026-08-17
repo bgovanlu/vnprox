@@ -21,6 +21,7 @@ const tree: SdnTree = {
   ],
   fabrics: [],
   controllers: [],
+  ipams: [],
   prefixLists: [],
   routeMaps: [],
 };
@@ -87,7 +88,7 @@ describe("firstSelection", () => {
   });
   it("returns undefined for an empty tree", () => {
     expect(
-      firstSelection({ zones: [], fabrics: [], controllers: [], prefixLists: [], routeMaps: [], generatedAt: 1 }),
+      firstSelection({ zones: [], fabrics: [], controllers: [], ipams: [], prefixLists: [], routeMaps: [], generatedAt: 1 }),
     ).toBeUndefined();
   });
 });

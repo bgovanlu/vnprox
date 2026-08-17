@@ -140,6 +140,9 @@ func buildUnprojectableReasons() map[OpType]string {
 	for _, t := range []OpType{OpSdnControllerCreate, OpSdnControllerUpdate, OpSdnControllerDelete} {
 		reasons[t] = "an SDN controller is PVE-managed underlay control-plane config, not a drawable entity in the topology graph; see the SDN cockpit's Controllers view instead"
 	}
+	for _, t := range []OpType{OpSdnIpamCreate, OpSdnIpamUpdate, OpSdnIpamDelete} {
+		reasons[t] = "an SDN ipam plugin instance is PVE-managed connection config, not a drawable entity in the topology graph; see the IPAM page instead"
+	}
 	return reasons
 }
 

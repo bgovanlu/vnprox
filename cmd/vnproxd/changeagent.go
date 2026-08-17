@@ -340,7 +340,7 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 	switch p := op.Params.(type) {
 	case *change.SdnZoneCreateParams:
 		return g.client.CreateSDNZone(ctx, pve.SDNZone{
-			ID: op.Target.ID, Type: p.Type, Bridge: p.Bridge, Controller: p.Controller,
+			ID: op.Target.ID, Type: p.Type, Bridge: p.Bridge, Controller: p.Controller, IPAM: p.IPAM,
 			Nodes: p.Nodes, ExitNodes: p.ExitNodes, Peers: p.Peers, VrfVxlan: p.VrfVxlan, MTU: p.MTU,
 		})
 	case *change.SdnZoneUpdateParams:
@@ -350,6 +350,9 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 		}
 		if p.Controller != nil {
 			z.Controller = *p.Controller
+		}
+		if p.IPAM != nil {
+			z.IPAM = *p.IPAM
 		}
 		if p.Nodes != nil {
 			z.Nodes = *p.Nodes
@@ -551,6 +554,32 @@ func (g *pveGateway) SDNStageOp(ctx context.Context, op change.Op, subnetVnet st
 	case *change.SdnControllerDeleteParams:
 		return g.client.DeleteSDNController(ctx, op.Target.ID)
 
+	// T-3104 SDN IPAM plugin-instance ops. Like fabrics/controllers above,
+	// these stage into the same PUT /cluster/sdn commit — no bespoke apply
+	// path (op.go's OpSdnIpamCreate doc comment).
+	case *change.SdnIpamCreateParams:
+		return g.client.CreateIPAM(ctx, pve.IPAM{
+			ID: op.Target.ID, Type: p.Type, URL: p.URL, Token: p.Token,
+			Fingerprint: p.Fingerprint, Section: p.Section,
+		})
+	case *change.SdnIpamUpdateParams:
+		ip := pve.IPAM{ID: op.Target.ID}
+		if p.URL != nil {
+			ip.URL = *p.URL
+		}
+		if p.Token != nil {
+			ip.Token = *p.Token
+		}
+		if p.Fingerprint != nil {
+			ip.Fingerprint = *p.Fingerprint
+		}
+		if p.Section != nil {
+			ip.Section = *p.Section
+		}
+		return g.client.UpdateIPAM(ctx, op.Target.ID, ip)
+	case *change.SdnIpamDeleteParams:
+		return g.client.DeleteIPAM(ctx, op.Target.ID)
+
 	default:
 		return fmt.Errorf("changeagent: SDNStageOp: unsupported op type %q", op.Type)
 	}
@@ -638,7 +667,7 @@ func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 	var cfg change.SDNConfig
 	for _, z := range zones {
 		cfg.Zones = append(cfg.Zones, change.SDNZoneConfig{
-			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller,
+			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller, IPAM: z.IPAM,
 			Nodes: z.Nodes, ExitNodes: z.ExitNodes, Peers: z.Peers, VrfVxlan: z.VrfVxlan, MTU: z.MTU,
 		})
 	}
@@ -715,6 +744,20 @@ func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 			PeerGroupName: c.PeerGroupName, RouteMapIn: c.RouteMapIn, RouteMapOut: c.RouteMapOut,
 			Nodes: c.Nodes, Peers: c.Peers, IsisIfaces: c.IsisIfaces,
 			ASN: c.ASN, EbgpMultihop: c.EbgpMultihop, Ebgp: c.Ebgp, BgpMultipathAsPathRelax: c.BgpMultipathAsPathRelax,
+		})
+	}
+
+	// T-3104: ipam plugin instances, for the same pre-apply/rollback
+	// snapshot. Token is never populated (ListIPAMs never returns it — see
+	// internal/pve/sdn_ipam.go's package doc comment), so SDNIpamConfig
+	// simply carries none.
+	ipams, err := g.client.ListIPAMs(ctx)
+	if err != nil {
+		return change.SDNConfig{}, fmt.Errorf("changeagent: listing sdn ipams: %w", err)
+	}
+	for _, i := range ipams {
+		cfg.Ipams = append(cfg.Ipams, change.SDNIpamConfig{
+			ID: i.ID, Type: i.Type, URL: i.URL, Fingerprint: i.Fingerprint, Section: i.Section,
 		})
 	}
 

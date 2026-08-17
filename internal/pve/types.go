@@ -175,16 +175,30 @@ type GuestConfigUpdate struct {
 // SDNZone is one zone in the cluster-wide SDN tree
 // (GET /cluster/sdn/zones[/{zone}]).
 type SDNZone struct {
-	ID         string       `json:"zone"`
-	Type       string       `json:"type"`
-	Bridge     string       `json:"bridge,omitempty"`
-	Controller string       `json:"controller,omitempty"`
-	Pending    PendingState `json:"pending,omitempty"`
-	Nodes      []string     `json:"nodes,omitempty"`
-	ExitNodes  []string     `json:"exit_nodes,omitempty"`
-	Peers      []string     `json:"peers,omitempty"`
-	MTU        int          `json:"mtu,omitempty"`
-	VrfVxlan   int          `json:"vrf_vxlan,omitempty"`
+	ID         string `json:"zone"`
+	Type       string `json:"type"`
+	Bridge     string `json:"bridge,omitempty"`
+	Controller string `json:"controller,omitempty"`
+	// IPAM (T-3104) is a real, captured zone parameter
+	// (planning/reports/evidence/pve-9.2.4-sdn-schema.txt's zone create
+	// usage block: `--ipam <string> use a specific ipam`) — the field
+	// change.SdnZoneCreateParams/inventory.SdnZone already carried before
+	// this task, but which nothing in this package, internal/pvemock, or
+	// cmd/vnproxd's changeagent.go ever actually read or wrote: a zone's
+	// chosen ipam plugin instance was captured in a changeset's params and
+	// promptly dropped on the floor before reaching PVE, and never
+	// populated from a live poll either. T-3104 wires it end to end
+	// (ingest.go's FromPVESDN, changeagent.go's SDNStageOp/SDNConfig,
+	// internal/sdn.Zone) because its own delete-in-use check
+	// (checkSdnIpamDeletable) is meaningless against a zone.IPAM that a
+	// live poll never populates.
+	IPAM      string       `json:"ipam,omitempty"`
+	Pending   PendingState `json:"pending,omitempty"`
+	Nodes     []string     `json:"nodes,omitempty"`
+	ExitNodes []string     `json:"exit_nodes,omitempty"`
+	Peers     []string     `json:"peers,omitempty"`
+	MTU       int          `json:"mtu,omitempty"`
+	VrfVxlan  int          `json:"vrf_vxlan,omitempty"`
 }
 
 // SDNZoneStatus is one node's realization status for a zone
