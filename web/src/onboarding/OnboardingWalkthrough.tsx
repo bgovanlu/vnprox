@@ -15,6 +15,8 @@
 // return.
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { Trans, useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useSession } from "../api/useSession";
 import { Button } from "../components/Button";
 import { Tooltip } from "../components/Tooltip";
@@ -25,6 +27,7 @@ import { useDriftQuery } from "../drift/queries";
 import { useTopologyQuery } from "../topology/queries";
 import type { OnboardingProgress, OnboardingStep, Severity } from "../api/types";
 import { ALL_LAYERS } from "../api/types";
+import "../i18n/i18n";
 import { summarizeFound } from "./foundSummary";
 import {
   ONBOARDING_STEPS,
@@ -46,20 +49,25 @@ import {
   useSaveProtectedInterfacesMutation,
 } from "./queries";
 
-const LAYER_LABEL: Record<(typeof ALL_LAYERS)[number], string> = {
-  phys: "Physical",
-  l2: "L2 (bonds/bridges/VLANs)",
-  sdn: "SDN",
-  guest: "Guests",
+// Translated labels are computed by function rather than a static Record,
+// since the value now comes from the active i18next locale rather than a
+// literal — `t()` is typed against web/src/i18n/i18next.d.ts's resource
+// augmentation, so a renamed/removed JSON key is a compile error here.
+function layerLabel(t: TFunction, layer: (typeof ALL_LAYERS)[number]): string {
+  return t(`layer.${layer}`);
+}
+
+const STEP_TITLE_KEY: Record<OnboardingStep, "foundSummary" | "protected" | "lldp" | "health" | "done"> = {
+  "found-summary": "foundSummary",
+  protected: "protected",
+  lldp: "lldp",
+  health: "health",
+  done: "done",
 };
 
-const STEP_TITLE: Record<OnboardingStep, string> = {
-  "found-summary": "What we found",
-  protected: "Protected interfaces",
-  lldp: "Physical discovery",
-  health: "Health findings",
-  done: "Done",
-};
+function stepTitle(t: TFunction, step: OnboardingStep): string {
+  return t(`stepTitle.${STEP_TITLE_KEY[step]}`);
+}
 
 function stepNumber(step: OnboardingStep): number {
   const idx = ONBOARDING_STEPS.indexOf(step);
@@ -75,38 +83,41 @@ interface StepProps {
  * vnprox only read" (docs/user-guide.md §1.1). No write affordance, so no
  * capability gating needed. */
 function FoundSummaryStep({ onComplete }: StepProps) {
+  const { t } = useTranslation("onboarding");
   const { data: topology, isLoading } = useTopologyQuery();
   const summary = summarizeFound(topology);
 
   return (
     <div className="flex flex-col gap-3 text-sm">
       <p className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-        <span>Your cluster&apos;s network, drawn. Nothing was changed; vnprox only read.</span>
+        <span>{t("foundSummary.intro")}</span>
         <HelpAnchor topic="onboarding-walkthrough" />
       </p>
       {isLoading ? (
-        <p className="text-slate-400">Scanning the cluster…</p>
+        <p className="text-slate-400">{t("foundSummary.scanning")}</p>
       ) : (
         <>
           <p>
-            <span className="font-semibold">{summary.clusterNodes.length}</span> node(s):{" "}
-            {summary.clusterNodes.join(", ") || "none detected"}
+            {t("foundSummary.nodeCount", {
+              count: summary.clusterNodes.length,
+              list: summary.clusterNodes.join(", ") || t("foundSummary.noneDetected"),
+            })}
           </p>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
             {ALL_LAYERS.map((layer) => (
               <div className="contents" key={layer}>
-                <dt className="text-slate-500 dark:text-slate-400">{LAYER_LABEL[layer]}</dt>
+                <dt className="text-slate-500 dark:text-slate-400">{layerLabel(t, layer)}</dt>
                 <dd className="text-right font-medium">{summary.byLayer[layer]}</dd>
               </div>
             ))}
           </dl>
           <p className="text-xs text-slate-400">
-            {summary.totalEntities} entities, {summary.totalEdges} connections total.
+            {t("foundSummary.totals", { entities: summary.totalEntities, edges: summary.totalEdges })}
           </p>
         </>
       )}
       <Button size="sm" variant="primary" onClick={onComplete}>
-        Continue
+        {t("foundSummary.continue")}
       </Button>
     </div>
   );
@@ -121,6 +132,7 @@ function FoundSummaryStep({ onComplete }: StepProps) {
  * for that helper, disabled-with-tooltip rather than hidden (a read-only
  * user can still see and skip this step). */
 function ProtectedStep({ onComplete, onSkip }: StepProps) {
+  const { t } = useTranslation("onboarding");
   const { data: session } = useSession();
   const { data: suggestion, isLoading: suggestLoading } = useProtectedInterfacesSuggestQuery();
   const { data: existing } = useProtectedInterfacesQuery();
@@ -152,23 +164,20 @@ function ProtectedStep({ onComplete, onSkip }: StepProps) {
   async function handleConfirm(): Promise<void> {
     try {
       await saveMutation.mutateAsync({ nodes: draftToRequestNodes(draft) });
-      toast({ title: "Protected interfaces saved", variant: "success" });
+      toast({ title: t("protected.savedTitle"), variant: "success" });
       onComplete();
     } catch {
-      toast({ title: "Could not save protected interfaces", variant: "error" });
+      toast({ title: t("protected.saveErrorTitle"), variant: "error" });
     }
   }
 
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <p className="text-slate-600 dark:text-slate-300">
-        vnprox detected which interfaces carry each node&apos;s management IP and corosync traffic. Confirm these;
-        vnprox will refuse changes that would cut them off.
-      </p>
+      <p className="text-slate-600 dark:text-slate-300">{t("protected.description")}</p>
       {suggestLoading && nodes.length === 0 ? (
-        <p className="text-slate-400">Detecting…</p>
+        <p className="text-slate-400">{t("protected.detecting")}</p>
       ) : nodes.length === 0 ? (
-        <p className="text-slate-400">No management/corosync interfaces were detected to confirm.</p>
+        <p className="text-slate-400">{t("protected.noneFound")}</p>
       ) : (
         <ul className="max-h-48 space-y-2 overflow-y-auto">
           {nodes.map((node) => (
@@ -195,17 +204,17 @@ function ProtectedStep({ onComplete, onSkip }: StepProps) {
           ))}
         </ul>
       )}
-      <p className="text-xs text-slate-400">{selectedCount(draft)} interface(s) selected.</p>
+      <p className="text-xs text-slate-400">{t("protected.selectedCount", { count: selectedCount(draft) })}</p>
       <div className="flex gap-2">
         <Tooltip content={disabledReason}>
           <span>
             <Button size="sm" variant="primary" disabled={!canWrite || saveMutation.isPending} onClick={() => void handleConfirm()}>
-              Confirm protected interfaces
+              {t("protected.confirm")}
             </Button>
           </span>
         </Tooltip>
         <Button size="sm" variant="ghost" onClick={onSkip}>
-          Skip
+          {t("protected.skip")}
         </Button>
       </div>
     </div>
@@ -216,6 +225,7 @@ function ProtectedStep({ onComplete, onSkip }: StepProps) {
  * (docs/user-guide.md §1.3). POST /lldp/install is a cluster-wide fan-out
  * call, gated the same way as ProtectedStep's confirm. */
 function LldpStep({ onComplete, onSkip }: StepProps) {
+  const { t } = useTranslation("onboarding");
   const { data: session } = useSession();
   const { data: lldp, isLoading } = useLldpQuery();
   const installMutation = useLldpInstallMutation();
@@ -231,51 +241,47 @@ function LldpStep({ onComplete, onSkip }: StepProps) {
       const failed = res.results.filter((r) => !r.ok);
       if (failed.length > 0) {
         toast({
-          title: "LLDP install finished with errors",
-          description: failed.map((f) => `${f.node}: ${f.error ?? "unknown error"}`).join("; "),
+          title: t("lldp.installErrorTitle"),
+          description: failed.map((f) => `${f.node}: ${f.error ?? t("lldp.unknownError")}`).join("; "),
           variant: "error",
         });
       } else {
-        toast({ title: "lldpd enabled cluster-wide", variant: "success" });
+        toast({ title: t("lldp.installedTitle"), variant: "success" });
       }
       onComplete();
     } catch {
-      toast({ title: "Could not install lldpd", variant: "error" });
+      toast({ title: t("lldp.installFailedTitle"), variant: "error" });
     }
   }
 
   return (
     <div className="flex flex-col gap-3 text-sm">
       <p className="text-slate-600 dark:text-slate-300">
-        If <code>lldpd</code> isn&apos;t running, vnprox offers to enable it so the map can show real switch names and
-        ports.
+        <Trans i18nKey="lldp.description" t={t} components={{ code: <code /> }} />
       </p>
       {isLoading ? (
-        <p className="text-slate-400">Checking for LLDP neighbors…</p>
+        <p className="text-slate-400">{t("lldp.checking")}</p>
       ) : alreadyRunning ? (
-        <p>
-          <span className="font-semibold">{lldp?.items.length}</span> LLDP neighbor(s) already reporting — nothing to
-          enable.
-        </p>
+        <p>{t("lldp.alreadyRunning", { count: lldp?.items.length ?? 0 })}</p>
       ) : (
-        <p className="text-slate-400">No LLDP neighbors seen yet. lldpd may not be running on this cluster.</p>
+        <p className="text-slate-400">{t("lldp.none")}</p>
       )}
       <div className="flex gap-2">
         {alreadyRunning ? (
           <Button size="sm" variant="primary" onClick={onComplete}>
-            Continue
+            {t("lldp.continue")}
           </Button>
         ) : (
           <Tooltip content={disabledReason}>
             <span>
               <Button size="sm" variant="primary" disabled={!canWrite || installMutation.isPending} onClick={() => void handleInstall()}>
-                Enable LLDP discovery
+                {t("lldp.enable")}
               </Button>
             </span>
           </Tooltip>
         )}
         <Button size="sm" variant="ghost" onClick={onSkip}>
-          Skip
+          {t("lldp.skip")}
         </Button>
       </div>
     </div>
@@ -290,31 +296,33 @@ const SEVERITY_ORDER: Severity[] = ["error", "warning", "info"];
  * reshaping internal/drift's finding shape concurrently — see this
  * component's file-level doc comment). */
 function HealthStep({ onComplete }: StepProps) {
+  const { t } = useTranslation("onboarding");
   const { data: findings, isLoading } = useDriftQuery();
   const counts: Record<Severity, number> = { error: 0, warning: 0, info: 0 };
   for (const f of findings ?? []) {
     counts[f.severity] += 1;
   }
   const total = findings?.length ?? 0;
+  // Real i18next pluralization (en: error/errors, warning/warnings,
+  // info/infos via the `_one`/`_other` resource keys — see
+  // web/src/i18n/locales/en/onboarding.json's `health.severity`), unlike
+  // `foundSummary.nodeCount`/`protected.selectedCount` above, which keep
+  // the original UI's literal "(s)" convention instead of a true plural.
+  const breakdown = SEVERITY_ORDER.map((sev) => t(`health.severity.${sev}`, { count: counts[sev] })).join(", ");
 
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <p className="text-slate-600 dark:text-slate-300">
-        Anything inconsistent vnprox noticed (MTU mismatches, half-applied configs, drift between nodes).
-      </p>
+      <p className="text-slate-600 dark:text-slate-300">{t("health.description")}</p>
       {isLoading ? (
-        <p className="text-slate-400">Checking for drift…</p>
+        <p className="text-slate-400">{t("health.checking")}</p>
       ) : (
-        <p>
-          <span className="font-semibold">{total}</span> finding(s) (
-          {SEVERITY_ORDER.map((sev) => `${String(counts[sev])} ${sev}${counts[sev] === 1 ? "" : "s"}`).join(", ")})
-        </p>
+        <p>{t("health.summary", { total, breakdown })}</p>
       )}
       <Link to="/tools" className="text-xs text-accent-700 underline dark:text-accent-400">
-        Open Tools → Drift findings
+        {t("health.openTools")}
       </Link>
       <Button size="sm" variant="primary" onClick={onComplete}>
-        Finish
+        {t("health.finish")}
       </Button>
     </div>
   );
@@ -333,6 +341,7 @@ function persistAndApply(
  * any one page (a user can keep it open while clicking around Topology,
  * Guests, etc., per the task card's "must never block navigation"). */
 export function OnboardingWalkthrough() {
+  const { t } = useTranslation("onboarding");
   const { data: progress } = useOnboardingProgressQuery();
   const saveMutation = useSaveOnboardingProgressMutation();
   const { toast } = useToast();
@@ -342,7 +351,11 @@ export function OnboardingWalkthrough() {
   function save(next: OnboardingProgress): void {
     saveMutation.mutate(next, {
       onError: () => {
-        toast({ title: "Could not save onboarding progress", description: "Your place may not be remembered on reload.", variant: "error" });
+        toast({
+          title: t("walkthrough.saveErrorTitle"),
+          description: t("walkthrough.saveErrorDescription"),
+          variant: "error",
+        });
       },
     });
   }
@@ -368,7 +381,7 @@ export function OnboardingWalkthrough() {
           onClick={handleResume}
           className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
         >
-          Resume setup walkthrough ({stepNumber(progress.currentStep)}/{ONBOARDING_STEPS.length})
+          {t("walkthrough.resumePill", { current: stepNumber(progress.currentStep), total: ONBOARDING_STEPS.length })}
         </button>
       </div>
     );
@@ -381,7 +394,7 @@ export function OnboardingWalkthrough() {
   return (
     <div
       role="region"
-      aria-label="Onboarding walkthrough"
+      aria-label={t("walkthrough.regionLabel")}
       // Normal document flow (a banner between TopBar and <main>, pushing
       // content down), not a fixed floating overlay — see AppShell.tsx's
       // doc comment on why: every fixed corner tried collided with some
@@ -395,11 +408,11 @@ export function OnboardingWalkthrough() {
           <span className="text-xs font-normal text-slate-400">
             {stepNumber(progress.currentStep)}/{ONBOARDING_STEPS.length}
           </span>
-          <span>{STEP_TITLE[progress.currentStep]}</span>
+          <span>{stepTitle(t, progress.currentStep)}</span>
         </span>
         <button
           type="button"
-          aria-label="Minimize onboarding walkthrough"
+          aria-label={t("walkthrough.minimizeLabel")}
           onClick={handleDismiss}
           className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
         >

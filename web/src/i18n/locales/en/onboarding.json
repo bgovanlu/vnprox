@@ -1,0 +1,68 @@
+{
+  "layer": {
+    "phys": "Physical",
+    "l2": "L2 (bonds/bridges/VLANs)",
+    "sdn": "SDN",
+    "guest": "Guests"
+  },
+  "stepTitle": {
+    "foundSummary": "What we found",
+    "protected": "Protected interfaces",
+    "lldp": "Physical discovery",
+    "health": "Health findings",
+    "done": "Done"
+  },
+  "foundSummary": {
+    "intro": "Your cluster's network, drawn. Nothing was changed; vnprox only read.",
+    "scanning": "Scanning the cluster…",
+    "nodeCount": "{{count}} node(s): {{list}}",
+    "noneDetected": "none detected",
+    "totals": "{{entities}} entities, {{edges}} connections total.",
+    "continue": "Continue"
+  },
+  "protected": {
+    "savedTitle": "Protected interfaces saved",
+    "saveErrorTitle": "Could not save protected interfaces",
+    "description": "vnprox detected which interfaces carry each node's management IP and corosync traffic. Confirm these; vnprox will refuse changes that would cut them off.",
+    "detecting": "Detecting…",
+    "noneFound": "No management/corosync interfaces were detected to confirm.",
+    "selectedCount": "{{count}} interface(s) selected.",
+    "confirm": "Confirm protected interfaces",
+    "skip": "Skip"
+  },
+  "lldp": {
+    "description": "If <code>lldpd</code> isn't running, vnprox offers to enable it so the map can show real switch names and ports.",
+    "checking": "Checking for LLDP neighbors…",
+    "alreadyRunning": "{{count}} LLDP neighbor(s) already reporting — nothing to enable.",
+    "none": "No LLDP neighbors seen yet. lldpd may not be running on this cluster.",
+    "continue": "Continue",
+    "enable": "Enable LLDP discovery",
+    "skip": "Skip",
+    "installErrorTitle": "LLDP install finished with errors",
+    "unknownError": "unknown error",
+    "installedTitle": "lldpd enabled cluster-wide",
+    "installFailedTitle": "Could not install lldpd"
+  },
+  "health": {
+    "description": "Anything inconsistent vnprox noticed (MTU mismatches, half-applied configs, drift between nodes).",
+    "checking": "Checking for drift…",
+    "summary": "{{total}} finding(s) ({{breakdown}})",
+    "openTools": "Open Tools → Drift findings",
+    "finish": "Finish",
+    "severity": {
+      "error_one": "{{count}} error",
+      "error_other": "{{count}} errors",
+      "warning_one": "{{count}} warning",
+      "warning_other": "{{count}} warnings",
+      "info_one": "{{count}} info",
+      "info_other": "{{count}} infos"
+    }
+  },
+  "walkthrough": {
+    "saveErrorTitle": "Could not save onboarding progress",
+    "saveErrorDescription": "Your place may not be remembered on reload.",
+    "resumePill": "Resume setup walkthrough ({{current}}/{{total}})",
+    "regionLabel": "Onboarding walkthrough",
+    "minimizeLabel": "Minimize onboarding walkthrough"
+  }
+}

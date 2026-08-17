@@ -1,0 +1,68 @@
+{
+  "layer": {
+    "phys": "Physique",
+    "l2": "L2 (bonds/ponts/VLAN)",
+    "sdn": "SDN",
+    "guest": "Invités"
+  },
+  "stepTitle": {
+    "foundSummary": "Ce que nous avons trouvé",
+    "protected": "Interfaces protégées",
+    "lldp": "Découverte physique",
+    "health": "Résultats de santé",
+    "done": "Terminé"
+  },
+  "foundSummary": {
+    "intro": "Le réseau de votre cluster, dessiné. Rien n'a été modifié ; vnprox n'a fait que lire.",
+    "scanning": "Analyse du cluster…",
+    "nodeCount": "{{count}} nœud(s) : {{list}}",
+    "noneDetected": "aucun détecté",
+    "totals": "{{entities}} entités, {{edges}} connexions au total.",
+    "continue": "Continuer"
+  },
+  "protected": {
+    "savedTitle": "Interfaces protégées enregistrées",
+    "saveErrorTitle": "Impossible d'enregistrer les interfaces protégées",
+    "description": "vnprox a détecté quelles interfaces transportent l'IP de gestion et le trafic corosync de chaque nœud. Confirmez-les ; vnprox refusera les modifications qui les couperaient.",
+    "detecting": "Détection…",
+    "noneFound": "Aucune interface de gestion/corosync détectée à confirmer.",
+    "selectedCount": "{{count}} interface(s) sélectionnée(s).",
+    "confirm": "Confirmer les interfaces protégées",
+    "skip": "Ignorer"
+  },
+  "lldp": {
+    "description": "Si <code>lldpd</code> n'est pas en cours d'exécution, vnprox propose de l'activer afin que la carte puisse afficher les vrais noms et ports des commutateurs.",
+    "checking": "Vérification des voisins LLDP…",
+    "alreadyRunning": "{{count}} voisin(s) LLDP déjà signalé(s) — rien à activer.",
+    "none": "Aucun voisin LLDP vu pour l'instant. lldpd n'est peut-être pas en cours d'exécution sur ce cluster.",
+    "continue": "Continuer",
+    "enable": "Activer la découverte LLDP",
+    "skip": "Ignorer",
+    "installErrorTitle": "L'installation de LLDP s'est terminée avec des erreurs",
+    "unknownError": "erreur inconnue",
+    "installedTitle": "lldpd activé sur tout le cluster",
+    "installFailedTitle": "Impossible d'installer lldpd"
+  },
+  "health": {
+    "description": "Toute incohérence remarquée par vnprox (incompatibilités de MTU, configurations partiellement appliquées, dérive entre nœuds).",
+    "checking": "Vérification de la dérive…",
+    "summary": "{{total}} résultat(s) ({{breakdown}})",
+    "openTools": "Ouvrir Outils → Résultats de dérive",
+    "finish": "Terminer",
+    "severity": {
+      "error_one": "{{count}} erreur",
+      "error_other": "{{count}} erreurs",
+      "warning_one": "{{count}} avertissement",
+      "warning_other": "{{count}} avertissements",
+      "info_one": "{{count}} info",
+      "info_other": "{{count}} infos"
+    }
+  },
+  "walkthrough": {
+    "saveErrorTitle": "Impossible d'enregistrer la progression",
+    "saveErrorDescription": "Votre position pourrait ne pas être conservée après rechargement.",
+    "resumePill": "Reprendre la visite guidée ({{current}}/{{total}})",
+    "regionLabel": "Visite guidée d'intégration",
+    "minimizeLabel": "Réduire la visite guidée"
+  }
+}

@@ -113,7 +113,20 @@ describe("production bundle: Monaco code-split (T-208 AC4)", () => {
         // sub-views are code-split from each other), the accompanying
         // `SdnFabric*`/`Fabric`/`PrefixList`/`RouteMap` types and op builders,
         // and one new help topic account for it.
-        expect(mainSize).toBeLessThan(4_100_000);
+        //
+        // T-3106 raised it again, from 4_100_000 to 4_200_000. Unlike the two
+        // prior raises, `git diff web/package.json web/package-lock.json` is
+        // NOT empty this time: T-3106 adds the i18n scaffolding's framework
+        // dependency, `i18next` + `react-i18next` (no runtime CDN fetch —
+        // translation JSON is bundled via Vite's static import, the same as
+        // every other content this file's history already accounts for; see
+        // web/src/i18n/i18n.ts). Both packages are eagerly imported from
+        // main.tsx (the app wraps its whole tree in <I18nextProvider>), so
+        // this is exactly the "real dependency landing in the main chunk"
+        // case this ceiling exists to catch — checked and confirmed
+        // intentional rather than stray. Measured: 4_111_142, i.e. 0.27%
+        // over the old ceiling.
+        expect(mainSize).toBeLessThan(4_200_000);
 
         // The load-bearing check: Monaco's own distinctive runtime marker
         // must appear in the Monaco chunk and must NOT appear in the main

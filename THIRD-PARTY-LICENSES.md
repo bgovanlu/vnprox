@@ -108,6 +108,7 @@ therefore excluded.
 
 | Package | Version | Licence |
 |---|---|---|
+| `@babel/runtime` | 7.29.7 | MIT |
 | `@floating-ui/core` | 1.7.5 | MIT |
 | `@floating-ui/dom` | 1.7.6 | MIT |
 | `@floating-ui/react-dom` | 2.1.8 | MIT |
@@ -196,6 +197,8 @@ therefore excluded.
 | `es-toolkit` | 1.49.0 | MIT |
 | `eventemitter3` | 5.0.4 | MIT |
 | `get-nonce` | 1.0.1 | MIT |
+| `html-parse-stringify` | 4.0.1 | MIT |
+| `i18next` | 26.3.6 | MIT |
 | `immer` | 11.1.11 | MIT |
 | `internmap` | 2.0.3 | ISC |
 | `js-tokens` | 4.0.0 | MIT |
@@ -204,6 +207,7 @@ therefore excluded.
 | `monaco-editor` | 0.55.1 | MIT |
 | `react` | 18.3.1 | MIT |
 | `react-dom` | 18.3.1 | MIT |
+| `react-i18next` | 17.0.11 | MIT |
 | `react-is` | 19.2.7 | MIT |
 | `react-redux` | 9.3.0 | MIT |
 | `react-remove-scroll` | 2.7.2 | MIT |

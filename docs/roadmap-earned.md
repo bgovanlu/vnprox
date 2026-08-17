@@ -237,6 +237,29 @@ lands in Phase 32); and reverse-proxy ingress write support, read-only since Arc
 Rescheduled here rather than silently dropped; if it is instead descoped permanently, that
 decision gets written down in T-2906's truth pass and this card is closed as retired.
 
+**Landed 2026-08-17, as scaffolding rather than a localized product — that distinction is the
+whole point of writing this down rather than leaving the card "in progress" forever.** The
+framework is `react-i18next` v17 + `i18next` v26, wired at the app root (`web/src/main.tsx`'s
+`<I18nextProvider>`) with statically-bundled JSON resources (Vite's `resolveJsonModule`, never a
+runtime/CDN fetch — the service worker and CSP constraint both hold). One bounded subset is
+actually localized: `web/src/onboarding/OnboardingWalkthrough.tsx`, chosen for being small,
+self-contained (no copy dependency on any other feature area), and representative (a real
+`<Trans>`-mediated interpolation for its inline `<code>lldpd</code>` sentence, real i18next
+plural forms for its severity counts). `web/src/onboarding/i18nCoverage.test.ts` is the
+anti-regression gate — a source-scanning Vitest test in the same style as
+`web/src/help/coverage.test.ts` and `web/src/ipam/nextFreeCoverage.test.ts`, scoped to that one
+subset's files, that fails the build on a new hardcoded JSX text node or label-ish string prop.
+English is the only *shipped* locale: `fr` exists only to prove the pipeline round-trips
+end-to-end (`web/src/onboarding/i18nLocale.test.tsx` asserts rendered text actually changes on
+`i18n.changeLanguage("fr")`), is machine-quality and unreviewed, and is reachable from nowhere a
+real user's browser can put it — no language auto-detection, no switcher UI. **What this does not
+claim:** the other ~76 rows of `docs/status-matrix.md` §2 remain entirely unlocalized: every other
+screen, panel, toast, and dialog in this 273-test-file frontend still hardcodes English. Extending
+coverage to a new area means adding that area's own `i18n` namespace
+(`web/src/i18n/i18n.ts`'s doc comment names the pattern) and its own coverage-gate glob, not
+growing the onboarding namespace past its own screen — "localize the UI" stays an arc, not a card,
+and this card does not pretend otherwise.
+
 ### Phase 32 — Proven on iron → v4.4
 
 | # | Card | Item | Pri |
@@ -321,7 +344,7 @@ absorbs it:
 | T-2005 push unverified on real device; PWA install unverified | `CHANGELOG.md:141` | T-2901 |
 | Embed views unusable under global frame-ancestors | `docs/security.md:34` | T-2901 |
 | Audit rows lack the source IP the docs claim | `docs/security.md:451` | T-2902 |
-| T-2006 localization (zero code) | `planning/tasks/phase-20.md:195` | T-3106 |
+| ~~T-2006 localization (zero code)~~ — **fixed 2026-08-17**: `react-i18next`/`i18next` wired, `web/src/onboarding/` localized with a source-scanning anti-regression gate, `fr` stubbed to prove the pipeline round-trips; ~76 other feature areas remain unlocalized by design (see the T-3106 write-up above) | `planning/tasks/phase-20.md:195` | T-3106 |
 | T-2102 signed apt repo (machinery built, no host) | `roadmap-proven.md:249` | T-3301 |
 | T-2104 hosted registry PARTIAL: no instance, no `wg.*` blueprint kind | `CHANGELOG.md:100` | T-3303 |
 | T-2105 remainder: private repo, no docs site, no security contact, draft announcement | `CHANGELOG.md:115` | T-3302 |
