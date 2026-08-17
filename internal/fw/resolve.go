@@ -84,20 +84,24 @@ type ResolvedView struct {
 
 // Resolve computes guest's full effective evaluation order over snap.
 //
-// Design decision (flagged per CLAUDE.md, since it's a simplification of
-// real pve-firewall's host/guest chain separation): docs/features/
-// firewall.md §1 documents the guest resolved view's order as "cluster
-// rules → security groups → guest rules → default policies" — this
-// implementation follows that literally, applying the cluster ruleset's
-// own rules directly to every guest's resolved view. Real pve-firewall's
-// actual iptables realization only applies cluster.fw's top-level [RULES]
-// to each node's *host* chain; cluster rules only reach a guest's chain
-// when referenced via a security group. vnprox's product spec chooses the
-// simpler, more visible model above (this is the documented, reviewed
-// behavior this task is scored against — not a guess), but a future
-// engineer cross-checking this against real hardware should know the two
-// models diverge here; see this task's completion report for the same
-// note ("needs hardware validation").
+// Design decision (T-607, confirmed against real hardware by T-3103 —
+// planning/reports/evidence/pve-9.2.4-firewall-resolution-order.txt):
+// docs/features/firewall.md §1 documents the guest resolved view's order
+// as "cluster rules → security groups → guest rules → default policies" —
+// this implementation follows that literally, applying the cluster
+// ruleset's own rules directly to every guest's resolved view. Real
+// pve-firewall's actual iptables realization only applies cluster.fw's
+// top-level [RULES] to each node's *host* chain (PVEFW-HOST-IN/-OUT);
+// cluster rules only reach a guest's own chain (tapNNNiN-IN/-OUT) when
+// referenced via a security group, or through the FORWARD chain's generic
+// conntrack defaults — never directly. This was confirmed, not assumed:
+// the evidence file above captures a real `pve-firewall compile` showing a
+// bare cluster rule landing in PVEFW-HOST-IN and absent from a guest's own
+// tap chain. vnprox's product spec deliberately keeps the simpler, more
+// visible model above anyway (this is the documented, reviewed behavior
+// this task is scored against, not a guess) — the divergence from real
+// pve-firewall's chain separation is now a known, confirmed trade-off, not
+// an open question.
 func Resolve(snap Snapshot, guest inventory.Ref) (ResolvedView, error) {
 	if guest.Kind != inventory.KindGuest {
 		return ResolvedView{}, fmt.Errorf("fw: resolve guest ref %s: not a guest ref", guest)

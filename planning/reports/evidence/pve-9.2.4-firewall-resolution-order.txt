@@ -1,0 +1,107 @@
+pve-9.2.4-firewall-resolution-order.txt
+=========================================
+
+Target: pvecube (PVE 9.2.4, single node, no cluster). Captured 2026-08-17.
+
+Question this settles (T-3103 item 3 / T-607's original flag,
+internal/fw/resolve.go's doc comment, docs/features/firewall.md §1's
+caveat): does a bare cluster-scope firewall rule (created via
+POST /cluster/firewall/rules, no security-group involved) reach a guest's
+own compiled iptables chain directly, or only via an explicit
+security-group reference?
+
+Method (mutating — unlike this repo's read-only `pvesh usage` captures,
+this one had to write real config to observe compiled output; done with
+explicit user sign-off, on a disposable never-installed test VM, with the
+cluster firewall's master `enable` switch OFF before and after, and every
+object created is deleted at the end of this transcript). Reproducible
+against any PVE 9.x node with `pve-firewall compile`.
+
+Setup
+-----
+- vm101 ("debian", a disposable, never-installed Debian VM — boots from
+  CD-ROM only, no OS present, net0 already carries `firewall=1`). No other
+  guest on the node was touched.
+- Created a security group `vnprox-hwtest` with one enabled rule:
+    IN ACCEPT proto=tcp dport=19997 source=203.0.113.98/32   (TEST-NET-3, RFC 5737)
+- Created a bare cluster-scope rule (no group), enabled:
+    IN ACCEPT proto=tcp dport=19999 source=203.0.113.99/32
+- On vm101's own firewall (enabled): one direct guest-scope rule, enabled:
+    IN ACCEPT proto=tcp dport=19998 source=203.0.113.97/32
+  ...plus one explicit reference to the group:
+    type=group action=vnprox-hwtest iface=net0
+- Cluster firewall master switch flipped ON (`PUT /cluster/firewall/options
+  --enable 1`) only for the duration of the `pve-firewall compile` call
+  below, then flipped back OFF immediately after. (`pve-firewall compile`
+  and `pve-firewall simulate` are read-only/dry-run tools that print what
+  *would* be installed — they were used to observe the compiled result
+  without actually running iptables against live traffic for longer than
+  this one call. `pve-firewall status` before, during, and after: the
+  cluster's own firewall stayed OFF for real enforcement, since no other
+  guest's or the node's own per-scope `enable` flag was ever turned on —
+  only vm101, which was stopped throughout.)
+
+Result — `pve-firewall compile`'s iptables cmdlist (relevant excerpt)
+-----------------------------------------------------------------------
+The node's own host chain (PVEFW-HOST-IN, which PVEFW-INPUT jumps to —
+this is iptables' real INPUT chain, i.e. traffic destined to the node
+itself) contains the bare cluster rule directly:
+
+    create PVEFW-HOST-IN
+        -A PVEFW-HOST-IN -i lo -j ACCEPT
+        -A PVEFW-HOST-IN -m conntrack --ctstate INVALID -j DROP
+        -A PVEFW-HOST-IN -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+        -A PVEFW-HOST-IN -m conntrack --ctstate INVALID,NEW -j PVEFW-smurfs
+        -A PVEFW-HOST-IN -p igmp -j RETURN
+        -A PVEFW-HOST-IN -s 203.0.113.99 -p tcp --dport 19999 -j RETURN   <-- the bare cluster rule
+        -A PVEFW-HOST-IN -m set --match-set PVEFW-0-management-v4 src -p tcp --dport 8006 -j RETURN
+        ...
+        -A PVEFW-HOST-IN -j PVEFW-Drop
+        -A PVEFW-HOST-IN -j DROP
+
+vm101's own per-interface chain (tap101i0-IN — this is what actually
+filters traffic destined to the guest, spliced into the bridged FORWARD
+path via PVEFW-FORWARD -> PVEFW-FWBR-IN -> tap101i0-IN) does NOT contain
+the bare cluster rule at all. It contains only the explicit group
+reference and the guest's own direct rule:
+
+    create tap101i0-IN
+        -A tap101i0-IN -j CONNMARK --set-mark 101
+        -A tap101i0-IN -p udp --sport 67 --dport 68 -j ACCEPT
+        -A tap101i0-IN -j GROUP-vnprox-hwtest-IN        <-- explicit security-group reference
+        -A tap101i0-IN -m mark --mark 0x80000000/0x80000000 -j ACCEPT
+        -A tap101i0-IN -s 203.0.113.97 -p tcp --dport 19998 -j ACCEPT   <-- the guest's own direct rule
+        -A tap101i0-IN -j PVEFW-Drop
+        -A tap101i0-IN -j DROP
+
+    create GROUP-vnprox-hwtest-IN
+        -A GROUP-vnprox-hwtest-IN -j MARK --set-mark 0x00000000/0x80000000
+        -A GROUP-vnprox-hwtest-IN -s 203.0.113.98 -p tcp --dport 19997 -g PVEFW-SET-ACCEPT-MARK
+
+Conclusion
+----------
+CONFIRMED: docs/features/firewall.md §1's caveat and internal/fw/resolve.go's
+doc comment were both correct. Real pve-firewall applies a cluster-scope
+rule (`/cluster/firewall/rules`, no group) to the *node's own host chain*
+(PVEFW-HOST-IN / PVEFW-HOST-OUT — traffic to/from the node itself), not to
+any guest's chain. A guest only inherits cluster-level policy through:
+  (a) an explicit security-group reference in the guest's own ruleset, or
+  (b) the generic FORWARD-chain defaults (conntrack INVALID/RELATED,
+      ESTABLISHED handling, applied uniformly, not rule-specific).
+There is no mechanism by which a bare cluster rule "cascades" into a
+guest's evaluation the way vnprox's resolved view currently models it
+(cluster rules -> security groups -> guest rules, applied literally to
+every guest). vnprox's simpler model remains a deliberate, documented
+product choice (see resolve.go's doc comment) — this capture answers only
+whether the two diverge from real hardware, and confirms they do, in
+exactly the direction and shape already suspected.
+
+Cleanup performed immediately after capture (verified): cluster firewall
+`enable` set back to 0, vm101's firewall `enable` set back to 0, both
+guest-scope and cluster-scope test rules deleted, the `vnprox-hwtest`
+group and its rule deleted, and the two resulting near-empty
+/etc/pve/firewall/{101,cluster}.fw files removed entirely (they held only
+the default `enable: 0` stanza). `pve-firewall compile` re-run afterward
+prints "firewall disabled" again, matching the node's state before this
+capture. No other guest (102 opnsense, 103 librenms, 104 powerdns) or the
+node's own firewall was ever enabled during this test.
