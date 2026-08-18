@@ -99,6 +99,28 @@ test("a panel-level ? anchor opens help for that panel, and seeAlso navigates an
   await expect(panel.getByText("Four verdicts, including an honest one")).toBeVisible();
 });
 
+// T-3403 AC2: "/" is the top bar search field's global entry point (its
+// own kbd hint reads "/") — it must work from any screen, not just
+// Topology, by opening the spotlight and navigating there, exactly what
+// clicking the rounded search field itself does (TopBar.tsx's openSearch).
+// This re-proves that under the restyled markup and asserts the dialog by
+// its accessible name ("Search", from SpotlightSearch's DialogTitle)
+// rather than by test id, per docs/development.md's "assert on headings"
+// rule for specs that must not lie about what they cover.
+test("'/' opens search from a non-topology page and lands on Topology with the spotlight open", async ({
+  page,
+}) => {
+  await logIn(page);
+  await page.goto("/ipam");
+  await expect(page.getByRole("heading", { name: "IPAM", level: 1 })).toBeVisible();
+
+  await page.keyboard.press("/");
+
+  await page.waitForURL("**/topology");
+  await expect(page.getByRole("heading", { name: "Topology", level: 1 })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Search" })).toBeVisible();
+});
+
 test("help search finds a topic by body text and opens it", async ({ page }) => {
   await logIn(page);
 

@@ -11,6 +11,16 @@
 // this app's own per-page toolbars and controls in T-2801's testing, and
 // pushing content down instead of floating over it avoids the same class
 // of bug here.
+//
+// T-3403: restyled to match DemoBanner's "banner family" shape — same
+// pill-badge-plus-message layout, same padding/text scale — but kept on its
+// own amber-warning surface (light amber wash / dark amber-950, unchanged
+// colours) rather than DemoBanner's dark-navy one, so the two stay visually
+// distinct when both are showing at once (a demo instance can absolutely
+// go offline). The badge is new; the colour pairing it and the message
+// text sit on is the same one this component shipped with, so no new
+// contrast claim is being made here beyond the existing amber-on-amber
+// pairing.
 import { formatAge, useLastSuccessAt, useOnlineStatus } from "../lib/freshness";
 
 export function OfflineShellBanner() {
@@ -22,12 +32,16 @@ export function OfflineShellBanner() {
   return (
     <div
       role="status"
-      className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
     >
-      <strong className="font-semibold">Offline.</strong>{" "}
-      {lastSuccessAt === null
-        ? "No data has loaded yet — nothing on screen can be trusted as current."
-        : `Showing data from ${formatAge(lastSuccessAt)}. Topology, findings, and every other live view may be out of date — do not treat them as current.`}
+      <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold tracking-wide text-amber-950 uppercase">
+        Offline
+      </span>
+      <span>
+        {lastSuccessAt === null
+          ? "No data has loaded yet — nothing on screen can be trusted as current."
+          : `Showing data from ${formatAge(lastSuccessAt)}. Topology, findings, and every other live view may be out of date — do not treat them as current.`}
+      </span>
     </div>
   );
 }

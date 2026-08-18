@@ -16,6 +16,7 @@
 // Port 24007 is written as a literal, per shards.ts's header: computed
 // ports hide from internal/devports' registry scan, which is the failure
 // the registry exists to prevent.
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -220,5 +221,44 @@ test.describe("T-2801 AC6: the banner is there before login too", () => {
     await page.goto("/login");
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
     await expectBanner(page, "/login");
+  });
+});
+
+// --- T-3403 AC3: the restyled dark test-mode bar, both app themes --------
+//
+// DemoBanner.tsx's restyle is deliberately theme-INDEPENDENT (no `dark:`
+// pairing — see that file's own comment): the bar is the same dark-navy
+// surface whether the app chrome around it is in light or dark mode. That
+// makes "both themes" a claim about the SAME element rendering correctly
+// regardless of the `<html class="dark">` toggle, rather than two different
+// colour pairings to verify separately — but it still has to actually be
+// checked, not assumed, per this codebase's own axe-or-it-didn't-happen
+// rule (docs/development.md's "Visual language" section).
+async function expectNoSeriousViolations(page: Page, label: string): Promise<void> {
+  const results = await new AxeBuilder({ page }).analyze();
+  const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+  expect(blocking, `${label}: ${JSON.stringify(blocking, null, 2)}`).toEqual([]);
+}
+
+test.describe("T-3403 AC3: the test-mode bar in both themes", () => {
+  test.use({ storageState: DEMO_STORAGE_STATE });
+
+  test("axe: demo bar, app in light theme (the default)", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/topology");
+    await expect(page.getByRole("main")).toBeVisible();
+    await expectBanner(page, "/topology (light)");
+    await expect(page.locator("html")).not.toHaveClass(/dark/);
+    await expectNoSeriousViolations(page, "demo bar, light theme");
+  });
+
+  test("axe: demo bar, app switched to dark theme", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/topology");
+    await expect(page.getByRole("main")).toBeVisible();
+    await page.getByRole("button", { name: "Switch to dark theme" }).click();
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await expectBanner(page, "/topology (dark)");
+    await expectNoSeriousViolations(page, "demo bar, dark theme");
   });
 });

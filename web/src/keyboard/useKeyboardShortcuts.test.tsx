@@ -1,10 +1,16 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../components/Toast";
+import { useTopologyStore } from "../topology/store";
 import { useTopologyShortcutTargetStore } from "./topologyShortcutTarget";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
+
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="location">{loc.pathname}</div>;
+}
 
 function Harness({
   onOpenHelp = vi.fn(),
@@ -32,6 +38,7 @@ function renderHarness() {
 describe("useKeyboardShortcuts — topology bindings", () => {
   afterEach(() => {
     useTopologyShortcutTargetStore.getState().setTarget(null);
+    useTopologyStore.setState({ spotlightOpen: false });
   });
 
   it("shows a fallback toast for a topology shortcut when no target is registered", async () => {
@@ -41,6 +48,29 @@ describe("useKeyboardShortcuts — topology bindings", () => {
     await user.keyboard("1");
 
     expect(await screen.findByText(/only works on the Topology view/)).toBeInTheDocument();
+  });
+
+  // T-3403: "/" is the top bar's global search entry point (its rounded
+  // search field's own kbd hint reads "/"), so unlike the other topology
+  // shortcuts it must work from any page — opening the spotlight and
+  // routing to Topology, exactly like clicking the search field does
+  // (TopBar.tsx's openSearch) — instead of the "only works on Topology"
+  // toast the other topology-only bindings fall back to.
+  it("'/' opens the spotlight search and navigates to Topology when no target is registered", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <ToastProvider>
+          <Harness />
+          <LocationProbe />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+
+    await user.keyboard("/");
+
+    expect(useTopologyStore.getState().spotlightOpen).toBe(true);
+    expect(screen.getByTestId("location")).toHaveTextContent("/topology");
   });
 
   it("dispatches layer toggles (1-4) to the registered topology target", async () => {

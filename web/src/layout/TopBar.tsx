@@ -1,8 +1,10 @@
 import * as RadixDropdown from "@radix-ui/react-dropdown-menu";
+import { ChevronDown, CircleHelp, Keyboard, Search, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "../components/Button";
+import { Tooltip } from "../components/Tooltip";
 import { useSession, SESSION_QUERY_KEY } from "../api/useSession";
 import { useDemoSessionStore } from "../store/authStub";
 import { logout } from "../api/auth";
@@ -28,12 +30,17 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
   const openAssistant = useAssistantStore((s) => s.openPanel);
 
   const displayName = demoSession ? "demo" : (session?.user.username ?? "");
+  const chipLabel = displayName || "account";
+  const chipInitial = chipLabel.charAt(0).toUpperCase();
 
   // Open the real spotlight search (GET /inventory/search — fuzzy across
   // names/MACs/IPs/VMIDs/comments). The search dialog lives on the topology
   // page (where selecting a result reveals the entity on the map), so from
   // any other page this navigates there first; the store flag is read on
-  // mount, so setting it before navigating is enough.
+  // mount, so setting it before navigating is enough. T-3403: this is also
+  // exactly what the global "/" keyboard shortcut does off Topology now
+  // (src/keyboard/useKeyboardShortcuts.ts) — the click trigger and the key
+  // are two doors into the same behaviour.
   function openSearch(): void {
     setSpotlightOpen(true);
     void navigate("/topology");
@@ -67,46 +74,65 @@ export function TopBar({ onOpenHelp, onOpenPageHelp }: TopBarProps) {
         // shade with adequate contrast against ITS background (slate-500
         // reads clearly on the light header's white; slate-400 reads
         // clearly on the dark header's near-black), rather than the same
-        // shade doing double duty across both.
-        className="flex h-9 w-full max-w-sm items-center gap-2 rounded-md border border-slate-300 px-3 text-left text-sm text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600"
+        // shade doing double duty across both. T-3403: kept byte-for-byte —
+        // only the shape (rounded-md -> rounded-full) and the glyph (a
+        // plain-text "⌕" -> a lucide Search icon) changed, so this reasoning
+        // still applies unmodified.
+        className="flex h-9 w-full max-w-sm items-center gap-2 rounded-full border border-slate-300 px-3.5 text-left text-sm text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600"
       >
-        <span aria-hidden>⌕</span>
-        <span>Search VMs, MACs, IPs…</span>
-        <kbd className="ml-auto rounded border border-slate-300 px-1 text-xs dark:border-slate-700">/</kbd>
+        <Search aria-hidden className="h-4 w-4 shrink-0" />
+        <span className="truncate">Search VMs, MACs, IPs…</span>
+        <kbd className="ml-auto shrink-0 rounded border border-slate-300 px-1 text-xs dark:border-slate-700">/</kbd>
       </button>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-1">
         {/* T-2204: two distinct affordances, deliberately not merged into
          * one menu — "what does this screen do" and "what are the keys"
          * are different questions, and burying the first behind a dropdown
-         * is how help ends up unused. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={openAssistant}
-          aria-label="Assistant"
-          title="Ask the assistant (read-only tools, your own permissions)"
-        >
-          Assistant
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onOpenPageHelp} aria-label="Help" title="Help for this screen (F1)">
-          Help
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onOpenHelp} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
-          ?
-        </Button>
+         * is how help ends up unused. T-3403: icon-only ghost buttons with
+         * a Tooltip carrying the explanation the visible label used to —
+         * the aria-label (unchanged) still names each control for
+         * assistive tech. */}
+        <Tooltip content="Ask the assistant (read-only tools, your own permissions)">
+          <Button variant="ghost" size="sm" onClick={openAssistant} aria-label="Assistant">
+            <Sparkles aria-hidden className="h-4 w-4" />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Help for this screen (F1)">
+          <Button variant="ghost" size="sm" onClick={onOpenPageHelp} aria-label="Help">
+            <CircleHelp aria-hidden className="h-4 w-4" />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Keyboard shortcuts (?)">
+          <Button variant="ghost" size="sm" onClick={onOpenHelp} aria-label="Keyboard shortcuts">
+            <Keyboard aria-hidden className="h-4 w-4" />
+          </Button>
+        </Tooltip>
         <ThemeToggle />
+        <div className="mx-1 h-6 w-px shrink-0 bg-slate-200 dark:bg-slate-800" aria-hidden />
         <RadixDropdown.Root>
           <RadixDropdown.Trigger asChild>
-            <Button variant="ghost" size="sm">
-              {displayName || "account"}
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1.5 rounded-full pl-1.5 pr-2.5"
+              aria-label={`Account menu (${chipLabel})`}
+            >
+              <span
+                aria-hidden
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-600 text-[10px] font-semibold text-white"
+              >
+                {chipInitial}
+              </span>
+              <span className="max-w-[8rem] truncate">{chipLabel}</span>
+              <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" />
             </Button>
           </RadixDropdown.Trigger>
           <RadixDropdown.Portal>
             <RadixDropdown.Content
               align="end"
               sideOffset={6}
-              className="z-50 min-w-[10rem] rounded-md border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+              className="z-50 min-w-[10rem] rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
             >
               {demoSession ? (
                 <div className="px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400">demo mode</div>

@@ -11,6 +11,17 @@
 // fixed corner of this app is already occupied by something clickable, and
 // a banner that intercepts pointer events on the map's own controls is
 // worse than one that takes 32 pixels of height.
+//
+// T-3403: restyled as the reference design's dark, full-width "You're
+// testing" test-mode bar — a fixed dark-navy surface with an amber accent
+// pill, rather than a translucent amber wash. Deliberately theme-INDEPENDENT
+// (no `dark:` pairing): the bar looks the same whether the app chrome
+// itself is in light or dark mode, same as Stripe's own sandbox banner does
+// not re-tint with the dashboard around it, which sidesteps having to
+// re-derive two separate contrast pairs for one message. Text is a plain
+// light-on-near-black pairing (slate-200 on slate-950, ~16:1) so it reads
+// regardless of ambient theme; only the amber pill's own colours (unchanged
+// from before this restyle) needed re-verifying in isolation.
 import { useIsDemo } from "./useDemoMode";
 
 /** The banner's accessible name, used by the e2e sweep. Exported so the
@@ -26,9 +37,9 @@ export function DemoBanner() {
       role="status"
       aria-label={DEMO_BANNER_LABEL}
       data-testid="demo-banner"
-      className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-amber-500/60 bg-amber-500/15 px-3 py-1.5 text-sm text-amber-900 dark:text-amber-100"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-amber-500/30 bg-slate-950 px-3 py-1.5 text-sm text-slate-200"
     >
-      <span className="rounded bg-amber-500 px-1.5 py-0.5 text-xs font-semibold tracking-wide text-amber-950 uppercase">
+      <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold tracking-wide text-amber-950 uppercase">
         {DEMO_BANNER_LABEL}
       </span>
       <span>

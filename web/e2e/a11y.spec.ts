@@ -258,6 +258,28 @@ test("axe: changeset drawer (open, with a drafted op)", async ({ page }) => {
   await expectNoSeriousViolations(page, "Changeset drawer");
 });
 
+// --- T-3403 AC3: the restyled top bar, both themes ------------------------
+test("axe: top bar, switched to dark theme", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expectNoSeriousViolations(page, "Top bar (dark theme)");
+});
+
+// T-3403: OfflineShellBanner (restyled alongside DemoBanner as the same
+// "banner family") gets its own scan since it renders nothing on every
+// other page in this file — the assertion above it never actually put it
+// on screen. `setOffline` fires the real `offline` window event the
+// component listens for (src/lib/freshness.ts's useOnlineStatus), which is
+// closer to how a real network drop is observed than stubbing the hook.
+test("axe: offline shell banner", async ({ page, context }) => {
+  await logIn(page);
+  await context.setOffline(true);
+  await expect(page.getByRole("status").filter({ hasText: "Offline" })).toBeVisible();
+  await expectNoSeriousViolations(page, "Offline shell banner");
+  await context.setOffline(false);
+});
+
 test("AC3: keyboard-only traversal reaches and activates a v2 canvas map entity with no mouse input", async ({
   page,
 }) => {

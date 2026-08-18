@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { GOTO_CHORD_KEYS, SHORTCUTS } from "./shortcuts";
 import { useTopologyShortcutTargetStore } from "./topologyShortcutTarget";
+import { useTopologyStore } from "../topology/store";
 
 const CHORD_TIMEOUT_MS = 1200;
 
@@ -20,8 +21,11 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * palette) always do something real. The topology-specific bindings (`/`,
  * `1`-`4`, `f`) are dispatched to whichever handlers the Topology page has
  * registered via src/keyboard/topologyShortcutTarget.ts; when nothing is
- * registered (any other route), they show a toast explaining the shortcut
- * only works on the Topology view, rather than silently doing nothing.
+ * registered (any other route), `1`-`4` and `f` show a toast explaining the
+ * shortcut only works on the Topology view, rather than silently doing
+ * nothing. `/` is the exception (T-3403): it is the top bar's global search
+ * entry point, so off Topology it opens the spotlight search and navigates
+ * there instead of toasting — same behaviour as clicking the search field.
  */
 export function useKeyboardShortcuts(options: {
   onOpenHelp: () => void;
@@ -135,6 +139,19 @@ export function useKeyboardShortcuts(options: {
       ) {
         const target = useTopologyShortcutTargetStore.getState().target;
         if (!target) {
+          // T-3403: "/" is the top bar's global search entry point (the
+          // rounded search field's own kbd hint reads "/"), so unlike the
+          // layer toggles and the VLAN filter — which are genuinely
+          // Topology-only controls — it must work from anywhere, not just
+          // show a toast pointing at Topology. Mirrors TopBar's own
+          // openSearch() exactly: set the spotlight flag, then navigate,
+          // so the dialog is already open once Topology mounts.
+          if (shortcut.action.type === "topology-search") {
+            event.preventDefault();
+            useTopologyStore.getState().setSpotlightOpen(true);
+            void navigateRef.current("/topology");
+            return;
+          }
           event.preventDefault();
           toastRef.current({
             title: `"${shortcut.keys}" only works on the Topology view`,
