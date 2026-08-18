@@ -1,6 +1,6 @@
 // T-909's responsive-triage seam: the one place "is this a narrow (phone/
 // small-tablet) viewport" is decided, so every consumer (the route guard,
-// NavRail's reachable-page filter, ToolsPage's restricted Findings-only
+// Sidebar's reachable-page filter, ToolsPage's restricted Findings-only
 // render, the changeset drawer's drafting-time edit controls) reads the
 // same signal instead of each hand-rolling its own breakpoint. Mirrors
 // lib/useReducedMotion.ts's shape deliberately (JS-level `matchMedia`, not

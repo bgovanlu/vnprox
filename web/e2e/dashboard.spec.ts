@@ -15,7 +15,7 @@
 // repointing that fallback at "/" would be a much larger, cross-cutting
 // change out of scope for a single card (flagged in this task's own
 // report). This spec therefore logs in, then explicitly visits "/" (and
-// separately clicks the NavRail's Home entry) to verify the dashboard
+// separately clicks the Sidebar's Home entry) to verify the dashboard
 // itself, rather than asserting login redirects there.
 import { expect, test, type Page } from "@playwright/test";
 
@@ -52,7 +52,7 @@ async function logIn(page: Page): Promise<void> {
 test("Home dashboard renders at / with every tile, and a tile deep-links to its owning page", async ({ page }) => {
   await logIn(page);
 
-  // NavRail's Home entry (AC1) reaches the dashboard from anywhere in the
+  // Sidebar's Home entry (AC1) reaches the dashboard from anywhere in the
   // app — exercised here rather than relying on login's own redirect
   // target (see this file's header doc comment).
   await page.getByRole("link", { name: "Home" }).click();

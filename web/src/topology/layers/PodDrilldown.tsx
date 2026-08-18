@@ -10,9 +10,9 @@
 // convention exactly (dl field grid, Close button, onClose prop) — placed
 // bottom-center (`fixed bottom-4 left-1/2 -translate-x-1/2`) rather than
 // either existing panel's corner: InspectorStack.tsx already claims
-// bottom-right and FlowPairPanel.tsx claims top-right, and NavRail.tsx
+// bottom-right and FlowPairPanel.tsx claims top-right, and Sidebar.tsx
 // occupies the left edge in normal document flow (not `fixed`, but still
-// visually busy down to its w-16/w-48 column) — bottom-center is the one
+// visually busy down to its w-16/w-56 column) — bottom-center is the one
 // remaining spot that collides with none of them.
 import type { K8sOverlay, K8sPodSummary, K8sServiceInfo, TopologyEdge, TopologyNode } from "../../api/types";
 import { computePodUnderlayChain, type UnderlayPath } from "./k8sUnderlay";

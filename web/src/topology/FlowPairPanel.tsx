@@ -46,7 +46,7 @@ export function FlowPairPanel({ edge, onClose }: FlowPairPanelProps) {
     <div
       role="region"
       aria-label="Flow conversation"
-      // top-right (below the page toolbar): NavRail owns the full left
+      // top-right (below the page toolbar): Sidebar owns the full left
       // edge (z-50, docs/features/topology.md's map toolbar sits above the
       // canvas) and InspectorStack anchors bottom-right — this is the one
       // fixed-position corner neither of those already claims.

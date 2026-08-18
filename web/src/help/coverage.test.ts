@@ -3,9 +3,9 @@
 // The claim this phase makes is "100% of the product's screens have online
 // help". A hand-maintained checklist can't back that claim, so this test
 // derives the screen inventory from the shipped source: it parses App.tsx
-// for every route the router actually declares and NavRail.tsx for every
-// destination the nav rail actually offers, then requires each to resolve
-// to a real, substantial help topic.
+// for every route the router actually declares and Sidebar.tsx (T-3402;
+// formerly NavRail.tsx) for every destination the sidebar actually offers,
+// then requires each to resolve to a real, substantial help topic.
 //
 // T-3006 — WHY THIS FILE GREW. The inventory above is routed screens only,
 // so the gate was structurally blind to panels: T-2005 shipped the whole
@@ -87,9 +87,12 @@ function routerPaths(): string[] {
   return [...new Set(captured(read("App.tsx"), /<Route[^>]*?\spath="([^"]+)"/g))];
 }
 
-/** Every `{ path: "…" }` entry in the nav rail's destination list. */
+/** Every `{ path: "…" }` entry in the sidebar's destination list (T-3402:
+ * Sidebar.tsx's FLAT_ITEMS, NAV_GROUPS' items, and SETTINGS_ITEM all use
+ * this same object shape, so one regex over the whole file still finds
+ * every destination regardless of which list it lives in). */
 function navRailPaths(): string[] {
-  return [...new Set(captured(read("layout/NavRail.tsx"), /\{\s*path:\s*"([^"]+)"/g))];
+  return [...new Set(captured(read("layout/Sidebar.tsx"), /\{\s*path:\s*"([^"]+)"/g))];
 }
 
 // The two ways a module declares "this surface's help topic is X".
@@ -253,7 +256,7 @@ describe("help coverage — the parsers actually parse", () => {
     expect([...reachable].map(rel)).toContain("topology/InspectorPanel.tsx");
     // Reached only through React.lazy / dynamic import, so this also pins
     // that the `import(…)` form is still followed.
-    expect([...reachable].map(rel)).toContain("layout/NavRail.tsx");
+    expect([...reachable].map(rel)).toContain("layout/Sidebar.tsx");
   });
 
   it("finds a plausible number of panels, including known ones", () => {

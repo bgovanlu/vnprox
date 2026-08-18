@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { NavRail } from "./NavRail";
+import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { useKeyboardShortcuts } from "../keyboard/useKeyboardShortcuts";
 import { ShortcutHelpDialog } from "../keyboard/ShortcutHelpDialog";
@@ -39,7 +39,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-dvh w-full bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
-      <NavRail />
+      <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onOpenHelp={() => { setHelpOpen(true); }} onOpenPageHelp={openPageHelp} />
         {/* T-2801: on EVERY authenticated screen, because every authenticated

@@ -10,7 +10,7 @@
 //
 // Scope and strategy: this crawl inspects every button inside <main> (the
 // routed page content) on each of the ten nav routes — deliberately
-// excluding the shared chrome (NavRail, TopBar's account menu/theme
+// excluding the shared chrome (Sidebar, TopBar's account menu/theme
 // toggle/help, the OnboardingWalkthrough overlay, ChangesetDrawer), which
 // render outside <main> in AppShell.tsx and are either already covered by
 // the Vitest unit suite (OnboardingWalkthrough.test.tsx's read-only gating

@@ -89,7 +89,7 @@ Every screen in vnprox explains itself, without leaving the browser.
 
 Help topics cover the concepts the UI assumes you hold (the change engine, commit-confirm, protected interfaces, drift, permissions), every routed screen, the panels and wizards inside them, and the v2.0/v3.0 opt-ins — federation, AI operators, plugins, tenants, HA, switch push, embeds.
 
-Coverage is enforced, not asserted: `web/src/help/coverage.test.ts` derives the screen inventory from `App.tsx` and `NavRail.tsx` themselves, so a route that ships without help fails the build. See `docs/development.md`.
+Coverage is enforced, not asserted: `web/src/help/coverage.test.ts` derives the screen inventory from `App.tsx` and `Sidebar.tsx` themselves, so a route that ships without help fails the build. See `docs/development.md`.
 
 ## 7. Beyond one cluster (v2.0)
 

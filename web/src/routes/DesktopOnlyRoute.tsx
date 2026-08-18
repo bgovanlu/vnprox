@@ -4,7 +4,7 @@
 // in this at the App.tsx route table, so navigating to it on a narrow
 // viewport — including via a direct/bookmarked link, not just an in-app
 // nav click — renders the explicit DesktopOnlyNotice instead of a broken or
-// cramped attempt at the full page. NavRail additionally stops linking to
+// cramped attempt at the full page. Sidebar additionally stops linking to
 // these routes at narrow width (belt-and-suspenders: the guard is the
 // actual enforcement, the nav change just avoids dangling the temptation).
 import type { ReactNode } from "react";
