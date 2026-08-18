@@ -9,6 +9,8 @@
 import { useState } from "react";
 import { Button } from "../components/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
+import { PageHeader } from "../components/PageHeader";
+import { TabsList, TabsRoot, TabsTrigger } from "../components/Tabs";
 import { useToast } from "../components/Toast";
 import { useHubInstallMutation, useHubIndexQuery } from "./queries";
 import type { HubEntry, HubEntryType, HubInstallResponse } from "../api/types";
@@ -76,31 +78,26 @@ export function HubPage() {
   const entries = indexQuery.data?.items ?? [];
 
   return (
-    <div className="hub-page" data-testid="hub-page">
-      <header className="hub-page__header">
-        <h1>Hub</h1>
-        <p>Browse and install signed blueprint bundles and capability-scoped plugins.</p>
-        <div role="tablist" aria-label="Hub artifact type" className="hub-page__tabs">
-          <Button
-            role="tab"
-            aria-selected={activeType === "blueprint"}
-            variant={activeType === "blueprint" ? "primary" : "secondary"}
-            onClick={() => { setActiveType("blueprint"); }}
-            data-testid="hub-tab-blueprint"
-          >
-            Blueprints
-          </Button>
-          <Button
-            role="tab"
-            aria-selected={activeType === "plugin"}
-            variant={activeType === "plugin" ? "primary" : "secondary"}
-            onClick={() => { setActiveType("plugin"); }}
-            data-testid="hub-tab-plugin"
-          >
-            Plugins
-          </Button>
-        </div>
-      </header>
+    <TabsRoot
+      value={activeType}
+      onValueChange={(v) => { setActiveType(v as HubEntryType); }}
+      className="flex h-full flex-col gap-4"
+      data-testid="hub-page"
+    >
+      <PageHeader
+        title="Hub"
+        description="Browse and install signed blueprint bundles and capability-scoped plugins."
+        tabs={
+          <TabsList aria-label="Hub artifact type">
+            <TabsTrigger value="blueprint" data-testid="hub-tab-blueprint">
+              Blueprints
+            </TabsTrigger>
+            <TabsTrigger value="plugin" data-testid="hub-tab-plugin">
+              Plugins
+            </TabsTrigger>
+          </TabsList>
+        }
+      />
 
       {indexQuery.isLoading && <p>Loading catalog…</p>}
       {indexQuery.isError && <p role="alert">The registry is unavailable. Check the configured [hub] registry_url.</p>}
@@ -188,6 +185,6 @@ export function HubPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </TabsRoot>
   );
 }

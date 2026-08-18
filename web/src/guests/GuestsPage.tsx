@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { useSession } from "../api/useSession";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { Tooltip } from "../components/Tooltip";
 import { useToast } from "../components/Toast";
@@ -121,37 +122,39 @@ export function GuestsPage() {
 
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Guests</h1>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <select
-            aria-label="Filter by node"
-            className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
-            value={filter.node ?? ""}
-            onChange={(e) => { setFilter((f) => ({ ...f, node: e.target.value || undefined })); }}
-          >
-            <option value="">All nodes</option>
-            {nodes.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter by bridge or VNet"
-            className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
-            value={filter.bridgeOrVnet ?? ""}
-            onChange={(e) => { setFilter((f) => ({ ...f, bridgeOrVnet: e.target.value || undefined })); }}
-          >
-            <option value="">All bridges/VNets</option>
-            {filterTargets.map((t) => (
-              <option key={t} value={t}>
-                {targetLabel(t)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <PageHeader
+        title="Guests"
+        actions={
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <select
+              aria-label="Filter by node"
+              className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+              value={filter.node ?? ""}
+              onChange={(e) => { setFilter((f) => ({ ...f, node: e.target.value || undefined })); }}
+            >
+              <option value="">All nodes</option>
+              {nodes.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Filter by bridge or VNet"
+              className="rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+              value={filter.bridgeOrVnet ?? ""}
+              onChange={(e) => { setFilter((f) => ({ ...f, bridgeOrVnet: e.target.value || undefined })); }}
+            >
+              <option value="">All bridges/VNets</option>
+              {filterTargets.map((t) => (
+                <option key={t} value={t}>
+                  {targetLabel(t)}
+                </option>
+              ))}
+            </select>
+          </div>
+        }
+      />
 
       {isLoading && <p className="text-sm text-slate-400">Loading guest NICs…</p>}
       {!isLoading && filtered.length === 0 && (

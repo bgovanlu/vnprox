@@ -10,6 +10,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Button } from "../components/Button";
+import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
 import { logout } from "../api/auth";
 import { useSession, SESSION_QUERY_KEY } from "../api/useSession";
@@ -101,14 +102,16 @@ export function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <header>
-        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Settings</h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          Your preferences, and how this vnprox instance is configured. Instance values come from{" "}
-          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">/etc/vnprox/vnprox.toml</code> on this node and
-          are read-only here — edit that file and restart the service to change them.
-        </p>
-      </header>
+      <PageHeader
+        title="Settings"
+        description={
+          <>
+            Your preferences, and how this vnprox instance is configured. Instance values come from{" "}
+            <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">/etc/vnprox/vnprox.toml</code> on this node
+            and are read-only here — edit that file and restart the service to change them.
+          </>
+        }
+      />
 
       <Section title="Appearance" description="Stored in this browser only.">
         <Row label="Theme">

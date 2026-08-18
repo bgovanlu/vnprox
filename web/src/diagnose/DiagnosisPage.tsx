@@ -19,6 +19,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/Toast";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { FINDINGS_QUERY_KEY } from "../findings/queries";
@@ -177,14 +178,16 @@ export function DiagnosisPage({ targetRef: targetRefProp }: DiagnosisPageProps =
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-base font-semibold">Diagnose</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Runs config check (simulator) → live probe → guest interior → conntrack → capture against{" "}
-          <code className="font-mono">{targetRef}</code> and produces one advisory verdict. Nothing here applies a
-          fix automatically — a suggested fix always opens in the changeset drawer for your review first.
-        </p>
-      </div>
+      <PageHeader
+        title="Diagnose"
+        description={
+          <>
+            Runs config check (simulator) → live probe → guest interior → conntrack → capture against{" "}
+            <code className="font-mono">{targetRef}</code> and produces one advisory verdict. Nothing here applies a
+            fix automatically — a suggested fix always opens in the changeset drawer for your review first.
+          </>
+        }
+      />
 
       <div className="flex items-center gap-3">
         <Button

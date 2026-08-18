@@ -12,6 +12,7 @@ import { emptyForm, toAuditFilter, type FilterForm } from "./filters";
 import { ApiError } from "../api/client";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 
 const PAGE_SIZE = 50;
@@ -54,7 +55,7 @@ export function AuditPage() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <h1 className="text-xl font-semibold">Audit</h1>
+      <PageHeader title="Audit" />
 
       <form
         className="flex flex-wrap items-end gap-2"

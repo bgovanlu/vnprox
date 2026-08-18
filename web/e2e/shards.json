@@ -9,10 +9,12 @@
       "demo.spec.ts",
       "command-palette.spec.ts",
       "evpn-tab.spec.ts",
+      "firewall-tabs.spec.ts",
       "fwlog-analytics.spec.ts",
       "map-export.spec.ts",
       "nav-after-inspector.spec.ts",
       "scale.spec.ts",
+      "sidebar.spec.ts",
       "user-guide-tasks.spec.ts"
     ]
   },

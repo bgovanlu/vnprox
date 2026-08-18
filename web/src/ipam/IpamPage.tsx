@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
+import { PageHeader } from "../components/PageHeader";
 import type { IpamSubnet } from "../api/types";
 import { ipamAllocationsCsvUrl } from "../api/ipam";
 import { AddressList } from "./AddressList";
@@ -107,9 +108,7 @@ export function IpamPage() {
 
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">IPAM</h1>
-      </div>
+      <PageHeader title="IPAM" />
 
       {isLoading && <p className="text-sm text-slate-400">Loading IPAM subnets…</p>}
       {isError && (

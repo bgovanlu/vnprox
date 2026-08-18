@@ -7,6 +7,8 @@ import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "../components/Tabs";
 import type { SdnSubnet, SdnTree, SdnVnet, SdnZone } from "../api/types";
 import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
@@ -362,33 +364,6 @@ function SubnetDetail({ subnet, gate }: { subnet: SdnSubnet; gate: SdnWriteGate 
   );
 }
 
-function TabButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={clsx(
-        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active
-          ? "bg-accent-600/10 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
-          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60",
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
 export function SdnPage() {
   const { data: tree, isLoading, isError } = useSdnQuery();
   const [selection, setSelection] = useState<SdnSelection | undefined>(undefined);
@@ -436,23 +411,30 @@ export function SdnPage() {
   const resolved = resolveSdnSelection(tree, selection);
 
   return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">SDN</h1>
-        <div className="flex items-center gap-2">
-          <div role="tablist" aria-label="SDN cockpit views" className="flex items-center gap-1">
-            <TabButton active={tab === "configuration"} label="Configuration" onClick={() => { setTab("configuration"); }} />
-            <TabButton active={tab === "evpn"} label="EVPN / BGP" onClick={() => { setTab("evpn"); }} />
-            <TabButton active={tab === "dhcp"} label="DHCP" onClick={() => { setTab("dhcp"); }} />
-            <TabButton active={tab === "fabrics"} label="Fabrics" onClick={() => { setTab("fabrics"); }} />
-            <TabButton active={tab === "controllers"} label="Controllers" onClick={() => { setTab("controllers"); }} />
-            <TabButton active={tab === "ipams"} label="IPAM plugins" onClick={() => { setTab("ipams"); }} />
-          </div>
-          {tab === "configuration" && (
+    <TabsRoot
+      value={tab}
+      onValueChange={(v) => { setTab(v as SdnTab); }}
+      className="flex h-full flex-col gap-3"
+    >
+      <PageHeader
+        title="SDN"
+        tabs={
+          <TabsList aria-label="SDN cockpit views">
+            <TabsTrigger value="configuration">Configuration</TabsTrigger>
+            <TabsTrigger value="evpn">EVPN / BGP</TabsTrigger>
+            <TabsTrigger value="dhcp">DHCP</TabsTrigger>
+            <TabsTrigger value="fabrics">Fabrics</TabsTrigger>
+            <TabsTrigger value="controllers">Controllers</TabsTrigger>
+            <TabsTrigger value="ipams">IPAM plugins</TabsTrigger>
+          </TabsList>
+        }
+        actions={
+          tab === "configuration" && (
             <>
               <Button
                 variant="primary"
                 size="sm"
+                shape="pill"
                 disabled={gate.disabled}
                 title={gate.title}
                 onClick={() => {
@@ -465,6 +447,7 @@ export function SdnPage() {
               <Button
                 variant="secondary"
                 size="sm"
+                shape="pill"
                 disabled={gate.disabled}
                 title={gate.title}
                 onClick={() => { openEditor({ kind: "zone-create" }); }}
@@ -472,72 +455,60 @@ export function SdnPage() {
                 + New zone (advanced)
               </Button>
             </>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
       <SdnEditorLauncher />
       <ZoneWizardPicker open={wizardPickerOpen} onOpenChange={setWizardPickerOpen} initialActive={wizardInitialKind} />
 
-      {tab === "configuration" && (
-        <>
-          {isLoading && <p className="text-sm text-slate-400">Loading SDN configuration…</p>}
-          {isError && (
-            <EmptyState
-              title="Could not load SDN configuration"
-              description="Check that vnproxd can reach the local PVE API, then reload."
-            />
-          )}
-          {!isLoading && !isError && tree && tree.zones.length === 0 && (
-            <EmptyState title="No SDN zones configured" description="Create a zone in Proxmox's SDN configuration to see it here." />
-          )}
+      <TabsContent value="configuration" className="flex min-h-0 flex-1 flex-col gap-3">
+        {isLoading && <p className="text-sm text-slate-400">Loading SDN configuration…</p>}
+        {isError && (
+          <EmptyState
+            title="Could not load SDN configuration"
+            description="Check that vnproxd can reach the local PVE API, then reload."
+          />
+        )}
+        {!isLoading && !isError && tree && tree.zones.length === 0 && (
+          <EmptyState title="No SDN zones configured" description="Create a zone in Proxmox's SDN configuration to see it here." />
+        )}
 
-          {!isLoading && !isError && tree && tree.zones.length > 0 && (
-            <div className="grid min-h-0 flex-1 grid-cols-[minmax(220px,320px)_1fr] gap-3">
-              <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-800">
-                <SdnTreeView tree={tree} selection={selection} onSelect={setSelection} />
-              </div>
-              <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-                {!resolved && (
-                  <EmptyState title="Nothing selected" description="Pick a zone, VNet, or subnet from the tree." />
-                )}
-                {resolved?.selection.kind === "zone" && <ZoneDetail zone={resolved.zone} gate={gate} />}
-                {resolved?.selection.kind === "vnet" && resolved.vnet && <VnetDetail vnet={resolved.vnet} gate={gate} />}
-                {resolved?.selection.kind === "subnet" && resolved.subnet && <SubnetDetail subnet={resolved.subnet} gate={gate} />}
-              </div>
+        {!isLoading && !isError && tree && tree.zones.length > 0 && (
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(220px,320px)_1fr] gap-3">
+            <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-2 dark:border-slate-800">
+              <SdnTreeView tree={tree} selection={selection} onSelect={setSelection} />
             </div>
-          )}
-        </>
-      )}
+            <div className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+              {!resolved && (
+                <EmptyState title="Nothing selected" description="Pick a zone, VNet, or subnet from the tree." />
+              )}
+              {resolved?.selection.kind === "zone" && <ZoneDetail zone={resolved.zone} gate={gate} />}
+              {resolved?.selection.kind === "vnet" && resolved.vnet && <VnetDetail vnet={resolved.vnet} gate={gate} />}
+              {resolved?.selection.kind === "subnet" && resolved.subnet && <SubnetDetail subnet={resolved.subnet} gate={gate} />}
+            </div>
+          </div>
+        )}
+      </TabsContent>
 
-      {tab === "evpn" && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <EvpnView />
-        </div>
-      )}
+      <TabsContent value="evpn" className="min-h-0 flex-1 overflow-y-auto">
+        <EvpnView />
+      </TabsContent>
 
-      {tab === "dhcp" && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <DhcpView />
-        </div>
-      )}
+      <TabsContent value="dhcp" className="min-h-0 flex-1 overflow-y-auto">
+        <DhcpView />
+      </TabsContent>
 
-      {tab === "fabrics" && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <FabricsView />
-        </div>
-      )}
+      <TabsContent value="fabrics" className="min-h-0 flex-1 overflow-y-auto">
+        <FabricsView />
+      </TabsContent>
 
-      {tab === "controllers" && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <ControllersView />
-        </div>
-      )}
+      <TabsContent value="controllers" className="min-h-0 flex-1 overflow-y-auto">
+        <ControllersView />
+      </TabsContent>
 
-      {tab === "ipams" && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <IpamPluginsView />
-        </div>
-      )}
-    </div>
+      <TabsContent value="ipams" className="min-h-0 flex-1 overflow-y-auto">
+        <IpamPluginsView />
+      </TabsContent>
+    </TabsRoot>
   );
 }

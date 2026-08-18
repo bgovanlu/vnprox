@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RawEditorPanel } from "../changesets/rawEditor/RawEditorPanel";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { FindingsStreamPanel } from "../findings/FindingsStreamPanel";
 import { FwLogViewer } from "../fwlog/FwLogViewer";
 import { HelpAnchor } from "../help/HelpAnchor";
@@ -47,15 +48,15 @@ export function ToolsPage() {
   if (narrow) {
     return (
       <div className="flex h-full flex-col gap-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold">
-            Findings
-            <HelpAnchor topic="findings-stream" />
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Drift, LLDP VLAN mismatches, IPAM conflicts, and continuous health checks, read-only from here.
-          </p>
-        </div>
+        <PageHeader
+          title={
+            <>
+              Findings
+              <HelpAnchor topic="findings-stream" />
+            </>
+          }
+          description="Drift, LLDP VLAN mismatches, IPAM conflicts, and continuous health checks, read-only from here."
+        />
         <FindingsStreamPanel />
         {/* T-909: unlike DesktopOnlyRoute's full-page notice (which links
          * back to Dashboard/Findings — useful when you've landed on a page
@@ -73,37 +74,41 @@ export function ToolsPage() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold">
+      <PageHeader
+        title={
+          <>
             Tools
             <HelpAnchor topic="tools-page" />
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          </>
+        }
+        description={
+          <>
             Path simulator, the raw <code>/etc/network/interfaces</code> editor, drift findings, MAC/FDB search, and
             the firewall log viewer. The node picker below applies to the raw editor only — saving there still goes
             through the normal changeset review/apply flow, never a bypass.
-          </p>
-        </div>
-        {nodes.length > 0 && (
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-slate-500 dark:text-slate-400">Node</span>
-            <select
-              className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-              value={node}
-              onChange={(e) => {
-                setNode(e.target.value);
-              }}
-            >
-              {nodes.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
+          </>
+        }
+        actions={
+          nodes.length > 0 && (
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-slate-500 dark:text-slate-400">Node</span>
+              <select
+                className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+                value={node}
+                onChange={(e) => {
+                  setNode(e.target.value);
+                }}
+              >
+                {nodes.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )
+        }
+      />
 
       <SimulatorPage />
 

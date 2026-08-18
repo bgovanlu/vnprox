@@ -71,8 +71,12 @@ describe("FirewallPage deep link (T-504 AC1)", () => {
   it("lands on the Guest tab, selects the named guest, and highlights the exact rule", async () => {
     renderAt("/firewall?scope=guest&ref=guest%3Apve1%3A102&pos=0&origin=guest");
 
-    // Guest tab active.
-    expect(screen.getByRole("button", { name: "Guests" })).toHaveAttribute("aria-pressed", "true");
+    // Guest tab active. T-3404: the hierarchy tabs migrated from a
+    // hand-rolled `role="button"`/`aria-pressed` toggle to the shared
+    // underlined `Tabs` wrapper over Radix (role="tab"/`aria-selected`,
+    // docs/development.md "Visual language" — "Tabs are underlined, not
+    // boxed").
+    expect(screen.getByRole("tab", { name: "Guests" })).toHaveAttribute("aria-selected", "true");
 
     // The named guest is selected (not just the first in the list).
     const select = await screen.findByLabelText("Select guest");
@@ -87,7 +91,7 @@ describe("FirewallPage deep link (T-504 AC1)", () => {
 
   it("defaults to the Datacenter tab when no deep-link params are present", () => {
     renderAt("/firewall");
-    expect(screen.getByRole("button", { name: "Datacenter" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("tab", { name: "Datacenter" })).toHaveAttribute("aria-selected", "true");
   });
 });
 

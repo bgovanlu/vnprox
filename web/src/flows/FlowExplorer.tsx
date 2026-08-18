@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useReducer } from "react";
 import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import type { FlowRecord } from "../api/types";
 import { protoName } from "./proto";
@@ -216,33 +217,38 @@ export function FlowExplorer() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-base font-semibold">Flow explorer</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Cluster-wide ingested flow records (sFlow/NetFlow/IPFIX), live-following via WebSocket. Read-only — no
-            mutation.
-          </p>
-        </div>
-        <div role="tablist" aria-label="Flow explorer view" className="flex items-center gap-1">
-          {(["raw", "conversations"] as FlowViewMode[]).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              aria-selected={state.view === v}
-              onClick={() => { dispatch({ type: "setView", view: v }); }}
-              className={
-                state.view === v
-                  ? "rounded-md bg-accent-600/10 px-3 py-1.5 text-sm font-medium text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
-                  : "rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60"
-              }
-            >
-              {v === "raw" ? "Flows" : "Conversations"}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title="Flow explorer"
+        description="Cluster-wide ingested flow records (sFlow/NetFlow/IPFIX), live-following via WebSocket. Read-only — no
+          mutation."
+        actions={
+          // T-3404: a *mode* selector (which rows the one table shows), not
+          // sub-page navigation — docs/development.md "Visual language":
+          // "Segmented controls stay segmented where they select a mode
+          // rather than a sub-page (the topology Graph/Switch toggle is a
+          // mode, not a tab)". Kept as the existing segmented
+          // role="tablist" control rather than migrated to the shared
+          // underlined Tabs.
+          <div role="tablist" aria-label="Flow explorer view" className="flex items-center gap-1">
+            {(["raw", "conversations"] as FlowViewMode[]).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={state.view === v}
+                onClick={() => { dispatch({ type: "setView", view: v }); }}
+                className={
+                  state.view === v
+                    ? "rounded-md bg-accent-600/10 px-3 py-1.5 text-sm font-medium text-accent-700 dark:bg-accent-500/15 dark:text-accent-300"
+                    : "rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                }
+              >
+                {v === "raw" ? "Flows" : "Conversations"}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       {urlState.pairSrc && urlState.pairDst && (
         <p className="rounded-md bg-sky-50 px-3 py-1.5 text-sm text-sky-800 dark:bg-sky-950/40 dark:text-sky-300">

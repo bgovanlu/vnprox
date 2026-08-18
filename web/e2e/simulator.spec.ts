@@ -151,7 +151,9 @@ test("T-504 AC1/AC3: guest deny verdict deep-links into the focused firewall rul
   // One click lands on the firewall page with the rule focused.
   await page.getByRole("link", { name: "Open in firewall editor" }).click();
   await page.waitForURL(/\/firewall\?scope=guest/);
-  await expect(page.getByRole("button", { name: "Guests" })).toHaveAttribute("aria-pressed", "true");
+  // T-3404: FirewallPage's hierarchy tabs migrated to the shared underlined
+  // Tabs wrapper (role="tab", not the old role="button").
+  await expect(page.getByRole("tab", { name: "Guests" })).toHaveAttribute("aria-selected", "true");
   // The rule appears twice on this page (the guest's own RuleTable AND its
   // resolved-order entry in ResolvedViewTable) — both are expected.
   await expect(page.getByText("override: block http on this guest specifically").first()).toBeVisible();

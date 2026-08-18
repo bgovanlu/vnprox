@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { protoName } from "../flows/proto";
 import type { ConntrackEntry, NatAddr } from "../api/types";
@@ -109,12 +110,10 @@ export function ConntrackExplorer() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-base font-semibold">Conntrack explorer</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Live, per-node conntrack/NAT table, cluster-wide. Read-only — no flush/delete of any connection.
-        </p>
-      </div>
+      <PageHeader
+        title="Conntrack explorer"
+        description="Live, per-node conntrack/NAT table, cluster-wide. Read-only — no flush/delete of any connection."
+      />
 
       <FilterBar filter={filter} onChange={patchFilter} />
 

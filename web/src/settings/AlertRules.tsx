@@ -11,6 +11,7 @@ import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useToast } from "../components/Toast";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Tooltip } from "../components/Tooltip";
 import { Button } from "../components/Button";
 import {
@@ -272,13 +273,11 @@ export function AlertRules() {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden p-4">
-      <header>
-        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Alert rules</h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          Route findings and drift transitions to a webhook (generic JSON, Gotify, ntfy, or Slack), independent of PVE's
-          own notification targets.
-        </p>
-      </header>
+      <PageHeader
+        title="Alert rules"
+        description="Route findings and drift transitions to a webhook (generic JSON, Gotify, ntfy, or Slack), independent of PVE's
+          own notification targets."
+      />
 
       <div className="flex flex-1 gap-4 overflow-hidden">
         <div className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">

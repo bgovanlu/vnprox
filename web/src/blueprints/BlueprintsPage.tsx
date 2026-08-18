@@ -11,6 +11,7 @@ import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useChangesetDrawerStore } from "../changesets/store";
 import { useToast } from "../components/Toast";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Tooltip } from "../components/Tooltip";
 import { BlueprintImportDialog } from "./BlueprintImportDialog";
 import { BlueprintPreviewDiagram } from "./BlueprintPreviewDiagram";
@@ -157,10 +158,12 @@ export function BlueprintsPage() {
   }
 
   return (
-    <div className="flex h-full gap-4 overflow-hidden p-4">
+    <div className="flex h-full flex-col gap-3 p-4">
+      <PageHeader title="Blueprints" />
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
       <div className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Blueprints</h2>
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Saved</h2>
           <div>
             <input
               ref={fileInputRef}
@@ -250,7 +253,11 @@ export function BlueprintsPage() {
           <div className="flex flex-col gap-4">
             <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{selected.name}</h1>
+                {/* T-3404: PageHeader above now owns the page's one <h1>
+                 * ("Blueprints") — the selected blueprint's own name drops
+                 * to h2, the same level GuestsPage/etc. use for a
+                 * detail-panel's own heading below the page title. */}
+                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{selected.name}</h2>
                 {selected.description ? (
                   <p className="max-w-2xl text-sm text-slate-500 dark:text-slate-400">{selected.description}</p>
                 ) : null}
@@ -306,6 +313,7 @@ export function BlueprintsPage() {
             </section>
           </div>
         )}
+      </div>
       </div>
 
       <BlueprintImportDialog

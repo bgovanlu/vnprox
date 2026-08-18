@@ -507,7 +507,7 @@ What the gate actually checks, so the rule and the test say the same thing:
 
 | Direction | Assertion |
 |---|---|
-| Screen → topic | Every route in `App.tsx`/`NavRail.tsx` has a `ROUTE_HELP` entry. The route inventory is **derived from the source**, never hand-maintained. |
+| Screen → topic | Every route in `App.tsx`/`Sidebar.tsx` has a `ROUTE_HELP` entry. The route inventory is **derived from the source**, never hand-maintained. |
 | Panel → topic | Every panel-shaped component reachable in the import graph from `main.tsx` declares a topic, via `<HelpAnchor topic="…">` or by handing a literal to a wrapper that renders one. |
 | Topic → surface | Every topic whose own `surface` is `panel` or `dialog` is placed at a `?` **somewhere**. A topic describing a screen nobody built has nowhere to be placed and fails. |
 | Field → help | Every `<Field>` in the entity editors carries a `help=` prop. |

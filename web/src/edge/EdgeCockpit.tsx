@@ -21,6 +21,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/Table";
 import { useToast } from "../components/Toast";
 import { useSession } from "../api/useSession";
@@ -62,13 +63,11 @@ export function EdgeCockpit() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-base font-semibold">Edge & NAT cockpit</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          How traffic actually leaves the cluster, and what&apos;s exposed inbound. Read-only — every rule here is
-          edited via an ordinary staged changeset, never from this page directly.
-        </p>
-      </div>
+      <PageHeader
+        title="Edge & NAT cockpit"
+        description="How traffic actually leaves the cluster, and what's exposed inbound. Read-only — every rule here is
+          edited via an ordinary staged changeset, never from this page directly."
+      />
 
       {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
       {error && <EmptyState title="Could not load edge data" description="Try again in a moment." />}

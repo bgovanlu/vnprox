@@ -35,7 +35,9 @@ async function logIn(page: Page): Promise<void> {
 async function openGuestFirewall(page: Page): Promise<void> {
   await page.goto("/firewall");
   await expect(page.getByRole("heading", { name: "Firewall", level: 1 })).toBeVisible();
-  await page.getByRole("button", { name: "Guests" }).click();
+  // T-3404: FirewallPage's hierarchy tabs migrated to the shared underlined
+  // Tabs wrapper (role="tab", not the old hand-rolled role="button").
+  await page.getByRole("tab", { name: "Guests" }).click();
   // The guest selector populates from GET /firewall/rulesets?scope=guest.
   await expect(page.getByLabel("Select guest")).toBeVisible();
 }

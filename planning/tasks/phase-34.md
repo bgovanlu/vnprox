@@ -111,8 +111,12 @@ chip at top, Settings pinned at the bottom.
   route auto-expands on navigation.
 - `lucide-react` icons per item (added to `docs/development.md` deps table); glyph letters gone.
 - Narrow viewport: same reachable-set filter (`/`, `/tools`), icon-only, aria-labels intact.
-- `aria-label="Primary"`, `relative z-50` preserved; collapsed groups still expose their items
-  to the accessibility tree per standard disclosure semantics (button + `aria-expanded`).
+- `aria-label="Primary"`, `relative z-50` preserved; groups use the WAI-ARIA APG disclosure
+  pattern — a trigger button carrying `aria-expanded`, with the group's items unmounted while
+  collapsed. (This sentence originally read "collapsed groups still expose their items to the
+  accessibility tree", which was wrong: under the APG pattern a collapsed panel is *removed*
+  from the tree, and that is what axe expects. Corrected during implementation rather than
+  after, so it does not mislead T-3406's axe sweep.)
 
 **Acceptance criteria:**
 1. Vitest: grouping renders all 21 routes exactly once; active-route auto-expand works;

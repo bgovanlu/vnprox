@@ -214,7 +214,9 @@ test.describe("SDN zone wizards, IPAM reserve, firewall macro rule", () => {
   }) => {
     await logIn(page);
     await page.getByRole("link", { name: "Firewall" }).click();
-    await page.getByRole("button", { name: "Guests" }).click();
+    // T-3404: FirewallPage's hierarchy tabs migrated to the shared
+    // underlined Tabs wrapper (role="tab", not the old role="button").
+    await page.getByRole("tab", { name: "Guests" }).click();
     await page.getByLabel("Select guest").selectOption("guest:pve1:200"); // app01
 
     await page.getByLabel("Macro").selectOption("HTTP");

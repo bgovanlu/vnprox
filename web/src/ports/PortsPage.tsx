@@ -7,6 +7,7 @@
 // troubleshoot.
 import { API_BASE } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import type { PortRow } from "../api/types";
 import { usePortsQuery } from "./queries";
 
@@ -35,22 +36,25 @@ export function PortsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Ports</h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            Every physical NIC in the cluster and the switch port LLDP says it&apos;s connected to. Stale rows (a link
-            that hasn&apos;t been seen recently) are kept and flagged for troubleshooting.
-          </p>
-        </div>
-        <a
-          href={`${API_BASE}/ports?format=csv`}
-          className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-          download
-        >
-          Export CSV
-        </a>
-      </header>
+      <PageHeader
+        title="Ports"
+        description="Every physical NIC in the cluster and the switch port LLDP says it's connected to. Stale rows (a link
+          that hasn't been seen recently) are kept and flagged for troubleshooting."
+        actions={
+          // T-3404: a page-level action gets the pill treatment, but this is
+          // a file download (`<a download>`, same reasoning as
+          // ToolsPage.tsx's doc-export links) rather than a `Button` — no
+          // `onClick`/handler to preserve, so it's styled to match
+          // `Button({ variant: "secondary", shape: "pill" })` by hand.
+          <a
+            href={`${API_BASE}/ports?format=csv`}
+            download
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-pill bg-slate-200 px-3.5 text-sm font-medium text-slate-900 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+          >
+            Export CSV
+          </a>
+        }
+      />
 
       {isLoading && <p className="text-sm text-slate-400">Loading ports…</p>}
       {isError && <p className="text-sm text-red-600 dark:text-red-400">Could not load the ports table.</p>}

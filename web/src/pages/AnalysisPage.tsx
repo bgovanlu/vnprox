@@ -17,23 +17,24 @@ import { CapacityExportPanel } from "../analysis/CapacityExportPanel";
 import { PbsPanel } from "../analysis/PbsPanel";
 import { QosShapesPanel } from "../analysis/QosShapesPanel";
 import { SpofPanel } from "../analysis/SpofPanel";
+import { PageHeader } from "../components/PageHeader";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { IPv6SegmentsPanel } from "../ipv6/IPv6SegmentsPanel";
 
 export function AnalysisPage() {
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold">
-          Analysis
-          <HelpAnchor topic="analysis-page" />
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          What breaks if something dies, where capacity is heading, what is shaped, where backups actually flow, and
+      <PageHeader
+        title={
+          <>
+            Analysis
+            <HelpAnchor topic="analysis-page" />
+          </>
+        }
+        description="What breaks if something dies, where capacity is heading, what is shaped, where backups actually flow, and
           what IPv6 is really doing. Read-mostly: the one editable thing here is QoS shaping, and it stages a changeset
-          like every other edit in vnprox.
-        </p>
-      </div>
+          like every other edit in vnprox."
+      />
 
       <SpofPanel />
       <hr className="border-slate-200 dark:border-slate-800" />

@@ -15,9 +15,10 @@
 // fights a user's own subsequent tab/guest clicks (which don't rewrite the
 // URL — see focusRule.ts's doc comment).
 import { useEffect, useMemo, useState } from "react";
-import clsx from "clsx";
 import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "../components/Tabs";
 import { FirewallBanners } from "./Banner";
 import type { FocusRule } from "./focusRule";
 import { matchesFocus, parseFirewallDeepLink } from "./focusRule";
@@ -52,24 +53,6 @@ const TABS: { scope: Scope; label: string }[] = [
   { scope: "vnet", label: "VNets" },
   { scope: "objects", label: "Objects" },
 ];
-
-function TabButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={clsx(
-        "rounded-md px-3 py-1.5 text-sm font-medium",
-        active
-          ? "bg-accent-600 text-white"
-          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
-      )}
-    >
-      {label}
-    </button>
-  );
-}
 
 function ClusterPanel() {
   const { data, isLoading, error } = useClusterRulesetQuery();
@@ -367,32 +350,51 @@ export function FirewallPage() {
     setScope("group");
   }
 
-  return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Firewall</h1>
-        <div className="flex gap-1">
-          {TABS.map((t) => (
-            <TabButton
-              key={t.scope}
-              active={scope === t.scope || (t.scope === "objects" && scope === "group")}
-              label={t.label}
-              onClick={() => { setScope(t.scope); }}
-            />
-          ))}
-        </div>
-      </div>
+  // T-2002's "group" scope is a drill-down from the Objects tab's own
+  // "Inspect" action, not a tab of its own (TABS above stays at five — see
+  // its doc comment) — so it maps onto the Objects trigger for Tabs.Root's
+  // controlled `value` (keeping that tab visually active) while still
+  // swapping in GroupInspector instead of ObjectsTab underneath.
+  const activeTabValue = scope === "group" ? "objects" : scope;
 
-      {scope === "cluster" && <ClusterPanel />}
-      {scope === "node" && <NodePanel selected={selectedNode} onSelect={setSelectedNode} />}
-      {scope === "guest" && (
+  return (
+    <TabsRoot
+      value={activeTabValue}
+      onValueChange={(v) => { setScope(v as Scope); }}
+      className="flex h-full flex-col gap-3"
+    >
+      <PageHeader
+        title="Firewall"
+        tabs={
+          <TabsList aria-label="Firewall hierarchy">
+            {TABS.map((t) => (
+              <TabsTrigger key={t.scope} value={t.scope}>
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        }
+      />
+
+      <TabsContent value="cluster">
+        <ClusterPanel />
+      </TabsContent>
+      <TabsContent value="node">
+        <NodePanel selected={selectedNode} onSelect={setSelectedNode} />
+      </TabsContent>
+      <TabsContent value="guest">
         <GuestPanel selected={selectedGuestRef} onSelect={setSelectedGuestRef} focusRule={deepLink.focusRule} />
-      )}
-      {scope === "vnet" && <VNetPanel selected={selectedVnetRef} onSelect={setSelectedVnetRef} />}
-      {scope === "objects" && <ObjectsTab onNavigate={navigateToRuleset} onInspectGroup={inspectGroup} />}
-      {scope === "group" && inspectedGroup && (
-        <GroupInspector name={inspectedGroup} onBack={() => { setScope("objects"); }} />
-      )}
-    </div>
+      </TabsContent>
+      <TabsContent value="vnet">
+        <VNetPanel selected={selectedVnetRef} onSelect={setSelectedVnetRef} />
+      </TabsContent>
+      <TabsContent value="objects">
+        {scope === "group" && inspectedGroup ? (
+          <GroupInspector name={inspectedGroup} onBack={() => { setScope("objects"); }} />
+        ) : (
+          <ObjectsTab onNavigate={navigateToRuleset} onInspectGroup={inspectGroup} />
+        )}
+      </TabsContent>
+    </TabsRoot>
   );
 }

@@ -12,6 +12,7 @@
 // breakdown over GET /flows' retained window (migration/backup/Ceph/
 // corosync attribution) — same "existing route, client-side computation"
 // convention every other tile here follows.
+import { PageHeader } from "../components/PageHeader";
 import { FindingsSeverityTile } from "./FindingsSeverityTile";
 import { DriftStatusTile } from "./DriftStatusTile";
 import { PendingChangesetsTile } from "./PendingChangesetsTile";
@@ -23,14 +24,12 @@ import { RecentAuditTile } from "./RecentAuditTile";
 export function DashboardPage() {
   return (
     <div className="flex h-full flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">Home</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Network at a glance: open findings, drift, pending changesets, management-path redundancy, the busiest
-          bridge&apos;s top talkers, service-network traffic, and recent audit activity. Every tile is read-only —
-          click through to act.
-        </p>
-      </div>
+      <PageHeader
+        title="Home"
+        description="Network at a glance: open findings, drift, pending changesets, management-path redundancy, the busiest
+          bridge's top talkers, service-network traffic, and recent audit activity. Every tile is read-only —
+          click through to act."
+      />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <FindingsSeverityTile />
         <DriftStatusTile />

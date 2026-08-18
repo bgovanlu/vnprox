@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { HelpAnchor } from "../help/HelpAnchor";
 import {
   CERT_KIND_LABEL,
@@ -126,17 +127,17 @@ export function CertificatesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold">
-          Certificates
-          <HelpAnchor topic="certificates-page" />
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          The TLS certificates this cluster's nodes present to each other and to you. vnprox reads them from
+      <PageHeader
+        title={
+          <>
+            Certificates
+            <HelpAnchor topic="certificates-page" />
+          </>
+        }
+        description="The TLS certificates this cluster's nodes present to each other and to you. vnprox reads them from
           /etc/pve, which every node shares — so this is the whole cluster's view, even from one node, and
-          even when peers are unreachable.
-        </p>
-      </div>
+          even when peers are unreachable."
+      />
 
       <section>
         <h2 className="text-lg font-semibold">

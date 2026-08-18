@@ -22,6 +22,7 @@
 import { useState } from "react";
 import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
+import { PageHeader } from "../components/PageHeader";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { GitSyncPanel } from "./GitSyncPanel";
 import { SpecDocumentPanel } from "./SpecDocumentPanel";
@@ -50,14 +51,16 @@ export function ConfigAsCodePage() {
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto">
       <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold">
-          Config as code
-          <HelpAnchor topic="config-as-code-page" />
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Where the declared intent, the on-disk configuration and the running kernel are compared — and the two
-          ways of resolving a disagreement between them. Everything here stages; nothing here applies.
-        </p>
+        <PageHeader
+          title={
+            <>
+              Config as code
+              <HelpAnchor topic="config-as-code-page" />
+            </>
+          }
+          description="Where the declared intent, the on-disk configuration and the running kernel are compared — and the two
+            ways of resolving a disagreement between them. Everything here stages; nothing here applies."
+        />
         <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {POSITIONS.map((p) => (
             <div key={p} className="rounded-md border border-slate-200 p-2 dark:border-slate-800">

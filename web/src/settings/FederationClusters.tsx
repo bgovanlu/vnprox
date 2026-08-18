@@ -20,6 +20,7 @@ import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useToast } from "../components/Toast";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Tooltip } from "../components/Tooltip";
 import { Button } from "../components/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
@@ -283,13 +284,11 @@ export function FederationClusters() {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden p-4">
-      <header>
-        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Federated clusters</h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          Attach other Proxmox clusters for aggregated read views and cross-cluster IPAM conflict detection. vnprox
-          never writes to an attached cluster's own config — federation federates views, not config ownership.
-        </p>
-      </header>
+      <PageHeader
+        title="Federated clusters"
+        description="Attach other Proxmox clusters for aggregated read views and cross-cluster IPAM conflict detection. vnprox
+          never writes to an attached cluster's own config — federation federates views, not config ownership."
+      />
 
       <div className="flex flex-1 gap-4 overflow-hidden">
         <div className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">

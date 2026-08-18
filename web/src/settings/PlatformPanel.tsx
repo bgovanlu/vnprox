@@ -8,6 +8,7 @@
 // daemon with no plugin registry still shows tokens, and a session without
 // the audit capability still sees everything except the self-check.
 import { Link } from "react-router-dom";
+import { PageHeader } from "../components/PageHeader";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { TokensSection } from "./TokensSection";
 import { WebhooksSection } from "./WebhooksSection";
@@ -17,20 +18,24 @@ import { DoctorLiveSection } from "./DoctorLiveSection";
 export function PlatformPanel() {
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <header>
-        <h1 className="flex items-center gap-1.5 text-lg font-semibold text-slate-800 dark:text-slate-100">
-          Platform
-          <HelpAnchor topic="platform-panel-page" />
-        </h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          Automation credentials, event delivery, installed extensions, and the daemon&rsquo;s own live self-check.
-          Each section states what it could not check as clearly as what it could.{" "}
-          <Link className="text-accent-700 underline dark:text-accent-400" to="/settings">
-            Back to Settings
-          </Link>
-          .
-        </p>
-      </header>
+      <PageHeader
+        title={
+          <>
+            Platform
+            <HelpAnchor topic="platform-panel-page" />
+          </>
+        }
+        description={
+          <>
+            Automation credentials, event delivery, installed extensions, and the daemon&rsquo;s own live self-check.
+            Each section states what it could not check as clearly as what it could.{" "}
+            <Link className="text-accent-700 underline dark:text-accent-400" to="/settings">
+              Back to Settings
+            </Link>
+            .
+          </>
+        }
+      />
 
       <TokensSection />
       <WebhooksSection />

@@ -18,6 +18,7 @@ import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
+import { PageHeader } from "../components/PageHeader";
 import { Tooltip } from "../components/Tooltip";
 import { useToast } from "../components/Toast";
 import { HelpAnchor } from "../help/HelpAnchor";
@@ -130,35 +131,43 @@ export function HistoryPage() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">History</h1>
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!canWrite) return;
-            createMutation.mutate(note);
-          }}
-        >
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => {
-              setNote(e.target.value);
+      <PageHeader
+        title="History"
+        actions={
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!canWrite) return;
+              createMutation.mutate(note);
             }}
-            placeholder="Note (optional)"
-            aria-label="Snapshot note"
-            className="h-9 w-56 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
-          />
-          <Tooltip content={writeDisabledReason}>
-            <span>
-              <Button type="submit" variant="primary" size="md" disabled={createMutation.isPending || !canWrite}>
-                {createMutation.isPending ? "Capturing…" : "Take snapshot"}
-              </Button>
-            </span>
-          </Tooltip>
-        </form>
-      </div>
+          >
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => {
+                setNote(e.target.value);
+              }}
+              placeholder="Note (optional)"
+              aria-label="Snapshot note"
+              className="h-9 w-56 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+            />
+            <Tooltip content={writeDisabledReason}>
+              <span>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  shape="pill"
+                  disabled={createMutation.isPending || !canWrite}
+                >
+                  {createMutation.isPending ? "Capturing…" : "Take snapshot"}
+                </Button>
+              </span>
+            </Tooltip>
+          </form>
+        }
+      />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Timeline */}

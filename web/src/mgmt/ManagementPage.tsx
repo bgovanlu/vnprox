@@ -12,6 +12,7 @@
 // everything else about a management interface is reachable from here.
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Tooltip } from "../components/Tooltip";
 import { useSession } from "../api/useSession";
 import type { EntityDetail, ManagementPathRef, MgmtRole } from "../api/types";
@@ -135,14 +136,12 @@ export function ManagementPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <header>
-        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Management interfaces</h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          The interface on each node that carries its management IP (and any corosync links), plus everything you can
+      <PageHeader
+        title="Management interfaces"
+        description="The interface on each node that carries its management IP (and any corosync links), plus everything you can
           change about it. Editing an interface here stages a normal changeset — nothing applies until you review and
-          confirm it, exactly like every other change in vnprox.
-        </p>
-      </header>
+          confirm it, exactly like every other change in vnprox."
+      />
 
       {isLoading && <p className="text-sm text-slate-400">Loading management interfaces…</p>}
       {isError && <p className="text-sm text-red-600 dark:text-red-400">Could not load the management-interface status.</p>}

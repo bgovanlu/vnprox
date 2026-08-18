@@ -25,6 +25,7 @@ import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { PageHeader } from "../components/PageHeader";
 import { Tooltip } from "../components/Tooltip";
 import { useToast } from "../components/Toast";
 import { diffSummary, orderEvents, sourceGaps, sourceGlyph, sourceLabel, windowLabel } from "./timeline";
@@ -143,7 +144,7 @@ export function IncidentsPage() {
   if (!canUse) {
     return (
       <div className="p-6">
-        <h1 className="text-xl font-semibold text-slate-100">Incidents</h1>
+        <PageHeader title="Incidents" />
         <EmptyState
           title="You cannot read incidents"
           description={disabledReason ?? "This view needs the audit capability."}
@@ -154,14 +155,12 @@ export function IncidentsPage() {
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
-      <header>
-        <h1 className="text-xl font-semibold text-slate-100">Incidents</h1>
-        <p className="text-sm text-slate-400">
-          One timeline over a window: findings, changesets, diagnosis runs, captures, flows and your own notes. An
+      <PageHeader
+        title="Incidents"
+        description="One timeline over a window: findings, changesets, diagnosis runs, captures, flows and your own notes. An
           incident is a view — opening one collects nothing new, so you can open one over a window that has already
-          passed.
-        </p>
-      </header>
+          passed."
+      />
 
       <section aria-label="Open an incident" className="rounded border border-slate-700 p-3">
         <div className="flex flex-wrap items-end gap-3">
