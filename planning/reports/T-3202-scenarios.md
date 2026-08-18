@@ -20,20 +20,38 @@ is a stronger, faster-converging test of the same code path, not a weaker one).
 ### Scenario 1 — management link dropped mid-apply (the classic lockout)
 
 **Target**: `pve001` (the more expendable node of the two).
-**Change**: an `iface.update`/interface-config changeset op that intentionally breaks the
-interface carrying the SSH management session (an incorrect IP/VLAN change to the same interface
-`vnprox-setup`/SSH already uses — 192.168.1.7's own management path), applied through vnprox's
-real change engine (stage → validate → diff → apply), **never confirmed**.
+**Change**: an `iface.update`/interface-config changeset op that intentionally re-addresses
+`vmbr0` — `GET /protected-interfaces/status` confirms this node's detected protected set is
+`bridge:pve001:vmbr0` (roles `corosync`, `mgmt`), the same interface carrying the SSH management
+session — to a wrong IP, applied through vnprox's real change engine (stage → validate → diff →
+apply), **never confirmed**.
+**Correction found during setup, recorded before the run**: this changeset is refused outright by
+`internal/change/validate_safety.go`'s hard "no override in UI" interlock
+(`docs/security.md`'s Safety interlocks section) as soon as `vmbr0` is a detected protected
+interface — which it is. The only sanctioned way to exercise this exact scenario for real is the
+interlock's own documented escape hatch, `[safety] allow_dangerous_ops` (`docs/deployment.md`),
+which downgrades the refusal from a hard error to an audited warning. **Set to `true` on `pve001`
+only, for the duration of this one scenario, then reverted to `false` immediately after** — this
+is the sanctioned, audited path for a controlled test of exactly this scenario, not a bypass of
+it. The daemon on `pve001` is restarted once to pick up the flag change before the run, and once
+more after reverting it.
+**Confirm-window correction, recorded before the run**: `touchesMgmtPath` changesets carry a
+**mandatory 180s floor** (`change.MgmtConfirmTimeoutFloor`), not the 30s this file originally
+declared — a lower value is rejected with `400 confirm_window_too_short` before any apply work.
+The scenario runs at 180s, not 30s; the failure-verdict margin below is adjusted accordingly. The
+apply call also carries the mandatory typed `mgmtAck: {node: "pve001"}` acknowledgement T-703's
+ceremony requires for any `touchesMgmtPath` changeset — recorded to the audit log as
+`changeset.mgmt_ack` before the apply, per `RecordMgmtAck`'s own contract.
 **Mechanism under test**: `internal/change/localtimer.go`'s `LocalTimerAgent` — "each node arms
 its own local timer at step start — no cross-node dependency for safety." The revert fires
 in-process on `pve001` itself, independent of whether pve001 is reachable from outside during the
 window — this is precisely what makes the design safe to test.
 **Expected outcome, declared now**: SSH to `192.168.1.7` becomes unreachable within seconds of
-apply (proving the lockout is real, not a no-op test). Within the 30s confirm window plus real
-`ifreload` time (a few seconds of margin budgeted), SSH access **restores on its own**, with no
-confirm ever sent and no manual intervention. The interface's live config after restoration
-matches its pre-change state.
-**Failure verdict, declared now**: if SSH does not restore within 90s (3x the confirm timeout,
+apply (proving the lockout is real, not a no-op test). Within the 180s confirm window plus real
+`ifreload` time (margin budgeted), SSH access **restores on its own**, with no confirm ever sent
+and no manual intervention. The interface's live config after restoration matches its pre-change
+state.
+**Failure verdict, declared now**: if SSH does not restore within 300s (180s window + 120s
 generous margin for `ifreload` + TCP re-establishment), this is a **release blocker** per T-1804
 AC2 — not a finding, not a doc note. Recovery path if it fails: user's console access to `pve001`,
 manually restore `/etc/network/interfaces` from vnprox's own pre-apply snapshot (or PVE's own
