@@ -27,12 +27,28 @@ const (
 	// starterEVPNDatacenter's own report used to document (T-603's "no
 	// sdn.controller.create op; see the T-603 report").
 	KindSdnController Kind = "sdn-controller"
+	// KindWgTunnel (T-3303) lets a blueprint create a WireGuard tunnel
+	// interface (wg.tunnel.create), closing the gap seedDMZWireGuardSiteToSite's
+	// own doc comment used to name ("no wg.* entity kind"). Deliberately
+	// tunnel-only, not peer: a peer's PublicKey belongs to a remote site the
+	// blueprint has no way to know at instantiation time, so wiring peers
+	// into a blueprint is a real future feature, not an oversight here.
+	//
+	// This Kind's idempotency guarantee is narrower than every Kind above
+	// it, stated rather than silently assumed: inventory.Snapshot never
+	// contains a wg-tunnel (inventory.KindWgTunnel's own doc comment — it is
+	// app-owned intent in the wireguard_tunnels store table, not a
+	// live-polled entity), so diffWgTunnel has no way to observe an
+	// already-provisioned tunnel and always proposes creating one. See
+	// diffWgTunnel's doc comment for what that means for a second
+	// instantiate against an already-provisioned host.
+	KindWgTunnel Kind = "wg-tunnel"
 )
 
 var knownKinds = map[Kind]bool{
 	KindBridge: true, KindBond: true, KindVlan: true,
 	KindSdnZone: true, KindSdnVnet: true, KindSdnSubnet: true,
-	KindSdnController: true,
+	KindSdnController: true, KindWgTunnel: true,
 }
 
 // ParamType names the type validation/coercion applied to one blueprint

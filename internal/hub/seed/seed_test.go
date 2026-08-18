@@ -59,6 +59,14 @@ func TestSeeds_BareAndConforming(t *testing.T) {
 		id        string
 		nodes     []string
 		wantTypes []change.OpType
+		// wantConformingTypes overrides the "already conforming" leg's
+		// expectation from the default (zero ops) — needed only by
+		// SeedDMZWireGuardSiteToSite: its wg-tunnel entity's diffWgTunnel
+		// always proposes a create (inventory.Snapshot never contains a
+		// wg-tunnel to diff against — diffWgTunnel's own doc comment), so
+		// "already conforming" still produces a wg.tunnel.create, every
+		// time. Nil means the ordinary zero-ops expectation.
+		wantConformingTypes []change.OpType
 	}{
 		{
 			id: seed.SeedHomelabSingleNode, nodes: []string{"pve1"},
@@ -95,12 +103,14 @@ func TestSeeds_BareAndConforming(t *testing.T) {
 			},
 		},
 		{
-			id: seed.SeedDMZWireGuardSiteToSite, nodes: []string{"pve1"},
-			wantTypes: []change.OpType{change.OpBridgeCreate},
+			id:                  seed.SeedDMZWireGuardSiteToSite,
+			nodes:               []string{"pve1"},
+			wantTypes:           []change.OpType{change.OpBridgeCreate, change.OpWgTunnelCreate},
+			wantConformingTypes: []change.OpType{change.OpWgTunnelCreate},
 			seed: func(g *inventory.Graph, nodes []string) {
 				applyBridge(g, "pve1", "vmbr-dmz", bridgeOpts{
 					ports: []string{"eno2"}, addresses: []string{"172.16.99.1/28"},
-					comments: "vnprox seed: dmz-wireguard-site-to-site (DMZ segment; configure the WireGuard site-to-site tunnel separately)",
+					comments: "vnprox seed: dmz-wireguard-site-to-site (DMZ segment; the WireGuard tunnel interface rides on this bridge)",
 				})
 			},
 		},
@@ -131,6 +141,12 @@ func TestSeeds_BareAndConforming(t *testing.T) {
 				ops, err := blueprint.Instantiate(bp, blueprint.InstantiateRequest{Nodes: tc.nodes}, g.Snapshot())
 				if err != nil {
 					t.Fatalf("Instantiate: %v", err)
+				}
+				if tc.wantConformingTypes != nil {
+					if got := opTypes(ops); !equalOpTypes(got, tc.wantConformingTypes) {
+						t.Fatalf("got %v, want %v", got, tc.wantConformingTypes)
+					}
+					return
 				}
 				if len(ops) != 0 {
 					t.Fatalf("got %v, want zero ops (already conforming)", opTypes(ops))

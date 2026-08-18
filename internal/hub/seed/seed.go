@@ -17,14 +17,14 @@
 // registry is actually hosted (docs/hub-registry.md's "Status" section),
 // nothing here is published anywhere.
 //
-// WireGuard caveat (mirrors starters.go's EVPN-starter caveat, same
-// reasoning): blueprint v1's entity Kind vocabulary (types.go's knownKinds)
-// is bridge/bond/vlan/sdn-zone/sdn-vnet/sdn-subnet only — there is no wg.*
-// entity kind, so a blueprint cannot template a WireGuard tunnel or peer.
-// SeedDMZWireGuardSiteToSite therefore provisions only the DMZ network
-// segment; the WireGuard site-to-site tunnel connecting it to a remote site
-// is configured separately, through vnprox's own WireGuard support
-// (docs/features/wireguard.md), not through this blueprint.
+// WireGuard caveat, narrowed by T-3303 (mirrors starters.go's EVPN-starter
+// caveat, same reasoning, smaller scope now): blueprint.KindWgTunnel closed
+// the "no wg.* entity kind" gap this package used to describe in full —
+// SeedDMZWireGuardSiteToSite now provisions the DMZ segment AND the local
+// WireGuard tunnel interface. What is still out of reach is the remote
+// PEER: a wg.peer.add op needs the remote site's own public key, exchanged
+// out of band, which cannot exist at instantiation time — see
+// seedDMZWireGuardSiteToSite's own doc comment.
 package seed
 
 import "github.com/bgovanlu/vnprox/internal/blueprint"
@@ -195,27 +195,34 @@ func seedSMBVLANSegmented() *blueprint.Blueprint {
 	}
 }
 
-// seedDMZWireGuardSiteToSite provisions only the DMZ network segment — see
-// this package's doc comment for why the WireGuard site-to-site tunnel
-// itself is out of blueprint v1's reach (no wg.* entity Kind).
+// seedDMZWireGuardSiteToSite provisions the DMZ network segment AND the
+// local WireGuard tunnel interface fronting it (T-3303: blueprint.KindWgTunnel
+// closed the "no wg.* entity kind" gap this blueprint used to name). Still
+// PARTIAL, narrower now: the REMOTE PEER is not, and cannot be, templated
+// here — a wg.peer.add op needs the remote site's own public key, which is
+// exchanged out of band and does not exist at instantiation time. Adding
+// the peer is a `wg.peer.add` op against the tunnel this blueprint creates,
+// via vnprox's own WireGuard support (docs/features/wireguard.md), once
+// that key is in hand.
 func seedDMZWireGuardSiteToSite() *blueprint.Blueprint {
 	return &blueprint.Blueprint{
 		BlueprintVersion: blueprint.CurrentBlueprintVersion,
 		ID:               SeedDMZWireGuardSiteToSite,
 		Name:             "DMZ fronting a WireGuard site-to-site tunnel",
-		Description: "An isolated DMZ bridge on its own NIC, addressed out of a dedicated subnet, for " +
-			"a host that fronts a WireGuard site-to-site tunnel to a remote site. PARTIAL, like the " +
-			"bundled EVPN starter: this blueprint creates the DMZ network segment only — blueprint v1 " +
-			"has no wg.* entity kind, so the WireGuard tunnel/peer that routes remote-site traffic " +
-			"into this DMZ is not created by instantiating this blueprint and must be configured " +
-			"separately via vnprox's own WireGuard support (docs/features/wireguard.md) once the DMZ " +
-			"segment below exists.",
+		Description: "An isolated DMZ bridge on its own NIC, addressed out of a dedicated subnet, plus " +
+			"the local WireGuard tunnel interface that rides on it, for a host fronting a site-to-site " +
+			"tunnel to a remote site. PARTIAL: this blueprint creates the DMZ segment and the tunnel " +
+			"interface, but not the remote peer — a wg.peer.add op needs the remote site's public key, " +
+			"exchanged out of band, which does not exist at instantiation time. Add the peer via " +
+			"vnprox's own WireGuard support (docs/features/wireguard.md) once you have it.",
 		NodeSelector: blueprint.NodeSelector{Mode: blueprint.SelectAll},
 		Params: []blueprint.ParamDef{
 			{Name: "dmzNic", Type: blueprint.ParamIface, Label: "DMZ NIC", Default: "eno2", Required: true},
 			{Name: "dmzBridgeName", Type: blueprint.ParamString, Label: "DMZ bridge name", Default: "vmbr-dmz", Required: true},
 			{Name: "dmzCidr", Type: blueprint.ParamCIDR, Label: "DMZ address", Default: "172.16.99.1/28",
 				Required: true, AddressSuggest: true, Subnet: "172.16.99.0/28"},
+			{Name: "wgIfName", Type: blueprint.ParamString, Label: "WireGuard interface name", Default: "wg0", Required: true},
+			{Name: "wgListenPort", Type: blueprint.ParamInt, Label: "WireGuard listen port", Default: 51820, Required: true},
 		},
 		Entities: []blueprint.EntityTemplate{
 			{
@@ -224,8 +231,17 @@ func seedDMZWireGuardSiteToSite() *blueprint.Blueprint {
 				Fields: map[string]any{
 					"ports":     []any{"{{dmzNic}}"},
 					"addresses": []any{"{{dmzCidr}}"},
-					"comments": "vnprox seed: dmz-wireguard-site-to-site (DMZ segment; configure the " +
-						"WireGuard site-to-site tunnel separately)",
+					"comments": "vnprox seed: dmz-wireguard-site-to-site (DMZ segment; the WireGuard " +
+						"tunnel interface rides on this bridge)",
+				},
+			},
+			{
+				Kind:       blueprint.KindWgTunnel,
+				IDTemplate: "{{wgIfName}}",
+				Fields: map[string]any{
+					"ifName":     "{{wgIfName}}",
+					"carrier":    "{{dmzBridgeName}}",
+					"listenPort": "{{wgListenPort}}",
 				},
 			},
 		},

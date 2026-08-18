@@ -41,6 +41,8 @@ func diffEntity(e expandedEntity, snap inventory.Snapshot) ([]change.Op, error) 
 		return diffSdnSubnet(e.ref, e.fields, snap)
 	case KindSdnController:
 		return diffSdnController(e.ref, e.fields, snap)
+	case KindWgTunnel:
+		return diffWgTunnel(e.ref, e.fields)
 	default:
 		return nil, fmt.Errorf("unknown entity kind %q", e.kind)
 	}
@@ -706,4 +708,61 @@ func diffSdnController(ref inventory.Ref, fields map[string]any, snap inventory.
 		return nil, nil
 	}
 	return []change.Op{{Type: change.OpSdnControllerUpdate, Target: ref, Params: upd}}, nil
+}
+
+// --- wg-tunnel --------------------------------------------------------
+
+// diffWgTunnel always proposes a wg.tunnel.create op — it cannot do
+// anything else. inventory.Snapshot never contains a wg-tunnel entity
+// (inventory.KindWgTunnel's own doc comment: app-owned intent in the
+// wireguard_tunnels store table, never emitted into the graph by any
+// collector), so there is no existing-state to diff against the way every
+// other Kind's adapter above does via snap.Get(ref). A second instantiate
+// of a blueprint carrying a wg-tunnel entity against an already-provisioned
+// host therefore proposes creating the SAME tunnel again — the change
+// engine's own wg.tunnel.create validation is what actually decides what
+// happens to that draft (see internal/change's schema/referential
+// validators), not this function. This is a real, narrower guarantee than
+// KindBridge/KindBond/KindVlan/every KindSdn* Kind above give, and is
+// stated in KindWgTunnel's own doc comment rather than left to be
+// discovered by someone re-running a WireGuard blueprint.
+func diffWgTunnel(ref inventory.Ref, fields map[string]any) ([]change.Op, error) {
+	ifName, hasIfName, err := fieldString(fields, "ifName")
+	if err != nil {
+		return nil, err
+	}
+	if !hasIfName || ifName == "" {
+		return nil, fmt.Errorf("%s: wg-tunnel requires an ifName field", ref)
+	}
+	carrier, hasCarrier, err := fieldString(fields, "carrier")
+	if err != nil {
+		return nil, err
+	}
+	addresses, hasAddresses, err := fieldStringSlice(fields, "addresses")
+	if err != nil {
+		return nil, err
+	}
+	listenPort, hasListenPort, err := fieldInt(fields, "listenPort")
+	if err != nil {
+		return nil, err
+	}
+	mtu, hasMTU, err := fieldInt(fields, "mtu")
+	if err != nil {
+		return nil, err
+	}
+
+	create := &change.WgTunnelCreateParams{IfName: ifName}
+	if hasCarrier {
+		create.Carrier = carrier
+	}
+	if hasAddresses {
+		create.Addresses = addresses
+	}
+	if hasListenPort {
+		create.ListenPort = listenPort
+	}
+	if hasMTU {
+		create.MTU = mtu
+	}
+	return []change.Op{{Type: change.OpWgTunnelCreate, Target: ref, Params: create}}, nil
 }

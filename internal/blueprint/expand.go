@@ -103,6 +103,11 @@ func refFor(kind Kind, node, id string) (inventory.Ref, error) {
 			return inventory.Ref{}, fmt.Errorf("sdn-controller is cluster-scoped and cannot use nodeSelector.mode=all")
 		}
 		return inventory.Ref{Kind: inventory.KindSDNController, ID: id}, nil
+	case KindWgTunnel:
+		if node == "" {
+			return inventory.Ref{}, fmt.Errorf("wg-tunnel is node-scoped and requires a node (nodeSelector.mode=all or a node override)")
+		}
+		return inventory.Ref{Kind: inventory.KindWgTunnel, Node: node, ID: id}, nil
 	default:
 		return inventory.Ref{}, fmt.Errorf("unknown entity kind %q", kind)
 	}

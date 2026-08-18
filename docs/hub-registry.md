@@ -250,24 +250,35 @@ new key.
   (`vnproxctl hub`), this process, and (T-2104) the registry's first real
   content: `internal/hub/seed` ships four seeded blueprints — homelab
   single-node, three-node Ceph cluster storage, VLAN-segmented SMB branch
-  office, and a DMZ fronting a WireGuard site-to-site tunnel (the last one
-  PARTIAL, like the bundled EVPN starter: blueprint v1 has no `wg.*` entity
-  kind, so it provisions the DMZ segment only — see the package's doc
-  comment). Every seed is validated, instantiates to the documented
-  changeset against a bare fixture and to zero ops against an
-  already-conforming one, and the three-node Ceph seed's produced ops are
-  additionally applied through a real `internal/pve.Client` against a
-  running `internal/pvemock` server and read back to confirm the exact
+  office, and a DMZ fronting a WireGuard site-to-site tunnel (T-3303 closed
+  blueprint v1's missing `wg.*` entity kind gap: this seed now provisions the
+  DMZ segment AND the local WireGuard tunnel interface. Still PARTIAL,
+  narrower now — the remote peer needs a public key exchanged out of band,
+  which cannot exist at instantiation time, so it is still configured
+  separately; see the package's doc comment). Every seed is validated,
+  instantiates to the documented changeset against a bare fixture — the
+  DMZ+WireGuard seed's wg-tunnel entity is the one exception to "zero ops
+  against an already-conforming one": it always proposes a create, since
+  inventory.Snapshot never contains a wg-tunnel to diff against (see
+  `diffWgTunnel`'s doc comment) — and the three-node Ceph seed's produced
+  ops are additionally applied through a real `internal/pve.Client` against
+  a running `internal/pvemock` server and read back to confirm the exact
   zone/vnet/subnet topology landed (`internal/hub/seed`'s tests).
   `cmd/vnproxctl`'s `TestHubCLI_SeedBlueprintsPublishReviewIndex` walks the
   submission/review process above once, end to end, with each seed as the
   real bundle: signed, submitted, indexed, verified, and the published
   artifact read back and re-verified to confirm real multi-entity content —
   not the placeholder fixture — survives the pipeline intact.
-- **Does not exist yet:** the hosted registry itself. No domain, no bucket, no
-  `gh-pages` branch, and no CI job that deploys one — this repository has no
-  registry hosting to point at, so nothing here has been exercised against a
-  real static host, and the four seeded blueprints above are not published
-  anywhere an operator's `[hub] registry_url` could reach. Publishing them is
-  the same `vnproxctl hub publish`/`hub index` steps this document already
-  describes, run once real hosting exists.
+- **Hosted, 2026-08-18 (T-3303):** `registry.vnprox.com` — static nginx
+  hosting on pve001 (`/srv/vnprox-registry`), reverse-proxied the same way
+  as `apt.vnprox.com`/`demo.vnprox.com`. All four seeded blueprints above
+  are published on it for real, through the exact `vnproxctl hub
+  publish`/`hub index` steps this document describes (not a copy of the
+  test fixture) — the index carries 4 signed entries, verifies against the
+  registry's own key, and `GET /index.json` serves it. The registry index
+  signing key lives only on pve001 (`/etc/vnprox-release/registry-index.key`,
+  mirroring the apt repo's signing-key posture in `packaging/apt-repo.md`),
+  never in this repository. Not yet done: `apt.vnprox.com`/`demo.vnprox.com`/
+  `registry.vnprox.com` don't resolve publicly yet, pending the VPS
+  reverse-proxy leg of T-3301/T-3303 — see `docs/development.md`'s CI
+  section for the network design.
