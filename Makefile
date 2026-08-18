@@ -18,7 +18,7 @@ FUZZTIME ?= 60s
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION   := v1.5.0
 
-.PHONY: build dev test lint check deb mockpve openapi contract-export conformance-external record record-mock soak perf e2e e2e-whole e2e-trend compat-matrix
+.PHONY: build dev test lint check deb mockpve openapi contract-export conformance-external record record-mock soak perf e2e e2e-whole e2e-trend compat-matrix ci install-hooks
 
 # --- readiness gates -----------------------------------------------------
 # Each *_READY variable is non-empty once the task that owns that piece has
@@ -331,6 +331,11 @@ ci: ## the container-free CI subset (check + cross-arm64 + fuzz + package); full
 	@echo ">> ci: PASSED (check + cross-arm64 + fuzz + package)."
 	@echo ">> ci: NOT run here: e2e, packaging-matrix, cluster-ssh."
 	@echo ">> ci: for those, run: scripts/ci-local.sh"
+
+install-hooks: ## point git at .githooks/ so pre-push runs `make ci` (T-3301 — the gate that matters, since Actions is disabled)
+	git config core.hooksPath .githooks
+	@echo ">> install-hooks: core.hooksPath set to .githooks — 'make ci' now runs on every 'git push'"
+	@echo ">> install-hooks: skip a single push with 'git push --no-verify'"
 
 e2e: ## Playwright end-to-end suite, sharded, against pvemock + vnproxd + the production SPA
 	@echo ">> e2e: building the SPA (vnproxd embeds web/dist)"

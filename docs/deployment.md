@@ -46,7 +46,7 @@ between this flag and one are listed in docs/features/demo-mode.md.
 
 ```bash
 # On any one node; the script offers to roll out to all cluster nodes via SSH.
-curl -fsSL https://get.vnprox.io/install.sh -o install.sh
+curl -fsSL https://apt.vnprox.com/install.sh -o install.sh
 less install.sh   # you're piping root on a hypervisor — read it
 bash install.sh
 ```

@@ -12,7 +12,7 @@ always tracks the latest published version, matching `docs/deployment.md`'s
 documented `apt update && apt install vnprox` upgrade flow):
 
 ```
-get.vnprox.io/apt/
+apt.vnprox.com/
 ├── vnprox-archive-keyring.gpg      # ASCII-armored public signing key
 ├── pool/main/v/vnprox/
 │   ├── vnprox_1.2.3_amd64.deb
@@ -74,14 +74,14 @@ there has been no production key to rotate yet).
 
 ## Client configuration
 
-What `install.sh --apt-repo <url>` (default `https://get.vnprox.io/apt`,
+What `install.sh --apt-repo <url>` (default `https://apt.vnprox.com`,
 `docs/deployment.md`'s quick-install default) does, and what the manual
 "Install" section could tell an operator to do by hand:
 
 ```bash
-curl -fsSL https://get.vnprox.io/apt/vnprox-archive-keyring.gpg \
+curl -fsSL https://apt.vnprox.com/vnprox-archive-keyring.gpg \
   | gpg --dearmor -o /usr/share/keyrings/vnprox-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/vnprox-archive-keyring.gpg] https://get.vnprox.io/apt stable main" \
+echo "deb [signed-by=/usr/share/keyrings/vnprox-archive-keyring.gpg] https://apt.vnprox.com stable main" \
   > /etc/apt/sources.list.d/vnprox.list
 apt-get update
 apt-get install vnprox
@@ -100,4 +100,4 @@ via `file://` (and, in the CI container matrix, plain HTTP) — see
 `packaging/test/apt-repo.sh`. What is **not** validated here (needs
 infra/hardware, per `CLAUDE.md`'s "needs hardware validation" note): a real
 production signing key in GitHub Actions secrets, and an actual live
-`get.vnprox.io` host serving this layout.
+`apt.vnprox.com` host serving this layout.

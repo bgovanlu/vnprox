@@ -4,7 +4,7 @@
 #
 #   - release.yml (CI): on a tag push, after `make deb` for each supported
 #     arch, this script builds the repo tree that gets published to
-#     get.vnprox.io/apt/ (docs/deployment.md's documented install source).
+#     apt.vnprox.com/ (docs/deployment.md's documented install source).
 #   - packaging/test/apt-repo.sh (local/CI test): builds a throwaway repo
 #     with an ephemeral signing key and serves it over plain HTTP for
 #     install.sh's `--apt-repo <url>` path to install from end to end.

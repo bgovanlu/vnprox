@@ -276,23 +276,43 @@ the outcome either way.
 
 ## CI
 
-> **Status, 2026-08-13: all three workflows are DISABLED on GitHub.** `CI`, `Packaging matrix` and
-> `Release` are each `disabled_manually` (`gh workflow list --all` confirms). Billing has been
-> exhausted since 2026-08-11, and every triggered job since then failed with *"The job was not
-> started because recent account payments have failed"* — 37 of the last 50 runs, on commits that
-> were green locally. That is not a signal, it is a red X on healthy work, and leaving it on made
-> the failure state meaningless. **`scripts/ci-local.sh` on the dev host is the only gate.**
+> **Decision, 2026-08-18 (T-3301): hosted GitHub Actions is retired, not paused.** The three
+> workflows (`CI`, `Packaging matrix`, `Release`) stay `disabled_manually` on purpose —
+> `scripts/ci-local.sh` (via `make ci` for the fast subset) is the permanent gate, not a stopgap
+> while billing is down. This closes the question the 2026-08-13 note below left open: the choice
+> was restore billing / self-host a runner / formalize local CI, and it's the third one. Reasons:
+> a self-hosted runner is another always-on service to operate and secure for a single-maintainer
+> project, and restoring Actions billing re-introduces the same "red X independent of the diff"
+> failure mode this note already documented once. If that calculus changes (a team forms, hosted
+> matrix testing across OSes becomes worth the cost), revisit — but don't restore Actions
+> reflexively just because billing gets fixed.
 >
-> To turn the hosted pipeline back on once billing is restored:
+> **Enforcement:** `.githooks/pre-push` runs `make ci` on every `git push` and refuses the push on
+> failure. One-time setup after cloning: `make install-hooks` (sets `core.hooksPath`). Deliberate
+> bypass is `git push --no-verify` — git's own escape hatch, nothing extra layered on top, so
+> there's exactly one way around the gate and it's on the record in shell history. This is *not*
+> enforced via GitHub branch protection's `required_status_checks`: those checks are posted by the
+> now-permanently-disabled workflows, so requiring them would never be satisfiable and would lock
+> every push to `main` — see "Branch protection on `main`" below for what protection this repo
+> does use instead.
+>
+> **A tag does not publish anything by itself.** `Release` runs on `v*` tags; with it disabled,
+> tagging builds no artifact and cuts no GitHub release. Build the .deb locally from a clean
+> worktree at the tag (`git worktree add <dir> vX.Y.Z && cd <dir> && make deb`) so the version
+> string has no `+dirty` suffix — see the v3.5.0 cut for the pattern — then run the release
+> publish step manually (T-3301's apt-repo push, `packaging/build-apt-repo.sh`) before tagging is
+> considered done.
+>
+> **The 2026-08-13 note this decision resolves, kept for the history:** all three workflows went
+> `disabled_manually` (`gh workflow list --all` confirmed it) after billing was exhausted on
+> 2026-08-11 — every triggered job failed with *"The job was not started because recent account
+> payments have failed,"* 37 of the last 50 runs, on commits that were green locally. That was a
+> red X on healthy work, not a signal, and left the failure state meaningless. If a future decision
+> ever reverses T-3301 and restores hosted CI:
 >
 > ```
 > gh workflow enable "CI" && gh workflow enable "Packaging matrix" && gh workflow enable "Release"
 > ```
->
-> **A tag no longer publishes anything.** `Release` runs on `v*` tags; with it disabled, tagging
-> builds no artifact and cuts no GitHub release. Build the .deb locally from a clean worktree at
-> the tag (`git worktree add <dir> vX.Y.Z && cd <dir> && make deb`) so the version string has no
-> `+dirty` suffix — see the v3.5.0 cut for the pattern.
 >
 > **The 2026-08-11 note this replaces, kept because its lesson outlives the funding state:** that
 > note said to treat the pipeline as unavailable while runs still appeared in `gh run list` and
@@ -396,22 +416,28 @@ Each allowlist entry is `{id, package, rationale, expires}` — `id` is the GHSA
 
 The pure matching/expiry logic lives in `web/scripts/auditAllowlist.mjs` and is unit-tested (`web/scripts/auditAllowlist.test.mjs`) against fixture JSON, independent of a real `npm audit` invocation — including the case of an expired entry failing the build.
 
-### Branch protection on `main` — requires repo-admin action
+### Branch protection on `main`
 
-CI being green is only a gate if the platform enforces it. As of this writing `main` has **no branch protection** (`gh api repos/bgovanlu/vnprox/branches/main/protection` returns 404) — any push bypasses required checks entirely. This requires a repo admin to apply; no CI workflow or agent can do it from within the repo. Run:
+**Status, 2026-08-18 (T-3301): applied.** `gh api repos/bgovanlu/vnprox/branches/main/protection`
+returns 200: force-push and branch deletion are disabled, and `enforce_admins` is on so the rule
+applies to the repo owner too. This deliberately does **not** set `required_status_checks` — those
+checks are posted by the `CI`/`Packaging matrix`/`Release` workflows, which stay
+`disabled_manually` by the decision recorded above (T-3301); requiring a status check that nothing
+ever posts would make every push to `main` unsatisfiable, not safer. `.githooks/pre-push`
+(`make install-hooks`) is the actual gate — see the CI section above. It also does not set
+`required_pull_request_reviews`: this is a single-maintainer repo and direct pushes to `main` are
+the normal workflow, not an exception to route around.
+
+Current settings, and the command that produced them (re-run if the repo ever needs re-protecting,
+e.g. after a GitHub-side reset):
 
 ```sh
 gh api --method PUT repos/bgovanlu/vnprox/branches/main/protection \
   --input - <<'EOF'
 {
-  "required_status_checks": {
-    "strict": true,
-    "contexts": ["check", "cross-arm64", "fuzz", "package"]
-  },
+  "required_status_checks": null,
   "enforce_admins": true,
-  "required_pull_request_reviews": {
-    "required_approving_review_count": 1
-  },
+  "required_pull_request_reviews": null,
   "restrictions": null,
   "allow_force_pushes": false,
   "allow_deletions": false
@@ -419,7 +445,12 @@ gh api --method PUT repos/bgovanlu/vnprox/branches/main/protection \
 EOF
 ```
 
-This requires all four `ci.yml` job names as required status checks (`strict: true` means the branch must be up to date with `main` before merging, so a required check can't be satisfied by a stale run), forbids force-push and branch deletion, and applies status-check requirements to admins too (`enforce_admins`) so the rule can't be quietly bypassed. Adjust `required_approving_review_count` to the team's actual review process — 1 is a floor, not a recommendation. Verify afterwards with `gh api repos/bgovanlu/vnprox/branches/main/protection` (should return 200, not 404).
+If the CI decision above is ever reversed and hosted Actions comes back, add
+`required_status_checks` back with the real job names (`ci.yml`'s `check`, `cross-arm64`, `fuzz`,
+`package`) and consider `required_pull_request_reviews` once there's more than one contributor —
+neither belongs in this config while it would be unsatisfiable or would lock out the only
+maintainer. Verify anytime with `gh api repos/bgovanlu/vnprox/branches/main/protection` (200, not
+404).
 
 ### Adding a new required or advisory check
 

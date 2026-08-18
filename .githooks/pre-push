@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# pre-push — the CI gate that actually runs (T-3301).
+#
+# GitHub Actions has been disabled since 2026-08-13 (billing) and Phase 33
+# made that permanent rather than provisional: this repo does not restore
+# hosted CI or move to a self-hosted runner (docs/development.md's CI
+# section has the record). scripts/ci-local.sh — via `make ci` — is the
+# gate. Without something enforcing it, "the gate" is just a suggestion, so
+# this hook runs it on every push and refuses the push on failure.
+#
+# `make ci` is the fast, container-free subset (check + cross-arm64 build +
+# fuzz + package) — NOT the full scripts/ci-local.sh, which also runs
+# packaging-matrix and cluster-ssh (podman + a live multi-node SSH cluster,
+# multiple minutes). Those still gate a release tag; they do not gate every
+# push. See docs/development.md's "CI" section for the split.
+#
+# To skip deliberately (loud, not silent): `git push --no-verify`. That is
+# git's own escape hatch — this hook adds nothing extra to bypass it, so
+# there is exactly one way around the gate and it is on the record in your
+# shell history.
+
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+echo ">> pre-push: running 'make ci' (skip with 'git push --no-verify')"
+if ! make ci; then
+    echo
+    echo "!! pre-push: 'make ci' failed — push refused." >&2
+    echo "!! Fix the failure, or push deliberately with 'git push --no-verify'." >&2
+    exit 1
+fi

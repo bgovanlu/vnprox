@@ -1,7 +1,7 @@
 # Install
 
 **Honesty note first, because it changes which section applies to you:** vnprox has no live
-distribution infrastructure yet. `get.vnprox.io` does not exist — no apt repository is published
+distribution infrastructure yet. `apt.vnprox.com` does not exist — no apt repository is published
 anywhere reachable (`packaging/apt-repo.md`), and there is no downloadable binary release either.
 The installer, the packaging, and the signature-verification code are all real and tested (see
 "Verified" at the end of each section) — there is simply nothing on the other end of the URLs they
@@ -56,13 +56,13 @@ script is *supposed* to do.
 
 Everything below is real code, already written and tested against the fixtures noted, waiting for
 somewhere to point at. See `packaging/apt-repo.md`'s "Status" section for exactly what exists
-(the tooling) versus what doesn't (a live `get.vnprox.io` host and a production signing key).
+(the tooling) versus what doesn't (a live `apt.vnprox.com` host and a production signing key).
 
 ### Quick install (script)
 
 ```bash
 # On any one node; the script offers to roll out to all cluster nodes via SSH.
-curl -fsSL https://get.vnprox.io/install.sh -o install.sh
+curl -fsSL https://apt.vnprox.com/install.sh -o install.sh
 less install.sh   # you're piping root on a hypervisor — read it
 bash install.sh
 ```
@@ -77,9 +77,9 @@ installer failing closed on purpose (`packaging/install.sh`'s own comment on
 ### Manual apt configuration
 
 ```bash
-curl -fsSL https://get.vnprox.io/apt/vnprox-archive-keyring.gpg \
+curl -fsSL https://apt.vnprox.com/vnprox-archive-keyring.gpg \
   | gpg --dearmor -o /usr/share/keyrings/vnprox-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/vnprox-archive-keyring.gpg] https://get.vnprox.io/apt stable main" \
+echo "deb [signed-by=/usr/share/keyrings/vnprox-archive-keyring.gpg] https://apt.vnprox.com stable main" \
   > /etc/apt/sources.list.d/vnprox.list
 apt-get update
 apt-get install vnprox
@@ -88,7 +88,7 @@ apt-get install vnprox
 **Verified:** the repository layout these commands assume, `packaging/build-apt-repo.sh`'s output,
 was built with an ephemeral test key, `gpg --verify`'d, and `apt-get install`'d cleanly inside a
 fresh Debian 13 container over `file://` and plain HTTP — see `packaging/apt-repo.md`'s own
-"Verified" section. What's unverified is the last mile: a real `get.vnprox.io` and a real
+"Verified" section. What's unverified is the last mile: a real `apt.vnprox.com` and a real
 production signing key, neither of which exist.
 
 ### Unprivileged / air-gapped (binary tarball)

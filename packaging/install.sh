@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # vnprox quick-install script — docs/deployment.md "Quick install (script)".
 #
-#   curl -fsSL https://get.vnprox.io/install.sh -o install.sh
+#   curl -fsSL https://apt.vnprox.com/install.sh -o install.sh
 #   less install.sh   # you're piping root on a hypervisor — read it
 #   bash install.sh
 #
@@ -33,7 +33,7 @@
 # hardware validation" list:
 #   - Installing from a real, signed apt repository (no `--offline <deb>`):
 #     the repo tooling exists now (packaging/apt-repo.md, release.yml), but
-#     there is no live get.vnprox.io to actually publish to and no real PVE
+#     there is no live apt.vnprox.com to actually publish to and no real PVE
 #     node with real network access to pull from one in this environment.
 #   - PVE API token/role creation (step 5, in vnprox-setup): the pveum
 #     commands are real, not stubbed, but pveum itself only exists on a
@@ -91,8 +91,8 @@ FORCE_PORT=""
 WITH_LLDP=""
 ASSUME_YES=0
 SKIP_PVE_CHECK=0
-APT_REPO_URL="https://get.vnprox.io/apt"
-DIST_URL="https://get.vnprox.io/dist"
+APT_REPO_URL="https://apt.vnprox.com"
+DIST_URL="https://apt.vnprox.com/dist"
 RELEASE_KEY_FILE=""
 INSTALL_PREFIX=""
 FORCE_TARBALL=0
@@ -137,12 +137,12 @@ Options:
                         Verified against <file>.asc when that signature is
                         present next to it.
   --apt-repo <url>      Base URL of the vnprox apt repo (default:
-                        https://get.vnprox.io/apt; see packaging/apt-repo.md).
+                        https://apt.vnprox.com; see packaging/apt-repo.md).
                         Ignored when --offline is given.
   --tarball             Install from the signed binary tarball instead of apt
                         (automatic on a host with no apt-get).
   --dist-url <url>      Base URL of the tarball distribution (default:
-                        https://get.vnprox.io/dist).
+                        https://apt.vnprox.com/dist).
   --release-key <file>  Trust anchor for signature verification: an armored
                         public key. Changes WHICH key is trusted; it cannot
                         change whether a signature is checked. There is no
