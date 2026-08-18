@@ -706,9 +706,16 @@ enough.
   timer in the same changeset.
 - **Federation transport** — not exercised this session; no federation target was configured
   against either node. Left for a future card scoped to it.
-- **Scale & performance on real cluster data** — T-3203's job; this cluster's dataset (2 nodes,
-  handful of guests, no real production traffic volume) says nothing about the T-1808→T-1907
-  threshold question.
+- **Scale & performance on real cluster data** — **done, 2026-08-18 (T-3203, `planning/reports/T-3203.md`)**,
+  within this cluster's own honest limit: real API latency, payload, collector poll durations, and
+  real-browser rendering numbers exist now, compared against the synthetic 300-guest fixture with
+  divergences called out. `DefaultPhysicalCollapseThreshold` was re-derived against real per-node
+  NIC counts (4 and 6 — both under 8, threshold unchanged). **Still open**: this cluster's own
+  dataset (2 nodes, a handful of guests) is ~2 orders of magnitude below the documented 8-node/
+  300-guest/40-VNet target, so it cannot and does not validate that target itself — that remains
+  `docs/performance.md` §1–§5's synthetic-fixture job, unrevised by this card. A denser real
+  chassis (many bonds/SR-IOV PFs) to stress-test the collapse threshold's upper end remains
+  unavailable.
 - **HA lease fencing, node join/leave, 3+-node quorum behavior** — this is a 2-node cluster with
   no HA resources configured; anything needing a third node or a real HA group is still
   unobservable. `internal/pvemock`'s multi-node fixtures remain the only tested surface for

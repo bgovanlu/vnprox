@@ -513,3 +513,23 @@ Measured on the reference host, 2026-08-12:
   report-only budget so its headroom is printed on every run, and so a future GPU-capable runner can
   promote it by editing one field. It is not something this software-rasterised runner can verify;
   see §3a.
+
+## 14. Real-hardware scale/perf, T-3203 (T-1808 verbatim)
+
+Everything above (§1–§13) runs against a synthetic fixture (`scale-lab.yaml`) sized to the
+documented target, or against no fixture at all — a real, honest gap T-1808 named and T-3203
+(2026-08-18, `planning/reports/T-3203.md`) closes with real numbers from the real two-node
+`vnprox-dev` cluster T-3201 stood up. Full method, harness scripts, and the complete
+divergence analysis are in that report; the headline comparison:
+
+| Metric | Real (pvecube, 28 real entities) | Synthetic (§2/§3, 203 post-collapse) | Divergence |
+|---|---|---|---|
+| `GET /topology` p50 | 77.1 ms | 60.1 ms | +28% |
+| `GET /topology` p95 | 83.2 ms | 67.2 ms | +24% |
+| Pan/zoom mean fps | 51.3 | 38.3 | +34% (see report — read as an environment difference, not a product one) |
+
+**The real cluster is ~2 orders of magnitude below the documented 8-node/300-guest/40-VNet target**
+— nothing here revises §5's scale-target verdict; it is a different, complementary data point (real
+timing free of any mock-server shortcut), not a re-run of the same test at real scale. `planning/reports/T-3203.md`
+also re-derives `DefaultPhysicalCollapseThreshold` against real per-node NIC counts (4 and 6 on the
+two available nodes, both under the threshold — unchanged, still provisional for a denser chassis).

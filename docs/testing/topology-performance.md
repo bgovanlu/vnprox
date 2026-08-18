@@ -55,6 +55,14 @@ fixture's PVE entities plus this machine's own host interfaces; well under the �
 run also shows sustained frames > 16.7 ms at three-node scale, treat it as a real finding
 against the canvas rendering, not the environment.
 
+## Real-hardware run (T-3203)
+
+This document's numbers are all from the pvemock-driven three-node-vlan fixture. `docs/performance.md`
+§14 (`planning/reports/T-3203.md`) is the real-hardware counterpart — the same rAF frame-delta
+method, reused verbatim by a standalone script (`web/scripts/measure-real-hardware-perf.mjs`)
+against a real two-node PVE cluster's real UI, plus real `GET /topology` latency/payload and
+collector poll-duration numbers this file doesn't cover at all.
+
 ## Re-running on a dev machine
 
 Preferred: `cd web && npm run e2e` (headed variant: `npx playwright test e2e/perf.spec.ts

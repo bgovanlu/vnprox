@@ -211,13 +211,17 @@ const DefaultCollapseThreshold = 8
 //     thing in one place collapses") rather than inventing an unrelated
 //     second number.
 //
-// **Provisional**, same as DefaultCollapseThreshold was originally: T-1808
-// (real-hardware scale validation) had not landed when this was chosen. If
-// real per-node physical port counts (large chassis, many bonds, SR-IOV PFs
-// each carrying their own PhysNic entity) turn out to run materially higher
-// than the documented target under real deployments, revisit this number
-// against T-1808's actual measurements rather than this target-scale
-// argument alone.
+// **Provisional, revisited once (T-3203, 2026-08-18) with a real but small
+// data point.** The two real nodes T-3201 stood up (`planning/reports/
+// T-3203.md`) carry 4 and 6 physical NICs respectively — both comfortably
+// under this threshold, consistent with the documented target's own
+// reasoning above, so there is no basis to move 8 either direction from
+// this run. This does NOT close the concern the threshold was always
+// provisional against: a large chassis with many bonds or SR-IOV PFs (each
+// carrying its own PhysNic entity) could still run materially higher, and a
+// 2-node dev cluster with onboard NICs says nothing about that case. Still
+// provisional for that scenario specifically; revisit again if real
+// hardware with a denser NIC count ever becomes available to test against.
 const DefaultPhysicalCollapseThreshold = 8
 
 // EntityDetail is the GET /inventory/{ref} response: the resolved entity's
