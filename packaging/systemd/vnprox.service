@@ -52,7 +52,30 @@ ProtectSystem=strict
 # here: /etc/pve is a pmxcfs FUSE mount that vnprox-setup pre-seeds, and
 # whether ProtectSystem=strict even makes it read-only is pending hardware
 # validation — see planning/reports/needs-hardware-validation.md.)
-ReadWritePaths=/var/lib/vnprox /etc/vnprox/keys /etc/wireguard /etc/network /run
+#
+# /etc/iproute2/rt_tables.d must also be writable (added 2026-08-18, T-3202
+# real-hardware finding, planning/reports/blocked-validation.md): `ifreload
+# -a` — the subprocess every node-file network apply execs — writes its own
+# VRF route-table mapping cache to
+# /etc/iproute2/rt_tables.d/ifupdown2_vrf_map.conf on every single reload,
+# unconditionally, whether or not the changeset touches VRFs at all. Under
+# ProtectSystem=strict this path was read-only, so `ifreload -a` exited 1
+# with `[Errno 30] Read-only file system` on EVERY apply of a node-file
+# change (bridge/bond/vlan/interface ops) on a hardened install — found live
+# on a real two-node cluster running T-3202's failure-injection scenario 1,
+# the first time this project ever exercised a real `ifreload` under this
+# exact systemd hardening. The change engine's own snapshot+rollback still
+# restored correct kernel-level interface state despite the spurious
+# ifupdown2 exit code (confirmed: connectivity and the on-disk
+# /etc/network/interfaces content were both correct immediately after), so
+# this was not silently corrupting network state — but it turned every
+# node-file apply into a reported failure regardless of whether the
+# underlying interface change was otherwise fine, the same false-negative
+# shape as the CAP_SETPCAP/ping finding above. Scoped to exactly the
+# rt_tables.d subdirectory ifupdown2 actually writes to, not the whole of
+# /etc/iproute2 (which also holds rt_protos.d and other files vnproxd has no
+# documented need to modify).
+ReadWritePaths=/var/lib/vnprox /etc/vnprox/keys /etc/wireguard /etc/network /etc/iproute2/rt_tables.d /run
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
