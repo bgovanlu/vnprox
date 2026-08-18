@@ -92,3 +92,60 @@ func (v *SDNVnet) UnmarshalJSON(data []byte) error {
 	v.VlanAware = bool(aux.VlanAware)
 	return nil
 }
+
+// MarshalJSON/UnmarshalJSON do the same for FirewallOptions' Enable flag
+// (T-3202 real-hardware finding, planning/reports/blocked-validation.md):
+// GET /cluster/firewall/options and GET /nodes/{node}/firewall/options both
+// return "enable" as the number 0/1 on a real PVE 9.2.10 node, exactly the
+// same convention snat/vlan_aware already needed pveBool for — decoding
+// into a plain bool failed outright, silently breaking every periodic
+// firewall-options collector poll on real hardware (degraded gracefully,
+// "skipping", but never actually read the real value) rather than crashing
+// visibly, which is why it went unnoticed until the first real
+// write+read-back cycle against real hardware.
+func (o FirewallOptions) MarshalJSON() ([]byte, error) {
+	type alias FirewallOptions
+	return json.Marshal(struct {
+		alias
+		Enable pveBool `json:"enable"`
+	}{alias: alias(o), Enable: pveBool(o.Enable)})
+}
+
+func (o *FirewallOptions) UnmarshalJSON(data []byte) error {
+	type alias FirewallOptions
+	aux := struct {
+		*alias
+		Enable pveBool `json:"enable"`
+	}{alias: (*alias)(o)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	o.Enable = bool(aux.Enable)
+	return nil
+}
+
+// MarshalJSON/UnmarshalJSON do the same for FirewallRule's Enabled flag —
+// see FirewallRule's own doc comment for the write-side discovery (a
+// literal JSON true/false rejected outright by POST .../rules) that
+// motivated this, distinct from (though the same root convention as)
+// FirewallOptions.Enable above.
+func (r FirewallRule) MarshalJSON() ([]byte, error) {
+	type alias FirewallRule
+	return json.Marshal(struct {
+		alias
+		Enabled pveBool `json:"enable"`
+	}{alias: alias(r), Enabled: pveBool(r.Enabled)})
+}
+
+func (r *FirewallRule) UnmarshalJSON(data []byte) error {
+	type alias FirewallRule
+	aux := struct {
+		*alias
+		Enabled pveBool `json:"enable"`
+	}{alias: (*alias)(r)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.Enabled = bool(aux.Enabled)
+	return nil
+}

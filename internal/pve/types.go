@@ -290,7 +290,16 @@ type FirewallRule struct {
 	Log     string `json:"log,omitempty"`
 	Comment string `json:"comment,omitempty"`
 	Pos     int    `json:"pos"`
-	Enabled bool   `json:"enable"`
+	// Enabled marshals/unmarshals via pveBool (pvebool.go): real PVE
+	// (validated on a 9.2.10 node, T-3202) both returns "enable" as the
+	// number 0/1 on read AND rejects a literal JSON true/false on write
+	// (POST .../rules with "enable":true fails "Parameter verification
+	// failed" — the create endpoint's schema types this field as an
+	// integer) — the same convention SDNSubnet.SNAT/SDNVnet.VlanAware/
+	// FirewallOptions.Enable already needed pveBool for, just discovered
+	// on this field's write path specifically, since this project's first
+	// real hardware fw.rule.create call.
+	Enabled bool `json:"enable"`
 }
 
 // FirewallOptions is the ruleset-level policy/enable state at any scope.

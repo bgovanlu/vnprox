@@ -2,6 +2,7 @@ package pve
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 )
@@ -29,11 +30,27 @@ func (c *Client) CreateFirewallRule(ctx context.Context, scope FirewallScope, ru
 // endpoint). T-502's fw.rule.move op executor passes the rule's own
 // unchanged fields (read via GetFirewallRule first) plus moveTo; a plain
 // fw.rule.update passes the merged field content with moveTo nil.
+//
+// Builds the body via a map, not struct embedding: `struct{ Moveto *int;
+// FirewallRule }` looks like it would emit both moveto and rule's own
+// fields side by side, but FirewallRule.MarshalJSON (pvebool.go, T-3202)
+// gets promoted to the anonymous struct's own method set the moment
+// FirewallRule implements json.Marshaler — Go then marshals the WHOLE
+// struct as FirewallRule alone, silently dropping moveto. Verified this
+// really does drop the field (not a hypothetical) before choosing the map
+// form below.
 func (c *Client) UpdateFirewallRule(ctx context.Context, scope FirewallScope, pos int, rule FirewallRule, moveTo *int) error {
-	body := struct {
-		Moveto *int `json:"moveto,omitempty"`
-		FirewallRule
-	}{FirewallRule: rule, Moveto: moveTo}
+	ruleJSON, err := json.Marshal(rule)
+	if err != nil {
+		return fmt.Errorf("pve: marshaling firewall rule for update: %w", err)
+	}
+	body := map[string]any{}
+	if err := json.Unmarshal(ruleJSON, &body); err != nil {
+		return fmt.Errorf("pve: re-decoding firewall rule for update: %w", err)
+	}
+	if moveTo != nil {
+		body["moveto"] = *moveTo
+	}
 	path := fmt.Sprintf("%s/rules/%d", scope.prefix, pos)
 	return c.do(ctx, "PUT", path, requestParams{body: body}, nil)
 }

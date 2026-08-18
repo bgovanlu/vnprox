@@ -83,3 +83,32 @@ func (v *SDNVnetSpec) UnmarshalJSON(data []byte) error {
 	v.VlanAware = bool(aux.VlanAware)
 	return nil
 }
+
+// MarshalJSON/UnmarshalJSON do the same for FwRuleSpec's Enabled flag
+// (T-3202 real-hardware finding, planning/reports/blocked-validation.md):
+// this mock's own decoding of a real client's POST/PUT .../rules body was
+// still modeling "enable" as a JSON bool, which is exactly the bug
+// internal/pve's own FirewallRule/FirewallOptions carried until this same
+// session — real PVE both returns 0/1 on read and rejects a literal JSON
+// true/false on write. Fixing the mock to match, not the client to match
+// the mock (CLAUDE.md: "a fixture's job is to match what pvecube says").
+func (r FwRuleSpec) MarshalJSON() ([]byte, error) {
+	type alias FwRuleSpec
+	return json.Marshal(struct {
+		alias
+		Enabled pveBool `json:"enable"`
+	}{alias: alias(r), Enabled: pveBool(r.Enabled)})
+}
+
+func (r *FwRuleSpec) UnmarshalJSON(data []byte) error {
+	type alias FwRuleSpec
+	aux := struct {
+		*alias
+		Enabled pveBool `json:"enable"`
+	}{alias: (*alias)(r)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.Enabled = bool(aux.Enabled)
+	return nil
+}

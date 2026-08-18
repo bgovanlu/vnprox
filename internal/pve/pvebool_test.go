@@ -86,3 +86,58 @@ func TestSDNVnet_NumericVlanAware(t *testing.T) {
 		t.Errorf("vlan_aware wire value = %#v, want the number 1", m["vlan_aware"])
 	}
 }
+
+// TestFirewallOptions_DecodesRealPVENumericEnable is the regression test
+// for the hardware-validation gap T-3202 found: real PVE 9.2.10 returns
+// GET /cluster/firewall/options and GET /nodes/{node}/firewall/options'
+// "enable" as the NUMBER 0 or 1, not a JSON boolean, exactly like
+// SDNSubnet.SNAT/SDNVnet.VlanAware above — the exact bodies observed from a
+// live node.
+func TestFirewallOptions_DecodesRealPVENumericEnable(t *testing.T) {
+	cases := []struct {
+		body string
+		want bool
+	}{
+		{`{"digest":"bb9ed91416c7ca9fe0bdb701360217e37ab4497f","enable":1}`, true},
+		{`{"digest":"2c1759ebec624b1e511ba7f635915ab2df354cba","enable":0}`, false},
+		{`{"digest":"da39a3ee5e6b4b0d3255bfef95601890afd80709"}`, false}, // enable absent entirely (never-configured node)
+	}
+	for _, c := range cases {
+		var o FirewallOptions
+		if err := json.Unmarshal([]byte(c.body), &o); err != nil {
+			t.Fatalf("decoding %s: %v", c.body, err)
+		}
+		if o.Enable != c.want {
+			t.Errorf("%s: Enable = %v, want %v", c.body, o.Enable, c.want)
+		}
+	}
+}
+
+// TestFirewallOptions_MarshalsEnableAsNumber proves the write path (fw.
+// options.update's apply, PUT .../firewall/options) sends PVE the 1/0 it
+// expects, not a JSON boolean.
+func TestFirewallOptions_MarshalsEnableAsNumber(t *testing.T) {
+	out, err := json.Marshal(FirewallOptions{Enable: true})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]any
+	if unmarshalErr := json.Unmarshal(out, &m); unmarshalErr != nil {
+		t.Fatalf("re-decode: %v", unmarshalErr)
+	}
+	if got, ok := m["enable"].(float64); !ok || got != 1 {
+		t.Errorf("enable wire value = %#v, want the number 1", m["enable"])
+	}
+
+	out2, err := json.Marshal(FirewallOptions{Enable: false})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m2 map[string]any
+	if unmarshalErr := json.Unmarshal(out2, &m2); unmarshalErr != nil {
+		t.Fatalf("re-decode: %v", unmarshalErr)
+	}
+	if got, ok := m2["enable"].(float64); !ok || got != 0 {
+		t.Errorf("enable=false wire value = %#v, want the number 0 (enable has no omitempty — it must always be sent explicitly, unlike snat/vlan_aware)", m2["enable"])
+	}
+}

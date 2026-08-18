@@ -1,6 +1,7 @@
 package pvemock
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -279,9 +280,48 @@ func (srv *Server) handleFwRuleCreate(get scopeGetter) http.HandlerFunc {
 // call (docs/features/firewall.md §2: "reorders are fw.rule.move ops" —
 // T-502's op executor sends the rule's own unchanged fields alongside
 // moveto for a pure move, and moveto omitted for a pure field update).
+// fwRuleUpdateBody embeds FwRuleSpec rather than decoding it inline because
+// FwRuleSpec.UnmarshalJSON (pvebool.go, T-3202) would otherwise get
+// promoted to this struct's own method set the moment FwRuleSpec
+// implements json.Unmarshaler — the embedding form
+// (`struct{ Moveto *int; FwRuleSpec }`, decoded with the standard library's
+// default struct decoding) then decodes the WHOLE body as FwRuleSpec alone,
+// silently leaving Moveto nil. UnmarshalJSON below decodes moveto and the
+// rule's own fields as two explicit passes instead.
 type fwRuleUpdateBody struct {
-	Moveto *int `json:"moveto,omitempty"`
+	Moveto *int
 	FwRuleSpec
+}
+
+func (b *fwRuleUpdateBody) UnmarshalJSON(data []byte) error {
+	var moveto struct {
+		Moveto *int `json:"moveto,omitempty"`
+	}
+	if err := json.Unmarshal(data, &moveto); err != nil {
+		return err
+	}
+	b.Moveto = moveto.Moveto
+	return json.Unmarshal(data, &b.FwRuleSpec)
+}
+
+// MarshalJSON exists for the same reason UnmarshalJSON does above (this
+// type is only ever produced by test code constructing a synthetic request
+// body today, but the same promotion gotcha applies to marshaling too, and
+// a struct that can decode itself but not correctly re-encode itself is a
+// trap for the next caller).
+func (b fwRuleUpdateBody) MarshalJSON() ([]byte, error) {
+	ruleJSON, err := json.Marshal(b.FwRuleSpec)
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]any{}
+	if err := json.Unmarshal(ruleJSON, &m); err != nil {
+		return nil, err
+	}
+	if b.Moveto != nil {
+		m["moveto"] = *b.Moveto
+	}
+	return json.Marshal(m)
 }
 
 func (srv *Server) handleFwRuleUpdate(get scopeGetter) http.HandlerFunc {
