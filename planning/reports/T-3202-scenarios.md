@@ -57,6 +57,64 @@ AC2 — not a finding, not a doc note. Recovery path if it fails: user's console
 manually restore `/etc/network/interfaces` from vnprox's own pre-apply snapshot (or PVE's own
 `interfaces.new`/backup if present) and `ifreload -a`.
 
+#### Result: PASSED — self-healed at exactly the configured deadline, hardware-confirmed
+
+**A real, previously-hidden bug blocked the first attempt and was fixed before this result** (see
+`packaging/systemd/vnprox.service`'s `/etc/iproute2/rt_tables.d` `ReadWritePaths` addition and
+`docs/security.md`'s Host footprint section, both 2026-08-18): `ifreload -a` writes a VRF
+route-table cache file on every reload regardless of whether VRFs are involved, and
+`ProtectSystem=strict` made that path read-only, so the first attempt's apply failed synchronously
+before ever reaching `awaiting_confirm` — filed and fixed as its own finding, rebuilt, redeployed,
+retried.
+
+**Evidence — the apply response, in full** (`POST /changesets/{id}/apply`, real HTTP response
+body, node `pve001`, changeset `01M0AQW6ACEAH23HBD0Z79MG95`):
+```json
+{"applyLog":{"steps":[{"kind":"stage_file","status":"ok","startedAt":1787066988,"endedAt":1787066988},
+{"kind":"reload","status":"ok","startedAt":1787066988,"endedAt":1787066988}],
+"nodeTimers":[{"node":"pve001","status":"armed","deadline":1787067168}]},
+"confirmDeadline":1787067168,
+"unattendedRevert":{"coversUntil":1787067168,"required":false,"available":true,"fullWindow":true},
+"status":"awaiting_confirm"}
+```
+Both apply steps `"ok"` — the bad address really was written and really was reloaded onto the live
+interface (not a validation-time no-op). `nodeTimers` shows the local timer armed with a deadline
+exactly 180s (the confirm window) after the apply started.
+
+**Evidence — the connection genuinely broke.** The very `ssh`/`curl` invocation that sent the
+apply request itself hung for over 100s and had to be moved to a background job — the TCP
+connection carrying it was disrupted by the address change it had just triggered. A parallel
+monitor polling fresh SSH connection attempts confirmed sustained unreachability before
+reconnecting.
+
+**Evidence — the timer fired, unattended, at the deadline, and reverted successfully.** `GET
+/changesets/{id}` read back after reconnection:
+```json
+{"applyLog":{
+  "rolledBackBy":"system:rollback",
+  "rollback":[{"summary":"Restore /etc/network/interfaces on pve001 from pre-apply snapshot and reload","status":"ok","at":1787067168}],
+  "nodeTimers":[{"node":"pve001","status":"rolled_back","resolvedAt":1787067168}]},
+"status":"rolled_back"}
+```
+`resolvedAt` (`1787067168`) minus the apply's own `startedAt` (`1787066988`) is **exactly 180
+seconds** — the timer fired at precisely its configured deadline, not early, not late.
+`rolledBackBy: "system:rollback"` confirms this was the unattended path, not a manual confirm/
+rollback call (none was ever sent — verified: no `POST .../confirm` or `.../rollback` call was
+made from this session at any point during the window). The rollback step itself is `"ok"` — the
+same node-local timer agent that armed the timer also executed and verified the restore.
+
+**Evidence — the live interface actually came back correct**, checked immediately after
+reconnection: `ip -4 addr show vmbr0` → `192.168.1.7/24` (the original, correct address, not the
+bad `10.99.99.99/24`); `/etc/network/interfaces` → the original `address 192.168.1.7/24` /
+`gateway 192.168.1.1` stanza, byte-identical to pre-apply; `systemctl is-active vnprox.service` →
+`active`; `curl https://127.0.0.1:8007/` → `200`.
+
+**Verdict: PASSED, unambiguously.** This is the first time in this project's history "if the
+change locks you out, it reverts itself" has been observed on real hardware against a real
+lockout, rather than asserted from mock tests or code inspection. `allow_dangerous_ops` reverted
+to `false` on `pve001` immediately after (confirmed via config read + service restart + health
+check), closing the controlled exception used to run this one test.
+
 ### Scenario 5 — firewall-only changeset lockout (the headline result, T-1805's real acceptance test)
 
 **Target**: `pvecube` (the primary node — deliberately the harder case, since this exercises the
@@ -80,6 +138,101 @@ result, so a failure here is the single most important thing this card can find.
 **Recovery path if it fails**: user's console access to `pvecube`; delete the DROP rule directly
 via `pve-firewall`/editing `/etc/pve/firewall/cluster.fw` (or the relevant node/scope file) and
 `systemctl restart pve-firewall` if the daemon doesn't pick up the edit within its own poll cycle.
+
+#### Result: PASSED on the third attempt — two real, previously-unknown bugs found and fixed live
+
+**Attempt 1** staged a single `fw.rule.create` DROP rule (cluster/node scope's own `enable` was
+still `0` from a clean node, so the rule was inert — no lockout, no useful signal) but never
+reached apply: `fw_verify` (`GET /nodes/{node}/firewall/status`) hard-failed. `pvesh ls
+/nodes/pvecube/firewall` confirms real PVE 9.2.10 exposes only `log`/`options`/`rules` under that
+path — `firewall/status` **does not exist on real PVE**, despite this codebase modeling it as a
+real endpoint. Every firewall-touching changeset's apply was hard-failing this step against any
+real node, unconditionally, regardless of whether `pve-firewall` actually compiled the change
+cleanly. **Fixed**: `cmd/vnproxd/changeagent.go`'s `pveGateway.FirewallCompileStatus` now catches
+`*pve.ErrPVEServer{StatusCode: 501}` via `errors.As` and degrades to `FwCompileStatus{OK: true,
+Message: "...unavailable on this PVE build..."}` instead of propagating the error — the same
+"degrade, don't block on unobservable infrastructure" pattern already used elsewhere in this
+codebase. Regression tests: `TestFirewallCompileStatus_501DegradesToUnverifiedOK`,
+`TestFirewallCompileStatus_OtherErrorsStillFail` (`cmd/vnproxd/changeagent_test.go`).
+
+**Attempt 2** (single DROP rule, `enable: true` on the rule itself, cluster/node ruleset `enable`
+still untouched) staged, validated, and applied cleanly — `fw_verify` now returned `"ok"`. But
+because the ruleset-level firewall was still disabled (`pve-firewall status` → `disabled/running`),
+the rule was inert and no lockout occurred — not a useful test of the revert mechanism, only of the
+501 fix. The 30s timer fired and rollback ran, but the rollback's own "restore firewall scope
+options" step failed: `restoring options: pve: request error (status 400): Parameter verification
+failed.` — reproducing a failure mode first seen (unexplained) during the pre-fix run that caused
+this scenario's original lockout incident. Root cause, found by reading `pvesh get
+/nodes/pvecube/firewall/options` directly: a node whose in/out policy was never explicitly set
+reports back only `{digest, enable}` — no `policy_in`/`policy_out` field at all — so the pre-apply
+snapshot captures both as `""`. `cmd/vnproxd/changeagent.go`'s `reconcileFwScope` sent
+`PolicyIn`/`PolicyOut` to the restore `PUT` unconditionally whenever the scope supports them, with
+no empty-string guard — unlike the `PolicyForward`/`LogLevelForward` restore right below it, which
+already had exactly this guard (and whose comment, before this fix, wrongly claimed `""` "round-
+trips harmlessly" for `PolicyIn`/`PolicyOut` — real PVE rejects it with 400). **Fixed**: the same
+non-empty guard `PolicyForward`/`LogLevelForward` already used, applied to `PolicyIn`/`PolicyOut`.
+Regression test: `TestRestoreFirewallScope_OmitsEmptyPolicyInOut`
+(`cmd/vnproxd/changeagent_test.go`), asserting the restore `PUT` body omits both keys when the
+snapshot captured them empty. The DROP rule itself was, in fact, correctly removed by both failed
+attempts — only the ruleset-options restore step was broken, so no rule was ever left orphaned.
+
+**Attempt 3** (real result), changeset `01M0ATXD7X4JTZV7Q02AVXHK9Y`, three ops: `fw.options.update`
+(cluster scope, `enabled: true`), `fw.options.update` (node scope, `enabled: true`), `fw.rule.create`
+(node scope, DROP tcp dport 8007 from this operator's own source `192.168.1.45/32`). Applied with
+`confirmTimeoutSec: 30`, never confirmed.
+
+**Evidence — the apply response, in full** (`POST /changesets/{id}/apply`):
+```json
+{"applyLog":{"steps":[
+  {"kind":"fw_apply","summary":"Apply 1 firewall op(s) to the datacenter firewall","status":"ok"},
+  {"kind":"fw_apply","node":"pvecube","summary":"Apply 2 firewall op(s) to node pvecube's firewall","status":"ok"},
+  {"kind":"fw_verify","node":"pvecube","summary":"Verify firewall compiled cleanly on pvecube","status":"ok"}],
+  "nodeTimers":[{"node":"pvecube","status":"armed","deadline":1787070244}]},
+ "confirmDeadline":1787070244,
+ "unattendedRevert":{"coversUntil":1787070244,"required":true,"available":true,"fullWindow":true},
+ "status":"awaiting_confirm"}
+```
+All three steps `"ok"`, including `fw_verify` (the 501 fix holding under a real apply, not just the
+regression test).
+
+**Evidence — the lockout was real.** `curl -k --max-time 4 https://192.168.1.9:8007/` from this
+operator's own machine (`192.168.1.45`, the exact source the DROP rule matched) returned `HTTP:000`
+(connection refused/timed out) immediately after apply — genuine, not simulated. `pve-firewall
+status` on the node independently confirmed the ruleset was live.
+
+**Evidence — the timer fired, unattended, and connectivity restored on its own.** A poll loop
+against `https://192.168.1.9:8007/` (no vnprox session involved — a bare TCP/TLS probe) recorded
+`HTTP:000` continuously from apply until `2026-08-18T16:24:05Z`, then `HTTP:200` — apply started at
+unix `1787070214`, deadline `1787070244` (exactly 30s later), first `200` observed at `1787070245`.
+`GET /changesets/{id}` read back afterward:
+```json
+{"applyLog":{
+  "rolledBackBy":"system:rollback",
+  "rollback":[
+    {"node":"pvecube","summary":"Restore /etc/network/interfaces on pvecube from pre-apply snapshot and reload","status":"ok","at":1787070244},
+    {"summary":"Restore firewall scope fw-ruleset::cluster from pre-apply snapshot","status":"ok","at":1787070244},
+    {"node":"pvecube","summary":"Restore firewall scope fw-ruleset:pvecube:node from pre-apply snapshot","status":"ok","at":1787070244}],
+  "nodeTimers":[{"node":"pvecube","status":"rolled_back","resolvedAt":1787070244}]},
+ "status":"rolled_back"}
+```
+All three rollback steps `"ok"` this time — including both firewall-scope restores, the step
+Attempt 2 found broken. This is `unattendedRevert`'s sealed-PVE-ticket path (T-1805) actually
+exercised end-to-end on real hardware for the first time: the revert used the *user's* PVE ticket
+sealed at apply time, not a node-local file write, and it fired with nobody watching.
+
+**Evidence — live state after restoration, checked directly on the node**: `pvesh get
+/cluster/firewall/options` → `{"digest":"2c1759ebec624b1e511ba7f635915ab2df354cba","enable":0}`;
+`pvesh get /nodes/pvecube/firewall/options` → the identical digest/`enable:0`; `pvesh get
+/nodes/pvecube/firewall/rules` → `[]`; `pve-firewall status` → `disabled/running`. Every value byte-
+identical to the pre-test state — no orphaned rule, no orphaned enable flag, nothing left behind.
+
+**Verdict: PASSED.** This is the first time this project has observed, on real hardware, the exact
+gap T-502 originally flagged and T-1805 closed in code: a firewall-only lockout — the harder case,
+since the revert needs the *user's* PVE ticket, not a file write vnprox's own daemon identity can
+always perform — reverting itself with nobody there to supply a fresh credential. Two real,
+previously-unknown bugs were found and fixed by this run (`fw_verify`'s 501 assumption; the
+rollback's `PolicyIn`/`PolicyOut` empty-string restore), both now covered by regression tests, both
+shipped to `pvecube` and `pve001` before this result was recorded.
 
 ## Scenarios deferred to a separate, lower-risk pass (not run live in this session)
 

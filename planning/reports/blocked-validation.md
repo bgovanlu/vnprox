@@ -640,6 +640,50 @@ separate hazard for `internal/mtuprobe`'s/`internal/latmesh`'s documented fallba
 finding but not its cause (this pair's `ToAddr` is the real IP from `corosync.conf`, never
 reaching that fallback) — worth its own fix but not folded into the `CAP_SETPCAP` finding above.
 
+### 2.7 T-3202 — two real bugs found running the firewall-lockout self-heal scenario live: `fw_verify`'s 501 assumption, and the rollback's `PolicyIn`/`PolicyOut` empty-string restore
+
+**Severity: high (both) — found live, fixed, confirmed live.** Found running T-1804's own
+"headline result" scenario (`planning/reports/T-3202-scenarios.md`'s Scenario 5 — a firewall-only
+changeset lockout, testing T-1805's sealed-PVE-ticket unattended revert). Both bugs made every
+firewall-touching changeset either fail to apply or fail to cleanly roll back, on any real node,
+unconditionally — full evidence and the exact failing/passing HTTP bodies are in
+`T-3202-scenarios.md`'s Scenario 5 writeup; this entry is the pointer + summary this file's own
+index expects.
+
+**Bug 1 — `GET /nodes/{node}/firewall/status` does not exist on real PVE (9.2.10).** `pvesh ls
+/nodes/pvecube/firewall` lists only `log`/`options`/`rules`; this codebase's `fw_verify` apply step
+called that endpoint unconditionally and treated its 501 as an ordinary step failure, hard-failing
+(and therefore rolling back) every `fw.*` changeset's apply against any real node, regardless of
+whether `pve-firewall` actually compiled the change cleanly. **Fixed**:
+`cmd/vnproxd/changeagent.go`'s `pveGateway.FirewallCompileStatus` now catches
+`*pve.ErrPVEServer{StatusCode: 501}` and degrades to `FwCompileStatus{OK: true, Message: "...
+unavailable on this PVE build..."}` instead of propagating — mirroring this codebase's existing
+"degrade, don't block on unobservable infrastructure" pattern. Regression tests:
+`TestFirewallCompileStatus_501DegradesToUnverifiedOK`, `TestFirewallCompileStatus_OtherErrorsStillFail`.
+
+**Bug 2 — a node whose firewall options never had an explicit in/out policy set reports back no
+`policy_in`/`policy_out` field at all, and the rollback's restore sent them anyway.** `pvesh get
+/nodes/pvecube/firewall/options` on a node that never configured them returns only
+`{digest, enable}`. The pre-apply snapshot therefore captures `PolicyIn`/`PolicyOut` as `""`, and
+`cmd/vnproxd/changeagent.go`'s `reconcileFwScope` sent both to the restore `PUT` unconditionally —
+unlike the `PolicyForward`/`LogLevelForward` restore right below it, which already guarded against
+exactly this (and whose comment, before this fix, incorrectly claimed `""` "round-trips harmlessly"
+for `PolicyIn`/`PolicyOut` specifically — it does not; real PVE rejects it with `400 Parameter
+verification failed`). This is what caused the *original*, previously-unexplained rollback failure
+noted in this session's own earlier live-lockout recovery (see this file's git history / the
+session's incident log): the rule itself always reverted correctly, but the ruleset-options restore
+step reported failure every time, on every node, for any scope whose in/out policy was never
+explicitly set — which is the common case on a freshly-provisioned node. **Fixed**: the same
+non-empty guard `PolicyForward`/`LogLevelForward` already used, applied to `PolicyIn`/`PolicyOut`.
+Regression test: `TestRestoreFirewallScope_OmitsEmptyPolicyInOut`.
+
+**Confirmed on real hardware, not just by regression test**: Scenario 5's third attempt
+(`planning/reports/T-3202-scenarios.md`), changeset `01M0ATXD7X4JTZV7Q02AVXHK9Y` against pvecube —
+apply, verify, deliberate 30s-unconfirmed lockout, and unattended revert all `"ok"`, live firewall
+state confirmed byte-identical to pre-test afterward (`enable:0` at both cluster and node scope,
+`digest` matching, no orphaned rule). Both fixes shipped to `pvecube` and `pve001` before this
+result was recorded.
+
 ---
 
 ## 3. Still genuinely blocked — needs T-3202, T-3203, or more hardware
@@ -647,11 +691,19 @@ reaching that fallback) — worth its own fix but not folded into the `CAP_SETPC
 This is the honest boundary: what T-3201 did NOT prove, and why two real nodes still isn't
 enough.
 
-- **Failure injection / commit-confirm self-heal on real hardware** — explicitly T-3202's job.
-  Nothing in this session broke connectivity mid-apply or watched a real rollback timer fire; the
-  product's headline safety guarantee is still validated only against `internal/pvemock`.
-- **Distributed rollback timers, cross-node coordination under partial failure** — needs
-  failure injection (T-3202), not just two healthy nodes.
+- **Failure injection / commit-confirm self-heal on real hardware** — **T-3202's two highest-
+  priority scenarios (1: management-link lockout; 5: firewall-only lockout, T-1805's sealed-ticket
+  path) are now PASSED, live, with evidence** — see `T-3202-scenarios.md` and §2.7 above. The
+  product's headline safety guarantee has now been observed self-healing on real hardware against
+  a real, deliberately-triggered lockout, twice, through two different revert mechanisms
+  (node-local file restore; unattended firewall-scope restore via a sealed PVE ticket). **Still
+  open**: Scenarios 2 (crash mid-window), 3 (node hard-reset mid-window), 4 (nobody-watching
+  expiry), and 6 (apply interrupted mid-step) — deliberately deferred in `T-3202-scenarios.md` as
+  lower-risk/lower-differentiation, not yet attempted.
+- **Distributed rollback timers, cross-node coordination under partial failure** — the *single-
+  node* local-timer mechanism is now proven live (above); cross-node coordination under partial
+  failure specifically is still unobserved — no scenario run so far involved more than one node's
+  timer in the same changeset.
 - **Federation transport** — not exercised this session; no federation target was configured
   against either node. Left for a future card scoped to it.
 - **Scale & performance on real cluster data** — T-3203's job; this cluster's dataset (2 nodes,

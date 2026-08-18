@@ -1161,12 +1161,20 @@ genuinely fails). These items are what only real PVE can settle:
       a different HTTP connection with no session cookie jar.** The unattended revert presents the
       ticket on a brand-new client the daemon builds itself. pvemock accepts this; confirm real
       `pveproxy` does not bind a ticket to anything connection- or client-scoped.
-- [ ] **The end-to-end firewall-only lockout heals on iron.** A `fw.*`-only changeset applied, the
-      management path then severed, the confirm window allowed to elapse with no session alive —
-      and the firewall ruleset observed back at its pre-apply content. This is T-1804 scenario 5 and
-      is this card's real acceptance test; it is proven here only against pvemock.
+- [x] **The end-to-end firewall-only lockout heals on iron.** **Done, 2026-08-18 (T-3202 Scenario
+      5).** A `fw.*`-only changeset (cluster+node `fw.options.update` enabling the ruleset, plus an
+      `fw.rule.create` DROP of this operator's own management-port traffic) applied against
+      `pvecube`, confirm window (30s) allowed to elapse with no session alive, unattended revert
+      fired via the sealed PVE ticket and restored the firewall scope to its pre-apply content —
+      confirmed live (`enable:0` at cluster/node scope, digest matching, no orphaned rule) not just
+      by the changeset's own self-report. Two real bugs were found and fixed getting a clean result
+      (`fw_verify`'s `GET .../firewall/status` doesn't exist on real PVE; the rollback's
+      `PolicyIn`/`PolicyOut` restore rejected by real PVE when never explicitly set) — see
+      `planning/reports/blocked-validation.md` §2.7 and `planning/reports/T-3202-scenarios.md`'s
+      Scenario 5 for full evidence.
 - [ ] **The same after `vnproxd` is killed and restarted inside the window** (crash recovery
-      unseals from the DB and completes the revert), and after a node hard-reset.
+      unseals from the DB and completes the revert), and after a node hard-reset. Deferred in
+      `T-3202-scenarios.md` as Scenarios 2/3, not yet attempted.
 - [ ] **`RestoreFirewallScope`'s delete-all-then-recreate against a live `pve-firewall`.** The
       firewall scope restore replays the whole ruleset; confirm real PVE tolerates the intermediate
       empty-ruleset state (and that `pve-firewall` does not compile-and-apply a wide-open or
