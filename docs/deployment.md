@@ -56,10 +56,10 @@ The installer:
 2. Checks port 8007 (see above); asks for the listen port if needed.
 3. Installs the `vnprox` .deb (from the apt repo it configures, or a bundled offline .deb with `--offline <file>`), or falls back to the signed binary tarball on a host with no `apt-get` (`--tarball`, `--dist-url <url>`). **Signature verification (T-2801) is not skippable and there is no `--insecure`** — see "Signatures and trust" below.
 4. Optionally installs + enables `lldpd` on all nodes (`--with-lldp`, default yes).
-5. Creates the read-only PVE API token `vnprox@pve!daemon` (privilege: auditor-level on `/`), stores it root-only.
+5. Creates the read-only PVE API token `vnprox@pve!daemon` (privilege: auditor-level on `/`), stores it root-only. **This token is cluster-wide, not per-node** (PVE stores API tokens on the user, not per node) — only the *first* node's `vnprox-setup` run should ever create it. Every subsequent node must receive a *copy* of that first node's `/etc/vnprox/keys/pve-token` (step 8 below does this over SSH; see "Manual install (per node)" if doing it by hand) rather than running token creation again. Re-running token creation on a second node (`pveum user token remove vnprox@pve daemon && vnprox-setup`) silently invalidates every *other* node's on-disk copy of the secret — PVE never returns a token's secret except at the moment it is created, so there is no way to recover a lost copy short of redistributing a freshly regenerated one to every node (found and manually fixed on a real two-node cluster, `planning/reports/blocked-validation.md` §2.2; `vnprox-setup` itself now warns about this distinction when it detects the disagreement).
 6. Generates the cluster secret in `/etc/pve/priv/vnprox/` (first node only; pmxcfs replicates it). **Correction (T-608, hardware validation):** this is under `priv/` specifically — pmxcfs only auto-restricts files under `/etc/pve/priv/` to `0600` root-only; everywhere else under `/etc/pve` it silently coerces creation-time permissions to `0640 root:www-data` and rejects `chmod()` outright, confirmed against a real PVE 9.2.4 node.
 7. Writes `/etc/vnprox/vnprox.toml`, generates the session key, enables + starts `vnprox.service`.
-8. Repeats 3–7 on the remaining nodes (via SSH root, same mechanism `pvecm` setups already rely on), or prints per-node instructions if SSH between nodes is unavailable.
+8. Repeats 3–7 on the remaining nodes (via SSH root, same mechanism `pvecm` setups already rely on), or prints per-node instructions if SSH between nodes is unavailable. **Known gap:** this SSH rollout re-runs `vnprox-setup` on every remaining node, including step 5 — since the token already exists cluster-wide by then, `vnprox-setup` safely detects this and warns rather than regenerating (see step 5's note above), but it does **not** automatically copy the working token file over for you. After a multi-node `install.sh` run, manually copy `/etc/vnprox/keys/pve-token` from the first node to every other node (`scp` it over, `chmod 0600`, `systemctl restart vnprox`) before relying on the daemon's PVE polling on those nodes.
 9. Prints the URL and a first-login checklist.
 
 ### Signatures and trust (T-2801)
@@ -129,6 +129,19 @@ apt install ./vnprox_<version>_amd64.deb
 vnprox-setup            # steps 2 and 5–7 above, interactive; --answers file for automation
 systemctl enable --now vnprox
 ```
+
+**On the second and later nodes of an existing cluster**, run the above as-is
+except step 5 — `vnprox-setup` still runs it, but it must not be allowed to
+*create* the PVE token: `vnprox@pve!daemon` is cluster-wide, not per-node, so
+only the very first node's setup run should ever create it (see step 5's
+note above). `vnprox-setup` detects "token already exists but no local
+copy" and warns instead of regenerating, but the operator still has to
+complete the fix by hand: **copy `/etc/vnprox/keys/pve-token` from a node
+where it already works** onto the new node (`scp` it over, `chmod 0600
+/etc/vnprox/keys/pve-token`), before or after running `vnprox-setup` there,
+then `systemctl restart vnprox`. Do not run `pveum user token remove
+vnprox@pve daemon && vnprox-setup` on anything but the first node — that
+invalidates every other node's copy of the secret with no warning.
 
 ### Configuration file — `/etc/vnprox/vnprox.toml`
 

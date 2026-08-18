@@ -134,6 +134,14 @@ const (
 	// alone) — the same access class needed to run tcpdump on the host by
 	// hand.
 	privSysConsole = "Sys.Console"
+	// privVMAudit and privMappingAudit back DaemonTokenPrivileges only —
+	// neither is ever consulted by DeriveCapabilities (guestNet comes from
+	// VM.Config.Network, not VM.Audit; nothing in the capability mapping
+	// reads Mapping.Audit at all), so they deliberately have no role in
+	// RequiredPrivileges/TestRequiredPrivilegesCoversMapping's "operator
+	// capability" contract. See DaemonTokenPrivileges' doc comment.
+	privVMAudit      = "VM.Audit"
+	privMappingAudit = "Mapping.Audit"
 )
 
 // RequiredPrivilege is one PVE privilege vnprox reads, paired with what is
@@ -166,6 +174,51 @@ func RequiredPrivileges() []RequiredPrivilege {
 		{Name: privSDNAllocate, Unlocks: "creating and modifying SDN objects"},
 		{Name: privVMConfigNet, Unlocks: "editing guest NICs"},
 		{Name: privSysConsole, Unlocks: "packet capture, which additionally requires Sys.Modify (root-shell-equivalent access, deliberately)", Optional: true},
+	}
+}
+
+// DaemonTokenPrivileges returns the privileges vnprox's OWN daemon-held PVE
+// API token (vnprox@pve!daemon) is expected to hold — a DIFFERENT list from
+// RequiredPrivileges, and consulted by a different caller for a different
+// question.
+//
+// RequiredPrivileges answers "what would let an OPERATOR's own PVE ticket
+// unlock every vnprox UI capability" (via DeriveCapabilities) — it
+// necessarily includes Sys.Modify, SDN.Allocate, and VM.Config.Network,
+// three write privileges. This list answers "what does the daemon's own
+// configured token need" — and the daemon's token is deliberately
+// read-only by design (docs/security.md's "Apply-time revert ticket": every
+// write vnprox makes goes out on the *applying user's own* sealed PVE
+// ticket, never the daemon's), so it is never granted those three, and
+// never should be.
+//
+// Before this list existed, `vnproxctl doctor`'s pve_privileges check
+// (internal/doctor/checks.go's checkPVEPrivileges) reused RequiredPrivileges
+// for both purposes — which meant a token provisioned EXACTLY as documented
+// (packaging/bin/vnprox-setup's read-only grant) permanently failed
+// pve_privileges on every correctly-set-up install: confirmed on a real
+// two-node PVE 9.2.10 cluster, byte-identical failures on both nodes
+// (planning/reports/blocked-validation.md §2.4).
+//
+// This is also not simply "RequiredPrivileges minus the write entries":
+// VM.Audit and Mapping.Audit are privileges the daemon's token genuinely
+// needs (VM.Audit for guest NIC inventory reads; Mapping.Audit for GET
+// /cluster/notifications/targets, which real hardware validation — T-608 —
+// found PVE gates on Mapping.Audit specifically, not Sys.Audit like every
+// other route this token calls) that RequiredPrivileges/DeriveCapabilities
+// never consult at all, since neither backs a vnprox UI capability flag.
+// So this is its own independently-declared list, kept equal to
+// vnprox-setup's own VNPROX_PVE_PRIVS grant by construction rather than
+// derived from RequiredPrivileges — see
+// TestDaemonTokenPrivilegesMatchesSetupGrant, which pins the two together
+// mechanically the same way TestRequiredPrivilegesCoversMapping pins
+// RequiredPrivileges against caps.go's own mapping table.
+func DaemonTokenPrivileges() []RequiredPrivilege {
+	return []RequiredPrivilege{
+		{Name: privSysAudit, Unlocks: "reading node network config, firewall rules, and vnprox's own audit log — without it vnprox's collectors see nothing"},
+		{Name: privVMAudit, Unlocks: "reading guest (VM/LXC) NIC configuration for the topology view"},
+		{Name: privSDNAudit, Unlocks: "reading SDN zones, VNets, and subnets"},
+		{Name: privMappingAudit, Unlocks: "reading PVE notification targets, so findings can be delivered (GET /cluster/notifications/targets)"},
 	}
 }
 

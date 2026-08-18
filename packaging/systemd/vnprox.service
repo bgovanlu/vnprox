@@ -68,7 +68,42 @@ NoNewPrivileges=yes
 # /var/lib/vnprox. Broad, unrelated capabilities (CAP_SYS_ADMIN,
 # CAP_SYS_MODULE, CAP_SYS_PTRACE, CAP_SYS_BOOT, ...) are deliberately
 # excluded. Revisit alongside T-604.
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER
+#
+# CAP_SETPCAP (added 2026-08-18, T-3201 follow-up — real-hardware finding,
+# planning/reports/blocked-validation.md §2.6): needed for `ping` itself to
+# complete its OWN privilege drop, not for vnproxd to do anything with it
+# directly. Modern iputils-ping (Debian's shipped build) opens its raw ICMP
+# socket first (CAP_NET_RAW, already above), then calls cap_set_proc() to
+# drop capabilities it no longer needs as its own defense-in-depth measure —
+# and aborts hard (exit 255, "cap_set_proc: Operation not permitted") if
+# that call itself fails, even though the socket it actually needs was
+# already opened successfully. cap_set_proc() requires CAP_SETPCAP in the
+# calling thread's permitted set; without it here, every `ping` this daemon
+# execs (internal/mtuprobe's DF-probe, internal/latmesh's RTT/loss mesh,
+# internal/wan's reference-target probing) always failed under this exact
+# systemd hardening, confirmed on a real two-node PVE 9.2.10 cluster: a
+# debug capture caught the daemon's own ping invocation exiting 255 with
+# "ping: cap_set_proc: Operation not permitted" while an identical manual
+# ping (run outside vnprox.service's systemd scope entirely) succeeded
+# cleanly against the same target. Per capabilities(7): a process's
+# capability bounding set is a ceiling on what its permitted/effective sets
+# can ever contain, inherited by every child this unit execs; granting
+# CAP_SETPCAP here lets `ping` (a child process, distinct from vnproxd
+# itself) manipulate ITS OWN process capability sets — specifically to drop
+# them further, per ping's own hardening design — not to raise them or
+# affect vnproxd's. On a modern kernel with file capabilities (every kernel
+# vnprox targets), CAP_SETPCAP does not by itself grant the ability to pass
+# arbitrary capabilities to another process's permitted set beyond what the
+# grantor's own bounding set already allows, so this does not widen what a
+# compromised `ping` child could hand to some other process — it only
+# unblocks `ping`'s own already-benign self-restriction. Without this
+# capability, `ping` cannot run under this daemon's sandboxing AT ALL — it
+# is not a partial degradation, since dfProbe/RealProber's own defensive
+# "did not confirm success" fallback (see their doc comments) makes a hard
+# exec failure indistinguishable from a genuine 100% packet loss/path-MTU
+# failure, so this was previously producing false positives on every
+# correctly-hardened install, not merely a missing optimization.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN CAP_FOWNER CAP_SETPCAP
 
 # T-1004 (docs/security.md's Host footprint section): internal/flow/
 # hostsample's eBPF flow sampler additionally needs CAP_BPF and
@@ -139,6 +174,38 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
 # an attacker anyway.
 SystemCallFilter=@system-service
 SystemCallFilter=~@mount @reboot @swap @privileged @resources @raw-io @debug @module @cpu-emulation @obsolete @clock
+#
+# capset, setuid (added 2026-08-18, T-3201 follow-up — real-hardware finding,
+# planning/reports/blocked-validation.md §2.6): re-permitted individually
+# after the @privileged denial above, since `systemd-analyze syscall-filter
+# @privileged` confirms both syscalls live in that group and are denied by
+# it — CAP_SETPCAP alone (this unit's CapabilityBoundingSet= line, same
+# finding) is NOT sufficient on its own to let `ping` complete its
+# privilege-drop, because this seccomp filter (inherited across exec, same
+# as the AF_UNIX/lldpctl finding above) blocks the underlying capset(2)
+# syscall outright regardless of which capabilities the calling thread
+# holds. Confirmed empirically on a real two-node PVE 9.2.10 cluster via
+# `systemd-run` reproductions matching this unit's exact directives one at a
+# time: CapabilityBoundingSet with CAP_SETPCAP alone still failed
+# (`ping: cap_set_proc: Operation not permitted`); adding `capset` to the
+# allowlist changed the failure to `ping: setuid: Operation not permitted`
+# (iputils-ping's privilege-drop sequence calls capset() to drop
+# capabilities, then setuid() as defense-in-depth to also drop any residual
+# UID-level privilege — both gate the same drop, not two independent
+# features); adding `setuid` alongside `capset` let `ping` complete
+# cleanly. Neither addition widens what a compromised child could actually
+# do: `capset` only lets a process rearrange bits WITHIN its own existing
+# capability sets (never gain a capability the CapabilityBoundingSet above
+# doesn't already grant — capabilities(7)), and `setuid` without CAP_SETUID
+# in the bounding set (deliberately not present here) can only set a
+# process's UID to a value it already holds as its real/effective/saved
+# UID — for a process that stays at UID 0 throughout, as every vnproxd
+# child does, that is a no-op transition (setuid(0) while already 0), never
+# a path to a *different* UID. Scoped to exactly these two syscalls rather
+# than re-allowing the rest of `@privileged` (which also holds mount/
+# pivot_root/reboot/module-loading and other syscalls vnproxd has no
+# documented need for).
+SystemCallFilter=capset setuid
 SystemCallErrorNumber=EPERM
 # T-2905: verified (systemd-analyze syscall-filter): setns lives in
 # @process, which @system-service includes, and appears in none of the

@@ -187,6 +187,33 @@ current `id=`/`status=` two-key model doesn't fit knet's block shape at all, so 
 a second parser branch than a one-line fix. Whoever fixes it should re-run against **both**
 node's real output (captured above) as the fixture, not invent one.
 
+**Fixed and confirmed (2026-08-18, same-day follow-up session).** `ParseCorosyncStatus` gained a
+second recognized header (`parseLinkIDHeader`, "LINK ID n \<transport\>") and a nested-line parser
+(`parseNodeIDLine`, "nodeid: N: \<state\>"); `RingStatus.Faulty` for a knet link is derived
+permissively (state != "localhost" and state != "connected" => faulty), following the exact
+philosophy this file's own `RingStatus.Faulty` doc comment already established for the older
+shape. The real FAULTY-state wording was **not** live-observed this session either (option (b) from
+the candidate-fix list, not (a) — no corosync link disruption was attempted against the live
+cluster) — still open, tracked in `needs-hardware-validation.md`.
+
+New tests use the exact captured text above as fixture
+(`TestParseCorosyncStatus_RealKnetOutput_Healthy`, `internal/host/corosync_test.go`) and prove the
+new parser returns one correctly-populated, non-faulty `RingStatus` where the old parser returned
+`(nil, nil)`. Confirmed on real hardware, not just the unit test: after deploying the fix
+(`4.0.0+29+g947a709+dirty`) to both nodes, a fresh `corosync-cfgtool -s` capture from each
+(byte-identical to the text above, own IP/order swapped) was fed through the exact deployed
+`ParseCorosyncStatus` code (via a temporary `go run` against the module, removed after) —
+```
+pvecube-corosync.txt: rings=[{Addr:192.168.1.9 StatusText:nodeid 1: localhost; nodeid 2: connected RingID:0 Faulty:false}] err=<nil>
+pve001-corosync.txt:  rings=[{Addr:192.168.1.7 StatusText:nodeid 1: connected; nodeid 2: localhost RingID:0 Faulty:false}] err=<nil>
+```
+— one ring each, correctly populated, `Faulty:false`, where the pre-fix code returned zero rings.
+Also corrected: `internal/pvemock/corosync_render.go`'s mock renderer was (incorrectly) commented
+as rendering "knet transport" while actually rendering the older `RING ID` shape — the comment now
+says so plainly (CLAUDE.md's "a fixture's job is to match what pvecube says" — rendering the real
+knet shape too is a further follow-up, since it needs `CorosyncSpec`/`RingSpec` to model per-peer
+connection state, not just one `Faulty` bool per ring).
+
 ### 2.2 `vnprox@pve!daemon`'s PVE token is a single, cluster-wide credential — regenerating it on one node silently breaks every other node
 
 **Severity: high, already fixed by hand this session.** `vnprox@pve!daemon` (the PVE API token
@@ -213,6 +240,47 @@ which was only the certs nil-panic):**
 - The daemon could detect an authentication failure against its own configured token and log at
   ERROR with wording that names "this token may have been regenerated on another cluster node,"
   rather than the current graceful-but-generic PVE-unreachable degradation.
+
+**Fixed (2026-08-18, same-day follow-up session), all three candidate directions above taken.**
+`vnprox-setup` gained `cluster_peer_count()` (tries `pvecm status`'s `Nodes:` line, falls back to
+counting `ring0_addr:` entries in `/etc/pve/corosync.conf`) and now distinguishes the two real
+scenarios in its "token already exists but the local file is missing/empty" branch: 2+ detected
+cluster peers gets an explicit "copy the token file from a known-good node, do NOT regenerate"
+recommendation (with `pveum user token remove ... && vnprox-setup` demoted to an
+accept-the-consequences-explicitly last resort); an apparent single/first node gets the original
+"regeneration is safe here" guidance, with a caveat for the case detection itself is wrong. Traced
+by hand against both real nodes' current state without executing destructively (both already have
+matching, valid tokens from this session's earlier by-hand fix, so the branch that would exercise
+this code path is not naturally reachable without deliberately breaking a working install) —
+`cluster_peer_count`'s own two detection paths were each run for real against both live nodes
+confirming they report `2` correctly:
+```
+$ ssh root@pvecube.localdomain "pvecm status 2>/dev/null | awk -F': *' '/^Nodes:/ {print \"[\" \$2 \"]\"}'"
+[2]
+$ ssh root@pvecube.localdomain "grep -c 'ring0_addr:' /etc/pve/corosync.conf"
+2
+```
+`docs/deployment.md` updated at its step-5 line (token creation), its step-8 line (now flags that
+the SSH multi-node rollout does NOT copy the token file automatically — a real, separate gap found
+while writing this fix, left open below), and its "Manual install (per node)" section, all stating
+the cluster-wide/first-node-only rule explicitly. `internal/collect.recordResult`
+(`internal/collect/collector.go`) now logs a second, distinct WARN line naming "this token may
+have been regenerated on another cluster node" specifically for `*pve.ErrPVEAuth` (401) failures,
+leaving the existing generic "poll failed" line unchanged for every other failure class (unit
+tests: `TestRecordResult_PVEAuthFailureLogsRegenerationHint`,
+`TestRecordResult_NonAuthFailureOmitsRegenerationHint`, `internal/collect/authhint_internal_test.go`).
+Real-cluster token files confirmed byte-identical (same sha256) before and after this session's
+`.deb` redeploys to both nodes, and no peer-auth 401s were introduced by the deploy (the peer-API
+401s observed post-restart are a separate, pre-existing "replayed peer request" pattern, confirmed
+present in the journal before this session's changes too — unrelated to the PVE token).
+
+**New gap found, not fixed (out of this fix's stated scope of `vnprox-setup` + docs):**
+`packaging/install.sh`'s multi-node SSH rollout (step 8) re-runs `vnprox-setup` on every remaining
+node but never copies `/etc/vnprox/keys/pve-token` from the first node — so a fresh multi-node
+`install.sh` run today would hit exactly the warn-and-stop path this fix adds (safe, no longer
+silent, but still requires a manual token-file copy afterward). Documented in `docs/deployment.md`
+step 8's note; fixing `install.sh` itself to `scp` the token automatically is a real, separate
+follow-up.
 
 ### 2.3 `internal/certs.NewService` nil-pointer panic on a fresh install with no PVE token yet — **fixed in this session**
 
@@ -265,6 +333,14 @@ instead of `certClusterFacts(sdnPVEClient)` directly.
   file, which is destructive and out of this card's scope) — verified by unit test and by
   reading the exact crashing call chain, not by re-triggering the crash on hardware.
 
+**Confirmed still intact (2026-08-18, same-day follow-up session).** `cmd/vnproxd/certwire.go`'s
+`certClusterFactsFor` and `server.go`'s call site are unchanged by this follow-up session's four
+other fixes; `certwire_test.go`'s two tests still pass, and both nodes now run a `.deb` built from
+a tree that includes this fix (`4.0.0+29+g947a709+dirty`), active and healthy on both — still not
+re-triggered via a real fresh-install repro (still destructive, still out of scope), but the fix
+has now shipped to real hardware without incident, which a purely-unit-tested fix had not yet
+done as of the original session.
+
 ### 2.4 `pve_privileges` under `--live` fails on every correctly-provisioned install, by design mismatch
 
 **Severity: medium — a real false-positive, first observed because `--live` had never actually
@@ -300,6 +376,36 @@ write-privilege entries when checking the daemon's own token specifically.
 throwaway PVE user `vnproxt3201@pve` with the `PVEAuditor` role was created, used to mint two
 audit-scoped vnprox tokens — one per node — then both tokens revoked and the PVE user deleted
 immediately after. No trace left on either cluster.)
+
+**Fixed and confirmed (2026-08-18, same-day follow-up session) — the first candidate direction
+above was taken.** `internal/auth.DaemonTokenPrivileges()` is a new, independently-declared list
+(`internal/auth/caps.go`) mirroring `vnprox-setup`'s actual `VNPROX_PVE_PRIVS` grant
+(`Sys.Audit,VM.Audit,SDN.Audit,Mapping.Audit`) byte-for-byte — not derived by filtering
+`RequiredPrivileges()`, since `VM.Audit`/`Mapping.Audit` are privileges the daemon's token needs
+that `RequiredPrivileges()`/`DeriveCapabilities` never consult at all (neither backs a UI
+capability flag). `checkPVEPrivileges` (`internal/doctor/checks.go`) now gates on this new list
+instead. `TestDaemonTokenPrivilegesMatchesSetupGrant` (`internal/auth/caps_test.go`) reads
+`packaging/bin/vnprox-setup`'s `VNPROX_PVE_PRIVS=` line directly (the same "read the real source,
+not a second hand-written copy" discipline `TestRequiredPrivilegesCoversMapping` already applies
+to `caps.go`'s own mapping table) so the two cannot silently drift again.
+`TestCheckPVEPrivileges_DaemonTokenGrant` (`internal/doctor/checks_test.go`) proves a token
+holding exactly those four privileges passes, and that dropping any single one of the four fails
+by name.
+
+**Confirmed on real hardware, not just the unit tests**, using the exact same throwaway-account
+technique as the original session (a new PVE user, `vnproxdoc@pve`, `PVEAuditor` role; a
+vnprox-scoped bearer token minted per node; both tokens revoked and the user deleted immediately
+after — zero trace left). After deploying the fix (`.deb` `4.0.0+29+g947a709+dirty`) to both
+nodes:
+```
+$ VNPROX_TOKEN=... vnproxctl doctor --live -o json   # pvecube
+{"check":"pve_reachable","status":"pass", ...}
+{"check":"pve_privileges","status":"pass","detail":"the PVE token holds every privilege vnprox's own daemon needs"}
+```
+Byte-identical result on pve001 (`8 passed, 0 warned, 0 failed, 2 skipped` on both — the same
+`clock_skew`/`peer_secret` `skip`s the original session already confirmed are a still-missing-code
+gap, unrelated to this fix). `pve_privileges` now `pass`, not `fail`, on both real nodes' own
+actually-provisioned tokens; `pve_reachable` unaffected.
 
 ### 2.5 `collect: peer host poll failed... context canceled` — real, frequent (≈50% of attempts), root-caused to TCP-level retransmission on the shared keep-alive connection, not a timeout budget
 
@@ -442,6 +548,91 @@ bare-hostname DNS resolution gap (real and separately worth fixing — `getent h
 empty on pvecube — but not the cause of *this* failure, since `discoverCorosyncPairs` populates
 `ToAddr` with the real IP from `corosync.conf`, never reaching the by-name fallback).
 
+**Correction (2026-08-18, same-day follow-up session): the `SystemCallFilter` ruling-out above
+was incomplete, not wrong about what it checked — it only checked `socket()`, and that genuinely
+is allowed. It never checked `capset()`, the syscall `cap_set_proc()` actually makes, which turned
+out to be the other half of this bug** — see the fixed-and-confirmed writeup immediately below.
+
+**Fixed and confirmed on real hardware (2026-08-18, same-day follow-up session) — CAP_SETPCAP
+alone was NOT sufficient, the first deploy attempt this session proved it live.** Added
+`CAP_SETPCAP` to `vnprox.service`'s `CapabilityBoundingSet=` (the first candidate fix direction
+above), built a `.deb`, deployed it to both nodes, confirmed the capability landed
+(`cat /proc/<pid>/status` on the live daemon: `CapPrm`/`CapEff`/`CapBnd` all include
+`cap_setpcap`) — and the exact same `mtuprobe: path could not carry even the minimum MTU` warning
+fired again five minutes later anyway. Root-caused with a second debug-build capture (identical
+technique to the original session's, reverted the same way): the daemon's own `ping` invocation
+was *still* failing, just five minutes after a restart that had `CAP_SETPCAP` correctly in its
+bounding set.
+
+**The real, complete root cause: `vnprox.service`'s `SystemCallFilter` denies `@privileged`, and
+`capset` — the actual syscall `cap_set_proc()` makes — is a member of that denied group**
+(confirmed directly: `systemd-analyze syscall-filter @privileged | grep capset` lists it). This
+seccomp filter is inherited across exec by every child process, the same mechanism the T-608
+`AF_UNIX`/`lldpctl` finding already established for `RestrictAddressFamilies` — so `capset(2)` was
+blocked at the syscall level regardless of which capabilities the calling thread held.
+`CapabilityBoundingSet` and `SystemCallFilter` are two independent gates; this bug needed both
+addressed, and the original session's "ruled out" pass only checked the syscall filter's effect on
+`socket()`, not on `capset()`.
+
+Diagnosed and fixed via a `systemd-run` reproduction ladder against the real unit's exact
+directives, one addition at a time, live on pvecube:
+```
+# CAP_SETPCAP present, SystemCallFilter denying @privileged (matches the first, insufficient fix):
+$ systemd-run --uid=0 --pipe -p NoNewPrivileges=yes -p CapabilityBoundingSet="...cap_setpcap..." \
+    -p "SystemCallFilter=@system-service" \
+    -p "SystemCallFilter=~@mount @reboot @swap @privileged @resources @raw-io @debug @module @cpu-emulation @obsolete @clock" \
+    -p SystemCallErrorNumber=EPERM -- ping -M do -c3 -W2 -s524 -- 192.168.1.7
+/usr/bin/ping: cap_set_proc: Operation not permitted
+
+# + SystemCallFilter=capset (allow capset specifically after the @privileged deny):
+...same directives, plus -p "SystemCallFilter=capset" ...
+/usr/bin/ping: setuid: Operation not permitted   # progressed — iputils-ping's privilege-drop
+                                                  # sequence also calls setuid() as a second,
+                                                  # UID-level defense-in-depth step after capset()
+
+# + SystemCallFilter=capset setuid:
+...
+3 packets transmitted, 3 received, 0% packet loss, time 2067ms   # succeeds cleanly
+```
+A quick bisection (trying `setgid`/`setresuid`/`setresgid`/`setgroups` individually and in
+combination) confirmed `capset setuid` is the *minimal* addition — none of the GID-related
+syscalls were needed (they turned out to already be outside `@privileged`, allowed via
+`@system-service` already, consistent with `systemd-analyze syscall-filter` output).
+
+`packaging/systemd/vnprox.service` now carries both fixes together: `CapabilityBoundingSet=` gains
+`CAP_SETPCAP`, and a new `SystemCallFilter=capset setuid` line re-permits exactly those two
+syscalls after the `@privileged` denial — not a re-opening of the whole group (which also holds
+`mount`/`pivot_root`/`reboot`/module-loading syscalls vnproxd has no documented need for). Neither
+addition widens what a compromised child could do: `capset` only rearranges bits within a
+process's own already-held capability sets (the `CapabilityBoundingSet` ceiling is unchanged), and
+`setuid` without `CAP_SETUID` in the bounding set (deliberately still absent) can only set a
+process's UID to one it already holds — a no-op for every vnproxd child, which stays at UID 0
+throughout. Both `packaging/systemd/vnprox.service` and `docs/security.md`'s Host footprint
+section carry the full reasoning inline, dated and attributed per this repo's existing
+capability-correction convention (the T-608 `AF_UNIX` precedent).
+
+**Confirmed on the real, restarted daemon itself, not just the `systemd-run` reproduction.** After
+redeploying the corrected `.deb` to both nodes and restarting: `systemctl show vnprox.service -p
+SystemCallFilter` on both lists `capset`/`setuid` among the allowed syscalls; a `systemd-run`
+invocation built entirely from the live unit's own reported `CapabilityBoundingSet`/
+`SystemCallFilter` values succeeds on both nodes; and the real, running daemon's own `GET
+/latmesh/heatmap` shows the most recent real sample at `lossPct: 0` (`rttMs: 0.298`) for
+`corosync:ring0|pvecube->pve001`, with `rollingLossPct` visibly recovering from the pre-fix
+100%-loss samples still aging out of the 5-minute rolling window at the moment of capture — no
+further `mtuprobe: path could not carry even the minimum MTU` warning logged in the observation
+window either. See this file's evidence index / the session's final report for the fully-settled
+post-window numbers.
+
+**§3's open item on `internal/latmesh`'s exposure is now independently confirmed, not just
+inferred by code similarity**: this session's redeploy triggered fresh `health:path_loss`
+`"transition":"new"` notifications for `corosync:ring0` **and all four `guest:vmbrN` fabrics** on
+pve001 immediately after the (pre-fix) restart, and `internal/latmesh/prober.go`'s
+`parsePingSummary` was confirmed by direct code reading to fall through to `Reading{LossPct: 100}`
+for a hard `cap_set_proc`/`capset` exec failure (non-empty output, so the `len(out)==0` exec-error
+branch is never reached; no `"packet loss"` line to match, so `lossFound` stays `false`) — the
+exact same false-positive mechanism as `mtuprobe`, now proven end-to-end on real hardware rather
+than inferred from shared code shape.
+
 A bare PVE node name (`"pve001"`, `"pvecube"`) also does not resolve via DNS on either host
 (`getent hosts pve001` → empty; `ping pve001` → `Name or service not known`) — a genuine,
 separate hazard for `internal/mtuprobe`'s/`internal/latmesh`'s documented fallback ("dial
@@ -477,11 +668,6 @@ enough.
   inside vnprox's own daemon" for this card. These remain open, still filed under the `T-3201`
   pointer in `needs-hardware-validation.md`, genuinely waiting on a future card that specifically
   works with SDN config on real hardware.
-- **§2.6's `internal/latmesh` false-positive exposure** — the `CAP_SETPCAP`/`cap_set_proc` root
-  cause is confirmed for `internal/mtuprobe` directly; whether `internal/latmesh.RealProber`'s
-  identically-shaped `ping` subprocess call actually degrades to a false `path_loss`/
-  `path_latency_degraded` finding (versus some other classification of a hard exec failure) was
-  not independently re-verified with its own debug capture this session and needs one.
 - **§2.5's peer-poll `context canceled` root cause** — high-confidence hypothesis, not
   packet-capture-confirmed. Needs `tcpdump` bracketing a live occurrence, or the double-timeout
   simplification proposed above, to fully close.
@@ -489,6 +675,23 @@ enough.
   test and by reading the exact crashing call chain, not by re-triggering the crash on hardware
   (both nodes are already past first-run with valid tokens; wiping a token file to re-trigger it
   would be destructive and out of scope).
+
+**Resolved this follow-up session (2026-08-18), removed from this list**: §2.1's corosync-knet
+parser gap, §2.4's `pve_privileges` false-fail, and §2.6's `CAP_SETPCAP`+`SystemCallFilter`
+ping/`internal/latmesh` false-positive exposure are now fixed and confirmed on real hardware — see
+each section above for the evidence. Two narrower items surfaced *by* fixing them, still open:
+
+- **§2.1's real knet FAULTY-state wording** — still not hardware-observed (no corosync link
+  disruption was attempted against the live cluster this session either); the new parser's
+  permissive default (anything other than `localhost`/`connected` counts as faulty) is design, not
+  confirmed wording. A future session with the same live cluster and appetite for a brief,
+  monitored corosync disruption could close this.
+- **§2.2's `install.sh` multi-node token gap** — found while writing the `vnprox-setup` fix, not
+  itself fixed (out of this fix's stated scope): the SSH-based multi-node rollout re-runs
+  `vnprox-setup` on every remaining node without ever copying the first node's
+  `/etc/vnprox/keys/pve-token` over, so a fresh multi-node `install.sh` run today would hit (now
+  safely, not silently) the same warn-and-stop path this session's fix adds, requiring a manual
+  follow-up copy. Documented in `docs/deployment.md`; `install.sh` itself is unchanged.
 
 ---
 

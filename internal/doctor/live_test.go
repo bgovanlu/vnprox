@@ -37,8 +37,8 @@ func resultFor(results []Result, check string) (Result, bool) {
 // AC1's shape: with a live probe wired, the checks return a real verdict
 // rather than `skip`.
 func TestRunLive_ProducesRealVerdictsWithAProbe(t *testing.T) {
-	privs := make([]string, 0, len(RequiredPrivilegeNamesForTest()))
-	privs = append(privs, RequiredPrivilegeNamesForTest()...)
+	privs := make([]string, 0, len(DaemonTokenPrivilegeNamesForTest()))
+	privs = append(privs, DaemonTokenPrivilegeNamesForTest()...)
 	results := RunLive(context.Background(), Facts{PVEAPIURL: "https://pve1:8006"}, Env{
 		PVE: liveProbe{privs: privs},
 	})
@@ -100,7 +100,7 @@ func TestRunLive_SkipsWithoutAProbeAndNotWithOne(t *testing.T) {
 			t.Fatalf("%s without a probe = %s, want skip", c, r.Status)
 		}
 	}
-	with := RunLive(context.Background(), Facts{}, Env{PVE: liveProbe{privs: RequiredPrivilegeNamesForTest()}})
+	with := RunLive(context.Background(), Facts{}, Env{PVE: liveProbe{privs: DaemonTokenPrivilegeNamesForTest()}})
 	for _, c := range []string{CheckPVEReachable, CheckPVEPrivileges} {
 		r, _ := resultFor(with, c)
 		if r.Status == StatusSkip {

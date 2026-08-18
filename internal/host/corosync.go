@@ -146,44 +146,78 @@ func ReadCorosyncConf(path string) (*CorosyncConfig, error) {
 	return ParseCorosyncConf(data)
 }
 
-// RingStatus is one corosync ring's live status as reported by
+// RingStatus is one corosync ring/link's live status as reported by
 // `corosync-cfgtool -s` (T-803) — distinct from CorosyncNode's static
 // configured ring *addresses* above: this is corosync's own knet/totem
 // layer's current observation of that ring, which can go faulty without any
 // change to corosync.conf.
+//
+// Two real, differently-shaped `corosync-cfgtool -s` outputs feed this same
+// struct (planning/reports/blocked-validation.md §2.1, found against a real
+// PVE 9.2.10 two-node cluster — this is not a hypothetical): an older flat
+// "RING ID n" / "id\t=" / "status\t=" shape, and knet's real shape (knet has
+// been PVE's default transport since 6.x, so this is the common case on any
+// real deployment today):
+//
+//	LINK ID 0 udp
+//		addr	= 192.168.1.9
+//		status:
+//			nodeid:          1:	localhost
+//			nodeid:          2:	connected
+//
+// For a knet "LINK ID" block, RingID is the link's number and Addr is its
+// "addr\t=" value, same as the old shape's "id\t=" — but there is no single
+// "status\t=" line to read verbatim; instead each cluster member's
+// connection state as seen from this link is reported on its own nested
+// "nodeid: N: <state>" line. StatusText/Faulty are synthesized from those
+// lines (see ParseCorosyncStatus) rather than copied from one source line.
 type RingStatus struct {
-	// Addr is the ring's local interface address, as printed after
-	// "id\t=" in cfgtool's output.
+	// Addr is the ring/link's local interface address, as printed after
+	// "id\t=" (older shape) or "addr\t=" (knet) in cfgtool's output.
 	Addr string
-	// StatusText is the raw, unparsed status line (e.g. "ring 0 active
-	// with no faults", or a "Marking ringid N interface X FAULTY ..."
-	// variant) — kept verbatim for a finding's detail text since the
-	// exact wording is not stable across corosync versions/transports
-	// (see planning/reports/needs-hardware-validation.md).
+	// StatusText is a human-readable status summary: the raw, unparsed
+	// status line verbatim for the older shape (e.g. "ring 0 active with
+	// no faults", or a "Marking ringid N interface X FAULTY ..." variant —
+	// kept verbatim since the exact wording is not stable across corosync
+	// versions/transports, see planning/reports/needs-hardware-validation.md),
+	// or a synthesized "nodeid N: <state>; nodeid M: <state>; ..." summary
+	// for a knet link, joining every peer connection state this link
+	// reported.
 	StatusText string
 	RingID     int
-	// Faulty is derived from StatusText: false iff the status text
-	// contains "no faults" (case-insensitive) — the one substring every
-	// observed corosync-cfgtool build uses for a healthy ring — true for
-	// every other wording (FAULTY, down, degraded, ...), a deliberately
-	// permissive default that treats "not textually confirmed healthy" as
-	// "worth flagging" rather than risking a false negative.
+	// Faulty is derived from StatusText for the older shape: false iff the
+	// status text contains "no faults" (case-insensitive) — the one
+	// substring every observed corosync-cfgtool build uses for a healthy
+	// ring — true for every other wording (FAULTY, down, degraded, ...).
+	//
+	// For a knet link, Faulty is false iff every "nodeid: N: <state>" line
+	// this link reported has state "localhost" (this node itself) or
+	// "connected" (a healthy peer, case-insensitive) — any other wording is
+	// treated as faulty. The real wording knet uses for a genuinely
+	// disconnected/faulty peer was not captured on hardware as of this
+	// parser's introduction (only the healthy 2/2 case was observed —
+	// planning/reports/needs-hardware-validation.md); this permissive
+	// default follows the same "not textually confirmed healthy = worth
+	// flagging" philosophy the older shape's Faulty already establishes,
+	// rather than hard-coding an unconfirmed FAULTY string.
 	Faulty bool
 }
 
 // ParseCorosyncStatus parses `corosync-cfgtool -s` output (see this file's
-// doc comment on RingStatus for the exact-wording caveat) into one
-// RingStatus per "RING ID n" block. This is a deliberately tolerant,
-// line-oriented parser (mirroring ParseCorosyncConf's own "narrow and
-// tolerant, not a full grammar" stance): any line it doesn't recognize
-// (header lines like "Printing ring status."/"Local node ID n", blank
-// lines, or a future field this package doesn't know about) is silently
-// skipped rather than failing the whole parse. Malformed/adversarial input
-// never panics: any unexpected internal panic is recovered and returned as
-// an error, matching host.ParseBGPSummary/ParseEVPNVNI's convention. Empty
-// input returns (nil, nil) — "no output" is not itself an error;
-// ErrCorosyncUnavailable is a distinct, sentinel-carrying condition callers
-// detect from the *exec* failure, not from parsing empty output.
+// doc comment on RingStatus for the exact-wording caveat, and for both real
+// shapes this parses) into one RingStatus per "RING ID n" (older shape) or
+// "LINK ID n <transport>" (knet, PVE's default since 6.x) block. This is a
+// deliberately tolerant, line-oriented parser (mirroring ParseCorosyncConf's
+// own "narrow and tolerant, not a full grammar" stance): any line it doesn't
+// recognize (header lines like "Printing ring status."/"Local node ID n",
+// blank lines, or a future field this package doesn't know about) is
+// silently skipped rather than failing the whole parse. Malformed/
+// adversarial input never panics: any unexpected internal panic is
+// recovered and returned as an error, matching host.ParseBGPSummary/
+// ParseEVPNVNI's convention. Empty input returns (nil, nil) — "no output"
+// is not itself an error; ErrCorosyncUnavailable is a distinct,
+// sentinel-carrying condition callers detect from the *exec* failure, not
+// from parsing empty output.
 func ParseCorosyncStatus(raw []byte) (rings []RingStatus, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -209,8 +243,29 @@ func ParseCorosyncStatus(raw []byte) (rings []RingStatus, err error) {
 			cur = &rings[len(rings)-1]
 			continue
 		}
+		if id, ok := parseLinkIDHeader(line); ok {
+			rings = append(rings, RingStatus{RingID: id})
+			cur = &rings[len(rings)-1]
+			continue
+		}
 		if cur == nil {
-			continue // header/preamble line before any "RING ID" block
+			continue // header/preamble line before any "RING ID"/"LINK ID" block
+		}
+
+		// knet's nested per-peer connection-state line — has its own
+		// "key: n: value" shape distinct from every other line this parser
+		// recognizes, so it is checked before the generic "key = value"
+		// cut below (a bare "status:" section-marker line, knet's other
+		// addition, has no "=" at all and simply falls through unmatched).
+		if nodeID, state, ok := parseNodeIDLine(line); ok {
+			if cur.StatusText != "" {
+				cur.StatusText += "; "
+			}
+			cur.StatusText += fmt.Sprintf("nodeid %d: %s", nodeID, state)
+			if !isHealthyKnetNodeState(state) {
+				cur.Faulty = true
+			}
+			continue
 		}
 
 		key, val, ok := strings.Cut(line, "=")
@@ -220,7 +275,7 @@ func ParseCorosyncStatus(raw []byte) (rings []RingStatus, err error) {
 		key = strings.TrimSpace(key)
 		val = strings.TrimSpace(val)
 		switch key {
-		case "id":
+		case "id", "addr":
 			cur.Addr = val
 		case "status":
 			cur.StatusText = val
@@ -233,10 +288,10 @@ func ParseCorosyncStatus(raw []byte) (rings []RingStatus, err error) {
 	return rings, nil
 }
 
-// parseRingIDHeader recognizes a "RING ID n" header line (cfgtool's
-// per-ring block delimiter), case-insensitively (observed corosync builds
-// are consistent about "RING ID", but this parser stays tolerant per its
-// doc comment).
+// parseRingIDHeader recognizes a "RING ID n" header line (cfgtool's older,
+// non-knet per-ring block delimiter), case-insensitively (observed corosync
+// builds are consistent about "RING ID", but this parser stays tolerant per
+// its doc comment).
 func parseRingIDHeader(line string) (id int, ok bool) {
 	const prefix = "ring id"
 	lower := strings.ToLower(line)
@@ -249,4 +304,68 @@ func parseRingIDHeader(line string) (id int, ok bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+// parseLinkIDHeader recognizes a "LINK ID n <transport>" header line
+// (cfgtool's knet per-link block delimiter — e.g. "LINK ID 0 udp"),
+// case-insensitively. Unlike parseRingIDHeader's "RING ID n", knet's header
+// carries a trailing transport name after the number, so only the first
+// whitespace-separated token after the prefix is parsed as the id; anything
+// after it is ignored rather than rejecting the whole line.
+func parseLinkIDHeader(line string) (id int, ok bool) {
+	const prefix = "link id"
+	lower := strings.ToLower(line)
+	if !strings.HasPrefix(lower, prefix) {
+		return 0, false
+	}
+	fields := strings.Fields(line[len(prefix):])
+	if len(fields) == 0 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// parseNodeIDLine recognizes one knet "nodeid: N: <state>" line (e.g.
+// "nodeid:          1:	localhost", "nodeid:          2:	connected"),
+// returning the cluster member's corosync node id and its raw connection
+// state word verbatim (never normalized here — isHealthyKnetNodeState does
+// the case-insensitive comparison, so the original wording survives into
+// RingStatus.StatusText for a finding's detail text).
+func parseNodeIDLine(line string) (nodeID int, state string, ok bool) {
+	const prefix = "nodeid:"
+	if !strings.HasPrefix(line, prefix) {
+		return 0, "", false
+	}
+	rest := strings.TrimSpace(line[len(prefix):])
+	idPart, statePart, found := strings.Cut(rest, ":")
+	if !found {
+		return 0, "", false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(idPart))
+	if err != nil {
+		return 0, "", false
+	}
+	state = strings.TrimSpace(statePart)
+	if state == "" {
+		return 0, "", false
+	}
+	return n, state, true
+}
+
+// isHealthyKnetNodeState reports whether state (one knet "nodeid: N: ..."
+// line's connection-state word) is a textually-confirmed-healthy state:
+// "localhost" (this node's own entry) or "connected" (a healthy peer),
+// case-insensitive — see RingStatus.Faulty's doc comment for why every
+// other wording is treated as faulty rather than assumed healthy.
+func isHealthyKnetNodeState(state string) bool {
+	switch strings.ToLower(state) {
+	case "localhost", "connected":
+		return true
+	default:
+		return false
+	}
 }

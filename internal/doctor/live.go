@@ -108,17 +108,20 @@ func UnreachableDaemonResults(reason string) []Result {
 	return out
 }
 
-// RequiredPrivilegeNamesForTest exposes EVERY privilege name
-// checkPVEPrivileges knows about — required and optional — so a test can build
-// a genuinely complete probe without restating the list. A second copy would
+// DaemonTokenPrivilegeNamesForTest exposes EVERY privilege name
+// checkPVEPrivileges actually gates on (auth.DaemonTokenPrivileges — the
+// daemon's own read-only token requirements, distinct from
+// auth.RequiredPrivileges' operator-facing list, see checkPVEPrivileges'
+// own doc comment) — required and optional — so a test can build a
+// genuinely complete probe without restating the list. A second copy would
 // drift, and the test would then assert against the wrong set: the exact
 // failure checkPVEPrivileges' own doc comment warns about.
 //
 // Optional ones are included because omitting them produces a `warn`, not a
 // `pass`, and a test that wanted "everything is fine" would otherwise be
 // asserting the wrong verdict.
-func RequiredPrivilegeNamesForTest() []string {
-	privs := auth.RequiredPrivileges()
+func DaemonTokenPrivilegeNamesForTest() []string {
+	privs := auth.DaemonTokenPrivileges()
 	out := make([]string, 0, len(privs))
 	for _, p := range privs {
 		out = append(out, p.Name)

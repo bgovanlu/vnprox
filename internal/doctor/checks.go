@@ -363,8 +363,21 @@ func checkPVEReachable(ctx context.Context, f Facts, env Env) Result {
 	return pass(CheckPVEReachable, "PVE API reachable and the token authenticates")
 }
 
-// checkPVEPrivileges names the privileges vnprox actually needs, taken from
-// internal/auth's mapping rather than a second list of its own.
+// checkPVEPrivileges names the privileges vnprox's OWN configured token
+// (vnprox@pve!daemon) needs, taken from internal/auth.DaemonTokenPrivileges
+// rather than a second list of its own.
+//
+// This deliberately does NOT use auth.RequiredPrivileges: that list answers
+// a different question ("what would let an *operator's* own PVE ticket
+// unlock every vnprox UI capability"), and includes three write privileges
+// (Sys.Modify, SDN.Allocate, VM.Config.Network) the daemon's own token is
+// never granted by design — vnprox-setup provisions it read-only, and every
+// write vnprox makes goes out on the applying user's own sealed PVE ticket
+// instead (docs/security.md's "Apply-time revert ticket"). Gating this
+// check on RequiredPrivileges used to fail this check on every
+// correctly-provisioned install, always — confirmed on a real two-node
+// cluster, see auth.DaemonTokenPrivileges' doc comment for the full history
+// (planning/reports/blocked-validation.md §2.4).
 func checkPVEPrivileges(ctx context.Context, f Facts, env Env) Result {
 	if env.PVE == nil {
 		return skip(CheckPVEPrivileges, "not checked from the CLI — this needs the daemon's authenticated PVE client. The privileges vnprox uses are listed in docs/deployment.md")
@@ -379,9 +392,11 @@ func checkPVEPrivileges(ctx context.Context, f Facts, env Env) Result {
 	}
 
 	var missingRequired, missingOptional []string
-	// From internal/auth, not a list of our own: see RequiredPrivileges' doc
-	// comment for why a second copy would eventually report on the wrong set.
-	for _, rp := range auth.RequiredPrivileges() {
+	// From internal/auth, not a list of our own: see DaemonTokenPrivileges'
+	// doc comment for why this is a distinct list from RequiredPrivileges,
+	// and why a hand-maintained second copy here would eventually gate on
+	// the wrong set again.
+	for _, rp := range auth.DaemonTokenPrivileges() {
 		if have[rp.Name] {
 			continue
 		}
@@ -397,13 +412,13 @@ func checkPVEPrivileges(ctx context.Context, f Facts, env Env) Result {
 	case len(missingRequired) > 0:
 		return fail(CheckPVEPrivileges,
 			"the configured PVE token is missing privileges vnprox needs: "+strings.Join(missingRequired, "; "),
-			fmt.Sprintf("grant them on / (or on /nodes) for the token's user, e.g.: pveum acl modify / --tokens '<user>@pve!<token>' --roles PVEAdmin — or a custom role holding %s", strings.Join(namesOnly(missingRequired), ", ")))
+			fmt.Sprintf("re-run vnprox-setup (it provisions exactly these via the VnproxAuditor role), or grant them directly: pveum acl modify / --tokens '<user>@pve!<token>' --roles VnproxAuditor — or a custom role holding %s", strings.Join(namesOnly(missingRequired), ", ")))
 	case len(missingOptional) > 0:
 		return warn(CheckPVEPrivileges,
 			"the configured PVE token is missing optional privileges: "+strings.Join(missingOptional, "; "),
 			fmt.Sprintf("grant %s if you need those features; vnprox works without them", strings.Join(namesOnly(missingOptional), ", ")))
 	default:
-		return pass(CheckPVEPrivileges, "the PVE token holds every privilege vnprox uses")
+		return pass(CheckPVEPrivileges, "the PVE token holds every privilege vnprox's own daemon needs")
 	}
 }
 

@@ -257,6 +257,31 @@ VNPROX_PVE_ROLE="VnproxAuditor"
 # read-only by design (docs/security.md, D3).
 VNPROX_PVE_PRIVS="Sys.Audit,VM.Audit,SDN.Audit,Mapping.Audit"
 
+# cluster_peer_count prints the number of PVE cluster members this node
+# currently knows about (including itself) and returns success, or prints
+# nothing and returns failure if that cannot be determined. Used only to
+# choose which of two real explanations (see the "already exists but file
+# missing" branch below) is more likely — never treated as authoritative,
+# since neither source below is guaranteed present in every environment
+# (`pvecm` needs a real cluster stack; /etc/pve/corosync.conf needs pmxcfs).
+cluster_peer_count() {
+	if command -v pvecm >/dev/null 2>&1; then
+		n="$(pvecm status 2>/dev/null | awk -F': *' '/^Nodes:/ {print $2; exit}')"
+		if [ -n "$n" ] && [ "$n" -ge 1 ] 2>/dev/null; then
+			printf '%s\n' "$n"
+			return 0
+		fi
+	fi
+	if [ -r /etc/pve/corosync.conf ]; then
+		n="$(grep -c 'ring0_addr:' /etc/pve/corosync.conf 2>/dev/null || true)"
+		if [ -n "$n" ] && [ "$n" -ge 1 ] 2>/dev/null; then
+			printf '%s\n' "$n"
+			return 0
+		fi
+	fi
+	return 1
+}
+
 # pve_try_create runs a pveum create-style subcommand and treats "the thing
 # it would create already exists" as success rather than failure: pveum's
 # own error text for this case is "... already exists" (role/user/token
@@ -343,8 +368,29 @@ else
 	else
 		# The "already existed" branch: pveum won't hand back a secret for
 		# a token that already existed before this run, and there is no
-		# way to recover one that was never written to disk here.
-		warn "  PVE API token vnprox@pve!daemon already exists but $PVE_TOKEN_FILE is missing/empty; its secret cannot be recovered — either restore $PVE_TOKEN_FILE from backup, or run: pveum user token remove vnprox@pve daemon && vnprox-setup again"
+		# way to recover one that was never written to disk here — PVE only
+		# returns a token's secret at the moment it is created. vnprox@pve
+		# !daemon is also a SINGLE, CLUSTER-WIDE PVE credential (PVE stores
+		# tokens on the user, not per node), while each node's copy of
+		# PVE_TOKEN_FILE is a local, independent file — so "local file
+		# missing" and "server-side token exists" are two DIFFERENT facts
+		# that can disagree, and disagreeing is exactly what happened here.
+		# Blindly regenerating is dangerous: it silently invalidates every
+		# OTHER node's on-disk copy with no warning from either side
+		# (planning/reports/blocked-validation.md §2.2 — found and manually
+		# fixed on a real two-node cluster this exact way). This node's own
+		# cluster membership can't always be determined automatically, so
+		# both real explanations are spelled out below rather than guessed.
+		warn "  PVE API token vnprox@pve!daemon already exists (server-side), but $PVE_TOKEN_FILE is missing/empty on THIS node — its secret cannot be recovered once lost; PVE only returns it at creation time."
+		peer_count="$(cluster_peer_count || true)"
+		if [ -n "$peer_count" ] && [ "$peer_count" -ge 2 ] 2>/dev/null; then
+			warn "  This node is one of $peer_count members of an existing PVE cluster — the normal explanation is that this is a genuinely new node that has never held this secret locally, NOT that the token itself needs regenerating."
+			warn "  RECOMMENDED: copy $PVE_TOKEN_FILE byte-for-byte from a node where vnprox already works, e.g.: scp <good-node>:$PVE_TOKEN_FILE $PVE_TOKEN_FILE && chmod 0600 $PVE_TOKEN_FILE && systemctl restart vnprox"
+			warn "  DO NOT run 'pveum user token remove vnprox@pve daemon && vnprox-setup' on this node unless you accept that doing so invalidates every OTHER node's copy of $PVE_TOKEN_FILE until you manually redistribute the new secret to all of them (only ever do this deliberately, from the first node, with a redistribution plan)."
+		else
+			warn "  This node does not appear to be part of a multi-node PVE cluster (peer count: ${peer_count:-could not be determined}) — it may genuinely be the first/only node and something else deleted the local file, in which case regenerating is safe here: pveum user token remove vnprox@pve daemon && vnprox-setup"
+			warn "  If this node DOES have cluster peers that could not be detected automatically, treat it as the multi-node case instead: copy $PVE_TOKEN_FILE from a node where it already works rather than regenerating."
+		fi
 	fi
 fi
 

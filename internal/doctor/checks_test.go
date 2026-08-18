@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -101,10 +103,27 @@ func healthyEnv(now time.Time) Env {
 	}
 }
 
+// allPrivilegeNames returns every privilege name either RequiredPrivileges
+// (the operator-facing list) or DaemonTokenPrivileges (what
+// checkPVEPrivileges actually gates on, see its own doc comment) names, so
+// the "healthy install" baseline fixture below holds everything any check
+// in this package might ask for — a token provisioned with only one of the
+// two lists would leave the other's check failing in the "healthy" control
+// case, which would prove nothing about a genuinely broken fixture.
 func allPrivilegeNames() []string {
+	seen := map[string]bool{}
 	var out []string
 	for _, rp := range auth.RequiredPrivileges() {
-		out = append(out, rp.Name)
+		if !seen[rp.Name] {
+			seen[rp.Name] = true
+			out = append(out, rp.Name)
+		}
+	}
+	for _, rp := range auth.DaemonTokenPrivileges() {
+		if !seen[rp.Name] {
+			seen[rp.Name] = true
+			out = append(out, rp.Name)
+		}
 	}
 	return out
 }
@@ -289,28 +308,39 @@ func TestEachCheckFailsOnBrokenInput(t *testing.T) {
 			wantDetail: "connection refused",
 		},
 		{
+			// A token missing every DaemonTokenPrivileges entry except
+			// Sys.Audit must fail — this is checkPVEPrivileges' own
+			// fixture, distinct from RequiredPrivileges' Sys.Modify (see
+			// TestCheckPVEPrivileges_DaemonTokenGrant below for the fuller
+			// pass/fail matrix against DaemonTokenPrivileges specifically).
 			name:  "token missing a required privilege",
 			check: CheckPVEPrivileges,
 			mutate: func(_ *Facts, e *Env) {
 				e.PVE = fakePVE{privs: []string{"Sys.Audit"}, serverTime: now}
 			},
 			wantStatus: StatusFail,
-			wantDetail: "Sys.Modify",
+			wantDetail: "VM.Audit",
 		},
 		{
-			name:  "token missing only an optional privilege",
+			// A token holding every RequiredPrivileges entry (including the
+			// three WRITE privileges an operator's own ticket would need —
+			// Sys.Modify, SDN.Allocate, VM.Config.Network) but missing
+			// VM.Audit/Mapping.Audit must still fail: those two privileges
+			// back the daemon's own token requirements
+			// (auth.DaemonTokenPrivileges) and are never consulted by
+			// RequiredPrivileges/DeriveCapabilities at all, so holding
+			// every operator-facing privilege is not sufficient here.
+			name:  "token holding every RequiredPrivileges entry but not the daemon-only ones",
 			check: CheckPVEPrivileges,
 			mutate: func(_ *Facts, e *Env) {
-				var required []string
+				var privs []string
 				for _, rp := range auth.RequiredPrivileges() {
-					if !rp.Optional {
-						required = append(required, rp.Name)
-					}
+					privs = append(privs, rp.Name)
 				}
-				e.PVE = fakePVE{privs: required, serverTime: now}
+				e.PVE = fakePVE{privs: privs, serverTime: now}
 			},
-			wantStatus: StatusWarn,
-			wantDetail: "Sys.Console",
+			wantStatus: StatusFail,
+			wantDetail: "VM.Audit",
 		},
 		{
 			name:  "nodes disagree on the cluster secret",
@@ -711,5 +741,107 @@ func TestSkipReasonsDoNotDiagnose(t *testing.T) {
 	// Anti-vacuity: if nothing skipped, the loop above asserted nothing.
 	if skipped < 4 {
 		t.Fatalf("only %d checks skipped with every probe absent; expected at least 4, so this test is looking at almost nothing", skipped)
+	}
+}
+
+// TestCheckPVEPrivileges_DaemonTokenGrant is planning/reports/
+// blocked-validation.md §2.4's fix, pinned directly: pve_privileges used to
+// fail on every install provisioned exactly as documented, because it
+// checked the daemon's read-only token against auth.RequiredPrivileges
+// (which includes three write privileges the daemon's token is deliberately
+// never granted). It now checks against auth.DaemonTokenPrivileges
+// instead — this proves the token vnprox-setup actually provisions
+// (Sys.Audit, VM.Audit, SDN.Audit, Mapping.Audit — VNPROX_PVE_PRIVS in
+// packaging/bin/vnprox-setup) passes, and that dropping any single one of
+// those four still fails.
+func TestCheckPVEPrivileges_DaemonTokenGrant(t *testing.T) {
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+
+	setupGrant := func() []string {
+		var out []string
+		for _, rp := range auth.DaemonTokenPrivileges() {
+			out = append(out, rp.Name)
+		}
+		return out
+	}
+
+	t.Run("exactly vnprox-setup's grant passes", func(t *testing.T) {
+		facts := healthyFacts()
+		env := healthyEnv(now)
+		env.PVE = fakePVE{privs: setupGrant(), serverTime: now}
+
+		rep := Run(context.Background(), facts, env)
+		got := find(t, rep, CheckPVEPrivileges)
+		if got.Status != StatusPass {
+			t.Errorf("pve_privileges = %s (%s), want pass for a token holding exactly vnprox-setup's grant %v", got.Status, got.Detail, setupGrant())
+		}
+	})
+
+	t.Run("missing any single one of the four fails", func(t *testing.T) {
+		full := setupGrant()
+		for _, omit := range full {
+			t.Run(omit, func(t *testing.T) {
+				var privs []string
+				for _, p := range full {
+					if p != omit {
+						privs = append(privs, p)
+					}
+				}
+				facts := healthyFacts()
+				env := healthyEnv(now)
+				env.PVE = fakePVE{privs: privs, serverTime: now}
+
+				rep := Run(context.Background(), facts, env)
+				got := find(t, rep, CheckPVEPrivileges)
+				if got.Status != StatusFail {
+					t.Errorf("pve_privileges = %s (%s), want fail when %s is missing", got.Status, got.Detail, omit)
+				}
+				if !strings.Contains(got.Detail, omit) {
+					t.Errorf("detail %q does not name the missing privilege %s", got.Detail, omit)
+				}
+			})
+		}
+	})
+}
+
+// TestDaemonTokenPrivilegesMatchesSetupGrant keeps auth.DaemonTokenPrivileges
+// pinned against packaging/bin/vnprox-setup's actual VNPROX_PVE_PRIVS grant,
+// the same "read the real source of truth rather than trust a second
+// hand-written copy" discipline TestRequiredPrivilegesCoversMapping applies
+// to caps.go's mapping table. If vnprox-setup's grant ever changes without
+// this list changing to match (or vice versa), pve_privileges would drift
+// out of sync with what is actually provisioned — silently, the same way
+// this whole fix exists to correct.
+func TestDaemonTokenPrivilegesMatchesSetupGrant(t *testing.T) {
+	src, err := os.ReadFile("../../packaging/bin/vnprox-setup")
+	if err != nil {
+		t.Fatalf("reading vnprox-setup: %v", err)
+	}
+	m := regexp.MustCompile(`VNPROX_PVE_PRIVS="([^"]+)"`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("could not find VNPROX_PVE_PRIVS=\"...\" in vnprox-setup; the scan is broken, not the mapping")
+	}
+	granted := make(map[string]bool)
+	for _, p := range strings.Split(string(m[1]), ",") {
+		granted[strings.TrimSpace(p)] = true
+	}
+	if len(granted) < 4 {
+		t.Fatalf("parsed only %d privileges out of VNPROX_PVE_PRIVS; the scan is broken, not the mapping", len(granted))
+	}
+
+	listed := make(map[string]bool)
+	for _, rp := range auth.DaemonTokenPrivileges() {
+		listed[rp.Name] = true
+	}
+
+	for p := range granted {
+		if !listed[p] {
+			t.Errorf("vnprox-setup grants %q but auth.DaemonTokenPrivileges does not list it: pve_privileges would never confirm it is actually held", p)
+		}
+	}
+	for p := range listed {
+		if !granted[p] {
+			t.Errorf("auth.DaemonTokenPrivileges lists %q but vnprox-setup's VNPROX_PVE_PRIVS does not grant it: pve_privileges would fail on every correctly-provisioned install", p)
+		}
 	}
 }

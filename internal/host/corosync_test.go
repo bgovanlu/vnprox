@@ -229,6 +229,112 @@ func TestParseCorosyncStatus_MalformedNeverPanics(t *testing.T) {
 	}
 }
 
+// realKnetCorosyncStatusHealthy is `corosync-cfgtool -s`'s real, verbatim
+// output, captured against both nodes of a real, healthy, quorate 2/2 PVE
+// 9.2.10 cluster (planning/reports/blocked-validation.md §1.4/§2.1) —
+// knet's actual shape, not an invented one. The old parser found zero rings
+// against this text at all (a silent (nil, nil), not an error) because it
+// only recognized a "RING ID n" header; knet says "LINK ID n <transport>"
+// and reports per-peer connection state on nested "nodeid: N: <state>"
+// lines instead of one flat "status = ..." line.
+const realKnetCorosyncStatusHealthy = "Local node ID 1, transport knet\n" +
+	"LINK ID 0 udp\n" +
+	"\taddr\t= 192.168.1.9\n" +
+	"\tstatus:\n" +
+	"\t\tnodeid:          1:\tlocalhost\n" +
+	"\t\tnodeid:          2:\tconnected\n"
+
+// TestParseCorosyncStatus_RealKnetOutput_Healthy proves the new parser
+// returns one correctly-populated, non-faulty RingStatus for the real
+// captured knet output above — the direct fix for §2.1's "cannot parse a
+// real, modern (knet) cluster at all" finding. Before this fix, this
+// assertion failed with rings == nil (zero rings parsed, no error).
+func TestParseCorosyncStatus_RealKnetOutput_Healthy(t *testing.T) {
+	rings, err := ParseCorosyncStatus([]byte(realKnetCorosyncStatusHealthy))
+	if err != nil {
+		t.Fatalf("ParseCorosyncStatus: %v", err)
+	}
+	if len(rings) != 1 {
+		t.Fatalf("got %d rings, want 1 (one LINK ID 0 block): %+v", len(rings), rings)
+	}
+	r := rings[0]
+	if r.RingID != 0 {
+		t.Errorf("RingID = %d, want 0 (from LINK ID 0)", r.RingID)
+	}
+	if r.Addr != "192.168.1.9" {
+		t.Errorf("Addr = %q, want 192.168.1.9 (from addr\\t=)", r.Addr)
+	}
+	if r.Faulty {
+		t.Errorf("Faulty = true, want false: every nodeid line reports localhost/connected (%q)", r.StatusText)
+	}
+	if !strings.Contains(r.StatusText, "nodeid 1: localhost") || !strings.Contains(r.StatusText, "nodeid 2: connected") {
+		t.Errorf("StatusText = %q, want it to summarize both nodeid lines verbatim", r.StatusText)
+	}
+}
+
+// TestParseCorosyncStatus_KnetFaultyNodeState covers a knet link where one
+// peer's reported connection state is neither "localhost" nor "connected".
+// The real wording knet uses for a genuinely disconnected/faulty peer was
+// NOT captured on hardware (only the healthy 2/2 case was observed —
+// planning/reports/blocked-validation.md §2.1/§3, RingStatus.Faulty's own
+// doc comment) — "disconnected" here is a plausible but NOT
+// hardware-confirmed stand-in, chosen only to exercise the permissive
+// "anything other than localhost/connected is faulty" default. Do not treat
+// this exact wording as proven real knet output.
+func TestParseCorosyncStatus_KnetFaultyNodeState(t *testing.T) {
+	const in = "Local node ID 1, transport knet\n" +
+		"LINK ID 0 udp\n" +
+		"\taddr\t= 192.168.1.9\n" +
+		"\tstatus:\n" +
+		"\t\tnodeid:          1:\tlocalhost\n" +
+		"\t\tnodeid:          2:\tdisconnected\n"
+
+	rings, err := ParseCorosyncStatus([]byte(in))
+	if err != nil {
+		t.Fatalf("ParseCorosyncStatus: %v", err)
+	}
+	if len(rings) != 1 {
+		t.Fatalf("got %d rings, want 1: %+v", len(rings), rings)
+	}
+	if !rings[0].Faulty {
+		t.Errorf("Faulty = false, want true: nodeid 2 reports a state that is neither localhost nor connected (%q)", rings[0].StatusText)
+	}
+	if !strings.Contains(rings[0].StatusText, "nodeid 2: disconnected") {
+		t.Errorf("StatusText = %q, want the raw peer state preserved verbatim", rings[0].StatusText)
+	}
+}
+
+// TestParseCorosyncStatus_KnetMultiLink covers more than one "LINK ID"
+// block in one cfgtool run (a cluster with redundant rings configured),
+// proving each link is parsed into its own independent RingStatus.
+func TestParseCorosyncStatus_KnetMultiLink(t *testing.T) {
+	const in = "Local node ID 1, transport knet\n" +
+		"LINK ID 0 udp\n" +
+		"\taddr\t= 192.168.1.9\n" +
+		"\tstatus:\n" +
+		"\t\tnodeid:          1:\tlocalhost\n" +
+		"\t\tnodeid:          2:\tconnected\n" +
+		"LINK ID 1 udp\n" +
+		"\taddr\t= 10.10.1.9\n" +
+		"\tstatus:\n" +
+		"\t\tnodeid:          1:\tlocalhost\n" +
+		"\t\tnodeid:          2:\tconnected\n"
+
+	rings, err := ParseCorosyncStatus([]byte(in))
+	if err != nil {
+		t.Fatalf("ParseCorosyncStatus: %v", err)
+	}
+	if len(rings) != 2 {
+		t.Fatalf("got %d rings, want 2: %+v", len(rings), rings)
+	}
+	if rings[0].RingID != 0 || rings[0].Addr != "192.168.1.9" || rings[0].Faulty {
+		t.Errorf("rings[0] = %+v, want {RingID:0 Addr:192.168.1.9 Faulty:false ...}", rings[0])
+	}
+	if rings[1].RingID != 1 || rings[1].Addr != "10.10.1.9" || rings[1].Faulty {
+		t.Errorf("rings[1] = %+v, want {RingID:1 Addr:10.10.1.9 Faulty:false ...}", rings[1])
+	}
+}
+
 func stringSlicesEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

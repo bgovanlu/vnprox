@@ -2,6 +2,7 @@ package collect
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -349,6 +350,22 @@ func (c *Collector) recordResult(name string, attemptTime time.Time, err error) 
 	// the log rate out as failures accumulate (10s -> 20s -> ... ->
 	// 60s-capped retries), so this does not "spam" in practice.
 	c.log.Warn("collect: poll failed", "source", name, "consecutive_failures", st.consecutiveFailures, "error", err)
+
+	// A PVE 401 (*pve.ErrPVEAuth) is not "PVE is unreachable" — it is "this
+	// token, specifically, was rejected" — and on a multi-node cluster the
+	// single most common real-world cause is the one this project actually
+	// hit (planning/reports/blocked-validation.md §2.2): vnprox@pve!daemon
+	// is a single, cluster-wide PVE credential, and regenerating it on one
+	// node silently invalidates every other node's on-disk copy with no
+	// warning from either side. A generic "poll failed" line above already
+	// covers reachability failures; this second, distinct line only fires
+	// for an actual auth rejection, so it does not add noise to the far
+	// more common transient-network case.
+	var authErr *pve.ErrPVEAuth
+	if errors.As(err, &authErr) {
+		c.log.Warn("collect: the configured PVE token was rejected (401) — if this token worked before, it may have been regenerated on another cluster node; vnprox@pve!daemon is cluster-wide, not per-node (see docs/deployment.md, planning/reports/blocked-validation.md §2.2). Compare /etc/vnprox/keys/pve-token against a known-good node rather than re-running vnprox-setup's token creation here",
+			"source", name)
+	}
 }
 
 // reportPoll invokes onPoll (T-1903), if configured. Called alongside — but

@@ -445,6 +445,18 @@ from; and pvemock does not model an `ifreload` outage at all):
       single ring.** Not fixed this session (needs a second parser branch for the knet block
       shape, not a one-line change) — full writeup with the exact code location in
       `planning/reports/blocked-validation.md` §2.1.
+- [x] **Fixed and confirmed (2026-08-18, same-day follow-up session).** `ParseCorosyncStatus`
+      gained a second header (`"LINK ID n <transport>"`) and a nested `"nodeid: N: <state>"`
+      parser; a knet link's `Faulty` is `false` iff every reported peer state is `localhost` or
+      `connected` (same permissive-default philosophy as the older shape). Confirmed on real
+      hardware, not just the unit test: a fresh `corosync-cfgtool -s` capture from each node,
+      taken after deploying the fix, fed through the exact deployed parser code (temporary `go
+      run`, removed after) returned one correctly-populated, non-faulty `RingStatus` per node —
+      see `planning/reports/blocked-validation.md` §2.1 for the full command/output. **Still
+      open**: the real FAULTY-state wording was not live-observed (no corosync link disruption was
+      attempted against the live cluster this session either) — the permissive default is design,
+      not confirmed wording; whoever next has real hardware and can safely disrupt corosync
+      connectivity for well under a minute should close this specific remaining gap.
 - [ ] **Corosync ring status is still local-node-only, confirmed unchanged** (`T-3201`,
       2026-08-18). `docs/features/monitoring.md` §5's scope note ("production wiring reports only
       this daemon's own local node's ring status today — cluster-wide peer fan-out needs a new
@@ -606,6 +618,17 @@ from; and pvemock does not model an `ifreload` outage at all):
       different reason (the daemon's own sandboxing, not a wording/locale mismatch). **Not
       independently re-verified with its own debug capture** (budget went to `mtuprobe` first) —
       see `planning/reports/blocked-validation.md` §2.6 for the full writeup and candidate fixes.
+- [x] **`internal/latmesh` exposure independently confirmed (2026-08-18, same-day follow-up
+      session), on real hardware, not just inferred by code shape.** A real `.deb` redeploy
+      (before the full two-part fix below had landed) triggered fresh `health:path_loss`
+      `"transition":"new"` notifications on pve001 for `corosync:ring0` **and all four
+      `guest:vmbrN` fabrics** simultaneously — `internal/latmesh/prober.go`'s `parsePingSummary`
+      was confirmed by direct code reading to fall through to `Reading{LossPct: 100}` for a hard
+      `capset`/`cap_set_proc` exec failure (non-empty output means the `len(out)==0` exec-error
+      branch is never reached; no `"packet loss"` line to match means `lossFound` stays `false`).
+      Fixed by the same two-part fix as `internal/mtuprobe` below (`CAP_SETPCAP` +
+      `SystemCallFilter=capset setuid`) — confirmed clearing via `GET /latmesh/heatmap` on the
+      real daemon post-fix, see `planning/reports/blocked-validation.md` §2.6.
 - [ ] **`ping` summary-line wording/format across real PVE node builds** — moot until the
       `CAP_SETPCAP` finding above is fixed (ping cannot run at all right now, so its output
       wording is unobservable in production); left open, now correctly understood as
@@ -679,6 +702,20 @@ from; and pvemock does not model an `ifreload` outage at all):
       `planning/reports/blocked-validation.md` §2.6 for the full writeup, the ruled-out
       alternative causes, and candidate fixes (none applied this session — a systemd-hardening
       security tradeoff, not a one-line bug).
+- [x] **Fixed and confirmed (2026-08-18, same-day follow-up session) — `CAP_SETPCAP` alone was
+      NOT sufficient, proven live.** Adding just `CAP_SETPCAP` to `CapabilityBoundingSet=`
+      (deployed and restarted on both real nodes) still failed identically five minutes later — a
+      second debug capture found `vnprox.service`'s `SystemCallFilter` also denies `@privileged`,
+      which `capset` (the syscall `cap_set_proc()` actually makes) is a member of, blocking it at
+      the seccomp level regardless of capabilities held. `SystemCallFilter=capset setuid` (a
+      second syscall, `setuid`, needed for iputils-ping's UID-level defense-in-depth step after
+      `capset()`) added alongside the capability fix — both confirmed minimal via bisection
+      (`setgid`/`setresuid`/`setresgid`/`setgroups` were all unnecessary). Confirmed on the real,
+      redeployed daemon: `systemctl show` on both nodes lists `capset`/`setuid` as allowed; the
+      live daemon's own `GET /latmesh/heatmap` shows a fresh real sample at `lossPct: 0` for
+      `corosync:ring0`, and the `mtuprobe: path could not carry even the minimum MTU` warning did
+      not recur in the observation window. Full command-by-command reproduction ladder and the
+      final unit-file/docs wording in `planning/reports/blocked-validation.md` §2.6.
 - [ ] **Binary-search convergence against a real, non-synthetic path.** `TestBinarySearchMTU_*`
       (`internal/mtuprobe/binarysearch_test.go`) exercises the search algorithm itself against
       scripted mock responses, not a real network path with real DF-drop latency/occasional packet
