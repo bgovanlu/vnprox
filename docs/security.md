@@ -2,6 +2,11 @@
 
 vnprox runs as root on hypervisor hosts and can reconfigure the network of an entire cluster. Security posture is therefore conservative by design.
 
+**Found a vulnerability?** See [`SECURITY.md`](../SECURITY.md) at the repository root —
+`security@vnprox.com`, or GitHub's private vulnerability reporting if enabled on this repo. Don't
+open a public issue for a suspected vulnerability first (T-3302 — this project had no
+disclosure contact at all before 2026-08-18; an audit finding in its own right).
+
 ## Authentication
 
 - **No vnprox-local accounts.** Users authenticate with Proxmox credentials; vnproxd forwards to PVE `POST /access/ticket` (supports any PVE realm: PAM, PVE, LDAP/AD, OIDC, and TOTP/second factor passthrough via `otp`).

@@ -29,12 +29,10 @@
         paths: 'auto',
         placeholder: 'Search the docs',
         noData: 'No results'
-      }
-      // Deliberately no `repo:` option (docsify's GitHub-corner ribbon and
-      // "view source" links): as of this writing github.com/bgovanlu/vnprox
-      // is not a publicly reachable repository (see docs/support.md and
-      // docs/docs-site.md), so this page does not render a link that would
-      // 404 for a reader. Add it back once that is no longer true.
+      },
+      // T-3302 (2026-08-18): the repo is public now, so the GitHub-corner
+      // ribbon / "view source" links resolve instead of 404ing.
+      repo: 'bgovanlu/vnprox'
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/docsify@4"></script>
