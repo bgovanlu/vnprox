@@ -1,13 +1,14 @@
 # Install
 
-**Honesty note first, because it changes which section applies to you:** vnprox has no live
-distribution infrastructure yet. `apt.vnprox.com` does not exist — no apt repository is published
-anywhere reachable (`packaging/apt-repo.md`), and there is no downloadable binary release either.
-The installer, the packaging, and the signature-verification code are all real and tested (see
-"Verified" at the end of each section) — there is simply nothing on the other end of the URLs they
-point at yet. This page is written in two parts for that reason: **what works today**, if you
-already have this source tree, and **what will work once distribution exists**, so the eventual
-reader doesn't have to relearn the shape of the thing.
+**Honesty note first, because it changes which section applies to you:** as of 2026-08-18
+(T-3301), `apt.vnprox.com` is a real, live, signed apt repository, hosted and serving —
+but it does not resolve from the public internet yet, pending a DNS/edge-proxy step outside this
+repository. The installer, the packaging, and the signature-verification code are all real and
+tested (see "Verified" at the end of each section), and there is now something real on the other
+end of the URLs they point at — it just isn't publicly reachable by that name yet. This page is
+written in two parts for that reason: **what works today**, if you already have this source tree,
+and **what will work once distribution is publicly reachable**, so the eventual reader doesn't
+have to relearn the shape of the thing.
 
 ## Supported platforms
 

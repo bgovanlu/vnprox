@@ -32,20 +32,18 @@ you file — it's built to be safe to hand to someone else.
 
 ## Where to file
 
-**Today, honestly: there is nowhere public yet.** This project's source lives at
-`github.com/bgovanlu/vnprox` — the same path its Go module uses — and that repository is
-**private**. It exists and is actively developed; an anonymous request returns 404 because GitHub
-answers that way for a private repository rather than revealing one exists. So there is no public
-issue tracker and no public clone URL, and "open an issue on GitHub" is not yet a real
-instruction. Making it public is a decision for the maintainer, not a missing piece of
-infrastructure. Two channels are prepared for when that changes:
+**As of 2026-08-18 (T-3302): `github.com/bgovanlu/vnprox` is public.** Two real channels:
 
-- **GitHub Issues**, once the repository above is public. Include your `vnproxctl doctor` output
-  and (unless it's not applicable — e.g. a docs issue) a support bundle.
+- **[GitHub Issues](https://github.com/bgovanlu/vnprox/issues).** Include your `vnproxctl doctor`
+  output and (unless it's not applicable — e.g. a docs issue) a support bundle.
+- **A suspected vulnerability** goes to [`SECURITY.md`](../SECURITY.md)
+  (`security@vnprox.com`, or GitHub's private vulnerability reporting — enabled on this
+  repository) instead — not a public issue.
 - **The Proxmox community forum**, once the announcement in `forum-announcement.md` is actually
-  posted — it isn't yet; that file is a drafted, unpublished announcement, not a live thread. Once
-  it exists, replying on that thread is a second valid channel, better suited to "is this expected
-  behavior" questions than to bug reports with attachments.
+  posted — it isn't yet as of this writing; that file is drafted, ready-to-post text, not a live
+  thread (its own checklist names what has to be true first). Once it exists, replying on that
+  thread is a second valid channel, better suited to "is this expected behavior" questions than to
+  bug reports with attachments.
 
 If you're reading this because you already have access to the source tree some other way (an
 internal build, a fork, a colleague who sent you a `.deb`), the honest answer is: ask whoever gave
@@ -73,8 +71,10 @@ failure-injection proof of commit-confirm, the NetBox/phpIPAM production write c
 drift detection, the eBPF flow sampler (probe/scaffolding only), the packet-capture AF_PACKET
 backend, cross-cluster federation and WireGuard interconnect, cross-cluster IPAM conflict
 detection, physical switch config push, SR-IOV VF lifecycle, and HA active/standby failover. A
-formal blocked-validation register (task `T-1803`, `planning/tasks/phase-18.md`) was planned to
-document each of these with its specific failure mode and severity; that register has not been
-produced yet — the list above, from `docs/status-matrix.md`, is the most current accounting that
-exists. If you can reproduce a problem in one of these areas on real hardware, that report is
-unusually valuable — it's exactly the evidence this list is missing.
+formal blocked-validation register (`planning/reports/blocked-validation.md`, task `T-1803`) now
+exists and documents each of these with its specific failure mode, severity and current status —
+several (management-link and firewall-only lockout self-heal, real-cluster scale/perf) moved from
+blocked to validated on real hardware during Phase 32; read that file for what's actually still
+open versus what the list above (from `docs/status-matrix.md`) makes it sound like. If you can
+reproduce a problem in one of the areas still open there on real hardware, that report is
+unusually valuable — it's exactly the evidence that register is missing.

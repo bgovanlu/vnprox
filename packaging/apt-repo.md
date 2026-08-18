@@ -47,18 +47,21 @@ Debian build host: `dpkg-scanpackages`, `gzip`, `gpg`).
 
 ## Signing key
 
-- **Production**: an Ed25519 GPG key held only as a GitHub Actions repository
-  secret (`APT_SIGNING_KEY`, ASCII-armored private key exported with
-  `gpg --export-secret-keys --armor`). `release.yml` imports it into a
-  scratch `GNUPGHOME` for the duration of the release job only — it is
-  never written anywhere else, never logged (the workflow does not echo
-  secret values; GitHub Actions also redacts registered secrets from logs
-  as a second layer). The corresponding public key is committed nowhere in
-  this repository on purpose (a public key alone, published at
-  `vnprox-archive-keyring.gpg`, is what clients need — see below) but its
-  fingerprint should be published out-of-band (project website, release
-  notes) so an operator can verify `vnprox-archive-keyring.gpg` themselves
-  after fetching it, the same trust-on-first-use caveat every apt
+- **Production**: an Ed25519 GPG key. **Real as of T-3301 (2026-08-18)** —
+  generated, and held only on `apt.vnprox.com`'s own host
+  (`/etc/vnprox-release/signing-key.asc`, 0600 root-only), never in this
+  repository, never as a GitHub Actions secret (Actions no longer runs
+  releases — `docs/development.md`'s CI section has the decision).
+  `packaging/publish-release.sh` is what actually signs a release: it runs
+  `packaging/build-apt-repo.sh` over SSH on that host with
+  `VNPROX_SIGNING_KEY_FILE` pointed at the key file there, so the private
+  key itself never leaves that one narrow surface. Fingerprint, published
+  out-of-band right here rather than only in `install.sh`'s own pinned
+  copy: `F57DDE63ABA03B3BEEEB2DB93BD9CC3B118061BD`. The corresponding
+  public key is committed nowhere in this repository on purpose (a public
+  key alone, published at `vnprox-archive-keyring.gpg`, is what clients
+  need — see below), but an operator can verify it against the fingerprint
+  above after fetching it, the same trust-on-first-use caveat every apt
   third-party repo has.
 - **Dev/test**: if `VNPROX_SIGNING_KEY_FILE` is unset, `build-apt-repo.sh`
   generates a throwaway Ed25519 key in a temp `GNUPGHOME` (1-day expiry,

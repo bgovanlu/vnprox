@@ -327,13 +327,22 @@ func TestInstaller_RefusesAMissingSignature(t *testing.T) {
 // installing unverified. The pinned fingerprint in install.sh is still a
 // placeholder (there is no published vnprox release key), so this is the
 // state a real `curl | sh` is in today — and it fails closed.
+// T-3301 pinned a real production fingerprint into the shipped script (see
+// TestInstaller_PinnedKeyIsStillAPlaceholder's own doc comment — that test
+// now documents this), so the no-trust-anchor scenario can no longer be
+// reached through install.sh's own shipped default. This test forces it on
+// a copy instead, exactly the way TestInstaller_AcceptsA.../
+// TestInstaller_RefusesAFetchedKeyWithTheWrongFingerprint pin a REAL
+// fingerprint onto a copy for their own scenarios — pinFingerprint's own
+// doc comment names this as the intended pattern.
 func TestInstaller_RefusesWhenNoTrustAnchorIsAvailable(t *testing.T) {
 	k := newSigningKey(t, "vnprox test release key")
 	arch := hostArch(t)
 	dist := distDir(t, k, arch)
+	script := pinFingerprint(t, "0000000000000000000000000000000000000000")
 	prefix := t.TempDir()
 
-	res := runInstaller(t,
+	res := runScript(t, script,
 		"--prefix", prefix,
 		"--dist-url", "file://"+dist,
 		"--yes", "--no-lldp", "--skip-pve-check")
@@ -590,23 +599,27 @@ func TestInstaller_RefusesAFetchedKeyWithTheWrongFingerprint(t *testing.T) {
 	}
 }
 
-// The pinned fingerprint is a placeholder today, on purpose (there is no
-// published vnprox release key). This test is the reminder: when the key is
-// generated and the placeholder replaced, the two constants stop matching
-// and this test tells whoever did it to come and delete it.
-//
-// It is written as an assertion about the CURRENT, honest state rather than
-// as a skip, so the state is visible in the test output rather than buried
-// in a comment.
-func TestInstaller_PinnedKeyIsStillAPlaceholder(t *testing.T) {
+// T-3301 (2026-08-18): the release-key fingerprint has been pinned for
+// real — this replaces the old TestInstaller_PinnedKeyIsStillAPlaceholder,
+// exactly as that test's own doc comment asked for ("delete this test, and
+// add one asserting the published key's fingerprint instead"). This
+// doesn't reach the real apt.vnprox.com (no network access assumed for a
+// unit test, and it doesn't resolve publicly yet regardless — see
+// packaging/apt-repo.md's Status), so what it can and does check is
+// internal consistency: the fingerprint install.sh carries matches the one
+// this project publishes out-of-band (packaging/apt-repo.md's Signing key
+// section) — catching a corrupted or mistyped pin, which a `curl | sh`
+// install has no other way to notice before it's too late to matter.
+func TestInstaller_PinnedFingerprintMatchesPublished(t *testing.T) {
+	const published = "F57DDE63ABA03B3BEEEB2DB93BD9CC3B118061BD"
 	body, err := os.ReadFile(filepath.Join(repoRoot(t), "packaging", "install.sh"))
 	if err != nil {
 		t.Fatalf("reading install.sh: %v", err)
 	}
-	if !strings.Contains(string(body), `VNPROX_RELEASE_KEY_FPR="0000000000000000000000000000000000000000"`) {
-		t.Skip("the release-key fingerprint has been pinned for real — delete this test, and add one asserting the published key's fingerprint instead")
+	want := `VNPROX_RELEASE_KEY_FPR="` + published + `"`
+	if !strings.Contains(string(body), want) {
+		t.Errorf("install.sh does not carry the published fingerprint %s (packaging/apt-repo.md's Signing key section) — "+
+			"either it was rotated and this test needs updating, or it was corrupted and a real `curl | sh` install "+
+			"would refuse to trust the real key", published)
 	}
-	t.Log("packaging/install.sh still carries a placeholder release-key fingerprint: a `curl | sh` install of a " +
-		"published artifact fails closed today. This is the honest state — there is no published vnprox release " +
-		"and no production signing key. See this task's report.")
 }

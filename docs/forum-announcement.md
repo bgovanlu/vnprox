@@ -38,11 +38,12 @@ root. Log in with `root` / `vnprox-mock` / realm `pam`.
 
 This is early, and I'd rather say so here than have you find out the hard way:
 
-- **No hosted distribution exists yet.** There is no live apt repository, no downloadable release
-  binary, and no hosted plugin/blueprint registry. Today, running vnprox on real hardware means
-  building it from source. `docs/install.md` in the repository says exactly what works today
-  versus what's built but not yet reachable — I'd rather link that than restate it here and have
-  the two drift.
+- **Distribution is real but not yet publicly reachable by name.** There's a live, signed apt
+  repository and a live blueprint/plugin registry, both real infrastructure — but neither resolves
+  from the public internet yet (a DNS/edge step outside this repo's own work). Today, running
+  vnprox on real hardware still means building it from source. `docs/install.md` in the repository
+  says exactly what works today versus what's built but not yet reachable — I'd rather link that
+  than restate it here and have the two drift.
 - **Single-node behavior is well exercised; multi-node behavior mostly isn't, on real hardware.**
   Everything cluster-aware (multi-node changeset apply, distributed rollback, node-vs-node drift,
   HA failover, federation across two real clusters, physical switch config push) has been
@@ -77,10 +78,18 @@ Happy to answer questions here.
 
 ## Checklist before this is actually posted
 
-- [ ] The source repository is confirmed public and reachable (`docs/support.md` currently isn't
-      able to confirm this — see that file).
-- [ ] `docs/install.md`'s "what works today" section is re-checked against whatever has shipped by
-      posting time; this draft was written before any of that changed.
+- [x] The source repository is confirmed public and reachable — flipped 2026-08-18 (T-3302);
+      `docs/support.md` now points at `github.com/bgovanlu/vnprox/issues` as a real channel.
+- [x] `docs/install.md`'s "what works today" section is re-checked against what's shipped as of
+      2026-08-18: `apt.vnprox.com`/`demo.vnprox.com`/`registry.vnprox.com` are real, live, signed
+      infrastructure on a real host (T-3301/T-3303) — but **none of them resolve from the public
+      internet yet**, pending a DNS/edge-proxy step outside this repository's own work. **Do not
+      post this until that resolves** — every URL below (`vnproxd --demo`'s own quick-try aside,
+      which needs no network) would 404/timeout for a reader today.
 - [ ] Someone is signed up to actually watch the thread — an announcement with no one reading
       replies is worse than no announcement (`docs/support.md`'s support-posture note applies here
       too).
+- [ ] DNS for `apt.vnprox.com`/`demo.vnprox.com`/`registry.vnprox.com` actually resolves and the
+      VPS reverse-proxy in front of pve001 is live — check this last, right before posting, not
+      only at draft-finalization time; DNS propagation and VPS setup happen outside this repo's
+      own commits and could still be pending when this checklist was last touched.

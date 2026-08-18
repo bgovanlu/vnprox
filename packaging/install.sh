@@ -101,23 +101,14 @@ FORCE_TARBALL=0
 # signing key: the trust anchor this script CARRIES, so that the key it
 # imports is not merely "whatever the download host served".
 #
-# THE VALUE BELOW IS A PLACEHOLDER, and this is deliberate rather than an
-# oversight. There is no published vnprox release and no production signing
-# key yet (packaging/apt-repo.md: the production key is documented as a
-# GitHub Actions secret that does not exist, and its fingerprint is
-# documented as "should be published out-of-band"). Writing a made-up
-# fingerprint here that verified nothing would be worse than useless: it
-# would look like a trust anchor.
-#
-# So the placeholder fails closed. Every download path refuses to proceed
-# while it is still in place, and says exactly what has to happen: generate
-# the release key, publish it, and replace the line below (it is matched by
-# the marker comment, so the release procedure can substitute it
-# mechanically). Until then, install from a local artifact with --offline,
-# or supply the trust anchor yourself with --release-key.
+# T-3301 (2026-08-18): a real production key now exists and signs
+# apt.vnprox.com for real (packaging/apt-repo.md's "Signing key" section —
+# it lives only on the apt-repo host, never in this repository, never as a
+# GitHub Actions secret since Actions no longer runs releases). This is
+# that key's real fingerprint, not a placeholder.
 #
 # vnprox-release-key-fingerprint {{{
-VNPROX_RELEASE_KEY_FPR="0000000000000000000000000000000000000000"
+VNPROX_RELEASE_KEY_FPR="F57DDE63ABA03B3BEEEB2DB93BD9CC3B118061BD"
 # }}} vnprox-release-key-fingerprint
 VNPROX_RELEASE_KEY_PLACEHOLDER="0000000000000000000000000000000000000000"
 
