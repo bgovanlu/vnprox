@@ -11,12 +11,38 @@ import (
 	"github.com/bgovanlu/vnprox/internal/certs"
 	"github.com/bgovanlu/vnprox/internal/findings"
 	"github.com/bgovanlu/vnprox/internal/peer"
+	"github.com/bgovanlu/vnprox/internal/pve"
 )
 
 // clusterStatusSource is the subset of the PVE client the certificate service
 // needs: who the cluster's members are, and what address each is reachable at.
 // Deliberately narrow so the service is not handed the whole PVE client.
 type clusterStatusSource = peer.ClusterStatusSource
+
+// certClusterFactsFor adapts sdnPVEClient (a concrete *pve.Client, possibly
+// nil) into certs.ClusterFactsFunc, and is what server.go's wiring must call
+// instead of certClusterFacts directly.
+//
+// The nil check here is deliberately on the concrete *pve.Client, not on the
+// clusterStatusSource interface certClusterFacts takes: a nil *pve.Client
+// passed as an interface argument produces a non-nil interface value (a
+// typed nil — Go's classic gotcha, "an interface holding a nil concrete
+// pointer is not itself nil"), so certClusterFacts's own `src == nil` guard
+// never fires for it. That is exactly what happened on pve001's first cold
+// start, before vnprox-setup had ever run and cfg.PVE.TokenFile did not yet
+// exist: setupCollect returned a nil *pve.Client, server.go passed it
+// straight to certClusterFacts, the nil check inside compiled but never
+// matched, and certs.NewService's first Refresh() called ClusterStatus on a
+// nil *pve.Client — a nil-pointer panic three frames down in
+// internal/pve.(*Client).do, crashing the whole daemon instead of degrading
+// the way the collector already does for the identical "no PVE client yet"
+// condition (see setupCollect's doc comment).
+func certClusterFactsFor(client *pve.Client) certs.ClusterFactsFunc {
+	if client == nil {
+		return nil
+	}
+	return certClusterFacts(client)
+}
 
 // certClusterFacts adapts PVE's cluster status into certs.ClusterFacts.
 //
@@ -25,6 +51,11 @@ type clusterStatusSource = peer.ClusterStatusSource
 // answer to "what address is this peer dialled at" is exactly how a check ends
 // up validating a certificate against something other than what the transport
 // actually does.
+//
+// Callers: use certClusterFactsFor(sdnPVEClient), not this function
+// directly, unless src is already known non-nil by construction (e.g. a
+// test double) — see certClusterFactsFor's doc comment for why the nil
+// check below does not catch every nil case.
 func certClusterFacts(src clusterStatusSource) certs.ClusterFactsFunc {
 	if src == nil {
 		return nil

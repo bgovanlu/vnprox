@@ -41,9 +41,21 @@ nothing cross-node is covered.
       token tail are both absent. **Scan validated by a control first** — the same scan finds
       `pvecube` in the bundle, so the negatives mean something. This is stronger evidence than
       the fixture-based tests, because the credentials were real.
-- [ ] **Still not covered on hardware**: anything cross-node (peer API round trips, pmxcfs
-      replication, distributed rollback, HA lease fencing), and `T-1906-bug-01`'s actual failure
-      mode, which needs a second node to observe rather than infer.
+- [x] **Peer API round trips, real, sustained, bidirectional** (`T-3201`, 2026-08-18, pvecube +
+      pve001, PVE 9.2.10, cluster `vnprox-dev`). 971 successful `GET /api/peer/host/links` +
+      `GET /api/peer/firewall/log` round trips in one sampled hour, both directions. See
+      `planning/reports/blocked-validation.md` §1.1 for the journal evidence.
+- [x] **`T-1906-bug-01`'s actual failure mode, observed for real** (`T-3201`, 2026-08-18).
+      Verdict: **(b) already mitigated by existing code.** pvecube's `pve-ssl.pem` really does
+      carry the stale IP SAN (`192.168.100.99`, confirmed again by a fresh `openssl x509 -text`
+      read) and pve001 really does dial it by IP (`192.168.1.9:8007`) continuously — but zero TLS
+      verification failures occurred over hours of real traffic, because `certClusterFacts`/
+      `attachCertVerifyNames` (T-1906's own fix) verify each peer against its PVE node NAME
+      (`DNS:pvecube`, which the cert does carry) rather than the dial IP. See
+      `planning/reports/blocked-validation.md` §1.2 for the full evidence chain.
+- [ ] **Still not covered on hardware**: pmxcfs replication, distributed rollback, HA lease
+      fencing — needs T-3202 (failure injection) and/or a 3+-node cluster; not this card's scope.
+      See `planning/reports/blocked-validation.md` §3.
 
 ## Deploy-time validation, 2026-08-07 (pvecube, same node) — `vnproxctl doctor` (T-1904)
 
@@ -75,9 +87,21 @@ it was false. A `skip` means "not checked"; asserting a cause turns it into an u
 the exact failure `StatusSkip` exists to prevent. Reworded to state what was not checked and what
 to use instead, with `TestSkipReasonsDoNotDiagnose` (proven by mutation) to stop it recurring.
 
-- [ ] **Still not covered**: the four skipped checks themselves (`pve_reachable`,
-      `pve_privileges`, `peer_secret`, `clock_skew`) — they need the daemon's authenticated
-      clients, which is `T-1904-followup-02`. `peer_secret` additionally needs a second node.
+- [x] **`vnproxctl doctor --live` run against both real nodes of a real 2-node cluster**
+      (`T-3201`, 2026-08-18). `pve_reachable`/`pve_privileges` now answer for real (not skip):
+      `pve_reachable` passes on both; `pve_privileges` **fails** on both — a real, new finding
+      (§2.4 of `planning/reports/blocked-validation.md`): the check requires `Sys.Modify`/
+      `SDN.Allocate`/`VM.Config.Network` on the daemon's own token, but `vnprox-setup` correctly,
+      deliberately provisions that token read-only-only (`docs/deployment.md:59`), so a
+      documented-correct install permanently fails this check. `clock_skew`/`peer_secret` are
+      **still `skip` even with a real second node** — confirmed by reading
+      `cmd/vnproxd/doctorlive.go`: `Env.Peers` is never wired server-side (no peer-digest route,
+      `T-2406-followup-02`) and `doctorPVEProbe.Ping` always returns a zero server time (no PVE
+      server-time surface, `T-2406-followup-01`) — both are still missing *code*, not missing a
+      second node, so a 2-node cluster changes nothing here. A 2-node cluster therefore still
+      answers exactly 8 of 10 checks under `--live`, same count as the documented single-node
+      case. `T-1904-followup-02`/`T-2406-followup-01`/`T-2406-followup-02` remain genuinely open.
+      Full JSON output for both nodes in `planning/reports/blocked-validation.md` §1.3.
 
 ## PVE API behavior
 
@@ -125,15 +149,18 @@ to use instead, with `TestSkipReasonsDoNotDiagnose` (proven by mutation) to stop
             the leaf? Pinning a root works either way only if the peer sends
             enough of the chain — capture it (`openssl s_client -connect
             <node>:8007 -showcerts`) and keep it as a fixture.
-      - [ ] The leaf's **SANs**: peers are dialled by IP
-            (`https://<node-ip>:8007`, `Client.Peers` builds the address from
-            `GET /cluster/status`). Confirm PVE's generated certificate
-            carries the node's management **IP** in its SAN list and not only
-            the hostname. If it is hostname-only, hostname verification will
-            fail on every peer and the client needs an explicit
-            `ServerName`/name-resolution step — this is the single most
-            likely way pinning breaks on iron, and it fails *closed*, so it
-            would present as every peer becoming `peer_untrusted` at once.
+      - [x] The leaf's **SANs — confirmed on real hardware, `T-3201`, 2026-08-18.** Both nodes'
+            leaf certs (`pve-ssl.pem`) DO carry a management IP SAN, but pvecube's is **stale**
+            (`192.168.100.99`, not its real `192.168.1.9` — `T-1906-bug-01`, first flagged
+            2026-08-05 from static inspection). With a real second node (pve001) dialling it by
+            IP continuously for hours, the predicted "hostname verification fails, every peer
+            becomes `peer_untrusted`" did **not** happen — zero verification failures observed.
+            Cause: the client verifies against the peer's PVE **node name**
+            (`certClusterFacts`/`attachCertVerifyNames`, T-1906's own fix), not the raw dial
+            address, and pvecube's cert *does* carry `DNS:pvecube` correctly — so the stale IP
+            SAN is never consulted at all. This is the single most likely way pinning breaks on
+            iron, confirmed **not** to break it, by design. Full evidence:
+            `planning/reports/blocked-validation.md` §1.2.
       - [ ] Behaviour with a **custom certificate** installed
             (`pveproxy-ssl.pem`, e.g. a Let's Encrypt / enterprise-CA cert):
             such a node's peer certificate is *not* issued by
@@ -169,6 +196,18 @@ to use instead, with `TestSkipReasonsDoNotDiagnose` (proven by mutation) to stop
       `packaging/bin/vnprox-setup`, `packaging/debian/postrm`, and the docs
       referencing it were all updated to match). Not yet validated: real
       cross-node pmxcfs replication (this was a single-node cluster).
+
+## Multi-user presence and locking (T-2805)
+
+- [x] **Cross-node presence/lock fan-out gap — confirmed still unfilled** (`T-3201`, 2026-08-18).
+      `docs/project-status.md:244`'s "locks and presence are node-local; a peer-API fan-out for
+      cross-node presence is a stated, unfilled gap" still holds. Confirmed by an exhaustive
+      method-surface audit rather than a live round-trip test (this is an absence of code, not a
+      behavior that needs traffic to observe): `internal/peer/client.go`'s full 39-method RPC
+      surface has no lock/presence route at all, and `internal/presence`'s own structural test
+      (`TestChangeEngineDoesNotImportPresence`) confirms the package stays in-process. A second
+      real node does not change this finding — it was already fully determinable from the code,
+      and this session's contribution is simply having actually checked rather than assumed.
 
 ## Distributed rollback / local-timer protocol (T-304)
 
@@ -382,17 +421,36 @@ from; and pvemock does not model an `ifreload` outage at all):
       itself) on each node's EVPN VTEP. Confirm against a live PVE 8.x/9.x EVPN zone with an anycast
       gateway configured, including the timing (is it present immediately post-apply, or only once
       FRR converges?).
-- [ ] **Exact `corosync-cfgtool -s` output format/version.** `internal/host.ParseCorosyncStatus`
-      (backing `corosync_link_degraded`) parses one commonly-documented shape — a
-      "Printing ring status." header followed by "RING ID n" / "id\t=" / "status\t=" blocks, with a
-      ring classified faulty unless its status text contains "no faults" (case-insensitive). This is
-      unverified against a real cluster: corosync's knet transport (the PVE default since 6.x) may
-      report link status as "LINK ID"/"addr"/per-node "link enabled"/"link connected" fields instead
-      of the classic ring/udpu shape modeled here, and the exact FAULTY wording is known to vary
-      across corosync versions. Confirm the real output shape (and whether `-s` alone is sufficient,
-      or whether `corosync-cfgtool -n` or the `corosync-quorumtool` output is needed for a fuller
-      picture) against a live multi-node PVE cluster with a deliberately degraded ring, and widen
-      `ParseCorosyncStatus`/`RingSpec`'s fixture shape accordingly if it turns out to differ.
+- [x] **Exact `corosync-cfgtool -s` output format/version — captured, and the predicted divergence
+      is real and worse than predicted** (`T-3201`, 2026-08-18, pvecube + pve001, PVE 9.2.10,
+      corosync 3.x knet transport, quorate 2/2). Real captured output:
+      ```
+      Local node ID 1, transport knet
+      LINK ID 0 udp
+      	addr	= 192.168.1.9
+      	status:
+      		nodeid:          1:	localhost
+      		nodeid:          2:	connected
+      ```
+      This confirms the predicted divergence ("LINK ID"/"addr"/per-node fields, not the classic
+      "RING ID"/"id\t="/"status\t=" shape) — and it is **not** merely different wording for
+      FAULTY: `parseRingIDHeader` only recognizes a line starting `"ring id"`, so a real `"LINK ID
+      0 udp"` header is never matched at all, `cur` stays nil for the whole input, and
+      `ParseCorosyncStatus` returns **zero rings, no error** — reproduced directly against this
+      real captured text via a temporary Go test (`go test ./internal/host/... -run
+      TestT3201RealKnetOutput -v` → `rings=host.RingStatus(nil) err=<nil>`, test removed after).
+      **Consequence: `corosync_link_degraded` is a silent permanent no-op on every real PVE
+      cluster running corosync's default knet transport (every PVE cluster since 6.x, per this
+      entry's own prior note) — it can never fire, healthy or faulty, because it never sees a
+      single ring.** Not fixed this session (needs a second parser branch for the knet block
+      shape, not a one-line change) — full writeup with the exact code location in
+      `planning/reports/blocked-validation.md` §2.1.
+- [ ] **Corosync ring status is still local-node-only, confirmed unchanged** (`T-3201`,
+      2026-08-18). `docs/features/monitoring.md` §5's scope note ("production wiring reports only
+      this daemon's own local node's ring status today — cluster-wide peer fan-out needs a new
+      peer API route") still holds: `internal/peer/client.go`'s full 39-method RPC surface (every
+      `func (c *Client) ...` method enumerated) has no corosync route at all. A second real node
+      does not change this — the gap is an absence of code, not a precondition on cluster size.
 
 ## Verify live UX + eligibility check (T-806)
 
@@ -533,7 +591,25 @@ from; and pvemock does not model an `ifreload` outage at all):
 
 ## Latency & loss mesh (T-1303)
 
-- [ ] **`ping` summary-line wording/format across real PVE node builds.** `internal/latmesh.
+- [x] **`ping` fails outright under `vnprox.service`'s own shipped systemd hardening — not a
+      wording/format problem, `ping` never runs at all** (`T-3201`, 2026-08-18, pvecube + pve001,
+      PVE 9.2.10). Confirmed for `internal/mtuprobe`'s identically-shaped `ping` subprocess call
+      (see the Path MTU prober entry below for the full evidence and root cause:
+      `CapabilityBoundingSet=` in `vnprox.service`'s unit lacks `CAP_SETPCAP`, so modern
+      iputils-ping's own `cap_set_proc()` privilege-drop call fails and it aborts, exit 255,
+      `"ping: cap_set_proc: Operation not permitted"`, before ever sending a packet).
+      `internal/latmesh.RealProber`'s own `ping` invocation (`internal/latmesh/prober.go:89`) is
+      the same binary, the same systemd scope, the same missing capability — very likely hit
+      identically, which would mean `parsePingSummary` never sees real ping output at all and
+      every latency/loss reading on a hardened install is the "can't confirm, treat as worth
+      flagging" fallback this entry's own note already anticipated, just for a completely
+      different reason (the daemon's own sandboxing, not a wording/locale mismatch). **Not
+      independently re-verified with its own debug capture** (budget went to `mtuprobe` first) —
+      see `planning/reports/blocked-validation.md` §2.6 for the full writeup and candidate fixes.
+- [ ] **`ping` summary-line wording/format across real PVE node builds** — moot until the
+      `CAP_SETPCAP` finding above is fixed (ping cannot run at all right now, so its output
+      wording is unobservable in production); left open, now correctly understood as
+      second-order to the finding above rather than the primary risk. `internal/latmesh.
       RealProber`/`parsePingSummary` assumes iputils-ping's documented summary shape (`"N%
       packet loss"` and `"= min/avg/max/mdev"` lines) — the same PVE-node-is-Debian assumption
       T-802's guest-exec probing makes for a *guest* OS, applied here to the *host* OS vnproxd
@@ -572,16 +648,37 @@ from; and pvemock does not model an `ifreload` outage at all):
 
 ## Path MTU prober (T-1306)
 
-- [ ] **`ping -M do -s <size>` DF-probe behavior across real PVE node builds.** `internal/mtuprobe.
-      RealProber`/`dfProbe` assumes iputils-ping's `-M do` (Don't Fragment) flag is available and
-      that a dropped DF-probe surfaces as either a `"Frag needed"`/`"Message too long"` line or a
-      non-zero exit with `"100% packet loss"` — the same PVE-node-is-Debian/iputils-ping-format
-      assumption `internal/latmesh.RealProber` already carries (and needs its own hardware
-      validation entry above), extended here to a flag/output shape this task had no live cluster
-      to confirm. Confirm on a real PVE 8.x/9.x node that `ping -M do -c 1 -s <n> -W <t> <addr>`
-      behaves as `dfProbe` expects for both a size that fits and one that doesn't, across at least
-      one path with a real, non-default MTU (a VXLAN/EVPN underlay is the most useful case, since
-      that's exactly what `vxlan_underlay_mtu`'s measured-MTU upgrade consumes).
+- [x] **`ping -M do -s <size>` DF-probe behavior across real PVE node builds — confirmed, and the
+      real failure mode is not fragmentation-related at all** (`T-3201`, 2026-08-18, pvecube +
+      pve001, PVE 9.2.10). `internal/mtuprobe`'s DF-probe floor check
+      (`internal/mtuprobe/prober.go`'s `dfProbe`, called via `BinarySearchMTU`) reported the real
+      corosync ring0 path (`pvecube` → `192.168.1.7`, a real, working IP sourced from
+      `/etc/pve/corosync.conf`) could not carry even 552 bytes, every ~5 minutes, sustained:
+      ```
+      {"level":"WARN","msg":"mtuprobe: path could not carry even the minimum MTU, keeping prior reading","linkId":"corosync:ring0|pvecube->pve001","minMtu":552}
+      ```
+      The identical command run by hand as root over SSH (`ping -M do -c3 -W2 -s524 --
+      192.168.1.7`) succeeded cleanly every time (0% loss, 0.5ms avg) — so this is not a DF-probe
+      output-parsing mismatch (`dfProbe`'s "Frag needed"/"Message too long"/"1 received" parsing
+      is fine) and not a real MTU/PMTU problem on this network at all.
+
+      **Root cause, confirmed directly via a temporary debug build deployed to pvecube** (binary
+      swap + restart, reverted immediately after one capture — no diff left in the tree):
+      ```
+      TEMP-T-3201-DEBUG dfProbe target="192.168.1.7" size=552 payload=524 err=exit status 255 text="ping: cap_set_proc: Operation not permitted\n"
+      ```
+      Modern iputils-ping opens its raw socket, then calls `cap_set_proc()` to drop capabilities
+      it no longer needs as its own defense-in-depth — and **aborts hard if that call itself
+      fails**, even though the socket it needed was already open. `cap_set_proc()` needs
+      `CAP_SETPCAP`, and `vnprox.service`'s shipped `CapabilityBoundingSet=` (`CAP_NET_ADMIN
+      CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_CHOWN
+      CAP_FOWNER`) does not include it — so `ping`, execed as vnproxd's own child, can **never**
+      succeed under this daemon's own shipped systemd hardening, on any node, regardless of what
+      it's pinging or at what size. This is why manual reproduction (outside `vnprox.service`'s
+      systemd scope entirely) did not reproduce the failure. See
+      `planning/reports/blocked-validation.md` §2.6 for the full writeup, the ruled-out
+      alternative causes, and candidate fixes (none applied this session — a systemd-hardening
+      security tradeoff, not a one-line bug).
 - [ ] **Binary-search convergence against a real, non-synthetic path.** `TestBinarySearchMTU_*`
       (`internal/mtuprobe/binarysearch_test.go`) exercises the search algorithm itself against
       scripted mock responses, not a real network path with real DF-drop latency/occasional packet
@@ -1339,6 +1436,10 @@ API's *shape* only — none of the following is observed against real hardware:
       is asserted in prose only — establishing it against a populated capture is T-3102's job.
 
 File these under `T-3201` per this file's own convention (cross-node/hardware-only checks).
+**`T-3201` status (2026-08-18): not attempted.** Confirming any of the above needs actually
+configuring a real SDN fabric on this cluster — a mutating PVE SDN write, outside T-3201's
+read-mostly validation scope. Still open, waiting on a future card scoped to SDN object
+configuration.
 
 ## T-3102 — SDN Controllers (2026-08-17)
 
@@ -1383,6 +1484,7 @@ none of the following is observed against real hardware:
       controller on a real multi-node cluster.
 
 File these under `T-3201` per this file's own convention (cross-node/hardware-only checks).
+**`T-3201` status (2026-08-18): not attempted** — same reasoning as the Fabrics section above.
 
 ## Firewall fidelity: `forward` direction and vnet scope (T-3103, items 1–2)
 
@@ -1527,3 +1629,5 @@ File these under `T-3201` per this file's own convention (cross-node/hardware-on
 the NetBox/phpIPAM API-shape entry, which needs a real NetBox/phpIPAM instance rather than PVE
 hardware and so does not fit that convention cleanly — flagged here regardless rather than dropped
 for lack of a clean bucket.
+**`T-3201` status (2026-08-18): not attempted** — same reasoning as the Fabrics/Controllers
+sections above; no ipam instance was configured against either real node this session.

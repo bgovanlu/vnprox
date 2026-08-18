@@ -774,7 +774,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// later (T-1906-bug-01's "warn before the first peer call" requirement).
 	certSvc := certs.NewService(certs.ServiceOptions{
 		Logger:         logger.With("component", "certs"),
-		Facts:          certClusterFacts(sdnPVEClient),
+		Facts:          certClusterFactsFor(sdnPVEClient),
 		Root:           cfg.Certs.Root,
 		DaemonCertPath: cfg.Server.TLSCertPath,
 		LocalNode:      localNode(),
@@ -941,7 +941,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// setupCollect's own tolerance below): a daemon that can't yet reach PVE
 	// for cluster-status coordinates only its own node, exactly the
 	// documented single-node "zero peers" case.
-	// clusterStatusSource is left a nil interface (not a non-nil interface
+	// coordClusterStatus is left a nil interface (not a non-nil interface
 	// wrapping a nil *pve.Client — a classic Go footgun) on discovery-client
 	// construction failure: peer.Client.Peers documents a nil
 	// ClusterStatusSource as "the documented single-node zero-peers case",
@@ -963,7 +963,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// snapshot readers, the API's cluster-merge handlers — resolves to the
 	// local node and dials nothing. That is what makes "no network access"
 	// a property of the process rather than of the fixture's addresses.
-	var clusterStatusSource peer.ClusterStatusSource
+	var coordClusterStatus peer.ClusterStatusSource
 	if demoRT.enabled() {
 		// Left nil deliberately. peer.Client.Peers() then reports zero peers
 		// (its documented single-node case), so every cluster fan-out in this
@@ -976,10 +976,10 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	} else if discoveryClient, discErr := buildCollectorPVEClient(cfg, demoRT); discErr != nil {
 		logger.Warn("change: building peer-discovery PVE client; multi-node coordination unavailable until this succeeds", "error", discErr)
 	} else {
-		clusterStatusSource = discoveryClient
+		coordClusterStatus = discoveryClient
 	}
 	coordPeerClient := peer.NewClient(peer.ClientOptions{
-		ClusterStatus: clusterStatusSource,
+		ClusterStatus: coordClusterStatus,
 		Secrets:       peerSecrets,
 		Logger:        logger,
 		// T-1906: the shared, cluster-CA-pinned trust anchor. This is the
@@ -1379,7 +1379,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// sdnSvc (may be nil) backs exit-node health. evpnSDN/evpnPeers are
 	// built as typed-nil-safe interface values (not a bare `sdnSvc`/
 	// `peerClient` assignment) for the same "non-nil interface wrapping a
-	// nil concrete pointer" footgun clusterStatusSource's own comment
+	// nil concrete pointer" footgun coordClusterStatus's own comment
 	// above already calls out — a nil *sdn.Service assigned directly to
 	// an evpn.SDNZoneSource field would make evpn.Service's own nil check
 	// pass and then panic calling Tree() on a nil receiver.
