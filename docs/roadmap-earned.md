@@ -310,14 +310,22 @@ request/response body schemas (T-2405's gap) ride along so the contract gate can
 | 24 | `T-3302` | Public presence: repo, docs site, security contact, forum announcement | P0 |
 | 25 | `T-3303` | Hosted instances + ecosystem: demo, registry, Terraform/Ansible | P1 |
 
-**`T-3301`** — today a `v*` tag publishes nothing: all three workflows are
-`disabled_manually` (billing), which quietly undoes Arc 4's "trustworthy CI" deliverable and
-leaves T-2410's three-consecutive-green criterion permanently unmeetable. Decide on the record:
-restore funding, migrate to a self-hosted runner, or formalize `scripts/ci-local.sh` as the
-gate with a pre-push hook so bypassing it is loud. Then put T-2102's already-built
-`packaging/build-apt-repo.sh` machinery behind a real host so
-`curl … | bash` installs from the internet, and make tags publish artifacts again
-(`.deb`, `openapi.json`, `automation-contract.json`).
+**`T-3301`** — done, 2026-08-18. The CI decision is made and on the record
+(`docs/development.md`'s CI section): hosted Actions is retired, not paused — `scripts/ci-local.sh`
+(`make ci` for the fast subset) is the permanent gate, enforced by `.githooks/pre-push`
+(`make install-hooks`) rather than GitHub's `required_status_checks`, which would be unsatisfiable
+now that nothing posts them. `main` carries the branch protection this repo can actually use
+(force-push/deletion disabled, `enforce_admins` on) instead. T-2102's `packaging/build-apt-repo.sh`
+machinery is now behind a real host: `apt.vnprox.com` (pve001, `packaging/apt-repo.md`), signed
+with a real production Ed25519 key that lives only on that host (not a GitHub Actions secret —
+Actions doesn't run releases anymore). `packaging/publish-release.sh` is the manual release-cut
+flow replacing `release.yml`'s job: builds both arches, signs+publishes the apt repo, stamps
+`openapi.json`/`automation-contract.json`, regenerates the compat matrix, and cuts a GitHub
+release. This leaves T-2410's three-consecutive-green criterion permanently unmeetable **by
+Actions runs**, on purpose — the gate that matters now is local; that AC is superseded by this
+decision, not still open. Not yet done: `apt.vnprox.com` doesn't resolve publicly — pending the
+VPS reverse-proxy leg shared with T-3303 — and no `vX.Y.Z` release has been cut through the new
+flow yet (the repo's own version tag is still `v4.0.0`, from before this phase).
 
 **`T-3302`** — the T-2105 remainder, all human-gated, none of it code: make the repo public
 (the git-history binary blobs were left in history by T-2411's decision — revisit only if
@@ -325,14 +333,28 @@ publishing forces it), enable the already-built docsify site, publish a security
 contact (an audit finding in its own right: there is no way to report a vulnerability), and
 post the forum announcement that has sat in draft.
 
-**`T-3303`** — mechanisms shipped, instances missing: stand up the hosted demo
-(`docs/features/demo-mode.md:258` — which first requires fixing the login limiter's
-`(IP, username)` keying that has no supported knob for a shared public username, and deciding
-`T-2801-followup-01`: read-shaped POSTs currently answer "would have" in demo mode); publish
-the hosted signed registry (T-2803's format and tooling exist, no instance does) and give the
-DMZ+WireGuard seed its missing `wg.*` blueprint entity kind (T-2104's PARTIAL); and seed the
-`terraform-provider-vnprox` / `ansible-collection-vnprox` repos from the T-2101 contract
-manifest — promised "published separately" in Arc 2 and never begun.
+**`T-3303`** — done, 2026-08-18: the hosted demo is live at `demo.vnprox.com` (pve001,
+`vnprox-demo-public.service`) — the login limiter's `(IP, username)` keying gained a real
+production knob for a shared public username (`[server] login_rate_username_capacity` /
+`login_rate_username_refill_seconds`, `internal/auth.RateLimitByUsername`), and
+`T-2801-followup-01` is resolved for plain `vnproxd --demo` (`demo.go`'s `demoReadOnlyPosts` —
+`internal/publicdemo`'s hosted edge deliberately stays method-blind, a decision re-confirmed, not
+revisited). Standing this up on a real PVE host also found and fixed a real bug nothing had
+exercised before: `certs.Service` had no `cfg.Demo` gate on its `/etc/pve` scan root, so the first
+time demo mode ran anywhere `/etc/pve` genuinely exists it leaked real node names into a
+supposedly synthetic public demo's findings — see `resolveCertsRoot`
+(`planning/reports/T-3303-demo-mode-real-host-isolation.md` has the full account, including what's
+contained by deployment posture rather than fixed at the code level yet). The hosted signed
+registry is live at `registry.vnprox.com` with all four T-2104 seed blueprints actually published
+through the real `vnproxctl hub publish`/`hub index` pipeline (not a test fixture), and the
+DMZ+WireGuard seed's missing `wg.*` blueprint entity kind is closed
+(`blueprint.KindWgTunnel` — tunnel only, not peer; a peer needs a remote-site public key
+exchanged out of band, so that stays a separate step). `terraform-provider-vnprox` /
+`ansible-collection-vnprox` are seeded (contract-pointer READMEs, Apache-2.0) — real repos,
+no provider/module code yet; that implementation is real, separate future work, not rushed
+alongside standing up the public infrastructure. Not yet done: `apt.vnprox.com` /
+`demo.vnprox.com` / `registry.vnprox.com` don't resolve publicly — pending the VPS reverse-proxy
+leg of T-3301/T-3303.
 
 ## Where every leftover went
 
