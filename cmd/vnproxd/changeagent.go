@@ -1296,16 +1296,24 @@ func (g *pveGateway) reconcileFwScope(ctx context.Context, scope pve.FirewallSco
 
 	enable := want.Options.Enable
 	upd := pve.FirewallOptionsUpdate{Enable: &enable}
+	// PolicyIn/PolicyOut, like PolicyForward/LogLevelForward below, are only
+	// restored when the snapshot actually captured a value. An empty string
+	// is not a valid policy_in/policy_out and real PVE (9.2.10, T-3202
+	// Scenario 5) rejects it with 400 "Parameter verification failed" —
+	// a node scope that never had its in/out policy explicitly set (PVE
+	// applies its own default without persisting one) reports it as "",
+	// and sending that back unconditionally broke every rollback of such a
+	// scope, live, on real hardware.
 	if includeInOut {
-		policyIn, policyOut := want.Options.PolicyIn, want.Options.PolicyOut
-		upd.PolicyIn, upd.PolicyOut = &policyIn, &policyOut
+		if want.Options.PolicyIn != "" {
+			policyIn := want.Options.PolicyIn
+			upd.PolicyIn = &policyIn
+		}
+		if want.Options.PolicyOut != "" {
+			policyOut := want.Options.PolicyOut
+			upd.PolicyOut = &policyOut
+		}
 	}
-	// PolicyForward/LogLevelForward (T-3103) are only restored when the
-	// snapshot actually captured a value — an empty string is not itself a
-	// valid policy_forward/log_level_forward, so sending it unconditionally
-	// (the way PolicyIn/PolicyOut are sent above, where "" round-trips
-	// harmlessly through a scope that never set them) risks a 400 from a
-	// scope whose forward-chain policy really was never explicitly set.
 	if want.Options.PolicyForward != "" {
 		pf := want.Options.PolicyForward
 		upd.PolicyForward = &pf
@@ -1383,9 +1391,33 @@ func (g *pveGateway) reconcileFwScope(ctx context.Context, scope pve.FirewallSco
 }
 
 // FirewallCompileStatus implements change.PVEGateway.
+//
+// GET /nodes/{node}/firewall/status does not exist on real PVE (found on a
+// real 9.2.4/9.2.10 node, T-3202 — planning/reports/blocked-validation.md
+// §2.7): pvesh ls /nodes/{node}/firewall lists only log/options/rules,
+// never status. It was modeled from documentation, not a hardware capture
+// — this codebase's own repeatedly-learned lesson — and every real
+// fw.*-touching changeset's apply hit this as a hard PVE 501 error,
+// failing the fw_verify step and rolling back regardless of whether
+// pve-firewall actually compiled the change cleanly. A 501 here means
+// "this PVE build has no way to answer this question", not "the compile
+// failed" — treated as verification-unavailable (OK, with an explanatory
+// message) rather than a step failure, the same "degrade, don't block on
+// infrastructure you can't observe" choice this codebase already makes
+// for e.g. GET /cluster/ceph/config's identical 501 elsewhere. Any other
+// error (a real reachability/auth failure) still propagates and still
+// fails the step — only the specific "PVE says this route doesn't exist"
+// case is treated as inconclusive.
 func (g *pveGateway) FirewallCompileStatus(ctx context.Context, node string) (change.FwCompileStatus, error) {
 	status, err := g.client.GetFirewallCompileStatus(ctx, node)
 	if err != nil {
+		var srvErr *pve.ErrPVEServer
+		if errors.As(err, &srvErr) && srvErr.StatusCode == http.StatusNotImplemented {
+			return change.FwCompileStatus{
+				OK:      true,
+				Message: "firewall compile-status verification unavailable on this PVE build (GET .../firewall/status not implemented) — apply proceeded unverified",
+			}, nil
+		}
 		return change.FwCompileStatus{}, err
 	}
 	return change.FwCompileStatus{OK: status.OK(), Message: status.Message}, nil
