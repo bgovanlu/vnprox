@@ -15,14 +15,27 @@
 # refusal config.LoadDemo makes applies here too.
 
 [server]
-# T-2108's dev-only login-limiter override, and here it is doing more work
-# than in the other configs: a public demo mints ONE SESSION PER VISITOR,
-# through the daemon's own login handler, from one source address in a test.
-# internal/auth's limiter is keyed (IP, username) and defaults to 10 —
-# which a public instance would hit for real behind a NAT. That is a named
-# gap in docs/features/demo-mode.md, not something this file fixes.
+# T-2108's dev-only login-limiter override — needed here for the e2e
+# harness's own reason (many specs mint many visitor sessions from one
+# source address, 127.0.0.1, in a test run) and unrelated to the real
+# production gap this file's header used to describe.
+#
+# That production gap — a public demo mints ONE SESSION PER VISITOR through
+# the daemon's own login handler, and internal/auth's limiter's per-username
+# bucket is shared by every visitor (they all authenticate as the same
+# fixture credential) — is fixed as of T-3303, not merely worked around: see
+# login_rate_username_capacity/login_rate_username_refill_seconds below.
+# The REAL hosted deployment (pve001, demo.vnprox.com) does not carry the
+# dev_login_rate_* override at all — see packaging/demo-public-hosted.toml —
+# so its per-IP brute-force protection stays at the production default;
+# only the shared-username bucket is widened.
 dev_login_rate_capacity = 500
 dev_login_rate_refill_seconds = 1
+# T-3303: demonstrated here too, alongside the dev override above, so this
+# file matches what a real deployment sets — even though the dev override
+# already makes both buckets moot for this test harness specifically.
+login_rate_username_capacity = 500
+login_rate_username_refill_seconds = 1
 listen = "127.0.0.1:25007"
 tls_cert = "testdata/certs/dev-cert.pem"
 tls_key = "testdata/certs/dev-key.pem"

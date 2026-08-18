@@ -116,6 +116,27 @@ func distRootFS() (fs.FS, error) {
 	return sub, nil
 }
 
+// resolveCertsRoot is the certs.Service Root this daemon scans (T-3303 bug
+// fix). certs.DefaultRoot is "/etc/pve", and nothing gated that wiring on
+// cfg.Demo — a demo daemon has no synthetic cluster CA/certs of its own, so
+// docs/features/demo-mode.md's "known gaps" expected this to harmlessly
+// report cert_missing/cert_unreadable about itself. That assumption held on
+// every machine this was developed and tested on (none of them a real PVE
+// node), and broke the first time demo mode ran somewhere /etc/pve actually
+// exists: it scanned pve001's REAL pmxcfs and reported real node names
+// (pvecube, pve001) in a supposedly fully-synthetic public demo's findings
+// feed. In demo mode with no explicit [certs] root configured, this returns
+// a guaranteed-absent path instead — restoring the ORIGINAL "no cluster CA
+// to find" behavior on every machine, not just non-PVE ones. An operator's
+// explicit [certs] root is always honored either way; no demo config ships
+// one.
+func resolveCertsRoot(cfg *config.Config) string {
+	if cfg.Demo && cfg.Certs.Root == "" {
+		return filepath.Join(filepath.Dir(cfg.Storage.DBPath), "no-real-pve-in-demo-mode")
+	}
+	return cfg.Certs.Root
+}
+
 // runDaemon loads config, wires the HTTPS server + TLS cert watcher into a
 // supervised run group, and blocks until ctx is cancelled (SIGINT/SIGTERM)
 // or a subsystem fails.
@@ -318,6 +339,14 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	if cfg.Server.DevLoginRateCapacity > 0 || cfg.Server.DevLoginRateRefillSeconds > 0 {
 		logger.Warn("DEV KNOB ACTIVE: [server] dev_login_rate_capacity/dev_login_rate_refill_seconds override the login brute-force limiter — production defaults are NOT in effect",
 			"capacity", cfg.Server.DevLoginRateCapacity, "refill_seconds", cfg.Server.DevLoginRateRefillSeconds)
+	}
+	// T-3303: informational, not a "DEV KNOB ACTIVE" warning — this is a
+	// supported production setting that widens only the per-username login
+	// bucket (see LoginRateUsernameCapacity's doc comment). Per-IP
+	// brute-force protection is unaffected regardless of this value.
+	if cfg.Server.LoginRateUsernameCapacity > 0 || cfg.Server.LoginRateUsernameRefillSeconds > 0 {
+		logger.Info("[server] login_rate_username_capacity/login_rate_username_refill_seconds override the login limiter's per-username bucket — per-IP protection is unaffected",
+			"capacity", cfg.Server.LoginRateUsernameCapacity, "refill_seconds", cfg.Server.LoginRateUsernameRefillSeconds)
 	}
 	if cfg.PVE.TicketUsername != "" || cfg.PVE.TicketPassword != "" {
 		logger.Warn("DEV KNOB ACTIVE: [pve] dev_ticket_username/dev_ticket_password replace the daemon's documented read-only API-token identity with ticket credentials — docs/security.md's one-privileged-identity model is NOT in effect",
@@ -772,10 +801,11 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	// first peer request, and Preflight reports any blocking problem at
 	// startup rather than letting it surface as an opaque handshake error
 	// later (T-1906-bug-01's "warn before the first peer call" requirement).
+	certsRoot := resolveCertsRoot(cfg)
 	certSvc := certs.NewService(certs.ServiceOptions{
 		Logger:         logger.With("component", "certs"),
 		Facts:          certClusterFactsFor(sdnPVEClient),
-		Root:           cfg.Certs.Root,
+		Root:           certsRoot,
 		DaemonCertPath: cfg.Server.TLSCertPath,
 		LocalNode:      localNode(),
 		ExpiryWarn:     cfg.Certs.ExpiryWarn(),

@@ -138,6 +138,12 @@ func setupAuth(cfg *config.Config, logger *slog.Logger, db *store.DB, auditRepo 
 			Capacity:    cfg.Server.DevLoginRateCapacity,
 			RefillEvery: time.Duration(cfg.Server.DevLoginRateRefillSeconds) * time.Second,
 		},
+		// T-3303: production-supported, unlike the dev-only override above —
+		// see LoginRateUsernameCapacity's doc comment (internal/config).
+		RateLimitByUsername: auth.RateLimitConfig{
+			Capacity:    cfg.Server.LoginRateUsernameCapacity,
+			RefillEvery: time.Duration(cfg.Server.LoginRateUsernameRefillSeconds) * time.Second,
+		},
 	})
 	if err != nil {
 		return nil, nil, err

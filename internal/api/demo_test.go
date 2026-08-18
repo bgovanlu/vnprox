@@ -19,12 +19,15 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/bgovanlu/vnprox/internal/store"
 )
 
 // demoHarness is newPreviewHarness with the demo flag on. Same store, same
@@ -354,5 +357,103 @@ func TestDemoMode_HealthAndConfigAdvertiseIt(t *testing.T) {
 	}
 	if !health.Demo {
 		t.Error("GET /health does not report demo:true; the SPA's banner reads this route BEFORE login and would never render")
+	}
+}
+
+// T-2801-followup-01: two POST-shaped READ routes execute for real in demo
+// mode instead of answering "would have" — POST /simulate/path (pure
+// computation, no store access at all) and POST /diagnose (whose handler
+// normally audits; router.go wires that dependency to nil in demo mode —
+// see demo.go's demoReadOnlyPosts). Both still must not move the store
+// checksum, with the same control-leg discipline as AC2's changeset-
+// lifecycle test above: a real audit repo IS wired into Options here, so
+// the assertion is that demo mode's own wiring skips it, not that the test
+// simply never gave it anything to write to.
+func TestDemoMode_ReadOnlyPostsExecuteForReal(t *testing.T) {
+	base := newPreviewHarness(t)
+	graph := buildSimGraph(t)
+	audit := store.NewAuditRepo(base.db)
+
+	r := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fullCapsAuth("alice"), Topology: fakeTopologyService{},
+		Changesets: base.svc, PVEGateways: previewGatewayProvider{gw: base.gateway},
+		Simulator: graph, ProbeAudit: audit,
+		Demo: true,
+	})
+
+	before := storeChecksum(t, base.db)
+
+	// POST /simulate/path: a real simulate result, not a demo envelope.
+	rec := demoDo(t, r, http.MethodPost, "/api/v1/simulate/path",
+		`{"src":{"kind":"guest-nic","ref":"guest-nic:pve1:100/net0"},"dst":{"kind":"guest-nic","ref":"guest-nic:pve1:101/net0"},"proto":"tcp","port":80}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /simulate/path: status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	var simResult simulateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &simResult); err != nil {
+		t.Fatalf("POST /simulate/path: decoding: %v", err)
+	}
+	if simResult.Verdict == "" {
+		t.Error("POST /simulate/path: verdict is empty — looks like a would-have envelope, not a real result")
+	}
+	if rec.Header().Get(demoModeHeader) != "1" {
+		t.Errorf("POST /simulate/path: missing %s header even though this is still a demo daemon", demoModeHeader)
+	}
+	var wouldHave DemoWouldHave
+	if err := json.Unmarshal(rec.Body.Bytes(), &wouldHave); err == nil && wouldHave.Demo.Mode == "demo" {
+		t.Error("POST /simulate/path: got a would-have envelope, want a real simulate result")
+	}
+
+	// POST /diagnose: a real diagnose result.
+	diagRec, diagResult := postDiagnose(t, r, "guest-nic:pve1:100/net0", false)
+	if diagRec.Code != http.StatusOK {
+		t.Fatalf("POST /diagnose: status = %d, body %s", diagRec.Code, diagRec.Body.String())
+	}
+	if diagResult.Target != "guest-nic:pve1:100/net0" {
+		t.Errorf("POST /diagnose: target = %q, want guest-nic:pve1:100/net0 — looks like a would-have envelope", diagResult.Target)
+	}
+	if len(diagResult.Steps) == 0 {
+		t.Error("POST /diagnose: no steps ran — looks like a would-have envelope, not a real ladder run")
+	}
+
+	if after := storeChecksum(t, base.db); after != before {
+		t.Error("the store changed after read-only POST /simulate/path and POST /diagnose in demo mode")
+	}
+
+	entries, err := audit.List(context.Background(), "", 20)
+	if err != nil {
+		t.Fatalf("audit.List: %v", err)
+	}
+	for _, e := range entries {
+		if e.Action == "diagnose.run" || e.Action == "diagnose.step" {
+			t.Errorf("found a %s audit row from a demo-mode /diagnose call — audit must be nil'd out in demo mode", e.Action)
+		}
+	}
+
+	// CONTROL LEG: the same audit repo, driven by the same handler, WITHOUT
+	// Demo, DOES write diagnose.run/diagnose.step rows — proves the
+	// assertion above isn't vacuous (e.g. audit silently broken).
+	control := NewRouter(Options{
+		Version: "test", DistFS: testDistFS(), Logger: testLogger(),
+		Auth: fullCapsAuth("alice"), Topology: fakeTopologyService{},
+		Simulator: graph, ProbeAudit: audit,
+	})
+	controlRec, _ := postDiagnose(t, control, "guest-nic:pve1:100/net0", false)
+	if controlRec.Code != http.StatusOK {
+		t.Fatalf("control leg: POST /diagnose: status = %d, body %s", controlRec.Code, controlRec.Body.String())
+	}
+	entries, err = audit.List(context.Background(), "", 20)
+	if err != nil {
+		t.Fatalf("control leg: audit.List: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Action == "diagnose.run" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("control leg: a non-demo router's POST /diagnose did not write a diagnose.run audit row — the assertion above proves nothing")
 	}
 }

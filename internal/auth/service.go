@@ -59,8 +59,24 @@ type Config struct {
 	// OIDC is T-1207's optional OIDC SSO service. nil disables the
 	// /auth/oidc/* routes entirely (a deployment with no [oidc] config), the
 	// same nil-safe convention Tokens uses to disable bearer auth.
-	OIDC                     *OIDCService
-	RateLimit                RateLimitConfig
+	OIDC      *OIDCService
+	RateLimit RateLimitConfig
+	// RateLimitByUsername overrides ONLY the login limiter's per-username
+	// bucket; the per-IP bucket (RateLimit above) is unaffected. Zero value
+	// falls back to RateLimit itself, so a deployment that sets only
+	// RateLimit keeps today's behavior — one config, both buckets — exactly
+	// as before this field existed.
+	//
+	// T-3303: a public demo instance mints every visitor's session against
+	// the SAME low-privilege, intentionally-public fixture credential
+	// (internal/publicdemo), so the per-username bucket throttles the whole
+	// instance's visitor onboarding rate globally, independent of how many
+	// distinct real IPs are arriving — the per-IP bucket (still keyed on
+	// each visitor's real address, see Edge.mint) already protects against
+	// any single abusive source. Widening just this bucket for that one
+	// shared credential removes a false shared-fate failure mode without
+	// touching brute-force protection for any other account.
+	RateLimitByUsername      RateLimitConfig
 	BearerRateLimit          RateLimitConfig
 	IdleTimeout              time.Duration
 	TicketRenewCheckInterval time.Duration
@@ -159,7 +175,7 @@ func NewService(cfg Config) (*Service, error) {
 		hardTimeout:   hard,
 		capRefresh:    capRefresh,
 		renewInterval: renewInterval,
-		limiter:       newLoginLimiter(cfg.RateLimit, now),
+		limiter:       newLoginLimiter(cfg.RateLimit, cfg.RateLimitByUsername, now),
 		tokens:        cfg.Tokens,
 		bearerLimiter: newTokenBucket(bearerLimit, now),
 		tokenUse:      newTokenUseAggregator(),

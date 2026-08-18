@@ -1,0 +1,60 @@
+# demo-public-hosted.toml — T-3303's real, live public demo instance
+# (demo.vnprox.com), deployed on pve001.
+#
+#   vnproxd --demo --public-demo --config /etc/vnprox/demo-public-hosted.toml
+#
+# Sibling of testdata/demo-public.toml (the e2e suite's own copy of this
+# stack) but for a real deployment, not a test run: no dev_login_rate_*
+# override here — this instance's per-IP brute-force protection stays at
+# the production default (internal/auth.DefaultRateLimitConfig). Only the
+# shared-username bucket is widened, because a public demo mints every
+# visitor's session against the SAME low-privilege, intentionally-public
+# fixture credential (internal/publicdemo) — see
+# docs/features/demo-mode.md's "known gaps" and
+# internal/config.Config.Server's LoginRateUsernameCapacity doc comment.
+#
+# THERE IS DELIBERATELY NO [pve] SECTION, AND THERE MUST NEVER BE ONE:
+# --demo's embedded fixture is the only cluster this process can reach —
+# config.LoadDemo refuses to start if one is present.
+#
+# Bound to loopback only. Public traffic reaches this process through the
+# nginx vhost for demo.vnprox.com (packaging/nginx/demo.vnprox.com.conf),
+# which in turn is reached from the internet only via the VPS reverse proxy
+# — this host itself is never directly internet-facing (T-3301/T-3303's
+# network design, docs/development.md's CI section has the pointer).
+
+[server]
+listen = "127.0.0.1:8008"
+tls_cert = "/etc/vnprox/demo-public-hosted-cert.pem"
+tls_key = "/etc/vnprox/demo-public-hosted-key.pem"
+read_only = false
+confirm_timeout_default = 120
+login_rate_username_capacity = 500
+login_rate_username_refill_seconds = 1
+
+[safety]
+allow_dangerous_ops = false
+protected_path = "/var/lib/vnprox-demo-public/protected.json"
+dev_interfaces_dir = "/var/lib/vnprox-demo-public/host"
+
+[storage]
+db_path = "/var/lib/vnprox-demo-public/vnprox.db"
+session_key_file = "/var/lib/vnprox-demo-public/session.key"
+
+[peer]
+secret_path = "/var/lib/vnprox-demo-public/cluster.secret"
+
+[collect]
+pve_interval = "10s"
+host_interval = "5s"
+lldp_interval = "30s"
+
+[metrics]
+key_file = "/var/lib/vnprox-demo-public/metrics.key"
+
+[blueprint]
+signing_key_file = "/var/lib/vnprox-demo-public/blueprint-signing.key"
+trusted_signers_dir = "/var/lib/vnprox-demo-public/trusted-signers"
+
+[capture]
+root = "/var/lib/vnprox-demo-public/captures"

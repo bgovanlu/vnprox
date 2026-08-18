@@ -70,17 +70,45 @@ type DemoAction struct {
 // prefix would silently admit any future mutating route under it.
 //
 // A consequence worth stating plainly, because it is not obvious: several
-// READ surfaces in this API are POST-shaped (POST /simulate/path, POST
-// /diagnose, the MCP transport). They are intercepted too. That is a real
-// cost — those screens answer "would have" in a demo — and it is taken
-// deliberately: AC2 says "every mutating API", and an allowlist of "posts
-// that are really reads" is a list someone has to keep correct forever,
-// with a store checksum as the only thing standing behind it. See
-// docs/features/demo-mode.md for the list and the tracked follow-up.
+// READ surfaces in this API are POST-shaped. Two of them — POST
+// /simulate/path and POST /diagnose — are datasheet lead items, and were
+// blocked here too until T-2801-followup-01 (2026-08-18): an allowlist of
+// "posts that are really reads" is a list someone has to keep correct
+// forever, and the bar for adding to it is not "this route's name sounds
+// read-only" but "checked, handler by handler, that it writes nothing to
+// the store" — see demoReadOnlyPosts below for what actually justified
+// each entry. The MCP transport stays blocked; an unauthenticated public
+// MCP endpoint is not something a public demo should expose (not a loss,
+// see docs/features/demo-mode.md).
 var demoAllowedWrites = map[string]bool{
 	"/api/v1/auth/login":         true,
 	"/api/v1/auth/logout":        true,
 	"/api/v1/auth/oidc/callback": true,
+}
+
+// demoReadOnlyPosts are POST-shaped routes that demo mode lets execute for
+// real instead of answering "would have" — T-2801-followup-01. Each entry
+// here is a route whose handler was read, not guessed from its name:
+//
+//   - POST /simulate/path (handleSimulatePath): computes over
+//     graph.Snapshot() and returns a response. No audit param, no store
+//     handle reachable from the function at all — cannot write anything.
+//   - POST /diagnose (handleDiagnose): same computation, but its handler
+//     DOES normally append audit_log rows (auditDiagnoseRun/
+//     auditDiagnoseSteps) — so router.go wires its audit dependency to nil
+//     when Options.Demo is set, and auditDiagnoseRun/auditDiagnoseSteps
+//     already treat a nil audit as a no-op (the same degraded-mode path
+//     every other optional audit seam in this package uses when audit
+//     logging isn't wired at all). TestDemoMode_ReadOnlyPostsTouchNothing
+//     asserts the store checksum is unchanged across both, with the same
+//     control-leg discipline as AC2's changeset-lifecycle test.
+//
+// A route belongs here only if its handler was read end to end and shown
+// to have no path to a store write in demo mode. Do not add to this map
+// from a route's name or its doc-comment alone.
+var demoReadOnlyPosts = map[string]bool{
+	"/api/v1/simulate/path": true,
+	"/api/v1/diagnose":      true,
 }
 
 // demoRefusedEndpointPrefixes are the routes that configure a way to reach
@@ -122,7 +150,7 @@ func demoWriteMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(demoModeHeader, "1")
 
-		if !isMutatingMethod(r.Method) || demoAllowedWrites[r.URL.Path] {
+		if !isMutatingMethod(r.Method) || demoAllowedWrites[r.URL.Path] || demoReadOnlyPosts[r.URL.Path] {
 			next.ServeHTTP(w, r)
 			return
 		}

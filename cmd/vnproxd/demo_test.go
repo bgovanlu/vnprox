@@ -125,3 +125,50 @@ func TestSetupDemo_RefusesAConfigWithAPVEEndpoint(t *testing.T) {
 // (the daemon runs with cwd = repo root under Playwright), so loading it
 // from this package's directory would fail on the TLS paths for a reason
 // that has nothing to do with demo mode.
+
+// TestResolveCertsRoot_DemoModeAvoidsARealPmxcfs is the regression test for
+// the bug this session's own real-hardware run of T-3303 found: a demo
+// daemon started on a machine that happens to be a real PVE node (unlike
+// every dev/CI machine this was tested on before) scanned that node's REAL
+// /etc/pve and leaked real node names into a supposedly fully-synthetic
+// public demo's findings feed, because nothing gated certs.Service's Root
+// on cfg.Demo. See resolveCertsRoot's doc comment.
+func TestResolveCertsRoot_DemoModeAvoidsARealPmxcfs(t *testing.T) {
+	cases := []struct {
+		name           string
+		configuredRoot string
+		dbPath         string
+		want           string
+		demo           bool
+	}{
+		{
+			name:   "demo mode, no explicit root: guaranteed-absent path, not /etc/pve",
+			demo:   true,
+			dbPath: "/var/lib/vnprox-demo-public/vnprox.db",
+			want:   "/var/lib/vnprox-demo-public/no-real-pve-in-demo-mode",
+		},
+		{
+			name:           "demo mode, operator set [certs] root explicitly: honored",
+			demo:           true,
+			configuredRoot: "/some/operator/chosen/path",
+			dbPath:         "/var/lib/vnprox-demo-public/vnprox.db",
+			want:           "/some/operator/chosen/path",
+		},
+		{
+			name:   "real daemon, no explicit root: real certs.DefaultRoot behavior preserved (empty means default)",
+			demo:   false,
+			dbPath: "/var/lib/vnprox/vnprox.db",
+			want:   "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{Demo: tc.demo}
+			cfg.Certs.Root = tc.configuredRoot
+			cfg.Storage.DBPath = tc.dbPath
+			if got := resolveCertsRoot(cfg); got != tc.want {
+				t.Errorf("resolveCertsRoot() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

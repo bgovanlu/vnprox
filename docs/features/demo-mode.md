@@ -276,22 +276,54 @@ and skippable (a skipped step is recorded as skipped, never as completed).
   login-rate setting or a mint path that does not go through the login
   handler — both widen the authentication surface, and neither is worth
   doing speculatively for an instance that does not exist.
-- **The path simulator and the diagnosis ladder do not work in a public
-  demo**, because `POST /simulate/path` and `POST /diagnose` are read
-  surfaces with mutating methods and the edge classifies by method. Both are
-  datasheet lead items, and the tour routes around them rather than walking
-  a visitor into a 403. This is `T-2801-followup-01`, still open and
-  deliberately not resolved in the permissive direction here.
+- **Partially resolved 2026-08-18 (`T-2801-followup-01`): the path
+  simulator and the diagnosis ladder now work in plain `vnproxd --demo`
+  (no `--public-demo`).** `POST /simulate/path` and `POST /diagnose` are
+  read surfaces with mutating methods — `demo.go`'s `demoReadOnlyPosts`
+  lets exactly these two execute for real instead of answering "would
+  have", after reading each handler end to end (not guessing from the
+  route name) to confirm neither writes to the store: `handleSimulatePath`
+  has no store handle reachable at all; `handleDiagnose` normally appends
+  `diagnose.run`/`diagnose.step` audit rows, so `router.go` wires that
+  dependency to `nil` in demo mode and reuses the nil-audit no-op path
+  every other optional audit seam in this package already has.
+  `TestDemoMode_ReadOnlyPostsExecuteForReal` (`internal/api/demo_test.go`)
+  asserts the store checksum is unchanged across both calls, with the same
+  control-leg discipline as AC2's changeset-lifecycle test.
+  **`internal/publicdemo`'s hosted edge is deliberately unchanged and still
+  refuses both** — a conscious decision, re-confirmed on the record when
+  T-3303 stood up `demo.vnprox.com`: that edge's whole design is "no
+  semantic allowlist, ever, because the only thing standing behind one is
+  somebody's continued correctness, and one wrong entry is a stranger
+  writing to the instance" (`internal/publicdemo/doc.go`). This app-level
+  fix does not weigh against that — `Edge.ServeHTTP` refuses a mutating
+  method before the request ever reaches `demoWriteMiddleware`, so the two
+  layers don't interact. Net effect: someone running `vnproxd --demo` on
+  their own machine (`docs/install.md`'s "try it with no install" path) now
+  gets a real path simulator and diagnosis ladder; a visitor on the hosted
+  public instance still doesn't, and the tour still routes around both
+  there. If that tradeoff is ever revisited, it is a `internal/publicdemo`
+  decision to make deliberately, not a side effect of this fix.
 - The MCP transport is unreachable in a public demo for the same reason.
   That one is not a loss: an unauthenticated public MCP endpoint is not
   something to want.
 - A demo daemon reports a handful of findings about its own host rather than
   the synthetic cluster — `cert_missing`, `cert_unreadable`,
-  `peer_trust_degraded` — because `/etc/pve` does not exist off a Proxmox
-  node. They are honest (the daemon really has no cluster CA) but they read
-  as "this product is broken" on a demo screen. Not suppressed here, because
-  suppressing findings is exactly the kind of thing that should not be done
-  quietly.
+  `peer_trust_degraded` — because it has no real cluster CA to find. They
+  are honest and, since 2026-08-18 (T-3303's `resolveCertsRoot`), the SAME
+  on every machine: this was written assuming "because `/etc/pve` does not
+  exist off a Proxmox node", which held on every dev/CI machine this was
+  built and tested on, and broke the first time a demo daemon actually ran
+  on a real PVE host (pve001) — nothing had gated the cert scanner's root
+  path on demo mode, so it scanned pve001's real pmxcfs and these findings
+  briefly named real node names (`pvecube`, `pve001`) instead of reporting
+  "no cluster CA" about a nonexistent one. Fixed by pointing a demo
+  daemon's cert-scan root at a guaranteed-absent path instead of relying on
+  the host happening not to have one; `cmd/vnproxd/server.go`'s
+  `resolveCertsRoot` doc comment has the full account. They read as "this
+  product is broken" on a demo screen either way. Not suppressed here,
+  because suppressing findings is exactly the kind of thing that should not
+  be done quietly.
 - The fixture's `corosync:` ring status is data nothing consumes yet: the
   `corosync_link_degraded` check reads `corosync.conf` from pmxcfs, which a
   demo has no equivalent of.

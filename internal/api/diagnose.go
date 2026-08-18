@@ -103,7 +103,16 @@ func mountDiagnoseRoutes(r chi.Router, opts Options, auth AuthService) {
 			r.Use(csrf.CSRFMiddleware)
 		}
 		r.Use(auth.RequireCap(capNetRead))
-		r.Post("/diagnose", handleDiagnose(ladder, opts.Findings, opts.Simulator, opts.ProbeAudit, lookup))
+		// Demo mode (T-2801-followup-01): /diagnose executes for real instead
+		// of getting the "would have" answer (see demo.go's demoReadOnlyPosts),
+		// but its handler normally appends audit_log rows — wiring audit to
+		// nil here is what keeps that true "touches nothing" in demo mode;
+		// auditDiagnoseRun/auditDiagnoseSteps already no-op on a nil audit.
+		probeAudit := opts.ProbeAudit
+		if opts.Demo {
+			probeAudit = nil
+		}
+		r.Post("/diagnose", handleDiagnose(ladder, opts.Findings, opts.Simulator, probeAudit, lookup))
 	})
 }
 

@@ -1,0 +1,35 @@
+[Unit]
+Description=vnprox public demo (T-2802/T-3303) - read-only, no real cluster
+Documentation=https://github.com/bgovanlu/vnprox
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/vnproxd --demo --public-demo --config /etc/vnprox/demo-public-hosted.toml
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=15s
+
+# This process never touches host networking or a real PVE API — demo
+# mode's PVE transport has no dialer at all (internal/demo/transport.go)
+# and its host reader is a fixture. Hardened well beyond the real daemon's
+# posture (docs/security.md's "Host footprint") is possible here precisely
+# because there is nothing real for it to need access to.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/vnprox-demo-public
+
+User=vnprox-demo
+Group=vnprox-demo
+
+[Install]
+WantedBy=multi-user.target

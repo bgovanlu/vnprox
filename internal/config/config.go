@@ -172,41 +172,34 @@ const (
 
 // Config is the fully parsed, defaulted, and validated daemon configuration.
 type Config struct {
-	Certs       CertsConfig
 	PVE         PVEConfig
 	Peer        PeerConfig
+	Blueprint   BlueprintConfig
 	Storage     StorageConfig
 	FirewallLog FirewallLogConfig
-	Blueprint   BlueprintConfig
 	Safety      SafetyConfig
-	Hub         HubConfig
-	GitSync     GitSyncConfig
 	Security    SecurityConfig
+	Certs       CertsConfig
 	OIDC        OIDCConfig
-	Server      ServerConfig
-	Metrics     MetricsConfig
+	GitSync     GitSyncConfig
 	Changesets  ChangesetsConfig
+	Hub         HubConfig
+	Metrics     MetricsConfig
 	HA          HAConfig
 	Capture     CaptureConfig
+	Server      ServerConfig
 	Flows       FlowsConfig
-	Wan         WanConfig
-	Collect     CollectConfig
-	Latmesh     LatmeshConfig
 	Retention   RetentionConfig
+	Wan         WanConfig
+	Latmesh     LatmeshConfig
+	Collect     CollectConfig
 	Capacity    CapacityConfig
 	Baseline    BaselineConfig
 	MTUProbe    MTUProbeConfig
+	Webhooks    WebhooksConfig
 	Switches    SwitchesConfig
 	MCP         MCPConfig
-
-	// Demo (T-2801) marks this daemon as running against the embedded
-	// synthetic cluster (internal/demo), with no PVE endpoint and no
-	// outbound network. It is set ONLY by LoadDemo and has no TOML key on
-	// purpose: demo mode is a way the daemon was started, visible in the
-	// process's own argv, not a setting a config file can turn on behind
-	// an operator's back.
-	Demo     bool
-	Webhooks WebhooksConfig
+	Demo        bool
 }
 
 // ChangesetsConfig is the [changesets] section (T-2003: change review —
@@ -547,6 +540,27 @@ type ServerConfig struct {
 	DevLoginRateCapacity      int
 	DevLoginRateRefillSeconds int
 
+	// LoginRateUsernameCapacity and LoginRateUsernameRefillSeconds
+	// (T-3303) override ONLY the login limiter's per-username bucket; the
+	// per-IP bucket keeps the production default regardless. Zero means
+	// "same as the per-IP bucket" (today's behavior, unaffected). Unlike
+	// DevLoginRate* above, this is a supported production setting, not a
+	// test-only escape hatch — it does not touch per-IP brute-force
+	// protection for any account.
+	//
+	// Written for a public demo instance (internal/publicdemo): every
+	// visitor's session is minted against the SAME low-privilege,
+	// intentionally-public fixture credential, so the per-username bucket
+	// throttles the whole instance's visitor onboarding rate globally
+	// (10 new visitors per refill window, instance-wide) independent of how
+	// many distinct real IPs are arriving — a false shared-fate failure
+	// mode the per-IP bucket doesn't have, since it is keyed on each
+	// visitor's own real address. Widening just this bucket for that one
+	// shared credential removes it without touching any other account's
+	// per-username protection.
+	LoginRateUsernameCapacity      int
+	LoginRateUsernameRefillSeconds int
+
 	ReadOnly bool
 }
 
@@ -859,39 +873,34 @@ func (c CertsConfig) ExpiryWarn() time.Duration {
 // rawConfig mirrors the TOML shape exactly (string durations, string paths)
 // before defaulting/validation/type conversion.
 type rawConfig struct {
-	PVE rawPVE `toml:"pve"`
-	// Telemetry sits here rather than at the end with the other late
-	// additions purely for govet's fieldalignment: it is the only new
-	// section carrying a pointer (its endpoint string), and appending it
-	// after the pointer-free tail ([flows], [switches], [mcp], ...) would
-	// lengthen this struct's pointer-bearing prefix.
-	Telemetry   rawTelemetry   `toml:"telemetry"`
+	PVE         rawPVE         `toml:"pve"`
 	Peer        rawPeer        `toml:"peer"`
 	Collect     rawCollect     `toml:"collect"`
 	FirewallLog rawFirewallLog `toml:"firewalllog"`
 	Blueprint   rawBlueprint   `toml:"blueprint"`
 	Storage     rawStorage     `toml:"storage"`
 	OIDC        rawOIDC        `toml:"oidc"`
-	Metrics     rawMetrics     `toml:"metrics"`
-	Hub         rawHub         `toml:"hub"`
 	GitSync     rawGitSync     `toml:"gitsync"`
+	Metrics     rawMetrics     `toml:"metrics"`
 	Safety      rawSafety      `toml:"safety"`
-	Security    rawSecurity    `toml:"security"`
 	Certs       rawCerts       `toml:"certs"`
+	Telemetry   rawTelemetry   `toml:"telemetry"`
+	Security    rawSecurity    `toml:"security"`
 	HA          rawHA          `toml:"ha"`
 	Changesets  rawChangesets  `toml:"changesets"`
-	Server      rawServer      `toml:"server"`
+	Hub         rawHub         `toml:"hub"`
 	Retention   rawRetention   `toml:"retention"`
 	Capture     rawCapture     `toml:"capture"`
+	Server      rawServer      `toml:"server"`
 	Flows       rawFlows       `toml:"flows"`
 	Wan         rawWan         `toml:"wan"`
 	Latmesh     rawLatmesh     `toml:"latmesh"`
 	Capacity    rawCapacity    `toml:"capacity"`
 	Baseline    rawBaseline    `toml:"baseline"`
 	MTUProbe    rawMTUProbe    `toml:"mtuprobe"`
+	Webhooks    rawWebhooks    `toml:"webhooks"`
 	Switches    rawSwitches    `toml:"switches"`
 	MCP         rawMCP         `toml:"mcp"`
-	Webhooks    rawWebhooks    `toml:"webhooks"`
 }
 
 // rawChangesets mirrors [changesets] (T-2003). AllowSelfApproval is a *bool
@@ -1006,14 +1015,16 @@ type rawSwitches struct {
 }
 
 type rawServer struct {
-	Listen                    string   `toml:"listen"`
-	TLSCert                   string   `toml:"tls_cert"`
-	TLSKey                    string   `toml:"tls_key"`
-	EmbedFrameAncestors       []string `toml:"embed_frame_ancestors"`
-	ConfirmTimeoutDefault     int      `toml:"confirm_timeout_default"`
-	DevLoginRateCapacity      int      `toml:"dev_login_rate_capacity"`
-	DevLoginRateRefillSeconds int      `toml:"dev_login_rate_refill_seconds"`
-	ReadOnly                  bool     `toml:"read_only"`
+	Listen                         string   `toml:"listen"`
+	TLSCert                        string   `toml:"tls_cert"`
+	TLSKey                         string   `toml:"tls_key"`
+	EmbedFrameAncestors            []string `toml:"embed_frame_ancestors"`
+	ConfirmTimeoutDefault          int      `toml:"confirm_timeout_default"`
+	DevLoginRateCapacity           int      `toml:"dev_login_rate_capacity"`
+	DevLoginRateRefillSeconds      int      `toml:"dev_login_rate_refill_seconds"`
+	LoginRateUsernameCapacity      int      `toml:"login_rate_username_capacity"`
+	LoginRateUsernameRefillSeconds int      `toml:"login_rate_username_refill_seconds"`
+	ReadOnly                       bool     `toml:"read_only"`
 }
 
 type rawPVE struct {
@@ -1212,6 +1223,10 @@ func loadBytes(data []byte, path string, logger *slog.Logger) (*Config, error) {
 			// default, so omitting these keys changes nothing.
 			DevLoginRateCapacity:      raw.Server.DevLoginRateCapacity,
 			DevLoginRateRefillSeconds: raw.Server.DevLoginRateRefillSeconds,
+			// T-3303: zero stays zero — falls back to the per-IP bucket's
+			// config, same as before this field existed.
+			LoginRateUsernameCapacity:      raw.Server.LoginRateUsernameCapacity,
+			LoginRateUsernameRefillSeconds: raw.Server.LoginRateUsernameRefillSeconds,
 			// T-2901: nil stays nil — same-origin embedding only.
 			EmbedFrameAncestors: raw.Server.EmbedFrameAncestors,
 		},

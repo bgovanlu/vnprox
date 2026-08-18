@@ -17,11 +17,14 @@
 // simulator** and the **diagnosis ladder** are POST-shaped read surfaces
 // (POST /simulate/path, POST /diagnose), and a public demo refuses every
 // mutating METHOD at the edge — there is no semantic allowlist, on purpose
-// (internal/publicdemo/doc.go). Both screens therefore answer 403 on a
-// hosted instance, so the tour routes around them rather than walking a
-// visitor into an error. That is T-2801-followup-01, still open, and it is
-// named in docs/features/demo-mode.md's gap list rather than worked around
-// quietly.
+// (internal/publicdemo/doc.go), a decision re-confirmed rather than
+// revisited when T-3303 stood up the hosted instance. Both screens
+// therefore still answer 403 there, so the tour routes around them rather
+// than walking a visitor into an error. (Plain, non-public `vnproxd --demo`
+// no longer has this gap — T-2801-followup-01's app-level half is resolved,
+// internal/api/demo.go's demoReadOnlyPosts — but this script drives the
+// public tour specifically, so it still skips both. See
+// docs/features/demo-mode.md's gap list for the full state.)
 //
 // The prose names entities that exist in internal/demo/dataset/cluster.yaml
 // — pve1/pve2/pve3, vmbr0, vnet100/vnet200, app01/cache01/db01 — because a

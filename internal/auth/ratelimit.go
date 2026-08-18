@@ -105,10 +105,17 @@ type loginLimiter struct {
 	byUsername *tokenBucket
 }
 
-func newLoginLimiter(cfg RateLimitConfig, now func() time.Time) *loginLimiter {
+// newLoginLimiter builds the per-IP and per-username buckets. usernameCfg's
+// zero value (Capacity <= 0 && RefillEvery <= 0) falls back to ipCfg, so a
+// caller that only ever set one RateLimitConfig (every call site before
+// T-3303) gets identical behavior to before this split existed.
+func newLoginLimiter(ipCfg, usernameCfg RateLimitConfig, now func() time.Time) *loginLimiter {
+	if usernameCfg.Capacity <= 0 && usernameCfg.RefillEvery <= 0 {
+		usernameCfg = ipCfg
+	}
 	return &loginLimiter{
-		byIP:       newTokenBucket(cfg, now),
-		byUsername: newTokenBucket(cfg, now),
+		byIP:       newTokenBucket(ipCfg, now),
+		byUsername: newTokenBucket(usernameCfg, now),
 	}
 }
 

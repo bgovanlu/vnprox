@@ -9,7 +9,7 @@ import (
 func TestLoginLimiter_ExhaustsAfterCapacityThenRecoversOnRefill(t *testing.T) {
 	now := time.Now()
 	clock := func() time.Time { return now }
-	limiter := newLoginLimiter(RateLimitConfig{Capacity: 3, RefillEvery: time.Second}, clock)
+	limiter := newLoginLimiter(RateLimitConfig{Capacity: 3, RefillEvery: time.Second}, RateLimitConfig{}, clock)
 
 	for i := 0; i < 3; i++ {
 		if !limiter.allow("1.2.3.4", "alice") {
@@ -43,7 +43,7 @@ func TestLoginLimiter_ExhaustsAfterCapacityThenRecoversOnRefill(t *testing.T) {
 func TestLoginLimiter_DifferentIPUnaffectedByExhaustedIP(t *testing.T) {
 	now := time.Now()
 	clock := func() time.Time { return now }
-	limiter := newLoginLimiter(RateLimitConfig{Capacity: 2, RefillEvery: time.Minute}, clock)
+	limiter := newLoginLimiter(RateLimitConfig{Capacity: 2, RefillEvery: time.Minute}, RateLimitConfig{}, clock)
 
 	for i := 0; i < 2; i++ {
 		if !limiter.allow("10.0.0.1", "attacker-target") {
@@ -62,7 +62,7 @@ func TestLoginLimiter_DifferentIPUnaffectedByExhaustedIP(t *testing.T) {
 func TestLoginLimiter_DifferentUsernameFromSameIPStillGatedByIP(t *testing.T) {
 	now := time.Now()
 	clock := func() time.Time { return now }
-	limiter := newLoginLimiter(RateLimitConfig{Capacity: 1, RefillEvery: time.Minute}, clock)
+	limiter := newLoginLimiter(RateLimitConfig{Capacity: 1, RefillEvery: time.Minute}, RateLimitConfig{}, clock)
 
 	if !limiter.allow("10.0.0.5", "alice") {
 		t.Fatal("first attempt should be allowed")
@@ -110,5 +110,58 @@ func TestTokenBucket_BoundedUnderDistinctKeyFlood(t *testing.T) {
 	b.mu.Unlock()
 	if n > maxBucketEntries {
 		t.Fatalf("bucket map grew to %d entries under a distinct-key flood, ceiling is %d", n, maxBucketEntries)
+	}
+}
+
+// TestLoginLimiter_UsernameBucketOverrideIsIndependentOfIPBucket is T-3303:
+// a public demo instance widens the login limiter's per-username bucket
+// (every visitor mints against the same shared, low-privilege fixture
+// credential) without touching its per-IP bucket. Proves both directions:
+// a wide username bucket does not defeat per-IP throttling, and a narrow
+// IP bucket does not get accidentally widened by the username override.
+func TestLoginLimiter_UsernameBucketOverrideIsIndependentOfIPBucket(t *testing.T) {
+	now := time.Now()
+	clock := func() time.Time { return now }
+	limiter := newLoginLimiter(
+		RateLimitConfig{Capacity: 1, RefillEvery: time.Minute},   // per-IP: stays narrow
+		RateLimitConfig{Capacity: 100, RefillEvery: time.Second}, // per-username: widened
+		clock,
+	)
+
+	if !limiter.allow("10.0.0.9", "demo") {
+		t.Fatal("first attempt should be allowed")
+	}
+	if limiter.allow("10.0.0.9", "demo") {
+		t.Fatal("second rapid attempt from the SAME IP should still be blocked — the IP bucket was not widened")
+	}
+
+	// A flood of DIFFERENT IPs sharing the one demo username must not
+	// exhaust the shared username bucket the way the pre-T-3303 behavior
+	// would have (capacity 10 total, globally, across every visitor).
+	for i := 0; i < 50; i++ {
+		ip := fmt.Sprintf("10.1.2.%d", i)
+		if !limiter.allow(ip, "demo") {
+			t.Fatalf("visitor %d (ip %s): allow = false, want true — the widened username bucket should absorb this", i, ip)
+		}
+	}
+}
+
+// TestLoginLimiter_ZeroUsernameConfigFallsBackToIPConfig guards the
+// backward-compatible default: a caller (every one before T-3303) that
+// only ever set one RateLimitConfig must see identical behavior to before
+// RateLimitByUsername existed — a per-IP-capacity-sized username bucket,
+// not an unlimited or zero-capacity one.
+func TestLoginLimiter_ZeroUsernameConfigFallsBackToIPConfig(t *testing.T) {
+	now := time.Now()
+	clock := func() time.Time { return now }
+	limiter := newLoginLimiter(RateLimitConfig{Capacity: 2, RefillEvery: time.Minute}, RateLimitConfig{}, clock)
+
+	for i := 0; i < 2; i++ {
+		if !limiter.allow(fmt.Sprintf("10.2.0.%d", i), "shared") {
+			t.Fatalf("attempt %d: allow = false, want true (within the fallback capacity)", i)
+		}
+	}
+	if limiter.allow("10.2.0.99", "shared") {
+		t.Fatal("3rd distinct-IP attempt against the same username: allow = true, want false — the username bucket should have fallen back to capacity 2, not gone unlimited")
 	}
 }
