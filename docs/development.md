@@ -17,6 +17,7 @@ Standards for all implementation work. `CLAUDE.md` summarizes the rules; this do
 | Canvas | `@xyflow/react` + `elkjs` | 12+ |
 | Data | TanStack Query v5, zustand | — |
 | UI | Tailwind CSS + Radix primitives | 4 / — |
+| Icons | `lucide-react` (Phase 34 — per-icon named imports only, never the barrel) | — |
 | Charts | `recharts` (inspector sparklines/history) | — |
 | Editor | Monaco (raw interfaces editor, lazy-loaded) | — |
 
@@ -273,6 +274,35 @@ the outcome either way.
     `T-2003-bug-01`'s first regression spec passed against the live defect for two months because
     it exercised the wrong precondition — the one the *report* named, not the one that mattered.
     Reproduce first, then assert.
+
+## Visual language (Phase 34, T-3401)
+
+The cockpit's look is modelled on a dashboard idiom the product owner picked as the reference:
+neutral surfaces, a single saturated accent used sparingly, hairline borders in place of shadows,
+and generous radii. Concretely, for any new UI:
+
+- **Accent is for one thing per screen.** `accent-*` marks the active nav item, the primary
+  action, and focus rings. It is not a decoration; a screen with four accent-coloured elements
+  has no primary action. Status colours (emerald healthy, amber warning, red destructive) are a
+  separate vocabulary and never substitute for the accent.
+- **The accent is an alias, always.** Components reference `accent-*`, never `indigo-*`. This is
+  what lets demo mode re-tint the entire app by re-pointing eleven custom properties
+  (`html.demo` in `index.css`, T-2801) instead of touching components. A raw colour utility in a
+  component is a demo-mode bug waiting to happen; `index.css.test.ts` guards the token layer but
+  cannot see a hardcoded `bg-indigo-600` at a call site.
+- **Page actions are pills** (`Button` `shape="pill"`, `--radius-pill`). In-form and in-table
+  buttons keep the default `rounded-md` — the pill marks "this acts on the whole page".
+- **Tabs are underlined**, not boxed or pill-segmented: muted label, accent underline on the
+  active one. Segmented controls stay segmented where they select a *mode* rather than a
+  sub-page (the topology Graph/Switch toggle is a mode, not a tab).
+- **Sidebar is grouped and labelled.** Sections carry a small muted uppercase label; groups
+  collapse. Items are icon + label, never a letter glyph.
+- **Borders before shadows.** A hairline `border-slate-200`/`dark:border-slate-800` separates
+  surfaces; shadows are reserved for genuinely floating layers (dialog, dropdown, toast).
+- **Every surface defines both themes.** Light-first designs that omit a `dark:` pairing inherit
+  whatever the parent had, which is how this codebase has produced four separate WCAG AA
+  contrast defects. Both themes, plus the demo-amber accent, are gated by axe — a contrast claim
+  in a task report that is not backed by an axe run is not evidence.
 
 ## CI
 

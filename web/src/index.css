@@ -6,20 +6,39 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* "accent" aliases Tailwind's blue scale so components (Button,
-   * NavRail, ...) can use a semantic `accent-*` name instead of a raw
-   * color, without hand-maintaining a second palette. */
-  --color-accent-50: var(--color-blue-50);
-  --color-accent-100: var(--color-blue-100);
-  --color-accent-200: var(--color-blue-200);
-  --color-accent-300: var(--color-blue-300);
-  --color-accent-400: var(--color-blue-400);
-  --color-accent-500: var(--color-blue-500);
-  --color-accent-600: var(--color-blue-600);
-  --color-accent-700: var(--color-blue-700);
-  --color-accent-800: var(--color-blue-800);
-  --color-accent-900: var(--color-blue-900);
-  --color-accent-950: var(--color-blue-950);
+  /* "accent" aliases a Tailwind scale so components (Button, Sidebar, ...)
+   * can use a semantic `accent-*` name instead of a raw color, without
+   * hand-maintaining a second palette.
+   *
+   * T-3401: re-pointed blue -> indigo. Indigo is the closest scale in
+   * Tailwind's default palette to the reference design's violet-leaning
+   * accent; the alias layer is what makes this a one-file change rather
+   * than a sweep through every component. Contrast is not preserved for
+   * free by an alias swap — indigo-700 and blue-700 are close but not
+   * identical against white — so Button's primary variant and every other
+   * accent-on-solid pairing is re-checked by this phase's axe runs
+   * (T-3406), not assumed.
+   *
+   * If a future task wants a non-Tailwind brand hex here, it belongs in
+   * this block as literal values; nothing downstream reads the blue/indigo
+   * scale names directly. */
+  --color-accent-50: var(--color-indigo-50);
+  --color-accent-100: var(--color-indigo-100);
+  --color-accent-200: var(--color-indigo-200);
+  --color-accent-300: var(--color-indigo-300);
+  --color-accent-400: var(--color-indigo-400);
+  --color-accent-500: var(--color-indigo-500);
+  --color-accent-600: var(--color-indigo-600);
+  --color-accent-700: var(--color-indigo-700);
+  --color-accent-800: var(--color-indigo-800);
+  --color-accent-900: var(--color-indigo-900);
+  --color-accent-950: var(--color-indigo-950);
+
+  /* T-3401: the reference design's page-action buttons are fully rounded
+   * pills. Named rather than spelled `rounded-full` at call sites so the
+   * shape is a decision recorded in one place — `Button`'s `shape="pill"`
+   * (T-3405) is the only intended consumer. */
+  --radius-pill: 9999px;
 }
 
 /* T-2801: demo mode's distinct accent colour.
@@ -34,7 +53,13 @@
  * at a glance from across a room, and it must not collide with the
  * red/rose used for destructive affordances or the emerald used for
  * healthy status. The class is stamped by detectDemoMode() in
- * src/demo/useDemoMode.ts, from GET /health. */
+ * src/demo/useDemoMode.ts, from GET /health.
+ *
+ * T-3401: this block must redefine EVERY `--color-accent-*` step that
+ * @theme above defines. A step defined in @theme but missing here would
+ * silently leak the base accent into demo mode at exactly that shade —
+ * the failure is invisible in review because the other ten steps look
+ * right. index.css.test.ts enforces the two sets match. */
 html.demo {
   --color-accent-50: var(--color-amber-50);
   --color-accent-100: var(--color-amber-100);

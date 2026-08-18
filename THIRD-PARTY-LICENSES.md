@@ -203,6 +203,7 @@ therefore excluded.
 | `internmap` | 2.0.3 | ISC |
 | `js-tokens` | 4.0.0 | MIT |
 | `loose-envify` | 1.4.0 | MIT |
+| `lucide-react` | 1.32.0 | ISC |
 | `marked` | 14.0.0 | MIT |
 | `monaco-editor` | 0.55.1 | MIT |
 | `react` | 18.3.1 | MIT |
