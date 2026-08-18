@@ -33,6 +33,22 @@ describe("Button", () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  describe("T-3405 shape", () => {
+    it("defaults to the pre-T-3405 rounded-md shape, unchanged", () => {
+      render(<Button>Apply</Button>);
+      const button = screen.getByRole("button", { name: "Apply" });
+      expect(button.className).toContain("rounded-md");
+      expect(button.className).not.toContain("rounded-pill");
+    });
+
+    it("shape=\"pill\" applies the pill radius instead of rounded-md", () => {
+      render(<Button shape="pill">Add funds</Button>);
+      const button = screen.getByRole("button", { name: "Add funds" });
+      expect(button.className).toContain("rounded-pill");
+      expect(button.className).not.toContain("rounded-md");
+    });
+  });
+
   describe("T-905 density", () => {
     it("defaults to comfortable (unchanged from this component's original spacing)", () => {
       render(<Button>Apply</Button>);

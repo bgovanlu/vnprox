@@ -23,12 +23,16 @@ function sampleTable(density?: "compact" | "comfortable") {
 }
 
 describe("Table density", () => {
-  it("defaults to comfortable spacing (px-3 py-2, text-sm) when no density is set", () => {
+  // T-3405: comfortable widened to px-4 py-3 ("generous row height at
+  // comfortable density" — docs/development.md "Visual language"); compact
+  // kept at the pre-T-3405 px-2 py-1 scale so it still visibly tightens
+  // relative to comfortable rather than the two converging.
+  it("defaults to comfortable spacing (px-4 py-3, text-sm) when no density is set", () => {
     render(sampleTable());
     expect(screen.getByTestId("table")).toHaveAttribute("data-density", "comfortable");
     expect(screen.getByTestId("table").className).toContain("text-sm");
-    expect(screen.getByTestId("head-cell").className).toContain("px-3");
-    expect(screen.getByTestId("body-cell").className).toContain("px-3");
+    expect(screen.getByTestId("head-cell").className).toContain("px-4");
+    expect(screen.getByTestId("body-cell").className).toContain("px-4");
   });
 
   it("compact density tightens padding and text size, distinctly from comfortable", () => {
@@ -40,11 +44,11 @@ describe("Table density", () => {
 
     const headCell = screen.getByTestId("head-cell");
     expect(headCell.className).toContain("px-2");
-    expect(headCell.className).not.toContain("px-3");
+    expect(headCell.className).not.toContain("px-4");
 
     const bodyCell = screen.getByTestId("body-cell");
     expect(bodyCell.className).toContain("px-2");
-    expect(bodyCell.className).not.toContain("px-3");
+    expect(bodyCell.className).not.toContain("px-4");
   });
 
   it("nested TableHead/TableCell inherit density from the ambient DensityProvider without an explicit prop on the Table itself", () => {
@@ -56,6 +60,6 @@ describe("Table density", () => {
   it("an explicit density prop on Table wins over an outer ambient DensityProvider", () => {
     render(<DensityProvider density="compact">{sampleTable("comfortable")}</DensityProvider>);
     expect(screen.getByTestId("table")).toHaveAttribute("data-density", "comfortable");
-    expect(screen.getByTestId("head-cell").className).toContain("px-3");
+    expect(screen.getByTestId("head-cell").className).toContain("px-4");
   });
 });

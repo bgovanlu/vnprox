@@ -44,7 +44,9 @@ export function Tooltip({ children, content, side = "top", density }: TooltipPro
             side={side}
             sideOffset={6}
             className={clsx(
-              "z-50 max-w-xs rounded-md border text-xs shadow-lg",
+              // T-3405: larger radius, subtler shadow — the tooltip stays
+              // an inverted (always-dark) chip in both themes, unchanged.
+              "z-50 max-w-xs rounded-lg border text-xs shadow-md",
               DENSITY_PADDING[resolvedDensity],
               "border-slate-700 bg-slate-900 text-slate-100 dark:border-slate-600 dark:bg-slate-800",
             )}

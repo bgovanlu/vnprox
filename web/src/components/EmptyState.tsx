@@ -29,7 +29,8 @@ export function EmptyState({ title, description, action, className, density }: E
     <div
       data-density={resolvedDensity}
       className={clsx(
-        "flex h-full flex-col items-center justify-center rounded-lg border border-dashed text-center",
+        // T-3405: larger radius to match Dialog/Drawer/Toast's softer look.
+        "flex h-full flex-col items-center justify-center rounded-xl border border-dashed text-center",
         DENSITY_CLASSES[resolvedDensity],
         "border-slate-300 dark:border-slate-700",
         className,

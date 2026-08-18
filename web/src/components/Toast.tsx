@@ -26,8 +26,11 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 
+// T-3405: hairline borders (default variant matches Dialog/Drawer's
+// slate-200/slate-800 pairing); status variants keep their own hue but stay
+// on the same hairline weight rather than a heavier border.
 const variantClasses: Record<ToastVariant, string> = {
-  default: "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
+  default: "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
   success: "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950",
   error: "border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-950",
 };
@@ -86,7 +89,10 @@ export function ToastProvider({ children, density }: ToastProviderProps) {
                 if (!open) dismiss(t.id);
               }}
               className={clsx(
-                "rounded-md border shadow-lg",
+                // T-3405: larger radius, subtle shadow (docs/development.md
+                // "Visual language" — shadows reserved for floating layers,
+                // which a toast is, so it keeps one, just a lighter one).
+                "rounded-xl border shadow-md",
                 DENSITY_PADDING[resolvedDensity],
                 !reducedMotion &&
                   "data-[state=open]:animate-in data-[state=open]:slide-in-from-right data-[state=closed]:animate-out data-[state=closed]:fade-out",

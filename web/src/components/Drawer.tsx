@@ -22,10 +22,14 @@ export const DrawerClose = RadixDialog.Close;
 
 export type DrawerSide = "right" | "left" | "bottom";
 
+// T-3405: softer drawer — the inner edge (the one not flush with the
+// viewport edge) picks up the same larger radius Dialog uses, so a
+// right/left drawer reads as a rounded panel rather than a hard-cornered
+// sheet; the outer edges stay square since they're flush with the viewport.
 const sideClasses: Record<DrawerSide, string> = {
-  right: "inset-y-0 right-0 h-full w-full max-w-md border-l",
-  left: "inset-y-0 left-0 h-full w-full max-w-md border-r",
-  bottom: "inset-x-0 bottom-0 max-h-[80vh] w-full border-t",
+  right: "inset-y-0 right-0 h-full w-full max-w-md rounded-l-xl border-l",
+  left: "inset-y-0 left-0 h-full w-full max-w-md rounded-r-xl border-r",
+  bottom: "inset-x-0 bottom-0 max-h-[80vh] w-full rounded-t-xl border-t",
 };
 
 export interface DrawerContentProps extends ComponentPropsWithoutRef<typeof RadixDialog.Content> {
@@ -46,9 +50,10 @@ export function DrawerContent({ className, side = "right", density, children, ..
       <RadixDialog.Content
         data-density={resolvedDensity}
         className={clsx(
-          "fixed z-50 flex flex-col overflow-y-auto shadow-xl",
+          // T-3405: subtle shadow + hairline border, matching Dialog.
+          "fixed z-50 flex flex-col overflow-y-auto shadow-lg",
           DENSITY_PADDING[resolvedDensity],
-          "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
+          "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
           "focus:outline-none",
           sideClasses[side],
           className,

@@ -61,10 +61,13 @@ export function DialogContent({
       <RadixDialog.Content
         data-density={resolvedDensity}
         className={clsx(
-          "fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl",
+          // T-3405: softer dialog — larger radius, a subtle shadow instead
+          // of a heavy one, hairline border (docs/development.md "Visual
+          // language" — "borders before shadows").
+          "fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-xl border shadow-lg",
           DENSITY_PADDING[resolvedDensity],
           widthClassName,
-          "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900",
+          "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
           "focus:outline-none",
           className,
         )}

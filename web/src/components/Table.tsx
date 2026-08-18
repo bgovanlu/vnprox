@@ -6,10 +6,11 @@ export interface TableProps extends HTMLAttributes<HTMLTableElement> {
   /** T-905: compact/comfortable spacing for this table and every
    * `TableHead`/`TableCell` nested inside it (density.ts's ambient
    * `DensityProvider` — no prop drilling needed on the individual cells).
-   * "comfortable" (the table's original `px-3 py-2 text-sm` scale) is the
-   * default, so this is purely additive — no existing call site's rendered
-   * output changes. "compact" tightens to `px-2 py-1 text-xs` for
-   * dense data views (e.g. an audit log or a large firewall rule list). */
+   * T-3405 (docs/development.md "Visual language" — "generous row height at
+   * comfortable density") widened comfortable's row padding to `px-4 py-3`;
+   * "compact" keeps the pre-T-3405 `px-2 py-1 text-xs` scale so the two
+   * densities stay visibly distinct and compact keeps tightening relative
+   * to comfortable, not just holding still. */
   density?: Density;
 }
 
@@ -17,7 +18,7 @@ export function Table({ className, density, children, ...props }: TableProps) {
   const resolved = useDensity(density);
   return (
     <DensityProvider density={resolved}>
-      <div className="w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+      <div className="w-full overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
         <table
           data-density={resolved}
           className={clsx("w-full border-collapse text-left", resolved === "compact" ? "text-xs" : "text-sm", className)}
@@ -30,15 +31,20 @@ export function Table({ className, density, children, ...props }: TableProps) {
   );
 }
 
+// T-3405: quieter header — no uppercase/letter-spacing shouting, muted text
+// over a near-transparent tint rather than a solid filled band; the hairline
+// separation from the body comes from `TableHead`'s `border-b` (cell-level,
+// so it survives `border-collapse`) rather than a border on `<thead>` itself.
 export function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <thead
-      className={clsx("bg-slate-100/80 text-slate-600 dark:bg-slate-900/60 dark:text-slate-300", className)}
+      className={clsx("bg-slate-50/60 text-slate-500 dark:bg-slate-900/40 dark:text-slate-400", className)}
       {...props}
     />
   );
 }
 
+// T-3405: hairline row borders, no zebra striping (no odd/even background).
 export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return <tbody className={clsx("divide-y divide-slate-200 dark:divide-slate-800", className)} {...props} />;
 }
@@ -66,7 +72,11 @@ export function TableHead({
   const resolved = useDensity(density);
   return (
     <th
-      className={clsx(resolved === "compact" ? "px-2 py-1" : "px-3 py-2", "font-medium", className)}
+      className={clsx(
+        resolved === "compact" ? "px-2 py-1" : "px-4 py-3",
+        "border-b border-slate-200 font-medium dark:border-slate-800",
+        className,
+      )}
       {...props}
     />
   );
@@ -81,7 +91,7 @@ export function TableCell({
   return (
     <td
       className={clsx(
-        resolved === "compact" ? "px-2 py-1" : "px-3 py-2",
+        resolved === "compact" ? "px-2 py-1" : "px-4 py-3",
         "text-slate-700 dark:text-slate-200",
         className,
       )}
