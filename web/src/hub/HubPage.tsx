@@ -10,7 +10,7 @@ import { useState } from "react";
 import { Button } from "../components/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/Dialog";
 import { PageHeader } from "../components/PageHeader";
-import { TabsList, TabsRoot, TabsTrigger } from "../components/Tabs";
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "../components/Tabs";
 import { useToast } from "../components/Toast";
 import { useHubInstallMutation, useHubIndexQuery } from "./queries";
 import type { HubEntry, HubEntryType, HubInstallResponse } from "../api/types";
@@ -99,55 +99,69 @@ export function HubPage() {
         }
       />
 
-      {indexQuery.isLoading && <p>Loading catalog…</p>}
-      {indexQuery.isError && <p role="alert">The registry is unavailable. Check the configured [hub] registry_url.</p>}
-      {!indexQuery.isLoading && !indexQuery.isError && entries.length === 0 && (
-        <p data-testid="hub-empty">No {activeType} entries in the registry.</p>
-      )}
+      {/* T-3406: this page's single entry list is already filtered by
+       * `activeType` (useHubIndexQuery(activeType) above) rather than
+       * being two separate per-tab JSX trees, so a single `TabsContent`
+       * bound to the CURRENT tab value (not a hardcoded one) is the
+       * correct shape here — Radix only needs `value` to equal the active
+       * tab to treat this as that tab's panel. Without this wrapper (the
+       * pre-T-3406 shape), `TabsTrigger`'s Radix-generated `aria-controls`
+       * pointed at a `Tabs.Content` id that had no matching element
+       * anywhere in the DOM — axe's aria-valid-attr-value rule flagged it
+       * "critical" (T-3406's full-sweep axe run; every other T-3404
+       * Tabs migration — SdnPage, FirewallPage, GovernancePage — already
+       * wraps its panels). */}
+      <TabsContent value={activeType} className="flex flex-1 flex-col gap-3">
+        {indexQuery.isLoading && <p>Loading catalog…</p>}
+        {indexQuery.isError && <p role="alert">The registry is unavailable. Check the configured [hub] registry_url.</p>}
+        {!indexQuery.isLoading && !indexQuery.isError && entries.length === 0 && (
+          <p data-testid="hub-empty">No {activeType} entries in the registry.</p>
+        )}
 
-      <ul className="hub-page__list">
-        {entries.map((entry) => (
-          <li key={`${entry.type}:${entry.id}`} className="hub-card" data-testid={`hub-entry-${entry.id}`}>
-            <div className="hub-card__title">
-              <span className="hub-card__name">{entry.name}</span>
-              <span className="hub-card__version">v{entry.version}</span>
-              {entry.vetted && (
-                <span className="hub-badge hub-badge--vetted" data-testid={`hub-vetted-${entry.id}`}>
-                  vetted
-                </span>
-              )}
-              {entry.signed ? (
-                <span className="hub-badge hub-badge--signed">signed</span>
-              ) : (
-                <span className="hub-badge hub-badge--unsigned">unsigned</span>
-              )}
-            </div>
-            {entry.publisher && <div className="hub-card__publisher">{entry.publisher}</div>}
-            {entry.description && <p className="hub-card__desc">{entry.description}</p>}
-
-            {entry.type === "plugin" && entry.capabilities && entry.capabilities.length > 0 && (
-              <div className="hub-card__caps" data-testid={`hub-caps-${entry.id}`}>
-                <span className="hub-card__caps-label">Capabilities:</span>
-                {entry.capabilities.map((cap) => (
-                  <span key={cap} className="hub-badge hub-badge--cap">
-                    {cap}
+        <ul className="hub-page__list">
+          {entries.map((entry) => (
+            <li key={`${entry.type}:${entry.id}`} className="hub-card" data-testid={`hub-entry-${entry.id}`}>
+              <div className="hub-card__title">
+                <span className="hub-card__name">{entry.name}</span>
+                <span className="hub-card__version">v{entry.version}</span>
+                {entry.vetted && (
+                  <span className="hub-badge hub-badge--vetted" data-testid={`hub-vetted-${entry.id}`}>
+                    vetted
                   </span>
-                ))}
+                )}
+                {entry.signed ? (
+                  <span className="hub-badge hub-badge--signed">signed</span>
+                ) : (
+                  <span className="hub-badge hub-badge--unsigned">unsigned</span>
+                )}
               </div>
-            )}
+              {entry.publisher && <div className="hub-card__publisher">{entry.publisher}</div>}
+              {entry.description && <p className="hub-card__desc">{entry.description}</p>}
 
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={install.isPending}
-              onClick={() => { doInstall(entry); }}
-              data-testid={`hub-install-${entry.id}`}
-            >
-              Install
-            </Button>
-          </li>
-        ))}
-      </ul>
+              {entry.type === "plugin" && entry.capabilities && entry.capabilities.length > 0 && (
+                <div className="hub-card__caps" data-testid={`hub-caps-${entry.id}`}>
+                  <span className="hub-card__caps-label">Capabilities:</span>
+                  {entry.capabilities.map((cap) => (
+                    <span key={cap} className="hub-badge hub-badge--cap">
+                      {cap}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={install.isPending}
+                onClick={() => { doInstall(entry); }}
+                data-testid={`hub-install-${entry.id}`}
+              >
+                Install
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </TabsContent>
 
       <Dialog
         open={pending !== null}

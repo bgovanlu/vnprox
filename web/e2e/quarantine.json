@@ -7,6 +7,286 @@
       "reason": "Times out at 120s if and only if BOTH other tests in its own file ran first. Bisected 2026-08-12 and reproduced 4/4 on an idle machine, INCLUDING on unmodified main with the pre-T-2505 Playwright config: 127+258 passes (33s), 174+258 passes (58s), 127+174+258 fails. Not order-dependent app state — the scale stack's SQLite store holds no layout row after the failing run. Not CPU: the same test alone under taskset -c 0,1 passes in 19.5s. It passed in the 91-test serial suite, so the sharded arrangement did not cause it, only stopped hiding it. UPDATE 2026-08-17 (T-3204): the 'shared browser process' hypothesis this entry implied is REFUTED — reproduced 4/4 running the initial-render, v1 pan/zoom and v2 pan/zoom tests as THREE SEPARATE Playwright invocations (three distinct Chromium processes) against one long-lived vnproxd; a fresh daemon serving v2 alone (nothing preceding it) passes reliably in ~15-32s every time. So the dependency is on the DAEMON'S accumulated wall-clock uptime/request history, not on browser-process reuse. The daemon itself stays healthy throughout the hang (goroutine count flat 49->64 and stable, CPU ~30-33%, RSS ~63-71MB via VNPROX_DEBUG_PPROF_ADDR sampling every 3s) — server-side resource exhaustion (goroutine leak, CPU spin, memory growth) is ruled out. Playwright's own trace shows the failure is not a cascade of retries: a single `page.mouse.move()` CDP call, issued ~12s into the test during the first pan gesture's second pass, simply never returns for the remaining ~110s until the 120s test timeout fires — i.e. the browser's input dispatch/renderer wedges on one call, once the daemon is old enough. Candidate mechanism not yet confirmed: internal/api/topology.go's `staleConsecutiveFailures` (peer hosts read as permanently unreachable in this fixture) and/or TopologyCanvasV2's synchronous per-viewport-change canvas redraw (drawScene, gated by `hasDriftEntity`'s setInterval pulse) doing more work once more entities carry non-default badges — V1 (react-flow) has no equivalent synchronous full-redraw-per-mousemove path and never reproduces this. Next step for whoever picks this up: diff the exact JSON `/api/v1/topology`+`/api/v1/findings` payloads between a fresh daemon and a ~150s-old one, and check whether disabling the pulse/dash setInterval effects (or throttling the draw effect to rAF instead of per-mousemove viewport state) makes v2 alone-after-two-priors stop hanging.",
       "ticket": "T-2505-followup-01",
       "expires": "2026-09-15"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /audit (light)",
+      "reason": "an ARIA misuse (aria-conditional-attr, WCAG 4.1.2): AuditPage.tsx's expandable log rows carry `aria-expanded` on a plain `<tr>`, which is only valid on treegrid rows per the ARIA spec -- axe flags it regardless of theme/accent (light and dark both fail identically). Pre-existing since commit 86222d07 (original AuditPage), unrelated to Phase 34.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /audit (dark)",
+      "reason": "an ARIA misuse (aria-conditional-attr, WCAG 4.1.2): AuditPage.tsx's expandable log rows carry `aria-expanded` on a plain `<tr>`, which is only valid on treegrid rows per the ARIA spec -- axe flags it regardless of theme/accent (light and dark both fail identically). Pre-existing since commit 86222d07 (original AuditPage), unrelated to Phase 34.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /audit (demo-amber)",
+      "reason": "an ARIA misuse (aria-conditional-attr, WCAG 4.1.2): AuditPage.tsx's expandable log rows carry `aria-expanded` on a plain `<tr>`, which is only valid on treegrid rows per the ARIA spec -- axe flags it regardless of theme/accent (light and dark both fail identically). Pre-existing since commit 86222d07 (original AuditPage), unrelated to Phase 34.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /history (light)",
+      "reason": "a bare `text-slate-500` span (no `dark:` pairing at all) on the snapshot diff picker's \"(pick From) -> (pick To or vs live)\" hint -- fails in both themes because the color never changes. Pre-existing since commit 86222d07 (original HistoryPage), unrelated to Phase 34.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /history (dark)",
+      "reason": "a bare `text-slate-500` span (no `dark:` pairing at all) on the snapshot diff picker's \"(pick From) -> (pick To or vs live)\" hint -- fails in both themes because the color never changes. Pre-existing since commit 86222d07 (original HistoryPage), unrelated to Phase 34.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /history (demo-amber)",
+      "reason": "a bare `text-slate-500` span (no `dark:` pairing at all) on the snapshot diff picker's \"(pick From) -> (pick To or vs live)\" hint -- fails in both themes because the color never changes. Pre-existing since commit 86222d07 (original HistoryPage), unrelated to Phase 34.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /settings (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering SettingsPage.tsx's own local `Section` component's description text (`text-slate-500 dark:text-slate-400`, e.g. \"Stored in this browser only.\") directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since commit 069bf4d0 (SettingsPage's original implementation).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /settings (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering SettingsPage.tsx's own local `Section` component's description text (`text-slate-500 dark:text-slate-400`, e.g. \"Stored in this browser only.\") directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since commit 069bf4d0 (SettingsPage's original implementation).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /incidents (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering IncidentsPage.tsx's pervasive bare `text-slate-400` labels, timestamps and caveats text directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-2804 (commit 05cd7121).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /incidents (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering IncidentsPage.tsx's pervasive bare `text-slate-400` labels, timestamps and caveats text directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-2804 (commit 05cd7121).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /edge (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering EdgeCockpit.tsx's reverse-proxy discovery sub-panel description text directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-1406 (commit 3d94881b).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /edge (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering EdgeCockpit.tsx's reverse-proxy discovery sub-panel description text directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-1406 (commit 3d94881b).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /flows (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering FlowExplorer.tsx's \"Sort\" field label directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-1003 (commit 60db4816).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /flows (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering FlowExplorer.tsx's \"Sort\" field label directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-1003 (commit 60db4816).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /blueprints (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering BlueprintsPage.tsx's bare `text-slate-400` \"starter\" badge (no `dark:` pairing) directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since the blueprints web UI's original commit (cf544df0).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /blueprints (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering BlueprintsPage.tsx's bare `text-slate-400` \"starter\" badge (no `dark:` pairing) directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since the blueprints web UI's original commit (cf544df0).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /sdn (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering SdnPage.tsx's zone-tree \"Zone . vlan\" subtitle text directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34's SdnPage tab migration, which this task's own Tabs.tsx fix already addressed separately).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /sdn (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering SdnPage.tsx's zone-tree \"Zone . vlan\" subtitle text directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34's SdnPage tab migration, which this task's own Tabs.tsx fix already addressed separately).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /governance (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering GovernancePage.tsx's \"Store revision N\" status line directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34's GovernancePage tab migration, which this task's own Tabs.tsx fix already addressed separately).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /governance (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering GovernancePage.tsx's \"Store revision N\" status line directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34's GovernancePage tab migration, which this task's own Tabs.tsx fix already addressed separately).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /firewall (light)",
+      "reason": "a disabled-state color (`disabled:text-slate-300`) on a per-rule \"Delete\" button in RuleEditor.tsx, computed while the control is genuinely disabled (no firewall-write permission in this fixture's session) -- axe's automated check does not reliably exempt WCAG's disabled-control carve-out. Pre-existing in RuleEditor.tsx, unrelated to Phase 34's FirewallPage tab migration (which this task's own Tabs.tsx fix already addressed separately).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /firewall (demo-amber)",
+      "reason": "a disabled-state color (`disabled:text-slate-300`) on a per-rule \"Delete\" button in RuleEditor.tsx, computed while the control is genuinely disabled (no firewall-write permission in this fixture's session) -- axe's automated check does not reliably exempt WCAG's disabled-control carve-out. Pre-existing in RuleEditor.tsx, unrelated to Phase 34's FirewallPage tab migration (which this task's own Tabs.tsx fix already addressed separately).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /management (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering ManagementPage.tsx's per-interface \"Node\" field label directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since commit f23b7af8 (ManagementPage's original implementation).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /management (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering ManagementPage.tsx's per-interface \"Node\" field label directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since commit f23b7af8 (ManagementPage's original implementation).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /ipam (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering IpamPage.tsx's subnet-source detail text (e.g. \"bridge on pve1 . gw 10.10.0.11\") directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /ipam (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering IpamPage.tsx's subnet-source detail text (e.g. \"bridge on pve1 . gw 10.10.0.11\") directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /analysis (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering one of the Analysis tab's sub-panel description paragraphs directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34); not individually git-blamed given the volume of routes this sweep flagged, but matches the identical fgColor/bgColor/ratio signature (#62748e on #f1f5f9, 4.34:1) as every other entry in this batch.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /analysis (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering one of the Analysis tab's sub-panel description paragraphs directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34); not individually git-blamed given the volume of routes this sweep flagged, but matches the identical fgColor/bgColor/ratio signature (#62748e on #f1f5f9, 4.34:1) as every other entry in this batch.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /config-as-code (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering ConfigAsCodePage.tsx's own local description paragraph directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34); not individually git-blamed given the volume of routes this sweep flagged, but matches the identical fgColor/bgColor/ratio signature (#62748e on #f1f5f9, 4.34:1) as every other entry in this batch.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /config-as-code (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering ConfigAsCodePage.tsx's own local description paragraph directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34); not individually git-blamed given the volume of routes this sweep flagged, but matches the identical fgColor/bgColor/ratio signature (#62748e on #f1f5f9, 4.34:1) as every other entry in this batch.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /tools (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering ToolsPage.tsx's raw-editor node-picker \"Node\" label directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /tools (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering ToolsPage.tsx's raw-editor node-picker \"Node\" label directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /settings/alert-rules (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering AlertRules.tsx's bare `text-slate-400` \"No alert rules configured yet.\" empty-state text (no `dark:` pairing) directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-1005 (commit 336445ee).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /settings/alert-rules (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering AlertRules.tsx's bare `text-slate-400` \"No alert rules configured yet.\" empty-state text (no `dark:` pairing) directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-1005 (commit 336445ee).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /settings/certificates (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering CertificatesPage.tsx's own raw `<table>` header cells, which inherit a `text-slate-500` color from an ancestor rather than using the shared `Table`/`TableHeader` component this task already fixed directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34); not individually git-blamed given the volume of routes this sweep flagged.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /settings/certificates (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering CertificatesPage.tsx's own raw `<table>` header cells, which inherit a `text-slate-500` color from an ancestor rather than using the shared `Table`/`TableHeader` component this task already fixed directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34); not individually git-blamed given the volume of routes this sweep flagged.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /settings/federation (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering FederationClusters.tsx's bare `text-slate-400` \"No clusters attached yet.\" empty-state text (no `dark:` pairing) directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-2001 (commit 6ebefe11).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /settings/federation (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering FederationClusters.tsx's bare `text-slate-400` \"No clusters attached yet.\" empty-state text (no `dark:` pairing) directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing since T-2001 (commit 6ebefe11).",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "a11y.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, light and dark › axe: /settings/platform (light)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering PlatformPanel.tsx's tokens-section description paragraph directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34); not individually git-blamed given the volume of routes this sweep flagged, but matches the identical fgColor/bgColor/ratio signature (#62748e on #f1f5f9, 4.34:1) as every other entry in this batch.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
+    },
+    {
+      "file": "demo.spec.ts",
+      "title": "T-3406: axe sweep, every routed page, demo-amber accent › axe: /settings/platform (demo-amber)",
+      "reason": "T-3406's full-sweep axe run (every routed page x light/dark x demo-amber, the first time this app's axe suite ever ran comprehensively in light mode) found this route rendering PlatformPanel.tsx's tokens-section description paragraph directly on AppShell's `bg-slate-100` light-mode canvas (or inheriting it), below the 4.5:1 AA floor axe measures at 4.34:1. Confirmed via `git log -S` this predates Phase 34 (the shell redesign T-3406 closes out) and is not something the sidebar/topbar/PageHeader rewrite introduced -- it is pre-existing across many pages that were never axe-scanned in light mode before this sweep, since the app defaults to dark theme. Filed as a follow-up rather than fixed here because the pattern recurs across a large, page-local, pre-existing surface (this sweep alone found it on ~15 different pages, each its own component) that deserves a dedicated audit-and-fix task, not a scope expansion of this phase's close-out pass. Pre-existing (predates Phase 34); not individually git-blamed given the volume of routes this sweep flagged, but matches the identical fgColor/bgColor/ratio signature (#62748e on #f1f5f9, 4.34:1) as every other entry in this batch.",
+      "ticket": "T-3406-followup-01",
+      "expires": "2026-09-17"
     }
   ]
 }

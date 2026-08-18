@@ -11,7 +11,7 @@ src/
   api/        fetch wrapper (client.ts), WS client (ws.ts), auth calls, wire types
   components/ shared UI: Button, Dialog, Drawer, Table, Toast, EmptyState
   keyboard/   the docs/user-guide.md §6 shortcut framework + `?` help dialog
-  layout/     AppShell (nav rail + top bar + routed outlet), theme toggle
+  layout/     AppShell (Sidebar + top bar + routed outlet), theme toggle
   lib/        TanStack Query client configuration
   pages/      one component per top-level route (mostly placeholders so far)
   routes/     RequireAuth session guard

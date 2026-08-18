@@ -45,7 +45,14 @@ export function TabsTrigger({ className, ...props }: TabsTriggerProps) {
   return (
     <RadixTabs.Trigger
       className={clsx(
-        "-mb-px border-b-2 border-transparent px-3 py-1.5 text-sm font-medium text-slate-500 transition-colors",
+        // T-3406: text-slate-500 measures 4.34:1 wherever this renders
+        // directly on AppShell's `bg-slate-100` canvas (every page's own
+        // PageHeader `tabs` slot does exactly that — no white card behind
+        // it), below the 4.5:1 AA floor. Found by the full-sweep axe run
+        // on SdnPage/FirewallPage/GovernancePage/HubPage, the only four
+        // consumers (see this file's own header comment). slate-600 clears
+        // it; dark mode is unaffected.
+        "-mb-px border-b-2 border-transparent px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors",
         "hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
         "data-[state=active]:border-accent-600 data-[state=active]:text-accent-700",
         "dark:data-[state=active]:border-accent-500 dark:data-[state=active]:text-accent-400",

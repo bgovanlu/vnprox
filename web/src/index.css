@@ -59,7 +59,32 @@
  * @theme above defines. A step defined in @theme but missing here would
  * silently leak the base accent into demo mode at exactly that shade —
  * the failure is invisible in review because the other ten steps look
- * right. index.css.test.ts enforces the two sets match. */
+ * right. index.css.test.ts enforces the two sets match.
+ *
+ * T-3406: the 600 and 700 steps are deliberately one Tailwind step darker
+ * than their own numbers (600 -> amber-700, 700 -> amber-800), found by
+ * this phase's demo-amber axe sweep (T-3406, the first time this app's
+ * axe suite ever ran every routed page in demo mode against the finished
+ * shell). Two real WCAG AA failures, both load-bearing enough to be
+ * everywhere in the app: (1) `Button`'s primary variant and every other
+ * solid `bg-accent-600 text-white` control (LayerToggleBar's layer
+ * toggles, the density toggle, TopBar's account chip, ...) — white on
+ * amber-600 (#e17100) measures 3.19:1 against a 4.5:1 floor; white on
+ * amber-700 (#bb4d00) measures ~5.3:1. (2) the `bg-accent-600/10
+ * text-accent-700` "selected row/tab" wash used across Sidebar, SdnPage,
+ * FlowExplorer, BlueprintsPage, AlertRules and FederationClusters —
+ * amber-700 text over a 10%-opacity amber-600 wash measures 4.31:1
+ * (a 10%-opacity wash barely darkens regardless of which step it's mixed
+ * from, so darkening the wash's own source color doesn't fix this on its
+ * own); amber-800 text over the same wash measures ~5.9:1. Both patterns
+ * pass fine against the BASE (indigo) accent at their own numbers —
+ * indigo-600/700 are dark enough on their own — so this is demo-mode-only,
+ * hence a demo-only remap rather than a change to Button.tsx or any of
+ * the ~10 call sites sharing these two patterns; re-pointing the alias is
+ * exactly what it exists for (see this block's own T-2801 comment above).
+ * 500/800/900/950 are untouched: no violation implicated them, and 800
+ * already is amber-800 (the new value for 700), so nothing here relies on
+ * 700 and 800 being visually distinct. */
 html.demo {
   --color-accent-50: var(--color-amber-50);
   --color-accent-100: var(--color-amber-100);
@@ -67,8 +92,8 @@ html.demo {
   --color-accent-300: var(--color-amber-300);
   --color-accent-400: var(--color-amber-400);
   --color-accent-500: var(--color-amber-500);
-  --color-accent-600: var(--color-amber-600);
-  --color-accent-700: var(--color-amber-700);
+  --color-accent-600: var(--color-amber-700);
+  --color-accent-700: var(--color-amber-800);
   --color-accent-800: var(--color-amber-800);
   --color-accent-900: var(--color-amber-900);
   --color-accent-950: var(--color-amber-950);

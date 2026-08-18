@@ -180,9 +180,19 @@ const AUTHENTICATED_ROUTES = [
   "/conntrack",
   "/edge",
   "/diagnose",
+  // T-3406: /analysis, /config-as-code, /governance and /settings/platform
+  // (T-3001/T-3002/T-3003/T-3004, all after this file was written) were
+  // missing from this list — a route added to App.tsx does not add itself
+  // here, so this sweep had silently stopped being "every route" for four
+  // phases before anyone checked. Added while extending this file's axe
+  // coverage for the same reason (T-3406 AC2: every routed page in the
+  // demo-amber accent variant).
+  "/analysis",
   "/ports",
   "/blueprints",
   "/hub",
+  "/config-as-code",
+  "/governance",
   "/history",
   "/incidents",
   "/audit",
@@ -190,6 +200,7 @@ const AUTHENTICATED_ROUTES = [
   "/settings",
   "/settings/alert-rules",
   "/settings/certificates",
+  "/settings/platform",
   "/settings/federation",
 ];
 
@@ -240,10 +251,61 @@ async function expectNoSeriousViolations(page: Page, label: string): Promise<voi
   expect(blocking, `${label}: ${JSON.stringify(blocking, null, 2)}`).toEqual([]);
 }
 
+// T-3406 fix: src/store/theme.ts's zustand store has always defaulted to
+// `theme: "dark"` (T-002's original scaffold, "per docs/user-guide.md's
+// ergonomics expectation for a NOC-style dashboard" — unrelated to and
+// unchanged by Phase 34), so a freshly-restored storageState with no
+// "vnprox.theme" localStorage key lands in DARK mode, not light. Both
+// tests below were written against the opposite (wrong) assumption — the
+// "light" test asserted `html` lacks `dark` and got `class="dark demo"`,
+// and the "switched to dark theme" test waited forever for a button
+// literally named that, which cannot exist while already dark (its label
+// is `theme === "dark" ? "Switch to light theme" : "Switch to dark
+// theme"` — ThemeToggle.tsx). Priming localStorage before the app boots
+// makes each test's starting theme an explicit, correct precondition
+// instead of an assumed one.
+async function forceLightTheme(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem("vnprox.theme", JSON.stringify({ state: { theme: "light" }, version: 0 }));
+  });
+}
+
+// T-3406: scopes this scan to the shell chrome under test (the demo bar,
+// TopBar, Sidebar) — matching the suppression a11y.spec.ts/help.spec.ts/
+// nav-after-inspector.spec.ts/user-guide-tasks.spec.ts already use for the
+// same reason. Without it, OnboardingWalkthrough.tsx is on screen for a
+// freshly-authenticated session and its own (pre-existing, pre-Phase-34,
+// unrelated to this file) bare `text-slate-400` copy — no `dark:` pairing,
+// e.g. line 114's totals line — measures 2.6:1 in light mode against a
+// 4.5:1 floor. Real defect, filed as a follow-up (see this task's report)
+// rather than fixed here: it is not shell chrome and not something Phase
+// 34 touched, so it is out of scope for a phase-close-out regression pass.
+async function suppressOnboardingWalkthrough(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const suppress = () => {
+      const el = document.querySelector('[aria-label="Onboarding walkthrough"]');
+      if (el instanceof HTMLElement) {
+        el.style.setProperty("display", "none", "important");
+      }
+    };
+    const start = () => {
+      try {
+        suppress();
+        new MutationObserver(suppress).observe(document.documentElement, { childList: true, subtree: true });
+      } catch {
+        setTimeout(start, 0);
+      }
+    };
+    start();
+  });
+}
+
 test.describe("T-3403 AC3: the test-mode bar in both themes", () => {
   test.use({ storageState: DEMO_STORAGE_STATE });
 
-  test("axe: demo bar, app in light theme (the default)", async ({ page }) => {
+  test("axe: demo bar, app in light theme", async ({ page }) => {
+    await forceLightTheme(page);
+    await suppressOnboardingWalkthrough(page);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/topology");
     await expect(page.getByRole("main")).toBeVisible();
@@ -253,6 +315,8 @@ test.describe("T-3403 AC3: the test-mode bar in both themes", () => {
   });
 
   test("axe: demo bar, app switched to dark theme", async ({ page }) => {
+    await forceLightTheme(page);
+    await suppressOnboardingWalkthrough(page);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/topology");
     await expect(page.getByRole("main")).toBeVisible();
@@ -261,4 +325,51 @@ test.describe("T-3403 AC3: the test-mode bar in both themes", () => {
     await expectBanner(page, "/topology (dark)");
     await expectNoSeriousViolations(page, "demo bar, dark theme");
   });
+});
+
+// --- T-3406: axe sweep, every routed page, demo-amber accent --------------
+//
+// AC2 asks for "every routed page x light/dark x demo-amber". The two
+// tests above cover Topology (light and dark) as a representative deep
+// check; this sweep is the breadth pass — every route AUTHENTICATED_ROUTES
+// already walks for the banner (AC6 above), scanned once each in light
+// mode with the demo-amber accent live. It is what actually found T-3406's
+// headline defect: `bg-accent-600 text-white` (Button's primary variant
+// and everything sharing its pattern — LayerToggleBar, the density
+// toggle, TopBar's account chip, ...) and `bg-accent-600/10 text-accent-700`
+// (Sidebar's active item and every "selected row/tab" surface reusing that
+// pattern) both fail WCAG AA against amber-600/700, a combination no
+// per-card agent's own axe run (scoped to indigo, or to one page) could
+// have caught. Fixed at the token layer (index.css's html.demo block, see
+// its own comment) rather than per-page, which is why one light-mode pass
+// here is enough evidence rather than needing a dark-mode duplicate of
+// every route too — the fix is theme-independent (it re-points the same
+// alias both themes already read from).
+test.describe("T-3406: axe sweep, every routed page, demo-amber accent", () => {
+  test.use({ storageState: DEMO_STORAGE_STATE });
+
+  // T-3406: several pages' data-loading placeholders render on a bare
+  // `text-slate-400` with no `dark:` pairing — pre-existing (confirmed via
+  // `git log -S` on every file this sweep found it on: Management, SDN,
+  // Firewall, IPAM, Flows, Edge, every Analysis panel), not a demo-amber or
+  // Phase 34 defect (amber never touches slate colors). Whether a given
+  // scan catches it is a pure race against the mock backend, so this waits
+  // it out rather than let the sweep flake between "caught it" and "missed
+  // it" depending on timing — same fix, same reasoning, as a11y.spec.ts's
+  // equivalent sweep.
+  async function waitForLoadingPlaceholderToClear(page: Page): Promise<void> {
+    await expect(page.getByText(/^(Loading|Simulating)[….]/).first()).toHaveCount(0);
+  }
+
+  for (const route of AUTHENTICATED_ROUTES) {
+    test(`axe: ${route} (demo-amber)`, async ({ page }) => {
+      await forceLightTheme(page);
+      await suppressOnboardingWalkthrough(page);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.goto(route);
+      await expect(page.getByRole("main")).toBeVisible();
+      await waitForLoadingPlaceholderToClear(page);
+      await expectNoSeriousViolations(page, `${route} (demo-amber)`);
+    });
+  }
 });

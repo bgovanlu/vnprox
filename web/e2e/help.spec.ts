@@ -107,6 +107,23 @@ test("a panel-level ? anchor opens help for that panel, and seeAlso navigates an
 // its accessible name ("Search", from SpotlightSearch's DialogTitle)
 // rather than by test id, per docs/development.md's "assert on headings"
 // rule for specs that must not lie about what they cover.
+//
+// T-3406 fix: the heading assertion was originally `getByRole("heading", …)`
+// — a role-based (accessibility-tree) query — checked WHILE the spotlight
+// dialog is open. SpotlightSearch's <Dialog> is a standard Radix modal
+// (the shared Dialog wrapper does not pass `modal={false}`), so once it
+// mounts, Radix's own `aria-hidden`-the-rest-of-the-page behavior correctly
+// removes the Topology toolbar (and its "Topology" <h1>) from the
+// accessibility tree — confirmed against a captured trace: the `<h1>` is
+// present in the DOM with `aria-hidden="true"` on its wrapper, not
+// display:none. That is correct, standard modal a11y (a screen-reader user
+// should not be able to tab/read into what's behind an open modal), so the
+// original assertion could never pass while the dialog was open — not a
+// redesign regression. Swapped to a plain DOM locator (`h1`, bypassing the
+// accessibility-tree filter role-based queries apply) so this still proves
+// real navigation happened (the destination's own heading text, not just
+// the URL), without asserting something that contradicts correct modal
+// semantics.
 test("'/' opens search from a non-topology page and lands on Topology with the spotlight open", async ({
   page,
 }) => {
@@ -117,8 +134,8 @@ test("'/' opens search from a non-topology page and lands on Topology with the s
   await page.keyboard.press("/");
 
   await page.waitForURL("**/topology");
-  await expect(page.getByRole("heading", { name: "Topology", level: 1 })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Search" })).toBeVisible();
+  await expect(page.locator("h1", { hasText: "Topology" })).toBeVisible();
 });
 
 test("help search finds a topic by body text and opens it", async ({ page }) => {

@@ -37,8 +37,19 @@ export function Table({ className, density, children, ...props }: TableProps) {
 // so it survives `border-collapse`) rather than a border on `<thead>` itself.
 export function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
+    // T-3406: text-slate-500 measures ~4.3:1 wherever this table has no
+    // white card of its own behind it — `Table`'s own wrapper `<div>`
+    // above carries only a border, no background, so any page that drops
+    // a `<Table>` straight onto AppShell's `bg-slate-100` canvas (most of
+    // the ~26 call sites: AuditPage, ConntrackExplorer, GuestsPage,
+    // FlowExplorer, EdgeCockpit, FwLogViewer, the SDN views, ...) composites
+    // this header's own near-transparent `bg-slate-50/60` tint down to
+    // essentially the same background PageHeader's description line failed
+    // against, for the same reason (found by the same T-3406 axe sweep).
+    // slate-600 clears AA; dark mode (slate-400 on the slate-900/40 tint)
+    // is unaffected.
     <thead
-      className={clsx("bg-slate-50/60 text-slate-500 dark:bg-slate-900/40 dark:text-slate-400", className)}
+      className={clsx("bg-slate-50/60 text-slate-600 dark:bg-slate-900/40 dark:text-slate-400", className)}
       {...props}
     />
   );

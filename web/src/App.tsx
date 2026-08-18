@@ -307,7 +307,7 @@ export function App() {
             />
             {/* T-3003: tokens, webhooks, plugin lifecycle and the daemon's
               * live self-check. A Settings sub-route like alert-rules and
-              * certificates, so it inherits the nav rail's Settings entry
+              * certificates, so it inherits the sidebar's Settings entry
               * rather than claiming a top-level glyph of its own. */}
             <Route
               path="/settings/platform"

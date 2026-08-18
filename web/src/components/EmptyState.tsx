@@ -38,7 +38,13 @@ export function EmptyState({ title, description, action, className, density }: E
     >
       <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{title}</h2>
       {description ? (
-        <p className="max-w-md text-sm text-slate-500 dark:text-slate-400">{description}</p>
+        // T-3406: same fix as PageHeader's description line and for the
+        // same reason — this component has no background of its own (only
+        // a dashed border), so a full-page empty state renders it directly
+        // on AppShell's `bg-slate-100`, where text-slate-500 measures
+        // 4.34:1 against the 4.5:1 AA floor. slate-600 clears it; dark
+        // mode (slate-400 on bg-slate-900) is untouched.
+        <p className="max-w-md text-sm text-slate-600 dark:text-slate-400">{description}</p>
       ) : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>

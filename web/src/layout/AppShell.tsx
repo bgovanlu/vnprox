@@ -19,7 +19,7 @@ import { GuidedTour } from "../tour/GuidedTour";
 import { OfflineShellBanner } from "./OfflineShellBanner";
 import { PushNavigationBridge } from "../push/PushNavigationBridge";
 
-/** Top-level layout for every authenticated route: nav rail + top bar
+/** Top-level layout for every authenticated route: Sidebar + top bar
  * around a routed <Outlet/>, with the keyboard-shortcut framework wired
  * up app-wide (see docs/user-guide.md §6). */
 export function AppShell() {

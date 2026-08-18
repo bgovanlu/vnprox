@@ -43,7 +43,21 @@ export function PageHeader({ title, description, actions, tabs, className }: Pag
             {title}
           </h1>
           {description !== undefined && (
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
+            // T-3406: text-slate-500 measures 4.34:1 against this row's
+            // ambient background — AppShell's `<main>` is `bg-slate-100`
+            // in light mode, and PageHeader (unlike most other
+            // text-slate-500-on-light-background call sites in this
+            // codebase, which sit inside a `bg-white` dialog/drawer/card)
+            // renders directly on that canvas with no wrapper of its own —
+            // below the 4.5:1 AA floor, found by this phase's full-sweep
+            // axe run (T-3406) landing on every one of the ~24 pages this
+            // component now serves, none of which had ever been axe-scanned
+            // in light mode before (the app defaults to dark — see
+            // forceLightTheme's comment elsewhere in this repo). slate-600
+            // clears AA against slate-100 with margin; dark mode is
+            // unaffected (dark:bg-slate-900 already gives slate-400 plenty
+            // of contrast).
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{description}</p>
           )}
         </div>
         {actions !== undefined && (
