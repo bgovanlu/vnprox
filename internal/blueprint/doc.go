@@ -13,20 +13,20 @@
 //
 // Note on the IPAM dependency: docs/features/blueprints.md and this task's
 // card call for "IPAM-aware address suggestions via the IPAM picker"
-// (T-405). Suggest (suggest.go) computes next-free-address directly off
-// inventory.Snapshot's already-declared addresses rather than delegating
-// to internal/ipam's own next-free-address picker.
+// (T-405). Suggest (suggest.go) now delegates to internal/ipam's own
+// next-free-address computation (AddressPicker, backed by
+// *ipam.Service.Allocations) when IPAM is configured, falling back to the
+// original inventory.Snapshot-only heuristic when it isn't — see
+// AddressPicker's doc comment in suggest.go for the fallback rules.
 //
-// Corrected 2026-08-19 (debt sweep): this comment used to say internal/ipam
-// was an empty stub and no picker component existed in web/src "on this
-// branch's base" — both shipped in T-405 (internal/ipam is a real package;
+// History: this comment used to say internal/ipam was an empty stub and
+// no picker component existed in web/src "on this branch's base" — both
+// shipped in T-405 (internal/ipam is a real package;
 // web/src/ipam/NextFreePicker.tsx is a real component) some time ago, and
-// the comment had not been updated since. The integration this note
-// originally deferred is therefore still undone, but for a different
-// reason than the one written here: T-405's picker exists now and this
-// package still doesn't call it — that is real, uncarded follow-up work,
-// not a missing dependency. See the T-603 completion report for the
-// original note.
+// the comment had not been updated since (corrected 2026-08-19, debt
+// sweep). The delegation itself remained undone a further day past that
+// correction — this file's Suggest description above records the day it
+// finally landed. See the T-603 completion report for the original note.
 //
 // This package never talks to internal/store or internal/api directly;
 // Service (service.go) is the seam those packages depend on.

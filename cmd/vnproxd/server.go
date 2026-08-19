@@ -1445,10 +1445,19 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 
 	// T-603: blueprints diff/instantiate against the same live inventory
 	// graph every other read path (topology, drift, sim) shares — never a
-	// separate copy (docs/architecture.md §2/§3).
+	// separate copy (docs/architecture.md §2/§3). Picker wires the
+	// previously-deferred IPAM-aware address suggestion (docs/features/
+	// blueprints.md §1, T-405): ipamSvc (api.IPAMService, possibly a true
+	// nil interface when sdnPVEClient is nil — see its own declaration
+	// above) already declares Allocations(ctx, cidr) identically to
+	// blueprint.AddressPicker, so it satisfies the seam directly with no
+	// adapter. A nil ipamSvc degrades exactly like every other optional
+	// dependency here: blueprint.Service falls back to its
+	// inventory-only heuristic (suggest.go's SuggestAddress doc comment).
 	blueprintSvc := blueprint.New(blueprint.Config{
 		Repo:      store.NewBlueprintRepo(db),
 		Inventory: graph,
+		Picker:    ipamSvc,
 	})
 
 	// fwlogSvc is a *fwlog.Service, possibly nil (setupFwlog's dev-fixture

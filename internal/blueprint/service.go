@@ -23,7 +23,13 @@ type InventorySource interface {
 type Config struct {
 	Repo      *store.BlueprintRepo
 	Inventory InventorySource
-	Now       func() time.Time
+	// Picker is the optional IPAM next-free-address seam SuggestAddress
+	// delegates to (suggest.go's AddressPicker) — *ipam.Service satisfies
+	// it directly. Nil (no IPAM configured for this deployment) falls
+	// back to the inventory-only heuristic; see AddressPicker's doc
+	// comment.
+	Picker AddressPicker
+	Now    func() time.Time
 }
 
 // Service implements the blueprint list/get/save/delete/capture/
@@ -35,9 +41,10 @@ type Config struct {
 // internal/api/drift.go's handleDriftFix) hands them to
 // change.Service.Create.
 type Service struct {
-	repo *store.BlueprintRepo
-	inv  InventorySource
-	now  func() time.Time
+	repo   *store.BlueprintRepo
+	inv    InventorySource
+	picker AddressPicker
+	now    func() time.Time
 }
 
 // New constructs a Service.
@@ -46,7 +53,7 @@ func New(cfg Config) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{repo: cfg.Repo, inv: cfg.Inventory, now: now}
+	return &Service{repo: cfg.Repo, inv: cfg.Inventory, picker: cfg.Picker, now: now}
 }
 
 // List returns every blueprint: the five bundled starters first (in
@@ -193,7 +200,8 @@ func (s *Service) Instantiate(ctx context.Context, id string, req InstantiateReq
 }
 
 // SuggestAddress resolves paramName's next-free address for blueprint id
-// (T-603 AC4).
+// (T-603 AC4), delegating to s.picker when configured (see
+// AddressPicker's doc comment in suggest.go).
 func (s *Service) SuggestAddress(ctx context.Context, id, paramName string) (string, error) {
 	bp, err := s.Get(ctx, id)
 	if err != nil {
@@ -202,7 +210,7 @@ func (s *Service) SuggestAddress(ctx context.Context, id, paramName string) (str
 	if s.inv == nil {
 		return "", fmt.Errorf("blueprint: no inventory source configured")
 	}
-	return SuggestForParam(bp, paramName, s.inv.Snapshot())
+	return SuggestForParam(ctx, s.picker, bp, paramName, s.inv.Snapshot())
 }
 
 func decodeRow(row store.Blueprint) (*Blueprint, error) {
