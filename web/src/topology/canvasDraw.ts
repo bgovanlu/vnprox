@@ -12,15 +12,33 @@
 // asserting the *data* both renderers consume is identical, plus the e2e
 // perf/scale run that exercises the real draw path in headless Chromium.
 import type { Edge as FlowEdge, Node as FlowNode } from "@xyflow/react";
-import type { EntityStatus } from "../api/types";
+import type { EntityStatus, Severity } from "../api/types";
 import type { EntityEdgeData } from "./EntityEdge";
 import type { EntityNodeData } from "./EntityNode";
 import type { Size, Viewport } from "./canvasScene";
 import { DEFAULT_NODE_SIZE, graphToScreen } from "./canvasScene";
 import type { LatencyOverlayEdge } from "./latencyMode";
 import { diffMarkColor, diffMarkGlyph, type DiffMark } from "./diffOverlay";
+import { findingChipText, hasOpenFinding, parseFindingBadge, shouldPulse } from "./findingBadges";
 import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
 import { trafficEdgeStyle } from "./trafficMode";
+
+// T-3501: severity fill/text colours for a "finding:<source>:<severity>"
+// badge chip on the canvas — the same red/amber/slate hue steps
+// findingBadges.ts's findingBadgeClass uses in the DOM renderers
+// (red-200/red-800, amber-200/amber-800, slate-200/slate-600), as literal
+// hex since a <canvas> has no Tailwind classes to defer to (matching this
+// file's existing STATUS_STROKE/SIM_STROKE convention).
+const FINDING_SEVERITY_FILL: Record<Severity, string> = {
+  error: "#fecaca",
+  warning: "#fde68a",
+  info: "#e2e8f0",
+};
+const FINDING_SEVERITY_TEXT: Record<Severity, string> = {
+  error: "#991b1b",
+  warning: "#92400e",
+  info: "#475569",
+};
 
 export interface SceneTheme {
   background: string;
@@ -175,14 +193,20 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
     } else {
       const status = data?.status ?? "ok";
       stroke = STATUS_STROKE[status];
-      dashed = status === "unknown" || (data?.badges.includes("drift") ?? false);
+      dashed = status === "unknown" || hasOpenFinding(data?.badges ?? []);
     }
-    const driftingEdge = data?.badges.includes("drift") ?? false;
+    // T-3501: dashing stays source-agnostic (hasOpenFinding, above — any
+    // open finding earns the dash, matching the pre-T-3501 bare "drift"
+    // check exactly), but the pulse alpha only applies when the finding's
+    // severity warrants it (shouldPulse) — see findingBadges.ts's doc
+    // comment for why a legacy-badge-only edge (no richer form yet) still
+    // pulses rather than losing motion outright.
+    const pulseWorthyEdge = data ? hasOpenFinding(data.badges) && shouldPulse(data.badges) : false;
     ctx.save();
     // T-905: the drift pulse (reduced-motion falls back to pulseAlpha's
     // default of 1, i.e. the plain static dashed look) — never applied to
     // an already-dimmed edge, so the two alpha treatments don't compound.
-    ctx.globalAlpha = dimmed ? 0.15 : driftingEdge ? pulseAlpha : 1;
+    ctx.globalAlpha = dimmed ? 0.15 : pulseWorthyEdge ? pulseAlpha : 1;
     ctx.strokeStyle = stroke;
     ctx.lineWidth = width;
     ctx.setLineDash(dashed ? [4, 3] : []);
@@ -207,12 +231,15 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
 
     const d = n.data;
     const dimmed = d.dimmed && !d.highlighted;
-    const driftingNode = d.badges.includes("drift");
+    // T-3501: see the edge loop's identical comment above — dashing stays
+    // source-agnostic, the pulse alpha is severity-gated.
+    const nodeHasFinding = hasOpenFinding(d.badges);
+    const pulseWorthyNode = nodeHasFinding && shouldPulse(d.badges);
     ctx.save();
     // T-905: same drift-pulse treatment as the edge loop above — dim/stale
     // both win over it (never compounded), and reduced motion collapses
     // pulseAlpha to its default 1 (a plain static look).
-    ctx.globalAlpha = dimmed ? 0.25 : d.stale ? 0.6 : driftingNode ? pulseAlpha : 1;
+    ctx.globalAlpha = dimmed ? 0.25 : d.stale ? 0.6 : pulseWorthyNode ? pulseAlpha : 1;
 
     const isPill = d.isGuestGroup || d.isPhysGroup;
     const radius = isPill ? h / 2 : 6;
@@ -239,7 +266,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
     } else {
       ctx.strokeStyle = statusBorder(d.status, theme);
       ctx.lineWidth = d.status === "down" || d.status === "degraded" ? 1.75 : 1;
-      ctx.setLineDash(d.badges.includes("drift") ? [4, 3] : []);
+      ctx.setLineDash(nodeHasFinding ? [4, 3] : []);
     }
     ctx.stroke();
     ctx.setLineDash([]);
@@ -276,20 +303,40 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
         ctx.fillText(d.kind.toUpperCase(), tl.x + w - 8, labelY, w * 0.45);
       }
       // Badges row
-      if (showBadges && d.badges.length > 0) {
+      // T-3501: the legacy bare "drift" token stays wire-present (see
+      // findingBadges.ts) but is never drawn as its own pill any more — a
+      // "finding:<source>:<severity>" token draws as its source name,
+      // severity-coloured (FINDING_SEVERITY_FILL/TEXT), instead of the
+      // literal word "drift" every open finding used to paint regardless
+      // of what actually fired.
+      const drawableBadges = d.badges.filter((b) => b !== "drift");
+      if (showBadges && drawableBadges.length > 0) {
         ctx.textAlign = "left";
         ctx.font = "9px ui-sans-serif, system-ui, sans-serif";
         let bx = padX;
         const by = tl.y + h * 0.72;
-        for (const badge of d.badges.slice(0, 3)) {
-          const text = badge.length > 12 ? `${badge.slice(0, 11)}…` : badge;
+        for (const badge of drawableBadges.slice(0, 3)) {
+          const parsedFinding = parseFindingBadge(badge);
+          const text = parsedFinding
+            ? findingChipText(parsedFinding)
+            : badge.length > 12
+              ? `${badge.slice(0, 11)}…`
+              : badge;
           const tw = ctx.measureText(text).width + 8;
           if (bx + tw > tl.x + w - 4) break;
           const isMgmt = MGMT_BADGES.has(badge);
           roundRectPath(ctx, bx, by - 7, tw, 13, 3);
-          ctx.fillStyle = isMgmt ? theme.mgmtBadgeBg : theme.badgeBg;
+          ctx.fillStyle = parsedFinding
+            ? FINDING_SEVERITY_FILL[parsedFinding.severity]
+            : isMgmt
+              ? theme.mgmtBadgeBg
+              : theme.badgeBg;
           ctx.fill();
-          ctx.fillStyle = isMgmt ? theme.mgmtBadgeText : theme.badgeText;
+          ctx.fillStyle = parsedFinding
+            ? FINDING_SEVERITY_TEXT[parsedFinding.severity]
+            : isMgmt
+              ? theme.mgmtBadgeText
+              : theme.badgeText;
           ctx.fillText(text, bx + 4, by);
           bx += tw + 3;
         }

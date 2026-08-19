@@ -16,7 +16,7 @@
 // Deliberately framework-free (no React, no @xyflow/react) so it stays
 // exhaustively Vitest-able without rendering — the same discipline
 // projection.ts follows. SwitchView.tsx is the only consumer.
-import type { EntityStatus, TopologyEdge, TopologyNode } from "../api/types";
+import type { EntityStatus, FindingBadge, TopologyEdge, TopologyNode } from "../api/types";
 import { badgeCarriesVlan, isGuestGroupId, isPhysGroupId } from "./projection";
 
 // Edge/entity kind vocabularies mirror internal/inventory/link.go and the
@@ -43,6 +43,9 @@ export interface SwitchPortNic {
    * docs/features/topology.md §3), so the faceplate can mark uplink-bay
    * ports on the management path without a second data fetch. */
   badges: string[];
+  /** T-3501, mirrors TopologyNode.findings — see its doc comment
+   * (api/types.ts). */
+  findings?: FindingBadge[];
   /** T-1907: true when this "port" is actually a collapsed phys-group pill
    * standing in for `count` real NICs (isPhysGroupId(ref)) — the faceplate's
    * uplink-bay equivalent of SwitchAccessPort.isGroup. Its click expands,
@@ -60,6 +63,9 @@ export interface SwitchUplink {
   kind: string;
   status: EntityStatus;
   badges: string[];
+  /** T-3501, mirrors TopologyNode.findings — see its doc comment
+   * (api/types.ts). */
+  findings?: FindingBadge[];
   /** For a bond: its member NICs. For a bare NIC uplink: a single entry for
    * the NIC itself, so the faceplate can render every uplink uniformly. */
   members: SwitchPortNic[];
@@ -77,6 +83,9 @@ export interface SwitchAccessPort {
   label: string;
   status: EntityStatus;
   badges: string[];
+  /** T-3501, mirrors TopologyNode.findings — see its doc comment
+   * (api/types.ts). */
+  findings?: FindingBadge[];
   vid?: number;
   vmid?: number;
   /** True for the synthetic guest-group pill (isGuestGroupId(ref)); `count`
@@ -108,6 +117,12 @@ export interface SwitchModel {
   kind: string;
   status: EntityStatus;
   badges: string[];
+  /** T-3501, mirrors TopologyNode.findings — see its doc comment
+   * (api/types.ts). The reference-node findings (drift on vmbr0,
+   * bridge_no_carrier on vmbr1/vmbr3) all name the bridge itself, so this
+   * chassis-level field is where SwitchFaceplate's chassis-header chip and
+   * pulse read from. */
+  findings?: FindingBadge[];
   uplinks: SwitchUplink[];
   vlans: SwitchVlanIf[];
   accessPorts: SwitchAccessPort[];
@@ -244,6 +259,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
       active,
       neighbor: neighborOfNic.get(ref),
       badges: n?.badges ?? [],
+      findings: n?.findings,
       isGroup,
       count: isGroup ? n?.collapsedCount : undefined,
     };
@@ -257,7 +273,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
       const members = (membersOfBond.get(ref) ?? [])
         .map((m) => nicPort(m, activeMemberEdge.get(`${m}->${ref}`) ?? false))
         .sort((a, b) => a.label.localeCompare(b.label));
-      return { ref, label: n.label, kind: n.kind, status: n.status, badges: n.badges, members };
+      return { ref, label: n.label, kind: n.kind, status: n.status, badges: n.badges, findings: n.findings, members };
     }
     // A bare NIC (or T-1907 phys-group pill) uplink: render it as a
     // one-member uplink so the faceplate treats every uplink uniformly
@@ -270,6 +286,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
       kind: n.kind,
       status: n.status,
       badges: n.badges,
+      findings: n.findings,
       members: [nicPort(ref, true)],
       isGroup,
       count: isGroup ? n.collapsedCount : undefined,
@@ -304,6 +321,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
             label: n?.label ?? "guests",
             status: n?.status ?? "unknown",
             badges: n?.badges ?? [],
+            findings: n?.findings,
             isGroup: true,
             count: n?.collapsedCount,
           };
@@ -315,6 +333,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
           label: n.label,
           status: n.status,
           badges: n.badges,
+          findings: n.findings,
           vid: vidFromBadges(n.badges),
           vmid: vmidFromRef(ref),
           isGroup: false,
@@ -345,6 +364,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
       kind: bridge.kind,
       status: bridge.status,
       badges: bridge.badges,
+      findings: bridge.findings,
       uplinks,
       vlans,
       accessPorts,

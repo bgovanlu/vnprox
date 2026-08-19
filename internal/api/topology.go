@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -208,45 +209,126 @@ func paintMgmtStatus(ctx context.Context, t *topology.Topology, mgmtSvc MgmtStat
 	topology.ApplyMgmtBadges(t, status.Nodes)
 }
 
-// findingBadge marks a topology node/edge as carrying an open finding from
-// any unified-stream producer (drift, lldp, ipam, or health — T-602)
-// (docs/features/topology.md §2: "drift = dashed outline", generalized by
-// T-602 to reflect the whole findings stream, not only drift specifically —
-// the wire value stays "drift" for backward compatibility with the
-// frontend's existing EntityNode.tsx/EntityEdge.tsx check and with
-// docs/api.md's documented badge vocabulary, rather than introducing a
-// second, parallel badge string for the exact same "dashed outline" visual
-// treatment). This decoration is deliberately handler-level, not inside
-// internal/topology itself (the same pattern stalenessFrom above already
-// uses): the pure Project function stays a function of the inventory
-// snapshot alone, and findings are a second, independent input composed on
-// top here.
+// findingBadge is the legacy wire badge T-602 generalized to mean "this
+// entity carries an open finding from any unified-stream producer (drift,
+// lldp, ipam, or health)" — kept verbatim, unchanged meaning, for backward
+// compatibility with any consumer reading docs/api.md's originally-documented
+// badge vocabulary (an MCP client, a webhook payload consumer, a saved
+// dashboard query — anything outside this repo's own frontend, which this
+// change moves off the token; see findingBadgeToken below). Additive-only
+// changes are this codebase's own documented API deprecation policy
+// (docs/architecture.md §13): this token is not removed, renamed, or
+// repurposed, only joined by the new, more precise vocabulary T-3501 adds.
+//
+// T-3501 fixed the actual defect this token's own T-602 comment predicted:
+// once the frontend started rendering the literal word "drift" and pulsing
+// on it, a single badge meaning "any finding, any severity" stopped being
+// honest for a health/lldp/ipam finding. The fix is additive, not a
+// silent narrowing of this token's condition (still "named by at least one
+// open finding of any kind", exactly as documented) — see findingBadgeToken
+// (the new "finding:<source>:<severity>" token the frontend now actually
+// keys its rendering off) and Node.Findings/Edge.Findings (topology/types.go
+// — the finding's Check/Detail text, for hover/selection).
 const findingBadge = "drift"
 
-// paintDrift adds findingBadge to every node in t whose id is named by one of
-// findings' affected Refs (T-305's Finding.Refs — always concrete entity
-// refs, e.g. "bridge:pve2:vmbr0", never synthetic guest-group ids). Kept
-// unchanged as handleTopology's fallback when no FindingsService is wired.
-func paintDrift(t *topology.Topology, fs []drift.Finding) {
-	affected := make(map[string]bool)
-	for _, f := range fs {
-		for _, ref := range f.Refs {
-			affected[ref] = true
+// findingBadgePrefix opens T-3501's new badge token,
+// "finding:<source>:<severity>" — one per distinct Source among an entity's
+// open findings, carrying that source's worst Severity
+// (findingSeverityRank). Source is one of internal/findings.Source's wire
+// values; Severity is "error"|"warning"|"info". This is the additive,
+// source-and-severity-bearing form docs/api.md's badge vocabulary now
+// documents as the one the frontend actually renders — findingBadge (bare
+// "drift") stays wire-present alongside it for the reason its own doc
+// comment gives.
+const findingBadgePrefix = "finding:"
+
+// findingSeverityRank orders severity strings for the "worst of this
+// source's findings on this entity" reduction findingBadgeTokens performs —
+// mirrors internal/findings' own unexported severityRank (that package's
+// table-driven notify.go threshold logic), duplicated here rather than
+// exported across the package boundary for one three-entry table. An
+// unrecognized severity ranks below every known one, matching
+// internal/findings' own tolerance.
+var findingSeverityRank = map[string]int{
+	findings.SeverityInfo:    0,
+	findings.SeverityWarning: 1,
+	findings.SeverityError:   2,
+}
+
+// findingBadgeTokens turns one entity's accumulated FindingBadges into the
+// badges[] tokens to append: the legacy bare findingBadge (unconditionally,
+// whenever fbs is non-empty — see findingBadge's doc comment) plus one
+// findingBadgePrefix token per distinct Source, carrying that source's worst
+// Severity. Sources are sorted for deterministic output (stable JSON across
+// otherwise-identical requests, and stable test fixtures).
+func findingBadgeTokens(fbs []topology.FindingBadge) []string {
+	if len(fbs) == 0 {
+		return nil
+	}
+	worst := make(map[string]string, len(fbs))
+	for _, fb := range fbs {
+		if cur, ok := worst[fb.Source]; !ok || findingSeverityRank[fb.Severity] > findingSeverityRank[cur] {
+			worst[fb.Source] = fb.Severity
 		}
 	}
-	paintBadge(t, affected)
+	sources := make([]string, 0, len(worst))
+	for s := range worst {
+		sources = append(sources, s)
+	}
+	sort.Strings(sources)
+	tokens := make([]string, 0, len(sources)+1)
+	tokens = append(tokens, findingBadge)
+	for _, s := range sources {
+		tokens = append(tokens, findingBadgePrefix+s+":"+worst[s])
+	}
+	return tokens
+}
+
+// paintDrift adds findingBadge/findingBadgeTokens to every node in t whose id
+// is named by one of fs' affected Refs (T-305's Finding.Refs — always
+// concrete entity refs, e.g. "bridge:pve2:vmbr0", never synthetic
+// guest-group ids). Kept as handleTopology's fallback when no
+// FindingsService is wired; Source is hardcoded to internal/findings'
+// "drift" wire value since internal/drift.Finding predates the unified
+// stream's Source tag and has no other source to report. Unlike
+// paintFindings, this fallback path does not surface ref-less findings on
+// Topology.UnrefFindings — internal/drift's own check families always name
+// concrete entities (unlike health/service_down), so there is nothing to
+// lose by leaving that case to the unified-stream path.
+func paintDrift(t *topology.Topology, fs []drift.Finding) {
+	byRef := make(map[string][]topology.FindingBadge)
+	for _, f := range fs {
+		fb := topology.FindingBadge{Source: string(findings.SourceDrift), Severity: f.Severity, Check: f.Check, Detail: f.Detail}
+		for _, ref := range f.Refs {
+			byRef[ref] = append(byRef[ref], fb)
+		}
+	}
+	paintBadges(t, byRef)
 }
 
 // paintFindings is paintDrift's T-602 generalization: same mechanism, fed
-// from the unified findings stream's Refs instead of drift's alone.
+// from the unified findings stream instead of drift's alone, additionally
+// carrying each Finding's own Source/Check/Detail onto Node.Findings (T-3501)
+// and routing a Refs-less finding (health/service_down for dnsmasq/frr on the
+// reference node — nothing to name) onto Topology.UnrefFindings instead of
+// dropping it, per that task's AC5.
 func paintFindings(t *topology.Topology, fs []findings.Finding) {
-	affected := make(map[string]bool)
+	byRef := make(map[string][]topology.FindingBadge)
+	var unref []topology.UnrefFinding
 	for _, f := range fs {
+		fb := topology.FindingBadge{Source: string(f.Source), Severity: f.Severity, Check: f.Check, Detail: f.Detail}
+		if len(f.Refs) == 0 {
+			unref = append(unref, topology.UnrefFinding{FindingBadge: fb, Nodes: append([]string{}, f.Nodes...)})
+			continue
+		}
 		for _, ref := range f.Refs {
-			affected[ref] = true
+			byRef[ref] = append(byRef[ref], fb)
 		}
 	}
-	paintBadge(t, affected)
+	paintBadges(t, byRef)
+	if len(unref) > 0 {
+		t.UnrefFindings = append(t.UnrefFindings, unref...)
+	}
 }
 
 // qosShapedBadge is T-1505's shaping-active badge token — additive to
@@ -282,14 +364,27 @@ func paintQosBadges(ctx context.Context, t *topology.Topology, qosSvc QosShapeSo
 	}
 }
 
-func paintBadge(t *topology.Topology, affected map[string]bool) {
-	if len(affected) == 0 {
+// paintBadges applies byRef's accumulated FindingBadges to every node whose
+// ID it names: badges[] gets findingBadgeTokens' output appended (the legacy
+// bare findingBadge plus one findingBadgePrefix token per source), and
+// Node.Findings gets the full FindingBadge list appended (Check/Detail
+// included, for hover/selection — see topology/types.go's doc comment). Only
+// Nodes are painted, matching this function's pre-T-3501 behavior: a
+// finding's Refs name inventory entities, and an Edge has no Ref of its own
+// to be named by (EntityEdge.tsx's badge check exists for forward
+// consistency with Node's vocabulary, not because any producer currently
+// populates it).
+func paintBadges(t *topology.Topology, byRef map[string][]topology.FindingBadge) {
+	if len(byRef) == 0 {
 		return
 	}
 	for i, n := range t.Nodes {
-		if affected[n.ID] {
-			t.Nodes[i].Badges = append(append([]string{}, n.Badges...), findingBadge)
+		fbs, ok := byRef[n.ID]
+		if !ok {
+			continue
 		}
+		t.Nodes[i].Badges = append(append([]string{}, n.Badges...), findingBadgeTokens(fbs)...)
+		t.Nodes[i].Findings = append(append([]topology.FindingBadge{}, n.Findings...), fbs...)
 	}
 }
 

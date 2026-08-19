@@ -3,37 +3,37 @@
 exports[`a11y proxy labels: evpn-lab (SDN zone/vnet/subnet kinds, drift + mgmt-path badges) > matches the committed snapshot (id/kind/ariaLabel per entity) 1`] = `
 [
   {
-    "ariaLabel": "bridge vmbr0, status ok, carries the management IP, has configuration drift",
+    "ariaLabel": "bridge vmbr0, status ok, carries the management IP, badges: drift",
     "id": "bridge:pve1:vmbr0",
     "kind": "bridge",
   },
   {
-    "ariaLabel": "bridge vmbr1, status unknown, has configuration drift",
+    "ariaLabel": "bridge vmbr1, status unknown, badges: drift",
     "id": "bridge:pve1:vmbr1",
     "kind": "bridge",
   },
   {
-    "ariaLabel": "bridge vnet-tenant-b, status unknown, has configuration drift",
+    "ariaLabel": "bridge vnet-tenant-b, status unknown, badges: drift",
     "id": "bridge:pve1:vnet-tenant-b",
     "kind": "bridge",
   },
   {
-    "ariaLabel": "bridge vmbr0, status ok, carries the management IP, has configuration drift",
+    "ariaLabel": "bridge vmbr0, status ok, carries the management IP, badges: drift",
     "id": "bridge:pve2:vmbr0",
     "kind": "bridge",
   },
   {
-    "ariaLabel": "bridge vmbr1, status unknown, has configuration drift",
+    "ariaLabel": "bridge vmbr1, status unknown, badges: drift",
     "id": "bridge:pve2:vmbr1",
     "kind": "bridge",
   },
   {
-    "ariaLabel": "bridge vnet-tenant-b, status unknown, has configuration drift",
+    "ariaLabel": "bridge vnet-tenant-b, status unknown, badges: drift",
     "id": "bridge:pve2:vnet-tenant-b",
     "kind": "bridge",
   },
   {
-    "ariaLabel": "bridge vmbr0, status ok, carries the management IP, has configuration drift",
+    "ariaLabel": "bridge vmbr0, status ok, carries the management IP, badges: drift",
     "id": "bridge:pve3:vmbr0",
     "kind": "bridge",
   },
@@ -108,7 +108,7 @@ exports[`a11y proxy labels: evpn-lab (SDN zone/vnet/subnet kinds, drift + mgmt-p
     "kind": "sdn-subnet",
   },
   {
-    "ariaLabel": "sdn-subnet 192.168.60.0/24, status ok, has configuration drift",
+    "ariaLabel": "sdn-subnet 192.168.60.0/24, status ok, badges: drift",
     "id": "sdn-subnet::192.168.60.0/24",
     "kind": "sdn-subnet",
   },
@@ -118,7 +118,7 @@ exports[`a11y proxy labels: evpn-lab (SDN zone/vnet/subnet kinds, drift + mgmt-p
     "kind": "sdn-vnet",
   },
   {
-    "ariaLabel": "sdn-vnet vnet-tenant-b (tenant-b), status ok, has configuration drift",
+    "ariaLabel": "sdn-vnet vnet-tenant-b (tenant-b), status ok, badges: drift",
     "id": "sdn-vnet::evpnz/vnet-tenant-b",
     "kind": "sdn-vnet",
   },
@@ -143,7 +143,7 @@ exports[`a11y proxy labels: evpn-lab (SDN zone/vnet/subnet kinds, drift + mgmt-p
     "kind": "sdn-vnet",
   },
   {
-    "ariaLabel": "sdn-zone evpnz, status ok, badges: type=evpn, has configuration drift",
+    "ariaLabel": "sdn-zone evpnz, status ok, badges: type=evpn, drift",
     "id": "sdn-zone::evpnz",
     "kind": "sdn-zone",
   },
@@ -153,7 +153,7 @@ exports[`a11y proxy labels: evpn-lab (SDN zone/vnet/subnet kinds, drift + mgmt-p
     "kind": "sdn-zone",
   },
   {
-    "ariaLabel": "sdn-zone simplez, status down, badges: type=simple, has configuration drift",
+    "ariaLabel": "sdn-zone simplez, status down, badges: type=simple, drift",
     "id": "sdn-zone::simplez",
     "kind": "sdn-zone",
   },
@@ -163,7 +163,7 @@ exports[`a11y proxy labels: evpn-lab (SDN zone/vnet/subnet kinds, drift + mgmt-p
     "kind": "sdn-zone",
   },
   {
-    "ariaLabel": "sdn-zone vxlanz, status ok, badges: type=vxlan, has configuration drift",
+    "ariaLabel": "sdn-zone vxlanz, status ok, badges: type=vxlan, drift",
     "id": "sdn-zone::vxlanz",
     "kind": "sdn-zone",
   },

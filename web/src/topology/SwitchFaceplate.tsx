@@ -7,8 +7,16 @@
 // stays a straightforward renderer branching on a SwitchModel.
 import type { ReactNode } from "react";
 import clsx from "clsx";
-import type { EntityStatus } from "../api/types";
+import type { EntityStatus, FindingBadge } from "../api/types";
 import { badgeAriaParts } from "./a11yBridge";
+import {
+  findingBadgeClass,
+  findingChipText,
+  findingDetailText,
+  hasOpenFinding,
+  parseFindingBadge,
+  shouldPulse,
+} from "./findingBadges";
 import { useReducedMotion } from "../lib/useReducedMotion";
 import type { SwitchAccessPort, SwitchModel, SwitchPortNic, SwitchUplink } from "./switchModel";
 
@@ -26,8 +34,32 @@ const BOND_KINDS = new Set(["bond", "ovs-bond"]);
  * `getByLabel("vmbr0 switch")`), so the name stays exactly as before and
  * this adds richer detail via the separate, standard accessible-description
  * channel instead of changing it. */
-function switchAriaDescription(kind: string, status: EntityStatus, badges: readonly string[]): string {
-  return [kind, `status ${status}`, ...badgeAriaParts(badges)].join(", ");
+function switchAriaDescription(
+  kind: string,
+  status: EntityStatus,
+  badges: readonly string[],
+  findings?: readonly FindingBadge[],
+): string {
+  return [kind, `status ${status}`, ...badgeAriaParts(badges, findings)].join(", ");
+}
+
+/** T-3501: one finding chip — glyph + source name, coloured by severity,
+ * with the finding's own detail text as its hover title (AC4: "the operator
+ * should not have to leave the map"). Shared by every badge-rendering site
+ * in this file (chassis header, uplink module, and — via NicPort/AccessPort
+ * — any NIC/guest-nic a future producer names directly) so the chip looks
+ * and behaves identically wherever it appears. */
+function FindingChip({ token, findings }: { token: string; findings: readonly FindingBadge[] | undefined }) {
+  const parsed = parseFindingBadge(token);
+  if (!parsed) return null;
+  return (
+    <span
+      title={findingDetailText(parsed, findings)}
+      className={clsx("rounded px-1 py-0.5 text-[10px] font-medium", findingBadgeClass(parsed.severity))}
+    >
+      {findingChipText(parsed)}
+    </span>
+  );
 }
 
 /** The hidden description span `switchAriaDescription` feeds, referenced by
@@ -123,6 +155,10 @@ function NicPort({
   onSelect: (ref: string) => void;
   onExpandGroup: (groupId: string) => void;
 }) {
+  // Called unconditionally, before the isGroup early return below (Rules of
+  // Hooks) — a collapsed phys-group pill never carries its own findings, so
+  // the pulse computation is simply unused on that branch.
+  const nicReducedMotion = useReducedMotion();
   // T-1907: a collapsed phys-group pill standing in for `count` real NICs —
   // same "dashed border, click to expand" affordance as a guest-group
   // access port, reusing onExpandGroup instead of onSelect.
@@ -145,6 +181,8 @@ function NicPort({
   }
   const onMgmtPath = nic.badges.includes("mgmt-path");
   const descId = `${nic.ref}-a11y-desc`;
+  const nicHasFinding = hasOpenFinding(nic.badges);
+  const nicPulses = nicHasFinding && shouldPulse(nic.badges) && !nicReducedMotion;
   return (
     <>
       <button
@@ -160,6 +198,11 @@ function NicPort({
           "flex items-center gap-1.5 rounded border bg-white px-2 py-1 text-left text-xs hover:border-accent-500 dark:bg-slate-900",
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500",
           onMgmtPath ? "border-amber-400 dark:border-amber-700" : "border-slate-300 dark:border-slate-600",
+          // T-3501: a NIC directly named by an open finding gets the same
+          // dashed-outline/severity-gated-pulse treatment as a bridge chassis
+          // (below) — see findingBadges.ts's shouldPulse doc comment.
+          nicHasFinding && "border-dashed",
+          nicPulses && "animate-pulse",
         )}
       >
         <Led status={nic.status} />
@@ -179,9 +222,12 @@ function NicPort({
             mgmt-path
           </span>
         )}
+        {nic.badges.map((b) => (
+          <FindingChip key={b} token={b} findings={nic.findings} />
+        ))}
         <NeighborTag neighbor={nic.neighbor} />
       </button>
-      <A11yDesc id={descId} text={switchAriaDescription("NIC", nic.status, nic.badges)} />
+      <A11yDesc id={descId} text={switchAriaDescription("NIC", nic.status, nic.badges, nic.findings)} />
     </>
   );
 }
@@ -218,22 +264,30 @@ function UplinkModule({
       >
         <Led status={uplink.status} />
         <span className="font-mono">{uplink.label}</span>
-        {uplink.badges.map((b) => (
-          <span
-            key={b}
-            title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : undefined}
-            className={clsx(
-              "rounded px-1 text-[9px]",
-              isMgmtBadge(b)
-                ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
-                : "bg-sky-200/70 text-sky-800 dark:bg-sky-900 dark:text-sky-200",
-            )}
-          >
-            {b}
-          </span>
-        ))}
+        {uplink.badges.map((b) => {
+          if (b === "drift") return null; // T-3501: legacy wire-compat token, never its own chip.
+          const parsed = parseFindingBadge(b);
+          if (parsed) return <FindingChip key={b} token={b} findings={uplink.findings} />;
+          return (
+            <span
+              key={b}
+              title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : undefined}
+              className={clsx(
+                "rounded px-1 text-[9px]",
+                isMgmtBadge(b)
+                  ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                  : "bg-sky-200/70 text-sky-800 dark:bg-sky-900 dark:text-sky-200",
+              )}
+            >
+              {b}
+            </span>
+          );
+        })}
       </button>
-      <A11yDesc id={uplinkDescId} text={switchAriaDescription(uplink.kind, uplink.status, uplink.badges)} />
+      <A11yDesc
+        id={uplinkDescId}
+        text={switchAriaDescription(uplink.kind, uplink.status, uplink.badges, uplink.findings)}
+      />
       <div className="flex flex-wrap gap-1">
         {uplink.members.map((m) => (
           <NicPort key={m.ref} nic={m} onSelect={onSelect} onExpandGroup={onExpandGroup} />
@@ -315,7 +369,7 @@ function AccessPort({
           {port.vid !== undefined && <span className="ml-0.5 text-violet-700 dark:text-violet-300">·{port.vid}</span>}
         </span>
       </button>
-      <A11yDesc id={portDescId} text={switchAriaDescription("guest-nic", port.status, port.badges)} />
+      <A11yDesc id={portDescId} text={switchAriaDescription("guest-nic", port.status, port.badges, port.findings)} />
     </>
   );
 }
@@ -350,6 +404,14 @@ export function SwitchFaceplate({
   const selected = selectedId === model.ref;
   const chassisDescId = `${model.ref}-a11y-desc`;
   const reducedMotion = useReducedMotion();
+  // T-3501: dashed outline stays source-agnostic (any open finding earns
+  // it — the pre-existing affordance), but the pulse is now gated on
+  // severity instead of firing uniformly for every open finding regardless
+  // of what actually fired. See findingBadges.ts's shouldPulse doc comment
+  // for why a legacy-badge-only entity still pulses (nothing here regresses
+  // an un-upgraded producer to motionless).
+  const chassisHasFinding = hasOpenFinding(model.badges);
+  const chassisPulses = chassisHasFinding && shouldPulse(model.badges);
   return (
     <div
       className={clsx(
@@ -368,11 +430,15 @@ export function SwitchFaceplate({
         // contrast of a single glyph. See e2e/a11y.spec.ts, which now waits
         // for a stale entity and measures it instead of forcing it opaque.
         stale && "grayscale",
-        // T-905: drift = pulse when motion is allowed (falls back to the
-        // model's own static status border/dashed treatment otherwise) —
-        // this faceplate's own equivalent of EntityNode's drift pulse, kept
-        // in sync so the same entity reads the same way in either view.
-        model.badges.includes("drift") && !reducedMotion && "animate-pulse",
+        // T-905/T-3501: an open finding gets a dashed outline (additive,
+        // matching EntityNode's own convention — this container had no such
+        // treatment pre-T-3501, only the pulse below, which left the two
+        // views' reduced-motion fallback inconsistent: EntityNode's dashed
+        // border survived motion being disabled, this chassis had nothing
+        // to fall back to). Pulses (Tailwind's `animate-pulse`) only when
+        // motion is allowed AND severity warrants it.
+        chassisHasFinding && "border-dashed",
+        chassisHasFinding && chassisPulses && !reducedMotion && "animate-pulse",
       )}
     >
       {/* Chassis header — aria-label stays the plain "<name> switch"
@@ -398,20 +464,32 @@ export function SwitchFaceplate({
             against the dark header tint) was already fine. */}
         <span className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-400">{model.kind}</span>
         <span className="ml-auto flex flex-wrap gap-1">
-          {model.badges.map((b) => (
-            <span
-              key={b}
-              title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : undefined}
-              className={clsx("rounded px-1 py-0.5 text-[10px]", mgmtBadgeClass(b))}
-            >
-              {b}
-            </span>
-          ))}
+          {model.badges.map((b) => {
+            // T-3501: the legacy bare "drift" badge stays wire-present for
+            // back-compat (findingBadges.ts) but is never its own chip any
+            // more — the literal word "drift" printed here regardless of
+            // what actually fired (a carrier error, a health warning, ...)
+            // was this task's core defect. A "finding:<source>:<severity>"
+            // token renders as FindingChip instead; every other badge
+            // (mgmt/corosync/mgmt-path/qos-shaped/plain) is unchanged.
+            if (b === "drift") return null;
+            const parsed = parseFindingBadge(b);
+            if (parsed) return <FindingChip key={b} token={b} findings={model.findings} />;
+            return (
+              <span
+                key={b}
+                title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : undefined}
+                className={clsx("rounded px-1 py-0.5 text-[10px]", mgmtBadgeClass(b))}
+              >
+                {b}
+              </span>
+            );
+          })}
         </span>
       </button>
       <A11yDesc
         id={chassisDescId}
-        text={switchAriaDescription(`${model.kind} switch`, model.status, model.badges)}
+        text={switchAriaDescription(`${model.kind} switch`, model.status, model.badges, model.findings)}
       />
 
       {showUplinks && model.uplinks.length > 0 && (

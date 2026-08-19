@@ -8,9 +8,17 @@
 // painting/dim/highlight/selection behavior (docs/features/topology.md §2).
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import clsx from "clsx";
-import type { EntityStatus, SimVerdict, VerifyOutcome } from "../api/types";
+import type { EntityStatus, FindingBadge, SimVerdict, VerifyOutcome } from "../api/types";
 import { entityAriaLabel } from "./a11yBridge";
 import { useReducedMotion } from "../lib/useReducedMotion";
+import {
+  findingBadgeClass,
+  findingChipText,
+  findingDetailText,
+  hasOpenFinding,
+  parseFindingBadge,
+  shouldPulse,
+} from "./findingBadges";
 
 /** This node's role along a path-simulator overlay (T-504): "path" is any
  * hop on the traced route, "blocking" is the enforcement-point endpoint a
@@ -23,6 +31,12 @@ export interface EntityNodeData extends Record<string, unknown> {
   kind: string;
   status: EntityStatus;
   badges: string[];
+  /** T-3501, additive to badges: one entry per open finding naming this
+   * entity, carrying its own check/detail text — see TopologyNode.findings'
+   * doc comment (api/types.ts). Absent on entities/fixtures that predate
+   * this field; every helper in findingBadges.ts treats that the same as
+   * an empty list. */
+  findings?: FindingBadge[];
   dimmed: boolean;
   /** This node's band is rendering last-known data because a node-scoped
    * collector source is stale (docs/features/topology.md §5: "its band
@@ -162,7 +176,12 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
   // the plain opacity/color transition below, falling back to the same
   // static dashed-border/badge treatment minus the animation.
   const reducedMotion = useReducedMotion();
-  const drifting = data.badges.includes("drift");
+  // T-3501: the dashed-outline affordance stays source-agnostic (any open
+  // finding earns it, exactly as the old bare "drift" badge did), but the
+  // pulse is now gated on severity — see shouldPulse's doc comment for why
+  // an entity whose only signal is the legacy fallback badge still pulses.
+  const hasFinding = hasOpenFinding(data.badges);
+  const pulseWorthy = shouldPulse(data.badges);
   return (
     <div
       role="button"
@@ -207,15 +226,17 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
         data.stale && "grayscale",
         data.highlighted && "ring-2 ring-blue-500",
         selected && "outline outline-2 outline-offset-1 outline-blue-600",
-        // drift = dashed outline (docs/features/topology.md §2), additive
-        // to (not replacing) the status-driven border color above — a
-        // "down"/"degraded" node can also carry an open drift finding.
-        // T-905: pulses (via Tailwind's built-in `animate-pulse`) when
-        // motion is allowed, static dashed border otherwise — the
-        // "unconfirmed-changeset pulse, drift dash" reduced-motion case
-        // this task's card names explicitly.
-        drifting && "border-dashed",
-        drifting && !reducedMotion && "animate-pulse",
+        // Open finding = dashed outline (docs/features/topology.md §2),
+        // additive to (not replacing) the status-driven border color above
+        // — a "down"/"degraded" node can also carry an open finding. T-905:
+        // pulses (via Tailwind's built-in `animate-pulse`) when motion is
+        // allowed AND the finding's severity warrants it (T-3501 —
+        // shouldPulse reserves motion for "error"), static dashed border
+        // otherwise — the "unconfirmed-changeset pulse, drift dash"
+        // reduced-motion case this task's card names explicitly never
+        // collapses to no treatment at all, only to the static one.
+        hasFinding && "border-dashed",
+        hasFinding && pulseWorthy && !reducedMotion && "animate-pulse",
         // Path simulator overlay (T-504) wins visually over the plain hover
         // ring above (a simulated trace is a more deliberate, rarer action
         // than a passive hover) and marks the missing-link break with a
@@ -289,30 +310,50 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
       </div>
       {data.badges.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {data.badges.map((b) => (
-            <span
-              key={b}
-              title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : isQosShapedBadge(b) ? QOS_SHAPED_LABEL : undefined}
-              className={clsx(
-                "rounded px-1 py-0.5 text-[10px]",
-                isMgmtBadge(b)
-                  ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
-                  : isQosShapedBadge(b)
-                    ? "bg-blue-200/70 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
-                    // dark:text-slate-200, not -300. At 10px these badges need
-                    // the full 4.5:1 (they are below the 18.66px large-text
-                    // threshold), and slate-300 over a translucent
-                    // slate-700/70 sitting on a tinted node measured 4.35–4.39
-                    // — under, but only just, and only on some tints, so the
-                    // axe gate caught it on one run and not the two before it
-                    // (T-2108). slate-200 clears it on every tint with margin
-                    // rather than landing on the threshold again.
-                    : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-200",
-              )}
-            >
-              {b}
-            </span>
-          ))}
+          {data.badges.map((b) => {
+            // T-3501: the legacy bare "drift" badge stays on the wire for
+            // back-compat (see findingBadges.ts's doc comment) but is never
+            // rendered as its own chip any more — a "finding:" token (below)
+            // or, failing that, nothing, replaces the literal word "drift"
+            // this chip used to print regardless of what actually fired.
+            if (b === "drift") return null;
+            const parsed = parseFindingBadge(b);
+            if (parsed) {
+              return (
+                <span
+                  key={b}
+                  title={findingDetailText(parsed, data.findings)}
+                  className={clsx("rounded px-1 py-0.5 text-[10px] font-medium", findingBadgeClass(parsed.severity))}
+                >
+                  {findingChipText(parsed)}
+                </span>
+              );
+            }
+            return (
+              <span
+                key={b}
+                title={isMgmtBadge(b) ? MGMT_BADGE_LABEL[b] : isQosShapedBadge(b) ? QOS_SHAPED_LABEL : undefined}
+                className={clsx(
+                  "rounded px-1 py-0.5 text-[10px]",
+                  isMgmtBadge(b)
+                    ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                    : isQosShapedBadge(b)
+                      ? "bg-blue-200/70 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
+                      // dark:text-slate-200, not -300. At 10px these badges need
+                      // the full 4.5:1 (they are below the 18.66px large-text
+                      // threshold), and slate-300 over a translucent
+                      // slate-700/70 sitting on a tinted node measured 4.35–4.39
+                      // — under, but only just, and only on some tints, so the
+                      // axe gate caught it on one run and not the two before it
+                      // (T-2108). slate-200 clears it on every tint with margin
+                      // rather than landing on the threshold again.
+                      : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-200",
+                )}
+              >
+                {b}
+              </span>
+            );
+          })}
         </div>
       )}
       {isPill && (

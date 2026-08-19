@@ -88,6 +88,32 @@ export const ALL_LAYERS: readonly Layer[] = ["phys", "l2", "sdn", "guest"];
  * to work around client-side. */
 export type EntityStatus = "ok" | "down" | "degraded" | "unknown";
 
+/** One open finding naming an entity (T-3501, `internal/topology.FindingBadge`)
+ * — the source-and-severity-bearing form that replaced the single bare
+ * `"drift"` wire badge's "which kind, how bad" gap. `badges[]` still carries
+ * a compact `"finding:<source>:<severity>"` token per distinct source (one
+ * per source, worst severity) plus the legacy bare `"drift"` token for wire
+ * back-compat (docs/api.md) — this is the richer form carrying the finding's
+ * own `check`/`detail` text, for hover/selection (`findingBadges.ts`'s
+ * `findingsFor` groups these by source). `source` is `FindingSource` except
+ * for the drift-only fallback path (`paintDrift`, no `FindingsService`
+ * wired), which always reports `"drift"`. */
+export interface FindingBadge {
+  source: FindingSource;
+  severity: Severity;
+  check: string;
+  detail: string;
+}
+
+/** A `FindingBadge` for a finding with no entity refs at all — nothing to
+ * paint it on (T-3501 AC5, e.g. `health/service_down` for a bare service
+ * name like dnsmasq/frr). `nodes` is the finding's own `Nodes` list, carried
+ * here since there is no ref to attach it to. Surfaced via
+ * `TopologyResponse.unrefFindings`, rendered by `UnrefFindingsBanner`. */
+export interface UnrefFinding extends FindingBadge {
+  nodes: string[];
+}
+
 export interface TopologyNode {
   id: string;
   kind: string;
@@ -98,6 +124,10 @@ export interface TopologyNode {
   nodeGroup: string;
   status: EntityStatus;
   badges: string[];
+  /** T-3501, additive to `badges`: one entry per open finding naming this
+   * node, carrying its own check/detail text. Absent/empty when the entity
+   * carries no open finding. */
+  findings?: FindingBadge[];
   /** Present only on synthetic "guest-group"/"phys-group" pill nodes. */
   collapsedCount?: number;
   /** Present only on synthetic "phys-group:<node>" per-node physical-layer
@@ -115,6 +145,11 @@ export interface TopologyEdge {
   kind: string;
   status: EntityStatus;
   badges: string[];
+  /** T-3501, mirrors TopologyNode.findings — see its doc comment. Present
+   * for shape symmetry; no producer currently names an edge in a finding's
+   * refs (a finding names entities, and an edge has no ref of its own), so
+   * this is always empty/absent from the live backend today. */
+  findings?: FindingBadge[];
 }
 
 /** One collector poll loop's freshness (docs/api.md's GET /topology
@@ -145,6 +180,10 @@ export interface TopologyResponse {
   nodes: TopologyNode[];
   edges: TopologyEdge[];
   layers: Layer[];
+  /** T-3501 AC5: every open finding whose refs are empty, so a
+   * `health/service_down` finding for a bare service name is not silently
+   * invisible just because it names no map entity. See `UnrefFinding`. */
+  unrefFindings?: UnrefFinding[];
   generatedAt: number;
 }
 

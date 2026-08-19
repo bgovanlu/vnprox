@@ -92,8 +92,24 @@ type Node struct {
 	// what Detail() already answers, same as the guest-group path. Omitted
 	// (nil) on every other node kind, including guest-group pills, which
 	// keep their existing target-lookup expansion unchanged (AC3).
-	Members        []string `json:"members,omitempty"`
-	CollapsedCount int      `json:"collapsedCount,omitempty"`
+	Members []string `json:"members,omitempty"`
+	// Findings is T-3501's source-and-severity-bearing form, additive to
+	// Badges: one entry per open finding (any unified-stream producer —
+	// drift, lldp, ipam, health) naming this node's ID in its Refs. Badges
+	// keeps carrying the compact "finding:<source>:<severity>" token (one
+	// per distinct source, worst severity) plus the legacy bare "drift"
+	// token for wire back-compat (docs/api.md) — this field is where the
+	// finding's own Check/Detail text lives, so the frontend can surface
+	// "why" on hover/selection without a second round trip. Never set by
+	// Project itself (nil on the pure projection); populated by the same
+	// handler-level decoration Badges already gets
+	// (paintFindings/paintDrift in internal/api/topology.go).
+	//
+	// Ahead of CollapsedCount, not after it: fieldalignment packs the
+	// pointer-bearing fields before the int, the same reason Members sits
+	// where it does.
+	Findings       []FindingBadge `json:"findings,omitempty"`
+	CollapsedCount int            `json:"collapsedCount,omitempty"`
 }
 
 // Edge is one rendered relationship, per the same rendering contract:
@@ -104,6 +120,38 @@ type Edge struct {
 	Kind   string   `json:"kind"`
 	Status Status   `json:"status"`
 	Badges []string `json:"badges"`
+	// Findings mirrors Node.Findings (see its doc comment) — present for
+	// symmetry with EntityEdge.tsx's existing badge-vocabulary check, even
+	// though no producer currently names an edge id in a finding's Refs
+	// (findings name entities, and an edge has no Ref of its own).
+	Findings []FindingBadge `json:"findings,omitempty"`
+}
+
+// FindingBadge is one open finding naming an entity, carried on Node.Findings
+// / Edge.Findings (T-3501). Source is one of internal/findings.Source's
+// values ("drift" for the fallback-only paintDrift path, which predates the
+// unified stream and has no other source to report). Severity is
+// "error"|"warning"|"info" (internal/findings.Severity's vocabulary — the
+// same one internal/drift.Finding.Severity already used). Check and Detail
+// are the finding's own machine check-id and human-readable explanation
+// (GET /findings' own shape) — this is the "why" the frontend renders on
+// hover/selection instead of sending the operator to a separate panel.
+type FindingBadge struct {
+	Source   string `json:"source"`
+	Severity string `json:"severity"`
+	Check    string `json:"check"`
+	Detail   string `json:"detail"`
+}
+
+// UnrefFinding is a FindingBadge for a finding whose Refs are empty — T-3501
+// AC5's "findings with no entity refs must not paint nothing anywhere"
+// requirement (health/service_down for a bare service name like dnsmasq/frr
+// has nothing to name: a service isn't an inventory entity). Nodes carries
+// the finding's own Nodes list (which cluster node(s) it concerns) since
+// there is no entity ref to attach it to.
+type UnrefFinding struct {
+	FindingBadge
+	Nodes []string `json:"nodes"`
 }
 
 // Topology is the full GET /api/v1/topology response body (docs/api.md:
@@ -117,11 +165,16 @@ type Edge struct {
 // omitted when no collector status is available (tests, collector failed to
 // initialize).
 type Topology struct {
-	Staleness   *Staleness `json:"staleness,omitempty"`
-	Nodes       []Node     `json:"nodes"`
-	Edges       []Edge     `json:"edges"`
-	Layers      []Layer    `json:"layers"`
-	GeneratedAt int64      `json:"generatedAt"`
+	Staleness *Staleness `json:"staleness,omitempty"`
+	Nodes     []Node     `json:"nodes"`
+	Edges     []Edge     `json:"edges"`
+	Layers    []Layer    `json:"layers"`
+	// UnrefFindings (T-3501) carries every open finding whose Refs are
+	// empty — see UnrefFinding's doc comment. Never produced by Project;
+	// populated by the same handler-level decoration Nodes[].Findings gets.
+	// Omitted (nil) when there are none, matching Staleness's convention.
+	UnrefFindings []UnrefFinding `json:"unrefFindings,omitempty"`
+	GeneratedAt   int64          `json:"generatedAt"`
 }
 
 // Staleness summarizes how fresh the inventory data behind a Topology

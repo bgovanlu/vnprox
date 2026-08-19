@@ -27,9 +27,11 @@
 // Nothing here imports React or a canvas — plain data in, plain data out — so
 // the whole a11y contract is unit-testable (a11yBridge.test.ts).
 import type { Node as FlowNode } from "@xyflow/react";
+import type { FindingBadge } from "../api/types";
 import type { EntityNodeData } from "./EntityNode";
 import type { Viewport, Size, Rect } from "./canvasScene";
 import { nodeRect, graphToScreen, DEFAULT_NODE_SIZE } from "./canvasScene";
+import { findingsForSource, parseFindingBadge, parsedFindingBadges } from "./findingBadges";
 
 /** The badge tokens that get an amber "management path" treatment on the map
  * (docs/features/topology.md §3) — mirrored here so the accessible label
@@ -47,20 +49,41 @@ const MGMT_BADGE_PHRASE: Record<string, string> = {
  * so every DOM entity that carries this same badge vocabulary but isn't a
  * canvas `EntityNodeData` (the switch faceplate's chassis/uplink/port
  * buttons, `SwitchFaceplate.tsx`/`SwitchView.tsx`) can build an identically
- * worded label without hand-rolling the mgmt/corosync/mgmt-path/drift
+ * worded label without hand-rolling the mgmt/corosync/mgmt-path/finding
  * phrasing a second time. The management-path trio is spelled out in
- * words; "drift" gets its own sentence; every other badge is listed
- * verbatim in one trailing "badges: …" part.
+ * words; every open finding (T-3501's `"finding:<source>:<severity>"`
+ * tokens) gets its own sentence naming its severity, source, and — when
+ * `findings` (the entity's full `Node.Findings`/`Edge.Findings` list) is
+ * supplied — its own `detail` text, so a keyboard/screen-reader user learns
+ * *why* without leaving the map, the same requirement the visible hover
+ * tooltip satisfies for a sighted user (T-3501 AC4). Every other badge is
+ * listed verbatim in one trailing "badges: …" part.
+ *
+ * This replaces the single fixed "has configuration drift" sentence T-602's
+ * generalization left behind: that sentence fired for a health/lldp/ipam
+ * finding exactly as it did for genuine drift, which is the same "wrong
+ * word" defect T-3501 fixes visually. The legacy bare "drift" wire badge
+ * (still wire-present for back-compat, see findingBadges.ts) is
+ * deliberately NOT given its own phrase any more — only the richer
+ * "finding:" tokens are, so a fixture carrying just the legacy badge (no
+ * severity/source known) gets the plain "badges: drift" fallback below
+ * rather than a fabricated severity.
  */
-export function badgeAriaParts(badges: readonly string[]): string[] {
+export function badgeAriaParts(badges: readonly string[], findings?: readonly FindingBadge[]): string[] {
   const parts: string[] = [];
-  const otherBadges = badges.filter((b) => !(b in MGMT_BADGE_PHRASE) && b !== "drift");
+  const parsed = parsedFindingBadges(badges);
+  const otherBadges = badges.filter((b) => !(b in MGMT_BADGE_PHRASE) && parseFindingBadge(b) === undefined);
   for (const b of badges) {
     const phrase = MGMT_BADGE_PHRASE[b];
     if (phrase !== undefined) parts.push(phrase);
   }
   if (otherBadges.length > 0) parts.push(`badges: ${otherBadges.join(", ")}`);
-  if (badges.includes("drift")) parts.push("has configuration drift");
+  for (const p of parsed) {
+    const matches = findingsForSource(findings, p.source);
+    const details = matches.map((f) => f.detail).filter((d) => d !== "");
+    const base = `${p.severity} ${p.source} finding`;
+    parts.push(details.length > 0 ? `${base}: ${details.join("; ")}` : base);
+  }
   return parts;
 }
 
@@ -88,7 +111,7 @@ export function entityAriaLabel(data: EntityNodeData): string {
     parts.push(`${data.kind} ${data.label}`);
   }
   parts.push(`status ${data.status}`);
-  parts.push(...badgeAriaParts(data.badges));
+  parts.push(...badgeAriaParts(data.badges, data.findings));
   return parts.join(", ");
 }
 

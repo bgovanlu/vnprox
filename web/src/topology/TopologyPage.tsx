@@ -53,6 +53,7 @@ import { decodeViewFromSearch, type SavedViewState } from "./savedViews";
 import { SavedViewsMenu } from "./SavedViewsMenu";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { StalenessBanner } from "./StalenessBanner";
+import { UnrefFindingsBanner } from "./UnrefFindingsBanner";
 import { summarizeStaleness } from "./staleness";
 import { TopologyCanvas } from "./TopologyCanvas";
 import { TopologyCanvasV2 } from "./TopologyCanvasV2";
@@ -1001,8 +1002,13 @@ function TopologyPageContent() {
         </div>
       )}
 
-      <div className="print:hidden">
+      <div className="print:hidden flex flex-col gap-2">
         <StalenessBanner staleness={topology?.staleness} />
+        {/* T-3501 AC5: rendered once here, identically regardless of which
+            view (Switch/Graph) is active below — the two views can never
+            disagree about a ref-less finding's presentation because there
+            is only one place it renders. */}
+        <UnrefFindingsBanner findings={topology?.unrefFindings} />
       </div>
 
       {/* T-2704: the diff overlay's own status line. The map must SAY what

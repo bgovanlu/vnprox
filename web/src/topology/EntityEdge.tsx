@@ -4,12 +4,17 @@
 // bridges show trunked VID ranges as edge badges").
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps, type Edge } from "@xyflow/react";
 import clsx from "clsx";
-import type { EntityStatus, SimVerdict } from "../api/types";
+import type { EntityStatus, FindingBadge, SimVerdict } from "../api/types";
+import { findingChipText, hasOpenFinding, parseFindingBadge } from "./findingBadges";
 import { trafficEdgeStyle } from "./trafficMode";
 
 export interface EntityEdgeData extends Record<string, unknown> {
   status: EntityStatus;
   badges: string[];
+  /** T-3501, mirrors TopologyEdge.findings — see its doc comment
+   * (api/types.ts). No producer currently names an edge in a finding's refs
+   * (see findingBadges.ts's back-compat note), so this is typically empty. */
+  findings?: FindingBadge[];
   dimmed: boolean;
   highlighted: boolean;
   /** "Traffic" paint mode (docs/features/monitoring.md §1): when true, the
@@ -71,6 +76,16 @@ export function EntityEdge({
   const trafficMode = data?.trafficMode ?? false;
   const traffic = trafficEdgeStyle(data?.utilizationPct);
   const simVerdict = data?.simVerdict;
+  // T-3501: the legacy bare "drift" token is dropped from the printed label
+  // (it stays on the wire, and still counts for the dashing decision above,
+  // via hasOpenFinding — but is never itself displayed text any more) and a
+  // "finding:<source>:<severity>" token renders as its source name.
+  const labelParts = badges
+    .filter((b) => b !== "drift")
+    .map((b) => {
+      const parsed = parseFindingBadge(b);
+      return parsed ? findingChipText(parsed) : b;
+    });
 
   return (
     <>
@@ -81,16 +96,21 @@ export function EntityEdge({
         style={{
           stroke: simVerdict ? SIM_STROKE[simVerdict] : trafficMode ? traffic.stroke : STATUS_STROKE[status],
           strokeWidth: simVerdict ? 3.5 : trafficMode ? traffic.strokeWidth : highlighted ? 2.5 : 1.5,
-          // drift = dashed outline (docs/features/topology.md §2), additive
-          // to the existing "unknown"-status dashing — either condition
-          // dashes the edge, independent of its status-driven color. A
-          // path-simulator overlay (T-504) takes over the stroke entirely.
+          // An open finding = dashed outline (docs/features/topology.md
+          // §2), additive to the existing "unknown"-status dashing — either
+          // condition dashes the edge, independent of its status-driven
+          // color. A path-simulator overlay (T-504) takes over the stroke
+          // entirely. hasOpenFinding (T-3501) is source-agnostic, matching
+          // the pre-T-3501 bare "drift" check exactly — see
+          // findingBadges.ts's doc comment for why the legacy token still
+          // counts (wgEdgeStatus.ts's client-synthesized WG endpoint-drift
+          // edge badge has no richer form yet).
           strokeDasharray:
-            !simVerdict && !trafficMode && (status === "unknown" || badges.includes("drift")) ? "4 3" : undefined,
+            !simVerdict && !trafficMode && (status === "unknown" || hasOpenFinding(badges)) ? "4 3" : undefined,
           opacity: dimmed && !highlighted ? 0.15 : 1,
         }}
       />
-      {badges.length > 0 && (
+      {labelParts.length > 0 && (
         <EdgeLabelRenderer>
           <div
             className={clsx(
@@ -99,7 +119,7 @@ export function EntityEdge({
             )}
             style={{ transform: `translate(-50%, -50%) translate(${String(labelX)}px,${String(labelY)}px)` }}
           >
-            {badges.join(" · ")}
+            {labelParts.join(" · ")}
           </div>
         </EdgeLabelRenderer>
       )}

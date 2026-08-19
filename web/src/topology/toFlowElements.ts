@@ -132,6 +132,7 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
         kind: n.kind,
         status: n.status,
         badges: n.badges,
+        findings: n.findings,
         dimmed: vlanMatch ? !vlanMatch.nodes.has(n.id) : false,
         stale: staleNodeGroups?.has(n.nodeGroup) ?? false,
         highlighted,
@@ -161,6 +162,7 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
       data: {
         status: e.status,
         badges: e.badges,
+        findings: e.findings,
         dimmed: vlanMatch ? !vlanMatch.edges.has(e) : false,
         highlighted,
         trafficMode,

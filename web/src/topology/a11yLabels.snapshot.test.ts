@@ -76,7 +76,18 @@ describe("a11y proxy labels: evpn-lab (SDN zone/vnet/subnet kinds, drift + mgmt-
     expect(kinds.has("sdn-subnet")).toBe(true);
   });
 
-  it("calls out configuration drift as its own sentence on at least one entity", () => {
-    expect(labels.some((l) => l.ariaLabel.includes("has configuration drift"))).toBe(true);
+  // T-3501: this fixture predates the "finding:<source>:<severity>" badge
+  // vocabulary — it only carries the legacy bare "drift" wire token, with no
+  // source/severity attached. badgeAriaParts no longer fabricates a "has
+  // configuration drift" sentence for that case (claiming to know it was
+  // specifically *drift* is exactly this task's own defect); it falls back
+  // to listing the token plainly, the same way it does for any other
+  // unrecognized badge. a11yBridge.test.ts's badgeAriaParts describe block
+  // covers the richer "warning drift finding"/"error health finding"
+  // phrasing directly against the new token, which this captured JSON
+  // fixture has no examples of.
+  it("lists the legacy bare drift badge plainly (this fixture predates the finding:<source>:<severity> vocabulary)", () => {
+    expect(labels.some((l) => l.ariaLabel.includes("badges: drift"))).toBe(true);
+    expect(labels.some((l) => l.ariaLabel.includes("has configuration drift"))).toBe(false);
   });
 });

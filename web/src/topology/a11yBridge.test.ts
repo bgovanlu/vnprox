@@ -53,11 +53,35 @@ describe("entityAriaLabel", () => {
     expect(label).toContain("carries a corosync link");
   });
 
-  it("lists ordinary badges verbatim and calls out drift as state", () => {
+  it("lists ordinary badges verbatim and calls out an open finding by severity/source (T-3501)", () => {
     const label = entityAriaLabel(
-      flowNode("bond0", { kind: "bond", status: "degraded", badges: ["mode=802.3ad", "drift"] }).data,
+      flowNode("bond0", {
+        kind: "bond",
+        status: "degraded",
+        badges: ["mode=802.3ad", "drift", "finding:drift:warning"],
+      }).data,
     );
-    expect(label).toBe("bond bond0, status degraded, badges: mode=802.3ad, has configuration drift");
+    expect(label).toBe("bond bond0, status degraded, badges: mode=802.3ad, drift, warning drift finding");
+  });
+
+  it("names a health finding as health, not drift (T-3501's core defect)", () => {
+    const label = entityAriaLabel(
+      flowNode("vmbr1", { kind: "bridge", status: "down", badges: ["drift", "finding:health:error"] }).data,
+    );
+    expect(label).toContain("error health finding");
+    expect(label).not.toContain("has configuration drift");
+  });
+
+  it("surfaces the finding's own detail text when Findings is supplied", () => {
+    const label = entityAriaLabel(
+      flowNode("vmbr1", {
+        kind: "bridge",
+        status: "down",
+        badges: ["drift", "finding:health:error"],
+        findings: [{ source: "health", severity: "error", check: "bridge_no_carrier", detail: "enp2s0 has no carrier" }],
+      }).data,
+    );
+    expect(label).toContain("error health finding: enp2s0 has no carrier");
   });
 
   it("describes a collapsed guest-group pill by its count", () => {
@@ -75,17 +99,43 @@ describe("entityAriaLabel", () => {
 });
 
 describe("badgeAriaParts (T-905: reused verbatim by DOM entities outside EntityNodeData, e.g. SwitchFaceplate)", () => {
-  it("is exactly what entityAriaLabel appends after status — no drift", () => {
+  it("is exactly what entityAriaLabel appends after status — no finding", () => {
     expect(badgeAriaParts(["mode=802.3ad"])).toEqual(["badges: mode=802.3ad"]);
   });
 
-  it("spells out mgmt/corosync/mgmt-path and calls out drift as its own sentence", () => {
-    expect(badgeAriaParts(["mgmt", "corosync", "mgmt-path", "drift"])).toEqual([
+  it("spells out mgmt/corosync/mgmt-path in words", () => {
+    expect(badgeAriaParts(["mgmt", "corosync", "mgmt-path"])).toEqual([
       "carries the management IP",
       "carries a corosync link",
       "on the management path",
-      "has configuration drift",
     ]);
+  });
+
+  // T-3501: the legacy bare "drift" wire badge (kept for back-compat — see
+  // findingBadges.ts) no longer gets a fabricated "has configuration drift"
+  // sentence: with no source/severity attached to it, claiming to know it's
+  // specifically *drift* would be exactly this task's own defect. It falls
+  // back to the plain "badges: …" listing every other unrecognized badge
+  // gets.
+  it("lists the legacy bare drift badge plainly, without inventing a severity/source", () => {
+    expect(badgeAriaParts(["drift"])).toEqual(["badges: drift"]);
+  });
+
+  it("names each open finding's severity and source, once per finding:<source>:<severity> token", () => {
+    expect(badgeAriaParts(["mgmt", "finding:drift:warning", "finding:health:error"])).toEqual([
+      "carries the management IP",
+      "warning drift finding",
+      "error health finding",
+    ]);
+  });
+
+  it("appends the finding's own detail text when a matching Findings entry is supplied", () => {
+    expect(
+      badgeAriaParts(
+        ["finding:health:error"],
+        [{ source: "health", severity: "error", check: "bridge_no_carrier", detail: "enp4s0 has no carrier" }],
+      ),
+    ).toEqual(["error health finding: enp4s0 has no carrier"]);
   });
 
   it("returns an empty array for no badges", () => {
