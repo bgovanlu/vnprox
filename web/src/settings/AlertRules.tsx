@@ -6,7 +6,7 @@
 // (optionally filtered to the selected rule) below.
 import { useState } from "react";
 import clsx from "clsx";
-import type { AlertRule, AlertSourceFilterValue, AlertTargetKind, Severity } from "../api/types";
+import type { AlertRule, AlertSourceFilterValue, AlertTargetKind, FindingSource, Severity } from "../api/types";
 import { useSession } from "../api/useSession";
 import { hasAnyCap, missingCapTooltip } from "../changesets/capabilities";
 import { useToast } from "../components/Toast";
@@ -24,7 +24,36 @@ import {
 } from "./alertRulesQueries";
 
 const TARGET_KINDS: AlertTargetKind[] = ["generic", "gotify", "ntfy", "slack"];
-const SOURCE_VALUES: AlertSourceFilterValue[] = ["drift", "lldp", "ipam", "health", "probe"];
+
+// Debt sweep "found during the sweep, not yet carded" (2026-08-19): this used
+// to be a 5-of-17 literal array (`["drift", "lldp", "ipam", "health",
+// "probe"]`), so an operator could never route an alert on the other 12
+// finding sources — the same defect `T-3004-followup-01` fixed in
+// FindingsStreamPanel.tsx's `SOURCE_LABELS`, applied here.  Keyed off
+// `Record<FindingSource, string>` (not a plain array) so that adding an
+// 18th `internal/findings.Source` constant without adding its entry here is
+// a `tsc` error, not a silently-missing checkbox — mirrors
+// web/src/findings/FindingsStreamPanel.tsx's `SOURCE_LABELS` doc comment.
+const SOURCE_LABELS: Record<FindingSource, string> = {
+  drift: "Drift",
+  lldp: "LLDP",
+  ipam: "IPAM",
+  health: "Health",
+  probe: "Verify live",
+  wireguard: "WireGuard",
+  wan: "WAN",
+  flow: "Flow",
+  k8s: "Kubernetes",
+  rogue: "Rogue",
+  capacity: "Capacity",
+  baseline: "Baseline",
+  federation: "Federation",
+  peer: "Peer",
+  store: "Store",
+  cert: "Certificates",
+  gitsync: "Git sync",
+};
+const SOURCE_VALUES = Object.keys(SOURCE_LABELS) as AlertSourceFilterValue[];
 const SEVERITY_VALUES: Severity[] = ["error", "warning", "info"];
 
 interface FormState {
@@ -135,12 +164,16 @@ function FilterCheckboxGroup<T extends string>({
   selected,
   onChange,
   disabled,
+  labels,
 }: {
   label: string;
   options: T[];
   selected: T[];
   onChange: (next: T[]) => void;
   disabled?: boolean;
+  /** Display label per option; falls back to the raw value when omitted
+   * (severity's three values are self-explanatory as-is). */
+  labels?: Record<T, string>;
 }) {
   return (
     <fieldset className="flex flex-col gap-1">
@@ -156,7 +189,7 @@ function FilterCheckboxGroup<T extends string>({
                 onChange(toggleValue(selected, opt));
               }}
             />
-            {opt}
+            {labels ? labels[opt] : opt}
           </label>
         ))}
       </div>
@@ -365,6 +398,7 @@ export function AlertRules() {
                 onChange={(next) => {
                   setForm({ ...form, sourceFilter: next });
                 }}
+                labels={SOURCE_LABELS}
               />
               <FilterCheckboxGroup
                 label="Severity filter"

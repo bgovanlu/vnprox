@@ -209,6 +209,57 @@ describe("AlertRules delivery log", () => {
   });
 });
 
+// Debt sweep "found during the sweep, not yet carded" (2026-08-19): the
+// source-filter checkbox group used to be a 5-of-17 literal array, so an
+// operator could never route an alert rule on 12 of `internal/findings`'s
+// 17 real sources. Mirrors the fix's own doc comment (AlertRules.tsx's
+// `SOURCE_LABELS`) — every source needs a checkbox with a real label, and
+// picking one of the previously-missing sources must reach the request.
+describe("AlertRules source filter (debt sweep item 9 follow-up)", () => {
+  it("offers a labeled checkbox for every finding source, not just the original 5", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "New rule" }));
+
+    for (const label of [
+      "Drift",
+      "LLDP",
+      "IPAM",
+      "Health",
+      "Verify live",
+      "WireGuard",
+      "WAN",
+      "Flow",
+      "Kubernetes",
+      "Rogue",
+      "Capacity",
+      "Baseline",
+      "Federation",
+      "Peer",
+      "Store",
+      "Certificates",
+      "Git sync",
+    ]) {
+      expect(screen.getByRole("checkbox", { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it("sends a previously-unreachable source (gitsync) in the create request", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "New rule" }));
+
+    await user.type(screen.getByLabelText("Name"), "Git sync failures");
+    await user.type(screen.getByLabelText("Target URL"), "https://example.com/hook");
+    await user.click(screen.getByRole("checkbox", { name: "Git sync" }));
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(createMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ sourceFilter: ["gitsync"] }));
+    });
+  });
+});
+
 // T-2407: the delivery-scheduling fields. The point of these tests is that
 // the fields are reachable and enforced from the UI — an operator who cannot
 // set quiet hours without curl does not have quiet hours.

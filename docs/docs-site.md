@@ -59,20 +59,26 @@ wording) needs one of two things this repository does not have today:
    workflow added today would not run anyway.
 2. **GitHub Pages enabled for this repository**, deployed from `main`'s repository **root**
    (Settings → Pages → "Deploy from a branch" → `main` → `/ (root)`), which serves the whole
-   checkout and puts the site at `.../docs/` — a one-time repository-settings change, not a
-   docs-authoring one, and not something available from inside this working tree. Root, not
-   `/docs`, deliberately: `docs/_sidebar.md` links to `../CONTRIBUTING.md` and `../CHANGELOG.md`,
-   which sit one level above `docs/` on disk. A `/docs`-scoped Pages source would 404 on both;
-   whole-repo source serves them at the same relative paths the links already use, so nothing in
-   the Markdown needs to change to accommodate whichever a repository admin picks — it only needs
-   to be the whole-repo option.
+   checkout and puts the site at `.../docs/`. Root, not `/docs`, deliberately: `docs/_sidebar.md`
+   links to `../CONTRIBUTING.md` and `../CHANGELOG.md`, which sit one level above `docs/` on disk.
+   A `/docs`-scoped Pages source would 404 on both; whole-repo source serves them at the same
+   relative paths the links already use, so nothing in the Markdown needs to change to accommodate
+   whichever a repository admin picks — it only needs to be the whole-repo option. **Done** (as of
+   2026-08-19, verified with `gh api repos/:owner/:repo/pages`): `status: "built"`,
+   `source: {branch: "main", path: "/"}` — exactly the whole-repo-root option above — bound to the
+   custom domain `docs.vnprox.com` (`cname: "docs.vnprox.com"`, `https_enforced: false`). This was a
+   one-time repository-settings change, not a docs-authoring one, so nothing in this working tree
+   changed to make it happen; it is recorded here only so this document stops describing a switch
+   that has already been flipped as if it hadn't been.
 
-Until both exist, "the docs site" means: the material in `docs/` builds and renders correctly as a
-site *whenever* someone with repository-admin access flips the Pages switch, and it will always
-reflect whatever is on `main` — i.e., "latest," not a version picker. A worked-out version-switch
-mechanism (what `docs-versions.json` would look like, where each snapshot would live) is future
-work, not specified here, because specifying it without the CI job behind it would be exactly the
-kind of aspirational-as-if-live description this task was told not to produce.
+Item 2 now exists; item 1 still does not (GitHub Actions remains disabled for this repository —
+billing exhausted since 2026-08-11, see `release.yml`'s own header comment — so a CI job to
+snapshot `docs/` per release tag would not run even if added). So "the docs site" today means: the
+material in `docs/` is live, publicly reachable, and reflects whatever is on `main` — i.e.,
+"latest," not a version picker; there is still no per-release version a reader can pin to. A
+worked-out version-switch mechanism (what `docs-versions.json` would look like, where each snapshot
+would live) is future work, not specified here, because specifying it without the CI job behind it
+would be exactly the kind of aspirational-as-if-live description this task was told not to produce.
 
 ## What was verified
 
@@ -86,6 +92,10 @@ kind of aspirational-as-if-live description this task was told not to produce.
   options (`name`, `loadSidebar`, `homepage`, `search`) — a config shape, not a claim that it has
   been rendered here. `repo` (docsify's GitHub-corner link) is deliberately omitted; see the
   comment in `docs/index.html` itself.
+- **Site-live status (2026-08-19):** `gh api repos/:owner/:repo/pages` — read-only, GitHub's own
+  record of the Pages deployment, not a render check from inside this working tree (which still has
+  no network path to the CDN or to `docs.vnprox.com` itself). `status: "built"`,
+  `source: {branch: "main", path: "/"}`, `cname: "docs.vnprox.com"`.
 
 ## Status: what exists and what does not
 
@@ -93,7 +103,12 @@ kind of aspirational-as-if-live description this task was told not to produce.
   `docs/install.md`, `docs/first-hour.md`, `docs/support.md`,
   `docs/community-repo-assessment.md`, `docs/forum-announcement.md`), the zero-build site loader
   (`docs/index.html`, `docs/_sidebar.md`), and this document.
-- **Does not exist yet:** GitHub Pages is not enabled for this repository, so there is no URL
-  serving any of this today. There is no CI job that snapshots `docs/` per release tag, for the
-  reasons above. There is therefore no versioned docs site an operator can point to — only the
-  material to build one, checked into `main`.
+- **Exists and is live:** GitHub Pages is enabled for this repository and serving the site today,
+  at the custom domain `docs.vnprox.com` — confirmed via `gh api repos/:owner/:repo/pages`
+  (`status: "built"`, `source: {branch: "main", path: "/"}`), not merely configured-but-unbuilt.
+  This corrects an earlier version of this document, which said Pages was not enabled; it was
+  written before the repository went public (2026-08-18) and before Pages was switched on.
+- **Does not exist yet:** there is no CI job that snapshots `docs/` per release tag, for the
+  reasons above (GitHub Actions remains disabled for this repository). There is therefore no
+  *versioned* docs site an operator can pin to a specific release — the live site always reflects
+  whatever is currently on `main`.

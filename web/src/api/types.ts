@@ -3179,8 +3179,19 @@ export interface OnboardingProgress {
 export type AlertTargetKind = "generic" | "gotify" | "ntfy" | "slack";
 
 /** `GET /findings`'s own `source` vocabulary — reused verbatim as
- * AlertRule.sourceFilter's element type. */
-export type AlertSourceFilterValue = "drift" | "lldp" | "ipam" | "health" | "probe";
+ * AlertRule.sourceFilter's element type.
+ *
+ * Debt sweep "found during the sweep, not yet carded" (2026-08-19):
+ * this used to be its own 5-of-17 union (the same drift `FindingSource`
+ * itself had before `T-3004-followup-01` fixed it — see that type's doc
+ * comment). There is no genuine reason `sourceFilter` needs a narrower
+ * type than `source` — an alert rule can filter on any producer a finding
+ * can carry, and an empty/omitted list already means "match every value"
+ * (docs/api.md's Alert Rules section), so there is no "all" sentinel that
+ * would justify a separate union. Aliased to `FindingSource` directly so
+ * the two vocabularies cannot drift apart again; kept as a distinct name
+ * only for readability at `AlertRule`/`AlertRuleRequest`'s call sites. */
+export type AlertSourceFilterValue = FindingSource;
 
 /** One `AlertRule` (internal/api/alertrules.go's alertRuleResponse) — never
  * carries the target secret, plaintext or encrypted; `hasSecret` is the

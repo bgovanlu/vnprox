@@ -232,16 +232,6 @@ func (c *Client) GetSDNSubnet(ctx context.Context, vnet, subnet string) (*SDNSub
 	return &out, nil
 }
 
-// GetSDNStatus calls GET /cluster/sdn: the full zone/vnet/subnet tree
-// flattened with pending markers.
-func (c *Client) GetSDNStatus(ctx context.Context) ([]SDNStatusEntry, error) {
-	var out []SDNStatusEntry
-	if err := c.do(ctx, "GET", "/cluster/sdn", requestParams{}, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // ApplySDN calls PUT /cluster/sdn: apply all pending SDN changes cluster-wide
 // via an async task (docs/features/sdn.md §4), returning the task's UPID.
 // Poll it with GetTask or WaitTask. This is the "(4) sdn.apply last" step the

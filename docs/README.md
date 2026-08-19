@@ -101,6 +101,5 @@ document is first.
 ---
 
 *This site is built from the `docs/` folder using [docsify](https://docsify.js.org/) — no build
-step, no new toolchain. See [`docs-site.md`](docs-site.md) for what that means, and for the one
-thing standing between this rendering as a live URL and it not: GitHub Pages has not been enabled
-for this repository yet.*
+step, no new toolchain. See [`docs-site.md`](docs-site.md) for what that means — GitHub Pages is
+enabled for this repository and serving it live at `docs.vnprox.com`, unversioned (always "latest").*

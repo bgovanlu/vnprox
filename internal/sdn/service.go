@@ -46,6 +46,23 @@ type PVEReader interface {
 	ListSDNSubnets(ctx context.Context, vnet string) ([]pve.SDNSubnet, error)
 	ListSDNSubnetsRunning(ctx context.Context, vnet string) ([]pve.SDNSubnet, error)
 
+	// ListSDNZonesPending/ListSDNVnetsPending/ListSDNSubnetsPending
+	// (debt sweep 2026-08-19, "internal/pve.SDNZone.Pending assumes a
+	// marker real PVE does not emit") are Tree's actual source of each
+	// zone/vnet/subnet's pending state — NOT the Pending field the staged
+	// (default-view) reads above carry. Confirmed against real PVE 9.2.4
+	// (planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt): the
+	// default list view never sends a "pending" marker at all — only
+	// "?pending=1" does — so building this cockpit's staged-vs-running
+	// diff (docs/features/sdn.md §1) off SDNZone/SDNVnet/SDNSubnet.Pending
+	// would render it permanently inert against real hardware, a T-401-era
+	// gap invisible in this package's own tests because internal/pvemock's
+	// default view (a pre-existing, deliberately-unchanged mock quirk)
+	// leaks that marker where real PVE does not.
+	ListSDNZonesPending(ctx context.Context) ([]pve.SDNPendingEntry, error)
+	ListSDNVnetsPending(ctx context.Context) ([]pve.SDNPendingEntry, error)
+	ListSDNSubnetsPending(ctx context.Context, vnet string) ([]pve.SDNPendingEntry, error)
+
 	// T-3101: SDN Fabrics + the two read-only route-policy families the
 	// same capture exposed. ListSDNFabricNodes is its own read (real PVE's
 	// own separate /cluster/sdn/fabrics/node collection — per-node fabric
@@ -294,6 +311,12 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 	}
 	runningZones := indexByJSON(running, func(z pve.SDNZone) string { return z.ID })
 
+	zonePending, err := s.pve.ListSDNZonesPending(ctx)
+	if err != nil {
+		return Tree{}, fmt.Errorf("sdn: listing pending zones: %w", err)
+	}
+	zonePendingState := indexPendingState(zonePending)
+
 	stagedVnets, err := s.pve.ListSDNVnets(ctx)
 	if err != nil {
 		return Tree{}, fmt.Errorf("sdn: listing vnets: %w", err)
@@ -303,6 +326,12 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 		return Tree{}, fmt.Errorf("sdn: listing running vnets: %w", err)
 	}
 	runningVnets := indexByJSON(runningVnetsList, func(v pve.SDNVnet) string { return v.ID })
+
+	vnetPending, err := s.pve.ListSDNVnetsPending(ctx)
+	if err != nil {
+		return Tree{}, fmt.Errorf("sdn: listing pending vnets: %w", err)
+	}
+	vnetPendingState := indexPendingState(vnetPending)
 
 	vnetsByZone := map[string][]pve.SDNVnet{}
 	for _, v := range stagedVnets {
@@ -314,10 +343,10 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 		zone := Zone{
 			ID: z.ID, Type: z.Type, Bridge: z.Bridge, Controller: z.Controller, IPAM: z.IPAM,
 			Nodes: z.Nodes, ExitNodes: z.ExitNodes, Peers: z.Peers,
-			MTU: z.MTU, VrfVxlan: z.VrfVxlan, Pending: string(z.Pending),
+			MTU: z.MTU, VrfVxlan: z.VrfVxlan, Pending: string(zonePendingState[z.ID]),
 		}
 		runObj, ok := runningZones[z.ID]
-		zone.Diff = buildDiff(string(z.Pending), z, runObj, ok)
+		zone.Diff = buildDiff(string(zonePendingState[z.ID]), z, runObj, ok)
 
 		if st, statusErr := s.pve.GetSDNZoneStatus(ctx, z.ID); statusErr == nil {
 			for _, e := range st {
@@ -332,9 +361,9 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 		vnets := append([]pve.SDNVnet(nil), vnetsByZone[z.ID]...)
 		sort.Slice(vnets, func(i, j int) bool { return vnets[i].ID < vnets[j].ID })
 		for _, v := range vnets {
-			vnet := Vnet{ID: v.ID, Zone: v.Zone, Alias: v.Alias, Tag: v.Tag, VlanAware: v.VlanAware, Pending: string(v.Pending)}
+			vnet := Vnet{ID: v.ID, Zone: v.Zone, Alias: v.Alias, Tag: v.Tag, VlanAware: v.VlanAware, Pending: string(vnetPendingState[v.ID])}
 			vRunObj, vOk := runningVnets[v.ID]
-			vnet.Diff = buildDiff(string(v.Pending), v, vRunObj, vOk)
+			vnet.Diff = buildDiff(string(vnetPendingState[v.ID]), v, vRunObj, vOk)
 
 			stagedSubnets, subErr := s.pve.ListSDNSubnets(ctx, v.ID)
 			if subErr != nil {
@@ -346,15 +375,24 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 			}
 			runningSubnets := indexByJSON(runningSubnetsList, func(sub pve.SDNSubnet) string { return sub.ID })
 
+			// Swallowed on error, like stagedSubnets/runningSubnetsList above:
+			// one vnet's pending-state read failing shouldn't blank the whole
+			// tree, only leave that vnet's subnets reporting in-sync.
+			subnetPendingList, subErr := s.pve.ListSDNSubnetsPending(ctx, v.ID)
+			if subErr != nil {
+				subnetPendingList = nil
+			}
+			subnetPendingState := indexPendingState(subnetPendingList)
+
 			sort.Slice(stagedSubnets, func(i, j int) bool { return stagedSubnets[i].ID < stagedSubnets[j].ID })
 			for _, sub := range stagedSubnets {
 				sn := Subnet{
 					ID: sub.ID, Vnet: sub.Vnet, CIDR: sub.CIDR, Gateway: sub.Gateway,
 					DHCPRangeStart: sub.DHCPRangeStart, DHCPRangeEnd: sub.DHCPRangeEnd,
-					SNAT: sub.SNAT, Pending: string(sub.Pending),
+					SNAT: sub.SNAT, Pending: string(subnetPendingState[sub.ID]),
 				}
 				sRunObj, sOk := runningSubnets[sub.ID]
-				sn.Diff = buildDiff(string(sub.Pending), sub, sRunObj, sOk)
+				sn.Diff = buildDiff(string(subnetPendingState[sub.ID]), sub, sRunObj, sOk)
 				vnet.Subnets = append(vnet.Subnets, sn)
 			}
 			if vnet.Subnets == nil {
@@ -510,10 +548,29 @@ func indexByJSON[T any](items []T, keyOf func(T) string) map[string]T {
 	return out
 }
 
-// buildDiff derives one entity's PendingDiff from its own Pending marker
-// (the authoritative source of "what kind of staged edit is this",
-// mirroring PVE's own semantics) plus the matching running object, when
-// one exists. Returns nil for an in-sync ("") object — nothing to show.
+// indexPendingState indexes one ListSDN{Zones,Vnets,Subnets}Pending call's
+// entries by id, for O(1) lookup in Tree's per-object loops. Real PVE's
+// "?pending=1" view (planning/reports/evidence/
+// pve-9.2.4-sdn-pending-state.txt §3, confirmed live) returns every
+// object, in sync or not — an in-sync entry just carries State ==
+// pve.PendingNone ("") — but an id genuinely absent from entries (e.g. one
+// this package never asked about) is handled the same way: the zero value
+// of the map's pve.PendingState is pve.PendingNone, so a plain map lookup
+// is correct either way, without an explicit "found" check.
+func indexPendingState(entries []pve.SDNPendingEntry) map[string]pve.PendingState {
+	out := make(map[string]pve.PendingState, len(entries))
+	for _, e := range entries {
+		out[e.ID] = e.State
+	}
+	return out
+}
+
+// buildDiff derives one entity's PendingDiff from its pending marker (the
+// authoritative source of "what kind of staged edit is this", mirroring
+// PVE's own semantics — sourced from ListSDN{Zones,Vnets,Subnets}Pending,
+// not the entity's own stale Pending field; see PVEReader's doc comment)
+// plus the matching running object, when one exists. Returns nil for an
+// in-sync ("") object — nothing to show.
 func buildDiff(pending string, staged, running any, runningOK bool) *PendingDiff {
 	switch pending {
 	case "new":

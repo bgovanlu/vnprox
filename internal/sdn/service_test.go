@@ -19,10 +19,13 @@ type fakeReader struct {
 	zoneStatus     map[string][]pve.SDNZoneStatus
 	subnets        map[string][]pve.SDNSubnet
 	subnetsRunning map[string][]pve.SDNSubnet
+	subnetsPending map[string][]pve.SDNPendingEntry
 	zones          []pve.SDNZone
 	zonesRunning   []pve.SDNZone
+	zonesPending   []pve.SDNPendingEntry
 	vnets          []pve.SDNVnet
 	vnetsRunning   []pve.SDNVnet
+	vnetsPending   []pve.SDNPendingEntry
 	fabrics        []pve.SDNFabric
 	fabricNodes    []pve.SDNFabricNode
 	prefixLists    []pve.SDNPrefixList
@@ -35,6 +38,9 @@ func (f *fakeReader) ListSDNZones(context.Context) ([]pve.SDNZone, error) { retu
 func (f *fakeReader) ListSDNZonesRunning(context.Context) ([]pve.SDNZone, error) {
 	return f.zonesRunning, nil
 }
+func (f *fakeReader) ListSDNZonesPending(context.Context) ([]pve.SDNPendingEntry, error) {
+	return f.zonesPending, nil
+}
 func (f *fakeReader) GetSDNZoneStatus(_ context.Context, zone string) ([]pve.SDNZoneStatus, error) {
 	return f.zoneStatus[zone], nil
 }
@@ -42,11 +48,17 @@ func (f *fakeReader) ListSDNVnets(context.Context) ([]pve.SDNVnet, error) { retu
 func (f *fakeReader) ListSDNVnetsRunning(context.Context) ([]pve.SDNVnet, error) {
 	return f.vnetsRunning, nil
 }
+func (f *fakeReader) ListSDNVnetsPending(context.Context) ([]pve.SDNPendingEntry, error) {
+	return f.vnetsPending, nil
+}
 func (f *fakeReader) ListSDNSubnets(_ context.Context, vnet string) ([]pve.SDNSubnet, error) {
 	return f.subnets[vnet], nil
 }
 func (f *fakeReader) ListSDNSubnetsRunning(_ context.Context, vnet string) ([]pve.SDNSubnet, error) {
 	return f.subnetsRunning[vnet], nil
+}
+func (f *fakeReader) ListSDNSubnetsPending(_ context.Context, vnet string) ([]pve.SDNPendingEntry, error) {
+	return f.subnetsPending[vnet], nil
 }
 func (f *fakeReader) ListSDNFabrics(context.Context) ([]pve.SDNFabric, error) { return f.fabrics, nil }
 func (f *fakeReader) ListSDNFabricNodes(context.Context) ([]pve.SDNFabricNode, error) {
@@ -178,6 +190,14 @@ func TestTree_Fabrics(t *testing.T) {
 	}
 }
 
+// TestTree_PendingDiff_States also proves Tree sources its Diff/Pending
+// state from ListSDNZonesPending — NOT from the staged zone's own Pending
+// field, which the debt-sweep fix (2026-08-19, "internal/pve.SDNZone.Pending
+// assumes a marker real PVE does not emit") stopped reading. Every fixture
+// below leaves the staged pve.SDNZone.Pending field at its zero value
+// (pve.PendingNone) on purpose — the state comes only from zonesPending — so
+// this test would fail if Tree ever regressed to reading the stale field
+// again.
 func TestTree_PendingDiff_States(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -198,14 +218,14 @@ func TestTree_PendingDiff_States(t *testing.T) {
 		{
 			name:      "new has no running counterpart",
 			pending:   pve.PendingNew,
-			staged:    pve.SDNZone{ID: "z1", Type: "vlan", Pending: pve.PendingNew},
+			staged:    pve.SDNZone{ID: "z1", Type: "vlan"},
 			running:   nil,
 			wantState: "new",
 		},
 		{
 			name:        "changed renders exactly the changed fields",
 			pending:     pve.PendingChanged,
-			staged:      pve.SDNZone{ID: "z1", Type: "vlan", MTU: 1600, Pending: pve.PendingChanged},
+			staged:      pve.SDNZone{ID: "z1", Type: "vlan", MTU: 1600},
 			running:     []pve.SDNZone{{ID: "z1", Type: "vlan", MTU: 1500}},
 			wantState:   "changed",
 			wantChanged: []string{"mtu"},
@@ -214,7 +234,7 @@ func TestTree_PendingDiff_States(t *testing.T) {
 		{
 			name:      "deleted still has a running counterpart (not yet applied)",
 			pending:   pve.PendingDeleted,
-			staged:    pve.SDNZone{ID: "z1", Type: "vlan", Pending: pve.PendingDeleted},
+			staged:    pve.SDNZone{ID: "z1", Type: "vlan"},
 			running:   []pve.SDNZone{{ID: "z1", Type: "vlan"}},
 			wantState: "deleted",
 		},
@@ -223,10 +243,14 @@ func TestTree_PendingDiff_States(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			z := tt.staged
-			z.Pending = tt.pending
+			var zonesPending []pve.SDNPendingEntry
+			if tt.pending != pve.PendingNone {
+				zonesPending = []pve.SDNPendingEntry{{Kind: "zone", ID: z.ID, State: tt.pending}}
+			}
 			reader := &fakeReader{
 				zones:        []pve.SDNZone{z},
 				zonesRunning: tt.running,
+				zonesPending: zonesPending,
 				zoneStatus:   map[string][]pve.SDNZoneStatus{},
 			}
 			svc := NewService(reader)

@@ -337,13 +337,78 @@ func TestTicketAuth_SDNReads(t *testing.T) {
 	if subnet.Gateway != "10.100.0.1" {
 		t.Errorf("subnet.Gateway = %q, want 10.100.0.1", subnet.Gateway)
 	}
+}
 
-	statusEntries, err := c.GetSDNStatus(ctx)
+// --- SDN "?pending=1" reads -------------------------------------------------
+
+// TestTicketAuth_SDNPendingReads pins ListSDNZonesPending/ListSDNVnetsPending/
+// ListSDNSubnetsPending's decode of real PVE's actual pending mechanism
+// (planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt) — NOT
+// SDNZone/SDNVnet/SDNSubnet.Pending, which the default (no-query-param) list
+// view these functions deliberately avoid never carries against real PVE
+// (debt sweep 2026-08-19, "internal/pve.SDNZone.Pending assumes a marker
+// real PVE does not emit"). evpn-lab.yaml stages vlanz as pending=changed
+// (mtu 1600 vs a running 1500), vnet-qinq1 and its subnet as pending=new,
+// and leaves every other zone/vnet/subnet in sync.
+func TestTicketAuth_SDNPendingReads(t *testing.T) {
+	ts := newMockServer(t, fixtureEvpn)
+	c := newTicketClient(t, ts.URL, "root@pam", "vnprox-mock")
+	ctx := context.Background()
+
+	zones, err := c.ListSDNZonesPending(ctx)
 	if err != nil {
-		t.Fatalf("GetSDNStatus: %v", err)
+		t.Fatalf("ListSDNZonesPending: %v", err)
 	}
-	if len(statusEntries) != 1+2+2 { // zones + vnets + subnets
-		t.Fatalf("GetSDNStatus: expected 5 entries, got %d: %+v", len(statusEntries), statusEntries)
+	zoneByID := map[string]pve.SDNPendingEntry{}
+	for _, z := range zones {
+		zoneByID[z.ID] = z
+	}
+	vlanz, ok := zoneByID["vlanz"]
+	if !ok || vlanz.State != pve.PendingChanged {
+		t.Fatalf("vlanz pending entry = %+v (ok=%v), want state=changed", vlanz, ok)
+	}
+	if vlanz.Fields["mtu"] != float64(1600) {
+		t.Errorf("vlanz.Fields[mtu] = %v, want 1600 (the staged value, JSON-decoded as float64)", vlanz.Fields["mtu"])
+	}
+	// An in-sync object still appears in the "?pending=1" list (real PVE's
+	// own behaviour, confirmed live against pvecube's labz — the evidence
+	// file's §3) — it just carries no "state"/"pending" keys, decoding to
+	// State == PendingNone and Fields == nil.
+	simplez, simplezOK := zoneByID["simplez"]
+	if !simplezOK || simplez.State != pve.PendingNone || simplez.Fields != nil {
+		t.Errorf("simplez pending entry = %+v (ok=%v), want present with state=none and no fields", simplez, simplezOK)
+	}
+
+	vnets, err := c.ListSDNVnetsPending(ctx)
+	if err != nil {
+		t.Fatalf("ListSDNVnetsPending: %v", err)
+	}
+	vnetByID := map[string]pve.SDNPendingEntry{}
+	for _, v := range vnets {
+		vnetByID[v.ID] = v
+	}
+	qinqVnet, ok := vnetByID["vnet-qinq1"]
+	if !ok || qinqVnet.State != pve.PendingNew {
+		t.Fatalf("vnet-qinq1 pending entry = %+v (ok=%v), want state=new", qinqVnet, ok)
+	}
+	if vlanVnet, ok := vnetByID["vnet-vlan1"]; !ok || vlanVnet.State != pve.PendingNone || vlanVnet.Fields != nil {
+		t.Errorf("vnet-vlan1 pending entry = %+v (ok=%v), want present with state=none and no fields", vlanVnet, ok)
+	}
+
+	subnets, err := c.ListSDNSubnetsPending(ctx, "vnet-qinq1")
+	if err != nil {
+		t.Fatalf("ListSDNSubnetsPending: %v", err)
+	}
+	if len(subnets) != 1 || subnets[0].ID != "10.70.0.0-24" || subnets[0].State != pve.PendingNew {
+		t.Fatalf("ListSDNSubnetsPending(vnet-qinq1) = %+v, want one subnet 10.70.0.0-24 state=new", subnets)
+	}
+
+	inSyncSubnets, err := c.ListSDNSubnetsPending(ctx, "vnet-vlan1")
+	if err != nil {
+		t.Fatalf("ListSDNSubnetsPending: %v", err)
+	}
+	if len(inSyncSubnets) != 1 || inSyncSubnets[0].ID != "10.60.0.0-24" || inSyncSubnets[0].State != pve.PendingNone {
+		t.Fatalf("ListSDNSubnetsPending(vnet-vlan1) = %+v, want one in-sync subnet 10.60.0.0-24", inSyncSubnets)
 	}
 }
 

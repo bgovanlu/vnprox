@@ -192,7 +192,23 @@ type SDNZone struct {
 	// internal/sdn.Zone) because its own delete-in-use check
 	// (checkSdnIpamDeletable) is meaningless against a zone.IPAM that a
 	// live poll never populates.
-	IPAM      string       `json:"ipam,omitempty"`
+	IPAM string `json:"ipam,omitempty"`
+	// Pending decodes whatever "pending" key this struct's DEFAULT list/get
+	// view (no query param) returns — which, against real PVE 9.2.4, is
+	// none: confirmed live and against PVE::Network::SDN's own source
+	// (planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt) that the
+	// default view is the raw staged config file with no diff computed at
+	// all, so this field always decodes PendingNone off real hardware
+	// regardless of actual pending state. It is NOT a reliable signal —
+	// callers that need real foreign-pending detection must call
+	// ListSDNZonesPending (sdn.go's "?pending=1" view) instead, which
+	// internal/sdn.Service.Tree now does for docs/features/sdn.md §1's
+	// staged-vs-running cockpit. Kept (not removed) only because
+	// internal/pvemock's own default view still populates it (a
+	// pre-existing, deliberately-unchanged mock divergence from real PVE —
+	// see the evidence file's §5), which other packages' tests still
+	// exercise directly against SDNZone/ListSDNZones (T-401-era gap,
+	// debt-sweep 2026-08-19).
 	Pending   PendingState `json:"pending,omitempty"`
 	Nodes     []string     `json:"nodes,omitempty"`
 	ExitNodes []string     `json:"exit_nodes,omitempty"`
@@ -212,9 +228,12 @@ type SDNZoneStatus struct {
 // SDNVnet is one VNet inside a zone
 // (GET /cluster/sdn/vnets[/{vnet}]).
 type SDNVnet struct {
-	ID        string       `json:"vnet"`
-	Zone      string       `json:"zone"`
-	Alias     string       `json:"alias,omitempty"`
+	ID    string `json:"vnet"`
+	Zone  string `json:"zone"`
+	Alias string `json:"alias,omitempty"`
+	// Pending — see SDNZone.Pending's doc comment; the same "default view
+	// never carries it against real PVE, use ListSDNVnetsPending instead"
+	// caveat applies verbatim.
 	Pending   PendingState `json:"pending,omitempty"`
 	Tag       int          `json:"tag,omitempty"`
 	VlanAware bool         `json:"vlan_aware,omitempty"`
@@ -223,22 +242,17 @@ type SDNVnet struct {
 // SDNSubnet is one subnet inside a VNet
 // (GET /cluster/sdn/vnets/{vnet}/subnets[/{subnet}]).
 type SDNSubnet struct {
-	ID             string       `json:"subnet"`
-	Vnet           string       `json:"vnet"`
-	CIDR           string       `json:"cidr"`
-	Gateway        string       `json:"gateway,omitempty"`
-	DHCPRangeStart string       `json:"dhcp_range_start,omitempty"`
-	DHCPRangeEnd   string       `json:"dhcp_range_end,omitempty"`
-	Pending        PendingState `json:"pending,omitempty"`
-	SNAT           bool         `json:"snat,omitempty"`
-}
-
-// SDNStatusEntry is one row of GET /cluster/sdn: the full zone/vnet/subnet
-// tree flattened with pending markers.
-type SDNStatusEntry struct {
-	Kind    string       `json:"type"` // zone|vnet|subnet
-	ID      string       `json:"id"`
+	ID             string `json:"subnet"`
+	Vnet           string `json:"vnet"`
+	CIDR           string `json:"cidr"`
+	Gateway        string `json:"gateway,omitempty"`
+	DHCPRangeStart string `json:"dhcp_range_start,omitempty"`
+	DHCPRangeEnd   string `json:"dhcp_range_end,omitempty"`
+	// Pending — see SDNZone.Pending's doc comment; the same "default view
+	// never carries it against real PVE, use ListSDNSubnetsPending instead"
+	// caveat applies verbatim.
 	Pending PendingState `json:"pending,omitempty"`
+	SNAT    bool         `json:"snat,omitempty"`
 }
 
 // --- firewall ----------------------------------------------------------
