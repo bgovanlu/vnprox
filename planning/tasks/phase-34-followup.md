@@ -1,11 +1,48 @@
 # Phase 34 follow-ups
 
 ## T-3406-followup-01 · Pre-existing page-local contrast and ARIA defects
+**status: DONE, 2026-08-19** (`d56312ca`, plus `d8d2879b` for one node the sweep could not see —
+see "What actually happened" below). All 40 quarantine entries removed; `web/e2e/quarantine.json`
+is back to a single unrelated entry (`T-2505-followup-01`). The 2026-09-17 deadline below is
+therefore moot — it is left in place, struck through by this note rather than deleted, because
+the deadline is the reason the work happened and deleting it would erase that.
+
 **model:** sonnet-5 · **size:** L · **depends:** Phase 34 (T-3406) · **context:** `web/e2e/quarantine.json` (the 40 quarantined tests name the exact routes), `web/e2e/a11y.spec.ts`, `web/e2e/demo.spec.ts`, `docs/development.md` "Visual language (Phase 34, T-3401)"
 
-**Deadline: the quarantine expires 2026-09-17.** After that date `make check` fails whether or
+**~~Deadline: the quarantine expires 2026-09-17.~~** After that date `make check` fails whether or
 not the tests do (`internal/e2egate`'s `TestRepoQuarantineIsValid`, T-2505). This card exists to
 be done before then, not to be renewed.
+
+### What actually happened
+
+Both named defect classes were fixed across all 19 routes (~130 call sites, most in
+sub-components the quarantine reasons never named — they had to be found by reading what the
+sweep actually renders). All four e2e shards pass; `make check` green.
+
+Two findings the card did not anticipate, both worth carrying forward:
+
+- **A third defect class existed that the original sweep structurally could not see.** T-3406's
+  fixture ran a session without write capability, so Delete buttons rendered *disabled* — masking
+  their enabled-state `red-600`/`amber-600` failures (4.35:1 and 2.91:1). Demo mode's
+  full-capability session exposed them. **An axe sweep proves what it renders, not what a
+  component can render.**
+- **The same blind spot then bit this card too.** `platformCommon.tsx`'s refusal hint kept a
+  failing `amber-900/80` wash (3.43:1) four lines below the sibling line this card fixed, because
+  the sweep only ever rendered that component without a `hint`. It was caught by grepping the
+  pattern, not by re-running the sweep — see `d8d2879b`.
+
+### Follow-on work this card surfaced and did NOT do
+
+- **SDN's non-default tabs** (`DhcpView.tsx`, `EvpnView.tsx`) carry the same bare-slate pattern,
+  untouched and unreached by any current spec.
+- **`OnboardingWalkthrough.tsx`** has its own pre-existing bare-`slate-400` defect, already
+  flagged in `demo.spec.ts`'s comments.
+- **The opacity-wash trap has now recurred three times** (T-3406's `bg-accent-600/10`, this
+  card's two, and `d8d2879b`'s). A `text-<color>-<step>/<alpha>` on a light surface barely
+  darkens regardless of which step it is mixed from. This wants a lint rule or a documented
+  convention; a fourth discovery is not a strategy.
+- **Vary the a11y sweep's session capability**, so disabled/enabled asymmetry stops hiding
+  defects from it.
 
 **Where this came from.** Phase 34's close-out (T-3406) was the first time this app's axe suite
 ran *every routed page* across light, dark, and demo-amber. It found six genuine Phase-34
