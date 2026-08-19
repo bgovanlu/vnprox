@@ -285,12 +285,34 @@ func mountTenantRoutes(r chi.Router, adminStore TenantAdminStore, scoper TenantS
 		r.Get("/tenants", handleListTenants(adminStore))
 		r.Get("/tenants/{id}", handleGetTenant(adminStore))
 	})
+	// SECURITY (T-3002-followup-02, 2026-08-19): mutations are ALSO
+	// tenant-scoped, closing the gap T-3002-followup-01 left open on purpose
+	// (that decision covered reads only). Before this fix, every mutation
+	// below was gated on netWrite alone — no membership check at all — so a
+	// caller holding netWrite and membership in ONE tenant could rewrite ANY
+	// tenant's scopes/members, not just their own. tenantScopeMiddleware here
+	// gives handlers the same resolved Scope the read routes use, and each
+	// handler below applies tenantMutationScope: a caller who is a member of
+	// some OTHER tenant than the one named in the URL gets 404 (never 403 —
+	// a 403 would still confirm the foreign tenant exists, same "not found,
+	// not forbidden" stance the reads take). An unscoped caller (not a member
+	// of any tenant — the ordinary fleet-admin persona netWrite was modelled
+	// on) is unaffected and can still mutate any tenant, exactly as before.
+	//
+	// PUT/DELETE .../scopes are held to a stricter rule than the rest: they
+	// are refused for ANY tenant-scoped caller, including a member mutating
+	// their OWN tenant (404 for a foreign tenant, 403 for their own). This is
+	// deliberate, not an oversight of the membership-scoping pattern above —
+	// see this function's closing comment for the reasoning.
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		if csrf, ok := auth.(CSRFEnforcer); ok {
 			r.Use(csrf.CSRFMiddleware)
 		}
 		r.Use(auth.RequireCap(capNetWrite))
+		if scoper != nil {
+			r.Use(tenantScopeMiddleware(scoper, lookup))
+		}
 		r.Post("/tenants", handleCreateTenant(adminStore, lookup))
 		r.Delete("/tenants/{id}", handleDeleteTenant(adminStore))
 		r.Put("/tenants/{id}/scopes", handlePutScope(adminStore))
@@ -325,6 +347,27 @@ func mountTenantRoutes(r chi.Router, adminStore TenantAdminStore, scoper TenantS
 	_ = notifier // notifier is consumed by the request-changeset create path (changesets.go)
 }
 
+// tenantMutationScope reports how a mutation targeting tenantID should be
+// gated, given the caller's tenant Scope (or lack of one) already resolved
+// onto the request context by tenantScopeMiddleware.
+//
+//   - scoped=false: the caller is not a member of any tenant — the ordinary
+//     fleet-admin persona netWrite's mutation gate was modelled on before
+//     T-3002-followup-02. Unaffected: the handler proceeds exactly as before
+//     this fix.
+//   - scoped=true, member=false: the caller IS a tenant member, but of some
+//     tenant OTHER than tenantID. The handler must answer 404, never 403 —
+//     a 403 would confirm tenantID exists, which is exactly what the read
+//     side (T-3002-followup-01) already refuses to do.
+//   - scoped=true, member=true: the caller is a member of tenantID itself.
+func tenantMutationScope(ctx context.Context, tenantID string) (scoped, member bool) {
+	scope, ok := scopeFromContext(ctx)
+	if !ok {
+		return false, false
+	}
+	return true, scope.Includes(tenantID)
+}
+
 type createTenantRequest struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
@@ -344,11 +387,49 @@ type tenantMemberOutput struct {
 	Role     string `json:"role"`
 }
 
+// POST /tenants (create) has no existing tenant to be a member of, so
+// membership cannot gate it the way tenantMutationScope gates the other five
+// mutation routes — it needs its own rule.
+//
+// The rule: creation is refused for ANY tenant-scoped caller (403 — there is
+// no tenant identity to hide behind here, so unlike the membership-scoped
+// routes this is a plain capability check, not an existence check), and left
+// to netWrite holders who are not a member of any tenant — the same unscoped
+// "fleet admin" persona every other mutation route in this file already
+// treats as the trusted, unaffected case. Reasoning:
+//
+//   - Tenant creation defines a brand-new boundary from nothing. Unlike
+//     DELETE /tenants/{id} or PUT/DELETE .../members (self-service actions
+//     confined to a boundary an admin already drew), there is no existing
+//     scope for membership to narrow against — "may create tenants" reads as
+//     a fleet-administration capability, not a per-tenant one, and
+//     docs/api.md has always titled this whole route family "Tenant
+//     management (admin)".
+//   - handleCreateTenant does NOT add the creator as a member of the tenant
+//     it creates (never did — verified by reading it before this change: no
+//     PutMember call anywhere in this function). Combined with the
+//     create-time restriction above, "create a tenant, then reach it as a
+//     member" is closed categorically: a tenant-scoped caller can never
+//     create a tenant to begin with, so there is never a tenant they just
+//     made themselves a member of to widen.
+//
+// See handlePutScope/handleDeleteScope below for the closely related second
+// half of this reasoning: even a genuine member of an EXISTING tenant may
+// not widen that tenant's own scope refs, for the same "boundary-setting
+// stays with the fleet admin" reason — otherwise a member could reach the
+// same privilege escalation this rule closes off at creation, just one step
+// later (join/be-added-to a tenant, then scope it onto resources they were
+// never granted).
 func handleCreateTenant(s TenantAdminStore, lookup UsernameLookup) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, ok := lookup.Username(r.Context())
 		if !ok {
 			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		if _, isScoped := scopeFromContext(r.Context()); isScoped {
+			writeJSONError(w, http.StatusForbidden, "forbidden",
+				"tenant creation is a fleet-admin action; a tenant member may not create tenants")
 			return
 		}
 		var req createTenantRequest
@@ -467,9 +548,21 @@ func handleGetTenant(s TenantAdminStore) http.HandlerFunc {
 	}
 }
 
+// handleDeleteTenant deletes one tenant, scoped to the caller's own
+// membership (T-3002-followup-02, mirroring handleGetTenant): a caller who
+// is a member of some OTHER tenant gets 404, never 403 — a 403 would confirm
+// the foreign tenant exists. A member of THIS tenant may delete it (the same
+// self-service latitude PUT/DELETE .../members below carries — deleting your
+// own tenant narrows nobody else's boundary, it just retires your own). An
+// unscoped caller is unaffected.
 func handleDeleteTenant(s TenantAdminStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := s.DeleteTenant(r.Context(), chi.URLParam(r, "id")); err != nil {
+		id := chi.URLParam(r, "id")
+		if scoped, member := tenantMutationScope(r.Context(), id); scoped && !member {
+			writeJSONError(w, http.StatusNotFound, "not_found", "no such tenant")
+			return
+		}
+		if err := s.DeleteTenant(r.Context(), id); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not delete tenant")
 			return
 		}
@@ -481,9 +574,38 @@ type scopeRequest struct {
 	ScopeRef string `json:"scopeRef"`
 }
 
+// handlePutScope adds a visible-resource ref to a tenant's boundary.
+//
+// SECURITY (T-3002-followup-02): unlike the other mutation routes, this one
+// is refused for EVERY tenant-scoped caller, including a member acting on
+// their OWN tenant — 404 for a foreign tenant (existence not confirmed, same
+// as every other route in this family), 403 for their own (there is nothing
+// left to hide; the caller already knows their own tenant exists). Only an
+// unscoped (fleet-admin) netWrite holder may add a scope ref.
+//
+// Why stricter than membership scoping: scopeRef is never validated against
+// anything — AddScope stores whatever ref the caller sends, verbatim, with
+// no check that the ref names a resource the caller (or anyone) is otherwise
+// entitled to see. If a plain member could call this on their own tenant,
+// they could hand their OWN tenant visibility into any resource on the
+// cluster, including another tenant's exclusive scope — reaching resources
+// through their tenant's Scope that they were never granted any other way.
+// That is a privilege escalation the membership-scoping pattern used
+// elsewhere in this file does not close by itself, so scope-boundary writes
+// stay a fleet-admin action instead. See handleCreateTenant's comment for
+// the related reasoning on tenant creation.
 func handlePutScope(s TenantAdminStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
+		if scoped, member := tenantMutationScope(r.Context(), id); scoped {
+			if !member {
+				writeJSONError(w, http.StatusNotFound, "not_found", "no such tenant")
+				return
+			}
+			writeJSONError(w, http.StatusForbidden, "forbidden",
+				"only a fleet admin, not a tenant member, may change a tenant's scope boundary")
+			return
+		}
 		if err := ensureTenantExists(r.Context(), s, id, w); err != nil {
 			return
 		}
@@ -500,9 +622,23 @@ func handlePutScope(s TenantAdminStore) http.HandlerFunc {
 	}
 }
 
+// handleDeleteScope removes a scope ref. Held to the same fleet-admin-only
+// rule as handlePutScope above, for symmetry — a member able to remove a
+// scope ref from any tenant they belong to is a smaller concern than adding
+// one (it only narrows), but gating add without gating remove would be an
+// inconsistent, easily-misread boundary in the same route family.
 func handleDeleteScope(s TenantAdminStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
+		if scoped, member := tenantMutationScope(r.Context(), id); scoped {
+			if !member {
+				writeJSONError(w, http.StatusNotFound, "not_found", "no such tenant")
+				return
+			}
+			writeJSONError(w, http.StatusForbidden, "forbidden",
+				"only a fleet admin, not a tenant member, may change a tenant's scope boundary")
+			return
+		}
 		ref := r.URL.Query().Get("scopeRef")
 		if ref == "" {
 			writeJSONError(w, http.StatusBadRequest, "validation_failed", "scopeRef query param is required")
@@ -521,9 +657,21 @@ type memberRequest struct {
 	Role     string `json:"role"`
 }
 
+// handlePutMember adds or promotes a member of a tenant, scoped to the
+// caller's own membership (T-3002-followup-02, mirroring handleDeleteTenant):
+// 404 for a foreign tenant, unaffected for an unscoped caller. A member of
+// THIS tenant may manage its membership — self-service, and bounded: the
+// scope refs a new member inherits are exactly the tenant's already-fixed
+// boundary (handlePutScope above is fleet-admin-only precisely so this stays
+// bounded), so adding or promoting a member here never reaches a resource
+// the tenant could not already see.
 func handlePutMember(s TenantAdminStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
+		if scoped, member := tenantMutationScope(r.Context(), id); scoped && !member {
+			writeJSONError(w, http.StatusNotFound, "not_found", "no such tenant")
+			return
+		}
 		if err := ensureTenantExists(r.Context(), s, id, w); err != nil {
 			return
 		}
@@ -544,9 +692,15 @@ func handlePutMember(s TenantAdminStore) http.HandlerFunc {
 	}
 }
 
+// handleDeleteMember removes a member, held to the same own-tenant
+// self-service rule as handlePutMember above.
 func handleDeleteMember(s TenantAdminStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
+		if scoped, member := tenantMutationScope(r.Context(), id); scoped && !member {
+			writeJSONError(w, http.StatusNotFound, "not_found", "no such tenant")
+			return
+		}
 		identity := chi.URLParam(r, "identity")
 		if unescaped, err := url.PathUnescape(identity); err == nil {
 			identity = unescaped

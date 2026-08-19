@@ -155,7 +155,22 @@ Third parties can extend five surfaces — switch drivers, flow/telemetry ingest
 
 For shared clusters, an administrator can define **tenants** (**Settings → Tenants**) scoped to a specific set of guests, VLANs, or subnets, with members and approvers. A tenant member sees only their own slice of the topology, findings, and IPAM — everything outside their scope is not just hidden but genuinely invisible (a lookup of something out of scope returns "not found," never confirming it exists).
 
-> **Known gap, recorded 2026-08-16 (`T-3002-followup-01`).** That promise holds for topology, flows, findings and IPAM. It does **not** currently hold for the tenant records themselves: `GET /tenants` and `GET /tenants/{id}` are gated on `netRead` alone, so any tenant member can list every tenant and read another tenant's scope refs (which guests and subnets it owns) and member identities. It is information disclosure only — every mutating tenant route still requires `netWrite` plus CSRF, and no cross-tenant *action* is possible — and it is invisible on a single-tenant deployment. `internal/api/tenant_leak_test.go` demonstrates it; `planning/tasks/phase-30.md` carries the fix options.
+> **Closed 2026-08-19 (`T-3002-followup-01`, `T-3002-followup-02`).** This promise did not hold for
+> the tenant records themselves between 2016-08-16 and 2026-08-19: `GET /tenants{,/id}` was gated
+> on `netRead` alone, so any member could read every other tenant's scope refs and membership.
+> Tenant reads are now membership-scoped, and a lookup of a tenant you do not belong to returns
+> "not found" like everything else.
+>
+> The original note also claimed "no cross-tenant *action* is possible". **That was wrong**, and
+> checking it is what found the larger hole: the mutation routes were gated on `netWrite` alone,
+> so a member of one tenant could rewrite any other tenant's scopes and members. Deleting a tenant
+> and managing its membership are now membership-scoped too. Creating a tenant, and changing any
+> tenant's **scope boundary**, are restricted further — to a fleet administrator (an unscoped
+> `netWrite` holder) — because scope refs are stored verbatim without being validated against the
+> caller's own access, so a member permitted to edit their own tenant's scopes could otherwise
+> widen it to cover another tenant's resources.
+
+
 
 A member doesn't edit directly; they **request** a change, which becomes a request-changeset routed to their tenant's approver (via your normal alert routing). An approver reviews and approves it — which turns it into an ordinary draft — and then applies it through the usual review → confirm flow. Two guardrails hold: a plain member can never approve, and an approver can never approve their **own** request. Approval isn't the same as applying — the ordinary confirm/rollback safety still gates the real change.
 

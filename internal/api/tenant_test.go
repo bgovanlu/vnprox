@@ -250,15 +250,17 @@ func TestTenantScoping_NonMemberUnscoped(t *testing.T) {
 // route added to the /tenants* family gets the same randomized-order
 // coverage automatically instead of silently repeating the miss.
 //
-// The mutating routes (POST/DELETE /tenants, PUT/DELETE .../scopes,
-// PUT/DELETE .../members) are deliberately NOT walked here: they are gated
-// on netWrite, not tenant membership, a separate cluster-wide-admin
-// authorization question the owner's T-3002-followup-01 decision (which
-// covered only reads — "scope reads to own tenants") did not address. That
-// gap is real and adjacent — a caller who holds both netWrite and
-// membership in some tenant can, today, still mutate ANY tenant's
-// scopes/members, not just their own — and is noted in this task's report
-// rather than fixed here.
+// It now ALSO walks the mutating routes — POST/DELETE /tenants, PUT/DELETE
+// .../scopes, PUT/DELETE .../members (T-3002-followup-02, 2026-08-19). Those
+// were deliberately left out by the read-only fix above (T-3002-followup-01
+// covered only reads), and doing so left a WORSE gap open: a caller holding
+// netWrite and membership in one tenant could mutate ANY tenant's
+// scopes/members, not just their own — rewriting another tenant's boundary,
+// not merely reading it. This block proves bob (member of t2 only) can never
+// mutate t1 via any of the five routes below, and symmetrically for alice
+// against t2; every attempt is 404, never 403, for the same "existence not
+// confirmed" reason the read side already established. Before
+// T-3002-followup-02, every one of these calls succeeded (200/204) instead.
 func TestTenantScoping_NoCrossTenantLeakage(t *testing.T) {
 	env := newTenantEnv(t)
 	env.seedTenant(t, "t1", map[string]string{"alice@pve": store.TenantRoleMember},
@@ -310,6 +312,40 @@ func TestTenantScoping_NoCrossTenantLeakage(t *testing.T) {
 		if code, body := getJSON(t, bobR, "bob@pve", "/api/v1/tenants/t1"); code != http.StatusNotFound {
 			t.Fatalf("LEAK: bob's GET /tenants/t1 = %d (want 404): %v", code, body)
 		}
+
+		// The mutating /tenants* family (T-3002-followup-02): bob, a member
+		// only of t2, must never be able to mutate t1 via any of these five
+		// routes — every attempt is 404, and (because each is refused before
+		// touching the store) none of them actually change t1's state, so
+		// the loop can safely repeat this 20 times without the fixture
+		// drifting.
+		for _, req := range []struct {
+			method, path, body string
+		}{
+			{http.MethodPut, "/api/v1/tenants/t1/scopes", `{"scopeRef":"guest:pve9:999"}`},
+			{http.MethodDelete, "/api/v1/tenants/t1/scopes?scopeRef=guest:pve1:100", ""},
+			{http.MethodPut, "/api/v1/tenants/t1/members", `{"identity":"mallory@pve","role":"approver"}`},
+			{http.MethodDelete, "/api/v1/tenants/t1/members/alice@pve", ""},
+			{http.MethodDelete, "/api/v1/tenants/t1", ""},
+		} {
+			if code := doReq(t, bobR, req.method, req.path, req.body).Code; code != http.StatusNotFound {
+				t.Fatalf("LEAK: bob's %s %s = %d (want 404)", req.method, req.path, code)
+			}
+		}
+		// ...and symmetrically, alice (member only of t1) against t2.
+		for _, req := range []struct {
+			method, path, body string
+		}{
+			{http.MethodPut, "/api/v1/tenants/t2/scopes", `{"scopeRef":"guest:pve9:999"}`},
+			{http.MethodDelete, "/api/v1/tenants/t2/scopes?scopeRef=guest:pve2:200", ""},
+			{http.MethodPut, "/api/v1/tenants/t2/members", `{"identity":"mallory@pve","role":"approver"}`},
+			{http.MethodDelete, "/api/v1/tenants/t2/members/bob@pve", ""},
+			{http.MethodDelete, "/api/v1/tenants/t2", ""},
+		} {
+			if code := doReq(t, aliceR, req.method, req.path, req.body).Code; code != http.StatusNotFound {
+				t.Fatalf("LEAK: alice's %s %s = %d (want 404)", req.method, req.path, code)
+			}
+		}
 	}
 }
 
@@ -340,6 +376,26 @@ func post(t *testing.T, r http.Handler, path, body string) *httptest.ResponseRec
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+// doReq issues an arbitrary-method request, JSON body optional (empty string
+// omits it — used for DELETE/PUT-with-no-body calls the plain post() helper
+// above can't express since it's hardcoded to POST).
+func doReq(t *testing.T, r http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	var bodyReader *bytes.Buffer
+	if body == "" {
+		bodyReader = bytes.NewBuffer(nil)
+	} else {
+		bodyReader = bytes.NewBufferString(body)
+	}
+	req := httptest.NewRequest(method, path, bodyReader)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
@@ -518,5 +574,82 @@ func TestTenantAdmin_CRUD(t *testing.T) {
 	}
 	if members, _ := body["members"].([]any); len(members) != 1 {
 		t.Errorf("members = %v", body["members"])
+	}
+}
+
+// ---- T-3002-followup-02: mutation authorization ----------------------------
+
+// TestTenantCreate_ScopedCallerForbidden pins the POST /tenants rule this
+// task added: tenant creation has no existing tenant for membership to gate
+// against, so it is refused outright for any tenant-scoped caller (403) and
+// left to an unscoped (fleet-admin) netWrite holder. Before this fix, alice
+// — a member of t1 only — could create tenants freely.
+func TestTenantCreate_ScopedCallerForbidden(t *testing.T) {
+	env := newTenantEnv(t)
+	env.seedTenant(t, "t1", map[string]string{"alice@pve": store.TenantRoleMember}, "guest:pve1:100")
+
+	rec := post(t, env.router("alice@pve"), "/api/v1/tenants", `{"name":"sneaky"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("tenant member's POST /tenants = %d, want 403: %s", rec.Code, rec.Body.String())
+	}
+
+	// An unscoped caller (not a member of any tenant) is unaffected.
+	rec = post(t, env.router("admin@pve"), "/api/v1/tenants", `{"name":"fine"}`)
+	if rec.Code != http.StatusCreated {
+		t.Errorf("unscoped POST /tenants = %d, want 201: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestTenantScopeMutation_MemberForbiddenEvenForOwnTenant pins the
+// stricter-than-membership rule on PUT/DELETE .../scopes: a member may not
+// widen (or narrow) their OWN tenant's scope boundary, because AddScope
+// never validates the ref against anything — a member permitted to call this
+// could hand their tenant visibility into any resource on the cluster,
+// including another tenant's exclusive scope. Only an unscoped (fleet-admin)
+// caller may. Before this task's fix, alice could freely add/remove scope
+// refs on t1 (and, worse, on any OTHER tenant too — see
+// TestTenantScoping_NoCrossTenantLeakage for the foreign-tenant case).
+func TestTenantScopeMutation_MemberForbiddenEvenForOwnTenant(t *testing.T) {
+	env := newTenantEnv(t)
+	env.seedTenant(t, "t1", map[string]string{"alice@pve": store.TenantRoleMember}, "guest:pve1:100")
+	aliceR := env.router("alice@pve")
+
+	if code := doReq(t, aliceR, http.MethodPut, "/api/v1/tenants/t1/scopes",
+		`{"scopeRef":"guest:pve9:999"}`).Code; code != http.StatusForbidden {
+		t.Errorf("member's PUT own tenant's /scopes = %d, want 403", code)
+	}
+	if code := doReq(t, aliceR, http.MethodDelete, "/api/v1/tenants/t1/scopes?scopeRef=guest:pve1:100",
+		"").Code; code != http.StatusForbidden {
+		t.Errorf("member's DELETE own tenant's /scopes = %d, want 403", code)
+	}
+
+	// An unscoped admin can still manage t1's scope.
+	adminR := env.router("admin@pve")
+	if code := doReq(t, adminR, http.MethodPut, "/api/v1/tenants/t1/scopes",
+		`{"scopeRef":"guest:pve9:999"}`).Code; code != http.StatusNoContent {
+		t.Errorf("unscoped admin's PUT /scopes = %d, want 204", code)
+	}
+}
+
+// TestTenantSelfService_MemberCanManageOwnTenant proves the fix above is a
+// narrow, membership-scoped restriction and not an accidental lockout: a
+// member of t1 can still delete t1 and manage t1's own membership — the
+// self-service latitude T-3002-followup-02's reasoning explicitly preserves
+// (docs: "Tenants & self-service"), just not its scope boundary.
+func TestTenantSelfService_MemberCanManageOwnTenant(t *testing.T) {
+	env := newTenantEnv(t)
+	env.seedTenant(t, "t1", map[string]string{"alice@pve": store.TenantRoleMember}, "guest:pve1:100")
+	aliceR := env.router("alice@pve")
+
+	if code := doReq(t, aliceR, http.MethodPut, "/api/v1/tenants/t1/members",
+		`{"identity":"carol@pve","role":"member"}`).Code; code != http.StatusNoContent {
+		t.Fatalf("member's PUT own tenant's /members = %d, want 204", code)
+	}
+	if code := doReq(t, aliceR, http.MethodDelete, "/api/v1/tenants/t1/members/carol@pve",
+		"").Code; code != http.StatusNoContent {
+		t.Fatalf("member's DELETE own tenant's member = %d, want 204", code)
+	}
+	if code := doReq(t, aliceR, http.MethodDelete, "/api/v1/tenants/t1", "").Code; code != http.StatusNoContent {
+		t.Fatalf("member's DELETE own tenant = %d, want 204", code)
 	}
 }
