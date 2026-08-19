@@ -7,11 +7,30 @@
 > version plan in this document's title was never followed literally: **`v3.1`, `v3.2` and `v3.3`
 > were never tagged.** Phases 18 and 19 landed inside the `v3.0.x` line and Arc 5 took `v3.5.0`,
 > so the phase-to-version map here was always a plan rather than a ledger.
-> And **two cards this arc counted as delivered were not**: `T-2006` (localization) and the
-> *hosting* half of `T-2102` (signed apt repository — the tooling and signing pipeline shipped,
-> the published repository does not exist). Both are rescheduled into Arc 6 as `T-3106` and
-> `T-3301` respectively; see [`roadmap-earned.md`](roadmap-earned.md). Arc 4's real count is
-> **24 of 26 cards**, not 26.
+> And **four cards this arc counted as delivered were not, not two — extended 2026-08-19 (debt
+> sweep) to name the other half of the same pattern this correction already found once.**
+> `T-2006` (localization) and the *hosting* half of `T-2102` (signed apt repository — the tooling
+> and signing pipeline shipped, the published repository does not exist) were the two originally
+> named here. **`T-2104` (hosted blueprint/plugin registry) and `T-2105` (community distribution
+> and docs site) belong on this same list** — `planning/tasks/phase-21.md` itself marks both
+> `◐ Partial` in its own delivery record (lines 18–19): `T-2104` shipped the capability-agreement
+> gate and four seed blueprints but no hosted registry instance; `T-2105` shipped the docsify site,
+> install guide, and CONTRIBUTING.md but left the repo private, GitHub Pages disabled, no
+> security-disclosure contact, and the forum announcement in draft. Neither gap was carried
+> forward into this document's own "shipped" framing when it was first corrected 2026-08-16 — this
+> second pass closes that omission. All four are rescheduled into Arc 6: `T-2006` as `T-3106`,
+> `T-2102`'s hosting half as `T-3301`, `T-2104`'s hosting half and `T-2105`'s remainder as `T-3302`/
+> `T-3303`; see [`roadmap-earned.md`](roadmap-earned.md). Arc 4's real count is **24 of 26 cards
+> shipped in full**, not 26 — unchanged by this correction, since `T-2104`/`T-2105` were always
+> counted as their own cards and were already partial, not additionally-missing cards.
+>
+> **Status as of 2026-08-19 (debt sweep):** all four gaps above are now closed by Arc 6 — `T-3106`
+> shipped a localization framework and one localized screen (2026-08-17), `T-3301` hosts a real
+> signed apt repo (2026-08-18), and `T-3302`/`T-3303` made the repo public, enabled the docs site,
+> published a security contact, and hosted a real demo and registry instance (2026-08-18). The one
+> item still genuinely open across all four: the forum announcement `T-2105` drafted remains
+> unposted, and `apt.vnprox.com`/`demo.vnprox.com`/`registry.vnprox.com` don't resolve publicly yet
+> — see `planning/tasks/phase-33.md`.
 
 The three arcs before this one are shipped:
 `roadmap.md` (Phases 0–7, v1.0) made vnprox the visual network manager for a PVE cluster;

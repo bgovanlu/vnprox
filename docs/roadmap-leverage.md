@@ -2,7 +2,13 @@
 
 **Status: shipped** (planned 2026-08-08; all ten cards delivered across two passes on 2026-08-08
 and 2026-08-09 — see `planning/tasks/phase-24.md`'s delivery records — and folded into the
-`v3.5.0` line). The four arcs before this one are described in
+`v3.5.0` line). **Correction, 2026-08-19 (debt sweep): "all ten cards delivered" needs a footnote.**
+`T-2409` (per-spec e2e store isolation) is built and proven but was never merged to `main` — it
+misses its own wall-clock and green-suite acceptance criteria, and the work sits on the parked
+branch `t-2409-e2e-store-isolation` to this day (confirmed still unmerged 2026-08-19; see
+`planning/tasks/phase-24.md`'s own delivery record for the detail, and
+`planning/tasks/debt-sweep-2026-08-19.md` worklist item 10, which tracks the branch itself as
+still-open debt). Ten cards were *worked*; nine landed on `main`. The four arcs before this one are described in
 [`roadmap.md`](roadmap.md) (Phases 0–7, v1.0), [`roadmap-next.md`](roadmap-next.md) (8–12, v2.0),
 [`roadmap-universal.md`](roadmap-universal.md) (13–17, v3.0) and
 [`roadmap-proven.md`](roadmap-proven.md) (18–21, v3.1 → v4.0). Phases 22 (online help) and 23

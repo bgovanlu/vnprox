@@ -26,9 +26,12 @@ const topicTopology = "topology"
 // WebSocket section): a superset envelope reusing the existing
 // changeset.status/drift.changed/findings.changed producers verbatim (see
 // eventsSourceTopics below) plus the new audit.appended event, gated on the
-// "automation" scope rather than plain netRead. Unlike every other topic
-// this hub knows about, subscribing to it is itself an authorization
-// decision (setTopics below), not merely "nothing to send yet".
+// "automation" scope (auth.CapAutomation — the READ half as of
+// T-3003-followup-01's split; internal/auth.forceReadOnly leaves it set, so
+// this topic stays reachable in a read_only deployment) rather than plain
+// netRead. Unlike every other topic this hub knows about, subscribing to it
+// is itself an authorization decision (setTopics below), not merely
+// "nothing to send yet".
 const topicEvents = "events"
 
 // eventsSourceTopics names the existing WS topics whose broadcasts are

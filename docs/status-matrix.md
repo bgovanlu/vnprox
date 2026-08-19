@@ -450,24 +450,24 @@ client for the area exists at all (`ls web/src/<area>`, `grep -rl` across `*.tsx
 | Nightly soak / resource-leak gate | `T-2504` | ● | — | phase-25 |
 | E2E sharding, isolation, flake quarantine | `T-2505` | ◐ | — | **Two ACs explicitly unmet**; one spec quarantined, expiry **2026-09-15** — §5.11, `planning/reports/T-2505-followup-01.md` |
 | Performance regression budget gate | `T-2506` | ● | — | phase-25 |
-| Policy-as-code guardrails at validate | `T-2601` | ● | no | `vnproxctl policy`; **no `web/src` client** |
-| Canary / staged multi-node apply | `T-2602` | ◐ | no | Backend complete and reachable; **API/CLI only** — `T-3005`. The claim that it "returns 501 by default" is false; see that card's note |
-| Finding-triggered auto-rollback | `T-2603` | ◐ | no | API/CLI only — `T-3005` |
-| Two-person rule on protected op classes | `T-2604` | ◐ | partial | The approval gate is enforced in `ReviewApplyScreen.tsx`; **break-glass has no button** — `POST /changesets/{id}/break-glass` is route-only |
+| Policy-as-code guardrails at validate | `T-2601` | ● | **yes (2026-08-16, `T-3002`)** | `vnproxctl policy` plus `web/src/governance/PoliciesPanel.tsx`, verified against source 2026-08-19 |
+| Canary / staged multi-node apply | `T-2602` | ● | **yes (2026-08-16, `T-3005`)** | **Row corrected 2026-08-19 (debt sweep): this row was stale.** `web/src/changesets/ApplyStrategyPanel.tsx` and `RolloutPanel.tsx` shipped a strategy picker and mid-hold rollout view in Phase 30 — confirmed against source, not against another doc. The claim that the backend "returns 501 by default" was already false; see the original `T-3005` card note |
+| Finding-triggered auto-rollback | `T-2603` | ● | **yes (2026-08-16, `T-3005`)** | **Row corrected 2026-08-19**, same as `T-2602` — the auto-rollback toggle ships in `ApplyStrategyPanel.tsx`, confirmed against source |
+| Two-person rule on protected op classes | `T-2604` | ● | **yes (2026-08-16, `T-3002`)** | **Row corrected 2026-08-19.** The approval gate is enforced in `ReviewApplyScreen.tsx`; break-glass now has a real caller, `web/src/changesets/BreakGlassPanel.tsx`, wired from `GovernancePage.tsx` — confirmed against source, no longer route-only |
 | Post-apply topology preview | `T-2605` | ● | yes | `GET /changesets/{id}/preview` |
-| Git-backed spec sync | `T-2701` | ● | no | `[gitsync]`; **no `web/src` client** |
-| Changeset → pull request | `T-2702` | ● | no | `POST /changesets/{id}/propose`; no UI |
+| Git-backed spec sync | `T-2701` | ● | **yes (2026-08-16, `T-3001`)** | **Row corrected 2026-08-19.** `web/src/drift/GitSyncPanel.tsx` and `ConfigAsCodePage.tsx` ship the `[gitsync]` status screen — confirmed against source |
+| Changeset → pull request | `T-2702` | ● | **no — confirmed still true, 2026-08-19** | `POST /changesets/{id}/propose` still has no `web/src` caller; checked directly (`grep -r "propose" web/src` matches only `internal/microseg`'s unrelated `POST /microseg/propose`). Phase 30's `T-3001` covered `[gitsync]`/spec/drift, not this route — it remains genuinely headless |
 | Drift-to-git reconciliation | `T-2703` | ● | yes | `POST /drift/{id}/restore-intent` |
 | Point-in-time topology diff | `T-2704` | ● | yes | `GET /topology/diff` |
 | MCP stage-only AI operator surface | `T-2705` | ● | — | Compile-time non-apply guarantee (`internal/mcp/stageonly.go`) |
-| Compliance control mapping | `T-2706` | ● | no | Unmapped controls report `unmapped`, never `pass`; **no `web/src` client** |
+| Compliance control mapping | `T-2706` | ● | **yes (2026-08-16, `T-3002`)** | **Row corrected 2026-08-19.** `web/src/governance/CompliancePanel.tsx` renders `unmapped` controls honestly, never as `pass` — confirmed against source |
 | Demo mode / one-command install | `T-2801` | ● | yes | `vnproxd --demo`; `web/src/demo` |
-| Hosted read-only demo | `T-2802` | ◐ | yes | Edge + tour built; **no instance hosted** — `T-3303` |
-| Hosted signed registry | `T-2803` | ◐ | yes | Format + publisher tooling built; **no instance hosted** — `T-3303`. §6.4 of `project-status.md` marks this `●`; that disagrees with its own note text and with `T-2802`/`T-2104` — see `planning/tasks/phase-28.md`'s record |
+| Hosted read-only demo | `T-2802` | ◐ | yes | **Row corrected 2026-08-19.** Edge + tour built; **a real instance is now hosted** at `demo.vnprox.com` (`pve001`, `T-3303`, 2026-08-18) — still ◐ only because `demo.vnprox.com` does not resolve publicly yet (VPS DNS pending, owner-deferred, `planning/tasks/debt-sweep-2026-08-19.md` item 7), not because the mechanism is missing |
+| Hosted signed registry | `T-2803` | ◐ | yes | **Row corrected 2026-08-19.** Format + publisher tooling built, and **a real instance is now hosted** at `registry.vnprox.com` with all four `T-2104` seed blueprints published through the real `vnproxctl hub publish`/`hub index` pipeline (`T-3303`, 2026-08-18) — still ◐ only for the same unresolved-DNS reason as `T-2802`, no longer for the "no instance" reason `planning/tasks/phase-28.md`'s record originally flagged. That record's self-noted inconsistency with `project-status.md` §6.4 is now moot: both rows carry the identical ◐ reason |
 | Incident mode | `T-2804` | ● | yes | `web/src/incidents`, `IncidentsPage.tsx` |
 | Advisory entity locks + presence | `T-2805` | ◐ | yes | Node-local only; cross-node presence fan-out unbuilt — `T-3201` |
 | Map annotation layer | `T-2806` | ● | yes | phase-28 record |
-| Scheduled digest reports | `T-2807` | ◐ | partial | `GET`/`PUT /digest/schedule`; schedule is set through the API, no dedicated screen |
+| Scheduled digest reports | `T-2807` | ● | **yes (2026-08-16, `T-3002`)** | **Row corrected 2026-08-19.** `web/src/governance/DigestSchedulePanel.tsx` now exists beside the alert-rule settings — confirmed against source, no longer API-only |
 | In-app assistant over MCP read tools | `T-2808` | ● | yes | `web/src/assistant`; no backend configured by default |
 | PWA CSP / embed frameability | `T-2901` | ● | yes | §2 row 73; `pwa.servable` verify check |
 | Peer host-write validation + audit IP | `T-2902` | ● | — | Migration 0047; `planning/tasks/phase-29.md` |
@@ -476,12 +476,62 @@ client for the area exists at all (`ls web/src/<area>`, `grep -rl` across `*.tsx
 | Hardening punch list | `T-2905` | ● | — | Session sweep, webhook SSRF policy, HTTP timeouts, config 0640 |
 | Documentation truth pass | `T-2906` | ● | — | This section is part of it |
 
-**What this stub says that §2 cannot.** Ten of the 40 areas are `◐`, and the largest single cause
-is not incompleteness — it is unreachability. **Ten areas ship a working backend that an operator
-cannot reach from the product**: six have no `web/src` client at all (`T-2601` policy-as-code,
+**What this stub said when it was written (2026-08-16), and what closed it (updated 2026-08-19,
+debt sweep).** At the time this section was filled in, ten of the 40 areas were `◐`, and the
+largest single cause was unreachability: six had no `web/src` client at all (`T-2601` policy-as-code,
 `T-2602` canary apply, `T-2603` auto-rollback, `T-2701` git spec sync, `T-2702` changeset→PR,
-`T-2706` compliance mapping), two are reachable only in part (`T-2604`'s break-glass, `T-2807`'s
-schedule), and two are built but have no hosted instance (`T-2802`, `T-2803`). Four of those ten
-are nonetheless marked `●` here, because the card delivered exactly what it promised — the gap is
-the product's, not the card's. That distinction is the whole reason Arc 6's Phase 30 exists, and
-none of it is visible in §2's grid, which predates all of it.
+`T-2706` compliance mapping), two were reachable only in part (`T-2604`'s break-glass, `T-2807`'s
+schedule), and two were built but had no hosted instance (`T-2802`, `T-2803`). That gap was
+Arc 6's Phase 30's whole reason for existing, and it worked: as of Phase 30's 2026-08-16 delivery
+and Phase 33's 2026-08-18 hosting work, **every one of the ten now has either a `web/src` client or
+a real hosted instance, except one.** `T-2702` (changeset → pull request, `POST /changesets/{id}/propose`)
+remains genuinely headless — checked directly against `web/src` on 2026-08-19, not assumed from
+Phase 30's own scope note, which named `[gitsync]`/spec/drift as its target and never claimed to
+cover this route. `T-2802`/`T-2803` are `◐` only because their real hosted instances
+(`demo.vnprox.com`, `registry.vnprox.com`) don't resolve publicly yet — a DNS/VPS gap the owner
+deferred 2026-08-19 (`planning/tasks/debt-sweep-2026-08-19.md` item 7), not a missing mechanism.
+See §8 below for Phases 30, 31, and 34, which this stub did not originally cover.
+
+---
+
+## 8. Phases 30, 31, and 34 (added 2026-08-19, debt sweep)
+
+This matrix had zero rows for Phases 30, 31, and 34 despite being treated elsewhere as the
+authoritative feature-status ledger — its own header has said since 2026-08-15 that it "predates
+Arc 5 and Arc 6" and has never been re-swept past Phase 29. This section closes that gap for the
+three phases with no representation anywhere above, **the same way §7 was filled in**: one state
+mark and a pointer per card, checked against source and commits, not against another document's
+summary of itself. It is not a re-run of §2's full eight-column method — that re-sweep is still
+undone, and still `T-3204`'s to schedule (§7's own note, unchanged).
+
+Phase 30's cards mostly gave existing §7 rows their missing UI rather than adding new feature
+areas — those corrections are already folded into §7's table above (`T-2601`–`T-2604`, `T-2701`,
+`T-2706`, `T-2807`) rather than duplicated here. The rows below are the areas that had no §2 or §7
+row to correct at all.
+
+| Area | Card | State | HW | Pointer |
+|---|---|---|---|---|
+| Platform panel: tokens, webhooks, plugins, doctor-live | `T-3003` | ● | M | `web/src/settings/`; tokens show stored vs. effective scope under `read_only`; webhook 403 renders as a named refusal rather than a dead form |
+| Analysis surfaces: SPOF/failsim, WAN health, capacity export, PBS, QoS, IPv6 segments | `T-3004` | ● | M | `web/src/analysis/`, `web/src/edge/`, `web/src/ipv6/DualStackWizard.tsx` wired to a real route |
+| Panel-aware help coverage gate | `T-3006` | ● | — | Extends `web/src/help/coverage.test.ts` to panels, not just routed screens; closes the exact gap that let T-2005 ship with zero help |
+| **SDN Fabrics** (new family: `/cluster/sdn/fabrics`, protocols `bgp\|openfabric\|ospf\|wireguard`) | `T-3101` | ● | **B** | `internal/sdn/`, `web/src/sdn/`; per-node membership from `/cluster/sdn/fabrics/node`. Cross-node fabric realization/convergence needs a second node with fabrics actually configured — still open, filed under `T-3201` in `needs-hardware-validation.md` |
+| `faucet` SDN zone type accepted (real PVE 9.2 enum, previously rejected) | `T-3101` | ● | V | Captured directly from `pvesh usage /cluster/sdn/zones -v` on pvecube — see `planning/reports/evidence/pve-9.2.4-sdn-schema.txt` |
+| `prefix-lists` / `route-maps` (new families, read-only) | `T-3101` | ● | M | Inventory + display only by design; CRUD explicitly out of scope, would need its own card |
+| SDN controllers as first-class objects | `T-3102` | ● | M | `sdn.controller.{create,update,delete}` ops; controllers are now a `Tree.Controllers` sibling collection, not a string field on a zone; delete-if-referenced guard added |
+| Firewall `forward` direction + VNet-scope firewall | `T-3103` (items 1–2) | ◐ | M | `forward` accepted at cluster/node/vnet scope with `policy_forward`/`log_level_forward`; guest scope still rejects it deliberately (untested in the hardware capture, left as an honest rejection). `FwScopeVNet` exists with every switch site handled explicitly |
+| Firewall resolution-order simplification | `T-3103` (item 3) | ● | **V** | **Hardware-confirmed, not just re-flagged**: a bare cluster rule compiles into the node's own host chain and never reaches a guest's tap chain without an explicit security-group reference — vnprox's simpler resolved-view model is the deliberate, now-confirmed trade-off. `docs/features/firewall.md`'s caveat was rewritten to state this rather than merely flag it as unverified |
+| OVS bond restore (`inventory.Bond.OVSBridge`) | `T-3105` | ● | M | Time-machine restore can now re-create an OVS bond; `ErrRestoreUnsupported` narrowed, not removed |
+| Ingress write support / physical NIC rename | `T-3105` | — | — | **Not debts — reclassified as decisions.** Ingress read-only is an architectural invariant (`internal/ingress/doc.go`, enforced by `zerowrite_test.go`); physical NIC rename is explicitly out of scope by design (`internal/change/op.go:43`, `params_iface.go:41`). Neither is tracked as open work; a future card reopening either needs its own product decision, not a line item here |
+| **Stripe-style cockpit shell** (design-system redesign: sidebar, top bar, page headers, core component restyle) | `T-3401`–`T-3406` | ● | — | `web/src/layout/`, `docs/development.md` "Visual language (Phase 34, T-3401)". Closed with a full regression pass (`T-3406`); a11y debt the sweep surfaced was carded separately and closed (`T-3406-followup-01`, `planning/tasks/phase-34-followup.md`, DONE 2026-08-19) |
+
+**One area this table deliberately omits a row for: `T-3106` (i18n).** It already has its own row
+in §2 (row 72), updated in place when it shipped rather than duplicated here — this section only
+adds rows for areas §2 and §7 had none for at all.
+
+**Reading the HW column honestly.** SDN Fabrics is the one genuinely new object family this phase
+added, and it is also the one still carrying a **B** (blocked) here: `pvecube` has no fabrics
+configured, so this table can state the API's *shape* is right (validated directly against a real
+`pvesh usage` capture) without being able to say anything about fabric convergence, per-node
+realization, or controller behaviour across nodes. That gap is not filed twice — it lives once, in
+`planning/reports/needs-hardware-validation.md` under the `T-3201` pointer, and this table just
+points at it rather than restating it.

@@ -3,13 +3,13 @@
 // FindingsList presentation, and the fix-changeset wiring. The backend is
 // mocked at the api/findings.ts boundary; the WS bridge is stubbed the same
 // way ChangesetDrawer.test.tsx stubs it (no real WebSocket in jsdom).
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../components/Toast";
-import type { Changeset, StreamFinding } from "../api/types";
+import type { Changeset, FindingSource, StreamFinding } from "../api/types";
 import { NARROW_VIEWPORT_QUERY } from "../lib/useNarrowViewport";
 import { FindingsStreamPanel } from "./FindingsStreamPanel";
 
@@ -199,6 +199,72 @@ describe("FindingsStreamPanel", () => {
     await user.selectOptions(screen.getByLabelText("Filter by source"), "probe");
     expect(screen.getByText("probe finding")).toBeInTheDocument();
     expect(screen.queryByText("bridge diverges")).not.toBeInTheDocument();
+  });
+
+  // Debt sweep item 9 / `T-3004-followup-01` (2026-08-19): 11 of
+  // `internal/findings.Source`'s constants (`internal/findings/types.go` —
+  // the authoritative list, per CLAUDE.md, not a doc that copies it) had no
+  // entry in SOURCE_LABELS, because FindingSource (../api/types.ts) named
+  // only 5 of its 17 values — so `SOURCE_LABELS[f.source]` evaluated to
+  // `undefined` and those findings rendered as the literal string
+  // `undefined · <check>`, unfilterable. Fixed by widening FindingSource to
+  // list every real value, which turns SOURCE_LABELS's `Record<FindingSource,
+  // string>` into an exhaustiveness check the compiler enforces.
+  //
+  // EXPECTED_SOURCE_LABELS below is its own independent
+  // `Record<FindingSource, string>` (not imported from the component, which
+  // doesn't export SOURCE_LABELS) — so it, too, fails to compile if
+  // FindingSource ever grows without a matching entry here, keeping this
+  // regression test itself exhaustive rather than merely re-asserting
+  // whatever the component happens to contain today.
+  const EXPECTED_SOURCE_LABELS: Record<FindingSource, string> = {
+    drift: "Drift",
+    lldp: "LLDP",
+    ipam: "IPAM",
+    health: "Health",
+    probe: "Verify live",
+    wireguard: "WireGuard",
+    wan: "WAN",
+    flow: "Flow",
+    k8s: "Kubernetes",
+    rogue: "Rogue",
+    capacity: "Capacity",
+    baseline: "Baseline",
+    federation: "Federation",
+    peer: "Peer",
+    store: "Store",
+    cert: "Certificates",
+    gitsync: "Git sync",
+  };
+
+  it("renders every FindingSource's real label (never 'undefined') and offers each in the source filter", async () => {
+    const allSources = Object.keys(EXPECTED_SOURCE_LABELS) as FindingSource[];
+    const allSourceFindings: StreamFinding[] = allSources.map((source) => ({
+      id: `${source}:all-sources`,
+      source,
+      check: "some_check",
+      severity: "warning",
+      detail: `detail for ${source}`,
+      nodes: ["pve1"],
+      fixable: false,
+    }));
+    fetchFindings.mockResolvedValueOnce(allSourceFindings);
+    renderPanel();
+
+    await waitFor(() => {
+      expect(screen.getByText("detail for drift")).toBeInTheDocument();
+    });
+
+    // No finding's category collapsed to the "undefined · <check>" bug shape.
+    expect(screen.queryByText(/^undefined\s*·/)).not.toBeInTheDocument();
+
+    const select = screen.getByLabelText("Filter by source");
+    for (const source of allSources) {
+      const label = EXPECTED_SOURCE_LABELS[source];
+      expect(screen.getByText(`${label} · some_check`)).toBeInTheDocument();
+      const option = within(select).getByRole("option", { name: label });
+      expect(option).toHaveValue(source);
+    }
   });
 
   describe("narrow viewport (T-909)", () => {

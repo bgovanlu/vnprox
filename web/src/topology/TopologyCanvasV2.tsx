@@ -528,6 +528,60 @@ export function TopologyCanvasV2({
     return { x: evt.clientX - (rect?.left ?? 0), y: evt.clientY - (rect?.top ?? 0) };
   }, []);
 
+  // T-3204/T-2505-followup-01: a native pointermove fires far faster than the
+  // display can paint (Chromium can dispatch dozens per animation frame, and
+  // Playwright's own synthetic gesture drives one CDP round trip per step).
+  // Before this, every single pointermove committed its own React state
+  // update (setViewport/setDragTopLeft/onNodeHover) synchronously, which
+  // scheduled its own render + effect + full drawScene() pass — so a fast
+  // gesture could queue many redundant redraw passes for points that were
+  // already stale by the time they ran, competing with the browser's own
+  // input-dispatch/compositor bookkeeping for the same main thread. Coalescing
+  // to "at most one state commit per animation frame, using the latest
+  // pointer position" is the standard fix for this class of pointer-handler
+  // overload (mirrors how a scroll/resize handler is rAF-throttled) and cuts
+  // real redraw work during a pan/zoom by up to an order of magnitude at this
+  // fixture's scale — not just a workaround for the e2e hang this was found
+  // chasing (see quarantine.json's T-2505-followup-01 entry).
+  const pendingMoveRef = useRef<
+    | { kind: "hover"; hitId: string | undefined }
+    | { kind: "pan"; viewport: Viewport }
+    | { kind: "node"; id: string; x: number; y: number }
+    | undefined
+  >(undefined);
+  const moveRafRef = useRef<number | undefined>(undefined);
+
+  const flushPointerMove = useCallback(() => {
+    moveRafRef.current = undefined;
+    const pending = pendingMoveRef.current;
+    pendingMoveRef.current = undefined;
+    if (!pending) return;
+    switch (pending.kind) {
+      case "hover":
+        onNodeHover(pending.hitId);
+        break;
+      case "pan":
+        setViewport(pending.viewport);
+        break;
+      case "node":
+        setDragTopLeft({ id: pending.id, x: pending.x, y: pending.y });
+        break;
+    }
+  }, [onNodeHover]);
+
+  const schedulePointerMove = useCallback(() => {
+    if (moveRafRef.current !== undefined) return;
+    moveRafRef.current = requestAnimationFrame(flushPointerMove);
+  }, [flushPointerMove]);
+
+  // Drop any coalesced-but-not-yet-applied update on unmount, so a
+  // late-firing rAF never calls setState on an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (moveRafRef.current !== undefined) cancelAnimationFrame(moveRafRef.current);
+    };
+  }, []);
+
   const handlePointerDown = useCallback(
     (evt: React.PointerEvent<HTMLDivElement>) => {
       if (evt.button !== 0) return; // left button only; context menu handled separately
@@ -563,27 +617,44 @@ export function TopologyCanvasV2({
       const g = gesture.current;
       const p = localPoint(evt);
       if (!g) {
-        // Plain hover: hit-test and report (drives the hover-chain highlight).
-        onNodeHover(hitTest(lodSceneNodes, p, viewport));
+        // Plain hover: hit-test now (cheap), but coalesce the resulting
+        // state commit to the next animation frame (see schedulePointerMove's
+        // doc comment above).
+        pendingMoveRef.current = { kind: "hover", hitId: hitTest(lodSceneNodes, p, viewport) };
+        schedulePointerMove();
         return;
       }
       const dx = p.x - g.startX;
       const dy = p.y - g.startY;
       if (!g.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      // The drag-threshold flag is set synchronously (endGesture's click-vs-
+      // drag branch needs it immediately at pointerup, which may land before
+      // a coalesced update ever flushes) — only the resulting viewport/
+      // drag-position COMMIT is throttled.
       g.moved = true;
       if (g.kind === "pan") {
-        setViewport(panBy(g.startViewport, dx, dy));
+        pendingMoveRef.current = { kind: "pan", viewport: panBy(g.startViewport, dx, dy) };
       } else if (g.id !== undefined) {
-        setDragTopLeft({ id: g.id, x: p.x - (g.grabDX ?? 0), y: p.y - (g.grabDY ?? 0) });
+        pendingMoveRef.current = { kind: "node", id: g.id, x: p.x - (g.grabDX ?? 0), y: p.y - (g.grabDY ?? 0) };
       }
+      schedulePointerMove();
     },
-    [localPoint, lodSceneNodes, viewport, onNodeHover],
+    [localPoint, lodSceneNodes, viewport, schedulePointerMove],
   );
 
   const endGesture = useCallback(
     (evt: React.PointerEvent<HTMLDivElement>) => {
       const g = gesture.current;
       gesture.current = undefined;
+      // Drop any move this gesture queued but that hasn't reached a frame
+      // yet — otherwise a coalesced update (e.g. a stale drag position) could
+      // flush a moment after this function's own setDragTopLeft(undefined)
+      // below and resurrect the just-dropped node's ghost position.
+      if (moveRafRef.current !== undefined) {
+        cancelAnimationFrame(moveRafRef.current);
+        moveRafRef.current = undefined;
+      }
+      pendingMoveRef.current = undefined;
       try {
         containerRef.current?.releasePointerCapture(evt.pointerId);
       } catch {

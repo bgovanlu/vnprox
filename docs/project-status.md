@@ -216,7 +216,24 @@ hypotheses already refuted and recorded, so they are not re-derived a third time
 
 ### 6.4 Arc 5 — delivery (2026-08-13)
 
-All 25 cards across phases 25–28 shipped, merged to `main`, and cut as **v3.5.0**.
+All 25 cards across phases 25–28 shipped, merged to `main`, and cut as **v3.5.0**. "Shipped" here
+means each card delivered what its own acceptance criteria named — for six of the ten Phase 26/27
+backend cards below, and for `T-2604`'s break-glass control, what was named did not include a
+`web/src` client, so a card can legitimately be `● Shipped` and still be unreachable except by
+`curl`/CLI. That gap, not a shipping defect, is what `docs/status-matrix.md` §7 and Arc 6's Phase
+30 exist to close.
+
+**Checked directly against `web/src` 2026-08-19 (debt sweep), not assumed from an earlier claim
+about which of these had no client.** Five of the six originally-headless cards, plus `T-2604`'s
+break-glass, gained a real `web/src` caller in Phase 30 (2026-08-16) — `T-2601` policy-as-code
+(`web/src/governance/PoliciesPanel.tsx`), `T-2602` canary apply and `T-2603` auto-rollback
+(`web/src/changesets/ApplyStrategyPanel.tsx`, `RolloutPanel.tsx`), `T-2701` git spec sync
+(`web/src/drift/GitSyncPanel.tsx`), `T-2706` compliance mapping
+(`web/src/governance/CompliancePanel.tsx`), and `T-2604`'s break-glass
+(`web/src/changesets/BreakGlassPanel.tsx`). **One remains genuinely headless**: `T-2702`
+(changeset → pull request, `POST /changesets/{id}/propose`) — confirmed by grep against `web/src`
+that no caller exists; Phase 30's `T-3001` covered `[gitsync]`/spec/drift, not this route, and
+never claimed to. See `docs/status-matrix.md` §7 for the row-by-row correction.
 
 | Card | Item | State |
 |---|---|---|
@@ -238,8 +255,8 @@ All 25 cards across phases 25–28 shipped, merged to `main`, and cut as **v3.5.
 | `T-2705` | Mutating MCP tools that stage, never apply | ● Shipped |
 | `T-2706` | Compliance profiles and evidence export | ● Shipped — one general profile, explicitly not a certification claim |
 | `T-2801` | One-command install and built-in demo mode | ● Shipped |
-| `T-2802` | Hosted read-only demo and guided tour | ◐ **The mechanism shipped; the instance does not exist.** `--public-demo` and its edge, session isolation, rate caps, and guided tour are built and tested. There is no domain, object storage, deploy target, or CI budget to actually run one — stated in `docs/features/demo-mode.md`'s "Known gaps" rather than implied by the card being closed |
-| `T-2803` | Hosted signed registry for blueprints and plugins | ● Shipped — the signed-index format and publisher tooling; no instance is hosted, matching `T-2802`'s gap and stated in `docs/hub-registry.md` |
+| `T-2802` | Hosted read-only demo and guided tour | ◐ **Corrected 2026-08-19 (debt sweep): still ◐, now for a different, smaller reason.** `--public-demo` and its edge, session isolation, rate caps, and guided tour were always built and tested; **a real hosted instance now exists** at `demo.vnprox.com` (`pve001`, Arc 6's `T-3303`, 2026-08-18). Still not `●` only because `demo.vnprox.com` doesn't resolve publicly yet (VPS DNS, owner-deferred) — see `planning/tasks/phase-33.md` |
+| `T-2803` | Hosted signed registry for blueprints and plugins | ◐ **Corrected 2026-08-19 (debt sweep): this row was wrong, and inconsistent with itself.** It previously read `● Shipped` while its own note described the identical unhosted-instance gap this table marks `T-2802` `◐` for — `planning/tasks/phase-28.md:253` already flagged that self-contradiction. It is now scored `◐` for consistency. **The underlying gap is since closed anyway**: a real hosted registry now exists at `registry.vnprox.com` with all four `T-2104` seed blueprints published through the real `vnproxctl hub publish`/`hub index` pipeline (`T-3303`, 2026-08-18); it carries the same `◐`-for-DNS reason as `T-2802` now, not the original "no instance" reason |
 | `T-2804` | Incident mode | ● Shipped |
 | `T-2805` | Multi-user presence and changeset locking | ● Shipped — locks and presence are node-local; a peer-API fan-out for cross-node presence is a stated, unfilled gap |
 | `T-2806` | Map annotation layer | ● Shipped |

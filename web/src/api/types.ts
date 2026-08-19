@@ -1256,8 +1256,37 @@ export interface DriftChangedEvent {
 }
 
 /** T-602's unified findings-stream source producer (docs/api.md's
- * `GET /findings`, internal/findings.Source). */
-export type FindingSource = "drift" | "lldp" | "ipam" | "health" | "probe";
+ * `GET /findings`, internal/findings.Source).
+ *
+ * Debt sweep item 9 / `T-3004-followup-01` (2026-08-19): this union and
+ * `SOURCE_LABELS` (web/src/findings/FindingsStreamPanel.tsx) drifted apart —
+ * this union named 5 of `internal/findings.Source`'s 17 constants
+ * (`internal/findings/types.go`, the authoritative list per CLAUDE.md: read
+ * the Go source, not a doc that copies it), so `SOURCE_LABELS[f.source]`
+ * evaluated to `undefined` for the other 11 and those findings were neither
+ * labeled nor filterable. Kept exhaustive with that Go file on purpose: a
+ * source added to one and not the other must fail to compile, not render
+ * `undefined · <check>` at runtime — `SOURCE_LABELS: Record<FindingSource,
+ * string>`'s object-literal excess/missing-property check is what enforces
+ * that, and it only works if this union lists every real value. */
+export type FindingSource =
+  | "drift"
+  | "lldp"
+  | "ipam"
+  | "health"
+  | "probe"
+  | "wireguard"
+  | "wan"
+  | "flow"
+  | "k8s"
+  | "rogue"
+  | "capacity"
+  | "baseline"
+  | "federation"
+  | "peer"
+  | "store"
+  | "cert"
+  | "gitsync";
 
 /** GET /findings item (docs/api.md's `GET /findings` section —
  * internal/findings.Finding): the superset of DriftFinding's shape plus a
@@ -1627,6 +1656,28 @@ export interface TwoPersonState {
   breakGlass?: BreakGlassRecord;
   required: number;
   satisfied: boolean;
+}
+
+/** One zone/vnet/subnet real PVE currently reports staged-but-not-yet-
+ * applied outside this changeset's own ops (T-3101-followup-01): the
+ * foreign-SDN-pending "surface and confirm" gate's review-screen content —
+ * `docs/api.md`'s `GET/POST .../sdn-foreign-pending(/ack)`. `fields`
+ * carries PVE's own current field values for that object, for an "this
+ * apply will also commit ..." listing that shows precisely what changed. */
+export interface SdnPendingEntry {
+  kind: "zone" | "vnet" | "subnet";
+  id: string;
+  state: "new" | "changed" | "deleted";
+  fields?: Record<string, unknown>;
+}
+
+/** `GET`/`POST .../sdn-foreign-pending(/ack)`'s response body
+ * (T-3101-followup-01). `acknowledgedBy`/`acknowledgedAt` are present only
+ * on the ack route's response. */
+export interface SdnForeignPendingResponse {
+  entries: SdnPendingEntry[];
+  acknowledgedBy?: string;
+  acknowledgedAt?: number;
 }
 
 /** T-1805 (`unattendedRevert` on a changeset response): the server's answer to

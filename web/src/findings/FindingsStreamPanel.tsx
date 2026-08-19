@@ -42,6 +42,15 @@ import {
 
 const NARROW_FIX_DISABLED_REASON = "Open on desktop to create a fixing changeset.";
 
+// Debt sweep item 9 / `T-3004-followup-01` (2026-08-19): this Record's type
+// (`Record<FindingSource, string>`) is what makes a source missing its label
+// a compile error rather than a runtime `undefined` — TypeScript rejects an
+// object literal assigned to a `Record<K, V>` that is missing (or adds) a
+// key of `K`, so adding an 18th `internal/findings.Source` constant without
+// adding its entry here fails `tsc`, it doesn't silently render
+// `undefined · <check>` the way 11 of the 16 (now 17) sources previously did
+// — see FindingSource's own doc comment in ../api/types.ts for how that
+// happened.
 const SOURCE_LABELS: Record<FindingSource, string> = {
   drift: "Drift",
   lldp: "LLDP",
@@ -50,6 +59,18 @@ const SOURCE_LABELS: Record<FindingSource, string> = {
   // T-806: sim_divergence findings from POST /simulate/verify's "Verify
   // live" action.
   probe: "Verify live",
+  wireguard: "WireGuard",
+  wan: "WAN",
+  flow: "Flow",
+  k8s: "Kubernetes",
+  rogue: "Rogue",
+  capacity: "Capacity",
+  baseline: "Baseline",
+  federation: "Federation",
+  peer: "Peer",
+  store: "Store",
+  cert: "Certificates",
+  gitsync: "Git sync",
 };
 
 const SEVERITY_LABELS: Record<Severity, string> = {

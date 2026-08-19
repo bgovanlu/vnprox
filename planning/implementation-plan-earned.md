@@ -53,7 +53,11 @@ Migration numbers are claimed per wave as usual (0049–0052), but **none is exp
 object in Phase 31 is PVE-owned, and vnprox never persists PVE config as authoritative state.
 
 Waves within phases 32–33 are decided when their cards are written; the standing rules below
-apply to all of them.
+apply to all of them. **Note, 2026-08-19 (debt sweep):** phases 32 and 33 were executed without
+their card files ever being written — the process this paragraph describes did not happen for
+either phase. `planning/tasks/phase-32.md` and `phase-33.md` were authored retroactively on
+2026-08-19 from the real evidence (commits, `planning/reports/blocked-validation.md`, and direct
+source inspection); both files say so plainly at their own top.
 
 **One rule specific to Phase 31, and it generalizes:** before modelling a PVE object, run
 `pvesh usage` against it on pvecube (PVE 9.2.4) and check the capture in. Phase 31's scoping

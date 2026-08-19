@@ -11,6 +11,7 @@ import type {
   ChangesetDiff,
   ChangesetImpact,
   CreateChangesetRequest,
+  SdnForeignPendingResponse,
   UpdateChangesetRequest,
 } from "./types";
 
@@ -132,6 +133,27 @@ export function addChangesetComment(id: string, opId: string | undefined, body: 
 export async function deleteChangesetComment(id: string, commentId: string): Promise<void> {
   await apiFetch(`/changesets/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}`, {
     method: "DELETE",
+    csrfToken: readCsrfCookie(),
+  });
+}
+
+/** GET /changesets/{id}/sdn-foreign-pending (T-3101-followup-01) — "this
+ * apply will also commit ...": every zone/vnet/subnet real PVE currently
+ * reports staged-but-not-yet-applied outside this changeset's own ops. A
+ * read, deliberately: seeing what an apply would additionally commit must
+ * never require the capability to apply it. */
+export function sdnForeignPending(id: string): Promise<SdnForeignPendingResponse> {
+  return apiFetch<SdnForeignPendingResponse>(`/changesets/${encodeURIComponent(id)}/sdn-foreign-pending`);
+}
+
+/** POST /changesets/{id}/sdn-foreign-pending/ack (T-3101-followup-01) —
+ * acknowledge the CURRENT live foreign-pending set. The server re-reads
+ * PVE itself and records exactly that; nothing in this request chooses
+ * which entries get acknowledged (mirrors reviewApproveChangeset's own
+ * "this call only ever records state" contract). */
+export function ackSdnForeignPending(id: string): Promise<SdnForeignPendingResponse> {
+  return apiFetch<SdnForeignPendingResponse>(`/changesets/${encodeURIComponent(id)}/sdn-foreign-pending/ack`, {
+    method: "POST",
     csrfToken: readCsrfCookie(),
   });
 }

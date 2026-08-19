@@ -1,7 +1,11 @@
 // suggest.go implements T-603 AC4's "address params get next-free
 // suggestions" directly off inventory.Snapshot — see doc.go's note on why
-// this does not go through internal/ipam/T-405's picker (neither exists
-// on this branch's base).
+// this does not delegate to internal/ipam's next-free-address picker
+// (internal/ipam and web/src/ipam/NextFreePicker.tsx both shipped in
+// T-405; the comment here used to say neither existed, which stopped being
+// true once T-405 landed — corrected 2026-08-19, debt sweep. The
+// delegation itself is still not implemented; see doc.go for what a
+// follow-up should do).
 
 package blueprint
 

@@ -1,7 +1,13 @@
 # Arc 6 — Earned
 
-**Status: proposed 2026-08-15.** Scoped from a four-dimension audit (features, docs, security,
-planning leftovers) of the tree at tag `v4.0.0` (`5c19dcc`, released 2026-08-14). The five arcs
+**Status: proposed 2026-08-15, and shipped 2026-08-18 — updated 2026-08-19 (debt sweep) so the
+header stops saying "proposed" three days after the arc actually closed.** Phases 29, 30, 31, and
+33 shipped; Phase 32 shipped with two of its four cards (`T-3202`, `T-3204`) landing partial rather
+than complete — see `planning/tasks/phase-29.md` through `phase-33.md` for the per-card delivery
+records, and `planning/tasks/phase-32.md`/`phase-33.md` specifically, since those two card files
+were themselves written retroactively by the same debt sweep that corrected this line (neither
+existed while the phases were in flight). Scoped from a four-dimension audit (features, docs,
+security, planning leftovers) of the tree at tag `v4.0.0` (`5c19dcc`, released 2026-08-14). The five arcs
 before this one are described in [`roadmap.md`](roadmap.md) (Phases 0–7, v1.0),
 [`roadmap-next.md`](roadmap-next.md) (8–12, v2.0), [`roadmap-universal.md`](roadmap-universal.md)
 (13–17, v3.0), [`roadmap-proven.md`](roadmap-proven.md) (18–21, v3.1 → v4.0, shipped as v4.0.0),
@@ -284,8 +290,19 @@ commit-confirm self-heal. The product's headline guarantee has passed every mock
 never once been observed on iron. Plus the record/replay hardware half (`T-2502-followup-01`:
 are real PVE list responses order-stable?), first real-hardware cassettes replacing the
 mock-recorded ones, and a hardware-validated row in the compat matrix (T-2103's open half).
-Also closes `T-1904-followup-01`: `install.sh` aborts (not reports) on failing doctor — its
-blocker was resolved in Arc 4 and nobody went back.
+Also intended to close `T-1904-followup-01`: `install.sh` aborts (not reports) on failing
+doctor — its blocker was resolved in Arc 4 and nobody went back.
+
+**Corrected 2026-08-19 (debt sweep, checked against the delivered code, not this paragraph).**
+T-3202 delivered less than this paragraph describes. What actually shipped: Scenarios 1 and 5 of
+T-1804's six failure-injection scenarios were run live and passed (a management-link lockout and
+the harder firewall-only lockout exercising T-1805's sealed-ticket revert), finding and fixing two
+real firewall bugs along the way. Scenarios 2, 3, 4, and 6 were explicitly deferred and remain
+open. None of the record/replay hardware cassette, the compat matrix's hardware-validated row, or
+`T-1904-followup-01`'s install.sh hard-gate was delivered — `packaging/install.sh` still reports
+rather than aborts on a failing doctor run, verified directly against the script 2026-08-19. See
+`planning/tasks/phase-32.md`'s `T-3202` section (written the same day, retroactively, since no
+card file existed for this phase) for the full evidence trail.
 
 **`T-3203`** — T-1808 verbatim: real per-node port counts and guest densities, then re-derive
 `DefaultPhysicalCollapseThreshold = 8`, provisional since T-1907 with a written promise to

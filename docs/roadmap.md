@@ -2,7 +2,17 @@
 
 Phases map 1:1 to the implementation plan (`planning/implementation-plan.md`). Each phase ends with a working, demoable increment; releases cut where marked.
 
-**This arc (Phases 0–7) is shipped.** Five arcs followed it, all shipped: Phases 8–12 (v1.4 → v2.0) in [`roadmap-next.md`](roadmap-next.md), which absorbs the Post-1.0 backlog below; Phases 13–17 (v2.1 → v3.0) in [`roadmap-universal.md`](roadmap-universal.md); Phases 18–21 (v3.1 → v4.0, cut as v4.0.0) in [`roadmap-proven.md`](roadmap-proven.md); Phase 24 in [`roadmap-leverage.md`](roadmap-leverage.md) (Phases 22–23 sit outside the arc structure); and Phases 25–28 (v3.5.0) in [`roadmap-adopted.md`](roadmap-adopted.md). Note that `v3.1`, `v3.2` and `v3.3` were **never tagged** — phases 18 and 19 shipped inside the `v3.0.x` line and Arc 5 took `v3.5.0` — so the phase-to-version mapping above is the plan, not the release ledger. **The active arc is Phases 29–33 (v4.1 → v5.0) in [`roadmap-earned.md`](roadmap-earned.md); Phases 29 and 30 have shipped** (see the delivery records in `planning/tasks/phase-29.md` and `phase-30.md`) — it consolidates every open item left by the arcs above into a single backlog, including two the arcs above counted as delivered and were not (`T-2006` localization, `T-2102`'s apt-repo *hosting*).
+**This arc (Phases 0–7) is shipped.** Five arcs followed it, all shipped: Phases 8–12 (v1.4 → v2.0) in [`roadmap-next.md`](roadmap-next.md), which absorbs the Post-1.0 backlog below; Phases 13–17 (v2.1 → v3.0) in [`roadmap-universal.md`](roadmap-universal.md); Phases 18–21 (v3.1 → v4.0, cut as v4.0.0) in [`roadmap-proven.md`](roadmap-proven.md); Phase 24 in [`roadmap-leverage.md`](roadmap-leverage.md) (Phases 22–23 sit outside the arc structure); and Phases 25–28 (v3.5.0) in [`roadmap-adopted.md`](roadmap-adopted.md). Note that `v3.1`, `v3.2` and `v3.3` were **never tagged** — phases 18 and 19 shipped inside the `v3.0.x` line and Arc 5 took `v3.5.0` — so the phase-to-version mapping above is the plan, not the release ledger. **The active arc is Phases 29–33 (v4.1 → v5.0) in [`roadmap-earned.md`](roadmap-earned.md); Phases 29–31 have shipped in full, and Phases 32–33 have shipped with some cards partial** (Phase 32: `T-3202`/`T-3204` partial; Phase 33: `T-3302`'s forum announcement still unposted — see the delivery records in `planning/tasks/phase-29.md` through `phase-33.md`) — it consolidates every open item left by the arcs above into a single backlog, including two the arcs above counted as delivered and were not (`T-2006` localization, `T-2102`'s apt-repo *hosting*).
+
+**Updated 2026-08-19 (debt sweep): Phase 34, a UI redesign, shipped 2026-08-19 and is not otherwise
+named in this document.** It sits outside the five-phase Arc 6 structure above — six cards
+(`T-3401`–`T-3406`, "Stripe-style cockpit shell": design tokens, a grouped sidebar, a restyled top
+bar, page headers with pill actions, a core component restyle, and a full regression close-out) plus
+one follow-up card (`T-3406-followup-01`, pre-existing contrast/ARIA defects the regression pass
+surfaced, done 2026-08-19) — see `planning/tasks/phase-34.md` and `planning/tasks/phase-34-followup.md`.
+It is not a numbered phase of any arc's original plan; it was scoped and executed after Phase 33,
+between Arc 6's close and whatever comes next, and is recorded here rather than left invisible to
+anyone reading this document top to bottom.
 
 ```mermaid
 gantt

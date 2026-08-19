@@ -18,7 +18,10 @@
 #   7. Write /etc/vnprox/vnprox.toml, generate the session key, enable +
 #      start vnprox.service.
 #   8. Repeat 3-7 on the remaining nodes via SSH, or print per-node
-#      instructions if SSH between nodes is unavailable.
+#      instructions if SSH between nodes is unavailable. Also copies this
+#      node's PVE API token file to each rolled-out node (the token is
+#      cluster-wide; every node after the first must receive a COPY of it,
+#      never create its own — docs/deployment.md step 5).
 #   9. Print the URL and a first-login checklist.
 #
 # Steps 2 and 5-7 for *this* node are delegated to vnprox-setup (installed
@@ -85,6 +88,15 @@ set -euo pipefail
 
 PROG=$(basename "$0")
 DEFAULT_PORT=8007
+
+# Mirrors packaging/bin/vnprox-setup's own KEYS_DIR/PVE_TOKEN_FILE. The PVE
+# API token vnprox@pve!daemon is cluster-wide, not per-node (PVE stores
+# tokens on the user, not per node) — only the first node's vnprox-setup run
+# ever creates it, so step 8 below (SSH rollout) has to hand every other
+# node a byte-for-byte COPY of this node's copy rather than let them try to
+# create their own (docs/deployment.md step 5).
+KEYS_DIR="/etc/vnprox/keys"
+PVE_TOKEN_FILE="$KEYS_DIR/pve-token"
 
 OFFLINE_DEB=""
 FORCE_PORT=""
@@ -687,6 +699,74 @@ print_manual_instructions() {
 		log "      apt install ./vnprox_<version>_${ARCH}.deb   # or 'apt install vnprox' once an apt repo is configured"
 	fi
 	log "      vnprox-setup --port $LISTEN_PORT --yes $(remote_lldp_flag)"
+	print_manual_token_instructions "$node"
+}
+
+# print_manual_token_instructions prints the docs/deployment.md "Manual
+# install (per node)" recipe for handing this node's copy of the PVE API
+# token to $1, byte-for-byte, without ever letting $1 create its own
+# (recreating it invalidates every other node's copy — see the
+# PVE_TOKEN_FILE comment near the top of this script).
+print_manual_token_instructions() {
+	node="$1"
+	if [ -s "$PVE_TOKEN_FILE" ]; then
+		log "      scp $PVE_TOKEN_FILE root@$node:$PVE_TOKEN_FILE"
+		log "      ssh root@$node 'chown root:root $PVE_TOKEN_FILE && chmod 0600 $PVE_TOKEN_FILE && systemctl restart vnprox'"
+	else
+		log "      (no local $PVE_TOKEN_FILE to copy from yet on this node — see step 5 above; once it exists, copy it to $node the same way, then 'systemctl restart vnprox' there)"
+	fi
+}
+
+# copy_pve_token_to_node hands $1 a byte-for-byte copy of this node's PVE
+# API token file over the same root SSH channel the rest of the rollout
+# uses, so vnprox on $1 can actually authenticate to PVE — see the
+# PVE_TOKEN_FILE comment near the top of this script for why a copy, never
+# a fresh token, is the only correct move here.
+#
+# Security posture:
+#   - The secret is never written to a shared/world-readable temp path on
+#     either machine: `scp -p` streams it straight over the encrypted SSH
+#     channel into its final path inside a directory already restricted to
+#     root (created 0700 root:root first if `vnprox-setup` hasn't already),
+#     and `-p` preserves this node's own 0600 mode across the copy.
+#   - Ownership/mode are then reasserted explicitly on the remote side
+#     (root:root 0600) rather than trusted to `scp -p` alone, matching
+#     vnprox-setup's own step 5 (`chmod 0600 "$PVE_TOKEN_FILE"`).
+#   - The secret's bytes never appear in a log line, an argv (so never in
+#     shell history or `ps`), or this script's own stdout/stderr — only
+#     file paths and outcomes are logged.
+copy_pve_token_to_node() {
+	node="$1"
+
+	if [ ! -s "$PVE_TOKEN_FILE" ]; then
+		warn "$node: no local $PVE_TOKEN_FILE to copy — this node's own PVE API token provisioning did not produce one (see step 5 warnings above); $node will come up unable to authenticate to PVE until it is copied there by hand"
+		print_manual_token_instructions "$node"
+		return 1
+	fi
+
+	if ! ssh "${SSH_OPTS[@]}" "root@$node" "install -d -m 0700 -o root -g root '$KEYS_DIR'"; then
+		warn "$node: could not create $KEYS_DIR remotely"
+		print_manual_token_instructions "$node"
+		return 1
+	fi
+
+	if ! scp -p "${SSH_OPTS[@]}" "$PVE_TOKEN_FILE" "root@$node:$PVE_TOKEN_FILE" >/dev/null; then
+		warn "$node: scp of the PVE API token failed"
+		print_manual_token_instructions "$node"
+		return 1
+	fi
+
+	if ! ssh "${SSH_OPTS[@]}" "root@$node" "chown root:root '$PVE_TOKEN_FILE' && chmod 0600 '$PVE_TOKEN_FILE'"; then
+		warn "$node: PVE API token copied to $node but its ownership/permissions there could not be confirmed — verify by hand: root:root 0600 at $PVE_TOKEN_FILE"
+		return 1
+	fi
+	log "  - $node: copied PVE API token ($PVE_TOKEN_FILE, root:root 0600)"
+
+	if ! ssh "${SSH_OPTS[@]}" "root@$node" "systemctl restart vnprox"; then
+		warn "$node: PVE API token copied but 'systemctl restart vnprox' failed there — restart it by hand so it picks up the token"
+		return 1
+	fi
+	return 0
 }
 
 rollout_to_node() {
@@ -725,6 +805,12 @@ rollout_to_node() {
 		warn "$node: remote vnprox-setup failed"
 		return 1
 	fi
+
+	if ! copy_pve_token_to_node "$node"; then
+		warn "$node: package installed and vnprox-setup completed, but $node still cannot authenticate to PVE — see the token warnings above"
+		return 1
+	fi
+
 	log "  - $node: done"
 	return 0
 }

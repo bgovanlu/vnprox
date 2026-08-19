@@ -116,12 +116,25 @@ log "installing + starting sshd on pve2 (port 2202) and pve3 (port 2203)"
 setup_sshd pve2 2202
 setup_sshd pve3 2203
 
-log "configuring pve1: SSH client (host aliases -> 127.0.0.1:220x), private key, fake pveversion/pvecm"
+log "configuring pve1: SSH client (host aliases -> 127.0.0.1:220x), private key, fake pveversion/pvecm/pveum"
 podman exec pve1 bash -euo pipefail -c '
 apt-get update -qq >/dev/null
 apt-get install -y -qq openssh-client >/dev/null
 mkdir -p /root/.ssh /usr/local/fakebin
 chmod 700 /root/.ssh
+
+# fakepveum (packaging/test/fakepveum, the same stub packaging/test/pve-token.sh
+# drives directly) gives pve1 a real pveum on PATH, so its own vnprox-setup run
+# (install.sh steps 5-7 on pve1 itself) actually provisions a PVE API token file
+# at /etc/vnprox/keys/pve-token instead of hitting the "pveum not found" skip —
+# which is what lets this test also assert install.sh step 8 copies that token
+# to pve2/pve3 (debt sweep item 8, 2026-08-19). pve2/pve3 deliberately do NOT
+# get this stub: on real hardware only the first node ever creates the token
+# (docs/deployment.md step 5), and every other node must receive a copy, never
+# create its own — so a real pveum-less pve2/pve3 (their own vnprox-setup step 5
+# hits the same "pveum not found" skip pve1 used to) is the right double: the
+# rollout, not local provisioning, is the only thing that can put a token there.
+install -m 0755 /packaging/test/fakepveum /usr/local/fakebin/pveum
 cat >/root/.ssh/config <<EOF
 Host pve2
   HostName 127.0.0.1
@@ -200,6 +213,8 @@ log "running install.sh on pve1 (real cluster detection + SSH rollout, non-inter
 set +e
 OUT="$(podman exec pve1 bash -c '
 export PATH=/usr/local/fakebin:$PATH
+export FAKEPVEUM_STATE=/tmp/fakepveum-state
+mkdir -p "$FAKEPVEUM_STATE"
 apt-get install -y -qq gnupg curl >/dev/null 2>&1 || true
 bash /packaging/install.sh --offline "/dist/'"$DEB_BASENAME"'" -y
 ' 2>&1)"
@@ -256,5 +271,28 @@ SECRET3="$(podman exec pve3 sha256sum /etc/pve/priv/vnprox/cluster.secret | cut 
 # all practical purposes (this is a random secret, not a fixed default), so
 # the sha256 comparison alone is authoritative for what this check cares
 # about — replication, not merely coincidental equality.
+
+log "verifying: install.sh step 8 copied pve1's PVE API token to pve2 and pve3 (debt sweep item 8, 2026-08-19)"
+# pve1 is the only node with fakepveum on PATH, so it's the only one whose
+# OWN vnprox-setup run could have created /etc/vnprox/keys/pve-token — pve2
+# and pve3 have no pveum at all (real or fake), so a token file existing on
+# them can only have arrived via install.sh's SSH rollout copying it there,
+# which is exactly the behavior this test exists to pin.
+podman exec pve1 test -s /etc/vnprox/keys/pve-token || die "pve1 has no PVE API token file — fakepveum wiring is broken, not the thing under test"
+for node in pve2 pve3; do
+	podman exec "$node" test -s /etc/vnprox/keys/pve-token || die "$node: /etc/vnprox/keys/pve-token was not copied by install.sh's SSH rollout"
+done
+
+TOKEN1="$(podman exec pve1 sha256sum /etc/vnprox/keys/pve-token | cut -d' ' -f1)"
+TOKEN2="$(podman exec pve2 sha256sum /etc/vnprox/keys/pve-token | cut -d' ' -f1)"
+TOKEN3="$(podman exec pve3 sha256sum /etc/vnprox/keys/pve-token | cut -d' ' -f1)"
+[ "$TOKEN1" = "$TOKEN2" ] && [ "$TOKEN1" = "$TOKEN3" ] || die "PVE API token differs across nodes: pve1=$TOKEN1 pve2=$TOKEN2 pve3=$TOKEN3 (must be a byte-for-byte copy, never independently generated)"
+
+for node in pve1 pve2 pve3; do
+	perms="$(podman exec "$node" stat -c %a /etc/vnprox/keys/pve-token)"
+	[ "$perms" = "600" ] || die "$node: /etc/vnprox/keys/pve-token perms = $perms, want 600"
+	owner="$(podman exec "$node" stat -c %U:%G /etc/vnprox/keys/pve-token)"
+	[ "$owner" = "root:root" ] || die "$node: /etc/vnprox/keys/pve-token owner = $owner, want root:root"
+done
 
 echo "ALL CHECKS PASSED"

@@ -1676,3 +1676,29 @@ hardware and so does not fit that convention cleanly — flagged here regardless
 for lack of a clean bucket.
 **`T-3201` status (2026-08-18): not attempted** — same reasoning as the Fabrics/Controllers
 sections above; no ipam instance was configured against either real node this session.
+
+## Debt sweep item 8 — `install.sh` multi-node PVE token copy (2026-08-19)
+
+Fixed: `packaging/install.sh`'s SSH rollout (step 8) never copied the cluster-wide PVE API token
+(`/etc/vnprox/keys/pve-token`) to nodes 2+, so every node after the first came up unable to
+authenticate to PVE — `docs/deployment.md` documented the gap but `install.sh` was never changed to
+close it. This change adds `copy_pve_token_to_node` (scp -p straight to the final `0700 root:root`
+path, `chown root:root`/`chmod 0600` reasserted explicitly, then `systemctl restart vnprox`), called
+for every node the SSH rollout succeeds on, with a manual fallback recipe printed when it can't run.
+
+- [ ] **Not validated against a real multi-node PVE cluster.** This environment has exactly one real
+      node (`pvecube`) and no cluster (CLAUDE.md) — a genuine `install.sh` SSH rollout across two or
+      more real PVE nodes, with a real `pveum`-issued token and a real second node's `vnprox.service`
+      actually authenticating to PVE afterward, has never been exercised. What *was* checked:
+      `bash -n` syntax and code review against `packaging/bin/vnprox-setup`'s own token-file handling
+      (same path, same 0600 root:root convention). `packaging/test/cluster-ssh.sh`'s 3-container
+      harness was extended in this same change (pve1 now also gets `packaging/test/fakepveum` on
+      `PATH`, so its own `vnprox-setup` run produces a real token file the SSH rollout can copy to
+      pve2/pve3, with new assertions that the copy lands byte-identical and root:root 0600 on both)
+      but was **not executed** here — it needs `podman` plus real container network access
+      (`apt-get install openssh-server` inside each container) that this task's scoped verification
+      list didn't cover, and running it risked colliding with concurrent workstreams sharing this
+      worktree's ports. Run `packaging/test/cluster-ssh.sh` and confirm on a real two-node (or more)
+      PVE cluster: the token file lands byte-identical on every subsequent node, with root:root 0600
+      permissions, and `vnproxctl status`'s "PVE API health" reports healthy on each one without a
+      manual copy.
