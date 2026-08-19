@@ -41,7 +41,7 @@ export function CompliancePanel() {
       </div>
 
       {profilesQuery.isLoading && (
-        <p className="text-sm text-slate-500 dark:text-slate-400">Reading the installed profiles…</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">Reading the installed profiles…</p>
       )}
       {profilesQuery.error !== null && (
         <p className="text-sm text-slate-700 dark:text-slate-200" role="status">
@@ -50,7 +50,7 @@ export function CompliancePanel() {
         </p>
       )}
       {profilesQuery.data !== undefined && profiles.length === 0 && (
-        <p className="text-sm text-slate-500 dark:text-slate-400">No compliance profiles are installed.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">No compliance profiles are installed.</p>
       )}
 
       {profiles.length > 0 && (
@@ -73,7 +73,7 @@ export function CompliancePanel() {
       )}
 
       {reportQuery.isLoading && activeProfile !== undefined && (
-        <p className="text-sm text-slate-500 dark:text-slate-400">Building the report…</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">Building the report…</p>
       )}
 
       {reportQuery.error !== null && (
@@ -162,7 +162,7 @@ export function CompliancePanel() {
                         </span>{" "}
                         — {e.status}: {e.detail}
                         {e.note !== undefined && e.note !== "" && (
-                          <span className="block text-slate-500 dark:text-slate-400">{e.note}</span>
+                          <span className="block text-slate-600 dark:text-slate-400">{e.note}</span>
                         )}
                       </li>
                     ))}
@@ -170,7 +170,7 @@ export function CompliancePanel() {
                 )}
                 {(control.evidence === undefined || control.evidence.length === 0) &&
                   control.classified !== "unmapped" && (
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                       The report carried no evidence items for this control, so nothing here explains its status.
                     </p>
                   )}
@@ -184,7 +184,7 @@ export function CompliancePanel() {
                 Checks this build can emit that no control in this profile maps ({reportQuery.data.unmappedChecks.length}):
               </p>
               <p className="mt-0.5 font-mono">{reportQuery.data.unmappedChecks.join(", ")}</p>
-              <p className="mt-0.5 text-slate-500 dark:text-slate-400">
+              <p className="mt-0.5 text-slate-600 dark:text-slate-400">
                 Computed from: {reportQuery.data.checkUniverse}
               </p>
             </div>

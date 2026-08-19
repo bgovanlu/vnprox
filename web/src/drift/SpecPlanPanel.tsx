@@ -54,7 +54,7 @@ export function SpecPlanPanel({ content, writeDisabledReason }: SpecPlanPanelPro
         The plan
         <HelpAnchor topic="spec-plan" />
       </h2>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
         Diffs the working document against live state. This is the same primitive the automation contract
         specifies for a <code className="font-mono">terraform plan</code>-shaped check — and it stages a draft
         changeset for the result, every time, including when the result is empty. It never applies anything.
@@ -72,7 +72,7 @@ export function SpecPlanPanel({ content, writeDisabledReason }: SpecPlanPanelPro
           {importMutation.isPending ? "Planning…" : "Plan against live state (stages a draft)"}
         </Button>
         {empty && (
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
             Load or paste a document above first — there is nothing to plan.
           </p>
         )}
@@ -124,7 +124,7 @@ export function SpecPlanPanel({ content, writeDisabledReason }: SpecPlanPanelPro
             </ul>
           )}
 
-          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">
             The draft this plan created is <code className="font-mono">{result.id}</code>. Nothing has been
             applied; discard it from the review screen if the plan was only a question.
           </p>

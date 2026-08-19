@@ -32,9 +32,9 @@ function IssueCard({ issue }: { issue: CertIssue }) {
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
           {issue.severity}
         </span>
-        <code className="font-mono text-xs text-slate-500 dark:text-slate-400">{issue.check}</code>
+        <code className="font-mono text-xs text-slate-600 dark:text-slate-400">{issue.check}</code>
         {issue.node !== undefined && issue.node !== "" && (
-          <span className="text-xs text-slate-500 dark:text-slate-400">on {issue.node}</span>
+          <span className="text-xs text-slate-600 dark:text-slate-400">on {issue.node}</span>
         )}
       </div>
       <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">{issue.detail}</p>
@@ -62,7 +62,7 @@ function CertRow({ cert }: { cert: Certificate }) {
     <tr className="border-t border-slate-200 align-top dark:border-slate-800">
       <td className="py-2 pr-4 text-sm text-slate-900 dark:text-slate-100">
         {CERT_KIND_LABEL[cert.kind]}
-        <div className="font-mono text-xs text-slate-500 dark:text-slate-400">{cert.path}</div>
+        <div className="font-mono text-xs text-slate-600 dark:text-slate-400">{cert.path}</div>
       </td>
       <td className="py-2 pr-4 text-sm text-slate-700 dark:text-slate-200">{cert.subject}</td>
       <td className={`py-2 pr-4 text-sm ${expiryTone(cert.notAfter)}`}>
@@ -72,11 +72,11 @@ function CertRow({ cert }: { cert: Certificate }) {
       <td className="py-2 pr-4 text-sm text-slate-600 dark:text-slate-300">
         {cert.keyAlgorithm}
         {cert.keyBits > 0 ? `-${String(cert.keyBits)}` : ""}
-        <div className="text-xs text-slate-500 dark:text-slate-400">{cert.signatureAlgorithm}</div>
+        <div className="text-xs text-slate-600 dark:text-slate-400">{cert.signatureAlgorithm}</div>
       </td>
       <td className="py-2 text-sm text-slate-600 dark:text-slate-300">
         {cert.sans.length === 0 ? (
-          <span className="text-slate-500 dark:text-slate-400">none</span>
+          <span className="text-slate-600 dark:text-slate-400">none</span>
         ) : (
           <ul className="flex flex-wrap gap-1">
             {cert.sans.map((san) => (
@@ -110,7 +110,7 @@ export function CertificatesPage() {
   }, [data]);
 
   if (isLoading) {
-    return <p className="text-sm text-slate-500 dark:text-slate-400">Loading certificates…</p>;
+    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading certificates…</p>;
   }
   if (error) {
     return (
@@ -151,7 +151,7 @@ export function CertificatesPage() {
           )}
         </h2>
         {issues.length === 0 ? (
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Every certificate chains to the cluster CA, covers the address its peers reach it at, and is not
             close to expiring.
           </p>
@@ -167,7 +167,7 @@ export function CertificatesPage() {
       {clusterCA && (
         <section>
           <h2 className="text-lg font-semibold">Cluster CA</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Every node certificate below must be issued by this CA — it is the sole trust anchor vnprox pins
             for peer-to-peer traffic.
           </p>
@@ -185,7 +185,7 @@ export function CertificatesPage() {
           <div className="mt-2 overflow-x-auto">
             <table className="w-full table-auto text-left">
               <thead>
-                <tr className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <tr className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">
                   <th className="pb-1 pr-4 font-semibold">Certificate</th>
                   <th className="pb-1 pr-4 font-semibold">Subject</th>
                   <th className="pb-1 pr-4 font-semibold">Expires</th>
@@ -204,7 +204,7 @@ export function CertificatesPage() {
       ))}
 
       {data?.inventory.scannedAt !== undefined && (
-        <p className="text-xs text-slate-500 dark:text-slate-400">
+        <p className="text-xs text-slate-600 dark:text-slate-400">
           Read from /etc/pve at {new Date(data.inventory.scannedAt).toLocaleString()}. vnprox never renews or
           replaces a certificate — Proxmox owns that, and each problem above names the command that does it.
         </p>

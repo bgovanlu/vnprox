@@ -57,7 +57,7 @@ const TABS: { scope: Scope; label: string }[] = [
 function ClusterPanel() {
   const { data, isLoading, error } = useClusterRulesetQuery();
   const { data: objects } = useFirewallObjectsQuery();
-  if (isLoading) return <p className="text-sm text-slate-400">Loading datacenter firewall…</p>;
+  if (isLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading datacenter firewall…</p>;
   if (error || !data) {
     return <EmptyState title="No datacenter firewall data" description="The cluster firewall configuration has not been observed yet." />;
   }
@@ -88,7 +88,7 @@ function NodePanel({ selected, onSelect }: NodePanelProps) {
 
   const { data: ruleset, isLoading: rulesetLoading } = useNodeRulesetQuery(selected);
 
-  if (listLoading) return <p className="text-sm text-slate-400">Loading nodes…</p>;
+  if (listLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading nodes…</p>;
   if (nodes.length === 0) {
     return <EmptyState title="No node firewall data" description="No node firewall configuration has been observed yet." />;
   }
@@ -106,7 +106,7 @@ function NodePanel({ selected, onSelect }: NodePanelProps) {
           </option>
         ))}
       </select>
-      {rulesetLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {rulesetLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {ruleset && (
         <>
           <ScopeToggle scope="node" target={ruleset.ref} enabled={ruleset.enabled} node={selected} />
@@ -162,7 +162,7 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
   const focusRuleMissing =
     focusRule !== undefined && detail !== undefined && !detail.resolved.rules.some((r) => matchesFocus(r, focusRule));
 
-  if (listLoading) return <p className="text-sm text-slate-400">Loading guests…</p>;
+  if (listLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading guests…</p>;
   if (guests.length === 0) {
     return <EmptyState title="No guest firewall data" description="No guest firewall configuration has been observed yet." />;
   }
@@ -180,7 +180,7 @@ function GuestPanel({ selected, onSelect, focusRule }: GuestPanelProps) {
           </option>
         ))}
       </select>
-      {detailLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {detailLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {deepLinkGuestMissing && (
         <EmptyState
           title="Linked guest not found"
@@ -258,7 +258,7 @@ function VNetPanel({ selected, onSelect }: VNetPanelProps) {
 
   const { data: ruleset, isLoading: rulesetLoading } = useVnetRulesetQuery(selected);
 
-  if (listLoading) return <p className="text-sm text-slate-400">Loading vnets…</p>;
+  if (listLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading vnets…</p>;
   if (vnets.length === 0) {
     return <EmptyState title="No vnet firewall data" description="No vnet firewall configuration has been observed yet." />;
   }
@@ -276,7 +276,7 @@ function VNetPanel({ selected, onSelect }: VNetPanelProps) {
           </option>
         ))}
       </select>
-      {rulesetLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {rulesetLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {ruleset && (
         <>
           <ScopeToggle scope="vnet" target={ruleset.ref} enabled={ruleset.enabled} vnetLabel={vnetLabelFromRef(ruleset.vnet) ?? ruleset.vnet} />
@@ -307,7 +307,7 @@ interface ObjectsTabProps {
 
 function ObjectsTab({ onNavigate, onInspectGroup }: ObjectsTabProps) {
   const { data, isLoading, error } = useFirewallObjectsQuery();
-  if (isLoading) return <p className="text-sm text-slate-400">Loading objects…</p>;
+  if (isLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading objects…</p>;
   if (error || !data) {
     return <EmptyState title="Could not load objects" description="Try again in a moment." />;
   }

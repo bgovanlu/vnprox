@@ -73,8 +73,8 @@ const STATUS_BADGE_CLASS: Record<FwLogEntry["correlation"]["status"], string> = 
   default_policy: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
   ambiguous: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
   unmatched: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-  unknown_chain: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
-  no_guest_data: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+  unknown_chain: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+  no_guest_data: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
 };
 
 function CorrelationCell({ entry }: { entry: FwLogEntry }) {
@@ -88,7 +88,7 @@ function CorrelationCell({ entry }: { entry: FwLogEntry }) {
     return (
       <Link to={ruleDeepLinkPath(correlation.rule)} className="flex items-center gap-1.5 hover:underline">
         {badge}
-        <span className="text-xs text-slate-500 dark:text-slate-400">view rule</span>
+        <span className="text-xs text-slate-600 dark:text-slate-400">view rule</span>
       </Link>
     );
   }
@@ -178,7 +178,7 @@ export function FwLogViewer() {
             Firewall log
             <HelpAnchor topic="fwlog-viewer" />
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Cluster-wide pve-firewall log, live-following via WebSocket. Lines are correlated to the configured rule where
             determinable; ambiguous or unrecognized lines are labeled honestly rather than guessed (real pve-firewall log
             lines do not embed a rule position — see the completion report).
@@ -229,12 +229,12 @@ export function FwLogViewer() {
             </p>
           )}
           {trimmedFromView > 0 && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               Showing the most recent {RENDER_CAP.toLocaleString()} of {visible.length.toLocaleString()} matching lines.
             </p>
           )}
 
-          {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
+          {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
           {error && <EmptyState title="Could not load the firewall log" description="Try again in a moment." />}
           {!isLoading && !error && rendered.length === 0 && (
             <EmptyState title="No log lines yet" description="Nothing matches the current filter, or no traffic has been logged." />

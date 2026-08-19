@@ -26,7 +26,7 @@ function Section({ title, description, children }: { title: string; description?
   return (
     <section className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
       <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</h2>
-      {description && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{description}</p>}
+      {description && <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{description}</p>}
       <div className="mt-3">{children}</div>
     </section>
   );
@@ -35,7 +35,7 @@ function Section({ title, description, children }: { title: string; description?
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-slate-100 py-1.5 text-sm last:border-b-0 dark:border-slate-800">
-      <span className="w-52 shrink-0 text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="w-52 shrink-0 text-slate-600 dark:text-slate-400">{label}</span>
       <span className="min-w-0 break-words font-medium text-slate-700 dark:text-slate-200">{children}</span>
     </div>
   );
@@ -46,7 +46,7 @@ function YesNo({ value, yesTone }: { value: boolean; yesTone?: "warn" }) {
     const cls = yesTone === "warn" ? "text-amber-600 dark:text-amber-400" : "text-slate-700 dark:text-slate-200";
     return <span className={cls}>Yes</span>;
   }
-  return <span className="text-slate-500 dark:text-slate-400">No</span>;
+  return <span className="text-slate-600 dark:text-slate-400">No</span>;
 }
 
 const CAP_LABELS: { key: keyof Capabilities; label: string }[] = [
@@ -153,7 +153,7 @@ export function SettingsPage() {
                   </span>
                 ))}
                 {CAP_LABELS.every((c) => !hasCapAnywhere(caps, c.key)) && (
-                  <span className="text-xs text-slate-500 dark:text-slate-400">No capabilities granted.</span>
+                  <span className="text-xs text-slate-600 dark:text-slate-400">No capabilities granted.</span>
                 )}
               </div>
             </Row>
@@ -170,7 +170,7 @@ export function SettingsPage() {
             </div>
           </>
         ) : (
-          <p className="text-sm text-slate-400">Not signed in.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">Not signed in.</p>
         )}
       </Section>
 
@@ -198,7 +198,7 @@ export function SettingsPage() {
             </Row>
           </>
         ) : (
-          <p className="text-sm text-slate-400">Loading instance configuration…</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">Loading instance configuration…</p>
         )}
       </Section>
 

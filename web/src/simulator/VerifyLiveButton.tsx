@@ -43,7 +43,7 @@ export function VerifyLiveButton({ src, request, onResult }: VerifyLiveButtonPro
         )}
       </div>
       {!gate.enabled && gate.reason && (
-        <p id="verify-live-reason" className="text-xs text-slate-500 dark:text-slate-400">
+        <p id="verify-live-reason" className="text-xs text-slate-600 dark:text-slate-400">
           {gate.reason}
         </p>
       )}

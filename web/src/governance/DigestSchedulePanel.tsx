@@ -56,7 +56,7 @@ export function DigestSchedulePanel() {
         people learn to delete unread.
       </p>
 
-      {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Reading the schedule…</p>}
+      {query.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Reading the schedule…</p>}
 
       {notImplemented && (
         <p className="text-sm text-slate-600 dark:text-slate-300" data-testid="digest-unavailable">
@@ -78,7 +78,7 @@ export function DigestSchedulePanel() {
           <p className="font-medium">{stored.enabled ? "Enabled" : "Disabled"}</p>
           <p className="mt-0.5 text-slate-600 dark:text-slate-300">{cadenceLabel(stored.everySec, stored.enabled)}</p>
           <p className="mt-0.5 text-slate-600 dark:text-slate-300">{ruleFilterLabel(stored.ruleIds)}</p>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
             {stored.updatedBy === "" && stored.updatedAt === 0
               ? "Nobody has ever written this schedule."
               : `Last written by ${stored.updatedBy === "" ? "an unrecorded principal" : stored.updatedBy}${
@@ -134,7 +134,7 @@ export function DigestSchedulePanel() {
                 </Button>
               ))}
             </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+            <span className="text-xs text-slate-600 dark:text-slate-400">
               An enabled schedule needs at least {MIN_DIGEST_EVERY_SEC} seconds. A disabled one may carry any cadence,
               including none — disabling is how you silence a digest without losing the cadence you chose.
             </span>
@@ -150,7 +150,7 @@ export function DigestSchedulePanel() {
               }}
               className="w-full rounded border border-slate-300 px-1.5 py-1 font-mono text-sm dark:border-slate-700 dark:bg-slate-900"
             />
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+            <span className="text-xs text-slate-600 dark:text-slate-400">
               Comma separated. Leave empty for no filter, which means every alert rule — not "no recipients". A digest
               carries no target of its own; it is delivered through the rules' existing ones, with their quiet hours
               and retries.

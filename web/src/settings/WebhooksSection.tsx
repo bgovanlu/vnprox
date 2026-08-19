@@ -46,7 +46,7 @@ function DeliveryHealth({ webhook }: { webhook: Webhook }) {
   // finding, so 0 before any attempt says nothing at all.
   if (webhook.lastAttemptAt === undefined) {
     return (
-      <span data-testid={`delivery-${webhook.id}`} data-delivery-state="unattempted" className="text-xs italic text-slate-500 dark:text-slate-400">
+      <span data-testid={`delivery-${webhook.id}`} data-delivery-state="unattempted" className="text-xs italic text-slate-600 dark:text-slate-400">
         Never attempted — no event has matched this registration yet
       </span>
     );
@@ -140,7 +140,7 @@ export function WebhooksSection() {
         </>
       }
     >
-      {webhooksQuery.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Loading webhooks…</p>}
+      {webhooksQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading webhooks…</p>}
 
       {listError !== null && (
         <RefusalNotice
@@ -169,10 +169,10 @@ export function WebhooksSection() {
       {reachable && (
         <>
           <div className="mb-4 rounded-md border border-slate-200 p-3 dark:border-slate-700">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
               Register a target
             </h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
               The daemon decides whether a destination is permitted — at registration, and again against the resolved
               address at every delivery. Whatever it refuses, it says why.
             </p>
@@ -204,7 +204,7 @@ export function WebhooksSection() {
 
             <fieldset className="mt-3">
               <legend className="text-sm text-slate-600 dark:text-slate-300">
-                Events <span className="text-xs text-slate-500 dark:text-slate-400">(none selected = every event)</span>
+                Events <span className="text-xs text-slate-600 dark:text-slate-400">(none selected = every event)</span>
               </legend>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
                 {WEBHOOK_EVENTS.map((name) => (
@@ -246,7 +246,7 @@ export function WebhooksSection() {
           </div>
 
           {webhooks.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400" data-testid="webhooks-empty">
+            <p className="text-sm text-slate-600 dark:text-slate-400" data-testid="webhooks-empty">
               No webhooks are registered.
             </p>
           ) : (
@@ -274,7 +274,7 @@ export function WebhooksSection() {
                     </TableCell>
                     <TableCell>
                       <UnixTime at={webhook.createdAt} />
-                      <span className="block text-[10px] text-slate-400 dark:text-slate-500">{webhook.createdBy}</span>
+                      <span className="block text-[10px] text-slate-600 dark:text-slate-400">{webhook.createdBy}</span>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -298,7 +298,7 @@ export function WebhooksSection() {
       )}
 
       {forbidden && (
-        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400" data-testid="webhooks-no-form">
+        <p className="mt-3 text-xs text-slate-600 dark:text-slate-400" data-testid="webhooks-no-form">
           The registration form is not shown because this session cannot reach the route it would post to. A control
           that could only ever produce a 403 is worse than no control.
         </p>

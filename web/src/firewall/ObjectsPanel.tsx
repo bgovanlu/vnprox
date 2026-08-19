@@ -99,7 +99,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
               <TableCell>{item.comment ?? "—"}</TableCell>
               <TableCell>
                 {item.count === 0 ? (
-                  <span className="text-slate-400">not referenced</span>
+                  <span className="text-slate-600 dark:text-slate-400">not referenced</span>
                 ) : (
                   <button
                     type="button"
@@ -110,7 +110,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
                   </button>
                 )}
                 {isExpanded && item.referencedBy && item.referencedBy.length > 0 && (
-                  <ul className="mt-1 flex flex-col gap-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  <ul className="mt-1 flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-400">
                     {item.referencedBy.map((rr, i) => (
                       <li key={`${rr.ref}-${String(rr.pos)}-${String(i)}`}>
                         {onNavigate ? (
@@ -148,7 +148,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
                       type="button"
                       disabled={fwWriteDisabled}
                       onClick={() => { handleDelete(item); }}
-                      className="text-xs text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 dark:text-red-400"
+                      className="text-xs text-red-700 hover:underline disabled:cursor-not-allowed disabled:text-slate-600 dark:text-red-400 dark:disabled:text-slate-400"
                       title={
                         fwWriteDisabled
                           ? fwWriteTooltip
@@ -161,7 +161,7 @@ function UsageTable({ items, onNavigate, onInspect }: UsageTableProps) {
                     </button>
                   ) : (
                     !onInspect && (
-                      <span className="text-xs text-slate-300 dark:text-slate-600" title="Delete node/guest-scope objects from that scope's own rule table">—</span>
+                      <span className="text-xs text-slate-600 dark:text-slate-400" title="Delete node/guest-scope objects from that scope's own rule table">—</span>
                     )
                   )}
                 </div>

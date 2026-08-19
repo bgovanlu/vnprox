@@ -37,13 +37,13 @@ function emptyBuilderForm(): RuleFormValues {
 function EffectsPreview({ group }: { group: string }) {
   const { data, isLoading } = useFirewallEffectsQuery(group);
   if (!group) return null;
-  if (isLoading) return <p className="text-xs text-slate-400">Computing matched guests…</p>;
+  if (isLoading) return <p className="text-xs text-slate-600 dark:text-slate-400">Computing matched guests…</p>;
   if (!data) return null;
   if (data.guests.length === 0) {
     return <p className="text-xs text-amber-600 dark:text-amber-400">Matches no guests yet (group not referenced anywhere reachable).</p>;
   }
   return (
-    <p className="text-xs text-slate-500 dark:text-slate-400">
+    <p className="text-xs text-slate-600 dark:text-slate-400">
       Matches {data.guests.length} guest{data.guests.length === 1 ? "" : "s"}: {data.guests.join(", ")}
     </p>
   );
@@ -272,7 +272,7 @@ export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps
                 <div className="flex flex-col gap-0.5">
                   <span>{ruleMatchLabel(r)}</span>
                   {r.macro && (
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{macroExpansionLabel(r.macro, r.macroExpansion)}</span>
+                    <span className="text-xs text-slate-600 dark:text-slate-400">{macroExpansionLabel(r.macro, r.macroExpansion)}</span>
                   )}
                   {r.direction === "group" && <EffectsPreview group={r.action} />}
                 </div>
@@ -286,7 +286,17 @@ export function RuleEditor({ rules, target, objects, focusPos }: RuleEditorProps
                     onClick={() => { handleDelete(r); }}
                     disabled={fwWriteDisabled}
                     title={fwWriteDisabled ? fwWriteTooltip : undefined}
-                    className="text-xs text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 dark:text-red-400 dark:disabled:text-slate-600"
+                    // T-3406-followup-01: WCAG 1.4.11 exempts disabled
+                    // controls from the contrast floor, but axe's automated
+                    // color-contrast check does not reliably honor that
+                    // carve-out (found true here: the control really is
+                    // `disabled`, not merely styled to look like it). Rather
+                    // than lean on an exemption a real assistive-tech user's
+                    // tooling might not apply either, this uses a disabled
+                    // shade that clears AA on its own — `cursor-not-allowed`
+                    // plus the loss of the hover underline still carries the
+                    // disabled affordance visually.
+                    className="text-xs text-red-700 hover:underline disabled:cursor-not-allowed disabled:text-slate-600 dark:text-red-400 dark:disabled:text-slate-400"
                   >
                     Delete
                   </button>

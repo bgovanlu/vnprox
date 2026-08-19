@@ -87,7 +87,7 @@ function CheckCard({ result }: { result: DoctorResult }) {
           <code className="text-[10px] text-violet-700 dark:text-violet-300">reported &ldquo;{result.status}&rdquo;</code>
         )}
       </div>
-      <p className="mt-1 text-[11px] italic text-slate-500 dark:text-slate-400">{style.gloss}</p>
+      <p className="mt-1 text-[11px] italic text-slate-600 dark:text-slate-400">{style.gloss}</p>
       <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{result.detail}</p>
       {result.remediation !== undefined && result.remediation !== "" && (
         <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
@@ -129,7 +129,7 @@ export function DoctorLiveSection() {
         </Button>
       }
     >
-      {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Running live checks…</p>}
+      {query.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Running live checks…</p>}
 
       {query.error !== null && (
         <RefusalNotice

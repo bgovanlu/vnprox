@@ -127,7 +127,7 @@ export function ThreeWayPanel({ gitSync, specPresence, writeDisabledReason }: Th
         Spec, config and live
         <HelpAnchor topic="spec-reconciliation" />
       </h2>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
         One row per entity the document declares whose three positions disagree. All three pairwise comparisons
         are shown, including the ones that agree — which pair agrees is what identifies the odd position out.
       </p>
@@ -142,7 +142,7 @@ export function ThreeWayPanel({ gitSync, specPresence, writeDisabledReason }: Th
         </div>
       )}
 
-      {isLoading && <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Loading the drift report…</p>}
+      {isLoading && <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Loading the drift report…</p>}
 
       {error !== null && (
         <div
@@ -152,7 +152,7 @@ export function ThreeWayPanel({ gitSync, specPresence, writeDisabledReason }: Th
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             Could not read the drift report
           </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
             No conclusion can be drawn about spec, config or live from this screen until it can be read again.
           </p>
         </div>

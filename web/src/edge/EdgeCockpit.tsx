@@ -69,7 +69,7 @@ export function EdgeCockpit() {
           edited via an ordinary staged changeset, never from this page directly."
       />
 
-      {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {error && <EmptyState title="Could not load edge data" description="Try again in a moment." />}
 
       {!isLoading && !error && (
@@ -247,7 +247,7 @@ function PortForwardsTable({ rules }: { rules: EdgePortForward[] }) {
                       <span className="text-slate-600 dark:text-slate-300">{r.targetGuestRef}</span>
                     )
                   ) : (
-                    <span className="text-slate-400">unresolved</span>
+                    <span className="text-slate-600 dark:text-slate-400">unresolved</span>
                   )}
                 </TableCell>
                 <TableCell>{r.comment ?? "—"}</TableCell>
@@ -301,7 +301,7 @@ function IngressSection() {
   return (
     <section aria-label="Ingress visibility">
       <h3 className="mb-2 text-sm font-semibold">Ingress visibility</h3>
-      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+      <p className="mb-3 text-xs text-slate-600 dark:text-slate-400">
         Read-only reverse-proxy discovery — only for targets added below. Draws the full inbound path when a
         port-forward and a target line up: WAN → port-forward → proxy guest → backend guest.
       </p>
@@ -339,7 +339,7 @@ function IngressChainList({ chains }: { chains: IngressChain[] }) {
           {c.backends.length === 0 ? (
             <>
               <ChainArrow />
-              <span className="text-slate-400">no backends discovered</span>
+              <span className="text-slate-600 dark:text-slate-400">no backends discovered</span>
             </>
           ) : (
             c.backends.map((b) => (
@@ -357,7 +357,7 @@ function IngressChainList({ chains }: { chains: IngressChain[] }) {
 
 function ChainArrow() {
   return (
-    <span aria-hidden="true" className="text-slate-400">
+    <span aria-hidden="true" className="text-slate-600 dark:text-slate-400">
       →
     </span>
   );
@@ -384,7 +384,7 @@ function IngressTargetsPanel({ targets }: { targets: IngressTarget[] }) {
 
   return (
     <div>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
         Discovery targets
       </h4>
       {targets.length === 0 ? (

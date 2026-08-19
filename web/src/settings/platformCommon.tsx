@@ -42,7 +42,7 @@ export function PlatformSection({
             <HelpAnchor topic={helpTopic} />
           </h2>
           {description !== undefined && (
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{description}</p>
+            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{description}</p>
           )}
         </div>
         {actions}
@@ -92,8 +92,16 @@ export function RefusalNotice({
          * — T-2905's refusals name the policy AND the config knob. */}
         <span data-testid={`${testId}-message`}>{api?.message ?? (error instanceof Error ? error.message : String(error))}</span>
       </p>
+      {/* T-3406-followup-01: the /80-opacity wash below measured 4.46:1
+       * against amber-50 in light mode (axe: 4.48, under the 4.5:1 floor) —
+       * computed via the same OKLCH-alpha-blend method as index.css's
+       * demo-amber wash comment: a partial-opacity text color barely
+       * darkens regardless of which step it is mixed from, the T-3406
+       * lesson this follow-up's own card names. Solid amber-800 clears it at
+       * 6.84:1; dark mode's amber-200/70 already passes at 6.77:1 so is left
+       * as-is. */}
       {api !== undefined && (
-        <p className="mt-1 font-mono text-xs text-amber-800/80 dark:text-amber-200/70">
+        <p className="mt-1 font-mono text-xs text-amber-800 dark:text-amber-200/70">
           HTTP {api.status} · {api.code}
         </p>
       )}
@@ -107,7 +115,7 @@ export function RefusalNotice({
  * from a value that failed to load. */
 export function UnixTime({ at, absent = "—" }: { at: number | undefined; absent?: string }) {
   if (at === undefined) {
-    return <span className="text-slate-400 dark:text-slate-500">{absent}</span>;
+    return <span className="text-slate-600 dark:text-slate-400">{absent}</span>;
   }
   const d = new Date(at * 1000);
   return <time dateTime={d.toISOString()}>{d.toLocaleString()}</time>;
@@ -120,7 +128,7 @@ export function ScopeChip({ name, tone = "neutral" }: { name: string; tone?: "ne
       className={clsx(
         "rounded px-1.5 py-0.5 font-mono text-[11px]",
         tone === "removed"
-          ? "bg-slate-100 text-slate-400 line-through dark:bg-slate-800 dark:text-slate-500"
+          ? "bg-slate-100 text-slate-600 line-through dark:bg-slate-800 dark:text-slate-400"
           : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
       )}
     >
@@ -133,7 +141,7 @@ export function ScopeChip({ name, tone = "neutral" }: { name: string; tone?: "ne
  * a fact and should read as one. */
 export function ScopeChips({ names, empty = "none" }: { names: readonly string[]; empty?: string }) {
   if (names.length === 0) {
-    return <span className="text-xs italic text-slate-400 dark:text-slate-500">{empty}</span>;
+    return <span className="text-xs italic text-slate-600 dark:text-slate-400">{empty}</span>;
   }
   return (
     <span className="inline-flex flex-wrap gap-1">

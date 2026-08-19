@@ -36,7 +36,7 @@ function EnabledBadge({ plugin }: { plugin: Plugin }) {
         "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
         plugin.enabled
           ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-          : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
       )}
     >
       {plugin.enabled ? "enabled" : "disabled"}
@@ -90,7 +90,7 @@ export function PluginsSection() {
         </>
       }
     >
-      {pluginsQuery.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Loading plugins…</p>}
+      {pluginsQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading plugins…</p>}
 
       {error !== null && (
         <RefusalNotice
@@ -107,7 +107,7 @@ export function PluginsSection() {
       )}
 
       {!pluginsQuery.isLoading && error === null && plugins.length === 0 && (
-        <p className="text-sm text-slate-500 dark:text-slate-400" data-testid="plugins-empty">
+        <p className="text-sm text-slate-600 dark:text-slate-400" data-testid="plugins-empty">
           The plugin registry is wired and reports no installed plugins.
         </p>
       )}
@@ -122,32 +122,32 @@ export function PluginsSection() {
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-slate-800 dark:text-slate-100">{plugin.name}</span>
-                <span className="font-mono text-xs text-slate-500 dark:text-slate-400">v{plugin.version}</span>
+                <span className="font-mono text-xs text-slate-600 dark:text-slate-400">v{plugin.version}</span>
                 <EnabledBadge plugin={plugin} />
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-400">
                   {plugin.transport}
                 </span>
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-400">
                   SDK {plugin.apiVersion}
                 </span>
               </div>
 
               <dl className="mt-2 grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1 text-xs">
-                <dt className="text-slate-500 dark:text-slate-400">Capability ceiling</dt>
+                <dt className="text-slate-600 dark:text-slate-400">Capability ceiling</dt>
                 <dd data-testid={`plugin-caps-${plugin.id}`}>
                   <ScopeChips names={plugin.capabilities} empty="declares no capabilities" />
-                  <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="mt-0.5 block text-[11px] text-slate-600 dark:text-slate-400">
                     The maximum this plugin may touch. It can stage a changeset but is never itself a way to apply
                     one.
                   </span>
                 </dd>
 
-                <dt className="text-slate-500 dark:text-slate-400">Extension points</dt>
+                <dt className="text-slate-600 dark:text-slate-400">Extension points</dt>
                 <dd>
                   <ScopeChips names={plugin.extensionPoints} empty="none declared" />
                 </dd>
 
-                <dt className="text-slate-500 dark:text-slate-400">Installed</dt>
+                <dt className="text-slate-600 dark:text-slate-400">Installed</dt>
                 <dd className="text-slate-600 dark:text-slate-300">
                   <UnixTime at={plugin.installedAt} /> by {plugin.installedBy}
                 </dd>

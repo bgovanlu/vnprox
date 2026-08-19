@@ -45,7 +45,7 @@ export function GroupInspector({ name, onBack }: GroupInspectorProps) {
         </button>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-400">Loading group…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading group…</p>}
       {error && (
         <EmptyState
           title="Could not load this group"
@@ -55,7 +55,7 @@ export function GroupInspector({ name, onBack }: GroupInspectorProps) {
 
       {data && (
         <>
-          {data.comment && <p className="text-sm text-slate-500 dark:text-slate-400">{data.comment}</p>}
+          {data.comment && <p className="text-sm text-slate-600 dark:text-slate-400">{data.comment}</p>}
 
           <div>
             <h3 className="mb-1 text-sm font-semibold">This group&apos;s own rules</h3>
@@ -94,7 +94,7 @@ export function GroupInspector({ name, onBack }: GroupInspectorProps) {
               Guests this group reaches
               <HelpAnchor topic="firewall-rule-effects" />
             </h3>
-            {effectsLoading && <p className="text-sm text-slate-400">Computing matched guests…</p>}
+            {effectsLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Computing matched guests…</p>}
             {effects && effects.guests.length === 0 && (
               <p className="text-sm text-amber-600 dark:text-amber-400">
                 This group matches no guests yet — it isn&apos;t referenced by any rule anywhere reachable.

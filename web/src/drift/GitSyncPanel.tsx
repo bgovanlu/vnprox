@@ -21,7 +21,7 @@ import { instantLabel, type GitSyncState } from "./gitsyncState";
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <dt className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</dt>
+      <dt className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">{label}</dt>
       <dd className="text-sm text-slate-800 dark:text-slate-100">{children}</dd>
     </div>
   );
@@ -30,7 +30,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 /** Text for a value the daemon omitted. Styled as absent so it can never be
  * mistaken for the value itself. */
 function Absent({ children }: { children: ReactNode }) {
-  return <span className="italic text-slate-500 dark:text-slate-400">{children}</span>;
+  return <span className="italic text-slate-600 dark:text-slate-400">{children}</span>;
 }
 
 function StatusDetails({ status }: { status: GitSyncStatus }) {
@@ -138,7 +138,7 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
           >
             Review the draft
           </Link>
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
             It is an ordinary changeset: vnprox staged it and applied nothing. Applying and confirming it are your
             own steps, in the ordinary review screen.
           </p>
@@ -153,7 +153,7 @@ function StatusDetails({ status }: { status: GitSyncStatus }) {
               className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm dark:border-amber-900 dark:bg-amber-950/40"
             >
               <code className="font-mono text-xs text-slate-600 dark:text-slate-300">{issue.check}</code>{" "}
-              <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">
                 {issue.severity}
               </span>
               <p className="mt-1 text-slate-800 dark:text-slate-100">{issue.detail}</p>
@@ -174,7 +174,7 @@ export function GitSyncPanel({ state }: { state: GitSyncState }) {
       </h2>
 
       {state.kind === "loading" && (
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Reading the git sync status…</p>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Reading the git sync status…</p>
       )}
 
       {state.kind === "unreadable" && (
@@ -186,7 +186,7 @@ export function GitSyncPanel({ state }: { state: GitSyncState }) {
             Could not read the git sync status
           </p>
           <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{state.message}</p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
             This is not the same as the sync being off — vnprox could not ask, so whatever the sync is doing, this
             screen cannot currently say.
           </p>
@@ -201,7 +201,7 @@ export function GitSyncPanel({ state }: { state: GitSyncState }) {
             configuration. Nothing is fetched, no endpoint is contacted, and no draft is opened from a repository.
             The spec position below, if any, comes from the pinned document instead.
           </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
             Turning it on is a change to <code className="font-mono">vnprox.toml</code> on the node — there is
             deliberately no route that configures or triggers a sync from here.
           </p>
@@ -221,7 +221,7 @@ export function GitSyncPanel({ state }: { state: GitSyncState }) {
              * remote and an auth failure are different problems, and only
              * this string distinguishes them. */}
             <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">{state.message}</p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
               The sync retries on its next tick. A failing cycle stages nothing, so the details below are from the
               last cycle that got that far.
             </p>

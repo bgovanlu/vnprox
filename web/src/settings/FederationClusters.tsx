@@ -99,7 +99,7 @@ function StatusBadge({ status }: { status: string }) {
       ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
       : status === "unreachable"
         ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
-        : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400";
+        : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
   return <span className={clsx("rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide", cls)}>{status}</span>;
 }
 
@@ -125,7 +125,7 @@ function TunnelLinkage({
 }) {
   if (!cluster.wgTunnelId) {
     return (
-      <div className="text-sm text-slate-500 dark:text-slate-400" data-testid="tunnel-linkage">
+      <div className="text-sm text-slate-600 dark:text-slate-400" data-testid="tunnel-linkage">
         Not tunnel-linked. Tag a WireGuard peer with this cluster in the tunnel wizard to link one, or set an
         explicit override via <code>PUT /federation/clusters/{"{id}"}</code>.
       </div>
@@ -149,7 +149,7 @@ function TunnelLinkage({
       </div>
       {isExplicit ? (
         <>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             Set explicitly through this registry. Clearing it does <strong>not</strong> unlink this cluster if a
             WireGuard peer is still tagged with it — the linkage then falls back to that peer-derived link instead
             of disappearing. To fully unlink, retag or remove that peer through the WireGuard tunnel editor.
@@ -163,7 +163,7 @@ function TunnelLinkage({
           </Tooltip>
         </>
       ) : (
-        <p className="text-xs text-slate-500 dark:text-slate-400">
+        <p className="text-xs text-slate-600 dark:text-slate-400">
           Derived from a WireGuard peer tagged with this cluster — this screen cannot change it. Retag or remove
           that peer through the WireGuard tunnel editor to unlink.
         </p>
@@ -304,7 +304,7 @@ export function FederationClusters() {
           </div>
 
           {items.length === 0 ? (
-            <p className="text-sm text-slate-400">No clusters attached yet.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">No clusters attached yet.</p>
           ) : (
             <ul className="flex flex-col gap-1" data-testid="federation-cluster-list">
               {items.map((cluster) => (
@@ -325,7 +325,7 @@ export function FederationClusters() {
                       <span className="font-medium">{cluster.name}</span>
                       <StatusBadge status={cluster.status} />
                     </span>
-                    <span className="truncate text-[10px] text-slate-400">{cluster.apiUrl}</span>
+                    <span className="truncate text-[10px] text-slate-600 dark:text-slate-400">{cluster.apiUrl}</span>
                   </button>
                 </li>
               ))}
@@ -408,7 +408,7 @@ export function FederationClusters() {
                 {form.credentialKind === "ticket" ? (
                   <>
                     <div>
-                      <label htmlFor="fed-cluster-username" className="text-xs text-slate-500 dark:text-slate-400">
+                      <label htmlFor="fed-cluster-username" className="text-xs text-slate-600 dark:text-slate-400">
                         Username
                       </label>
                       <input
@@ -423,7 +423,7 @@ export function FederationClusters() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="fed-cluster-password" className="text-xs text-slate-500 dark:text-slate-400">
+                      <label htmlFor="fed-cluster-password" className="text-xs text-slate-600 dark:text-slate-400">
                         Password
                       </label>
                       <input
@@ -438,7 +438,7 @@ export function FederationClusters() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="fed-cluster-realm" className="text-xs text-slate-500 dark:text-slate-400">
+                      <label htmlFor="fed-cluster-realm" className="text-xs text-slate-600 dark:text-slate-400">
                         Realm (optional)
                       </label>
                       <input
@@ -455,7 +455,7 @@ export function FederationClusters() {
                   </>
                 ) : (
                   <div>
-                    <label htmlFor="fed-cluster-token" className="text-xs text-slate-500 dark:text-slate-400">
+                    <label htmlFor="fed-cluster-token" className="text-xs text-slate-600 dark:text-slate-400">
                       Token
                     </label>
                     <input
@@ -542,7 +542,7 @@ export function FederationClusters() {
             <li>Cross-cluster IPAM conflict detection against this cluster's subnets</li>
             <li>Its rows in global audit/search until it is attached again</li>
           </ul>
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
             Detaching is cheap to do again from scratch, but you will need the credential again to reattach.
           </p>
           <div className="mt-5 flex justify-end gap-2">

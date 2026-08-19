@@ -65,13 +65,13 @@ export function QosShapesPanel() {
           QoS shaping
           <HelpAnchor topic="qos-shaping" />
         </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           Every shape vnprox has applied, read from its own store rather than from live <code>tc</code>. Creating,
           editing and removing a shape stages an ordinary changeset — this panel never writes anything itself.
         </p>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {error && (
         <EmptyState
           title="Could not list QoS shapes"
@@ -337,7 +337,7 @@ function EditShapeForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2" aria-label={`Edit QoS shape ${shape.id}`}>
-      <p className="w-full text-xs text-slate-500 dark:text-slate-400">
+      <p className="w-full text-xs text-slate-600 dark:text-slate-400">
         Editing <span className="font-mono">{shape.id}</span> on {shape.node} / {shape.bridge}. Changing which traffic a
         shape selects is a remove-and-recreate, not an edit, so the match fields are not offered here.
       </p>

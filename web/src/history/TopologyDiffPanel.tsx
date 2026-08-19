@@ -90,13 +90,13 @@ function DiffRow({ row }: { row: TopologyEntityDiff }) {
           <span className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
             {row.name ?? row.ref}
           </span>
-          <span className="truncate text-xs text-slate-500">{row.ref}</span>
+          <span className="truncate text-xs text-slate-600 dark:text-slate-400">{row.ref}</span>
         </div>
         <Attribution row={row} />
       </div>
       {row.fields.length > 0 && (
         <table className="mt-2 w-full table-fixed text-xs">
-          <thead className="text-slate-500">
+          <thead className="text-slate-600 dark:text-slate-400">
             <tr>
               <th className="w-1/3 text-left font-normal">Field</th>
               <th className="w-1/3 text-left font-normal">Before</th>
@@ -136,7 +136,7 @@ export function TopologyDiffPanel({ from, to }: TopologyDiffPanelProps) {
     );
   }
   if (query.isLoading) {
-    return <p className="text-sm text-slate-500">Computing topology diff…</p>;
+    return <p className="text-sm text-slate-600 dark:text-slate-400">Computing topology diff…</p>;
   }
   if (query.isError) {
     // The server's message is shown verbatim on purpose: for an uncovered

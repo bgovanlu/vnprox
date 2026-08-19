@@ -134,7 +134,7 @@ export function FindingsList({
                     </span>
                   )}
                   {f.nodes.length > 0 && (
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    <span className="text-[10px] text-slate-600 dark:text-slate-400">
                       {f.nodes.join(", ")}
                     </span>
                   )}
@@ -146,7 +146,7 @@ export function FindingsList({
                 </div>
                 <p>{f.detail}</p>
                 {f.refs && f.refs.length > 0 && (
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  <p className="text-[10px] text-slate-600 dark:text-slate-400">
                     {f.refs.join(" · ")}
                   </p>
                 )}

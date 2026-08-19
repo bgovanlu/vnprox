@@ -64,14 +64,14 @@ export function SpofPanel() {
           Failure simulation
           <HelpAnchor topic="spof-score" />
         </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           What breaks if one element dies. Each entry is a simulated removal against a copy of the current inventory —
           nothing here induces a failure, changes anything, or is stored. An impact that could not be decided says so
           rather than reporting a clean result.
         </p>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-400">Simulating…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Simulating…</p>}
       {error && (
         <EmptyState
           title="Could not compute the SPOF score"
@@ -114,11 +114,11 @@ function ResilienceScore({
   return (
     <div className="flex flex-wrap items-baseline gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
       <span className="text-2xl font-semibold tabular-nums">{score}</span>
-      <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">resilience score</span>
+      <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">resilience score</span>
       <span className="text-sm text-slate-600 dark:text-slate-300">
         {spofCount} single point{spofCount === 1 ? "" : "s"} of failure
       </span>
-      <span className="ml-auto text-xs text-slate-400">Simulated {generatedAt}</span>
+      <span className="ml-auto text-xs text-slate-600 dark:text-slate-400">Simulated {generatedAt}</span>
     </div>
   );
 }
@@ -146,7 +146,7 @@ function SpofEntryCard({ entry }: { entry: SpofEntry }) {
 
       {affected.length > 0 && (
         <div className="mt-2">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">
             Affected entities
           </h3>
           <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1">

@@ -173,7 +173,7 @@ export function HistoryPage() {
         {/* Timeline */}
         <section className="flex min-h-0 flex-col gap-2 overflow-y-auto pr-1" aria-label="Snapshot timeline">
           {snapshotsQuery.isLoading ? (
-            <p className="text-sm text-slate-500">Loading snapshots…</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Loading snapshots…</p>
           ) : snapshotsQuery.isError ? (
             <EmptyState
               title="Could not load snapshots"
@@ -197,7 +197,7 @@ export function HistoryPage() {
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
                       {group.changesetId ? `Changeset ${group.changesetId}` : "Standalone snapshot"}
                     </span>
-                    <time className="text-xs text-slate-500">{formatTime(group.at)}</time>
+                    <time className="text-xs text-slate-600 dark:text-slate-400">{formatTime(group.at)}</time>
                   </header>
                   <ul className="flex flex-col gap-1.5">
                     {group.snapshots.map((snap) => (
@@ -210,7 +210,7 @@ export function HistoryPage() {
                             {kindLabel(snap.kind)}
                             {snap.note ? ` — ${snap.note}` : ""}
                           </span>
-                          <span className="truncate text-xs text-slate-500">
+                          <span className="truncate text-xs text-slate-600 dark:text-slate-400">
                             {snap.id} · {formatTime(snap.takenAt)} · {snap.nodes.join(", ")}
                           </span>
                         </div>
@@ -304,7 +304,7 @@ export function HistoryPage() {
                 </Button>
               </div>
             </div>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-slate-600 dark:text-slate-400">
               {selection.from ?? "(pick From)"} → {selection.to ?? "(pick To or vs live)"}
             </span>
           </div>
@@ -316,7 +316,7 @@ export function HistoryPage() {
               description='Choose a "From" and a "To" snapshot on the timeline, or use "vs live" to compare a snapshot with the current configuration.'
             />
           ) : diffQuery.isLoading ? (
-            <p className="text-sm text-slate-500">Computing diff…</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Computing diff…</p>
           ) : diffQuery.isError ? (
             <EmptyState
               title="Diff failed"

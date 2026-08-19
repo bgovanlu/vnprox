@@ -31,7 +31,7 @@ export function RawEditorPanel({ node }: RawEditorPanelProps) {
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <HelpAnchor topic="raw-editor" />
-        <p className="text-sm text-slate-500 dark:text-slate-400" role="status">
+        <p className="text-sm text-slate-600 dark:text-slate-400" role="status">
           {state.loading
             ? "Loading /etc/network/interfaces…"
             : errorCount > 0
@@ -93,7 +93,7 @@ export function RawEditorPanel({ node }: RawEditorPanelProps) {
 
       <Suspense
         fallback={
-          <div className="flex h-[420px] items-center justify-center rounded-md border border-slate-300 text-sm text-slate-400 dark:border-slate-700">
+          <div className="flex h-[420px] items-center justify-center rounded-md border border-slate-300 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-400">
             Loading editor…
           </div>
         }

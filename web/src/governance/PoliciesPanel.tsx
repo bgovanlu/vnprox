@@ -51,7 +51,7 @@ function parseDocument(raw: string): { set: PolicySet } | { error: string } {
 
 function StatRow({ stat }: { stat: PolicyRuleStatus }) {
   return (
-    <p className="text-xs text-slate-500 dark:text-slate-400">
+    <p className="text-xs text-slate-600 dark:text-slate-400">
       {stat.evalCount === 0
         ? "Never evaluated yet."
         : `Evaluated ${String(stat.evalCount)} time${stat.evalCount === 1 ? "" : "s"}, matched ${String(stat.matchCount)}.`}
@@ -107,7 +107,7 @@ export function PoliciesPanel() {
         here is enforced by this screen — it is where the rules are read and replaced.
       </p>
 
-      {query.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Reading the installed rule set…</p>}
+      {query.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Reading the installed rule set…</p>}
 
       {notConfigured && (
         <p className="text-sm text-slate-600 dark:text-slate-300">
@@ -126,7 +126,7 @@ export function PoliciesPanel() {
 
       {status !== undefined && (
         <>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             Store revision {String(status.revision)}
             {status.revision === 0 && " (nothing has ever been installed)"}
             {status.updatedBy !== undefined && status.updatedBy !== "" && ` · last installed by ${status.updatedBy}`}
@@ -136,7 +136,7 @@ export function PoliciesPanel() {
           </p>
 
           {(status.set.rules ?? []).length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               No rules are installed, so policy-as-code guards nothing on this cluster today.
             </p>
           ) : (
@@ -148,7 +148,7 @@ export function PoliciesPanel() {
                   <li key={rule.id} className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
                     <p className="text-sm font-medium">
                       <span className="font-mono">{rule.id}</span>{" "}
-                      <span className="font-normal text-slate-500 dark:text-slate-400">
+                      <span className="font-normal text-slate-600 dark:text-slate-400">
                         — {rule.severity}: {SEVERITY_NOTE[severity]}
                       </span>
                     </p>
@@ -156,7 +156,7 @@ export function PoliciesPanel() {
                       <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">{rule.description}</p>
                     )}
                     {rule.tags !== undefined && rule.tags.length > 0 && (
-                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
                         Tags: {rule.tags.join(", ")} — a protected class may be declared against any of these.
                       </p>
                     )}
@@ -185,7 +185,7 @@ export function PoliciesPanel() {
                       </div>
                     </div>
                     {stat === undefined ? (
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                         The daemon reported no statistics for this rule, so how often it has matched is unknown.
                       </p>
                     ) : (
@@ -199,7 +199,7 @@ export function PoliciesPanel() {
 
           <details className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
             <summary className="cursor-pointer text-sm font-medium">Replace the rule set</summary>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
               A whole document, installed as a unit — there is no per-rule patch. The daemon validates it before
               anything is written: a malformed set is refused and nothing is stored and nothing is audited.
               Re-installing an identical set is a no-op, with no new revision and no audit entry.

@@ -55,7 +55,7 @@ export function CapacityExportPanel() {
           Capacity history export
           <HelpAnchor topic="capacity-export" />
         </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           One link&apos;s or one IPAM pool&apos;s daily utilization history, as CSV or JSON. Capacity{" "}
           <em>forecasts</em> are not here — they arrive as findings in the findings stream, where a projected crossing
           can be acknowledged like any other. This is the raw history behind them.
@@ -113,7 +113,7 @@ export function CapacityExportPanel() {
         )}
       </div>
 
-      <p data-testid="capacity-retention-note" className="text-xs text-slate-500 dark:text-slate-400">
+      <p data-testid="capacity-retention-note" className="text-xs text-slate-600 dark:text-slate-400">
         {RETENTION_BOUND_NOTE}
       </p>
 
@@ -139,7 +139,7 @@ export function CapacityExportPanel() {
 function ExportPreview({ entityRef, kind }: { entityRef: string; kind: CapacityKind }) {
   const { data, isLoading, error } = useCapacityExportQuery(entityRef, kind);
 
-  if (isLoading) return <p className="text-sm text-slate-400">Loading history…</p>;
+  if (isLoading) return <p className="text-sm text-slate-600 dark:text-slate-400">Loading history…</p>;
   if (error) {
     return (
       <EmptyState

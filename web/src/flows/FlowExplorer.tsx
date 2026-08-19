@@ -272,7 +272,7 @@ export function FlowExplorer() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <FilterBar filter={state.filter} onChange={(patch) => { dispatch({ type: "setFilter", filter: patch }); }} />
         <div className="flex items-center gap-2">
-          <label className="text-sm text-slate-500 dark:text-slate-400" htmlFor="flow-sort">
+          <label className="text-sm text-slate-600 dark:text-slate-400" htmlFor="flow-sort">
             Sort
           </label>
           <select
@@ -302,7 +302,7 @@ export function FlowExplorer() {
         </p>
       )}
 
-      {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {error && <EmptyState title="Could not load flow records" description="Try again in a moment." />}
 
       {noFlowsAtAll && (
@@ -398,7 +398,7 @@ function FlowRow({ record, k8sIndex }: { record: FlowRecord; k8sIndex: K8sAttrib
       <TableCell>{record.vlan ?? "—"}</TableCell>
       <TableCell className="text-xs">{serviceClassLabel(record.serviceClass)}</TableCell>
       <TableCell className="text-xs">{k8sServiceLabel(k8sIndex, record)}</TableCell>
-      <TableCell className="text-xs text-slate-500 dark:text-slate-400">{record.source}</TableCell>
+      <TableCell className="text-xs text-slate-600 dark:text-slate-400">{record.source}</TableCell>
     </TableRow>
   );
 }

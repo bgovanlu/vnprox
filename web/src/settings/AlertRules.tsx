@@ -160,7 +160,7 @@ function FilterCheckboxGroup<T extends string>({
           </label>
         ))}
       </div>
-      <p className="text-[11px] text-slate-500 dark:text-slate-400">None selected matches every value.</p>
+      <p className="text-[11px] text-slate-600 dark:text-slate-400">None selected matches every value.</p>
     </fieldset>
   );
 }
@@ -293,7 +293,7 @@ export function AlertRules() {
           </div>
 
           {items.length === 0 ? (
-            <p className="text-sm text-slate-400">No alert rules configured yet.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">No alert rules configured yet.</p>
           ) : (
             <ul className="flex flex-col gap-1" data-testid="alert-rule-list">
               {items.map((rule) => (
@@ -311,7 +311,7 @@ export function AlertRules() {
                     }}
                   >
                     <span className="font-medium">{rule.name}</span>
-                    <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                    <span className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-400">
                       {rule.targetKind} · {rule.enabled ? "enabled" : "disabled"}
                     </span>
                   </button>
@@ -377,7 +377,7 @@ export function AlertRules() {
 
               <fieldset className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
                 <legend className="px-1 text-xs font-medium text-slate-600 dark:text-slate-300">Delivery schedule</legend>
-                <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">
                   Quiet hours defer deliveries — they are never dropped, and go out when the window ends. A digest window
                   coalesces everything arriving inside it into one message.
                 </p>
@@ -564,11 +564,11 @@ export function AlertRules() {
           Delivery log{selected ? ` — ${selected.name}` : ""}
         </h2>
         {!deliveriesData || deliveriesData.items.length === 0 ? (
-          <p className="text-sm text-slate-400">No deliveries logged yet.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">No deliveries logged yet.</p>
         ) : (
           <div className="max-h-48 overflow-y-auto">
             <table className="w-full text-left text-xs" data-testid="delivery-log">
-              <thead className="text-slate-500 dark:text-slate-400">
+              <thead className="text-slate-600 dark:text-slate-400">
                 <tr>
                   <th className="py-1 pr-2">At</th>
                   <th className="py-1 pr-2">Rule</th>

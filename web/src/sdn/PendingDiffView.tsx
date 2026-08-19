@@ -36,7 +36,14 @@ export function PendingDiffView({ diff }: { diff: SdnPendingDiff }) {
             {fields.map((field) => (
               <tr key={field}>
                 <td className="py-0.5 pr-3 font-mono">{field}</td>
-                <td className="py-0.5 pr-3 text-amber-900/70 dark:text-amber-300/70">
+                {/* T-3406-followup-01: the /70-opacity wash measured 4.11:1
+                 * against amber-50 in light mode, under the 4.5:1 floor —
+                 * same "opacity wash barely darkens" trap as the accent
+                 * selection wash T-3406 found, computed the same way (OKLCH
+                 * alpha-blend). Solid amber-900 clears it at 8.73:1; dark
+                 * mode's amber-300/70 already passes at 5.80:1 against
+                 * amber-950 so is left as-is. */}
+                <td className="py-0.5 pr-3 text-amber-900 dark:text-amber-300/70">
                   {formatDiffValue(diff.running?.[field])}
                 </td>
                 <td className="py-0.5 font-semibold text-amber-900 dark:text-amber-100">

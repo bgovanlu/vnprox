@@ -78,7 +78,7 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
 
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <legend className="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">
         {label}
       </legend>
       <div role="radiogroup" aria-label={`${label} endpoint kind`} className="flex gap-1">
@@ -141,9 +141,9 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
                   aria-label={`${label} guest NIC results`}
                   className="max-h-40 overflow-y-auto rounded border border-slate-200 text-sm dark:border-slate-700"
                 >
-                  {isFetching && <li className="px-2 py-1 text-slate-400">Searching…</li>}
+                  {isFetching && <li className="px-2 py-1 text-slate-600 dark:text-slate-400">Searching…</li>}
                   {!isFetching && results.length === 0 && (
-                    <li className="px-2 py-1 text-slate-400">No matching guest NICs.</li>
+                    <li className="px-2 py-1 text-slate-600 dark:text-slate-400">No matching guest NICs.</li>
                   )}
                   {results.map((r) => (
                     <li key={r.ref}>
@@ -157,7 +157,7 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
                         className="flex w-full items-center justify-between gap-2 px-2 py-1 text-left hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
                         <span className="truncate">{r.label}</span>
-                        <span className="shrink-0 text-xs text-slate-400">{r.node}</span>
+                        <span className="shrink-0 text-xs text-slate-600 dark:text-slate-400">{r.node}</span>
                       </button>
                     </li>
                   ))}
@@ -189,13 +189,13 @@ export function EndpointPicker({ label, value, onChange, topologyNodes = [] }: E
             className="w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 font-mono text-sm outline-none focus:border-accent-500 dark:border-slate-700"
           />
           {ipDraft.trim() !== "" && (
-            <p className="text-xs text-slate-400">{describeIpSubnetContext(ipDraft.trim(), topologyNodes)}</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400">{describeIpSubnetContext(ipDraft.trim(), topologyNodes)}</p>
           )}
         </div>
       )}
 
       {mode === "external" && (
-        <p className="text-xs text-slate-400">Represents traffic to/from outside the cluster (the WAN/internet).</p>
+        <p className="text-xs text-slate-600 dark:text-slate-400">Represents traffic to/from outside the cluster (the WAN/internet).</p>
       )}
     </fieldset>
   );

@@ -7,6 +7,7 @@
 // query is fan-out-ready (cursor + filter over the same shape per node).
 import { Fragment, useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { fetchAudit, type AuditEntry, type AuditFilter, type AuditListResponse } from "../api/audit";
 import { emptyForm, toAuditFilter, type FilterForm } from "./filters";
 import { ApiError } from "../api/client";
@@ -22,11 +23,20 @@ function formatTime(unixSeconds: number): string {
 }
 
 function resultTone(result: string): string {
+  // T-3406-followup-01: these render straight on TableCell/AppShell's
+  // bg-slate-100 canvas (Table's own wrapper carries only a border, no
+  // background — see Table.tsx's TableHeader comment for the same shape of
+  // bug). Computed (Tailwind v4 OKLCH -> sRGB): red-600 #e7000b measures
+  // 4.35:1 there and amber-600 #e17100 measures 2.91:1, both under the
+  // 4.5:1 floor; red-700 #c10007 clears it at 5.86:1 and amber-800 #973c00
+  // at 6.50:1 (amber-700's 4.61:1 was too close to the floor to trust, per
+  // this codebase's own T-3406 lesson about thin margins). Dark mode is
+  // unaffected — red-400/amber-400 already clear 6:1+ against slate-900.
   if (result.includes("fail") || result.includes("error") || result === "locked" || result === "denied") {
-    return "text-red-600 dark:text-red-400";
+    return "text-red-700 dark:text-red-400";
   }
   if (result.includes("warn")) {
-    return "text-amber-600 dark:text-amber-400";
+    return "text-amber-800 dark:text-amber-400";
   }
   return "text-emerald-700 dark:text-emerald-400";
 }
@@ -88,7 +98,7 @@ export function AuditPage() {
       </form>
 
       {auditQuery.isLoading ? (
-        <p className="text-sm text-slate-500">Loading audit log…</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">Loading audit log…</p>
       ) : auditQuery.isError ? (
         <EmptyState
           title="Could not load the audit log"
@@ -113,33 +123,66 @@ export function AuditPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {entries.map((entry) => (
-                <Fragment key={entry.id}>
-                  <TableRow
-                    className="cursor-pointer"
-                    aria-expanded={expandedId === entry.id}
-                    onClick={() => {
-                      setExpandedId((prev) => (prev === entry.id ? undefined : entry.id));
-                    }}
-                  >
-                    <TableCell className="whitespace-nowrap">{formatTime(entry.at)}</TableCell>
-                    <TableCell>{entry.username}</TableCell>
-                    <TableCell>{entry.action}</TableCell>
-                    <TableCell className="max-w-48 truncate">{entry.target ?? ""}</TableCell>
-                    <TableCell className="max-w-48 truncate font-mono text-xs">
-                      {entry.changesetId ?? ""}
-                    </TableCell>
-                    <TableCell className={resultTone(entry.result)}>{entry.result}</TableCell>
-                  </TableRow>
-                  {expandedId === entry.id ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="bg-slate-50 dark:bg-slate-900/60">
-                        <ExpandedDetail entry={entry} />
+              {entries.map((entry) => {
+                const expanded = expandedId === entry.id;
+                const detailId = `audit-detail-${String(entry.id)}`;
+                return (
+                  <Fragment key={entry.id}>
+                    <TableRow
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setExpandedId((prev) => (prev === entry.id ? undefined : entry.id));
+                      }}
+                    >
+                      {/* T-3406-followup-01: aria-expanded belongs on a control
+                       * that accepts it — a plain `<tr>` (role="row" outside a
+                       * treegrid) does not, per ARIA's aria-expanded spec, and
+                       * axe's aria-conditional-attr rule flags it regardless of
+                       * theme. The row keeps its own onClick for the existing
+                       * click-anywhere-in-the-row behavior; this button carries
+                       * the actual expand/collapse semantics for assistive
+                       * tech, and is a real keyboard-operable control the bare
+                       * row never was. */}
+                      <TableCell className="whitespace-nowrap">
+                        <span className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            aria-expanded={expanded}
+                            aria-controls={detailId}
+                            aria-label={expanded ? "Collapse entry details" : "Expand entry details"}
+                            className="shrink-0 rounded text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedId((prev) => (prev === entry.id ? undefined : entry.id));
+                            }}
+                          >
+                            {expanded ? (
+                              <ChevronDown aria-hidden className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight aria-hidden className="h-4 w-4" />
+                            )}
+                          </button>
+                          {formatTime(entry.at)}
+                        </span>
                       </TableCell>
+                      <TableCell>{entry.username}</TableCell>
+                      <TableCell>{entry.action}</TableCell>
+                      <TableCell className="max-w-48 truncate">{entry.target ?? ""}</TableCell>
+                      <TableCell className="max-w-48 truncate font-mono text-xs">
+                        {entry.changesetId ?? ""}
+                      </TableCell>
+                      <TableCell className={resultTone(entry.result)}>{entry.result}</TableCell>
                     </TableRow>
-                  ) : null}
-                </Fragment>
-              ))}
+                    {expanded ? (
+                      <TableRow id={detailId}>
+                        <TableCell colSpan={6} className="bg-slate-50 dark:bg-slate-900/60">
+                          <ExpandedDetail entry={entry} />
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
           {auditQuery.hasNextPage ? (
@@ -169,7 +212,7 @@ interface FilterInputProps {
 
 function FilterInput({ label, value, onChange, placeholder, type = "text" }: FilterInputProps) {
   return (
-    <label className="flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400">
+    <label className="flex flex-col gap-1 text-xs text-slate-600 dark:text-slate-400">
       {label}
       <input
         type={type}
@@ -198,7 +241,7 @@ function ExpandedDetail({ entry }: { entry: AuditEntry }) {
           {JSON.stringify(entry.detail, null, 2)}
         </pre>
       ) : (
-        <p className="text-slate-500">No additional detail recorded.</p>
+        <p className="text-slate-600 dark:text-slate-400">No additional detail recorded.</p>
       )}
     </div>
   );

@@ -59,7 +59,7 @@ function EffectiveScopeCell({ token, readOnly }: { token: ApiToken; readOnly: bo
 
   if (!narrowing.known) {
     return (
-      <span className="text-xs italic text-slate-500 dark:text-slate-400" data-testid={`effective-scope-${token.id}`} data-scope-state="unknown">
+      <span className="text-xs italic text-slate-600 dark:text-slate-400" data-testid={`effective-scope-${token.id}`} data-scope-state="unknown">
         Unknown — this instance&rsquo;s configuration has not loaded, so whether{" "}
         <code>read_only</code> is narrowing this token cannot be stated yet.
       </span>
@@ -118,7 +118,7 @@ function LifecycleBadge({ token }: { token: ApiToken }) {
   const cls =
     state === "active"
       ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-      : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400";
+      : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
   return (
     <span data-testid={`lifecycle-${token.id}`} className={clsx("rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide", cls)}>
       {state}
@@ -216,7 +216,7 @@ export function TokensSection() {
 
       {/* --- mint form ------------------------------------------------- */}
       <div className="mb-4 rounded-md border border-slate-200 p-3 dark:border-slate-700">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
           Mint a token
         </h3>
 
@@ -280,7 +280,7 @@ export function TokensSection() {
               />
               <span>
                 Default — the daemon expires it 90 days from now
-                <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
+                <span className="ml-1 text-xs text-slate-600 dark:text-slate-400">
                   (the request omits <code>expiresAt</code>; the exact instant comes back in the response)
                 </span>
               </span>
@@ -296,7 +296,7 @@ export function TokensSection() {
               />
               <span>
                 Never expires
-                <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
+                <span className="ml-1 text-xs text-slate-600 dark:text-slate-400">
                   (an explicit opt-out — the credential stays valid until revoked)
                 </span>
               </span>
@@ -387,7 +387,7 @@ export function TokensSection() {
       )}
 
       {/* --- list -------------------------------------------------------- */}
-      {tokensQuery.isLoading && <p className="text-sm text-slate-500 dark:text-slate-400">Loading tokens…</p>}
+      {tokensQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading tokens…</p>}
 
       {tokensQuery.error !== null && (
         <RefusalNotice
@@ -398,7 +398,7 @@ export function TokensSection() {
       )}
 
       {!tokensQuery.isLoading && tokensQuery.error === null && tokens.length === 0 && (
-        <p className="text-sm text-slate-500 dark:text-slate-400" data-testid="tokens-empty">
+        <p className="text-sm text-slate-600 dark:text-slate-400" data-testid="tokens-empty">
           You have not minted any tokens. This list shows only your own — a token another user minted is neither
           listed nor revocable here.
         </p>
@@ -422,7 +422,7 @@ export function TokensSection() {
               <TableRow key={token.id} data-testid={`token-row-${token.id}`}>
                 <TableCell>
                   <span className="font-medium">{token.name}</span>
-                  <span className="block font-mono text-[10px] text-slate-400 dark:text-slate-500">{token.id}</span>
+                  <span className="block font-mono text-[10px] text-slate-600 dark:text-slate-400">{token.id}</span>
                 </TableCell>
                 <TableCell>
                   <ScopeChips names={token.scopes} empty="no scopes" />

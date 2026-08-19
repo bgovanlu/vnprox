@@ -91,7 +91,7 @@ export function ToolsPage() {
         actions={
           nodes.length > 0 && (
             <label className="flex items-center gap-2 text-sm">
-              <span className="text-slate-500 dark:text-slate-400">Node</span>
+              <span className="text-slate-600 dark:text-slate-400">Node</span>
               <select
                 className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900"
                 value={node}
@@ -127,7 +127,7 @@ export function ToolsPage() {
           Findings
           <HelpAnchor topic="findings-stream" />
         </h2>
-        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
           One stream for drift, LLDP VLAN mismatches, IPAM conflicts, and continuous health checks
           (docs/features/monitoring.md §5), re-evaluated on a ~30s cycle. Affected entities are also outlined with a
           dashed border on the topology map.
@@ -150,7 +150,7 @@ export function ToolsPage() {
           Export documentation
           <HelpAnchor topic="doc-export" />
         </h2>
-        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
           A timestamped as-built document of the cluster network (docs/features/blueprints.md §4): rendered topology,
           per-node interface tables, VLAN matrix, SDN inventory, firewall summaries, and the LLDP wiring table. This
           is a read-only, GET-only export — no capability gating needed beyond ordinary network-read access.

@@ -20,7 +20,7 @@ function UtilizationBar({ utilization, conflicts }: { utilization: number; confl
           style={{ width: `${String(pct)}%` }}
         />
       </div>
-      <span className="text-xs text-slate-500 dark:text-slate-400">{pct}%</span>
+      <span className="text-xs text-slate-600 dark:text-slate-400">{pct}%</span>
     </div>
   );
 }
@@ -50,7 +50,7 @@ function SubnetRow({ subnet, selected, onSelect }: { subnet: IpamSubnet; selecte
           </span>
         )}
       </div>
-      <div className="text-xs text-slate-500 dark:text-slate-400">
+      <div className="text-xs text-slate-600 dark:text-slate-400">
         {subnet.source === "sdn" ? `${subnet.zone ?? "?"} / ${subnet.vnet ?? "?"}` : subnet.node ? `bridge on ${subnet.node}` : "detected"}
         {subnet.gateway ? ` · gw ${subnet.gateway}` : ""}
         {subnet.dhcpEnabled ? " · DHCP" : ""}
@@ -75,7 +75,7 @@ function SubnetFacts({ subnet }: { subnet: IpamSubnet }) {
   facts.push({ label: "DHCP", value: subnet.dhcpEnabled ? "on" : "off" });
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
       {facts.map((f) => (
         <span key={f.label}>
           {f.label} <span className="font-medium text-slate-700 dark:text-slate-200">{f.value}</span>
@@ -110,7 +110,7 @@ export function IpamPage() {
     <div className="flex h-full flex-col gap-3">
       <PageHeader title="IPAM" />
 
-      {isLoading && <p className="text-sm text-slate-400">Loading IPAM subnets…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading IPAM subnets…</p>}
       {isError && (
         <EmptyState title="Could not load IPAM subnets" description="Check that vnproxd can reach the local PVE API, then reload." />
       )}

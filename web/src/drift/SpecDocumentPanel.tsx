@@ -77,7 +77,7 @@ export function SpecDocumentPanel({ content, onContentChange, writeDisabledReaso
         <HelpAnchor topic="spec-pin" />
       </h2>
 
-      {isLoading && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Reading the pinned document…</p>}
+      {isLoading && <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Reading the pinned document…</p>}
 
       {error !== null && (
         <div
@@ -87,7 +87,7 @@ export function SpecDocumentPanel({ content, onContentChange, writeDisabledReaso
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             Could not read whether a document is pinned
           </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
             That is not the same as nothing being pinned — vnprox could not ask.
           </p>
         </div>

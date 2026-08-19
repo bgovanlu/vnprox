@@ -172,7 +172,7 @@ export function FindingsStreamPanel() {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-slate-500 dark:text-slate-400">Loading findings…</p>;
+    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading findings…</p>;
   }
   if (error) {
     return <p className="text-sm text-red-600 dark:text-red-400">Could not load findings.</p>;
@@ -182,7 +182,7 @@ export function FindingsStreamPanel() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter findings">
         <HelpAnchor topic="findings-stream" />
-        <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+        <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
           Source
           <select
             aria-label="Filter by source"
@@ -200,7 +200,7 @@ export function FindingsStreamPanel() {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+        <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
           Severity
           <select
             aria-label="Filter by severity"
@@ -218,7 +218,7 @@ export function FindingsStreamPanel() {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+        <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
           Node
           <select
             aria-label="Filter by node"

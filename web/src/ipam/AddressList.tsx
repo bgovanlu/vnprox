@@ -84,7 +84,7 @@ function UtilizationStrip({ counts, onPick, active }: { counts: IpamCounts; onPi
           ) : null,
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
         {segments.map((s) => (
           <button
             key={s.state}
@@ -128,13 +128,13 @@ function EntryRow({ cell, onOpen }: { cell: IpamCell; onOpen: (cell: IpamCell) =
         {cell.hostname ? (
           <>
             {cell.hostname}
-            {desc && <span className="text-slate-500 dark:text-slate-400"> · {desc}</span>}
+            {desc && <span className="text-slate-600 dark:text-slate-400"> · {desc}</span>}
           </>
         ) : (
-          <span className="text-slate-500 dark:text-slate-400">{cell.state === "observed" ? "unknown host — not in IPAM" : desc || "—"}</span>
+          <span className="text-slate-600 dark:text-slate-400">{cell.state === "observed" ? "unknown host — not in IPAM" : desc || "—"}</span>
         )}
       </span>
-      <span className="hidden justify-end font-mono text-[11px] text-slate-500 sm:flex dark:text-slate-400">
+      <span className="hidden justify-end font-mono text-[11px] text-slate-600 sm:flex dark:text-slate-400">
         {cell.mac ?? (cell.sources && cell.sources.length > 0 ? cell.sources.join(" · ") : "")}
       </span>
     </button>
@@ -144,11 +144,11 @@ function EntryRow({ cell, onOpen }: { cell: IpamCell; onOpen: (cell: IpamCell) =
 function FreeRow({ range, readOnly, onReserve }: { range: IpamFreeRange; readOnly?: boolean; onReserve: (ip: string) => void }) {
   return (
     <div className="grid grid-cols-[minmax(120px,168px)_1fr_auto] items-center gap-3 bg-slate-50/60 px-4 py-1.5 text-sm dark:bg-slate-900/40">
-      <span className="flex items-center gap-2.5 font-mono text-slate-500 tabular-nums dark:text-slate-400">
+      <span className="flex items-center gap-2.5 font-mono text-slate-600 tabular-nums dark:text-slate-400">
         <span className="h-5 w-1 rounded-sm bg-slate-200 dark:bg-slate-700" />
         {range.start} – {range.end}
       </span>
-      <span className="text-xs text-slate-500 dark:text-slate-400">
+      <span className="text-xs text-slate-600 dark:text-slate-400">
         <span className="font-semibold text-slate-700 tabular-nums dark:text-slate-200">{range.count.toLocaleString()}</span> address{range.count === 1 ? "" : "es"} free
       </span>
       {!readOnly && (
@@ -193,7 +193,7 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
   }, [data, filter, search]);
 
   if (isLoading) {
-    return <p className="text-sm text-slate-400">Loading addresses…</p>;
+    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading addresses…</p>;
   }
   if (isError || !data) {
     return <EmptyState title="Could not load addresses" description="Check that vnproxd can reach the local PVE API, then reload." />;
@@ -203,7 +203,7 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
         Addresses in {subnetCidr}
         <HelpAnchor topic="ipam-address-list" />
       </p>
@@ -248,7 +248,7 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
                 "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
                 filter === f.key
                   ? "border-accent-500 bg-accent-50 text-accent-700 dark:bg-accent-950/50 dark:text-accent-300"
-                  : "border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/60",
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/60",
               )}
             >
               {f.label}
@@ -264,7 +264,7 @@ export function AddressList({ subnetCidr, readOnly }: AddressListProps) {
 
       <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
         {rows.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-slate-400">No addresses match this filter.</p>
+          <p className="px-4 py-6 text-center text-sm text-slate-600 dark:text-slate-400">No addresses match this filter.</p>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
             {rows.map((row) =>

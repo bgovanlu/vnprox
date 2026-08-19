@@ -72,25 +72,25 @@ export function CellDetailDialog({ open, onOpenChange, cell, subnetCidr, readOnl
         <dl className="mt-3 space-y-1 text-sm">
           {cell.hostname && (
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-500 dark:text-slate-400">Hostname</dt>
+              <dt className="text-slate-600 dark:text-slate-400">Hostname</dt>
               <dd>{cell.hostname}</dd>
             </div>
           )}
           {cell.mac && (
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-500 dark:text-slate-400">MAC</dt>
+              <dt className="text-slate-600 dark:text-slate-400">MAC</dt>
               <dd className="font-mono">{cell.mac}</dd>
             </div>
           )}
           {cell.vmid !== undefined && cell.vmid > 0 && (
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-500 dark:text-slate-400">VMID</dt>
+              <dt className="text-slate-600 dark:text-slate-400">VMID</dt>
               <dd>{cell.vmid}</dd>
             </div>
           )}
           {cell.sources && cell.sources.length > 0 && (
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-500 dark:text-slate-400">Source</dt>
+              <dt className="text-slate-600 dark:text-slate-400">Source</dt>
               <dd>{cell.sources.join(", ")}</dd>
             </div>
           )}

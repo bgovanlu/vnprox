@@ -47,7 +47,7 @@ function OwnerBadge({ row }: { row: FDBRow }) {
       className="flex items-center gap-1.5 rounded hover:underline"
     >
       {badge}
-      {row.ownerLabel && <span className="text-xs text-slate-500 dark:text-slate-400">{row.ownerLabel}</span>}
+      {row.ownerLabel && <span className="text-xs text-slate-600 dark:text-slate-400">{row.ownerLabel}</span>}
     </button>
   );
 }
@@ -66,7 +66,7 @@ export function MacFdbBrowser() {
     <div className="flex flex-col gap-3">
       <div>
         <h2 className="text-base font-semibold">MAC / FDB browser</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           Search any MAC (full or partial) across every reachable node's bridge forwarding tables — cluster-wide,
           ranked by match quality. Leave blank to browse every learned entry.
         </p>
@@ -82,7 +82,7 @@ export function MacFdbBrowser() {
         className="w-full max-w-md rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent-500 dark:border-slate-700 dark:bg-slate-900"
       />
 
-      {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {isError && (
         <EmptyState title="Could not load the FDB" description="Try again in a moment." />
       )}
@@ -124,7 +124,7 @@ export function MacFdbBrowser() {
                   {r.stale ? (
                     <span className="text-amber-600 dark:text-amber-400">stale</span>
                   ) : (
-                    <span className="text-slate-400">fresh</span>
+                    <span className="text-slate-600 dark:text-slate-400">fresh</span>
                   )}
                 </TableCell>
               </TableRow>

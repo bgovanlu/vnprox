@@ -47,13 +47,13 @@ export function IPv6SegmentsPanel() {
           IPv6 segments
           <HelpAnchor topic="ipv6-segments" />
         </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           What each segment is actually advertising: router advertisements, the prefixes they carry, and whether a
           DHCPv6 server answered. Observed live per node, not read from configuration.
         </p>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-400">Soliciting router advertisements…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Soliciting router advertisements…</p>}
       {error && (
         <EmptyState
           title="Could not read IPv6 segments"
@@ -84,7 +84,7 @@ export function IPv6SegmentsPanel() {
 
       <div>
         <h3 className="mb-2 text-sm font-semibold">Dual-stack rollout</h3>
-        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+        <p className="mb-3 text-xs text-slate-600 dark:text-slate-400">
           Adds an IPv6 subnet to an existing VLAN/VNet as one reviewable changeset. Idempotent: re-running it against a
           VNet that already has the requested subnet produces a zero-operation changeset, not a duplicate.
         </p>
@@ -137,7 +137,7 @@ function SegmentsTable({ items }: { items: IPv6Segment[] }) {
                     : ""}
                 </span>
               ) : (
-                <span className="text-slate-400">not present</span>
+                <span className="text-slate-600 dark:text-slate-400">not present</span>
               )}
             </TableCell>
             <TableCell className="font-mono text-xs">

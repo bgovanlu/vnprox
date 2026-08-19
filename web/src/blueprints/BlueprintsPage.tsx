@@ -207,7 +207,9 @@ export function BlueprintsPage() {
                 }}
               >
                 <span className="font-medium">{bp.name}</span>
-                {bp.readOnly ? <span className="text-[10px] uppercase tracking-wide text-slate-400">starter</span> : null}
+                {bp.readOnly ? (
+                  <span className="text-[10px] uppercase tracking-wide text-slate-600 dark:text-slate-400">starter</span>
+                ) : null}
               </button>
             </li>
           ))}
@@ -259,7 +261,7 @@ export function BlueprintsPage() {
                  * detail-panel's own heading below the page title. */}
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{selected.name}</h2>
                 {selected.description ? (
-                  <p className="max-w-2xl text-sm text-slate-500 dark:text-slate-400">{selected.description}</p>
+                  <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-400">{selected.description}</p>
                 ) : null}
               </div>
               <div className="flex gap-2">
@@ -292,12 +294,12 @@ export function BlueprintsPage() {
             </div>
 
             <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Preview</h3>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Preview</h3>
               <BlueprintPreviewDiagram blueprint={selected} />
             </section>
 
             <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Instantiate</h3>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Instantiate</h3>
               <ParamForm
                 key={selected.id}
                 blueprintId={selected.id}

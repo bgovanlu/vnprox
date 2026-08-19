@@ -42,7 +42,7 @@ function AspectRow({ label, value }: { label: string; value: string }) {
   if (!value) return null;
   return (
     <div className="flex gap-2">
-      <span className="w-24 shrink-0 text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="w-24 shrink-0 text-slate-600 dark:text-slate-400">{label}</span>
       <span className="min-w-0 break-words font-medium text-slate-700 dark:text-slate-200">{value}</span>
     </div>
   );
@@ -143,7 +143,7 @@ export function ManagementPage() {
           confirm it, exactly like every other change in vnprox."
       />
 
-      {isLoading && <p className="text-sm text-slate-400">Loading management interfaces…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading management interfaces…</p>}
       {isError && <p className="text-sm text-red-600 dark:text-red-400">Could not load the management-interface status.</p>}
 
       {mgmtStatus?.staleProtected && (

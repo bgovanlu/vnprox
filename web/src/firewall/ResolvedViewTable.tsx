@@ -73,7 +73,7 @@ function DefaultPolicyRow({ policy }: { policy: DefaultPolicyView }) {
       </TableCell>
       <TableCell className="uppercase">{policy.direction}</TableCell>
       <TableCell className="font-mono">{policy.policy}</TableCell>
-      <TableCell colSpan={2} className="text-xs text-slate-500 dark:text-slate-400">
+      <TableCell colSpan={2} className="text-xs text-slate-600 dark:text-slate-400">
         Fallthrough — from {ORIGIN_LABEL[policy.origin].toLowerCase()}
       </TableCell>
     </TableRow>
