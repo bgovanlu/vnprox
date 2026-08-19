@@ -105,7 +105,17 @@ export function RefusalNotice({
           HTTP {api.status} · {api.code}
         </p>
       )}
-      {hint !== undefined && <div className="mt-2 text-xs text-amber-900/80 dark:text-amber-100/80">{hint}</div>}
+      {/* Same wash, same fix as the HTTP-status line above — amber-900/80
+       * on amber-50 measures 3.43:1 at this 12px size, well under the
+       * 4.5:1 floor, while solid amber-900 clears it at 8.77:1. Worth
+       * naming why it survived the pass that fixed its sibling four lines
+       * up: the axe sweep only ever rendered this component without a
+       * `hint`, so the node carrying the defect was never in the DOM being
+       * scanned. A sweep proves what it renders, not what a component can
+       * render — the same blind spot that hid the disabled/enabled Delete
+       * button asymmetry from the original T-3406 sweep. Dark mode's
+       * amber-100/80 is on a dark surface and already passes. */}
+      {hint !== undefined && <div className="mt-2 text-xs text-amber-900 dark:text-amber-100/80">{hint}</div>}
     </div>
   );
 }
