@@ -300,9 +300,21 @@ func TestBearerAuth_RateLimitedAfterBurstCapacity(t *testing.T) {
 // gets 403 on a write-gated route and 200 on a read-gated one. Before
 // T-2903, forceReadOnly ran only on the cookie path, so such a token kept
 // full write capability in a read-only deployment.
+//
+// T-3003-followup-01 (2026-08-19) extends this table with capture and the
+// automation/automationWrite split: before that fix, a read_only deployment
+// left BOTH capture and automation (there was no automationWrite yet) fully
+// intact for a bearer token, even though each gated a genuinely mutating
+// route (POST /captures[/stop], POST/DELETE /webhooks) — this table's
+// "read-only refuses capture" and "...automationWrite" rows are exactly the
+// cases that used to be 200 (wrong) and are now 403 (fixed); "read-only
+// still allows automation" pins that the WS events/GET-webhooks read half
+// deliberately was NOT taken away in the same change.
 func TestBearerAuth_ReadOnlyConstrainsTokens(t *testing.T) {
 	sessions, audit, db := newTestStore(t)
 	tokens := store.NewAPITokenRepo(db)
+
+	const allScopes = `["netWrite","netRead","capture","automation","automationWrite"]`
 
 	for _, tt := range []struct {
 		name       string
@@ -313,6 +325,11 @@ func TestBearerAuth_ReadOnlyConstrainsTokens(t *testing.T) {
 		{name: "read-only refuses the write gate", readOnly: true, gate: auth.CapNetWrite, wantStatus: http.StatusForbidden},
 		{name: "read-only still allows the read gate", readOnly: true, gate: auth.CapNetRead, wantStatus: http.StatusOK},
 		{name: "writable deployment allows the write gate (control)", readOnly: false, gate: auth.CapNetWrite, wantStatus: http.StatusOK},
+		{name: "read-only refuses capture", readOnly: true, gate: auth.CapCapture, wantStatus: http.StatusForbidden},
+		{name: "read-only refuses automationWrite", readOnly: true, gate: auth.CapAutomationWrite, wantStatus: http.StatusForbidden},
+		{name: "read-only still allows automation (read half)", readOnly: true, gate: auth.CapAutomation, wantStatus: http.StatusOK},
+		{name: "writable deployment allows capture (control)", readOnly: false, gate: auth.CapCapture, wantStatus: http.StatusOK},
+		{name: "writable deployment allows automationWrite (control)", readOnly: false, gate: auth.CapAutomationWrite, wantStatus: http.StatusOK},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, err := auth.NewService(auth.Config{
@@ -324,7 +341,7 @@ func TestBearerAuth_ReadOnlyConstrainsTokens(t *testing.T) {
 				t.Fatalf("auth.NewService: %v", err)
 			}
 			ts := newBearerTestServer(t, svc, tt.gate)
-			raw := mintToken(t, tokens, "tok-ro-"+tt.name, `["netWrite","netRead"]`)
+			raw := mintToken(t, tokens, "tok-ro-"+tt.name, allScopes)
 
 			req, _ := http.NewRequest(http.MethodGet, ts.URL+"/protected", nil)
 			req.Header.Set("Authorization", "Bearer "+raw)

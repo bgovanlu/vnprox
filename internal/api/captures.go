@@ -62,10 +62,18 @@ type captureListResponse struct {
 
 // mountCaptureRoutes registers POST /captures, POST /captures/{id}/stop,
 // GET /captures/{id}, and GET /captures (T-1301, docs/api.md's Captures
-// section). Every route is gated netRead + capture; the mutating ones also
-// require CSRF (starting/stopping a capture is a host-touching action, even
-// though it bypasses the change engine — there is nothing to diff/rollback
-// about a read-only packet capture). svc/auth nil-safe (routes not mounted);
+// section). Every route is gated netRead + capture (no read/write split of
+// capture itself — see caps.go's Capabilities.Capture doc comment); the
+// mutating ones also require CSRF (starting/stopping a capture is a
+// host-touching action, even though it bypasses the change engine — there
+// is nothing to diff/rollback about a read-only packet capture). Since
+// T-3003-followup-01, internal/auth.forceReadOnly clears Capture entirely
+// under read_only, so ALL four routes (including the list/get/download
+// reads) refuse in a read_only deployment, not just start/stop — capture
+// exposes raw payload bytes (Sys.Modify + Sys.Console, root-shell-equivalent
+// per DeriveCapabilities), which the owner decided is not something
+// read_only should carve a read exception for the way automation's WS
+// events topic gets one. svc/auth nil-safe (routes not mounted);
 // UsernameLookup is required so start/stop is attributable in the audit
 // trail, matching mountLLDPInstallRoutes' own reasoning.
 func mountCaptureRoutes(r chi.Router, svc CaptureService, auth AuthService) {

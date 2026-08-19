@@ -156,9 +156,13 @@ describe("minting", () => {
 
     expect(screen.getByRole("checkbox", { name: /netRead/ })).toBeEnabled();
     expect(screen.getByRole("checkbox", { name: /netWrite/ })).toBeDisabled();
-    // automation is never derived from a PVE privilege, so it is always
-    // grantable — Identity.CanGrantScope short-circuits it.
-    expect(screen.getByRole("checkbox", { name: /automation/ })).toBeEnabled();
+    // automation/automationWrite are never derived from a PVE privilege, so
+    // both are always grantable — Identity.CanGrantScope short-circuits
+    // them. Exact-match the accessible name: "automation" is itself a
+    // substring of "automationWrite", so a loose /automation/ match would
+    // hit both checkboxes and fail on multiple matches.
+    expect(screen.getByRole("checkbox", { name: "automation" })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "automationWrite" })).toBeEnabled();
   });
 });
 
@@ -180,20 +184,22 @@ describe("stored scope vs effective scope", () => {
     expect(cell).toHaveAttribute("data-scope-state", "same");
   });
 
-  it("names the scopes read_only removes, and leaves capture alone", async () => {
+  // T-3003-followup-01 (2026-08-19): capture is no longer left alone by
+  // read_only — it is now stripped outright, alongside the original four
+  // config-write flags. This test replaces "names the scopes read_only
+  // removes, and leaves capture alone", which pinned the pre-fix behaviour.
+  it("names the scopes read_only removes, including capture", async () => {
     mockConfig = config(true);
     fetchTokens.mockResolvedValue([writeToken]);
     renderSection();
 
     const cell = await screen.findByTestId("effective-scope-t1");
     expect(cell).toHaveAttribute("data-scope-state", "narrowed");
-    expect(cell).toHaveTextContent("netWrite, guestNet removed");
+    expect(cell).toHaveTextContent("netWrite, guestNet, capture removed");
     // The stored scope is still shown in full, which is the whole point: an
     // operator must be able to see both at once.
     const row = screen.getByTestId("token-row-t1");
     expect(row).toHaveTextContent("netWrite");
-    // capture survives forceReadOnly, so claiming it was removed would be a lie.
-    expect(cell).not.toHaveTextContent("capture removed");
     expect(screen.getByTestId("tokens-read-only-banner")).toBeInTheDocument();
   });
 

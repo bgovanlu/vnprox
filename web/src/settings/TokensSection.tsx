@@ -207,10 +207,11 @@ export function TokensSection() {
           data-testid="tokens-read-only-banner"
           className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
         >
-          This deployment runs with <code>[server] read_only = true</code>. Every token below has its write scopes
-          (<code>netWrite</code>, <code>sdnWrite</code>, <code>fwWrite</code>, <code>guestNet</code>) removed on every
-          request, whatever its stored scope says. <code>audit</code>, <code>capture</code> and <code>automation</code>{" "}
-          are not affected.
+          This deployment runs with <code>[server] read_only = true</code>. Every token below has its write scopes (
+          <code>netWrite</code>, <code>sdnWrite</code>, <code>fwWrite</code>, <code>guestNet</code>,{" "}
+          <code>capture</code>, <code>automationWrite</code>) removed on every request, whatever its stored scope
+          says. <code>audit</code> and <code>automation</code> (which still covers the WS &quot;events&quot; topic and{" "}
+          <code>GET /webhooks</code>) are not affected.
         </p>
       )}
 

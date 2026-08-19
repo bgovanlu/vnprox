@@ -8,25 +8,34 @@
 // THE RULE THIS FILE ENCODES, read out of the enforcement point rather than
 // out of prose. `[server] read_only = true` narrows a bearer token exactly
 // the way it narrows a cookie session: `internal/auth/middleware.go` builds
-// `CapabilitiesFromScopes(scopes)` and then calls `forceReadOnly`, which
-// zeroes precisely four flags:
+// `CapabilitiesFromScopes(scopes)` and then calls `forceReadOnly`.
+//
+// T-3003-followup-01 (2026-08-19): `forceReadOnly` used to zero exactly four
+// flags (`NetWrite`/`SDNWrite`/`FWWrite`/`GuestNet`), leaving `capture` and
+// `automation` untouched even though each gated a genuinely mutating route
+// (`POST /captures[/stop]`, `POST`/`DELETE /webhooks`) — this module
+// deliberately followed that CODE rather than the (then-wrong) doc comment
+// claiming a wider strip, per its own header note. The owner's fix split
+// `automation` into a read half (`automation` — the WS `"events"` topic and
+// `GET /webhooks`, left untouched) and a write half (`automationWrite` —
+// `POST`/`DELETE /webhooks`, now stripped), and added `capture` itself to the
+// stripped set outright (no read/write split — `POST /captures` is at least
+// as strict as `netWrite`'s gate, so it gets no read exception the way
+// automation's WS topic does). `forceReadOnly` now zeroes six flags:
 //
 //     c.NetWrite = false; c.SDNWrite = false; c.FWWrite = false; c.GuestNet = false
+//     c.Capture = false; c.AutomationWrite = false
 //
-// and nothing else. `capture` and `automation` survive `read_only` untouched.
-// That contradicts `forceReadOnly`'s own doc comment ("zeroes every
-// write-shaped flag (every flag except netRead/sdnRead/fwRead/audit)") — the
-// comment describes a wider strip than the code performs. This module follows
-// the CODE, because the code is what a request is judged by; the discrepancy
-// is reported in the T-3003 card report rather than papered over here. If the
-// Go side is ever changed to match its comment, STRIPPED_UNDER_READ_ONLY must
-// change with it and `tokenScope.test.ts` will not catch that on its own.
+// and nothing else — `automation` (the read half) survives. If the Go side
+// changes again, `STRIPPED_UNDER_READ_ONLY` must change with it and
+// `tokenScope.test.ts` will not catch that on its own.
 import type { ApiToken, Capabilities, MeResponse } from "../api/types";
 
 /** The token scope vocabulary `internal/auth.AllCaps` defines, in its
- * canonical order. `automation` is the one scope always grantable to any
- * authenticated session (`Identity.CanGrantScope`) because it is not derived
- * from a PVE privilege and so has nothing to exceed. */
+ * canonical order. `automation`/`automationWrite` are the two scopes always
+ * grantable to any authenticated session (`Identity.CanGrantScope`) because
+ * neither is derived from a PVE privilege and so neither has anything to
+ * exceed. */
 export const TOKEN_SCOPES: readonly string[] = [
   "netRead",
   "netWrite",
@@ -38,10 +47,18 @@ export const TOKEN_SCOPES: readonly string[] = [
   "audit",
   "automation",
   "capture",
+  "automationWrite",
 ];
 
 /** Exactly the flags `internal/auth.forceReadOnly` zeroes — no more. */
-export const STRIPPED_UNDER_READ_ONLY: readonly string[] = ["netWrite", "sdnWrite", "fwWrite", "guestNet"];
+export const STRIPPED_UNDER_READ_ONLY: readonly string[] = [
+  "netWrite",
+  "sdnWrite",
+  "fwWrite",
+  "guestNet",
+  "capture",
+  "automationWrite",
+];
 
 /** Which scopes a deployment-level `read_only` currently removes from a
  * token, and which survive.
@@ -131,18 +148,19 @@ const SCOPE_ACCESSORS: Readonly<Record<string, (c: Capabilities) => boolean>> = 
   guestNet: (c) => c.guestNet,
   audit: (c) => c.audit,
   capture: (c) => c.capture,
-  // `automation` has no accessor on purpose. It is not part of this client's
-  // `Capabilities` mirror (see that type's KNOWN GAP note), and it would be
-  // unreachable anyway: canGrantScope short-circuits it to `true` before
-  // consulting this table, because `Identity.CanGrantScope` always grants it.
+  // `automation`/`automationWrite` have no accessor on purpose. Neither is
+  // part of this client's `Capabilities` mirror (see that type's KNOWN GAP
+  // note), and neither would be reachable anyway: canGrantScope
+  // short-circuits both to `true` before consulting this table, because
+  // `Identity.CanGrantScope` always grants both.
 };
 
 /** Whether the current session may mint a token carrying `scope`, mirroring
  * `internal/auth.Identity.CanGrantScope`:
  *
- *   - `automation` is ALWAYS grantable. It is not derived from any PVE
- *     privilege, so there is nothing for it to exceed — holding an
- *     authenticated session at all is the whole bound.
+ *   - `automation` and `automationWrite` are ALWAYS grantable. Neither is
+ *     derived from any PVE privilege, so there is nothing for either to
+ *     exceed — holding an authenticated session at all is the whole bound.
  *   - every other scope must be held on at least one node, because a minted
  *     token carries no per-node granularity (`CapabilitiesFromScopes` builds
  *     a single cluster-wide entry).
@@ -151,7 +169,7 @@ const SCOPE_ACCESSORS: Readonly<Record<string, (c: Capabilities) => boolean>> = 
  * unrecognised — "we cannot say", which the form renders as a disabled
  * control with a reason rather than as a refusal. */
 export function canGrantScope(session: MeResponse | undefined, scope: string): boolean | undefined {
-  if (scope === "automation") {
+  if (scope === "automation" || scope === "automationWrite") {
     return true;
   }
   const accessor = SCOPE_ACCESSORS[scope];

@@ -5,16 +5,23 @@
 //   - GET    /webhooks       — list registrations (secret never echoed back)
 //   - DELETE /webhooks/{id}  — remove a registration
 //
-// Gated on the "automation" capability (internal/auth.CapAutomation),
-// per caps.go's doc comment: "gates the WS 'events' topic and the webhook
-// registration routes below" — since Automation is never derived from a
-// PVE privilege (only ever present on a bearer token's own minted scopes,
-// see Capabilities.Automation), these routes are automation-token-only in
-// practice, matching this task's "no frontend UI deliverable" scope note
-// in tokens.go's doc comment. CSRF middleware is still wired for
-// defense-in-depth/consistency with every other mutating route in this
-// package, even though a bearer-authenticated request (the only kind that
-// can ever carry the automation capability) skips the check anyway.
+// Gated on the automation capability (internal/auth.CapAutomation /
+// CapAutomationWrite), per caps.go's doc comments. GET /webhooks is a read
+// and requires only the read half (CapAutomation) — the same flag that
+// gates the WS "events" topic, so a read_only deployment's automation
+// tokens can still see what would be delivered. POST /webhooks and DELETE
+// /webhooks/{id} genuinely mutate (a webhook registration is an outbound
+// HTTP destination the daemon will POST to), so they require the write
+// half (CapAutomationWrite), which forceReadOnly clears
+// (T-3003-followup-01). Since neither flag is ever derived from a PVE
+// privilege (only ever present on a bearer token's own minted scopes —
+// see Capabilities.Automation/AutomationWrite), these routes are
+// automation-token-only in practice, matching this task's "no frontend UI
+// deliverable" scope note in tokens.go's doc comment. CSRF middleware is
+// still wired for defense-in-depth/consistency with every other mutating
+// route in this package, even though a bearer-authenticated request (the
+// only kind that can ever carry the automation capability) skips the
+// check anyway.
 //
 // Delivery itself (signing, retry/backoff, consecutive-failure tracking)
 // is internal/automation's job — this file only owns the CRUD surface and
@@ -39,8 +46,16 @@ import (
 
 // capAutomation is docs/api.md's documented automation-scope capability
 // flag name (internal/auth.CapAutomation's underlying string), spelled out
-// as a plain string for the same reason capNetRead/capNetWrite are.
+// as a plain string for the same reason capNetRead/capNetWrite are. This is
+// the READ half (see caps.go's Capabilities.Automation doc comment).
 const capAutomation = "automation"
+
+// capAutomationWrite is the WRITE half of the automation surface
+// (internal/auth.CapAutomationWrite's underlying string), added by
+// T-3003-followup-01 so that internal/auth.forceReadOnly can clear webhook
+// registration/deletion without also taking away the read-only WS "events"
+// topic / GET /webhooks that capAutomation still gates.
+const capAutomationWrite = "automationWrite"
 
 // maxWebhookBodyBytes bounds a POST /webhooks request body, matching
 // maxAlertRuleBodyBytes' reasoning.
@@ -173,7 +188,7 @@ func mountWebhookRoutes(r chi.Router, webhooks WebhookStore, cipher SecretCipher
 		if csrf, ok := auth.(CSRFEnforcer); ok {
 			r.Use(csrf.CSRFMiddleware)
 		}
-		r.Use(auth.RequireCap(capAutomation))
+		r.Use(auth.RequireCap(capAutomationWrite))
 		r.Post("/webhooks", handleCreateWebhook(webhooks, cipher, audit, lookup, targetCheck))
 		r.Delete("/webhooks/{id}", handleDeleteWebhook(webhooks, audit, lookup))
 	})

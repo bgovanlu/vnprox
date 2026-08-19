@@ -223,43 +223,50 @@ func (s *Service) deriveCapabilities(ctx context.Context, identity PVEIdentity) 
 	return caps, nil
 }
 
-// forceReadOnly zeroes the four config-write flags in place across every
-// node's Capabilities, per Config.ReadOnly — the config's "observe-only until
-// you trust it" mode (docs/features/blueprints.md §3). Applied on both the
+// forceReadOnly zeroes the write-shaped flags in place across every node's
+// Capabilities, per Config.ReadOnly — the config's "observe-only until you
+// trust it" mode (docs/features/blueprints.md §3). Applied on both the
 // cookie path (above) and, since T-2903, the bearer path
 // (middleware.go:200).
 //
-// It does NOT zero every write-shaped flag, and this comment used to say it
-// did ("every flag except netRead/sdnRead/fwRead/audit"). Two capabilities
-// survive read_only, each gating a mutating route family:
+// T-3003-followup-01 (2026-08-19, owner decision): the original four
+// (NetWrite/SDNWrite/FWWrite/GuestNet) were not the whole write surface.
+// Two more capabilities gated genuinely mutating routes and used to survive
+// this function unchanged:
 //
 //   - Capture — POST /captures and POST /captures/{id}/stop
 //     (internal/api/captures.go:94-95) start and stop real packet captures on
 //     hosts. docs/security.md's own capture paragraph argues capture is
 //     "at least as strict as netWrite's" gate and a "materially stronger
-//     read", so a read_only deployment permitting it while forbidding a bridge
-//     rename is at best surprising.
+//     read", so read_only now clears it entirely — including the list/get/
+//     download routes, since internal/api/captures.go gates all four on the
+//     single Capture flag with no read/write split of its own.
 //   - Automation — POST /webhooks registers an outbound destination the
-//     daemon will then POST to (internal/api/webhooks.go:167). It is never
-//     derived from a PVE ACL, so on the cookie path zeroing it would be a
-//     no-op; on the T-2903 bearer path it is not, because an automation-scoped
-//     token carries it into a read_only deployment.
+//     daemon will then POST to; DELETE /webhooks/{id} removes one
+//     (internal/api/webhooks.go). Automation used to be ONE flag gating both
+//     that write surface AND the read-only WS "events" topic + GET
+//     /webhooks, so clearing it outright would have taken the read
+//     capability away with it. caps.go's Capabilities.Automation/
+//     AutomationWrite split it in two: Automation (the read half) is left
+//     untouched here; AutomationWrite (the write half) is cleared below,
+//     the same as Capture.
 //
-// Whether that is the intended behaviour is a product question, not a comment
-// fix: Automation also gates the read-only WS "events" topic, and capture is
-// arguably observation. Both are deliberately left as-is and recorded in
-// planning/tasks/phase-30.md (T-3003-followup-01) rather than changed here,
-// with TestForceReadOnly_PinsExactlyWhichFlagsItClears below pinning today's
-// behaviour so whichever way it is decided, the change is deliberate.
+// TestForceReadOnly_PinsExactlyWhichFlagsItClears pins the resulting
+// behaviour: NetWrite/SDNWrite/FWWrite/GuestNet/Capture/AutomationWrite are
+// cleared; NetRead/SDNRead/FWRead/Audit/Automation are preserved.
 //
 // Found 2026-08-16 by the T-3003 agent, reading this function to render a
-// token's effective scope honestly rather than trusting its documentation.
+// token's effective scope honestly rather than trusting its documentation;
+// fixed 2026-08-19 per the owner's decision recorded in
+// planning/tasks/debt-sweep-2026-08-19.md.
 func forceReadOnly(caps map[string]Capabilities) {
 	for node, c := range caps {
 		c.NetWrite = false
 		c.SDNWrite = false
 		c.FWWrite = false
 		c.GuestNet = false
+		c.Capture = false
+		c.AutomationWrite = false
 		caps[node] = c
 	}
 }

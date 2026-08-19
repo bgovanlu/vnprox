@@ -102,18 +102,18 @@ func ParseScopes(raw []string) ([]Cap, error) {
 }
 
 // CanGrantScope reports whether id's session may mint a token carrying
-// scope, per docs/api.md's Tokens section: CapAutomation is always
-// grantable (it is not derived from any PVE privilege — see
-// Capabilities.Automation's doc comment — so there is nothing for it to
-// "exceed"; it is inherent to holding an authenticated vnprox session at
-// all, the same way only a logged-in user can reach POST /tokens in the
-// first place). Every other scope must be a capability id's own derived
-// Capabilities grant on at least one node — Identity.HasCap("", scope)'s
-// cluster-wide "any node" check, since a minted token itself carries no
-// node granularity (CapabilitiesFromScopes below always builds a single
-// cluster-wide entry).
+// scope, per docs/api.md's Tokens section: CapAutomation and
+// CapAutomationWrite are always grantable (neither is derived from any PVE
+// privilege — see Capabilities.Automation/AutomationWrite's doc comments —
+// so there is nothing for either to "exceed"; both are inherent to holding
+// an authenticated vnprox session at all, the same way only a logged-in
+// user can reach POST /tokens in the first place). Every other scope must
+// be a capability id's own derived Capabilities grant on at least one node
+// — Identity.HasCap("", scope)'s cluster-wide "any node" check, since a
+// minted token itself carries no node granularity (CapabilitiesFromScopes
+// below always builds a single cluster-wide entry).
 func (id Identity) CanGrantScope(scope Cap) bool {
-	if scope == CapAutomation {
+	if scope == CapAutomation || scope == CapAutomationWrite {
 		return true
 	}
 	return id.HasCap("", scope)
@@ -165,6 +165,8 @@ func CapabilitiesFromScopes(scopes []Cap) Capabilities {
 			c.Audit = true
 		case CapAutomation:
 			c.Automation = true
+		case CapAutomationWrite:
+			c.AutomationWrite = true
 		case CapCapture:
 			c.Capture = true
 		}

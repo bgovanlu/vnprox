@@ -206,6 +206,116 @@ func TestDeleteWebhook_UnknownIDIs404(t *testing.T) {
 	}
 }
 
+func webhookAuth(caps map[string]bool) fakeAuthWithCaps {
+	return fakeAuthWithCaps{
+		fakeAuthWithUser: fakeAuthWithUser{fakeAuth: fakeAuth{authenticated: true}, username: "alice"},
+		caps:             caps,
+	}
+}
+
+// TestWebhookRoutes_CapabilityGate is T-3003-followup-01 at the HTTP
+// boundary: GET /webhooks (the read half, capAutomation) and POST/DELETE
+// /webhooks (the write half, capAutomationWrite) are gated on two DIFFERENT
+// capabilities, so a caller/token holding only one half cannot reach the
+// other. Before this fix a single "automation" flag gated all three routes
+// — which is exactly why internal/auth.forceReadOnly could not clear
+// webhook registration without also taking away the read-only WS "events"
+// topic gated on that same flag (see caps.go's Capabilities.Automation/
+// AutomationWrite doc comments).
+func TestWebhookRoutes_CapabilityGate(t *testing.T) {
+	newRouter := func(t *testing.T, caps map[string]bool) (*httptest.Server, WebhookStore) {
+		t.Helper()
+		webhooks := newFakeWebhookStore()
+		_ = webhooks.Create(context.Background(), store.Webhook{ID: "w1", URL: "https://example.com", SecretEnc: []byte("x"), CreatedBy: "alice", CreatedAt: 1})
+		r := chi.NewRouter()
+		mountWebhookRoutes(r, webhooks, fakeSecretCipher{}, &fakeTokenAuditor{}, webhookAuth(caps), nil)
+		ts := httptest.NewServer(r)
+		t.Cleanup(ts.Close)
+		return ts, webhooks
+	}
+	postBody := func() *bytes.Reader {
+		b, _ := json.Marshal(map[string]any{"url": "https://example.com/hook2", "secret": "s3cret"})
+		return bytes.NewReader(b)
+	}
+
+	t.Run("read half (automation) alone: GET ok, POST/DELETE 403", func(t *testing.T) {
+		ts, _ := newRouter(t, map[string]bool{capAutomation: true})
+
+		resp, err := http.Get(ts.URL + "/webhooks")
+		if err != nil {
+			t.Fatalf("GET /webhooks: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET /webhooks with automation only = %d, want 200", resp.StatusCode)
+		}
+
+		resp, err = http.Post(ts.URL+"/webhooks", "application/json", postBody())
+		if err != nil {
+			t.Fatalf("POST /webhooks: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("POST /webhooks with automation (read half) only = %d, want 403", resp.StatusCode)
+		}
+
+		req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/webhooks/w1", nil)
+		resp, err = http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("DELETE /webhooks/w1: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("DELETE /webhooks/w1 with automation (read half) only = %d, want 403", resp.StatusCode)
+		}
+	})
+
+	t.Run("write half (automationWrite) alone: GET 403, POST/DELETE ok", func(t *testing.T) {
+		ts, webhooks := newRouter(t, map[string]bool{capAutomationWrite: true})
+
+		resp, err := http.Get(ts.URL + "/webhooks")
+		if err != nil {
+			t.Fatalf("GET /webhooks: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("GET /webhooks with automationWrite (write half) only = %d, want 403", resp.StatusCode)
+		}
+
+		resp, err = http.Post(ts.URL+"/webhooks", "application/json", postBody())
+		if err != nil {
+			t.Fatalf("POST /webhooks: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("POST /webhooks with automationWrite only = %d, want 201", resp.StatusCode)
+		}
+
+		req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/webhooks/w1", nil)
+		resp, err = http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("DELETE /webhooks/w1: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			t.Errorf("DELETE /webhooks/w1 with automationWrite only = %d, want 204", resp.StatusCode)
+		}
+		if _, err := webhooks.Get(context.Background(), "w1"); err != store.ErrNotFound {
+			t.Errorf("webhook still present after delete: err=%v", err)
+		}
+	})
+
+	t.Run("neither half: everything 403", func(t *testing.T) {
+		ts, _ := newRouter(t, map[string]bool{})
+
+		resp, _ := http.Get(ts.URL + "/webhooks")
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("GET /webhooks with no automation cap = %d, want 403", resp.StatusCode)
+		}
+	})
+}
+
 func TestWebhookRoutes_NotMountedWithoutUsernameLookup(t *testing.T) {
 	r := chi.NewRouter()
 	mountWebhookRoutes(r, newFakeWebhookStore(), fakeSecretCipher{}, &fakeTokenAuditor{}, fakeAuth{authenticated: true}, nil)

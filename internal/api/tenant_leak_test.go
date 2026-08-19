@@ -10,108 +10,128 @@ import (
 	"github.com/bgovanlu/vnprox/internal/store"
 )
 
-// TestTenantAdminRoutesAreNotTenantScoped documents a cross-tenant
-// information disclosure found on 2026-08-16 by the T-3002 agent, which was
-// reading these routes in order to build a tenants screen.
+// TestTenantAdminRoutes_ScopedToMembership replaces
+// TestTenantAdminRoutesAreNotTenantScoped, which documented a cross-tenant
+// information disclosure found 2026-08-16 by the T-3002 agent: GET /tenants
+// and GET /tenants/{id} were gated on plain netRead (which every tenant
+// member holds, since it derives from ordinary PVE network-read ACLs) with
+// no tenant-membership scoping at all, so a member of t1 could enumerate
+// every tenant and read t2's scope refs and member identities outright.
 //
-// docs/user-guide.md:156 promises: "A tenant member sees only their own slice
-// of the topology, findings, and IPAM — everything outside their scope is not
-// just hidden but genuinely invisible (a lookup of something out of scope
-// returns 'not found,' never confirming it exists)." docs/datasheet.md makes
-// the same promise more tersely.
+// docs/user-guide.md:156 promises: "A tenant member sees only their own
+// slice of the topology, findings, and IPAM — everything outside their
+// scope is not just hidden but genuinely invisible (a lookup of something
+// out of scope returns 'not found,' never confirming it exists)."
+// docs/datasheet.md makes the same promise more tersely.
 //
-// GET /tenants and GET /tenants/{id} do not hold it. mountTenantRoutes
-// (tenant.go:265-270) puts both behind auth.RequireCap(capNetRead) and NOTHING
-// else — no tenantScopeMiddleware, no filter, no membership check — under a
-// comment reading "Admin CRUD: reads require netRead". netRead is not an admin
-// capability; every tenant member has it, because it is derived from ordinary
-// PVE network-read ACLs.
-//
-// So a member of tenant t1 can enumerate every tenant and read t2's scope
-// refs — which ARE guest and subnet identifiers belonging to t2 — plus t2's
-// member identities.
-//
-// TestTenantScoping_NoCrossTenantLeakage (tenant_test.go:241) is the test that
-// would be expected to catch this. It exercises /topology and /flows. It never
-// calls /tenants.
-//
-// This test asserts TODAY'S behaviour on purpose, so the gap cannot be closed
-// by accident and cannot quietly persist either. When someone fixes it this
-// test goes red — that is the intent, and the failure message says what to do.
-// Tracked as T-3002-followup-01 in planning/tasks/phase-30.md.
-func TestTenantAdminRoutesAreNotTenantScoped(t *testing.T) {
+// Fixed 2026-08-19 (T-3002-followup-01, owner decision: "scope reads to own
+// tenants"; a non-member's GET /tenants/{id} is 404, not 403, so it never
+// confirms the tenant exists — a 403 would still leak that much).
+// tenant.go's admin CRUD read group now runs tenantScopeMiddleware, and
+// handleListTenants/handleGetTenant filter through the resolved Scope
+// exactly like the topology/findings/ipam/flows routes already did.
+func TestTenantAdminRoutes_ScopedToMembership(t *testing.T) {
 	env := newTenantEnv(t)
 	env.seedTenant(t, "t1", map[string]string{"alice@pve": store.TenantRoleMember},
 		"guest:pve1:100", "sdn-subnet::10.0.0.0/24")
 	env.seedTenant(t, "t2", map[string]string{"bob@pve": store.TenantRoleMember},
 		"guest:pve2:200")
 
-	// Alice is a member of t1 only. She is not an administrator.
+	// Alice is a member of t1 only.
 	aliceR := env.router("alice@pve")
 
-	t.Run("she can enumerate every tenant", func(t *testing.T) {
+	t.Run("she cannot enumerate t2 via GET /tenants", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		aliceR.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tenants", nil))
 		if rec.Code != http.StatusOK {
-			t.Fatalf("GET /tenants as a plain tenant member: status = %d, want 200 (today's behaviour).\n"+
-				"If this is now 403/404, the leak has been FIXED — delete this test, and update "+
-				"docs/user-guide.md:156 and T-3002-followup-01 to say so.", rec.Code)
+			t.Fatalf("GET /tenants as a tenant member: status = %d, want 200", rec.Code)
 		}
-		if !strings.Contains(rec.Body.String(), `"t2"`) {
-			t.Errorf("GET /tenants did not list t2; the disclosure this test documents may already be fixed — re-read it before assuming otherwise")
+		if strings.Contains(rec.Body.String(), `"t2"`) {
+			t.Errorf("LEAK: GET /tenants as a t1-only member listed t2: %s", rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), `"t1"`) {
+			t.Errorf("GET /tenants as a t1 member did not list t1 (her own tenant): %s", rec.Body.String())
 		}
 	})
 
-	t.Run("she can read another tenant's scope refs and members", func(t *testing.T) {
+	t.Run("GET /tenants/t2 is 404, not 403 — existence is not confirmed", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		aliceR.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tenants/t2", nil))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("GET /tenants/t2 as a member of t1 only: status = %d, want 404 (never 403 — that would "+
+				"still confirm t2 exists, against docs/user-guide.md:156's promise)", rec.Code)
+		}
+		if strings.Contains(rec.Body.String(), "guest:pve2:200") || strings.Contains(rec.Body.String(), "bob@pve") {
+			t.Errorf("LEAK: 404 body still names t2's scope/member data: %s", rec.Body.String())
+		}
+	})
+
+	t.Run("she can still read her own tenant in full", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		aliceR.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tenants/t1", nil))
 		if rec.Code != http.StatusOK {
-			t.Fatalf("GET /tenants/t2 as a member of t1 only: status = %d, want 200 (today's behaviour).\n"+
-				"If this is now 403/404, the leak has been FIXED — delete this test and update the docs.", rec.Code)
+			t.Fatalf("GET /tenants/t1 as a t1 member: status = %d, want 200, body %s", rec.Code, rec.Body.String())
 		}
 		var got struct {
-			Scopes  []string `json:"scopes"`
-			Members []struct {
-				Identity string `json:"identity"`
-			} `json:"members"`
+			Scopes []string `json:"scopes"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 			t.Fatalf("decoding: %v", err)
 		}
-		// These two assertions ARE the finding: a guest ref and an identity
-		// belonging to a tenant Alice is not a member of.
-		if len(got.Scopes) == 0 || got.Scopes[0] != "guest:pve2:200" {
-			t.Errorf("t2's scopes as read by a t1 member = %v; expected the leak to expose guest:pve2:200", got.Scopes)
+		if len(got.Scopes) != 2 {
+			t.Errorf("t1's own scopes as read by a t1 member = %v, want 2", got.Scopes)
 		}
-		if len(got.Members) == 0 || got.Members[0].Identity != "bob@pve" {
-			t.Errorf("t2's members as read by a t1 member = %+v; expected the leak to expose bob@pve", got.Members)
+	})
+
+	t.Run("an unscoped (non-member) caller is unaffected", func(t *testing.T) {
+		// admin@pve is not a member of any tenant — unscoped, same as every
+		// other tenant-scoped route: multi-tenancy only ever narrows a
+		// MEMBER's view.
+		adminR := env.router("admin@pve")
+		rec := httptest.NewRecorder()
+		adminR.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tenants", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /tenants as a non-member: status = %d, want 200", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), `"t1"`) || !strings.Contains(rec.Body.String(), `"t2"`) {
+			t.Errorf("GET /tenants as a non-member should still list every tenant: %s", rec.Body.String())
+		}
+
+		rec = httptest.NewRecorder()
+		adminR.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tenants/t2", nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET /tenants/t2 as a non-member: status = %d, want 200", rec.Code)
 		}
 	})
 }
 
-// TestListTenantsReportsEmptyScopesWithoutReadingThem documents a second,
-// smaller defect in the same handler family, and it is this arc's recurring
-// bug once more: handleListTenants (tenant.go:366-371) hard-codes
+// TestListTenantsReportsRealScopesAndMembers replaces
+// TestListTenantsReportsEmptyScopesWithoutReadingThem, which documented a
+// second defect in the same handler family: handleListTenants hard-coded
 // `Scopes: []string{}, Members: []tenantMemberOutput{}` into every item
-// without ever querying either table.
+// without ever querying either table, so a caller could not distinguish
+// "this tenant has no scopes" from "this endpoint does not report scopes".
 //
-// A caller cannot distinguish "this tenant has no scopes" from "this endpoint
-// does not report scopes". docs/api.md documents the Tenant shape as carrying
-// both and does not say the list omits them.
-func TestListTenantsReportsEmptyScopesWithoutReadingThem(t *testing.T) {
+// Fixed 2026-08-19 in the same change as the scoping fix above:
+// handleListTenants now calls the same tenantAdminRow helper
+// handleGetTenant uses, which genuinely reads tenant_scopes/tenant_members.
+func TestListTenantsReportsRealScopesAndMembers(t *testing.T) {
 	env := newTenantEnv(t)
 	env.seedTenant(t, "t1", map[string]string{"alice@pve": store.TenantRoleMember},
 		"guest:pve1:100", "sdn-subnet::10.0.0.0/24")
 
 	rec := httptest.NewRecorder()
-	env.router("alice@pve").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tenants", nil))
+	env.router("admin@pve").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tenants", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /tenants: status = %d, want 200", rec.Code)
 	}
 	var got struct {
 		Items []struct {
-			ID     string   `json:"id"`
-			Scopes []string `json:"scopes"`
+			ID      string   `json:"id"`
+			Scopes  []string `json:"scopes"`
+			Members []struct {
+				Identity string `json:"identity"`
+			} `json:"members"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -121,12 +141,12 @@ func TestListTenantsReportsEmptyScopesWithoutReadingThem(t *testing.T) {
 		if it.ID != "t1" {
 			continue
 		}
-		if len(it.Scopes) != 0 {
-			t.Fatalf("GET /tenants now reports t1's scopes as %v.\n"+
-				"That is an IMPROVEMENT over the hard-coded empty list this test documents — "+
-				"delete this test and update T-3002-followup-01.", it.Scopes)
+		if len(it.Scopes) != 2 {
+			t.Errorf("GET /tenants reports t1's scopes as %v, want the 2 real scope refs it was seeded with", it.Scopes)
 		}
-		// t1 genuinely has two scopes; the list says zero.
+		if len(it.Members) != 1 || it.Members[0].Identity != "alice@pve" {
+			t.Errorf("GET /tenants reports t1's members as %+v, want [alice@pve]", it.Members)
+		}
 		return
 	}
 	t.Fatalf("t1 missing from GET /tenants")

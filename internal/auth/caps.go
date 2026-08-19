@@ -24,19 +24,39 @@ type Capabilities struct {
 	FWWrite  bool `json:"fwWrite"`
 	GuestNet bool `json:"guestNet"`
 	Audit    bool `json:"audit"`
-	// Automation (T-1104) gates the WS "events" topic and the webhook
-	// registration routes (POST/GET/DELETE /webhooks). Unlike every other
-	// flag above, it is never derived from a PVE privilege —
-	// DeriveCapabilities below never sets it, so a PVE-session-derived
-	// Capabilities value (the map GET /auth/me reports) always has this
-	// false. It exists purely as an api_tokens scope: minting (and then
-	// presenting) a token whose scopes include "automation" is the only
-	// way a request context ever carries Automation: true (see
-	// internal/auth's bearer-token middleware). This is docs/api.md's "no
-	// new privilege surface beyond that one addition" from T-1104's task
-	// card — logging in with a browser session never grants automation
-	// access on its own.
+	// Automation (T-1104) is the READ half of the automation surface: it
+	// gates the WS "events" topic and GET /webhooks (listing registrations).
+	// Unlike every other flag above, it is never derived from a PVE
+	// privilege — DeriveCapabilities below never sets it, so a
+	// PVE-session-derived Capabilities value (the map GET /auth/me reports)
+	// always has this false. It exists purely as an api_tokens scope:
+	// minting (and then presenting) a token whose scopes include
+	// "automation" is the only way a request context ever carries
+	// Automation: true (see internal/auth's bearer-token middleware). This
+	// is docs/api.md's "no new privilege surface beyond that one addition"
+	// from T-1104's task card — logging in with a browser session never
+	// grants automation access on its own.
+	//
+	// Split from a single "automation" flag by T-3003-followup-01
+	// (2026-08-19): read_only (forceReadOnly below) must be able to keep
+	// the read half — the events topic — available to a read-only consumer
+	// while clearing the write half, AutomationWrite. Before the split, a
+	// read_only deployment could not distinguish "watch events" from
+	// "register a webhook that POSTs an outbound HTTP request", so it had
+	// to either grant both or neither; docs/security.md's read_only
+	// paragraph documents the split.
 	Automation bool `json:"automation"`
+	// AutomationWrite (T-3003-followup-01) is the WRITE half of the
+	// automation surface split out of Automation above: it gates
+	// POST /webhooks and DELETE /webhooks/{id} (registering/removing an
+	// outbound delivery target the daemon will POST real HTTP requests to
+	// — genuinely mutating, unlike the read half). Like Automation, it is
+	// never derived from a PVE privilege — it exists purely as an
+	// api_tokens scope. forceReadOnly clears this flag (and leaves
+	// Automation set), so a read_only deployment's automation-scoped
+	// tokens keep the events topic and GET /webhooks but lose the ability
+	// to register or remove a webhook.
+	AutomationWrite bool `json:"automationWrite"`
 	// Capture (T-1301) gates the distributed packet-capture surface
 	// (POST /captures + the /api/peer/capture/* routes it fans out to).
 	// Unlike NetWrite/FWWrite it is deliberately NOT derived from Sys.Modify
@@ -66,8 +86,12 @@ const (
 	CapAudit    Cap = "audit"
 	// CapAutomation is T-1104's addition — see Capabilities.Automation's
 	// doc comment for why it is not part of the PVE-privilege-derived
-	// mapping table below.
+	// mapping table below. As of T-3003-followup-01 it is specifically the
+	// READ half of the automation surface (see CapAutomationWrite).
 	CapAutomation Cap = "automation"
+	// CapAutomationWrite is T-3003-followup-01's write half of the
+	// automation surface — see Capabilities.AutomationWrite's doc comment.
+	CapAutomationWrite Cap = "automationWrite"
 	// CapCapture is T-1301's dedicated packet-capture gate — see
 	// Capabilities.Capture's doc comment for why it is a Sys.Modify +
 	// Sys.Console pairing rather than a reuse of the netWrite mapping.
@@ -76,13 +100,14 @@ const (
 
 // AllCaps is every capability name recognized by Has/RequireCap, in the
 // canonical order docs/api.md's GET /auth/me `caps` object documents them
-// plus CapAutomation appended — internal/auth/tokens.go's scope validation
-// (T-1104) iterates this rather than hardcoding a second copy of the
-// vocabulary, so a future capability addition only needs updating in one
-// place (this slice, Capabilities, and Has's switch).
+// plus CapAutomation/CapAutomationWrite appended — internal/auth/tokens.go's
+// scope validation (T-1104) iterates this rather than hardcoding a second
+// copy of the vocabulary, so a future capability addition only needs
+// updating in one place (this slice, Capabilities, and Has's switch).
 var AllCaps = []Cap{
 	CapNetRead, CapNetWrite, CapSDNRead, CapSDNWrite,
 	CapFWRead, CapFWWrite, CapGuestNet, CapAudit, CapAutomation, CapCapture,
+	CapAutomationWrite,
 }
 
 // Has reports whether c grants the named capability. Unknown names return
@@ -108,6 +133,8 @@ func (c Capabilities) Has(name Cap) bool {
 		return c.Audit
 	case CapAutomation:
 		return c.Automation
+	case CapAutomationWrite:
+		return c.AutomationWrite
 	case CapCapture:
 		return c.Capture
 	default:

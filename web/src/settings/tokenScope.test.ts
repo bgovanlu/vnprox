@@ -1,9 +1,10 @@
-// T-3003: the stored-scope/effective-scope and expiry rules, tested away from
-// React so the claims the panel makes are checkable on their own.
+// T-3003 (extended by T-3003-followup-01, 2026-08-19): the
+// stored-scope/effective-scope and expiry rules, tested away from React so
+// the claims the panel makes are checkable on their own.
 //
 // The narrowing table is asserted against `internal/auth.forceReadOnly`'s
-// actual body, not its doc comment — see tokenScope.ts's header for why those
-// two disagree, and the T-3003 report for the discrepancy.
+// actual body — see tokenScope.ts's header for the full history of what it
+// zeroes and why.
 import { describe, expect, it } from "vitest";
 import type { ApiToken, MeResponse } from "../api/types";
 import {
@@ -49,7 +50,7 @@ describe("tokenScopeNarrowing", () => {
     });
   });
 
-  it("removes exactly the four flags forceReadOnly zeroes", () => {
+  it("removes exactly the four original config-write flags forceReadOnly zeroes", () => {
     const stored = ["netRead", "netWrite", "sdnRead", "sdnWrite", "fwRead", "fwWrite", "guestNet", "audit"];
     const n = tokenScopeNarrowing(stored, true);
     expect(n.known).toBe(true);
@@ -58,17 +59,21 @@ describe("tokenScopeNarrowing", () => {
     expect(n.effective).toEqual(["netRead", "sdnRead", "fwRead", "audit"]);
   });
 
-  it("leaves capture and automation alone under read_only", () => {
-    // internal/auth.forceReadOnly zeroes NetWrite/SDNWrite/FWWrite/GuestNet
-    // and nothing else, despite its own doc comment claiming a wider strip.
-    // Following the comment here would tell an operator a token had lost a
-    // scope it still carries.
-    expect(STRIPPED_UNDER_READ_ONLY).not.toContain("capture");
+  // T-3003-followup-01 (2026-08-19) replaces the predecessor of this test,
+  // "leaves capture and automation alone under read_only", which pinned
+  // internal/auth.forceReadOnly's PRE-fix behaviour on purpose (its own
+  // comment said so). That behaviour is now fixed: capture is stripped
+  // outright, and automation was split into a read half (`automation`,
+  // still untouched — it also gates the WS "events" topic) and a write half
+  // (`automationWrite`, now stripped alongside capture).
+  it("strips capture and automationWrite, but not automation (the read half), under read_only", () => {
+    expect(STRIPPED_UNDER_READ_ONLY).toContain("capture");
+    expect(STRIPPED_UNDER_READ_ONLY).toContain("automationWrite");
     expect(STRIPPED_UNDER_READ_ONLY).not.toContain("automation");
 
-    const n = tokenScopeNarrowing(["capture", "automation", "netWrite"], true);
-    expect(n.effective).toEqual(["capture", "automation"]);
-    expect(n.removed).toEqual(["netWrite"]);
+    const n = tokenScopeNarrowing(["capture", "automation", "automationWrite", "netWrite"], true);
+    expect(n.effective).toEqual(["automation"]);
+    expect(n.removed).toEqual(["capture", "automationWrite", "netWrite"]);
   });
 
   it("is not 'narrowed' when read_only removes nothing this token had", () => {
@@ -127,9 +132,11 @@ describe("canGrantScope", () => {
     expect(canGrantScope(session, "sdnWrite")).toBe(false);
   });
 
-  it("always grants automation, which is not PVE-derived", () => {
+  it("always grants automation and automationWrite, neither of which is PVE-derived", () => {
     expect(canGrantScope(session, "automation")).toBe(true);
     expect(canGrantScope(undefined, "automation")).toBe(true);
+    expect(canGrantScope(session, "automationWrite")).toBe(true);
+    expect(canGrantScope(undefined, "automationWrite")).toBe(true);
   });
 
   it("answers 'unknown' rather than 'denied' before the session loads", () => {

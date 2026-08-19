@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -26,12 +27,14 @@ import (
 // server-side, at the data-access layer: tenantScopeMiddleware resolves the
 // authenticated principal's tenant Scope from the store (never from any
 // client-supplied value) and attaches it to the request context; every
-// tenant-scoped read handler (topology/findings/ipam/flows) then filters its
-// in-memory projection through that Scope BEFORE serialization, and an
-// out-of-scope direct-Ref lookup returns 404 (existence is not confirmed),
-// mirroring internal/auth.forceReadOnly's enforcement-point pattern. A caller
-// who is not a tenant member gets no Scope attached and reads unscoped, exactly
-// as before — multi-tenancy only ever NARROWS a member's view.
+// tenant-scoped read handler (topology/findings/ipam/flows, and — since
+// T-3002-followup-01 — the /tenants admin CRUD reads themselves) then
+// filters its in-memory projection through that Scope BEFORE serialization,
+// and an out-of-scope direct-Ref/tenant-id lookup returns 404 (existence is
+// not confirmed), mirroring internal/auth.forceReadOnly's enforcement-point
+// pattern. A caller who is not a tenant member gets no Scope attached and
+// reads unscoped, exactly as before — multi-tenancy only ever NARROWS a
+// member's view.
 
 // TenantScoper resolves an authenticated principal's tenant Scope. The concrete
 // *tenant.Service satisfies it. nil-safe at the router level (no scoping
@@ -262,9 +265,23 @@ func mountTenantRoutes(r chi.Router, adminStore TenantAdminStore, scoper TenantS
 	}
 
 	// Admin CRUD: reads require netRead, mutations require netWrite (+ CSRF).
+	//
+	// SECURITY (T-3002-followup-01, 2026-08-19): reads are ALSO
+	// tenant-scoped, the same as /topology, /findings, /ipam/*, /flows, and
+	// inventory detail/search — netRead alone is not an admin capability
+	// (every tenant member holds it, since it derives from ordinary PVE
+	// network-read ACLs), so without tenantScopeMiddleware here any member
+	// of any tenant could enumerate every tenant and read another tenant's
+	// scopes/members. A caller who is not a tenant member (isMember=false
+	// from ScopeFor) gets no Scope attached and reads unscoped, exactly
+	// like every other route this middleware guards — multi-tenancy only
+	// ever narrows a member's view.
 	r.Group(func(r chi.Router) {
 		r.Use(auth.SessionMiddleware)
 		r.Use(auth.RequireCap(capNetRead))
+		if scoper != nil {
+			r.Use(tenantScopeMiddleware(scoper, lookup))
+		}
 		r.Get("/tenants", handleListTenants(adminStore))
 		r.Get("/tenants/{id}", handleGetTenant(adminStore))
 	})
@@ -356,6 +373,36 @@ func handleCreateTenant(s TenantAdminStore, lookup UsernameLookup) http.HandlerF
 	}
 }
 
+// tenantAdminRow loads one store.Tenant's scopes/members and shapes it into
+// a tenantResponse. Unlike the pre-T-3002-followup-01 handleListTenants,
+// this genuinely queries both tables rather than hard-coding empty arrays —
+// docs/api.md documents the Tenant shape as carrying both, and a caller
+// could not previously tell "this tenant has no scopes" from "this endpoint
+// does not report scopes" (pinned, before the fix, by
+// TestListTenantsReportsEmptyScopesWithoutReadingThem).
+func tenantAdminRow(ctx context.Context, s TenantAdminStore, t store.Tenant) (tenantResponse, error) {
+	scopes, err := s.ScopesForTenant(ctx, t.ID)
+	if err != nil {
+		return tenantResponse{}, fmt.Errorf("loading scopes for tenant %s: %w", t.ID, err)
+	}
+	if scopes == nil {
+		scopes = []string{}
+	}
+	members, err := s.MembersForTenant(ctx, t.ID)
+	if err != nil {
+		return tenantResponse{}, fmt.Errorf("loading members for tenant %s: %w", t.ID, err)
+	}
+	mo := make([]tenantMemberOutput, 0, len(members))
+	for _, m := range members {
+		mo = append(mo, tenantMemberOutput{Identity: m.Identity, Role: m.Role})
+	}
+	return tenantResponse{ID: t.ID, Name: t.Name, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt, Scopes: scopes, Members: mo}, nil
+}
+
+// handleListTenants lists tenants, scoped to the caller's own membership
+// (T-3002-followup-01): a caller who is a tenant member sees only the
+// tenants named by their resolved Scope; an unscoped (non-member) caller
+// sees every tenant, unchanged from before this fix.
 func handleListTenants(s TenantAdminStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tenants, err := s.ListTenants(r.Context())
@@ -363,17 +410,45 @@ func handleListTenants(s TenantAdminStore) http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not list tenants")
 			return
 		}
+		if scope, ok := scopeFromContext(r.Context()); ok {
+			allowed := make(map[string]bool, len(scope.TenantIDs()))
+			for _, id := range scope.TenantIDs() {
+				allowed[id] = true
+			}
+			filtered := make([]store.Tenant, 0, len(tenants))
+			for _, t := range tenants {
+				if allowed[t.ID] {
+					filtered = append(filtered, t)
+				}
+			}
+			tenants = filtered
+		}
 		out := make([]tenantResponse, 0, len(tenants))
 		for _, t := range tenants {
-			out = append(out, tenantResponse{ID: t.ID, Name: t.Name, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt, Scopes: []string{}, Members: []tenantMemberOutput{}})
+			row, err := tenantAdminRow(r.Context(), s, t)
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not load tenant scopes/members")
+				return
+			}
+			out = append(out, row)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": out})
 	}
 }
 
+// handleGetTenant returns one tenant, scoped to the caller's own membership
+// (T-3002-followup-01): a caller who is a tenant member but NOT of this
+// tenant gets 404 — never 403, so the response never confirms a tenant they
+// don't belong to exists (docs/user-guide.md:156's promise). An unscoped
+// (non-member) caller can look up any tenant by id, unchanged from before
+// this fix.
 func handleGetTenant(s TenantAdminStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
+		if scope, ok := scopeFromContext(r.Context()); ok && !scope.Includes(id) {
+			writeJSONError(w, http.StatusNotFound, "not_found", "no such tenant")
+			return
+		}
 		t, err := s.GetTenant(r.Context(), id)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
@@ -383,16 +458,12 @@ func handleGetTenant(s TenantAdminStore) http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not load tenant")
 			return
 		}
-		scopes, _ := s.ScopesForTenant(r.Context(), id)
-		if scopes == nil {
-			scopes = []string{}
+		row, err := tenantAdminRow(r.Context(), s, t)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal_error", "could not load tenant scopes/members")
+			return
 		}
-		members, _ := s.MembersForTenant(r.Context(), id)
-		mo := make([]tenantMemberOutput, 0, len(members))
-		for _, m := range members {
-			mo = append(mo, tenantMemberOutput{Identity: m.Identity, Role: m.Role})
-		}
-		writeJSON(w, http.StatusOK, tenantResponse{ID: t.ID, Name: t.Name, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt, Scopes: scopes, Members: mo})
+		writeJSON(w, http.StatusOK, row)
 	}
 }
 

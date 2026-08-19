@@ -24,14 +24,13 @@ import (
 //
 //nolint:govet // fieldalignment: a test double; readability beats packing.
 type fakeIncidentService struct {
-	inc      incident.Incident
-	timeline *incident.Timeline
-	export   *incident.ExportResult
-	err      error
-
-	gotOpen     incident.OpenRequest
-	gotAnnotate incident.AnnotateRequest
+	err         error
+	timeline    *incident.Timeline
+	export      *incident.ExportResult
 	gotID       string
+	inc         incident.Incident
+	gotAnnotate incident.AnnotateRequest
+	gotOpen     incident.OpenRequest
 	closed      bool
 	reopened    bool
 }

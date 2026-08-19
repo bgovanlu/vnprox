@@ -85,6 +85,16 @@ type ChangesetService interface {
 	// wrote, server-side.
 	TwoPersonState(ctx context.Context, changesetID string) (change.TwoPersonState, error)
 	InvokeBreakGlass(ctx context.Context, changesetID, actor, reason string) (change.BreakGlassRecord, error)
+
+	// T-3101-followup-01: the foreign-SDN-pending "surface and confirm"
+	// gate's read/record pair, mirroring GetApproval/ReviewApprove's own
+	// "read model" + "authorization-relevant record" split immediately
+	// above. SDNForeignPending is a live PVE read (needs pveGW whenever the
+	// changeset carries SDN ops); AcknowledgeSDNForeignPending re-reads
+	// live itself and records exactly that — Apply (above) is what
+	// actually enforces the gate server-side, from the row this writes.
+	SDNForeignPending(ctx context.Context, id string, pveGW change.PVEGateway) ([]change.SDNPendingEntry, error)
+	AcknowledgeSDNForeignPending(ctx context.Context, id, actor string, pveGW change.PVEGateway) ([]change.SDNPendingEntry, error)
 }
 
 // PVEGatewayProvider supplies a change.PVEGateway bound to the requesting
@@ -121,77 +131,26 @@ type CSRFEnforcer interface {
 //
 //nolint:govet // fieldalignment: response DTO; field order is the JSON shape, not packing (matches internal/api/spec.go's identical precedent).
 type changesetResponse struct {
-	Plan            json.RawMessage `json:"plan,omitempty"`
-	ApplyLog        json.RawMessage `json:"applyLog,omitempty"`
-	ConfirmDeadline *int64          `json:"confirmDeadline,omitempty"`
-	// UnattendedRevert (T-1805) reports whether this changeset will revert
-	// itself with no live session, and until when — present on the apply
-	// response and on a read of an awaiting_confirm changeset, omitted
-	// otherwise. It carries a coverage *bound*, never the sealed PVE ticket
-	// the coverage rests on: that credential has no representation in
-	// change.Changeset at all (see change.Changeset.RevertTicketExpiresAt),
-	// so no response built from one can leak it — a structural guarantee
-	// rather than redactOpSecrets' field-by-field stripping.
+	Approval         *approvalResponse        `json:"approval,omitempty"`
+	Locks            *changesetLocks          `json:"locks,omitempty"`
+	ConfirmDeadline  *int64                   `json:"confirmDeadline,omitempty"`
 	UnattendedRevert *change.UnattendedRevert `json:"unattendedRevert,omitempty"`
-	ID               string                   `json:"id"`
-	Title            string                   `json:"title"`
+	ApplyStage       *change.StagedApplyState `json:"applyStage,omitempty"`
+	OriginTool       string                   `json:"originTool,omitempty"`
 	Author           string                   `json:"author"`
 	Status           string                   `json:"status"`
-	// Origin (T-1701) is 'ui'|'mcp'|'cli': who staged this changeset, so the
-	// review UI can badge an AI-staged draft distinctly from a human one.
-	// OriginTokenID names the staging automation token (present only for a
-	// token-staged changeset).
-	Origin        string `json:"origin"`
-	OriginTokenID string `json:"originTokenId,omitempty"`
-	// OriginTool (T-2705) names the MCP staging tool that produced this
-	// changeset ("changesets.stage.bridge", …), omitted for every changeset
-	// not staged by one. Together with origin/originTokenId it is the tag the
-	// review UI badges an AI-staged draft with: which kind of actor, which
-	// automation credential (session), and which action.
-	OriginTool string           `json:"originTool,omitempty"`
-	Ops        []change.Op      `json:"ops"`
-	Findings   []change.Finding `json:"findings"`
-	CreatedAt  int64            `json:"createdAt"`
-	UpdatedAt  int64            `json:"updatedAt"`
-	// Comments and Approval (T-2003) are the review surface: per-op/
-	// changeset comments and the current review-approval decision,
-	// respectively. Both are additive fields (docs/architecture.md §10/§13's
-	// deprecation policy) — omitted (nil) everywhere except the canonical
-	// GET /changesets/{id} read (handleGetChangeset), which decorates them,
-	// exactly like TouchesMgmtPath's own "canonical read computes it" note
-	// below; every other response's byte shape is completely unaffected.
-	Comments []commentResponse `json:"comments,omitempty"`
-	Approval *approvalResponse `json:"approval,omitempty"`
-	// ApplyStage (T-2602) describes a staged (canary) apply that is currently
-	// PAUSED between stages: which strategy was recorded, which nodes have
-	// been applied, which have not been contacted at all, and the two
-	// deadlines. Present only while the pause exists — every ordinary
-	// all-at-once apply (the default) omits it entirely, so no existing
-	// response's byte shape changes.
-	ApplyStage *change.StagedApplyState `json:"applyStage,omitempty"`
-	// Locks (T-2805) is the advisory-lock warning for a staging request:
-	// which entities this changeset touches that another operator already
-	// has a draft open against, and which of those this request deliberately
-	// took over. It is present ONLY on POST /changesets and PUT
-	// /changesets/{id}, and only when there is something to warn about, so
-	// every other response — and every uncontended staging — has a
-	// byte-identical shape to the pre-T-2805 one.
-	//
-	// It is a WARNING and nothing else. The changeset it appears on was
-	// already created or updated by the time this object was built, and no
-	// route anywhere refuses anything because of a lock (docs/api.md's
-	// advisory-locks paragraph; internal/presence's doc.go for why that is
-	// structural).
-	Locks *changesetLocks `json:"locks,omitempty"`
-	// TouchesMgmtPath is T-703's server-computed flag (docs/api.md's
-	// changesets section): the ops intersect a node's resolved management
-	// path (change.TouchesMgmtPath over the same MgmtStatus computation
-	// GET /protected-interfaces/status answers from). Decorated onto the
-	// response by the changesets routes' handlers (see mgmtPathsFor);
-	// auxiliary draft-creating routes (drift/findings fix, snapshot
-	// restore, blueprint instantiate) return it as false — the canonical
-	// GET /changesets/{id} read those flows all funnel into computes it.
-	TouchesMgmtPath bool `json:"touchesMgmtPath"`
+	Origin           string                   `json:"origin"`
+	OriginTokenID    string                   `json:"originTokenId,omitempty"`
+	ID               string                   `json:"id"`
+	Title            string                   `json:"title"`
+	Findings         []change.Finding         `json:"findings"`
+	Comments         []commentResponse        `json:"comments,omitempty"`
+	Ops              []change.Op              `json:"ops"`
+	Plan             json.RawMessage          `json:"plan,omitempty"`
+	ApplyLog         json.RawMessage          `json:"applyLog,omitempty"`
+	CreatedAt        int64                    `json:"createdAt"`
+	UpdatedAt        int64                    `json:"updatedAt"`
+	TouchesMgmtPath  bool                     `json:"touchesMgmtPath"`
 }
 
 // commentResponse is one review Comment's wire shape (docs/api.md's
@@ -234,6 +193,35 @@ type approvalResponse struct {
 
 func toApprovalResponse(a change.ApprovalState) approvalResponse {
 	return approvalResponse{Status: string(a.Status), DecidedBy: a.DecidedBy, Reason: a.Reason, DecidedAt: a.DecidedAt, Required: a.Required}
+}
+
+// sdnPendingEntryResponse is one foreign pending SDN change's wire shape
+// (T-3101-followup-01, docs/api.md's changesets section):
+// `{kind, id, state, fields}` — kind/id/state identify exactly which real
+// PVE object is staged-but-not-yet-applied outside this changeset's own
+// ops, and fields carries real PVE's own field values for it (the "this
+// apply will also commit ..." review-screen listing's content).
+type sdnPendingEntryResponse struct {
+	Fields map[string]any `json:"fields,omitempty"`
+	Kind   string         `json:"kind"`
+	ID     string         `json:"id"`
+	State  string         `json:"state"`
+}
+
+func toSDNPendingEntryResponses(entries []change.SDNPendingEntry) []sdnPendingEntryResponse {
+	out := make([]sdnPendingEntryResponse, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, sdnPendingEntryResponse{Kind: e.Kind, ID: e.ID, State: e.State, Fields: e.Fields})
+	}
+	return out
+}
+
+// sdnForeignPendingResponse is GET/POST .../sdn-foreign-pending(/ack)'s
+// response body: the entries plus, for the ack route, who/when.
+type sdnForeignPendingResponse struct {
+	AcknowledgedBy string                    `json:"acknowledgedBy,omitempty"`
+	Entries        []sdnPendingEntryResponse `json:"entries"`
+	AcknowledgedAt int64                     `json:"acknowledgedAt,omitempty"`
 }
 
 func toChangesetResponse(c change.Changeset) changesetResponse {
@@ -324,6 +312,12 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		// group for the same reason as impact above — seeing what the map
 		// would look like must never require the capability to make it so.
 		r.Get("/changesets/{id}/preview", handleChangesetPreview(svc))
+		// T-3101-followup-01: the foreign-SDN-pending "surface and
+		// confirm" gate's review-screen read — a live PVE read, but a
+		// read, so it sits with impact/preview above for the same reason:
+		// seeing what an apply would ALSO commit must never itself require
+		// the capability to apply it.
+		r.Get("/changesets/{id}/sdn-foreign-pending", handleSDNForeignPendingGet(svc, gateways))
 
 		// T-208 raw editor: the "open" call and its live syntax-lint
 		// round trip. Neither mutates server state (the lint endpoint
@@ -349,6 +343,14 @@ func mountChangesetsRoutes(r chi.Router, svc ChangesetService, auth AuthService,
 		// T-2602: promote a staged apply past its canary hold.
 		r.Post("/changesets/{id}/continue", handleContinueChangeset(svc, lookup, gateways, mgmt, wgCarriers))
 		r.Post("/changesets/{id}/rollback", handleRollbackChangeset(svc, lookup, gateways, mgmt, wgCarriers))
+
+		// T-3101-followup-01: the foreign-SDN-pending "surface and
+		// confirm" gate's acknowledgement — an authorization-relevant
+		// mutation (mirrors /review/approve immediately below: Apply
+		// itself is what actually enforces the gate server-side, from the
+		// row this writes; this route only ever records what a live PVE
+		// read just observed).
+		r.Post("/changesets/{id}/sdn-foreign-pending/ack", handleSDNForeignPendingAck(svc, lookup, gateways))
 
 		// T-2003: the review surface — per-op/changeset comments and the
 		// review-approval gate. /review/approve and /review/reject are
@@ -891,6 +893,20 @@ func writeApplyError(w http.ResponseWriter, err error) {
 		})
 		return
 	}
+	// T-3101-followup-01: the foreign-SDN-pending "surface and confirm"
+	// gate's refusal. A new, additive 422 code, for the same reasons
+	// approval_required/two_person_required are: the changeset is
+	// otherwise perfectly valid and its status is untouched — this is an
+	// orthogonal authorization gate. Details carry exactly the foreign
+	// entries the operator must acknowledge (GET .../sdn-foreign-pending
+	// returns the identical list), so the UI never has to re-derive them.
+	var sdnForeignPending *change.ErrSDNForeignPendingUnacknowledged
+	if errors.As(err, &sdnForeignPending) {
+		writeJSONErrorDetails(w, http.StatusUnprocessableEntity, "sdn_foreign_pending_unacknowledged", err.Error(), map[string]any{
+			"entries": toSDNPendingEntryResponses(sdnForeignPending.Entries),
+		})
+		return
+	}
 	var sdnUnhealthy *change.ErrSDNZoneUnhealthy
 	if errors.As(err, &sdnUnhealthy) {
 		writeJSONErrorDetails(w, http.StatusUnprocessableEntity, "sdn_zone_unhealthy", err.Error(), map[string]any{
@@ -1073,6 +1089,63 @@ func handleDeleteComment(svc ChangesetService, lookup UsernameLookup) http.Handl
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// handleSDNForeignPendingGet is the review screen's live read (T-3101-
+// followup-01): "this apply will also commit ..." — every zone/vnet/subnet
+// real PVE currently reports staged-but-not-yet-applied outside this
+// changeset's own ops. A pure read: it never records anything, mirroring
+// GET .../preview's own "seeing what would happen must never itself be an
+// authorization act" placement in the netRead group.
+func handleSDNForeignPendingGet(svc ChangesetService, gateways PVEGatewayProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		var gw change.PVEGateway
+		if gateways != nil {
+			gw, _ = gateways.GatewayFor(r.Context())
+		}
+
+		entries, err := svc.SDNForeignPending(r.Context(), id, gw)
+		if err != nil {
+			writeReviewError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, sdnForeignPendingResponse{Entries: toSDNPendingEntryResponses(entries)})
+	}
+}
+
+// handleSDNForeignPendingAck records the operator's acknowledgement
+// (T-3101-followup-01): a fresh, server-side, live PVE read — never a
+// client-supplied entry list, matching handleReviewApprove's own "the
+// server decides what was approved" precedent immediately below. The
+// request body, if present at all, is accepted but ignored (this route
+// takes no parameters of its own); a caller that thinks it can choose
+// which entries get acknowledged is simply wrong, so DisallowUnknownFields
+// is not even relevant here — there is nothing to disallow.
+func handleSDNForeignPendingAck(svc ChangesetService, lookup UsernameLookup, gateways PVEGatewayProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username, ok := lookup.Username(r.Context())
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "not_authenticated", "not logged in")
+			return
+		}
+		id := chi.URLParam(r, "id")
+
+		var gw change.PVEGateway
+		if gateways != nil {
+			gw, _ = gateways.GatewayFor(r.Context())
+		}
+
+		entries, err := svc.AcknowledgeSDNForeignPending(r.Context(), id, username, gw)
+		if err != nil {
+			writeReviewError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, sdnForeignPendingResponse{
+			Entries: toSDNPendingEntryResponses(entries), AcknowledgedBy: username,
+		})
 	}
 }
 

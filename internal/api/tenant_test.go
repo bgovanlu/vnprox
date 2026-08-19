@@ -238,6 +238,27 @@ func TestTenantScoping_NonMemberUnscoped(t *testing.T) {
 
 // ---- AC4: two tenants, zero cross-tenant leakage --------------------------
 
+// TestTenantScoping_NoCrossTenantLeakage now additionally walks the
+// /tenants* admin read routes (GET /tenants, GET /tenants/{id}) alongside
+// /topology and /flows (T-3002-followup-01, 2026-08-19): the version of
+// this test that existed before the fix exercised only /topology and
+// /flows and never called /tenants at all, which is exactly why the leak —
+// any tenant member could enumerate every tenant and read another tenant's
+// scopes/members via plain netRead — went unnoticed. Extending the same
+// loop, rather than a separate one-shot test, is deliberate: it is the
+// enumeration this docstring's predecessor was missing, so the next GET
+// route added to the /tenants* family gets the same randomized-order
+// coverage automatically instead of silently repeating the miss.
+//
+// The mutating routes (POST/DELETE /tenants, PUT/DELETE .../scopes,
+// PUT/DELETE .../members) are deliberately NOT walked here: they are gated
+// on netWrite, not tenant membership, a separate cluster-wide-admin
+// authorization question the owner's T-3002-followup-01 decision (which
+// covered only reads — "scope reads to own tenants") did not address. That
+// gap is real and adjacent — a caller who holds both netWrite and
+// membership in some tenant can, today, still mutate ANY tenant's
+// scopes/members, not just their own — and is noted in this task's report
+// rather than fixed here.
 func TestTenantScoping_NoCrossTenantLeakage(t *testing.T) {
 	env := newTenantEnv(t)
 	env.seedTenant(t, "t1", map[string]string{"alice@pve": store.TenantRoleMember},
@@ -271,7 +292,35 @@ func TestTenantScoping_NoCrossTenantLeakage(t *testing.T) {
 				t.Fatalf("LEAK: bob saw a t1 flow")
 			}
 		}
+
+		// The whole /tenants* read family (T-3002-followup-01): alice never
+		// sees t2's tenant row (list or direct get), bob never sees t1's.
+		_, at := getJSON(t, aliceR, "alice@pve", "/api/v1/tenants")
+		if items, _ := at["items"].([]any); tenantListContainsID(items, "t2") {
+			t.Fatalf("LEAK: alice's GET /tenants listed t2")
+		}
+		if code, body := getJSON(t, aliceR, "alice@pve", "/api/v1/tenants/t2"); code != http.StatusNotFound {
+			t.Fatalf("LEAK: alice's GET /tenants/t2 = %d (want 404): %v", code, body)
+		}
+
+		_, bt := getJSON(t, bobR, "bob@pve", "/api/v1/tenants")
+		if items, _ := bt["items"].([]any); tenantListContainsID(items, "t1") {
+			t.Fatalf("LEAK: bob's GET /tenants listed t1")
+		}
+		if code, body := getJSON(t, bobR, "bob@pve", "/api/v1/tenants/t1"); code != http.StatusNotFound {
+			t.Fatalf("LEAK: bob's GET /tenants/t1 = %d (want 404): %v", code, body)
+		}
 	}
+}
+
+func tenantListContainsID(items []any, id string) bool {
+	for _, it := range items {
+		m, _ := it.(map[string]any)
+		if m["id"] == id {
+			return true
+		}
+	}
+	return false
 }
 
 func asNodes(body map[string]any) []string {

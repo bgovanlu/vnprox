@@ -1,11 +1,15 @@
 // Webhook registrations (T-1104 routes, T-2905 destination policy).
 //
 // ── READ THIS BEFORE CHANGING THE GATING ──────────────────────────────────
-// All three webhook routes sit behind `auth.RequireCap("automation")`, and
-// `automation` is the one capability `internal/auth.DeriveCapabilities` never
-// produces. docs/api.md states the consequence in as many words: "a browser
-// session alone can never reach them, only a token minted via POST /tokens
-// with `automation` in its scopes can."
+// `GET /webhooks` sits behind `auth.RequireCap("automation")`; `POST
+// /webhooks` and `DELETE /webhooks/{id}` sit behind `auth.RequireCap(
+// "automationWrite")` (split from a single "automation" flag by
+// T-3003-followup-01, 2026-08-19, so `[server] read_only` can clear webhook
+// registration/deletion without also taking away this read). Neither
+// capability is ever produced by `internal/auth.DeriveCapabilities` — both
+// are token-scope-only. docs/api.md states the consequence in as many words:
+// "a browser session alone can never reach them, only a token minted via
+// POST /tokens with `automation`/`automationWrite` in its scopes can."
 //
 // So on a normal deployment this section's list query returns 403, and there
 // is no client-side arrangement that changes that — the SPA authenticates
@@ -16,8 +20,11 @@
 //
 // The create form is therefore gated on the daemon's own answer rather than
 // on a client-side capability guess: it appears only once `GET /webhooks` has
-// actually returned 200, which is the only proof the caller holds
-// `automation`. When it does appear, submitting is the point of this section:
+// actually returned 200, which is proof the caller holds `automation` — NOT
+// proof of `automationWrite`, so a token scoped read-only can still see this
+// form appear and then get a 403 on submit; the submit-time RefusalNotice
+// below names `automationWrite` specifically for that case. When the form
+// does appear, submitting is the point of this section:
 // T-2905 refuses a destination at registration when it is plain http or an
 // IP-literal that is loopback/RFC1918/link-local, and refuses it AGAIN at
 // dial time against the resolved address. This component performs NO address
@@ -149,10 +156,11 @@ export function WebhooksSection() {
           forbiddenHint={
             <>
               <p>
-                The three webhook routes are gated on the <code>automation</code> capability, and{" "}
-                <code>automation</code> is never derived from a Proxmox privilege — logging in with a browser session
-                can never grant it. Only a request authenticated by a bearer token minted with{" "}
-                <code>automation</code> in its scopes reaches them.
+                <code>GET /webhooks</code> is gated on the <code>automation</code> capability;{" "}
+                <code>POST</code>/<code>DELETE</code> additionally require <code>automationWrite</code>.{" "}
+                <code>automation</code> and <code>automationWrite</code> are never derived from a Proxmox privilege
+                — logging in with a browser session can never grant either one. Only a request authenticated by a
+                bearer token minted with those scopes reaches these routes.
               </p>
               <p className="mt-1">
                 Mint such a token in the Automation tokens section above, then use it from{" "}
@@ -239,7 +247,7 @@ export function WebhooksSection() {
                 <RefusalNotice
                   error={createError}
                   testId="register-webhook-error"
-                  forbiddenHint="Registering a webhook needs the automation capability."
+                  forbiddenHint="Registering a webhook needs the automationWrite capability."
                 />
               </div>
             )}
