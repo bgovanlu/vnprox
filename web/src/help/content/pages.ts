@@ -540,6 +540,7 @@ export const PAGE_TOPICS: readonly HelpTopic[] = [
       "scheduled-apply",
       "post-apply-preview",
       "presence-and-locks",
+      "changeset-propose",
     ],
   },
   {

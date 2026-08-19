@@ -1,8 +1,9 @@
 // Changesets API calls (docs/api.md §Changesets — "the only write path").
 // Every mutation in the app must go through one of these functions; nothing
 // else in web/src may construct a raw fetch against /changesets*.
-import { apiFetch } from "./client";
+import { ApiError, apiFetch } from "./client";
 import { readCsrfCookie } from "./auth";
+import type { SpecProposal } from "./gitsync";
 import type {
   ApplyChangesetRequest,
   ApprovalState,
@@ -179,4 +180,44 @@ export function reviewRejectChangeset(id: string, reason?: string): Promise<Appr
     json: reason ? { reason } : {},
     csrfToken: readCsrfCookie(),
   });
+}
+
+/** POST /changesets/{id}/propose (T-2702) — render this changeset as a spec
+ * delta, commit it on a branch, push, and open (or update) a pull request
+ * against the spec repository. Returns the same `SpecProposal` shape T-2703's
+ * adopt-reality returns, with `changesetId` set instead of `findingId`.
+ *
+ * This is emphatically NOT an apply: nothing about the cluster changes, and
+ * the changeset itself is not mutated — what comes back is a URL a human
+ * opens. `proposal.created` is the only way to tell a brand-new pull request
+ * (`201`) from an existing one that was brought up to date (`200`) — the
+ * HTTP status itself isn't visible to callers of `apiFetch`.
+ *
+ * Answers `501 not_implemented` when this deployment has no write-capable
+ * spec repository configured (`[gitsync] push_token_file`), and
+ * `422 nothing_to_propose` when the changeset has no ops or they make no
+ * difference to the document as it stands — see docs/api.md's "Changeset →
+ * pull request" section for the full refusal vocabulary. */
+export function proposeChangeset(id: string): Promise<SpecProposal> {
+  return apiFetch<SpecProposal>(`/changesets/${encodeURIComponent(id)}/propose`, {
+    method: "POST",
+    csrfToken: readCsrfCookie(),
+  });
+}
+
+/** GET /changesets/{id}/proposal (T-2702) — the pull request this changeset
+ * was already proposed as, or `null` for the daemon's documented
+ * `404 not_found` ("never proposed"). Only a 404 is translated into "not
+ * proposed"; every other failure is rethrown so "we could not ask" never
+ * renders as the definite "this was never proposed" (mirrors api/drift.ts's
+ * fetchAdoption, T-2703's equivalent read). */
+export async function fetchChangesetProposal(id: string): Promise<SpecProposal | null> {
+  try {
+    return await apiFetch<SpecProposal>(`/changesets/${encodeURIComponent(id)}/proposal`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
 }

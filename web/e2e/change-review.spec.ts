@@ -4,6 +4,12 @@
 // fixture -> vnproxd -> production SPA build), the same shared 8006/8007
 // stack changesets.spec.ts (T-207) already runs against.
 //
+// Also covers T-2702's honest degrade: this stack's testdata/dev.toml has no
+// `[gitsync]` section at all, so `GET /gitsync/status` answers
+// `{enabled: false}` and the propose panel's precondition is CERTAIN, not
+// merely likely — the button must not render at all (never an enabled
+// affordance that would only fail a 501 on click).
+//
 // Scope note: this spec exercises the review UI end to end with this
 // stack's default policy ([changesets] approval_required is unset in
 // testdata/dev.toml, i.e. false) — approve/reject still record real
@@ -98,6 +104,16 @@ test("change review: comments, approve/reject, and the shareable review link", a
   // approval_required is off in this stack's config, so the panel says so
   // rather than claiming a requirement it doesn't have.
   await expect(approvalPanel).toContainText("does not require approval");
+
+  // --- 2.5. Propose-as-pull-request (T-2702) degrades honestly ------------
+  // No `[gitsync]` section exists in this stack's config, so this is the
+  // CERTAIN-unavailable case (drift/gitsyncState.ts's `not-configured`):
+  // the panel says so and offers no button that could only fail.
+  // A partial-name match: the region's accessible name is its heading's full
+  // text content, which also includes the trailing "?" help anchor.
+  const proposePanel = review.getByRole("region", { name: /Propose as pull request/ });
+  await expect(proposePanel).toContainText("Unavailable on this deployment");
+  await expect(proposePanel.getByRole("button", { name: "Propose as pull request…" })).toHaveCount(0);
 
   // --- 3. Discussion tab: a changeset-level comment ----------------------
   await page.getByRole("tab", { name: /Discussion/ }).click();

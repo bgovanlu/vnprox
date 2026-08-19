@@ -43,6 +43,7 @@ import { reviewLinkFor } from "./reviewLink";
 import { ApplyStrategyPanel } from "./ApplyStrategyPanel";
 import { buildApplyStrategy, canaryEligibility, defaultSelection, selectionError } from "./applyStrategy";
 import { PolicyVerdictPanel } from "./PolicyVerdictPanel";
+import { ProposePanel } from "./ProposePanel";
 import { BreakGlassPanel } from "./BreakGlassPanel";
 import { policyFindings, policyVerdict } from "./policyVerdict";
 import { useBreakGlassMutation, usePoliciesQuery, usePolicyVerdictQuery } from "./governanceQueries";
@@ -272,6 +273,14 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             refusal with the rule id, its severity and its assertions
             attached, which is what an operator needs to act on it. */}
         <PolicyVerdictPanel verdict={verdict} findings={changesetPolicyFindings} />
+
+        {/* T-2702: proposing a pull request against the spec repository —
+            deliberately its own section, above the tabs and the Apply
+            controls, with its own confirmation. It is not gated by
+            anything below that gates Apply, and clicking it can never
+            apply, confirm or roll back anything (see ProposePanel's own
+            doc comment). */}
+        <ProposePanel changesetId={changeset.id} />
 
         {errors.length > 0 && (
           <div className="mt-3 rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">

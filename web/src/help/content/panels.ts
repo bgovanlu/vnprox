@@ -869,7 +869,51 @@ export const PANEL_TOPICS: readonly HelpTopic[] = [
         body: "Each action appears only if performing it would produce a non-empty result. A finding offering neither is ordinary and honest — a divergence that exists only between the file and the kernel is real, and no spec commit resolves it. Neither action is ever taken automatically, at any severity.",
       },
     ],
-    seeAlso: ["config-as-code-page", "gitsync-status", "drift", "changeset-review-page", "safety-model"],
+    seeAlso: ["config-as-code-page", "gitsync-status", "drift", "changeset-review-page", "changeset-propose", "safety-model"],
+  },
+  {
+    id: "changeset-propose",
+    title: "Propose as pull request",
+    surface: "panel",
+    summary:
+      "The other direction of the same loop as adopt-reality: render a staged changeset as a spec commit and open a pull request for it, without touching the cluster at all.",
+    docRef: "docs/api.md",
+    keywords: [
+      "propose",
+      "pull request",
+      "PR",
+      "spec",
+      "gitsync",
+      "git",
+      "changeset",
+      "commit",
+      "branch",
+      "github",
+      "gitlab",
+    ],
+    sections: [
+      {
+        heading: "Not Apply",
+        body: "Proposing renders the changeset as a spec delta, commits it on a branch, pushes it, and opens or updates a pull request. The cluster is never touched and the changeset itself is not mutated — what comes back is a URL a human opens. It is not gated by approval, the two-person rule, the management-path acknowledgement, or any other Apply control, because none of those are about whether it's safe to write to a git repository. A changeset can be proposed before it's applied, after, or never — in any order.",
+      },
+      {
+        heading: "Opened once, updated after that",
+        body: "The branch name is derived from the changeset's own id, so proposing the same changeset twice always addresses the same pull request — the second proposal updates it rather than opening a second one. A toast says which happened.",
+      },
+      {
+        heading: "It needs a write-capable repository",
+        body: "A deployment with no push-scoped git credential configured cannot propose at all, and the panel says so rather than offering a button that would only fail. Where a repository is configured but the push credential specifically is not, the daemon's own refusal on click is what settles it — the UI has no other way to know in advance.",
+      },
+      {
+        heading: "An empty or already-true diff is refused",
+        body: "A changeset with no operations, or whose operations make no difference to the document as it currently stands, cannot be proposed — there is nothing to commit. This is the same 'don't fake a diff into existing' honesty adopt-reality's own offered-only-when-it-would-do-something rule follows.",
+      },
+      {
+        heading: "vnprox opens it and stops",
+        body: "There is no merge, approve, or poll-for-review-state action anywhere in this product. Whatever happens to the pull request next — review comments, changes requested, a merge — is your repository's business, and it comes back into vnprox only through the ordinary git sync that produces a new draft changeset for a human to apply.",
+      },
+    ],
+    seeAlso: ["changeset-review-page", "spec-reconciliation", "config-as-code-page", "gitsync-status"],
   },
   {
     id: "spof-score",

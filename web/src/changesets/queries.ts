@@ -15,8 +15,10 @@ import {
   changesetImpact,
   diffChangeset,
   discardChangeset,
+  fetchChangesetProposal,
   getChangeset,
   listChangesets,
+  proposeChangeset,
   reviewApproveChangeset,
   reviewRejectChangeset,
   rollbackChangeset,
@@ -38,6 +40,7 @@ import type {
 export const changesetKey = (id: string) => ["changesets", id] as const;
 export const changesetListKey = (status?: string) => ["changesets", "list", status ?? ""] as const;
 export const changesetDiffKey = (id: string) => ["changesets", id, "diff"] as const;
+export const changesetProposalKey = (id: string) => ["changesets", id, "proposal"] as const;
 
 export function useChangesetQuery(id: string | undefined) {
   return useQuery<Changeset>({
@@ -272,6 +275,38 @@ export function useAckSdnForeignPendingMutation(id: string | undefined) {
     mutationFn: () => ackSdnForeignPending(id ?? ""),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["changesets", id ?? "", "sdn-foreign-pending"] });
+    },
+  });
+}
+
+/** T-2702: the pull request this changeset was already proposed as, or
+ * `null` for the daemon's documented 404 ("never proposed"). Its own query
+ * (not a field on `Changeset`) for the same reason `useChangesetImpactQuery`
+ * is its own query: this is a distinct route with a distinct refresh
+ * cadence, not something the canonical changeset read carries. */
+export function useChangesetProposalQuery(id: string | undefined) {
+  return useQuery({
+    queryKey: changesetProposalKey(id ?? ""),
+    queryFn: () => fetchChangesetProposal(id ?? ""),
+    enabled: id !== undefined,
+    staleTime: 15_000,
+  });
+}
+
+/** POST /changesets/{id}/propose — opens (or updates) a pull request against
+ * the spec repository. Deliberately independent of every Apply gate
+ * (approval, two-person, mgmt-path ack, foreign-pending SDN): those all
+ * answer "is it safe to change the network", and proposing changes nothing
+ * about the network at all. Invalidates the proposal read on success so the
+ * review screen's "already proposed" link reflects what was just opened or
+ * updated, rather than assuming this response is authoritative for future
+ * reads (mirrors useAckSdnForeignPendingMutation's own reasoning). */
+export function useProposeChangesetMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => proposeChangeset(id),
+    onSuccess: (_proposal, id) => {
+      void queryClient.invalidateQueries({ queryKey: changesetProposalKey(id) });
     },
   });
 }
