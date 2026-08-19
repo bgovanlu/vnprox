@@ -175,6 +175,27 @@ CREATE TABLE changeset_approvals (
   decided_at INTEGER NOT NULL
 );
 
+-- T-3101-followup-01 (migration 0049): the foreign-SDN-pending "surface and
+-- confirm" gate's acknowledgement — PUT /cluster/sdn (sdn.apply) applies ALL
+-- pending SDN config cluster-wide, including edits staged outside vnprox's
+-- change engine, so an apply that finds such state refuses
+-- (sdn_foreign_pending_unacknowledged) until this row covers it. One row
+-- per changeset, latest-only (the same "current state here, history in the
+-- audit log" split changeset_approvals above uses) — replaced, not
+-- appended, on every re-acknowledgement. entries_json is the exact
+-- foreign-pending list ([]change.SDNPendingEntry, JSON) the server itself
+-- observed live from PVE at acknowledgement time, never a client-supplied
+-- value: internal/change's isSDNForeignPendingCovered compares a FRESH live
+-- re-read against this at apply time, so a foreign edit that appeared after
+-- the operator last looked is never silently covered by a stale row.
+-- Cleared on UpdateDraft exactly like changeset_approvals is.
+CREATE TABLE changeset_sdn_pending_acks (
+  changeset_id TEXT PRIMARY KEY REFERENCES changesets(id) ON DELETE CASCADE,
+  acknowledged_by TEXT NOT NULL,
+  entries_json TEXT NOT NULL,
+  acknowledged_at INTEGER NOT NULL
+);
+
 -- T-2604 (migration 0040): the enforced two-person rule on protected op
 -- classes, and its emergency override. changeset_approvals above records the
 -- LATEST review decision; it cannot answer "have two DIFFERENT PEOPLE

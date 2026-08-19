@@ -764,6 +764,71 @@ func (g *pveGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error) {
 	return cfg, nil
 }
 
+// SDNPendingForeign implements change.PVEGateway: reads real PVE's own
+// "?pending=1" view (pve.ListSDNZonesPending/ListSDNVnetsPending/
+// ListSDNSubnetsPending, added for T-3101-followup-01 — see
+// planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt) and reports
+// every zone/vnet/subnet currently staged-but-not-yet-applied, regardless
+// of whether this daemon's own change engine staged it.
+//
+// Scoped to zones/vnets/subnets only. Controllers and fabrics also support
+// "?pending=1" against real PVE (confirmed in the evidence file) but are
+// deliberately left for a follow-up — see this task's completion report —
+// and ipam plugin instances have no pending view in real PVE's API at all
+// (Ipams.pm carries no "pending" param; confirmed by grep against
+// pvecube's own perl source), so they can never appear here regardless.
+//
+// Subnets are nested under a vnet in PVE's URL space, so this enumerates
+// every currently-known vnet (the plain, non-pending list — mirroring
+// SDNConfig's own subnet loop above, including a vnet that is itself only
+// staged-pending "new": it still resolves, since the URL path segment
+// names a config-file entry that already exists in the staged file) and
+// reads each one's pending subnets in turn.
+func (g *pveGateway) SDNPendingForeign(ctx context.Context) ([]change.SDNPendingEntry, error) {
+	var out []change.SDNPendingEntry
+
+	zones, err := g.client.ListSDNZonesPending(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("changeagent: listing pending sdn zones: %w", err)
+	}
+	for _, z := range zones {
+		if z.State == "" {
+			continue
+		}
+		out = append(out, change.SDNPendingEntry{Kind: z.Kind, ID: z.ID, State: string(z.State), Fields: z.Fields})
+	}
+
+	vnets, err := g.client.ListSDNVnetsPending(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("changeagent: listing pending sdn vnets: %w", err)
+	}
+	for _, v := range vnets {
+		if v.State == "" {
+			continue
+		}
+		out = append(out, change.SDNPendingEntry{Kind: v.Kind, ID: v.ID, State: string(v.State), Fields: v.Fields})
+	}
+
+	allVnets, err := g.client.ListSDNVnets(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("changeagent: listing sdn vnets: %w", err)
+	}
+	for _, v := range allVnets {
+		subs, subErr := g.client.ListSDNSubnetsPending(ctx, v.ID)
+		if subErr != nil {
+			return nil, fmt.Errorf("changeagent: listing pending sdn subnets for vnet %s: %w", v.ID, subErr)
+		}
+		for _, sub := range subs {
+			if sub.State == "" {
+				continue
+			}
+			out = append(out, change.SDNPendingEntry{Kind: sub.Kind, ID: sub.ID, State: string(sub.State), Fields: sub.Fields})
+		}
+	}
+
+	return out, nil
+}
+
 // AllocateIPAMAddress realizes T-405's ipam.alloc.create op: PVE's IPAM
 // write is a synchronous API call (no task), unlike ApplySDN above.
 // subnetCIDR is recorded on the created entry so internal/ipam's

@@ -679,7 +679,7 @@ func TestBeginApply_RefusesAChangesetATaggedPolicyRuleClassifies(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	_, _, _, err = svc.beginApply(ctx, cs.ID, "alice", ApplyStrategy{}, DefaultConfirmTimeout)
+	_, _, _, err = svc.beginApply(ctx, cs.ID, "alice", nil, ApplyStrategy{}, DefaultConfirmTimeout)
 	var refusal *ErrTwoPersonRequired
 	if !asTwoPersonRequired(err, &refusal) {
 		t.Fatalf("beginApply err = %v, want *ErrTwoPersonRequired", err)
@@ -706,7 +706,7 @@ func TestBeginApply_RefusesAChangesetATaggedPolicyRuleClassifies(t *testing.T) {
 			t.Fatalf("ReviewApprove(%s): %v", who, err)
 		}
 	}
-	got, _, _, err := svc.beginApply(ctx, cs.ID, "alice", ApplyStrategy{}, DefaultConfirmTimeout)
+	got, _, _, err := svc.beginApply(ctx, cs.ID, "alice", nil, ApplyStrategy{}, DefaultConfirmTimeout)
 	if err != nil {
 		t.Fatalf("beginApply after two approvals: %v", err)
 	}

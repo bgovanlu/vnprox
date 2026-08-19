@@ -108,7 +108,7 @@ func (s *Service) ApplyWithOptions(ctx context.Context, id, author string, pveGW
 	}
 	confirmTimeout = clampConfirmTimeout(confirmTimeout)
 
-	cs, plan, strategy, err := s.beginApply(ctx, id, author, strategy, confirmTimeout)
+	cs, plan, strategy, err := s.beginApply(ctx, id, author, pveGW, strategy, confirmTimeout)
 	if err != nil {
 		return Changeset{}, err
 	}
@@ -179,7 +179,7 @@ func (s *Service) ApplyWithOptions(ctx context.Context, id, author string, pveGW
 // single-applier lock, load and revalidate the changeset, build+persist the
 // plan, and transition to applying. It returns with the lock held (released
 // by whichever terminal transition Apply reaches).
-func (s *Service) beginApply(ctx context.Context, id, author string, strategy ApplyStrategy, confirmTimeout time.Duration) (Changeset, Plan, ApplyStrategy, error) {
+func (s *Service) beginApply(ctx context.Context, id, author string, pveGW PVEGateway, strategy ApplyStrategy, confirmTimeout time.Duration) (Changeset, Plan, ApplyStrategy, error) {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
 
@@ -279,6 +279,34 @@ func (s *Service) beginApply(ctx context.Context, id, author string, strategy Ap
 	if err != nil {
 		s.appendAudit(ctx, author, "changeset.apply", "unsupported_op", id, map[string]any{"error": err.Error()})
 		return Changeset{}, Plan{}, ApplyStrategy{}, err
+	}
+
+	// T-3101-followup-01: the foreign-SDN-pending "surface and confirm"
+	// gate (apply_sdn_foreign.go / planning/tasks/debt-sweep-2026-08-19.md
+	// item 2). Placed HERE — after the plan exists (plan.hasSDN() needs
+	// it) and before the peer-compatibility gate, the strategy check, the
+	// StatusApplying transition, the snapshot, and every mutation — so a
+	// refusal leaves the changeset exactly where it was, holding no lock,
+	// the same "authorization check, not a validation one" placement the
+	// approval and two-person gates above already use. The live PVE read
+	// happens here, immediately before this changeset's own SDNStageOp
+	// calls would run later in ApplyWithOptions — the timing boundary
+	// detectSDNForeignPending's doc comment explains is the only sound one.
+	if plan.hasSDN() {
+		foreign, ferr := detectSDNForeignPending(ctx, pveGW)
+		if ferr != nil {
+			s.appendAudit(ctx, author, "changeset.apply", "sdn_foreign_pending_check_failed", id, map[string]any{"error": ferr.Error()})
+			return Changeset{}, Plan{}, ApplyStrategy{}, ferr
+		}
+		covered, cerr := s.isSDNForeignPendingCovered(ctx, id, foreign)
+		if cerr != nil {
+			s.appendAudit(ctx, author, "changeset.apply", "sdn_foreign_pending_check_failed", id, map[string]any{"error": cerr.Error()})
+			return Changeset{}, Plan{}, ApplyStrategy{}, cerr
+		}
+		if !covered {
+			s.appendAudit(ctx, author, "changeset.apply", "sdn_foreign_pending_unacknowledged", id, map[string]any{"entryCount": len(foreign)})
+			return Changeset{}, Plan{}, ApplyStrategy{}, &ErrSDNForeignPendingUnacknowledged{ID: id, Entries: foreign}
+		}
 	}
 
 	// Peer-version compatibility gate (docs/architecture.md §5: "a daemon

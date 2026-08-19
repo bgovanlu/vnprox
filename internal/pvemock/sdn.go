@@ -1,6 +1,7 @@
 package pvemock
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -87,6 +88,64 @@ func isRunningRequest(r *http.Request) bool {
 	return r.URL.Query().Get("running") == "1"
 }
 
+// isPendingRequest reports whether r asked for the real-PVE "?pending=1"
+// view (T-3101-followup-01, planning/reports/evidence/
+// pve-9.2.4-sdn-pending-state.txt) — a THIRD view, distinct from both the
+// default (staged) view and "?running=1" (isRunningRequest above): a
+// per-object "state" (new|changed|deleted, absent when in sync) plus a
+// "pending" sub-object of the object's own field values, mirroring real
+// PVE's own pending_config() merge. Added for foreign-pending-state
+// detection; deliberately does not touch the existing default/"?running=1"
+// handling above it.
+func isPendingRequest(r *http.Request) bool {
+	return r.URL.Query().Get("pending") == "1"
+}
+
+// sdnObjectPendingWire renders one zone/vnet/subnet spec as one
+// "?pending=1" list entry (isPendingRequest's doc comment). v is
+// marshaled through its own JSON tags (so the identity field — "zone"/
+// "vnet"/"subnet" — and every other exported field round-trip exactly as
+// the plain default-view handlers already serve them), then:
+//   - its existing top-level "pending" key (SDNZoneSpec/SDNVnetSpec/
+//     SDNSubnetSpec's own PendingState string field) is removed — real
+//     PVE's "?pending=1" view uses "pending" for a DIFFERENT purpose (a
+//     sub-object), never as that string marker, and the default view
+//     never carries a "pending" key at all (confirmed against real PVE:
+//     see the evidence file's §1) — so nothing here can collide with it.
+//   - if state is PendingNone (in sync), the object is returned
+//     otherwise unchanged, mirroring real PVE's own in-sync response
+//     (confirmed live against pvecube's labz: no "state"/"pending" keys).
+//   - otherwise a top-level "state" is set to state, and "pending" is set
+//     to every OTHER field's current value. Real PVE's own pending_config
+//     narrows this to only the fields that actually differ from the
+//     running config; this mock intentionally returns the object's full
+//     current field set instead (a superset, not a subset) — still an
+//     honest representation of exactly what a sdn.apply would commit for
+//     this object (never omitting anything, never fabricating a value),
+//     just not byte-identical to real PVE's narrower field-diff. Flagged
+//     as a known simplification in this task's completion report.
+func sdnObjectPendingWire(v any, state PendingState) map[string]any {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return map[string]any{}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return map[string]any{}
+	}
+	delete(m, "pending")
+	if state == PendingNone {
+		return m
+	}
+	fields := make(map[string]any, len(m))
+	for k, val := range m {
+		fields[k] = val
+	}
+	m["state"] = string(state)
+	m["pending"] = fields
+	return m
+}
+
 func (srv *Server) mountSDN(api chi.Router) {
 	api.Get("/cluster/sdn/zones", srv.requirePrivilege(PrivSDNAudit, srv.handleSDNZonesList))
 	api.Post("/cluster/sdn/zones", srv.requirePrivilege(PrivSDNAllocate, srv.handleSDNZoneCreate))
@@ -114,6 +173,15 @@ func (srv *Server) mountSDN(api chi.Router) {
 func (srv *Server) handleSDNZonesList(w http.ResponseWriter, r *http.Request) {
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
+	if isPendingRequest(r) {
+		zones := srv.state.sdn.zones
+		out := make([]map[string]any, 0, len(zones))
+		for _, id := range sortedKeys(zones) {
+			out = append(out, sdnObjectPendingWire(zones[id], zones[id].Pending))
+		}
+		writeData(w, http.StatusOK, out)
+		return
+	}
 	zones := srv.state.sdn.zones
 	if isRunningRequest(r) {
 		zones = srv.state.sdn.zonesRunning
@@ -267,6 +335,15 @@ func (srv *Server) handleSDNZoneStatus(w http.ResponseWriter, r *http.Request) {
 func (srv *Server) handleSDNVnetsList(w http.ResponseWriter, r *http.Request) {
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
+	if isPendingRequest(r) {
+		vnets := srv.state.sdn.vnets
+		out := make([]map[string]any, 0, len(vnets))
+		for _, id := range sortedKeys(vnets) {
+			out = append(out, sdnObjectPendingWire(vnets[id], vnets[id].Pending))
+		}
+		writeData(w, http.StatusOK, out)
+		return
+	}
 	vnets := srv.state.sdn.vnets
 	if isRunningRequest(r) {
 		vnets = srv.state.sdn.vnetsRunning
@@ -363,6 +440,19 @@ func (srv *Server) handleSDNSubnetsList(w http.ResponseWriter, r *http.Request) 
 	vnet := chi.URLParam(r, "vnet")
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
+	if isPendingRequest(r) {
+		subnets := srv.state.sdn.subnets
+		var out []map[string]any
+		for _, id := range sortedKeys(subnets) {
+			s := subnets[id]
+			if s.Vnet != vnet {
+				continue
+			}
+			out = append(out, sdnObjectPendingWire(s, s.Pending))
+		}
+		writeData(w, http.StatusOK, out)
+		return
+	}
 	subnets := srv.state.sdn.subnets
 	if isRunningRequest(r) {
 		subnets = srv.state.sdn.subnetsRunning

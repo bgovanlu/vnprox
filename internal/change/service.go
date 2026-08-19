@@ -169,6 +169,15 @@ type Config struct {
 	// Approval's own doc comment below. Optional/nil-safe like Comments
 	// above.
 	Approvals *store.ChangesetApprovalRepo
+	// SDNPendingAcks (T-3101-followup-01) backs the foreign-SDN-pending
+	// "surface and confirm" gate (apply_sdn_foreign.go) — the operator's
+	// server-recorded acknowledgement that a changeset's sdn.apply will
+	// also commit specific foreign pending SDN state. Optional/nil-safe
+	// like Comments/Approvals above: a Service built without it treats
+	// every changeset as never acknowledged, so beginApply refuses any
+	// SDN-carrying apply that finds foreign pending state rather than ever
+	// silently permitting one it cannot prove was surfaced.
+	SDNPendingAcks *store.ChangesetSDNPendingAckRepo
 	// Signoffs (T-2604) backs the two-person rule's distinct-approver set —
 	// one row per (changeset, principal), which is what makes "two tokens
 	// belonging to one person are one approver" a storage-level property.
@@ -279,6 +288,9 @@ type Service struct {
 	// Approval's doc comments — nil-safe, review.go owns all access.
 	comments  *store.ChangesetCommentRepo
 	approvals *store.ChangesetApprovalRepo
+	// sdnPendingAcks (T-3101-followup-01): see Config.SDNPendingAcks — nil-
+	// safe, apply_sdn_foreign.go owns all access.
+	sdnPendingAcks *store.ChangesetSDNPendingAckRepo
 	// signoffs/breakGlass/protectedClasses (T-2604): the two-person rule's
 	// distinct-approver set, its emergency override, and the declared
 	// protected classes. See Config's own doc comments — nil/empty is a
@@ -393,7 +405,8 @@ func NewService(cfg Config) (*Service, error) {
 	return &Service{
 		repo: cfg.Changesets, audit: cfg.Audit, ws: cfg.WS, inv: cfg.Inventory, allocations: cfg.Allocations, now: now, log: logger,
 		comments: cfg.Comments, approvals: cfg.Approvals, approval: cfg.Approval,
-		policies: cfg.Policies, policyUnmatchedAfter: cfg.PolicyUnmatchedAfter,
+		sdnPendingAcks: cfg.SDNPendingAcks,
+		policies:       cfg.Policies, policyUnmatchedAfter: cfg.PolicyUnmatchedAfter,
 		signoffs: cfg.Signoffs, breakGlass: cfg.BreakGlass, protectedClasses: protectedClasses,
 		stages: cfg.Stages, canary: cfg.Canary, holdTimers: map[string]Stopper{},
 		guards: map[string]*autoRollbackGuard{}, autoRollbackDefault: cfg.AutoRollbackOnError,
@@ -773,6 +786,12 @@ func (s *Service) UpdateDraft(ctx context.Context, id, author string, title *str
 	sort.Strings(removed)
 	s.cleanupOrphanedComments(ctx, id, author, removed)
 	s.clearApproval(ctx, id)
+	// T-3101-followup-01: and so is any recorded foreign-SDN-pending
+	// acknowledgement — it was recorded against a specific foreign-pending
+	// snapshot AND a specific set of ops (the entries the ops themselves
+	// would touch factor into what beginApply treats as foreign — see
+	// apply_sdn_foreign.go), both of which just changed.
+	s.clearSDNPendingAck(ctx, id)
 	// T-2604: and so is every distinct-principal sign-off, for exactly the
 	// same reason — people endorsed a specific set of ops. (A break-glass
 	// override is NOT cleared here: it is evidence, and its own ops

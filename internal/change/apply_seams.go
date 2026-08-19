@@ -292,6 +292,39 @@ type PVEGateway interface {
 	// ReleaseIPAMAddress releases cidr from vnet's IPAM (T-405's
 	// ipam.alloc.delete op). subnetCIDR: see AllocateIPAMAddress.
 	ReleaseIPAMAddress(ctx context.Context, vnet, subnetCIDR, cidr string) error
+
+	// SDNPendingForeign reports every zone/vnet/subnet real PVE's own
+	// pending view ("?pending=1", evidence: planning/reports/evidence/
+	// pve-9.2.4-sdn-pending-state.txt) currently shows staged-but-not-yet-
+	// applied — T-3101-followup-01 / the 2026-08-19 debt-sweep's "surface
+	// and confirm" decision for the gap where sdn.apply (PUT /cluster/sdn)
+	// commits ALL pending cluster SDN state, not just what this
+	// changeset's own ops staged.
+	//
+	// PVE tracks pending SDN state cluster-wide with no per-session/
+	// per-author attribution at all (the evidence file's
+	// has_pending_changes() finding: a bare boolean over the whole
+	// cluster) — there is no PVE call that answers "is this specific
+	// pending change mine". The ONLY sound way for a caller to treat a
+	// result as foreign is therefore TIMING: this method MUST be called
+	// before this changeset's own SDNStageOp calls run (beginApply's call
+	// site, apply.go — the same "before any mutation" moment
+	// captureSnapshotFull's SDNConfig call already occupies), so every
+	// entry it returns necessarily predates and is therefore not caused by
+	// this changeset.
+	SDNPendingForeign(ctx context.Context) ([]SDNPendingEntry, error)
+}
+
+// SDNPendingEntry is this package's own copy of pve.SDNPendingEntry's field
+// set (the same "small seam-local type, no internal/pve leak into this
+// package" pattern SDNConfig/SDNZoneConfig above already use) — one
+// zone/vnet/subnet object real PVE's own pending view currently reports as
+// staged-but-not-yet-applied.
+type SDNPendingEntry struct {
+	Fields map[string]any `json:"fields,omitempty"`
+	Kind   string         `json:"kind"`
+	ID     string         `json:"id"`
+	State  string         `json:"state"`
 }
 
 // SDNApplyResult is ApplySDN's outcome: the underlying PVE task's identity

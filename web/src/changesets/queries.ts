@@ -5,6 +5,7 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ackSdnForeignPending,
   addChangesetComment,
   applyChangeset,
   confirmChangeset,
@@ -19,11 +20,20 @@ import {
   reviewApproveChangeset,
   reviewRejectChangeset,
   rollbackChangeset,
+  sdnForeignPending,
   updateChangeset,
   validateChangeset,
 } from "../api/changesets";
 import { createWsClient, defaultWsUrl, type WsClient, type WsServerEvent } from "../api/ws";
-import type { ApplyStrategy, Changeset, ChangesetDiff, ChangesetImpact, ChangesetStatusEvent, Op } from "../api/types";
+import type {
+  ApplyStrategy,
+  Changeset,
+  ChangesetDiff,
+  ChangesetImpact,
+  ChangesetStatusEvent,
+  Op,
+  SdnForeignPendingResponse,
+} from "../api/types";
 
 export const changesetKey = (id: string) => ["changesets", id] as const;
 export const changesetListKey = (status?: string) => ["changesets", "list", status ?? ""] as const;
@@ -234,6 +244,34 @@ export function useReviewRejectMutation() {
     mutationFn: ({ id, reason }: { id: string; reason?: string }) => reviewRejectChangeset(id, reason),
     onSuccess: (_approval, { id }) => {
       void queryClient.invalidateQueries({ queryKey: changesetKey(id) });
+    },
+  });
+}
+
+/** T-3101-followup-01: the review screen's "this apply will also commit
+ * ..." read. A short staleTime, like useChangesetImpactQuery above, for the
+ * same reason: it reflects LIVE PVE state (what's staged outside this
+ * changeset right now), not anything cached on the changeset object. */
+export function useSdnForeignPendingQuery(id: string | undefined, enabled: boolean) {
+  return useQuery<SdnForeignPendingResponse>({
+    queryKey: ["changesets", id ?? "", "sdn-foreign-pending"],
+    queryFn: () => sdnForeignPending(id ?? ""),
+    enabled: enabled && id !== undefined,
+    staleTime: 5_000,
+  });
+}
+
+/** T-3101-followup-01: acknowledge the current live foreign-pending set.
+ * Invalidates the read above (the ack itself may have changed nothing
+ * about what's foreign, but re-fetching keeps the two from ever silently
+ * disagreeing) rather than assuming its own response is authoritative for
+ * future reads the same way the read query is. */
+export function useAckSdnForeignPendingMutation(id: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => ackSdnForeignPending(id ?? ""),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["changesets", id ?? "", "sdn-foreign-pending"] });
     },
   });
 }

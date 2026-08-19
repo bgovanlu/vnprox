@@ -12,6 +12,7 @@ import * as RadixTabs from "@radix-ui/react-tabs";
 import { Button } from "../components/Button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "../components/Drawer";
 import { useToast } from "../components/Toast";
+import { ApiError } from "../api/client";
 import type { Changeset } from "../api/types";
 import { canApply } from "./drawerMachine";
 import { FixButton } from "./FixButton";
@@ -19,11 +20,14 @@ import { opKindLabel, refNode, summarizeOp } from "./opSummary";
 import { buildPlanPreview } from "./planPreview";
 import { ImpactPanel } from "./ImpactPanel";
 import {
+  useAckSdnForeignPendingMutation,
   useChangesetDiffQuery,
   useChangesetImpactQuery,
+  useSdnForeignPendingQuery,
   useValidateChangesetMutation,
   useApplyChangesetMutation,
 } from "./queries";
+import { describeSdnPendingEntry, sdnForeignPendingBlocksApply, sdnPendingSetKey } from "./sdnForeignPendingGate";
 import { useChangesetDrawerStore } from "./store";
 import { preApplyRevertNotice } from "./revertCoverage";
 import { mgmtStrings } from "../mgmt/strings";
@@ -82,6 +86,31 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
   const warningsAcknowledged = useChangesetDrawerStore((s) => s.warningsAcknowledged);
   const setWarningsAcknowledged = useChangesetDrawerStore((s) => s.setWarningsAcknowledged);
   const { toast } = useToast();
+
+  // T-3101-followup-01: "this apply will also commit ...". Always enabled
+  // (like the impact query above) — a changeset with no SDN ops simply gets
+  // an empty `entries` back, no PVE round trip on the server side
+  // (change.Service.SDNForeignPending's own plan.hasSDN() short-circuit).
+  const sdnForeignPendingQuery = useSdnForeignPendingQuery(changeset.id, true);
+  const sdnForeignPendingEntries = sdnForeignPendingQuery.data?.entries;
+  const ackSdnForeignPending = useAckSdnForeignPendingMutation(changeset.id);
+  // The key of whatever set this screen last successfully acknowledged, in
+  // THIS session — reset whenever the changeset identity changes so a
+  // reopened drawer never inherits a stale ack from a different changeset.
+  const [sdnAckedKey, setSdnAckedKey] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    setSdnAckedKey(undefined);
+  }, [changeset.id]);
+  const sdnForeignPendingBlocks = sdnForeignPendingBlocksApply(sdnForeignPendingEntries, sdnAckedKey);
+
+  async function handleAckSdnForeignPending(): Promise<void> {
+    try {
+      const res = await ackSdnForeignPending.mutateAsync();
+      setSdnAckedKey(sdnPendingSetKey(res.entries));
+    } catch {
+      toast({ title: "Could not record acknowledgement", description: "See the drawer for details.", variant: "error" });
+    }
+  }
 
   const touchesMgmt = changeset.touchesMgmtPath === true;
   const mgmtNode = touchesMgmt ? mgmtNodeOf(changeset) : "";
@@ -162,6 +191,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
     ackSatisfied &&
     !approvalBlocks &&
     !twoPersonBlocks &&
+    !sdnForeignPendingBlocks &&
     strategyError === undefined &&
     !applyMutation.isPending;
 
@@ -189,7 +219,23 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
         ...(autoRollbackOnError ? { autoRollbackOnError: true } : {}),
       });
       onClose();
-    } catch {
+    } catch (err) {
+      // T-3101-followup-01: the server re-checks live at apply time, so an
+      // acknowledgement this screen believed was current can still be
+      // rejected — a foreign edit appeared in the gap between ack and
+      // click. Re-fetching surfaces exactly what changed instead of
+      // leaving the operator staring at a generic failure with a stale
+      // "acknowledged" state that no longer matches what the server sees.
+      if (err instanceof ApiError && err.code === "sdn_foreign_pending_unacknowledged") {
+        setSdnAckedKey(undefined);
+        void sdnForeignPendingQuery.refetch();
+        toast({
+          title: "Foreign SDN changes need re-acknowledging",
+          description: "PVE's pending SDN state changed since you last acknowledged it — review and acknowledge again below.",
+          variant: "error",
+        });
+        return;
+      }
       toast({ title: "Apply failed to start", description: "See the drawer for details.", variant: "error" });
     }
   }
@@ -373,6 +419,48 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
           </div>
         )}
 
+        {/* T-3101-followup-01: "this apply will also commit ...". Real PVE's
+            PUT /cluster/sdn (this changeset's trailing sdn_apply step, if it
+            has one) commits ALL pending SDN state cluster-wide, not just
+            this changeset's own ops — so anything staged outside vnprox
+            (e.g. the PVE GUI) and left unapplied rides along. Shown even
+            while already acknowledged (sdnForeignPendingBlocks false), so
+            the operator can see what they signed off on, not just that they
+            did. */}
+        {sdnForeignPendingEntries && sdnForeignPendingEntries.length > 0 && (
+          <div
+            className="mt-3 rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200"
+            role="group"
+            aria-label="Foreign pending SDN changes"
+          >
+            <p className="font-medium">
+              This apply will also commit {sdnForeignPendingEntries.length} SDN change
+              {sdnForeignPendingEntries.length === 1 ? "" : "s"} staged outside vnprox — never validated, diffed, or
+              covered by this changeset&apos;s rollback:
+            </p>
+            <ul className="mt-1 space-y-1">
+              {sdnForeignPendingEntries.map((e, i) => (
+                <li key={i} className="font-mono">
+                  {describeSdnPendingEntry(e)}
+                </li>
+              ))}
+            </ul>
+            {sdnForeignPendingBlocks ? (
+              <Button
+                className="mt-2"
+                variant="secondary"
+                size="sm"
+                disabled={ackSdnForeignPending.isPending}
+                onClick={() => void handleAckSdnForeignPending()}
+              >
+                {ackSdnForeignPending.isPending ? "Acknowledging…" : "Acknowledge and continue"}
+              </Button>
+            ) : (
+              <p className="mt-2 font-medium">Acknowledged — Apply will proceed with these included.</p>
+            )}
+          </div>
+        )}
+
         {/* T-3005: how this apply fans out, and whether a new error finding
             cuts the window short. Placed above the mgmt-path acknowledgement
             and the confirm-window control because the hold is clamped to
@@ -466,6 +554,11 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
             {twoPersonBlocks && (
               <p className="max-w-xs text-right text-[11px] text-red-700 dark:text-red-300" role="alert">
                 {twoPersonRequiredMessage(changeset.approval)}
+              </p>
+            )}
+            {sdnForeignPendingBlocks && (
+              <p className="max-w-xs text-right text-[11px] text-red-700 dark:text-red-300" role="alert">
+                Acknowledge the foreign pending SDN changes above before applying.
               </p>
             )}
             <div className="flex gap-2">

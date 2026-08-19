@@ -173,6 +173,7 @@ var versionSeeds = map[int]versionSeed{
 	45: {seedV45, assertV45},
 	46: {seedV46, assertV46},
 	47: {seedV47, assertV47},
+	48: {seedV48, assertV48},
 }
 
 // freezeAndSeed populates db (already frozen at schema_version upto via
@@ -1741,22 +1742,60 @@ func assertV47(t *testing.T, db *sql.DB) {
 	}
 }
 
-// Schema version 48 (0048_token_expiry.sql, api_tokens' expires_at column —
-// T-2903) has no versionSeeds entry because it is the current latest, not a
-// "prior" version any fixture in this file freezes at — its own forward
+func seedV48(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// A token minted with a real expiry (0048_token_expiry.sql's
+	// expires_at column — T-2903), alongside a NULL-expiry one: the
+	// migration's whole point is that NULL still means "no expiry" for
+	// every pre-0048 row, so both shapes need to round-trip.
+	mustExec(t, db, `INSERT INTO api_tokens (id, name, token_hash, scopes_json, created_by, created_at, last_used_at, revoked_at, expires_at)
+	      VALUES ('tok-v48', 'automation', 'def456hash', '["automation"]', 'root@pam', 1780000000, NULL, NULL, 1787776000)`)
+}
+
+func assertV48(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+
+	var expiresAt sql.NullInt64
+	if err := db.QueryRowContext(ctx, `SELECT expires_at FROM api_tokens WHERE id = 'tok-v48'`).
+		Scan(&expiresAt); err != nil {
+		t.Errorf("api_tokens row (v48) lost across migration: %v", err)
+	} else if !expiresAt.Valid || expiresAt.Int64 != 1787776000 {
+		t.Errorf("api_tokens (v48) expires_at = %v, want 1787776000", expiresAt)
+	}
+
+	// The pre-0048 row seeded at v11 (no expires_at column existed yet)
+	// must still read as NULL, not an error and not some backfilled
+	// value — 0048's whole point is "every pre-existing token keeps
+	// working forever unless an admin explicitly set an expiry".
+	var v11ExpiresAt sql.NullInt64
+	if err := db.QueryRowContext(ctx, `SELECT expires_at FROM api_tokens WHERE id = 'tok-v11'`).
+		Scan(&v11ExpiresAt); err != nil {
+		t.Errorf("pre-0048 api_tokens row's expires_at column: %v", err)
+	} else if v11ExpiresAt.Valid {
+		t.Errorf("pre-0048 api_tokens (v11) expires_at = %v, want NULL", v11ExpiresAt)
+	}
+}
+
+// Schema version 49 (0049_sdn_foreign_pending_ack.sql,
+// changeset_sdn_pending_acks table — T-3101-followup-01) has no
+// versionSeeds entry because it is the current latest, not a "prior"
+// version any fixture in this file freezes at — its own forward
 // application (as part of every case's migrate() call to latest) is
 // exercised by every case above, and TestOpen_CreatesAllTables
 // (store_test.go) exercises it from a fresh database. store.
 // SeededVersionsAvailable() (export_test.go) — consumed by
 // TestBackupRestore_AC3_AcrossASchemaUpgrade in this package — asserts its
 // return value stays strictly below the live latest schema version for the
-// identical reason: registering 48 here before some future migration
+// identical reason: registering 49 here before some future migration
 // supersedes it would break that check, not just leave this version
 // un-exercised by it. The next migration to land becomes the new latest
-// and picks up a version 48 entry in versionSeeds at that time — see
-// version 47's identical treatment in this file, from the migration
-// immediately before this one, once it stopped being the latest.
+// and picks up a version 49 entry in versionSeeds at that time — see
+// version 48's identical treatment in this file, immediately above, once
+// it stopped being the latest.
 //
-// TestPushSubscriptionRepo_* (pushsubscriptions_test.go) covers this
-// table's own CRUD and cascade-delete behavior directly; that is this
-// migration's test coverage for now.
+// TestChangesetSDNPendingAckRepo_* (changesetsdnpendingacks_test.go) and
+// apply_sdn_foreign_test.go's own Service-level coverage (internal/change)
+// are this migration's test coverage for now — this file only freezes/
+// seeds/asserts PRIOR versions being carried forward, and 49 is never
+// prior to anything yet.

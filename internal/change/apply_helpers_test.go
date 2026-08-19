@@ -373,6 +373,57 @@ func (g *fakePVEGateway) SDNConfig(ctx context.Context) (change.SDNConfig, error
 	return cfg, nil
 }
 
+// SDNPendingForeign mirrors cmd/vnproxd/changeagent.go's production
+// pveGateway.SDNPendingForeign (T-3101-followup-01): the same three
+// *pve.Client "?pending=1" calls, against the same real pvemock server, so
+// tests in this package (apply_sdn_foreign_test.go) prove the detection
+// gate end to end against the mock's own real HTTP handlers, not just
+// in-memory logic.
+func (g *fakePVEGateway) SDNPendingForeign(ctx context.Context) ([]change.SDNPendingEntry, error) {
+	var out []change.SDNPendingEntry
+
+	zones, err := g.client.ListSDNZonesPending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, z := range zones {
+		if z.State == "" {
+			continue
+		}
+		out = append(out, change.SDNPendingEntry{Kind: z.Kind, ID: z.ID, State: string(z.State), Fields: z.Fields})
+	}
+
+	vnets, err := g.client.ListSDNVnetsPending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range vnets {
+		if v.State == "" {
+			continue
+		}
+		out = append(out, change.SDNPendingEntry{Kind: v.Kind, ID: v.ID, State: string(v.State), Fields: v.Fields})
+	}
+
+	allVnets, err := g.client.ListSDNVnets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range allVnets {
+		subs, err := g.client.ListSDNSubnetsPending(ctx, v.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sub := range subs {
+			if sub.State == "" {
+				continue
+			}
+			out = append(out, change.SDNPendingEntry{Kind: sub.Kind, ID: sub.ID, State: string(sub.State), Fields: sub.Fields})
+		}
+	}
+
+	return out, nil
+}
+
 // --- fake PVEGateway: T-502 firewall op family -----------------------------
 //
 // This is a compact, test-local mirror of cmd/vnproxd/changeagent.go's

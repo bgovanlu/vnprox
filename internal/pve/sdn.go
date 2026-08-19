@@ -51,6 +51,87 @@ func SDNVnetID(refID string) string {
 // docs/development.md's definition-of-done #4 (added by T-401).
 var runningQuery = url.Values{"running": {"1"}}
 
+// pendingQuery is the query string for a THIRD SDN list view, real PVE's
+// "?pending=1" — distinct from both the default (staged) view above and
+// "?running=1" (last-applied). Confirmed against real PVE 9.2.4
+// (planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt, read
+// directly from PVE::Network::SDN's pending_config()): unlike this file's
+// own SDNZone/SDNVnet/SDNSubnet.Pending field (T-401), which assumes the
+// DEFAULT view carries a "pending" marker, real PVE's default view never
+// does — it is the raw staged config file, nothing else (confirmed live:
+// `pvesh get /cluster/sdn/zones` on pvecube returns only digest/type/
+// zone/... fields, no "pending" key, whether or not anything is actually
+// pending). Only "?pending=1" merges staged against running and adds a
+// top-level "state" (new|changed|deleted, ABSENT when in sync) plus a
+// nested "pending" object of just the fields that differ. Used
+// exclusively by ListSDNZonesPending/ListSDNVnetsPending/
+// ListSDNSubnetsPending below, for T-3101-followup-01's foreign-pending-
+// state detection — deliberately not wired into any of the existing
+// (T-401-owned) staged/running rendering above, which this file does not
+// otherwise touch.
+var pendingQuery = url.Values{"pending": {"1"}}
+
+// sdnPendingWire is the wire shape of one "?pending=1" list entry — see
+// pendingQuery's doc comment and the evidence file it cites. The
+// zone/vnet/subnet identity field is decoded per collection (its JSON key
+// differs, matching each type's own non-pending decode: "zone"/"vnet"/
+// "subnet") rather than through one shared "id" field.
+type sdnPendingWire struct {
+	Pending map[string]any `json:"pending,omitempty"`
+	Zone    string         `json:"zone,omitempty"`
+	Vnet    string         `json:"vnet,omitempty"`
+	Subnet  string         `json:"subnet,omitempty"`
+	State   PendingState   `json:"state,omitempty"`
+}
+
+// SDNPendingEntry is one zone/vnet/subnet object real PVE's "?pending=1"
+// view reports. State is PendingNone ("") for an in-sync object (Fields is
+// then always nil, since real PVE omits "pending" entirely when there is
+// nothing to show — pendingQuery's doc comment); callers filter for
+// State != PendingNone.
+type SDNPendingEntry struct {
+	Fields map[string]any
+	Kind   string
+	ID     string
+	State  PendingState
+}
+
+func sdnPendingEntries(kind string, ids func(sdnPendingWire) string, wire []sdnPendingWire) []SDNPendingEntry {
+	out := make([]SDNPendingEntry, 0, len(wire))
+	for _, w := range wire {
+		out = append(out, SDNPendingEntry{Kind: kind, ID: ids(w), State: w.State, Fields: w.Pending})
+	}
+	return out
+}
+
+// ListSDNZonesPending calls GET /cluster/sdn/zones?pending=1.
+func (c *Client) ListSDNZonesPending(ctx context.Context) ([]SDNPendingEntry, error) {
+	var out []sdnPendingWire
+	if err := c.do(ctx, "GET", "/cluster/sdn/zones", requestParams{query: pendingQuery}, &out); err != nil {
+		return nil, err
+	}
+	return sdnPendingEntries("zone", func(w sdnPendingWire) string { return w.Zone }, out), nil
+}
+
+// ListSDNVnetsPending calls GET /cluster/sdn/vnets?pending=1.
+func (c *Client) ListSDNVnetsPending(ctx context.Context) ([]SDNPendingEntry, error) {
+	var out []sdnPendingWire
+	if err := c.do(ctx, "GET", "/cluster/sdn/vnets", requestParams{query: pendingQuery}, &out); err != nil {
+		return nil, err
+	}
+	return sdnPendingEntries("vnet", func(w sdnPendingWire) string { return w.Vnet }, out), nil
+}
+
+// ListSDNSubnetsPending calls GET /cluster/sdn/vnets/{vnet}/subnets?pending=1.
+func (c *Client) ListSDNSubnetsPending(ctx context.Context, vnet string) ([]SDNPendingEntry, error) {
+	var out []sdnPendingWire
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s/subnets", vnet)
+	if err := c.do(ctx, "GET", path, requestParams{query: pendingQuery}, &out); err != nil {
+		return nil, err
+	}
+	return sdnPendingEntries("subnet", func(w sdnPendingWire) string { return w.Subnet }, out), nil
+}
+
 // ListSDNZones calls GET /cluster/sdn/zones.
 func (c *Client) ListSDNZones(ctx context.Context) ([]SDNZone, error) {
 	var out []SDNZone

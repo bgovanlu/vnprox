@@ -128,6 +128,52 @@ func (g *bypassPVEGateway) SDNConfig(ctx context.Context) (SDNConfig, error) {
 	return cfg, nil
 }
 
+// SDNPendingForeign mirrors fakePVEGateway's own (apply_helpers_test.go) —
+// real *pve.Client "?pending=1" calls against the same pvemock server, so
+// beginApply's foreign-pending gate (which now runs for ANY SDN-carrying
+// changeset, including this test's) sees genuine "nothing foreign staged"
+// results rather than a panic.
+func (g *bypassPVEGateway) SDNPendingForeign(ctx context.Context) ([]SDNPendingEntry, error) {
+	var out []SDNPendingEntry
+	zones, err := g.client.ListSDNZonesPending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, z := range zones {
+		if z.State == "" {
+			continue
+		}
+		out = append(out, SDNPendingEntry{Kind: z.Kind, ID: z.ID, State: string(z.State), Fields: z.Fields})
+	}
+	vnets, err := g.client.ListSDNVnetsPending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range vnets {
+		if v.State == "" {
+			continue
+		}
+		out = append(out, SDNPendingEntry{Kind: v.Kind, ID: v.ID, State: string(v.State), Fields: v.Fields})
+	}
+	allVnets, err := g.client.ListSDNVnets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range allVnets {
+		subs, err := g.client.ListSDNSubnetsPending(ctx, v.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sub := range subs {
+			if sub.State == "" {
+				continue
+			}
+			out = append(out, SDNPendingEntry{Kind: sub.Kind, ID: sub.ID, State: string(sub.State), Fields: sub.Fields})
+		}
+	}
+	return out, nil
+}
+
 func (g *bypassPVEGateway) FirewallRuleFields(context.Context, inventory.Ref, int) (FwRuleFields, error) {
 	panic("bypassPVEGateway: FirewallRuleFields not implemented — this test's plan carries no fw.* ops")
 }

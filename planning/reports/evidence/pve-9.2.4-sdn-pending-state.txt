@@ -1,0 +1,180 @@
+PVE 9.2.4 SDN pending-state evidence — gathered 2026-08-19 against pvecube
+(root@192.168.1.9), for debt-sweep item 2 / T-3101-followup-01 ("sdn.apply
+commits foreign staged SDN changes").
+
+All commands below are read-only (`pvesh get`, or `cat`/`grep` of files
+already on disk). No mutating pvesh call was made against pvecube.
+
+============================================================================
+1. What the DEFAULT (no query params) SDN list views actually return
+============================================================================
+
+$ pvesh get /cluster/sdn/zones --output-format json
+[{"digest":"e5df3173c919436f923d2416aa5233e738966d8f","ipam":"pve","nodes":"pvecube","type":"simple","zone":"labz"}]
+
+$ pvesh get /cluster/sdn/vnets --output-format json
+[{"digest":"ce7d081202f770f0a70c3889ee16282ac0724fdd","type":"vnet","vnet":"labnet","zone":"labz"}]
+
+$ pvesh get /cluster/sdn/vnets/labnet/subnets --output-format json
+[{"cidr":"10.99.0.0/24","dhcp-range":[],"digest":"bd89ebd6e59015ab1b30c0d85fcc7c6bf08fb74a",
+  "gateway":"10.99.0.1","id":"labz-10.99.0.0-24","mask":"24","network":"10.99.0.0","snat":1,
+  "subnet":"labz-10.99.0.0-24","type":"subnet","vnet":"labnet","zone":"labz"}]
+
+FINDING: the default view carries NO "pending" field at all (confirmed —
+labz/labnet are in-sync, so this alone doesn't prove absence when synced,
+but see §2/§3 below, which read the actual perl source: the default view
+is genuinely just `PVE::Network::SDN::Zones::config()` — the raw staged
+config file — with no diff computation whatsoever). It only has `digest`.
+This directly contradicts `internal/pve.SDNZone.Pending`/`SDNVnet.Pending`/
+`SDNSubnet.Pending` (T-401), which assume the DEFAULT list response
+carries a `"pending"` field with values ""/"new"/"changed"/"deleted".
+Against real PVE, `ListSDNZones()` (no query params) will decode `Pending`
+as "" (PendingNone) ALWAYS, whether or not anything is actually pending —
+because the field is simply never present in that response.
+
+This is flagged in this task's final report as a pre-existing T-401 gap
+(the `GET /sdn` cockpit's "pending" badge is likely inert against a real
+PVE cluster) — NOT fixed here (out of this card's scope, different files,
+different blast radius). What matters for THIS card: whatever mechanism
+detects foreign pending SDN state must NOT rely on that field.
+
+============================================================================
+2. The GET /cluster/sdn "flattened tree" internal/pve/sdn.go documents
+============================================================================
+
+$ pvesh get /cluster/sdn --output-format json
+[{"id":"vnets"},{"id":"zones"},{"id":"controllers"},{"id":"ipams"},
+ {"id":"dns"},{"id":"fabrics"},{"id":"prefix-lists"},{"id":"route-maps"}]
+
+FINDING: this is a bare directory index (perl: PVE::API2::Network::SDN's
+`index` method, hardcoded array of {id}), NOT "the full zone/vnet/subnet
+tree flattened with pending markers" that `internal/pve/sdn.go`'s
+`GetSDNStatus` doc comment claims. Another pre-existing T-401-era doc/code
+mismatch, flagged not fixed (GetSDNStatus/SDNStatusEntry appear unused by
+production code — internal/sdn.Service builds its own tree from
+ListSDNZones/ListSDNZonesRunning instead).
+
+============================================================================
+3. The REAL mechanism: `?pending=1` — verified against perl source AND live
+============================================================================
+
+Read (not executed) on pvecube, read-only file access:
+  /usr/share/perl5/PVE/API2/Network/SDN/Zones.pm
+  /usr/share/perl5/PVE/API2/Network/SDN/Vnets.pm
+  /usr/share/perl5/PVE/API2/Network/SDN/Subnets.pm
+  /usr/share/perl5/PVE/API2/Network/SDN/Controllers.pm
+  /usr/share/perl5/PVE/API2/Network/SDN/Fabrics.pm
+  /usr/share/perl5/PVE/API2/Network/SDN/Ipams.pm
+  /usr/share/perl5/PVE/Network/SDN.pm
+
+Every one of Zones/Vnets/Subnets/Controllers/Fabrics.pm's GET (list and
+single-item) handlers accepts an optional boolean `pending` query param.
+When set, the handler calls (PVE/Network/SDN.pm):
+
+    sub pending_config {
+        my ($running_cfg, $cfg, $type) = @_;
+        my $pending = {};
+        # ids present in RUNNING but changed/removed in staged config:
+        #   -> $pending->{$id}->{state} = "deleted" | "changed"
+        # ids present in STAGED config but new/changed vs running:
+        #   -> $pending->{$id}->{state} = "new" | "changed"
+        #   -> $pending->{$id}->{pending}->{$key} = <new value>  (only the
+        #      keys that actually differ, not the whole object)
+        ...
+        return { ids => $pending };
+    }
+
+i.e. the wire shape of one `?pending=1` list entry is:
+
+    {
+      "zone": "...", "type": "...",       // identity + a few passthrough fields
+      "state": "new" | "changed" | "deleted",   // ABSENT when in sync
+      "pending": { "<field>": <new value>, ... } // ABSENT when in sync;
+                                                   // present only for the
+                                                   // fields that differ
+    }
+
+`Ipams.pm` has NO `pending` param at all (grep confirms zero hits) — IPAM
+plugin instances are not part of PVE's pending/running SDN commit cycle
+the way zones/vnets/subnets/controllers/fabrics are. Scoped out of this
+fix's detection accordingly (see report).
+
+Live confirmation (labz/labnet are currently in sync, so no live positive
+example of a populated "state"/"pending" was observable without staging an
+edit, which this task's mandate forbids — mutating pvesh calls against
+pvecube are off limits):
+
+$ pvesh get /cluster/sdn/zones --pending 1 --output-format json
+[{"digest":null,"ipam":"pve","nodes":"pvecube","type":"simple","zone":"labz"}]
+   -> no "state"/"pending" keys: confirms the "absent when in sync" half
+      of pending_config's behaviour (digest becomes null under --pending,
+      also confirmed by source: the pending view is a merge of two config
+      objects that don't carry the on-disk digest).
+
+$ pvesh get /cluster/sdn/vnets/labnet/subnets --pending 1 --output-format json
+[{"cidr":"10.99.0.0/24", ..., "digest":null, ...}]
+   -> same: no state/pending keys, in-sync.
+
+$ pvesh get /cluster/sdn/controllers --output-format json
+[]
+$ pvesh get /cluster/sdn/controllers --pending 1 --output-format json
+[]
+   -> no controllers configured on pvecube; confirms the --pending flag is
+      accepted (200, not a schema-rejection) and returns the same "empty
+      when nothing configured" shape as the default view.
+
+============================================================================
+4. PVE's own concept of "does the cluster have ANY pending SDN change" —
+   directly relevant to why this must be a timing-based check, not an
+   attribution-based one
+============================================================================
+
+/usr/share/perl5/PVE/Network/SDN.pm:
+
+    sub has_pending_changes {
+        my $running_cfg = PVE::Network::SDN::running_config();
+        my $config_files = {
+            zones => ..., vnets => ..., subnets => ..., controllers => ...,
+            fabrics => ..., 'route-maps' => ..., 'prefix-lists' => ...,
+        };
+        for my $config_file (keys %$config_files) {
+            my $pending_config = PVE::Network::SDN::pending_config(...);
+            for my $id (keys %{ $pending_config->{ids} }) {
+                return 1 if $pending_config->{ids}->{$id}->{pending};
+            }
+        }
+        return 0;
+    }
+
+This is a bare cluster-wide boolean with NO per-user/per-session/per-
+changeset attribution whatsoever — PVE has no concept of "whose" pending
+edit a given zone/vnet/subnet carries. It is used exactly once in the API
+(`/usr/share/perl5/PVE/API2/Network/SDN.pm`'s `POST /sdn/lock` handler):
+acquiring the global SDN lock refuses (`die "configuration has pending
+changes"`) unless the caller passes `allow-pending=1`. There is no API
+that answers "is this specific pending change mine".
+
+CONCLUSION THIS FIX IS BUILT ON: since PVE itself cannot distinguish "my"
+pending edits from "foreign" ones, vnprox can't either by asking PVE — the
+only sound boundary is TIMING. Reading `?pending=1` once, immediately
+before this changeset's own SDNStageOp calls run (i.e. at the same moment
+`apply.go`'s pre-apply snapshot captures `SDNConfig()`), means every entry
+it returns necessarily predates and is therefore not caused by this
+changeset — it is foreign by construction, not by inference.
+
+============================================================================
+5. Consequence for the mock
+============================================================================
+
+`internal/pvemock` already tracks a `Pending` marker
+(PendingNone/PendingNew/PendingChanged/PendingDeleted) per zone/vnet/
+subnet/controller/fabric object internally (T-401/T-402), and already
+derives a `?running=1` view from it. That internal marker is exactly
+equivalent to what real PVE's `pending_config()` computes (a per-object
+new/changed/deleted classification) — it's just exposed on the wrong
+query param today (the mock's DEFAULT view leaks it; real PVE's default
+view never does, only `?pending=1` does — see §1). This task's mock change
+adds real `?pending=1` support (state + a `pending` sub-object of changed
+fields) built from that same existing internal marker, so the wire shape
+now matches real PVE's confirmed behaviour above, and leaves the existing
+(pre-existing, T-401-owned) default-view/`?running=1` behaviour untouched.
