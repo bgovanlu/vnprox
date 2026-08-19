@@ -136,6 +136,22 @@ func (srv *Server) mountSDNFabric(api chi.Router) {
 func (srv *Server) handleSDNFabricsList(w http.ResponseWriter, r *http.Request) {
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
+	// T-3101-followup-01 (debt-sweep 2026-08-19): the "?pending=1" view —
+	// see sdn.go's isPendingRequest/sdnObjectPendingWire doc comments and
+	// planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt §6, which
+	// confirmed this exact path (PVE::API2::Network::SDN::Fabrics::Fabric,
+	// not the sibling /cluster/sdn/fabrics/all combined read) uses the same
+	// pending_config() mechanism zones/vnets/subnets/controllers already
+	// model here.
+	if isPendingRequest(r) {
+		fabrics := srv.state.sdn.fabrics
+		out := make([]map[string]any, 0, len(fabrics))
+		for _, id := range sortedKeys(fabrics) {
+			out = append(out, sdnObjectPendingWire(fabrics[id], fabrics[id].Pending))
+		}
+		writeData(w, http.StatusOK, out)
+		return
+	}
 	fabrics := srv.state.sdn.fabrics
 	if isRunningRequest(r) {
 		fabrics = srv.state.sdn.fabricsRunning

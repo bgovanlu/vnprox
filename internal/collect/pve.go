@@ -223,6 +223,137 @@ func guestKind(resourceType string) (pve.GuestKind, bool) {
 	}
 }
 
+// sdnPendingEvery is how many pollSDN cycles elapse between refreshing the
+// cluster's SDN "?pending=1" state (real PVE's actual pending-diff
+// mechanism — internal/pve/sdn.go's pendingQuery doc comment and
+// planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt). It backs the
+// pending badges on the poll-cached inventory graph (inventory.FromPVESDN/
+// FromPVESDNControllers, feeding topology's "staged" markers) — a
+// secondary, "is something staged here at all" signal, unlike the primary
+// staged-vs-running diff view a user actually opens to review a pending
+// edit (that live, per-request read is internal/sdn.Service.Tree, GET
+// /sdn's cockpit — never poll-cached, always fetched fresh on open, so its
+// own freshness is untouched by this constant).
+//
+// A "?pending=1" read costs one extra request per object family per poll:
+// one for zones, one for vnets, one PER VNET for subnets (mirroring the
+// existing per-vnet ListSDNSubnets call pollSDN already makes), and one for
+// controllers. For a cluster with N vnets that is roughly doubling this
+// poll's zone/vnet/subnet/controller call count every single cycle if
+// fetched on the same cadence as the rest of pollSDN — out of proportion to
+// a badge that only needs to be "eventually right", not real-time (a user
+// actively reviewing a diff opens the live GET /sdn cockpit above, which
+// this constant does not touch). Refreshing every 3rd pollSDN tick (~30s at
+// DefaultPVEInterval's 10s) instead matches the existing 3x ratio between
+// DefaultPVEInterval (10s) and DefaultLLDPInterval (30s) — this codebase
+// already treats a slower-moving, secondary signal (LLDP neighbor state)
+// this way, via its own separate, longer-interval loop; sdnPendingEvery
+// applies the same ratio inside pollSDN's existing single loop instead of
+// standing up a fourth RunXLoop, since the underlying zone/vnet/subnet/
+// controller/status reads above still need to run every tick regardless.
+const sdnPendingEvery = 3
+
+// sdnPendingCache is the collector's cached SDN "?pending=1" state,
+// refreshed on the cadence sdnPendingEvery describes and reused between
+// refreshes. Keyed by each object's own id (zone/vnet id, subnet's own
+// PVE-form id, controller id) — matching the id inventory.FromPVESDN/
+// FromPVESDNControllers key their own pending-map lookups by, so a lookup
+// miss (an id this cache has never seen, or one a failed fetch left
+// unpopulated) naturally reads back as pve.PendingNone, the same value a
+// real in-sync "?pending=1" entry (present, but with no state/pending keys)
+// decodes to.
+type sdnPendingCache struct {
+	zones       map[string]pve.PendingState
+	vnets       map[string]pve.PendingState
+	subnets     map[string]pve.PendingState
+	controllers map[string]pve.PendingState
+}
+
+// sdnPendingState returns this poll cycle's zone/vnet/subnet/controller
+// pending-state maps for FromPVESDN/FromPVESDNControllers's badges,
+// refreshing them from PVE's "?pending=1" views only every sdnPendingEvery
+// calls (sdnPendingEvery's doc comment) and returning the previous
+// successful refresh's cached maps on every other call. vnets is this
+// cycle's already-fetched staged vnet list (pollSDN's own ListSDNVnets
+// call) — reused here rather than re-listing, since ListSDNSubnetsPending
+// needs one call per vnet regardless of whether this tick refreshes.
+//
+// A per-family fetch failure keeps that family's previous cached value
+// (rather than blanking every badge to "none" for one poll) — the same
+// "don't clobber known-good state on a transient failure" posture every
+// other step in this poll cycle follows.
+func (c *Collector) sdnPendingState(ctx context.Context, vnets []pve.SDNVnet) sdnPendingCache {
+	c.sdnPendingMu.Lock()
+	c.sdnPendingTick++
+	tick := c.sdnPendingTick
+	cached := c.sdnPendingCache
+	c.sdnPendingMu.Unlock()
+
+	if tick != 1 && tick%sdnPendingEvery != 0 {
+		return cached
+	}
+
+	fresh := sdnPendingCache{zones: cached.zones, vnets: cached.vnets, subnets: cached.subnets, controllers: cached.controllers}
+
+	if zp, zpErr := c.pve.ListSDNZonesPending(ctx); zpErr != nil {
+		c.log.Warn("collect: listing SDN pending zones failed, reusing last known pending state", "error", zpErr)
+	} else {
+		fresh.zones = sdnPendingByID(zp)
+	}
+
+	if vp, vpErr := c.pve.ListSDNVnetsPending(ctx); vpErr != nil {
+		c.log.Warn("collect: listing SDN pending vnets failed, reusing last known pending state", "error", vpErr)
+	} else {
+		fresh.vnets = sdnPendingByID(vp)
+	}
+
+	subnetPending := make(map[string]pve.PendingState, len(vnets))
+	subnetFailed := false
+	for _, v := range vnets {
+		sp, spErr := c.pve.ListSDNSubnetsPending(ctx, v.ID)
+		if spErr != nil {
+			c.log.Warn("collect: listing SDN pending subnets failed, skipping", "vnet", v.ID, "error", spErr)
+			subnetFailed = true
+			continue
+		}
+		for id, st := range sdnPendingByID(sp) {
+			subnetPending[id] = st
+		}
+	}
+	if subnetFailed {
+		// Partial refresh: keep whichever cached entries the successful
+		// vnets above didn't already overwrite, rather than dropping every
+		// subnet under a failed vnet to "none" for one poll.
+		for id, st := range cached.subnets {
+			if _, ok := subnetPending[id]; !ok {
+				subnetPending[id] = st
+			}
+		}
+	}
+	fresh.subnets = subnetPending
+
+	if cp, cpErr := c.pve.ListSDNControllersPending(ctx); cpErr != nil {
+		c.log.Warn("collect: listing SDN pending controllers failed, reusing last known pending state", "error", cpErr)
+	} else {
+		fresh.controllers = sdnPendingByID(cp)
+	}
+
+	c.sdnPendingMu.Lock()
+	c.sdnPendingCache = fresh
+	c.sdnPendingMu.Unlock()
+	return fresh
+}
+
+// sdnPendingByID indexes one ListSDN{Zones,Vnets,Subnets,Controllers}Pending
+// call's entries by id.
+func sdnPendingByID(entries []pve.SDNPendingEntry) map[string]pve.PendingState {
+	out := make(map[string]pve.PendingState, len(entries))
+	for _, e := range entries {
+		out[e.ID] = e.State
+	}
+	return out
+}
+
 // pollSDN polls the cluster-wide SDN tree (zones, vnets, subnets, per-zone
 // status) into cluster-scoped (empty Node) SdnZone/SdnVnet/SdnSubnet
 // partials. Zone list and vnet list are treated as fatal to this step (the
@@ -258,7 +389,9 @@ func (c *Collector) pollSDN(ctx context.Context) error {
 		zoneStatus[z.ID] = st
 	}
 
-	entities := inventory.FromPVESDN(zones, vnets, subnets, zoneStatus)
+	pending := c.sdnPendingState(ctx, vnets)
+
+	entities := inventory.FromPVESDN(zones, vnets, subnets, zoneStatus, pending.zones, pending.vnets, pending.subnets)
 
 	// T-1204: fold the SDN DNS plugin config (zones + their PowerDNS records)
 	// into the same SourcePVESDN poll. A cluster with no DNS plugin
@@ -285,12 +418,14 @@ func (c *Collector) pollSDN(ctx context.Context) error {
 	// T-3102: SDN controllers, folded into the same SourcePVESDN poll (a
 	// controller IS live-polled here, unlike a fabric — see
 	// inventory.KindSDNController's doc comment). A cluster with no
-	// controllers configured contributes nothing.
+	// controllers configured contributes nothing. pending.controllers was
+	// already refreshed (on its own sdnPendingEvery cadence) by the
+	// sdnPendingState call above.
 	controllers, err := c.pve.ListSDNControllers(ctx)
 	if err != nil {
 		c.log.Warn("collect: listing SDN controllers failed, skipping", "error", err)
 	} else {
-		entities = append(entities, inventory.FromPVESDNControllers(controllers)...)
+		entities = append(entities, inventory.FromPVESDNControllers(controllers, pending.controllers)...)
 	}
 
 	// T-3104: SDN ipam plugin instances, folded into the same SourcePVESDN

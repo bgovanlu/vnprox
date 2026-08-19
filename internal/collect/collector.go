@@ -143,8 +143,13 @@ type Collector struct {
 	// keyed by node name. Populated only when Config.Peer is set; used by
 	// hostPollOnce to fan out to every peer without a second discovery
 	// round-trip per host-loop tick.
-	peers     map[string]peer.Peer
-	localNode string
+	peers map[string]peer.Peer
+	// sdnPendingCache holds the last-known SDN "?pending=1" badge state
+	// (four maps — see pve.go). Sits here, among the maps and before
+	// localNode, for the same fieldalignment reason clusterNodes is placed
+	// after it: the pointer-bearing fields pack ahead of the string.
+	sdnPendingCache sdnPendingCache
+	localNode       string
 	// clusterNodes is every node name the last cluster-status poll saw
 	// (guarded by mu). Populated only when hostServesCluster is set — the
 	// demo daemon's case, where one cluster-wide fixture reader answers for
@@ -159,6 +164,12 @@ type Collector struct {
 	lldpInterval time.Duration
 	mu           sync.Mutex
 	statusMu     sync.Mutex
+	// sdnPendingMu guards sdnPendingTick and sdnPendingCache (declared up
+	// with the maps, for fieldalignment), independently of mu/statusMu —
+	// see pve.go's sdnPendingEvery doc comment for why the SDN "?pending=1"
+	// badge reads run on a slower cadence than the rest of pollSDN.
+	sdnPendingMu   sync.Mutex
+	sdnPendingTick int
 	// hostServesCluster reports that Config.Host answers for EVERY cluster
 	// node, not only this daemon's own — see Config.HostServesCluster.
 	// Last, and a bool: fieldalignment wants the pointer-bearing fields

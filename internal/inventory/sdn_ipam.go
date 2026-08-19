@@ -29,8 +29,16 @@ package inventory
 type SdnIpam struct {
 	Ref
 	rawSrc
-	ID          string
-	Type        string
+	ID   string
+	Type string
+	// Pending is always "" — FromPVESDNIpams (ingest.go) never propagates
+	// pve.IPAM.Pending into it. Kept (not removed) only because
+	// fieldMap/docs/api.md's wire shape already carry it and other SDN
+	// entities' Pending field sits alongside the same fields; there is no
+	// real signal to put here — see FromPVESDNIpams's doc comment for why
+	// (PVE has no pending/running commit cycle for ipam instances at all,
+	// confirmed against pvecube's own perl source, planning/reports/
+	// evidence/pve-9.2.4-sdn-pending-state.txt §6 — not merely unobserved).
 	Pending     string
 	URL         string
 	Fingerprint string

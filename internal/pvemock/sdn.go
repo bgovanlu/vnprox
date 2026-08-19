@@ -101,11 +101,15 @@ func isPendingRequest(r *http.Request) bool {
 	return r.URL.Query().Get("pending") == "1"
 }
 
-// sdnObjectPendingWire renders one zone/vnet/subnet spec as one
-// "?pending=1" list entry (isPendingRequest's doc comment). v is
+// sdnObjectPendingWire renders one zone/vnet/subnet/controller/fabric spec
+// as one "?pending=1" list entry (isPendingRequest's doc comment) — reused
+// as-is by sdn_controller.go/sdn_fabric.go's own list handlers (debt-sweep
+// 2026-08-19 follow-up), since the shape this function builds is generic
+// over any spec type, not specific to zone/vnet/subnet. v is
 // marshaled through its own JSON tags (so the identity field — "zone"/
-// "vnet"/"subnet" — and every other exported field round-trip exactly as
-// the plain default-view handlers already serve them), then:
+// "vnet"/"subnet"/"controller"/"id" — and every other exported field
+// round-trip exactly as the plain default-view handlers already serve
+// them), then:
 //   - its existing top-level "pending" key (SDNZoneSpec/SDNVnetSpec/
 //     SDNSubnetSpec's own PendingState string field) is removed — real
 //     PVE's "?pending=1" view uses "pending" for a DIFFERENT purpose (a

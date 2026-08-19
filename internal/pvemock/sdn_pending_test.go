@@ -180,3 +180,114 @@ func TestSDNPending_VnetAndSubnet(t *testing.T) {
 		t.Fatalf("subnet not reported as state=new under ?pending=1: %+v", list)
 	}
 }
+
+// TestSDNPending_ControllerAndFabric (debt-sweep 2026-08-19,
+// "SDNController.Pending and SDNFabric.Pending have the same gap [as
+// SDNZone.Pending]") exercises the same "?pending=1" mechanism for
+// controllers and fabrics — confirmed against pvecube's own perl source
+// (planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt §6) to be the
+// exact same pending_config() mechanism the zone/vnet/subnet tests above
+// already pin, not merely assumed from that precedent.
+func TestSDNPending_ControllerAndFabric(t *testing.T) {
+	srv := newTestServer(t, "three-node-vlan.yaml")
+	ticket, csrf := login(t, srv, "netops@pve", "netops")
+
+	// faucet needs no type-conditional fields (sdnControllerTypeFields's
+	// empty entry) — the smallest valid controller body.
+	ctlBody, _ := json.Marshal(SDNControllerSpec{ID: "pctl", Type: "faucet"})
+	mustStatus(t, srv, authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/controllers", ticket, csrf, ctlBody), http.StatusOK)
+
+	// bgp needs no required conditional fields either (only "redistribute"
+	// is bgp-allowed, and it's optional) — the smallest valid fabric body.
+	fabBody, _ := json.Marshal(SDNFabricSpec{ID: "pfab", Protocol: "bgp"})
+	mustStatus(t, srv, authedRequest(t, http.MethodPost, "/api2/json/cluster/sdn/fabrics/fabric", ticket, csrf, fabBody), http.StatusOK)
+
+	// The plain default view carries no state/pending marker — same
+	// real-PVE behaviour the zone test above pins, now checked for
+	// controllers/fabrics too.
+	defCtl := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/controllers", ticket, "", nil)
+	body := mustStatus(t, srv, defCtl, http.StatusOK)
+	for _, raw := range body["data"].([]any) {
+		obj, _ := raw.(map[string]any)
+		if obj["controller"] == "pctl" {
+			if _, hasState := obj["state"]; hasState {
+				t.Fatalf("default controllers view carries a 'state' key for pctl: %+v", obj)
+			}
+		}
+	}
+
+	ctlPending := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/controllers?pending=1", ticket, "", nil)
+	body = mustStatus(t, srv, ctlPending, http.StatusOK)
+	list, _ := body["data"].([]any)
+	var sawCtl bool
+	for _, raw := range list {
+		obj, _ := raw.(map[string]any)
+		if obj["controller"] != "pctl" {
+			continue
+		}
+		if obj["state"] != "new" {
+			t.Fatalf("pctl state = %v, want %q", obj["state"], "new")
+		}
+		fields, ok := obj["pending"].(map[string]any)
+		if !ok {
+			t.Fatalf("pctl has no 'pending' fields object: %+v", obj)
+		}
+		if fields["type"] != "faucet" {
+			t.Fatalf("pctl pending.type = %v, want %q", fields["type"], "faucet")
+		}
+		sawCtl = true
+	}
+	if !sawCtl {
+		t.Fatalf("pctl missing from ?pending=1 controllers list: %+v", list)
+	}
+
+	fabPending := authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/fabrics/fabric?pending=1", ticket, "", nil)
+	body = mustStatus(t, srv, fabPending, http.StatusOK)
+	list, _ = body["data"].([]any)
+	var sawFab bool
+	for _, raw := range list {
+		obj, _ := raw.(map[string]any)
+		if obj["id"] != "pfab" {
+			continue
+		}
+		if obj["state"] != "new" {
+			t.Fatalf("pfab state = %v, want %q", obj["state"], "new")
+		}
+		fields, ok := obj["pending"].(map[string]any)
+		if !ok {
+			t.Fatalf("pfab has no 'pending' fields object: %+v", obj)
+		}
+		if fields["protocol"] != "bgp" {
+			t.Fatalf("pfab pending.protocol = %v, want %q", fields["protocol"], "bgp")
+		}
+		sawFab = true
+	}
+	if !sawFab {
+		t.Fatalf("pfab missing from ?pending=1 fabrics list: %+v", list)
+	}
+
+	// Apply clears both — mirroring TestSDNPending_ApplyClearsState.
+	applyReq := authedRequest(t, http.MethodPut, "/api2/json/cluster/sdn", ticket, csrf, nil)
+	mustStatus(t, srv, applyReq, http.StatusOK)
+
+	ctlPending = authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/controllers?pending=1", ticket, "", nil)
+	body = mustStatus(t, srv, ctlPending, http.StatusOK)
+	for _, raw := range body["data"].([]any) {
+		obj, _ := raw.(map[string]any)
+		if obj["controller"] == "pctl" {
+			if _, hasState := obj["state"]; hasState {
+				t.Fatalf("pctl still carries 'state' after apply: %+v", obj)
+			}
+		}
+	}
+	fabPending = authedRequest(t, http.MethodGet, "/api2/json/cluster/sdn/fabrics/fabric?pending=1", ticket, "", nil)
+	body = mustStatus(t, srv, fabPending, http.StatusOK)
+	for _, raw := range body["data"].([]any) {
+		obj, _ := raw.(map[string]any)
+		if obj["id"] == "pfab" {
+			if _, hasState := obj["state"]; hasState {
+				t.Fatalf("pfab still carries 'state' after apply: %+v", obj)
+			}
+		}
+	}
+}

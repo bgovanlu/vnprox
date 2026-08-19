@@ -126,6 +126,20 @@ func (srv *Server) mountSDNController(api chi.Router) {
 func (srv *Server) handleSDNControllersList(w http.ResponseWriter, r *http.Request) {
 	srv.state.sdn.mu.RLock()
 	defer srv.state.sdn.mu.RUnlock()
+	// T-3101-followup-01 (debt-sweep 2026-08-19): the "?pending=1" view —
+	// see sdn.go's isPendingRequest/sdnObjectPendingWire doc comments and
+	// planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt §6, which
+	// confirmed a controller's real PVE GET handler uses the exact same
+	// pending_config() mechanism zones/vnets/subnets already model here.
+	if isPendingRequest(r) {
+		controllers := srv.state.sdn.controllers
+		out := make([]map[string]any, 0, len(controllers))
+		for _, id := range sortedKeys(controllers) {
+			out = append(out, sdnObjectPendingWire(controllers[id], controllers[id].Pending))
+		}
+		writeData(w, http.StatusOK, out)
+		return
+	}
 	controllers := srv.state.sdn.controllers
 	if isRunningRequest(r) {
 		controllers = srv.state.sdn.controllersRunning

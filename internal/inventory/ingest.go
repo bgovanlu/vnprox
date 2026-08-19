@@ -563,11 +563,28 @@ func FromPVEDNS(zones []pve.SDNDnsZone, records map[string][]pve.SDNDnsRecord) [
 
 // FromPVESDN maps the SDN tree to cluster-scoped SdnZone/SdnVnet/SdnSubnet
 // partials. zoneStatus is keyed by zone ID; subnets is keyed by vnet ID.
+//
+// zonePending/vnetPending/subnetPending (debt-sweep 2026-08-19,
+// "inventory.FromPVESDN ... read .Pending the same wrong way [as the
+// pre-fix internal/sdn.Service.Tree], to paint topology badges") are each
+// keyed by the object's own id (zone.ID, vnet.ID, subnet.CIDR) and are the
+// real source of every Pending field below — NOT zones[i].Pending/
+// vnets[i].Pending/subnets[...][i].Pending, which decode a "pending" key
+// the DEFAULT SDN list view never actually carries against real PVE
+// (internal/pve.SDNZone.Pending's doc comment; confirmed in
+// planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt). Callers build
+// these maps from pve.Client's ListSDN{Zones,Vnets,Subnets}Pending
+// ("?pending=1") reads — internal/collect.pollSDN is production's one
+// caller; a nil map (as internal/federation's own best-effort drill-down
+// projection passes) simply reads back every id as pve.PendingNone, the
+// same "in sync" default a real absent-from-the-list-or-no-state entry
+// would.
 func FromPVESDN(
 	zones []pve.SDNZone,
 	vnets []pve.SDNVnet,
 	subnets map[string][]pve.SDNSubnet,
 	zoneStatus map[string][]pve.SDNZoneStatus,
+	zonePending, vnetPending, subnetPending map[string]pve.PendingState,
 ) []Entity {
 	var out []Entity
 	for _, z := range zones {
@@ -578,7 +595,7 @@ func FromPVESDN(
 			Bridge:     z.Bridge,
 			Controller: z.Controller,
 			IPAM:       z.IPAM,
-			Pending:    string(z.Pending),
+			Pending:    string(zonePending[z.ID]),
 			VrfVxlan:   z.VrfVxlan,
 			MTU:        z.MTU,
 			Nodes:      append([]string(nil), z.Nodes...),
@@ -606,7 +623,7 @@ func FromPVESDN(
 			ID:        n.ID,
 			Zone:      n.Zone,
 			Alias:     n.Alias,
-			Pending:   string(n.Pending),
+			Pending:   string(vnetPending[n.ID]),
 			Tag:       n.Tag,
 			VlanAware: n.VlanAware,
 		}
@@ -618,7 +635,7 @@ func FromPVESDN(
 				ID:      s.CIDR,
 				Vnet:    s.Vnet,
 				Gateway: s.Gateway,
-				Pending: string(s.Pending),
+				Pending: string(subnetPending[s.ID]),
 				SNAT:    s.SNAT,
 			}
 			if s.DHCPRangeStart != "" || s.DHCPRangeEnd != "" {
@@ -639,12 +656,19 @@ func FromPVESDN(
 // from this poll (see internal/evpn's re-attachment of EVPN/BGP session
 // health onto the controller instead, which reads live FRR state rather
 // than a PVE-side status read).
-func FromPVESDNControllers(controllers []pve.SDNController) []Entity {
+//
+// pending (debt-sweep 2026-08-19, "inventory.FromPVESDNControllers ...
+// read .Pending the same wrong way") is keyed by controller id and is the
+// real source of every Pending field below — NOT controllers[i].Pending,
+// for the identical reason FromPVESDN's own doc comment gives (built from
+// pve.Client.ListSDNControllersPending, not ListSDNControllers). A nil map
+// reads back every id as pve.PendingNone.
+func FromPVESDNControllers(controllers []pve.SDNController, pending map[string]pve.PendingState) []Entity {
 	out := make([]Entity, 0, len(controllers))
 	for _, c := range controllers {
 		ctl := &SdnController{
 			Ref: Ref{Kind: KindSDNController, ID: c.ID},
-			ID:  c.ID, Type: c.Type, Pending: string(c.Pending),
+			ID:  c.ID, Type: c.Type, Pending: string(pending[c.ID]),
 			ASN: c.ASN, BgpMode: c.BgpMode, BgpMultipathAsPathRelax: c.BgpMultipathAsPathRelax,
 			Ebgp: c.Ebgp, EbgpMultihop: c.EbgpMultihop, Fabric: c.Fabric,
 			IsisDomain: c.IsisDomain, IsisNet: c.IsisNet,
@@ -665,12 +689,26 @@ func FromPVESDNControllers(controllers []pve.SDNController) []Entity {
 // /cluster/sdn/ipams/{ipam}/status route is the allocation-set read
 // internal/ipam already consumes directly, not a realization-health read
 // the way a zone's status route is).
+//
+// Unlike FromPVESDN/FromPVESDNControllers above, this function does NOT
+// gain a pending-map parameter (debt-sweep 2026-08-19, "inventory.
+// FromPVESDNIpams read .Pending the same wrong way"): there is no
+// ListIPAMsPending to build one from, and none can exist — confirmed
+// directly against pvecube's own perl source that
+// PVE::API2::Network::SDN::Ipams.pm accepts no `pending` parameter at all
+// (pve/ipam.go's IPAM.Pending doc comment, planning/reports/evidence/
+// pve-9.2.4-sdn-pending-state.txt §6): an ipam instance is simply not part
+// of PVE's pending/running SDN commit cycle the way zones/vnets/subnets/
+// controllers/fabrics are. i.Pending is therefore never propagated here —
+// every SdnIpam.Pending this poll produces is "" — rather than surfacing a
+// value that (unlike the pre-fix zone/vnet/subnet/controller case) has no
+// correct alternative reading to fall back on.
 func FromPVESDNIpams(ipams []pve.IPAM) []Entity {
 	out := make([]Entity, 0, len(ipams))
 	for _, i := range ipams {
 		ip := &SdnIpam{
 			Ref: Ref{Kind: KindSDNIpam, ID: i.ID},
-			ID:  i.ID, Type: i.Type, Pending: string(i.Pending),
+			ID:  i.ID, Type: i.Type,
 			URL: i.URL, Fingerprint: i.Fingerprint, Section: i.Section,
 		}
 		setRaw(ip, prettyJSON(i))

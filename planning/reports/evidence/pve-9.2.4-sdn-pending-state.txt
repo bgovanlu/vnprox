@@ -178,3 +178,97 @@ adds real `?pending=1` support (state + a `pending` sub-object of changed
 fields) built from that same existing internal marker, so the wire shape
 now matches real PVE's confirmed behaviour above, and leaves the existing
 (pre-existing, T-401-owned) default-view/`?running=1` behaviour untouched.
+
+============================================================================
+6. Follow-up (2026-08-19, debt-sweep "internal/inventory reads .Pending the
+   wrong way" / "SDNController.Pending and SDNFabric.Pending have the same
+   gap"): controllers and fabrics confirmed to use the identical mechanism;
+   ipams confirmed NOT to
+============================================================================
+
+Gathered against the same pvecube (root@192.168.1.9, PVE 9.2.4), all
+read-only (`pvesh usage`, `pvesh get`, and `cat`/`grep` of files already on
+disk — no mutating call made).
+
+$ pvesh usage /cluster/sdn/controllers -v
+  ... --pending <boolean>  Display pending config.
+  (also --running <boolean>, --type <bgp|evpn|faucet|isis> filter)
+
+$ pvesh usage /cluster/sdn/fabrics/fabric -v
+  ... --pending <boolean>  Display pending config.
+  (also --running <boolean>)
+
+$ pvesh get /cluster/sdn/controllers --output-format json
+[]
+$ pvesh get /cluster/sdn/controllers --pending 1 --output-format json
+[]
+$ pvesh get /cluster/sdn/fabrics/fabric --output-format json
+[]
+$ pvesh get /cluster/sdn/fabrics/fabric --pending 1 --output-format json
+[]
+
+pvecube has zero controllers and zero fabrics configured (same limitation
+§3 already flagged for controllers: `--pending` is accepted, 200, not a
+schema-rejection, but there is no populated object on this single node to
+show a live positive "state"/"pending" example for either family — this
+task's mandate forbids staging one via a mutating pvesh call). This is the
+same "cluster behaviour is unobservable on one node" limit CLAUDE.md
+describes, applied here to "a positive pending example for these two
+families" rather than to cross-node behaviour.
+
+What IS directly confirmed, by reading (not executing) the perl source
+itself rather than inferring from the empty JSON above:
+
+  /usr/share/perl5/PVE/API2/Network/SDN/Controllers.pm (both the
+  collection GET at 'read'/index and the single-object GET at
+  path=>'{controller}'):
+
+    if ($param->{pending}) {
+        my $running_cfg = PVE::Network::SDN::running_config();
+        my $config = PVE::Network::SDN::Controllers::config();
+        $cfg = PVE::Network::SDN::pending_config($running_cfg, $config, 'controllers');
+    } elsif ($param->{running}) { ... } else { ... }
+
+  /usr/share/perl5/PVE/API2/Network/SDN/Fabrics/Fabric.pm (the actual
+  `path => 'fabric'` subclass GET /cluster/sdn/fabrics/fabric handler —
+  NOT the sibling GET /cluster/sdn/fabrics/all read the same file's
+  `list_all` method serves, which is a different, combined fabrics+nodes
+  response the compat-gate code already has its own hardcoded answer for
+  and which internal/pve never calls):
+
+    if ($pending) {
+        my $current_config = PVE::Network::SDN::Fabrics::config();
+        my $running_config = PVE::Network::SDN::Fabrics::config(1);
+        my $pending_fabrics = PVE::Network::SDN::pending_config(
+            { fabrics => { ids => $running_config->list_fabrics() } },
+            { ids => $current_config->list_fabrics() },
+            'fabrics',
+        );
+        ...
+    } elsif ($running) { ... } else { ... }
+
+Both call the exact same PVE::Network::SDN::pending_config() §3 already
+quoted in full for zones/vnets/subnets — same function, same two-argument
+(running-config, staged-config) shape, same per-id "state"/"pending" wire
+result. CONCLUSION: controllers and fabrics are wire-identical to zones/
+vnets/subnets for this purpose — a ListSDNControllersPending/
+ListSDNFabricsPending built the same way as ListSDNZonesPending is exactly
+the right shape, confirmed from source even though this single unclustered
+node has nothing populated to show it live.
+
+Ipams, by contrast, were already confirmed in §3 to have NO `pending`
+parameter at all (`grep` of Ipams.pm found zero hits) — re-checked here for
+completeness against the same node, same result:
+
+$ grep -n "pending" /usr/share/perl5/PVE/API2/Network/SDN/Ipams.pm
+(no output)
+
+So the inventory-badge follow-up's three affected readers split cleanly:
+FromPVESDN and FromPVESDNControllers get a real fix (ListSDNZonesPending/
+ListSDNVnetsPending/ListSDNSubnetsPending, now also
+ListSDNControllersPending); FromPVESDNIpams does not, because there is
+nothing to call — PVE itself has no concept of a pending ipam edit, not
+merely an unobserved one. internal/pve.IPAM.Pending and
+inventory.SdnIpam.Pending stay permanently PendingNone/"" against real
+hardware, documented as such rather than silently left to imply a live
+signal that does not exist.

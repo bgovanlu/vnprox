@@ -317,5 +317,10 @@ func projectSDN(ctx context.Context, a *Aggregator, proj TopologyProjector) []in
 		}
 		subnets[v.ID] = subs
 	}
-	return inventory.FromPVESDN(zones, vnets, subnets, nil)
+	// No "?pending=1" reads here: this is a best-effort, on-demand
+	// cross-cluster drill-down projection (this function's own doc
+	// comment), not the poll-cached inventory graph internal/collect.pollSDN
+	// builds — nil pending maps read back as pve.PendingNone for every id,
+	// same as internal/collect's own pending-fetch failure fallback.
+	return inventory.FromPVESDN(zones, vnets, subnets, nil, nil, nil, nil)
 }

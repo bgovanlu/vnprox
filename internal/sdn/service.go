@@ -77,12 +77,34 @@ type PVEReader interface {
 	// Fabric's ListSDNFabricNodes does.
 	ListSDNControllers(ctx context.Context) ([]pve.SDNController, error)
 
+	// ListSDNControllersPending/ListSDNFabricsPending (debt sweep
+	// 2026-08-19, "SDNController.Pending and SDNFabric.Pending have the
+	// same gap [as SDNZone.Pending]") are buildControllers'/buildFabrics'
+	// actual source of pending state — NOT SDNController.Pending/
+	// SDNFabric.Pending, which the staged (default-view) reads above carry
+	// and which decode nothing against real PVE for the identical reason
+	// ListSDNZonesPending's own doc comment (above) explains, confirmed
+	// directly against pvecube's own perl source rather than merely
+	// assumed from the zone/vnet/subnet precedent (planning/reports/
+	// evidence/pve-9.2.4-sdn-pending-state.txt §6).
+	ListSDNControllersPending(ctx context.Context) ([]pve.SDNPendingEntry, error)
+	ListSDNFabricsPending(ctx context.Context) ([]pve.SDNPendingEntry, error)
+
 	// ListIPAMs (T-3104) is Ipam's own read — the same pre-existing
 	// internal/pve method internal/ipam's read views already use, reused
 	// here rather than a parallel ListSDNIpams name (internal/pve/
 	// sdn_ipam.go's package doc comment explains why the type/method names
 	// stayed IPAM/ListIPAMs rather than following Fabric/Controller's
-	// "new type, new name" pattern).
+	// "new type, new name" pattern). buildIpams below still reads
+	// pve.IPAM.Pending directly rather than through a ListIPAMsPending
+	// counterpart: none exists, and none can — confirmed against pvecube's
+	// own perl source that PVE's Ipams.pm accepts no `pending` parameter at
+	// all (pve/ipam.go's IPAM.Pending doc comment, planning/reports/
+	// evidence/pve-9.2.4-sdn-pending-state.txt §6) — an ipam instance is
+	// simply not part of PVE's pending/running SDN commit cycle the way
+	// zones/vnets/subnets/controllers/fabrics are, not merely unobserved
+	// here. buildIpams's Pending output is therefore permanently "" against
+	// real PVE; left as a known, documented gap rather than a bug to fix.
 	ListIPAMs(ctx context.Context) ([]pve.IPAM, error)
 }
 
@@ -453,7 +475,12 @@ func (s *Service) Tree(ctx context.Context) (Tree, error) {
 // sub-read to fold in here either (Controller's own doc comment on why
 // applies verbatim: an instance's allocation-set status route is a
 // different read internal/ipam already consumes directly, not a
-// realization-health read).
+// realization-health read). Unlike buildControllers/buildFabrics above,
+// Pending here is read straight off i.Pending with no ListIPAMsPending
+// counterpart to prefer instead — PVEReader's doc comment on ListIPAMs
+// explains why none exists or can: real PVE has no pending/running commit
+// cycle for ipam instances at all, so this output is permanently "" against
+// real PVE, a known and documented gap rather than an oversight.
 func (s *Service) buildIpams(ctx context.Context) ([]Ipam, error) {
 	staged, err := s.pve.ListIPAMs(ctx)
 	if err != nil {
@@ -472,16 +499,24 @@ func (s *Service) buildIpams(ctx context.Context) ([]Ipam, error) {
 
 // buildControllers fetches the controller list and maps it straight to
 // Controller — unlike buildFabrics, there is no per-node membership
-// sub-read to fold in (see Controller's own doc comment).
+// sub-read to fold in (see Controller's own doc comment). Pending state
+// comes from ListSDNControllersPending, not from c.Pending — see
+// PVEReader's doc comment on why the latter is dead against real PVE.
 func (s *Service) buildControllers(ctx context.Context) ([]Controller, error) {
 	staged, err := s.pve.ListSDNControllers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("sdn: listing controllers: %w", err)
 	}
+	pendingEntries, err := s.pve.ListSDNControllersPending(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sdn: listing pending controllers: %w", err)
+	}
+	pending := indexPendingState(pendingEntries)
+
 	out := make([]Controller, 0, len(staged))
 	for _, c := range staged {
 		out = append(out, Controller{
-			ID: c.ID, Type: c.Type, Pending: string(c.Pending),
+			ID: c.ID, Type: c.Type, Pending: string(pending[c.ID]),
 			BgpMode: c.BgpMode, Fabric: c.Fabric, IsisDomain: c.IsisDomain, IsisNet: c.IsisNet,
 			Loopback: c.Loopback, Node: c.Node, PeerGroupName: c.PeerGroupName,
 			RouteMapIn: c.RouteMapIn, RouteMapOut: c.RouteMapOut,
@@ -498,7 +533,9 @@ func (s *Service) buildControllers(ctx context.Context) ([]Controller, error) {
 // membership read, grouping the latter by fabric id — the same "sibling
 // per-node read, grouped by owning id" pattern Tree already uses for a
 // zone's own status (GetSDNZoneStatus), except fabrics have no independent
-// per-node health signal to poll (see Fabric's own doc comment).
+// per-node health signal to poll (see Fabric's own doc comment). Pending
+// state comes from ListSDNFabricsPending, not from f.Pending — see
+// PVEReader's doc comment on why the latter is dead against real PVE.
 func (s *Service) buildFabrics(ctx context.Context) ([]Fabric, error) {
 	staged, err := s.pve.ListSDNFabrics(ctx)
 	if err != nil {
@@ -508,6 +545,11 @@ func (s *Service) buildFabrics(ctx context.Context) ([]Fabric, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sdn: listing fabric nodes: %w", err)
 	}
+	pendingEntries, err := s.pve.ListSDNFabricsPending(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sdn: listing pending fabrics: %w", err)
+	}
+	pending := indexPendingState(pendingEntries)
 	nodesByFabric := map[string][]pve.SDNFabricNode{}
 	for _, n := range nodes {
 		nodesByFabric[n.Fabric] = append(nodesByFabric[n.Fabric], n)
@@ -516,7 +558,7 @@ func (s *Service) buildFabrics(ctx context.Context) ([]Fabric, error) {
 	fabrics := make([]Fabric, 0, len(staged))
 	for _, f := range staged {
 		fab := Fabric{
-			ID: f.ID, Protocol: f.Protocol, Pending: string(f.Pending),
+			ID: f.ID, Protocol: f.Protocol, Pending: string(pending[f.ID]),
 			IPPrefix: f.IPPrefix, IP6Prefix: f.IP6Prefix,
 			CSNPInterval: f.CSNPInterval, HelloInterval: f.HelloInterval, RouteFilter: f.RouteFilter,
 			Area: f.Area, Redistribute: f.Redistribute, PersistentKeepalive: f.PersistentKeepalive,

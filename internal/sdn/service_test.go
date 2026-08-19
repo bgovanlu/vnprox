@@ -16,22 +16,24 @@ import (
 // internal/pve client and internal/pvemock server — lives in
 // internal/api's golden /sdn test).
 type fakeReader struct {
-	zoneStatus     map[string][]pve.SDNZoneStatus
-	subnets        map[string][]pve.SDNSubnet
-	subnetsRunning map[string][]pve.SDNSubnet
-	subnetsPending map[string][]pve.SDNPendingEntry
-	zones          []pve.SDNZone
-	zonesRunning   []pve.SDNZone
-	zonesPending   []pve.SDNPendingEntry
-	vnets          []pve.SDNVnet
-	vnetsRunning   []pve.SDNVnet
-	vnetsPending   []pve.SDNPendingEntry
-	fabrics        []pve.SDNFabric
-	fabricNodes    []pve.SDNFabricNode
-	prefixLists    []pve.SDNPrefixList
-	routeMaps      []pve.SDNRouteMap
-	controllers    []pve.SDNController
-	ipams          []pve.IPAM
+	zoneStatus         map[string][]pve.SDNZoneStatus
+	subnets            map[string][]pve.SDNSubnet
+	subnetsRunning     map[string][]pve.SDNSubnet
+	subnetsPending     map[string][]pve.SDNPendingEntry
+	zones              []pve.SDNZone
+	zonesRunning       []pve.SDNZone
+	zonesPending       []pve.SDNPendingEntry
+	vnets              []pve.SDNVnet
+	vnetsRunning       []pve.SDNVnet
+	vnetsPending       []pve.SDNPendingEntry
+	fabrics            []pve.SDNFabric
+	fabricNodes        []pve.SDNFabricNode
+	fabricsPending     []pve.SDNPendingEntry
+	prefixLists        []pve.SDNPrefixList
+	routeMaps          []pve.SDNRouteMap
+	controllers        []pve.SDNController
+	controllersPending []pve.SDNPendingEntry
+	ipams              []pve.IPAM
 }
 
 func (f *fakeReader) ListSDNZones(context.Context) ([]pve.SDNZone, error) { return f.zones, nil }
@@ -72,6 +74,12 @@ func (f *fakeReader) ListSDNRouteMaps(context.Context) ([]pve.SDNRouteMap, error
 }
 func (f *fakeReader) ListSDNControllers(context.Context) ([]pve.SDNController, error) {
 	return f.controllers, nil
+}
+func (f *fakeReader) ListSDNControllersPending(context.Context) ([]pve.SDNPendingEntry, error) {
+	return f.controllersPending, nil
+}
+func (f *fakeReader) ListSDNFabricsPending(context.Context) ([]pve.SDNPendingEntry, error) {
+	return f.fabricsPending, nil
 }
 func (f *fakeReader) ListIPAMs(context.Context) ([]pve.IPAM, error) { return f.ipams, nil }
 
@@ -187,6 +195,64 @@ func TestTree_Fabrics(t *testing.T) {
 	}
 	if len(tree.RouteMaps) != 1 || tree.RouteMaps[0].ID != "rm1" {
 		t.Fatalf("routeMaps = %+v", tree.RouteMaps)
+	}
+}
+
+// TestTree_ControllerAndFabricPending_SourcedFromPendingRead proves
+// buildControllers/buildFabrics source Controller.Pending/Fabric.Pending
+// from ListSDNControllersPending/ListSDNFabricsPending — NOT from the
+// staged pve.SDNController.Pending/pve.SDNFabric.Pending fields, which the
+// debt-sweep follow-up (2026-08-19, "SDNController.Pending and
+// SDNFabric.Pending have the same gap [as SDNZone.Pending]") stopped
+// reading, for the identical reason TestTree_PendingDiff_States below
+// already pins for zones. Every fixture object below leaves its own staged
+// Pending field at its zero value (pve.PendingNone) on purpose — the
+// rendered state comes only from controllersPending/fabricsPending — so
+// this test fails if Tree (or buildControllers/buildFabrics specifically)
+// ever regresses to reading the stale fields again.
+func TestTree_ControllerAndFabricPending_SourcedFromPendingRead(t *testing.T) {
+	reader := &fakeReader{
+		controllers: []pve.SDNController{
+			{ID: "ctl1", Type: "bgp", ASN: 65000}, // Pending left zero.
+			{ID: "ctl2", Type: "bgp", ASN: 65001},
+		},
+		controllersPending: []pve.SDNPendingEntry{
+			{Kind: "controller", ID: "ctl1", State: pve.PendingNew},
+			// ctl2 omitted: real PVE's "?pending=1" view still lists an
+			// in-sync object with no state key (evidence file §3/§6) —
+			// indexPendingState's zero-value-map-lookup handles a genuinely
+			// absent id the same way, so ctl2 must render PendingNone too.
+		},
+		fabrics: []pve.SDNFabric{
+			{ID: "fab1", Protocol: "ospf"}, // Pending left zero.
+		},
+		fabricsPending: []pve.SDNPendingEntry{
+			{Kind: "fabric", ID: "fab1", State: pve.PendingChanged},
+		},
+	}
+
+	svc := NewService(reader)
+	tree, err := svc.Tree(context.Background())
+	if err != nil {
+		t.Fatalf("Tree: %v", err)
+	}
+
+	ctlByID := map[string]Controller{}
+	for _, c := range tree.Controllers {
+		ctlByID[c.ID] = c
+	}
+	if got := ctlByID["ctl1"].Pending; got != "new" {
+		t.Errorf("ctl1.Pending = %q, want %q", got, "new")
+	}
+	if got := ctlByID["ctl2"].Pending; got != "" {
+		t.Errorf("ctl2.Pending = %q, want \"\" (in sync)", got)
+	}
+
+	if len(tree.Fabrics) != 1 {
+		t.Fatalf("fabrics = %+v, want 1", tree.Fabrics)
+	}
+	if got := tree.Fabrics[0].Pending; got != "changed" {
+		t.Errorf("fab1.Pending = %q, want %q", got, "changed")
 	}
 }
 

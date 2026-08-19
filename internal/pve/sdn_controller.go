@@ -32,20 +32,31 @@ import (
 // exercises `pvesh usage /cluster/sdn/controllers -v` against a
 // non-empty/populated set of each type.
 type SDNController struct {
-	ID            string       `json:"controller"`
-	Type          string       `json:"type"`
-	BgpMode       string       `json:"bgp-mode,omitempty"`
-	Fabric        string       `json:"fabric,omitempty"`
-	IsisDomain    string       `json:"isis-domain,omitempty"`
-	IsisNet       string       `json:"isis-net,omitempty"`
-	Loopback      string       `json:"loopback,omitempty"`
-	Node          string       `json:"node,omitempty"`
-	PeerGroupName string       `json:"peer-group-name,omitempty"`
-	RouteMapIn    string       `json:"route-map-in,omitempty"`
-	RouteMapOut   string       `json:"route-map-out,omitempty"`
-	Pending       PendingState `json:"pending,omitempty"`
-	Nodes         []string     `json:"nodes,omitempty"`
-	Peers         []string     `json:"peers,omitempty"`
+	ID            string `json:"controller"`
+	Type          string `json:"type"`
+	BgpMode       string `json:"bgp-mode,omitempty"`
+	Fabric        string `json:"fabric,omitempty"`
+	IsisDomain    string `json:"isis-domain,omitempty"`
+	IsisNet       string `json:"isis-net,omitempty"`
+	Loopback      string `json:"loopback,omitempty"`
+	Node          string `json:"node,omitempty"`
+	PeerGroupName string `json:"peer-group-name,omitempty"`
+	RouteMapIn    string `json:"route-map-in,omitempty"`
+	RouteMapOut   string `json:"route-map-out,omitempty"`
+	// Pending decodes whatever "pending" key this struct's DEFAULT list/get
+	// view (no query param) returns — which, against real PVE 9.2.4, is
+	// none: the same T-401-era trap SDNZone.Pending's doc comment describes
+	// in full (sdn.go), confirmed here too directly against pvecube's own
+	// perl source rather than merely assumed from that precedent
+	// (planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt §6).
+	// Callers that need real foreign-pending detection must call
+	// ListSDNControllersPending (this file's "?pending=1" view) instead.
+	// Kept (not removed) for the same reason SDNZone.Pending is: pvemock's
+	// own default view still populates it, and other packages' tests still
+	// exercise it directly.
+	Pending PendingState `json:"pending,omitempty"`
+	Nodes   []string     `json:"nodes,omitempty"`
+	Peers   []string     `json:"peers,omitempty"`
 	// IsisIfaces is real PVE's "Comma-separated list of interfaces" field
 	// (isis-only); modeled as []string like Nodes/Peers above rather than
 	// the single un-split string the capture's description literally says,
@@ -108,6 +119,28 @@ func (c *Client) ListSDNControllers(ctx context.Context) ([]SDNController, error
 		return nil, err
 	}
 	return out, nil
+}
+
+// ListSDNControllersPending calls GET /cluster/sdn/controllers?pending=1 —
+// see sdn.go's pendingQuery doc comment for the general "?pending=1"
+// mechanism. Added by the debt-sweep 2026-08-19 follow-up ("SDNController.
+// Pending and SDNFabric.Pending have the same gap [as SDNZone.Pending]"):
+// SDNController.Pending above has the identical T-401-era defect
+// SDNZone.Pending does (decodes a "pending" key the DEFAULT list view never
+// actually carries against real PVE) — confirmed directly against pvecube's
+// own perl source, not merely assumed from the zone/vnet/subnet precedent
+// (planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt §6):
+// PVE::API2::Network::SDN::Controllers.pm's GET handler calls the exact
+// same PVE::Network::SDN::pending_config($running_cfg, $config,
+// 'controllers') zones/vnets/subnets already use. Callers needing real
+// foreign-pending detection for a controller must call this instead of
+// reading SDNController.Pending off ListSDNControllers.
+func (c *Client) ListSDNControllersPending(ctx context.Context) ([]SDNPendingEntry, error) {
+	var out []sdnPendingWire
+	if err := c.do(ctx, "GET", "/cluster/sdn/controllers", requestParams{query: pendingQuery}, &out); err != nil {
+		return nil, err
+	}
+	return sdnPendingEntries("controller", func(w sdnPendingWire) string { return w.Controller }, out), nil
 }
 
 // GetSDNController calls GET /cluster/sdn/controllers/{id}.

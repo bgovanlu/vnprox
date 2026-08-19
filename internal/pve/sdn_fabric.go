@@ -31,8 +31,19 @@ import (
 // path — so this is internal/change/params_sdn_fabric.go's documented
 // assumption, not a fact read off hardware).
 type SDNFabric struct {
-	ID                  string       `json:"id"`
-	Protocol            string       `json:"protocol"`
+	ID       string `json:"id"`
+	Protocol string `json:"protocol"`
+	// Pending decodes whatever "pending" key this struct's DEFAULT list/get
+	// view (no query param) returns — which, against real PVE 9.2.4, is
+	// none: the same T-401-era trap SDNZone.Pending's doc comment describes
+	// in full (sdn.go), confirmed here too directly against pvecube's own
+	// perl source rather than merely assumed from that precedent
+	// (planning/reports/evidence/pve-9.2.4-sdn-pending-state.txt §6).
+	// Callers that need real foreign-pending detection must call
+	// ListSDNFabricsPending (this file's "?pending=1" view) instead. Kept
+	// (not removed) for the same reason SDNZone.Pending is: pvemock's own
+	// default view still populates it, and other packages' tests still
+	// exercise it directly.
 	Pending             PendingState `json:"pending,omitempty"`
 	IPPrefix            string       `json:"ip_prefix,omitempty"`
 	IP6Prefix           string       `json:"ip6_prefix,omitempty"`
@@ -81,6 +92,30 @@ func (c *Client) GetSDNFabric(ctx context.Context, id string) (*SDNFabric, error
 		return nil, err
 	}
 	return &out, nil
+}
+
+// ListSDNFabricsPending calls GET /cluster/sdn/fabrics/fabric?pending=1 —
+// see sdn.go's pendingQuery doc comment for the general "?pending=1"
+// mechanism. Added by the debt-sweep 2026-08-19 follow-up ("SDNController.
+// Pending and SDNFabric.Pending have the same gap [as SDNZone.Pending]"):
+// SDNFabric.Pending above has the identical T-401-era defect SDNZone.
+// Pending does — confirmed directly against pvecube's own perl source, not
+// merely assumed from the zone/vnet/subnet precedent (planning/reports/
+// evidence/pve-9.2.4-sdn-pending-state.txt §6):
+// PVE::API2::Network::SDN::Fabrics::Fabric.pm — the `path => 'fabric'`
+// subclass handler this package's ListSDNFabrics/GetSDNFabric actually
+// call, NOT the sibling GET /cluster/sdn/fabrics/all combined
+// fabrics+nodes read (a different response shape this package never
+// calls) — uses the exact same PVE::Network::SDN::pending_config()
+// zones/vnets/subnets/controllers already use. Callers needing real
+// foreign-pending detection for a fabric must call this instead of
+// reading SDNFabric.Pending off ListSDNFabrics.
+func (c *Client) ListSDNFabricsPending(ctx context.Context) ([]SDNPendingEntry, error) {
+	var out []sdnPendingWire
+	if err := c.do(ctx, "GET", "/cluster/sdn/fabrics/fabric", requestParams{query: pendingQuery}, &out); err != nil {
+		return nil, err
+	}
+	return sdnPendingEntries("fabric", func(w sdnPendingWire) string { return w.ID }, out), nil
 }
 
 // CreateSDNFabric calls POST /cluster/sdn/fabrics/fabric. Deliberately does

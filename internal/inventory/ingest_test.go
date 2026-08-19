@@ -444,3 +444,124 @@ func TestRawSourceRoundTrip(t *testing.T) {
 		t.Errorf("RawSource must return a copy, not the snapshot's own map")
 	}
 }
+
+// TestFromPVESDN_PendingSourcedFromPendingMaps proves FromPVESDN sources
+// SdnZone/SdnVnet/SdnSubnet.Pending from its zonePending/vnetPending/
+// subnetPending map parameters — NOT from the staged pve.SDNZone/SDNVnet/
+// SDNSubnet's own .Pending field, which the debt-sweep 2026-08-19 follow-up
+// ("inventory.FromPVESDN ... read .Pending the same wrong way [as the
+// pre-fix internal/sdn.Service.Tree], to paint topology badges") stopped
+// reading — that field decodes a "pending" key the DEFAULT SDN list view
+// never actually carries against real PVE (internal/pve.SDNZone.Pending's
+// doc comment). Every staged fixture object below leaves its own .Pending
+// field at its zero value (pve.PendingNone) on purpose — the state comes
+// only from the maps — so this test fails if FromPVESDN ever regresses to
+// reading the stale fields again.
+func TestFromPVESDN_PendingSourcedFromPendingMaps(t *testing.T) {
+	zones := []pve.SDNZone{{ID: "z1", Type: "vlan"}, {ID: "z2", Type: "simple"}}
+	vnets := []pve.SDNVnet{{ID: "v1", Zone: "z1"}}
+	subnets := map[string][]pve.SDNSubnet{
+		"v1": {{ID: "sub1", Vnet: "v1", CIDR: "10.0.0.0/24"}},
+	}
+	zonePending := map[string]pve.PendingState{"z1": pve.PendingChanged}
+	vnetPending := map[string]pve.PendingState{"v1": pve.PendingNew}
+	subnetPending := map[string]pve.PendingState{"sub1": pve.PendingDeleted}
+
+	entities := FromPVESDN(zones, vnets, subnets, nil, zonePending, vnetPending, subnetPending)
+
+	var gotZ1, gotZ2, gotV1, gotSub1 string
+	var sawZ1, sawZ2, sawV1, sawSub1 bool
+	for _, e := range entities {
+		switch v := e.(type) {
+		case *SdnZone:
+			if v.ID == "z1" {
+				gotZ1, sawZ1 = v.Pending, true
+			}
+			if v.ID == "z2" {
+				gotZ2, sawZ2 = v.Pending, true
+			}
+		case *SdnVnet:
+			if v.ID == "v1" {
+				gotV1, sawV1 = v.Pending, true
+			}
+		case *SdnSubnet:
+			if v.ID == "10.0.0.0/24" {
+				gotSub1, sawSub1 = v.Pending, true
+			}
+		}
+	}
+	if !sawZ1 || gotZ1 != "changed" {
+		t.Errorf("z1.Pending = %q (found=%v), want %q", gotZ1, sawZ1, "changed")
+	}
+	// z2 has no entry in zonePending at all — real PVE's "?pending=1" view
+	// still lists an in-sync object with no state key (evidence file §3/§6);
+	// a genuinely absent map key must render the same PendingNone.
+	if !sawZ2 || gotZ2 != "" {
+		t.Errorf("z2.Pending = %q (found=%v), want \"\" (in sync)", gotZ2, sawZ2)
+	}
+	if !sawV1 || gotV1 != "new" {
+		t.Errorf("v1.Pending = %q (found=%v), want %q", gotV1, sawV1, "new")
+	}
+	if !sawSub1 || gotSub1 != "deleted" {
+		t.Errorf("sub1.Pending = %q (found=%v), want %q", gotSub1, sawSub1, "deleted")
+	}
+}
+
+// TestFromPVESDNControllers_PendingSourcedFromPendingMap is
+// TestFromPVESDN_PendingSourcedFromPendingMaps's FromPVESDNControllers
+// counterpart.
+func TestFromPVESDNControllers_PendingSourcedFromPendingMap(t *testing.T) {
+	controllers := []pve.SDNController{{ID: "ctl1", Type: "bgp"}, {ID: "ctl2", Type: "bgp"}}
+	pending := map[string]pve.PendingState{"ctl1": pve.PendingNew}
+
+	entities := FromPVESDNControllers(controllers, pending)
+
+	var got1, got2 string
+	var saw1, saw2 bool
+	for _, e := range entities {
+		c, ok := e.(*SdnController)
+		if !ok {
+			continue
+		}
+		if c.ID == "ctl1" {
+			got1, saw1 = c.Pending, true
+		}
+		if c.ID == "ctl2" {
+			got2, saw2 = c.Pending, true
+		}
+	}
+	if !saw1 || got1 != "new" {
+		t.Errorf("ctl1.Pending = %q (found=%v), want %q", got1, saw1, "new")
+	}
+	if !saw2 || got2 != "" {
+		t.Errorf("ctl2.Pending = %q (found=%v), want \"\" (in sync)", got2, saw2)
+	}
+}
+
+// TestFromPVESDNIpams_PendingAlwaysEmpty proves FromPVESDNIpams never
+// propagates pve.IPAM.Pending: unlike zones/vnets/subnets/controllers,
+// there is no "?pending=1" view for ipam instances to source a real value
+// from (internal/pve/ipam.go's IPAM.Pending doc comment, confirmed against
+// pvecube's own perl source that Ipams.pm accepts no `pending` parameter at
+// all) — so surfacing i.Pending here would be surfacing a stale
+// default-view artifact with no correct alternative reading behind it,
+// exactly the trap this debt-sweep follow-up otherwise fixes for the other
+// three families. A populated i.Pending on the input (as a mock's
+// deliberately-unchanged default-view leak, or a hand-built fixture, might
+// supply) must not leak through.
+func TestFromPVESDNIpams_PendingAlwaysEmpty(t *testing.T) {
+	ipams := []pve.IPAM{{ID: "pve", Type: "pve", Pending: pve.PendingChanged}}
+
+	entities := FromPVESDNIpams(ipams)
+
+	if len(entities) != 1 {
+		t.Fatalf("entities = %+v, want 1", entities)
+	}
+	ip, ok := entities[0].(*SdnIpam)
+	if !ok {
+		t.Fatalf("entities[0] = %T, want *SdnIpam", entities[0])
+	}
+	if ip.Pending != "" {
+		t.Errorf("SdnIpam.Pending = %q, want \"\" (no ?pending=1 view exists for ipams)", ip.Pending)
+	}
+}

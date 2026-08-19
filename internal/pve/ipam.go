@@ -11,10 +11,23 @@ import (
 // through the plugin transparently — docs/features/ipam.md §1).
 //
 // Pending/Token/Fingerprint/Section (T-3104, sdn_ipam.go's write path) are
-// additive: Pending mirrors SDNFabric/SDNController's staged-vs-running
-// state (an ipam instance is a /cluster/sdn family too — the capture's `ls
-// /cluster/sdn/ipams` shows the same `-rw-d` writable-directory marker
-// fabrics/controllers/zones do). Token is write-only: the capture gives no
+// additive. Pending was originally documented as mirroring SDNFabric/
+// SDNController's staged-vs-running state; the debt-sweep 2026-08-19
+// follow-up ("SDNController.Pending and SDNFabric.Pending have the same
+// gap") found that claim wrong on two counts, confirmed directly against
+// pvecube's own perl source (planning/reports/evidence/
+// pve-9.2.4-sdn-pending-state.txt §6): first, the same T-401-era trap
+// (this field decodes a "pending" key the DEFAULT view never actually
+// carries against real PVE); second, unlike SDNFabric/SDNController there
+// is no "?pending=1" escape hatch to fall back on either —
+// PVE::API2::Network::SDN/Ipams.pm accepts no `pending` parameter at all
+// (grep-confirmed, zero hits), because an IPAM plugin instance is simply
+// not part of PVE's pending/running SDN commit cycle the way
+// zones/vnets/subnets/controllers/fabrics are. So this field is
+// permanently PendingNone against real PVE, with no fix available — not
+// merely unobserved, but describing a distinction real PVE itself does not
+// draw. internal/inventory.FromPVESDNIpams does not propagate it for this
+// reason (see that function's doc comment). Token is write-only: the capture gives no
 // evidence GET ever echoes a configured secret back (see
 // internal/inventory/sdn_ipam.go's doc comment), so this field is only ever
 // populated by a caller constructing a create/update request — a value

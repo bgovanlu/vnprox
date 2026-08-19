@@ -412,6 +412,90 @@ func TestTicketAuth_SDNPendingReads(t *testing.T) {
 	}
 }
 
+// TestTicketAuth_SDNControllerFabricPendingReads pins ListSDNControllersPending/
+// ListSDNFabricsPending's decode of the real pve.Client wire path — the
+// controller/fabric counterpart of TestTicketAuth_SDNPendingReads above,
+// added by the debt-sweep 2026-08-19 follow-up ("SDNController.Pending and
+// SDNFabric.Pending have the same gap [as SDNZone.Pending]", confirmed
+// against pvecube's own perl source, planning/reports/evidence/
+// pve-9.2.4-sdn-pending-state.txt §6). evpn-lab.yaml declares no
+// controllers/fabrics at all, so this test creates one of each live through
+// the real client first (mirroring how a caller actually stages one), then
+// reads it back through both pending readers — proving the sdnPendingWire
+// decode's controller/fabric identity fields (added alongside
+// zone/vnet/subnet's) round-trip correctly, not just that the mock's raw
+// JSON shape is right (internal/pvemock's own
+// TestSDNPending_ControllerAndFabric already pins that).
+func TestTicketAuth_SDNControllerFabricPendingReads(t *testing.T) {
+	ts := newMockServer(t, fixtureEvpn)
+	c := newTicketClient(t, ts.URL, "root@pam", "vnprox-mock")
+	ctx := context.Background()
+
+	if err := c.CreateSDNController(ctx, pve.SDNController{ID: "pctl", Type: "faucet"}); err != nil {
+		t.Fatalf("CreateSDNController: %v", err)
+	}
+	if err := c.CreateSDNFabric(ctx, pve.SDNFabric{ID: "pfab", Protocol: "bgp"}); err != nil {
+		t.Fatalf("CreateSDNFabric: %v", err)
+	}
+
+	controllers, err := c.ListSDNControllersPending(ctx)
+	if err != nil {
+		t.Fatalf("ListSDNControllersPending: %v", err)
+	}
+	ctlByID := map[string]pve.SDNPendingEntry{}
+	for _, ce := range controllers {
+		ctlByID[ce.ID] = ce
+	}
+	pctl, ok := ctlByID["pctl"]
+	if !ok || pctl.State != pve.PendingNew {
+		t.Fatalf("pctl pending entry = %+v (ok=%v), want state=new", pctl, ok)
+	}
+	if pctl.Fields["type"] != "faucet" {
+		t.Errorf("pctl.Fields[type] = %v, want %q", pctl.Fields["type"], "faucet")
+	}
+
+	fabrics, err := c.ListSDNFabricsPending(ctx)
+	if err != nil {
+		t.Fatalf("ListSDNFabricsPending: %v", err)
+	}
+	fabByID := map[string]pve.SDNPendingEntry{}
+	for _, fe := range fabrics {
+		fabByID[fe.ID] = fe
+	}
+	pfab, ok := fabByID["pfab"]
+	if !ok || pfab.State != pve.PendingNew {
+		t.Fatalf("pfab pending entry = %+v (ok=%v), want state=new", pfab, ok)
+	}
+	if pfab.Fields["protocol"] != "bgp" {
+		t.Errorf("pfab.Fields[protocol] = %v, want %q", pfab.Fields["protocol"], "bgp")
+	}
+
+	// ApplySDN clears both, mirroring TestTicketAuth_SDNPendingReads'
+	// zone/vnet/subnet precedent (real PVE clears pending state through
+	// exactly the same PUT /cluster/sdn commit for every SDN family).
+	if _, applyErr := c.ApplySDN(ctx); applyErr != nil {
+		t.Fatalf("ApplySDN: %v", applyErr)
+	}
+	controllers, err = c.ListSDNControllersPending(ctx)
+	if err != nil {
+		t.Fatalf("ListSDNControllersPending after apply: %v", err)
+	}
+	for _, ce := range controllers {
+		if ce.ID == "pctl" && ce.State != pve.PendingNone {
+			t.Errorf("pctl still pending after apply: %+v", ce)
+		}
+	}
+	fabrics, err = c.ListSDNFabricsPending(ctx)
+	if err != nil {
+		t.Fatalf("ListSDNFabricsPending after apply: %v", err)
+	}
+	for _, fe := range fabrics {
+		if fe.ID == "pfab" && fe.State != pve.PendingNone {
+			t.Errorf("pfab still pending after apply: %+v", fe)
+		}
+	}
+}
+
 // --- firewall reads across all three scopes --------------------------------
 
 func TestTicketAuth_FirewallReadsAllScopes(t *testing.T) {

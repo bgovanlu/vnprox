@@ -63,32 +63,47 @@ var runningQuery = url.Values{"running": {"1"}}
 // zone/... fields, no "pending" key, whether or not anything is actually
 // pending). Only "?pending=1" merges staged against running and adds a
 // top-level "state" (new|changed|deleted, ABSENT when in sync) plus a
-// nested "pending" object of just the fields that differ. Used
-// exclusively by ListSDNZonesPending/ListSDNVnetsPending/
-// ListSDNSubnetsPending below, for T-3101-followup-01's foreign-pending-
-// state detection — deliberately not wired into any of the existing
-// (T-401-owned) staged/running rendering above, which this file does not
-// otherwise touch.
+// nested "pending" object of just the fields that differ. Used by
+// ListSDNZonesPending/ListSDNVnetsPending/ListSDNSubnetsPending below (for
+// T-3101-followup-01's foreign-pending-state detection) and, since the
+// debt-sweep 2026-08-19 follow-up confirmed the identical mechanism for
+// those two families too (planning/reports/evidence/
+// pve-9.2.4-sdn-pending-state.txt §6), sdn_controller.go's
+// ListSDNControllersPending and sdn_fabric.go's ListSDNFabricsPending —
+// deliberately not wired into any of the existing (T-401-owned)
+// staged/running rendering above, which this file does not otherwise
+// touch.
 var pendingQuery = url.Values{"pending": {"1"}}
 
 // sdnPendingWire is the wire shape of one "?pending=1" list entry — see
 // pendingQuery's doc comment and the evidence file it cites. The
-// zone/vnet/subnet identity field is decoded per collection (its JSON key
-// differs, matching each type's own non-pending decode: "zone"/"vnet"/
-// "subnet") rather than through one shared "id" field.
+// zone/vnet/subnet/controller/fabric identity field is decoded per
+// collection (its JSON key differs, matching each type's own non-pending
+// decode: "zone"/"vnet"/"subnet"/"controller"/"id") rather than through one
+// shared "id" field. Controller/Fabric were added by the debt-sweep
+// 2026-08-19 follow-up ("SDNController.Pending and SDNFabric.Pending have
+// the same gap") — confirmed against pvecube's own perl source (the
+// evidence file's §6) to use the exact same pending_config() mechanism as
+// zone/vnet/subnet, not merely assumed from that precedent.
 type sdnPendingWire struct {
-	Pending map[string]any `json:"pending,omitempty"`
-	Zone    string         `json:"zone,omitempty"`
-	Vnet    string         `json:"vnet,omitempty"`
-	Subnet  string         `json:"subnet,omitempty"`
-	State   PendingState   `json:"state,omitempty"`
+	Pending    map[string]any `json:"pending,omitempty"`
+	Zone       string         `json:"zone,omitempty"`
+	Vnet       string         `json:"vnet,omitempty"`
+	Subnet     string         `json:"subnet,omitempty"`
+	Controller string         `json:"controller,omitempty"`
+	// ID is a fabric's own identity field ("id", per SDNFabric.ID's own
+	// json tag) — named ID rather than Fabric only because real PVE's own
+	// wire field for a fabric's identity is literally "id", unlike every
+	// other family here which names it after the family itself.
+	ID    string       `json:"id,omitempty"`
+	State PendingState `json:"state,omitempty"`
 }
 
-// SDNPendingEntry is one zone/vnet/subnet object real PVE's "?pending=1"
-// view reports. State is PendingNone ("") for an in-sync object (Fields is
-// then always nil, since real PVE omits "pending" entirely when there is
-// nothing to show — pendingQuery's doc comment); callers filter for
-// State != PendingNone.
+// SDNPendingEntry is one zone/vnet/subnet/controller/fabric object real
+// PVE's "?pending=1" view reports. State is PendingNone ("") for an
+// in-sync object (Fields is then always nil, since real PVE omits
+// "pending" entirely when there is nothing to show — pendingQuery's doc
+// comment); callers filter for State != PendingNone.
 type SDNPendingEntry struct {
 	Fields map[string]any
 	Kind   string
