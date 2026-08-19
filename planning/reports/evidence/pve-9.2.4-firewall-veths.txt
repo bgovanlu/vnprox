@@ -1,0 +1,158 @@
+pve-9.2.4-firewall-veths.txt
+=============================
+
+Target: pvecube (PVE 9.2.4, single node, no cluster). Captured 2026-08-19.
+
+Question this settles (T-3502 / Phase 35 "Two real defects behind that" #2):
+what are the exact interface-name prefixes pve-firewall and PVE's own
+tap/veth guest-NIC plumbing create at guest start, are they ever written to
+/etc/network/interfaces, and does the same "never in the file" story apply
+to bare guest tap/veth devices when firewall=0 (no fwbr indirection)?
+
+Method: entirely read-only. `cat /etc/network/interfaces`, `ls /sys/class/net`,
+`ip -d link show <iface>`, `pvesh get` (read-only, no `pvesh set`/`create`),
+and `cat`/`grep` of the PVE-shipped Perl source
+(/usr/share/perl5/PVE/Network.pm) already installed on the node. No `pvesh`
+mutation, no `ip link` write, nothing on the host was changed.
+
+--- /etc/network/interfaces (relevant excerpt) ---
+
+auto vmbr0
+iface vmbr0 inet dhcp
+	bridge-ports enp1s0
+	bridge-stp off
+	bridge-fd 0
+
+(vmbr1/vmbr2/vmbr3 declare enp2s0/enp3s0/enp4s0 respectively, each alone.)
+
+--- ls /sys/class/net/vmbr0/brif -----------------------------------------
+
+enp1s0
+fwpr103p0
+fwpr104p0
+
+So live (netlink) bridge membership is enp1s0,fwpr103p0,fwpr104p0 against a
+file that declares enp1s0 alone — this is the exact case
+drift/file_runtime_divergence flagged as "a manual `ip link` change may have
+been made outside vnprox". It was not; see below.
+
+--- ls /sys/class/net (fw*/tap*/veth*) ------------------------------------
+
+fwbr103i0
+fwbr104i0
+fwln103i0
+fwln104i0
+fwpr103p0
+fwpr104p0
+veth103i0
+veth104i0
+(no tap* present — see "why no tap*" below)
+
+--- ls /sys/class/net/fwbr103i0/brif, /sys/class/net/fwbr104i0/brif ------
+
+fwbr103i0/brif: fwln103i0, veth103i0
+fwbr104i0/brif: fwln104i0, veth104i0
+
+--- ip -d link show (ownership chain for guest 103) ------------------------
+
+16: fwpr103p0@fwln103i0: ... master vmbr0 state UP ... veth ...
+17: fwln103i0@fwpr103p0: ... master fwbr103i0 state UP ... veth ...
+10: veth103i0@if2:        ... master fwbr103i0 state UP ... veth ...
+
+So the chain for guest 103's net0 is:
+  veth103i0 (in the container's netns) -- fwbr103i0 -- fwln103i0 == fwpr103p0 -- vmbr0
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                           all four created/destroyed by pve-firewall
+                                           at guest start/stop; NONE of them, nor vmbr0's
+                                           membership of fwpr103p0, is ever written to
+                                           /etc/network/interfaces.
+
+--- guest config (source of firewall=1) -----------------------------------
+
+pvesh get /nodes/pvecube/lxc/103/config:
+  net0=name=eth0,bridge=vmbr0,firewall=1,hwaddr=...,ip=dhcp,type=veth
+pvesh get /nodes/pvecube/lxc/104/config:
+  net0=name=eth0,bridge=vmbr0,firewall=1,hwaddr=...,ip=dhcp,type=veth
+
+Both running LXC containers (103 "librenms", 104 "powerdns") have net0
+firewall=1 — the PVE GUI's default for a NIC added through the GUI, per the
+task card. That default is exactly why this fires on a large share of real
+installs, not just pvecube's own guests.
+
+--- why no tap* is currently observable, and why it still matters ---------
+
+pvesh get /nodes/pvecube/qemu:
+  100 "firewall" (net0/net1 both firewall=1)  status=stopped
+  101 "debian"                                 status=stopped
+  102 "opnsense" (net0 has NO firewall key, i.e. default false; net1-3 firewall
+       unset too)                              status=stopped
+
+All three QEMU VMs are stopped, so no tap* device exists on the node right
+now to observe directly — the LXC containers are the only running guests,
+which is why only veth103i0/veth104i0 (not tap*) appear live. The naming and
+lifecycle for tap* is not assumed from docs, though: it is read directly out
+of the PVE package's own source shipped on this node (below), the same
+source that produces the fwpr/fwln/fwbr names actually observed live.
+
+--- /usr/share/perl5/PVE/Network.pm (installed on pvecube, PVE 9.2.4) -----
+
+Naming (verbatim, $compute_fwbr_names, line ~163-172):
+  my $fwbr        = "fwbr${vmid}i${devid}";
+  my $vethfw      = "fwln${vmid}i${devid}";   # firewall-side veth peer
+  my $vethfwpeer  = "fwpr${vmid}p${devid}";   # bridge-side veth peer
+  my $ovsintport  = "fwln${vmid}o${devid}";   # OVS variant of the peer
+
+Guest-device recognition ($parse_tap_device_name, line ~144-158):
+  $iface =~ m/^tap(\d+)i(\d+)$/   -> VM (QEMU) guest NIC
+  $iface =~ m/^veth(\d+)i(\d+)$/  -> LXC (container) guest NIC
+
+tap_plug() (line ~513, the routine PVE calls at guest NIC hot-plug/start),
+is_linux_bridge branch:
+  if ($firewall) {
+      $create_firewall_bridge_linux->($iface, $bridge, ...);   # builds fwbr/fwln/fwpr
+  } else {
+      $bridge_add_interface->($bridge, $iface, $tag, $trunks); # iface goes STRAIGHT into the real bridge
+  }
+
+This is the second code path the task card asked to verify rather than
+assume: when firewall=0 (opnsense's net0 above, and any GUI-created NIC with
+the firewall checkbox unticked), PVE enslaves the guest's own tap<vmid>i<n>
+or veth<vmid>i<n> device DIRECTLY to the real bridge (vmbr0 etc.) via plain
+`ip link set master`, with no fwbr/fwln/fwpr indirection at all. That device
+is, exactly like the fwpr case, never written to /etc/network/interfaces —
+guest network config lives in /etc/pve/{qemu-server,lxc}/<vmid>.conf, not
+the interfaces file. So tap*/veth* guest devices hit the same "runtime-owned,
+file-silent" story as fwpr/fwln/fwbr, via a different PVE code path,
+regardless of the firewall setting on the NIC.
+
+$create_firewall_bridge_linux (line ~450) confirms the wiring drawn above:
+  $bridge_add_interface->($bridge, $vethfwpeer, ...);   # fwpr* -> real bridge
+  $bridge_add_interface->($fwbr, $vethfw);              # fwln* -> fwbr*
+  $bridge_add_interface->($fwbr, $iface);                # tap*/veth* -> fwbr*
+
+--- conclusion / what vnprox now treats as runtime-owned -------------------
+
+Five prefixes, all sourced from this transcript (not from internal/pvemock
+or docs/), matched by the vmid/devid-numbered pattern PVE itself generates
+(not a bare string prefix, so a coincidentally fw*/tap*/veth*-named
+hand-added interface that does NOT match PVE's own <vmid>i<devid>/<vmid>p<devid>
+shape is still reported as genuine divergence):
+
+  fwbr\d+i\d+   the per-guest-NIC firewall bridge itself
+  fwln\d+i\d+   veth peer inside the firewall bridge (Linux bridge case)
+  fwln\d+o\d+   ovs-int-port peer inside the firewall bridge (OVS case)
+  fwpr\d+p\d+   veth peer enslaved to the real bridge (what vmbr0/brif showed)
+  tap\d+i\d+    a QEMU guest NIC's tap device, enslaved directly when firewall=0
+  veth\d+i\d+   an LXC guest NIC's veth device, enslaved directly when firewall=0
+                (also the device bridged into fwbr* when firewall=1 — same
+                prefix, different parent, both runtime-owned)
+
+--- the "*" suffix in the original finding text -----------------------------
+
+The finding text quoted in the task card ("live (netlink) membership is
+enp1s0,fwpr103p0*,fwpr104p0*") has a `*` after each fwpr name. That is
+vnprox's OWN formatting, not anything from PVE or netlink:
+internal/drift/filerun.go's describeSet() appends `*` to every member that
+is "distinct" — i.e. present on this side of the comparison but not the
+other — when rendering the finding's live-membership list. It is incidental
+to this defect, not a clue about the device.

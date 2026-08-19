@@ -276,8 +276,15 @@ func entityTriples(doc spec.Spec, ref inventory.Ref, e inventory.Entity) []tripl
 		if declared == nil {
 			return nil
 		}
+		// v.PortNames is dropped of PVE's own runtime-owned members
+		// (fwbr*/fwln*/fwpr*, guest tap*/veth*) before comparison, for the
+		// same reason filerun.go's membershipFinding does — see
+		// runtimeOwnedMemberPattern and T-3502's evidence file. Without
+		// this, a spec-managed bridge with a firewall-enabled guest NIC
+		// would report a spurious spec/live-only "ports" divergence here
+		// exactly as file_runtime_divergence used to.
 		return []triple{
-			setTriple("ports", declared.Ports, v.DeclaredPortNames, v.PortNames),
+			setTriple("ports", declared.Ports, v.DeclaredPortNames, dropRuntimeOwned(v.PortNames)),
 			intTriple("mtu", declared.MTU, v.MTUDeclared, v.MTU),
 		}
 	case *inventory.Bond:

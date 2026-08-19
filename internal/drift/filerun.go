@@ -6,16 +6,79 @@
 // side (file or live state) reflects the operator's actual intent cannot
 // be inferred safely, so no fix is offered — the user reviews and decides,
 // same as the raw interfaces editor.
+//
+// Bridge port membership is compared after dropping members PVE's own
+// pve-firewall/tap-plug plumbing creates and destroys around a guest's
+// lifecycle (fwbr*/fwln*/fwpr*, and a guest's own tap*/veth* device) — see
+// runtimeOwnedMemberPattern. Those are never written to the interfaces file
+// by design (T-3502; verified against pvecube, PVE 9.2.4, see
+// planning/reports/evidence/pve-9.2.4-firewall-veths.txt), so their
+// live-only presence is not the manual `ip link`/`brctl addif` change this
+// check exists to catch.
 
 package drift
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/bgovanlu/vnprox/internal/inventory"
 )
+
+// runtimeOwnedMemberPattern matches interface names PVE itself creates and
+// destroys around a guest's lifecycle, never written to
+// /etc/network/interfaces by design. Verified against pvecube (PVE 9.2.4,
+// live node, 2026-08-19) — both the live membership
+// (/sys/class/net/vmbr0/brif: enp1s0,fwpr103p0,fwpr104p0 against a file
+// declaring enp1s0 alone) and the naming/lifecycle, read out of the PVE
+// package's own installed source (PVE::Network's $compute_fwbr_names and
+// tap_plug) rather than assumed from internal/pvemock or docs — see
+// planning/reports/evidence/pve-9.2.4-firewall-veths.txt.
+//
+//	fwbr<vmid>i<netid>   the per-guest-NIC firewall bridge itself
+//	fwln<vmid>i<netid>   veth peer inside the firewall bridge (Linux bridge)
+//	fwln<vmid>o<netid>   ovs-int-port peer inside the firewall bridge (OVS)
+//	fwpr<vmid>p<netid>   veth peer enslaved to the real bridge (vmbr*)
+//	tap<vmid>i<netid>    a QEMU guest NIC's tap device
+//	veth<vmid>i<netid>   an LXC guest NIC's veth device
+//
+// tap*/veth* are included even though pve-firewall's own bridge only ever
+// touches fwbr/fwln/fwpr: when a guest NIC has firewall=0 (also a common
+// GUI-created state — e.g. pvecube's own "opnsense" VM), PVE::Network::
+// tap_plug enslaves the guest's tap/veth device DIRECTLY to the real bridge
+// with no fwbr indirection at all, and that device is just as absent from
+// the interfaces file. Both code paths are documented in the evidence file
+// above.
+//
+// The pattern requires PVE's own <vmid>i<netid>/<vmid>p<netid> numbering, not
+// a bare prefix match, so a coincidentally similarly-named hand-added
+// interface (e.g. a literal "veth0" a human created with `ip link add`) does
+// not get silently swallowed — see TestFileRuntimeDivergence_FirewallVeths's
+// table, which covers both directions.
+var runtimeOwnedMemberPattern = regexp.MustCompile(`^(fwbr\d+i\d+|fwln\d+[io]\d+|fwpr\d+p\d+|tap\d+i\d+|veth\d+i\d+)$`)
+
+// isRuntimeOwnedMember reports whether name matches one of PVE's own
+// runtime-created interface shapes (see runtimeOwnedMemberPattern).
+func isRuntimeOwnedMember(name string) bool {
+	return runtimeOwnedMemberPattern.MatchString(name)
+}
+
+// dropRuntimeOwned removes PVE-runtime-owned members from a membership set
+// before it is compared between the interfaces file and the kernel. Applied
+// to both sides defensively: the declared side should never contain them (by
+// design they are not written to the file), so filtering it is a no-op in
+// the real case and only guards against a fixture that got this wrong.
+func dropRuntimeOwned(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if !isRuntimeOwnedMember(n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
 
 // checkFileRuntimeDivergence is the CheckFileRuntimeDivergence family.
 func checkFileRuntimeDivergence(snap inventory.Snapshot) []Finding {
@@ -51,9 +114,14 @@ func checkFileRuntimeDivergence(snap inventory.Snapshot) []Finding {
 }
 
 // membershipFinding compares live vs. declared port/slave membership (as
-// unordered name sets) for one bridge or bond entity.
+// unordered name sets) for one bridge or bond entity. Members PVE itself
+// creates and destroys around a guest's lifecycle (pve-firewall's veth
+// plumbing, and a guest's own tap/veth device when its NIC has firewall=0)
+// are dropped from the live side first — see runtimeOwnedMemberPattern —
+// since they are never written to the interfaces file by design and their
+// live-only presence is not evidence of a manual change.
 func membershipFinding(ref inventory.Ref, kindLabel string, live, declared []string) (Finding, bool) {
-	liveSet, declaredSet := sortedUnique(live), sortedUnique(declared)
+	liveSet, declaredSet := sortedUnique(dropRuntimeOwned(live)), sortedUnique(dropRuntimeOwned(declared))
 	if len(liveSet) == 0 || len(declaredSet) == 0 {
 		// One side unreported: nothing to compare (avoids false positives
 		// before both host-netlink and host-interfaces/pve-network have
