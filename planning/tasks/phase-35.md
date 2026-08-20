@@ -165,6 +165,70 @@ manages itself.
 3. Existing `SwitchFaceplate` tests pass or are updated with the reasoning recorded; axe clean in
    all three variants; keyboard traversal reaches every port.
 
+### Delivery record — DONE, 2026-08-20 (`6140a614`, `fef8cca8`)
+
+**The card asked for two facts the graph did not carry**, and the interesting part of this task was
+refusing to fake them. "RJ45 for copper, SFP cage for fibre" needs a media type; "negotiated speed
+where known" needs a speed. Neither was on a topology node, and the tempting shortcuts — infer fibre
+from a 10G link, infer copper from everything else — are exactly the kind of thing CLAUDE.md's
+"never model a PVE object from docs/mock" rule exists to stop, with the extra hazard that a
+mis-drawn connector is invisible: the faceplate still renders, still passes axe, still looks like a
+switch.
+
+Both were observable, and were observed (`planning/reports/evidence/pve-9.2.4-nic-media-and-speed
+.txt`, read-only from pvecube). `Port` turned out to be field 4 of `struct ethtool_cmd`, which
+`internal/host/ethtool_linux.go` has been filling via `SIOCETHTOOL`/`ETHTOOL_GSET` for speed and
+duplex all along and then discarding — so the whole media chain cost one already-issued ioctl, no
+new syscall and no new dependency.
+
+**The transcript also settled a design question the card had backwards.** The card says "SFP cage
+for fibre/**bond members**", which would have made a bond member's drawn connector depend on whether
+it was in a bond rather than on what it physically is. It also implies keying the drawing off
+link-time facts. The evidence says otherwise: media type is a property of the *socket* and is
+reported even with no carrier (pvecube's down `enp2s0`/`enp4s0` still answer `Port: Twisted Pair`),
+while speed is a property of the *link* and vanishes when the port goes down (Linux reports `-1`).
+So the body follows media only, a down port keeps its shape and merely loses its speed marking, and
+bond members are drawn as whatever they physically are — the *aggregation* is conveyed by the joined
+group and rail around them, which is what the card's next bullet actually wanted.
+
+**Deviations, all deliberate:**
+
+1. **A third port body, `unknown`, that the card did not ask for.** A peer node this daemon has
+   never host-polled carries no media type at all, and so does the captured fixture below. Drawing
+   those as a confident RJ45 would be an invention; they get a visibly distinct "no reading"
+   silhouette instead, and the accessible description says "media type unknown" in words.
+2. **Guest access ports get a dashed jack, not a solid one.** A guest NIC has no socket. Keeping the
+   jack shape makes the virtual switch read as a switch (which is what the request was about);
+   dashing it stops the drawing from claiming there is something to plug into.
+3. **Two T-2004 contrast assertions updated rather than preserved**, with measurements recorded in
+   the tests. One pinned `text-slate-600` on the old `bg-indigo-50` header — correct there, and
+   *sub-AA* on the new dark name plate, where the pre-T-2004 value would have passed; the surface
+   changed, so the pairing under test had to. The other pinned a DOM child index that a layout
+   wrapper shifted, and now locates by content. Neither was a contrast regression.
+4. **`internal/pvemock`'s `LinkInfo`/`LinkState` were touched** (one layer below the plan) because
+   `internal/host/fixture.go` is fed by them rather than by a fixture format of its own — without
+   it, "fixtures can express a media port" is not true.
+
+**AC1 is proved against real data.** `web/src/topology/__fixtures__/pvecube-reference-topology.json`
+is a verbatim `GET /topology` capture from the live deployment: six bridges, five guests, four NICs,
+`102 opnsense net1/net2/net3` down. It has never been curated to make the renderer look good — and
+because it predates the two new fields, it doubles as the honest "no reading" case.
+
+**AC2**: the port field wraps and is height-capped *unconditionally* (no count threshold at which
+the layout changes character), so a four-port switch is unaffected and a dense one scrolls instead
+of stretching the chassis past the viewport; the silkscreen always prints the full count, so a
+scrolled field cannot under-report. Proved at 48, with every port still a tabbable `<button>` —
+which is also what satisfies axe's `scrollable-region-focusable` without a `tabindex` of its own.
+
+**AC3**: 288 web test files / 2205 tests green; `make ci` green. LEDs now carry a per-status glyph
+(solid / half / cut-through / hollow ring) as well as a hue, so status survives a colour-vision
+deficiency and the greyscale stale rendering — an improvement on the pre-existing colour-only dot.
+
+**Left for hardware**: the fibre/DA branch, the `PORT_NONE`/`PORT_OTHER` fallback, and how the
+unknown-media body reads on a peer node's ports — all three filed in
+`planning/reports/needs-hardware-validation.md`. Every NIC on the one available node is Twisted
+Pair, so the cage rendering has never been produced by real hardware.
+
 ## T-3504 · Firewall bridges: stop drawing empty boxes
 **model:** sonnet-5 · **size:** S · **depends:** T-3503 · **context:** the screenshot's `fwbr103i0`/`fwbr104i0` cards, `web/src/topology/SwitchView.tsx`, real `pvecube` `/sys/class/net/fwbr*`
 
@@ -183,6 +247,51 @@ single waste of space on the screen, and confusing, since the operator did not c
 **Acceptance criteria:**
 1. No empty device renders anywhere in the Switch view on the reference topology.
 2. The firewall relationship for a guest NIC with `firewall=1` is discoverable in the UI.
+
+### Delivery record — DONE, 2026-08-20
+
+**Disposition: fold into the guest NIC.** The card called this a product judgement and it was, right
+up until the node was asked what an `fwbr` actually is
+(`planning/reports/evidence/pve-9.2.4-firewall-bridges.txt`, read-only). After that the other two
+options are ruled out by fact rather than by taste:
+
+- `fwbr<vmid>i<netid>` has exactly two members, always: `fwln<vmid>i<netid>` and the guest's own
+  `veth`/`tap`. Both are the runtime-owned interfaces vnprox deliberately does not model as entities
+  — the same class T-3502 taught `internal/drift` to ignore.
+- The guest NIC's `attached-to` edge points at the **logical** bridge (`vmbr0`), never at the
+  `fwbr`.
+
+So these chassis are not empty because the collector missed something; they are *structurally*
+empty, and no amount of populating fixes them. "Collapse behind a disclosure" and "hide behind a
+toggle" would both have kept drawing a device with nothing in it and merely made it harder to reach.
+The card's own bullet — "if they remain drawn, their actual members must be shown" — has no
+satisfiable reading here, which is what settled it.
+
+Folding is exact rather than approximate: the vmid/netid in the name **is** the guest NIC's
+identity, so the mapping is total and lossless. `internal/topology`'s `foldFirewallBridges` drops the
+node and gives the owning NIC a `firewall=<name>` badge; the faceplate draws a small `fw` marking
+with the bridge's name in its title, and the name reaches assistive tech through `badgeAriaParts`'
+verbatim badge list — the same route the Graph view reads it by, so the two views cannot disagree
+(AC2).
+
+**Two deliberate refusals to over-reach:**
+
+1. **An orphaned `fwbr` keeps rendering.** The fold is conditional on the owning guest NIC being
+   present in the same projection. A bridge left behind after a guest stopped, or one whose NIC a
+   `?node=`/`?layers=` filter excluded, is a real interface with no owner — not chrome the operator
+   can be told to ignore — and folding it into a NIC that isn't there would have deleted it from the
+   map outright. This is per-bridge, not an all-or-nothing bail-out.
+2. **The pattern is anchored** (`^fwbr\d+i\d+$`). An operator's own `fwbr-dmz` is not swallowed.
+   That case has its own test, because a regression there would be invisible: the bridge would
+   simply stop being drawn.
+
+Nothing is hidden that could not be found: the entity is untouched in the inventory and
+`GET /inventory/{ref}` still answers for it. Documented in `docs/api.md` and
+`docs/features/topology.md` §3.
+
+**Not done here**: `badgeAriaParts` still reads the badge verbatim ("badges: firewall=fwbr103i0")
+rather than phrasing it ("firewalled by fwbr103i0"). Phrasing it belongs in `a11yBridge.ts`, where
+both views get it at once — folded into T-3505 rather than done twice.
 
 ## T-3505 · Graph view parity
 **model:** sonnet-5 · **size:** M · **depends:** T-3501, T-3503 · **context:** `web/src/topology/canvasDraw.ts`, `TopologyCanvasV2.tsx`, `EntityNode.tsx`, `EntityEdge.tsx`

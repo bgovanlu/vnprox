@@ -1,0 +1,78 @@
+T-3504 evidence — what a `fwbr*` bridge actually is on a live node
+Host: pvecube, PVE 9.2.4, read-only (`/sys` reads and `grep` of config files)
+Captured: 2026-08-20
+
+Why this transcript exists
+--------------------------
+The Switch view drew `fwbr103i0` and `fwbr104i0` as two large, entirely empty
+chassis. T-3504 asks for a disposition — fold, collapse, or hide — and the card
+correctly calls that a product judgement. It is only a judgement once you know
+what these objects are, and CLAUDE.md forbids answering that from docs or from
+internal/pvemock. So it was answered from the node.
+
+Transcript
+----------
+$ for b in /sys/class/net/fwbr*; do
+    echo "$(basename $b) members: $(ls $b/brif)"
+  done
+fwbr103i0 members: fwln103i0 veth103i0
+fwbr104i0 members: fwln104i0 veth104i0
+
+$ grep -c fwbr /etc/network/interfaces
+0
+
+$ grep -E '^net[0-9]+:' /etc/pve/qemu-server/*.conf /etc/pve/lxc/*.conf
+100.conf  net0: virtio=0A:52:62:17:F7:02,bridge=vmbr1,firewall=1
+100.conf  net1: virtio=52:E8:59:2C:DC:6D,bridge=vmbr2,firewall=1
+101.conf  net0: virtio=EE:29:CD:E9:A6:D2,bridge=vmbr2,firewall=1
+102.conf  net0: virtio=BC:24:11:D3:F9:05,bridge=vmbr0
+102.conf  net1: virtio=BC:24:11:B4:56:36,bridge=vmbr1,link_down=1
+102.conf  net2: virtio=BC:24:11:8C:C0:01,bridge=vmbr2,link_down=1
+102.conf  net3: virtio=BC:24:11:E7:DB:5F,bridge=vmbr3,link_down=1
+103.conf  net0: name=eth0,bridge=vmbr0,firewall=1,hwaddr=BC:24:11:52:87:C6,ip=dhcp,type=veth
+104.conf  net0: name=eth0,bridge=vmbr0,firewall=1,hwaddr=BC:24:11:FA:C0:97,ip=dhcp,type=veth
+
+(103 and 104 are the two running LXC guests. 100/101 are stopped.)
+
+What this settles
+-----------------
+1. **A `fwbr` is one guest NIC's firewall, and its name says which.**
+   `fwbr<vmid>i<netid>` has exactly two members, always: `fwln<vmid>i<netid>`
+   (the veth leg toward the real bridge) and the guest's own device
+   (`veth<vmid>i<netid>` for LXC, `tap<vmid>i<netid>` for QEMU). It is not a
+   bridge in the sense the operator means when they make one — it is a
+   per-NIC bump in the wire that `pve-firewall` inserts so it has somewhere to
+   hang iptables rules. The vmid/netid in the name is a total, lossless mapping
+   back to the guest NIC it belongs to.
+
+2. **The operator did not create them, and cannot find them in their config.**
+   `/etc/network/interfaces` mentions `fwbr` zero times. They exist only at
+   runtime, created at guest start and destroyed at guest stop. `firewall=1` is
+   the PVE GUI's *default* when adding a NIC, so an operator who has never
+   heard of `fwbr` will still have one per running guest NIC.
+
+3. **They are structurally empty in vnprox's model, and always will be.**
+   Their two members are runtime-owned interfaces vnprox deliberately does not
+   model as entities (the same class T-3502 taught `internal/drift` to ignore —
+   see `pve-9.2.4-firewall-veths.txt`), and the guest NIC's `attached-to` edge
+   points at the *logical* bridge the guest is configured for (`vmbr0`), not at
+   the `fwbr`. So the captured topology shows `bridge:pvecube:fwbr103i0` with no
+   ports, no uplinks, no VLANs and no VNets — not because the collector missed
+   something, but because there is nothing there to collect that vnprox models.
+   Drawing them as chassis therefore cannot be fixed by populating them.
+
+4. **Existence tracks "running guest with firewall=1", not configuration.**
+   Guests 100 and 101 both have `firewall=1` NICs and neither has an `fwbr`,
+   because neither is running. Guest 102 (opnsense) has no `firewall` flag on
+   any NIC and so has none either — its `net1`/`net2`/`net3` carry
+   `link_down=1`, which is the real reason those three render down, unrelated to
+   firewalling.
+
+Consequence for the card
+------------------------
+Of T-3504's three candidate dispositions, two are ruled out by point 3 rather
+than by taste: "collapse behind a disclosure" and "hide by default with a
+toggle" both keep drawing a device with nothing in it, and merely make the
+empty box harder to reach. Only folding the `fwbr` into the guest NIC it
+belongs to renders something true — the name already carries the mapping, and
+point 1 makes it exact.

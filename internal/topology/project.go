@@ -81,6 +81,15 @@ func Project(snap inventory.Snapshot, f Filter) Topology {
 	edges := buildEdges(snap, byRef, nodeSet, statusByID)
 	edges = append(edges, groupEdges...)
 
+	// T-3504: after the edges exist (so the ones touching a folded bridge can
+	// be dropped with them) and before buildSwitches, which must not see an
+	// fwbr as a switch candidate. See firewall_bridge.go.
+	nodes, edges = foldFirewallBridges(nodes, edges)
+	nodeSet = make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		nodeSet[n.ID] = true
+	}
+
 	// T-302: switch merging (spec §2) is purely additive over the existing
 	// per-neighbor lldp-neighbor nodes/lldp-adjacent edges built above —
 	// see switches.go's doc comment.

@@ -485,11 +485,31 @@ function AccessPort({
             {nicKey}
             {port.vid !== undefined && <span className="ml-0.5 text-violet-700 dark:text-violet-300">·{port.vid}</span>}
           </span>
+          {/* T-3504: the guest NIC's firewall, where the `fwbr<vmid>i<netid>`
+              bridge used to be drawn as an empty chassis of its own. The
+              bridge's name is in the title and in the accessible description
+              — the marking has to stay this small to fit a port cell, and a
+              two-letter chip nobody can expand would be worse than the empty
+              box it replaced. */}
+          {port.firewall && (
+            <span
+              title={`firewalled by ${port.firewall}`}
+              className="rounded bg-rose-100 px-1 text-[8px] font-semibold uppercase leading-tight tracking-wide text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+            >
+              fw
+            </span>
+          )}
           {port.badges.map((b) => (
             <FindingChip key={b} token={b} findings={port.findings} />
           ))}
         </span>
       </button>
+      {/* The firewall bridge's name reaches a screen reader through
+          badgeAriaParts' verbatim badge list ("badges: firewall=fwbr103i0"),
+          not through an `extra` phrase here — saying it twice would be the
+          cost of nicer wording in one view only, and the Graph view reads the
+          same badge through the same helper. Phrasing it properly belongs in
+          a11yBridge.ts, where both views would get it (T-3505). */}
       <A11yDesc id={portDescId} text={switchAriaDescription("guest-nic", port.status, port.badges, port.findings)} />
     </>
   );

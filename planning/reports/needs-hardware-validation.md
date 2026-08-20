@@ -1702,3 +1702,31 @@ for every node the SSH rollout succeeds on, with a manual fallback recipe printe
       PVE cluster: the token file lands byte-identical on every subsequent node, with root:root 0600
       permissions, and `vnproxctl status`'s "PVE API health" reports healthy on each one without a
       manual copy.
+
+## T-3503 — NIC media type: the fibre / direct-attach branch (2026-08-20)
+
+The Switch faceplate now draws a port from its reported media type (`PORT_*` out of
+`ETHTOOL_GSET`, plumbed host → inventory → topology), so a copper port renders as an RJ45 jack, a
+fibre or direct-attach port as an SFP cage, and an unreported one as a visibly distinct "no reading"
+body. `planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt` is the read-only transcript the
+mapping was built from.
+
+- [ ] **Only the copper branch has been exercised against real hardware.** All four NICs on
+      `pvecube` are `Port: Twisted Pair` (`igc`), so `PORT_TP` is the only value the live ioctl has
+      ever returned here. `PORT_FIBRE` and `PORT_DA` — and with them the SFP cage rendering, and the
+      `speedMarking` output above 1G — are covered by unit fixtures only
+      (`internal/topology/project_media_test.go`, `web/src/topology/portMedia.test.ts`,
+      `SwitchFaceplate.device.test.tsx`). This is the same class of limit as the cluster-behaviour
+      entries above and for the same reason: the one available node cannot produce the input. What
+      to confirm on hardware with an SFP+/DAC port: `ethtool <if>` reports `Port: FIBRE` (or
+      `Direct Attach Copper`), `GET /topology` carries `"mediaPort": "fibre"` (or `"da"`), and the
+      faceplate draws a cage rather than a jack.
+- [ ] **A NIC whose driver reports `PORT_NONE`/`PORT_OTHER`, or fails `ETHTOOL_GSET` outright.**
+      Both map to the "no reading" body by design ("never guessed"), but no driver on this node does
+      either, so the fallback has never been seen on real hardware. Virtio NICs inside a VM are the
+      likeliest real source and are worth checking opportunistically.
+- [ ] **A peer node's ports.** Media type is a host-netlink-only fact (`ownershipRules`), so a node
+      this daemon does not poll directly carries none and every one of its ports draws as unknown
+      media. That is the intended, honest behaviour — but whether it reads as *informative* rather
+      than *broken* to an operator looking at a multi-node map is a judgement no single-node
+      environment can make. Needs a real cluster.

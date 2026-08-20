@@ -349,3 +349,64 @@ describe("T-3503 AC2 — density: 48 ports on one switch", () => {
     }
   });
 });
+
+describe("T-3504 — a guest NIC's firewall bridge is folded onto the port", () => {
+  // What the backend now emits: no `fwbr<vmid>i<netid>` node at all, and a
+  // `firewall=<name>` badge on the guest NIC that owns it. See
+  // internal/topology/firewall_bridge.go and
+  // planning/reports/evidence/pve-9.2.4-firewall-bridges.txt for why folding
+  // beat the alternatives — those bridges have no members vnprox models, so
+  // a disclosure or a toggle would only have made an empty chassis harder to
+  // reach.
+  function firewalledGuest(badges: string[]): [TopologyNode[], TopologyEdge[]] {
+    const bridge: TopologyNode = {
+      id: "bridge:pvecube:vmbr0",
+      kind: "bridge",
+      label: "vmbr0",
+      layer: "l2",
+      nodeGroup: "pvecube",
+      status: "ok",
+      badges: [],
+    };
+    const nic: TopologyNode = {
+      id: "guest-nic:pvecube:103/net0",
+      kind: "guest-nic",
+      label: "librenms/net0",
+      layer: "guest",
+      nodeGroup: "pvecube",
+      status: "ok",
+      badges,
+    };
+    return [
+      [bridge, nic],
+      [{ from: nic.id, to: bridge.id, kind: "attached-to", status: "ok", badges: [] }],
+    ];
+  }
+
+  it("marks a firewalled port and names the bridge in its tooltip", () => {
+    const [nodes, edges] = firewalledGuest(["firewall=fwbr103i0"]);
+    renderTopology(nodes, edges);
+    const port = screen.getByLabelText("librenms/net0");
+    const chip = within(port).getByText("fw");
+    expect(chip.getAttribute("title")).toBe("firewalled by fwbr103i0");
+  });
+
+  it("names the bridge to a screen reader too — the visible chip is two letters", () => {
+    // T-3504 AC2: the firewall relationship must stay discoverable. The
+    // bridge's name reaches assistive tech through badgeAriaParts' verbatim
+    // badge list, the same route the Graph view reads it by.
+    const [nodes, edges] = firewalledGuest(["firewall=fwbr103i0"]);
+    renderTopology(nodes, edges);
+    const port = screen.getByLabelText("librenms/net0");
+    const desc = document.getElementById(port.getAttribute("aria-describedby") ?? "")?.textContent ?? "";
+    expect(desc).toContain("fwbr103i0");
+  });
+
+  it("leaves an unfirewalled port unmarked", () => {
+    // opnsense's NICs on the reference node carry no `firewall` flag at all,
+    // so nothing should appear — a marking on every port would say nothing.
+    const [nodes, edges] = firewalledGuest([]);
+    renderTopology(nodes, edges);
+    expect(within(screen.getByLabelText("librenms/net0")).queryByText("fw")).toBeNull();
+  });
+});

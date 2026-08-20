@@ -97,6 +97,13 @@ export interface SwitchAccessPort {
   findings?: FindingBadge[];
   vid?: number;
   vmid?: number;
+  /** T-3504: the name of the `fwbr<vmid>i<netid>` firewall bridge Proxmox
+   * created for this guest NIC (`firewall=1`), from its `firewall=<name>`
+   * badge. Those bridges are no longer drawn as switches of their own —
+   * they have no members vnprox models, so they rendered as empty chassis —
+   * and this is where the relationship survives instead. Absent when the
+   * NIC is not firewalled. See internal/topology/firewall_bridge.go. */
+  firewall?: string;
   /** True for the synthetic guest-group pill (isGuestGroupId(ref)); `count`
    * is then how many guests it stands for (its click expands, reusing the
    * graph view's GuestGroupExpansion). */
@@ -163,6 +170,17 @@ function vidFromBadges(badges: string[]): number | undefined {
       const n = Number(value);
       if (Number.isFinite(n)) return n;
     }
+  }
+  return undefined;
+}
+
+/** A "firewall=fwbr103i0" badge's value — the Proxmox firewall bridge
+ * created for this guest NIC (T-3504) — or undefined. Exported for direct
+ * testing alongside the badge vocabulary's other readers. */
+export function firewallBridgeFromBadges(badges: readonly string[]): string | undefined {
+  for (const badge of badges) {
+    const [key, value] = badge.split("=", 2);
+    if (key === "firewall" && value !== undefined && value !== "") return value;
   }
   return undefined;
 }
@@ -347,6 +365,7 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
           findings: n.findings,
           vid: vidFromBadges(n.badges),
           vmid: vmidFromRef(ref),
+          firewall: firewallBridgeFromBadges(n.badges),
           isGroup: false,
         };
       })
