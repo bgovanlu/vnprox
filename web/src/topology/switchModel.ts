@@ -46,6 +46,15 @@ export interface SwitchPortNic {
   /** T-3501, mirrors TopologyNode.findings — see its doc comment
    * (api/types.ts). */
   findings?: FindingBadge[];
+  /** T-3503: the two facts the faceplate draws a port body from. `mediaPort`
+   * (the kernel PORT_* value, "tp"/"fibre"/"da"/...) picks the jack; the
+   * speed is silkscreened above it. Both absent when unreported — a peer
+   * node this daemon has not host-polled has neither, and the faceplate
+   * draws its honest "unknown media" body rather than defaulting to copper.
+   * See PortBody.tsx's `bodyForNic` for why media, not speed, drives the
+   * shape. */
+  mediaPort?: string;
+  speedMbps?: number;
   /** T-1907: true when this "port" is actually a collapsed phys-group pill
    * standing in for `count` real NICs (isPhysGroupId(ref)) — the faceplate's
    * uplink-bay equivalent of SwitchAccessPort.isGroup. Its click expands,
@@ -260,6 +269,8 @@ export function buildSwitchModel(nodes: TopologyNode[], edges: TopologyEdge[]): 
       neighbor: neighborOfNic.get(ref),
       badges: n?.badges ?? [],
       findings: n?.findings,
+      mediaPort: n?.mediaPort,
+      speedMbps: n?.speedMbps,
       isGroup,
       count: isGroup ? n?.collapsedCount : undefined,
     };

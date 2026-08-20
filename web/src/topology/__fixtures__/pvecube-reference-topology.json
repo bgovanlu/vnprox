@@ -1,0 +1,496 @@
+{
+ "staleness": {
+  "sources": [
+   {
+    "name": "pve",
+    "lastSuccess": 1787232809,
+    "stale": false
+   },
+   {
+    "name": "host",
+    "node": "pve001",
+    "lastError": "host links (pve001): context canceled",
+    "stale": true
+   },
+   {
+    "name": "host",
+    "node": "pvecube",
+    "lastSuccess": 1787232810,
+    "stale": false
+   },
+   {
+    "name": "lldp",
+    "node": "pvecube",
+    "lastSuccess": 1787232797,
+    "stale": false
+   }
+  ],
+  "stale": true
+ },
+ "nodes": [
+  {
+   "id": "bridge:pvecube:fwbr103i0",
+   "kind": "bridge",
+   "label": "fwbr103i0",
+   "layer": "l2",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "id": "bridge:pvecube:fwbr104i0",
+   "kind": "bridge",
+   "label": "fwbr104i0",
+   "layer": "l2",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "id": "bridge:pvecube:vmbr0",
+   "kind": "bridge",
+   "label": "vmbr0",
+   "layer": "l2",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "drift",
+    "finding:health:warning",
+    "corosync",
+    "mgmt"
+   ],
+   "findings": [
+    {
+     "source": "health",
+     "severity": "warning",
+     "check": "mgmt_single_path",
+     "detail": "node pvecube's management path carries no redundancy: its single physical uplink is the only interface behind bridge:pvecube:vmbr0 \u2014 if it fails, the node's management connectivity goes with it"
+    }
+   ]
+  },
+  {
+   "id": "bridge:pvecube:vmbr1",
+   "kind": "bridge",
+   "label": "vmbr1",
+   "layer": "l2",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "drift",
+    "finding:health:error"
+   ],
+   "findings": [
+    {
+     "source": "health",
+     "severity": "error",
+     "check": "bridge_no_carrier",
+     "detail": "bridge vmbr1 on node pvecube has no carrier on any uplink (physnic:pvecube:enp2s0) \u2014 this bridge currently has no path off the node"
+    }
+   ]
+  },
+  {
+   "id": "bridge:pvecube:vmbr2",
+   "kind": "bridge",
+   "label": "vmbr2",
+   "layer": "l2",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "id": "bridge:pvecube:vmbr3",
+   "kind": "bridge",
+   "label": "vmbr3",
+   "layer": "l2",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "drift",
+    "finding:health:error"
+   ],
+   "findings": [
+    {
+     "source": "health",
+     "severity": "error",
+     "check": "bridge_no_carrier",
+     "detail": "bridge vmbr3 on node pvecube has no carrier on any uplink (physnic:pvecube:enp4s0) \u2014 this bridge currently has no path off the node"
+    }
+   ]
+  },
+  {
+   "id": "guest-nic:pvecube:100/net0",
+   "kind": "guest-nic",
+   "label": "firewall/net0",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "mac=0A:52:62:17:F7:02"
+   ]
+  },
+  {
+   "id": "guest-nic:pvecube:100/net1",
+   "kind": "guest-nic",
+   "label": "firewall/net1",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "mac=52:E8:59:2C:DC:6D"
+   ]
+  },
+  {
+   "id": "guest-nic:pvecube:101/net0",
+   "kind": "guest-nic",
+   "label": "debian/net0",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "mac=EE:29:CD:E9:A6:D2"
+   ]
+  },
+  {
+   "id": "guest-nic:pvecube:102/net0",
+   "kind": "guest-nic",
+   "label": "opnsense/net0",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "mac=BC:24:11:D3:F9:05"
+   ]
+  },
+  {
+   "id": "guest-nic:pvecube:102/net1",
+   "kind": "guest-nic",
+   "label": "opnsense/net1",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "down",
+   "badges": [
+    "link-down",
+    "mac=BC:24:11:B4:56:36"
+   ]
+  },
+  {
+   "id": "guest-nic:pvecube:102/net2",
+   "kind": "guest-nic",
+   "label": "opnsense/net2",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "down",
+   "badges": [
+    "link-down",
+    "mac=BC:24:11:8C:C0:01"
+   ]
+  },
+  {
+   "id": "guest-nic:pvecube:102/net3",
+   "kind": "guest-nic",
+   "label": "opnsense/net3",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "down",
+   "badges": [
+    "link-down",
+    "mac=BC:24:11:E7:DB:5F"
+   ]
+  },
+  {
+   "id": "guest-nic:pvecube:103/net0",
+   "kind": "guest-nic",
+   "label": "librenms/net0",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "mac=BC:24:11:52:87:C6"
+   ]
+  },
+  {
+   "id": "guest-nic:pvecube:104/net0",
+   "kind": "guest-nic",
+   "label": "powerdns/net0",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "mac=BC:24:11:FA:C0:97"
+   ]
+  },
+  {
+   "id": "guest:pvecube:100",
+   "kind": "guest",
+   "label": "firewall",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "unknown",
+   "badges": [
+    "vmid=100"
+   ]
+  },
+  {
+   "id": "guest:pvecube:101",
+   "kind": "guest",
+   "label": "debian",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "unknown",
+   "badges": [
+    "vmid=101"
+   ]
+  },
+  {
+   "id": "guest:pvecube:102",
+   "kind": "guest",
+   "label": "opnsense",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "unknown",
+   "badges": [
+    "vmid=102"
+   ]
+  },
+  {
+   "id": "guest:pvecube:103",
+   "kind": "guest",
+   "label": "librenms",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "vmid=103"
+   ]
+  },
+  {
+   "id": "guest:pvecube:104",
+   "kind": "guest",
+   "label": "powerdns",
+   "layer": "guest",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "vmid=104"
+   ]
+  },
+  {
+   "id": "physnic:pvecube:enp1s0",
+   "kind": "physnic",
+   "label": "enp1s0",
+   "layer": "phys",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": [
+    "mgmt-path"
+   ]
+  },
+  {
+   "id": "physnic:pvecube:enp2s0",
+   "kind": "physnic",
+   "label": "enp2s0",
+   "layer": "phys",
+   "nodeGroup": "pvecube",
+   "status": "down",
+   "badges": [
+    "drift",
+    "finding:health:error"
+   ],
+   "findings": [
+    {
+     "source": "health",
+     "severity": "error",
+     "check": "bridge_no_carrier",
+     "detail": "bridge vmbr1 on node pvecube has no carrier on any uplink (physnic:pvecube:enp2s0) \u2014 this bridge currently has no path off the node"
+    }
+   ]
+  },
+  {
+   "id": "physnic:pvecube:enp3s0",
+   "kind": "physnic",
+   "label": "enp3s0",
+   "layer": "phys",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "id": "physnic:pvecube:enp4s0",
+   "kind": "physnic",
+   "label": "enp4s0",
+   "layer": "phys",
+   "nodeGroup": "pvecube",
+   "status": "down",
+   "badges": [
+    "drift",
+    "finding:health:error"
+   ],
+   "findings": [
+    {
+     "source": "health",
+     "severity": "error",
+     "check": "bridge_no_carrier",
+     "detail": "bridge vmbr3 on node pvecube has no carrier on any uplink (physnic:pvecube:enp4s0) \u2014 this bridge currently has no path off the node"
+    }
+   ]
+  },
+  {
+   "id": "physnic:pvecube:lo",
+   "kind": "physnic",
+   "label": "lo",
+   "layer": "phys",
+   "nodeGroup": "pvecube",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "id": "sdn-subnet::10.99.0.0/24",
+   "kind": "sdn-subnet",
+   "label": "10.99.0.0/24",
+   "layer": "sdn",
+   "nodeGroup": "",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "id": "sdn-vnet::labz/labnet",
+   "kind": "sdn-vnet",
+   "label": "labnet",
+   "layer": "sdn",
+   "nodeGroup": "",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "id": "sdn-zone::labz",
+   "kind": "sdn-zone",
+   "label": "labz",
+   "layer": "sdn",
+   "nodeGroup": "",
+   "status": "unknown",
+   "badges": [
+    "type=simple"
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "guest-nic:pvecube:100/net0",
+   "to": "bridge:pvecube:vmbr1",
+   "kind": "attached-to",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "from": "guest-nic:pvecube:100/net1",
+   "to": "bridge:pvecube:vmbr2",
+   "kind": "attached-to",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "from": "guest-nic:pvecube:101/net0",
+   "to": "bridge:pvecube:vmbr2",
+   "kind": "attached-to",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "from": "guest-nic:pvecube:102/net0",
+   "to": "bridge:pvecube:vmbr0",
+   "kind": "attached-to",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "from": "guest-nic:pvecube:102/net1",
+   "to": "bridge:pvecube:vmbr1",
+   "kind": "attached-to",
+   "status": "down",
+   "badges": []
+  },
+  {
+   "from": "guest-nic:pvecube:102/net2",
+   "to": "bridge:pvecube:vmbr2",
+   "kind": "attached-to",
+   "status": "down",
+   "badges": []
+  },
+  {
+   "from": "guest-nic:pvecube:102/net3",
+   "to": "bridge:pvecube:vmbr3",
+   "kind": "attached-to",
+   "status": "down",
+   "badges": []
+  },
+  {
+   "from": "guest-nic:pvecube:103/net0",
+   "to": "bridge:pvecube:vmbr0",
+   "kind": "attached-to",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "from": "guest-nic:pvecube:104/net0",
+   "to": "bridge:pvecube:vmbr0",
+   "kind": "attached-to",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "from": "physnic:pvecube:enp1s0",
+   "to": "bridge:pvecube:vmbr0",
+   "kind": "port-of",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "from": "physnic:pvecube:enp2s0",
+   "to": "bridge:pvecube:vmbr1",
+   "kind": "port-of",
+   "status": "down",
+   "badges": []
+  },
+  {
+   "from": "physnic:pvecube:enp3s0",
+   "to": "bridge:pvecube:vmbr2",
+   "kind": "port-of",
+   "status": "ok",
+   "badges": []
+  },
+  {
+   "from": "physnic:pvecube:enp4s0",
+   "to": "bridge:pvecube:vmbr3",
+   "kind": "port-of",
+   "status": "down",
+   "badges": []
+  }
+ ],
+ "layers": [
+  "phys",
+  "l2",
+  "sdn",
+  "guest"
+ ],
+ "unrefFindings": [
+  {
+   "source": "health",
+   "severity": "error",
+   "check": "service_down",
+   "detail": "dnsmasq is not running on node pvecube",
+   "nodes": [
+    "pvecube"
+   ]
+  },
+  {
+   "source": "health",
+   "severity": "error",
+   "check": "service_down",
+   "detail": "frr is not running on node pvecube",
+   "nodes": [
+    "pvecube"
+   ]
+  }
+ ],
+ "generatedAt": 1787232810
+}

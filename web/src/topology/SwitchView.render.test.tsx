@@ -277,26 +277,41 @@ describe("SwitchView / SwitchFaceplate — T-2004 contrast fixes", () => {
     expect(label.className).not.toContain("text-slate-400 dark:text-slate-400");
   });
 
-  it("the chassis kind label uses slate-600 in light mode, not slate-400 (2.35:1 against the header's bg-indigo-50)", () => {
+  // T-3503 rewrote the chassis header from a light `bg-indigo-50` bar into a
+  // dark name plate, which invalidates T-2004's original assertion here
+  // rather than regressing it: `text-slate-600` was the fix for slate-400
+  // sitting on indigo-50 (2.35:1), and on a slate-800 plate slate-600 would
+  // now be the *failing* value (2.1:1) while the old slate-400 would pass.
+  // The pairing under test therefore changes with the surface; what does not
+  // change is that the kind marking must clear AA in both themes, so that is
+  // what this now measures. slate-300 on the plate: 10.4:1 light
+  // (bg-slate-800), 12.9:1 dark (bg-slate-950), and 7.6:1 against the
+  // hover:bg-slate-700 state — all well clear of the 4.5:1 floor at this
+  // 9px size, with the margin T-2004 asked for rather than the ~4.5:1
+  // squeakers it was filed over.
+  it("the chassis kind marking clears AA against the dark name plate in both themes", () => {
     renderView();
     const [kindLabel] = screen.getAllByText("bridge");
     if (!kindLabel) throw new Error("expected a chassis kind label");
-    expect(kindLabel.className).toContain("text-slate-600");
-    expect(kindLabel.className).toContain("dark:text-slate-400");
-    expect(kindLabel.className).not.toContain("text-slate-400 dark:text-slate-400");
+    expect(kindLabel.className).toContain("text-slate-300");
+    // The pre-T-3503 pairing would be sub-AA on this surface — guard against
+    // a well-meaning revert reintroducing it.
+    expect(kindLabel.className).not.toContain("text-slate-600");
   });
 
   it("the access port's NIC-key text and VLAN id marker both clear AA in light mode (were 2.63:1 and 4.4:1)", () => {
     renderView();
     const port = screen.getByLabelText("app01/net0");
-    // Structure (AccessPort in SwitchFaceplate.tsx): [0] vmid+LED wrapper,
-    // [1] guest name, [2] nicKey + vid marker.
-    const nicKeySpan = port.children[2];
-    if (!(nicKeySpan instanceof HTMLElement)) throw new Error("expected the nicKey span");
+    // Located by content, not by child index: T-3503 wrapped the access
+    // port's contents in a layout span (the port cell), which silently
+    // shifted every index-based lookup here by one level. The colours are
+    // what this test is about; the DOM nesting is not, and pinning the
+    // nesting only made a faceplate redesign look like a contrast
+    // regression.
+    const nicKeySpan = within(port).getByText("net0");
     expect(nicKeySpan.className).toContain("text-slate-600");
     expect(nicKeySpan.className).not.toContain("text-slate-400 dark:text-slate-400");
-    const vidMarker = nicKeySpan.children[0];
-    if (!(vidMarker instanceof HTMLElement)) throw new Error("expected the vid-marker span");
+    const vidMarker = within(port).getByText("·100");
     expect(vidMarker.className).toContain("text-violet-700");
     expect(vidMarker.className).not.toContain("text-violet-500");
   });
