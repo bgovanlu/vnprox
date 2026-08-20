@@ -42,7 +42,49 @@ const (
 	duplexUnknown = 0xff
 
 	speedUnknownU16 = 0xffff
+
+	// PORT_* (linux/ethtool.h) — ethtoolCmd.Port's value space. Sourced from
+	// the running kernel's header, not from docs/pvemock (see
+	// planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt point 3).
+	portTP    = 0x00
+	portAUI   = 0x01
+	portMII   = 0x02
+	portFibre = 0x03
+	portBNC   = 0x04
+	portDA    = 0x05
+	portNone  = 0xef
+	portOther = 0xff
 )
+
+// mediaPortString maps ethtoolCmd.Port (PORT_* in linux/ethtool.h) to the
+// lowercase wire vocabulary T-3503 fixes: "tp", "aui", "mii", "fibre",
+// "bnc", "da", "none", "other". Any value the kernel might report that
+// isn't one of those — a future PORT_* addition, or a driver returning
+// garbage — yields "" rather than a guess: "never guessed" applies to media
+// type exactly like it does to VF guest assignment elsewhere in this
+// codebase.
+func mediaPortString(port uint8) string {
+	switch port {
+	case portTP:
+		return "tp"
+	case portAUI:
+		return "aui"
+	case portMII:
+		return "mii"
+	case portFibre:
+		return "fibre"
+	case portBNC:
+		return "bnc"
+	case portDA:
+		return "da"
+	case portNone:
+		return "none"
+	case portOther:
+		return "other"
+	default:
+		return ""
+	}
+}
 
 // ifreqData replicates the unexported layout golang.org/x/sys/unix uses
 // internally for ifreq-with-pointer-data ioctls (see unix/ifreq_linux.go);
@@ -66,20 +108,31 @@ type ifreqData struct {
 }
 
 // platformEthtoolSpeedDuplex issues SIOCETHTOOL/ETHTOOL_GSET for iface and
-// reports its link speed (Mbps) and duplex. ok is false whenever the ioctl
-// itself could not be attempted or the driver reports unknown values,
-// signaling the caller (speedDuplex, in ethtool.go) to fall back to
-// sysfs.
-func platformEthtoolSpeedDuplex(iface string) (speedMbps int, duplex string, ok bool) {
+// reports its link speed (Mbps), duplex, and media/port type. ok is false
+// whenever the ioctl itself could not be attempted or the driver reports
+// unknown speed/duplex values, signaling the caller (speedDuplex, in
+// ethtool.go) to fall back to sysfs for speed/duplex.
+//
+// mediaPort is deliberately NOT folded into ok's meaning: per
+// planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt point 2, the
+// kernel reports a NIC's port type (ethtoolCmd.Port) even with no carrier —
+// pvecube's down enp2s0/enp4s0 both answer "Port: Twisted Pair" while their
+// Speed/Duplex come back Unknown — so mediaPort is populated whenever the
+// ioctl call itself succeeds, regardless of what ok (speed/duplex-driven)
+// ends up being. There is no sysfs fallback for media type (point 3: it is
+// one field of the same struct this function already fills for speed/
+// duplex, not a separate read), so a failed/unattempted ioctl is the only
+// way mediaPort comes back "".
+func platformEthtoolSpeedDuplex(iface string) (speedMbps int, duplex string, mediaPort string, ok bool) {
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM, 0)
 	if err != nil {
-		return 0, "", false
+		return 0, "", "", false
 	}
 	defer func() { _ = unix.Close(fd) }()
 
 	var name [unix.IFNAMSIZ]byte
 	if len(iface) >= unix.IFNAMSIZ {
-		return 0, "", false
+		return 0, "", "", false
 	}
 	copy(name[:], iface)
 
@@ -88,7 +141,7 @@ func platformEthtoolSpeedDuplex(iface string) (speedMbps int, duplex string, ok 
 
 	_, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(unix.SIOCETHTOOL), uintptr(unsafe.Pointer(&ifr)))
 	if errno != 0 {
-		return 0, "", false
+		return 0, "", "", false
 	}
 
 	speed := uint32(cmd.Speed) | uint32(cmd.SpeedHi)<<16
@@ -104,7 +157,9 @@ func platformEthtoolSpeedDuplex(iface string) (speedMbps int, duplex string, ok 
 		// leave duplex == "" — nothing reported.
 	}
 
-	return speedMbps, duplex, speedMbps > 0 || duplex != ""
+	mediaPort = mediaPortString(cmd.Port)
+
+	return speedMbps, duplex, mediaPort, speedMbps > 0 || duplex != ""
 }
 
 // platformDriverInfo issues SIOCETHTOOL/ETHTOOL_GDRVINFO for iface via

@@ -139,11 +139,20 @@ func (n *Node) fieldMap() map[string]string {
 type PhysNic struct {
 	Ref
 	rawSrc
-	Name        string
-	Mac         string
-	Driver      string
-	PCIAddr     string
-	Duplex      string
+	Name    string
+	Mac     string
+	Driver  string
+	PCIAddr string
+	Duplex  string
+	// MediaPort is the NIC's PORT_* media/connector type (T-3503: "tp",
+	// "aui", "mii", "fibre", "bnc", "da", "none", "other" — see
+	// internal/host/ethtool_linux.go's mediaPortString). Host-netlink-only,
+	// like Driver/Duplex/SpeedMbps: it comes from the same SIOCETHTOOL
+	// ioctl call that fills those, and is populated whenever that ioctl
+	// succeeds — including when the link has no carrier (unlike SpeedMbps,
+	// see planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt point
+	// 2). "" when unreported or unrecognised — never guessed.
+	MediaPort   string
 	OperState   string
 	Pending     string
 	SRIOVVFs    []VirtualFunction
@@ -163,7 +172,7 @@ func (p *PhysNic) clone() Entity {
 func (p *PhysNic) fieldMap() map[string]string {
 	return map[string]string{
 		"name": p.Name, "mac": p.Mac, "driver": p.Driver, "pciAddr": p.PCIAddr,
-		"duplex": p.Duplex, "operState": p.OperState,
+		"duplex": p.Duplex, "mediaPort": p.MediaPort, "operState": p.OperState,
 		"speedMbps": strconv.Itoa(p.SpeedMbps), "mtu": strconv.Itoa(p.MTU),
 		"mtuDeclared": strconv.Itoa(p.MTUDeclared),
 		"linkUp":      boolStr(p.LinkUp), "pending": p.Pending,

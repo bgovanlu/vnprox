@@ -89,6 +89,7 @@ var ownershipRules = map[Kind]map[string]Ownership{
 		"driver":    {Precedence: []Source{SourceHostNetlink}},
 		"pciAddr":   {Precedence: []Source{SourceHostNetlink}},
 		"duplex":    {Precedence: []Source{SourceHostNetlink}},
+		"mediaPort": {Precedence: []Source{SourceHostNetlink}},
 		"operState": {Precedence: []Source{SourceHostNetlink}},
 		"speedMbps": {Precedence: []Source{SourceHostNetlink}},
 		// sriovVFs (T-1506) is deliberately absent here, like Bridge's "fdb"

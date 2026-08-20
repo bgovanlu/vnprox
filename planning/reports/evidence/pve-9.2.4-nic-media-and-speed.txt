@@ -1,0 +1,85 @@
+T-3503 evidence — physical NIC media type and negotiated speed
+Host: pvecube, PVE 9.2.4, read-only (`ethtool` + /sys reads only)
+Captured: 2026-08-20T13:25:57Z
+
+Why this transcript exists
+--------------------------
+T-3503 asks the Switch faceplate to draw "RJ45 body for copper, SFP cage for
+fibre" and "negotiated speed where known". CLAUDE.md forbids modelling a device
+property from docs or from internal/pvemock/. Both properties are observable on
+a live node, so they were observed before anything was drawn.
+
+Transcript
+----------
+$ for n in enp1s0 enp2s0 enp3s0 enp4s0; do
+    ethtool $n | egrep -i "Supported ports|Speed:|Duplex:|Port:|Transceiver|Link detected"
+    cat /sys/class/net/$n/speed /sys/class/net/$n/carrier
+    basename $(readlink /sys/class/net/$n/device/driver)
+  done
+
+--- enp1s0
+	Supported ports: [ TP ]
+	Speed: 100Mb/s
+	Duplex: Full
+	Port: Twisted Pair
+	Transceiver: internal
+	Link detected: yes
+  sysfs speed=100 carrier=1
+  driver=igc
+--- enp2s0
+	Supported ports: [ TP ]
+	Speed: Unknown!
+	Duplex: Unknown! (255)
+	Port: Twisted Pair
+	Transceiver: internal
+	Link detected: no
+  sysfs speed=-1 carrier=0
+  driver=igc
+--- enp3s0
+	Supported ports: [ TP ]
+	Speed: 1000Mb/s
+	Duplex: Full
+	Port: Twisted Pair
+	Transceiver: internal
+	Link detected: yes
+  sysfs speed=1000 carrier=1
+  driver=igc
+--- enp4s0
+	Supported ports: [ TP ]
+	Speed: Unknown!
+	Duplex: Unknown! (255)
+	Port: Twisted Pair
+	Transceiver: internal
+	Link detected: no
+  sysfs speed=-1 carrier=0
+  driver=igc
+
+What this settles
+-----------------
+1. **Speed is absent, not zero, on a down link.** Linux reports `-1` in
+   /sys/class/net/<if>/speed and ETHTOOL_GSET reports SPEED_UNKNOWN (0xffff)
+   when there is no carrier. A faceplate must render "no speed" for enp2s0 and
+   enp4s0, never "0" and never a stale last-known figure. internal/topology's
+   Node.SpeedMbps is therefore guarded on `> 0` and uses `omitempty`.
+
+2. **Media type is reported even with no carrier.** enp2s0 and enp4s0 have no
+   link at all and still answer `Port: Twisted Pair`. Media type is a property
+   of the socket, not of the link, so it is the correct thing to pick a port
+   body from — unlike speed, which disappears exactly when a port is down and
+   would otherwise flip a drawn RJ45 into a drawn SFP cage on link loss.
+
+3. **The data is one field away in code we already run.** `Port` is field 4 of
+   `struct ethtool_cmd`, which internal/host/ethtool_linux.go already fills via
+   SIOCETHTOOL/ETHTOOL_GSET for speed and duplex — and then discards. No new
+   syscall, no new privilege, no new dependency; the ioctl is read-only.
+
+   Kernel values (linux/ethtool.h): PORT_TP=0x00, PORT_AUI=0x01, PORT_MII=0x02,
+   PORT_FIBRE=0x03, PORT_BNC=0x04, PORT_DA=0x05 (direct attach), PORT_NONE=0xef,
+   PORT_OTHER=0xff.
+
+4. **This node cannot exercise the fibre branch.** Every NIC on pvecube is
+   Twisted Pair; there is no SFP/DA port on the reference hardware, and no
+   second node to find one on. The PORT_FIBRE / PORT_DA rendering is therefore
+   covered by unit fixtures only and is filed in
+   planning/reports/needs-hardware-validation.md — same class of limit as the
+   cluster-behaviour items, and for the same reason: one node cannot answer it.

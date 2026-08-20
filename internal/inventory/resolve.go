@@ -82,6 +82,7 @@ func resolvePhysNic(ref Ref, parts map[Source]*PhysNic) resolved {
 	out.Driver, _ = pick(prov, "driver", ruleFor(ref.Kind, "driver"), parts, func(p *PhysNic) string { return p.Driver }, nonEmptyStr, keyStr)
 	out.PCIAddr, _ = pick(prov, "pciAddr", ruleFor(ref.Kind, "pciAddr"), parts, func(p *PhysNic) string { return p.PCIAddr }, nonEmptyStr, keyStr)
 	out.Duplex, _ = pick(prov, "duplex", ruleFor(ref.Kind, "duplex"), parts, func(p *PhysNic) string { return p.Duplex }, nonEmptyStr, keyStr)
+	out.MediaPort, _ = pick(prov, "mediaPort", ruleFor(ref.Kind, "mediaPort"), parts, func(p *PhysNic) string { return p.MediaPort }, nonEmptyStr, keyStr)
 	out.OperState, _ = pick(prov, "operState", ruleFor(ref.Kind, "operState"), parts, func(p *PhysNic) string { return p.OperState }, nonEmptyStr, keyStr)
 	out.SpeedMbps, _ = pick(prov, "speedMbps", ruleFor(ref.Kind, "speedMbps"), parts, func(p *PhysNic) int { return p.SpeedMbps }, nonZeroInt, keyInt)
 	out.MTU, _ = pick(prov, "mtu", ruleFor(ref.Kind, "mtu"), parts, func(p *PhysNic) int { return p.MTU }, nonZeroInt, keyInt)

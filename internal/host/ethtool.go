@@ -37,11 +37,26 @@ import (
 // from the same link settings and does not share GSET's encoding limits —
 // whenever the ioctl fails or is unavailable (including on non-Linux
 // platforms, where ethtool_other.go's stub always defers to this path).
-func speedDuplex(iface string) (speedMbps int, duplex string) {
-	if speed, dpx, ok := platformEthtoolSpeedDuplex(iface); ok {
-		return speed, dpx
+// mediaPort (the NIC's PORT_* media/connector type — "tp", "fibre", ...,
+// see ethtool_linux.go's mediaPortString) rides along on the same ioctl
+// call rather than a Go function of its own, because it comes from the
+// same `struct ethtool_cmd` this function already fills for speed/duplex
+// (planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt point 3).
+// Unlike speed/duplex it is NOT gated by ok and has no sysfs fallback: the
+// evidence transcript shows pvecube's down enp2s0/enp4s0 both still
+// reporting "Port: Twisted Pair" with Speed/Duplex Unknown (point 2), so
+// gating media on the same ok speed/duplex derives from would wrongly blank
+// out a down link's port type. It is simply whatever
+// platformEthtoolSpeedDuplex returned — "" on any platform/ioctl failure,
+// the correct PORT_* mapping otherwise, independent of speed/duplex.
+func speedDuplex(iface string) (speedMbps int, duplex string, mediaPort string) {
+	speed, dpx, media, ok := platformEthtoolSpeedDuplex(iface)
+	if ok {
+		speedMbps, duplex = speed, dpx
+	} else {
+		speedMbps, duplex = sysfsSpeedDuplex(iface)
 	}
-	return sysfsSpeedDuplex(iface)
+	return speedMbps, duplex, media
 }
 
 // driverInfo resolves an interface's kernel driver name and bus address

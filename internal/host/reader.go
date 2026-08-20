@@ -212,14 +212,23 @@ type LinkState struct {
 	OperState  string
 	Master     string
 	Duplex     string
-	Members    []string
-	Addresses  []string
-	VFs        []VF
-	SpeedMbps  int
-	VlanID     int
-	MTU        int
-	Index      int
-	LinkUp     bool
+	// MediaPort is the NIC's PORT_* media/connector type ("tp", "fibre",
+	// "da", ...; internal/host/ethtool_linux.go's mediaPortString), read
+	// from the same SIOCETHTOOL/ETHTOOL_GSET ioctl call as SpeedMbps/Duplex
+	// but — per planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt
+	// point 2 — reported by the kernel even when the link has no carrier,
+	// so it is populated independently of whether SpeedMbps/Duplex came
+	// back known. "" on any non-Linux platform, ioctl failure, or
+	// unrecognised PORT_* value — never guessed.
+	MediaPort string
+	Members   []string
+	Addresses []string
+	VFs       []VF
+	SpeedMbps int
+	VlanID    int
+	MTU       int
+	Index     int
+	LinkUp    bool
 }
 
 // VF is one SR-IOV virtual function on a PF link, as internal/host reports

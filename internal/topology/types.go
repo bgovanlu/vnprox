@@ -69,13 +69,34 @@ func worstStatus(a, b Status) Status {
 // inventory Refs — the frontend must special-case ids with that prefix as
 // "expand this pill" rather than "open the inspector".
 type Node struct {
-	ID        string   `json:"id"`
-	Kind      string   `json:"kind"`
-	Label     string   `json:"label"`
-	Layer     Layer    `json:"layer"`
-	NodeGroup string   `json:"nodeGroup"`
-	Status    Status   `json:"status"`
-	DnsName   string   `json:"dnsName,omitempty"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Label     string `json:"label"`
+	Layer     Layer  `json:"layer"`
+	NodeGroup string `json:"nodeGroup"`
+	Status    Status `json:"status"`
+	DnsName   string `json:"dnsName,omitempty"`
+	// MediaPort is the NIC's PORT_* media/connector type ("tp", "fibre",
+	// "da", ...; see internal/inventory.PhysNic.MediaPort). It picks the
+	// port body the Switch faceplate draws (T-3503): an RJ45 jack for
+	// copper, an SFP cage for fibre/direct-attach, and a visibly distinct
+	// "no reading" body when this is empty.
+	//
+	// Set for physnic nodes only, and independently of SpeedMbps below:
+	// unlike speed, media type is a property of the socket, not the link,
+	// and the kernel reports it even with no carrier (pvecube's down
+	// enp2s0/enp4s0 both still answer "Port: Twisted Pair" — see
+	// planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt point 2).
+	// Gating this on SpeedMbps>0 the way that field is gated would flip a
+	// drawn RJ45 into a drawn SFP cage the moment a copper port lost link,
+	// which is exactly the conflation that evidence transcript rules out.
+	// omitempty drops it when unreported or unrecognised — never guessed.
+	//
+	// Sits with the other strings rather than beside SpeedMbps, which reads
+	// more naturally: a string is pointer-bearing and the slices below are
+	// too, so putting it after them extends the GC's scan prefix by a word
+	// (fieldalignment measures 192 bytes that way against 184 here).
+	MediaPort string   `json:"mediaPort,omitempty"`
 	Badges    []string `json:"badges"`
 	// Members lists the Ref strings of every entity this synthetic
 	// collapse node absorbed (T-1907's physical-layer "phys-group:<node>"
@@ -108,8 +129,23 @@ type Node struct {
 	// Ahead of CollapsedCount, not after it: fieldalignment packs the
 	// pointer-bearing fields before the int, the same reason Members sits
 	// where it does.
-	Findings       []FindingBadge `json:"findings,omitempty"`
-	CollapsedCount int            `json:"collapsedCount,omitempty"`
+	Findings []FindingBadge `json:"findings,omitempty"`
+	// SpeedMbps is the NIC's negotiated link speed, carried so the Switch
+	// view's faceplate (T-3503) can print a port's speed and pick a port
+	// body for it — a typed field rather than a "speed=1000" badge because
+	// badges render as chips everywhere and this is a property of the port,
+	// not a marker on it.
+	//
+	// Set for physnic nodes only, and only when host-netlink actually
+	// reported a speed. Linux reports -1 for a NIC with no carrier
+	// (pvecube's enp2s0/enp4s0 read `-1` in /sys/class/net/*/speed on
+	// 2026-08-20), and inventory's `nonZeroInt` picker also leaves the
+	// field at 0 when no source contributed — either way this stays 0 and
+	// omitempty drops it, so "unknown speed" is absent rather than a lie.
+	// Its companion MediaPort sits up with the other strings — see that
+	// field's own note for why.
+	SpeedMbps      int `json:"speedMbps,omitempty"`
+	CollapsedCount int `json:"collapsedCount,omitempty"`
 }
 
 // Edge is one rendered relationship, per the same rendering contract:

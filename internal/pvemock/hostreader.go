@@ -107,13 +107,16 @@ type ContainerInteriorRaw struct {
 // LinkState is one netlink-equivalent link (physical NIC, bond, bridge, or
 // VLAN sub-interface) as internal/host would report it.
 type LinkState struct {
-	Name    string
-	Kind    string
-	Mac     string
-	Driver  string
-	Duplex  string
-	PCIAddr string
-	Members []string
+	Name   string
+	Kind   string
+	Mac    string
+	Driver string
+	Duplex string
+	// MediaPort mirrors LinkInfo.MediaPort (T-3503) — see that field's doc
+	// comment in types.go.
+	MediaPort string
+	PCIAddr   string
+	Members   []string
 	// FDB is this (bridge-kind) link's fixture-declared forwarding
 	// database (T-306's MAC/FDB browser) — nil for every non-bridge Kind.
 	FDB []FDBEntry
@@ -198,6 +201,7 @@ func (h *FixtureHostReader) Links(_ context.Context, node string) ([]LinkState, 
 			ls.Driver = link.Driver
 			ls.SpeedMbps = link.SpeedMbps
 			ls.Duplex = link.Duplex
+			ls.MediaPort = link.MediaPort
 			ls.LinkUp = link.LinkUp
 			ls.PCIAddr = link.PCIAddr
 			if ls.MTU == 0 {

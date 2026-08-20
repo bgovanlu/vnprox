@@ -186,3 +186,52 @@ func TestFixtureReader_UnknownNode(t *testing.T) {
 		t.Errorf("Links(nope) error = %v, want errors.Is(err, host.ErrNotFound)", err)
 	}
 }
+
+// TestFixtureReader_MediaPort round-trips T-3503's fixture-declared media
+// port through the whole fixture chain this test file's other cases
+// exercise piecemeal: pvemock.LinkInfo.MediaPort (a fixture's declared
+// stand-in for the SIOCETHTOOL ioctl's Port field) -> FixtureHostReader.
+// Links() -> this package's convertFixtureLink -> LinkState.MediaPort. Built
+// from a minimal in-memory *pvemock.Fixture (not the shared golden YAML
+// clusters other tests in this package/internal/topology assert exact node
+// counts against) specifically so a down fibre link can be declared without
+// touching fixtures those other tests depend on.
+func TestFixtureReader_MediaPort(t *testing.T) {
+	f := &pvemock.Fixture{
+		Nodes: map[string]*pvemock.NodeSpec{
+			"n1": {
+				Network: []pvemock.NetIface{
+					{Iface: "sfp0", Type: "eth", Method: "manual"},
+					{Iface: "eno1", Type: "eth", Method: "manual"},
+				},
+				Links: map[string]pvemock.LinkInfo{
+					// The evidence transcript's exact case: a fibre/DA port
+					// with no carrier still reports its media type.
+					"sfp0": {Mac: "bc:24:11:00:00:03", MediaPort: "fibre", LinkUp: false},
+					"eno1": {Mac: "bc:24:11:00:00:01", MediaPort: "tp", LinkUp: true},
+				},
+			},
+		},
+	}
+	srv := pvemock.NewServer(f)
+	r := NewFixtureReader(pvemock.NewFixtureHostReader(srv))
+
+	links, err := r.Links(context.Background(), "n1")
+	if err != nil {
+		t.Fatalf("Links: %v", err)
+	}
+	byName := make(map[string]LinkState, len(links))
+	for _, l := range links {
+		byName[l.Name] = l
+	}
+
+	if got, want := byName["sfp0"].MediaPort, "fibre"; got != want {
+		t.Errorf("sfp0.MediaPort = %q, want %q", got, want)
+	}
+	if byName["sfp0"].LinkUp {
+		t.Errorf("sfp0.LinkUp = true, want false (down fibre link)")
+	}
+	if got, want := byName["eno1"].MediaPort, "tp"; got != want {
+		t.Errorf("eno1.MediaPort = %q, want %q", got, want)
+	}
+}

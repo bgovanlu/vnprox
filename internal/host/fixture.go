@@ -297,6 +297,7 @@ func convertFixtureLink(l pvemock.LinkState, parsed *File) LinkState {
 		LinkUp:    l.LinkUp,
 		SpeedMbps: l.SpeedMbps,
 		Duplex:    l.Duplex,
+		MediaPort: l.MediaPort,
 		Members:   append([]string(nil), l.Members...),
 	}
 	if l.LinkUp {

@@ -48,6 +48,8 @@ func setField(t *testing.T, e Entity, field string, idx int) {
 			v.PCIAddr = s
 		case "duplex":
 			v.Duplex = s
+		case "mediaPort":
+			v.MediaPort = s
 		case "operState":
 			v.OperState = s
 		case "speedMbps":

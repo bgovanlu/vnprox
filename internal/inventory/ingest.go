@@ -70,6 +70,7 @@ func FromNetlinkLinks(node string, links []host.LinkState) []Entity {
 				Driver:    l.Driver,
 				PCIAddr:   l.PCIAddr,
 				Duplex:    l.Duplex,
+				MediaPort: l.MediaPort,
 				OperState: l.OperState,
 				SpeedMbps: l.SpeedMbps,
 				MTU:       l.MTU,

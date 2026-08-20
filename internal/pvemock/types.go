@@ -400,12 +400,18 @@ func (i NetIface) MarshalJSON() ([]byte, error) {
 
 // LinkInfo is netlink-equivalent physical/virtual link state for one iface.
 type LinkInfo struct {
-	Mac     string         `yaml:"mac" json:"mac"`
-	Driver  string         `yaml:"driver,omitempty" json:"driver,omitempty"`
-	Duplex  string         `yaml:"duplex,omitempty" json:"duplex,omitempty"`
-	PCIAddr string         `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
-	Members []string       `yaml:"members,omitempty" json:"members,omitempty"`
-	FDB     []FDBEntrySpec `yaml:"fdb,omitempty" json:"fdb,omitempty"`
+	Mac    string `yaml:"mac" json:"mac"`
+	Driver string `yaml:"driver,omitempty" json:"driver,omitempty"`
+	Duplex string `yaml:"duplex,omitempty" json:"duplex,omitempty"`
+	// MediaPort is the NIC's PORT_* media/connector type (T-3503: "tp",
+	// "aui", "mii", "fibre", "bnc", "da", "none", "other" — see
+	// internal/host/ethtool_linux.go's mediaPortString), a fixture-declared
+	// value standing in for the SIOCETHTOOL ioctl's Port field a real host
+	// reads. Empty means "not declared", never a guess.
+	MediaPort string         `yaml:"media_port,omitempty" json:"media_port,omitempty"`
+	PCIAddr   string         `yaml:"pci_addr,omitempty" json:"pci_addr,omitempty"`
+	Members   []string       `yaml:"members,omitempty" json:"members,omitempty"`
+	FDB       []FDBEntrySpec `yaml:"fdb,omitempty" json:"fdb,omitempty"`
 	// VFs (T-1506) is this (physical-kind) link's fixture-declared SR-IOV
 	// virtual functions — nil for every non-physical link, same convention
 	// as FDB above (bridge-only).

@@ -128,6 +128,23 @@ export interface TopologyNode {
    * node, carrying its own check/detail text. Absent/empty when the entity
    * carries no open finding. */
   findings?: FindingBadge[];
+  /** T-3503, physnic nodes only: the negotiated link speed. Absent — never
+   * 0, never a stale last-known figure — when the kernel reports no speed,
+   * which is what it does for a NIC with no carrier (Linux reports -1; see
+   * planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt). The Switch
+   * view silkscreens this above the port body. */
+  speedMbps?: number;
+  /** T-3503, physnic nodes only: the NIC's PORT_* media/connector type
+   * ("tp" | "aui" | "mii" | "fibre" | "bnc" | "da" | "none" | "other"),
+   * lowercased from linux/ethtool.h's PORT_* constants. Absent when
+   * unreported or unrecognised — never guessed. Unlike `speedMbps`, this is
+   * set independently of link carrier state: the kernel reports a NIC's
+   * port type even with no carrier (see
+   * planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt point 2),
+   * so a down copper link still carries `mediaPort: "tp"`. The Switch
+   * view's faceplate uses this to pick a port body (RJ45 for copper, SFP
+   * cage for fibre/DA) independently of whether a speed is known. */
+  mediaPort?: string;
   /** Present only on synthetic "guest-group"/"phys-group" pill nodes. */
   collapsedCount?: number;
   /** Present only on synthetic "phys-group:<node>" per-node physical-layer

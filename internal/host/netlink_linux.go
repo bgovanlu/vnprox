@@ -497,7 +497,7 @@ func buildLinkState(
 		}
 	}
 
-	ls.SpeedMbps, ls.Duplex = speedDuplex(attrs.Name)
+	ls.SpeedMbps, ls.Duplex, ls.MediaPort = speedDuplex(attrs.Name)
 	ls.Driver, ls.PCIAddr = driverInfo(attrs.Name)
 
 	return ls

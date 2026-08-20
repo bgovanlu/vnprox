@@ -308,6 +308,20 @@ func buildNodes(snap inventory.Snapshot, byRef map[inventory.Ref]inventory.Entit
 			n.DnsName = dns
 			n.Badges = append(n.Badges, "dns:"+dns)
 		}
+		// T-3503: the negotiated speed and media/port type, for the
+		// faceplate's port bodies. These two guards are deliberately
+		// independent, not combined into one `if ok {` block: SpeedMbps is
+		// guarded on >0 so Linux's "-1 = no carrier" never reaches the wire
+		// as a speed (see Node.SpeedMbps), but MediaPort must NOT share
+		// that guard — the kernel reports port type even with no carrier
+		// (see Node.MediaPort), so a down copper link still needs to draw
+		// as copper, not fall back to no port body at all.
+		if nic, ok := e.(*inventory.PhysNic); ok {
+			if nic.SpeedMbps > 0 {
+				n.SpeedMbps = nic.SpeedMbps
+			}
+			n.MediaPort = nic.MediaPort
+		}
 		nodes = append(nodes, n)
 	}
 	return nodes, groups
