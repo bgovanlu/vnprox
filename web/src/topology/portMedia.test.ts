@@ -3,7 +3,7 @@
 // can be wrong *silently*: a faceplate that draws an SFP cage for a copper
 // port still renders, still passes axe, and still looks like a switch.
 import { describe, expect, it } from "vitest";
-import { bodyForNic, speedMarking } from "./portMedia";
+import { bodyForNic, jackKindForEntity, speedMarking } from "./portMedia";
 
 describe("bodyForNic", () => {
   // The kernel PORT_* vocabulary internal/host maps into inventory
@@ -64,5 +64,35 @@ describe("speedMarking", () => {
     // link. internal/topology guards it off the wire; if that guard ever
     // slips, this must still not render "-1M".
     expect(speedMarking(-1)).toBeUndefined();
+  });
+});
+
+// T-3505: which jack silhouette (if any) an entity's kind draws. One
+// function, shared by all three renderers (EntityNode.tsx's v1 DOM node,
+// canvasDraw.ts's v2 canvas, SwitchFaceplate.tsx's faceplate) — the two
+// views disagreeing about what an entity *is* would be worse than either
+// being wrong alone, which is exactly what a per-renderer copy of this
+// mapping invites.
+describe("jackKindForEntity", () => {
+  it("picks the jack body from a physnic's reported media port, mirroring portMedia.ts's bodyForNic", () => {
+    expect(jackKindForEntity("physnic", "tp")).toBe("rj45");
+    expect(jackKindForEntity("physnic", "fibre")).toBe("sfp");
+    expect(jackKindForEntity("physnic", "da")).toBe("sfp");
+  });
+
+  it("draws an unreported physnic media port as 'unknown', never a guessed rj45 (T-3503's rule, applied here too)", () => {
+    expect(jackKindForEntity("physnic", undefined)).toBe("unknown");
+    expect(jackKindForEntity("physnic", "")).toBe("unknown");
+    expect(jackKindForEntity("physnic", "other")).toBe("unknown");
+  });
+
+  it("gives every guest-nic the dashed virtual jack, independent of any mediaPort value (guest NICs never carry one)", () => {
+    expect(jackKindForEntity("guest-nic", undefined)).toBe("virtual");
+  });
+
+  it("gives every other kind no jack at all — bridges, bonds, and everything else keep their plain box", () => {
+    for (const kind of ["bridge", "ovs-bridge", "bond", "ovs-bond", "vlan", "guest", "sdn-zone", "guest-group", "phys-group"]) {
+      expect(jackKindForEntity(kind, "tp")).toBeUndefined();
+    }
   });
 });

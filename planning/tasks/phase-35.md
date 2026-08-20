@@ -313,6 +313,55 @@ state is would be worse than the current honest-but-wrong single story.
 2. Existing canvas parity/perf specs still pass; `perf/budgets.json`'s `topology.scale.*` budgets
    still hold.
 
+### Delivery record — DONE, 2026-08-20
+
+Both renderers now draw the device vocabulary T-3503 established. `EntityNode.tsx` (v1 DOM) reuses
+`PortBody.tsx`'s `<PortJack>` verbatim; `canvasDraw.ts` (v2) draws the same silhouettes in `ctx`
+primitives at two fidelities, gated on the **existing** `showText`/`showBadges` LOD signals rather
+than a second zoom scheme, and degrading to a coarse jack rather than to the same rounded rect every
+other kind gets. `a11yBridge.ts`'s `entityAriaLabel` appends `portPhrases(...)` for physnics, which
+gives parity to both the v1 node's own description and the v2 canvas's DOM proxies from one change.
+
+**The card's second bullet was already done.** `canvasDraw.ts`'s dashing and pulse have followed
+T-3501's severity model since T-3501 itself — `hasOpenFinding` for the dash, `shouldPulse` for the
+pulse alpha. Verified by reading and left alone.
+
+**One thing was corrected on review, and it is the failure this card exists to prevent.** The first
+implementation spelled the kind → jack mapping out separately in `EntityNode.tsx` and
+`canvasDraw.ts`, justified by the `MGMT_BADGE_LABEL`/`MGMT_BADGE_PHRASE` precedent. Those two differ
+in content; this one does not, and both files already import `portMedia.ts`. Three copies of one
+mapping — counting `SwitchFaceplate.tsx`'s implicit third — is three places for the views to start
+disagreeing about what an entity *is*. It now lives once, as `portMedia.ts`'s `jackKindForEntity`.
+
+**AC1** is `viewParity.test.ts`: both models built from the one `pvecube-reference-topology.json`
+capture, every shared entity cross-checked on status and finding source/severity, plus a synthetic
+`mediaPort: "fibre"` NIC so a *known* media type is proved to reach both views identically — the
+real capture is copper-only and could not have caught a divergence there.
+
+**AC2 is partly unmet, and stated rather than papered over.** `topology.scale.v1_pan_zoom_p95_frame_ms`
+passes — which matters, because the v1 renderer now mounts a `<PortJack>` per physnic and guest NIC
+across the scale lab's ~430 such nodes and still cleared 90 ms. `topology.scale.v2_pan_zoom_p95_frame_ms`
+**was not measured**: the test that measures it is the one quarantined as `T-2505-followup-01`, and
+it fails before reaching the measurement. It was not taken on trust — the same test was run 3× with
+these changes and 3× with them stashed, and the two sets agree to within 0.3% on every attempt, so
+this work demonstrably changes neither the outcome nor the timing. The budget stays unverified on
+this host, exactly as it was before this card. That comparison also produced a deterministic
+reproduction of the quarantined failure and showed it is a visibility/layout problem rather than the
+hang it has been filed as; recorded in `planning/reports/T-2505-followup-01.md`.
+
+**Deviations:** guest NICs were included in the jack vocabulary (dashed "virtual" jack) though the
+card named only physnics — `SwitchFaceplate.tsx` already draws exactly that for the identical
+entity, so omitting it would have been a fresh contradiction rather than an omission. And
+`entityAriaLabel` deliberately says *nothing* extra for a guest NIC, matching the faceplate's own
+silence: a virtual jack has no media or speed to report, and the two views' silences have to match
+too.
+
+**Consequence worth knowing:** every physnic's accessible label now ends with `, media type unknown`
+wherever no media was reported — which is every fixture predating T-3503, and every peer node's NIC
+in a real cluster. That is verbose, and it is correct: the drawn body is visibly distinct there, so
+saying so in words is what stops the distinction being shape-only. Committed snapshots updated
+accordingly.
+
 ---
 
 ## Open question for the owner

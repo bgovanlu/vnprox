@@ -109,3 +109,58 @@ Closing this card for real requires, in order:
 3. Removal of the `web/e2e/quarantine.json` entry, or, if the date arrives first and the cause is
    still unknown, a conscious re-triage and a new entry with a fresh expiry — never an entry that
    silently rolls forward.
+
+## 2026-08-20: a deterministic reproduction, found while measuring something else
+
+T-3505 added per-frame drawing to `canvasDraw.ts`'s node loop, which meant `topology.scale
+.v2_pan_zoom_p95_frame_ms` had to be re-measured before it could ship. It could not be: the
+measuring test is this one. Establishing that the failure was pre-existing rather than a new perf
+regression produced, incidentally, the thing three previous investigations did not have — **a
+recipe that fails every time.**
+
+```
+E2E_ARGS="-g v2.canvas --repeat-each=3" scripts/e2e-shards.sh shard-1
+```
+
+Two runs, one with T-3505's canvas changes in the tree and one with them stashed, nothing else
+different:
+
+| attempt | with T-3505 | without T-3505 |
+|---|---|---|
+| 1 | `timedOut` 126397 ms | `timedOut` 126302 ms |
+| 2 | `failed` 33787 ms | `failed` 33675 ms |
+| 3 | `failed` 34115 ms | `failed` 33984 ms |
+
+6/6 failures, and the two columns agree to within 0.3% on every attempt. Two things follow.
+
+**T-3505 is exonerated.** The per-frame jack drawing changes neither the outcome nor the timing.
+(The p95 itself is still unmeasured — the test never reaches the measurement — so that budget
+remains unverified on this host, exactly as it was before T-3505. Said plainly rather than
+inferred from "the suite is green".)
+
+**The failure is not the timeout it was filed as.** Attempts 2 and 3 fail in ~34 s, which is the
+`expect(v2).toBeVisible()` 30 s timeout plus setup — not the 126 s test timeout attempt 1 hits.
+The error is specific and worth quoting, because "hang" has been the working description
+throughout and it is the wrong word:
+
+```
+Locator: getByTestId('topology-canvas-v2')
+Expected: visible
+Received: hidden
+  55 × locator resolved to <div data-testid="topology-canvas-v2"
+       class="relative h-full w-full touch-none overflow-hidden">…</div>
+     - unexpected value "hidden"
+```
+
+The element **mounts** — it resolves 55 times over 30 s, with its classes applied. It is
+`hidden`, which for Playwright means a zero-size or otherwise non-visible box. So this is not the
+renderer failing to start, nor a wedged rAF loop: it is a layout/sizing problem, and the
+candidates are the container measurement path (`h-full w-full` inside a parent that has no
+resolved height yet) and whatever the first attempt does differently, since attempt 1 fails by
+timeout and 2 and 3 fail by visibility. That distinction is a mechanism-shaped question, which is
+what requirement 1 above asks for and what the CPU-load / store-state / sharding theories already
+refuted here never were.
+
+Not investigated further — this was a side effect of a perf check on another task, and is written
+down rather than acted on so the next attempt starts from a reproduction instead of a bisection.
+The deadline is unchanged.

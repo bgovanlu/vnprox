@@ -32,6 +32,7 @@ import type { EntityNodeData } from "./EntityNode";
 import type { Viewport, Size, Rect } from "./canvasScene";
 import { nodeRect, graphToScreen, DEFAULT_NODE_SIZE } from "./canvasScene";
 import { findingsForSource, parseFindingBadge, parsedFindingBadges } from "./findingBadges";
+import { bodyForNic, portPhrases } from "./portMedia";
 
 /** The badge tokens that get an amber "management path" treatment on the map
  * (docs/features/topology.md §3) — mirrored here so the accessible label
@@ -112,6 +113,17 @@ export function entityAriaLabel(data: EntityNodeData): string {
   }
   parts.push(`status ${data.status}`);
   parts.push(...badgeAriaParts(data.badges, data.findings));
+  // T-3505: the same media/speed phrases SwitchFaceplate.tsx's NicPort
+  // already speaks for the identical physnic entity (via portPhrases —
+  // reused here, not reworded), so a screen-reader user gets the same
+  // answer to "what does this port look like" regardless of which view
+  // they're in. guest-nic is deliberately excluded: SwitchFaceplate's own
+  // AccessPort never calls portPhrases either (a virtual jack has no
+  // media/speed to report — portMedia.ts's BODY_PHRASE.virtual is
+  // undefined), so adding the call here would say nothing new anyway.
+  if (data.kind === "physnic") {
+    parts.push(...portPhrases(bodyForNic(data.mediaPort), data.speedMbps));
+  }
   return parts.join(", ");
 }
 

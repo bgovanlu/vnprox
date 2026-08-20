@@ -19,6 +19,8 @@ import {
   parseFindingBadge,
   shouldPulse,
 } from "./findingBadges";
+import { PortJack } from "./PortBody";
+import { jackKindForEntity, speedMarking } from "./portMedia";
 
 /** This node's role along a path-simulator overlay (T-504): "path" is any
  * hop on the traced route, "blocking" is the enforcement-point endpoint a
@@ -62,6 +64,14 @@ export interface EntityNodeData extends Record<string, unknown> {
    * distinct from the simulated-verdict styling"). */
   verifyOutcome?: VerifyOutcome;
   verifyDiverges?: boolean;
+  /** T-3505, mirrors TopologyNode.mediaPort/speedMbps (physnic nodes only —
+   * see api/types.ts's doc comment): plumbed through so this DOM renderer
+   * and canvasDraw.ts's v2 renderer draw the same port jack/speed marking
+   * SwitchFaceplate.tsx already does, off the same two facts, rather than
+   * the graph silently not knowing what the switch faceplate now says about
+   * the identical entity. Absent on every other kind. */
+  mediaPort?: string;
+  speedMbps?: number;
 }
 
 export type EntityFlowNode = Node<EntityNodeData, "entity">;
@@ -182,6 +192,8 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
   // an entity whose only signal is the legacy fallback badge still pulses.
   const hasFinding = hasOpenFinding(data.badges);
   const pulseWorthy = shouldPulse(data.badges);
+  const jackKind = jackKindForEntity(data.kind, data.mediaPort);
+  const speedLabel = speedMarking(data.speedMbps);
   return (
     <div
       role="button"
@@ -308,6 +320,24 @@ export function EntityNode({ id, data, selected }: NodeProps<EntityFlowNode>) {
           </span>
         )}
       </div>
+      {jackKind && (
+        // T-3505: the same drawn jack SwitchFaceplate.tsx's PortCell shows
+        // (PortBody.tsx's <PortJack>, reused verbatim rather than
+        // reimplemented) — a physnic's real copper/fibre/unknown socket, or
+        // a guest-nic's dashed virtual one — plus the negotiated speed
+        // where a physnic reported one. The Switch view already draws this
+        // for the identical entity (T-3503); the graph previously said
+        // nothing about it, which is the "must not contradict" gap this
+        // task closes.
+        <div className="flex items-center gap-1">
+          <PortJack kind={jackKind} status={data.status} />
+          {speedLabel && (
+            <span className="text-[9px] font-semibold uppercase leading-none tracking-wider text-slate-600 dark:text-slate-300">
+              {speedLabel}
+            </span>
+          )}
+        </div>
+      )}
       {data.badges.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {data.badges.map((b) => {

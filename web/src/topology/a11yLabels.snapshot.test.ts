@@ -47,6 +47,14 @@ describe("a11y proxy labels: three-node-vlan", () => {
   });
 
   it("matches the committed snapshot (id/kind/ariaLabel per entity)", () => {
+    // T-3505: every physnic entry's snapshot gained a trailing ", media
+    // type unknown" — neither fixture carries a mediaPort (both predate
+    // T-3503), and entityAriaLabel now speaks portPhrases for physnic
+    // entities the same way SwitchFaceplate.tsx's NicPort already did
+    // before this task (this frontend's Graph view simply hadn't caught up
+    // to what the Switch view already said about the identical entity).
+    // Not a regression — see web/src/topology/viewParity.test.ts, which
+    // pins this same phrase agreeing between both views over real data.
     expect(labels).toMatchSnapshot();
   });
 
@@ -66,6 +74,8 @@ describe("a11y proxy labels: evpn-lab (SDN zone/vnet/subnet kinds, drift + mgmt-
   });
 
   it("matches the committed snapshot (id/kind/ariaLabel per entity)", () => {
+    // T-3505: same "media type unknown" addition as the three-node-vlan
+    // block above — see its comment.
     expect(labels).toMatchSnapshot();
   });
 

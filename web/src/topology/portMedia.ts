@@ -73,3 +73,25 @@ export function portPhrases(body: PortBodyKind, speedMbps: number | undefined): 
   if (speed) out.push(`link speed ${speed}`);
   return out;
 }
+
+/** Which drawn jack an entity of this topology kind gets, if any.
+ *
+ * A physnic gets the body its reported media type earns; a guest NIC always
+ * gets the `virtual` one (its access port is a real port of a real virtual
+ * switch, but there is no socket behind it); everything else — a bridge, a
+ * bond, a VNet — is not a port and gets none.
+ *
+ * This lives here, in the framework-free module both renderers already
+ * import, rather than being spelled out once in `EntityNode.tsx` (the v1 DOM
+ * node), once in `canvasDraw.ts` (the v2 canvas) and once in
+ * `SwitchFaceplate.tsx`. The precedent for splitting a constant across the
+ * two renderers is `MGMT_BADGE_LABEL`/`MGMT_BADGE_PHRASE`, which differ in
+ * content — this does not: three copies of one mapping is three places for
+ * the two views to start disagreeing about what an entity is, which is the
+ * exact failure T-3505 exists to prevent.
+ */
+export function jackKindForEntity(kind: string, mediaPort: string | undefined): PortBodyKind | undefined {
+  if (kind === "physnic") return bodyForNic(mediaPort);
+  if (kind === "guest-nic") return "virtual";
+  return undefined;
+}

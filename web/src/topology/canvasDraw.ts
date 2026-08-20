@@ -21,6 +21,7 @@ import type { LatencyOverlayEdge } from "./latencyMode";
 import { diffMarkColor, diffMarkGlyph, type DiffMark } from "./diffOverlay";
 import { findingChipText, hasOpenFinding, parseFindingBadge, shouldPulse } from "./findingBadges";
 import { formatMTUBadgeLabel, type MTUOverlayBadge } from "./mtuOverlay";
+import { jackKindForEntity, speedMarking, type PortBodyKind } from "./portMedia";
 import { trafficEdgeStyle } from "./trafficMode";
 
 // T-3501: severity fill/text colours for a "finding:<source>:<severity>"
@@ -144,6 +145,92 @@ function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.closePath();
 }
 
+/**
+ * T-3505: the canvas equivalent of PortBody.tsx's `<PortJack>` — a handful
+ * of `ctx` primitives standing in for that component's SVG `<path>`s, since
+ * this runs in the per-frame node loop rather than mounting once. Shape,
+ * not just color, is what has to survive here: WCAG 1.4.1 (T-905's "no
+ * status conveyed by colour alone") applies to a canvas glyph exactly as it
+ * does to a DOM one, and the whole point of this task is that a physnic/
+ * guest-nic node stop rendering as the same undifferentiated rounded rect
+ * every other kind gets.
+ *
+ * `detailed` picks between two fidelities of the SAME silhouette (never a
+ * different shape) — the RJ45 notch, SFP cage, unknown dashed gap, and
+ * virtual dashed-RJ45 all keep their identity at both sizes; `detailed`
+ * only adds the finer marks (contacts / cage slot / gap bar) that a coarse,
+ * zoomed-out box has no legible room for. Gated by the caller on
+ * `showText` — canvasDraw.ts's own existing LOD signal — never a second
+ * zoom scheme of this function's own.
+ */
+function drawJack(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  kind: PortBodyKind,
+  color: string,
+  detailed: boolean,
+): void {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = detailed ? 1 : 1.25;
+  if (kind === "sfp") {
+    // The cage: a plain rectangle — distinct in silhouette from the RJ45's
+    // notched bottom edge even with the inner slot omitted at coarse
+    // fidelity.
+    roundRectPath(ctx, x, y, w, h, Math.min(1.5, h / 6));
+    ctx.stroke();
+    if (detailed) ctx.strokeRect(x + w * 0.18, y + h * 0.25, w * 0.64, h * 0.5);
+  } else if (kind === "unknown") {
+    // "No reading": a dashed outline — never a confident solid shape for a
+    // media type we do not have (portMedia.ts's own rule, applied here in
+    // pixels instead of an SVG dasharray).
+    ctx.setLineDash([2, 1.5]);
+    roundRectPath(ctx, x, y, w, h, Math.min(1.5, h / 6));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (detailed) {
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.32, y + h * 0.5);
+      ctx.lineTo(x + w * 0.68, y + h * 0.5);
+      ctx.stroke();
+    }
+  } else {
+    // rj45 / virtual: the keyed body with its latch-tab notch cut from the
+    // bottom edge (PortBody.tsx's Rj45Body path, in primitives). `virtual`
+    // dashes the outline — same convention as the SVG version: a guest
+    // NIC's access port keeps the jack shape (this is still a switch) but
+    // the dash says there is no physical socket behind it.
+    if (kind === "virtual") ctx.setLineDash([2, 1.5]);
+    const notch = h * 0.32;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w, y);
+    ctx.lineTo(x + w, y + h - notch);
+    ctx.lineTo(x + w * 0.7, y + h - notch);
+    ctx.lineTo(x + w * 0.7, y + h);
+    ctx.lineTo(x + w * 0.3, y + h);
+    ctx.lineTo(x + w * 0.3, y + h - notch);
+    ctx.lineTo(x, y + h - notch);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (detailed) {
+      ctx.beginPath();
+      for (let i = 0; i < 4; i++) {
+        const cx = x + w * (0.16 + i * 0.22);
+        ctx.moveTo(cx, y + h * 0.18);
+        ctx.lineTo(cx, y + h * 0.42);
+      }
+      ctx.lineWidth = 0.75;
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 function nodeCenterScreen(
   node: FlowNode<EntityNodeData, "entity">,
   vp: Viewport,
@@ -243,6 +330,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
 
     const isPill = d.isGuestGroup || d.isPhysGroup;
     const radius = isPill ? h / 2 : 6;
+    const jackKind = jackKindForEntity(d.kind, d.mediaPort);
     // Fill
     roundRectPath(ctx, tl.x, tl.y, w, h, radius);
     ctx.fillStyle = d.stale ? theme.badgeBg : theme.nodeFill;
@@ -285,6 +373,20 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
       ctx.stroke();
     }
 
+    // T-3505: below the zoom at which text is legible (showText false —
+    // canvasDraw.ts's existing LOD signal, no parallel scheme of this
+    // task's own), a physnic/guest-nic node still gets a coarse jack mark
+    // instead of quietly reverting to the same accent-barred rectangle
+    // every other kind draws at this zoom — "distinguishes the kinds" per
+    // the card, not just by the accent bar's color. Proportionally sized so
+    // it never outgrows a shrunk box, and skipped below the accent bar's
+    // own w > 20 "too small to bother" gate.
+    if (!showText && jackKind && w > 20) {
+      const jw = Math.min(14, w * 0.35);
+      const jh = jw * (11 / 15);
+      drawJack(ctx, tl.x + (w - jw) / 2, tl.y + (h - jh) / 2, jw, jh, jackKind, statusBorder(d.status, theme), false);
+    }
+
     // Text
     if (showText) {
       ctx.save();
@@ -296,7 +398,27 @@ export function drawScene(ctx: CanvasRenderingContext2D, params: DrawSceneParams
       ctx.textAlign = "left";
       const labelY = showBadges ? tl.y + h * 0.32 : tl.y + h / 2;
       ctx.fillText(d.label, padX, labelY, w - 16);
-      if (!isPill && showBadges) {
+      if (!isPill && showBadges && jackKind) {
+        // T-3505: physnic/guest-nic swap the generic uppercase kind word
+        // for their drawn jack — strictly more information (copper vs
+        // fibre vs unknown vs virtual, the same distinction
+        // SwitchFaceplate.tsx's NicPort/AccessPort draw) in the same corner
+        // the word occupied. Screen-reader parity is unaffected by this
+        // swap: entityAriaLabel (a11yBridge.ts) still speaks the kind, plus
+        // the media/speed phrase, independently of what gets drawn here.
+        const jw = 15;
+        const jh = 11;
+        const jx = tl.x + w - 8 - jw;
+        const jy = labelY - jh / 2;
+        drawJack(ctx, jx, jy, jw, jh, jackKind, theme.kindText, true);
+        const speed = speedMarking(d.speedMbps);
+        if (speed) {
+          ctx.fillStyle = theme.kindText;
+          ctx.font = "8px ui-sans-serif, system-ui, sans-serif";
+          ctx.textAlign = "right";
+          ctx.fillText(speed, jx - 3, labelY);
+        }
+      } else if (!isPill && showBadges) {
         ctx.fillStyle = theme.kindText;
         ctx.font = "9px ui-sans-serif, system-ui, sans-serif";
         ctx.textAlign = "right";

@@ -133,6 +133,13 @@ export function toFlowElements(params: ToFlowElementsParams): FlowElements {
         status: n.status,
         badges: n.badges,
         findings: n.findings,
+        // T-3505: plumbed straight through from TopologyNode (physnic-only
+        // on the wire, api/types.ts's own doc comment) so EntityNode.tsx and
+        // canvasDraw.ts can draw the identical jack/speed marking
+        // SwitchFaceplate.tsx already does for the same physnic — built
+        // once here, not re-derived per draw call.
+        mediaPort: n.mediaPort,
+        speedMbps: n.speedMbps,
         dimmed: vlanMatch ? !vlanMatch.nodes.has(n.id) : false,
         stale: staleNodeGroups?.has(n.nodeGroup) ?? false,
         highlighted,
