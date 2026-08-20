@@ -26,7 +26,11 @@ export function StalenessBanner({ staleness }: StalenessBannerProps) {
           ? "This map is showing last-known data — cluster polling is failing."
           : "Parts of this map are showing last-known data (greyed bands)."}
       </p>
-      <ul className="mt-1 space-y-0.5">
+      {/* Capped and scrolled for the same reason UnrefFindingsBanner's list
+          is — see that file's comment. One stale source per node means this
+          list grows with the cluster, and it sits directly above the map
+          container, which only gets the height these banners leave it. */}
+      <ul className="mt-1 max-h-28 space-y-0.5 overflow-y-auto">
         {summary.staleSources.map((s) => (
           <li key={`${s.name}:${s.node ?? ""}`}>
             <span className="font-medium">{s.name}</span> ({describeScope(s)}): {describeLastSuccess(s)}

@@ -61,3 +61,27 @@ describe("StalenessBanner", () => {
     expect(screen.getByRole("status")).toHaveTextContent("no successful poll yet");
   });
 });
+
+// Same 2026-08-20 regression as UnrefFindingsBanner's — see that file's
+// comment for the measurement. This list grows with the cluster (one entry
+// per stale source per node) and sits directly above the map container.
+describe("StalenessBanner — bounded height (2026-08-20 regression)", () => {
+  it("caps and scrolls its list instead of growing without limit", () => {
+    const staleness: Staleness = {
+      stale: true,
+      sources: Array.from({ length: 40 }, (_, i) => ({
+        name: "host",
+        node: `pve${String(i)}`,
+        stale: true,
+        lastSuccess: 1720512345,
+        lastError: "dial tcp: connection refused",
+      })),
+    };
+    const { container } = render(<StalenessBanner staleness={staleness} />);
+    const list = container.querySelector("ul");
+    expect(list).not.toBeNull();
+    expect(list?.className).toContain("max-h-");
+    expect(list?.className).toContain("overflow-y-auto");
+    expect(container.querySelectorAll("li")).toHaveLength(40);
+  });
+});

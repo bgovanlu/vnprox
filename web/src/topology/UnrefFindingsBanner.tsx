@@ -32,7 +32,18 @@ export function UnrefFindingsBanner({ findings }: UnrefFindingsBannerProps) {
           ? "1 finding is not tied to any map entity:"
           : `${String(findings.length)} findings are not tied to any map entity:`}
       </p>
-      <ul className="mt-1 space-y-0.5">
+      {/* Height-capped and scrolled, not free-growing. This banner is a
+          sibling of the map container, which is the `min-h-0 flex-1`
+          leftover of a fixed-height (`h-full`) flex column — so every pixel
+          this list takes comes straight out of the map. Measured on the
+          scale-lab fixture (8 nodes, 300 guests) on 2026-08-20, an uncapped
+          list rendered 385px tall and cut the map from ~524px to 139px, 17%
+          of the page; a few more findings and `flex-1` resolves to 0, at
+          which point the map is not small but *gone* (Playwright reports the
+          canvas as `hidden` — see planning/reports/T-2505-followup-01.md).
+          A banner about findings must never be able to displace the thing
+          the findings are about. */}
+      <ul className="mt-1 max-h-28 space-y-0.5 overflow-y-auto">
         {findings.map((f) => (
           <li key={`${f.source}:${f.check}:${f.nodes.join(",")}`} className="flex flex-wrap items-center gap-1.5">
             <span

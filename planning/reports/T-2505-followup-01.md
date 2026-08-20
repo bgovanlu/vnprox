@@ -164,3 +164,45 @@ refuted here never were.
 Not investigated further — this was a side effect of a perf check on another task, and is written
 down rather than acted on so the next attempt starts from a reproduction instead of a bisection.
 The deadline is unchanged.
+
+### The mechanism, measured (same day)
+
+A geometry dump of the ancestor chain and siblings, taken on the scale-lab stack at the moment the
+v2 canvas is mounted:
+
+| sibling of the map container | height |
+|---|---|
+| toolbar (`flex flex-wrap`, wrapped onto two rows) | 120 |
+| history timeline | 58 |
+| **staleness + unref-findings banners** | **385** |
+| LLDP/over-cap notice | 34 |
+| **map container (`min-h-0 flex-1`)** | **139** |
+
+Page root (`TopologyPage.tsx:898`, `flex h-full flex-col gap-3`) is 796px. The fixed-size siblings
+total 737px, plus 84px of `gap-3` — 821px of demand against 796px of supply. The map, being the only
+`flex-1` child, absorbs the entire shortfall and is left 139px, 17% of the page.
+
+**That is the mechanism.** `min-h-0 flex-1` in a fixed-height column is not "the map gets the
+remaining space", it is "the map gets whatever nobody else took, including nothing". A few more
+banner rows and it resolves to 0, at which point Playwright's `toBeVisible()` reports `hidden` —
+which is exactly the observed failure, and exactly why it is intermittent: which banners render, and
+how many rows each has, depends on poll-timing-dependent state. It is scale-lab-specific because
+that fixture (8 nodes, 300 guests, 40 VNets) produces the most banner content.
+
+**The 385px is one banner, and it is a same-day regression of T-3501's.** The dump shows that block
+has exactly one child — `StalenessBanner` rendered nothing (no stale sources), so the whole 385px is
+`UnrefFindingsBanner`, added hours earlier by T-3501 to stop ref-less findings painting nowhere. Its
+`<ul>` had no height cap, so it grew one row per finding. This does not make T-3501 the cause of a
+quarantine that predates it — the layout was already fragile, which is the actual defect — but it
+very plausibly explains why the test went from passing roughly 1 run in 3 to failing 6/6 today.
+
+Fixed by capping both banners' lists (`max-h-28 overflow-y-auto`) so neither can displace the thing
+it is reporting about, with a regression test each asserting the cap *and* that no finding is
+dropped — capping height must not become capping content.
+
+**The underlying fragility is untouched and still owns this card.** The map area is still the
+leftover of a fixed-height column with six conditional siblings, so a sufficiently noisy cluster can
+still squeeze it to nothing; capping two lists raises the bar, it does not remove it. The real fix
+is a layout where the map has a floor (a `min-h` on the container, or the banner stack scrolling as
+a group) rather than one where it is whatever is left. Not attempted here: this was a perf check
+that turned into a diagnosis, and the layout change deserves its own scoped card.
