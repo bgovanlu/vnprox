@@ -3,7 +3,7 @@
   "sources": [
    {
     "name": "pve",
-    "lastSuccess": 1787232809,
+    "lastSuccess": 1787235146,
     "stale": false
    },
    {
@@ -15,37 +15,19 @@
    {
     "name": "host",
     "node": "pvecube",
-    "lastSuccess": 1787232810,
+    "lastSuccess": 1787235143,
     "stale": false
    },
    {
     "name": "lldp",
     "node": "pvecube",
-    "lastSuccess": 1787232797,
+    "lastSuccess": 1787235148,
     "stale": false
    }
   ],
   "stale": true
  },
  "nodes": [
-  {
-   "id": "bridge:pvecube:fwbr103i0",
-   "kind": "bridge",
-   "label": "fwbr103i0",
-   "layer": "l2",
-   "nodeGroup": "pvecube",
-   "status": "ok",
-   "badges": []
-  },
-  {
-   "id": "bridge:pvecube:fwbr104i0",
-   "kind": "bridge",
-   "label": "fwbr104i0",
-   "layer": "l2",
-   "nodeGroup": "pvecube",
-   "status": "ok",
-   "badges": []
-  },
   {
    "id": "bridge:pvecube:vmbr0",
    "kind": "bridge",
@@ -205,7 +187,8 @@
    "nodeGroup": "pvecube",
    "status": "ok",
    "badges": [
-    "mac=BC:24:11:52:87:C6"
+    "mac=BC:24:11:52:87:C6",
+    "firewall=fwbr103i0"
    ]
   },
   {
@@ -216,7 +199,8 @@
    "nodeGroup": "pvecube",
    "status": "ok",
    "badges": [
-    "mac=BC:24:11:FA:C0:97"
+    "mac=BC:24:11:FA:C0:97",
+    "firewall=fwbr104i0"
    ]
   },
   {
@@ -281,9 +265,11 @@
    "layer": "phys",
    "nodeGroup": "pvecube",
    "status": "ok",
+   "mediaPort": "tp",
    "badges": [
     "mgmt-path"
-   ]
+   ],
+   "speedMbps": 100
   },
   {
    "id": "physnic:pvecube:enp2s0",
@@ -292,6 +278,7 @@
    "layer": "phys",
    "nodeGroup": "pvecube",
    "status": "down",
+   "mediaPort": "tp",
    "badges": [
     "drift",
     "finding:health:error"
@@ -312,7 +299,9 @@
    "layer": "phys",
    "nodeGroup": "pvecube",
    "status": "ok",
-   "badges": []
+   "mediaPort": "tp",
+   "badges": [],
+   "speedMbps": 1000
   },
   {
    "id": "physnic:pvecube:enp4s0",
@@ -321,6 +310,7 @@
    "layer": "phys",
    "nodeGroup": "pvecube",
    "status": "down",
+   "mediaPort": "tp",
    "badges": [
     "drift",
     "finding:health:error"
@@ -492,5 +482,5 @@
    ]
   }
  ],
- "generatedAt": 1787232810
+ "generatedAt": 1787235148
 }

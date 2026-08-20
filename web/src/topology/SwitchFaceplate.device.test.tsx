@@ -10,13 +10,19 @@
 //      (AC2), and every port in it stays reachable by keyboard.
 //
 // On the fixture: `__fixtures__/pvecube-reference-topology.json` is a verbatim
-// `GET /topology` capture from the deployed daemon on 2026-08-20 (PVE 9.2.4,
-// six bridges, five guests, four physical NICs). It predates the speedMbps/
-// mediaPort fields this task added backend-side, so every physnic in it
-// carries neither — which makes it the honest "we have no reading" case, and
-// means AC1 is proved against data that has never been curated to make the
-// renderer look good. The speed/media rendering is proved separately below,
-// on synthetic nodes shaped like what the projection now emits.
+// `GET /topology` capture from the deployed daemon on 2026-08-20, PVE 9.2.4 —
+// four bridges, five guests, four physical NICs plus `lo`. Nothing in it has
+// been curated to make the renderer look good, which is the point: it is where
+// AC1 is proved. It carries, as observed, two live copper links at 100M and
+// 1G, two copper links with no carrier and therefore no speed, a `lo` with no
+// media type at all, opnsense's three `link_down=1` NICs, and the two
+// `firewall=fwbr*` badges T-3504 folded onto the running LXC guests' NICs.
+//
+// Everything the reference node cannot produce — a fibre/DA port, a degraded
+// bond, 48 ports on one switch — is exercised on synthetic nodes below, shaped
+// like what the projection emits. See
+// planning/reports/needs-hardware-validation.md for the ones that stay
+// unproven until there is hardware to prove them on.
 import pvecubeFixture from "./__fixtures__/pvecube-reference-topology.json";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -61,11 +67,34 @@ function jackKind(button: HTMLElement): "rj45" | "sfp" | "unknown" | "none" {
 describe("T-3503 AC1 — the reference node renders as switches with populated ports", () => {
   const fixture = pvecubeFixture as unknown as TopologyResponse;
 
-  it("draws all six of pvecube's bridges as chassis", () => {
+  it("draws pvecube's four operator-made bridges as chassis, and nothing else", () => {
     renderTopology(fixture.nodes, fixture.edges);
-    for (const name of ["vmbr0", "vmbr1", "vmbr2", "vmbr3", "fwbr103i0", "fwbr104i0"]) {
+    for (const name of ["vmbr0", "vmbr1", "vmbr2", "vmbr3"]) {
       expect(screen.getByLabelText(`${name} switch`)).toBeInTheDocument();
     }
+    // T-3504: the capture that this fixture replaced also carried
+    // `fwbr103i0`/`fwbr104i0`, which drew as two large empty chassis. They are
+    // folded into their guest NICs now (internal/topology/firewall_bridge.go)
+    // and the backend no longer emits them at all — this is the AC1 half of
+    // "no empty device renders anywhere in the Switch view".
+    expect(screen.queryByLabelText("fwbr103i0 switch")).toBeNull();
+    expect(screen.queryByLabelText("fwbr104i0 switch")).toBeNull();
+  });
+
+  it("marks the two firewalled LXC ports, from the live capture", () => {
+    // 103/104 are the reference node's running LXC guests, both with
+    // `firewall=1`; 102 (opnsense) has no firewall flag on any NIC. So this
+    // asserts the marking appears where PVE actually put a firewall bridge
+    // and nowhere else — against real data, not a hand-set badge.
+    renderTopology(fixture.nodes, fixture.edges);
+    const node = screen.getByLabelText("node pvecube");
+    expect(
+      within(within(node).getByLabelText("librenms/net0")).getByText("fw").getAttribute("title"),
+    ).toBe("firewalled by fwbr103i0");
+    expect(
+      within(within(node).getByLabelText("powerdns/net0")).getByText("fw").getAttribute("title"),
+    ).toBe("firewalled by fwbr104i0");
+    expect(within(within(node).getByLabelText("opnsense/net0")).queryByText("fw")).toBeNull();
   });
 
   it("populates vmbr0 with its real uplink and its three guest access ports", () => {
@@ -110,16 +139,45 @@ describe("T-3503 AC1 — the reference node renders as switches with populated p
     expect(document.getElementById(up.getAttribute("aria-describedby") ?? "")?.textContent).toContain("status ok");
   });
 
-  it("draws the honest unknown-media body when the capture carries no reading", () => {
-    // Every physnic in this capture predates the mediaPort field. The
-    // faceplate must not default them to a confident RJ45.
+  it("draws the reference node's real copper ports as copper, with their real speeds", () => {
+    // All four NICs on pvecube are `Port: Twisted Pair` (igc), enp1s0 at
+    // 100Mb/s and enp3s0 at 1000Mb/s — see
+    // planning/reports/evidence/pve-9.2.4-nic-media-and-speed.txt.
     renderTopology(fixture.nodes, fixture.edges);
-    const nic = within(screen.getByLabelText("node pvecube")).getByLabelText("enp1s0");
-    expect(jackKind(nic)).toBe("unknown");
-    const desc = document.getElementById(nic.getAttribute("aria-describedby") ?? "");
-    expect(desc?.textContent).toContain("media type unknown");
-    // ...and no invented speed.
-    expect(desc?.textContent).not.toContain("link speed");
+    const node = screen.getByLabelText("node pvecube");
+    const enp1s0 = within(node).getByLabelText("enp1s0");
+    expect(jackKind(enp1s0)).toBe("rj45");
+    expect(within(enp1s0).getByText("100M")).toBeInTheDocument();
+    const enp3s0 = within(node).getByLabelText("enp3s0");
+    expect(jackKind(enp3s0)).toBe("rj45");
+    expect(within(enp3s0).getByText("1G")).toBeInTheDocument();
+  });
+
+  it("keeps a down port's connector and drops only its speed — on real data", () => {
+    // enp2s0 and enp4s0 have no carrier. The kernel reports their speed as
+    // unknown but still answers `Port: Twisted Pair` for both, which is the
+    // exact conflation the evidence transcript exists to prevent: the socket
+    // did not change when the cable came out.
+    renderTopology(fixture.nodes, fixture.edges);
+    const node = screen.getByLabelText("node pvecube");
+    for (const name of ["enp2s0", "enp4s0"]) {
+      const nic = within(node).getByLabelText(name);
+      expect(jackKind(nic)).toBe("rj45");
+      expect(within(nic).queryByText(/^\d+(\.\d+)?[MG]$/)).toBeNull();
+      const desc = document.getElementById(nic.getAttribute("aria-describedby") ?? "")?.textContent ?? "";
+      expect(desc).toContain("copper RJ45");
+      expect(desc).not.toContain("link speed");
+    }
+  });
+
+  it("draws the honest unknown-media body for a port with no reading", () => {
+    // `lo` is in the capture and has no media type — ETHTOOL_GSET has nothing
+    // to say about the loopback device. It must not be defaulted to a
+    // confident RJ45; the whole point of the third body is that "we do not
+    // know" is drawable.
+    renderTopology(fixture.nodes, fixture.edges);
+    const lo = within(screen.getByLabelText("node pvecube")).getByLabelText("lo");
+    expect(jackKind(lo)).toBe("unknown");
   });
 });
 
