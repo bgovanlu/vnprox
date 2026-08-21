@@ -270,6 +270,16 @@ type installLLDPRequest struct {
 	Confirm bool `json:"confirm"`
 }
 
+// startServiceRequest is T-3604's body for POST
+// /api/peer/host/service/start. Unit is validated on the RECEIVING node
+// against internal/host.IsWatchedService — never trusted because the
+// coordinator says it checked.
+type startServiceRequest struct {
+	writeAttribution
+	Unit    string `json:"unit"`
+	Confirm bool   `json:"confirm"`
+}
+
 // okResponse is the generic success body for the write endpoints.
 type okResponse struct {
 	OK bool `json:"ok"`

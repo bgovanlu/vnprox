@@ -458,6 +458,51 @@ vnprox does not renew, reissue, or replace certificates. PVE already owns this �
 - Cluster-wide apply lock prevents concurrent conflicting changesets.
 - **Scheduled/unattended apply (T-1103, addition):** a changeset whose ops touch a node's resolved management path (`touchesMgmtPath`) can never be scheduled for unattended apply (docs/api.md's `POST /changesets/{id}/schedule`: `422 mgmt_path_unattended_forbidden`). This is a **stricter, separate gate** from the `allow_dangerous_ops` line above, not an application of it: `allow_dangerous_ops` only ever downgrades a T-203 safety-interlock *validation finding* from error to warning for an ordinary, interactively-confirmed apply — it has no bearing on, and no effect over, the scheduling gate, which checks `touchesMgmtPath` directly and unconditionally before any validation pass even runs. There is no config flag, request field, or combination of the two that schedules a management-path change for unattended apply; the only path to changing a node's management path stays the interactive one (T-703's guided wizard, reviewed and confirmed by a human at apply time).
 
+## Operational actions (Phase 36)
+
+The change engine is the only path to Proxmox network configuration: stage, validate, diff, apply,
+confirm/rollback. Phase 36 introduced a second, deliberately narrow class of mutation that has **no
+changeset to stage** because there is no PVE configuration to diff — installing `lldpd`, starting a
+stopped SDN daemon, re-running a poll. This section exists so that class stays narrow, and so nobody
+later mistakes it for a general-purpose remote-execution facility.
+
+**What an operational action may do.** Exactly one named thing, from a fixed allow-list, with fixed
+argv. `POST /lldp/install` installs one package. `POST /services/start` starts one of two units
+(`dnsmasq`, `frr`). `POST /collectors/refresh` re-reads state and writes nothing anywhere.
+
+**What it may never do.** Accept an operator-supplied string that reaches a shell or a command line.
+Take a unit, package or command name from the caller without checking it against an allow-list *on
+the node that will run it*. Restart, stop, mask, or enable-at-boot anything — vnprox does not alter a
+node's boot configuration behind a button that says "start". Or serve as a route to network
+configuration: anything that changes what a bridge, bond, VLAN or SDN object *is* belongs in
+`internal/change`, and an operational action that started doing so would be a change-engine bypass
+regardless of what it was called.
+
+**The ceremony, in place of a diff.** Because there is no plan to review, the checks that would
+otherwise be spread across staging and approval are concentrated at the call:
+
+- **Explicit confirmation.** `{"confirm": true}` server-side, and a dialog client-side that names
+  the blast radius — "every reachable node" and "node pve2" are different sentences. The one
+  exception is the *read-only* tier (`POST /collectors/refresh`), which mutates nothing; confirming
+  a re-read would only teach operators to click through the dialogs that matter.
+- **Capability gate.** `netWrite` today for all three. For `services/start` that is a judgement, not
+  an accident: the allow-listed units are network daemons the cluster is already configured to run,
+  so starting one restores the intended state rather than changing it — less invasive than the
+  bridge edits `netWrite` already permits. **If that allow-list widens beyond "network daemons this
+  cluster already runs", the reasoning expires and the capability question must be reopened.**
+- **Defence in depth on the receiving side.** A coordinating daemon's validation is a convention; the
+  receiving node's is an invariant. Every peer write route re-checks independently, and refuses with
+  its own audit row. The host function that builds the argv checks a third time, because that is the
+  only check still in scope for a caller that reaches it by some other path.
+- **Audit on every outcome, including refusals.** An attempt to start something outside the
+  allow-list is the single most interesting event these routes can produce, and an audit trail that
+  recorded only successes would make it the one that leaves no trace. Both the coordinator and the
+  receiving node append rows (T-2902 attribution: actor, origin node, origin IP).
+
+**What is deliberately absent.** There is no generic "run this on that node" route, no service
+manager beyond `start` for two units, and no auto-remediation: nothing in Phase 36 fires without a
+human pressing a button. A finding that fixes itself is a finding nobody reviews.
+
 ## Blueprint & plugin hub (T-1705, T-2104)
 
 The hub (`internal/hub`, opt-in via `[hub] registry_url`) is a browse/install **client** over a public registry of signed blueprint bundles (T-1107) and SDK plugins (T-1702). There is no registry *service*: the registry is a static, signed `index.json` plus an artifact tree on ordinary hosting (`docs/hub-registry.md`, T-2803). It is **not a new trust boundary** — it inherits, and never weakens, the existing gates:

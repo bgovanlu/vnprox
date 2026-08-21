@@ -258,6 +258,10 @@ const (
 	// scoped to Params["node"]. Read-only with respect to every node: it is
 	// vnprox re-reading, not vnprox writing.
 	RemedyActionCollectorRefresh = "collector.refresh"
+	// RemedyActionServiceStart starts Params["service"] on Params["node"]
+	// (T-3604). Mutating, allow-listed to internal/host.WatchedServices,
+	// and confirmed — the fullest ceremony Phase 36 defines.
+	RemedyActionServiceStart = "service.start"
 )
 
 // Remediation is the remedy a producer offers for its finding.

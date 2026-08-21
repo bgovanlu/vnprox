@@ -172,11 +172,42 @@ type Edge struct {
 // are the finding's own machine check-id and human-readable explanation
 // (GET /findings' own shape) — this is the "why" the frontend renders on
 // hover/selection instead of sending the operator to a separate panel.
+//
+//nolint:govet // fieldalignment: wire shape; field order is the documented JSON contract (docs/api.md's GET /topology), not packing — the same precedent internal/findings.Finding sets.
 type FindingBadge struct {
 	Source   string `json:"source"`
 	Severity string `json:"severity"`
 	Check    string `json:"check"`
 	Detail   string `json:"detail"`
+	// Remedy is Phase 36's producer-declared remedy, carried through from
+	// internal/findings.Finding so a finding surfaced on the map offers the
+	// same action it offers in the findings stream. Absent for a
+	// detection-only finding.
+	//
+	// Structurally a copy of findings.Remediation rather than that type
+	// itself, and not by preference: internal/findings imports this
+	// package (health_mgmtpath.go, adapt_lldp.go), so the dependency cannot
+	// run the other way. The copy is the cost of that direction. Since a
+	// silently-diverged copy is exactly the failure Phase 36 exists to
+	// prevent, the two are pinned against each other by a test that
+	// round-trips one through the other's JSON — see
+	// internal/api/topology_remedy_test.go.
+	Remedy *FindingRemediation `json:"remedy,omitempty"`
+}
+
+// FindingRemediation mirrors internal/findings.Remediation on the wire —
+// see FindingBadge.Remedy for why it is a copy rather than that type. The
+// field order mirrors it too, byte for byte: the round-trip test in
+// internal/api compares the two structs' marshalled JSON, and Go emits keys
+// in declaration order, so packing this "better" than its original would
+// break the very check that stops the copy drifting.
+//
+//nolint:govet // fieldalignment: wire shape, and deliberately identical to findings.Remediation's field order — see above.
+type FindingRemediation struct {
+	Action string            `json:"action"`
+	Kind   string            `json:"kind"`
+	Label  string            `json:"label"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 // UnrefFinding is a FindingBadge for a finding whose Refs are empty — T-3501

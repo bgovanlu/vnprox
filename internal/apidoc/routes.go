@@ -219,6 +219,7 @@ var Operations = map[string]Operation{
 	"GET /api/v1/failsim/spof-score":          {Summary: "Score single points of failure in the current topology.", Tag: "failsim", Auth: AuthSession},
 	"POST /api/v1/migration/preflight":        {Summary: "Check whether a guest migration is network-safe.", Tag: "migration", Auth: AuthSession},
 	"POST /api/v1/collectors/refresh":         {Summary: "Re-run a collector poll now.", Tag: "topology", Auth: AuthSession},
+	"POST /api/v1/services/start":             {Summary: "Start a watched SDN service on a node.", Tag: "topology", Auth: AuthSession},
 
 	// --- Captures ----------------------------------------------------------------------------
 	"GET /api/v1/captures":               {Summary: "List packet captures.", Tag: "captures", Auth: AuthSession},
@@ -317,6 +318,7 @@ var Operations = map[string]Operation{
 	"GET /api/peer/host/fdb":                {Summary: "Return the peer's bridge forwarding database.", Tag: "peer", Auth: AuthPeer},
 	"GET /api/peer/host/lldp":               {Summary: "Return the peer's LLDP neighbours.", Tag: "peer", Auth: AuthPeer},
 	"POST /api/peer/host/lldp/install":      {Summary: "Install the LLDP daemon on the peer.", Tag: "peer", Auth: AuthPeer},
+	"POST /api/peer/host/service/start":     {Summary: "Start a watched SDN service on the peer.", Tag: "peer", Auth: AuthPeer},
 	"GET /api/peer/host/services":           {Summary: "Report networking service states on the peer.", Tag: "peer", Auth: AuthPeer},
 	"GET /api/peer/host/conntrack":          {Summary: "Return the peer's conntrack entries.", Tag: "peer", Auth: AuthPeer},
 	"GET /api/peer/host/dhcp-leases":        {Summary: "Return DHCP leases known to the peer.", Tag: "peer", Auth: AuthPeer},

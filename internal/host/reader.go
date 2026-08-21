@@ -186,6 +186,24 @@ type ContainerInteriorRaw struct {
 // each hand-rolling their own.
 var WatchedServices = []string{"dnsmasq", "frr"}
 
+// IsWatchedService reports whether unit is one vnprox may act on.
+//
+// T-3604 made this an authorisation decision rather than a display detail:
+// it is what stands between "start the SDN DHCP daemon" and "start
+// anything on this host as root". It is a function over a private literal
+// rather than a range over WatchedServices because that is an exported
+// `var` — any package in this binary could append to it, and an allow-list
+// that can be widened by an unrelated assignment is not one. Keep the two
+// in step; the test asserts they agree.
+func IsWatchedService(unit string) bool {
+	switch unit {
+	case "dnsmasq", "frr":
+		return true
+	default:
+		return false
+	}
+}
+
 // ErrUnsupportedPlatform is returned by real.go's OS-specific paths (raw
 // ethtool ioctls, netlink) when built for or run on a platform that does
 // not support them. vnprox only ships for Linux, but this package is

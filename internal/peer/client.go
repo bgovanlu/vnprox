@@ -743,6 +743,23 @@ func (c *Client) InstallLLDPD(ctx context.Context, p Peer, confirm bool) error {
 	return decodeInto(resp, nil)
 }
 
+// StartService asks peer p to start a watched systemd unit on its node
+// (T-3604). The unit name is re-validated by the receiving node — this
+// client's own caller having checked it is not what makes it safe.
+func (c *Client) StartService(ctx context.Context, p Peer, unit string, confirm bool) error {
+	a := AttributionFromContext(ctx)
+	body, err := json.Marshal(startServiceRequest{Unit: unit, Confirm: confirm,
+		writeAttribution: writeAttribution(a)})
+	if err != nil {
+		return fmt.Errorf("peer: encoding start-service request: %w", err)
+	}
+	resp, err := c.do(ctx, p, http.MethodPost, "/api/peer/host/service/start", body)
+	if err != nil {
+		return err
+	}
+	return decodeInto(resp, nil)
+}
+
 // ArmTimer asks peer p to arm node's local commit-confirm rollback timer for
 // changesetID: content is the byte-exact pre-apply state to restore if
 // deadline (unix seconds) elapses uncancelled (T-304's local-timer

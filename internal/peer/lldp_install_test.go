@@ -9,11 +9,22 @@ import (
 // spyLLDPInstaller records InstallLLDPD calls and can be made to fail.
 type spyLLDPInstaller struct {
 	failErr error
+	started []string
 	calls   int
 }
 
 func (s *spyLLDPInstaller) InstallLLDPD(_ context.Context) error {
 	s.calls++
+	return s.failErr
+}
+
+// StartService records what the RECEIVING node was actually asked to run.
+// Deliberately permissive — it does NOT re-check the allow-list — so the
+// tests below prove the *server* refuses rather than being saved by a
+// well-behaved dependency. (*host.Real does check, a third time; that is
+// covered in internal/host.)
+func (s *spyLLDPInstaller) StartService(_ context.Context, unit string) error {
+	s.started = append(s.started, unit)
 	return s.failErr
 }
 

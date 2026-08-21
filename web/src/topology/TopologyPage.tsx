@@ -10,6 +10,8 @@ import { hasAnyCap } from "../changesets/capabilities";
 import { useLldpInstallMutation } from "../onboarding/queries";
 import { LldpSetupBanner } from "./LldpSetupBanner";
 import { isRateLimited, refreshCollectors } from "../api/collectors";
+import { startService } from "../api/services";
+import type { RemediationContext } from "../findings/remediation";
 import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
 import { useTopologyShortcutTargetStore } from "../keyboard/topologyShortcutTarget";
 import { useRovingFocus } from "../keyboard/useRovingFocus";
@@ -910,6 +912,52 @@ function TopologyPageContent() {
   const lldpInstall = useLldpInstallMutation();
   const [lldpInstallResults, setLldpInstallResults] = useState<LldpInstallNodeResult[] | undefined>(undefined);
 
+  // T-3604. The confirmed operational tier: this surface DOES own a
+  // confirmation dialog (OperationalActionButton), so unlike the findings
+  // stream it supplies a runner and can therefore offer mutating remedies.
+  const [serviceStartPendingId, setServiceStartPendingId] = useState<string | undefined>(undefined);
+  const [serviceStartErrors, setServiceStartErrors] = useState<Record<string, string>>({});
+
+  const remediationCtx: RemediationContext = useMemo(
+    () => ({
+      netWrite: canInstallLldp,
+      navigate: (to) => { void navigate(to); },
+      runOperational: (remedy) => {
+        if (remedy.action !== "service.start") return;
+        const node = remedy.params?.node;
+        const service = remedy.params?.service;
+        if (node === undefined || node === "" || service === undefined || service === "") return;
+        // Keyed on (node, service), the only pair that distinguishes two
+        // findings that are otherwise identical — see remedyActionKey.
+        const key = `${node}/${service}`;
+        setServiceStartPendingId(key);
+        void (async () => {
+          try {
+            await startService(node, service);
+            // Clear this key's stale error by rebuilding without it —
+            // `delete` on a computed key is banned by eslint here, and a
+            // filtered rebuild says the same thing.
+            setServiceStartErrors((prev) =>
+              Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)),
+            );
+            // The finding clears on the next poll that observes the unit
+            // running — no special-casing to make it disappear early, which
+            // would claim success before the service had actually come up.
+            void queryClient.invalidateQueries({ queryKey: TOPOLOGY_QUERY_KEY });
+          } catch (err) {
+            setServiceStartErrors((prev) => ({
+              ...prev,
+              [key]: err instanceof Error ? err.message : "could not start the service",
+            }));
+          } finally {
+            setServiceStartPendingId(undefined);
+          }
+        })();
+      },
+    }),
+    [canInstallLldp, navigate, queryClient],
+  );
+
   // T-3603. Read-only operational tier: re-runs vnprox's own poll, writes
   // nothing to any node, so no confirmation dialog — see StalenessBanner's
   // own comment. The server enforces the rate limit; this only has to
@@ -1081,7 +1129,12 @@ function TopologyPageContent() {
             view (Switch/Graph) is active below — the two views can never
             disagree about a ref-less finding's presentation because there
             is only one place it renders. */}
-        <UnrefFindingsBanner findings={topology?.unrefFindings} />
+        <UnrefFindingsBanner
+          findings={topology?.unrefFindings}
+          remediationCtx={remediationCtx}
+          pendingId={serviceStartPendingId}
+          results={serviceStartErrors}
+        />
       </div>
 
       {/* T-2704: the diff overlay's own status line. The map must SAY what

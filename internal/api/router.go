@@ -199,8 +199,11 @@ type Options struct {
 	// route, the same optional-dependency convention every other seam in
 	// this struct follows — a daemon without a collector has nothing to
 	// refresh.
-	CollectorRefresher  CollectorRefresher
-	CollectorAudit      collectorRefreshAuditor
+	CollectorRefresher CollectorRefresher
+	CollectorAudit     collectorRefreshAuditor
+	// T-3604: POST /services/start. ServiceStarter nil = route absent.
+	ServiceStarter      ServiceStarter
+	PeerServiceStarter  PeerServiceStarter
 	Tenant              TenantScoper
 	Tokens              APITokenStore
 	TokenAudit          tokenAuditor
@@ -432,6 +435,7 @@ func NewRouter(opts Options) http.Handler {
 		mountHubRoutes(r, opts.HubClient, opts.HubVetting, opts.Blueprints, opts.BlueprintTrust, opts.PluginInstaller, opts.BlueprintSignersAudit, opts.Auth, opts.HubTrustUnsigned)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
 		mountCollectorRefreshRoutes(r, opts.CollectorRefresher, opts.CollectorAudit, opts.Auth, nil)
+		mountServiceStartRoutes(r, opts.ServiceStarter, opts.PeerServiceStarter, opts.CollectorAudit, opts.LocalNode, opts.Auth)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountEmbedTokenRoute(r, opts.Tokens, opts.TokenAudit, opts.Auth)
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth, opts.WebhookTargetCheck)

@@ -1385,6 +1385,10 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 	var peerAudit api.PeerAuditSource
 	var peerSnapshots api.PeerSnapshotSource
 	var lldpPeerInstaller api.PeerLLDPInstaller
+	// T-3604: the same *peer.Client, seamed separately because starting a
+	// service and installing a package are different powers and their
+	// interfaces should not be one.
+	var peerServiceStarter api.PeerServiceStarter
 	var peerFlows api.PeerFlowSource
 	// T-1304: guestInteriorPeers backs GET /guests/{ref}/interior's lxc
 	// path for a guest whose node is a peer, not this daemon's own — the
@@ -1398,6 +1402,7 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		peerAudit = peerClient
 		peerSnapshots = peerClient
 		lldpPeerInstaller = peerClient
+		peerServiceStarter = peerClient
 		peerFlows = peerClient
 		guestInteriorPeers = peerClient
 		peerConntrack = peerClient
@@ -1745,6 +1750,11 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		// the same primitive reached from the staleness banner's retry.
 		CollectorRefresher: collector,
 		CollectorAudit:     auditRepo,
+		// T-3604: POST /services/start. realHost is the same value already
+		// wired as LLDPInstaller — one host writer, not a second path to
+		// the node.
+		ServiceStarter:     realHost,
+		PeerServiceStarter: peerServiceStarter,
 		LocalNode:          localNode,
 		// T-1104: automation tokens + webhook registrations, both audited
 		// via the same shared auditRepo every other route in this daemon

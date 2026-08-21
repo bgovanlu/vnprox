@@ -118,6 +118,23 @@ func checkServiceDown(store *serviceStatusStore, db *debouncer) []Finding {
 				Detail:   detail,
 				Nodes:    []string{node},
 				DocsLink: serviceDownDocsLink,
+				// T-3604: the remedy is to start the unit. Mutating, so it
+				// is the confirmed operational tier — not Fixable, because
+				// starting a daemon is not a change to Proxmox network
+				// configuration and has no changeset to stage.
+				//
+				// Declared for every watched unit without checking which
+				// one it is: the allow-list that decides what may actually
+				// be started lives in internal/host, enforced on the node
+				// that runs the command. A producer that tried to
+				// second-guess it here would be a fourth place for the two
+				// lists to drift apart.
+				Remedy: &Remediation{
+					Action: RemedyActionServiceStart,
+					Kind:   RemedyOperational,
+					Label:  "Start " + svc,
+					Params: map[string]string{"node": node, "service": svc},
+				},
 			}
 			out = append(out, f)
 		}

@@ -231,6 +231,11 @@ type HostWriter interface {
 type LLDPInstaller interface {
 	// InstallLLDPD installs and enables lldpd on this node.
 	InstallLLDPD(ctx context.Context) error
+	// StartService starts one of internal/host.WatchedServices on this
+	// node (T-3604). Implementations MUST re-check the unit name
+	// themselves — *host.Real.StartService does — rather than trusting
+	// this server to have done it.
+	StartService(ctx context.Context, unit string) error
 }
 
 // ReplicationSink is the peer-server-side dependency for
@@ -345,6 +350,7 @@ func (s *Server) MountRoutes(r chi.Router) {
 		r.Post("/host/restore", s.handleRestore)
 		r.Post("/host/discard-staged", s.handleDiscardStaged)
 		r.Post("/host/lldp/install", s.handleInstallLLDPD)
+		r.Post("/host/service/start", s.handleStartService)
 
 		r.Get("/audit", s.handleAudit)
 		r.Get("/snapshots", s.handleSnapshots)
@@ -1122,6 +1128,64 @@ func (s *Server) handleInstallLLDPD(w http.ResponseWriter, r *http.Request) {
 		Actor:  req.Actor, OriginNode: req.OriginNode, OriginIP: req.OriginIP,
 	}
 	if err := s.opts.LLDPInstaller.InstallLLDPD(r.Context()); err != nil {
+		audit.Result, audit.Detail = "failed", err.Error()
+		s.auditHostWrite(r.Context(), audit)
+		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())
+		return
+	}
+	audit.Result = "allowed"
+	s.auditHostWrite(r.Context(), audit)
+	writeJSON(w, http.StatusOK, okResponse{OK: true})
+}
+
+// handleStartService implements POST /api/peer/host/service/start (T-3604).
+//
+// Starting a systemd unit is genuinely new power for this product, so the
+// checks are deliberately doubled up rather than delegated:
+//
+//   - The unit name is validated HERE, on the node that will run the
+//     command, against internal/host.IsWatchedService. The coordinator
+//     validates too, but a receiving node that trusts its caller's
+//     validation has no allow-list at all — it has a convention. This is
+//     the check that actually holds if a coordinator is compromised, buggy,
+//     or simply a different (older or newer) version.
+//   - *host.Real.StartService checks a THIRD time, in the function that
+//     builds the argv. That is not redundancy for its own sake: it is the
+//     only check that is still in scope if some future caller reaches the
+//     host layer by another path.
+//
+// A refused unit is a 400 and is audited as a refusal — an attempt to start
+// something outside the allow-list is exactly the event an audit log exists
+// to record, and dropping it silently would make the interesting case the
+// invisible one.
+func (s *Server) handleStartService(w http.ResponseWriter, r *http.Request) {
+	if s.opts.LLDPInstaller == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "peer_unavailable", "host service manager not configured")
+		return
+	}
+	var req startServiceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "invalid request body")
+		return
+	}
+	if !req.Confirm {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed", "confirm must be true")
+		return
+	}
+	audit := HostWriteAudit{
+		Action: "peer.host.service-start",
+		Actor:  req.Actor, OriginNode: req.OriginNode, OriginIP: req.OriginIP,
+		Detail: req.Unit,
+	}
+	if !host.IsWatchedService(req.Unit) {
+		audit.Result = "refused"
+		audit.Detail = "unit not allow-listed: " + req.Unit
+		s.auditHostWrite(r.Context(), audit)
+		writeJSONError(w, http.StatusBadRequest, "validation_failed",
+			"unit is not one of vnprox's watched services")
+		return
+	}
+	if err := s.opts.LLDPInstaller.StartService(r.Context(), req.Unit); err != nil {
 		audit.Result, audit.Detail = "failed", err.Error()
 		s.auditHostWrite(r.Context(), audit)
 		writeJSONError(w, http.StatusInternalServerError, "host_write_failed", err.Error())

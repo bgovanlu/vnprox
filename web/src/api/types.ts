@@ -103,6 +103,12 @@ export interface FindingBadge {
   severity: Severity;
   check: string;
   detail: string;
+  /** Phase 36's producer-declared remedy, carried onto the map so a
+   * finding offers the same action wherever it is shown. Absent for a
+   * detection-only finding. Structurally identical to `StreamFinding`'s —
+   * `internal/topology` mirrors `internal/findings.Remediation` because the
+   * Go import direction forbids sharing the type; a test pins the two. */
+  remedy?: Remediation;
 }
 
 /** A `FindingBadge` for a finding with no entity refs at all — nothing to
@@ -3235,6 +3241,16 @@ export interface LldpInstallResponse {
  * again, with this message" is the useful answer rather than a transport
  * error. `changed` distinguishes "worked but nothing moved" from "nothing
  * happened", which otherwise look identical. */
+/** POST /services/start response (T-3604). A failed start is an HTTP
+ * error carrying systemd's own message, not a 200 with a flag — unlike a
+ * collector refresh, "it did not start" is a failure of the thing the
+ * operator asked for, not a reported observation. */
+export interface ServiceStartResponse {
+  node: string;
+  unit: string;
+  ok: boolean;
+}
+
 export interface CollectorRefreshResponse {
   node?: string;
   error?: string;

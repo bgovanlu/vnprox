@@ -317,6 +317,16 @@ func paintFindings(t *topology.Topology, fs []findings.Finding) {
 	var unref []topology.UnrefFinding
 	for _, f := range fs {
 		fb := topology.FindingBadge{Source: string(f.Source), Severity: f.Severity, Check: f.Check, Detail: f.Detail}
+		// Phase 36: carry the producer's remedy onto the map, so a finding
+		// offers the same action wherever it is shown.
+		if f.Remedy != nil {
+			fb.Remedy = &topology.FindingRemediation{
+				Action: f.Remedy.Action,
+				Kind:   string(f.Remedy.Kind),
+				Label:  f.Remedy.Label,
+				Params: f.Remedy.Params,
+			}
+		}
 		if len(f.Refs) == 0 {
 			unref = append(unref, topology.UnrefFinding{FindingBadge: fb, Nodes: append([]string{}, f.Nodes...)})
 			continue
