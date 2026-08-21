@@ -206,3 +206,61 @@ still squeeze it to nothing; capping two lists raises the bar, it does not remov
 is a layout where the map has a floor (a `min-h` on the container, or the banner stack scrolling as
 a group) rather than one where it is whatever is left. Not attempted here: this was a perf check
 that turned into a diagnosis, and the layout change deserves its own scoped card.
+
+---
+
+## CLOSED 2026-08-21 — root cause found, fixed, quarantine removed
+
+**Mechanism.** The topology map's container (`TopologyPage.tsx`) was the only `flex-1` child of a
+fixed-height (`h-full`) flex column, carrying `min-h-0`. On the only flexible child of a
+fixed-height column, `min-h-0` does not mean "may scroll" — it means **may shrink to nothing**. Its
+siblings are banners that grow with the cluster (staleness: one entry per stale source per node;
+unref findings: one per down service; the LLDP, over-cap, diff and preview strips), so the map
+absorbed every shortfall.
+
+Measured on the scale-lab stack: 737px of fixed siblings plus 84px of `gap-3` against 796px of page,
+leaving the map **139px** — and a few more banner rows take it to 0. At 0, Playwright's
+`toBeVisible()` reports the canvas as `hidden`, which is this card's failure exactly.
+
+It explains every previously unexplained property:
+
+- **Intermittent**, because which banners render depends on poll-timing-dependent state.
+- **Scale-lab only**, because that fixture (8 nodes, 300 guests, 40 VNets) produces the most banner
+  content.
+- **Order-dependent** ("fails only if both other tests ran first"), because the daemon accumulates
+  staleness and findings as it runs — which is also why "the daemon's accumulated uptime" looked
+  like the variable. It was a proxy for banner height.
+- **Daemon healthy throughout** (flat goroutines, normal CPU/RSS): nothing was wrong server-side.
+  The page was rendering correctly; the map was simply zero pixels tall.
+- **v1 never reproduced it.** Not because react-flow lacks a synchronous redraw path — that
+  hypothesis was wrong — but because the v1 test does not assert on a zero-size element the way
+  `expect(v2).toBeVisible()` does.
+
+The `staleConsecutiveFailures` and per-mousemove-redraw candidates named above are both **refuted**;
+neither had anything to do with it.
+
+**Fix.** `min-h-[22rem]` in place of `min-h-0` (commit `a385f38a`). `<main>` is already
+`overflow-auto`, so once demand exceeds the viewport the banners scroll and the map keeps its floor.
+Capping the two banner lists (2026-08-20) raised the bar; this removes the failure mode.
+
+**Evidence.**
+
+| | with fix | without fix |
+|---|---|---|
+| round 1 (`--repeat-each=3`) | 3 passed | 3 failed |
+| round 2 (`--repeat-each=3`) | 3 passed | 3 failed |
+
+6/6 against 6/6, on the same machine within the same hour. The "without" column is the pair of runs
+from 2026-08-20 (one with T-3505's canvas work in the tree, one with it stashed, agreeing to 0.3%).
+Against the historical ~1-in-3 pass rate, 6/6 passing is p ≈ 0.14%.
+
+**Quarantine entry removed**; `web/e2e/quarantine.json` is back to the empty state its own comment
+calls healthy. The card's three closure conditions are met: a mechanism rather than a bisection, a
+reproduction that fails before and passes after, and the entry gone rather than rolled forward.
+
+**How it was actually found**, recorded because the lesson generalises: not by any of the three
+investigations that went looking for it, but as a side effect of checking whether T-3505's canvas
+drawing had blown a frame budget. That check needed the quarantined test, could not have it, and so
+produced a deterministic reproduction — and the geometry dump written to explain *that* named the
+mechanism in one table. Three investigations had profiled the daemon, traced CDP calls and bisected
+test order; none had measured the element.
