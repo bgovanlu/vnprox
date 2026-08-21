@@ -110,3 +110,95 @@ That decision is still the owner's, and this card should not be closed by quietl
 merging on the strength of one blocker clearing. But the case for landing it is materially stronger
 than it was this morning: the branch's own stated condition was "until the three failures are
 explained", and the hardest of the three is now not merely explained but fixed.
+
+## 2026-08-21: the land-or-retire question turns out to be the wrong question
+
+Steps 1–3 were taken up. Step 3 did not need running, because **it had already been done on `main`,
+by `T-2505`, and the answer is recorded in `planning/tasks/phase-25.md`**:
+
+> **`user-guide-tasks.spec.ts` × 2 (IPAM reserve, firewall macro rule).** T-2409's branch applied
+> `isolatedStore({ config: "testdata/dev-scale.toml" })` at **file** scope. On `main` only that
+> file's *first* `describe` runs against the scale stack; the SDN/IPAM/firewall `describe` runs
+> against three-node-vlan. The conversion silently moved four tests onto a fixture they were never
+> written for. Named cause: **a fixture regression introduced by the isolation conversion, not
+> order-dependence.**
+
+Verified against the code rather than taken from the card: `web/e2e/shards.ts:217` reads
+`"user-guide-tasks.spec.ts": ["default", "scale"]`, and the third failure (`history.spec.ts`) is
+recorded there as the same class. So **all four of the branch's failures are now explained** — two
+by T-2505 as the branch's own conversion bug, one (`scale.spec.ts`) root-caused and fixed on `main`
+in `a385f38a`, and `history.spec.ts` not reproduced since.
+
+**The branch's stated merge condition is therefore met.** It said "it stays on a branch until the
+three failures are explained". They are.
+
+### And that is exactly why it should not be merged
+
+While this branch sat, `T-2505` solved the same problem at a coarser grain and **merged**.
+`web/e2e/shards.ts` is not a neighbouring change; it is a considered decision *about this branch*,
+written down at the top of the file:
+
+> **WHY NOT A DAEMON PER SPEC FILE.** That is T-2409's branch: it works, and it cost +79% wall clock
+> (16.3 min) for 31 daemon starts. Shard granularity buys the isolation that matters — a spec cannot
+> corrupt another shard's store — at four daemon starts instead of thirty-one.
+
+So the merge is no longer a rebase. The branch **deletes** every `vnproxd` entry from
+`playwright.config.ts` (-80 lines) because each spec starts its own; `shards.ts` **generates** those
+same entries per shard, on per-slot ports registered in `testdata/dev-ports.tsv`. Two designs, same
+problem, different grain, colliding in the same file. Resolving that conflict is not conflict
+resolution — it is choosing an architecture, and the choice has already been made and shipped.
+
+### What is genuinely still open, and it is not this branch
+
+Sharding is a **weaker** guarantee, and `T-2505` says so plainly rather than claiming otherwise:
+per-shard isolation means shard-1's twelve spec files still share one daemon and one store. Its AC3
+run proved the cost of that — `--repeat-each=2`, four shards, idle machine: **168 passed / 10
+failed**, and every one of the ten mutates app-owned state and then asserts on a starting condition
+its own first repeat destroyed (`onboarding`, `changesets`, `mgmt-redundancy`, `history`,
+`alert-rules`, `simulator`, `flows`, `responsive-triage`, `guest-interior`).
+
+T-2505 named the next step itself, and it is neither landing this branch nor retiring it:
+
+> `--repeat-each` needs isolation *per run of a spec*. Sharding gives isolation *per shard*, which is
+> a different and weaker guarantee. The construct that does satisfy it is T-2409's per-spec daemon
+> [...] whose blocker was cost: +79% wall clock, 16.3 min serial. **That blocker is now much smaller
+> than it was.** 16.3 min of serial per-spec isolation spread over four shards is ~4–5 min — inside
+> the budget. **Combining the two is the obvious next card.**
+
+### Recommendation
+
+**Retire the branch; carry `isolated.ts` forward as the input to a combining card.** Not "retire and
+keep the two design notes" as this card's step 4 offered — that undersells what is there.
+`web/e2e/isolated.ts` is 395 lines of working, proven per-spec isolation, and its two hard-won design
+notes (`baseURL` cannot come from a Playwright fixture, because fixtures resolve before a file's
+`beforeAll`; the helper must not be called `useIsolatedStore`, or `react-hooks/rules-of-hooks` treats
+every call site as a misplaced hook) are the kind of thing a reimplementation rediscovers the
+expensive way.
+
+What must not happen is a rebase-and-merge on the strength of "the three failures are explained".
+That condition was written before the thing it was gating became obsolete, and satisfying a stale
+condition is not the same as the change being right.
+
+**Still the owner's call.** The measurement asked for in step 2 was not taken, deliberately: it
+would have measured a branch whose merge path no longer exists, on a machine whose baseline run is
+currently red for two unrelated reasons (see below). Measuring the *combined* design is the number
+that would actually inform a decision, and that belongs to the combining card.
+
+### Found while doing this: `main`'s e2e suite is red, and had been for days
+
+The baseline run this card asked for surfaced two real, deterministic failures on `main` — not
+flakes, and both invisible because the full suite had not been run since 2026-08-19:
+
+- **`topology.spec.ts:136`** — `toHaveScreenshot` mismatch: the map renders 418px against a 568px
+  committed baseline. Phase 36's remediation buttons made the topology banners taller and the
+  baseline (last regenerated 2026-08-18, `2afbecc1`) was never updated. Same banner-height
+  mechanism as `T-2505-followup-01`, one step milder: the map shrank rather than vanished, because
+  `a385f38a`'s `min-h-[22rem]` floor held.
+- **`alert-rules.spec.ts:80`** — `getByRole("checkbox", { name: "probe" })` times out. The
+  2026-08-19 debt sweep gave `AlertRules.tsx` a `SOURCE_LABELS` map so all 17 finding sources are
+  routable; that renamed the checkbox's accessible name from `probe` to `Verify live`. The wire
+  value is unchanged, so the assertion two lines later still holds — only the locator was stale.
+
+Both are recorded here rather than only in a commit message because they are the same lesson this
+card is about: **a suite nobody runs in full stops being evidence.** Targeted runs proved what they
+targeted, and reporting them as "green" was a reporting error.

@@ -1,0 +1,118 @@
+SDN zone status: vnprox calls an endpoint PVE 9.2.4 does not have
+Host: pvecube, pve-manager/9.2.4/5e5ae681198514d4, read-only
+Captured: 2026-08-21 (full-audit)
+
+Why this transcript exists
+--------------------------
+The deployed daemon logs 8,540 warnings per 24h of:
+
+    "collect: getting SDN zone status failed, skipping"
+     zone=labz
+     error=pve: server error (status 501):
+            Method 'GET /cluster/sdn/zones/labz/status' not implemented
+
+That is roughly six per minute, forever, and it means **SDN zone status has
+never worked against real PVE**. The feature is silently dead in production
+while passing every test, because `internal/pvemock` implements the endpoint
+vnprox expects.
+
+The endpoint vnprox calls does not exist
+----------------------------------------
+$ pvesh ls /cluster/sdn
+Dr-c-  controllers    Dr-c-  dns          Dr---  fabrics     Dr-c-  ipams
+Dr-c-  prefix-lists   Dr---  route-maps   Dr-c-  vnets       Dr-c-  zones
+
+$ pvesh ls /cluster/sdn/zones
+-rw-d  labz
+
+$ pvesh ls /cluster/sdn/zones/labz
+resource '/cluster/sdn/zones/labz' does not define child links
+
+$ pvesh usage /cluster/sdn/zones/labz -v
+USAGE: pvesh get /cluster/sdn/zones/labz [OPTIONS]
+  Read sdn zone configuration.
+  --pending  <boolean>   Display pending config.
+  --running  <boolean>   Display running config.
+    (plus `pvesh set`; there is no `status` child and no status option)
+
+The endpoint that does exist, and what it returns
+-------------------------------------------------
+$ pvesh ls /nodes/pvecube/sdn
+-----  fabrics    -----  vnets    Dr---  zones
+
+$ pvesh usage /nodes/pvecube/sdn/zones -v
+USAGE: pvesh get /nodes/pvecube/sdn/zones
+  Get status for all zones.
+
+$ pvesh get /nodes/pvecube/sdn/zones --output-format json
+[{"status":"error","zone":"labz"}]
+
+Two differences, and both matter:
+
+1. **It is per-NODE, not per-zone.** One call returns every zone's status on
+   that node. vnprox's shape is one call per zone, cluster-wide — so the fix
+   is not a URL substitution, it is an inversion of the call's axis. That
+   also makes it strictly cheaper: N nodes instead of N zones, and zone
+   status is inherently per-node information anyway (it is the realization
+   state on that node), which is what `SDNZoneStatus`'s own doc comment says.
+
+2. **`labz` is in `status: error` right now.** So there is real, actionable
+   status on this node that vnprox is structurally unable to surface. This is
+   not a cosmetic logging problem.
+
+Where the wrong shape came from
+-------------------------------
+- `internal/pve/sdn.go:183` builds `/cluster/sdn/zones/%s/status`.
+- `internal/collect/pve.go:384` calls it once per zone and warns on failure.
+- `internal/pvemock/sdn.go:159` **serves that exact route**, and
+  `internal/pvemock/sdn.go:278` explains it with the words "Real PVE surfaces
+  per-node ...".
+
+So the mock asserts a fact about real PVE that real PVE contradicts, and the
+client was built to match the mock. Everything agrees with everything except
+the node. This is precisely the failure mode CLAUDE.md's "Never model a PVE
+object from `internal/pvemock/`, from `docs/`, or from Proxmox release notes"
+rule exists to prevent — the same shape as Phase 31's SDN Fabrics finding,
+where four sources agreed with each other and none with the hardware.
+
+It is also a case study in why the rule is worth the friction: this defect is
+invisible to the entire test suite by construction. A mock and the check that
+tests it, both derived from the same secondary source, pass together forever.
+The only thing that caught it was reading the deployed daemon's own logs.
+
+What needs to change (not done in this transcript — read-only)
+--------------------------------------------------------------
+1. `internal/pve`: replace `GetSDNZoneStatus(ctx, zone)` with a per-node call
+   against `/nodes/{node}/sdn/zones`, returning every zone's status for that
+   node.
+2. `internal/collect/pve.go`: iterate nodes, not zones, and stop treating a
+   single failure as per-zone.
+3. `internal/pvemock`: **delete** the `/cluster/sdn/zones/{zone}/status`
+   route and serve `/nodes/{node}/sdn/zones` instead. Leaving both would let
+   the old shape keep passing.
+4. `/nodes/{node}/sdn/vnets` and `/nodes/{node}/sdn/fabrics` are listed by
+   `pvesh ls` but are NOT the same kind of endpoint — checked, so the fix is
+   not generalised past what the node supports:
+
+       $ pvesh get /nodes/pvecube/sdn/vnets
+       No 'get' handler defined for '/nodes/pvecube/sdn/vnets'
+
+   `zones` is the only per-node SDN status collection on 9.2.4.
+
+Product impact, stated plainly
+------------------------------
+$ pvesh get /cluster/sdn/zones/labz --output-format json
+{"digest":"e5df...","ipam":"pve","nodes":"pvecube","type":"simple","zone":"labz"}
+
+`labz` is a `simple` zone on this node and its realization status is
+**error** — a genuinely broken SDN zone on a live host. `GET /api/v1/findings`
+on the deployed instance returns three findings and none of them is this one.
+So the failure is not "a log line is noisy": a product whose purpose is
+surfacing network problems cannot see a broken zone on the one node it runs
+on.
+
+Needs hardware validation
+-------------------------
+Only `pvecube` answered here, and it is one node with one zone in one state
+(`error`). The per-node shape's whole point is that different nodes can
+report different status for the same zone, and that is unobservable here.
