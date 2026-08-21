@@ -100,7 +100,13 @@ test.describe("T-1005 alert rules", () => {
       await page.getByRole("button", { name: "New rule" }).click();
       await page.getByLabel("Name").fill(ruleName);
       await page.getByLabel("Target URL").fill(receiverUrl);
-      await page.getByRole("checkbox", { name: "probe" }).check();
+      // "Verify live", not "probe": the checkbox's accessible name is its
+      // *display* label, and the 2026-08-19 debt sweep gave AlertRules.tsx a
+      // `SOURCE_LABELS` map so all 17 finding sources are routable (it used
+      // to be a 5-item literal array of raw values). The wire value is still
+      // `probe` — line 138 below asserts on it — but the operator-facing
+      // name changed, and this locator did not follow it.
+      await page.getByRole("checkbox", { name: "Verify live" }).check();
       await page.getByRole("button", { name: "Create" }).click();
       await expect(page.getByRole("button", { name: new RegExp(ruleName) })).toBeVisible();
 

@@ -67,6 +67,20 @@ test("v2 canvas: the minimap renders and dragging its viewport rectangle pans th
   const minimap = page.getByTestId("topology-minimap");
   await expect(minimap).toBeVisible();
 
+  // Scroll it into view BEFORE any coordinate is captured, and note why:
+  // T-2505-followup-01's fix gave the map container a `min-h-[22rem]` floor,
+  // which deliberately trades "the map is squeezed to zero" for "the page
+  // scrolls" (TopologyPage.tsx documents the trade). So with enough banners
+  // the minimap — pinned to the map's bottom-right, not the viewport's —
+  // sits below the fold. `page.mouse` takes VIEWPORT coordinates and does
+  // not auto-scroll the way `locator.dragTo()` would, so without this the
+  // drag below lands on nothing and the test fails with `moved === false`,
+  // reporting a broken minimap when the minimap is fine.
+  //
+  // It has to happen before `before` is captured, or the scroll itself moves
+  // the proxy and the assertion passes for the wrong reason.
+  await minimap.scrollIntoViewIfNeeded();
+
   // Capture one proxy's on-screen position before the drag.
   const proxy = region.getByRole("button", { name: /bridge vmbr0/ }).first();
   const before = await proxy.boundingBox();
