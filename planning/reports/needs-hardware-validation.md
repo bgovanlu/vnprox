@@ -1730,3 +1730,26 @@ mapping was built from.
       media. That is the intended, honest behaviour — but whether it reads as *informative* rather
       than *broken* to an operator looking at a multi-node map is a judgement no single-node
       environment can make. Needs a real cluster.
+
+## T-3604 — Tier 2 service start: everything except the single-node success path (2026-08-21)
+
+The success path has now been closed against real hardware: `frr` was started on `pvecube` through
+the deployed SPA's own button, the audit row landed, and the finding cleared on the next collection.
+`planning/reports/evidence/pve-9.2.4-tier2-service-start-live.txt` is the transcript. What that run
+could *not* reach:
+
+- [ ] **Fan-out to a peer.** The one exercised call named the node the daemon runs on, so the peer
+      round-trip — the request crossing to a node this daemon does not own, and the result coming
+      back — is still entirely unobserved. This is the same limit as every other cluster entry
+      above, and the one most likely to hide a real defect, since the local path skips the transport
+      whose failure modes matter.
+- [ ] **Partial success across a cluster.** A finding that names several nodes offers one button;
+      what the operator sees when it succeeds on two nodes and fails on a third is covered by
+      `NodeResultsList`'s unit tests and by nothing else. Needs more than one node by definition.
+- [ ] **A node unreachable at press time.** Distinct from "systemd refused", which *is* now
+      observed (id 142, the dnsmasq refusal). An unreachable peer fails in the transport rather
+      than in the unit, and that error text has never been rendered from a real failure.
+- [ ] **Every allow-listed unit except `frr`.** `frr` was the only entry `pvecube` could offer in
+      an installed-and-stopped state. The rest are exercised against the mock only — and the
+      dnsmasq false positive is a standing reminder that the mock agreeing with the code proves
+      nothing about the node.

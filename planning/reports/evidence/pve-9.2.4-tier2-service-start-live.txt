@@ -1,0 +1,114 @@
+Phase 36 Tier 2 ("Start <service>") exercised against real hardware
+Host: pvecube, PVE 9.2.4, frr 10.6.1-1+pve2, vnproxd 4.0.0+80+g22551caa
+Captured: 2026-08-21
+Authorised by the owner explicitly; this is the one mutating action in this
+directory, and it is a systemd start on the vnprox host, not a `pvesh` write.
+
+Why this transcript exists
+--------------------------
+T-3604 shipped the Tier 2 remediation path — a button on a topology finding
+that starts a stopped service on a named node. Every layer of it was covered
+by tests (handler, allow-list refusal, audit row, e2e affordance pair), but
+the whole path had never once run end to end against a real node with a real
+systemd. The only Tier 2 finding pvecube could offer was `frr`, installed and
+stopped, so this is the single opportunity the available hardware affords.
+
+The button was pressed **in the deployed SPA**, driven by Playwright against
+https://192.168.1.9:8007 — not by curling the API — so that the CSRF
+double-submit, the netWrite capability gate and the confirm dialog were all
+in the path, exactly as they are for an operator.
+
+Pre-conditions established read-only first
+------------------------------------------
+$ systemctl show frr --property=LoadState --property=ActiveState --property=UnitFileState
+LoadState=loaded            # installed
+ActiveState=inactive        # stopped  -> the finding was correct
+UnitFileState=disabled      # does NOT start at boot
+
+$ grep -E '^[a-z_]+=yes' /etc/frr/daemons
+bgpd=yes  bfdd=yes  vtysh_enable=yes
+
+$ grep -vE '^\s*(!|#|$)' /etc/frr/frr.conf
+log syslog informational                 # ...and nothing else
+
+$ cat /etc/pve/sdn/controllers.cfg
+(absent — no SDN controller configured)
+
+That is the whole risk assessment, and it is why this was safe to press:
+frr's configuration contains no `router bgp` stanza, no neighbours, no EVPN,
+and the node has no SDN controller that would generate one. Starting frr
+brings up idle daemons; it cannot form an adjacency or advertise a route,
+because there is nothing configured to peer with. `UnitFileState=disabled`
+further means the change does not survive a reboot.
+
+What the button did
+-------------------
+Wire traffic captured from the browser (non-GET /api calls only):
+
+    POST /api/v1/auth/login    -> 200
+    POST /api/v1/services/start -> 200 {"node":"pvecube","unit":"frr","ok":true}
+
+Node state immediately after:
+
+$ systemctl show frr --property=ActiveState --property=SubState --property=UnitFileState
+ActiveState=active  SubState=running  UnitFileState=disabled
+
+$ systemctl status frr --no-pager -n 0
+  Active: active (running) since Fri 2026-08-21 14:19:05 EDT
+  Main PID: 3675190 (watchfrr)
+  Status: "FRR Operational"
+
+$ vtysh -c 'show run'
+frr version 10.6.1 / frr defaults traditional / hostname pvecube
+log syslog informational / service integrated-vtysh-config
+    (i.e. the running config is still empty — no routing state was created)
+
+$ ss -lntp | grep -E 'bgpd|:179'
+LISTEN 127.0.0.1:2605  users:(("bgpd",pid=3675212,fd=22))
+
+bgpd is running but bound only to the loopback vty port. **Port 179 was
+never opened**, because an unconfigured bgpd does not start the BGP
+listener. The predicted blast radius and the measured one agree.
+
+Audit row (GET /api/v1/audit, id 145)
+-------------------------------------
+{"username":"root","action":"service.start","target":"pvecube/frr",
+ "result":"ok","detail":{"node":"pvecube","unit":"frr","detail":""},
+ "id":145,"at":1787336345}
+
+Two rows below it, id 142, is the failed attempt that started all of this:
+
+{"username":"root","action":"service.start","target":"pvecube/dnsmasq",
+ "result":"error","detail":{"detail":"systemctl start dnsmasq: exit status 5:
+ Failed to start dnsmasq.service: Unit dnsmasq.service not found.", ...}}
+
+Both outcomes in one log, with the node's own words preserved verbatim on
+the failure. That is the behaviour internal/api/servicestart.go was written
+for, confirmed against a real systemd rather than a fake.
+
+Finding resolution
+------------------
+GET /api/v1/findings afterwards returns three items, none of them
+`health/service_down`:
+  - health/bridge_no_carrier  vmbr1 / enp2s0   (error)   — genuine, no cable
+  - health/bridge_no_carrier  vmbr3 / enp4s0   (error)   — genuine, no cable
+  - health/mgmt_single_path   vmbr0            (warning) — genuine, remedy: navigate
+
+The collector re-read the node and the finding cleared on its own. The loop
+closes: a finding was reported, a button attached to it was pressed, the node
+changed, and the next collection no longer reports it.
+
+What this does NOT prove
+------------------------
+- **Only the success path on a single node.** Fan-out to a peer, partial
+  success across a cluster, and a node that is unreachable at press time are
+  all still unobserved — see planning/reports/needs-hardware-validation.md.
+- **Only one unit.** `frr` is the only allow-listed service pvecube could
+  offer in a startable state; the other entries in the allow-list have not
+  been exercised against real systemd.
+
+State left behind
+-----------------
+frr is left **running**, at the owner's explicit instruction (the option to
+start-then-stop was offered and declined). It is still `disabled`, so a
+reboot returns the node to its prior state without intervention.
