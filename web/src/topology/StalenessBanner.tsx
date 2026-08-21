@@ -89,7 +89,16 @@ export function StalenessBanner({ staleness, retry }: StalenessBannerProps) {
           is — see that file's comment. One stale source per node means this
           list grows with the cluster, and it sits directly above the map
           container, which only gets the height these banners leave it. */}
-      <ul className="mt-1 max-h-28 space-y-0.5 overflow-y-auto">
+      {/* Capped + scrollable, so it must be keyboard-reachable (axe
+          `scrollable-region-focusable`, WCAG 2.1.1). Not caught by the a11y
+          sweep, which never renders this banner — it needs a stale source —
+          but it is the same shape as UnrefFindingsBanner's list, which the
+          sweep did catch. */}
+      <ul
+        className="mt-1 max-h-28 space-y-0.5 overflow-y-auto"
+        tabIndex={0}
+        aria-label="Stale collector sources"
+      >
         {summary.staleSources.map((s) => (
           <li key={`${s.name}:${s.node ?? ""}`}>
             <span className="font-medium">{s.name}</span> ({describeScope(s)}): {describeLastSuccess(s)}

@@ -111,7 +111,17 @@ export function NodeResultsList({ results }: { results: readonly { node: string;
           ? `Succeeded on all ${String(results.length)} node${results.length === 1 ? "" : "s"}.`
           : `Failed on ${String(failed.length)} of ${String(results.length)} node${results.length === 1 ? "" : "s"}.`}
       </p>
-      <ul className="mt-1 max-h-40 space-y-0.5 overflow-y-auto">
+      {/* Scrollable region, so it needs to be keyboard-reachable — same
+          reason as UnrefFindingsBanner's list (axe
+          `scrollable-region-focusable`, WCAG 2.1.1). This one matters
+          particularly: on a large cluster the per-node failures are the
+          whole point of the panel, and the ones that scroll out of view are
+          exactly the ones an operator needs. */}
+      <ul
+        className="mt-1 max-h-40 space-y-0.5 overflow-y-auto"
+        tabIndex={0}
+        aria-label="Per-node results"
+      >
         {results.map((r) => (
           <li key={r.node} className="flex flex-wrap items-baseline gap-1.5">
             <span

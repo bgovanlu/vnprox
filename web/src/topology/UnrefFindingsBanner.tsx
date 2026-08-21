@@ -58,7 +58,17 @@ export function UnrefFindingsBanner({ findings, remediationCtx, pendingId, resul
           canvas as `hidden` — see planning/reports/T-2505-followup-01.md).
           A banner about findings must never be able to displace the thing
           the findings are about. */}
-      <ul className="mt-1 max-h-28 space-y-0.5 overflow-y-auto">
+      {/* tabIndex + a name because the `max-h`/`overflow-y-auto` above make
+          this a scrollable region, and a scrollable region a keyboard user
+          cannot reach is content they cannot read at all (axe
+          `scrollable-region-focusable`, WCAG 2.1.1). The cap is deliberate —
+          see the comment above — so the scroll is not going away, which
+          means the keyboard affordance has to be here. */}
+      <ul
+        className="mt-1 max-h-28 space-y-0.5 overflow-y-auto"
+        tabIndex={0}
+        aria-label="Findings with no matching entity"
+      >
         {findings.map((f) => {
           const key = unrefFindingKey(f);
           const actionKey = remedyActionKey(f.remedy);

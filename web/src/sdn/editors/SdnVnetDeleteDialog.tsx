@@ -84,7 +84,15 @@ export function SdnVnetDeleteDialog({
       {needsReattach && (
         <>
           <Field label="Attached guest NICs">
-            <ul className="max-h-28 space-y-0.5 overflow-y-auto text-xs text-slate-500 dark:text-slate-400">
+            {/* Scrollable region -> must be keyboard-reachable (axe
+                `scrollable-region-focusable`, WCAG 2.1.1). These are the
+                guests this delete will move, so a keyboard user unable to
+                scroll past the first few is a real loss. */}
+            <ul
+              className="max-h-28 space-y-0.5 overflow-y-auto text-xs text-slate-500 dark:text-slate-400"
+              tabIndex={0}
+              aria-label="Attached guest NICs"
+            >
               {attachedGuestNics.map((g) => (
                 <li key={g.ref}>{g.label}</li>
               ))}
