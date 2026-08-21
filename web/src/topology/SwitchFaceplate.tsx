@@ -111,8 +111,8 @@ function isMgmtBadge(badge: string): boolean {
 
 function mgmtBadgeClass(badge: string): string {
   return isMgmtBadge(badge)
-    ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
-    : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-300";
+    ? "bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+    : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300";
 }
 
 /** Whether an access port / VNet / VLAN slot should dim under the active
@@ -281,7 +281,7 @@ function NicPort({
             </span>
           )}
           {onMgmtPath && (
-            <span className="rounded bg-amber-200/70 px-1 text-[8px] uppercase leading-tight text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+            <span className="rounded bg-amber-200 px-1 text-[8px] uppercase leading-tight text-amber-800 dark:bg-amber-900 dark:text-amber-200">
               mgmt-path
             </span>
           )}
@@ -359,7 +359,7 @@ function UplinkModule({
         <StatusLed status={uplink.status} />
         <span className="font-mono">{uplink.label}</span>
         {lacp && (
-          <span className="rounded bg-sky-200/80 px-1 text-[9px] font-medium uppercase tracking-wide text-sky-900 dark:bg-sky-900 dark:text-sky-100">
+          <span className="rounded bg-sky-200 px-1 text-[9px] font-medium uppercase tracking-wide text-sky-900 dark:bg-sky-900 dark:text-sky-100">
             {lacp}
           </span>
         )}
@@ -374,8 +374,8 @@ function UplinkModule({
               className={clsx(
                 "rounded px-1 text-[9px]",
                 isMgmtBadge(b)
-                  ? "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
-                  : "bg-sky-200/70 text-sky-800 dark:bg-sky-900 dark:text-sky-200",
+                  ? "bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+                  : "bg-sky-200 text-sky-800 dark:bg-sky-900 dark:text-sky-200",
               )}
             >
               {b}

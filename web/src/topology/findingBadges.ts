@@ -131,13 +131,23 @@ export const SEVERITY_WORD: Record<Severity, string> = {
  * accent"). Colour is additive to SEVERITY_GLYPH, never the only signal. */
 export function findingBadgeClass(severity: Severity): string {
   switch (severity) {
+    // OPAQUE backgrounds, deliberately. These were `bg-*-200/70` until an
+    // axe sweep measured every one of them at 3.13:1 on the topology views.
+    // The pair itself is fine — amber-800 on opaque amber-200 is 5.70:1 —
+    // but a 70%-alpha background is not a colour, it is a blend with
+    // whatever is behind it, and T-3503 put these badges on the switch
+    // faceplate's dark name plate (`bg-slate-800`). Solving the composite
+    // confirms it: (#baad70 - 0.7*amber-200) / 0.3 ~= #1b283f, the plate.
+    //
+    // So the alpha has to go: a badge that can be placed on any surface
+    // cannot depend on what that surface is.
     case "error":
-      return "bg-red-200/70 text-red-800 dark:bg-red-900/60 dark:text-red-200";
+      return "bg-red-200 text-red-900 dark:bg-red-900 dark:text-red-100";
     case "warning":
-      return "bg-amber-200/70 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200";
+      return "bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-100";
     case "info":
     default:
-      return "bg-slate-200/70 text-slate-600 dark:bg-slate-700/70 dark:text-slate-200";
+      return "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100";
   }
 }
 
