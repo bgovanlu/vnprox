@@ -9,6 +9,7 @@ import { useSession } from "../api/useSession";
 import { hasAnyCap } from "../changesets/capabilities";
 import { useLldpInstallMutation } from "../onboarding/queries";
 import { LldpSetupBanner } from "./LldpSetupBanner";
+import { actionErrorMessage } from "../api/actionError";
 import { isRateLimited, refreshCollectors } from "../api/collectors";
 import { startService } from "../api/services";
 import type { RemediationContext } from "../findings/remediation";
@@ -947,7 +948,7 @@ function TopologyPageContent() {
           } catch (err) {
             setServiceStartErrors((prev) => ({
               ...prev,
-              [key]: err instanceof Error ? err.message : "could not start the service",
+              [key]: actionErrorMessage(err, "could not start the service"),
             }));
           } finally {
             setServiceStartPendingId(undefined);
@@ -983,7 +984,7 @@ function TopologyPageContent() {
         setRefreshRateLimited(true);
         setRefreshResult(undefined);
       } else {
-        setRefreshResult({ error: err instanceof Error ? err.message : "refresh failed", changed: false });
+        setRefreshResult({ error: actionErrorMessage(err, "refresh failed"), changed: false });
       }
     } finally {
       setRefreshing(false);
@@ -1254,7 +1255,23 @@ function TopologyPageContent() {
 
       <div
         ref={entityContainerRef}
-        className="min-h-0 flex-1 rounded-lg border border-slate-200 dark:border-slate-800 print:border-none print:h-auto"
+        // `min-h-[22rem]`, not `min-h-0`, and the difference is the whole
+        // point. This container is the only `flex-1` child of a fixed-height
+        // (`h-full`) column whose other children are banners that grow with
+        // the cluster — so with `min-h-0` it absorbs every shortfall and can
+        // legitimately resolve to ZERO height, at which point the map is not
+        // small but gone. That is not hypothetical: measured on the
+        // scale-lab stack on 2026-08-20 the map was squeezed to 139px of a
+        // 796px page by banners totalling 385px, and Playwright reports the
+        // canvas as `hidden` when it reaches 0 — the failure quarantined as
+        // T-2505-followup-01 (see planning/reports/ for the geometry dump).
+        //
+        // A floor turns "the map disappears" into "the page scrolls":
+        // `<main>` is already `overflow-auto`, so once demand exceeds the
+        // viewport the banners scroll away and the map keeps its 22rem.
+        // Capping the banner lists (done separately) raised the bar; this is
+        // what removes the failure mode.
+        className="min-h-[22rem] flex-1 rounded-lg border border-slate-200 dark:border-slate-800 print:border-none print:h-auto print:min-h-0"
       >
         {isLoading && (
           <div className="flex h-full items-center justify-center">
