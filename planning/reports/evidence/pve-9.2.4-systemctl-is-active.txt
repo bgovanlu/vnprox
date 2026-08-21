@@ -1,0 +1,72 @@
+`systemctl is-active` does not distinguish "stopped" from "not installed"
+Host: pvecube, PVE 9.2.4, systemd 257 (257.13-1~deb13u1), read-only
+Captured: 2026-08-21
+
+Why this transcript exists
+--------------------------
+The deployed instance reported `health/service_down`: "dnsmasq is not running on
+node pvecube". Pressing T-3604's new "Start dnsmasq" button returned, verbatim
+from the node:
+
+    systemctl start dnsmasq: exit status 5: Failed to start dnsmasq.service:
+    Unit dnsmasq.service not found.
+
+The finding and the remedy disagreed, so the node was asked which was right.
+
+Transcript
+----------
+$ dpkg -l dnsmasq frr
+un  dnsmasq        <none>        <none>       (no description available)
+ii  frr            10.6.1-1+pve2 amd64        FRRouting suite of internet protocols
+
+$ systemctl is-active dnsmasq ; echo "exit=$?"
+inactive
+exit=4
+
+$ systemctl is-active frr ; echo "exit=$?"
+inactive
+exit=3
+
+$ systemctl list-unit-files dnsmasq.service --no-legend
+(no output)
+$ systemctl list-unit-files frr.service --no-legend
+frr.service disabled enabled
+
+$ for u in dnsmasq frr pveproxy; do systemctl show "$u" \
+      --property=LoadState --property=ActiveState; done
+LoadState=not-found     ActiveState=inactive      # dnsmasq — never installed
+LoadState=loaded        ActiveState=inactive      # frr     — installed, stopped
+LoadState=loaded        ActiveState=active        # pveproxy
+
+What this settles
+-----------------
+1. **`is-active` prints "inactive" for a unit that does not exist.** On systemd
+   257 an absent unit is not reported as "unknown" on stdout; it is reported as
+   `inactive`, exactly like an installed-but-stopped unit. The two cases are
+   distinguishable *only* by exit status (4 = no such unit, 3 = inactive) or by
+   a different query entirely.
+
+2. **internal/host/services_linux.go's doc comment describes behaviour this
+   systemd does not have.** It states that a never-installed unit yields
+   `"inactive"/"unknown"` with a "could not be found" stderr, and that
+   `systemctlIsActive` therefore returns `known=false` for it, so the unit is
+   omitted from the map and never flagged. That is not what happens here:
+   stdout is `inactive`, the `default:` branch is never reached, and the unit
+   is reported as present-and-stopped.
+
+   The consequence is a false positive with real teeth — vnprox tells an
+   operator that dnsmasq is down on a node where dnsmasq was never installed,
+   and (since T-3604) offers a button to start it that cannot possibly work.
+   Most PVE nodes have no reason to run dnsmasq unless they use SDN DHCP, so
+   this fires on a large share of installs.
+
+3. **`systemctl show --property=LoadState` is the version-stable answer.**
+   `LoadState=not-found` is unambiguous and does not rely on exit-code
+   archaeology, and `ActiveState` gives the running state from the same call —
+   one invocation instead of two, and no parsing of human-facing stdout.
+
+Note on how this was found: not by reading the code, which looked right and
+whose comment asserted the correct-sounding behaviour, but by adding a button
+that acted on the finding and watching the node refuse. A detection-only check
+can be wrong for a long time without anyone noticing; a check with a remedy
+attached gets contradicted by reality the first time somebody presses it.
