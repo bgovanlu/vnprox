@@ -78,3 +78,35 @@ the v2 test is never actually exercised against a fresh daemon.
 spec isolation buys correctness that the shared store demonstrably did not have (the branch's own
 red-under-shared test is the proof). Renegotiating a wall-clock budget on that evidence is a
 legitimate outcome; leaving the suite knowingly order-dependent to protect the budget is not.
+
+## 2026-08-21: one of the three blocking failures no longer exists
+
+`scale.spec.ts`'s v2-canvas failure — the one this card had already established was **not this
+branch's fault** — has been root-caused and fixed. The map container was the only `flex-1` child of
+a fixed-height flex column and carried `min-h-0`, so banner growth could squeeze it to zero height,
+which Playwright reports as `hidden`. Fixed in `a385f38a`; `T-2505-followup-01` is closed and
+`web/e2e/quarantine.json` is empty. Evidence: 6/6 passing across two `--repeat-each=3` rounds
+against 6/6 failing before, on the same machine within the hour.
+
+**What that changes for this card.** AC3's headline number was "88/3" — three failures the branch
+could not explain. One of those three is now simply gone, and it is gone for everyone, on `main`,
+independent of this branch. The remaining question is two `user-guide-tasks.spec.ts` failures, which
+step 3 above says to triage the same way: do they fail on `main` too?
+
+It also removes the awkwardness recorded above about `isolatedStore` being file-scoped. That
+paragraph existed to reconcile "the quarantine says daemon uptime matters" with "this branch gives
+every spec a fresh daemon and still hung". Both halves are now explained by something simpler:
+daemon uptime was a **proxy for banner height** — a longer-running daemon accumulates findings and
+staleness, the banners grow, and the map is what gets squeezed. Neither theory about store isolation
+or browser reuse was ever the mechanism.
+
+**Still to do, unchanged**: rebase (now **167** commits behind `main`, spanning Phase 34's redesign,
+Phase 35's faceplate rewrite and Phase 36's remediation buttons — expect real conflicts in the spec
+files), re-measure the +83% wall-clock figure rather than carrying it forward, triage the two
+remaining failures against `main`, and then decide explicitly: land it, or retire it and keep only
+the two design notes.
+
+That decision is still the owner's, and this card should not be closed by quietly rebasing and
+merging on the strength of one blocker clearing. But the case for landing it is materially stronger
+than it was this morning: the branch's own stated condition was "until the three failures are
+explained", and the hardest of the three is now not merely explained but fixed.
