@@ -5,10 +5,13 @@ import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toast";
 import { useSession } from "../api/useSession";
+import { hasAnyCap } from "../changesets/capabilities";
+import { useLldpInstallMutation } from "../onboarding/queries";
+import { LldpSetupBanner } from "./LldpSetupBanner";
 import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
 import { useTopologyShortcutTargetStore } from "../keyboard/topologyShortcutTarget";
 import { useRovingFocus } from "../keyboard/useRovingFocus";
-import type { Layer, TopologyEdge, TopologyNode } from "../api/types";
+import type { Layer, LldpInstallNodeResult, TopologyEdge, TopologyNode } from "../api/types";
 import { capsForNode } from "../changesets/capabilities";
 import { computeDragOp } from "../changesets/dragDropOps";
 import { editorKindForInventoryKind, useEditorLauncherStore } from "../changesets/editorLauncherStore";
@@ -894,6 +897,29 @@ function TopologyPageContent() {
 
   const noLldpData = topology ? !topology.nodes.some((n) => n.kind === "lldp-neighbor") : false;
 
+  // T-3602. Phase 36 Tier 2: an operational action — it installs software
+  // and starts a service, but changes no PVE network configuration, so
+  // there is nothing to stage through internal/change. The ceremony
+  // (explicit confirm naming the blast radius, capability gate, per-node
+  // audit) is what stands in for a changeset's review step.
+  const canInstallLldp = hasAnyCap(session, "netWrite");
+  const lldpInstall = useLldpInstallMutation();
+  const [lldpInstallResults, setLldpInstallResults] = useState<LldpInstallNodeResult[] | undefined>(undefined);
+
+  async function handleInstallLldp(): Promise<void> {
+    try {
+      const res = await lldpInstall.mutateAsync();
+      // Kept, not toasted: a partial failure has to stay legible next to
+      // the retry rather than expiring after a few seconds.
+      setLldpInstallResults(res.results);
+    } catch {
+      // The call itself failed (network, auth, 4xx) — no per-node results
+      // exist to show, so this is the one case that belongs in a toast.
+      setLldpInstallResults(undefined);
+      toast({ title: "Could not install lldpd", variant: "error" });
+    }
+  }
+
   return (
     <div className="flex h-full flex-col gap-3">
       {/* T-906 print stylesheet: this whole toolbar row is interactive chrome
@@ -1076,15 +1102,15 @@ function TopologyPageContent() {
         </div>
       )}
 
-      {noLldpData && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 print:hidden">
-          No LLDP data yet — the physical layer shows NICs only.{" "}
-          <a href="https://man7.org/linux/man-pages/man8/lldpd.8.html" className="underline" target="_blank" rel="noreferrer">
-            Set up lldpd
-          </a>{" "}
-          to see real switch names and ports.
-        </div>
-      )}
+      <LldpSetupBanner
+        show={noLldpData}
+        canInstall={canInstallLldp}
+        pending={lldpInstall.isPending}
+        results={lldpInstallResults}
+        onInstall={() => {
+          void handleInstallLldp();
+        }}
+      />
 
       {overCap && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200 print:hidden">
