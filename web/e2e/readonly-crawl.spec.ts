@@ -83,8 +83,16 @@ test.beforeAll(async ({ browser }) => {
 // per the existing spot-check test in changesets.spec.ts — is unreachable
 // with any content for a session that can never create a draft in the
 // first place (every op-producing affordance in the app is itself gated).
+// T-3605 added `\bstart\b` and `\bretry\b`: Phase 36's remediation buttons
+// ("Start dnsmasq", "Retry now") are mutating affordances whose verbs this
+// list did not previously contain, so a regression that leaked one to a
+// read-only session would have crawled straight past. They should never
+// render at all for this session — remediation.ts resolves an operational
+// remedy to nothing without netWrite — and remediation-actions.spec.ts
+// asserts that directly; this is the belt to that spec's braces, and it
+// catches any FUTURE affordance using those verbs for free.
 const MUTATING_VERB_RE =
-  /reattach|disconnect|\bconnect\b|delete|remove|import|capture|instantiate|confirm|install|enable|create|\bsave\b|take snapshot|restore|roll\s?back|\bfix\b|discard|drop|promote|revert|^new\s/i;
+  /reattach|disconnect|\bconnect\b|delete|remove|import|capture|instantiate|confirm|install|enable|create|\bsave\b|take snapshot|restore|roll\s?back|\bfix\b|discard|drop|promote|revert|\bstart\b|\bretry\b|^new\s/i;
 
 /** Asserts every button inside <main> on the current page that looks like
  * a mutating affordance (see MUTATING_VERB_RE) is disabled — the crawl's

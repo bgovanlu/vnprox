@@ -172,3 +172,63 @@ systemd unit on a node, which is a genuinely new class of power for this product
 - **Auto-remediation.** Nothing here fires without a human pressing a button. A finding that fixes
   itself is a finding nobody reviews.
 - **Tier 1 additions.** No new computed changeset fixes; that is `internal/change`'s own roadmap.
+
+---
+
+## Delivery record — 2026-08-21
+
+All five cards delivered. The three banners in the screenshot that started this now offer their
+remedies, and each got the tier its remedy actually deserves rather than a uniform one.
+
+**T-3601** turned out to be the load-bearing card, and for a reason the plan only half anticipated.
+The findings stream chose its two existing actions by testing `check` against string literals inside
+a React component. That put the vocabulary in the renderer: every new remedy had to be added to
+every surface that displays findings, and a surface that was missed rendered the finding with no
+button and **no error**. Producers now declare; one resolver renders; an unrecognised `action`
+resolves to nothing rather than guessing.
+
+**T-3603 introduced a third tier the plan did not have.** The plan called a collector refresh Tier 2
+and would have given it a confirmation dialog. It writes nothing to any node, and asking "re-read the
+cluster?" trains operators to click through the dialogs that guard real mutations. So
+`RemedyOperationalRead` exists — as a distinct kind rather than a `confirm: false` flag, because a
+boolean's zero value would make "I forgot to set it" and "this needs no confirmation" the same
+state, which is the wrong default for the one field between an operator and an unannounced mutation.
+
+**T-3604's capability question got an answer, not a default.** `netWrite`, because the two
+allow-listed units are network daemons the cluster already runs — starting one restores intended
+state rather than changing it, strictly less invasive than the bridge edits `netWrite` already
+permits. Recorded in `docs/security.md` **with its expiry condition**: if the allow-list widens
+beyond that description, the reasoning no longer holds and the question must be reopened.
+
+### Deviations from the plan as written
+
+1. **T-3603's navigation half was dropped, because the card was wrong twice over.** It said a source
+   that has never polled successfully should navigate to that node's connection settings rather than
+   offer a retry. "No successful poll yet" means "not since this daemon started", which includes
+   "the peer came back a moment ago" — exactly when an operator reaches for retry. And there is no
+   per-node connection-settings screen to navigate to. Retry is offered in both cases; the result
+   text carries the distinction.
+2. **T-3605's audit assertions live in the Go handler tests, not the e2e.** The row is produced in
+   the handler, and the most interesting case — a refused unit — can be driven directly there.
+   Asserting it through the SPA would have tested the audit *page* rather than the audit *write*.
+3. **The e2e is a pair, not a single check.** AC1 as written ("a read-only session sees no Tier 2
+   button") passes just as well if the banners never render for anybody. It is paired with a
+   write-capable test that fails loudly if no affordance renders at all, so the security assertion
+   cannot go quietly meaningless.
+
+### Two bugs found while building it
+
+- **Per-action state keyed on `(check, node)` collided.** dnsmasq and frr down on one node produce
+  two findings identical in source, check and nodes — so starting one showed its error next to the
+  other. The list key and the action key are now separate functions with separate jobs.
+- **`internal/topology` cannot import `internal/findings`** (the dependency runs the other way), so
+  the remedy on the wire is a structural copy. A silently-diverged copy is precisely the failure
+  this phase exists to prevent, so a test round-trips one through the other's JSON — which is also
+  why `FindingRemediation`'s field order carries a `//nolint:govet` rather than being packed: Go
+  emits JSON keys in declaration order, and "fixing" the alignment would break the check that
+  guards the copy.
+
+### Still true from "deliberately not in this phase"
+
+No restart/stop/enable for arbitrary units, no auto-remediation, no new Tier 1 fixes. Nothing here
+fires without a human pressing a button.

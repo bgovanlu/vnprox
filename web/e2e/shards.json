@@ -50,6 +50,7 @@
       "mgmt-redundancy.spec.ts",
       "microseg.spec.ts",
       "readonly-crawl.spec.ts",
+      "remediation-actions.spec.ts",
       "saved-views.spec.ts",
       "topology.spec.ts"
     ]
