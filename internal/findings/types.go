@@ -175,6 +175,18 @@ type Finding struct {
 	// the same clock the expiry rule already uses, at write time.
 	AckableAt int64 `json:"ackableAt,omitempty"`
 
+	// Remedy is the action vnprox offers to put this finding right
+	// (Phase 36), or nil when the finding is detection-only. See the
+	// Remediation type for the tier rules — in particular, this field never
+	// carries a *network configuration* change: those are Fixable above and
+	// flow through internal/change, and nothing here may become a second
+	// road to the same destination.
+	//
+	// Declared by the producer, rendered by every surface. A frontend that
+	// decides which button to draw by switching on Check has, by
+	// construction, one place per surface for the vocabulary to drift.
+	Remedy *Remediation `json:"remedy,omitempty"`
+
 	// Ack is this finding's currently-active acknowledgement (T-2402), or
 	// nil. It is never set by a producer: AckService.Decorate attaches it at
 	// the API boundary, and an expired acknowledgement leaves it nil. It is
@@ -182,6 +194,72 @@ type Finding struct {
 	// Engine's transition tracking both ignore it, so acking a finding is not
 	// a state change that could fire a notification.
 	Ack *Ack `json:"ack,omitempty"`
+}
+
+// RemediationKind is which of Phase 36's two producer-declarable tiers a
+// remedy belongs to. The third tier — a computed changeset — is NOT
+// expressible here on purpose: it is Finding.Fixable, it flows through
+// POST /findings/{id}/fix into internal/change, and giving it a second
+// representation in this struct would be the first step toward a "Fix"
+// button that edits the network without staging anything.
+type RemediationKind string
+
+const (
+	// RemedyOperational is a host operation that is not network
+	// configuration: install a package, start a systemd unit, re-run a
+	// poll. There is no PVE config to diff, so there is no changeset to
+	// stage — but it is still a mutation, so it carries the same ceremony:
+	// explicit confirmation, a capability gate, fixed argv with no
+	// operator-supplied strings reaching it, and one audit row per node
+	// including refusals and failures. POST /lldp/install (T-605) is the
+	// exemplar; docs/security.md records the contract.
+	RemedyOperational RemediationKind = "operational"
+
+	// RemedyNavigate carries the operator to the screen where the decision
+	// gets made, with context pre-filled. The remedy is a human judgement
+	// or configuration vnprox cannot infer, and pretending otherwise would
+	// be worse than a link. mgmt_single_path's redundancy wizard is the
+	// exemplar.
+	RemedyNavigate RemediationKind = "navigate"
+)
+
+// The stable Remediation.Action identifiers. Named constants rather than
+// literals at each producer, because the frontend registry keys off these
+// exact strings and a typo produces a finding whose button silently never
+// renders — the worst possible failure for this feature, since the finding
+// still looks fine.
+const (
+	// RemedyActionMgmtRedundancy opens T-703's management-redundancy
+	// wizard for Params["node"].
+	RemedyActionMgmtRedundancy = "mgmt.redundancy"
+	// RemedyActionNavigate sends the operator to Params["to"], an
+	// in-app route. For findings whose "what to do" is a screen that
+	// already exists.
+	RemedyActionNavigate = "navigate"
+)
+
+// Remediation is the remedy a producer offers for its finding.
+//
+// Action is a stable identifier the frontend resolves to a handler
+// ("lldp.install", "collector.refresh", "service.start",
+// "mgmt.redundancy", "navigate"). It is part of the wire contract in
+// docs/api.md and must not be renamed casually — and it, not Check, is what
+// a renderer switches on, so that adding a remedy never means editing every
+// surface that displays findings.
+//
+// Params carries whatever the action needs (node, service, source, a
+// target route). Deliberately a plain string map rather than a per-action
+// struct: this crosses a JSON boundary into a frontend registry that has to
+// treat unknown actions as "render nothing" anyway, and a closed union here
+// would make every new action a breaking change for older clients rather
+// than an ignored one.
+//
+//nolint:govet // fieldalignment: wire shape; field order is the documented JSON contract (docs/api.md's GET /findings), matching Finding's own precedent above.
+type Remediation struct {
+	Action string            `json:"action"`
+	Kind   RemediationKind   `json:"kind"`
+	Label  string            `json:"label"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 // sortedUnique returns a sorted copy of ss with duplicates and empty

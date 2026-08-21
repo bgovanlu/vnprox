@@ -136,3 +136,52 @@ func TestMgmtSinglePath_ProviderError_NoFindings(t *testing.T) {
 		t.Fatalf("provider error produced findings: %+v", found)
 	}
 }
+
+// Phase 36: this producer declares its own remedy, and the frontend
+// resolves it by `action` (web/src/findings/remediation.ts) rather than by
+// testing `check === "mgmt_single_path"` in a component. If the declaration
+// drifts from what the resolver expects, the button silently stops
+// appearing and the finding still renders perfectly — so it is asserted
+// here rather than left to an e2e to notice.
+func TestMgmtSinglePath_DeclaresItsRemedy(t *testing.T) {
+	status := change.MgmtStatus{
+		Source: "detected",
+		Nodes: map[string][]topology.MgmtPath{
+			"pve1": {{
+				Ref:       mgmtRef("pve1", "vmbr0"),
+				Roles:     []topology.MgmtRole{topology.MgmtRoleMgmt},
+				Path:      []inventory.Ref{{Kind: inventory.KindPhysNic, Node: "pve1", ID: "eno1"}},
+				Redundant: false,
+			}},
+		},
+	}
+	eng := findings.New(findings.Config{Graph: newGraphWithNodes("pve1"), Mgmt: fakeMgmtProvider{status: status}})
+
+	found := findByCheck(t, eng.Findings(), findings.CheckMgmtSinglePath)
+	if len(found) != 1 {
+		t.Fatalf("got %d mgmt_single_path findings, want 1", len(found))
+	}
+	r := found[0].Remedy
+	if r == nil {
+		t.Fatal("finding carries no remedy — the redundancy wizard is unreachable from the findings stream")
+	}
+	if r.Action != findings.RemedyActionMgmtRedundancy {
+		t.Errorf("action = %q, want %q", r.Action, findings.RemedyActionMgmtRedundancy)
+	}
+	// Navigate, not operational: choosing a second interface and its
+	// addressing is a human decision, and this check cannot compute it.
+	if r.Kind != findings.RemedyNavigate {
+		t.Errorf("kind = %q, want %q", r.Kind, findings.RemedyNavigate)
+	}
+	// The wizard cannot open without a node; remediation.ts resolves a
+	// remedy with no node to no button at all.
+	if got := r.Params["node"]; got != "pve1" {
+		t.Errorf("remedy node = %q, want pve1", got)
+	}
+	// Still detection-only as far as the change engine is concerned — a
+	// remedy is not a computed changeset, and this finding must never start
+	// claiming it has one.
+	if found[0].Fixable {
+		t.Error("mgmt_single_path became Fixable; Phase 36 must not add Tier 1 fixes")
+	}
+}

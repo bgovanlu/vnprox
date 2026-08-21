@@ -1360,10 +1360,34 @@ export interface StreamFinding {
   refs?: string[];
   fixable: boolean;
   docsLink?: string;
+  /** Phase 36: the remedy this finding's producer offers, or absent when
+   * the finding is detection-only. Never a network-configuration change —
+   * those are `fixable` above, and they stage a changeset. */
+  remedy?: Remediation;
   /** T-2402: this finding's currently-ACTIVE acknowledgement, or absent.
    * The server evaluates expiry, so an expired acknowledgement arrives as
    * `undefined` and the client never has to reason about a clock. */
   ack?: FindingAck;
+}
+
+/** Phase 36's producer-declared remedy (`internal/findings.Remediation`).
+ *
+ * `action` is the stable identifier a renderer resolves through
+ * `remediationAction()` (web/src/findings/remediation.ts) — deliberately
+ * NOT `check`, so that adding a remedy never means editing every component
+ * that displays findings. An `action` this client does not recognise
+ * renders no button at all, which is what lets a newer daemon add one
+ * without breaking an older SPA.
+ *
+ * `kind` is the tier: `"operational"` mutates something and therefore
+ * always confirms first; `"navigate"` only moves the operator to the screen
+ * where the decision gets made. A computed changeset fix is neither — it is
+ * `fixable`, and it goes through `POST /findings/{id}/fix`. */
+export interface Remediation {
+  action: string;
+  kind: "operational" | "navigate";
+  label: string;
+  params?: Record<string, string>;
 }
 
 /** T-2402's acknowledgement (`internal/findings.Ack`). `expiresAt` is unix

@@ -167,6 +167,16 @@ describe("FindingsStreamPanel", () => {
       detail: "Simulated verdict: deny. Observed: reachable.", nodes: [],
       refs: ["guest-nic:pve1:300/net0"], fixable: false,
       docsLink: "/tools?srcKind=guest-nic&srcRef=guest-nic%3Apve1%3A300%2Fnet0&dstKind=guest-nic&dstRef=guest-nic%3Apve1%3A301%2Fnet0&proto=tcp&port=2222",
+      // Phase 36: the deep link is offered through the producer-declared
+      // remedy now, not discovered by the component testing
+      // `check === "sim_divergence"`. cmd/vnproxd/findings.go builds both
+      // from the same simDivergenceDeepLink call, so they cannot disagree.
+      remedy: {
+        action: "navigate",
+        kind: "navigate",
+        label: "View in simulator",
+        params: { to: "/tools?srcKind=guest-nic&srcRef=guest-nic%3Apve1%3A300%2Fnet0&dstKind=guest-nic&dstRef=guest-nic%3Apve1%3A301%2Fnet0&proto=tcp&port=2222" },
+      },
     };
     fetchFindings.mockResolvedValueOnce([...sample, probeFinding]);
     const user = userEvent.setup();
@@ -277,6 +287,8 @@ describe("FindingsStreamPanel", () => {
       const mgmtFinding: StreamFinding = {
         id: "health:mgmt", source: "health", check: "mgmt_single_path", severity: "warning",
         detail: "single management path", nodes: ["pve1"], fixable: false,
+        // Phase 36: declared by internal/findings/health_mgmtpath.go.
+        remedy: { action: "mgmt.redundancy", kind: "navigate", label: "Add a redundant path", params: { node: "pve1" } },
       };
       const fixableFinding: StreamFinding = {
         id: "drift:fixable", source: "drift", check: "bridge_divergence", severity: "warning",
@@ -309,6 +321,8 @@ describe("FindingsStreamPanel", () => {
       const mgmtFinding: StreamFinding = {
         id: "health:mgmt", source: "health", check: "mgmt_single_path", severity: "warning",
         detail: "single management path", nodes: ["pve1"], fixable: false,
+        // Phase 36: declared by internal/findings/health_mgmtpath.go.
+        remedy: { action: "mgmt.redundancy", kind: "navigate", label: "Add a redundant path", params: { node: "pve1" } },
       };
       const fixableFinding: StreamFinding = {
         id: "drift:fixable", source: "drift", check: "bridge_divergence", severity: "warning",

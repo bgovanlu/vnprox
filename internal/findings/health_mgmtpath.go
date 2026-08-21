@@ -69,6 +69,20 @@ func checkMgmtSinglePath(mgmtSvc MgmtProvider) []Finding {
 			)
 			f := newHealthFinding(CheckMgmtSinglePath, SeverityWarning, detail, []string{node}, []string{carrier})
 			f.DocsLink = mgmtSinglePathDocsLink
+			// Phase 36: the remedy is a human decision — which second
+			// interface, on which VLAN, with what addressing — so it is
+			// Tier 3 navigation into T-703's redundancy wizard rather than
+			// anything this check could compute. Declared here, by the
+			// producer that knows what it means, instead of being inferred
+			// from `check === "mgmt_single_path"` inside a React component
+			// (which is how the frontend used to decide it, once per
+			// surface).
+			f.Remedy = &Remediation{
+				Action: RemedyActionMgmtRedundancy,
+				Kind:   RemedyNavigate,
+				Label:  "Add a redundant path",
+				Params: map[string]string{"node": node},
+			}
 			out = append(out, f)
 		}
 	}

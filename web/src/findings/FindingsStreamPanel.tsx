@@ -26,7 +26,7 @@ import type { FindingSource, Severity } from "../api/types";
 import { HelpAnchor } from "../help/HelpAnchor";
 import { useNarrowViewport } from "../lib/useNarrowViewport";
 import { useMgmtWizardStore } from "../mgmt/mgmtWizardStore";
-import { mgmtStrings } from "../mgmt/strings";
+import { remediationAction, type RemediationContext } from "./remediation";
 import { AckDialog } from "./AckDialog";
 import { FindingsList } from "./FindingsList";
 import { EMPTY_FILTER, filterFindings, nodesIn, type FindingsFilterState } from "./filters";
@@ -184,6 +184,18 @@ export function FindingsStreamPanel() {
     }
   }
 
+  // Phase 36: `runOperational` is deliberately omitted here. This panel has
+  // no confirmation dialog for a mutating action, and remediation.ts
+  // resolves an operational remedy to nothing without a runner — so the
+  // findings stream keeps offering only navigation until a surface that can
+  // confirm properly supplies one. Failing closed beats a button that
+  // mutates a cluster with no ceremony.
+  const remediationCtx: RemediationContext = {
+    netWrite: false,
+    navigate: (to) => { void navigate(to); },
+    openMgmtWizard: (opts) => { openMgmtWizard(opts); },
+  };
+
   /** T-909: at narrow width, a finding's secondary action (open the
    * mgmt-redundancy wizard / jump to the simulator) would land on a
    * desktop-only surface — rather than silently doing nothing or
@@ -307,18 +319,14 @@ export function FindingsStreamPanel() {
 
       <FindingsList
         findings={filtered.map((f) => {
-          // T-703: the mgmt_single_path finding (detection-only, so never
-          // "fixable" via a computed changeset) launches the guided
-          // management-redundancy wizard for the named node instead.
-          const mgmtNode = f.check === "mgmt_single_path" ? f.nodes[0] : undefined;
-          // T-806: sim_divergence's DocsLink is deliberately the simulator
-          // deep link, not a docs page (see cmd/vnproxd's
-          // simDivergenceDeepLink doc comment) — surface it as a "View in
-          // simulator" action rather than the generic docs-link styling
-          // (which this component doesn't render anywhere today) so the
-          // deep link is actually reachable from the unified stream, not
-          // just from the simulator's own result panel.
-          const simDivergenceLink = f.check === "sim_divergence" && f.docsLink ? f.docsLink : undefined;
+          // Phase 36: the producer declares its own remedy and this resolves
+          // it. Previously this block tested `f.check` against two literals
+          // (mgmt_single_path → the redundancy wizard, sim_divergence → the
+          // simulator deep link), which put the vocabulary in the renderer:
+          // every new remedy meant editing every surface that displays
+          // findings, and a surface that was missed showed the finding with
+          // no button and no error. See remediation.ts.
+          const resolved = remediationAction(f.remedy, remediationCtx);
           return {
             id: f.id,
             severity: f.severity,
@@ -328,17 +336,11 @@ export function FindingsStreamPanel() {
             fixable: f.fixable,
             ack: f.ack,
             category: `${SOURCE_LABELS[f.source]} · ${f.check}`,
-            action: mgmtNode
-              ? {
-                  label: mgmtStrings.launch.button,
-                  onClick: narrow ? handleNarrowAction : () => { openMgmtWizard({ node: mgmtNode }); },
-                }
-              : simDivergenceLink
-                ? {
-                    label: "View in simulator",
-                    onClick: narrow ? handleNarrowAction : () => { void navigate(simDivergenceLink); },
-                  }
-                : undefined,
+            // T-909: at narrow width these land on desktop-only surfaces,
+            // so the action explains itself rather than half-navigating.
+            action: resolved
+              ? { label: resolved.label, onClick: narrow ? handleNarrowAction : resolved.onClick }
+              : undefined,
           };
         })}
         onFix={(id) => {

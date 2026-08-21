@@ -231,6 +231,7 @@ func probeDivergenceToFinding(f store.SimDivergenceFinding) findings.Finding {
 	if ref, err := inventory.ParseRef(f.SrcRef); err == nil && ref.Node != "" {
 		nodes = []string{ref.Node}
 	}
+	link := simDivergenceDeepLink(f)
 	return findings.Finding{
 		ID:       f.ID,
 		Source:   findings.SourceProbe,
@@ -239,7 +240,21 @@ func probeDivergenceToFinding(f store.SimDivergenceFinding) findings.Finding {
 		Detail:   f.Detail,
 		Nodes:    nodes,
 		Refs:     []string{f.SrcRef},
-		DocsLink: simDivergenceDeepLink(f),
+		DocsLink: link,
+		// Phase 36: this finding's DocsLink is a deep link into the
+		// simulator rather than a documentation page (see
+		// simDivergenceDeepLink's own comment), which the findings stream
+		// used to discover by testing `check === "sim_divergence"` in the
+		// component. Declaring it as a navigate remedy says the same thing
+		// once, where the exception is actually created, and every surface
+		// that renders findings picks it up without knowing this check
+		// exists.
+		Remedy: &findings.Remediation{
+			Action: findings.RemedyActionNavigate,
+			Kind:   findings.RemedyNavigate,
+			Label:  "View in simulator",
+			Params: map[string]string{"to": link},
+		},
 	}
 }
 
