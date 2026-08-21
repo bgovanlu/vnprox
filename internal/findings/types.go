@@ -215,6 +215,24 @@ const (
 	// exemplar; docs/security.md records the contract.
 	RemedyOperational RemediationKind = "operational"
 
+	// RemedyOperationalRead is an action vnprox performs on *itself* —
+	// re-running a poll, re-reading state — that changes nothing on any
+	// node. It is still capability-gated and still audited (it costs PVE
+	// API calls and can be leaned on), but it is deliberately NOT
+	// confirmed.
+	//
+	// A separate kind rather than a "confirm: false" flag on
+	// RemedyOperational, for two reasons. A boolean's zero value would make
+	// "I forgot to set it" and "this needs no confirmation" the same state,
+	// which is the wrong default for the one field standing between an
+	// operator and an unannounced mutation. And a confirmation dialog
+	// asking "re-read the cluster?" is worse than no dialog: it trains
+	// people to click through the ones that matter.
+	//
+	// A producer that uses this kind for anything that mutates a node has
+	// misused it — the tier's entire point is the confirmation step.
+	RemedyOperationalRead RemediationKind = "operational-read"
+
 	// RemedyNavigate carries the operator to the screen where the decision
 	// gets made, with context pre-filled. The remedy is a human judgement
 	// or configuration vnprox cannot infer, and pretending otherwise would
@@ -236,6 +254,10 @@ const (
 	// in-app route. For findings whose "what to do" is a screen that
 	// already exists.
 	RemedyActionNavigate = "navigate"
+	// RemedyActionCollectorRefresh re-runs a collector poll now, optionally
+	// scoped to Params["node"]. Read-only with respect to every node: it is
+	// vnprox re-reading, not vnprox writing.
+	RemedyActionCollectorRefresh = "collector.refresh"
 )
 
 // Remediation is the remedy a producer offers for its finding.

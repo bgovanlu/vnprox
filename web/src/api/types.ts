@@ -3229,6 +3229,18 @@ export interface LldpInstallResponse {
   results: LldpInstallNodeResult[];
 }
 
+/** POST /collectors/refresh response (T-3603, internal/api's
+ * collectorRefreshResponse). A poll that failed is still a 200 with
+ * `error` set — the request was understood and performed, and "it failed
+ * again, with this message" is the useful answer rather than a transport
+ * error. `changed` distinguishes "worked but nothing moved" from "nothing
+ * happened", which otherwise look identical. */
+export interface CollectorRefreshResponse {
+  node?: string;
+  error?: string;
+  changed: boolean;
+}
+
 // --- Onboarding walkthrough (T-605; docs/user-guide.md §1) -----------------
 // Client-owned progress state, opaque to the backend, persisted via the
 // existing GET/PUT /layouts/{name} mechanism under name "onboarding" (see

@@ -218,6 +218,7 @@ var Operations = map[string]Operation{
 	"GET /api/v1/latmesh/history":             {Summary: "Return latency history for a node pair.", Tag: "latmesh", Auth: AuthSession},
 	"GET /api/v1/failsim/spof-score":          {Summary: "Score single points of failure in the current topology.", Tag: "failsim", Auth: AuthSession},
 	"POST /api/v1/migration/preflight":        {Summary: "Check whether a guest migration is network-safe.", Tag: "migration", Auth: AuthSession},
+	"POST /api/v1/collectors/refresh":         {Summary: "Re-run a collector poll now.", Tag: "topology", Auth: AuthSession},
 
 	// --- Captures ----------------------------------------------------------------------------
 	"GET /api/v1/captures":               {Summary: "List packet captures.", Tag: "captures", Auth: AuthSession},

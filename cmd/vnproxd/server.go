@@ -1740,7 +1740,12 @@ func runDaemon(ctx context.Context, opts daemonOptions, logger *slog.Logger) err
 		LLDPInstaller:     realHost,
 		LLDPPeerInstaller: lldpPeerInstaller,
 		LLDPAudit:         auditRepo,
-		LocalNode:         localNode,
+		// T-3603: POST /collectors/refresh. The collector already exposes
+		// RefreshNow for the post-apply fast re-read (T-205); this route is
+		// the same primitive reached from the staleness banner's retry.
+		CollectorRefresher: collector,
+		CollectorAudit:     auditRepo,
+		LocalNode:          localNode,
 		// T-1104: automation tokens + webhook registrations, both audited
 		// via the same shared auditRepo every other route in this daemon
 		// uses.

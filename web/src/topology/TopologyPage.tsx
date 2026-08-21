@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
@@ -8,6 +9,7 @@ import { useSession } from "../api/useSession";
 import { hasAnyCap } from "../changesets/capabilities";
 import { useLldpInstallMutation } from "../onboarding/queries";
 import { LldpSetupBanner } from "./LldpSetupBanner";
+import { isRateLimited, refreshCollectors } from "../api/collectors";
 import { usePaletteActions, type PaletteAction } from "../keyboard/actions";
 import { useTopologyShortcutTargetStore } from "../keyboard/topologyShortcutTarget";
 import { useRovingFocus } from "../keyboard/useRovingFocus";
@@ -69,6 +71,7 @@ import { computeLayout, type XYPosition } from "./layout";
 import { useReducedMotion, motionConfig } from "../lib/useReducedMotion";
 import { isGuestGroupId, isPhysGroupId } from "./projection";
 import {
+  TOPOLOGY_QUERY_KEY,
   useGuestGroupExpandQuery,
   useLayoutQuery,
   usePhysGroupExpandQuery,
@@ -186,6 +189,7 @@ function TopologyPageContent() {
   const reactFlow = useReactFlow();
   const { data: session } = useSession();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { addOps, replaceOps } = useDrawerActions();
   // T-905: `prefers-reduced-motion: reduce` collapses the search-select
   // fit-view pan/zoom below to an instant jump instead of an eased pan.
@@ -906,6 +910,38 @@ function TopologyPageContent() {
   const lldpInstall = useLldpInstallMutation();
   const [lldpInstallResults, setLldpInstallResults] = useState<LldpInstallNodeResult[] | undefined>(undefined);
 
+  // T-3603. Read-only operational tier: re-runs vnprox's own poll, writes
+  // nothing to any node, so no confirmation dialog — see StalenessBanner's
+  // own comment. The server enforces the rate limit; this only has to
+  // render the refusal honestly rather than swallowing it.
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<{ error?: string; changed: boolean } | undefined>(undefined);
+  const [refreshRateLimited, setRefreshRateLimited] = useState(false);
+
+  async function handleRefreshCollectors(): Promise<void> {
+    setRefreshing(true);
+    setRefreshRateLimited(false);
+    try {
+      const res = await refreshCollectors();
+      setRefreshResult({ error: res.error, changed: res.changed });
+      if (res.error === undefined || res.error === "") {
+        // The poll succeeded, so the staleness snapshot the banner reads
+        // from is now out of date — re-read it rather than leaving the
+        // banner asserting a failure that has just been fixed.
+        void queryClient.invalidateQueries({ queryKey: TOPOLOGY_QUERY_KEY });
+      }
+    } catch (err) {
+      if (isRateLimited(err)) {
+        setRefreshRateLimited(true);
+        setRefreshResult(undefined);
+      } else {
+        setRefreshResult({ error: err instanceof Error ? err.message : "refresh failed", changed: false });
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   async function handleInstallLldp(): Promise<void> {
     try {
       const res = await lldpInstall.mutateAsync();
@@ -1029,7 +1065,18 @@ function TopologyPageContent() {
       )}
 
       <div className="print:hidden flex flex-col gap-2">
-        <StalenessBanner staleness={topology?.staleness} />
+        <StalenessBanner
+          staleness={topology?.staleness}
+          retry={{
+            canRetry: canInstallLldp,
+            pending: refreshing,
+            result: refreshResult,
+            rateLimited: refreshRateLimited,
+            onRetry: () => {
+              void handleRefreshCollectors();
+            },
+          }}
+        />
         {/* T-3501 AC5: rendered once here, identically regardless of which
             view (Switch/Graph) is active below — the two views can never
             disagree about a ref-less finding's presentation because there

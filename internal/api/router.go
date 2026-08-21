@@ -187,14 +187,20 @@ type Options struct {
 	Capacity             CapacityService
 	Posture              PostureService
 	// Compliance (T-2706) backs the read-only compliance profile/report surface
-	Compliance          ComplianceService
-	Plugins             PluginService
-	HubClient           HubClient
-	HubVetting          HubVetting
-	PluginInstaller     PluginInstaller
-	LLDPInstaller       LocalLLDPInstaller
-	LLDPPeerInstaller   PeerLLDPInstaller
-	LLDPAudit           lldpInstallAuditor
+	Compliance        ComplianceService
+	Plugins           PluginService
+	HubClient         HubClient
+	HubVetting        HubVetting
+	PluginInstaller   PluginInstaller
+	LLDPInstaller     LocalLLDPInstaller
+	LLDPPeerInstaller PeerLLDPInstaller
+	LLDPAudit         lldpInstallAuditor
+	// T-3603: POST /collectors/refresh. Nil (not wired) simply omits the
+	// route, the same optional-dependency convention every other seam in
+	// this struct follows — a daemon without a collector has nothing to
+	// refresh.
+	CollectorRefresher  CollectorRefresher
+	CollectorAudit      collectorRefreshAuditor
 	Tenant              TenantScoper
 	Tokens              APITokenStore
 	TokenAudit          tokenAuditor
@@ -425,6 +431,7 @@ func NewRouter(opts Options) http.Handler {
 		mountPluginRoutes(r, opts.Plugins, opts.Auth)
 		mountHubRoutes(r, opts.HubClient, opts.HubVetting, opts.Blueprints, opts.BlueprintTrust, opts.PluginInstaller, opts.BlueprintSignersAudit, opts.Auth, opts.HubTrustUnsigned)
 		mountLLDPInstallRoutes(r, opts.LLDPInstaller, opts.LLDPPeerInstaller, opts.LLDPAudit, opts.LocalNode, opts.Auth)
+		mountCollectorRefreshRoutes(r, opts.CollectorRefresher, opts.CollectorAudit, opts.Auth, nil)
 		mountTokenRoutes(r, opts.Tokens, opts.TokenAudit, opts.Topology, opts.Auth)
 		mountEmbedTokenRoute(r, opts.Tokens, opts.TokenAudit, opts.Auth)
 		mountWebhookRoutes(r, opts.Webhooks, opts.WebhookSecretCipher, opts.TokenAudit, opts.Auth, opts.WebhookTargetCheck)
