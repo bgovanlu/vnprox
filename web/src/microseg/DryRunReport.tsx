@@ -141,7 +141,7 @@ export function DryRunReport({ report, heldOut = false }: DryRunReportProps) {
           className="flex w-full items-center justify-between text-sm font-semibold"
         >
           <span>Would-allow flows ({report.wouldAllow.length})</span>
-          <span aria-hidden className="text-xs text-slate-500">{showAllowed ? "Hide" : "Show"}</span>
+          <span aria-hidden className="text-xs text-slate-600 dark:text-slate-400">{showAllowed ? "Hide" : "Show"}</span>
         </button>
         {showAllowed && (
           <div className="mt-2">

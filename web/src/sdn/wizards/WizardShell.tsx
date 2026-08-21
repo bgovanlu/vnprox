@@ -117,7 +117,7 @@ export function WizardShell({
             <ErrorBoundary
               label="wizard-preview"
               fallback={
-                <div className="flex h-full items-center justify-center rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-400 dark:border-slate-800">
+                <div className="flex h-full items-center justify-center rounded-lg border border-slate-200 p-4 text-center text-xs text-slate-600 dark:text-slate-400 dark:border-slate-800">
                   Preview unavailable for this configuration — the form still works; continue to draft your changes.
                 </div>
               }

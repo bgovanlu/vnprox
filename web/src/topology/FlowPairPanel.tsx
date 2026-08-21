@@ -61,7 +61,7 @@ export function FlowPairPanel({ edge, onClose }: FlowPairPanelProps) {
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="rounded px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          className="rounded px-1.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
         >
           ×
         </button>

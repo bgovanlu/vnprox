@@ -94,7 +94,7 @@ function FoundSummaryStep({ onComplete }: StepProps) {
         <HelpAnchor topic="onboarding-walkthrough" />
       </p>
       {isLoading ? (
-        <p className="text-slate-400">{t("foundSummary.scanning")}</p>
+        <p className="text-slate-600 dark:text-slate-400">{t("foundSummary.scanning")}</p>
       ) : (
         <>
           <p>
@@ -111,7 +111,7 @@ function FoundSummaryStep({ onComplete }: StepProps) {
               </div>
             ))}
           </dl>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             {t("foundSummary.totals", { entities: summary.totalEntities, edges: summary.totalEdges })}
           </p>
         </>
@@ -175,9 +175,9 @@ function ProtectedStep({ onComplete, onSkip }: StepProps) {
     <div className="flex flex-col gap-3 text-sm">
       <p className="text-slate-600 dark:text-slate-300">{t("protected.description")}</p>
       {suggestLoading && nodes.length === 0 ? (
-        <p className="text-slate-400">{t("protected.detecting")}</p>
+        <p className="text-slate-600 dark:text-slate-400">{t("protected.detecting")}</p>
       ) : nodes.length === 0 ? (
-        <p className="text-slate-400">{t("protected.noneFound")}</p>
+        <p className="text-slate-600 dark:text-slate-400">{t("protected.noneFound")}</p>
       ) : (
         <ul className="max-h-48 space-y-2 overflow-y-auto">
           {nodes.map((node) => (
@@ -204,7 +204,7 @@ function ProtectedStep({ onComplete, onSkip }: StepProps) {
           ))}
         </ul>
       )}
-      <p className="text-xs text-slate-400">{t("protected.selectedCount", { count: selectedCount(draft) })}</p>
+      <p className="text-xs text-slate-600 dark:text-slate-400">{t("protected.selectedCount", { count: selectedCount(draft) })}</p>
       <div className="flex gap-2">
         <Tooltip content={disabledReason}>
           <span>
@@ -260,11 +260,11 @@ function LldpStep({ onComplete, onSkip }: StepProps) {
         <Trans i18nKey="lldp.description" t={t} components={{ code: <code /> }} />
       </p>
       {isLoading ? (
-        <p className="text-slate-400">{t("lldp.checking")}</p>
+        <p className="text-slate-600 dark:text-slate-400">{t("lldp.checking")}</p>
       ) : alreadyRunning ? (
         <p>{t("lldp.alreadyRunning", { count: lldp?.items.length ?? 0 })}</p>
       ) : (
-        <p className="text-slate-400">{t("lldp.none")}</p>
+        <p className="text-slate-600 dark:text-slate-400">{t("lldp.none")}</p>
       )}
       <div className="flex gap-2">
         {alreadyRunning ? (
@@ -314,7 +314,7 @@ function HealthStep({ onComplete }: StepProps) {
     <div className="flex flex-col gap-3 text-sm">
       <p className="text-slate-600 dark:text-slate-300">{t("health.description")}</p>
       {isLoading ? (
-        <p className="text-slate-400">{t("health.checking")}</p>
+        <p className="text-slate-600 dark:text-slate-400">{t("health.checking")}</p>
       ) : (
         <p>{t("health.summary", { total, breakdown })}</p>
       )}
@@ -405,7 +405,7 @@ export function OnboardingWalkthrough() {
     >
       <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
         <span className="flex items-baseline gap-1.5 text-sm font-medium">
-          <span className="text-xs font-normal text-slate-400">
+          <span className="text-xs font-normal text-slate-600 dark:text-slate-400">
             {stepNumber(progress.currentStep)}/{ONBOARDING_STEPS.length}
           </span>
           <span>{stepTitle(t, progress.currentStep)}</span>
@@ -414,7 +414,7 @@ export function OnboardingWalkthrough() {
           type="button"
           aria-label={t("walkthrough.minimizeLabel")}
           onClick={handleDismiss}
-          className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+          className="text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
         >
           ▾
         </button>

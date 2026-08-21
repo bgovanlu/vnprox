@@ -206,7 +206,7 @@ function ExitNodeHealth({ status }: { status: EvpnStatus }) {
           <span className={en.healthy ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
             {en.healthy ? "healthy" : "unhealthy"}
           </span>
-          {en.detail && <span className="text-xs text-slate-400">— {en.detail}</span>}
+          {en.detail && <span className="text-xs text-slate-600 dark:text-slate-400">— {en.detail}</span>}
         </li>
       ))}
     </ul>
@@ -218,7 +218,7 @@ export function EvpnView({ enabled = true }: { enabled?: boolean }) {
   const [selection, setSelection] = useState<EvpnSelection | undefined>(undefined);
 
   if (isLoading) {
-    return <p className="text-sm text-slate-400">Loading EVPN/BGP status…</p>;
+    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading EVPN/BGP status…</p>;
   }
   if (isError || !status) {
     return (

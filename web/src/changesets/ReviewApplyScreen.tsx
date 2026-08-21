@@ -325,7 +325,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
                   {summarizeOp(op)}
                 </li>
               ))}
-              {changeset.ops.length === 0 && <li className="text-slate-400">No operations.</li>}
+              {changeset.ops.length === 0 && <li className="text-slate-600 dark:text-slate-400">No operations.</li>}
             </ul>
           </RadixTabs.Content>
 
@@ -345,9 +345,9 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
           </RadixTabs.Content>
 
           <RadixTabs.Content value="filediff" className="mt-3 flex-1 overflow-y-auto">
-            {diffLoading && <p className="text-xs text-slate-400">Loading diff…</p>}
+            {diffLoading && <p className="text-xs text-slate-600 dark:text-slate-400">Loading diff…</p>}
             {diff && diff.files.length === 0 && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 No node interfaces-file changes — this changeset only touches ops without a file representation yet
                 (e.g. SDN/firewall/guest-NIC ops).
               </p>
@@ -374,7 +374,7 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
 
           <RadixTabs.Content value="plan" className="mt-3 flex-1 overflow-y-auto">
             {planIsPreview && planSteps.length > 0 && (
-              <p className="mb-2 text-xs text-slate-400">
+              <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">
                 Preview — the authoritative plan is finalized (and persisted) at apply time; these are the steps it
                 will contain for the ops as they stand.
               </p>
@@ -393,13 +393,13 @@ export function ReviewApplyScreen({ changeset, onClose }: ReviewApplyScreenProps
                     <span className="mr-1.5 rounded bg-sky-100 px-1 py-0.5 text-[10px] uppercase text-sky-700 dark:bg-sky-950 dark:text-sky-300">
                       {s.kind}
                     </span>
-                    {s.node && <span className="mr-1 text-xs text-slate-400">[{s.node}]</span>}
+                    {s.node && <span className="mr-1 text-xs text-slate-600 dark:text-slate-400">[{s.node}]</span>}
                     {s.summary}
                   </li>
                 ))}
               </ol>
             ) : (
-              <p className="text-xs text-slate-400">No executable steps for the current op list.</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">No executable steps for the current op list.</p>
             )}
           </RadixTabs.Content>
 

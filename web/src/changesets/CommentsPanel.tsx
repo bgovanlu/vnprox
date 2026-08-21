@@ -49,11 +49,11 @@ function CommentThread({
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium text-slate-700 dark:text-slate-200">{c.author}</span>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400">{formatTimestamp(c.createdAt)}</span>
+              <span className="text-[10px] text-slate-600 dark:text-slate-400">{formatTimestamp(c.createdAt)}</span>
               <button
                 type="button"
                 aria-label="Delete comment"
-                className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                className="text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400"
                 disabled={deleteMutation.isPending}
                 onClick={() => {
                   deleteMutation.mutate({ id: changesetId, commentId: c.id });
@@ -178,7 +178,7 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
                 {op.id ? (
                   <AddCommentForm changesetId={changeset.id} opId={op.id} />
                 ) : (
-                  <p className="mt-1 text-[11px] italic text-slate-400">Save this draft to enable commenting.</p>
+                  <p className="mt-1 text-[11px] italic text-slate-600 dark:text-slate-400">Save this draft to enable commenting.</p>
                 )}
               </li>
             ))}
@@ -191,7 +191,7 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
           <h3 className="text-xs font-medium text-amber-700 dark:text-amber-400">
             Comments on removed operations
           </h3>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
             These operations are no longer part of the changeset; their comment threads are kept for history.
           </p>
           <ul className="mt-1.5 space-y-3">
@@ -205,7 +205,7 @@ export function CommentsPanel({ changeset }: CommentsPanelProps) {
       )}
 
       {comments.length === 0 && changeset.ops.length === 0 && (
-        <p className="text-xs text-slate-400">No comments yet.</p>
+        <p className="text-xs text-slate-600 dark:text-slate-400">No comments yet.</p>
       )}
     </div>
   );

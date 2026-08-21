@@ -42,7 +42,7 @@ export function GlobalTopologyGate() {
   // unchanged page either way.
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-slate-400" aria-busy="true">
+      <div className="flex h-full items-center justify-center text-sm text-slate-600 dark:text-slate-400" aria-busy="true">
         Loading…
       </div>
     );
@@ -75,7 +75,7 @@ export function GlobalTopologyGate() {
         >
           ← Global map
         </button>
-        <span className="text-slate-400">/</span>
+        <span className="text-slate-600 dark:text-slate-400">/</span>
         <span className="font-medium text-slate-700 dark:text-slate-200">{drilledName}</span>
       </div>
       <div className="min-h-0 flex-1">

@@ -38,7 +38,7 @@ function eventTs(evt: WsServerEvent): number | undefined {
 export function EventAnnotationsPanel({ events }: EventAnnotationsPanelProps) {
   if (events.length === 0) {
     return (
-      <p className="text-sm text-slate-500" data-testid="event-annotations-empty">
+      <p className="text-sm text-slate-600 dark:text-slate-400" data-testid="event-annotations-empty">
         No events yet.
       </p>
     );
@@ -54,7 +54,7 @@ export function EventAnnotationsPanel({ events }: EventAnnotationsPanelProps) {
               {evt.event}
             </span>
             {ts !== undefined ? (
-              <time className="text-xs text-slate-400" dateTime={new Date(ts * 1000).toISOString()}>
+              <time className="text-xs text-slate-600 dark:text-slate-400" dateTime={new Date(ts * 1000).toISOString()}>
                 {new Date(ts * 1000).toISOString()}
               </time>
             ) : null}

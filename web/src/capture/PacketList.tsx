@@ -17,7 +17,7 @@ export function PacketList({ packets, paneLabel }: PacketListProps) {
   const selected = packets.find((p) => p.index === selectedIndex);
 
   if (packets.length === 0) {
-    return <p className="text-xs text-slate-400">No packets in this capture.</p>;
+    return <p className="text-xs text-slate-600 dark:text-slate-400">No packets in this capture.</p>;
   }
 
   return (
@@ -64,7 +64,7 @@ export function PacketList({ packets, paneLabel }: PacketListProps) {
           </table>
         </div>
         <div className="max-h-64 overflow-y-auto rounded border border-slate-200 p-1.5 text-[11px] dark:border-slate-700">
-          {!selected && <p className="text-slate-400">Select a packet to see its decoded fields.</p>}
+          {!selected && <p className="text-slate-600 dark:text-slate-400">Select a packet to see its decoded fields.</p>}
           {selected?.layers.map((layer) => (
             <div key={layer.name} className="mb-2">
               <p className="font-semibold text-slate-700 dark:text-slate-200">{layer.name}</p>

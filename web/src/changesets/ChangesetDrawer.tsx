@@ -226,10 +226,10 @@ export function ChangesetDrawer() {
               </div>
             )}
 
-            {!changeset && <p className="text-xs text-slate-400">No active draft. Edit anything to start one.</p>}
+            {!changeset && <p className="text-xs text-slate-600 dark:text-slate-400">No active draft. Edit anything to start one.</p>}
 
             {changeset && changeset.ops.length === 0 && (
-              <p className="text-xs text-slate-400">This draft has no ops yet.</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">This draft has no ops yet.</p>
             )}
 
             {changeset && changeset.ops.length > 0 && (
@@ -250,7 +250,7 @@ export function ChangesetDrawer() {
                             <button
                               type="button"
                               aria-label="Move up"
-                              className="px-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-200"
+                              className="px-1 text-slate-600 dark:text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-200"
                               disabled={i === 0}
                               onClick={() => {
                                 moveOp(i, -1);
@@ -261,7 +261,7 @@ export function ChangesetDrawer() {
                             <button
                               type="button"
                               aria-label="Move down"
-                              className="px-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-200"
+                              className="px-1 text-slate-600 dark:text-slate-400 hover:text-slate-700 disabled:opacity-30 dark:hover:text-slate-200"
                               disabled={i === changeset.ops.length - 1}
                               onClick={() => {
                                 moveOp(i, 1);
@@ -308,7 +308,7 @@ export function ChangesetDrawer() {
              * part of the confirm/rollback ceremony this task must not
              * degrade), so "Review & apply" is deliberately NOT gated here. */}
             {narrow && changeset && changeset.ops.length > 0 && (
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
                 Reorder, remove, or discard ops on desktop — review and apply this draft as-is from here.
               </p>
             )}

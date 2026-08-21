@@ -123,7 +123,7 @@ export function VxlanZoneWizard({ open, onOpenChange }: VxlanZoneWizardProps) {
           {memberNodes.length > 0 && (
             <div>
               <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">{S.vxlan.peersStepHelp}</p>
-              <p className="mb-1.5 text-[11px] text-slate-400">{S.vxlan.peersAutoSuggestNote}</p>
+              <p className="mb-1.5 text-[11px] text-slate-600 dark:text-slate-400">{S.vxlan.peersAutoSuggestNote}</p>
               <div className="space-y-1.5">
                 {memberNodes.map((node) => {
                   const peerErr = ipError(peers[node] ?? "");

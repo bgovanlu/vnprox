@@ -65,7 +65,7 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
 
   return (
     <div className="space-y-3 text-xs">
-      <p className="flex items-center gap-1.5 text-slate-400">
+      <p className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
         <span>Sticky notes pinned to this entity — visible to every user, never a copy of any PVE config.</span>
         <HelpAnchor topic="map-annotations" />
       </p>
@@ -81,7 +81,7 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
                 content is free text ANOTHER operator typed, and this is one
                 of the render paths T-2806 AC6 requires to escape it. */}
             <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-200">{note.content}</p>
-            <div className="mt-1 flex items-center justify-between text-slate-400">
+            <div className="mt-1 flex items-center justify-between text-slate-600 dark:text-slate-400">
               <span>
                 {note.createdBy}
                 {note.expiresAt !== 0 && <span className="ml-2">{expiryLabel(note.expiresAt)}</span>}
@@ -99,7 +99,7 @@ export function AnnotationsSection({ entityRef }: AnnotationsSectionProps) {
             </div>
           </li>
         ))}
-        {notes.length === 0 && <li className="text-slate-400">No notes pinned to this entity yet.</li>}
+        {notes.length === 0 && <li className="text-slate-600 dark:text-slate-400">No notes pinned to this entity yet.</li>}
       </ul>
       <div className="space-y-1.5">
         <label htmlFor="annotation-draft" className="sr-only">

@@ -24,7 +24,7 @@ function formatPerSec(v: number): string {
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div className="rounded border border-slate-200 p-1.5 dark:border-slate-700">
-      <div className="text-slate-400">{label}</div>
+      <div className="text-slate-600 dark:text-slate-400">{label}</div>
       <div className={clsx("font-medium", warn ? "text-amber-600 dark:text-amber-400" : "text-slate-700 dark:text-slate-200")}>
         {value}
       </div>
@@ -49,7 +49,7 @@ export function MetricsTab({ entityRef, kind, wsClient }: MetricsTabProps) {
   return (
     <div className="space-y-4">
       {!metric && (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600 dark:text-slate-400">
           No live rate yet — this entity needs at least two 5s samples before a rate is computable.
         </p>
       )}
@@ -83,7 +83,7 @@ export function MetricsTab({ entityRef, kind, wsClient }: MetricsTabProps) {
           </ResponsiveContainer>
         </div>
       ) : (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600 dark:text-slate-400">
           Not enough history yet to chart (need at least two 30s-resolution samples).
         </p>
       )}

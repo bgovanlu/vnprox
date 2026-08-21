@@ -135,7 +135,7 @@ export function BridgeEditor({ open, onOpenChange, node, target, existing, newBr
 
       <Field label="Ports" errors={findings.byField.ports} help="Interfaces enslaved to this bridge. A NIC already used elsewhere shows a conflict hint.">
         <div className="max-h-32 space-y-1 overflow-y-auto rounded border border-slate-200 p-2 dark:border-slate-700">
-          {candidatePorts.length === 0 && <p className="text-xs text-slate-400">No candidate interfaces found on {node}.</p>}
+          {candidatePorts.length === 0 && <p className="text-xs text-slate-600 dark:text-slate-400">No candidate interfaces found on {node}.</p>}
           {candidatePorts.map((c) => (
             <label key={c.name} className="flex items-center gap-2 text-xs">
               <input type="checkbox" checked={ports.includes(c.name)} onChange={() => { togglePort(c.name); }} />

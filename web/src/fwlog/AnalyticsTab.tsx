@@ -76,7 +76,7 @@ function TopBlockedChart({ title, data }: { title: string; data: { value: number
     return (
       <div>
         <h3 className="mb-1 text-sm font-semibold">{title}</h3>
-        <p className="text-xs text-slate-400">No DROP/REJECT lines in this window.</p>
+        <p className="text-xs text-slate-600 dark:text-slate-400">No DROP/REJECT lines in this window.</p>
       </div>
     );
   }
@@ -163,7 +163,7 @@ export function AnalyticsTab() {
         </label>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-400">Loading analytics…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading analytics…</p>}
       {error && <EmptyState title="Could not load firewall analytics" description="Try again in a moment." />}
 
       {data && (

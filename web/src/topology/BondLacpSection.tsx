@@ -69,12 +69,12 @@ export function BondLacpSection({ fields }: { fields: Record<string, unknown> })
   const slaves = allSlaves.filter((s) => s.LACPDetailSet);
 
   if (allSlaves.length === 0) {
-    return <p className="text-xs text-slate-400">No slave detail reported for this bond yet.</p>;
+    return <p className="text-xs text-slate-600 dark:text-slate-400">No slave detail reported for this bond yet.</p>;
   }
 
   if (slaves.length === 0) {
     return (
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-slate-600 dark:text-slate-400">
         No 802.3ad LACP negotiation detail available{mode ? ` (bond mode: ${mode})` : ""} — this bond may not be
         running LACP, or the kernel/driver on this node doesn&apos;t report actor/partner PDU detail.
       </p>

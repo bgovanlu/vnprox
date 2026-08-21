@@ -130,7 +130,7 @@ export function DhcpView() {
         </select>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-400">Loading DHCP data…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading DHCP data…</p>}
       {isError && (
         <EmptyState
           title="Could not load DHCP data"

@@ -63,7 +63,7 @@ function ManagementPathSection({ node }: { node: string }) {
   const nodePaths = mgmtStatus?.nodes[node] ?? [];
 
   if (!mgmtStatus || nodePaths.length === 0) {
-    return <p className="text-xs text-slate-400">No management/corosync path resolved for this node yet.</p>;
+    return <p className="text-xs text-slate-600 dark:text-slate-400">No management/corosync path resolved for this node yet.</p>;
   }
 
   // Whether any mgmt-role carrier for this node is non-redundant — the
@@ -112,7 +112,7 @@ function ManagementPathSection({ node }: { node: string }) {
       {nodePaths.map((p) => (
         <div key={p.ref} className="rounded border border-slate-200 p-2 dark:border-slate-700">
           <div className="font-medium text-slate-700 dark:text-slate-200">
-            {p.ref} <span className="font-normal text-slate-400">({p.roles.join(", ")})</span>
+            {p.ref} <span className="font-normal text-slate-600 dark:text-slate-400">({p.roles.join(", ")})</span>
           </div>
           <div className="mt-1 text-slate-500 dark:text-slate-400">
             Path: {p.path.length > 0 ? p.path.join(" → ") : "(no physical interface resolved)"}
@@ -403,7 +403,7 @@ export function InspectorPanel({
         )}
       </div>
 
-      {isLoading && <p className="mt-4 text-sm text-slate-400">Loading…</p>}
+      {isLoading && <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {isError && (
         <EmptyState className="mt-4" title="Could not load this entity" description="It may have just been removed." />
       )}
@@ -465,7 +465,7 @@ export function InspectorPanel({
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
                 {fieldRows(data.fields).map(([k, v]) => (
                   <div className="contents" key={k}>
-                    <dt className="text-slate-400">{k}</dt>
+                    <dt className="text-slate-600 dark:text-slate-400">{k}</dt>
                     <dd className="break-all text-slate-700 dark:text-slate-200">{v}</dd>
                   </div>
                 ))}
@@ -482,7 +482,7 @@ export function InspectorPanel({
 
             <RadixTabs.Content value="raw" className="mt-3 flex-1 overflow-y-auto">
               {rawSourceEntries.length === 0 ? (
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-600 dark:text-slate-400">
                   No raw source retained for this entity — none of its contributing sources kept original
                   config text (common for purely observed entities).
                 </p>
@@ -501,14 +501,14 @@ export function InspectorPanel({
             </RadixTabs.Content>
 
             <RadixTabs.Content value="provenance" className="mt-3 flex-1 overflow-y-auto">
-              <p className="mb-2 text-xs text-slate-400">
+              <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">
                 Resolved-field provenance: which poll source won each field, and any disagreeing values.
               </p>
               <ul className="space-y-2 text-xs">
                 {Object.entries(data.provenance).map(([field, prov]) => (
                   <li key={field} className="rounded border border-slate-200 p-2 dark:border-slate-700">
                     <div className="font-medium text-slate-700 dark:text-slate-200">
-                      {field} <span className="font-normal text-slate-400">← {prov.owner}</span>
+                      {field} <span className="font-normal text-slate-600 dark:text-slate-400">← {prov.owner}</span>
                     </div>
                     {prov.conflicts && prov.conflicts.length > 0 && (
                       <ul className="mt-1 space-y-0.5 pl-3 text-amber-600 dark:text-amber-400">
@@ -522,7 +522,7 @@ export function InspectorPanel({
                   </li>
                 ))}
                 {Object.keys(data.provenance).length === 0 && (
-                  <li className="text-slate-400">No per-field provenance recorded.</li>
+                  <li className="text-slate-600 dark:text-slate-400">No per-field provenance recorded.</li>
                 )}
               </ul>
             </RadixTabs.Content>
@@ -542,13 +542,13 @@ export function InspectorPanel({
                       )}
                     >
                       <span className="truncate text-slate-700 dark:text-slate-200">{r.ref}</span>
-                      <span className="shrink-0 text-slate-400">
+                      <span className="shrink-0 text-slate-600 dark:text-slate-400">
                         {r.edgeKind} ({r.direction})
                       </span>
                     </button>
                   </li>
                 ))}
-                {data.related.length === 0 && <li className="text-slate-400">No related entities.</li>}
+                {data.related.length === 0 && <li className="text-slate-600 dark:text-slate-400">No related entities.</li>}
               </ul>
             </RadixTabs.Content>
 
@@ -564,7 +564,7 @@ export function InspectorPanel({
 
             {isBridgeKind && (
               <RadixTabs.Content value="fdb" className="mt-3 flex-1 overflow-y-auto">
-                <p className="mb-2 text-xs text-slate-400">
+                <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">
                   This bridge's forwarding-database table (docs/features/lldp-discovery.md §4), owner-labeled
                   against the cluster-wide inventory.
                 </p>
@@ -576,7 +576,7 @@ export function InspectorPanel({
                     >
                       <span className="flex items-center gap-2">
                         <span className="font-mono text-slate-700 dark:text-slate-200">{r.mac}</span>
-                        {r.port && <span className="text-slate-400">on {r.port}</span>}
+                        {r.port && <span className="text-slate-600 dark:text-slate-400">on {r.port}</span>}
                         {r.stale && <span className="text-amber-600 dark:text-amber-400">stale</span>}
                       </span>
                       {r.ownerRef ? (
@@ -592,11 +592,11 @@ export function InspectorPanel({
                           {r.ownerLabel ? ` (${r.ownerLabel})` : ""}
                         </button>
                       ) : (
-                        <span className="shrink-0 text-slate-400">{r.owner}</span>
+                        <span className="shrink-0 text-slate-600 dark:text-slate-400">{r.owner}</span>
                       )}
                     </li>
                   ))}
-                  {fdbRows.length === 0 && <li className="text-slate-400">No FDB entries learned on this bridge.</li>}
+                  {fdbRows.length === 0 && <li className="text-slate-600 dark:text-slate-400">No FDB entries learned on this bridge.</li>}
                 </ul>
               </RadixTabs.Content>
             )}

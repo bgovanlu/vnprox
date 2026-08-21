@@ -45,7 +45,7 @@ export function EmbedFrame({ title, children }: EmbedFrameProps) {
       <DemoBanner />
       <header className="flex items-center justify-between border-b border-slate-200 px-4 py-2 dark:border-slate-800">
         <span className="text-sm font-semibold">{title}</span>
-        <span className="text-xs uppercase tracking-wide text-slate-400" data-testid="embed-readonly-badge">
+        <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400" data-testid="embed-readonly-badge">
           Read-only
         </span>
       </header>

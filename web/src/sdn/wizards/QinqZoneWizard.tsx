@@ -169,7 +169,7 @@ export function QinqZoneWizard({ open, onOpenChange }: QinqZoneWizardProps) {
             )}
           </ul>
           {serviceVid > 0 && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               Service tag {serviceVid} is shown for illustration only — set it directly in Proxmox&apos;s own SDN zone settings if not already configured (see this step&apos;s help text).
             </p>
           )}

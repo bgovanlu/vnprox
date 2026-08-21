@@ -88,7 +88,7 @@ export function GuidedTour() {
       >
         <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
           <span className="flex items-baseline gap-1.5 text-sm font-medium">
-            <span className="text-xs font-normal text-slate-400" data-testid="guided-tour-step">
+            <span className="text-xs font-normal text-slate-600 dark:text-slate-400" data-testid="guided-tour-step">
               {index}/{TOUR_STEPS.length}
             </span>
             <span>{step.title}</span>
@@ -97,7 +97,7 @@ export function GuidedTour() {
             type="button"
             aria-label="Minimize guided tour"
             onClick={() => { apply(dismissTour(current, Date.now())); }}
-            className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+            className="text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
           >
             ▾
           </button>

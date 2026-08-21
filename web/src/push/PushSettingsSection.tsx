@@ -167,7 +167,7 @@ export function PushSettingsSection() {
 
       <div>
         {checkingStatus ? (
-          <p className="text-sm text-slate-400">Checking this device…</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">Checking this device…</p>
         ) : thisDeviceSubscribed ? (
           <Button size="sm" variant="secondary" onClick={() => void handleDisableThisDevice()}>
             Disable push on this device

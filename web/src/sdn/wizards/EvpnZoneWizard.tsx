@@ -162,7 +162,7 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
         <div className="space-y-3">
           <p className="text-slate-600 dark:text-slate-300">{S.evpn.exitNodesHelp}</p>
           <div className="flex flex-wrap gap-3">
-            {memberNodes.length === 0 && <p className="text-xs text-slate-400">Pick member nodes on the previous step first.</p>}
+            {memberNodes.length === 0 && <p className="text-xs text-slate-600 dark:text-slate-400">Pick member nodes on the previous step first.</p>}
             {memberNodes.map((node) => (
               <label key={node} className="flex items-center gap-1.5 text-sm">
                 <input type="checkbox" checked={exitNodes.includes(node)} onChange={() => { toggleExitNode(node); }} />
@@ -170,11 +170,11 @@ export function EvpnZoneWizard({ open, onOpenChange }: EvpnZoneWizardProps) {
               </label>
             ))}
           </div>
-          {exitNodes.length > 0 && <p className="text-xs text-slate-400">{S.evpn.primaryExitHelp} ({exitNodes[0]})</p>}
+          {exitNodes.length > 0 && <p className="text-xs text-slate-600 dark:text-slate-400">{S.evpn.primaryExitHelp} ({exitNodes[0]})</p>}
           <Field label="VRF VXLAN tag (optional)" help="Only needed for inter-VNet routing.">
             <input type="number" className={inputClass} value={vrfVxlan || ""} onChange={(e) => { setVrfVxlan(Number(e.target.value)); }} />
           </Field>
-          <p className="text-xs text-slate-400">{S.evpn.routeTargetExplain}</p>
+          <p className="text-xs text-slate-600 dark:text-slate-400">{S.evpn.routeTargetExplain}</p>
         </div>
       ),
     },

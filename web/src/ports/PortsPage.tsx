@@ -56,7 +56,7 @@ export function PortsPage() {
         }
       />
 
-      {isLoading && <p className="text-sm text-slate-400">Loading ports…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading ports…</p>}
       {isError && <p className="text-sm text-red-600 dark:text-red-400">Could not load the ports table.</p>}
 
       {data && rows.length === 0 && (

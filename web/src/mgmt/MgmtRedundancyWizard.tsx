@@ -355,7 +355,7 @@ function PreviewPanel({ node, flow, ops }: { node: string; flow: Flow | undefine
     <div className="h-full overflow-y-auto rounded border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-900">
       <div className="font-medium text-slate-700 dark:text-slate-200">Draft for {node}</div>
       {ops.length === 0 ? (
-        <p className="mt-2 text-slate-400">Fill in the options on the left to see the exact steps this will draft.</p>
+        <p className="mt-2 text-slate-600 dark:text-slate-400">Fill in the options on the left to see the exact steps this will draft.</p>
       ) : (
         <ol className="mt-2 list-inside list-decimal space-y-1 text-slate-600 dark:text-slate-300">
           {ops.map((o, i) => (
@@ -365,9 +365,9 @@ function PreviewPanel({ node, flow, ops }: { node: string; flow: Flow | undefine
           ))}
         </ol>
       )}
-      <p className="mt-3 text-[11px] text-slate-400">{mgmtStrings.common.draftNotice}</p>
+      <p className="mt-3 text-[11px] text-slate-600 dark:text-slate-400">{mgmtStrings.common.draftNotice}</p>
       {flow === "dedicated-vlan" && (
-        <p className="mt-1 text-[11px] text-slate-400">Your management address is carried over unchanged.</p>
+        <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">Your management address is carried over unchanged.</p>
       )}
     </div>
   );

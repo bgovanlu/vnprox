@@ -96,7 +96,7 @@ function StepRow({ step }: { step: DiagnoseStep }) {
           <span className="text-xs text-slate-500 dark:text-slate-400">{STATUS_LABEL[step.status]}</span>
         </span>
         {hasDetail && (
-          <span className="text-xs text-slate-400">{expanded ? "Hide detail" : "Show detail"}</span>
+          <span className="text-xs text-slate-600 dark:text-slate-400">{expanded ? "Hide detail" : "Show detail"}</span>
         )}
       </button>
       <p className="px-3 pb-2 text-sm text-slate-600 dark:text-slate-300">{step.summary}</p>
@@ -218,7 +218,7 @@ export function DiagnosisPage({ targetRef: targetRefProp }: DiagnosisPageProps =
       {diagnoseMutation.isPending && (
         <ul className="space-y-1" data-testid="diagnose-progress" aria-live="polite">
           {STEP_ORDER.map((name) => (
-            <li key={name} className="text-sm text-slate-400">
+            <li key={name} className="text-sm text-slate-600 dark:text-slate-400">
               {STEP_LABELS[name]} — running…
             </li>
           ))}

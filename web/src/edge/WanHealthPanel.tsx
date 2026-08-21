@@ -75,7 +75,7 @@ export function WanHealthPanel() {
         switches an uplink; it is a diagnosis, not an actuator.
       </p>
 
-      {statusQuery.isLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {statusQuery.isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {statusQuery.error && (
         <EmptyState
           title="Could not read WAN status"

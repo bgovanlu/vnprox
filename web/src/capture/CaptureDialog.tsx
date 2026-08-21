@@ -91,7 +91,7 @@ function SessionPane({ groupId, session }: { groupId: string; session: CaptureSe
     <div className="space-y-2 rounded border border-slate-200 p-2 dark:border-slate-700" data-testid={`session-pane-${session.id}`}>
       <SessionStatusLine session={session} />
       {session.filter && (
-        <p className="font-mono text-[11px] text-slate-400">filter: {session.filter}</p>
+        <p className="font-mono text-[11px] text-slate-600 dark:text-slate-400">filter: {session.filter}</p>
       )}
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" disabled={!terminal || decoding} onClick={() => { void handleDecode(); }}>

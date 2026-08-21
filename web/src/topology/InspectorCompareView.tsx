@@ -69,7 +69,7 @@ function ComparePaneHeader({
     <div className="flex items-center justify-between gap-1.5 rounded border border-slate-200 p-1.5 dark:border-slate-700">
       <div className="min-w-0">
         <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{label}</div>
-        <div className="truncate text-[11px] text-slate-400">
+        <div className="truncate text-[11px] text-slate-600 dark:text-slate-400">
           {kind} on {node || "cluster"}
         </div>
       </div>
@@ -186,7 +186,7 @@ export function InspectorCompareView({
           <div className="grid grid-cols-[minmax(6rem,auto)_1fr_1fr] gap-x-3 gap-y-1.5 text-xs">
             {rows.map(([k, a, b]) => (
               <div className="contents" key={k}>
-                <dt className="text-slate-400">{k}</dt>
+                <dt className="text-slate-600 dark:text-slate-400">{k}</dt>
                 <dd
                   className={clsx(
                     "break-all text-slate-700 dark:text-slate-200",
@@ -205,7 +205,7 @@ export function InspectorCompareView({
                 </dd>
               </div>
             ))}
-            {rows.length === 0 && <p className="col-span-3 text-slate-400">No fields to compare.</p>}
+            {rows.length === 0 && <p className="col-span-3 text-slate-600 dark:text-slate-400">No fields to compare.</p>}
           </div>
         </RadixTabs.Content>
 

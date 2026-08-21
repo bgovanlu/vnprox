@@ -239,7 +239,7 @@ function ObservedIPv6({
     return null;
   }
   if (loading) {
-    return <p className="text-xs text-slate-400">Checking what IPv6 is live on {vnetId}…</p>;
+    return <p className="text-xs text-slate-600 dark:text-slate-400">Checking what IPv6 is live on {vnetId}…</p>;
   }
   if (failed) {
     return (

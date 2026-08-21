@@ -156,7 +156,7 @@ export function GuestsPage() {
         }
       />
 
-      {isLoading && <p className="text-sm text-slate-400">Loading guest NICs…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading guest NICs…</p>}
       {!isLoading && filtered.length === 0 && (
         <EmptyState title="No guest NICs match" description="Try clearing a filter, or check that guests exist on this cluster." />
       )}

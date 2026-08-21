@@ -45,7 +45,7 @@ export function EmbedMap() {
   }, [data]);
 
   if (isLoading) {
-    return <p className="text-sm text-slate-500">Loading topology…</p>;
+    return <p className="text-sm text-slate-600 dark:text-slate-400">Loading topology…</p>;
   }
   if (error) {
     return (
@@ -55,7 +55,7 @@ export function EmbedMap() {
     );
   }
   if (groups.length === 0) {
-    return <p className="text-sm text-slate-500">No topology entities to display.</p>;
+    return <p className="text-sm text-slate-600 dark:text-slate-400">No topology entities to display.</p>;
   }
 
   return (
@@ -71,7 +71,7 @@ export function EmbedMap() {
                   className={`h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[n.status]}`}
                   title={STATUS_LABEL[n.status]}
                 />
-                <span className="text-slate-500">{n.kind}</span>
+                <span className="text-slate-600 dark:text-slate-400">{n.kind}</span>
                 <span className="font-medium">{n.label}</span>
                 {n.badges.map((b) => (
                   <span

@@ -74,7 +74,7 @@ export function InteriorTab({ entityRef }: InteriorTabProps) {
           <span className="block font-medium text-slate-700 dark:text-slate-200">
             Show this guest's network interior
           </span>
-          <span className="block text-slate-400">
+          <span className="block text-slate-600 dark:text-slate-400">
             Off by default: turning this on reads inside the guest itself (via the QEMU guest agent, or — for a
             container — directly from the host side) every time this tab is open. vnprox never trusts what a guest
             reports about itself as ground truth; addresses are cross-checked against IPAM below.
@@ -83,10 +83,10 @@ export function InteriorTab({ entityRef }: InteriorTabProps) {
       </div>
 
       {!enabled && (
-        <p className="text-slate-400">Enable the toggle above to read this guest's interfaces, routes, DNS, and listening sockets.</p>
+        <p className="text-slate-600 dark:text-slate-400">Enable the toggle above to read this guest's interfaces, routes, DNS, and listening sockets.</p>
       )}
 
-      {enabled && interiorQuery.isLoading && <p className="text-slate-400">Reading guest interior…</p>}
+      {enabled && interiorQuery.isLoading && <p className="text-slate-600 dark:text-slate-400">Reading guest interior…</p>}
 
       {enabled && interiorQuery.isError && (
         <p className="text-amber-600 dark:text-amber-400">
@@ -101,7 +101,7 @@ export function InteriorTab({ entityRef }: InteriorTabProps) {
           const data = interiorQuery.data;
           return (
             <div className="space-y-4" data-testid="interior-view">
-              <p className="text-slate-400">
+              <p className="text-slate-600 dark:text-slate-400">
                 Source: <span className="font-mono">{data.source}</span> · Default gateway:{" "}
                 <span className={data.defaultGatewayReachable ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
                   {data.defaultGatewayReachable ? "reachable" : "not reachable"}
@@ -114,12 +114,12 @@ export function InteriorTab({ entityRef }: InteriorTabProps) {
                   {data.interfaces.map((iface) => (
                     <li key={iface.name} className="flex items-center justify-between rounded border border-slate-200 px-2 py-1 dark:border-slate-700">
                       <span className="font-mono text-slate-700 dark:text-slate-200">{iface.name}</span>
-                      <span className="text-slate-400">
+                      <span className="text-slate-600 dark:text-slate-400">
                         {iface.mac ?? "—"} {iface.mtu ? `mtu ${String(iface.mtu)}` : ""} {iface.up ? "up" : "down"}
                       </span>
                     </li>
                   ))}
-                  {data.interfaces.length === 0 && <li className="text-slate-400">No interfaces reported.</li>}
+                  {data.interfaces.length === 0 && <li className="text-slate-600 dark:text-slate-400">No interfaces reported.</li>}
                 </ul>
               </section>
 
@@ -132,11 +132,11 @@ export function InteriorTab({ entityRef }: InteriorTabProps) {
                         {addr.ip}
                         {addr.prefix ? `/${String(addr.prefix)}` : ""}
                       </span>
-                      <span className="ml-2 text-slate-400">on {addr.interface}</span>
+                      <span className="ml-2 text-slate-600 dark:text-slate-400">on {addr.interface}</span>
                       {ipamBadge(addr, data.ipamDiff)}
                     </li>
                   ))}
-                  {data.addresses.length === 0 && <li className="text-slate-400">No addresses reported.</li>}
+                  {data.addresses.length === 0 && <li className="text-slate-600 dark:text-slate-400">No addresses reported.</li>}
                 </ul>
               </section>
 
@@ -148,7 +148,7 @@ export function InteriorTab({ entityRef }: InteriorTabProps) {
                       {route.destination} {route.gateway ? `via ${route.gateway}` : ""} {route.dev ? `dev ${route.dev}` : ""}
                     </li>
                   ))}
-                  {data.routes.length === 0 && <li className="text-slate-400">No routes reported.</li>}
+                  {data.routes.length === 0 && <li className="text-slate-600 dark:text-slate-400">No routes reported.</li>}
                 </ul>
               </section>
 
@@ -165,7 +165,7 @@ export function InteriorTab({ entityRef }: InteriorTabProps) {
                     )}
                   </p>
                 ) : (
-                  <p className="text-slate-400">No DNS configuration reported.</p>
+                  <p className="text-slate-600 dark:text-slate-400">No DNS configuration reported.</p>
                 )}
               </section>
 
@@ -177,7 +177,7 @@ export function InteriorTab({ entityRef }: InteriorTabProps) {
                       {sock.proto} {sock.localAddr}:{sock.localPort}
                     </li>
                   ))}
-                  {data.listeningSockets.length === 0 && <li className="text-slate-400">No listening sockets reported.</li>}
+                  {data.listeningSockets.length === 0 && <li className="text-slate-600 dark:text-slate-400">No listening sockets reported.</li>}
                 </ul>
               </section>
             </div>

@@ -132,7 +132,7 @@ export function AnnotationLayer({ regions, notes, anchors, viewport }: Annotatio
           <ul className="space-y-1">
             {orphanNotes.map((note) => (
               <li key={note.id}>
-                <span className="text-slate-400">{note.ref}</span> {note.content}
+                <span className="text-slate-600 dark:text-slate-400">{note.ref}</span> {note.content}
               </li>
             ))}
           </ul>

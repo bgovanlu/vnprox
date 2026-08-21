@@ -38,7 +38,7 @@ export function EntityHistoryTab({ entityRef, enabled = true }: EntityHistoryTab
   const { data, isLoading, isError } = useEntityHistoryQuery(entityRef, enabled);
 
   if (isLoading) {
-    return <p className="text-xs text-slate-400">Loading history…</p>;
+    return <p className="text-xs text-slate-600 dark:text-slate-400">Loading history…</p>;
   }
   // A failure must not render as "nothing has touched this" — that is a
   // conclusion, and it would be the wrong one.
@@ -79,7 +79,7 @@ export function EntityHistoryTab({ entityRef, enabled = true }: EntityHistoryTab
                 {new Date(e.at * 1000).toLocaleString()}
               </span>
               {e.actor && <span className="text-slate-600 dark:text-slate-300">{e.actor}</span>}
-              {e.result && <span className="text-slate-400">{e.result}</span>}
+              {e.result && <span className="text-slate-600 dark:text-slate-400">{e.result}</span>}
             </div>
             <p className="mt-0.5 text-slate-700 dark:text-slate-200">{e.summary}</p>
             {e.changesetId && (

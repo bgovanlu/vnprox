@@ -168,7 +168,7 @@ export function BondEditor({
 
       <Field label="Slaves" errors={findings.byField.slaves} help="Candidates show current link state/speed. A NIC already enslaved elsewhere shows a conflict hint.">
         <div className="max-h-32 space-y-1 overflow-y-auto rounded border border-slate-200 p-2 dark:border-slate-700">
-          {candidateSlaves.length === 0 && <p className="text-xs text-slate-400">No candidate physical NICs found on {node}.</p>}
+          {candidateSlaves.length === 0 && <p className="text-xs text-slate-600 dark:text-slate-400">No candidate physical NICs found on {node}.</p>}
           {candidateSlaves.map((c) => (
             <label key={c.name} className="flex items-center gap-2 text-xs">
               <input type="checkbox" checked={slaves.includes(c.name)} onChange={() => { toggleSlave(c.name); }} />

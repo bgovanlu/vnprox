@@ -129,7 +129,7 @@ export function SavedViewsMenu({ getCurrentState, onLoad }: SavedViewsMenuProps)
                     type="button"
                     data-role="delete-view"
                     aria-label={`Delete saved view: ${v.name}`}
-                    className="shrink-0 text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                    className="shrink-0 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDelete(v.name);
@@ -142,7 +142,7 @@ export function SavedViewsMenu({ getCurrentState, onLoad }: SavedViewsMenuProps)
             </>
           )}
           {(!views || views.length === 0) && (
-            <p className="px-2 py-1.5 text-xs text-slate-400">No saved views yet.</p>
+            <p className="px-2 py-1.5 text-xs text-slate-600 dark:text-slate-400">No saved views yet.</p>
           )}
         </RadixDropdown.Content>
       </RadixDropdown.Portal>

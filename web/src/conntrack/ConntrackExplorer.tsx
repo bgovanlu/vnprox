@@ -123,7 +123,7 @@ export function ConntrackExplorer() {
         </p>
       )}
 
-      {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-slate-600 dark:text-slate-400">Loading…</p>}
       {error && <EmptyState title="Could not load conntrack data" description="Try again in a moment." />}
 
       {!isLoading && !error && items.length === 0 && (

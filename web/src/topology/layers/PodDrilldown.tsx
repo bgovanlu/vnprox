@@ -61,7 +61,7 @@ function UnderlayChain({ paths }: { paths: UnderlayPath[] }) {
         <ol key={path.nicId} className="flex flex-wrap items-center gap-1 text-xs">
           {path.hops.map((hop, i) => (
             <li key={hop.id} className="flex items-center gap-1">
-              {i > 0 && <span className="text-slate-400">&rarr;</span>}
+              {i > 0 && <span className="text-slate-600 dark:text-slate-400">&rarr;</span>}
               <span
                 className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono dark:border-slate-700 dark:bg-slate-800"
                 title={hop.id}
@@ -92,7 +92,7 @@ export function PodDrilldown({ selection, overlay, topologyNodes, topologyEdges,
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="rounded px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          className="rounded px-1.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
         >
           ×
         </button>

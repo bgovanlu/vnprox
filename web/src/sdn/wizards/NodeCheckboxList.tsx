@@ -41,7 +41,7 @@ export function NodeCheckboxList({ label, help, allNodes, selected, onChange }: 
     <fieldset className="block border-0 p-0 m-0">
       <legend className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">{label}</legend>
       {allNodes.length === 0 ? (
-        <p className="text-xs text-slate-400">No cluster nodes discovered yet.</p>
+        <p className="text-xs text-slate-600 dark:text-slate-400">No cluster nodes discovered yet.</p>
       ) : (
         <div className="flex flex-wrap gap-3">
           {allNodes.map((node) => (

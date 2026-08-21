@@ -34,7 +34,7 @@ export function MetricsPanel({ scrape }: MetricsPanelProps) {
 
   if (families.length === 0) {
     return (
-      <p className="text-sm text-slate-500" data-testid="metrics-panel-empty">
+      <p className="text-sm text-slate-600 dark:text-slate-400" data-testid="metrics-panel-empty">
         No vnprox metrics in this scrape.
       </p>
     );
@@ -55,7 +55,7 @@ export function MetricsPanel({ scrape }: MetricsPanelProps) {
                   .join(", ");
                 return (
                   <tr key={`${f.name}-${String(i)}`}>
-                    <td className="pr-3 text-slate-500">{labelText || "—"}</td>
+                    <td className="pr-3 text-slate-600 dark:text-slate-400">{labelText || "—"}</td>
                     <td className="tabular-nums font-medium">{s.value}</td>
                   </tr>
                 );

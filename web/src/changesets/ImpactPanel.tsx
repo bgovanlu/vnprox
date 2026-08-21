@@ -34,7 +34,7 @@ export interface ImpactPanelProps {
 
 export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
   if (loading) {
-    return <p className="text-xs text-slate-400">Computing impact…</p>;
+    return <p className="text-xs text-slate-600 dark:text-slate-400">Computing impact…</p>;
   }
   // A failure says so rather than rendering an empty panel. "We could not work
   // out the blast radius" and "the blast radius is nothing" must never look the
@@ -102,7 +102,7 @@ export function ImpactPanel({ impact, loading, error }: ImpactPanelProps) {
               <span className="block text-slate-600 dark:text-slate-300">{o.reason}</span>
             </li>
           ))}
-          {impact.ops.length === 0 && <li className="text-slate-400">No operations.</li>}
+          {impact.ops.length === 0 && <li className="text-slate-600 dark:text-slate-400">No operations.</li>}
         </ul>
       </section>
     </div>
